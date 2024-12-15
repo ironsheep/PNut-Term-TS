@@ -1,0 +1,53 @@
+{
+  "name": "dbg-term-ts",
+  "version": "0.0.1",
+  "description": "A recreation of Chips' Debug listener but multiplatform",
+  "keywords": [
+    "cli",
+    "propeller2",
+    "parallax.com",
+    "spin2",
+    "pasm2",
+    "deubg-terminal"
+  ],
+  "author": "Stephen M Moraco",
+  "publisher": "IronSheepProductionsLLC",
+  "license": "MIT",
+  "main": "dist/dbg-term-ts.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "help": "npm run build && npm run minify && dist/dbg-term-ts.min.js --help",
+    "minify": "terser dist/dbg-term-ts.js -c -m -o dist/dbg-term-ts.min.js",
+    "build": "node esbuild.config.js",
+    "pkg": "npm run build && npm run minify && pkg .",
+    "start": "node dist/dbg-term-ts.min.js",
+    "postbuild": "chmod +x dist/dbg-term-ts.min.js dist/dbg-term-ts.js"
+  },
+  "bin": {
+    "dbg-term-ts": "./dist/dbg-term-ts.min.js"
+  },
+  "pkg": {
+    "outputPath": "executable",
+    "targets": [
+      "node18-win-arm64",
+      "node18-win-x64",
+      "node18-linux-x64",
+      "node18-linux-arm64",
+      "node18-macos-x64",
+      "node18-macos-arm64"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.0",
+    "pkg": "^5.8.1",
+    "terser": "^5.37.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "pixi.js": "^8.6.5",
+    "serialport": "^12.0.0"
+  }
+}
