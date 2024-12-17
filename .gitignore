@@ -162,3 +162,7 @@ cython_debug/
 #.idea/
 /node_modules
 /executable
+.DS_Store
+/.history
+/release
+/prebuilds
