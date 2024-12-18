@@ -25,7 +25,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "help": "npm run build && dist/pnut-termdebug-ts.min.js --help",
     "minify": "terser dist/pnut-termdebug-ts.js -c -m -o dist/pnut-termdebug-ts.min.js",
-    "clean": "rm -rf ./dist ./release",
+    "clean": "rm -rf ./dist ./release ./prebuilds",
     "start": "node dist/pnut-termdebug-ts.min.js",
     "postbuild": "chmod +x dist/pnut-termdebug-ts.min.js dist/pnut-termdebug-ts.js",
     "makeprebuild": "mkdir -p ./prebuilds && cp -pr ./node_modules/@serialport/bindings-cpp/prebuilds/* ./prebuilds/",
