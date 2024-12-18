@@ -1,10 +1,7 @@
 name: Build macOS App
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,7 +18,7 @@ jobs:
       - name: Install Python and setuptools/distutils
         run: |
           brew reinstall python@3.13
-          brew install python3-setuptools
+          brew install python-setuptools
 
       - name: Install dependencies
         run: npm ci
