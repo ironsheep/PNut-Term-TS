@@ -1,14 +1,20 @@
 const esbuild = require("esbuild");
 
-esbuild
-  .build({
-    entryPoints: ["src/dbg-term-ts.ts"],
+Promise.all([
+  esbuild.build({
+    entryPoints: ["src/pnut-termdebug-ts.ts"],
     bundle: true,
-    outfile: "dist/dbg-term-ts.js",
+    outfile: "dist/pnut-termdebug-ts.js",
     platform: "node",
     target: "node18",
-    format: "cjs",
+    external: ["electron"],
     minify: false, // Disable esbuild minification we'll use terser instead
     sourcemap: true,
-  })
-  .catch(() => process.exit(1));
+  }),
+  esbuild.build({
+    entryPoints: ["src/renderer.ts"],
+    bundle: true,
+    outfile: "dist/renderer.js",
+    platform: "node",
+  }),
+]).catch(() => process.exit(1));

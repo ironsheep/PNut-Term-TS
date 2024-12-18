@@ -12,6 +12,7 @@ import { Logger } from "../classes/logger";
 
 export interface RuntimeEnvironment {
   serialPortDevices: string[];
+  selectedPropPlug: string;
   developerModeEnabled: boolean;
 }
 export interface LogOptions {
@@ -58,6 +59,7 @@ export class Context {
       logDistiller: false,
     };
     this.runEnvironment = {
+      selectedPropPlug: "",
       serialPortDevices: [],
       developerModeEnabled: false,
     };

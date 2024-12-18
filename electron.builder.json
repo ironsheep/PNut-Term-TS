@@ -1,0 +1,22 @@
+{
+  "appId": "biz.ironsheep.pnut-termdebug-ts",
+  "productName": "PNut-TermDebug-TS",
+  "files": ["dist/**/*", "node_modules/**/*", "package.json", "prebuilds/**/*"],
+  "directories": {
+    "output": "release"
+  },
+  "extraMetadata": {
+    "main": "dist/pnut-termdebug-ts.min.js"
+  },
+  "asar": true,
+  "mac": {
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": ["zip"]
+  },
+  "linux": {
+    "category": "Utility",
+    "target": ["zip"]
+  }
+}
