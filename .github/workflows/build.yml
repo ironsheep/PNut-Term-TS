@@ -20,7 +20,7 @@ jobs:
 
       - name: Install Python and distutils
         run: |
-          brew reinstall python3.13
+          brew reinstall python@3.13
           python3 -m ensurepip --upgrade
           python3 -m pip install --upgrade pip
           brew install python3-distutils
