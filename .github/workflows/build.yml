@@ -18,6 +18,12 @@ jobs:
         with:
           node-version: "18"
 
+      - name: Install Python and distutils
+        run: |
+          python3 -m ensurepip --upgrade
+          python3 -m pip install --upgrade pip
+          python3 -m pip install distutils
+
       - name: Install dependencies
         run: npm ci
 
