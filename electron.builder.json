@@ -10,7 +10,11 @@
   },
   "asar": true,
   "mac": {
-    "target": ["dmg", "zip"]
+    "target": ["dmg", "zip"],
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist"
   },
   "win": {
     "target": ["zip"]
@@ -18,5 +22,6 @@
   "linux": {
     "category": "Utility",
     "target": ["zip"]
-  }
+  },
+  "afterSign": "scripts/notarize.js"
 }

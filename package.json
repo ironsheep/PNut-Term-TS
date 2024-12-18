@@ -45,6 +45,7 @@
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "electron-notarize": "^1.2.2",
     "esbuild": "^0.24.0",
     "terser": "^5.37.0",
     "ts-node": "^10.9.2",
