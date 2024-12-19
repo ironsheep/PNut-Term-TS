@@ -1,6 +1,6 @@
 {
   "appId": "biz.ironsheep.pnut-termdebug-ts",
-  "productName": "pnut-termdebug-ts",
+  "productName": "PNut-TermDebug-TS",
   "files": [
     "dist/**/*",
     "!dist/pnut-termdebug-ts",
@@ -22,7 +22,8 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "identity": "${env.APPLE_TEAM_ID}"
+    "identity": "${env.APPLE_TEAM_ID}",
+    "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {
     "target": ["zip"]
