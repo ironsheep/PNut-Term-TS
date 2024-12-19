@@ -16,7 +16,7 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "identity": "Developer ID Application: Iron Sheep Productions, LLC (T67FW2JCJW)"
+    "identity": "${env.APPLE_TEAM_ID}"
   },
   "win": {
     "target": ["zip"]
