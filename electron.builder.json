@@ -1,7 +1,13 @@
 {
   "appId": "biz.ironsheep.pnut-termdebug-ts",
   "productName": "PNut-TermDebug-TS",
-  "files": ["dist/**/*", "node_modules/**/*", "package.json", "prebuilds/**/*"],
+  "files": [
+    "dist/**/*",
+    "!dist/pnut-termdebug-ts",
+    "node_modules/**/*",
+    "package.json",
+    "prebuilds/**/*"
+  ],
   "directories": {
     "output": "release"
   },
@@ -10,8 +16,8 @@
   },
   "asar": true,
   "mac": {
-    "category": "public.app-category.utilities",
-    "target": ["dmg", "zip"],
+    "category": "public.app-category.developer-tools",
+    "target": ["dmg"],
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
