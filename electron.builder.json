@@ -1,6 +1,6 @@
 {
   "appId": "biz.ironsheep.pnut-termdebug-ts",
-  "productName": "PNut-TermDebug-TS",
+  "productName": "pnut-termdebug-ts",
   "files": [
     "dist/**/*",
     "!dist/pnut-termdebug-ts",
