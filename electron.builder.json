@@ -13,8 +13,8 @@
     "target": ["dmg", "zip"],
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "entitlements": "build/entitlements.mac.plist",
-    "entitlementsInherit": "build/entitlements.mac.plist"
+    "entitlements": "./buildSupport/entitlements.mac.plist",
+    "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist"
   },
   "win": {
     "target": ["zip"]
