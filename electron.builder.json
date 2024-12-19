@@ -22,7 +22,7 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "identity": "${env.APPLE_TEAM_ID}",
+    "identity": null,
     "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {
