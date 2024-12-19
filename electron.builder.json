@@ -10,11 +10,13 @@
   },
   "asar": true,
   "mac": {
+    "category": "public.app-category.utilities",
     "target": ["dmg", "zip"],
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
-    "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist"
+    "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
+    "identity": "Developer ID Application: Iron Sheep Productions, LLC (T67FW2JCJW)"
   },
   "win": {
     "target": ["zip"]
