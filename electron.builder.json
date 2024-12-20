@@ -9,11 +9,12 @@
     "prebuilds/**/*"
   ],
   "directories": {
-    "output": "release"
+    "output": "release",
+    "buildResources": "build"
   },
   "extraMetadata": {
     "main": "dist/pnut-termdebug-ts.min.js",
-    "ElectronTeamId": "${ELECTRON_TEAM_ID}"
+    "electronTeamId": "T67FW2JCJW"
   },
   "asar": true,
   "mac": {
@@ -23,7 +24,7 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "identity": "Apple Distribution: Iron Sheep Productions, LLC (${APPLE_TEAM_ID})",
+    "identity": "Apple Distribution: Iron Sheep Productions, LLC (T67FW2JCJW)",
     "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {

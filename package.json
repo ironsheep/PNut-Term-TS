@@ -43,6 +43,7 @@
     "send2pi": "scp ./release/pnut-*arm64.zip pi@pi5twr.home:/home/pi/Downloads"
   },
   "devDependencies": {
+    "@types/electron": "^1.4.38",
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
