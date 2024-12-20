@@ -12,7 +12,8 @@
     "output": "release"
   },
   "extraMetadata": {
-    "main": "dist/pnut-termdebug-ts.min.js"
+    "main": "dist/pnut-termdebug-ts.min.js",
+    "ElectronTeamId": "${ELECTRON_TEAM_ID}"
   },
   "asar": true,
   "mac": {
@@ -23,7 +24,6 @@
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
     "identity": "Apple Distribution: Iron Sheep Productions, LLC (${APPLE_TEAM_ID})",
-    "electronTeamId": "${ELECTRON_TEAM_ID}",
     "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {
