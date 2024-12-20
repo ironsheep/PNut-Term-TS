@@ -14,7 +14,7 @@
   },
   "extraMetadata": {
     "main": "dist/pnut-termdebug-ts.min.js",
-    "electronTeamId": "T67FW2JCJW"
+    "ElectronTeamId": "T67FW2JCJW"
   },
   "asar": true,
   "mac": {

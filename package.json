@@ -33,7 +33,7 @@
     "prebuild": "npm run clean && npm run makeprebuild && npm run copyfiles",
     "buildnew": "tsc && npm run build:esbuild && npm run minify && node build.js",
     "build": "tsc && npm run build:esbuild && node scripts/insertBuildDate.js && npm run minify",
-    "package": "npm run build && DEBUG=electron-builder electron-builder build --win --linux --config electron.builder.json",
+    "package": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
     "packageMac": "npm run build && DEBUG=electron-builder electron-builder build --mac --config electron.builder.json",
     "build:esbuild": "node esbuild.config.js",
     "build:win": "tsc && electron-builder build --win",
