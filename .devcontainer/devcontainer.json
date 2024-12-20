@@ -2,7 +2,9 @@
 {
   "name": "Pnut TermDebug TypeScript Development",
   "image": "node:latest",
-  "context": "..",
+  "build": {
+    "context": ".."
+  },
   "appPort": ["5002:5002", "9123:8123"],
   "postCreateCommand": "npm install",
   "runArgs": [
