@@ -6,7 +6,7 @@ Promise.all([
     bundle: true,
     outfile: "dist/pnut-termdebug-ts.js",
     platform: "node",
-    target: "node18",
+    target: "node23",
     external: ["electron"],
     minify: false, // Disable esbuild minification we'll use terser instead
     sourcemap: true,
