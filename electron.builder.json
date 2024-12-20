@@ -22,7 +22,8 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "identity": "Apple Distribution: Iron Sheep Productions, LLC (T67FW2JCJW)",
+    "identity": "Apple Distribution: Iron Sheep Productions, LLC (${env.APPLE_TEAM_ID})",
+    "electronTeamId": "${env.APPLE_TEAM_ID}",
     "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {
