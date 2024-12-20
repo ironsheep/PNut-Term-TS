@@ -4,31 +4,66 @@
 //  TODO: make it context/runtime option aware
 
 "use strict";
-// src/classes/logger.ts
-import { Context } from "../utils/context";
-import { UsbSerial } from "../utils/usb.serial";
+// src/classes/debugTerminal.ts
 import { app, BrowserWindow } from "electron";
+import { Context } from "../utils/context";
+import { fileExists, listFiles } from "../utils/files";
+import { UsbSerial } from "../utils/usb.serial";
+import path from "path";
 
 const DEFAULT_SERIAL_BAUD = 2000000;
 
 export class DebugTerminal {
   private context: Context;
-  private isLogging: boolean = false;
+  private isLogging: boolean = true; // remove before flight
   private _deviceNode: string = "";
   private _serialPort: UsbSerial;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
-  private mainWindow: BrowserWindow | undefined = undefined;
+  private mainWindow: BrowserWindow | null = null;
+  private _indexPath: string = "./index.html";
 
-  constructor(ctx: Context, deviceNode: string) {
+  constructor(ctx: Context) {
     this.context = ctx;
-    this._deviceNode = deviceNode;
+    this._deviceNode = this.context.runEnvironment.selectedPropPlug;
     if (this.isLogging) {
       this.logMessage("DebugTerminal log started.");
     }
     this._serialPort = new UsbSerial(this.context, this._deviceNode);
     this._serialPort.on("data", (data) => this.handleSerialRx(data));
+
+    if (!fileExists(this._indexPath)) {
+      this._indexPath = "./src/index.html";
+    }
+
+    if (!fileExists(this._indexPath)) {
+      this.logMessage(`* DebugTerminal() - ${this._indexPath} not found!`);
+    }
+
+    let filesFound: string[] = listFiles("./");
+    this.logMessage(
+      `* DebugTerminal() - ./ ${filesFound.length} files found: [${filesFound}]`
+    );
+    filesFound = listFiles("./src");
+    this.logMessage(
+      `* DebugTerminal() - ./src ${filesFound.length} files found: [${filesFound}]`
+    );
+  }
+
+  public initialize() {
     app.whenReady().then(() => {
       this.createWindow();
+    });
+
+    app.on("window-all-closed", () => {
+      if (process.platform !== "darwin") {
+        app.quit();
+      }
+    });
+
+    app.on("activate", () => {
+      if (this.mainWindow === null) {
+        this.createWindow();
+      }
     });
   }
 
@@ -49,23 +84,37 @@ export class DebugTerminal {
     if (this.isLogging) {
       this.logMessage(`TERM: Received: ${data}`);
     }
-    if (this.mainWindow !== undefined) {
+    if (this.mainWindow !== null) {
       this.mainWindow.webContents.send("serial-data", data);
     }
   }
 
   private createWindow() {
     this.logMessage(`* createWindow()`);
+    const preloadFSpec: string = path.join(__dirname, "preload.js");
     this.mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
+        preload: preloadFSpec, // Optional: preload script
       },
     });
 
-    this.mainWindow.loadFile("index.html");
+    if (!fileExists(preloadFSpec)) {
+      this.logMessage(`* createWindow() - preload.js not found!`);
+    }
+    // Load the local index.html file
+    if (fileExists(this._indexPath)) {
+      this.mainWindow.loadFile(this._indexPath);
+    } else {
+      this.logMessage(`* createWindow() - index.html not found!`);
+    }
+
+    this.mainWindow.on("closed", () => {
+      this.mainWindow = null;
+    });
   }
 
   // ----------------------------------------------------------------------

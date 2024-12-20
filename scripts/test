@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd dist
+(set -x;./pnut-termdebug-ts.min.js -v -p P9cektn7)
+cd ..

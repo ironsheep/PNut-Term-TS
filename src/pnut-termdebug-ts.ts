@@ -21,7 +21,7 @@ import { DebugTerminal } from "./classes/debugTerminal";
 //  fs.readFile(assets.root + '/bar.png', function(){/*whatever*/});
 export const root: string = __dirname;
 
-export class PNutInTypeScript {
+export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
   private options: OptionValues = this.program.opts();
@@ -29,13 +29,12 @@ export class PNutInTypeScript {
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
-  private requiresFilename: boolean = false;
 
   constructor(argsOverride?: string[]) {
     //console.log(`PNut-TermDebug-TS: argsOverride=[${argsOverride}]`);
     if (argsOverride !== undefined) {
       this.argsArray = argsOverride;
-      //PNutInTypeScript.isTesting = true;
+      //DebugTerminalInTypeScript.isTesting = true;
     }
 
     if (process.stdin.isTTY) {
@@ -82,7 +81,7 @@ export class PNutInTypeScript {
   public setArgs(runArgs: string[]) {
     //console.log('runArgs: %o', runArgs);
     this.argsArray = runArgs;
-    //PNutInTypeScript.isTesting = true;
+    //DebugTerminalInTypeScript.isTesting = true;
   }
 
   public async run(): Promise<number> {
@@ -102,34 +101,20 @@ export class PNutInTypeScript {
       .name("pnut-termdebug-ts")
       .version(`v${this.version}`, "-V, --version", "Output the version number")
       //.version(`v${this.version}`)
-      .usage("[optons] filename")
+      .usage("[optons]")
       .description(`Serial Debug Terminal - v${this.version}`)
-      .arguments("[filename]")
       .action((filename: string) => {
         this.options.filename = filename;
       })
       .option("-d, --debug", "Compile with DEBUG")
-      .option("-l, --list", "Generate listing files (.lst) from compilation")
       .option(
         "-p, --plug <dvcNode>",
-        "download to/flash Propeller attached to <dvcNode>"
+        "Receive serial data from Propeller attached to <dvcNode>"
       )
       .option("-n, --dvcnodes", "List available USB PropPlug device (n)odes")
       .option("-v, --verbose", "Output verbose messages")
-      .option("-o, --output <name>", "Specify output file basename")
-      .option("-q, --quiet", "Quiet mode (suppress banner and non-error text)")
-      .addOption(
-        new Option("--log <objectName...>", "objectName").choices([
-          "all",
-          "outline",
-          "compiler",
-          "elementizer",
-          "parser",
-          "distiller",
-          "preproc",
-          "resolver",
-        ])
-      );
+      .option("-l, --log <basename>", "Specify .log file basename")
+      .option("-q, --quiet", "Quiet mode (suppress banner and non-error text)");
 
     this.program.addHelpText("beforeAll", `$-`);
 
@@ -137,8 +122,8 @@ export class PNutInTypeScript {
       "afterAll",
       `$-
       Example:
-         $ pnut-termdebug-ts my-top-level.spin2         # compile leaving .bin file
-         $ pnut-termdebug-ts -l my-top-level.spin2      # compile file leaving .bin and .lst files
+         $ pnut-termdebug-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
+         $ pnut-termdebug-ts -l myApp -p P9cektn7  # run and log to myApp-YYMMDD-HHmm.log
          `
     );
 
@@ -220,11 +205,6 @@ export class PNutInTypeScript {
       //this.context.reportOptions.coverageTesting = true;
     }
 
-    //this.context.logger.progressMsg(`after parse()`);
-    //console.log('arguments: %o', this.program.args);  // should be just filespec to compile
-    //console.log('combArguments: %o', combinedArgs);
-    //console.log('options: %o', this.program.opts());
-
     this.options = { ...this.options, ...this.program.opts() };
 
     const showingHelp: boolean =
@@ -240,40 +220,6 @@ export class PNutInTypeScript {
 
     if (this.options.verbose) {
       this.context.logger.enabledVerbose();
-    }
-
-    if (this.options.dvcnodes) {
-      this.loadUsbPortsFound();
-      for (
-        let index = 0;
-        index < this.context.runEnvironment.serialPortDevices.length;
-        index++
-      ) {
-        const dvcNode = this.context.runEnvironment.serialPortDevices[index];
-        this.context.logger.progressMsg(` USB #${index + 1} [${dvcNode}]`);
-      }
-      if (this.context.runEnvironment.serialPortDevices.length == 0) {
-        // no ports found
-        this.context.logger.progressMsg(` USB  - no Serial Ports Found!`);
-      } else if (this.context.runEnvironment.serialPortDevices.length == 1) {
-        // found only port, select it!
-        this.context.runEnvironment.selectedPropPlug =
-          this.context.runEnvironment.serialPortDevices[0];
-      }
-    }
-
-    if (this.options.plug) {
-      // if port given on command line, use it!
-      this.context.runEnvironment.selectedPropPlug = this.options.plug;
-    }
-
-    if (this.context.runEnvironment.selectedPropPlug.length > 0) {
-      // if a port was only or given on command line, show that we selected it
-      this.context.logger.verboseMsg(
-        `* using USB [${this.context.runEnvironment.selectedPropPlug}]`
-      );
-    } else {
-      this.shouldAbort = true;
     }
 
     if (!this.options.quiet && !foundJest && !runningCoverageTesting) {
@@ -297,131 +243,6 @@ export class PNutInTypeScript {
       this.context.logger.infoMsg(`* ${commandLine}`);
     }
 
-    if (this.options.filename === undefined) {
-      let needAbort: boolean = false;
-      for (let index = 0; index < combinedArgs.length; index++) {
-        if (
-          combinedArgs[index].length > 0 &&
-          combinedArgs[index].toLowerCase().endsWith(".spin2")
-        ) {
-          if (this.options.filename === undefined) {
-            this.options.filename = combinedArgs[index];
-          } else {
-            this.context.logger.errorMsg(
-              "Compiling more than one .spin2 files at a time, not supported!"
-            );
-            needAbort = true;
-            break;
-          }
-        }
-      }
-      if (needAbort) {
-        return Promise.resolve(-1);
-      }
-    }
-
-    if (this.options.log) {
-      // forward our LOG Options
-      this.requiresFilename = true;
-      const choices: string[] = this.options.log;
-      this.context.logger.verboseMsg("MODE: Logging:");
-      //this.context.logger.verboseMsg(`* log: [${choices}]`);
-      const wantsAll: boolean = choices.includes("all");
-      if (choices.includes("outline") || wantsAll) {
-        this.context.logOptions.logOutline = true;
-        this.context.logger.verboseMsg("  Outline");
-      }
-      if (choices.includes("distiller") || wantsAll) {
-        this.context.logOptions.logDistiller = true;
-        this.context.logger.verboseMsg("  Distiller");
-      }
-      if (choices.includes("elementizer") || wantsAll) {
-        this.context.logOptions.logElementizer = true;
-        this.context.logger.verboseMsg("  Elementizer");
-      }
-      if (choices.includes("parser") || wantsAll) {
-        this.context.logOptions.logParser = true;
-        this.context.logger.verboseMsg("  Parser");
-      }
-      if (choices.includes("compiler") || wantsAll) {
-        this.context.logOptions.logCompile = true;
-        this.context.logger.verboseMsg("  Compile");
-      }
-      if (choices.includes("resolver") || wantsAll) {
-        this.context.logOptions.logResolver = true;
-        this.context.logger.verboseMsg("  Resolver");
-      }
-      if (choices.includes("preproc")) {
-        this.context.logOptions.logPreprocessor = true;
-        this.context.logger.verboseMsg("  PreProcessor");
-      }
-    }
-
-    if (this.options.output) {
-      // forward our Output Filename
-      const outFilename = this.options.output;
-      //this.context.compileOptions.outputFilename = outFilename;
-      this.context.logger.verboseMsg(
-        `* Override output filename, now [${outFilename}]`
-      );
-    }
-
-    /*
-    if (this.options.both) {
-      this.context.logger.verboseMsg('have BOTH: enabling FLASH and DEBUG');
-      this.options.debug = true;
-      this.options.flash = true;
-      this.options.ram = false;
-    }*/
-
-    if (this.options.debug) {
-      this.context.logger.progressMsg("Compiling with DEBUG");
-      //this.context.compileOptions.enableDebug = true;
-      this.requiresFilename = true;
-    }
-
-    if (this.options.flash) {
-      this.context.logger.progressMsg("Downloading to FLASH");
-      //this.context.compileOptions.writeFlash = true;
-      this.requiresFilename = true;
-    }
-
-    /*
-    if (this.options.ram) {
-      this.context.logger.progressMsg('Downloading to RAM');
-      this.context.compileOptions.writeRAM = true;
-      this.requiresFilename = true;
-    }
-
-    if (this.options.ram && this.options.flash) {
-      //this.program.error('Please only use one of -f and -r');
-      this.context.logger.errorMsg('Please only use one of -f and -r');
-      this.shouldAbort = true;
-    }*/
-
-    //if (this.options.compile) {
-    // ALWAYS SET THIS until we have a built-in flasher
-    if (!showingHelp) {
-      if (
-        (foundJest || runningCoverageTesting) &&
-        this.options.filename === undefined
-      ) {
-        // we don't handle this!
-        this.requiresFilename = false;
-        //this.context.compileOptions.compile = false;
-      } else {
-        this.requiresFilename = true;
-        //this.context.compileOptions.compile = true;
-      }
-    }
-    //}
-
-    let filename: string | undefined = this.options.filename;
-    if (filename !== undefined && filename.endsWith(".json")) {
-      // we don't handle .json files if presented
-      filename = undefined;
-    }
-
     if (!this.options.verbose && !this.options.quiet && !showingHelp) {
       console.log("arguments: %o", this.program.args);
       console.log("combArguments: %o", combinedArgs);
@@ -430,11 +251,18 @@ export class PNutInTypeScript {
 
     if (this.shouldAbort == false) {
       this.context.logger.verboseMsg(""); // blank line
+      let enclosingFolder: string = path.dirname(this.context.currentFolder);
+      //enclosingFolder = path.dirname(enclosingFolder);
+      this.context.logger.verboseMsg(`wkg dir [${enclosingFolder}]`);
       this.context.logger.verboseMsg(
-        `ext dir [${this.context.extensionFolder}]`
+        `ext dir [~${this.context.extensionFolder.replace(
+          enclosingFolder,
+          ""
+        )}]`
       );
-      this.context.logger.verboseMsg(`lib dir [${this.context.libraryFolder}]`);
-      this.context.logger.verboseMsg(`wkg dir [${this.context.currentFolder}]`);
+      this.context.logger.verboseMsg(
+        `lib dir [~${this.context.libraryFolder.replace(enclosingFolder, "")}]`
+      );
       this.context.logger.verboseMsg(""); // blank line
       /*
       this.runCommand('node -v').then((result) => {
@@ -465,26 +293,95 @@ export class PNutInTypeScript {
         }
         */
       }
+      this.context.logger.verboseMsg(""); // blank line
+    }
+
+    if (!showingHelp) {
+      await this.loadUsbPortsFound();
+    }
+
+    if (this.options.dvcnodes) {
+      for (
+        let index = 0;
+        index < this.context.runEnvironment.serialPortDevices.length;
+        index++
+      ) {
+        const dvcNode = this.context.runEnvironment.serialPortDevices[index];
+        this.context.logger.progressMsg(` USB #${index + 1} [${dvcNode}]`);
+      }
+      if (this.context.runEnvironment.serialPortDevices.length == 0) {
+        // no ports found
+        this.context.logger.progressMsg(` USB  - no Serial Ports Found!`);
+      }
+    }
+
+    if (this.options.plug) {
+      // if port given on command line, use it!
+      const foundPlug: string | undefined =
+        this.context.runEnvironment.serialPortDevices.find((propPlug) =>
+          propPlug.includes(this.options.plug)
+        );
+      if (foundPlug !== undefined) {
+        this.context.runEnvironment.selectedPropPlug = foundPlug;
+        //this.context.logger.verboseMsg(`* MATCHED USB  - ${foundPlug}!`);
+      }
+    }
+
+    if (this.context.runEnvironment.serialPortDevices.length == 1) {
+      // found only port, select it!
+      this.context.runEnvironment.selectedPropPlug =
+        this.context.runEnvironment.serialPortDevices[0];
+    }
+
+    if (this.context.runEnvironment.selectedPropPlug.length > 0) {
+      // if a port was only or given on command line, show that we selected it
+      this.context.logger.verboseMsg(
+        `* using USB [${this.context.runEnvironment.selectedPropPlug}]`
+      );
+    } else if (!this.options.dvcnodes) {
+      this.shouldAbort = true;
+    }
+
+    if (this.options.log) {
+      // generate log file basename
     }
 
     let theTerminal: DebugTerminal | undefined = undefined;
-    if (!this.shouldAbort && !showingHelp) {
+    if (!this.shouldAbort && !showingHelp && !this.options.dvcnodes) {
       const propPlug: string = this.context.runEnvironment.selectedPropPlug;
       this.context.logger.verboseMsg(
-        `Loading terminal attached to [${propPlug}]`
+        `* Loading terminal attached to [${propPlug}]`
       );
+
       try {
-        theTerminal = new DebugTerminal(this.context, propPlug);
+        theTerminal = new DebugTerminal(this.context);
       } catch (error) {
-        this.context.logger.errorMsg(`Create Terminal failed: ${error}`);
+        this.context.logger.errorMsg(
+          `* new DebugTerminal() Exception: ${error}`
+        );
+        // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
+        return Promise.resolve(-1);
+      }
+
+      try {
+        await theTerminal.initialize();
+      } catch (error) {
+        this.context.logger.errorMsg(
+          `* theTerminal.initialize() Exception: ${error}`
+        );
         // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
         return Promise.resolve(-1);
       }
     }
+
     if (theTerminal !== undefined) {
+      // Wait for the terminal to be done
       while (theTerminal.isDone() == false) {
         await new Promise((resolve) => setTimeout(resolve, 10000)); // 10,000 mSec = 10 seconds
       }
+
+      // and rlease the serial port
+      theTerminal.close();
     }
 
     if (!this.options.quiet && !showingHelp) {
@@ -499,7 +396,12 @@ export class PNutInTypeScript {
 
   private async loadUsbPortsFound(): Promise<void> {
     const deviceNodes: string[] = await UsbSerial.serialDeviceList();
-    this.context.runEnvironment.serialPortDevices = deviceNodes;
+    this.context.runEnvironment.serialPortDevices = [];
+    for (let index = 0; index < deviceNodes.length; index++) {
+      const element: string = deviceNodes[index];
+      const lineParts: string[] = element.split(",");
+      this.context.runEnvironment.serialPortDevices.push(lineParts[0]);
+    }
   }
 
   private errorColor(str: string): string {
@@ -545,7 +447,7 @@ export class PNutInTypeScript {
 // --------------------------------------------------
 // our actual command line tool when run stand-alone
 //
-//if (PNutInTypeScript.isTesting == false) {
-const cliTool = new PNutInTypeScript();
+//if (DebugTerminalInTypeScript.isTesting == false) {
+const cliTool = new DebugTerminalInTypeScript();
 cliTool.run();
 //}
