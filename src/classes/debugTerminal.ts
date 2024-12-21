@@ -29,7 +29,6 @@ export class DebugTerminal {
   private _serialPort: UsbSerial;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
   private mainWindow: BrowserWindow | null = null;
-  private _indexPath: string = "./index.html";
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -39,14 +38,6 @@ export class DebugTerminal {
     }
     this._serialPort = new UsbSerial(this.context, this._deviceNode);
     this._serialPort.on("data", (data) => this.handleSerialRx(data));
-
-    if (!fileExists(this._indexPath)) {
-      this._indexPath = "./src/index.html";
-    }
-
-    if (!fileExists(this._indexPath)) {
-      this.logMessage(`* DebugTerminal() - ${this._indexPath} not found!`);
-    }
 
     let filesFound: string[] = listFiles("./");
     this.logMessage(
@@ -105,14 +96,12 @@ export class DebugTerminal {
   //
   private createWindow() {
     this.logMessage(`* createWindow()`);
-    const preloadFSpec: string = path.join(__dirname, "preload.js");
     this.mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
-        preload: preloadFSpec, // Optional: preload script
       },
     });
 
@@ -188,16 +177,6 @@ export class DebugTerminal {
       </body>
     </html>
   `);
-
-    if (!fileExists(preloadFSpec)) {
-      this.logMessage(`* createWindow() - preload.js not found!`);
-    }
-    // Load the local index.html file
-    if (fileExists(this._indexPath)) {
-      this.mainWindow.loadFile(this._indexPath);
-    } else {
-      this.logMessage(`* createWindow() - index.html not found!`);
-    }
 
     // every second write a new log entry (DUMMY for TESTING)
     this.mainWindow.webContents.on("did-finish-load", () => {
