@@ -10,6 +10,7 @@ import path from "path";
 import { exec } from "child_process";
 import { UsbSerial } from "./utils/usb.serial";
 import { DebugTerminal } from "./classes/debugTerminal";
+import { app, BrowserWindow } from "electron";
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -76,6 +77,37 @@ export class DebugTerminalInTypeScript {
     });
 
     this.context = new Context();
+
+    // --------------------------------------------------
+    // configure some electron settings (attempt to kill startup errors)
+    /*
+    [44304:1221/152545.141736:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.143624:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.163527:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.164527:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.183297:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.185617:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.203657:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.204444:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.225301:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.226560:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.246903:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.249938:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.269487:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.270695:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.291861:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.293733:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.313563:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+    [44304:1221/152545.314664:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+    [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
+    Trace/BPT trap: 5
+    */
+
+    // Disable GPU acceleration
+    app.disableHardwareAcceleration();
+
+    // Disable network service sandbox
+    app.commandLine.appendSwitch("no-sandbox");
   }
 
   public setArgs(runArgs: string[]) {
@@ -148,18 +180,7 @@ export class DebugTerminalInTypeScript {
       this.argsArray.length == 0
         ? processArgv
         : [...processArgv, ...this.argsArray.slice(2)];
-    //console.log(`DBG: combinedArgs=[${combinedArgs}](${combinedArgs.length})`);
 
-    //if (!runningCoverageTesting) {
-    //}
-    //const GAHrunAsCoverageBUG: boolean = combinedArgs.includes('/workspaces/PNut-TermDebug-TS/node_modules/.bin/jest');
-    /*
-    if (combinedArgs.includes('/workspaces/PNut-TermDebug-TS/node_modules/.bin/jest')) {
-      //console.error(`ABORT pnut-termdebug-ts.js run as jest coverage`);
-      return 0;
-      //process.exit(0);
-    }
-    //*/
     try {
       this.program.parse(combinedArgs);
     } catch (error: unknown) {
@@ -209,6 +230,7 @@ export class DebugTerminalInTypeScript {
 
     const showingHelp: boolean =
       this.program.args.includes("--help") || this.program.args.includes("-h");
+    const showingNodeList: boolean = this.options.dvcnodes;
 
     if (!showingHelp) {
       if (foundJest || runningCoverageTesting) {
@@ -238,12 +260,20 @@ export class DebugTerminalInTypeScript {
       ) {
         commandLine = `pnut-termdebug-ts -- pre-run, IGNORED --`;
       } else {
-        commandLine = `pnut-termdebug-ts ${combinedArgs.slice(2).join(" ")}`;
+        const verboseFlag: string = this.options.verbose ? "-v " : "";
+        commandLine = `pnut-termdebug-ts ${verboseFlag}${combinedArgs
+          .slice(2)
+          .join(" ")}`;
       }
       this.context.logger.infoMsg(`* ${commandLine}`);
     }
 
-    if (!this.options.verbose && !this.options.quiet && !showingHelp) {
+    if (
+      !this.options.verbose &&
+      !this.options.quiet &&
+      !showingHelp &&
+      !showingNodeList
+    ) {
       console.log("arguments: %o", this.program.args);
       console.log("combArguments: %o", combinedArgs);
       console.log("options: %o", this.program.opts());
@@ -300,7 +330,7 @@ export class DebugTerminalInTypeScript {
       await this.loadUsbPortsFound();
     }
 
-    if (this.options.dvcnodes) {
+    if (showingNodeList) {
       for (
         let index = 0;
         index < this.context.runEnvironment.serialPortDevices.length;
@@ -338,16 +368,21 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(
         `* using USB [${this.context.runEnvironment.selectedPropPlug}]`
       );
-    } else if (!this.options.dvcnodes) {
+    } else if (!showingNodeList) {
       this.shouldAbort = true;
     }
 
     if (this.options.log) {
       // generate log file basename
+      const dateTimeStr: string = this.getFormattedDateTime();
+      this.context.runEnvironment.logFilename = `${this.options.log}-${dateTimeStr}.log`;
+      this.context.logger.verboseMsg(
+        ` * logging to [${this.context.runEnvironment.logFilename}]`
+      );
     }
 
     let theTerminal: DebugTerminal | undefined = undefined;
-    if (!this.shouldAbort && !showingHelp && !this.options.dvcnodes) {
+    if (!this.shouldAbort && !showingHelp && !showingNodeList) {
       const propPlug: string = this.context.runEnvironment.selectedPropPlug;
       this.context.logger.verboseMsg(
         `* Loading terminal attached to [${propPlug}]`
@@ -392,6 +427,17 @@ export class DebugTerminalInTypeScript {
       }
     }
     return Promise.resolve(0);
+  }
+
+  // Function to format the current date and time
+  private getFormattedDateTime(): string {
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2); // Get last 2 digits of the year
+    const month = (now.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-based
+    const day = now.getDate().toString().padStart(2, "0");
+    const hours = now.getHours().toString().padStart(2, "0");
+    const minutes = now.getMinutes().toString().padStart(2, "0");
+    return `${year}${month}${day}-${hours}${minutes}`;
   }
 
   private async loadUsbPortsFound(): Promise<void> {
