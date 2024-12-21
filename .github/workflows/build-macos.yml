@@ -50,7 +50,7 @@ jobs:
           security list-keychains
           security find-identity -v
 
-      - name: Build Electron app
+      - name: Build TermDebug app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -59,8 +59,8 @@ jobs:
         run: |
           npm run packageMac
 
-      - name: Upload artifacts
+      - name: Upload TermDebug artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macOS-app
-          path: dist_electron/*.dmg
+          name: ${{ github.event.repository.name }}-macos
+          path: release/*.dmg

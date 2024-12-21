@@ -19,16 +19,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Electron app
+      - name: Build TermDebug app
         run: npm run packageWin
 
-      - name: Build/release Electron app
-        uses: samuelmeuli/action-electron-builder@v1
-        with:
-          github_token: ${{ secrets.github_token }}
-
-      - name: Upload Electron app
+      - name: Upload TermDebug app
         uses: actions/upload-artifact@v4
         with:
-          name: win-app
-          path: dist/*
+          name: ${{ github.event.repository.name }}-windows
+          path: release/*-win*
