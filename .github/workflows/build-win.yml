@@ -1,0 +1,34 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 23
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron app
+        run: npm run packageWin
+
+      - name: Build/release Electron app
+        uses: samuelmeuli/action-electron-builder@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+
+      - name: Upload Electron app
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-app
+          path: dist/*

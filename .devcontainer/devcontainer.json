@@ -22,7 +22,8 @@
     "redhat.vscode-yaml",
     "johnnywong.vscode-ts-whitespace-converter",
     "sj0000e.hexdiff",
-    "ms-azuretools.vscode-docker"
+    "ms-azuretools.vscode-docker",
+    "github.vscode-github-actions"
   ],
   "settings": {
     "files.eol": "\n",
