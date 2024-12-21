@@ -22,7 +22,7 @@ jobs:
       - name: Build TermDebug app
         run: npm run packageWin
 
-      - name: Upload TermDebug app
+      - name: Upload TermDebug artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-windows
