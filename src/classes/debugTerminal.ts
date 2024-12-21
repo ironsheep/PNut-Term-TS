@@ -44,6 +44,34 @@ export class DebugTerminal {
   public initialize() {
     // app.on('ready', this.createWindow);
     app.whenReady().then(() => {
+      // macOS this is problematic, disable hardware acceleration
+      if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
+        // --------------------------------------------------
+        // configure some electron settings (attempt to kill startup errors)
+        /*
+        [44304:1221/152545.141736:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.143624:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.163527:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.164527:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.183297:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.185617:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.203657:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.204444:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.225301:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.226560:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.246903:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.249938:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.269487:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.270695:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.291861:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.293733:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.313563:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+        [44304:1221/152545.314664:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+        [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
+        Trace/BPT trap: 5
+        */
+        app.disableHardwareAcceleration();
+      }
       this.createWindow();
     });
 

@@ -86,8 +86,12 @@ export class DebugTerminalInTypeScript {
     Trace/BPT trap: 5
     */
     // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
-    // Disable GPU acceleration
-    app.disableHardwareAcceleration();
+    app.whenReady().then(() => {
+      // macOS this is problematic, disable hardware acceleration
+      if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
+        app.disableHardwareAcceleration();
+      }
+    });
 
     // Disable network service sandbox
     app.commandLine.appendSwitch("no-sandbox");
