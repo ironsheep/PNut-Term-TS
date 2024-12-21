@@ -102,7 +102,7 @@ export class DebugTerminalInTypeScript {
     [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
     Trace/BPT trap: 5
     */
-
+    // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
     // Disable GPU acceleration
     app.disableHardwareAcceleration();
 
