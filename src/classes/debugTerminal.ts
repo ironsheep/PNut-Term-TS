@@ -5,19 +5,11 @@
 
 "use strict";
 // src/classes/debugTerminal.ts
-import {
-  app,
-  BrowserWindow,
-  Menu,
-  MenuItem,
-  ipcMain,
-  dialog,
-  SaveDialogReturnValue,
-} from "electron";
+
+import { app, BrowserWindow, Menu, MenuItem, dialog } from "electron";
 import { Context } from "../utils/context";
-import { fileExists, listFiles } from "../utils/files";
+import { listFiles } from "../utils/files";
 import { UsbSerial } from "../utils/usb.serial";
-import path from "path";
 import * as fs from "fs";
 
 const DEFAULT_SERIAL_BAUD = 2000000;
@@ -215,6 +207,20 @@ export class DebugTerminal {
         })();
       `);
     }
+  }
+
+  // ----------------------------------------------------------------------
+  // fun code to remember...
+  private getRandomColor(): string {
+    const colors: string[] = [
+      "#ff0000",
+      "#00ff00",
+      "#0000ff",
+      "#ffff00",
+      "#00ffff",
+      "#ff00ff",
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
   }
 
   // ----------------------------------------------------------------------

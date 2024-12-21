@@ -11,10 +11,4 @@ Promise.all([
     minify: false, // Disable esbuild minification we'll use terser instead
     sourcemap: true,
   }),
-  esbuild.build({
-    entryPoints: ["src/renderer.ts"],
-    bundle: true,
-    outfile: "dist/renderer.js",
-    platform: "node",
-  }),
 ]).catch(() => process.exit(1));

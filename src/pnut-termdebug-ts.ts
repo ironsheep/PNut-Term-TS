@@ -4,13 +4,13 @@
 
 // src/pnut-termdebug-ts.ts
 "use strict";
-import { Command, Option, CommanderError, type OptionValues } from "commander";
+import { Command, CommanderError, type OptionValues } from "commander";
 import { Context } from "./utils/context";
 import path from "path";
 import { exec } from "child_process";
 import { UsbSerial } from "./utils/usb.serial";
 import { DebugTerminal } from "./classes/debugTerminal";
-import { app, BrowserWindow } from "electron";
+import { app } from "electron";
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -25,7 +25,6 @@ export const root: string = __dirname;
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private options: OptionValues = this.program.opts();
   private version: string = "0.0.1";
   private argsArray: string[] = [];
   private context: Context;
@@ -36,23 +35,6 @@ export class DebugTerminalInTypeScript {
     if (argsOverride !== undefined) {
       this.argsArray = argsOverride;
       //DebugTerminalInTypeScript.isTesting = true;
-    }
-
-    if (process.stdin.isTTY) {
-      console.log("No input provided. Use --help for usage.");
-    } else {
-      let inputData = "";
-
-      process.stdin.on("data", (chunk) => {
-        inputData += chunk;
-      });
-
-      process.stdin.on("end", () => {
-        console.log(`Received input: ${inputData}`);
-
-        // Process input and optionally open an Electron window
-        //createWindow();
-      });
     }
 
     process.stdout.on("error", (error: Error) => {
@@ -68,6 +50,7 @@ export class DebugTerminalInTypeScript {
       );
       process.exit(1);
     });
+
     process.stdout.on("close", () => {
       console.log("PNut-TermDebug-TS: stdout was closed");
     });
@@ -135,9 +118,6 @@ export class DebugTerminalInTypeScript {
       //.version(`v${this.version}`)
       .usage("[optons]")
       .description(`Serial Debug Terminal - v${this.version}`)
-      .action((filename: string) => {
-        this.options.filename = filename;
-      })
       .option("-d, --debug", "Compile with DEBUG")
       .option(
         "-p, --plug <dvcNode>",
@@ -166,8 +146,14 @@ export class DebugTerminalInTypeScript {
     this.context.logger.setProgramName(this.program.name());
 
     // Combine process.argv with the modified this.argsArray
-    //const testArgsInterp = this.argsArray.length === 0 ? '[]' : this.argsArray.join(', ');
-    //this.context.logger.progressMsg(`** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}]`);
+    const testArgsInterp =
+      this.argsArray.length === 0 ? "[]" : this.argsArray.join(", ");
+    this.context.logger.progressMsg(
+      `** process.argv=[${process.argv.join(
+        ", "
+      )}], this.argsArray=[${testArgsInterp}]`
+    );
+
     let processArgv: string[] = process.argv;
     const runningCoverageTesting: boolean =
       processArgv.includes("--coverage") ||
@@ -226,11 +212,11 @@ export class DebugTerminalInTypeScript {
       //this.context.reportOptions.coverageTesting = true;
     }
 
-    this.options = { ...this.options, ...this.program.opts() };
+    const options: OptionValues = this.program.opts();
 
     const showingHelp: boolean =
       this.program.args.includes("--help") || this.program.args.includes("-h");
-    const showingNodeList: boolean = this.options.dvcnodes;
+    const showingNodeList: boolean = options.dvcnodes;
 
     if (!showingHelp) {
       if (foundJest || runningCoverageTesting) {
@@ -240,11 +226,11 @@ export class DebugTerminalInTypeScript {
       }
     }
 
-    if (this.options.verbose) {
+    if (options.verbose) {
       this.context.logger.enabledVerbose();
     }
 
-    if (!this.options.quiet && !foundJest && !runningCoverageTesting) {
+    if (!options.quiet && !foundJest && !runningCoverageTesting) {
       const signOnCompiler: string =
         "Propeller Debug Terminal 'pnut-termdebug-ts' (c) 2024 Iron Sheep Productions, LLC., Parallax Inc.";
       this.context.logger.infoMsg(`* ${signOnCompiler}`);
@@ -252,7 +238,7 @@ export class DebugTerminalInTypeScript {
       this.context.logger.infoMsg(`* ${signOnVersion}`);
     }
 
-    if (!this.options.quiet && !showingHelp) {
+    if (!options.quiet && !showingHelp) {
       let commandLine: string;
       if (
         (foundJest || runningCoverageTesting) &&
@@ -260,7 +246,7 @@ export class DebugTerminalInTypeScript {
       ) {
         commandLine = `pnut-termdebug-ts -- pre-run, IGNORED --`;
       } else {
-        const verboseFlag: string = this.options.verbose ? "-v " : "";
+        const verboseFlag: string = options.verbose ? "-v " : "";
         commandLine = `pnut-termdebug-ts ${verboseFlag}${combinedArgs
           .slice(2)
           .join(" ")}`;
@@ -269,8 +255,8 @@ export class DebugTerminalInTypeScript {
     }
 
     if (
-      !this.options.verbose &&
-      !this.options.quiet &&
+      !options.verbose &&
+      !options.quiet &&
       !showingHelp &&
       !showingNodeList
     ) {
@@ -345,11 +331,11 @@ export class DebugTerminalInTypeScript {
       }
     }
 
-    if (this.options.plug) {
+    if (options.plug) {
       // if port given on command line, use it!
       const foundPlug: string | undefined =
         this.context.runEnvironment.serialPortDevices.find((propPlug) =>
-          propPlug.includes(this.options.plug)
+          propPlug.includes(options.plug)
         );
       if (foundPlug !== undefined) {
         this.context.runEnvironment.selectedPropPlug = foundPlug;
@@ -372,10 +358,10 @@ export class DebugTerminalInTypeScript {
       this.shouldAbort = true;
     }
 
-    if (this.options.log) {
+    if (options.log) {
       // generate log file basename
       const dateTimeStr: string = this.getFormattedDateTime();
-      this.context.runEnvironment.logFilename = `${this.options.log}-${dateTimeStr}.log`;
+      this.context.runEnvironment.logFilename = `${options.log}-${dateTimeStr}.log`;
       this.context.logger.verboseMsg(
         ` * logging to [${this.context.runEnvironment.logFilename}]`
       );
@@ -419,7 +405,7 @@ export class DebugTerminalInTypeScript {
       theTerminal.close();
     }
 
-    if (!this.options.quiet && !showingHelp) {
+    if (!options.quiet && !showingHelp) {
       if (this.shouldAbort) {
         this.context.logger.progressMsg("Aborted!");
       } else {
