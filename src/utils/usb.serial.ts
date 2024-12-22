@@ -10,13 +10,14 @@ import { EventEmitter } from "events";
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
 export class UsbSerial extends EventEmitter {
+  static desiredCommsBaudRate: number = DEFAULT_DOWNLOAD_BAUD;
+
   private context: Context;
   private isLogging: boolean = false;
   private endOfLineStr: string = "\r\n";
   private _deviceNode: string = "";
   private _serialPort: SerialPort;
   private _serialParser: ReadlineParser;
-  private _downloadBaud: number = DEFAULT_DOWNLOAD_BAUD;
   private _p2DeviceId: string = "";
   private _p2loadLimit: number = 0;
   private _latestError: string = "";
@@ -47,7 +48,7 @@ export class UsbSerial extends EventEmitter {
     this.logMessage(`* Connecting to ${this._deviceNode}`);
     this._serialPort = new SerialPort({
       path: this._deviceNode,
-      baudRate: this._downloadBaud,
+      baudRate: UsbSerial.desiredCommsBaudRate,
       dataBits: 8,
       stopBits: 1,
       parity: "none",
@@ -83,6 +84,10 @@ export class UsbSerial extends EventEmitter {
     }
   }
   */
+
+  static setCommBaudRate(baudRate: number): void {
+    UsbSerial.desiredCommsBaudRate = baudRate;
+  }
 
   get deviceInfo(): string {
     return this._p2DeviceId;

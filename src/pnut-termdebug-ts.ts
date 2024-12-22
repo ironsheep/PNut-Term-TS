@@ -107,12 +107,10 @@ export class DebugTerminalInTypeScript {
       */
       // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
 
-      app.whenReady().then(() => {
-        // macOS this is problematic, disable hardware acceleration
-        if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
-          app.disableHardwareAcceleration();
-        }
-      });
+      // macOS this is problematic, disable hardware acceleration
+      //if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
+      app.disableHardwareAcceleration();
+      //}
 
       // Disable network service sandbox
       app.commandLine.appendSwitch("no-sandbox");
@@ -394,11 +392,13 @@ export class DebugTerminalInTypeScript {
         this.context.runEnvironment.serialPortDevices[0];
     }
 
+    let havePropPlug: boolean = false;
     if (this.context.runEnvironment.selectedPropPlug.length > 0) {
       // if a port was only or given on command line, show that we selected it
       this.context.logger.verboseMsg(
         `* using USB [${this.context.runEnvironment.selectedPropPlug}]`
       );
+      havePropPlug = true;
     } else if (!showingNodeList) {
       this.shouldAbort = true;
     }
@@ -414,10 +414,12 @@ export class DebugTerminalInTypeScript {
 
     let theTerminal: DebugTerminal | undefined = undefined;
     if (!this.shouldAbort && !showingHelp && !showingNodeList) {
-      const propPlug: string = this.context.runEnvironment.selectedPropPlug;
-      this.context.logger.verboseMsg(
-        `* Loading terminal attached to [${propPlug}]`
-      );
+      if (havePropPlug) {
+        const propPlug: string = this.context.runEnvironment.selectedPropPlug;
+        this.context.logger.verboseMsg(
+          `* Loading terminal attached to [${propPlug}]`
+        );
+      }
 
       try {
         theTerminal = new DebugTerminal(this.context);

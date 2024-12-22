@@ -18,19 +18,19 @@ export class DebugTerminal {
   private context: Context;
   private isLogging: boolean = true; // remove before flight
   private _deviceNode: string = "";
-  private _serialPort: UsbSerial;
+  private _serialPort: UsbSerial | undefined = undefined;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
   private mainWindow: BrowserWindow | null = null;
+  private mainWindowOpen: boolean = false;
 
   constructor(ctx: Context) {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
     if (this.isLogging) {
-      this.logMessage("DebugTerminal log started.");
+      this.logMessage("DebugTerminal started.");
     }
-    this._serialPort = new UsbSerial(this.context, this._deviceNode);
-    this._serialPort.on("data", (data) => this.handleSerialRx(data));
 
+    /*
     let filesFound: string[] = listFiles("./");
     this.logMessage(
       `* DebugTerminal() - ./ ${filesFound.length} files found: [${filesFound}]`
@@ -39,68 +39,56 @@ export class DebugTerminal {
     this.logMessage(
       `* DebugTerminal() - ./src ${filesFound.length} files found: [${filesFound}]`
     );
+    */
+
+    if (this._deviceNode.length > 0) {
+      // we have a selected device. Attach to it.
+      this.openSerialPort(this._deviceNode);
+    }
   }
 
   public initialize() {
-    // app.on('ready', this.createWindow);
+    // app.on('ready', this.createAppWindow);
     app.whenReady().then(() => {
-      // macOS this is problematic, disable hardware acceleration
-      if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
-        // --------------------------------------------------
-        // configure some electron settings (attempt to kill startup errors)
-        /*
-        [44304:1221/152545.141736:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.143624:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.163527:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.164527:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.183297:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.185617:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.203657:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.204444:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.225301:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.226560:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.246903:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.249938:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.269487:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.270695:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.291861:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.293733:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.313563:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-        [44304:1221/152545.314664:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-        [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
-        Trace/BPT trap: 5
-        */
-        app.disableHardwareAcceleration();
-      }
-      this.createWindow();
+      this.createAppWindow();
     });
 
     app.on("window-all-closed", () => {
       if (process.platform !== "darwin") {
         app.quit();
       }
+      this.mainWindowOpen = false;
     });
 
     app.on("activate", () => {
       if (this.mainWindow === null) {
-        this.createWindow();
+        this.createAppWindow();
       }
     });
   }
 
   public isDone(): boolean {
-    return false; // FIXME: this needs to be set when user wants to close the terminal
+    // return T/F where T means are window is closed or closing
+    return this.mainWindowOpen == true ? false : true;
   }
 
   public close(): void {
     // Remove all listeners to prevent memory leaks and allow port to be reused
-    this._serialPort.removeAllListeners();
-    this._serialPort.close();
+    if (this._serialPort !== undefined) {
+      this._serialPort.removeAllListeners();
+      this._serialPort.close();
+    }
   }
 
   // ----------------------------------------------------------------------
   // this is our serial receiver!!
   //
+  private openSerialPort(deviceNode: string) {
+    UsbSerial.setCommBaudRate(this._serialBaud);
+    this._serialPort = new UsbSerial(this.context, deviceNode);
+    this._serialPort.on("data", (data) => this.handleSerialRx(data));
+  }
+
   private handleSerialRx(data: any) {
     // Handle received data
     if (this.isLogging) {
@@ -114,8 +102,8 @@ export class DebugTerminal {
   // ----------------------------------------------------------------------
   // this is our Window Configuration
   //
-  private createWindow() {
-    this.logMessage(`* createWindow()`);
+  private createAppWindow() {
+    this.logMessage(`* create App Window()`);
     this.mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
@@ -124,6 +112,8 @@ export class DebugTerminal {
         contextIsolation: false,
       },
     });
+
+    this.mainWindowOpen = true;
 
     const menuTemplate: (Electron.MenuItemConstructorOptions | MenuItem)[] = [
       {
@@ -162,6 +152,34 @@ export class DebugTerminal {
           },
         ],
       },
+      {
+        label: "ProPlug",
+        submenu: [
+          {
+            label: "Select...",
+            click: () => {
+              const names = this.context.runEnvironment.serialPortDevices; // List of names
+              dialog
+                .showMessageBox(this.mainWindow!, {
+                  type: "question",
+                  buttons: names,
+                  title: "Select Prop Plug",
+                  message: "Choose a lProp Plug:",
+                })
+                .then((response) => {
+                  const propPlug: string = names[response.response];
+                  this.context.runEnvironment.selectedPropPlug = propPlug;
+
+                  // Update the status bar with the selected name
+                  this.updateStatusBarField("propPlug", propPlug);
+                })
+                .catch((error: Error) => {
+                  console.error("Failed to show plug select dialog:", error);
+                });
+            },
+          },
+        ],
+      },
     ];
 
     const menu = Menu.buildFromTemplate(menuTemplate);
@@ -185,21 +203,38 @@ export class DebugTerminal {
             background-color: #f0f0f0;
           }
           #status-bar {
-            background-color: #ddd;
-            padding: 5px;
-            text-align: right;
+            display: flex;
+            justify-content: flex-end;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+          }
+          .status-field {
+            margin-left: 20px;
           }
         </style>
       </head>
       <body>
         <div id="log-content"></div>
-        <div id="status-bar">Ready</div>
+        <div id="status-bar">
+          <div id="logName" class="status-field">Log Name: </div>
+          <div id="propPlug" class="status-field">Prop Plug: </div>
+          <div id="otherField" class="status-field">Other Field: </div>
+        </div>
       </body>
     </html>
   `);
 
     // every second write a new log entry (DUMMY for TESTING)
     this.mainWindow.webContents.on("did-finish-load", () => {
+      // if logging post filename to status bar
+      let logDisplayName: string = this.context.runEnvironment.logFilename;
+      if (logDisplayName.length == 0) {
+        logDisplayName = "{none}";
+      }
+      // Update the status bar with the selected name
+      this.updateStatusBarField("logName", logDisplayName);
+
       setInterval(() => {
         this.appendLog("Log message " + new Date().toISOString());
         this.updateStatus();
@@ -208,7 +243,14 @@ export class DebugTerminal {
 
     this.mainWindow.on("closed", () => {
       this.mainWindow = null;
+      this.mainWindowOpen = false;
     });
+  }
+
+  private updateStatusBarField(fieldId: string, value: string) {
+    this.mainWindow!.webContents.executeJavaScript(
+      `document.getElementById("${fieldId}").innerText = "${value}";`
+    );
   }
 
   private appendLog(message: string) {
