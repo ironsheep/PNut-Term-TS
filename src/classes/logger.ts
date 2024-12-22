@@ -8,6 +8,7 @@
 
 export class Logger {
   private verboseEnabled: boolean = false;
+  private debugEnabled: boolean = false;
   private programName: string = "{notSet}";
 
   public setProgramName(name: string) {
@@ -17,6 +18,11 @@ export class Logger {
   public enabledVerbose() {
     this.progressMsg("Verbose output is enabled");
     this.verboseEnabled = true;
+  }
+
+  public enabledDebug() {
+    this.progressMsg("Debug output is enabled");
+    this.debugEnabled = true;
   }
 
   public errorMsg(message: string | unknown) {
@@ -43,6 +49,16 @@ export class Logger {
         this.logMessage(``); // blank line
       } else {
         this.logMessage(`${this.programName}: Verbose- ${message}`);
+      }
+    }
+  }
+
+  public debugMsg(message: string): void {
+    if (this.debugEnabled) {
+      if (message.length == 0) {
+        this.logMessage(``); // blank line
+      } else {
+        this.logMessage(`${this.programName} (DBG): ${message}`);
       }
     }
   }

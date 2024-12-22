@@ -22,6 +22,22 @@ import { app } from "electron";
 //  fs.readFile(assets.root + '/bar.png', function(){/*whatever*/});
 export const root: string = __dirname;
 
+/**
+ * Finds the first string in the array that contains the specified substring.
+ * @param array The array of strings to search.
+ * @param substring The substring to search for.
+ * @returns The first string that contains the substring, or undefined if no match is found.
+ */
+function findMatch(array: string[], substring: string): boolean {
+  const foundString: string | undefined = array.find((element) =>
+    element.includes(substring)
+  );
+  let foundStatus: boolean = false;
+  if (foundString !== undefined) {
+    foundStatus = true;
+  }
+  return foundStatus;
+}
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
@@ -29,6 +45,7 @@ export class DebugTerminalInTypeScript {
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
+  private inContainer: boolean = false;
 
   constructor(argsOverride?: string[]) {
     //console.log(`PNut-TermDebug-TS: argsOverride=[${argsOverride}]`);
@@ -36,6 +53,8 @@ export class DebugTerminalInTypeScript {
       this.argsArray = argsOverride;
       //DebugTerminalInTypeScript.isTesting = true;
     }
+
+    this.inContainer = findMatch(process.argv, "workspace");
 
     process.stdout.on("error", (error: Error) => {
       console.error(
@@ -61,40 +80,43 @@ export class DebugTerminalInTypeScript {
 
     this.context = new Context();
 
-    // --------------------------------------------------
-    // configure some electron settings (attempt to kill startup errors)
-    /*
-    [44304:1221/152545.141736:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.143624:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.163527:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.164527:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.183297:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.185617:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.203657:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.204444:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.225301:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.226560:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.246903:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.249938:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.269487:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.270695:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.291861:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.293733:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.313563:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
-    [44304:1221/152545.314664:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
-    [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
-    Trace/BPT trap: 5
-    */
-    // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
-    app.whenReady().then(() => {
-      // macOS this is problematic, disable hardware acceleration
-      if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
-        app.disableHardwareAcceleration();
-      }
-    });
+    if (!this.inContainer) {
+      // --------------------------------------------------
+      // configure some electron settings (attempt to kill startup errors)
+      /*
+      [44304:1221/152545.141736:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.143624:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.163527:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.164527:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.183297:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.185617:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.203657:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.204444:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.225301:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.226560:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.246903:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.249938:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.269487:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.270695:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.291861:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.293733:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.313563:ERROR:network_service_instance_impl.cc(613)] Network service crashed, restarting service.
+      [44304:1221/152545.314664:ERROR:gpu_process_host.cc(982)] GPU process exited unexpectedly: exit_code=5
+      [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
+      Trace/BPT trap: 5
+      */
+      // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
 
-    // Disable network service sandbox
-    app.commandLine.appendSwitch("no-sandbox");
+      app.whenReady().then(() => {
+        // macOS this is problematic, disable hardware acceleration
+        if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
+          app.disableHardwareAcceleration();
+        }
+      });
+
+      // Disable network service sandbox
+      app.commandLine.appendSwitch("no-sandbox");
+    }
   }
 
   public setArgs(runArgs: string[]) {
@@ -147,15 +169,17 @@ export class DebugTerminalInTypeScript {
 
     this.program.exitOverride(); // throw instead of exit
 
+    // condition our logger
     this.context.logger.setProgramName(this.program.name());
 
     // Combine process.argv with the modified this.argsArray
     const testArgsInterp =
       this.argsArray.length === 0 ? "[]" : this.argsArray.join(", ");
-    this.context.logger.progressMsg(
+
+    this.context.logger.logMessage(
       `** process.argv=[${process.argv.join(
         ", "
-      )}], this.argsArray=[${testArgsInterp}]`
+      )}], this.argsArray=[${testArgsInterp}] inContainer=[${this.inContainer}]`
     );
 
     let processArgv: string[] = process.argv;
@@ -207,6 +231,20 @@ export class DebugTerminalInTypeScript {
       }
     }
 
+    const options: OptionValues = this.program.opts();
+
+    if (options.verbose) {
+      this.context.logger.enabledVerbose();
+    }
+
+    if (options.debug) {
+      this.context.logger.enabledDebug();
+    }
+
+    this.context.logger.logMessage(
+      `V=(${options.verbose}), D=(${options.debug})`
+    );
+
     if (this.context.runEnvironment.developerModeEnabled) {
       this.context.logger.verboseMsg("PNUT_DEVELOP_MODE is enabled");
     }
@@ -216,22 +254,16 @@ export class DebugTerminalInTypeScript {
       //this.context.reportOptions.coverageTesting = true;
     }
 
-    const options: OptionValues = this.program.opts();
-
     const showingHelp: boolean =
       this.program.args.includes("--help") || this.program.args.includes("-h");
     const showingNodeList: boolean = options.dvcnodes;
 
     if (!showingHelp) {
       if (foundJest || runningCoverageTesting) {
-        this.context.logger.progressMsg(
+        this.context.logger.debugMsg(
           `(DBG) foundJest=(${foundJest}), runningCoverageTesting=(${runningCoverageTesting})`
         );
       }
-    }
-
-    if (options.verbose) {
-      this.context.logger.enabledVerbose();
     }
 
     if (!options.quiet && !foundJest && !runningCoverageTesting) {
@@ -250,10 +282,7 @@ export class DebugTerminalInTypeScript {
       ) {
         commandLine = `pnut-termdebug-ts -- pre-run, IGNORED --`;
       } else {
-        const verboseFlag: string = options.verbose ? "-v " : "";
-        commandLine = `pnut-termdebug-ts ${verboseFlag}${combinedArgs
-          .slice(2)
-          .join(" ")}`;
+        commandLine = `pnut-termdebug-ts ${combinedArgs.slice(2).join(" ")}`;
       }
       this.context.logger.infoMsg(`* ${commandLine}`);
     }
@@ -271,17 +300,22 @@ export class DebugTerminalInTypeScript {
 
     if (this.shouldAbort == false) {
       this.context.logger.verboseMsg(""); // blank line
-      let enclosingFolder: string = path.dirname(this.context.currentFolder);
+      let enclosingFolder: string = "";
+      let removePrefix: string = "";
+      if (this.inContainer) {
+        enclosingFolder = path.dirname(this.context.currentFolder);
+        removePrefix = enclosingFolder;
+      } else {
+        enclosingFolder = path.dirname(process.argv[0]);
+      }
+
       //enclosingFolder = path.dirname(enclosingFolder);
       this.context.logger.verboseMsg(`wkg dir [${enclosingFolder}]`);
       this.context.logger.verboseMsg(
-        `ext dir [~${this.context.extensionFolder.replace(
-          enclosingFolder,
-          ""
-        )}]`
+        `ext dir [~${this.context.extensionFolder.replace(removePrefix, "")}]`
       );
       this.context.logger.verboseMsg(
-        `lib dir [~${this.context.libraryFolder.replace(enclosingFolder, "")}]`
+        `lib dir [~${this.context.libraryFolder.replace(removePrefix, "")}]`
       );
       this.context.logger.verboseMsg(""); // blank line
       /*
@@ -317,7 +351,14 @@ export class DebugTerminalInTypeScript {
     }
 
     if (!showingHelp) {
-      await this.loadUsbPortsFound();
+      try {
+        await this.loadUsbPortsFound();
+      } catch (error) {
+        this.context.logger.errorMsg(
+          `* loadUsbPortsFound() Exception: ${error}`
+        );
+        this.shouldAbort = true;
+      }
     }
 
     if (showingNodeList) {
