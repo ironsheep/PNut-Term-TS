@@ -3,14 +3,14 @@
 /** @format */
 
 // src/pnut-termdebug-ts.ts
-"use strict";
-import { Command, CommanderError, type OptionValues } from "commander";
-import { Context } from "./utils/context";
-import path from "path";
-import { exec } from "child_process";
-import { UsbSerial } from "./utils/usb.serial";
-import { DebugTerminal } from "./classes/debugTerminal";
-import { app } from "electron";
+'use strict';
+import { Command, CommanderError, type OptionValues } from 'commander';
+import { Context } from './utils/context';
+import path from 'path';
+import { exec } from 'child_process';
+import { UsbSerial } from './utils/usb.serial';
+import { DebugTerminal } from './classes/debugTerminal';
+import { app, crashReporter } from 'electron';
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -29,9 +29,7 @@ export const root: string = __dirname;
  * @returns The first string that contains the substring, or undefined if no match is found.
  */
 function findMatch(array: string[], substring: string): boolean {
-  const foundString: string | undefined = array.find((element) =>
-    element.includes(substring)
-  );
+  const foundString: string | undefined = array.find((element) => element.includes(substring));
   let foundStatus: boolean = false;
   if (foundString !== undefined) {
     foundStatus = true;
@@ -41,7 +39,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = "0.0.1";
+  private version: string = '0.0.1';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -54,28 +52,24 @@ export class DebugTerminalInTypeScript {
       //DebugTerminalInTypeScript.isTesting = true;
     }
 
-    this.inContainer = findMatch(process.argv, "workspace");
+    this.inContainer = findMatch(process.argv, 'workspace');
 
-    process.stdout.on("error", (error: Error) => {
-      console.error(
-        `PNut-TermDebug-TS: An error occurred on stdout: "${error.message}", Aborting.`
-      );
+    process.stdout.on('error', (error: Error) => {
+      console.error(`PNut-TermDebug-TS: An error occurred on stdout: "${error.message}", Aborting.`);
       process.exit(1);
     });
 
-    process.stderr.on("error", (error: Error) => {
-      console.error(
-        `PNut-TermDebug-TS: An error occurred on stderr: "${error.message}", Aborting.`
-      );
+    process.stderr.on('error', (error: Error) => {
+      console.error(`PNut-TermDebug-TS: An error occurred on stderr: "${error.message}", Aborting.`);
       process.exit(1);
     });
 
-    process.stdout.on("close", () => {
-      console.log("PNut-TermDebug-TS: stdout was closed");
+    process.stdout.on('close', () => {
+      console.log('PNut-TermDebug-TS: stdout was closed');
     });
 
-    process.stderr.on("close", () => {
-      console.log("PNut-TermDebug-TS: stderr was closed");
+    process.stderr.on('close', () => {
+      console.log('PNut-TermDebug-TS: stderr was closed');
     });
 
     this.context = new Context();
@@ -106,14 +100,15 @@ export class DebugTerminalInTypeScript {
       Trace/BPT trap: 5
       */
       // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
-
+      crashReporter.start({ uploadToServer: false });
+      console.error('PNut-TermDebug-TS: Storing dumps inside: ', app.getPath('crashDumps'));
       // macOS this is problematic, disable hardware acceleration
       //if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
       app.disableHardwareAcceleration();
       //}
 
       // Disable network service sandbox
-      app.commandLine.appendSwitch("no-sandbox");
+      //app.commandLine.appendSwitch("no-sandbox");
     }
   }
 
@@ -135,27 +130,24 @@ export class DebugTerminalInTypeScript {
         writeOut: (str) => process.stdout.write(this.prefixName(str)),
         writeErr: (str) => process.stderr.write(this.prefixName(str)),
         // Highlight errors in color.
-        outputError: (str, write) => write(this.errorColor(str)),
+        outputError: (str, write) => write(this.errorColor(str))
       })
-      .name("pnut-termdebug-ts")
-      .version(`v${this.version}`, "-V, --version", "Output the version number")
+      .name('pnut-termdebug-ts')
+      .version(`v${this.version}`, '-V, --version', 'Output the version number')
       //.version(`v${this.version}`)
-      .usage("[optons]")
+      .usage('[optons]')
       .description(`Serial Debug Terminal - v${this.version}`)
-      .option("-d, --debug", "Compile with DEBUG")
-      .option(
-        "-p, --plug <dvcNode>",
-        "Receive serial data from Propeller attached to <dvcNode>"
-      )
-      .option("-n, --dvcnodes", "List available USB PropPlug device (n)odes")
-      .option("-v, --verbose", "Output verbose messages")
-      .option("-l, --log <basename>", "Specify .log file basename")
-      .option("-q, --quiet", "Quiet mode (suppress banner and non-error text)");
+      .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
+      .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
+      .option('-d, --debug', 'Compile with DEBUG')
+      .option('-v, --verbose', 'Output verbose messages')
+      .option('-l, --log <basename>', 'Specify .log file basename')
+      .option('-q, --quiet', 'Quiet mode (suppress banner and non-error text)');
 
-    this.program.addHelpText("beforeAll", `$-`);
+    this.program.addHelpText('beforeAll', `$-`);
 
     this.program.addHelpText(
-      "afterAll",
+      'afterAll',
       `$-
       Example:
          $ pnut-termdebug-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
@@ -171,53 +163,36 @@ export class DebugTerminalInTypeScript {
     this.context.logger.setProgramName(this.program.name());
 
     // Combine process.argv with the modified this.argsArray
-    const testArgsInterp =
-      this.argsArray.length === 0 ? "[]" : this.argsArray.join(", ");
+    const testArgsInterp = this.argsArray.length === 0 ? '[]' : this.argsArray.join(', ');
 
     this.context.logger.logMessage(
-      `** process.argv=[${process.argv.join(
-        ", "
-      )}], this.argsArray=[${testArgsInterp}] inContainer=[${this.inContainer}]`
+      `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
+        this.inContainer
+      }]`
     );
 
-    let processArgv: string[] = process.argv;
-    const runningCoverageTesting: boolean =
-      processArgv.includes("--coverage") ||
-      path.basename(processArgv[1]) == "processChild.js";
-    const foundJest: boolean = path.basename(processArgv[1]) == "jest";
-    if (foundJest && !runningCoverageTesting) {
-      processArgv = processArgv.slice(0, 2);
-    }
-    const combinedArgs: string[] =
-      this.argsArray.length == 0
-        ? processArgv
-        : [...processArgv, ...this.argsArray.slice(2)];
-
+    const combinedArgs: string[] = process.argv;
     try {
       this.program.parse(combinedArgs);
     } catch (error: unknown) {
       if (error instanceof CommanderError) {
         //this.context.logger.logMessage(`XYZZY Error: name=[${error.name}], message=[${error.message}]`);
-        if (error.name === "CommanderError") {
+        if (error.name === 'CommanderError') {
           this.context.logger.logMessage(``); // our blank line so prompt is not too close after output
           //this.context.logger.logMessage(`  xyzxzy `);
-          if (error.message !== "(outputHelp)") {
-            this.context.logger.logMessage(
-              `  (See --help for available options)\n`
-            );
+          if (error.message !== '(outputHelp)') {
+            this.context.logger.logMessage(`  (See --help for available options)\n`);
             //this.program.outputHelp();
           }
         } else {
           if (
-            error.name != "oe" &&
-            error.name != "Ee" &&
-            error.name != "CommanderError2" &&
-            error.message != "outputHelp" &&
-            error.message != "(outputHelp)"
+            error.name != 'oe' &&
+            error.name != 'Ee' &&
+            error.name != 'CommanderError2' &&
+            error.message != 'outputHelp' &&
+            error.message != '(outputHelp)'
           ) {
-            this.context.logger.logMessage(
-              `Catch name=[${error.name}], message=[${error.message}]`
-            );
+            this.context.logger.logMessage(`Catch name=[${error.name}], message=[${error.message}]`);
             // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
             return Promise.resolve(-1);
           }
@@ -230,6 +205,10 @@ export class DebugTerminalInTypeScript {
     }
 
     const options: OptionValues = this.program.opts();
+    this.context.logger.logMessage('** options=');
+    Object.keys(options).forEach((key) => {
+      this.context.logger.logMessage(`  ${key}: ${options[key]}`);
+    });
 
     if (options.verbose) {
       this.context.logger.enabledVerbose();
@@ -239,32 +218,16 @@ export class DebugTerminalInTypeScript {
       this.context.logger.enabledDebug();
     }
 
-    this.context.logger.logMessage(
-      `V=(${options.verbose}), D=(${options.debug})`
-    );
+    this.context.logger.logMessage(`V=(${options.verbose}), D=(${options.debug})`);
 
     if (this.context.runEnvironment.developerModeEnabled) {
-      this.context.logger.verboseMsg("PNUT_DEVELOP_MODE is enabled");
+      this.context.logger.verboseMsg('PNUT_DEVELOP_MODE is enabled');
     }
 
-    //this.context.logger.progressMsg(`** RUN WITH ARGV=[${combinedArgs.join(', ')}]`);
-    if (!foundJest && runningCoverageTesting) {
-      //this.context.reportOptions.coverageTesting = true;
-    }
-
-    const showingHelp: boolean =
-      this.program.args.includes("--help") || this.program.args.includes("-h");
+    const showingHelp: boolean = this.program.args.includes('--help') || this.program.args.includes('-h');
     const showingNodeList: boolean = options.dvcnodes;
 
-    if (!showingHelp) {
-      if (foundJest || runningCoverageTesting) {
-        this.context.logger.debugMsg(
-          `(DBG) foundJest=(${foundJest}), runningCoverageTesting=(${runningCoverageTesting})`
-        );
-      }
-    }
-
-    if (!options.quiet && !foundJest && !runningCoverageTesting) {
+    if (!options.quiet) {
       const signOnCompiler: string =
         "Propeller Debug Terminal 'pnut-termdebug-ts' (c) 2024 Iron Sheep Productions, LLC., Parallax Inc.";
       this.context.logger.infoMsg(`* ${signOnCompiler}`);
@@ -273,33 +236,20 @@ export class DebugTerminalInTypeScript {
     }
 
     if (!options.quiet && !showingHelp) {
-      let commandLine: string;
-      if (
-        (foundJest || runningCoverageTesting) &&
-        this.argsArray.length === 0
-      ) {
-        commandLine = `pnut-termdebug-ts -- pre-run, IGNORED --`;
-      } else {
-        commandLine = `pnut-termdebug-ts ${combinedArgs.slice(2).join(" ")}`;
-      }
+      let commandLine: string = `pnut-termdebug-ts ${combinedArgs.slice(1).join(' ')}`;
       this.context.logger.infoMsg(`* ${commandLine}`);
     }
 
-    if (
-      !options.verbose &&
-      !options.quiet &&
-      !showingHelp &&
-      !showingNodeList
-    ) {
-      console.log("arguments: %o", this.program.args);
-      console.log("combArguments: %o", combinedArgs);
-      console.log("options: %o", this.program.opts());
+    if (!options.verbose && !options.quiet && !showingHelp && !showingNodeList) {
+      console.log('arguments: %o', this.program.args);
+      console.log('combArguments: %o', combinedArgs);
+      console.log('options: %o', this.program.opts());
     }
 
     if (this.shouldAbort == false) {
-      this.context.logger.verboseMsg(""); // blank line
-      let enclosingFolder: string = "";
-      let removePrefix: string = "";
+      this.context.logger.verboseMsg(''); // blank line
+      let enclosingFolder: string = '';
+      let removePrefix: string = '';
       if (this.inContainer) {
         enclosingFolder = path.dirname(this.context.currentFolder);
         removePrefix = enclosingFolder;
@@ -309,13 +259,9 @@ export class DebugTerminalInTypeScript {
 
       //enclosingFolder = path.dirname(enclosingFolder);
       this.context.logger.verboseMsg(`wkg dir [${enclosingFolder}]`);
-      this.context.logger.verboseMsg(
-        `ext dir [~${this.context.extensionFolder.replace(removePrefix, "")}]`
-      );
-      this.context.logger.verboseMsg(
-        `lib dir [~${this.context.libraryFolder.replace(removePrefix, "")}]`
-      );
-      this.context.logger.verboseMsg(""); // blank line
+      this.context.logger.verboseMsg(`ext dir [~${this.context.extensionFolder.replace(removePrefix, '')}]`);
+      this.context.logger.verboseMsg(`lib dir [~${this.context.libraryFolder.replace(removePrefix, '')}]`);
+      this.context.logger.verboseMsg(''); // blank line
       /*
       this.runCommand('node -v').then((result) => {
         if (result.error) {
@@ -326,11 +272,9 @@ export class DebugTerminalInTypeScript {
         }
       });
       */
-      const result = await this.runCommand("node -v");
+      const result = await this.runCommand('node -v');
       if (result.value !== null) {
-        this.context.logger.verboseMsg(
-          `Node version: ${result.value} (external)`
-        );
+        this.context.logger.verboseMsg(`Node version: ${result.value} (external)`);
       } else {
         // fake this for now...
         this.context.logger.verboseMsg(`Node version: v18.5.0 (built-in)`);
@@ -345,26 +289,20 @@ export class DebugTerminalInTypeScript {
         }
         */
       }
-      this.context.logger.verboseMsg(""); // blank line
+      this.context.logger.verboseMsg(''); // blank line
     }
 
     if (!showingHelp) {
       try {
         await this.loadUsbPortsFound();
       } catch (error) {
-        this.context.logger.errorMsg(
-          `* loadUsbPortsFound() Exception: ${error}`
-        );
+        this.context.logger.errorMsg(`* loadUsbPortsFound() Exception: ${error}`);
         this.shouldAbort = true;
       }
     }
 
     if (showingNodeList) {
-      for (
-        let index = 0;
-        index < this.context.runEnvironment.serialPortDevices.length;
-        index++
-      ) {
+      for (let index = 0; index < this.context.runEnvironment.serialPortDevices.length; index++) {
         const dvcNode = this.context.runEnvironment.serialPortDevices[index];
         this.context.logger.progressMsg(` USB #${index + 1} [${dvcNode}]`);
       }
@@ -376,10 +314,9 @@ export class DebugTerminalInTypeScript {
 
     if (options.plug) {
       // if port given on command line, use it!
-      const foundPlug: string | undefined =
-        this.context.runEnvironment.serialPortDevices.find((propPlug) =>
-          propPlug.includes(options.plug)
-        );
+      const foundPlug: string | undefined = this.context.runEnvironment.serialPortDevices.find((propPlug) =>
+        propPlug.includes(options.plug)
+      );
       if (foundPlug !== undefined) {
         this.context.runEnvironment.selectedPropPlug = foundPlug;
         //this.context.logger.verboseMsg(`* MATCHED USB  - ${foundPlug}!`);
@@ -388,45 +325,34 @@ export class DebugTerminalInTypeScript {
 
     if (this.context.runEnvironment.serialPortDevices.length == 1) {
       // found only port, select it!
-      this.context.runEnvironment.selectedPropPlug =
-        this.context.runEnvironment.serialPortDevices[0];
+      this.context.runEnvironment.selectedPropPlug = this.context.runEnvironment.serialPortDevices[0];
     }
 
     let havePropPlug: boolean = false;
     if (this.context.runEnvironment.selectedPropPlug.length > 0) {
       // if a port was only or given on command line, show that we selected it
-      this.context.logger.verboseMsg(
-        `* using USB [${this.context.runEnvironment.selectedPropPlug}]`
-      );
+      this.context.logger.verboseMsg(`* using USB [${this.context.runEnvironment.selectedPropPlug}]`);
       havePropPlug = true;
-    } else if (!showingNodeList) {
-      this.shouldAbort = true;
     }
 
     if (options.log) {
       // generate log file basename
       const dateTimeStr: string = this.getFormattedDateTime();
       this.context.runEnvironment.logFilename = `${options.log}-${dateTimeStr}.log`;
-      this.context.logger.verboseMsg(
-        ` * logging to [${this.context.runEnvironment.logFilename}]`
-      );
+      this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
 
     let theTerminal: DebugTerminal | undefined = undefined;
     if (!this.shouldAbort && !showingHelp && !showingNodeList) {
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
-        this.context.logger.verboseMsg(
-          `* Loading terminal attached to [${propPlug}]`
-        );
+        this.context.logger.verboseMsg(`* Loading terminal attached to [${propPlug}]`);
       }
 
       try {
         theTerminal = new DebugTerminal(this.context);
       } catch (error) {
-        this.context.logger.errorMsg(
-          `* new DebugTerminal() Exception: ${error}`
-        );
+        this.context.logger.errorMsg(`* new DebugTerminal() Exception: ${error}`);
         // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
         return Promise.resolve(-1);
       }
@@ -434,9 +360,7 @@ export class DebugTerminalInTypeScript {
       try {
         await theTerminal.initialize();
       } catch (error) {
-        this.context.logger.errorMsg(
-          `* theTerminal.initialize() Exception: ${error}`
-        );
+        this.context.logger.errorMsg(`* theTerminal.initialize() Exception: ${error}`);
         // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
         return Promise.resolve(-1);
       }
@@ -454,9 +378,9 @@ export class DebugTerminalInTypeScript {
 
     if (!options.quiet && !showingHelp) {
       if (this.shouldAbort) {
-        this.context.logger.progressMsg("Aborted!");
+        this.context.logger.progressMsg('Aborted!');
       } else {
-        this.context.logger.progressMsg("Done");
+        this.context.logger.progressMsg('Done');
       }
     }
     return Promise.resolve(0);
@@ -466,10 +390,10 @@ export class DebugTerminalInTypeScript {
   private getFormattedDateTime(): string {
     const now = new Date();
     const year = now.getFullYear().toString().slice(-2); // Get last 2 digits of the year
-    const month = (now.getMonth() + 1).toString().padStart(2, "0"); // Months are zero-based
-    const day = now.getDate().toString().padStart(2, "0");
-    const hours = now.getHours().toString().padStart(2, "0");
-    const minutes = now.getMinutes().toString().padStart(2, "0");
+    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Months are zero-based
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
     return `${year}${month}${day}-${hours}${minutes}`;
   }
 
@@ -478,7 +402,7 @@ export class DebugTerminalInTypeScript {
     this.context.runEnvironment.serialPortDevices = [];
     for (let index = 0; index < deviceNodes.length; index++) {
       const element: string = deviceNodes[index];
-      const lineParts: string[] = element.split(",");
+      const lineParts: string[] = element.split(',');
       this.context.runEnvironment.serialPortDevices.push(lineParts[0]);
     }
   }
@@ -489,16 +413,14 @@ export class DebugTerminalInTypeScript {
   }
 
   private prefixName(str: string): string {
-    if (str.startsWith("$-")) {
+    if (str.startsWith('$-')) {
       return `${str.substring(2)}`;
     } else {
       return `PNut-TermDebug-TS: ${str}`;
     }
   }
 
-  private async runCommand(
-    command: string
-  ): Promise<{ cmd: string; value: string | null; error: string | null }> {
+  private async runCommand(command: string): Promise<{ cmd: string; value: string | null; error: string | null }> {
     return new Promise((resolve) => {
       try {
         exec(command, (error, stdout, stderr) => {
@@ -511,7 +433,7 @@ export class DebugTerminalInTypeScript {
           resolve({ cmd: command, value: stdout.trim(), error: null });
         });
       } catch (error: unknown) {
-        let excString: string = "?exc?";
+        let excString: string = '?exc?';
         if (error instanceof Error) {
           excString = `Exception: ${error.name}-${error.message}`;
         } else {
