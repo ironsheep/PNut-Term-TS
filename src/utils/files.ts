@@ -4,13 +4,24 @@
 
 // src/utils/files.ts
 
-"use strict";
-import * as path from "path";
-import * as fs from "fs";
-import { Context } from "./context";
+'use strict';
+import * as path from 'path';
+import * as fs from 'fs';
+import { Context } from './context';
 
 export function libraryDir(): string {
-  return "./lib";
+  return './lib';
+}
+
+// Function to format the current date and time
+export function getFormattedDateTime(): string {
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(-2); // Get last 2 digits of the year
+  const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Months are zero-based
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  return `${year}${month}${day}-${hours}${minutes}`;
 }
 
 /**
@@ -22,7 +33,7 @@ export function libraryDir(): string {
 export function fileSpecFromURI(docUri: string): string {
   const spaceRegEx = /%20/g; // we are globally replacing %20 markers
   const fileRegEx = /^file:\/\//i; // remove leading "file://", case-insensative
-  return docUri.replace(fileRegEx, "").replace(spaceRegEx, " ");
+  return docUri.replace(fileRegEx, '').replace(spaceRegEx, ' ');
 }
 
 /**
@@ -64,11 +75,7 @@ export function listFiles(dirSpec: string): string[] {
  * @param {string} filename
  * @return {*}  {(string | undefined)}
  */
-export function locateDataFile(
-  workingDir: string,
-  filename: string,
-  ctx?: Context
-): string | undefined {
+export function locateDataFile(workingDir: string, filename: string, ctx?: Context): string | undefined {
   let locatedFSpec: string | undefined = undefined;
   // is it in our current directory?
   let fileSpec: string = path.join(workingDir, filename);
@@ -99,20 +106,29 @@ export function dirExists(pathSpec: string): boolean {
   return existsStatus;
 }
 
+export function ensureDirExists(dirSpec: string): void {
+  if (!dirExists(dirSpec)) {
+    fs.mkdirSync(dirSpec, { recursive: true });
+    //console.log(`Log folder created at: ${dirSpec}`);
+  } else {
+    //console.log(`Log folder already exists at: ${dirSpec}`);
+  }
+}
+
 /**
  * loads the content of a file.
  * @param {string} fileSpec - The path to the file.
  * @returns {string} The content of the file.
  */
 export function loadFileAsString(fspec: string): string {
-  let fileContent: string = "";
+  let fileContent: string = '';
   if (fs.existsSync(fspec)) {
     // ctx.logger.log(`TRC: loadFileAsString() attempt load of [${fspec}]`);
     try {
-      fileContent = fs.readFileSync(fspec, "utf-8");
+      fileContent = fs.readFileSync(fspec, 'utf-8');
       //fileContent = fs.readFileSync(fspec, 'latin1');  // NO THIS IS REALLY BAD!!!
-      if (fileContent.includes("\x00") || fileContent.includes("\xC0")) {
-        fileContent = fs.readFileSync(fspec, "utf16le");
+      if (fileContent.includes('\x00') || fileContent.includes('\xC0')) {
+        fileContent = fs.readFileSync(fspec, 'utf16le');
       }
     } catch (err) {
       // ctx.logger.log(`TRC: loadFileAsString() EXCEPTION: err=[${err}]`);
@@ -123,31 +139,20 @@ export function loadFileAsString(fspec: string): string {
   return fileContent;
 }
 
-const EMPTY_CONTENT_MARKER: string = "XY$$ZZY";
+const EMPTY_CONTENT_MARKER: string = 'XY$$ZZY';
 
-export function loadFileAsUint8Array(
-  fspec: string,
-  ctx: Context | undefined = undefined
-): Uint8Array {
+export function loadFileAsUint8Array(fspec: string, ctx: Context | undefined = undefined): Uint8Array {
   let fileContent: Uint8Array | undefined = undefined;
   if (fs.existsSync(fspec)) {
     try {
       const buffer = fs.readFileSync(fspec);
-      fileContent = new Uint8Array(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength
-      );
+      fileContent = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
       //if (ctx) ctx.logger.logMessage(`TRC: loadFileAsUint8Array() loaded (${fileContent.length}) bytes from [${path.basename(fspec)}]`);
     } catch (err) {
-      if (ctx)
-        ctx.logger.logMessage(`TRC: loadFileAsUint8Array() ERROR: [${err}]!`);
+      if (ctx) ctx.logger.logMessage(`TRC: loadFileAsUint8Array() ERROR: [${err}]!`);
     }
   } else {
-    if (ctx)
-      ctx.logger.logMessage(
-        `TRC: loadFileAsUint8Array() fspec=[${fspec}] NOT FOUND!`
-      );
+    if (ctx) ctx.logger.logMessage(`TRC: loadFileAsUint8Array() fspec=[${fspec}] NOT FOUND!`);
   }
 
   if (fileContent === undefined) {

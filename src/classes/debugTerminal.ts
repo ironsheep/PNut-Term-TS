@@ -3,15 +3,16 @@
 // this is our common logging mechanism
 //  TODO: make it context/runtime option aware
 
-"use strict";
+'use strict';
 // src/classes/debugTerminal.ts
 
-import { app, BrowserWindow, Menu, MenuItem, dialog } from "electron";
-import electron from "electron";
-import { Context } from "../utils/context";
-import { listFiles } from "../utils/files";
-import { UsbSerial } from "../utils/usb.serial";
-import * as fs from "fs";
+import { app, BrowserWindow, Menu, MenuItem, dialog } from 'electron';
+import electron from 'electron';
+import { Context } from '../utils/context';
+import { ensureDirExists, getFormattedDateTime, listFiles } from '../utils/files';
+import { UsbSerial } from '../utils/usb.serial';
+import * as fs from 'fs';
+import path from 'path';
 
 const DEFAULT_SERIAL_BAUD = 2000000;
 export interface WindowCoordinates {
@@ -24,26 +25,31 @@ export interface WindowCoordinates {
 export class DebugTerminal {
   private context: Context;
   private isLogging: boolean = true; // remove before flight
-  private _deviceNode: string = "";
+  private _deviceNode: string = '';
   private _serialPort: UsbSerial | undefined = undefined;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
   private mainWindow: BrowserWindow | null = null;
   private mainWindowOpen: boolean = false;
   private screenWidth: number = 800;
   private screenHeight: number = 600;
+  private logFilenameBase: string = 'myapp';
+  private loggingToFile: boolean = false;
+  private logFileSpec: string = '';
   private mainWindowGeometry: WindowCoordinates = {
     xOffset: 0,
     yOffset: 0,
     width: 800,
-    height: 600,
+    height: 600
   };
 
   constructor(ctx: Context) {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
     if (this.isLogging) {
-      this.logMessage("DebugTerminal started.");
+      this.logMessage('DebugTerminal started.');
     }
+    const currFileTime: string = getFormattedDateTime();
+    this.logFilenameBase = `myApp-${currFileTime}.log`;
 
     /*
     let filesFound: string[] = listFiles("./");
@@ -68,14 +74,14 @@ export class DebugTerminal {
       this.createAppWindow();
     });
 
-    app.on("window-all-closed", () => {
-      if (process.platform !== "darwin") {
+    app.on('window-all-closed', () => {
+      if (process.platform !== 'darwin') {
         app.quit();
       }
       this.mainWindowOpen = false;
     });
 
-    app.on("activate", () => {
+    app.on('activate', () => {
       if (this.mainWindow === null) {
         this.createAppWindow();
       }
@@ -101,7 +107,7 @@ export class DebugTerminal {
   private openSerialPort(deviceNode: string) {
     UsbSerial.setCommBaudRate(this._serialBaud);
     this._serialPort = new UsbSerial(this.context, deviceNode);
-    this._serialPort.on("data", (data) => this.handleSerialRx(data));
+    this._serialPort.on('data', (data) => this.handleSerialRx(data));
   }
 
   private handleSerialRx(data: any) {
@@ -110,7 +116,7 @@ export class DebugTerminal {
       this.logMessage(`TERM: Received: ${data}`);
     }
     if (this.mainWindow !== null) {
-      this.mainWindow.webContents.send("serial-data", data);
+      this.mainWindow.webContents.send('serial-data', data);
     }
   }
 
@@ -122,12 +128,27 @@ export class DebugTerminal {
     this.screenWidth = width;
     this.screenHeight = height;
     console.log(`work area size: ${width} x ${height}`);
-    this.mainWindowGeometry.xOffset = Math.round(width / 4) * 3;
-    this.mainWindowGeometry.yOffset = Math.round(height / 4) * 3;
-    this.mainWindowGeometry.width = Math.round(width / 5);
-    this.mainWindowGeometry.height = Math.round(height / 5);
+    if (height < 800) {
+      // have small screen
+      // linux: 1280x720
+      this.mainWindowGeometry.width = Math.round(width / 2); // 1/2 screen width
+      // set to 80x24 porportioned screen
+      //this.mainWindowGeometry.height = Math.round(height / 2);
+      this.mainWindowGeometry.height = Math.round((height / 5) * 2);
+    } else {
+      // have larger screen
+      // macOS (rt): 3200x1775
+      // macOS (lt): 3200?x1775?
+      this.mainWindowGeometry.width = Math.round(width / 4); // 1/4 screen width
+      // set to 80x24 porportioned screen
+      this.mainWindowGeometry.height = Math.round(this.mainWindowGeometry.width / 3.3);
+    }
+    // position window bottom-right
+    this.mainWindowGeometry.xOffset = Math.round((width - this.mainWindowGeometry.width) / 4) * 3;
+    this.mainWindowGeometry.yOffset = Math.round((height - this.mainWindowGeometry.height) / 4) * 3;
+
     console.log(
-      `window geom: ${this.mainWindowGeometry.width} x ${this.mainWindowGeometry.height} @ ${this.mainWindowGeometry.xOffset} x ${this.mainWindowGeometry.yOffset}`
+      `window geom: ${this.mainWindowGeometry.width}x${this.mainWindowGeometry.height} @${this.mainWindowGeometry.xOffset},${this.mainWindowGeometry.yOffset}`
     );
   }
 
@@ -143,8 +164,8 @@ export class DebugTerminal {
       y: this.mainWindowGeometry.yOffset,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false,
-      },
+        contextIsolation: false
+      }
     });
 
     this.mainWindowOpen = true;
@@ -161,7 +182,11 @@ export class DebugTerminal {
           flex-direction: column;
           height: 100vh;
           margin: 0;
-          font-family: Arial, sans-serif;
+          font-family: Arial, sans-serif; /* Use Arial or any sans-serif font */
+          font-size: 12px; /* Set a smaller font size */
+        }
+        p {
+          margin: 0;
         }
         #log-content {
           flex-grow: 1;
@@ -202,7 +227,6 @@ Chromium <span id="chrome-version"></span>,
 and Electron <span id="electron-version"></span>.</P>
 </div>
       <div id="status-bar">
-      <div id="win-btns"> <button id="work-area-size">Create Window</button></div>
   <div id="logName" class="status-field">
     <span class="status-label">Log Name:</span>
     <span class="status-value"> </span>
@@ -220,185 +244,180 @@ and Electron <span id="electron-version"></span>.</P>
   </html>
 `;
 
-    this.mainWindow.loadURL(
-      `data:text/html,${encodeURIComponent(htmlContent)}`
-    );
+    this.mainWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
 
     // Inject JavaScript into the renderer process
     this.getRuntimeVersions();
 
     const menuTemplate: (Electron.MenuItemConstructorOptions | MenuItem)[] = [
       {
-        label: "PNut TermDebug TS", // Explicitly set the application name here
+        label: 'PNut TermDebug TS', // Explicitly set the application name here
         submenu: [
           {
-            label: "About...",
+            label: 'About...',
             click: () => {
               // show about dialog
               dialog.showMessageBox(this.mainWindow!, {
-                type: "info",
-                title: "About PNut TermDebug TS",
-                message:
-                  "PNut TermDebug TS\nVersion 1.0.0\n\nDeveloped by Your Iron Sheep Productions, LLC",
-                buttons: ["OK"],
+                type: 'info',
+                title: 'About PNut TermDebug TS',
+                message: 'PNut TermDebug TS\nVersion 1.0.0\n\nDeveloped by Your Iron Sheep Productions, LLC',
+                buttons: ['OK']
               });
-            },
+            }
           },
-          { type: "separator" },
+          { type: 'separator' },
           {
-            label: "Quit",
+            label: 'Quit',
             click() {
-              console.log("MENU: Application is quitting...");
+              console.log('MENU: Application is quitting...');
               app.quit();
-            },
-          },
-        ],
+            }
+          }
+        ]
       },
       {
-        label: "File",
+        label: 'File',
         submenu: [
           {
-            label: "Save...",
+            label: 'Save...',
             click: () => {
               dialog
                 .showSaveDialog(this.mainWindow!, {
-                  title: "Save Log",
-                  defaultPath: "./Logs/log.txt",
-                  filters: [{ name: "Text Files", extensions: ["txt"] }],
+                  title: 'Save Log',
+                  defaultPath: `./Logs/${this.logFilenameBase}`,
+                  filters: [{ name: 'Text Files', extensions: ['txt'] }]
                 })
                 .then((result) => {
                   if (!result.canceled && result.filePath) {
-                    this.mainWindow!.webContents.executeJavaScript(
-                      'document.getElementById("log-content").innerText'
-                    )
+                    const logFilename: string = this.enableLogging(result.filePath);
+                    // Update the status bar with the selected name
+                    this.updateStatusBarField('logName', logFilename);
+                    this.mainWindow!.webContents.executeJavaScript('document.getElementById("log-content").innerText')
                       .then((fileContent: string) => {
-                        fs.writeFileSync(result.filePath!, fileContent);
+                        fs.writeFileSync(this.logFileSpec!, fileContent);
                       })
                       .catch((error: Error) => {
-                        console.error("Failed to get log content:", error);
+                        console.error('Failed to get log content:', error);
                       });
                   }
                 })
                 .catch((error: Error) => {
-                  console.error("Failed to show save dialog:", error);
+                  console.error('Failed to show save dialog:', error);
                 });
-            },
-          },
-        ],
+            }
+          }
+        ]
       },
       {
-        label: "ProPlug",
+        label: 'ProPlug',
         submenu: [
           {
-            label: "Select...",
+            label: 'Select...',
             click: () => {
               const names = this.context.runEnvironment.serialPortDevices; // List of names
               dialog
                 .showMessageBox(this.mainWindow!, {
-                  type: "question",
+                  type: 'question',
                   buttons: names,
-                  title: "Select Prop Plug",
-                  message: "Choose a lProp Plug:",
+                  title: 'Select Prop Plug',
+                  message: 'Choose a lProp Plug:'
                 })
                 .then((response) => {
                   const propPlug: string = names[response.response];
                   this.context.runEnvironment.selectedPropPlug = propPlug;
 
                   // Update the status bar with the selected name
-                  this.updateStatusBarField("propPlug", propPlug);
+                  this.updateStatusBarField('propPlug', propPlug);
                 })
                 .catch((error: Error) => {
-                  console.error("Failed to show plug select dialog:", error);
+                  console.error('Failed to show plug select dialog:', error);
                 });
-            },
-          },
-        ],
-      },
+            }
+          }
+        ]
+      }
     ];
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
 
     this.updateStatus();
-    this.configWindowButtons();
 
     // every second write a new log entry (DUMMY for TESTING)
-    this.mainWindow.webContents.on("did-finish-load", () => {
+    this.mainWindow.webContents.on('did-finish-load', () => {
       // if logging post filename to status bar
       let logDisplayName: string = this.context.runEnvironment.logFilename;
       if (logDisplayName.length == 0) {
-        logDisplayName = "{none}";
+        logDisplayName = '{none}';
+        this.loggingToFile = false;
+      } else {
+        this.enableLogging(logDisplayName);
       }
       // Update the status bar with the selected name
-      this.updateStatusBarField("logName", logDisplayName);
+      this.updateStatusBarField('logName', logDisplayName);
 
       setInterval(() => {
-        this.appendLog("Log message " + new Date().toISOString());
+        this.appendLog('Log message ' + new Date().toISOString());
         this.updateStatus();
       }, 1000);
     });
 
-    this.mainWindow.on("closed", () => {
+    this.mainWindow.on('closed', () => {
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });
   }
 
+  private enableLogging(logFilename: string): string {
+    let filename: string = '';
+    if (logFilename.length == 0) {
+      this.loggingToFile = false;
+    } else {
+      this.loggingToFile = true;
+      filename = path.basename(logFilename);
+      const logFolder = path.join(this.context.currentFolder, 'Logs');
+      ensureDirExists(logFolder);
+      this.logFileSpec = path.join(logFolder, filename);
+    }
+    return filename;
+  }
+
   private getRuntimeVersions() {
     if (this.mainWindow) {
       try {
-        this.mainWindow.webContents.executeJavaScript(
-          ` const replaceText = (selector, text) => {
-              const element = document.getElementById(selector);
-              if (element) element.innerText = text;
-            }
+        this.mainWindow.webContents.executeJavaScript(`
+          const replaceText = (selector, text) => {
+            const element = document.getElementById(selector);
+            if (element) element.innerText = text;
+          }
 
-            for (const type of ['chrome', 'node', 'electron']) {
-              replaceText(\`\${type}-version\`, process.versions[type]);
-            }`
-        );
+          for (const type of ['chrome', 'node', 'electron']) {
+            replaceText(\`\${type}-version\`, process.versions[type]);
+          }
+        `);
       } catch (error) {
-        console.error("Failed to update status bar field:", error);
+        console.error('Failed to update status bar field:', error);
       }
     }
   }
 
   private updateStatusBarField(fieldId: string, value: string) {
-    this.mainWindow!.webContents.executeJavaScript(
-      `document.getElementById("${fieldId}").innerText = "${value}";`
-    );
+    this.mainWindow!.webContents.executeJavaScript(`document.getElementById("${fieldId}").innerText = "${value}";`);
   }
 
   private updateStatus() {
     if (this.mainWindow) {
       try {
         this.mainWindow.webContents.executeJavaScript(`
-                          (function() {
-                            const logContent = document.getElementById('log-content');
-                            const statusBar = document.getElementById('status-bar');
-                            const lineCount = logContent.childElementCount;
-                            document.getElementById("otherField").querySelector('.status-value').innerText = lineCount;
-                          })();
-                        `);
+          (function() {
+            const logContent = document.getElementById('log-content');
+            const statusBar = document.getElementById('status-bar');
+            const lineCount = logContent.childElementCount;
+            document.getElementById("otherField").querySelector('.status-value').innerText = lineCount;
+          })();
+        `);
       } catch (error) {
-        console.error("Failed to update status:", error);
-      }
-    }
-  }
-
-  private configWindowButtons() {
-    if (this.mainWindow) {
-      try {
-        this.mainWindow.webContents.executeJavaScript(
-          `const wasBtn = document.getElementById("work-area-size");
-           wasBtn.addEventListener("click", function(event) {
-                  const {width, height} = electron.screen.getPrimaryDisplay().workAreaSize;
-                  const win = new BrowserWindow({ width: width-50, height: height-50, x: 25, y: 25 });
-                  win.loadURL("https://www.electronjs.org/");
-        });`
-        );
-      } catch (error) {
-        console.error("Failed to update status bar field:", error);
+        console.error('Failed to update status:', error);
       }
     }
   }
@@ -414,20 +433,28 @@ and Electron <span id="electron-version"></span>.</P>
           logContent.scrollTop = logContent.scrollHeight;
         })();
       `);
+      // and if logging, append to output file
+      if (this.loggingToFile) {
+        this.appendToFile(this.logFileSpec, `${message}\n`);
+      }
     }
+  }
+
+  // Method to append a message to an existing file
+  private appendToFile(filePath: string, message: string) {
+    fs.appendFile(filePath, message, (err) => {
+      if (err) {
+        console.error('Failed to append to file:', err);
+        //} else {
+        //  console.log('Message appended to file successfully.');
+      }
+    });
   }
 
   // ----------------------------------------------------------------------
   // fun code to remember...
   private getRandomColor(): string {
-    const colors: string[] = [
-      "#ff0000",
-      "#00ff00",
-      "#0000ff",
-      "#ffff00",
-      "#00ffff",
-      "#ff00ff",
-    ];
+    const colors: string[] = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'];
     return colors[Math.floor(Math.random() * colors.length)];
   }
 

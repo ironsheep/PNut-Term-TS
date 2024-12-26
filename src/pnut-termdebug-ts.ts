@@ -11,6 +11,7 @@ import { exec } from 'child_process';
 import { UsbSerial } from './utils/usb.serial';
 import { DebugTerminal } from './classes/debugTerminal';
 import { app, crashReporter } from 'electron';
+import { getFormattedDateTime } from './utils/files';
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -108,7 +109,7 @@ export class DebugTerminalInTypeScript {
       //}
 
       // Disable network service sandbox
-      //app.commandLine.appendSwitch("no-sandbox");
+      app.commandLine.appendSwitch('no-sandbox');
     }
   }
 
@@ -337,7 +338,7 @@ export class DebugTerminalInTypeScript {
 
     if (options.log) {
       // generate log file basename
-      const dateTimeStr: string = this.getFormattedDateTime();
+      const dateTimeStr: string = getFormattedDateTime();
       this.context.runEnvironment.logFilename = `${options.log}-${dateTimeStr}.log`;
       this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
@@ -384,17 +385,6 @@ export class DebugTerminalInTypeScript {
       }
     }
     return Promise.resolve(0);
-  }
-
-  // Function to format the current date and time
-  private getFormattedDateTime(): string {
-    const now = new Date();
-    const year = now.getFullYear().toString().slice(-2); // Get last 2 digits of the year
-    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Months are zero-based
-    const day = now.getDate().toString().padStart(2, '0');
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    return `${year}${month}${day}-${hours}${minutes}`;
   }
 
   private async loadUsbPortsFound(): Promise<void> {
