@@ -41,6 +41,7 @@ export class DebugTerminal {
     height: 600
   };
   private displays: { [key: string]: object } = {};
+  private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -118,6 +119,7 @@ export class DebugTerminal {
   private handleSerialRx(data: any) {
     // Handle received data
     this.appendLog(data);
+    this.updateStatus();
     if (data.charAt(0) === '`') {
       // handle debug command
       this.handleDebugCommand(data);
@@ -134,8 +136,10 @@ export class DebugTerminal {
     const lineParts: string[] = data.split(' ');
     switch (lineParts[0].toUpperCase()) {
       case this.DISPLAY_SCOPE:
+        this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
         // create new window to display scope data
         const [isValid, scopeSpec] = ScopeWindow.parseScopeDeclaration(lineParts);
+        this.logMessage(`* handleDebugCommand() - back from parse`);
         if (isValid) {
           // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
           const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
@@ -300,8 +304,9 @@ and Electron <span id="electron-version"></span>.</P>
           { type: 'separator' },
           {
             label: 'Quit',
-            click() {
+            click: () => {
               console.log('MENU: Application is quitting...');
+              this.knownClosedBy = true;
               app.quit();
             }
           }
@@ -397,10 +402,21 @@ and Electron <span id="electron-version"></span>.</P>
       }
     });
 
+    this.mainWindow.on('close', () => {
+      if (!this.knownClosedBy) {
+        this.logMessage('[x]: Application is quitting...');
+      }
+    });
+
     this.mainWindow.on('closed', () => {
+      this.logMessage('* Main window closed');
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });
+  }
+
+  private setKnownClosedBy() {
+    this.knownClosedBy = true;
   }
 
   private enableLogging(logFilename: string): string {

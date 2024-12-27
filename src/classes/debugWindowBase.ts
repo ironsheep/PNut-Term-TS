@@ -37,39 +37,6 @@ export class DebugWindowBase {
     this.context = ctx;
   }
 
-  // Name-to-RGB hex lookup
-  static colorNameToHex: { [key: string]: string } = {
-    BLACK: '#000000',
-    WHITE: '#FFFFFF',
-    ORANGE: '#FFA500',
-    BLUE: '#0000FF',
-    GREEN: '#008000',
-    CYAN: '#00FFFF',
-    RED: '#FF0000',
-    MAGENTA: '#FF00FF',
-    YELLOW: '#FFFF00',
-    GRAY: '#808080'
-  };
-
-  static colorNameToHexString(colorName: string): string {
-    let hexString = this.colorNameToHex[colorName.toUpperCase()];
-    if (!hexString) {
-      console.log(`colorNameToHexString: Unknown color name: ${colorName}`);
-      hexString = '#5a5a5a'; // default to gray
-    }
-    return hexString;
-  }
-
-  static rgbHexStringToNumber(hexString: string): number {
-    const hexValue = hexString.startsWith('#') ? hexString.slice(1) : hexString;
-    return parseInt(hexValue, 16);
-  }
-
-  static colorNameToNumber(colorName: string): number {
-    const rgbHexString: string = this.colorNameToHexString(colorName);
-    return this.rgbHexStringToNumber(rgbHexString);
-  }
-
   // ----------------------------------------------------------------------
 
   protected logMessage(message: string): void {

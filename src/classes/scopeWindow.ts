@@ -7,6 +7,7 @@
 // src/classes/scopeWindow.ts
 
 import { Context } from '../utils/context';
+import { colorNameToNumber } from './debugUtils';
 
 import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
 
@@ -47,16 +48,21 @@ export class ScopeWindow extends DebugWindowBase {
     //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
     //   packed_data_mode
     //   HIDEXY
+    console.log(`at parseScopeDeclaration()`);
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
     let isValid: boolean = false;
     // set defaults
+    const blackColor: number = colorNameToNumber('BLACK');
+    const grayColor: number = colorNameToNumber('GRAY');
+    console.log(`at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    displaySpec.color.background = { color: DebugWindowBase.colorNameToNumber('BLACK'), brightness: 0 };
-    displaySpec.color.foreground = { color: DebugWindowBase.colorNameToNumber('GRAY'), brightness: 4 };
+    //displaySpec.color.background = { color: blackColor, brightness: 0 };
+    //displaySpec.color.foreground = { color: grayColor, brightness: 4 };
     // now parse overrides to defaults
+    console.log(`at overrides ScopeDisplaySpec: ${lineParts}`);
     displaySpec.displayName = lineParts[1];
     if (lineParts.length > 2) {
       isValid = true; // invert default value
@@ -102,7 +108,7 @@ export class ScopeWindow extends DebugWindowBase {
         }
       }
     }
-
+    console.log(`at end of parseScopeDeclaration: ${isValid}, ${displaySpec}`);
     return [isValid, displaySpec];
   }
 }

@@ -1,13 +1,12 @@
 {
   "appId": "biz.ironsheep.pnut-termdebug-ts",
   "productName": "PNut-TermDebug-TS",
-  "files": [
-    "dist/**/*",
-    "!dist/pnut-termdebug-ts",
-    "node_modules/**/*",
-    "package.json",
-    "prebuilds/**/*"
-  ],
+  "files": ["dist/**/*", "!dist/pnut-termdebug-ts", "node_modules/**/*", "package.json", "prebuilds/**/*"],
+  "publish": {
+    "provider": "github",
+    "owner": "ironsheep",
+    "repo": "PNut-TermDebug-TS"
+  },
   "directories": {
     "output": "release",
     "buildResources": "build"
