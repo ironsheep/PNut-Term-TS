@@ -53,6 +53,9 @@ export class ScopeWindow extends DebugWindowBase {
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
+    displaySpec.rate = 1;
+    displaySpec.color.background = { color: DebugWindowBase.colorNameToNumber('BLACK'), brightness: 0 };
+    displaySpec.color.foreground = { color: DebugWindowBase.colorNameToNumber('GRAY'), brightness: 4 };
     // now parse overrides to defaults
     displaySpec.displayName = lineParts[1];
     if (lineParts.length > 2) {
