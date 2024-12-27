@@ -13,8 +13,8 @@ import { ensureDirExists, getFormattedDateTime, listFiles } from '../utils/files
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
+import { ScopeWindow } from './scopeWindow';
 
-const DEFAULT_SERIAL_BAUD = 2000000;
 export interface WindowCoordinates {
   xOffset: number;
   yOffset: number;
@@ -22,16 +22,15 @@ export interface WindowCoordinates {
   height: number;
 }
 
+const DEFAULT_SERIAL_BAUD = 2000000;
 export class DebugTerminal {
   private context: Context;
-  private isLogging: boolean = true; // remove before flight
+  private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _deviceNode: string = '';
   private _serialPort: UsbSerial | undefined = undefined;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
   private mainWindow: BrowserWindow | null = null;
   private mainWindowOpen: boolean = false;
-  private screenWidth: number = 800;
-  private screenHeight: number = 600;
   private logFilenameBase: string = 'myapp';
   private loggingToFile: boolean = false;
   private logFileSpec: string = '';
@@ -41,6 +40,7 @@ export class DebugTerminal {
     width: 800,
     height: 600
   };
+  private displays: { [key: string]: object } = {};
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -72,6 +72,10 @@ export class DebugTerminal {
     // app.on('ready', this.createAppWindow);
     app.whenReady().then(() => {
       this.createAppWindow();
+      // Update the status bar with the selected name
+      if (this._deviceNode.length > 0) {
+        this.updateStatusBarField('propPlug', this._deviceNode);
+      }
     });
 
     app.on('window-all-closed', () => {
@@ -93,11 +97,12 @@ export class DebugTerminal {
     return this.mainWindowOpen == true ? false : true;
   }
 
-  public close(): void {
+  public async close(): Promise<void> {
     // Remove all listeners to prevent memory leaks and allow port to be reused
     if (this._serialPort !== undefined) {
       this._serialPort.removeAllListeners();
-      this._serialPort.close();
+      await this._serialPort.close();
+      this._serialPort = undefined;
     }
   }
 
@@ -112,11 +117,40 @@ export class DebugTerminal {
 
   private handleSerialRx(data: any) {
     // Handle received data
-    if (this.isLogging) {
-      this.logMessage(`TERM: Received: ${data}`);
+    this.appendLog(data);
+    if (data.charAt(0) === '`') {
+      // handle debug command
+      this.handleDebugCommand(data);
+    } else if (data.startsWith('Cog') || data.startsWith('Prop')) {
+      if (this.isLogging) {
+        this.logMessage(`TERM: Received: ${data}`);
+      }
     }
-    if (this.mainWindow !== null) {
-      this.mainWindow.webContents.send('serial-data', data);
+  }
+
+  private DISPLAY_SCOPE: string = '`SCOPE';
+
+  private handleDebugCommand(data: string) {
+    const lineParts: string[] = data.split(' ');
+    switch (lineParts[0].toUpperCase()) {
+      case this.DISPLAY_SCOPE:
+        // create new window to display scope data
+        const [isValid, scopeSpec] = ScopeWindow.parseScopeDeclaration(lineParts);
+        if (isValid) {
+          // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
+          const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
+          // remember active displays!
+          this.displays[scopeSpec.displayName] = scopeDisplay;
+          this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+        } else {
+          if (this.isLogging) {
+            this.logMessage(`BAD DISPLAY: Received: ${data}`);
+          }
+        }
+        break;
+
+      default:
+        break;
     }
   }
 
@@ -125,8 +159,6 @@ export class DebugTerminal {
   //
   private CalcWindowCoords(): void {
     const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize;
-    this.screenWidth = width;
-    this.screenHeight = height;
     console.log(`work area size: ${width} x ${height}`);
     if (height < 800) {
       // have small screen
@@ -356,10 +388,13 @@ and Electron <span id="electron-version"></span>.</P>
       // Update the status bar with the selected name
       this.updateStatusBarField('logName', logDisplayName);
 
-      setInterval(() => {
-        this.appendLog('Log message ' + new Date().toISOString());
-        this.updateStatus();
-      }, 1000);
+      if (this._serialPort === undefined) {
+        // load the log file into the
+        setInterval(() => {
+          this.appendLog('Log message ' + new Date().toISOString());
+          this.updateStatus();
+        }, 1000);
+      }
     });
 
     this.mainWindow.on('closed', () => {
@@ -402,7 +437,15 @@ and Electron <span id="electron-version"></span>.</P>
   }
 
   private updateStatusBarField(fieldId: string, value: string) {
-    this.mainWindow!.webContents.executeJavaScript(`document.getElementById("${fieldId}").innerText = "${value}";`);
+    if (this.mainWindow) {
+      try {
+        this.mainWindow.webContents.executeJavaScript(
+          `document.getElementById("${fieldId}").querySelector('.status-value').innerText = "${value}";`
+        );
+      } catch (error) {
+        console.error('Failed to update status bar field:', error);
+      }
+    }
   }
 
   private updateStatus() {

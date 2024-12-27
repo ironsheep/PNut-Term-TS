@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-"use strict";
+'use strict';
 
-import { SerialPort } from "serialport";
-import { ReadlineParser } from "@serialport/parser-readline";
-import { waitMSec, waitSec } from "./timerUtils";
-import { Context } from "./context";
-import { EventEmitter } from "events";
+import { SerialPort } from 'serialport';
+import { ReadlineParser } from '@serialport/parser-readline';
+import { waitMSec, waitSec } from './timerUtils';
+import { Context } from './context';
+import { EventEmitter } from 'events';
 
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
@@ -14,13 +14,13 @@ export class UsbSerial extends EventEmitter {
 
   private context: Context;
   private isLogging: boolean = false;
-  private endOfLineStr: string = "\r\n";
-  private _deviceNode: string = "";
+  private endOfLineStr: string = '\r\n';
+  private _deviceNode: string = '';
   private _serialPort: SerialPort;
   private _serialParser: ReadlineParser;
-  private _p2DeviceId: string = "";
+  private _p2DeviceId: string = '';
   private _p2loadLimit: number = 0;
-  private _latestError: string = "";
+  private _latestError: string = '';
   private _dtrValue: boolean = false;
 
   static async serialDeviceList(ctx?: Context): Promise<string[]> {
@@ -28,10 +28,9 @@ export class UsbSerial extends EventEmitter {
     const ports = await SerialPort.list();
     ports.forEach((port) => {
       const tmpSerialNumber: string | undefined = port.serialNumber;
-      const serialNumber: string =
-        tmpSerialNumber !== undefined ? tmpSerialNumber : "{unknownSN}";
+      const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
       const deviceNode: string = port.path;
-      if (port.vendorId == "0403" && port.productId == "6015") {
+      if (port.vendorId == '0403' && port.productId == '6015') {
         devicesFound.push(`${deviceNode},${serialNumber}`);
       }
     });
@@ -43,7 +42,7 @@ export class UsbSerial extends EventEmitter {
     this.context = ctx;
     this._deviceNode = deviceNode;
     if (this.isLogging) {
-      this.logMessage("Spin/Spin2 USB.Serial log started.");
+      this.logMessage('Spin/Spin2 USB.Serial log started.');
     }
     this.logMessage(`* Connecting to ${this._deviceNode}`);
     this._serialPort = new SerialPort({
@@ -51,18 +50,16 @@ export class UsbSerial extends EventEmitter {
       baudRate: UsbSerial.desiredCommsBaudRate,
       dataBits: 8,
       stopBits: 1,
-      parity: "none",
-      autoOpen: false,
+      parity: 'none',
+      autoOpen: false
     });
     // Open errors will be emitted as an error event
-    this._serialPort.on("error", (err) => this.handleSerialError(err.message));
-    this._serialPort.on("open", () => this.handleSerialOpen());
+    this._serialPort.on('error', (err) => this.handleSerialError(err.message));
+    this._serialPort.on('open', () => this.handleSerialOpen());
 
     // wait for any returned data
-    this._serialParser = this._serialPort.pipe(
-      new ReadlineParser({ delimiter: this.endOfLineStr })
-    );
-    this._serialParser.on("data", (data) => this.handleSerialRx(data));
+    this._serialParser = this._serialPort.pipe(new ReadlineParser({ delimiter: this.endOfLineStr }));
+    this._serialParser.on('data', (data) => this.handleSerialRx(data));
 
     // now open the port
     this._serialPort.open((err) => {
@@ -102,7 +99,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   get foundP2(): boolean {
-    return this._p2DeviceId === "" ? false : true;
+    return this._p2DeviceId === '' ? false : true;
   }
 
   get usbConnected(): boolean {
@@ -130,9 +127,7 @@ export class UsbSerial extends EventEmitter {
             this.logMessage(`  -- close() Error: ${err.message}`);
             reject(err);
           } else {
-            this.logMessage(
-              `  -- close() - port close: isOpen=(${this._serialPort.isOpen})`
-            );
+            this.logMessage(`  -- close() - port close: isOpen=(${this._serialPort.isOpen})`);
             resolve();
           }
         });
@@ -152,24 +147,24 @@ export class UsbSerial extends EventEmitter {
     this._latestError = errMessage;
   }
 
-  private handleSerialOpen() {
-    this.logMessage(`* handleSerialOpen() open...`);
-    const myString: string = "Hello, World! 0123456789";
-    const myBuffer: Buffer = Buffer.from(myString, "utf8");
-    const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
+  private async handleSerialOpen() {
+    //this.logMessage(`* handleSerialOpen() open...`);
+    //const myString: string = "Hello, World! 0123456789";
+    //const myBuffer: Buffer = Buffer.from(myString, "utf8");
+    //const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
     //this.downloadNew(myUint8Array);
-    this.requestP2IDString();
+    await this.toggleDTR();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private handleSerialRx(data: any) {
     this.logMessage(`<-- Rx [${data}]`);
-    this.emit("data", data.toString());
+    this.emit('data', data.toString());
     const lines: string[] = data.split(/\r?\n/).filter(Boolean);
     let propFound: boolean = false;
     if (lines.length > 0) {
       for (let index = 0; index < lines.length; index++) {
-        const replyString: string = "Prop_Ver ";
+        const replyString: string = 'Prop_Ver ';
         const currLine = lines[index];
         if (currLine.startsWith(replyString) && currLine.length == 10) {
           this.logMessage(`  -- REPLY [${currLine}](${currLine.length})`);
@@ -187,11 +182,17 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
+  private async toggleDTR(): Promise<void> {
+    this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
+    await waitSec(1);
+    await this.setDtr(true);
+    await waitSec(1);
+    await this.setDtr(false);
+  }
+
   private async requestP2IDString(): Promise<void> {
-    const requestPropType: string = "> Prop_Chk 0 0 0 0";
-    this.logMessage(
-      `* requestP2IDString() - port open (${this._serialPort.isOpen})`
-    );
+    const requestPropType: string = '> Prop_Chk 0 0 0 0';
+    this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
     await this.setDtr(true);
     await waitSec(1);
@@ -208,31 +209,23 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async download(uint8Bytes: Uint8Array) {
-    const requestStartDownload: string = "> Prop_Txt 0 0 0 0";
-    const byteCount: number =
-      uint8Bytes.length < this._p2loadLimit
-        ? uint8Bytes.length
-        : this._p2loadLimit;
+    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
+    const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
     if (this.usbConnected && uint8Bytes.length > 0) {
-      const dataBase64: string = Buffer.from(uint8Bytes).toString("base64");
+      const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
       await this.write(`${requestStartDownload}\r`);
       //await this.write(dataBase64);
       // Break this up into 128 char lines with > sync chars starting each
       const LINE_LENGTH: number = 1024;
       // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
-      const lineCount: number =
-        dataBase64.length + LINE_LENGTH - 1 / LINE_LENGTH;
+      const lineCount: number = dataBase64.length + LINE_LENGTH - 1 / LINE_LENGTH;
       const lastLineLength: number = dataBase64.length % LINE_LENGTH;
       for (let index = 0; index < lineCount; index++) {
-        const lineLength =
-          index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
-        const singleLine = dataBase64.substring(
-          index * LINE_LENGTH,
-          index * LINE_LENGTH + lineLength
-        );
-        await this.write(">" + singleLine);
+        const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
+        const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
+        await this.write('>' + singleLine);
       }
-      await this.write(" ~\r");
+      await this.write(' ~\r');
     }
   }
 
@@ -302,9 +295,7 @@ export class UsbSerial extends EventEmitter {
         if (err) reject(err);
         else {
           resolve();
-          this.logMessage(
-            `--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`
-          );
+          this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
         }
       });
     });
@@ -340,43 +331,40 @@ export class UsbSerial extends EventEmitter {
 
   private limitForVerLetter(idLetter: string): number {
     let desiredvalue: number = 0;
-    if (idLetter === "A") {
+    if (idLetter === 'A') {
       desiredvalue = 0x100000;
-    } else if (idLetter === "B") {
+    } else if (idLetter === 'B') {
       desiredvalue = 0x040000;
-    } else if (idLetter === "C") {
+    } else if (idLetter === 'C') {
       desiredvalue = 0x008000;
-    } else if (idLetter === "D") {
+    } else if (idLetter === 'D') {
       desiredvalue = 0x020000;
-    } else if (idLetter === "E") {
+    } else if (idLetter === 'E') {
       desiredvalue = 0x080000;
-    } else if (idLetter === "F") {
+    } else if (idLetter === 'F') {
       desiredvalue = 0x100000;
-    } else if (idLetter === "G") {
+    } else if (idLetter === 'G') {
       desiredvalue = 0x100000;
     }
     return desiredvalue;
   }
 
   private descriptionForVerLetter(idLetter: string): string {
-    let desiredInterp: string = "?unknown-propversion?";
-    if (idLetter === "A") {
-      desiredInterp =
-        "FPGA - 8 cogs, 512KB hub, 48 smart pins 63..56, 39..0, 80MHz";
-    } else if (idLetter === "B") {
-      desiredInterp =
-        "FPGA - 4 cogs, 256KB hub, 12 smart pins 63..60/7..0, 80MHz";
-    } else if (idLetter === "C") {
-      desiredInterp = "unsupported";
-    } else if (idLetter === "D") {
-      desiredInterp = "unsupported";
-    } else if (idLetter === "E") {
-      desiredInterp =
-        "FPGA - 4 cogs, 512KB hub, 18 smart pins 63..62/15..0, 80MHz";
-    } else if (idLetter === "F") {
-      desiredInterp = "unsupported";
-    } else if (idLetter === "G") {
-      desiredInterp = "P2X8C4M64P Rev B/C - 8 cogs, 512KB hub, 64 smart pins";
+    let desiredInterp: string = '?unknown-propversion?';
+    if (idLetter === 'A') {
+      desiredInterp = 'FPGA - 8 cogs, 512KB hub, 48 smart pins 63..56, 39..0, 80MHz';
+    } else if (idLetter === 'B') {
+      desiredInterp = 'FPGA - 4 cogs, 256KB hub, 12 smart pins 63..60/7..0, 80MHz';
+    } else if (idLetter === 'C') {
+      desiredInterp = 'unsupported';
+    } else if (idLetter === 'D') {
+      desiredInterp = 'unsupported';
+    } else if (idLetter === 'E') {
+      desiredInterp = 'FPGA - 4 cogs, 512KB hub, 18 smart pins 63..62/15..0, 80MHz';
+    } else if (idLetter === 'F') {
+      desiredInterp = 'unsupported';
+    } else if (idLetter === 'G') {
+      desiredInterp = 'P2X8C4M64P Rev B/C - 8 cogs, 512KB hub, 64 smart pins';
     }
     return desiredInterp;
   }
