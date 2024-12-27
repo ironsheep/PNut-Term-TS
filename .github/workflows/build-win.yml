@@ -20,6 +20,8 @@ jobs:
         run: npm ci
 
       - name: Build TermDebug app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run packageWin
 
       - name: Upload TermDebug artifacts
