@@ -6,6 +6,7 @@
 'use strict';
 
 import { Context } from '../utils/context';
+import { DebugColor } from './debugColor';
 
 // src/classes/debugWindow.ts
 
@@ -17,11 +18,6 @@ export interface Size {
 export interface Position {
   x: number;
   y: number;
-}
-
-export interface DebugColor {
-  color: number; // #rrggbb
-  brightness: number; // 0-15 (default:8)
 }
 
 export interface WindowColor {

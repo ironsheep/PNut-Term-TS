@@ -7,7 +7,7 @@
 // src/classes/scopeWindow.ts
 
 import { Context } from '../utils/context';
-import { colorNameToNumber } from './debugUtils';
+import { DebugColor } from './debugColor';
 
 import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
 
@@ -21,7 +21,7 @@ export interface ScopeDisplaySpec {
   dotSize: number;
   lineSize: number;
   textSize: number;
-  color: WindowColor;
+  window: WindowColor;
   isPackedData: boolean;
   hideXY: boolean;
 }
@@ -52,15 +52,15 @@ export class ScopeWindow extends DebugWindowBase {
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
     let isValid: boolean = false;
     // set defaults
-    const blackColor: number = colorNameToNumber('BLACK');
-    const grayColor: number = colorNameToNumber('GRAY');
+    const blackColor: DebugColor = new DebugColor('BLACK', 0);
+    const grayColor: DebugColor = new DebugColor('GRAY', 4);
     console.log(`at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    //displaySpec.color.background = { color: blackColor, brightness: 0 };
-    //displaySpec.color.foreground = { color: grayColor, brightness: 4 };
+    displaySpec.window.background = blackColor;
+    displaySpec.window.foreground = grayColor;
     // now parse overrides to defaults
     console.log(`at overrides ScopeDisplaySpec: ${lineParts}`);
     displaySpec.displayName = lineParts[1];
