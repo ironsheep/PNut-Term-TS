@@ -51,6 +51,7 @@ export class ScopeWindow extends DebugWindowBase {
     console.log(`at parseScopeDeclaration()`);
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
     let isValid: boolean = false;
+
     // set defaults
     const blackColor: DebugColor = new DebugColor('BLACK', 0);
     const grayColor: DebugColor = new DebugColor('GRAY', 4);
@@ -59,8 +60,10 @@ export class ScopeWindow extends DebugWindowBase {
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    displaySpec.window.background = blackColor;
-    displaySpec.window.foreground = grayColor;
+    // FIXME: the following two lines still locks up the run!
+    //displaySpec.window.background = blackColor;
+    //displaySpec.window.foreground = grayColor;
+
     // now parse overrides to defaults
     console.log(`at overrides ScopeDisplaySpec: ${lineParts}`);
     displaySpec.displayName = lineParts[1];
