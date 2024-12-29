@@ -4,6 +4,7 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
+import { BrowserWindow } from 'electron';
 // src/classes/scopeWindow.ts
 
 import { Context } from '../utils/context';
@@ -26,12 +27,57 @@ export interface ScopeDisplaySpec {
   hideXY: boolean;
 }
 
+export interface ScopeChannelSpec {
+  name: string;
+  color: DebugColor;
+  minValue: number;
+  maxValue: number;
+  ySize: number;
+  yBaseOffset: number;
+  lgndShowMax: boolean;
+  lgndShowMin: boolean;
+  lgndShowMaxLine: boolean;
+  lgndShowMinLine: boolean;
+}
+
+interface ScopeChannelSamples {
+  samples: number[];
+}
+
+export interface ScopeTriggerSpec {
+  // trigger
+  trigEnabled: boolean;
+  trigChannel: number; // if channel is -1 then trigger is disabled
+  trigArmLevel: number;
+  trigLevel: number;
+  trigRtOffset: number;
+  trigHoldoff: number; // in samples required, from trigger to trigger
+}
+
 export class ScopeWindow extends DebugWindowBase {
   private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
+  private channelSpecs: ScopeChannelSpec[] = [];
+  private channelSamples: ScopeChannelSamples[] = [];
+  private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
+  private debugWindow: BrowserWindow | null = null;
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
+    // record our Debug Scope Window Spec
     this.displaySpec = displaySpec;
+    // init default Trigger Spec
+    this.triggerSpec = {
+      trigEnabled: false,
+      trigChannel: -1,
+      trigArmLevel: 0,
+      trigLevel: 0,
+      trigRtOffset: 0,
+      trigHoldoff: 0
+    };
+  }
+
+  get windowName(): string {
+    return this.displaySpec.displayName;
   }
 
   static parseScopeDeclaration(lineParts: string[]): [boolean, ScopeDisplaySpec] {
@@ -53,16 +99,16 @@ export class ScopeWindow extends DebugWindowBase {
     let isValid: boolean = false;
 
     // set defaults
-    const blackColor: DebugColor = new DebugColor('BLACK', 0);
-    const grayColor: DebugColor = new DebugColor('GRAY', 4);
+    const bkgndColor: DebugColor = new DebugColor('BLACK');
+    const gridColor: DebugColor = new DebugColor('GRAY', 4);
     console.log(`at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    // FIXME: the following two lines still locks up the run!
-    //displaySpec.window.background = blackColor;
-    //displaySpec.window.foreground = grayColor;
+    // FIXME: the following two lines. Still locks up the run!
+    //displaySpec.window.background = bkgndColor;
+    //displaySpec.window.grid = gridColor;
 
     // now parse overrides to defaults
     console.log(`at overrides ScopeDisplaySpec: ${lineParts}`);
@@ -113,5 +159,362 @@ export class ScopeWindow extends DebugWindowBase {
     }
     console.log(`at end of parseScopeDeclaration: ${isValid}, ${displaySpec}`);
     return [isValid, displaySpec];
+  }
+
+  public createDebugWindow(): void {
+    this.logMessage(`at createDebugWindow()`);
+    this.debugWindow = new BrowserWindow({
+      width: this.displaySpec.size.width,
+      height: this.displaySpec.size.height,
+      x: this.displaySpec.position.x,
+      y: this.displaySpec.position.y,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+
+    if (this.channelSpecs.length > 0) {
+      // create a default channelSpec for only channel
+      this.channelSpecs.push({
+        name: 'Channel 0',
+        color: new DebugColor('GREEN'),
+        minValue: 0,
+        maxValue: 255,
+        ySize: this.displaySpec.size.height,
+        yBaseOffset: 0,
+        lgndShowMax: true,
+        lgndShowMin: true,
+        lgndShowMaxLine: true,
+        lgndShowMinLine: true
+      });
+      // and an empty sample set for this only channel
+      this.channelSamples.push({ samples: [] });
+    }
+
+    const channelCanvases: string[] = [];
+    if (this.channelSpecs.length > 0) {
+      for (let index = 0; index < this.channelSpecs.length; index++) {
+        const channelSpec = this.channelSpecs[index];
+        // create a canvas for each channel
+        channelCanvases.push(
+          `<canvas id="channel-${index}" width="${this.displaySpec.size.width}" height="${channelSpec.ySize}"></canvas>`
+        );
+        // and an empty sample set for this channel
+        this.channelSamples.push({ samples: [] });
+      }
+    } else {
+      // error if NO channel
+      this.logMessage(`at createDebugWindow() with NO channels!`);
+    }
+    // and load this window .html
+    const htmlContent = `
+  <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>${this.displaySpec.windowTitle}</title>
+      <style>
+      </style>
+    </head>
+    <body>
+      <div id="channel-titles"></div>
+      ${channelCanvases}
+    </body>
+  </html>
+    `;
+
+    this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
+
+    // now hook load complete event so we can label and paint the grid/min/max, etc.
+    this.debugWindow.webContents.on('did-finish-load', () => {
+      for (let index = 0; index < this.channelSpecs.length; index++) {
+        const channelSpec = this.channelSpecs[index];
+        this.updateScopeChannelLabel(channelSpec.name, channelSpec.color.rgbString);
+        const gridColor: string = channelSpec.color.withBrightness(4).rgbString;
+        const canvasName = `channel-${index}`;
+        // paint the grid/min/max, etc.
+        if (channelSpec.lgndShowMax) {
+          this.drawHorizontalValue(canvasName, channelSpec.maxValue, gridColor);
+        }
+        if (channelSpec.lgndShowMin) {
+          this.drawHorizontalValue(canvasName, channelSpec.minValue, gridColor);
+        }
+        if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+          this.drawHorizontalLineAndValue(canvasName, channelSpec.maxValue, gridColor);
+        }
+        if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+          this.drawHorizontalLineAndValue(canvasName, channelSpec.minValue, gridColor);
+        }
+        if (channelSpec.lgndShowMaxLine) {
+          this.drawHorizontalLine(canvasName, channelSpec.maxValue, gridColor);
+        }
+        if (channelSpec.lgndShowMinLine) {
+          this.drawHorizontalLine(canvasName, channelSpec.minValue, gridColor);
+        }
+        this.drawCanvasBorder(canvasName, gridColor);
+      }
+    });
+
+    this.debugWindow.on('closed', () => {
+      this.logMessage('* Scope window closed');
+      this.debugWindow = null;
+    });
+  }
+
+  public closeDebugWindow(): void {
+    this.logMessage(`at closeDebugWindow()`);
+    if (this.debugWindow) {
+      this.debugWindow.close();
+      this.debugWindow = null;
+    }
+  }
+
+  public updateContent(lineParts: string[]): void {
+    // here with lineParts = ['`{displayName}, ...]
+    // Valid directives are:
+    // --- these create a new channel spec
+    //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
+    //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
+    // --- these update the trigger spec
+    //   TRIGGER <channel|-1> {arm-level {trigger-level {offset}}}
+    //   HOLDOFF <2-2048>
+    // --- these manage the window
+    //   CLEAR
+    //   CLOSE
+    //   SAVE {WINDOW} 'filename' // save window to .bmp file
+    // --- these paints new samples
+    //   <numeric data> // data applied to channels in ascending order
+    this.logMessage(`at updateContent(${lineParts.join(' ')})`);
+
+    // ON first numeric data, create the window! then do update
+    if (lineParts.length >= 2) {
+      // have data, parse it
+      if (lineParts[1].charAt(0) == "'") {
+        // parse channel spec
+        let channelSpec: ScopeChannelSpec = {} as ScopeChannelSpec;
+        channelSpec.name = lineParts[1].slice(1, -1);
+        let colorName = 'GREEN';
+        let colorBrightness = 15;
+        if (lineParts[2].toUpperCase() == 'AUTO') {
+          // parse AUTO spec
+          //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
+          if (lineParts.length > 3) {
+            channelSpec.ySize = Number(lineParts[3]);
+          }
+          if (lineParts.length > 4) {
+            channelSpec.yBaseOffset = Number(lineParts[4]);
+          }
+          if (lineParts.length > 5) {
+            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
+            const legend: string = lineParts[5];
+            this.parseLegend(legend, channelSpec);
+          }
+          if (lineParts.length > 6) {
+            colorName = lineParts[6];
+          }
+          if (lineParts.length > 7) {
+            colorBrightness = Number(lineParts[7]);
+          }
+        } else {
+          // parse manual spec
+          //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
+          if (lineParts.length > 2) {
+            channelSpec.minValue = Number(lineParts[2]);
+          }
+          if (lineParts.length > 3) {
+            channelSpec.maxValue = Number(lineParts[3]);
+          }
+          if (lineParts.length > 4) {
+            channelSpec.ySize = Number(lineParts[4]);
+          }
+          if (lineParts.length > 5) {
+            channelSpec.yBaseOffset = Number(lineParts[5]);
+          }
+          if (lineParts.length > 6) {
+            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
+            const legend: string = lineParts[6];
+            this.parseLegend(legend, channelSpec);
+          }
+          if (lineParts.length > 7) {
+            colorName = lineParts[7];
+          }
+          if (lineParts.length > 8) {
+            colorBrightness = Number(lineParts[8]);
+          }
+        }
+        channelSpec.color = new DebugColor(colorName, colorBrightness);
+        // and record spec for this channel
+        this.channelSpecs.push(channelSpec);
+      } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
+        // parse trigger spec update
+        //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
+        if (lineParts.length > 2) {
+          const desiredChannel: number = Number(lineParts[2]);
+          if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
+            this.triggerSpec.trigChannel = desiredChannel;
+          } else {
+            this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
+          }
+          if (lineParts.length > 3) {
+            this.triggerSpec.trigArmLevel = Number(lineParts[3]);
+          }
+          if (lineParts.length > 4) {
+            this.triggerSpec.trigLevel = Number(lineParts[4]);
+          }
+          if (lineParts.length > 5) {
+            this.triggerSpec.trigRtOffset = Number(lineParts[5]);
+          }
+        }
+      } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
+        // parse trigger spec update
+        //   HOLDOFF1 <2-2048>2
+        if (lineParts.length > 2) {
+          this.triggerSpec.trigHoldoff = Number(lineParts[2]);
+        }
+      } else if (lineParts[1].toUpperCase() == 'CLEAR') {
+        // clear all channels
+        this.clearChannelData();
+      } else if (lineParts[1].toUpperCase() == 'CLOSE') {
+        // close the window
+        this.closeDebugWindow();
+      } else if (lineParts[1].toUpperCase() == 'SAVE') {
+        // save the window to a file
+        // FIXME: UNDONE: add code save the window to a file here
+      } else if (lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') {
+        // parse numeric data
+        let didScroll: boolean = false; // in case we need this for performance of window update
+        const nbrSamples = lineParts.length - 1;
+        for (let index = 1; index < lineParts.length; index++) {
+          const chanIdx = index - 1;
+          if (chanIdx < this.channelSamples.length) {
+            let nextSample: number = Number(lineParts[index]);
+            // limit the sample to the channel's min/max?!
+            const channelSpec = this.channelSpecs[chanIdx];
+            if (nextSample < channelSpec.minValue) {
+              nextSample = channelSpec.minValue;
+              this.logMessage(`at updateContent() with sample below min: ${nextSample} of [${lineParts.join(' ')}]`);
+            } else if (nextSample > channelSpec.maxValue) {
+              nextSample = channelSpec.maxValue;
+              this.logMessage(`at updateContent() with sample above max: ${nextSample} of [${lineParts.join(' ')}]`);
+            }
+            // record our sample (shifting left if necessary)
+            didScroll = this.recordChannelSample(chanIdx, nextSample);
+          } else {
+            this.logMessage(`at updateContent() with too many samples: ${nbrSamples} of [${lineParts.join(' ')}]`);
+          }
+        }
+        // FIXME: UNDONE: add code to update the window here
+      } else {
+        this.logMessage(`at updateContent() with unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+      }
+    }
+  }
+
+  private clearChannelData() {
+    this.logMessage(`at clearChannelData()`);
+    for (let index = 0; index < this.channelSamples.length; index++) {
+      const channelSamples = this.channelSamples[index];
+      // clear the channel data
+      channelSamples.samples = [];
+    }
+  }
+
+  private recordChannelSample(channelIndex: number, sample: number): boolean {
+    this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
+    let didScroll: boolean = false;
+    if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
+      const channelSamples = this.channelSamples[channelIndex];
+      if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
+        // remove oldest sample
+        channelSamples.samples.shift();
+        didScroll = true;
+      }
+      // record the sample
+      channelSamples.samples.push(sample);
+    } else {
+      this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
+    }
+    return didScroll;
+  }
+
+  private parseLegend(legend: string, channelSpec: ScopeChannelSpec): void {
+    // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
+    if (legend.length > 4 && legend.charAt(0) == '%') {
+      channelSpec.lgndShowMax = legend.charAt(1) == '1' ? true : false;
+      channelSpec.lgndShowMin = legend.charAt(2) == '1' ? true : false;
+      channelSpec.lgndShowMaxLine = legend.charAt(3) == '1' ? true : false;
+      channelSpec.lgndShowMinLine = legend.charAt(4) == '1' ? true : false;
+    } else {
+      this.logMessage(`at parseLegend() with invalid legend: ${legend}`);
+      channelSpec.lgndShowMax = false;
+      channelSpec.lgndShowMin = false;
+      channelSpec.lgndShowMaxLine = false;
+      channelSpec.lgndShowMinLine = false;
+    }
+  }
+
+  private updateScopeChannelLabel(name: string, colorString: string): void {
+    if (this.debugWindow) {
+      try {
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+                const labelsDivision = document.getElementById('channel-titles');
+                if (labelsDivision) {
+                  // Function to create a colored label
+                  function createColoredLabel(text: string, color: string): HTMLSpanElement {
+                    const span = document.createElement('span');
+                    span.innerText = text;
+                    span.style.color = color;
+                    span.style.marginRight = '10px'; // Add some spacing between labels
+                    return span;
+                  }
+
+                  // Add new label
+                  const newLabel = createColoredLabel(${name}, ${colorString}); // Magenta
+                  labelsDivision.appendChild(newLabel);
+                }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update channel label:', error);
+      }
+    }
+  }
+
+  private drawHorizontalValue(canvasName: string, maxValue: number, gridColor: string) {}
+
+  private drawHorizontalLineAndValue(canvasName: string, maxValue: number, gridColor: string) {}
+
+  private drawHorizontalLine(canvasName: string, maxValue: number, gridColor: string) {}
+
+  private drawCanvasBorder(canvasName: string, gridColor: string) {
+    if (this.debugWindow) {
+      try {
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById(${canvasName});
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the border color and width
+                const borderColor = '${gridColor}'; // Magenta
+                const borderWidth = 2; // should be 1?
+
+                // Draw the border
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = borderWidth;
+                ctx.strokeRect(0, 0, canvas.width, canvas.height);
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update canvas border:', error);
+      }
+    }
   }
 }

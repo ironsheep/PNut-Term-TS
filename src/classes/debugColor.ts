@@ -9,7 +9,9 @@
 // Name-to-RGB hex lookup
 export class DebugColor {
   private color: number;
+  private name: string;
   private brightness: number;
+  private dimmedColor: number;
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
@@ -24,9 +26,13 @@ export class DebugColor {
     GRAY: '#808080'
   };
 
-  constructor(colorName: string, brightness: number) {
+  constructor(colorName: string, brightness: number = 8) {
+    // default birghtness is 8 when not specified
+    this.name = colorName;
     this.color = DebugColor.colorNameToNumber(colorName);
     this.brightness = brightness;
+    // cache the dimmed color
+    this.dimmedColor = this.adjustBrightness(this.color, brightness);
   }
 
   private static colorNameToHexString(colorName: string): string {
@@ -65,8 +71,20 @@ export class DebugColor {
     return adjustedColor;
   }
 
+  public get colorName(): string {
+    return this.name;
+  }
+
   public get rgbValue(): number {
-    return this.adjustBrightness(this.color, this.brightness);
+    return this.dimmedColor;
+  }
+
+  public get rgbString(): string {
+    return `#${this.dimmedColor.toString(16).padStart(6, '0')}`;
+  }
+
+  public withBrightness(brightness: number): DebugColor {
+    return new DebugColor(this.colorName, brightness);
   }
 }
 

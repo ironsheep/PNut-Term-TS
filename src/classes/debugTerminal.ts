@@ -14,6 +14,7 @@ import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
 import { ScopeWindow } from './scopeWindow';
+import { DebugWindowBase } from './debugWindowBase';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -130,31 +131,54 @@ export class DebugTerminal {
     }
   }
 
-  private DISPLAY_SCOPE: string = '`SCOPE';
+  private DISPLAY_SCOPE: string = 'SCOPE';
 
   private handleDebugCommand(data: string) {
     const lineParts: string[] = data.split(' ');
-    switch (lineParts[0].toUpperCase()) {
-      case this.DISPLAY_SCOPE:
-        this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
-        // create new window to display scope data
-        const [isValid, scopeSpec] = ScopeWindow.parseScopeDeclaration(lineParts);
-        this.logMessage(`* handleDebugCommand() - back from parse`);
-        if (isValid) {
-          // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
-          const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
-          // remember active displays!
-          this.displays[scopeSpec.displayName] = scopeDisplay;
-          this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
-        } else {
-          if (this.isLogging) {
-            this.logMessage(`BAD DISPLAY: Received: ${data}`);
-          }
+    let foundDisplay: boolean = false;
+    if (lineParts[0].charAt(0) === '`') {
+      const possibleName: string = lineParts[0].substring(1).toUpperCase();
+      // first, is this for one of our displays?
+      const displayEntries = Object.entries(this.displays);
+      displayEntries.forEach(([displayName, window]) => {
+        if (displayName.toUpperCase() === possibleName) {
+          // found it, route to the window handler
+          const debugWindow = window as DebugWindowBase;
+          debugWindow.updateContent(lineParts); // NOTE: this will eventually show the debug window!
+          foundDisplay = true;
         }
-        break;
+      });
+      if (!foundDisplay) {
+        // 2nd, is it a window creation command?
+        switch (lineParts[0].toUpperCase()) {
+          case this.DISPLAY_SCOPE:
+            this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
+            // create new window to display scope data
+            const [isValid, scopeSpec] = ScopeWindow.parseScopeDeclaration(lineParts);
+            this.logMessage(`* handleDebugCommand() - back from parse`);
+            if (isValid) {
+              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
+              const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
+              // remember active displays!
+              this.displays[scopeSpec.displayName] = scopeDisplay;
+              this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+            } else {
+              if (this.isLogging) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            foundDisplay = true;
+            break;
 
-      default:
-        break;
+          default:
+            break;
+        }
+      }
+      if (!foundDisplay) {
+        if (this.isLogging) {
+          this.logMessage(`TERM: Received: ${data} - UNHANDLED`);
+        }
+      }
     }
   }
 

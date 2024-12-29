@@ -22,16 +22,20 @@ export interface Position {
 
 export interface WindowColor {
   background: DebugColor;
-  foreground: DebugColor;
+  grid: DebugColor;
 }
 
-export class DebugWindowBase {
+export abstract class DebugWindowBase {
   private context: Context;
   private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
 
   constructor(ctx: Context) {
     this.context = ctx;
   }
+  // Abstract methods that must be overridden by derived classes
+  abstract createDebugWindow(): void;
+  abstract closeDebugWindow(): void;
+  abstract updateContent(lineParts: string[]): void;
 
   // ----------------------------------------------------------------------
 
