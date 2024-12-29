@@ -33,7 +33,7 @@ export abstract class DebugWindowBase {
     this.context = ctx;
   }
   // Abstract methods that must be overridden by derived classes
-  abstract createDebugWindow(): void;
+  //abstract createDebugWindow(): void;
   abstract closeDebugWindow(): void;
   abstract updateContent(lineParts: string[]): void;
 

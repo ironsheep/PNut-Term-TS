@@ -60,6 +60,7 @@ export class ScopeWindow extends DebugWindowBase {
   private channelSamples: ScopeChannelSamples[] = [];
   private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
+  private isFirstNumericData: boolean = true;
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
@@ -157,11 +158,11 @@ export class ScopeWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`at end of parseScopeDeclaration: ${isValid}, ${displaySpec}`);
+    console.log(`at end of parseScopeDeclaration: isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
-  public createDebugWindow(): void {
+  private createDebugWindow(): void {
     this.logMessage(`at createDebugWindow()`);
     this.debugWindow = new BrowserWindow({
       width: this.displaySpec.size.width,
@@ -188,8 +189,6 @@ export class ScopeWindow extends DebugWindowBase {
         lgndShowMaxLine: true,
         lgndShowMinLine: true
       });
-      // and an empty sample set for this only channel
-      this.channelSamples.push({ samples: [] });
     }
 
     const channelCanvases: string[] = [];
@@ -200,8 +199,6 @@ export class ScopeWindow extends DebugWindowBase {
         channelCanvases.push(
           `<canvas id="channel-${index}" width="${this.displaySpec.size.width}" height="${channelSpec.ySize}"></canvas>`
         );
-        // and an empty sample set for this channel
-        this.channelSamples.push({ samples: [] });
       }
     } else {
       // error if NO channel
@@ -214,11 +211,23 @@ export class ScopeWindow extends DebugWindowBase {
       <meta charset="UTF-8">
       <title>${this.displaySpec.windowTitle}</title>
       <style>
+        body {
+          margin: 0;
+          font-family: Arial, sans-serif; /* Use Arial or any sans-serif font */
+          font-size: 12px; /* Set a smaller font size */
+          background-color: ${this.displaySpec.window.background.rgbString}; /* Set the background color */
+          color:rgb(202, 224, 33); /* Set the font color (yellow, cuz we shouldn't have any and this we'll see!) */
+        }
+        p {
+          margin: 0;
+        }
       </style>
     </head>
     <body>
       <div id="channel-titles"></div>
+      <div id="channels">
       ${channelCanvases}
+      </div>
     </body>
   </html>
     `;
@@ -227,6 +236,7 @@ export class ScopeWindow extends DebugWindowBase {
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
+      this.logMessage('at did-finish-load');
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
         this.updateScopeChannelLabel(channelSpec.name, channelSpec.color.rgbString);
@@ -252,12 +262,35 @@ export class ScopeWindow extends DebugWindowBase {
           this.drawHorizontalLine(canvasName, channelSpec.minValue, gridColor);
         }
         this.drawCanvasBorder(canvasName, gridColor);
+        this.debugWindow?.setTitle(this.displaySpec.windowTitle);
       }
     });
 
     this.debugWindow.on('closed', () => {
       this.logMessage('* Scope window closed');
       this.debugWindow = null;
+    });
+
+    this.debugWindow.once('ready-to-show', () => {
+      this.logMessage('at ready-to-show');
+      if (this.debugWindow) {
+        try {
+          this.debugWindow.setTitle(this.displaySpec.windowTitle);
+        } catch (error) {
+          this.logMessage(`Failed to set title: ${error}`);
+        }
+        // The following only works for linux/windows
+        if (process.platform !== 'darwin') {
+          try {
+            //this.debugWindow.setMenu(null); // NO menu for this window  || NO WORKEE!
+            this.debugWindow.removeMenu(); // Alternative to setMenu(null) with less side effects
+            //this.debugWindow.setMenuBarVisibility(false); // Alternative to setMenu(null) with less side effects || NO WORKEE!
+          } catch (error) {
+            this.logMessage(`Failed to remove menu: ${error}`);
+          }
+        }
+        this.debugWindow.show();
+      }
     });
   }
 
@@ -284,8 +317,7 @@ export class ScopeWindow extends DebugWindowBase {
     //   SAVE {WINDOW} 'filename' // save window to .bmp file
     // --- these paints new samples
     //   <numeric data> // data applied to channels in ascending order
-    this.logMessage(`at updateContent(${lineParts.join(' ')})`);
-
+    //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
     if (lineParts.length >= 2) {
       // have data, parse it
@@ -344,6 +376,7 @@ export class ScopeWindow extends DebugWindowBase {
         }
         channelSpec.color = new DebugColor(colorName, colorBrightness);
         // and record spec for this channel
+        this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
         this.channelSpecs.push(channelSpec);
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
@@ -365,12 +398,14 @@ export class ScopeWindow extends DebugWindowBase {
             this.triggerSpec.trigRtOffset = Number(lineParts[5]);
           }
         }
+        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
         if (lineParts.length > 2) {
           this.triggerSpec.trigHoldoff = Number(lineParts[2]);
         }
+        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[1].toUpperCase() == 'CLEAR') {
         // clear all channels
         this.clearChannelData();
@@ -381,12 +416,17 @@ export class ScopeWindow extends DebugWindowBase {
         // save the window to a file
         // FIXME: UNDONE: add code save the window to a file here
       } else if (lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') {
+        if (this.isFirstNumericData) {
+          this.isFirstNumericData = false;
+          this.initChannelSamples();
+          this.createDebugWindow();
+        }
         // parse numeric data
         let didScroll: boolean = false; // in case we need this for performance of window update
         const nbrSamples = lineParts.length - 1;
         for (let index = 1; index < lineParts.length; index++) {
           const chanIdx = index - 1;
-          if (chanIdx < this.channelSamples.length) {
+          if (chanIdx < this.channelSpecs.length) {
             let nextSample: number = Number(lineParts[index]);
             // limit the sample to the channel's min/max?!
             const channelSpec = this.channelSpecs[chanIdx];
@@ -410,6 +450,19 @@ export class ScopeWindow extends DebugWindowBase {
     }
   }
 
+  private initChannelSamples() {
+    this.logMessage(`at initChannelSamples()`);
+    // clear the channel data
+    this.channelSamples = [];
+    if (this.channelSpecs.length == 0) {
+      this.channelSamples.push({ samples: [] });
+    } else {
+      for (let index = 0; index < this.channelSpecs.length; index++) {
+        this.channelSamples.push({ samples: [] });
+      }
+    }
+  }
+
   private clearChannelData() {
     this.logMessage(`at clearChannelData()`);
     for (let index = 0; index < this.channelSamples.length; index++) {
@@ -420,7 +473,7 @@ export class ScopeWindow extends DebugWindowBase {
   }
 
   private recordChannelSample(channelIndex: number, sample: number): boolean {
-    this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
+    //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
     let didScroll: boolean = false;
     if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
       const channelSamples = this.channelSamples[channelIndex];

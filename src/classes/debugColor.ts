@@ -86,6 +86,13 @@ export class DebugColor {
   public withBrightness(brightness: number): DebugColor {
     return new DebugColor(this.colorName, brightness);
   }
+
+  // ----------------------------------------------------------------------
+  // fun code to remember...
+  private getRandomColor(): string {
+    const colors: string[] = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
 }
 
 // Example usage

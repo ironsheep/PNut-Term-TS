@@ -135,9 +135,9 @@ export class DebugTerminal {
 
   private handleDebugCommand(data: string) {
     const lineParts: string[] = data.split(' ');
+    const possibleName: string = lineParts[0].substring(1).toUpperCase();
     let foundDisplay: boolean = false;
     if (lineParts[0].charAt(0) === '`') {
-      const possibleName: string = lineParts[0].substring(1).toUpperCase();
       // first, is this for one of our displays?
       const displayEntries = Object.entries(this.displays);
       displayEntries.forEach(([displayName, window]) => {
@@ -150,7 +150,7 @@ export class DebugTerminal {
       });
       if (!foundDisplay) {
         // 2nd, is it a window creation command?
-        switch (lineParts[0].toUpperCase()) {
+        switch (possibleName) {
           case this.DISPLAY_SCOPE:
             this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
             // create new window to display scope data
@@ -161,7 +161,8 @@ export class DebugTerminal {
               const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
               // remember active displays!
               this.displays[scopeSpec.displayName] = scopeDisplay;
-              this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+              this.logMessage(`GOOD DISPLAY: Received`);
+              //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
@@ -314,7 +315,7 @@ and Electron <span id="electron-version"></span>.</P>
         label: 'PNut TermDebug TS', // Explicitly set the application name here
         submenu: [
           {
-            label: 'About...',
+            label: '&About...',
             click: () => {
               // show about dialog
               dialog.showMessageBox(this.mainWindow!, {
@@ -327,7 +328,7 @@ and Electron <span id="electron-version"></span>.</P>
           },
           { type: 'separator' },
           {
-            label: 'Quit',
+            label: '&Quit',
             click: () => {
               console.log('MENU: Application is quitting...');
               this.knownClosedBy = true;
@@ -340,7 +341,7 @@ and Electron <span id="electron-version"></span>.</P>
         label: 'File',
         submenu: [
           {
-            label: 'Save...',
+            label: '&Log to file...',
             click: () => {
               dialog
                 .showSaveDialog(this.mainWindow!, {
@@ -471,7 +472,7 @@ and Electron <span id="electron-version"></span>.</P>
           }
         `);
       } catch (error) {
-        console.error('Failed to update status bar field:', error);
+        console.error('Failed to update text in main document:', error);
       }
     }
   }
@@ -528,17 +529,8 @@ and Electron <span id="electron-version"></span>.</P>
     fs.appendFile(filePath, message, (err) => {
       if (err) {
         console.error('Failed to append to file:', err);
-        //} else {
-        //  console.log('Message appended to file successfully.');
       }
     });
-  }
-
-  // ----------------------------------------------------------------------
-  // fun code to remember...
-  private getRandomColor(): string {
-    const colors: string[] = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'];
-    return colors[Math.floor(Math.random() * colors.length)];
   }
 
   // ----------------------------------------------------------------------
