@@ -9,11 +9,11 @@
 import { app, BrowserWindow, Menu, MenuItem, dialog } from 'electron';
 import electron from 'electron';
 import { Context } from '../utils/context';
-import { ensureDirExists, getFormattedDateTime, listFiles } from '../utils/files';
+import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
-import { ScopeWindow } from './scopeWindow';
+import { DebugScopeWindow } from './debugScopeWin';
 import { DebugWindowBase } from './debugWindowBase';
 
 export interface WindowCoordinates {
@@ -154,11 +154,11 @@ export class DebugTerminal {
           case this.DISPLAY_SCOPE:
             this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
             // create new window to display scope data
-            const [isValid, scopeSpec] = ScopeWindow.parseScopeDeclaration(lineParts);
+            const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
             if (isValid) {
               // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
-              const scopeDisplay = new ScopeWindow(this.context, scopeSpec);
+              const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
               // remember active displays!
               this.displays[scopeSpec.displayName] = scopeDisplay;
               this.logMessage(`GOOD DISPLAY: Received`);
@@ -434,10 +434,21 @@ and Electron <span id="electron-version"></span>.</P>
     });
 
     this.mainWindow.on('closed', () => {
+      this.closeAllDebugWindows(); // close all child windows, too
       this.logMessage('* Main window closed');
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });
+  }
+
+  // Method to close all debug windows
+  private closeAllDebugWindows(): void {
+    const displayEntries = Object.entries(this.displays);
+    displayEntries.forEach(([windowName, windowObject]) => {
+      const window: DebugWindowBase = windowObject as DebugWindowBase;
+      window.closeDebugWindow();
+    });
+    this.displays = {}; // and empty the list
   }
 
   private setKnownClosedBy() {
@@ -538,7 +549,7 @@ and Electron <span id="electron-version"></span>.</P>
   private logMessage(message: string): void {
     if (this.isLogging) {
       //Write to output window.
-      this.context.logger.logMessage(message);
+      this.context.logger.logMessage('TRM: ' + message);
     }
   }
 }

@@ -42,7 +42,7 @@ export abstract class DebugWindowBase {
   protected logMessage(message: string): void {
     if (this.isLogging) {
       //Write to output window.
-      this.context.logger.logMessage(message);
+      this.context.logger.logMessage('Win: ' + message);
     }
   }
 }

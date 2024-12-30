@@ -4,14 +4,16 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
-// src/classes/scopeWindow.ts
+// src/classes/debugColor.ts
 
 // Name-to-RGB hex lookup
 export class DebugColor {
-  private color: number;
+  private _colorValue: number;
+  private _dimmedColorValue: number;
   private name: string;
-  private brightness: number;
-  private dimmedColor: number;
+  private _brightness: number;
+  private dimmedColor: string;
+  private gridColor: string;
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
@@ -29,10 +31,12 @@ export class DebugColor {
   constructor(colorName: string, brightness: number = 8) {
     // default birghtness is 8 when not specified
     this.name = colorName;
-    this.color = DebugColor.colorNameToNumber(colorName);
-    this.brightness = brightness;
+    this._colorValue = DebugColor.colorNameToNumber(colorName);
+    this._brightness = brightness;
+    this._dimmedColorValue = this.adjustBrightness(this._colorValue, brightness);
     // cache the dimmed color
-    this.dimmedColor = this.adjustBrightness(this.color, brightness);
+    this.dimmedColor = this.hexColorString(this._dimmedColorValue);
+    this.gridColor = this.hexColorString(this.adjustBrightness(this._colorValue, 4));
   }
 
   private static colorNameToHexString(colorName: string): string {
@@ -76,15 +80,19 @@ export class DebugColor {
   }
 
   public get rgbValue(): number {
-    return this.dimmedColor;
+    return this.adjustBrightness(this._colorValue, this._brightness);
   }
 
   public get rgbString(): string {
-    return `#${this.dimmedColor.toString(16).padStart(6, '0')}`;
+    return this.dimmedColor;
   }
 
-  public withBrightness(brightness: number): DebugColor {
-    return new DebugColor(this.colorName, brightness);
+  public get gridRgbString(): string {
+    return this.gridColor;
+  }
+
+  public hexColorString(colorValue: number): string {
+    return `#${colorValue.toString(16).padStart(6, '0')}`;
   }
 
   // ----------------------------------------------------------------------

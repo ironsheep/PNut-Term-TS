@@ -4,8 +4,8 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
-import { BrowserWindow } from 'electron';
-// src/classes/scopeWindow.ts
+import { BrowserWindow, Menu } from 'electron';
+// src/classes/debugScopeWin.ts
 
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
@@ -14,7 +14,7 @@ import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase'
 
 export interface ScopeDisplaySpec {
   displayName: string;
-  windowTitle: string;
+  windowTitle: string; // composite or override w/TITLE
   position: Position;
   size: Size;
   nbrSamples: number;
@@ -54,7 +54,7 @@ export interface ScopeTriggerSpec {
   trigHoldoff: number; // in samples required, from trigger to trigger
 }
 
-export class ScopeWindow extends DebugWindowBase {
+export class DebugScopeWindow extends DebugWindowBase {
   private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
   private channelSpecs: ScopeChannelSpec[] = [];
   private channelSamples: ScopeChannelSamples[] = [];
@@ -77,8 +77,12 @@ export class ScopeWindow extends DebugWindowBase {
     };
   }
 
-  get windowName(): string {
-    return this.displaySpec.displayName;
+  get windowTitle(): string {
+    let desiredValue: string = `${this.displaySpec.displayName} SCOPE`;
+    if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
+      desiredValue = this.displaySpec.windowTitle;
+    }
+    return desiredValue;
   }
 
   static parseScopeDeclaration(lineParts: string[]): [boolean, ScopeDisplaySpec] {
@@ -95,24 +99,23 @@ export class ScopeWindow extends DebugWindowBase {
     //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
     //   packed_data_mode
     //   HIDEXY
-    console.log(`at parseScopeDeclaration()`);
+    console.log(`CL: at parseScopeDeclaration()`);
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
     let isValid: boolean = false;
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    console.log(`at parseScopeDeclaration() with colors...`);
+    console.log(`CL: at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    // FIXME: the following two lines. Still locks up the run!
     //displaySpec.window.background = bkgndColor;
     //displaySpec.window.grid = gridColor;
 
     // now parse overrides to defaults
-    console.log(`at overrides ScopeDisplaySpec: ${lineParts}`);
+    console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
     displaySpec.displayName = lineParts[1];
     if (lineParts.length > 2) {
       isValid = true; // invert default value
@@ -125,7 +128,7 @@ export class ScopeWindow extends DebugWindowBase {
               displaySpec.windowTitle = lineParts[++index];
             } else {
               // console.log() as we are in class static method, not derived class...
-              console.log(`ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -135,7 +138,7 @@ export class ScopeWindow extends DebugWindowBase {
               displaySpec.size.width = Number(lineParts[++index]);
               displaySpec.size.height = Number(lineParts[++index]);
             } else {
-              console.log(`ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -144,13 +147,13 @@ export class ScopeWindow extends DebugWindowBase {
             if (index < lineParts.length - 1) {
               displaySpec.nbrSamples = Number(lineParts[++index]);
             } else {
-              console.log(`ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
 
           default:
-            console.log(`ScopeDisplaySpec: Unknown directive: ${element}`);
+            console.log(`CL: ScopeDisplaySpec: Unknown directive: ${element}`);
             break;
         }
         if (!isValid) {
@@ -158,24 +161,14 @@ export class ScopeWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`at end of parseScopeDeclaration: isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    console.log(`CL: at end of parseScopeDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
   private createDebugWindow(): void {
-    this.logMessage(`at createDebugWindow()`);
-    this.debugWindow = new BrowserWindow({
-      width: this.displaySpec.size.width,
-      height: this.displaySpec.size.height,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
-      }
-    });
-
-    if (this.channelSpecs.length > 0) {
+    this.logMessage(`at createDebugWindow() SCOPE`);
+    // calculate overall canvas sizes then window size from them!
+    if (this.channelSpecs.length == 0) {
       // create a default channelSpec for only channel
       this.channelSpecs.push({
         name: 'Channel 0',
@@ -192,6 +185,7 @@ export class ScopeWindow extends DebugWindowBase {
     }
 
     const channelCanvases: string[] = [];
+    let windowCanvasHeight: number = 0;
     if (this.channelSpecs.length > 0) {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
@@ -199,40 +193,164 @@ export class ScopeWindow extends DebugWindowBase {
         channelCanvases.push(
           `<canvas id="channel-${index}" width="${this.displaySpec.size.width}" height="${channelSpec.ySize}"></canvas>`
         );
+        // account for channel height
+        windowCanvasHeight += channelSpec.ySize;
       }
     } else {
       // error if NO channel
-      this.logMessage(`at createDebugWindow() with NO channels!`);
+      this.logMessage(`at createDebugWindow() SCOPE with NO channels!`);
     }
-    // and load this window .html
-    const htmlContent = `
-  <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>${this.displaySpec.windowTitle}</title>
-      <style>
-        body {
-          margin: 0;
-          font-family: Arial, sans-serif; /* Use Arial or any sans-serif font */
-          font-size: 12px; /* Set a smaller font size */
-          background-color: ${this.displaySpec.window.background.rgbString}; /* Set the background color */
-          color:rgb(202, 224, 33); /* Set the font color (yellow, cuz we shouldn't have any and this we'll see!) */
-        }
-        p {
-          margin: 0;
-        }
-      </style>
-    </head>
-    <body>
-      <div id="channel-titles"></div>
-      <div id="channels">
-      ${channelCanvases}
-      </div>
-    </body>
-  </html>
-    `;
 
-    this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
+    this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
+
+    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 2; // 20 is for the channel titles + 20 for titlebar + 2 for bottom border
+    const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
+    const windowWidth = this.displaySpec.size.width + 2 * 2; // 2 is for the border
+
+    // now generate the window with the calculated sizes
+    const displayName: string = this.windowTitle;
+    this.debugWindow = new BrowserWindow({
+      width: windowWidth,
+      height: windowHeight,
+      x: this.displaySpec.position.x,
+      y: this.displaySpec.position.y,
+      title: displayName,
+      autoHideMenuBar: true, // don't show menu bar
+      show: true, // Show the window immediately (when false, no events?!)
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+
+    // hook window events before being shown
+    this.debugWindow.on('closed', () => {
+      this.logMessage('* Scope window closed');
+      this.debugWindow = null;
+    });
+
+    this.debugWindow.on('close', () => {
+      this.logMessage('* Scope window closing...');
+    });
+
+    this.debugWindow.on('ready-to-show', () => {
+      this.logMessage('* Scope window will show...');
+      this.debugWindow?.show();
+    });
+
+    this.debugWindow.on('show', () => {
+      this.logMessage('* Scope window shown');
+    });
+
+    this.debugWindow.on('page-title-updated', () => {
+      this.logMessage('* Scope window title updated');
+    });
+
+    this.debugWindow.once('ready-to-show', () => {
+      this.logMessage('at ready-to-show');
+      if (this.debugWindow) {
+        try {
+          //this.debugWindow.setTitle(displayName + 'C'); // working!!
+        } catch (error) {
+          this.logMessage(`Failed to set title: ${error}`);
+        }
+        // The following only works for linux/windows
+        if (process.platform !== 'darwin') {
+          try {
+            //this.debugWindow.setMenu(null); // NO menu for this window  || NO WORKEE!
+            this.debugWindow.removeMenu(); // Alternative to setMenu(null) with less side effects
+            //this.debugWindow.setMenuBarVisibility(false); // Alternative to setMenu(null) with less side effects || NO WORKEE!
+          } catch (error) {
+            this.logMessage(`Failed to remove menu: ${error}`);
+          }
+        }
+        this.debugWindow.show();
+      }
+    });
+
+    // and load this window .html
+    /*
+    const htmlContentOld = `
+      <html>
+        <head>
+          <meta charset="UTF-8"></meta>
+          <title>${displayName}A</title>
+          <style>
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              font-size: 12px;
+              background-color: ${this.displaySpec.window.background.rgbString};
+              color:rgb(202, 224, 33);
+            }
+            p {
+              margin: 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="channel-titles"></div>
+          <div id="channels">${channelCanvases.join(' ')}</div>
+        </body>
+      </html>
+    `;
+    */
+
+    //this.logMessage(`at createDebugWindow() SCOPE with bgColor of: [${this.displaySpec.window.background.rgbString}]`);
+
+    const htmlContent = `
+    <html>
+      <head>
+        <meta charset="UTF-8"></meta>
+        <title>${displayName}A</title>
+        <style>
+          body {
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            background-color: #000000;
+            color:rgb(191, 213, 93);
+          }
+          #channel-titles {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            flex-grow: 0;
+          }
+          #channels {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            flex-grow: 1;
+          }
+          canvas {
+            margin: 2;
+            background-color:rgba(255, 255, 255, 0.63);
+          }
+          p {
+            margin: 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="channel-titles"><span style="margin-right: 10px">{labels here}</span></div>
+        <div id="channels">${channelCanvases.join(' ')}</div>
+      </body>
+    </html>
+  `;
+
+    this.logMessage(`at createDebugWindow() SCOPE with htmlContent: ${htmlContent}`);
+
+    try {
+      this.debugWindow.setMenu(null);
+      this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
+    } catch (error) {
+      this.logMessage(`Failed to load URL: ${error}`);
+    }
+    // Menu.setApplicationMenu(null); // DOESNT WORK!
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
@@ -240,7 +358,7 @@ export class ScopeWindow extends DebugWindowBase {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
         this.updateScopeChannelLabel(channelSpec.name, channelSpec.color.rgbString);
-        const gridColor: string = channelSpec.color.withBrightness(4).rgbString;
+        const gridColor: string = channelSpec.color.gridRgbString;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
         if (channelSpec.lgndShowMax) {
@@ -262,41 +380,14 @@ export class ScopeWindow extends DebugWindowBase {
           this.drawHorizontalLine(canvasName, channelSpec.minValue, gridColor);
         }
         this.drawCanvasBorder(canvasName, gridColor);
-        this.debugWindow?.setTitle(this.displaySpec.windowTitle);
-      }
-    });
-
-    this.debugWindow.on('closed', () => {
-      this.logMessage('* Scope window closed');
-      this.debugWindow = null;
-    });
-
-    this.debugWindow.once('ready-to-show', () => {
-      this.logMessage('at ready-to-show');
-      if (this.debugWindow) {
-        try {
-          this.debugWindow.setTitle(this.displaySpec.windowTitle);
-        } catch (error) {
-          this.logMessage(`Failed to set title: ${error}`);
-        }
-        // The following only works for linux/windows
-        if (process.platform !== 'darwin') {
-          try {
-            //this.debugWindow.setMenu(null); // NO menu for this window  || NO WORKEE!
-            this.debugWindow.removeMenu(); // Alternative to setMenu(null) with less side effects
-            //this.debugWindow.setMenuBarVisibility(false); // Alternative to setMenu(null) with less side effects || NO WORKEE!
-          } catch (error) {
-            this.logMessage(`Failed to remove menu: ${error}`);
-          }
-        }
-        this.debugWindow.show();
       }
     });
   }
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow()`);
-    if (this.debugWindow) {
+    // is destroyed should prevent crash on double close
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.close();
       this.debugWindow = null;
     }
@@ -376,6 +467,7 @@ export class ScopeWindow extends DebugWindowBase {
         }
         channelSpec.color = new DebugColor(colorName, colorBrightness);
         // and record spec for this channel
+        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
         this.channelSpecs.push(channelSpec);
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
@@ -398,6 +490,7 @@ export class ScopeWindow extends DebugWindowBase {
             this.triggerSpec.trigRtOffset = Number(lineParts[5]);
           }
         }
+        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
         // parse trigger spec update
@@ -405,6 +498,7 @@ export class ScopeWindow extends DebugWindowBase {
         if (lineParts.length > 2) {
           this.triggerSpec.trigHoldoff = Number(lineParts[2]);
         }
+        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[1].toUpperCase() == 'CLEAR') {
         // clear all channels
@@ -508,6 +602,7 @@ export class ScopeWindow extends DebugWindowBase {
 
   private updateScopeChannelLabel(name: string, colorString: string): void {
     if (this.debugWindow) {
+      this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
       try {
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
@@ -523,7 +618,7 @@ export class ScopeWindow extends DebugWindowBase {
                   }
 
                   // Add new label
-                  const newLabel = createColoredLabel(${name}, ${colorString}); // Magenta
+                  const newLabel = createColoredLabel('${name}', '${colorString}'); // Magenta
                   labelsDivision.appendChild(newLabel);
                 }
           })();
@@ -542,11 +637,12 @@ export class ScopeWindow extends DebugWindowBase {
 
   private drawCanvasBorder(canvasName: string, gridColor: string) {
     if (this.debugWindow) {
+      this.logMessage(`at drawCanvasBorder(${canvasName}, ${gridColor})`);
       try {
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
-            const canvas = document.getElementById(${canvasName});
+            const canvas = document.getElementById('${canvasName}');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
@@ -554,8 +650,8 @@ export class ScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the border color and width
-                const borderColor = '${gridColor}'; // Magenta
-                const borderWidth = 2; // should be 1?
+                const borderColor = '${gridColor}'; // was Red #ff0000 for testing
+                const borderWidth = 3; // should be 1?
 
                 // Draw the border
                 ctx.strokeStyle = borderColor;
