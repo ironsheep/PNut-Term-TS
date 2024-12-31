@@ -29,7 +29,8 @@ export interface ScopeDisplaySpec {
 
 export interface ScopeChannelSpec {
   name: string;
-  color: DebugColor;
+  color: string;
+  gridColor: string;
   minValue: number;
   maxValue: number;
   ySize: number;
@@ -101,6 +102,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     //   HIDEXY
     console.log(`CL: at parseScopeDeclaration()`);
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
+    displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
@@ -111,8 +113,8 @@ export class DebugScopeWindow extends DebugWindowBase {
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
     displaySpec.rate = 1;
-    //displaySpec.window.background = bkgndColor;
-    //displaySpec.window.grid = gridColor;
+    displaySpec.window.background = bkgndColor.rgbString;
+    displaySpec.window.grid = gridColor.rgbString;
 
     // now parse overrides to defaults
     console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
@@ -170,9 +172,11 @@ export class DebugScopeWindow extends DebugWindowBase {
     // calculate overall canvas sizes then window size from them!
     if (this.channelSpecs.length == 0) {
       // create a default channelSpec for only channel
+      const defaultColor: DebugColor = new DebugColor('GREEN');
       this.channelSpecs.push({
         name: 'Channel 0',
-        color: new DebugColor('GREEN'),
+        color: defaultColor.rgbString,
+        gridColor: defaultColor.gridRgbString,
         minValue: 0,
         maxValue: 255,
         ySize: this.displaySpec.size.height,
@@ -183,6 +187,10 @@ export class DebugScopeWindow extends DebugWindowBase {
         lgndShowMinLine: true
       });
     }
+
+    // NOTES: Chip's size estimation:
+    //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
+    //  window height should be (max-min+1) + (2 * 10); // 10 is for space above channel and below channel
 
     const channelCanvases: string[] = [];
     let windowCanvasHeight: number = 0;
@@ -203,7 +211,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
 
-    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 2; // 20 is for the channel titles + 20 for titlebar + 2 for bottom border
+    //const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 2; // 20 is for the channel titles + 20 for titlebar + 2 for bottom border
+    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 20 + 2; // 20 is for the channel titles + 2 for bottom border
     const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
     const windowWidth = this.displaySpec.size.width + 2 * 2; // 2 is for the border
 
@@ -214,9 +223,6 @@ export class DebugScopeWindow extends DebugWindowBase {
       height: windowHeight,
       x: this.displaySpec.position.x,
       y: this.displaySpec.position.y,
-      title: displayName,
-      autoHideMenuBar: true, // don't show menu bar
-      show: true, // Show the window immediately (when false, no events?!)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
@@ -249,11 +255,6 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
       if (this.debugWindow) {
-        try {
-          //this.debugWindow.setTitle(displayName + 'C'); // working!!
-        } catch (error) {
-          this.logMessage(`Failed to set title: ${error}`);
-        }
         // The following only works for linux/windows
         if (process.platform !== 'darwin') {
           try {
@@ -268,41 +269,12 @@ export class DebugScopeWindow extends DebugWindowBase {
       }
     });
 
-    // and load this window .html
-    /*
-    const htmlContentOld = `
-      <html>
-        <head>
-          <meta charset="UTF-8"></meta>
-          <title>${displayName}A</title>
-          <style>
-            body {
-              margin: 0;
-              font-family: Arial, sans-serif;
-              font-size: 12px;
-              background-color: ${this.displaySpec.window.background.rgbString};
-              color:rgb(202, 224, 33);
-            }
-            p {
-              margin: 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="channel-titles"></div>
-          <div id="channels">${channelCanvases.join(' ')}</div>
-        </body>
-      </html>
-    `;
-    */
-
-    //this.logMessage(`at createDebugWindow() SCOPE with bgColor of: [${this.displaySpec.window.background.rgbString}]`);
-
+    // and load this window .html content
     const htmlContent = `
     <html>
       <head>
         <meta charset="UTF-8"></meta>
-        <title>${displayName}A</title>
+        <title>${displayName}</title>
         <style>
           body {
             display: flex;
@@ -310,7 +282,7 @@ export class DebugScopeWindow extends DebugWindowBase {
             margin: 0;
             font-family: Arial, sans-serif;
             font-size: 12px;
-            background-color: #000000;
+            background-color: ${this.displaySpec.window.background};
             color:rgb(191, 213, 93);
           }
           #channel-titles {
@@ -319,16 +291,18 @@ export class DebugScopeWindow extends DebugWindowBase {
             justify-content: flex-start;
             align-items: flex-start;
             flex-grow: 0;
+            margin: 0px 2px 0px 2px;   // top, right, bottom, left
           }
           #channels {
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
             flex-grow: 1;
+            margin: 0;
           }
           canvas {
-            margin: 2;
-            background-color:rgba(255, 255, 255, 0.63);
+            padding: 10px 0px 10px 0px;   // top, right, bottom, left
+            background-color:${this.displaySpec.window.background};
           }
           p {
             margin: 0;
@@ -357,29 +331,31 @@ export class DebugScopeWindow extends DebugWindowBase {
       this.logMessage('at did-finish-load');
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
-        this.updateScopeChannelLabel(channelSpec.name, channelSpec.color.rgbString);
-        const gridColor: string = channelSpec.color.gridRgbString;
+        this.updateScopeChannelLabel(channelSpec.name, channelSpec.color);
+        const channelGridColor: string = channelSpec.gridColor;
+        const windowGridColor: string = this.displaySpec.window.grid;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
-        if (channelSpec.lgndShowMax) {
-          this.drawHorizontalValue(canvasName, channelSpec.maxValue, gridColor);
+        if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
+          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
-        if (channelSpec.lgndShowMin) {
-          this.drawHorizontalValue(canvasName, channelSpec.minValue, gridColor);
+        if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
+          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
         if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
-          this.drawHorizontalLineAndValue(canvasName, channelSpec.maxValue, gridColor);
+          this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
         if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
-          this.drawHorizontalLineAndValue(canvasName, channelSpec.minValue, gridColor);
+          this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
-        if (channelSpec.lgndShowMaxLine) {
-          this.drawHorizontalLine(canvasName, channelSpec.maxValue, gridColor);
+        if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
-        if (channelSpec.lgndShowMinLine) {
-          this.drawHorizontalLine(canvasName, channelSpec.minValue, gridColor);
+        if (!channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
-        this.drawCanvasBorder(canvasName, gridColor);
+        // and border should be gray,4
+        this.drawCanvasBorder(canvasName, windowGridColor);
       }
     });
   }
@@ -465,7 +441,9 @@ export class DebugScopeWindow extends DebugWindowBase {
             colorBrightness = Number(lineParts[8]);
           }
         }
-        channelSpec.color = new DebugColor(colorName, colorBrightness);
+        const channelColor = new DebugColor(colorName, colorBrightness);
+        channelSpec.color = channelColor.rgbString;
+        channelSpec.gridColor = channelColor.gridRgbString;
         // and record spec for this channel
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
@@ -604,23 +582,18 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
       try {
+        const channelLabel: string = `<span style="color: ${colorString}; margin-right: 10px">${name}</span>`;
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
-                const labelsDivision = document.getElementById('channel-titles');
-                if (labelsDivision) {
-                  // Function to create a colored label
-                  function createColoredLabel(text: string, color: string): HTMLSpanElement {
-                    const span = document.createElement('span');
-                    span.innerText = text;
-                    span.style.color = color;
-                    span.style.marginRight = '10px'; // Add some spacing between labels
-                    return span;
-                  }
-
-                  // Add new label
-                  const newLabel = createColoredLabel('${name}', '${colorString}'); // Magenta
-                  labelsDivision.appendChild(newLabel);
-                }
+            const labelsDivision = document.getElementById('channel-titles');
+            if (labelsDivision) {
+              let labelContent = labelsDivision.innerText;
+              if (labelContent.includes('{labels here}')) {
+                labelContent = '';
+              }
+              labelContent += '${channelLabel}';
+              labelsDivision.innerHTML = labelContent;
+            }
           })();
         `);
       } catch (error) {
@@ -629,11 +602,92 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalValue(canvasName: string, maxValue: number, gridColor: string) {}
+  private drawHorizontalLine(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {
+    if (this.debugWindow) {
+      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
+      try {
+        const adjYOffset = Math.min(channelSpec.maxValue, YOffset);
+        const lineOffset = channelSpec.ySize - (adjYOffset - channelSpec.minValue);
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('${canvasName}');
 
-  private drawHorizontalLineAndValue(canvasName: string, maxValue: number, gridColor: string) {}
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
 
-  private drawHorizontalLine(canvasName: string, maxValue: number, gridColor: string) {}
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${gridColor}';
+                const lineWidth = 1;
+
+                // Set the dash pattern
+                ctx.setLineDash([5, 3]); // 5px dash, 3px gap
+
+                // Draw the line
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height - ${lineOffset});
+                ctx.lineTo(canvas.width, canvas.height - ${lineOffset});
+                ctx.stroke();
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update canvas border:', error);
+      }
+    }
+  }
+
+  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {}
+
+  private drawHorizontalLineAndValue(
+    canvasName: string,
+    channelSpec: ScopeChannelSpec,
+    YOffset: number,
+    gridColor: string
+  ) {
+    if (this.debugWindow) {
+      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
+      try {
+        const adjYOffset = Math.min(channelSpec.maxValue, YOffset);
+        const lineOffset = channelSpec.ySize - (adjYOffset - channelSpec.minValue);
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('${canvasName}');
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${gridColor}';
+                const lineWidth = 1;
+
+                // Set the dash pattern
+                ctx.setLineDash([5, 3]); // 5px dash, 3px gap
+
+                // Draw the line
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height - ${lineOffset});
+                ctx.lineTo(canvas.width, canvas.height - ${lineOffset});
+                ctx.stroke();
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update canvas border:', error);
+      }
+    }
+  }
 
   private drawCanvasBorder(canvasName: string, gridColor: string) {
     if (this.debugWindow) {
@@ -652,6 +706,9 @@ export class DebugScopeWindow extends DebugWindowBase {
                 // Set the border color and width
                 const borderColor = '${gridColor}'; // was Red #ff0000 for testing
                 const borderWidth = 3; // should be 1?
+
+                // Set the solid line pattern
+                ctx.setLineDash([]); // Empty array for solid line
 
                 // Draw the border
                 ctx.strokeStyle = borderColor;

@@ -6,7 +6,6 @@
 'use strict';
 
 import { Context } from '../utils/context';
-import { DebugColor } from './debugColor';
 
 // src/classes/debugWindow.ts
 
@@ -21,8 +20,8 @@ export interface Position {
 }
 
 export interface WindowColor {
-  background: DebugColor;
-  grid: DebugColor;
+  background: string; // hex string '#RRGGBB'
+  grid: string;
 }
 
 export abstract class DebugWindowBase {

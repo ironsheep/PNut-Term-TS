@@ -36,7 +36,22 @@ export class DebugColor {
     this._dimmedColorValue = this.adjustBrightness(this._colorValue, brightness);
     // cache the dimmed color
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
-    this.gridColor = this.hexColorString(this.adjustBrightness(this._colorValue, 4));
+    // note grid color is always brightness 4
+    this.gridColor =
+      brightness === 4 ? this.dimmedColor : this.hexColorString(this.adjustBrightness(this._colorValue, 4));
+  }
+
+  public get colorName(): string {
+    return this.name;
+  }
+
+  public get rgbValue(): number {
+    return this._dimmedColorValue;
+  }
+
+  public get rgbString(): string {
+    //console.log(`rgbString() -> ${this.dimmedColor}`);
+    return this.dimmedColor;
   }
 
   private static colorNameToHexString(colorName: string): string {
@@ -45,6 +60,7 @@ export class DebugColor {
       console.log(`colorNameToHexString: Unknown color name: ${colorName}`);
       hexString = '#5a5a5a'; // default to gray
     }
+    //console.log(`colorNameToHexString: ${colorName} -> ${hexString}`);
     return hexString;
   }
 
@@ -55,43 +71,39 @@ export class DebugColor {
 
   private static colorNameToNumber(colorName: string): number {
     const rgbHexString: string = DebugColor.colorNameToHexString(colorName);
-    return DebugColor.rgbHexStringToNumber(rgbHexString);
+    const value: number = DebugColor.rgbHexStringToNumber(rgbHexString);
+    //console.log(`colorNameToNumber: ${colorName} -> ${rgbHexString} (${value})`);
+    return value;
   }
 
   private adjustBrightness(color: number, brightness: number): number {
-    let adjustedColor: number;
+    let adjustedColor: number = 0x000000;
 
-    if (brightness === 0) {
+    if (brightness === 0 || color === 0) {
       adjustedColor = 0x000000; // Special handling for brightness 0: return black
     } else if (brightness === 15) {
       adjustedColor = color; // Special handling for brightness 15: return original color
     } else {
-      const r = ((color >> 16) & 0xff) * (brightness / 15);
-      const g = ((color >> 8) & 0xff) * (brightness / 15);
-      const b = (color & 0xff) * (brightness / 15);
-      adjustedColor = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
+      try {
+        const r = ((color >> 16) & 0xff) * (brightness / 15);
+        const g = ((color >> 8) & 0xff) * (brightness / 15);
+        const b = (color & 0xff) * (brightness / 15);
+        adjustedColor = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
+      } catch (error) {
+        console.log(`Error adjusting brightness: ${error}`);
+      }
     }
 
+    console.log(`adjustBrightness(0x${color.toString(16)},${brightness}) -> 0x${adjustedColor.toString(16)}`);
+
     return adjustedColor;
-  }
-
-  public get colorName(): string {
-    return this.name;
-  }
-
-  public get rgbValue(): number {
-    return this.adjustBrightness(this._colorValue, this._brightness);
-  }
-
-  public get rgbString(): string {
-    return this.dimmedColor;
   }
 
   public get gridRgbString(): string {
     return this.gridColor;
   }
 
-  public hexColorString(colorValue: number): string {
+  private hexColorString(colorValue: number): string {
     return `#${colorValue.toString(16).padStart(6, '0')}`;
   }
 
