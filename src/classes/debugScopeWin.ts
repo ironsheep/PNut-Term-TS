@@ -62,6 +62,8 @@ export class DebugScopeWindow extends DebugWindowBase {
   private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
+  private channelInset: number = 10; // 10 pixels from top and bottom of window
+  private contentInset: number = 10; // 10 pixels from left and right of window
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
@@ -190,16 +192,17 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // NOTES: Chip's size estimation:
     //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
-    //  window height should be (max-min+1) + (2 * 10); // 10 is for space above channel and below channel
+    //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
     const channelCanvases: string[] = [];
     let windowCanvasHeight: number = 0;
     if (this.channelSpecs.length > 0) {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
+        const adjHeight = channelSpec.ySize + 2 * this.channelInset; // inset is above and below
         // create a canvas for each channel
         channelCanvases.push(
-          `<canvas id="channel-${index}" width="${this.displaySpec.size.width}" height="${channelSpec.ySize}"></canvas>`
+          `<canvas id="channel-${index}" width="${this.displaySpec.size.width}" height="${adjHeight}"></canvas>`
         );
         // account for channel height
         windowCanvasHeight += channelSpec.ySize;
@@ -214,7 +217,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     //const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 2; // 20 is for the channel titles + 20 for titlebar + 2 for bottom border
     const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 20 + 2; // 20 is for the channel titles + 2 for bottom border
     const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
-    const windowWidth = this.displaySpec.size.width + 2 * 2; // 2 is for the border
+    const windowWidth = this.displaySpec.size.width + 2 * this.contentInset; // contentInset' for the Xoffset into window for canvas
 
     // now generate the window with the calculated sizes
     const displayName: string = this.windowTitle;
@@ -290,19 +293,20 @@ export class DebugScopeWindow extends DebugWindowBase {
             flex-direction: column;
             justify-content: flex-start;
             align-items: flex-start;
+            justify-content: center; // Center items vertically
             flex-grow: 0;
-            margin: 0px 2px 0px 2px;   // top, right, bottom, left
+            margin: 10px 10px 10px 10px;   // top, right, bottom, left
           }
           #channels {
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            flex-grow: 1;
-            margin: 0;
+            flex-grow: 0;
+            margin: 0px 10px 0px 10px;   // top, right, bottom, left
           }
           canvas {
-            padding: 10px 0px 10px 0px;   // top, right, bottom, left
             background-color:${this.displaySpec.window.background};
+            margin: 0;
           }
           p {
             margin: 0;
@@ -336,22 +340,29 @@ export class DebugScopeWindow extends DebugWindowBase {
         const windowGridColor: string = this.displaySpec.window.grid;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
+        //  %abcd where a=enable max legend, b=min legend, c=max line, d=min line
         if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
+          //  %1x0x => max legend, NOT max line, so value ONLY
           this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
         if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
+          //  %x1x0 => min legend, NOT min line, so value ONLY
           this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
         if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+          //  %1x1x => max legend, max line, so show value and line!
           this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
         if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+          //  %x1x1 => min legend, min line, so show value and line!
           this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
         if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+          //  %0x1x => NOT max legend, max line, show line ONLY
           this.drawHorizontalLine(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
         }
         if (!channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+          //  %x0x1 => NOT min legend, min line, show line ONLY
           this.drawHorizontalLine(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
         }
         // and border should be gray,4
@@ -606,8 +617,9 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
       try {
-        const adjYOffset = Math.min(channelSpec.maxValue, YOffset);
-        const lineOffset = channelSpec.ySize - (adjYOffset - channelSpec.minValue);
+        const atTop: boolean = YOffset == channelSpec.maxValue;
+        const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
+        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -620,17 +632,17 @@ export class DebugScopeWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${gridColor}';
-                const lineWidth = 1;
+                const lineWidth = 2;
 
                 // Set the dash pattern
-                ctx.setLineDash([5, 3]); // 5px dash, 3px gap
+                ctx.setLineDash([3, 3]); // 3px dash, 3px gap
 
                 // Draw the line
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
-                ctx.moveTo(0, canvas.height - ${lineOffset});
-                ctx.lineTo(canvas.width, canvas.height - ${lineOffset});
+                ctx.moveTo(0, ${lineYOffset});
+                ctx.lineTo(canvas.width, ${lineYOffset});
                 ctx.stroke();
               }
             }
@@ -642,19 +654,17 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {}
-
-  private drawHorizontalLineAndValue(
-    canvasName: string,
-    channelSpec: ScopeChannelSpec,
-    YOffset: number,
-    gridColor: string
-  ) {
+  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
+      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${gridColor})`);
       try {
-        const adjYOffset = Math.min(channelSpec.maxValue, YOffset);
-        const lineOffset = channelSpec.ySize - (adjYOffset - channelSpec.minValue);
+        const atTop: boolean = YOffset == channelSpec.maxValue;
+        const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
+        const textYOffset: number = lineYOffset + 3; // offset text to centerline
+        const textXOffset: number = 5;
+        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
+        const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
+        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -667,18 +677,74 @@ export class DebugScopeWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${gridColor}';
-                const lineWidth = 1;
+                //const lineWidth = 2;
 
                 // Set the dash pattern
-                ctx.setLineDash([5, 3]); // 5px dash, 3px gap
+                //ctx.setLineDash([]); // Empty array for solid line
+
+                // Add text
+                ctx.font = '9px Arial';
+                ctx.fillStyle = lineColor;
+                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update canvas border:', error);
+      }
+    }
+  }
+
+  private drawHorizontalLineAndValue(
+    canvasName: string,
+    channelSpec: ScopeChannelSpec,
+    YOffset: number,
+    gridColor: string
+  ) {
+    if (this.debugWindow) {
+      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
+      try {
+        const atTop: boolean = YOffset == channelSpec.maxValue;
+        const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
+        const textYOffset: number = lineYOffset + 3; // offset text to centerline
+        const textXOffset: number = 5;
+        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
+        const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
+        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('${canvasName}');
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${gridColor}';
+                const lineWidth = 2;
+
+                // Set the dash pattern
+                ctx.setLineDash([3, 3]); // 5px dash, 3px gap
+
+                // Measure the text width
+                ctx.font = '9px Arial';
+                const textMetrics = ctx.measureText('${valueText}');
+                const textWidth = textMetrics.width;
 
                 // Draw the line
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
-                ctx.moveTo(0, canvas.height - ${lineOffset});
-                ctx.lineTo(canvas.width, canvas.height - ${lineOffset});
+                ctx.moveTo(textWidth + 8, ${lineYOffset}); // start of line
+                ctx.lineTo(canvas.width, ${lineYOffset}); // draw to end of line
                 ctx.stroke();
+
+                // Add text
+                ctx.fillStyle = lineColor;
+                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
               }
             }
           })();

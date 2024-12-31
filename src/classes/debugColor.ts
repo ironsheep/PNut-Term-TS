@@ -14,6 +14,7 @@ export class DebugColor {
   private _brightness: number;
   private dimmedColor: string;
   private gridColor: string;
+  private gridBrightness: number = 6; // chip says 4 but 6 looks better on Linux
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
@@ -38,7 +39,9 @@ export class DebugColor {
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
     // note grid color is always brightness 4
     this.gridColor =
-      brightness === 4 ? this.dimmedColor : this.hexColorString(this.adjustBrightness(this._colorValue, 4));
+      brightness === this.gridBrightness
+        ? this.dimmedColor
+        : this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
   }
 
   public get colorName(): string {
