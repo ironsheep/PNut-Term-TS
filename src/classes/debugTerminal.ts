@@ -34,6 +34,7 @@ export class DebugTerminal {
   private mainWindowOpen: boolean = false;
   private logFilenameBase: string = 'myapp';
   private loggingToFile: boolean = false;
+  private waitingForINIT: boolean = true;
   private logFileSpec: string = '';
   private mainWindowGeometry: WindowCoordinates = {
     xOffset: 0,
@@ -121,10 +122,13 @@ export class DebugTerminal {
     // Handle received data
     this.appendLog(data);
     this.updateStatus();
-    if (data.charAt(0) === '`') {
+    if (data.charAt(0) === '`' && !this.waitingForINIT) {
       // handle debug command
       this.handleDebugCommand(data);
     } else if (data.startsWith('Cog') || data.startsWith('Prop')) {
+      if (data.startsWith('Cog')) {
+        this.waitingForINIT = false;
+      }
       if (this.isLogging) {
         this.logMessage(`TERM: Received: ${data}`);
       }

@@ -123,9 +123,11 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // now parse overrides to defaults
     console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
-    displaySpec.displayName = lineParts[1];
-    if (lineParts.length > 2) {
+    if (lineParts.length > 1) {
+      displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
+    }
+    if (lineParts.length > 2) {
       for (let index = 2; index < lineParts.length; index++) {
         const element = lineParts[index];
         switch (element.toUpperCase()) {
@@ -479,6 +481,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
+        //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
         if (lineParts.length > 2) {
           const desiredChannel: number = Number(lineParts[2]);
           if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
@@ -487,13 +490,19 @@ export class DebugScopeWindow extends DebugWindowBase {
             this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
           }
           if (lineParts.length > 3) {
-            this.triggerSpec.trigArmLevel = Number(lineParts[3]);
-          }
-          if (lineParts.length > 4) {
-            this.triggerSpec.trigLevel = Number(lineParts[4]);
-          }
-          if (lineParts.length > 5) {
-            this.triggerSpec.trigRtOffset = Number(lineParts[5]);
+            if (lineParts[3].toUpperCase() == 'TRIGGER') {
+              if (lineParts.length >= 4) {
+                this.triggerSpec.trigHoldoff = Number(lineParts[4]);
+              }
+            } else {
+              this.triggerSpec.trigArmLevel = Number(lineParts[3]);
+            }
+            if (lineParts.length > 4) {
+              this.triggerSpec.trigLevel = Number(lineParts[4]);
+            }
+            if (lineParts.length > 5) {
+              this.triggerSpec.trigRtOffset = Number(lineParts[5]);
+            }
           }
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
@@ -515,7 +524,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       } else if (lineParts[1].toUpperCase() == 'SAVE') {
         // save the window to a file
         // FIXME: UNDONE: add code save the window to a file here
-      } else if (lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') {
+      } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
         if (this.isFirstNumericData) {
           this.isFirstNumericData = false;
           this.initChannelSamples();
@@ -596,12 +605,25 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private parseLegend(legend: string, channelSpec: ScopeChannelSpec): void {
     // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
+    let validLegend: boolean = false;
     if (legend.length > 4 && legend.charAt(0) == '%') {
       channelSpec.lgndShowMax = legend.charAt(1) == '1' ? true : false;
       channelSpec.lgndShowMin = legend.charAt(2) == '1' ? true : false;
       channelSpec.lgndShowMaxLine = legend.charAt(3) == '1' ? true : false;
       channelSpec.lgndShowMinLine = legend.charAt(4) == '1' ? true : false;
-    } else {
+      validLegend = true;
+    } else if (legend.charAt(0) >= '0' && legend.charAt(0) <= '9') {
+      // get integer value of legend and ensure it is within range 0-15
+      const legendValue = Number(legend);
+      if (legendValue >= 0 && legendValue <= 15) {
+        channelSpec.lgndShowMax = (legendValue & 0x1) == 0x1 ? true : false;
+        channelSpec.lgndShowMin = (legendValue & 0x2) == 0x2 ? true : false;
+        channelSpec.lgndShowMaxLine = (legendValue & 0x4) == 0x4 ? true : false;
+        channelSpec.lgndShowMinLine = (legendValue & 0x8) == 0x8 ? true : false;
+        validLegend = true;
+      }
+    }
+    if (!validLegend) {
       this.logMessage(`at parseLegend() with invalid legend: ${legend}`);
       channelSpec.lgndShowMax = false;
       channelSpec.lgndShowMin = false;
