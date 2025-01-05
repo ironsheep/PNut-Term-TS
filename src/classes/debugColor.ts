@@ -9,14 +9,16 @@
 // Name-to-RGB hex lookup
 export class DebugColor {
   private _colorValue: number;
+  private _colorHexValue: string;
   private _dimmedColorValue: number;
+  private _calcBrightness: number;
   private name: string;
   private _brightness: number;
   private dimmedColor: string;
   private gridColor: string;
   private fontColor: string;
   private gridBrightness: number = 6; // chip says 4 but 6 looks better on Linux
-  private fontBrightness: number = 8; // linux, grid color too dark
+  private fontBrightness: number = 12; // linux, grid color too dark
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
@@ -35,19 +37,30 @@ export class DebugColor {
     // default birghtness is 8 when not specified
     this.name = colorName;
     this._colorValue = DebugColor.colorNameToNumber(colorName);
+    this._colorHexValue = DebugColor.colorNameToHexString(colorName);
+    this._calcBrightness = this.brightnessForHex(this._colorHexValue);
+    this.fontBrightness = this._calcBrightness < 100 ? 12 : 6; // adjust font brightness based on starting brightness
     this._brightness = brightness;
-    this._dimmedColorValue = this.adjustBrightness(this._colorValue, brightness);
+    this._dimmedColorValue = this.adjustBrightness(this._colorValue, this._brightness);
     // cache the dimmed color
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
     // note grid color is always brightness 4
     this.gridColor =
-      brightness === this.gridBrightness
+      this._brightness === this.gridBrightness
         ? this.dimmedColor
         : this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
     this.fontColor =
-      brightness === this.fontBrightness
+      this._brightness === this.fontBrightness
         ? this.dimmedColor
         : this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
+  }
+
+  private brightnessForHex(hex: string): number {
+    // return 0-255 brightness value for a hex color
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    return Math.round((r * 299 + g * 587 + b * 114) / 1000);
   }
 
   public get colorName(): string {
