@@ -65,6 +65,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   private channelInset: number = 10; // 10 pixels from top and bottom of window
   private contentInset: number = 10; // 10 pixels from left and right of window
   private canvasMargin: number = 3; // 3 pixels from left, right, top, and bottom of canvaas
+  private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
@@ -624,21 +625,37 @@ export class DebugScopeWindow extends DebugWindowBase {
     didScroll: boolean
   ): void {
     if (this.debugWindow) {
+      if (this.dbgUpdateCount > 0) {
+        this.dbgUpdateCount--;
+      }
+      if (this.dbgUpdateCount == 0) {
+        return;
+      }
       this.logMessage(
         `at updateScopeChannelLabel(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
       );
       try {
         const currSample: number = samples[samples.length - 1];
         const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        const currSampleInverted: number = channelSpec.maxValue - 1 - currSample;
-        const prevSampleInverted: number = channelSpec.maxValue - 1 - prevSample;
+        const currSampleInverted: number = channelSpec.maxValue - currSample;
+        const prevSampleInverted: number = channelSpec.maxValue - prevSample;
         const lineWidth: number = 2;
-        const currYOffset: number = currSampleInverted + channelSpec.yBaseOffset + 1 + this.canvasMargin;
-        const prevYOffset: number = prevSampleInverted + channelSpec.yBaseOffset + 1 + this.canvasMargin;
+        // coord for current and previous samples
         const currXOffset: number = this.canvasMargin + (samples.length - 1) * lineWidth;
+        const currYOffset: number = currSampleInverted + channelSpec.yBaseOffset + this.canvasMargin;
         const prevXOffset: number = this.canvasMargin + (samples.length - 2) * lineWidth;
+        const prevYOffset: number = prevSampleInverted + channelSpec.yBaseOffset + this.canvasMargin;
+        this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
+        // draw region for the channel
+        const drawWidth: number = this.displaySpec.nbrSamples * lineWidth;
+        const drawHeight: number = channelSpec.ySize;
+        const drawXOffset: number = this.canvasMargin;
+        const drawYOffset: number = this.channelInset + this.canvasMargin;
         const channelColor: string = channelSpec.color;
-        this.logMessage(`  -- currSample=(${currSample}) @ rc=[${currXOffset},${currYOffset}]`);
+        //this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
+        this.logMessage(
+          `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}]`
+        );
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -653,18 +670,39 @@ export class DebugScopeWindow extends DebugWindowBase {
                 const lineColor = '${channelColor}';
                 const lineWidth = ${lineWidth};
                 const scrollSpeed = lineWidth;
-                const canvWidth = canvas.width - (2 * ${this.canvasMargin});
-                const canvHeight = canvas.height - (2 * ${this.canvasMargin});
-                const canvXOffset = ${this.canvasMargin};
-                const canvYOffset = ${this.canvasMargin};
+                const canvWidth = ${drawWidth};
+                const canvHeight = ${drawHeight};
+                const canvXOffset = ${drawXOffset};
+                const canvYOffset = ${drawYOffset};
 
                 if (${didScroll}) {
-                  // Move the canvas content to the left
-                  //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                  ctx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-                  // Clear the right-most part
-                  //  clearRect(x, y, width, height)
-                  ctx.clearRect(canvWidth - scrollSpeed + canvXOffset, canvYOffset, scrollSpeed, canvHeight);
+                  // Create an off-screen canvas
+                  const offScreenCanvas = document.createElement('canvas');
+                  offScreenCanvas.width = canvWidth - scrollSpeed;
+                  offScreenCanvas.height = canvHeight;
+                  const offScreenCtx = offScreenCanvas.getContext('2d');
+
+                  if (offScreenCtx) {
+                    // Copy the relevant part of the canvas to the off-screen canvas
+                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+                    offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
+
+                    // Clear the original canvas
+                    //  clearRect(x, y, width, height)
+                    ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
+
+                    // Copy the content back to the original canvas
+                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+                    ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
+
+                    // the following approach just OR'd the images, maybe due to overlap...
+                    // Move the canvas content to the left
+                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+                    //ctx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
+                    // Clear the right-most part
+                    //  clearRect(x, y, width, height)
+                    //ctx.clearRect(canvXOffset + canvWidth - scrollSpeed, canvYOffset, scrollSpeed, canvHeight);
+                  }
                 }
 
                 // Draw the new line segment
@@ -681,6 +719,9 @@ export class DebugScopeWindow extends DebugWindowBase {
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }
+      //if (didScroll) {
+      //  this.dbgUpdateCount = 0; // stop after first scroll
+      //}
     }
   }
 
@@ -722,7 +763,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           })();
         `);
       } catch (error) {
-        console.error('Failed to update canvas border:', error);
+        console.error('Failed to update line:', error);
       }
     }
   }
@@ -733,7 +774,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
-        const textYOffset: number = lineYOffset + 3; // offset text to centerline
+        const textYOffset: number = lineYOffset + 0; // offset text to centerline
         const textXOffset: number = 5;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
@@ -764,7 +805,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           })();
         `);
       } catch (error) {
-        console.error('Failed to update canvas border:', error);
+        console.error('Failed to update text:', error);
       }
     }
   }
@@ -779,9 +820,11 @@ export class DebugScopeWindow extends DebugWindowBase {
       this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
-        const lineYOffset: number = (atTop ? 0 : channelSpec.ySize) + this.channelInset + this.canvasMargin;
+        const lineWidth: number = 2;
+        const lineYOffset: number =
+          (atTop ? 0 - 1 : channelSpec.ySize + lineWidth / 2) + this.channelInset + this.canvasMargin;
         const lineXOffset: number = this.canvasMargin;
-        const textYOffset: number = lineYOffset + 3; // offset text to centerline
+        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
         const textXOffset: number = 5 + this.canvasMargin;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
@@ -797,8 +840,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
-                const lineWidth = 2;
+                const lineColor = '#FFFF00'; // '${gridColor}';
+                const lineWidth = ${lineWidth};
                 const canWidth = canvas.width - (2 * ${this.canvasMargin});
 
                 // Set the dash pattern
@@ -810,7 +853,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 const textWidth = textMetrics.width;
 
                 // Draw the line
-                ctx.strokeStyle = lineColor;
+                ctx.strokeStyle = '#00FFFF'; // lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
                 ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset}); // start of line
@@ -825,7 +868,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           })();
         `);
       } catch (error) {
-        console.error('Failed to update canvas border:', error);
+        console.error('Failed to update line & text:', error);
       }
     }
   }
@@ -845,7 +888,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the border color and width
-                const borderColor = '${gridColor}'; // was Red #ff0000 for testing
+                const borderColor = '#E066D6'; // '${gridColor}'; // was Red #FF0000 for testing
                 const borderWidth = ${this.canvasMargin}; // should be 1? vs. 3?
 
                 // Set the solid line pattern

@@ -14,7 +14,9 @@ export class DebugColor {
   private _brightness: number;
   private dimmedColor: string;
   private gridColor: string;
+  private fontColor: string;
   private gridBrightness: number = 6; // chip says 4 but 6 looks better on Linux
+  private fontBrightness: number = 7; // linux, grid color too dark
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
@@ -42,6 +44,10 @@ export class DebugColor {
       brightness === this.gridBrightness
         ? this.dimmedColor
         : this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
+    this.fontColor =
+      brightness === this.fontBrightness
+        ? this.dimmedColor
+        : this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
   }
 
   public get colorName(): string {
@@ -55,6 +61,14 @@ export class DebugColor {
   public get rgbString(): string {
     //console.log(`rgbString() -> ${this.dimmedColor}`);
     return this.dimmedColor;
+  }
+
+  public get gridRgbString(): string {
+    return this.gridColor;
+  }
+
+  public get fontRgbString(): string {
+    return this.fontColor;
   }
 
   private static colorNameToHexString(colorName: string): string {
@@ -100,10 +114,6 @@ export class DebugColor {
     console.log(`adjustBrightness(0x${color.toString(16)},${brightness}) -> 0x${adjustedColor.toString(16)}`);
 
     return adjustedColor;
-  }
-
-  public get gridRgbString(): string {
-    return this.gridColor;
   }
 
   private hexColorString(colorValue: number): string {
