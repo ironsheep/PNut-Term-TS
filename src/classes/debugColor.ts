@@ -16,7 +16,7 @@ export class DebugColor {
   private gridColor: string;
   private fontColor: string;
   private gridBrightness: number = 6; // chip says 4 but 6 looks better on Linux
-  private fontBrightness: number = 7; // linux, grid color too dark
+  private fontBrightness: number = 8; // linux, grid color too dark
 
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',

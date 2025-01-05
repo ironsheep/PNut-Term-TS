@@ -31,6 +31,7 @@ export interface ScopeChannelSpec {
   name: string;
   color: string;
   gridColor: string;
+  textColor: string;
   minValue: number;
   maxValue: number;
   ySize: number;
@@ -181,6 +182,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         name: 'Channel 0',
         color: defaultColor.rgbString,
         gridColor: defaultColor.gridRgbString,
+        textColor: defaultColor.fontRgbString,
         minValue: 0,
         maxValue: 255,
         ySize: this.displaySpec.size.height,
@@ -338,25 +340,38 @@ export class DebugScopeWindow extends DebugWindowBase {
         const channelSpec = this.channelSpecs[index];
         this.updateScopeChannelLabel(channelSpec.name, channelSpec.color);
         const channelGridColor: string = channelSpec.gridColor;
+        const channelTextColor: string = channelSpec.textColor;
         const windowGridColor: string = this.displaySpec.window.grid;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
         //  %abcd where a=enable max legend, b=min legend, c=max line, d=min line
         if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
           //  %1x0x => max legend, NOT max line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
+          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelTextColor);
         }
         if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
           //  %x1x0 => min legend, NOT min line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
+          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelTextColor);
         }
         if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
           //  %1x1x => max legend, max line, so show value and line!
-          this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
+          this.drawHorizontalLineAndValue(
+            canvasName,
+            channelSpec,
+            channelSpec.maxValue,
+            channelGridColor,
+            channelTextColor
+          );
         }
         if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
           //  %x1x1 => min legend, min line, so show value and line!
-          this.drawHorizontalLineAndValue(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
+          this.drawHorizontalLineAndValue(
+            canvasName,
+            channelSpec,
+            channelSpec.minValue,
+            channelGridColor,
+            channelTextColor
+          );
         }
         if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
           //  %0x1x => NOT max legend, max line, show line ONLY
@@ -456,6 +471,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const channelColor = new DebugColor(colorName, colorBrightness);
         channelSpec.color = channelColor.rgbString;
         channelSpec.gridColor = channelColor.gridRgbString;
+        channelSpec.textColor = channelColor.fontRgbString;
         // and record spec for this channel
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
@@ -625,15 +641,15 @@ export class DebugScopeWindow extends DebugWindowBase {
     didScroll: boolean
   ): void {
     if (this.debugWindow) {
-      if (this.dbgUpdateCount > 0) {
-        this.dbgUpdateCount--;
-      }
-      if (this.dbgUpdateCount == 0) {
-        return;
-      }
-      this.logMessage(
-        `at updateScopeChannelLabel(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
-      );
+      //if (this.dbgUpdateCount > 0) {
+      // DISABLE STOP this.dbgUpdateCount--;
+      //}
+      //if (this.dbgUpdateCount == 0) {
+      //  return;
+      //}
+      //this.logMessage(
+      //  `at updateScopeChannelLabel(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
+      //);
       try {
         const currSample: number = samples[samples.length - 1];
         const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
@@ -645,7 +661,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const currYOffset: number = currSampleInverted + channelSpec.yBaseOffset + this.canvasMargin;
         const prevXOffset: number = this.canvasMargin + (samples.length - 2) * lineWidth;
         const prevYOffset: number = prevSampleInverted + channelSpec.yBaseOffset + this.canvasMargin;
-        this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
+        //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
         // draw region for the channel
         const drawWidth: number = this.displaySpec.nbrSamples * lineWidth;
         const drawHeight: number = channelSpec.ySize;
@@ -653,9 +669,9 @@ export class DebugScopeWindow extends DebugWindowBase {
         const drawYOffset: number = this.channelInset + this.canvasMargin;
         const channelColor: string = channelSpec.color;
         //this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-        this.logMessage(
-          `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}]`
-        );
+        //this.logMessage(
+        //  `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
+        //);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -689,19 +705,13 @@ export class DebugScopeWindow extends DebugWindowBase {
 
                     // Clear the original canvas
                     //  clearRect(x, y, width, height)
-                    ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
+                    //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
+                    // fix? artifact!! (maybe line-width caused?!!!)
+                    ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
 
                     // Copy the content back to the original canvas
                     //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
                     ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-
-                    // the following approach just OR'd the images, maybe due to overlap...
-                    // Move the canvas content to the left
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    //ctx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-                    // Clear the right-most part
-                    //  clearRect(x, y, width, height)
-                    //ctx.clearRect(canvXOffset + canvWidth - scrollSpeed, canvYOffset, scrollSpeed, canvHeight);
                   }
                 }
 
@@ -730,7 +740,9 @@ export class DebugScopeWindow extends DebugWindowBase {
       this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
-        const lineYOffset: number = (atTop ? 0 : channelSpec.ySize) + this.channelInset + this.canvasMargin;
+        const lineWidth: number = 2;
+        const lineYOffset: number =
+          (atTop ? 0 - 1 : channelSpec.ySize + lineWidth / 2) + this.channelInset + this.canvasMargin;
         const lineXOffset: number = this.canvasMargin;
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
         this.debugWindow.webContents.executeJavaScript(`
@@ -745,7 +757,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${gridColor}';
-                const lineWidth = 2;
+                const lineWidth = ${lineWidth};
                 const canWidth = canvas.width - (2 * ${this.canvasMargin});
 
                 // Set the dash pattern
@@ -768,14 +780,14 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {
+  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, textColor: string) {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${gridColor})`);
+      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${textColor})`);
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
-        const textYOffset: number = lineYOffset + 0; // offset text to centerline
-        const textXOffset: number = 5;
+        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
+        const textXOffset: number = 5 + this.canvasMargin;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
@@ -790,7 +802,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
+                const lineColor = '${textColor}';
                 //const lineWidth = 2;
 
                 // Set the dash pattern
@@ -814,10 +826,11 @@ export class DebugScopeWindow extends DebugWindowBase {
     canvasName: string,
     channelSpec: ScopeChannelSpec,
     YOffset: number,
-    gridColor: string
+    gridColor: string,
+    textColor: string
   ) {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
+      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const lineWidth: number = 2;
@@ -840,7 +853,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '#FFFF00'; // '${gridColor}';
+                const lineColor = '${gridColor}';
+                const textColor = '${textColor}';
                 const lineWidth = ${lineWidth};
                 const canWidth = canvas.width - (2 * ${this.canvasMargin});
 
@@ -853,7 +867,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 const textWidth = textMetrics.width;
 
                 // Draw the line
-                ctx.strokeStyle = '#00FFFF'; // lineColor;
+                ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
                 ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset}); // start of line
@@ -861,7 +875,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 ctx.stroke();
 
                 // Add text
-                ctx.fillStyle = lineColor;
+                ctx.fillStyle = textColor;
                 ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
               }
             }
@@ -888,7 +902,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the border color and width
-                const borderColor = '#E066D6'; // '${gridColor}'; // was Red #FF0000 for testing
+                //const borderColor = '#E066D6'; // '${gridColor}'; // was Red #FF0000 for testing
+                const borderColor = '${gridColor}';
                 const borderWidth = ${this.canvasMargin}; // should be 1? vs. 3?
 
                 // Set the solid line pattern
