@@ -212,7 +212,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         // create a canvas for each channel
         channelCanvases.push(`<canvas id="channel-${index}" width="${adjWidth}" height="${adjHeight}"></canvas>`);
         // account for channel height
-        windowCanvasHeight += channelSpec.ySize;
+        windowCanvasHeight += channelSpec.ySize + 2 * this.channelInset + this.channelLineWidth / 2;
       }
     } else {
       // error if NO channel
@@ -221,8 +221,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
 
-    //const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 2; // 20 is for the channel titles + 20 for titlebar + 2 for bottom border
-    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 20 + 20 + 2; // 20 is for the channel titles + 2 for bottom border
+    // set height so no scroller by default
+    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 30; // 20 is for the channel labels, 30 for window menu bar (30 is guess on linux)
     const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
     const windowWidth = this.displaySpec.size.width + 2 * this.contentInset; // contentInset' for the Xoffset into window for canvas
     this.logMessage(
@@ -838,7 +838,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
         const textXOffset: number = 5 + this.canvasMargin;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
+        const valueText: string = this.stringForRangeValue(value);
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
@@ -891,7 +891,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
         const textXOffset: number = 5 + this.canvasMargin;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = value == 0 ? `${value} ` : value > 0 ? `+${value} ` : `${value} `;
+        const valueText: string = this.stringForRangeValue(value);
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
@@ -936,5 +936,12 @@ export class DebugScopeWindow extends DebugWindowBase {
         console.error('Failed to update line & text:', error);
       }
     }
+  }
+
+  private stringForRangeValue(value: number): string {
+    // add +/- prefix to range value
+    const prefix: string = value < 0 ? '-' : '+';
+    const valueString: string = `${prefix}${value} `;
+    return valueString;
   }
 }
