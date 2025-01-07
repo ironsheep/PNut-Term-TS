@@ -59,8 +59,8 @@ export interface ScopeTriggerSpec {
 
 export class DebugScopeWindow extends DebugWindowBase {
   private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
-  private channelSpecs: ScopeChannelSpec[] = [];
-  private channelSamples: ScopeChannelSamples[] = [];
+  private channelSpecs: ScopeChannelSpec[] = []; // one for each channel
+  private channelSamples: ScopeChannelSamples[] = []; // one for each channel
   private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
@@ -69,7 +69,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
   private channelLineWidth: number = 2; // 2 pixels wide for channel data line
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 64; // log first N samples then stop
+  private dbgLogMessageCount: number = 128; // log first N samples then stop (2 channel: 128 is 64 samples)
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
@@ -567,27 +567,31 @@ export class DebugScopeWindow extends DebugWindowBase {
         const numberChannels: number = this.channelSpecs.length;
         const nbrSamples = scopeSamples.length;
         if (nbrSamples == numberChannels) {
-          for (let index = 1; index < nbrSamples; index++) {
-            const chanIdx = index - 1;
-            if (chanIdx < numberChannels) {
-              let nextSample: number = Number(scopeSamples[index]);
-              // limit the sample to the channel's min/max?!
-              const channelSpec = this.channelSpecs[chanIdx];
-              if (nextSample < channelSpec.minValue) {
-                nextSample = channelSpec.minValue;
-                this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-              } else if (nextSample > channelSpec.maxValue) {
-                nextSample = channelSpec.maxValue;
-                this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
-              }
-              // record our sample (shifting left if necessary)
-              didScroll = this.recordChannelSample(chanIdx, nextSample);
-              // update scope chanel canvas with new sample
-              const canvasName = `channel-${chanIdx}`;
-              this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
-            } else {
-              this.logMessage(`* UPD-ERROR too many samples: ${nbrSamples} of [${lineParts.join(',')}]`);
+          if (this.dbgLogMessageCount > 0) {
+            this.logMessage(
+              `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
+                ','
+              )}], lineparts=[${lineParts.join(',')}]`
+            );
+          }
+          for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
+            let nextSample: number = Number(scopeSamples[chanIdx]);
+            //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
+            // limit the sample to the channel's min/max?!
+            const channelSpec = this.channelSpecs[chanIdx];
+            if (nextSample < channelSpec.minValue) {
+              nextSample = channelSpec.minValue;
+              this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
+            } else if (nextSample > channelSpec.maxValue) {
+              nextSample = channelSpec.maxValue;
+              this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
             }
+            // record our sample (shifting left if necessary)
+            didScroll = this.recordChannelSample(chanIdx, nextSample);
+            // update scope chanel canvas with new sample
+            const canvasName = `channel-${chanIdx}`;
+            //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
+            this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
           }
         } else {
           this.logMessage(
@@ -605,6 +609,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private calculateAutoTriggerAndScale() {
     // FIXME: UNDONE check if auto is set, if is then calculate the trigger level and scale
+    this.logMessage(`at calculateAutoTriggerAndScale()`);
     if (this.triggerSpec.trigAuto) {
       // calculate:
       // 1. arm level at 33%
@@ -625,6 +630,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.channelSamples.push({ samples: [] });
       }
     }
+    this.logMessage(`  -- [${JSON.stringify(this.channelSamples, null, 2)}]`);
   }
 
   private clearChannelData() {
@@ -646,7 +652,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         channelSamples.samples.shift();
         didScroll = true;
       }
-      // record the sample
+      // record the new sample
       channelSamples.samples.push(sample);
     } else {
       this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
@@ -683,30 +689,6 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private updateScopeChannelLabel(name: string, colorString: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
-      try {
-        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            const labelsDivision = document.getElementById('channel-titles');
-            if (labelsDivision) {
-              let labelContent = labelsDivision.innerText;
-              if (labelContent.includes('{labels here}')) {
-                labelContent = '';
-              }
-              labelContent += '${channelLabel}';
-              labelsDivision.innerHTML = labelContent;
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update channel label:', error);
-      }
-    }
-  }
-
   private updateScopeChannelData(
     canvasName: string,
     channelSpec: ScopeChannelSpec,
@@ -729,9 +711,9 @@ export class DebugScopeWindow extends DebugWindowBase {
         // placement need to be scale sample range to vertical canvas size
         const currSample: number = samples[samples.length - 1];
         const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        const currSampleInverted: number = this.scaledValue(channelSpec.maxValue - currSample, channelSpec);
-        const prevSampleInverted: number = this.scaledValue(channelSpec.maxValue - prevSample, channelSpec);
-        // FIXME: UNDONE: add code to sacle the sample to the canvas size here
+        // Invert and scale the sample to to our display range
+        const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
+        const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
         // coord for current and previous samples
         const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
         const currYOffset: number =
@@ -818,15 +800,28 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private scaledValue(value: number, channelSpec: ScopeChannelSpec): number {
-    // scale the value to the vertical channel size
-    let possiblyScaledValue: number = value;
-    const range: number = channelSpec.maxValue - channelSpec.minValue;
-    if (channelSpec.ySize != range) {
-      const adjustedValue = value - channelSpec.minValue;
-      possiblyScaledValue = Math.round((adjustedValue * channelSpec.ySize) / range);
+  private updateScopeChannelLabel(name: string, colorString: string): void {
+    if (this.debugWindow) {
+      this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
+      try {
+        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            const labelsDivision = document.getElementById('channel-titles');
+            if (labelsDivision) {
+              let labelContent = labelsDivision.innerText;
+              if (labelContent.includes('{labels here}')) {
+                labelContent = '';
+              }
+              labelContent += '${channelLabel}';
+              labelsDivision.innerHTML = labelContent;
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update channel label:', error);
+      }
     }
-    return possiblyScaledValue;
   }
 
   private drawHorizontalLine(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {
@@ -926,7 +921,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     textColor: string
   ) {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
+      this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
       try {
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const horizLineWidth: number = 2;
@@ -939,7 +934,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const textXOffset: number = 5 + this.canvasMargin;
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
+        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), valueText=[${valueText}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -985,9 +980,27 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
+  private scaleAndInvertValue(value: number, channelSpec: ScopeChannelSpec): number {
+    // scale the value to the vertical channel size then invert the value
+    let possiblyScaledValue: number = value;
+    const range: number = channelSpec.maxValue - channelSpec.minValue;
+    // if value range is different from display range then scale it
+    if (channelSpec.ySize != range && range != 0) {
+      const adjustedValue = value - channelSpec.minValue;
+      possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
+    }
+    const invertedValue: number = channelSpec.ySize - possiblyScaledValue;
+    if (this.dbgLogMessageCount > 0) {
+      this.logMessage(
+        `  -- scaleAndInvertValue(${value}) => (${possiblyScaledValue}->${invertedValue}) range=[${channelSpec.minValue}:${channelSpec.maxValue}] ySize=(${channelSpec.ySize})`
+      );
+    }
+    return invertedValue;
+  }
+
   private stringForRangeValue(value: number): string {
     // add +/- prefix to range value
-    const prefix: string = value < 0 ? '-' : '+';
+    const prefix: string = value < 0 ? '' : '+';
     const valueString: string = `${prefix}${value} `;
     return valueString;
   }
