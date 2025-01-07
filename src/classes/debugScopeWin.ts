@@ -49,6 +49,7 @@ interface ScopeChannelSamples {
 export interface ScopeTriggerSpec {
   // trigger
   trigEnabled: boolean;
+  trigAuto: boolean;
   trigChannel: number; // if channel is -1 then trigger is disabled
   trigArmLevel: number;
   trigLevel: number;
@@ -77,6 +78,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // init default Trigger Spec
     this.triggerSpec = {
       trigEnabled: false,
+      trigAuto: false,
       trigChannel: -1,
       trigArmLevel: 0,
       trigLevel: 0,
@@ -300,11 +302,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
           #channel-titles {
             display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            align-items: flex-start;
-            justify-content: center; // Center items vertically
+            justify-content: flex-start; // left edige grounded
+            align-items: center; // vertically centered
             flex-grow: 0;
+            gap: 10px;
             margin: 10px 10px 10px 10px;   // top, right, bottom, left
           }
           #channel-data {
@@ -464,10 +465,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           // parse manual spec
           //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
           if (lineParts.length > 2) {
-            channelSpec.minValue = Number(lineParts[2]);
+            channelSpec.minValue = parseFloat(lineParts[2]);
           }
           if (lineParts.length > 3) {
-            channelSpec.maxValue = Number(lineParts[3]);
+            channelSpec.maxValue = parseFloat(lineParts[3]);
           }
           if (lineParts.length > 4) {
             channelSpec.ySize = Number(lineParts[4]);
@@ -499,6 +500,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
         //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
+        this.triggerSpec.trigEnabled = true;
         if (lineParts.length > 2) {
           const desiredChannel: number = Number(lineParts[2]);
           if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
@@ -507,18 +509,21 @@ export class DebugScopeWindow extends DebugWindowBase {
             this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
           }
           if (lineParts.length > 3) {
-            if (lineParts[3].toUpperCase() == 'TRIGGER') {
+            if (lineParts[3].toUpperCase() == 'HOLDOFF') {
               if (lineParts.length >= 4) {
-                this.triggerSpec.trigHoldoff = Number(lineParts[4]);
+                this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
               }
+            } else if (lineParts[3].toUpperCase() == 'AUTO') {
+              this.triggerSpec.trigAuto = true;
             } else {
-              this.triggerSpec.trigArmLevel = Number(lineParts[3]);
-            }
-            if (lineParts.length > 4) {
-              this.triggerSpec.trigLevel = Number(lineParts[4]);
-            }
-            if (lineParts.length > 5) {
-              this.triggerSpec.trigRtOffset = Number(lineParts[5]);
+              this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
+              this.triggerSpec.trigAuto = false;
+              if (lineParts.length > 4) {
+                this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
+              }
+              if (lineParts.length > 5) {
+                this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
+              }
             }
           }
         }
@@ -528,7 +533,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
         if (lineParts.length > 2) {
-          this.triggerSpec.trigHoldoff = Number(lineParts[2]);
+          this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
@@ -544,39 +549,68 @@ export class DebugScopeWindow extends DebugWindowBase {
       } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
         if (this.isFirstNumericData) {
           this.isFirstNumericData = false;
+          this.calculateAutoTriggerAndScale();
           this.initChannelSamples();
           this.createDebugWindow();
         }
+        let scopeSamples: number[] = [];
+        for (let index = 1; index < lineParts.length; index++) {
+          const value: string = lineParts[index];
+          if (value !== '') {
+            const nextSample: number = parseFloat(value);
+            scopeSamples.push(nextSample);
+          }
+        }
+
         // parse numeric data
         let didScroll: boolean = false; // in case we need this for performance of window update
-        const nbrSamples = lineParts.length - 1;
-        for (let index = 1; index < lineParts.length; index++) {
-          const chanIdx = index - 1;
-          if (chanIdx < this.channelSpecs.length) {
-            let nextSample: number = Number(lineParts[index]);
-            // limit the sample to the channel's min/max?!
-            const channelSpec = this.channelSpecs[chanIdx];
-            if (nextSample < channelSpec.minValue) {
-              nextSample = channelSpec.minValue;
-              this.logMessage(`at updateContent() with sample below min: ${nextSample} of [${lineParts.join(' ')}]`);
-            } else if (nextSample > channelSpec.maxValue) {
-              nextSample = channelSpec.maxValue;
-              this.logMessage(`at updateContent() with sample above max: ${nextSample} of [${lineParts.join(' ')}]`);
+        const numberChannels: number = this.channelSpecs.length;
+        const nbrSamples = scopeSamples.length;
+        if (nbrSamples == numberChannels) {
+          for (let index = 1; index < nbrSamples; index++) {
+            const chanIdx = index - 1;
+            if (chanIdx < numberChannels) {
+              let nextSample: number = Number(scopeSamples[index]);
+              // limit the sample to the channel's min/max?!
+              const channelSpec = this.channelSpecs[chanIdx];
+              if (nextSample < channelSpec.minValue) {
+                nextSample = channelSpec.minValue;
+                this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
+              } else if (nextSample > channelSpec.maxValue) {
+                nextSample = channelSpec.maxValue;
+                this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+              }
+              // record our sample (shifting left if necessary)
+              didScroll = this.recordChannelSample(chanIdx, nextSample);
+              // update scope chanel canvas with new sample
+              const canvasName = `channel-${chanIdx}`;
+              this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+            } else {
+              this.logMessage(`* UPD-ERROR too many samples: ${nbrSamples} of [${lineParts.join(',')}]`);
             }
-            // record our sample (shifting left if necessary)
-            didScroll = this.recordChannelSample(chanIdx, nextSample);
-            //
-            // update scope chanel canvas with new sample
-            const canvasName = `channel-${chanIdx}`;
-            this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
-          } else {
-            this.logMessage(`at updateContent() with too many samples: ${nbrSamples} of [${lineParts.join(' ')}]`);
           }
+        } else {
+          this.logMessage(
+            `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
+              ','
+            )}]`
+          );
         }
         // FIXME: UNDONE: add code to update the window here
       } else {
-        this.logMessage(`at updateContent() with unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }
+    }
+  }
+
+  private calculateAutoTriggerAndScale() {
+    // FIXME: UNDONE check if auto is set, if is then calculate the trigger level and scale
+    if (this.triggerSpec.trigAuto) {
+      // calculate:
+      // 1. arm level at 33%
+      // 2. trigger level 50%
+      // 3. ...
+      // 4. set the scale to the max - min
     }
   }
 
@@ -653,7 +687,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
       try {
-        const channelLabel: string = `<span style="color: ${colorString}; margin-right: 10px">${name}</span>`;
+        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             const labelsDivision = document.getElementById('channel-titles');
@@ -688,14 +722,16 @@ export class DebugScopeWindow extends DebugWindowBase {
       //}
       if (--this.dbgLogMessageCount > 0) {
         this.logMessage(
-          `at updateScopeChannelLabel(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
+          `at updateScopeChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
         );
       }
       try {
+        // placement need to be scale sample range to vertical canvas size
         const currSample: number = samples[samples.length - 1];
         const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        const currSampleInverted: number = channelSpec.maxValue - currSample;
-        const prevSampleInverted: number = channelSpec.maxValue - prevSample;
+        const currSampleInverted: number = this.scaledValue(channelSpec.maxValue - currSample, channelSpec);
+        const prevSampleInverted: number = this.scaledValue(channelSpec.maxValue - prevSample, channelSpec);
+        // FIXME: UNDONE: add code to sacle the sample to the canvas size here
         // coord for current and previous samples
         const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
         const currYOffset: number =
@@ -780,6 +816,17 @@ export class DebugScopeWindow extends DebugWindowBase {
       //  this.dbgUpdateCount = 0; // stop after first scroll
       //}
     }
+  }
+
+  private scaledValue(value: number, channelSpec: ScopeChannelSpec): number {
+    // scale the value to the vertical channel size
+    let possiblyScaledValue: number = value;
+    const range: number = channelSpec.maxValue - channelSpec.minValue;
+    if (channelSpec.ySize != range) {
+      const adjustedValue = value - channelSpec.minValue;
+      possiblyScaledValue = Math.round((adjustedValue * channelSpec.ySize) / range);
+    }
+    return possiblyScaledValue;
   }
 
   private drawHorizontalLine(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {

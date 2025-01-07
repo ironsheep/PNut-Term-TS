@@ -44,6 +44,8 @@ export class DebugTerminal {
   };
   private displays: { [key: string]: object } = {};
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
+  private rxQueue: string[] = [];
+  private isProcessingQueue: boolean = false;
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -120,25 +122,40 @@ export class DebugTerminal {
 
   private handleSerialRx(data: any) {
     // Handle received data
-    this.appendLog(data);
-    this.updateStatus();
-    if (data.charAt(0) === '`' && !this.waitingForINIT) {
-      // handle debug command
-      this.handleDebugCommand(data);
-    } else if (data.startsWith('Cog') || data.startsWith('Prop')) {
-      if (data.startsWith('Cog')) {
-        this.waitingForINIT = false;
+    const cleanedData = data.replace(/[\0\x0a\x0d]/g, ''); // remove any NULLs, CRs or LFs
+    this.rxQueue.push(cleanedData);
+    this.processRxQueue();
+  }
+
+  private processRxQueue() {
+    if (!this.isProcessingQueue) {
+      this.isProcessingQueue = true;
+      const data: string | undefined = this.rxQueue.shift();
+      if (data) {
+        this.appendLog(data);
+        this.updateStatus();
+        if (data.charAt(0) === '`' && !this.waitingForINIT) {
+          // handle debug command
+          this.handleDebugCommand(data);
+        } else if (data.startsWith('Cog') || data.startsWith('Prop')) {
+          if (data.startsWith('Cog')) {
+            this.waitingForINIT = false;
+          }
+          if (this.isLogging) {
+            this.logMessage(`TERM: Received: ${data}`);
+          }
+        }
       }
-      if (this.isLogging) {
-        this.logMessage(`TERM: Received: ${data}`);
-      }
+      this.isProcessingQueue = false;
     }
   }
 
   private DISPLAY_SCOPE: string = 'SCOPE';
 
   private handleDebugCommand(data: string) {
-    const lineParts: string[] = data.split(' ');
+    //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
+    // Split the data and remove empty values
+    const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
     const possibleName: string = lineParts[0].substring(1).toUpperCase();
     let foundDisplay: boolean = false;
     if (lineParts[0].charAt(0) === '`') {
@@ -181,7 +198,7 @@ export class DebugTerminal {
       }
       if (!foundDisplay) {
         if (this.isLogging) {
-          this.logMessage(`TERM: Received: ${data} - UNHANDLED`);
+          this.logMessage(`TERM: Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
       }
     }
