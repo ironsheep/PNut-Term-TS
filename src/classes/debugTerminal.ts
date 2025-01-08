@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import path from 'path';
 import { DebugScopeWindow } from './debugScopeWin';
 import { DebugWindowBase } from './debugWindowBase';
+import { DebugTermWindow } from './debugTermWin';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -151,6 +152,9 @@ export class DebugTerminal {
   }
 
   private DISPLAY_SCOPE: string = 'SCOPE';
+  private DISPLAY_TERM: string = 'TERM';
+  private DISPLAY_PLOT: string = 'PLOT';
+  private DISPLAY_LOGIC: string = 'LOGIC';
 
   private handleDebugCommand(data: string) {
     //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
@@ -171,8 +175,10 @@ export class DebugTerminal {
       });
       if (!foundDisplay) {
         // 2nd, is it a window creation command?
+        let isValid: boolean = false;
+        let displaySpec: any = {};
         switch (possibleName) {
-          case this.DISPLAY_SCOPE:
+          case this.DISPLAY_SCOPE: {
             this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
             // create new window to display scope data
             const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
@@ -191,7 +197,27 @@ export class DebugTerminal {
             }
             foundDisplay = true;
             break;
-
+          }
+          case this.DISPLAY_TERM: {
+            this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
+            // create new window to display scope data
+            const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+            this.logMessage(`* handleDebugCommand() - back from parse`);
+            if (isValid) {
+              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
+              const termDisplay = new DebugTermWindow(this.context, termSpec);
+              // remember active displays!
+              this.displays[termSpec.displayName] = termDisplay;
+              this.logMessage(`GOOD DISPLAY: Received`);
+              //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+            } else {
+              if (this.isLogging) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            foundDisplay = true;
+            break;
+          }
           default:
             break;
         }

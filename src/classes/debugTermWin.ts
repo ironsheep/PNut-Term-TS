@@ -5,63 +5,43 @@
 
 'use strict';
 import { BrowserWindow, Menu } from 'electron';
-// src/classes/debugScopeWin.ts
+// src/classes/debugTermWin.ts
 
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
 import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
+import { v8_0_0 } from 'pixi.js';
 
-export interface ScopeDisplaySpec {
+export interface TermSize {
+  columns: number;
+  rows: number;
+}
+export interface TermDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
   position: Position;
-  size: Size;
-  nbrSamples: number;
-  rate: number;
-  dotSize: number;
-  lineSize: number;
-  textSize: number;
+  size: TermSize;
+  textSizePts: number;
+  textSizePix: number;
   window: WindowColor;
-  isPackedData: boolean;
+  textColor: string;
+  textColor0: string;
+  textColor1: string;
+  textColor2: string;
+  textColor3: string;
+  update: boolean;
   hideXY: boolean;
 }
 
-export interface ScopeChannelSpec {
-  name: string;
-  color: string;
-  gridColor: string;
-  textColor: string;
+export interface TermChannelSpec {
   minValue: number;
   maxValue: number;
   ySize: number;
-  yBaseOffset: number;
-  lgndShowMax: boolean;
-  lgndShowMin: boolean;
-  lgndShowMaxLine: boolean;
-  lgndShowMinLine: boolean;
 }
 
-interface ScopeChannelSamples {
-  samples: number[];
-}
-
-export interface ScopeTriggerSpec {
-  // trigger
-  trigEnabled: boolean;
-  trigAuto: boolean;
-  trigChannel: number; // if channel is -1 then trigger is disabled
-  trigArmLevel: number;
-  trigLevel: number;
-  trigRtOffset: number;
-  trigHoldoff: number; // in samples required, from trigger to trigger
-}
-
-export class DebugScopeWindow extends DebugWindowBase {
-  private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
-  private channelSpecs: ScopeChannelSpec[] = []; // one for each channel
-  private channelSamples: ScopeChannelSamples[] = []; // one for each channel
-  private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
+export class DebugTermWindow extends DebugWindowBase {
+  private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
   private channelInset: number = 10; // 10 pixels from top and bottom of window
@@ -71,62 +51,50 @@ export class DebugScopeWindow extends DebugWindowBase {
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
 
-  constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
+  constructor(ctx: Context, displaySpec: TermDisplaySpec) {
     super(ctx);
-    // record our Debug Scope Window Spec
+    // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
-    // init default Trigger Spec
-    this.triggerSpec = {
-      trigEnabled: false,
-      trigAuto: false,
-      trigChannel: -1,
-      trigArmLevel: 0,
-      trigLevel: 0,
-      trigRtOffset: 0,
-      trigHoldoff: 0
-    };
   }
 
   get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} SCOPE`;
+    let desiredValue: string = `${this.displaySpec.displayName} TERM`;
     if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
       desiredValue = this.displaySpec.windowTitle;
     }
     return desiredValue;
   }
 
-  static parseScopeDeclaration(lineParts: string[]): [boolean, ScopeDisplaySpec] {
-    // here with lineParts = ['`SCOPE', {displayName}, ...]
+  static parseTermDeclaration(lineParts: string[]): [boolean, TermDisplaySpec] {
+    // here with lineParts = ['`TERM', {displayName}, ...]
     // Valid directives are:
     //   TITLE <title>
-    //   POS <left> <top> [default: 0,0]
-    //   SIZE <width> <height> [ea. 32-2048, default: 256]
-    //   SAMPLES <nbr> [16-2048, default: 256]
-    //   RATE <rate> [1-2048, default: 1]
-    //   DOTSIZE <pix> [0-32, default: 0]
-    //   LINESIZE <half-pix> [0-32, default: 3]
+    //   POS <left> <top> [default: 0, 0]
+    //   SIZE <columns> <rows> [default: 40, 20]
     //   TEXTSIZE <half-pix> [6-200, default: editor font size]
-    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
-    //   packed_data_mode
-    //   HIDEXY
-    console.log(`CL: at parseScopeDeclaration()`);
-    let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
+    //   COLOR <text-color> {{{{<bgnd-color> {<#0-color>}} {<#0-color>}} {<#0-color>}}
+    //   BACKCOLOR <color> [default: black]
+    //   UPDATE [default: automatic update]
+    //   HIDEXY [default: not hidden]
+    console.log(`CL: at parseTermDeclaration()`);
+    let displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    console.log(`CL: at parseScopeDeclaration() with colors...`);
+    const textColor: DebugColor = new DebugColor('WHITE', 15);
+    console.log(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
-    displaySpec.size = { width: 256, height: 256 };
-    displaySpec.nbrSamples = 256;
-    displaySpec.rate = 1;
+    displaySpec.size = { columns: 40, rows: 20 };
+    displaySpec.textSizePts = 12;
+    displaySpec.textSizePix = Math.round(displaySpec.textSizePts * 1.333);
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
 
     // now parse overrides to defaults
-    console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
+    console.log(`CL: at overrides TermDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
@@ -141,32 +109,58 @@ export class DebugScopeWindow extends DebugWindowBase {
               displaySpec.windowTitle = lineParts[++index];
             } else {
               // console.log() as we are in class static method, not derived class...
-              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              isValid = false;
+            }
+            break;
+          case 'POS':
+            // esure we have two more values
+            if (index < lineParts.length - 2) {
+              displaySpec.position.x = Number(lineParts[++index]);
+              displaySpec.position.y = Number(lineParts[++index]);
+            } else {
+              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
           case 'SIZE':
             // esure we have two more values
             if (index < lineParts.length - 2) {
-              displaySpec.size.width = Number(lineParts[++index]);
-              displaySpec.size.height = Number(lineParts[++index]);
+              displaySpec.size.columns = Number(lineParts[++index]);
+              displaySpec.size.rows = Number(lineParts[++index]);
             } else {
-              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
-          case 'SAMPLES':
+          case 'TEXTSIZE':
             // esure we have two more values
             if (index < lineParts.length - 1) {
-              displaySpec.nbrSamples = Number(lineParts[++index]);
+              displaySpec.textSizePts = Number(lineParts[++index]);
+              displaySpec.textSizePix = Math.round(displaySpec.textSizePts * 1.333);
             } else {
-              console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              isValid = false;
+            }
+            break;
+          case 'BACKCOLOR':
+            // esure we have one more value
+            if (index < lineParts.length - 1) {
+              const colorName: string = lineParts[++index];
+              let colorBrightness: number = 8;
+              if (index < lineParts.length - 1) {
+                colorBrightness = Number(lineParts[++index]);
+              }
+              const textColor = new DebugColor(colorName, colorBrightness);
+              displaySpec.textColor = textColor.rgbString;
+            } else {
+              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
 
           default:
-            console.log(`CL: ScopeDisplaySpec: Unknown directive: ${element}`);
+            console.log(`CL: TermDisplaySpec: Unknown directive: ${element}`);
             break;
         }
         if (!isValid) {
@@ -174,61 +168,24 @@ export class DebugScopeWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`CL: at end of parseScopeDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    console.log(`CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
   private createDebugWindow(): void {
-    this.logMessage(`at createDebugWindow() SCOPE`);
+    this.logMessage(`at createDebugWindow() TERM`);
     // calculate overall canvas sizes then window size from them!
-    if (this.channelSpecs.length == 0) {
-      // create a DEFAULT channelSpec for only channel
-      const defaultColor: DebugColor = new DebugColor('GREEN');
-      this.channelSpecs.push({
-        name: 'Channel 0',
-        color: defaultColor.rgbString,
-        gridColor: defaultColor.gridRgbString,
-        textColor: defaultColor.fontRgbString,
-        minValue: 0,
-        maxValue: 255,
-        ySize: this.displaySpec.size.height,
-        yBaseOffset: 0,
-        lgndShowMax: true,
-        lgndShowMin: true,
-        lgndShowMaxLine: true,
-        lgndShowMinLine: true
-      });
-    }
 
     // NOTES: Chip's size estimation:
     //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
-    const channelCanvases: string[] = [];
-    let windowCanvasHeight: number = 0;
-    if (this.channelSpecs.length > 0) {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        const channelSpec = this.channelSpecs[index];
-        const adjHeight = this.channelLineWidth / 2 + this.canvasMargin * 2 + channelSpec.ySize + 2 * this.channelInset; // inset is above and below
-        const adjWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
-        // create a canvas for each channel
-        channelCanvases.push(`<canvas id="channel-${index}" width="${adjWidth}" height="${adjHeight}"></canvas>`);
-        // account for channel height
-        windowCanvasHeight += channelSpec.ySize + 2 * this.channelInset + this.channelLineWidth / 2;
-      }
-    } else {
-      // error if NO channel
-      this.logMessage(`at createDebugWindow() SCOPE with NO channels!`);
-    }
-
-    this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
-
     // set height so no scroller by default
-    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 30; // 20 is for the channel labels, 30 for window menu bar (30 is guess on linux)
-    const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
-    const windowWidth = Math.max(this.displaySpec.size.width, this.displaySpec.nbrSamples * 2 + this.contentInset * 2); // contentInset' for the Xoffset into window for canvas
+    const windowHeight = this.displaySpec.size.rows * this.displaySpec.textSizePix;
+    // for mono-spaced font width 1/2 ht in pts
+    const windowWidth = this.displaySpec.size.columns * (this.displaySpec.textSizePts / 2) + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
     this.logMessage(
-      `  -- SCOPE window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
+      `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
 
     // now generate the window with the calculated sizes
@@ -246,25 +203,25 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // hook window events before being shown
     this.debugWindow.on('closed', () => {
-      this.logMessage('* Scope window closed');
+      this.logMessage('* Term window closed');
       this.debugWindow = null;
     });
 
     this.debugWindow.on('close', () => {
-      this.logMessage('* Scope window closing...');
+      this.logMessage('* Term window closing...');
     });
 
     this.debugWindow.on('ready-to-show', () => {
-      this.logMessage('* Scope window will show...');
+      this.logMessage('* Term window will show...');
       this.debugWindow?.show();
     });
 
     this.debugWindow.on('show', () => {
-      this.logMessage('* Scope window shown');
+      this.logMessage('* Term window shown');
     });
 
     this.debugWindow.on('page-title-updated', () => {
-      this.logMessage('* Scope window title updated');
+      this.logMessage('* Term window title updated');
     });
 
     this.debugWindow.once('ready-to-show', () => {
@@ -297,22 +254,11 @@ export class DebugScopeWindow extends DebugWindowBase {
             margin: 0;
             padding: 0;
             font-family: Arial, sans-serif;
-            font-size: 12px;
-            //background-color:rgb(234, 121, 86);
+            font-size: ${this.displaySpec.textSizePts}pt;
             background-color: ${this.displaySpec.window.background};
-            color:rgb(191, 213, 93);
+            color: ${this.displaySpec.textColor};
           }
-          #channel-titles {
-            display: flex;
-            justify-content: flex-start; // left edge grounded
-            align-items: center; // vertically centered
-            flex-grow: 0;
-            gap: 10px;  // between labels
-            //margin: 10px;   // top, right, bottom, left
-            padding: 10px;
-            background-color:rgb(83, 221, 108);
-          }
-          #channel-data {
+          #terminal-data {
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
@@ -320,35 +266,22 @@ export class DebugScopeWindow extends DebugWindowBase {
             margin: 0;
             //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
           }
-          #channels {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            flex-grow: 0;
-            margin: 0px 10px 10px 10px;   // top, right, bottom, left
-            padding: 0px;   // top, right, bottom, left
-            border-width: 1px;
-            border-style: solid;
-            border-color: ${this.displaySpec.window.grid};
-            background-color:rgb(164, 22, 22); // ${this.displaySpec.window.background};
-          }
           canvas {
             //background-color:rgb(240, 194, 151);
-            background-color: ${this.displaySpec.window.background};
+            //background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
         </style>
       </head>
       <body>
-        <div id="channel-titles"><span>{labels here}</span></div>
-        <div id="channel-data">
-          <div id="channels">${channelCanvases.join(' ')}</div>
+        <div id="terminal-data">
+          <canvas id="text" width="${windowWidth}" height="${windowHeight}"></canvas>
         </div>
       </body>
     </html>
   `;
 
-    this.logMessage(`at createDebugWindow() SCOPE with htmlContent: ${htmlContent}`);
+    this.logMessage(`at createDebugWindow() TERM with htmlContent: ${htmlContent}`);
 
     try {
       this.debugWindow.setMenu(null);
@@ -361,52 +294,6 @@ export class DebugScopeWindow extends DebugWindowBase {
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        const channelSpec = this.channelSpecs[index];
-        this.updateScopeChannelLabel(channelSpec.name, channelSpec.color);
-        const channelGridColor: string = channelSpec.gridColor;
-        const channelTextColor: string = channelSpec.textColor;
-        const windowGridColor: string = this.displaySpec.window.grid;
-        const canvasName = `channel-${index}`;
-        // paint the grid/min/max, etc.
-        //  %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-        if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
-          //  %1x0x => max legend, NOT max line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelTextColor);
-        }
-        if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
-          //  %x1x0 => min legend, NOT min line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelTextColor);
-        }
-        if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
-          //  %1x1x => max legend, max line, so show value and line!
-          this.drawHorizontalLineAndValue(
-            canvasName,
-            channelSpec,
-            channelSpec.maxValue,
-            channelGridColor,
-            channelTextColor
-          );
-        }
-        if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
-          //  %x1x1 => min legend, min line, so show value and line!
-          this.drawHorizontalLineAndValue(
-            canvasName,
-            channelSpec,
-            channelSpec.minValue,
-            channelGridColor,
-            channelTextColor
-          );
-        }
-        if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
-          //  %0x1x => NOT max legend, max line, show line ONLY
-          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
-        }
-        if (!channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
-          //  %x0x1 => NOT min legend, min line, show line ONLY
-          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
-        }
-      }
     });
   }
 
@@ -440,23 +327,21 @@ export class DebugScopeWindow extends DebugWindowBase {
       // have data, parse it
       if (lineParts[1].charAt(0) == "'") {
         // parse channel spec
-        let channelSpec: ScopeChannelSpec = {} as ScopeChannelSpec;
-        channelSpec.name = lineParts[1].slice(1, -1);
         let colorName = 'GREEN';
         let colorBrightness = 15;
         if (lineParts[2].toUpperCase() == 'AUTO') {
           // parse AUTO spec
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
           if (lineParts.length > 3) {
-            channelSpec.ySize = Number(lineParts[3]);
+            //channelSpec.ySize = Number(lineParts[3]);
           }
           if (lineParts.length > 4) {
-            channelSpec.yBaseOffset = Number(lineParts[4]);
+            //channelSpec.yBaseOffset = Number(lineParts[4]);
           }
           if (lineParts.length > 5) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
             const legend: string = lineParts[5];
-            this.parseLegend(legend, channelSpec);
+            //this.parseLegend(legend, channelSpec);
           }
           if (lineParts.length > 6) {
             colorName = lineParts[6];
@@ -468,21 +353,21 @@ export class DebugScopeWindow extends DebugWindowBase {
           // parse manual spec
           //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
           if (lineParts.length > 2) {
-            channelSpec.minValue = parseFloat(lineParts[2]);
+            //channelSpec.minValue = parseFloat(lineParts[2]);
           }
           if (lineParts.length > 3) {
-            channelSpec.maxValue = parseFloat(lineParts[3]);
+            //channelSpec.maxValue = parseFloat(lineParts[3]);
           }
           if (lineParts.length > 4) {
-            channelSpec.ySize = Number(lineParts[4]);
+            //channelSpec.ySize = Number(lineParts[4]);
           }
           if (lineParts.length > 5) {
-            channelSpec.yBaseOffset = Number(lineParts[5]);
+            //channelSpec.yBaseOffset = Number(lineParts[5]);
           }
           if (lineParts.length > 6) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
             const legend: string = lineParts[6];
-            this.parseLegend(legend, channelSpec);
+            //this.parseLegend(legend, channelSpec);
           }
           if (lineParts.length > 7) {
             colorName = lineParts[7];
@@ -492,57 +377,59 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
         }
         const channelColor = new DebugColor(colorName, colorBrightness);
-        channelSpec.color = channelColor.rgbString;
-        channelSpec.gridColor = channelColor.gridRgbString;
-        channelSpec.textColor = channelColor.fontRgbString;
+        //channelSpec.color = channelColor.rgbString;
+        //channelSpec.gridColor = channelColor.gridRgbString;
+        //channelSpec.textColor = channelColor.fontRgbString;
         // and record spec for this channel
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
-        this.channelSpecs.push(channelSpec);
+        //this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
+        //this.channelSpecs.push(channelSpec);
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
         //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
-        this.triggerSpec.trigEnabled = true;
         if (lineParts.length > 2) {
           const desiredChannel: number = Number(lineParts[2]);
-          if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
-            this.triggerSpec.trigChannel = desiredChannel;
-          } else {
-            this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
-          }
+          //if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
+          //this.triggerSpec.trigChannel = desiredChannel;
+          //} else {
+          //  this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
+          //}
           if (lineParts.length > 3) {
             if (lineParts[3].toUpperCase() == 'HOLDOFF') {
               if (lineParts.length >= 4) {
-                this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
+                //this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
               }
             } else if (lineParts[3].toUpperCase() == 'AUTO') {
-              this.triggerSpec.trigAuto = true;
+              //this.triggerSpec.trigAuto = true;
             } else {
-              this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
-              this.triggerSpec.trigAuto = false;
+              //this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
+              //this.triggerSpec.trigAuto = false;
               if (lineParts.length > 4) {
-                this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
+                //this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
               }
               if (lineParts.length > 5) {
-                this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
+                //this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
               }
             }
           }
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
+        //this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
         if (lineParts.length > 2) {
-          this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
+          //this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
+        //this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
+      } else if (lineParts[1].toUpperCase() == 'UPDATE') {
+        // update window with latest content
+        //this.clearTerminal();
       } else if (lineParts[1].toUpperCase() == 'CLEAR') {
-        // clear all channels
-        this.clearChannelData();
+        // clear window
+        //this.clearTerminal();
       } else if (lineParts[1].toUpperCase() == 'CLOSE') {
         // close the window
         this.closeDebugWindow();
@@ -552,8 +439,6 @@ export class DebugScopeWindow extends DebugWindowBase {
       } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
         if (this.isFirstNumericData) {
           this.isFirstNumericData = false;
-          this.calculateAutoTriggerAndScale();
-          this.initChannelSamples();
           this.createDebugWindow();
         }
         let scopeSamples: number[] = [];
@@ -568,7 +453,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
         // parse numeric data
         let didScroll: boolean = false; // in case we need this for performance of window update
-        const numberChannels: number = this.channelSpecs.length;
+        const numberChannels: number = 0; //this.channelSpecs.length;
         const nbrSamples = scopeSamples.length;
         if (nbrSamples == numberChannels) {
           /*
@@ -584,20 +469,20 @@ export class DebugScopeWindow extends DebugWindowBase {
             let nextSample: number = Number(scopeSamples[chanIdx]);
             //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
             // limit the sample to the channel's min/max?!
-            const channelSpec = this.channelSpecs[chanIdx];
-            if (nextSample < channelSpec.minValue) {
-              nextSample = channelSpec.minValue;
-              this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-            } else if (nextSample > channelSpec.maxValue) {
-              nextSample = channelSpec.maxValue;
-              this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
-            }
+            //const channelSpec = this.channelSpecs[chanIdx];
+            //if (nextSample < channelSpec.minValue) {
+            //nextSample = channelSpec.minValue;
+            this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
+            //} else if (nextSample > channelSpec.maxValue) {
+            //nextSample = channelSpec.maxValue;
+            this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+            //}
             // record our sample (shifting left if necessary)
             didScroll = this.recordChannelSample(chanIdx, nextSample);
             // update scope chanel canvas with new sample
             const canvasName = `channel-${chanIdx}`;
             //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-            this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+            //this.updateTermChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
           }
         } else {
           this.logMessage(
@@ -613,91 +498,15 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private calculateAutoTriggerAndScale() {
-    // FIXME: UNDONE check if auto is set, if is then calculate the trigger level and scale
-    this.logMessage(`at calculateAutoTriggerAndScale()`);
-    if (this.triggerSpec.trigAuto) {
-      // calculate:
-      // 1. arm level at 33%
-      // 2. trigger level 50%
-      // 3. ...
-      // 4. set the scale to the max - min
-    }
-  }
-
-  private initChannelSamples() {
-    this.logMessage(`at initChannelSamples()`);
-    // clear the channel data
-    this.channelSamples = [];
-    if (this.channelSpecs.length == 0) {
-      this.channelSamples.push({ samples: [] });
-    } else {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        this.channelSamples.push({ samples: [] });
-      }
-    }
-    this.logMessage(`  -- [${JSON.stringify(this.channelSamples, null, 2)}]`);
-  }
-
-  private clearChannelData() {
-    this.logMessage(`at clearChannelData()`);
-    for (let index = 0; index < this.channelSamples.length; index++) {
-      const channelSamples = this.channelSamples[index];
-      // clear the channel data
-      channelSamples.samples = [];
-    }
-  }
-
   private recordChannelSample(channelIndex: number, sample: number): boolean {
     //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
     let didScroll: boolean = false;
-    if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
-      const channelSamples = this.channelSamples[channelIndex];
-      if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
-        // remove oldest sample
-        channelSamples.samples.shift();
-        didScroll = true;
-      }
-      // record the new sample
-      channelSamples.samples.push(sample);
-    } else {
-      this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
-    }
     return didScroll;
   }
 
-  private parseLegend(legend: string, channelSpec: ScopeChannelSpec): void {
-    // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-    let validLegend: boolean = false;
-    if (legend.length > 4 && legend.charAt(0) == '%') {
-      channelSpec.lgndShowMax = legend.charAt(1) == '1' ? true : false;
-      channelSpec.lgndShowMin = legend.charAt(2) == '1' ? true : false;
-      channelSpec.lgndShowMaxLine = legend.charAt(3) == '1' ? true : false;
-      channelSpec.lgndShowMinLine = legend.charAt(4) == '1' ? true : false;
-      validLegend = true;
-    } else if (legend.charAt(0) >= '0' && legend.charAt(0) <= '9') {
-      // get integer value of legend and ensure it is within range 0-15
-      const legendValue = Number(legend);
-      if (legendValue >= 0 && legendValue <= 15) {
-        channelSpec.lgndShowMax = (legendValue & 0x1) == 0x1 ? true : false;
-        channelSpec.lgndShowMin = (legendValue & 0x2) == 0x2 ? true : false;
-        channelSpec.lgndShowMaxLine = (legendValue & 0x4) == 0x4 ? true : false;
-        channelSpec.lgndShowMinLine = (legendValue & 0x8) == 0x8 ? true : false;
-        validLegend = true;
-      }
-    }
-    if (!validLegend) {
-      this.logMessage(`at parseLegend() with invalid legend: ${legend}`);
-      channelSpec.lgndShowMax = false;
-      channelSpec.lgndShowMin = false;
-      channelSpec.lgndShowMaxLine = false;
-      channelSpec.lgndShowMinLine = false;
-    }
-  }
-
-  private updateScopeChannelData(
+  private updateTermChannelData(
     canvasName: string,
-    channelSpec: ScopeChannelSpec,
+    channelSpec: TermChannelSpec,
     samples: number[],
     didScroll: boolean
   ): void {
@@ -710,7 +519,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       //}
       if (--this.dbgLogMessageCount > 0) {
         this.logMessage(
-          `at updateScopeChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
+          `at updateTermChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
         );
       }
       try {
@@ -730,11 +539,11 @@ export class DebugScopeWindow extends DebugWindowBase {
           this.channelLineWidth / 2 + prevSampleInverted + this.canvasMargin + this.channelInset;
         //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
         // draw region for the channel
-        const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
-        const drawHeight: number = channelSpec.ySize + this.channelLineWidth / 2;
+        const drawWidth: number = 0; //this.displaySpec.nbrSamples * this.channelLineWidth;
+        const drawHeight: number = 0; //channelSpec.ySize + this.channelLineWidth / 2;
         const drawXOffset: number = this.canvasMargin;
         const drawYOffset: number = this.channelInset + this.canvasMargin;
-        const channelColor: string = channelSpec.color;
+        const channelColor: string = ''; //channelSpec.color;
         if (this.dbgLogMessageCount > 0) {
           this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
           this.logMessage(
@@ -807,9 +616,9 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private updateScopeChannelLabel(name: string, colorString: string): void {
+  private updateTermChannelLabel(name: string, colorString: string): void {
     if (this.debugWindow) {
-      this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
+      this.logMessage(`at updateTermChannelLabel(${name}, ${colorString})`);
       try {
         const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
         this.debugWindow.webContents.executeJavaScript(`
@@ -831,7 +640,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalLine(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string) {
+  private drawHorizontalLine(canvasName: string, channelSpec: TermChannelSpec, YOffset: number, gridColor: string) {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
       try {
@@ -878,7 +687,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalValue(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, textColor: string) {
+  private drawHorizontalValue(canvasName: string, channelSpec: TermChannelSpec, YOffset: number, textColor: string) {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${textColor})`);
       try {
@@ -922,7 +731,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private drawHorizontalLineAndValue(
     canvasName: string,
-    channelSpec: ScopeChannelSpec,
+    channelSpec: TermChannelSpec,
     YOffset: number,
     gridColor: string,
     textColor: string
@@ -987,7 +796,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private scaleAndInvertValue(value: number, channelSpec: ScopeChannelSpec): number {
+  private scaleAndInvertValue(value: number, channelSpec: TermChannelSpec): number {
     // scale the value to the vertical channel size then invert the value
     let possiblyScaledValue: number = value;
     const range: number = channelSpec.maxValue - channelSpec.minValue;

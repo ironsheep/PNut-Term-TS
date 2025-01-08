@@ -213,10 +213,14 @@ export class DebugTerminalInTypeScript {
 
     if (options.verbose) {
       this.context.logger.enabledVerbose();
+    } else {
+      options.verbose = false;
     }
 
     if (options.debug) {
       this.context.logger.enabledDebug();
+    } else {
+      options.debug = false;
     }
 
     this.context.logger.logMessage(`V=(${options.verbose}), D=(${options.debug})`);

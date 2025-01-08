@@ -1,0 +1,22 @@
+Add windows:
+	- SCOPE @done(2025-01-07)
+	- LOGIC
+	- SCOPE_XY
+	- FFT
+	- SPECTRO
+	- PLOT
+	- TERM @done(2025-01-08)
+	- BITMAP
+	- MIDI
+SCOPE Window:
+	- Single Channel
+		- working!
+		- fix label division margins
+	- Mulit-Channel
+		- fix plotting @done(2025-01-08)
+		- fix window size @done(2025-01-08)
+		- fix label division margins
+LOGIC Window:
+	- start work
+TERM Window:
+	- get content updating
