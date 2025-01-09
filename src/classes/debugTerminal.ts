@@ -179,7 +179,7 @@ export class DebugTerminal {
         let displaySpec: any = {};
         switch (possibleName) {
           case this.DISPLAY_SCOPE: {
-            this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
+            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
@@ -199,7 +199,7 @@ export class DebugTerminal {
             break;
           }
           case this.DISPLAY_TERM: {
-            this.logMessage(`* handleDebugCommand() - [${this.DISPLAY_SCOPE}]`);
+            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);

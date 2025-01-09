@@ -17,6 +17,10 @@ export interface TermSize {
   columns: number;
   rows: number;
 }
+export interface ColorCombo {
+  fgcolor: string;
+  bgcolor: string;
+}
 export interface TermDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
@@ -26,11 +30,8 @@ export interface TermDisplaySpec {
   textSizePix: number;
   window: WindowColor;
   textColor: string;
-  textColor0: string;
-  textColor1: string;
-  textColor2: string;
-  textColor3: string;
-  update: boolean;
+  colorCombos: ColorCombo[];
+  delayedUpdate: boolean;
   hideXY: boolean;
 }
 
@@ -43,13 +44,17 @@ export interface TermChannelSpec {
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private debugWindow: BrowserWindow | null = null;
-  private isFirstNumericData: boolean = true;
+  private isFirstDisplayData: boolean = true;
   private channelInset: number = 10; // 10 pixels from top and bottom of window
   private contentInset: number = 10; // 10 pixels from left and right of window
   private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
   private channelLineWidth: number = 2; // 2 pixels wide for channel data line
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  // current terminal state
+  private deferredCommands: string[] = [];
+  private cursorPosition: Position = { x: 0, y: 0 };
+  private selectedCombo: number = 0;
 
   constructor(ctx: Context, displaySpec: TermDisplaySpec) {
     super(ctx);
@@ -78,13 +83,14 @@ export class DebugTermWindow extends DebugWindowBase {
     //   HIDEXY [default: not hidden]
     console.log(`CL: at parseTermDeclaration()`);
     let displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
+    displaySpec.colorCombos = [] as ColorCombo[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    const textColor: DebugColor = new DebugColor('WHITE', 15);
+    const textColor: DebugColor = new DebugColor('ORANGE', 15);
     console.log(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { columns: 40, rows: 20 };
@@ -92,6 +98,11 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.textSizePix = Math.round(displaySpec.textSizePts * 1.333);
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
+    displaySpec.textColor = textColor.rgbString;
+    displaySpec.delayedUpdate = false;
+    displaySpec.hideXY = false;
+    // by default we have combo #0 defined
+    displaySpec.colorCombos.push({ fgcolor: displaySpec.textColor, bgcolor: displaySpec.window.background });
 
     // now parse overrides to defaults
     console.log(`CL: at overrides TermDisplaySpec: ${lineParts}`);
@@ -158,6 +169,80 @@ export class DebugTermWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
+          case 'COLOR':
+            // here with
+            //   COLOR fg-color0 bg-color0 [fg-color1 bg-color1 [fg-color2 bg-color2 [fg-color3 bg-color3]]]
+            //   fg/bg-color is a color name, with optional brightness: {name [brightness]}
+            // esure we color names in pairs!
+            let colorComboIdx: number = 0;
+            let fgColor: string | undefined = undefined;
+            let bgColor: string | undefined = undefined;
+            let haveName: boolean = false;
+            let fgColorName: string | undefined = undefined;
+            let bgColorName: string | undefined = undefined;
+            for (let colorIdx = index + 1; colorIdx < lineParts.length; colorIdx++) {
+              const element = lineParts[colorIdx];
+              if (fgColor !== undefined && bgColor !== undefined) {
+                // have both fg and bg colors, make a color combo
+                const channelColor: ColorCombo = { fgcolor: fgColor, bgcolor: bgColor };
+                if (colorComboIdx == 0) {
+                  // remove our default color combo
+                  displaySpec.colorCombos = [];
+                }
+                displaySpec.colorCombos.push(channelColor);
+                colorComboIdx++;
+              } else if (!haveName) {
+                // color name
+                const newColorName = element.toUpperCase();
+                if (fgColorName === undefined) {
+                  fgColorName = newColorName;
+                } else if (bgColorName === undefined) {
+                  bgColorName = newColorName;
+                }
+                haveName = true;
+              } else {
+                // this could be color brightness or next name...
+                let colorBrightness: number = 8;
+                const possibleBrightness: string = lineParts[colorIdx + 1];
+                // if possible is numeric then we have brightness
+                const numericResult = possibleBrightness.match(/^-{0,1}\d+$/);
+                if (numericResult != null) {
+                  // have brightness for latest colorName
+                  colorBrightness = Number(lineParts[++colorIdx]);
+                  if (fgColorName !== undefined) {
+                    // this is fg brightness
+                    fgColor = new DebugColor(fgColorName, colorBrightness).rgbString;
+                    fgColorName = undefined;
+                  } else if (bgColorName !== undefined) {
+                    // this is bg brightness
+                    bgColor = new DebugColor(bgColorName, colorBrightness).rgbString;
+                    bgColorName = undefined;
+                  }
+                  haveName = false; // next up we're looking for next color name
+                } else {
+                  // have next color name
+                  // record current color as fg then save bgColorName
+                  if (fgColorName !== undefined) {
+                    fgColor = new DebugColor(fgColorName).rgbString;
+                    fgColorName = undefined;
+                  } else {
+                    console.log(`CL: TermDisplaySpec: Missing fgColorName for ${element}`);
+                  }
+                  const newColorName = element.toUpperCase();
+                  bgColorName = newColorName;
+                  // we have the bg color name
+                  haveName = true;
+                }
+              }
+            }
+            break;
+
+          case 'UPDATE':
+            displaySpec.delayedUpdate = true;
+            break;
+          case 'HIDEXY':
+            displaySpec.delayedUpdate = true;
+            break;
 
           default:
             console.log(`CL: TermDisplaySpec: Unknown directive: ${element}`);
@@ -181,9 +266,12 @@ export class DebugTermWindow extends DebugWindowBase {
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
     // set height so no scroller by default
-    const windowHeight = this.displaySpec.size.rows * this.displaySpec.textSizePix;
+    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.textSizePix;
     // for mono-spaced font width 1/2 ht in pts
-    const windowWidth = this.displaySpec.size.columns * (this.displaySpec.textSizePts / 2) + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const canvasWidth = this.displaySpec.size.columns * (this.displaySpec.textSizePts / 2) + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+
+    const windowHeight = canvasHeight + 30; // +30 for title bar
+    const windowWidth = canvasWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
     this.logMessage(
       `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -264,10 +352,10 @@ export class DebugTermWindow extends DebugWindowBase {
             justify-content: flex-end;
             flex-grow: 0;
             margin: 0;
-            //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
           }
           canvas {
-            //background-color:rgb(240, 194, 151);
+            background-color:rgb(9, 201, 28);
             //background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
@@ -275,7 +363,7 @@ export class DebugTermWindow extends DebugWindowBase {
       </head>
       <body>
         <div id="terminal-data">
-          <canvas id="text" width="${windowWidth}" height="${windowHeight}"></canvas>
+          <canvas id="text-area" width="${windowWidth}" height="${windowHeight}"></canvas>
         </div>
       </body>
     </html>
@@ -309,416 +397,216 @@ export class DebugTermWindow extends DebugWindowBase {
   public updateContent(lineParts: string[]): void {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
-    // --- these create a new channel spec
-    //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
-    //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
-    // --- these update the trigger spec
-    //   TRIGGER <channel|-1> {arm-level {trigger-level {offset}}}
-    //   HOLDOFF <2-2048>
     // --- these manage the window
     //   CLEAR
+    //   UPDATE
+    //   SAVE {WINDOW} 'filename' - save window to .bmp file
     //   CLOSE
-    //   SAVE {WINDOW} 'filename' // save window to .bmp file
-    // --- these paints new samples
-    //   <numeric data> // data applied to channels in ascending order
+    // --- these paint content, select colors or move the cursor
+    //   <numeric data> - controls or characters
+    //    0 = Clear terminal display and home cursor.‬
+    //    1 = Home cursor.‬
+    //    2 = Set column to next character value.‬ [2 n]
+    //    3 = Set row to next character value. [3 n]
+    //    4 = Select color combo #0
+    //    5 = Select color combo #1
+    //    6 = Select color combo #2
+    //    7 = Select color combo #3
+    //    8 = Backspace.
+    //    9 = Tab to next 8th column.
+    //    13+10 or 13 or 10 = New line.
+    //    32..255 = Printable character.
+    //   'string' - printable characters
+    //
     //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
-    if (lineParts.length >= 2) {
-      // have data, parse it
-      if (lineParts[1].charAt(0) == "'") {
-        // parse channel spec
-        let colorName = 'GREEN';
-        let colorBrightness = 15;
-        if (lineParts[2].toUpperCase() == 'AUTO') {
-          // parse AUTO spec
-          //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
-          if (lineParts.length > 3) {
-            //channelSpec.ySize = Number(lineParts[3]);
-          }
-          if (lineParts.length > 4) {
-            //channelSpec.yBaseOffset = Number(lineParts[4]);
-          }
-          if (lineParts.length > 5) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[5];
-            //this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 6) {
-            colorName = lineParts[6];
-          }
-          if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[7]);
-          }
+    for (let index = 1; index < lineParts.length; index++) {
+      const currLinePart = lineParts[index];
+      if (currLinePart.charAt(0) == "'") {
+        // display string at cursor position with current colors
+        let displayString: string | undefined = undefined;
+        // isolate string and display it. Advance index to next part after close quote
+        if (currLinePart.substring(1).includes("'")) {
+          // string ends in this singel linepart
+          displayString = currLinePart.substring(1, currLinePart.length - 1);
         } else {
-          // parse manual spec
-          //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
-          if (lineParts.length > 2) {
-            //channelSpec.minValue = parseFloat(lineParts[2]);
-          }
-          if (lineParts.length > 3) {
-            //channelSpec.maxValue = parseFloat(lineParts[3]);
-          }
-          if (lineParts.length > 4) {
-            //channelSpec.ySize = Number(lineParts[4]);
-          }
-          if (lineParts.length > 5) {
-            //channelSpec.yBaseOffset = Number(lineParts[5]);
-          }
-          if (lineParts.length > 6) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[6];
-            //this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 7) {
-            colorName = lineParts[7];
-          }
-          if (lineParts.length > 8) {
-            colorBrightness = Number(lineParts[8]);
-          }
-        }
-        const channelColor = new DebugColor(colorName, colorBrightness);
-        //channelSpec.color = channelColor.rgbString;
-        //channelSpec.gridColor = channelColor.gridRgbString;
-        //channelSpec.textColor = channelColor.fontRgbString;
-        // and record spec for this channel
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        //this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
-        //this.channelSpecs.push(channelSpec);
-      } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
-        // parse trigger spec update
-        //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
-        //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
-        if (lineParts.length > 2) {
-          const desiredChannel: number = Number(lineParts[2]);
-          //if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
-          //this.triggerSpec.trigChannel = desiredChannel;
-          //} else {
-          //  this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
-          //}
-          if (lineParts.length > 3) {
-            if (lineParts[3].toUpperCase() == 'HOLDOFF') {
-              if (lineParts.length >= 4) {
-                //this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
-              }
-            } else if (lineParts[3].toUpperCase() == 'AUTO') {
-              //this.triggerSpec.trigAuto = true;
+          // this will be a multi-part string
+          const stringParts: string[] = [currLinePart.substring(1)];
+          while (index < lineParts.length - 1) {
+            index++;
+            const nextLinePart = lineParts[index];
+            if (nextLinePart.includes("'")) {
+              // last part of string
+              stringParts.push(nextLinePart.substring(0, nextLinePart.length - 1));
+              break; // exit loop
             } else {
-              //this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
-              //this.triggerSpec.trigAuto = false;
-              if (lineParts.length > 4) {
-                //this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
-              }
-              if (lineParts.length > 5) {
-                //this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
-              }
+              stringParts.push(nextLinePart);
             }
           }
+          displayString = stringParts.join(' ');
         }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        //this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
-        // parse trigger spec update
-        //   HOLDOFF1 <2-2048>2
-        if (lineParts.length > 2) {
-          //this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
+        if (displayString !== undefined) {
+          this.updateTermDisplay(`'${displayString}'`);
         }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        //this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'UPDATE') {
+      } else if (lineParts[index].charAt(0) >= '0' && lineParts[index].charAt(0) <= '9') {
+        // numeric data (actions, mostly)
+        const action: number = parseInt(lineParts[index], 10);
+        if (action == 2 || action == 3) {
+          // pass param value with goto line, goto column
+          if (index + 1 < lineParts.length) {
+            this.updateTermDisplay(`${action} ${lineParts[index + 1]}`);
+          } else {
+            this.logMessage(`* UPD-ERROR  missing value for action ${action}`);
+          }
+        }
+        if (action >= 32 && action <= 255) {
+          // printable character
+          this.updateTermDisplay(`'${String.fromCharCode(action)}'`);
+        } else {
+          // all other actions
+          this.updateTermDisplay(`${action}`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'UPDATE') {
         // update window with latest content
-        //this.clearTerminal();
-      } else if (lineParts[1].toUpperCase() == 'CLEAR') {
+        this.pushDisplayListToTerm();
+      } else if (lineParts[index].toUpperCase() == 'CLEAR') {
         // clear window
-        //this.clearTerminal();
-      } else if (lineParts[1].toUpperCase() == 'CLOSE') {
+        this.clearTerm();
+      } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
         this.closeDebugWindow();
-      } else if (lineParts[1].toUpperCase() == 'SAVE') {
+      } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
         // FIXME: UNDONE: add code save the window to a file here
-      } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
-        if (this.isFirstNumericData) {
-          this.isFirstNumericData = false;
-          this.createDebugWindow();
-        }
-        let scopeSamples: number[] = [];
-        for (let index = 1; index < lineParts.length; index++) {
-          // spin2 output has underscores for commas in numbers, so remove them
-          const value: string = lineParts[index].replace(/_/g, '');
-          if (value !== '') {
-            const nextSample: number = parseFloat(value);
-            scopeSamples.push(nextSample);
-          }
-        }
-
-        // parse numeric data
-        let didScroll: boolean = false; // in case we need this for performance of window update
-        const numberChannels: number = 0; //this.channelSpecs.length;
-        const nbrSamples = scopeSamples.length;
-        if (nbrSamples == numberChannels) {
-          /*
-          if (this.dbgLogMessageCount > 0) {
-            this.logMessage(
-              `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
-                ','
-              )}], lineparts=[${lineParts.join(',')}]`
-            );
-          }
-          */
-          for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
-            let nextSample: number = Number(scopeSamples[chanIdx]);
-            //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
-            // limit the sample to the channel's min/max?!
-            //const channelSpec = this.channelSpecs[chanIdx];
-            //if (nextSample < channelSpec.minValue) {
-            //nextSample = channelSpec.minValue;
-            this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-            //} else if (nextSample > channelSpec.maxValue) {
-            //nextSample = channelSpec.maxValue;
-            this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
-            //}
-            // record our sample (shifting left if necessary)
-            didScroll = this.recordChannelSample(chanIdx, nextSample);
-            // update scope chanel canvas with new sample
-            const canvasName = `channel-${chanIdx}`;
-            //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-            //this.updateTermChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
-          }
-        } else {
-          this.logMessage(
-            `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
-              ','
-            )}]`
-          );
-        }
-        // FIXME: UNDONE: add code to update the window here
       } else {
         this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }
     }
   }
 
-  private recordChannelSample(channelIndex: number, sample: number): boolean {
-    //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
-    let didScroll: boolean = false;
-    return didScroll;
+  private updateTermDisplay(text: string): void {
+    // add action to our display list
+    this.logMessage(`* updateTermDisplay(${text})`);
+    this.deferredCommands.push(text);
+    // create window if not already
+    if (this.isFirstDisplayData) {
+      this.isFirstDisplayData = false;
+      this.createDebugWindow();
+    }
+    // if not deferred update the act on display list now
+    if (this.displaySpec.delayedUpdate == false) {
+      // act on display list now
+      this.pushDisplayListToTerm();
+    }
   }
 
-  private updateTermChannelData(
-    canvasName: string,
-    channelSpec: TermChannelSpec,
-    samples: number[],
-    didScroll: boolean
-  ): void {
-    if (this.debugWindow) {
-      //if (this.dbgUpdateCount > 0) {
-      // DISABLE STOP this.dbgUpdateCount--;
-      //}
-      //if (this.dbgUpdateCount == 0) {
-      //  return;
-      //}
-      if (--this.dbgLogMessageCount > 0) {
-        this.logMessage(
-          `at updateTermChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
-        );
-      }
-      try {
-        // placement need to be scale sample range to vertical canvas size
-        const currSample: number = samples[samples.length - 1];
-        const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        // Invert and scale the sample to to our display range
-        const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
-        const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
-        // coord for current and previous samples
-        // NOTE:  this.channelSpecs[x].yBaseOffset is NOT used in our implementation
-        const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
-        const currYOffset: number =
-          this.channelLineWidth / 2 + currSampleInverted + this.canvasMargin + this.channelInset;
-        const prevXOffset: number = this.canvasMargin + (samples.length - 2) * this.channelLineWidth;
-        const prevYOffset: number =
-          this.channelLineWidth / 2 + prevSampleInverted + this.canvasMargin + this.channelInset;
-        //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
-        // draw region for the channel
-        const drawWidth: number = 0; //this.displaySpec.nbrSamples * this.channelLineWidth;
-        const drawHeight: number = 0; //channelSpec.ySize + this.channelLineWidth / 2;
-        const drawXOffset: number = this.canvasMargin;
-        const drawYOffset: number = this.channelInset + this.canvasMargin;
-        const channelColor: string = ''; //channelSpec.color;
-        if (this.dbgLogMessageCount > 0) {
-          this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-          this.logMessage(
-            `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-          );
+  private pushDisplayListToTerm() {
+    if (this.deferredCommands.length > 0) {
+      // act on display list now
+      this.deferredCommands.forEach((displayString) => {
+        this.logMessage(`* UPD-INFO displayString: [${displayString}]`);
+        // these will be numbers (actions) or strings (display)
+        // NOTE: 32-255 will arrive as single char strings 'char'
+        if (displayString.charAt(0) == "'") {
+          this.writeStringToTerm(displayString.substring(1, displayString.length - 1));
+        } else {
+          // this is a numeric action
+          //cursor pos cases are 2, 3 and will arrive as '2 n' or '3 n'
+          const numbers: string[] = displayString.split(' ');
+          const action: number = parseInt(numbers[0], 10);
+          switch (action) {
+            case 0:
+              // clear terminal display and home cursor
+              this.clearTerm();
+              break;
+            case 1:
+              // home cursor
+              this.cursorPosition = { x: 0, y: 0 };
+              break;
+            case 2:
+              // set column to next character value
+              if (numbers.length > 1) {
+                this.cursorPosition.x = parseInt(numbers[1], 10);
+              } else {
+                this.logMessage(`* UPD-ERROR  missing column value for action 2`);
+              }
+              break;
+            case 3:
+              // set row to next character value
+              if (numbers.length > 1) {
+                this.cursorPosition.y = parseInt(numbers[1], 10);
+              } else {
+                this.logMessage(`* UPD-ERROR  missing row value for action 3`);
+              }
+              break;
+            case 4:
+            case 5:
+            case 6:
+            case 7:
+              // select color combo #0-3
+              this.selectedCombo = action - 4;
+              break;
+            case 8:
+              // backspace
+              if (this.cursorPosition.x > 0) {
+                this.cursorPosition.x--;
+              }
+              break;
+            case 9:
+              // move to next tab column (tabwidth 8)
+              // move cursor to next tabstop
+              this.cursorPosition.x += 8 - (this.cursorPosition.x % 8);
+              break;
+            case 10:
+            case 13:
+              // reset cursor to start of next line
+              this.cursorPosition.x = 0;
+              if (this.cursorPosition.y < this.displaySpec.size.rows - 1) {
+                this.cursorPosition.y += 1;
+              }
+              break;
+            default:
+              this.logMessage(`* UPD-ERROR  unknown action: ${action}`);
+              break;
+          }
         }
+      });
+      this.deferredCommands = []; // all done, empty the list
+    }
+  }
+
+  private clearTerm(): void {
+    // erase the text display area
+    this.clearTextArea();
+    // home the cursorPosition
+    this.cursorPosition = { x: 0, y: 0 };
+  }
+
+  private clearTextArea(): void {
+    if (this.debugWindow) {
+      this.logMessage(`at clearTextArea()`);
+      try {
+        const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+        this.logMessage(`  -- bgcolor=[${bgcolor}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
+            const canvas = document.getElementById('text-area');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
               const ctx = canvas.getContext('2d');
 
               if (ctx) {
-                // Set the line color and width
-                const lineColor = '${channelColor}';
-                const lineWidth = ${this.channelLineWidth};
-                const scrollSpeed = lineWidth;
-                const canvWidth = ${drawWidth};
-                const canvHeight = ${drawHeight};
-                const canvXOffset = ${drawXOffset};
-                const canvYOffset = ${drawYOffset};
+                // Set the bg color
+                const backgroundColor = '${bgcolor}';
 
-                if (${didScroll}) {
-                  // Create an off-screen canvas
-                  const offScreenCanvas = document.createElement('canvas');
-                  offScreenCanvas.width = canvWidth - scrollSpeed;
-                  offScreenCanvas.height = canvHeight;
-                  const offScreenCtx = offScreenCanvas.getContext('2d');
+                // clear the entire canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                  if (offScreenCtx) {
-                    // Copy the relevant part of the canvas to the off-screen canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-
-                    // Clear the original canvas
-                    //  clearRect(x, y, width, height)
-                    //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
-                    // fix? artifact!! (maybe line-width caused?!!!)
-                    ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-
-                    // Copy the content back to the original canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-                  }
-                }
-
-                // Set the solid line pattern
-                ctx.setLineDash([]); // Empty array for solid line
-
-                // Draw the new line segment
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${prevXOffset}, ${prevYOffset});
-                ctx.lineTo(${currXOffset}, ${currYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update channel data:', error);
-      }
-      //if (didScroll) {
-      //  this.dbgUpdateCount = 0; // stop after first scroll
-      //}
-    }
-  }
-
-  private updateTermChannelLabel(name: string, colorString: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at updateTermChannelLabel(${name}, ${colorString})`);
-      try {
-        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            const labelsDivision = document.getElementById('channel-titles');
-            if (labelsDivision) {
-              let labelContent = labelsDivision.innerHTML;
-              if (labelContent.includes('{labels here}')) {
-                labelContent = ''; // remove placeholder span
-              }
-              labelContent += '${channelLabel}';
-              labelsDivision.innerHTML = labelContent;
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update channel label:', error);
-      }
-    }
-  }
-
-  private drawHorizontalLine(canvasName: string, channelSpec: TermChannelSpec, YOffset: number, gridColor: string) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
-      try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
-          this.channelInset +
-          this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${gridColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
-
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 3px dash, 3px gap
-
-                // Draw the line
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${lineXOffset}, ${lineYOffset});
-                ctx.lineTo(canWidth, ${lineYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update line:', error);
-      }
-    }
-  }
-
-  private drawHorizontalValue(canvasName: string, channelSpec: TermChannelSpec, YOffset: number, textColor: string) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${textColor})`);
-      try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${textColor}';
-                //const lineWidth = 2;
-
-                // Set the dash pattern
-                //ctx.setLineDash([]); // Empty array for solid line
-
-                // Add text
-                ctx.font = '9px Arial';
-                ctx.fillStyle = lineColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+                // fill canvas with background
+                ctx.fillStyle = backgroundColor;
+                ctx.fillRect(0, 00, canvas.width, canvas.height);
               }
             }
           })();
@@ -729,32 +617,19 @@ export class DebugTermWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalLineAndValue(
-    canvasName: string,
-    channelSpec: TermChannelSpec,
-    YOffset: number,
-    gridColor: string,
-    textColor: string
-  ) {
+  private writeStringToTerm(text: string): void {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
+      this.logMessage(`at writeStringToTerm(${text})`);
       try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
-          this.channelInset +
-          this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), valueText=[${valueText}]`);
+        const textYOffset: number = this.cursorPosition.x * this.displaySpec.textSizePix;
+        const textXOffset: number = this.cursorPosition.y * (this.displaySpec.textSizePts / 2) + this.contentInset;
+        const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
+        const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+        this.logMessage(`  -- textXY=(${textYOffset},${textXOffset}), colors=[${fgColor},${bgcolor}] text=[${text}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
+            const canvas = document.getElementById('text-area');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
@@ -762,62 +637,26 @@ export class DebugTermWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
-                const textColor = '${textColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
+                const lineColor = '${fgColor}';
+                const backgroundColor = '${bgcolor}';
 
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 5px dash, 3px gap
-
-                // Measure the text width
-                ctx.font = '9px Arial';
-                const textMetrics = ctx.measureText('${valueText}');
-                const textWidth = textMetrics.width;
-
-                // Draw the line
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset}); // start of line
-                ctx.lineTo(canWidth, ${lineYOffset}); // draw to end of line
-                ctx.stroke();
+                // Add text background
+                ctx.font = '${this.displaySpec.textSizePts}pt Arial';
+                const textWidth = ctx.measureText('${text}').width;
+                const textHeight = parseInt(ctx.font, 10); // Approximate text height based on font size
+                ctx.fillStyle = backgroundColor;
+                ctx.fillRect(${textXOffset}, ${textYOffset} - textHeight, textWidth, textHeight);
 
                 // Add text
-                ctx.fillStyle = textColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+                ctx.fillStyle = lineColor;
+                ctx.fillText('${text}', ${textXOffset}, ${textYOffset});
               }
             }
           })();
         `);
       } catch (error) {
-        console.error('Failed to update line & text:', error);
+        console.error('Failed to update text:', error);
       }
     }
-  }
-
-  private scaleAndInvertValue(value: number, channelSpec: TermChannelSpec): number {
-    // scale the value to the vertical channel size then invert the value
-    let possiblyScaledValue: number = value;
-    const range: number = channelSpec.maxValue - channelSpec.minValue;
-    // if value range is different from display range then scale it
-    if (channelSpec.ySize != range && range != 0) {
-      const adjustedValue = value - channelSpec.minValue;
-      possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
-    }
-    const invertedValue: number = channelSpec.ySize - 1 - possiblyScaledValue;
-    if (this.dbgLogMessageCount > 0) {
-      this.logMessage(
-        `  -- scaleAndInvertValue(${value}) => (${possiblyScaledValue}->${invertedValue}) range=[${channelSpec.minValue}:${channelSpec.maxValue}] ySize=(${channelSpec.ySize})`
-      );
-    }
-    return invertedValue;
-  }
-
-  private stringForRangeValue(value: number): string {
-    // add +/- prefix to range value
-    const prefix: string = value < 0 ? '' : '+';
-    const valueString: string = `${prefix}${value} `;
-    return valueString;
   }
 }
