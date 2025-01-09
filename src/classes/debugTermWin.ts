@@ -10,7 +10,7 @@ import { BrowserWindow, Menu } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
+import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { v8_0_0 } from 'pixi.js';
 
 export interface TermSize {
@@ -26,11 +26,7 @@ export interface TermDisplaySpec {
   windowTitle: string; // composite or override w/TITLE
   position: Position;
   size: TermSize;
-  textSizePts: number;
-  fontCharHeight: number;
-  fontCharWidth: number;
-  lineHeight: number;
-  fontBaseline: number;
+  font: FontMetrics;
   window: WindowColor;
   textColor: string;
   colorCombos: ColorCombo[];
@@ -83,6 +79,7 @@ export class DebugTermWindow extends DebugWindowBase {
     let displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
     displaySpec.colorCombos = [] as ColorCombo[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
+    displaySpec.font = {} as FontMetrics; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
@@ -92,11 +89,7 @@ export class DebugTermWindow extends DebugWindowBase {
     console.log(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { columns: 40, rows: 20 };
-    displaySpec.textSizePts = 12;
-    displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
-    displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
-    displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
-    displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
+    DebugWindowBase.calcMetricsForFontPtSize(12, displaySpec.font);
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
     displaySpec.textColor = textColor.rgbString;
@@ -148,11 +141,8 @@ export class DebugTermWindow extends DebugWindowBase {
           case 'TEXTSIZE':
             // esure we have two more values
             if (index < lineParts.length - 1) {
-              displaySpec.textSizePts = Number(lineParts[++index]);
-              displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
-              displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
-              displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
-              displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
+              const sizeInPts: number = Number(lineParts[++index]);
+              DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -270,9 +260,9 @@ export class DebugTermWindow extends DebugWindowBase {
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
     // set height so no scroller by default
-    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.lineHeight;
+    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
     // for mono-spaced font width 1/2 ht in pts
-    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.fontCharWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
 
     const divHeight = canvasHeight + 4; // +20 for title bar (30 leaves black at bottom), 20 leaves black at bottom
     const divWidth = canvasWidth + 4; // contentInset' for the Xoffset into window for canvas, 20 is extra pad
@@ -349,7 +339,7 @@ export class DebugTermWindow extends DebugWindowBase {
             margin: 0;
             padding: 0;
             font-family: Consolas, sans-serif;
-            font-size: ${this.displaySpec.textSizePts}pt;
+            font-size: ${this.displaySpec.font.textSizePts}pt;
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
             color: ${this.displaySpec.textColor};
@@ -633,12 +623,12 @@ export class DebugTermWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at writeStringToTerm(${text})`);
       try {
-        const textHeight: number = this.displaySpec.fontCharHeight;
-        const lineHeight: number = this.displaySpec.lineHeight;
+        const textHeight: number = this.displaySpec.font.charHeight;
+        const lineHeight: number = this.displaySpec.font.lineHeight;
         const textYOffset: number = this.cursorPosition.y * lineHeight;
-        const textXOffset: number = this.cursorPosition.x * this.displaySpec.fontCharWidth + this.contentInset;
-        const charVertOffset: number = (this.displaySpec.lineHeight - textHeight) / 2;
-        const textYbaseline: number = textYOffset + charVertOffset + this.displaySpec.fontBaseline;
+        const textXOffset: number = this.cursorPosition.x * this.displaySpec.font.charWidth + this.contentInset;
+        const charVertOffset: number = (lineHeight - textHeight) / 2;
+        const textYbaseline: number = textYOffset + charVertOffset + this.displaySpec.font.baseline;
         const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
         this.logMessage(
@@ -661,7 +651,7 @@ export class DebugTermWindow extends DebugWindowBase {
                 const lineHeight = ${lineHeight};
 
                 // Add text background
-                ctx.font = '${this.displaySpec.textSizePts}pt Consolas';
+                ctx.font = '${this.displaySpec.font.textSizePts}pt Consolas';
                 const textWidth = ctx.measureText('${text}').width;
 
                 // clear existing text & background
