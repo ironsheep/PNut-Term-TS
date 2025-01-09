@@ -96,7 +96,7 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
     displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
     displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
-    displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7); // 20%-30% from bottom
+    displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
     displaySpec.textColor = textColor.rgbString;
@@ -152,7 +152,7 @@ export class DebugTermWindow extends DebugWindowBase {
               displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
               displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
               displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
-              displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7); // 20%-30% from bottom
+              displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -361,8 +361,8 @@ export class DebugTermWindow extends DebugWindowBase {
             flex-grow: 0;
             flex-shrink: 0;
             padding: 2px;
-            background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
-            // background-color: ${this.displaySpec.window.background};
+            //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            background-color: ${this.displaySpec.window.background};
             width: ${divWidth}px; /* Set a fixed width */
             height: ${divHeight}px; /* Set a fixed height */
           }

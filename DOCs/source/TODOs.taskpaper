@@ -9,14 +9,18 @@ Add windows:
 	- BITMAP
 	- MIDI
 SCOPE Window:
+	- Add mouse hover mech, with disable
+	- fix label division margins
 	- Single Channel
-		- working!
-		- fix label division margins
+		- working! @done(2025-01-09)
 	- Mulit-Channel
 		- fix plotting @done(2025-01-08)
 		- fix window size @done(2025-01-08)
-		- fix label division margins
 LOGIC Window:
 	- start work
 TERM Window:
-	- get content updating
+	- get content updating @done(2025-01-09)
+	- Add mouse hover mech, w/disable
+	
+PLOT Window:
+- start work
