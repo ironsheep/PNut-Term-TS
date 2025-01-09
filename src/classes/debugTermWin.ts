@@ -27,7 +27,10 @@ export interface TermDisplaySpec {
   position: Position;
   size: TermSize;
   textSizePts: number;
-  textSizePix: number;
+  fontCharHeight: number;
+  fontCharWidth: number;
+  lineHeight: number;
+  fontBaseline: number;
   window: WindowColor;
   textColor: string;
   colorCombos: ColorCombo[];
@@ -45,12 +48,7 @@ export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstDisplayData: boolean = true;
-  private channelInset: number = 10; // 10 pixels from top and bottom of window
-  private contentInset: number = 10; // 10 pixels from left and right of window
-  private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
-  private channelLineWidth: number = 2; // 2 pixels wide for channel data line
-  private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private contentInset: number = 0; // 0 pixels from left and right of window
   // current terminal state
   private deferredCommands: string[] = [];
   private cursorPosition: Position = { x: 0, y: 0 };
@@ -95,7 +93,10 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { columns: 40, rows: 20 };
     displaySpec.textSizePts = 12;
-    displaySpec.textSizePix = Math.round(displaySpec.textSizePts * 1.333);
+    displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
+    displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
+    displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
+    displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7); // 20%-30% from bottom
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
     displaySpec.textColor = textColor.rgbString;
@@ -148,7 +149,10 @@ export class DebugTermWindow extends DebugWindowBase {
             // esure we have two more values
             if (index < lineParts.length - 1) {
               displaySpec.textSizePts = Number(lineParts[++index]);
-              displaySpec.textSizePix = Math.round(displaySpec.textSizePts * 1.333);
+              displaySpec.fontCharHeight = Math.round(displaySpec.textSizePts * 1.333);
+              displaySpec.fontCharWidth = Math.round(displaySpec.fontCharHeight * 0.6);
+              displaySpec.lineHeight = Math.round(displaySpec.fontCharHeight * 1.3); // 120%-140% using 130% of text height
+              displaySpec.fontBaseline = Math.round(displaySpec.fontCharHeight * 0.7); // 20%-30% from bottom
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -266,12 +270,15 @@ export class DebugTermWindow extends DebugWindowBase {
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
     // set height so no scroller by default
-    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.textSizePix;
+    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.lineHeight;
     // for mono-spaced font width 1/2 ht in pts
-    const canvasWidth = this.displaySpec.size.columns * (this.displaySpec.textSizePts / 2) + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.fontCharWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
 
-    const windowHeight = canvasHeight + 30; // +30 for title bar
-    const windowWidth = canvasWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const divHeight = canvasHeight + 4; // +20 for title bar (30 leaves black at bottom), 20 leaves black at bottom
+    const divWidth = canvasWidth + 4; // contentInset' for the Xoffset into window for canvas, 20 is extra pad
+
+    const windowHeight = canvasHeight + 4 + 4; // +4 add enough to not create vert. scroller
+    const windowWidth = canvasWidth + this.contentInset * 2 + 4 + 4; // contentInset' for the Xoffset into window for canvas, +4 add enough to not create horiz. scroller
     this.logMessage(
       `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -341,9 +348,10 @@ export class DebugTermWindow extends DebugWindowBase {
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
+            font-family: Consolas, sans-serif;
             font-size: ${this.displaySpec.textSizePts}pt;
-            background-color: ${this.displaySpec.window.background};
+            //background-color: ${this.displaySpec.window.background};
+            background-color: rgb(140, 52, 130);
             color: ${this.displaySpec.textColor};
           }
           #terminal-data {
@@ -351,19 +359,23 @@ export class DebugTermWindow extends DebugWindowBase {
             flex-direction: column;
             justify-content: flex-end;
             flex-grow: 0;
-            margin: 0;
+            flex-shrink: 0;
+            padding: 2px;
             background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            // background-color: ${this.displaySpec.window.background};
+            width: ${divWidth}px; /* Set a fixed width */
+            height: ${divHeight}px; /* Set a fixed height */
           }
           canvas {
-            background-color:rgb(9, 201, 28);
-            //background-color: ${this.displaySpec.window.background};
+            // background-color:rgb(9, 201, 28);
+            background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
         </style>
       </head>
       <body>
         <div id="terminal-data">
-          <canvas id="text-area" width="${windowWidth}" height="${windowHeight}"></canvas>
+          <canvas id="text-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
         </div>
       </body>
     </html>
@@ -486,7 +498,7 @@ export class DebugTermWindow extends DebugWindowBase {
 
   private updateTermDisplay(text: string): void {
     // add action to our display list
-    this.logMessage(`* updateTermDisplay(${text})`);
+    //this.logMessage(`* updateTermDisplay(${text})`);
     this.deferredCommands.push(text);
     // create window if not already
     if (this.isFirstDisplayData) {
@@ -621,15 +633,22 @@ export class DebugTermWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at writeStringToTerm(${text})`);
       try {
-        const textYOffset: number = this.cursorPosition.x * this.displaySpec.textSizePix;
-        const textXOffset: number = this.cursorPosition.y * (this.displaySpec.textSizePts / 2) + this.contentInset;
+        const textHeight: number = this.displaySpec.fontCharHeight;
+        const lineHeight: number = this.displaySpec.lineHeight;
+        const textYOffset: number = this.cursorPosition.y * lineHeight;
+        const textXOffset: number = this.cursorPosition.x * this.displaySpec.fontCharWidth + this.contentInset;
+        const charVertOffset: number = (this.displaySpec.lineHeight - textHeight) / 2;
+        const textYbaseline: number = textYOffset + charVertOffset + this.displaySpec.fontBaseline;
         const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-        this.logMessage(`  -- textXY=(${textYOffset},${textXOffset}), colors=[${fgColor},${bgcolor}] text=[${text}]`);
+        this.logMessage(
+          `  -- textXY=(${textYOffset},${textXOffset}), height=(${textHeight}) colors=[${fgColor},${bgcolor}] text=[${text}]`
+        );
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
             const canvas = document.getElementById('text-area');
+
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
@@ -639,17 +658,25 @@ export class DebugTermWindow extends DebugWindowBase {
                 // Set the line color and width
                 const lineColor = '${fgColor}';
                 const backgroundColor = '${bgcolor}';
+                const lineHeight = ${lineHeight};
 
                 // Add text background
-                ctx.font = '${this.displaySpec.textSizePts}pt Arial';
+                ctx.font = '${this.displaySpec.textSizePts}pt Consolas';
                 const textWidth = ctx.measureText('${text}').width;
-                const textHeight = parseInt(ctx.font, 10); // Approximate text height based on font size
-                ctx.fillStyle = backgroundColor;
-                ctx.fillRect(${textXOffset}, ${textYOffset} - textHeight, textWidth, textHeight);
 
-                // Add text
+                // clear existing text & background
+                // clearRect(x, y, width, height);
+                ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+
+                // Add text background color
+                ctx.fillStyle = backgroundColor;
+                // fillRect(x, y, width, height);
+                ctx.fillRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+
+                // Add text of color
                 ctx.fillStyle = lineColor;
-                ctx.fillText('${text}', ${textXOffset}, ${textYOffset});
+                // fillText(text, x, y [, maxWidth]); // where y is baseline
+                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
               }
             }
           })();
