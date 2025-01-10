@@ -100,14 +100,12 @@ export class DebugPlotWindow extends DebugWindowBase {
     // Valid directives are:
     //   TITLE <title>
     //   POS <left> <top> [default: 0,0]
-    //   SIZE <width> <height> [ea. 32-2048, default: 256]
-    //   SAMPLES <nbr> [16-2048, default: 256]
-    //   RATE <rate> [1-2048, default: 1]
-    //   DOTSIZE <pix> [0-32, default: 0]
-    //   LINESIZE <half-pix> [0-32, default: 3]
-    //   TEXTSIZE <half-pix> [6-200, default: editor font size]
-    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
-    //   packed_data_mode
+    //   SIZE <width> <height> [ea. 32-2048, default: 256,256]
+    //   DOTSIZE <width-or-both> [<height>] [default: 1,1]
+    //   lut1_to_rgb24
+    //   LUTCOLORS rgb24 rgb24 ... [default: colors 0..7]
+    //   BACKCOLOR <bgnd-color> [default: BLACK]
+    //   UPDATE
     //   HIDEXY
     console.log(`CL: at parsePlotDeclaration()`);
     let displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
@@ -419,21 +417,116 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
+  /*
+  //   OUR INITIAL TEST CODE
+  //
+    debug(`plot myplot size 400 480 backcolor white update)
+    debug(`myplot origin 200 200 polar -64 -16)
+    k~
+    repeat
+        debug(`myplot clear)
+        debug(`myplot set 240 0 cyan 3 text 24 3 'Hub RAM Interface')
+        debug(`myplot set 210 0 text 11 3 'Cogs can r/w 32 bits per clock')
+
+        if k & 8
+            j++
+        else
+            'move RAMs or draw spokes?
+            repeat i from 0 to 7
+                debug(`myplot gray 12 set 83 `(i*8) line 150 `(i*8) 15)
+
+        debug(`myplot set 0 0 cyan 4 circle 121 yellow 7 circle 117 3)
+        debug(`myplot set 20 0 white text 9 'Address LSBs')
+        debug(`myplot set 0 0 text 11 1 '8 Hub RAMs')
+        debug(`myplot set 20 32 text 9 '16K x 32' )
+
+        repeat i from 0 to 7 'draw RAMs and cogs
+            debug(`myplot cyan 6 set 83 `(i*8-j) circle 43 text 14 '`(i)')
+            debug(`myplot cyan 4 set 83 `(i*8-j) circle 45 3)
+            debug(`myplot orange 6 set 150 `(i*8) circle 61 text 13 'Cog`(i)')
+            debug(`myplot orange 4 set 150 `(i*8) circle 63 3)
+
+        debug(`myplot update `dly(30))
+  */
+
   public updateContent(lineParts: string[]): void {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
-    // --- these create a new channel spec
-    //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
-    //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
-    // --- these update the trigger spec
-    //   TRIGGER <channel|-1> {arm-level {trigger-level {offset}}}
-    //   HOLDOFF <2-2048>
-    // --- these manage the window
-    //   CLEAR
-    //   CLOSE
-    //   SAVE {WINDOW} 'filename' // save window to .bmp file
-    // --- these paints new samples
-    //   <numeric data> // data applied to channels in ascending order
+    //   lut1_to_rgb24 - Set color mode. rgb24
+    //
+    //   LUTCOLORS <rgb24 rgb24> <...> - For LUT1..LUT8 color modes, load the LUT with rgb24 colors. Use HEX_LONG_ARRAY_ to load values. [default colors 0..7]
+    //
+    //   BACKCOLOR <color> - Set the background color according to the current color mode. [Default BLACK]
+    //
+    //   COLOR <color> - Set the drawing color according to the current color mode. Use just before TEXT to change text color. [Default: CYAN]
+    //
+    //   BLACK/WHITE or ORANGE/BLUE/GREEN/CYAN/RED/MAGENTA/YELLOW/GRAY {brightness}  - Set the drawing color and optional 0..15 brightness for ORANGE..GRAY colors (default is 8).  [Default: CYAN]
+    //
+    //   OPACITY <level> - Set the opacity level for DOT, LINE, CIRCLE, OVAL, BOX, and OBOX drawing. [0..255 = clear..opaque] [Default: 255]
+    //
+    //   PRECISE Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. disabled
+    //
+    //   LINESIZE <size> -  Set the line size in pixels for DOT and LINE drawing. [Default: 1]
+    //
+    //   ORIGIN {x_pos y_pos} Set the origin point to cartesian (x_pos, y_pos) or to the current (x, y) if no values are specified. 0, 0
+    //
+    //   SET <x> <y> - Set the drawing position to (x, y). After LINE, the endpoint becomes the new drawing position.
+    //
+    //   DOT {linesize {opacity}} - Draw a dot at the current position with optional LINESIZE and OPACITY overrides.
+    //
+    //   LINE <x> <y> {linesize {opacity}} - Draw a line from the current position to (x,y) with optional LINESIZE and OPACITY overrides.
+    //
+    //   CIRCLE <diameter> {linesize {opacity}} - Draw a circle around the current position with optional line size (none/0 = solid) and OPACITY override.
+    //
+    //   OVAL <width> <height> {linesize {opacity}} - Draw an oval around the current position with optional line size (none/0 = solid) and OPACITY override.
+    //
+    //   BOX <width> <height> {linesize {opacity}} - Draw a box around the current position with optional line size (none/0 = solid) and OPACITY override..
+
+    //   OBOX <width> <height> <x_radius> <y_radius> {linesize {opacity}} - Draw a rounded box around the current position with width, height, x and y radii,
+    //     and optional line size none/0 = solid) and OPACITY override.
+    //
+    //   TEXTSIZE <size> - Set the text size (6..200). 10
+    //
+    //   TEXTSTYLE style_YYXXUIWW - Set the text style to %YYXXUIWW:
+    //     %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //     %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //     %U is underline: %1 = underline.
+    //     %I is italic: %1 = italic.
+    //     %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    //     %00000001
+    //
+    //   TEXTANGLE <angle> - Set the text angle. In cartesian mode, the angle is in degrees. [Default: 0]
+    //
+    //   TEXT {size {style {angle}}} 'text' - Draw text with overrides for size, style, and angle. To change text color, declare a color just before TEXT.
+    //
+    //   SPRITEDEF <id> <x_dim> <y_dim> pixels… colors… - Define a sprite. Unique ID must be 0..255. Dimensions must each be 1..32. Pixels are bytes which select
+    //     palette colors, ordered left-to-right, then top-to-bottom. Colors are longs which define the palette
+    //     referenced by the pixel bytes; $AARRGGBB values specify alpha-blend, red, green, and blue.
+    //
+    //   SPRITE <id> {orient {scale {opacity}}} - Render a sprite at the current position with orientation, scale, and OPACITY override. Orientation is 0..7,
+    //     per the first eight TRACE modes. Scale is 1..64. See the DEBUG_PLOT_Sprites.spin2 file.
+    //     <id>, 0, 1, 255
+    //
+    //   POLAR {twopi {offset}} - Set polar mode, twopi value, and offset. For example, POLAR -12 -3 would be like a clock face.
+    //     For a twopi value of $100000000 or -$100000000, use 0 or -1.
+    //     In polar mode, (x, y) coordinates are interpreted as (length, angle).
+    //     [Default: $100000000, 0]
+    //
+    //   CARTESIAN {ydir {xdir}} - Set cartesian mode and optionally set Y and X axis polarity. Cartesian mode is the default.
+    //     If ydir is 0, the Y axis points up. If ydir is non-0, the Y axis points down.
+    //     If xdir is 0, the X axis points right. If xdir is non-0, the X axis points left.
+    //     [Default: 0, 0]
+    //
+    //   CLEAR - Clear the plot to the background color.
+    //
+    //   UPDATE - Update the window with the current plot. Used in UPDATE mode.
+    //
+    //   SAVE {WINDOW} 'filename' - Save a bitmap file (.bmp) of either the entire window or just the display area.
+    //
+    //   CLOSE - Close the window.
+    //
+    //   *  Color is a modal value, else BLACK / WHITE or ORANGE / BLUE / GREEN / CYAN / RED / MAGENTA / YELLOW / GRAY followed by an optional 0..15 for brightness (default is 8).
+    //
     //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
     if (lineParts.length >= 2) {

@@ -166,3 +166,4 @@ cython_debug/
 /.history
 /release
 /prebuilds
+src/classes/f1.txt
