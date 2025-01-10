@@ -84,6 +84,12 @@ export class DebugColor {
     return this.fontColor;
   }
 
+  public static isValidColorName(colorName: string): boolean {
+    const foundColor = DebugColor.colorNameToHex[colorName.toUpperCase()];
+    console.log(`isValidColorName: ${colorName} -> ${foundColor}`);
+    return foundColor !== undefined ? true : false;
+  }
+
   private static colorNameToHexString(colorName: string): string {
     let hexString = DebugColor.colorNameToHex[colorName.toUpperCase()];
     if (!hexString) {

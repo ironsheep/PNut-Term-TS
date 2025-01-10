@@ -10,81 +10,59 @@ import { BrowserWindow, Menu } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
+import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
+import { v8_0_0 } from 'pixi.js';
 
+export interface LutColor {
+  fgcolor: string;
+  bgcolor: string;
+}
 export interface PlotDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
   position: Position;
   size: Size;
-  nbrSamples: number;
-  rate: number;
-  dotSize: number;
-  lineSize: number;
-  textSize: number;
+  dotSize: Size;
   window: WindowColor;
-  isPackedData: boolean;
+  lutColors: LutColor[];
+  delayedUpdate: boolean;
   hideXY: boolean;
 }
 
-export interface PlotChannelSpec {
-  name: string;
-  color: string;
-  gridColor: string;
-  textColor: string;
-  minValue: number;
-  maxValue: number;
-  ySize: number;
-  yBaseOffset: number;
-  lgndShowMax: boolean;
-  lgndShowMin: boolean;
-  lgndShowMaxLine: boolean;
-  lgndShowMinLine: boolean;
+export interface PolarSpec {
+  twopi: number;
+  offset: number;
 }
 
-interface PlotChannelSamples {
-  samples: number[];
-}
-
-export interface PlotTriggerSpec {
-  // trigger
-  trigEnabled: boolean;
-  trigAuto: boolean;
-  trigChannel: number; // if channel is -1 then trigger is disabled
-  trigArmLevel: number;
-  trigLevel: number;
-  trigRtOffset: number;
-  trigHoldoff: number; // in samples required, from trigger to trigger
+export interface CartesianSpec {
+  ydir: number;
+  xdir: number;
 }
 
 export class DebugPlotWindow extends DebugWindowBase {
   private displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
-  private channelSpecs: PlotChannelSpec[] = []; // one for each channel
-  private channelSamples: PlotChannelSamples[] = []; // one for each channel
-  private triggerSpec: PlotTriggerSpec = {} as PlotTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
-  private isFirstNumericData: boolean = true;
-  private channelInset: number = 10; // 10 pixels from top and bottom of window
-  private contentInset: number = 10; // 10 pixels from left and right of window
-  private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
-  private channelLineWidth: number = 2; // 2 pixels wide for channel data line
-  private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private isFirstDisplayData: boolean = true;
+  private contentInset: number = 0; // 0 pixels from left and right of window
+  // current terminal state
+  private deferredCommands: string[] = [];
+  private cursorPosition: Position = { x: 0, y: 0 };
+  private selectedLutColor: number = 0;
+  private font: FontMetrics = {} as FontMetrics;
+  private origin: Position = { x: 0, y: 0 };
+  private polarConfig: PolarSpec = { twopi: 0x100000000, offset: 0 };
+  private cartesianConfig: CartesianSpec = { ydir: 0, xdir: 0 };
+  private isPolar: boolean = false;
+  private lineSize: number = 1;
+  private isPreciseMode: boolean = false; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel.
+  private currFgColor: string = '#00FFFF'; // #RRGGBB string
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
     super(ctx);
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
-    // init default Trigger Spec
-    this.triggerSpec = {
-      trigEnabled: false,
-      trigAuto: false,
-      trigChannel: -1,
-      trigArmLevel: 0,
-      trigLevel: 0,
-      trigRtOffset: 0,
-      trigHoldoff: 0
-    };
+    // start with default font size
+    DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
   }
 
   get windowTitle(): string {
@@ -109,19 +87,24 @@ export class DebugPlotWindow extends DebugWindowBase {
     //   HIDEXY
     console.log(`CL: at parsePlotDeclaration()`);
     let displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
+    displaySpec.lutColors = [] as LutColor[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
+    const textColor: DebugColor = new DebugColor('CYAN');
     console.log(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
-    displaySpec.nbrSamples = 256;
-    displaySpec.rate = 1;
+    displaySpec.dotSize = { width: 1, height: 1 };
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
+    displaySpec.delayedUpdate = false;
+    displaySpec.hideXY = false;
+    // by default we have combo #0 defined
+    //displaySpec.lutColors.push({ fgcolor: displaySpec.textColor, bgcolor: displaySpec.window.background });
 
     // now parse overrides to defaults
     console.log(`CL: at overrides PlotDisplaySpec: ${lineParts}`);
@@ -143,6 +126,16 @@ export class DebugPlotWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
+          case 'POS':
+            // esure we have two more values
+            if (index < lineParts.length - 2) {
+              displaySpec.position.x = Number(lineParts[++index]);
+              displaySpec.position.y = Number(lineParts[++index]);
+            } else {
+              console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+              isValid = false;
+            }
+            break;
           case 'SIZE':
             // esure we have two more values
             if (index < lineParts.length - 2) {
@@ -153,14 +146,28 @@ export class DebugPlotWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-          case 'SAMPLES':
-            // esure we have two more values
+          case 'BACKCOLOR':
+            // esure we have one more value
             if (index < lineParts.length - 1) {
-              displaySpec.nbrSamples = Number(lineParts[++index]);
+              const colorName: string = lineParts[index];
+              let colorBrightness: number = 8;
+              if (index < lineParts.length - 1) {
+                if (this.nextPartIsNumeric(lineParts, index)) {
+                  colorBrightness = Number(lineParts[++index]);
+                }
+              }
+              const textColor = new DebugColor(colorName, colorBrightness);
+              displaySpec.window.background = textColor.rgbString;
             } else {
               console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
+            break;
+          case 'UPDATE':
+            displaySpec.delayedUpdate = true;
+            break;
+          case 'HIDEXY':
+            displaySpec.delayedUpdate = true;
             break;
 
           default:
@@ -179,52 +186,21 @@ export class DebugPlotWindow extends DebugWindowBase {
   private createDebugWindow(): void {
     this.logMessage(`at createDebugWindow() PLOT`);
     // calculate overall canvas sizes then window size from them!
-    if (this.channelSpecs.length == 0) {
-      // create a DEFAULT channelSpec for only channel
-      const defaultColor: DebugColor = new DebugColor('GREEN');
-      this.channelSpecs.push({
-        name: 'Channel 0',
-        color: defaultColor.rgbString,
-        gridColor: defaultColor.gridRgbString,
-        textColor: defaultColor.fontRgbString,
-        minValue: 0,
-        maxValue: 255,
-        ySize: this.displaySpec.size.height,
-        yBaseOffset: 0,
-        lgndShowMax: true,
-        lgndShowMin: true,
-        lgndShowMaxLine: true,
-        lgndShowMinLine: true
-      });
-    }
 
     // NOTES: Chip's size estimation:
     //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
-    const channelCanvases: string[] = [];
-    let windowCanvasHeight: number = 0;
-    if (this.channelSpecs.length > 0) {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        const channelSpec = this.channelSpecs[index];
-        const adjHeight = this.channelLineWidth / 2 + this.canvasMargin * 2 + channelSpec.ySize + 2 * this.channelInset; // inset is above and below
-        const adjWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
-        // create a canvas for each channel
-        channelCanvases.push(`<canvas id="channel-${index}" width="${adjWidth}" height="${adjHeight}"></canvas>`);
-        // account for channel height
-        windowCanvasHeight += channelSpec.ySize + 2 * this.channelInset + this.channelLineWidth / 2;
-      }
-    } else {
-      // error if NO channel
-      this.logMessage(`at createDebugWindow() PLOT with NO channels!`);
-    }
-
-    this.logMessage(`at createDebugWindow() PLOT set up done... w/${channelCanvases.length} canvase(s)`);
-
     // set height so no scroller by default
-    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 30; // 20 is for the channel labels, 30 for window menu bar (30 is guess on linux)
-    const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
-    const windowWidth = Math.max(this.displaySpec.size.width, this.displaySpec.nbrSamples * 2 + this.contentInset * 2); // contentInset' for the Xoffset into window for canvas
+    const canvasHeight = this.displaySpec.size.height;
+    // for mono-spaced font width 1/2 ht in pts
+    const canvasWidth = this.displaySpec.size.width; // contentInset' for the Xoffset into window for canvas
+
+    const divHeight = canvasHeight + 4; // +20 for title bar (30 leaves black at bottom), 20 leaves black at bottom
+    const divWidth = canvasWidth + 4; // contentInset' for the Xoffset into window for canvas, 20 is extra pad
+
+    const windowHeight = canvasHeight + 4 + 4; // +4 add enough to not create vert. scroller
+    const windowWidth = canvasWidth + this.contentInset * 2 + 4 + 4; // contentInset' for the Xoffset into window for canvas, +4 add enough to not create horiz. scroller
     this.logMessage(
       `  -- PLOT window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -294,53 +270,32 @@ export class DebugPlotWindow extends DebugWindowBase {
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            //background-color:rgb(234, 121, 86);
-            background-color: ${this.displaySpec.window.background};
-            color:rgb(191, 213, 93);
+            font-family: Consolas, sans-serif;
+            //background-color: ${this.displaySpec.window.background};
+            background-color: rgb(140, 52, 130);
           }
-          #channel-titles {
-            display: flex;
-            justify-content: flex-start; // left edge grounded
-            align-items: center; // vertically centered
-            flex-grow: 0;
-            gap: 10px;  // between labels
-            //margin: 10px;   // top, right, bottom, left
-            padding: 10px;
-            background-color:rgb(83, 221, 108);
-          }
-          #channel-data {
+          #plot-data {
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
             flex-grow: 0;
-            margin: 0;
-            //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
-          }
-          #channels {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            flex-grow: 0;
-            margin: 0px 10px 10px 10px;   // top, right, bottom, left
-            padding: 0px;   // top, right, bottom, left
-            border-width: 1px;
-            border-style: solid;
-            border-color: ${this.displaySpec.window.grid};
-            background-color:rgb(164, 22, 22); // ${this.displaySpec.window.background};
+            flex-shrink: 0;
+            padding: 2px;
+            background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            //background-color: ${this.displaySpec.window.background};
+            width: ${divWidth}px; /* Set a fixed width */
+            height: ${divHeight}px; /* Set a fixed height */
           }
           canvas {
-            //background-color:rgb(240, 194, 151);
+            // background-color:rgb(9, 201, 28);
             background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
         </style>
       </head>
       <body>
-        <div id="channel-titles"><span>{labels here}</span></div>
-        <div id="channel-data">
-          <div id="channels">${channelCanvases.join(' ')}</div>
+        <div id="plot-data">
+          <canvas id="plot-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
         </div>
       </body>
     </html>
@@ -359,52 +314,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        const channelSpec = this.channelSpecs[index];
-        this.updatePlotChannelLabel(channelSpec.name, channelSpec.color);
-        const channelGridColor: string = channelSpec.gridColor;
-        const channelTextColor: string = channelSpec.textColor;
-        const windowGridColor: string = this.displaySpec.window.grid;
-        const canvasName = `channel-${index}`;
-        // paint the grid/min/max, etc.
-        //  %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-        if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
-          //  %1x0x => max legend, NOT max line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.maxValue, channelTextColor);
-        }
-        if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
-          //  %x1x0 => min legend, NOT min line, so value ONLY
-          this.drawHorizontalValue(canvasName, channelSpec, channelSpec.minValue, channelTextColor);
-        }
-        if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
-          //  %1x1x => max legend, max line, so show value and line!
-          this.drawHorizontalLineAndValue(
-            canvasName,
-            channelSpec,
-            channelSpec.maxValue,
-            channelGridColor,
-            channelTextColor
-          );
-        }
-        if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
-          //  %x1x1 => min legend, min line, so show value and line!
-          this.drawHorizontalLineAndValue(
-            canvasName,
-            channelSpec,
-            channelSpec.minValue,
-            channelGridColor,
-            channelTextColor
-          );
-        }
-        if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
-          //  %0x1x => NOT max legend, max line, show line ONLY
-          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.maxValue, channelGridColor);
-        }
-        if (!channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
-          //  %x0x1 => NOT min legend, min line, show line ONLY
-          this.drawHorizontalLine(canvasName, channelSpec, channelSpec.minValue, channelGridColor);
-        }
-      }
     });
   }
 
@@ -417,37 +326,14 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
-  /*
-  //   OUR INITIAL TEST CODE
-  //
-    debug(`plot myplot size 400 480 backcolor white update)
-    debug(`myplot origin 200 200 polar -64 -16)
-    k~
-    repeat
-        debug(`myplot clear)
-        debug(`myplot set 240 0 cyan 3 text 24 3 'Hub RAM Interface')
-        debug(`myplot set 210 0 text 11 3 'Cogs can r/w 32 bits per clock')
-
-        if k & 8
-            j++
-        else
-            'move RAMs or draw spokes?
-            repeat i from 0 to 7
-                debug(`myplot gray 12 set 83 `(i*8) line 150 `(i*8) 15)
-
-        debug(`myplot set 0 0 cyan 4 circle 121 yellow 7 circle 117 3)
-        debug(`myplot set 20 0 white text 9 'Address LSBs')
-        debug(`myplot set 0 0 text 11 1 '8 Hub RAMs')
-        debug(`myplot set 20 32 text 9 '16K x 32' )
-
-        repeat i from 0 to 7 'draw RAMs and cogs
-            debug(`myplot cyan 6 set 83 `(i*8-j) circle 43 text 14 '`(i)')
-            debug(`myplot cyan 4 set 83 `(i*8-j) circle 45 3)
-            debug(`myplot orange 6 set 150 `(i*8) circle 61 text 13 'Cog`(i)')
-            debug(`myplot orange 4 set 150 `(i*8) circle 63 3)
-
-        debug(`myplot update `dly(30))
-  */
+  private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
+    let numericStatus: boolean = false;
+    let firstChar: string = lineParts[index + 1].charAt(0);
+    if (firstChar >= '0' && firstChar <= '9') {
+      numericStatus = true;
+    }
+    return numericStatus;
+  }
 
   public updateContent(lineParts: string[]): void {
     // here with lineParts = ['`{displayName}, ...]
@@ -481,7 +367,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     //   OVAL <width> <height> {linesize {opacity}} - Draw an oval around the current position with optional line size (none/0 = solid) and OPACITY override.
     //
     //   BOX <width> <height> {linesize {opacity}} - Draw a box around the current position with optional line size (none/0 = solid) and OPACITY override..
-
+    //
     //   OBOX <width> <height> <x_radius> <y_radius> {linesize {opacity}} - Draw a rounded box around the current position with width, height, x and y radii,
     //     and optional line size none/0 = solid) and OPACITY override.
     //
@@ -527,482 +413,279 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     //   *  Color is a modal value, else BLACK / WHITE or ORANGE / BLUE / GREEN / CYAN / RED / MAGENTA / YELLOW / GRAY followed by an optional 0..15 for brightness (default is 8).
     //
-    //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
+    this.logMessage(`---- at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
-    if (lineParts.length >= 2) {
-      // have data, parse it
-      if (lineParts[1].charAt(0) == "'") {
-        // parse channel spec
-        let channelSpec: PlotChannelSpec = {} as PlotChannelSpec;
-        channelSpec.name = lineParts[1].slice(1, -1);
-        let colorName = 'GREEN';
-        let colorBrightness = 15;
-        if (lineParts[2].toUpperCase() == 'AUTO') {
-          // parse AUTO spec
-          //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
-          if (lineParts.length > 3) {
-            channelSpec.ySize = Number(lineParts[3]);
-          }
-          if (lineParts.length > 4) {
-            channelSpec.yBaseOffset = Number(lineParts[4]);
-          }
-          if (lineParts.length > 5) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[5];
-            this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 6) {
-            colorName = lineParts[6];
-          }
-          if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[7]);
-          }
+    for (let index = 1; index < lineParts.length; index++) {
+      if (lineParts[index].toUpperCase() == 'SET') {
+        // set cursor position
+        if (index < lineParts.length - 2) {
+          const x: number = parseFloat(lineParts[++index]);
+          const y: number = parseFloat(lineParts[++index]);
+          this.updatePlotDisplay(`SET ${x} ${y}`);
         } else {
-          // parse manual spec
-          //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
-          if (lineParts.length > 2) {
-            channelSpec.minValue = parseFloat(lineParts[2]);
-          }
-          if (lineParts.length > 3) {
-            channelSpec.maxValue = parseFloat(lineParts[3]);
-          }
-          if (lineParts.length > 4) {
-            channelSpec.ySize = Number(lineParts[4]);
-          }
-          if (lineParts.length > 5) {
-            channelSpec.yBaseOffset = Number(lineParts[5]);
-          }
-          if (lineParts.length > 6) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[6];
-            this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 7) {
-            colorName = lineParts[7];
-          }
-          if (lineParts.length > 8) {
-            colorBrightness = Number(lineParts[8]);
-          }
+          this.logMessage(`* UPD-ERROR  missing parameters for SET [${lineParts.join(' ')}]`);
         }
-        const channelColor = new DebugColor(colorName, colorBrightness);
-        channelSpec.color = channelColor.rgbString;
-        channelSpec.gridColor = channelColor.gridRgbString;
-        channelSpec.textColor = channelColor.fontRgbString;
-        // and record spec for this channel
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
-        this.channelSpecs.push(channelSpec);
-      } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
-        // parse trigger spec update
-        //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
-        //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
-        this.triggerSpec.trigEnabled = true;
-        if (lineParts.length > 2) {
-          const desiredChannel: number = Number(lineParts[2]);
-          if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
-            this.triggerSpec.trigChannel = desiredChannel;
-          } else {
-            this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
-          }
-          if (lineParts.length > 3) {
-            if (lineParts[3].toUpperCase() == 'HOLDOFF') {
-              if (lineParts.length >= 4) {
-                this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
-              }
-            } else if (lineParts[3].toUpperCase() == 'AUTO') {
-              this.triggerSpec.trigAuto = true;
-            } else {
-              this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
-              this.triggerSpec.trigAuto = false;
-              if (lineParts.length > 4) {
-                this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
-              }
-              if (lineParts.length > 5) {
-                this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
+      } else if (lineParts[index].toUpperCase() == 'TEXT') {
+        // have TEXT {size {style {angle}}} 'text'
+        let size: number = 10;
+        let style: string = '00000001';
+        let angle: number = 0;
+        if (index < lineParts.length - 1) {
+          size = parseFloat(lineParts[++index]);
+          if (index < lineParts.length - 1) {
+            if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              style = this.formatAs8BitBinary(lineParts[++index]);
+              if (index < lineParts.length - 1) {
+                if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                  angle = parseFloat(lineParts[++index]);
+                }
               }
             }
           }
         }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
-        // parse trigger spec update
-        //   HOLDOFF1 <2-2048>2
-        if (lineParts.length > 2) {
-          this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
+        this.updatePlotDisplay(`FONT ${size} ${style} ${angle}`);
+        // now the text
+        const currLinePart = lineParts[++index];
+        if (currLinePart.charAt(0) == "'") {
+          // display string at cursor position with current colors
+          let displayString: string | undefined = undefined;
+          // isolate string and display it. Advance index to next part after close quote
+          if (currLinePart.substring(1).includes("'")) {
+            // string ends in this singel linepart
+            displayString = currLinePart.substring(1, currLinePart.length - 1);
+          } else {
+            // this will be a multi-part string
+            const stringParts: string[] = [currLinePart.substring(1)];
+            while (index < lineParts.length - 1) {
+              index++;
+              const nextLinePart = lineParts[index];
+              if (nextLinePart.includes("'")) {
+                // last part of string
+                stringParts.push(nextLinePart.substring(0, nextLinePart.length - 1));
+                break; // exit loop
+              } else {
+                stringParts.push(nextLinePart);
+              }
+            }
+            displayString = stringParts.join(' ');
+          }
+          if (displayString !== undefined) {
+            this.updatePlotDisplay(`TEXT '${displayString}'`);
+          } else {
+            this.logMessage(`* UPD-ERROR  missing closing quote for TEXT [${lineParts.join(' ')}]`);
+          }
         }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'CLEAR') {
-        // clear all channels
-        this.clearChannelData();
-      } else if (lineParts[1].toUpperCase() == 'CLOSE') {
+      } else if (lineParts[index].toUpperCase() == 'LINE') {
+        // draw a line: LINE <x> <y> {linesize {opacity}}
+        if (index < lineParts.length - 2) {
+          const x: number = parseFloat(lineParts[++index]);
+          const y: number = parseFloat(lineParts[++index]);
+          let lineSize: number = 1;
+          let opacity: number = 255;
+          if (index < lineParts.length - 1) {
+            if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              lineSize = parseFloat(lineParts[++index]);
+              if (index < lineParts.length - 1) {
+                if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                  opacity = parseFloat(lineParts[++index]);
+                }
+              }
+            }
+          }
+          this.updatePlotDisplay(`LINE ${x} ${y} ${lineSize} ${opacity}`);
+        } else {
+          this.logMessage(`* UPD-ERROR  missing parameters for LINE [${lineParts.join(' ')}]`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'CIRCLE') {
+        // draw a circle: CIRCLE <diameter> {linesize {opacity}}
+        if (index < lineParts.length - 1) {
+          let lineSize: number = 0; // 0 = filled circle
+          let opacity: number = 255;
+          const diameter: number = parseFloat(lineParts[++index]);
+          if (index < lineParts.length - 1) {
+            if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              lineSize = parseFloat(lineParts[++index]);
+              if (index < lineParts.length - 1) {
+                if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                  opacity = parseFloat(lineParts[++index]);
+                }
+              }
+            }
+          }
+          this.updatePlotDisplay(`CIRCLE ${diameter} ${lineSize} ${opacity}`);
+        } else {
+          this.logMessage(`* UPD-ERROR  missing parameters for CIRCLE [${lineParts.join(' ')}]`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'ORIGIN') {
+        // set origin position
+        if (index < lineParts.length - 2) {
+          this.origin.x = parseFloat(lineParts[++index]);
+          this.origin.y = parseFloat(lineParts[++index]);
+        } else {
+          this.logMessage(`* UPD-ERROR  missing parameters for ORIGIN [${lineParts.join(' ')}]`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'PRECISE') {
+        // toggle precise mode
+        this.isPreciseMode = !this.isPreciseMode;
+      } else if (lineParts[index].toUpperCase() == 'POLAR') {
+        // set polar mode
+        if (index < lineParts.length - 2) {
+          this.polarConfig.twopi = parseFloat(lineParts[++index]);
+          this.polarConfig.offset = parseFloat(lineParts[++index]);
+        } else {
+          this.logMessage(`* UPD-ERROR  missing parameters for POLAR [${lineParts.join(' ')}]`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'UPDATE') {
+        // update window with latest content
+        this.pushDisplayListToPlot();
+      } else if (lineParts[index].toUpperCase() == 'CLEAR') {
+        // clear window
+        this.clearPlot();
+      } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
         this.closeDebugWindow();
-      } else if (lineParts[1].toUpperCase() == 'SAVE') {
+      } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
         // FIXME: UNDONE: add code save the window to a file here
-      } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
-        if (this.isFirstNumericData) {
-          this.isFirstNumericData = false;
-          this.calculateAutoTriggerAndScale();
-          this.initChannelSamples();
-          this.createDebugWindow();
-        }
-        let scopeSamples: number[] = [];
-        for (let index = 1; index < lineParts.length; index++) {
-          // spin2 output has underscores for commas in numbers, so remove them
-          const value: string = lineParts[index].replace(/_/g, '');
-          if (value !== '') {
-            const nextSample: number = parseFloat(value);
-            scopeSamples.push(nextSample);
+      } else if (DebugColor.isValidColorName(lineParts[index])) {
+        // set color
+        const colorName: string = lineParts[index];
+        let colorBrightness: number = 8;
+        if (index < lineParts.length - 1) {
+          if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            colorBrightness = Number(lineParts[++index]);
           }
         }
+        const textColor = new DebugColor(colorName, colorBrightness);
+        this.updatePlotDisplay(`COLOR ${textColor.rgbString}`);
+      } else {
+        this.logMessage(`* UPD-ERROR  unknown directive: [${lineParts[1]}] of [${lineParts.join(' ')}]`);
+      }
+    }
+  }
 
-        // parse numeric data
-        let didScroll: boolean = false; // in case we need this for performance of window update
-        const numberChannels: number = this.channelSpecs.length;
-        const nbrSamples = scopeSamples.length;
-        if (nbrSamples == numberChannels) {
-          /*
-          if (this.dbgLogMessageCount > 0) {
-            this.logMessage(
-              `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
-                ','
-              )}], lineparts=[${lineParts.join(',')}]`
-            );
+  private formatAs8BitBinary(value: string): string {
+    // Parse the integer from the string
+    const intValue = parseInt(value, 10);
+
+    // Ensure the value is between 0 and 255
+    if (intValue < 0 || intValue > 255) {
+      throw new Error('Value must be between 0 and 255');
+    }
+
+    // Convert the integer to a binary string
+    const binaryString = intValue.toString(2);
+
+    // Pad the binary string with leading zeros to ensure it is 8 characters long
+    const paddedBinaryString = binaryString.padStart(8, '0');
+
+    return paddedBinaryString;
+  }
+
+  private updatePlotDisplay(text: string): void {
+    // add action to our display list
+    this.logMessage(`* updatePlotDisplay(${text})`);
+    this.deferredCommands.push(text);
+    // create window if not already
+    if (this.isFirstDisplayData) {
+      this.isFirstDisplayData = false;
+      this.createDebugWindow();
+    }
+    // if not deferred update the act on display list now
+    if (this.displaySpec.delayedUpdate == false) {
+      // act on display list now
+      this.pushDisplayListToPlot();
+    }
+  }
+
+  private pushDisplayListToPlot() {
+    if (this.deferredCommands.length > 0) {
+      // act on display list now
+      // possible values are:
+      //  SET x y
+      //  COLOR color
+      //  FONT size style[8chars] angle
+      //  TEXT 'string'
+      // LINE x y linesize opacity
+      //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
+      this.deferredCommands.forEach((displayString) => {
+        this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
+        const lineParts: string[] = displayString.split(' ');
+        if (displayString.startsWith('TEXT')) {
+          const message: string = displayString.substring(6, displayString.length - 1);
+          this.writeStringToPlot(message);
+        } else if (lineParts[0] == 'SET') {
+          if (lineParts.length == 3) {
+            this.cursorPosition.x = parseFloat(lineParts[1]);
+            this.cursorPosition.y = parseFloat(lineParts[2]);
+          } else {
+            this.logMessage(`* PUSH-ERROR  BAD parameters for SET [${displayString}]`);
           }
-          */
-          for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
-            let nextSample: number = Number(scopeSamples[chanIdx]);
-            //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
-            // limit the sample to the channel's min/max?!
-            const channelSpec = this.channelSpecs[chanIdx];
-            if (nextSample < channelSpec.minValue) {
-              nextSample = channelSpec.minValue;
-              this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-            } else if (nextSample > channelSpec.maxValue) {
-              nextSample = channelSpec.maxValue;
-              this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
-            }
-            // record our sample (shifting left if necessary)
-            didScroll = this.recordChannelSample(chanIdx, nextSample);
-            // update scope chanel canvas with new sample
-            const canvasName = `channel-${chanIdx}`;
-            //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-            this.updatePlotChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+        } else if (lineParts[0] == 'COLOR') {
+          if (lineParts.length == 2) {
+            this.currFgColor = lineParts[1];
+          } else {
+            this.logMessage(`* PUSH-ERROR  BAD parameters for COLOR [${displayString}]`);
+          }
+        } else if (lineParts[0] == 'CIRCLE') {
+          if (lineParts.length == 4) {
+            const diameter: number = parseFloat(lineParts[1]);
+            const lineSize: number = parseFloat(lineParts[2]);
+            const opacity: number = parseFloat(lineParts[3]);
+            this.drawCircleToPlot(diameter, lineSize, opacity);
+          } else {
+            this.logMessage(`* PUSH-ERROR  BAD parameters for CIRCLE [${displayString}]`);
+          }
+        } else if (lineParts[0] == 'LINE') {
+          if (lineParts.length == 5) {
+            const x: number = parseFloat(lineParts[1]);
+            const y: number = parseFloat(lineParts[2]);
+            const lineSize: number = parseFloat(lineParts[3]);
+            const opacity: number = parseFloat(lineParts[4]);
+            this.drawLineToPlot(x, y, lineSize, opacity);
+          } else {
+            this.logMessage(`* PUSH-ERROR  BAD parameters for LINE [${displayString}]`);
           }
         } else {
-          this.logMessage(
-            `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
-              ','
-            )}]`
-          );
+          this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
         }
-        // FIXME: UNDONE: add code to update the window here
-      } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
-      }
+      });
+      this.deferredCommands = []; // all done, empty the list
     }
   }
 
-  private calculateAutoTriggerAndScale() {
-    // FIXME: UNDONE check if auto is set, if is then calculate the trigger level and scale
-    this.logMessage(`at calculateAutoTriggerAndScale()`);
-    if (this.triggerSpec.trigAuto) {
-      // calculate:
-      // 1. arm level at 33%
-      // 2. trigger level 50%
-      // 3. ...
-      // 4. set the scale to the max - min
-    }
+  private clearPlot(): void {
+    // erase the  display area
+    this.clearPlotCanvas();
+    // home the cursorPosition
+    this.cursorPosition = { x: 0, y: 0 };
   }
 
-  private initChannelSamples() {
-    this.logMessage(`at initChannelSamples()`);
-    // clear the channel data
-    this.channelSamples = [];
-    if (this.channelSpecs.length == 0) {
-      this.channelSamples.push({ samples: [] });
-    } else {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        this.channelSamples.push({ samples: [] });
-      }
-    }
-    this.logMessage(`  -- [${JSON.stringify(this.channelSamples, null, 2)}]`);
-  }
-
-  private clearChannelData() {
-    this.logMessage(`at clearChannelData()`);
-    for (let index = 0; index < this.channelSamples.length; index++) {
-      const channelSamples = this.channelSamples[index];
-      // clear the channel data
-      channelSamples.samples = [];
-    }
-  }
-
-  private recordChannelSample(channelIndex: number, sample: number): boolean {
-    //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
-    let didScroll: boolean = false;
-    if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
-      const channelSamples = this.channelSamples[channelIndex];
-      if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
-        // remove oldest sample
-        channelSamples.samples.shift();
-        didScroll = true;
-      }
-      // record the new sample
-      channelSamples.samples.push(sample);
-    } else {
-      this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
-    }
-    return didScroll;
-  }
-
-  private parseLegend(legend: string, channelSpec: PlotChannelSpec): void {
-    // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-    let validLegend: boolean = false;
-    if (legend.length > 4 && legend.charAt(0) == '%') {
-      channelSpec.lgndShowMax = legend.charAt(1) == '1' ? true : false;
-      channelSpec.lgndShowMin = legend.charAt(2) == '1' ? true : false;
-      channelSpec.lgndShowMaxLine = legend.charAt(3) == '1' ? true : false;
-      channelSpec.lgndShowMinLine = legend.charAt(4) == '1' ? true : false;
-      validLegend = true;
-    } else if (legend.charAt(0) >= '0' && legend.charAt(0) <= '9') {
-      // get integer value of legend and ensure it is within range 0-15
-      const legendValue = Number(legend);
-      if (legendValue >= 0 && legendValue <= 15) {
-        channelSpec.lgndShowMax = (legendValue & 0x1) == 0x1 ? true : false;
-        channelSpec.lgndShowMin = (legendValue & 0x2) == 0x2 ? true : false;
-        channelSpec.lgndShowMaxLine = (legendValue & 0x4) == 0x4 ? true : false;
-        channelSpec.lgndShowMinLine = (legendValue & 0x8) == 0x8 ? true : false;
-        validLegend = true;
-      }
-    }
-    if (!validLegend) {
-      this.logMessage(`at parseLegend() with invalid legend: ${legend}`);
-      channelSpec.lgndShowMax = false;
-      channelSpec.lgndShowMin = false;
-      channelSpec.lgndShowMaxLine = false;
-      channelSpec.lgndShowMinLine = false;
-    }
-  }
-
-  private updatePlotChannelData(
-    canvasName: string,
-    channelSpec: PlotChannelSpec,
-    samples: number[],
-    didScroll: boolean
-  ): void {
+  private clearPlotCanvas(): void {
     if (this.debugWindow) {
-      //if (this.dbgUpdateCount > 0) {
-      // DISABLE STOP this.dbgUpdateCount--;
-      //}
-      //if (this.dbgUpdateCount == 0) {
-      //  return;
-      //}
-      if (--this.dbgLogMessageCount > 0) {
-        this.logMessage(
-          `at updatePlotChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
-        );
-      }
+      this.logMessage(`at clearPlot()`);
       try {
-        // placement need to be scale sample range to vertical canvas size
-        const currSample: number = samples[samples.length - 1];
-        const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        // Invert and scale the sample to to our display range
-        const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
-        const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
-        // coord for current and previous samples
-        // NOTE:  this.channelSpecs[x].yBaseOffset is NOT used in our implementation
-        const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
-        const currYOffset: number =
-          this.channelLineWidth / 2 + currSampleInverted + this.canvasMargin + this.channelInset;
-        const prevXOffset: number = this.canvasMargin + (samples.length - 2) * this.channelLineWidth;
-        const prevYOffset: number =
-          this.channelLineWidth / 2 + prevSampleInverted + this.canvasMargin + this.channelInset;
-        //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
-        // draw region for the channel
-        const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
-        const drawHeight: number = channelSpec.ySize + this.channelLineWidth / 2;
-        const drawXOffset: number = this.canvasMargin;
-        const drawYOffset: number = this.channelInset + this.canvasMargin;
-        const channelColor: string = channelSpec.color;
-        if (this.dbgLogMessageCount > 0) {
-          this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-          this.logMessage(
-            `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-          );
-        }
+        const bgcolor: string = this.displaySpec.window.background;
+        this.logMessage(`  -- bgcolor=[${bgcolor}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
+            const canvas = document.getElementById('plot-area');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
               const ctx = canvas.getContext('2d');
 
               if (ctx) {
-                // Set the line color and width
-                const lineColor = '${channelColor}';
-                const lineWidth = ${this.channelLineWidth};
-                const scrollSpeed = lineWidth;
-                const canvWidth = ${drawWidth};
-                const canvHeight = ${drawHeight};
-                const canvXOffset = ${drawXOffset};
-                const canvYOffset = ${drawYOffset};
+                // Set the bg color
+                const backgroundColor = '${bgcolor}';
 
-                if (${didScroll}) {
-                  // Create an off-screen canvas
-                  const offScreenCanvas = document.createElement('canvas');
-                  offScreenCanvas.width = canvWidth - scrollSpeed;
-                  offScreenCanvas.height = canvHeight;
-                  const offScreenCtx = offScreenCanvas.getContext('2d');
+                // clear the entire canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                  if (offScreenCtx) {
-                    // Copy the relevant part of the canvas to the off-screen canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-
-                    // Clear the original canvas
-                    //  clearRect(x, y, width, height)
-                    //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
-                    // fix? artifact!! (maybe line-width caused?!!!)
-                    ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-
-                    // Copy the content back to the original canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-                  }
-                }
-
-                // Set the solid line pattern
-                ctx.setLineDash([]); // Empty array for solid line
-
-                // Draw the new line segment
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${prevXOffset}, ${prevYOffset});
-                ctx.lineTo(${currXOffset}, ${currYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update channel data:', error);
-      }
-      //if (didScroll) {
-      //  this.dbgUpdateCount = 0; // stop after first scroll
-      //}
-    }
-  }
-
-  private updatePlotChannelLabel(name: string, colorString: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at updatePlotChannelLabel(${name}, ${colorString})`);
-      try {
-        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            const labelsDivision = document.getElementById('channel-titles');
-            if (labelsDivision) {
-              let labelContent = labelsDivision.innerHTML;
-              if (labelContent.includes('{labels here}')) {
-                labelContent = ''; // remove placeholder span
-              }
-              labelContent += '${channelLabel}';
-              labelsDivision.innerHTML = labelContent;
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update channel label:', error);
-      }
-    }
-  }
-
-  private drawHorizontalLine(canvasName: string, channelSpec: PlotChannelSpec, YOffset: number, gridColor: string) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
-      try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
-          this.channelInset +
-          this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${gridColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
-
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 3px dash, 3px gap
-
-                // Draw the line
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${lineXOffset}, ${lineYOffset});
-                ctx.lineTo(canWidth, ${lineYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update line:', error);
-      }
-    }
-  }
-
-  private drawHorizontalValue(canvasName: string, channelSpec: PlotChannelSpec, YOffset: number, textColor: string) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${textColor})`);
-      try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const lineYOffset: number = atTop ? this.channelInset : channelSpec.ySize + this.channelInset;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${textColor}';
-                //const lineWidth = 2;
-
-                // Set the dash pattern
-                //ctx.setLineDash([]); // Empty array for solid line
-
-                // Add text
-                ctx.font = '9px Arial';
-                ctx.fillStyle = lineColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+                // fill canvas with background
+                ctx.fillStyle = backgroundColor;
+                ctx.fillRect(0, 00, canvas.width, canvas.height);
               }
             }
           })();
@@ -1013,32 +696,19 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
-  private drawHorizontalLineAndValue(
-    canvasName: string,
-    channelSpec: PlotChannelSpec,
-    YOffset: number,
-    gridColor: string,
-    textColor: string
-  ) {
+  private drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
+      this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
       try {
-        const atTop: boolean = YOffset == channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
-          this.channelInset +
-          this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), valueText=[${valueText}]`);
+        const fgColor: string = this.currFgColor;
+        const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
+        this.logMessage(`  -- x,y=(${x},${y}) color=[${fgColor}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
+
+
             // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
+            const canvas = document.getElementById('plot-area');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
@@ -1046,62 +716,133 @@ export class DebugPlotWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
-                const textColor = '${textColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
+                // rgbs are 0..255, opacity is 0..1
+                const lineColor = '${rgbaColorString}';
+                const lineWidth = ${lineSize};
 
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 5px dash, 3px gap
-
-                // Measure the text width
-                ctx.font = '9px Arial';
-                const textMetrics = ctx.measureText('${valueText}');
-                const textWidth = textMetrics.width;
-
-                // Draw the line
+                // Add line of color
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
-                ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset}); // start of line
-                ctx.lineTo(canWidth, ${lineYOffset}); // draw to end of line
+                ctx.moveTo(${this.cursorPosition.x}, ${this.cursorPosition.y});
+                ctx.lineTo(${x}, ${y});
                 ctx.stroke();
-
-                // Add text
-                ctx.fillStyle = textColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
               }
             }
           })();
         `);
       } catch (error) {
-        console.error('Failed to update line & text:', error);
+        console.error('Failed to update text:', error);
       }
     }
   }
 
-  private scaleAndInvertValue(value: number, channelSpec: PlotChannelSpec): number {
-    // scale the value to the vertical channel size then invert the value
-    let possiblyScaledValue: number = value;
-    const range: number = channelSpec.maxValue - channelSpec.minValue;
-    // if value range is different from display range then scale it
-    if (channelSpec.ySize != range && range != 0) {
-      const adjustedValue = value - channelSpec.minValue;
-      possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
-    }
-    const invertedValue: number = channelSpec.ySize - 1 - possiblyScaledValue;
-    if (this.dbgLogMessageCount > 0) {
-      this.logMessage(
-        `  -- scaleAndInvertValue(${value}) => (${possiblyScaledValue}->${invertedValue}) range=[${channelSpec.minValue}:${channelSpec.maxValue}] ySize=(${channelSpec.ySize})`
-      );
-    }
-    return invertedValue;
+  // Convert #rrggbb to rgba
+  private hexToRgba(hex: string, opacity: number): string {
+    // Remove the leading '#' if present
+    hex = hex.replace(/^#/, '');
+
+    // Parse the red, green, and blue components
+    const bigint = parseInt(hex, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+
+    // Return the rgba string
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   }
 
-  private stringForRangeValue(value: number): string {
-    // add +/- prefix to range value
-    const prefix: string = value < 0 ? '' : '+';
-    const valueString: string = `${prefix}${value} `;
-    return valueString;
+  private drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
+    if (this.debugWindow) {
+      this.logMessage(`at drawCircleToPlot(${diameter}, ${lineSize}, ${opacity})`);
+      try {
+        const fgColor: string = this.currFgColor;
+        const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
+        this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('plot-area');
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${rgbaColorString}';
+                const lineWidth = ${lineSize};
+
+                // Add circle of color
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = lineWidth;
+                ctx.fillStyle = lineColor; // Set the fill color
+                ctx.beginPath();
+                // arc(x, y, radius, startAngle, endAngle, anticlockwise)
+                ctx.arc(${this.cursorPosition.x}, ${this.cursorPosition.y}, ${diameter / 2}, 0, 2 * Math.PI);
+                if (lineWidth === 0) {
+                  ctx.fill(); // Fill the circle if lineSize is 0
+                } else {
+                  ctx.stroke(); // Stroke the circle otherwise
+                }
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update text:', error);
+      }
+    }
+  }
+
+  private writeStringToPlot(text: string): void {
+    if (this.debugWindow) {
+      this.logMessage(`at writeStringToPlot(${text})`);
+      try {
+        const textHeight: number = this.font.charHeight;
+        const lineHeight: number = this.font.lineHeight;
+        const textYOffset: number = this.cursorPosition.y * lineHeight;
+        const textXOffset: number = this.cursorPosition.x * this.font.charWidth + this.contentInset;
+        const charVertOffset: number = (lineHeight - textHeight) / 2;
+        const textYbaseline: number = textYOffset + charVertOffset + this.font.baseline;
+        const fgColor: string = this.currFgColor;
+        this.logMessage(
+          `  -- textXY=(${textYOffset},${textXOffset}), height=(${textHeight}) color=[${fgColor},] text=[${text}]`
+        );
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('plot-area');
+
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${fgColor}';
+                const lineHeight = ${lineHeight};
+
+                // Add text background
+                ctx.font = '${this.font.textSizePts}pt Consolas';
+                const textWidth = ctx.measureText('${text}').width;
+
+                // clear existing text & background
+                // clearRect(x, y, width, height);
+                ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+
+                // Add text of color
+                ctx.fillStyle = lineColor;
+                // fillText(text, x, y [, maxWidth]); // where y is baseline
+                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update text:', error);
+      }
+    }
   }
 }

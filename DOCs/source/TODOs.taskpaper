@@ -1,11 +1,11 @@
 Add windows:
 	- SCOPE @done(2025-01-07)
+	- TERM @done(2025-01-08)
+	- PLOT @done(2025-01-10)
 	- LOGIC
 	- SCOPE_XY
 	- FFT
 	- SPECTRO
-	- PLOT
-	- TERM @done(2025-01-08)
 	- BITMAP
 	- MIDI
 SCOPE Window:
@@ -23,4 +23,5 @@ TERM Window:
 	- Add mouse hover mech, w/disable
 	
 PLOT Window:
-- start work
+- start work @done(2025-01-09)
+- first draft sorta working - item locations bad!

@@ -34,12 +34,6 @@ export interface TermDisplaySpec {
   hideXY: boolean;
 }
 
-export interface TermChannelSpec {
-  minValue: number;
-  maxValue: number;
-  ySize: number;
-}
-
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private debugWindow: BrowserWindow | null = null;
@@ -406,9 +400,9 @@ export class DebugTermWindow extends DebugWindowBase {
     //   CLOSE
     // --- these paint content, select colors or move the cursor
     //   <numeric data> - controls or characters
-    //    0 = Clear terminal display and home cursor.‬
-    //    1 = Home cursor.‬
-    //    2 = Set column to next character value.‬ [2 n]
+    //    0 = Clear terminal display and home cursor.
+    //    1 = Home cursor.
+    //    2 = Set column to next character value. [2 n]
     //    3 = Set row to next character value. [3 n]
     //    4 = Select color combo #0
     //    5 = Select color combo #1
