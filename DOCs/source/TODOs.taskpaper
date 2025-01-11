@@ -8,20 +8,28 @@ Add windows:
 	- SPECTRO
 	- BITMAP
 	- MIDI
+	
 SCOPE Window:
 	- Add mouse hover mech, with disable
+	- Add save to bitmap
 	- fix label division margins
 	- Single Channel
 		- working! @done(2025-01-09)
 	- Mulit-Channel
 		- fix plotting @done(2025-01-08)
 		- fix window size @done(2025-01-08)
+		
 LOGIC Window:
 	- start work
+	
 TERM Window:
 	- get content updating @done(2025-01-09)
 	- Add mouse hover mech, w/disable
+	- set font to Parallax
+	- Add save to bitmap
 	
 PLOT Window:
 - start work @done(2025-01-09)
 - first draft sorta working - item locations bad!
+- set font to Parallax
+- Add save to bitmap

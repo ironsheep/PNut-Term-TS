@@ -61,6 +61,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private isPreciseMode: boolean = false; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel.
   private currFgColor: string = '#00FFFF'; // #RRGGBB string
 
+  private shouldWriteToCanvas: boolean = true;
+
   constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
     super(ctx);
     // record our Debug Plot Window Spec
@@ -614,76 +616,86 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
+  private clearCount: number = 2;
+
   private pushDisplayListToPlot() {
-    if (this.deferredCommands.length > 0) {
-      // act on display list now
-      // possible values are:
-      //  CLEAR
-      //  SET x y
-      //  COLOR color
-      //  FONT size style[8chars] angle
-      //  TEXT 'string'
-      // LINE x y linesize opacity
-      //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
-      this.deferredCommands.forEach((displayString) => {
-        this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
-        const lineParts: string[] = displayString.split(' ');
-        if (displayString.startsWith('TEXT')) {
-          const message: string = displayString.substring(6, displayString.length - 1);
-          this.writeStringToPlot(message);
-        } else if (lineParts[0] == 'CLEAR') {
-          // clear the output window so we can draw anew
-          this.clearPlot();
-        } else if (lineParts[0] == 'SET') {
-          // set new drawing cursor position relative to origin
-          if (lineParts.length == 3) {
-            const setX: number = parseFloat(lineParts[1]);
-            const setY: number = parseFloat(lineParts[2]);
-            [this.cursorPosition.x, this.cursorPosition.y] = this.plotOffsetByOrigin(setX, setY);
-            this.logMessage(
-              `* PUSH-INFO  SET cursorPosition (${setX},${setY}) -> (${this.cursorPosition.x}, ${this.cursorPosition.y})`
-            );
+    if (this.shouldWriteToCanvas) {
+      if (this.deferredCommands.length > 0) {
+        // act on display list now
+        // possible values are:
+        //  CLEAR
+        //  SET x y
+        //  COLOR color
+        //  FONT size style[8chars] angle
+        //  TEXT 'string'
+        // LINE x y linesize opacity
+        //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
+        this.deferredCommands.forEach((displayString) => {
+          this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
+          const lineParts: string[] = displayString.split(' ');
+          if (displayString.startsWith('TEXT')) {
+            const message: string = displayString.substring(6, displayString.length - 1);
+            this.writeStringToPlot(message);
+          } else if (lineParts[0] == 'CLEAR') {
+            // clear the output window so we can draw anew
+            this.clearPlot();
+            if (this.clearCount > 0) {
+              this.clearCount--;
+              if (this.clearCount == 0) {
+                this.shouldWriteToCanvas = false;
+              }
+            }
+          } else if (lineParts[0] == 'SET') {
+            // set new drawing cursor position relative to origin
+            if (lineParts.length == 3) {
+              const setX: number = parseFloat(lineParts[1]);
+              const setY: number = parseFloat(lineParts[2]);
+              [this.cursorPosition.x, this.cursorPosition.y] = this.plotOffsetByOrigin(setX, setY);
+              this.logMessage(
+                `* PUSH-INFO  SET cursorPosition (${setX},${setY}) -> (${this.cursorPosition.x}, ${this.cursorPosition.y})`
+              );
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for SET [${displayString}]`);
+            }
+          } else if (lineParts[0] == 'COLOR') {
+            if (lineParts.length == 2) {
+              this.currFgColor = lineParts[1];
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for COLOR [${displayString}]`);
+            }
+          } else if (lineParts[0] == 'CIRCLE') {
+            if (lineParts.length == 4) {
+              const diameter: number = parseFloat(lineParts[1]);
+              const lineSize: number = parseFloat(lineParts[2]);
+              const opacity: number = parseFloat(lineParts[3]);
+              this.drawCircleToPlot(diameter, lineSize, opacity);
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for CIRCLE [${displayString}]`);
+            }
+          } else if (lineParts[0] == 'LINE') {
+            if (lineParts.length == 5) {
+              const x: number = parseFloat(lineParts[1]);
+              const y: number = parseFloat(lineParts[2]);
+              const lineSize: number = parseFloat(lineParts[3]);
+              const opacity: number = parseFloat(lineParts[4]);
+              this.drawLineToPlot(x, y, lineSize, opacity);
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for LINE [${displayString}]`);
+            }
+          } else if (lineParts[0] == 'FONT') {
+            if (lineParts.length == 4) {
+              const size: number = parseFloat(lineParts[1]);
+              const style: string = lineParts[2];
+              const angle: number = parseFloat(lineParts[3]);
+              this.setFontMetrics(size, style, angle, this.font, this.textStyle);
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
+            }
           } else {
-            this.logMessage(`* PUSH-ERROR  BAD parameters for SET [${displayString}]`);
+            this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
           }
-        } else if (lineParts[0] == 'COLOR') {
-          if (lineParts.length == 2) {
-            this.currFgColor = lineParts[1];
-          } else {
-            this.logMessage(`* PUSH-ERROR  BAD parameters for COLOR [${displayString}]`);
-          }
-        } else if (lineParts[0] == 'CIRCLE') {
-          if (lineParts.length == 4) {
-            const diameter: number = parseFloat(lineParts[1]);
-            const lineSize: number = parseFloat(lineParts[2]);
-            const opacity: number = parseFloat(lineParts[3]);
-            this.drawCircleToPlot(diameter, lineSize, opacity);
-          } else {
-            this.logMessage(`* PUSH-ERROR  BAD parameters for CIRCLE [${displayString}]`);
-          }
-        } else if (lineParts[0] == 'LINE') {
-          if (lineParts.length == 5) {
-            const x: number = parseFloat(lineParts[1]);
-            const y: number = parseFloat(lineParts[2]);
-            const lineSize: number = parseFloat(lineParts[3]);
-            const opacity: number = parseFloat(lineParts[4]);
-            this.drawLineToPlot(x, y, lineSize, opacity);
-          } else {
-            this.logMessage(`* PUSH-ERROR  BAD parameters for LINE [${displayString}]`);
-          }
-        } else if (lineParts[0] == 'FONT') {
-          if (lineParts.length == 4) {
-            const size: number = parseFloat(lineParts[1]);
-            const style: string = lineParts[2];
-            const angle: number = parseFloat(lineParts[3]);
-            this.setFontMetrics(size, style, angle, this.font, this.textStyle);
-          } else {
-            this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
-          }
-        } else {
-          this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
-        }
-      });
+        });
+      }
       this.deferredCommands = []; // all done, empty the list
     }
   }
@@ -915,14 +927,14 @@ export class DebugPlotWindow extends DebugWindowBase {
     // remove the origin offset to get to canvas coordinates
     const plotX: number = newX - this.origin.x;
     const plotY: number = newY - this.origin.y;
-    this.logMessage(`* plotOffsetByOrigin(${newX},${newY}) -> (${plotX},${plotY})`);
+    //this.logMessage(`* plotOffsetByOrigin(${newX},${newY}) -> (${plotX},${plotY})`);
     return [plotX, plotY];
   }
 
   private plotToCanvasCoord(cursor: Position): [number, number] {
-    // remove the origin offset to get to canvas coordinates
-    const plotX: number = cursor.x + this.canvasOffset.x;
-    const plotY: number = cursor.y + this.canvasOffset.y;
+    // remove the origin offset subtraction then add it to get to canvas coordinates
+    const plotX: number = cursor.x + this.canvasOffset.x * 2;
+    const plotY: number = cursor.y + this.canvasOffset.y * 2;
     this.logMessage(`* plotToCanvasCoord(${cursor.x},${cursor.y}) -> (${plotX},${plotY})`);
     return [plotX, plotY];
   }

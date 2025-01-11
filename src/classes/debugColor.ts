@@ -72,7 +72,7 @@ export class DebugColor {
   }
 
   public get rgbString(): string {
-    //console.log(`rgbString() -> ${this.dimmedColor}`);
+    //console.log(` DC: * rgbString() -> ${this.dimmedColor}`);
     return this.dimmedColor;
   }
 
@@ -86,14 +86,14 @@ export class DebugColor {
 
   public static isValidColorName(colorName: string): boolean {
     const foundColor = DebugColor.colorNameToHex[colorName.toUpperCase()];
-    console.log(`isValidColorName: ${colorName} -> ${foundColor}`);
+    console.log(` DC: * isValidColorName: ${colorName} -> ${foundColor}`);
     return foundColor !== undefined ? true : false;
   }
 
   private static colorNameToHexString(colorName: string): string {
     let hexString = DebugColor.colorNameToHex[colorName.toUpperCase()];
     if (!hexString) {
-      console.log(`colorNameToHexString: Unknown color name: ${colorName}`);
+      console.log(` DC: * colorNameToHexString: Unknown color name: ${colorName}`);
       hexString = '#5a5a5a'; // default to gray
     }
     //console.log(`colorNameToHexString: ${colorName} -> ${hexString}`);
@@ -108,7 +108,7 @@ export class DebugColor {
   private static colorNameToNumber(colorName: string): number {
     const rgbHexString: string = DebugColor.colorNameToHexString(colorName);
     const value: number = DebugColor.rgbHexStringToNumber(rgbHexString);
-    //console.log(`colorNameToNumber: ${colorName} -> ${rgbHexString} (${value})`);
+    //console.log(` DC: * colorNameToNumber: ${colorName} -> ${rgbHexString} (${value})`);
     return value;
   }
 
@@ -126,11 +126,11 @@ export class DebugColor {
         const b = (color & 0xff) * (brightness / 15);
         adjustedColor = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
       } catch (error) {
-        console.log(`Error adjusting brightness: ${error}`);
+        console.log(` DC: ERROR adjusting brightness: ${error}`);
       }
     }
 
-    console.log(`adjustBrightness(0x${color.toString(16)},${brightness}) -> 0x${adjustedColor.toString(16)}`);
+    console.log(` DC: * adjustBrightness(0x${color.toString(16)},${brightness}) -> 0x${adjustedColor.toString(16)}`);
 
     return adjustedColor;
   }
@@ -149,4 +149,4 @@ export class DebugColor {
 
 // Example usage
 // const debugColor = new DebugColor('blue', 8);
-// console.log(`Adjusted color value: ${debugColor.rgbValue.toString(16)}`);
+// console.log(` DC: * Adjusted color value: ${debugColor.rgbValue.toString(16)}`);
