@@ -385,6 +385,7 @@ export class DebugTermWindow extends DebugWindowBase {
     this.logMessage(`at closeDebugWindow()`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      this.debugWindow.removeAllListeners();
       this.debugWindow.close();
       this.debugWindow = null;
     }
@@ -621,8 +622,8 @@ export class DebugTermWindow extends DebugWindowBase {
         const lineHeight: number = this.displaySpec.font.lineHeight;
         const textYOffset: number = this.cursorPosition.y * lineHeight;
         const textXOffset: number = this.cursorPosition.x * this.displaySpec.font.charWidth + this.contentInset;
-        const charVertOffset: number = (lineHeight - textHeight) / 2;
-        const textYbaseline: number = textYOffset + charVertOffset + this.displaySpec.font.baseline;
+        const vertLineInset: number = (lineHeight - textHeight) / 2;
+        const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline;
         const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
         this.logMessage(

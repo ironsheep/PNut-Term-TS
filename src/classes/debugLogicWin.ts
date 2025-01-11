@@ -414,6 +414,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.logMessage(`at closeDebugWindow()`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      this.debugWindow.removeAllListeners();
       this.debugWindow.close();
       this.debugWindow = null;
     }

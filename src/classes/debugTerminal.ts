@@ -124,7 +124,9 @@ export class DebugTerminal {
 
   private handleSerialRx(data: any) {
     // Handle received data
-    const cleanedData = data.replace(/[\0\x0a\x0d]/g, ''); // remove any NULLs, CRs or LFs
+    let cleanedData = data.replace(/\0/g, ''); // remove any NULLs
+    cleanedData = cleanedData.replace(/\x0a\x0d/g, '\x0a'); // replace any CRLFs with LFs
+    cleanedData = cleanedData.replace(/\x0d/g, '\x0a'); // replace any CRs with LFs
     this.rxQueue.push(cleanedData);
     this.processRxQueue();
   }
@@ -502,6 +504,7 @@ and Electron <span id="electron-version"></span>.</P>
     this.mainWindow.on('closed', () => {
       this.closeAllDebugWindows(); // close all child windows, too
       this.logMessage('* Main window closed');
+      this.mainWindow?.removeAllListeners();
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });

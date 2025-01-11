@@ -19,12 +19,43 @@ export interface Position {
   y: number;
 }
 
+export enum eVertJustification {
+  VJ_UNKNOWN = 1,
+  VJ_TOP = 3,
+  VJ_CENTER = 0,
+  VJ_BOTTOM = 2
+}
+
+export enum eHorizJustification {
+  VJ_UNKNOWN = 1,
+  VJ_LEFT = 3,
+  VJ_CENTER = 0,
+  VJ_RIGHT = 2
+}
+
+export enum eTextWeight {
+  TW_UNKNOWN,
+  TW_LIGHT, // 300
+  TW_NORMAL, // 400
+  TW_BOLD, // 700
+  TW_HEAVY // 900
+}
+
 export interface FontMetrics {
   textSizePts: number;
   charHeight: number;
   charWidth: number;
   lineHeight: number;
   baseline: number;
+}
+
+export interface TextStyle {
+  vertAlign: eVertJustification;
+  horizAlign: eHorizJustification;
+  underline: boolean;
+  italic: boolean;
+  weight: eTextWeight;
+  angle: number;
 }
 
 export interface WindowColor {
@@ -50,6 +81,42 @@ export abstract class DebugWindowBase {
     metrics.charWidth = Math.round(metrics.charHeight * 0.6);
     metrics.lineHeight = Math.round(metrics.charHeight * 1.3); // 120%-140% using 130% of text height
     metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
+  }
+
+  static calcStyleFromBitfield(styleStr: string, textStyle: TextStyle): void {
+    // styleStr is a bitfield string of 8 bits
+    // style is %YYXXUIWW:
+    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %U is underline: %1 = underline.
+    //   %I is italic: %1 = italic.
+    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    if (styleStr.length == 8) {
+      textStyle.vertAlign = parseInt(styleStr.substring(0, 2), 2);
+      textStyle.horizAlign = parseInt(styleStr.substring(2, 4), 2);
+      textStyle.underline = styleStr[4] === '1';
+      textStyle.italic = styleStr[5] === '1';
+      const weight: number = parseInt(styleStr.substring(6, 8), 2);
+      switch (weight) {
+        case 0:
+          textStyle.weight = eTextWeight.TW_LIGHT;
+          break;
+        case 1:
+          textStyle.weight = eTextWeight.TW_NORMAL;
+          break;
+        case 2:
+          textStyle.weight = eTextWeight.TW_BOLD;
+          break;
+        case 3:
+          textStyle.weight = eTextWeight.TW_HEAVY;
+          break;
+        default:
+          textStyle.weight = eTextWeight.TW_UNKNOWN;
+          break;
+      }
+    } else {
+      console.log(`Win: ERROR: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+    }
   }
 
   // ----------------------------------------------------------------------
