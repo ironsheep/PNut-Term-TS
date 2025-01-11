@@ -10,8 +10,9 @@ import { BrowserWindow, Menu } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
+import { DebugWindowBase, FontMetrics, Position, Size, TextStyle, WindowColor } from './debugWindowBase';
 import { v8_0_0 } from 'pixi.js';
+import { timeStamp } from 'console';
 
 export interface LutColor {
   fgcolor: string;
@@ -49,7 +50,10 @@ export class DebugPlotWindow extends DebugWindowBase {
   private cursorPosition: Position = { x: 0, y: 0 };
   private selectedLutColor: number = 0;
   private font: FontMetrics = {} as FontMetrics;
+  private textStyle: TextStyle = {} as TextStyle;
   private origin: Position = { x: 0, y: 0 };
+  private canvasOffset: Position = { x: 0, y: 0 };
+
   private polarConfig: PolarSpec = { twopi: 0x100000000, offset: 0 };
   private cartesianConfig: CartesianSpec = { ydir: 0, xdir: 0 };
   private isPolar: boolean = false;
@@ -61,8 +65,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     super(ctx);
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
+    // calculate canvasOffet for origin
+    this.canvasOffset = { x: displaySpec.size.width / 2, y: displaySpec.size.height / 2 };
     // start with default font size
     DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
+    DebugPlotWindow.calcStyleFromBitfield('00000001', this.textStyle);
   }
 
   get windowTitle(): string {
@@ -149,8 +156,8 @@ export class DebugPlotWindow extends DebugWindowBase {
           case 'BACKCOLOR':
             // esure we have one more value
             if (index < lineParts.length - 1) {
-              const colorName: string = lineParts[index];
-              let colorBrightness: number = 8;
+              const colorName: string = lineParts[++index];
+              let colorBrightness: number = 15; // let's default to max brightness
               if (index < lineParts.length - 1) {
                 if (this.nextPartIsNumeric(lineParts, index)) {
                   colorBrightness = Number(lineParts[++index]);
@@ -321,6 +328,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.logMessage(`at closeDebugWindow()`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      this.debugWindow.removeAllListeners();
       this.debugWindow.close();
       this.debugWindow = null;
     }
@@ -329,7 +337,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
     let numericStatus: boolean = false;
     let firstChar: string = lineParts[index + 1].charAt(0);
-    if (firstChar >= '0' && firstChar <= '9') {
+    // 0-9 or negative sign prefix
+    if ((firstChar >= '0' && firstChar <= '9') || firstChar == '-') {
       numericStatus = true;
     }
     return numericStatus;
@@ -521,6 +530,13 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (index < lineParts.length - 2) {
           this.origin.x = parseFloat(lineParts[++index]);
           this.origin.y = parseFloat(lineParts[++index]);
+          // calculate canvasOffet for origin
+          this.canvasOffset = {
+            //x: this.displaySpec.size.width - this.origin.x,
+            //y: this.displaySpec.size.height - this.origin.y
+            x: this.origin.x,
+            y: this.origin.y
+          };
         } else {
           this.logMessage(`* UPD-ERROR  missing parameters for ORIGIN [${lineParts.join(' ')}]`);
         }
@@ -540,7 +556,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.pushDisplayListToPlot();
       } else if (lineParts[index].toUpperCase() == 'CLEAR') {
         // clear window
-        this.clearPlot();
+        this.updatePlotDisplay(`CLEAR`);
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
         this.closeDebugWindow();
@@ -602,6 +618,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     if (this.deferredCommands.length > 0) {
       // act on display list now
       // possible values are:
+      //  CLEAR
       //  SET x y
       //  COLOR color
       //  FONT size style[8chars] angle
@@ -614,10 +631,18 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (displayString.startsWith('TEXT')) {
           const message: string = displayString.substring(6, displayString.length - 1);
           this.writeStringToPlot(message);
+        } else if (lineParts[0] == 'CLEAR') {
+          // clear the output window so we can draw anew
+          this.clearPlot();
         } else if (lineParts[0] == 'SET') {
+          // set new drawing cursor position relative to origin
           if (lineParts.length == 3) {
-            this.cursorPosition.x = parseFloat(lineParts[1]);
-            this.cursorPosition.y = parseFloat(lineParts[2]);
+            const setX: number = parseFloat(lineParts[1]);
+            const setY: number = parseFloat(lineParts[2]);
+            [this.cursorPosition.x, this.cursorPosition.y] = this.plotOffsetByOrigin(setX, setY);
+            this.logMessage(
+              `* PUSH-INFO  SET cursorPosition (${setX},${setY}) -> (${this.cursorPosition.x}, ${this.cursorPosition.y})`
+            );
           } else {
             this.logMessage(`* PUSH-ERROR  BAD parameters for SET [${displayString}]`);
           }
@@ -646,12 +671,28 @@ export class DebugPlotWindow extends DebugWindowBase {
           } else {
             this.logMessage(`* PUSH-ERROR  BAD parameters for LINE [${displayString}]`);
           }
+        } else if (lineParts[0] == 'FONT') {
+          if (lineParts.length == 4) {
+            const size: number = parseFloat(lineParts[1]);
+            const style: string = lineParts[2];
+            const angle: number = parseFloat(lineParts[3]);
+            this.setFontMetrics(size, style, angle, this.font, this.textStyle);
+          } else {
+            this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
+          }
         } else {
           this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
         }
       });
       this.deferredCommands = []; // all done, empty the list
     }
+  }
+
+  private setFontMetrics(size: number, style: string, angle: number, font: FontMetrics, textStyle: TextStyle): void {
+    DebugPlotWindow.calcMetricsForFontPtSize(size, font);
+    // now configure style and angle
+    DebugPlotWindow.calcStyleFromBitfield(style, textStyle);
+    textStyle.angle = angle;
   }
 
   private clearPlot(): void {
@@ -699,19 +740,20 @@ export class DebugPlotWindow extends DebugWindowBase {
   private drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
     if (this.debugWindow) {
       this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
+      const fgColor: string = this.currFgColor;
+      const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
+      const [plotFmCoordX, plotFmCoordY] = this.plotToCanvasCoord(this.cursorPosition);
+      const plotToCoordX: number = x; // the origin and back to plot cancels out
+      const plotToCoordY: number = y; //   so just use original request
+      this.logMessage(`  -- @(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`);
       try {
-        const fgColor: string = this.currFgColor;
-        const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
-        this.logMessage(`  -- x,y=(${x},${y}) color=[${fgColor}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
-
-
             // Locate the canvas element by its ID
             const canvas = document.getElementById('plot-area');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
+              // Get the canvas context/updateCo
               const ctx = canvas.getContext('2d');
 
               if (ctx) {
@@ -724,8 +766,8 @@ export class DebugPlotWindow extends DebugWindowBase {
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
-                ctx.moveTo(${this.cursorPosition.x}, ${this.cursorPosition.y});
-                ctx.lineTo(${x}, ${y});
+                ctx.moveTo(${plotFmCoordX}, ${plotFmCoordY});
+                ctx.lineTo(${plotToCoordX}, ${plotToCoordY});
                 ctx.stroke();
               }
             }
@@ -754,11 +796,14 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   private drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
     if (this.debugWindow) {
-      this.logMessage(`at drawCircleToPlot(${diameter}, ${lineSize}, ${opacity})`);
+      const fgColor: string = this.currFgColor;
+      const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
+      const [plotCoordX, plotCoordY] = this.plotToCanvasCoord(this.cursorPosition);
+      this.logMessage(
+        `at drawCircleToPlot(${diameter}, ${lineSize}, ${opacity}) center @(${plotCoordX},${plotCoordY})`
+      );
+      this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
       try {
-        const fgColor: string = this.currFgColor;
-        const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
-        this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -777,9 +822,10 @@ export class DebugPlotWindow extends DebugWindowBase {
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.fillStyle = lineColor; // Set the fill color
+
                 ctx.beginPath();
                 // arc(x, y, radius, startAngle, endAngle, anticlockwise)
-                ctx.arc(${this.cursorPosition.x}, ${this.cursorPosition.y}, ${diameter / 2}, 0, 2 * Math.PI);
+                ctx.arc(${plotCoordX}, ${plotCoordY}, ${diameter / 2}, 0, 2 * Math.PI);
                 if (lineWidth === 0) {
                   ctx.fill(); // Fill the circle if lineSize is 0
                 } else {
@@ -795,20 +841,39 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
+  private fontWeightName(style: TextStyle): string {
+    let weightName: string = 'normal';
+    switch (style.weight) {
+      case 0:
+        weightName = 'light';
+        break;
+      case 1:
+        weightName = 'normal';
+        break;
+      case 2:
+        weightName = 'bold';
+        break;
+      case 3:
+        weightName = 'heavy';
+        break;
+    }
+    return weightName;
+  }
+
   private writeStringToPlot(text: string): void {
     if (this.debugWindow) {
       this.logMessage(`at writeStringToPlot(${text})`);
+      const textHeight: number = this.font.charHeight;
+      const lineHeight: number = this.font.lineHeight;
+      const [textXOffset, textYOffset] = this.plotToCanvasCoord(this.cursorPosition);
+      const vertLineInset: number = (lineHeight - textHeight) / 2;
+      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
+      const fgColor: string = this.currFgColor;
+      const fontWeight: string = this.fontWeightName(this.textStyle);
+      this.logMessage(
+        `  -- fontWeight=(${fontWeight}) height=(${textHeight}) color=${fgColor} @(${textYOffset},${textXOffset}) text=[${text}]`
+      );
       try {
-        const textHeight: number = this.font.charHeight;
-        const lineHeight: number = this.font.lineHeight;
-        const textYOffset: number = this.cursorPosition.y * lineHeight;
-        const textXOffset: number = this.cursorPosition.x * this.font.charWidth + this.contentInset;
-        const charVertOffset: number = (lineHeight - textHeight) / 2;
-        const textYbaseline: number = textYOffset + charVertOffset + this.font.baseline;
-        const fgColor: string = this.currFgColor;
-        this.logMessage(
-          `  -- textXY=(${textYOffset},${textXOffset}), height=(${textHeight}) color=[${fgColor},] text=[${text}]`
-        );
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -822,15 +887,15 @@ export class DebugPlotWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${fgColor}';
-                const lineHeight = ${lineHeight};
+                //const lineHeight = ${lineHeight};
 
                 // Add text background
-                ctx.font = '${this.font.textSizePts}pt Consolas';
-                const textWidth = ctx.measureText('${text}').width;
+                //ctx.font = '${fontWeight} ${this.font.textSizePts}pt Consolas';
+                //const textWidth = ctx.measureText('${text}').width;
 
                 // clear existing text & background
                 // clearRect(x, y, width, height);
-                ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+                //ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
 
                 // Add text of color
                 ctx.fillStyle = lineColor;
@@ -844,5 +909,21 @@ export class DebugPlotWindow extends DebugWindowBase {
         console.error('Failed to update text:', error);
       }
     }
+  }
+
+  private plotOffsetByOrigin(newX: number, newY: number): [number, number] {
+    // remove the origin offset to get to canvas coordinates
+    const plotX: number = newX - this.origin.x;
+    const plotY: number = newY - this.origin.y;
+    this.logMessage(`* plotOffsetByOrigin(${newX},${newY}) -> (${plotX},${plotY})`);
+    return [plotX, plotY];
+  }
+
+  private plotToCanvasCoord(cursor: Position): [number, number] {
+    // remove the origin offset to get to canvas coordinates
+    const plotX: number = cursor.x + this.canvasOffset.x;
+    const plotY: number = cursor.y + this.canvasOffset.y;
+    this.logMessage(`* plotToCanvasCoord(${cursor.x},${cursor.y}) -> (${plotX},${plotY})`);
+    return [plotX, plotY];
   }
 }
