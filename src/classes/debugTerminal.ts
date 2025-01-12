@@ -178,8 +178,6 @@ export class DebugTerminal {
       });
       if (!foundDisplay) {
         // 2nd, is it a window creation command?
-        let isValid: boolean = false;
-        let displaySpec: any = {};
         switch (possibleName) {
           case this.DISPLAY_SCOPE: {
             this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
@@ -487,6 +485,7 @@ and Electron <span id="electron-version"></span>.</P>
       this.updateStatusBarField('logName', logDisplayName);
 
       if (this._serialPort === undefined) {
+        // TEST CODE - TEST CODE - TEST CODE - TEST CODE
         // load the log file into the
         setInterval(() => {
           this.appendLog('Log message ' + new Date().toISOString());
@@ -502,9 +501,9 @@ and Electron <span id="electron-version"></span>.</P>
     });
 
     this.mainWindow.on('closed', () => {
+      this.mainWindow?.removeAllListeners();
       this.closeAllDebugWindows(); // close all child windows, too
       this.logMessage('* Main window closed');
-      this.mainWindow?.removeAllListeners();
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });
@@ -597,10 +596,10 @@ and Electron <span id="electron-version"></span>.</P>
           logContent.scrollTop = logContent.scrollHeight;
         })();
       `);
-      // and if logging, append to output file
-      if (this.loggingToFile) {
-        this.appendToFile(this.logFileSpec, `${message}\n`);
-      }
+    }
+    // and if logging, append to output file
+    if (this.loggingToFile) {
+      this.appendToFile(this.logFileSpec, `${message}\n`);
     }
   }
 

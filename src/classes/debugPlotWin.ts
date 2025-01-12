@@ -4,15 +4,13 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
-import { BrowserWindow, Menu } from 'electron';
+import { BrowserWindow } from 'electron';
 // src/classes/debugPlotWin.ts
 
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
 import { DebugWindowBase, FontMetrics, Position, Size, TextStyle, WindowColor } from './debugWindowBase';
-import { v8_0_0 } from 'pixi.js';
-import { timeStamp } from 'console';
 
 export interface LutColor {
   fgcolor: string;
@@ -30,14 +28,21 @@ export interface PlotDisplaySpec {
   hideXY: boolean;
 }
 
+export enum eCoordModes {
+  CM_UNKNOWN = 0,
+  CM_POLAR,
+  CM_CARTESIAN
+}
+
 export interface PolarSpec {
-  twopi: number;
+  // In polar mode, (x, y) coordinates are interpreted as (length, angle).
+  twopi: number; // For a twopi value of $100000000 or -$100000000, use 0 or -1.
   offset: number;
 }
 
 export interface CartesianSpec {
-  ydir: number;
-  xdir: number;
+  ydir: boolean; // If ydir is 0, the Y axis points up. If ydir is non-0, the Y axis points down.
+  xdir: boolean; // If xdir is 0, the X axis points right. If xdir is non-0, the X axis points left.
 }
 
 export class DebugPlotWindow extends DebugWindowBase {
@@ -51,20 +56,22 @@ export class DebugPlotWindow extends DebugWindowBase {
   private selectedLutColor: number = 0;
   private font: FontMetrics = {} as FontMetrics;
   private textStyle: TextStyle = {} as TextStyle;
-  private origin: Position = { x: 0, y: 0 };
+  private origin: Position = { x: 0, y: 0 }; // users are: DOT, LINE, CIRCLE, OVAL, BOX, OBOX
   private canvasOffset: Position = { x: 0, y: 0 };
 
   private polarConfig: PolarSpec = { twopi: 0x100000000, offset: 0 };
-  private cartesianConfig: CartesianSpec = { ydir: 0, xdir: 0 };
-  private isPolar: boolean = false;
+  private cartesianConfig: CartesianSpec = { ydir: false, xdir: false };
+  private coordinateMode: eCoordModes = eCoordModes.CM_CARTESIAN; // default to cartesian mode
   private lineSize: number = 1;
-  private isPreciseMode: boolean = false; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel.
+  private precise: number = 8; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. [0, 8] used as shift value
   private currFgColor: string = '#00FFFF'; // #RRGGBB string
+  private currTextColor: string = '#00FFFF'; // #RRGGBB string
 
   private shouldWriteToCanvas: boolean = true;
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
     super(ctx);
+    DebugColor.setDefaultBrightness(15); // set default brightness to max
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
     // calculate canvasOffet for origin
@@ -72,6 +79,16 @@ export class DebugPlotWindow extends DebugWindowBase {
     // start with default font size
     DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
     DebugPlotWindow.calcStyleFromBitfield('00000001', this.textStyle);
+  }
+
+  private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
+    let numericStatus: boolean = false;
+    let firstChar: string = lineParts[index + 1].charAt(0);
+    // 0-9 or negative sign prefix
+    if ((firstChar >= '0' && firstChar <= '9') || firstChar == '-') {
+      numericStatus = true;
+    }
+    return numericStatus;
   }
 
   get windowTitle(): string {
@@ -161,7 +178,7 @@ export class DebugPlotWindow extends DebugWindowBase {
               const colorName: string = lineParts[++index];
               let colorBrightness: number = 15; // let's default to max brightness
               if (index < lineParts.length - 1) {
-                if (this.nextPartIsNumeric(lineParts, index)) {
+                if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
                   colorBrightness = Number(lineParts[++index]);
                 }
               }
@@ -274,12 +291,18 @@ export class DebugPlotWindow extends DebugWindowBase {
         <meta charset="UTF-8"></meta>
         <title>${displayName}</title>
         <style>
+          @font-face {
+            font-family: 'Parallax';
+            src: url('fonts/parallax.ttf') format('truetype');
+            font-weight: 400; /* Normal */
+            font-style: normal;
+          }
           body {
             display: flex;
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Consolas, sans-serif;
+            font-family: 'Parallax', sans-serif; // was Consolas
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
           }
@@ -334,16 +357,6 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.debugWindow.close();
       this.debugWindow = null;
     }
-  }
-
-  private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
-    let numericStatus: boolean = false;
-    let firstChar: string = lineParts[index + 1].charAt(0);
-    // 0-9 or negative sign prefix
-    if ((firstChar >= '0' && firstChar <= '9') || firstChar == '-') {
-      numericStatus = true;
-    }
-    return numericStatus;
   }
 
   public updateContent(lineParts: string[]): void {
@@ -426,6 +439,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     this.logMessage(`---- at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
+    let foundColorThisLine: boolean = false;
     for (let index = 1; index < lineParts.length; index++) {
       if (lineParts[index].toUpperCase() == 'SET') {
         // set cursor position
@@ -438,6 +452,11 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       } else if (lineParts[index].toUpperCase() == 'TEXT') {
         // have TEXT {size {style {angle}}} 'text'
+        // record preceding color settings
+        if (foundColorThisLine) {
+          this.currTextColor = this.currFgColor;
+          foundColorThisLine = false;
+        }
         let size: number = 10;
         let style: string = '00000001';
         let angle: number = 0;
@@ -529,29 +548,56 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       } else if (lineParts[index].toUpperCase() == 'ORIGIN') {
         // set origin position
-        if (index < lineParts.length - 2) {
-          this.origin.x = parseFloat(lineParts[++index]);
-          this.origin.y = parseFloat(lineParts[++index]);
-          // calculate canvasOffet for origin
-          this.canvasOffset = {
-            //x: this.displaySpec.size.width - this.origin.x,
-            //y: this.displaySpec.size.height - this.origin.y
-            x: this.origin.x,
-            y: this.origin.y
-          };
+        //   iff values are present, set origin to those values
+        if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+          // have values
+          if (index < lineParts.length - 2) {
+            this.origin.x = parseFloat(lineParts[++index]);
+            this.origin.y = parseFloat(lineParts[++index]);
+            // calculate canvasOffet for origin
+            this.canvasOffset = {
+              //x: this.displaySpec.size.width - this.origin.x,
+              //y: this.displaySpec.size.height - this.origin.y
+              x: this.origin.x,
+              y: this.origin.y
+            };
+          } else {
+            this.logMessage(`* UPD-ERROR  missing parameters for ORIGIN [${lineParts.join(' ')}]`);
+          }
         } else {
-          this.logMessage(`* UPD-ERROR  missing parameters for ORIGIN [${lineParts.join(' ')}]`);
+          // no ORIGIN params, so set to cursor position
+          this.origin = { x: this.cursorPosition.x, y: this.cursorPosition.y };
+          this.canvasOffset = { x: this.origin.x, y: this.origin.y };
         }
       } else if (lineParts[index].toUpperCase() == 'PRECISE') {
         // toggle precise mode
-        this.isPreciseMode = !this.isPreciseMode;
+        this.precise = this.precise ^ 8;
       } else if (lineParts[index].toUpperCase() == 'POLAR') {
         // set polar mode
-        if (index < lineParts.length - 2) {
-          this.polarConfig.twopi = parseFloat(lineParts[++index]);
-          this.polarConfig.offset = parseFloat(lineParts[++index]);
-        } else {
-          this.logMessage(`* UPD-ERROR  missing parameters for POLAR [${lineParts.join(' ')}]`);
+        this.coordinateMode = eCoordModes.CM_POLAR;
+        this.polarConfig.twopi = 0x100000000; // default 1
+        this.polarConfig.offset = 0; // default 0
+        //   iff values are present, set mode to those values
+        if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+          if (index < lineParts.length - 2) {
+            this.polarConfig.twopi = parseFloat(lineParts[++index]);
+            this.polarConfig.offset = parseFloat(lineParts[++index]);
+          }
+        }
+      } else if (lineParts[index].toUpperCase() == 'CARTESIAN') {
+        // Set cartesian mode and optionally set Y and X axis polarity.
+        //   Cartesian mode is the default.
+        this.coordinateMode = eCoordModes.CM_CARTESIAN;
+        this.cartesianConfig.xdir = false; // default 0
+        this.cartesianConfig.ydir = false; // default 0
+        //   iff values are present, set mode to those values
+        if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+          if (index < lineParts.length - 2) {
+            const yDir: number = parseFloat(lineParts[++index]);
+            const xDir: number = parseFloat(lineParts[++index]);
+            this.cartesianConfig.xdir = xDir == 0 ? false : true;
+            this.cartesianConfig.ydir = yDir == 0 ? false : true;
+          }
         }
       } else if (lineParts[index].toUpperCase() == 'UPDATE') {
         // update window with latest content
@@ -576,6 +622,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
         const textColor = new DebugColor(colorName, colorBrightness);
         this.updatePlotDisplay(`COLOR ${textColor.rgbString}`);
+        foundColorThisLine = true;
       } else {
         this.logMessage(`* UPD-ERROR  unknown directive: [${lineParts[1]}] of [${lineParts.join(' ')}]`);
       }
@@ -625,10 +672,10 @@ export class DebugPlotWindow extends DebugWindowBase {
         // possible values are:
         //  CLEAR
         //  SET x y
-        //  COLOR color
+        //  COLOR #rrggbb
         //  FONT size style[8chars] angle
         //  TEXT 'string'
-        // LINE x y linesize opacity
+        //  LINE x y linesize opacity
         //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
         this.deferredCommands.forEach((displayString) => {
           this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
@@ -648,9 +695,15 @@ export class DebugPlotWindow extends DebugWindowBase {
           } else if (lineParts[0] == 'SET') {
             // set new drawing cursor position relative to origin
             if (lineParts.length == 3) {
-              const setX: number = parseFloat(lineParts[1]);
-              const setY: number = parseFloat(lineParts[2]);
-              [this.cursorPosition.x, this.cursorPosition.y] = this.plotOffsetByOrigin(setX, setY);
+              let setX: number = parseFloat(lineParts[1]);
+              let setY: number = parseFloat(lineParts[2]);
+              // if polar mode, convert to cartesian
+              if (this.coordinateMode == eCoordModes.CM_POLAR) {
+                [this.cursorPosition.x, this.cursorPosition.y] = this.polarToCartesian(setX, setY);
+              } else {
+                this.cursorPosition.x = setX;
+                this.cursorPosition.y = setY;
+              }
               this.logMessage(
                 `* PUSH-INFO  SET cursorPosition (${setX},${setY}) -> (${this.cursorPosition.x}, ${this.cursorPosition.y})`
               );
@@ -714,6 +767,9 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.cursorPosition = { x: 0, y: 0 };
   }
 
+  // -----------------------------------------------------------
+  // ----------------- Canvas Drawing Routines -----------------
+  //
   private clearPlotCanvas(): void {
     if (this.debugWindow) {
       this.logMessage(`at clearPlot()`);
@@ -750,14 +806,19 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
 
   private drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
+    // NOTE: no precise anti-aliased line drawing in canvas, so we'll just draw a line
     if (this.debugWindow) {
       this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
       const fgColor: string = this.currFgColor;
       const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
-      const [plotFmCoordX, plotFmCoordY] = this.plotToCanvasCoord(this.cursorPosition);
-      const plotToCoordX: number = x; // the origin and back to plot cancels out
-      const plotToCoordY: number = y; //   so just use original request
-      this.logMessage(`  -- @(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`);
+      if (this.coordinateMode == eCoordModes.CM_POLAR) {
+        [x, y] = this.polarToCartesian(x, y);
+      }
+      const [plotFmCoordX, plotFmCoordY] = this.getCursorXY();
+      const [plotToCoordX, plotToCoordY] = this.getXY(x, y);
+      this.logMessage(
+        `  -- fm(${plotFmCoordX},${plotFmCoordY}) - to(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`
+      );
       try {
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
@@ -791,28 +852,15 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
-  // Convert #rrggbb to rgba
-  private hexToRgba(hex: string, opacity: number): string {
-    // Remove the leading '#' if present
-    hex = hex.replace(/^#/, '');
-
-    // Parse the red, green, and blue components
-    const bigint = parseInt(hex, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-
-    // Return the rgba string
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-  }
-
   private drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
     if (this.debugWindow) {
       const fgColor: string = this.currFgColor;
       const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
-      const [plotCoordX, plotCoordY] = this.plotToCanvasCoord(this.cursorPosition);
+      const [plotCoordX, plotCoordY] = this.getCursorXY();
+      const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
+      const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
       this.logMessage(
-        `at drawCircleToPlot(${diameter}, ${lineSize}, ${opacity}) center @(${plotCoordX},${plotCoordY})`
+        `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${plotCoordX},${plotCoordY})`
       );
       this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
       try {
@@ -853,6 +901,120 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
+  private writeStringToPlot(text: string): void {
+    if (this.debugWindow) {
+      this.logMessage(`at writeStringToPlot('${text}')`);
+      const textHeight: number = this.font.charHeight;
+      const lineHeight: number = this.font.lineHeight;
+      const fontSize: number = this.font.textSizePts;
+      const [textXOffset, textYOffset] = this.getCursorXY();
+      const vertLineInset: number = (lineHeight - textHeight) / 2;
+      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
+      const fgColor: string = this.currTextColor;
+      const fontWeight: string = this.fontWeightName(this.textStyle);
+      this.logMessage(
+        `  -- fontWeight=(${fontWeight}), fontSize=(${fontSize}pt)[${textHeight}px], color=(${fgColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
+      );
+      try {
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            // Locate the canvas element by its ID
+            const canvas = document.getElementById('plot-area');
+
+
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              // Get the canvas context
+              const ctx = canvas.getContext('2d');
+
+              if (ctx) {
+                // Set the line color and width
+                const lineColor = '${fgColor}';
+                //const lineHeight = ${lineHeight};
+
+                // Add text background
+                ctx.font = '${fontWeight} ${this.font.textSizePts}pt Parallax'; // was Consolas
+                //const textWidth = ctx.measureText('${text}').width;
+
+                // clear existing text & background
+                // clearRect(x, y, width, height);
+                //ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+
+                // Add text of color
+                ctx.fillStyle = lineColor;
+                // fillText(text, x, y [, maxWidth]); // where y is baseline
+                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
+              }
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to update text:', error);
+      }
+    }
+  }
+
+  // -----------------------------------------------------------
+  //  ----------------- Utility Routines -----------------------
+  //
+  private getCursorXY(): [number, number] {
+    // calculate x,y based on Curor Position, CartesianSpec scale inversions, screen size, and ORIGIN
+    // used by OBOX, BOX, OVAL, CIRCLE, TEXT, and SPRITE
+    return this.getXY(this.cursorPosition.x, this.cursorPosition.y);
+  }
+
+  private getXY(x: number, y: number): [number, number] {
+    // calculate x,y based on Curor Position, CartesianSpec scale inversions, screen size, and ORIGIN
+    // used by OBOX, BOX, OVAL, CIRCLE, TEXT, and SPRITE
+    let newX: number;
+    let newY: number;
+    if (this.cartesianConfig.xdir) {
+      newX = this.displaySpec.size.width - 1 - this.origin.x - x;
+    } else {
+      newX = this.origin.x + x;
+    }
+    if (this.cartesianConfig.ydir) {
+      newY = this.origin.y + y;
+    } else {
+      newY = this.displaySpec.size.height - 1 - this.origin.y - y;
+    }
+    this.logMessage(`* getXY(${x},${y}) -> (${newX},${newY})`);
+    return [newX, newY];
+  }
+
+  private sinCos(angle: number): { sin: number; cos: number } {
+    return {
+      sin: Math.sin(angle),
+      cos: Math.cos(angle)
+    };
+  }
+
+  private polarToCartesian(length: number, angle: number): [number, number] {
+    const { sin, cos } = this.sinCos(angle);
+    const x: number = length * cos;
+    const y: number = length * sin;
+    return [x, y];
+  }
+  private polarToCartesianOld(length: number, angle: number): [number, number] {
+    // convert polar to cartesian
+    // smarty pants:
+    const rho_x: number = Math.round(length * Math.cos(angle));
+    const theta_y: number = Math.round(length * Math.sin(angle));
+    //const rho_x: number = Math.round(length * Math.cos(angle) * Math.PI);
+    //const theta_y: number = Math.round(length * Math.sin(angle) * Math.PI);
+    // Chip's way:
+    // ORIG Tf = (angle * this.polarConfig.offset) / this.polarConfig.twopi * Math.PI * 2
+    // all clusterd to upper right corner...~!~~~
+    /*
+    const offsetAngle = angle * this.polarConfig.offset;
+    let Tf = offsetAngle / this.polarConfig.twopi;
+    Tf = Tf * Math.PI * 2;
+    const theta_y = Math.round(Math.sin(Tf) * length);
+    const rho_x = Math.round(Math.cos(Tf) * length);
+*/
+    this.logMessage(`* polarToCartesian(L:${length}, A:${angle}) -> (X:${rho_x}, Y:${theta_y})`);
+    return [rho_x, theta_y];
+  }
+
   private fontWeightName(style: TextStyle): string {
     let weightName: string = 'normal';
     switch (style.weight) {
@@ -872,55 +1034,21 @@ export class DebugPlotWindow extends DebugWindowBase {
     return weightName;
   }
 
-  private writeStringToPlot(text: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at writeStringToPlot(${text})`);
-      const textHeight: number = this.font.charHeight;
-      const lineHeight: number = this.font.lineHeight;
-      const [textXOffset, textYOffset] = this.plotToCanvasCoord(this.cursorPosition);
-      const vertLineInset: number = (lineHeight - textHeight) / 2;
-      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
-      const fgColor: string = this.currFgColor;
-      const fontWeight: string = this.fontWeightName(this.textStyle);
-      this.logMessage(
-        `  -- fontWeight=(${fontWeight}) height=(${textHeight}) color=${fgColor} @(${textYOffset},${textXOffset}) text=[${text}]`
-      );
-      try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('plot-area');
+  // Convert #rrggbb to rgba
+  private hexToRgba(hex: string, opacity: number): string {
+    // Remove the leading '#' if present
+    hex = hex.replace(/^#/, '');
 
+    // Parse the red, green, and blue components
+    const bigint = parseInt(hex, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
 
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${fgColor}';
-                //const lineHeight = ${lineHeight};
-
-                // Add text background
-                //ctx.font = '${fontWeight} ${this.font.textSizePts}pt Consolas';
-                //const textWidth = ctx.measureText('${text}').width;
-
-                // clear existing text & background
-                // clearRect(x, y, width, height);
-                //ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
-
-                // Add text of color
-                ctx.fillStyle = lineColor;
-                // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
-      }
-    }
+    // Return the rgba string
+    const rgbaStr: string = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    this.logMessage(`* hexToRgba(${hex}, ${opacity}) -> ${rgbaStr}`);
+    return rgbaStr;
   }
 
   private plotOffsetByOrigin(newX: number, newY: number): [number, number] {

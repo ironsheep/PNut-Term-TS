@@ -19,7 +19,9 @@ export class DebugColor {
   private fontColor: string;
   private gridBrightness: number = 6; // chip says 4 but 6 looks better on Linux
   private fontBrightness: number = 12; // linux, grid color too dark
-
+  static defaultBrightness: number = 8;
+  static defaultFontBrightness: number = 12;
+  static defaultGridBrightness: number = 6;
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',
     WHITE: '#FFFFFF',
@@ -44,6 +46,9 @@ export class DebugColor {
     this._dimmedColorValue = this.adjustBrightness(this._colorValue, this._brightness);
     // cache the dimmed color
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
+    this.gridBrightness = DebugColor.defaultGridBrightness;
+    this.fontBrightness = DebugColor.defaultFontBrightness;
+    this._brightness = DebugColor.defaultBrightness;
     // note grid color is always brightness 4
     this.gridColor =
       this._brightness === this.gridBrightness
@@ -53,6 +58,16 @@ export class DebugColor {
       this._brightness === this.fontBrightness
         ? this.dimmedColor
         : this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
+  }
+
+  public static setDefaultBrightness(
+    brightness: number,
+    fontBrightness: number = 12,
+    gridBrightness: number = 6
+  ): void {
+    DebugColor.defaultBrightness = brightness;
+    DebugColor.defaultFontBrightness = fontBrightness;
+    DebugColor.defaultGridBrightness = gridBrightness;
   }
 
   private brightnessForHex(hex: string): number {

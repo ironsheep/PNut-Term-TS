@@ -25,12 +25,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "help": "npm run build && dist/pnut-termdebug-ts.min.js --help",
     "minify": "terser dist/pnut-termdebug-ts.js -c -m -o dist/pnut-termdebug-ts.min.js",
-    "clean": "shx rm -rf ./dist ./release ./prebuilds",
+    "clean": "shx rm -rf ./dist ./release ./prebuilds ./fonts",
     "start": "node dist/pnut-termdebug-ts.min.js",
     "postbuild": "shx chmod +x dist/pnut-termdebug-ts.min.js dist/pnut-termdebug-ts.js",
     "makeprebuild": "shx mkdir -p ./prebuilds && shx cp -r ./node_modules/@serialport/bindings-cpp/prebuilds/* ./prebuilds/",
+    "makefonts": "shx mkdir -p ./fonts && shx cp -r ./src/fonts/* ./fonts/",
     "dist": "npm run packageLnx && npm run send2pi",
-    "prebuild": "npm run clean && npm run makeprebuild",
+    "undist": "npm run getpirun && npm run getpiplot",
+    "prebuild": "npm run clean && npm run makeprebuild && npm run makefonts",
     "buildnew": "tsc && npm run build:esbuild && npm run minify && node build.js",
     "build": "tsc && npm run build:esbuild && node scripts/insertBuildDate.js && npm run minify",
     "packageLnx": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
@@ -40,7 +42,9 @@
     "build:win": "tsc && electron-builder build --win",
     "build:mac": "tsc && electron-builder build --mac",
     "build:linux": "tsc && electron-builder build --linux",
-    "send2pi": "scp ./release/pnut-*arm64.zip pi@pi5twr.home:/home/pi/Downloads"
+    "send2pi": "scp ./release/pnut-*arm64.zip pi@pi5twr.home:/home/pi/Downloads",
+    "getpirun": "scp pi@pi5twr.home:/home/pi/TEMP/l*.log ./LOGs",
+    "getpiplot": "rm -f ./LOGs/p*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/p*.log ./LOGs"
   },
   "devDependencies": {
     "@types/electron": "^1.6.12",
