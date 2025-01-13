@@ -498,10 +498,10 @@ and Electron <span id="electron-version"></span>.</P>
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...');
       }
+      this.mainWindow?.removeAllListeners();
     });
 
     this.mainWindow.on('closed', () => {
-      this.mainWindow?.removeAllListeners();
       this.closeAllDebugWindows(); // close all child windows, too
       this.logMessage('* Main window closed');
       this.mainWindow = null;

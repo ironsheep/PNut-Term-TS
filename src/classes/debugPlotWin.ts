@@ -10,7 +10,16 @@ import { BrowserWindow } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, FontMetrics, Position, Size, TextStyle, WindowColor } from './debugWindowBase';
+import {
+  DebugWindowBase,
+  eHorizJustification,
+  eVertJustification,
+  FontMetrics,
+  Position,
+  Size,
+  TextStyle,
+  WindowColor
+} from './debugWindowBase';
 
 export interface LutColor {
   fgcolor: string;
@@ -293,7 +302,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('resources/fonts/parallax.ttf') format('truetype');
+            src: url('fonts/parallax.ttf') format('truetype');
             font-weight: 400; /* Normal */
             font-style: normal;
           }
@@ -695,7 +704,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             if (this.clearCount > 0) {
               this.clearCount--;
               if (this.clearCount == 0) {
-                // this.shouldWriteToCanvas = false; // XYZZY
+                this.shouldWriteToCanvas = false; // XYZZY
               }
             }
           } else if (lineParts[0] == 'SET') {
@@ -920,15 +929,40 @@ export class DebugPlotWindow extends DebugWindowBase {
       const lineHeight: number = this.font.lineHeight;
       const fontSize: number = this.font.textSizePts;
       const [textXOffset, textYOffset] = this.getCursorXY();
-      const vertLineInset: number = (lineHeight - textHeight) / 2;
-      const textXcorrection: number = textXOffset - this.font.charWidth; // move 1 char left
-      //const textYcorrection: number = textYOffset + vertLineInset; // too far
-      //const textYcorrection: number = textYOffset + this.font.baseline; // too far
-      const textYcorrection: number = textYOffset;
+      const vertLineInset: number = (lineHeight - textHeight) / 2; // 1/2 gap above and below text
+      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
+      // now let's apply alignment effects
+      // let's start with horizontal alignment
+      const alignHCenter = this.textStyle.horizAlign == eHorizJustification.HJ_CENTER;
+      const alignHRight = this.textStyle.horizAlign == eHorizJustification.HJ_RIGHT;
+      let adjYBaseline: number = textYbaseline;
+      switch (this.textStyle.vertAlign) {
+        case eVertJustification.VJ_TOP:
+          //adjYBaseline = textYOffset + this.font.baseline;
+          adjYBaseline -= vertLineInset + this.font.baseline;
+          break;
+        case eVertJustification.VJ_BOTTOM:
+          //adjYBaseline = textYOffset + lineHeight - vertLineInset;
+          //adjYBaseline = textYbaseline;
+          break;
+        case eVertJustification.VJ_MIDDLE:
+          //adjYBaseline = textYOffset + vertLineInset + this.font.baseline - 5; // off by 5 pix?
+          adjYBaseline -= (vertLineInset + this.font.baseline) / 2 + 2; // off by 2?
+          break;
+      }
+      const alignHString: string = alignHCenter ? 'Hctr' : alignHRight ? 'Hrt' : 'Hlt';
+      const alignVString: string =
+        this.textStyle.vertAlign == eVertJustification.VJ_TOP
+          ? 'Vtop'
+          : this.textStyle.vertAlign == eVertJustification.VJ_MIDDLE
+          ? 'Vmid'
+          : 'Vbot';
       const textColor: string = this.currTextColor;
       const fontWeight: string = this.fontWeightName(this.textStyle);
+      const fontStyle: string = this.textStyle.italic ? 'italic' : 'normal';
+      // FIXME: UNDONE add underline support
       this.logMessage(
-        `  -- fontWeight=(${fontWeight}), fontSize=(${fontSize}pt)[${textHeight}px], color=(${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
+        `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
       );
       try {
         this.debugWindow.webContents.executeJavaScript(`
@@ -944,20 +978,20 @@ export class DebugPlotWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${textColor}';
-                //const lineHeight = ${lineHeight};
+                let Xoffset = ${textXOffset};
 
-                // Add text background
-                ctx.font = '${fontWeight} ${this.font.textSizePts}pt Parallax'; // was Consolas
-                //const textWidth = ctx.measureText('${text}').width;
-
-                // clear existing text & background
-                // clearRect(x, y, width, height);
-                //ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
+                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax'; // was Consolas
+                const textWidth = ctx.measureText('${text}').width;
+                if(${alignHCenter}) {
+                  Xoffset -= textWidth / 2;
+                } else if(${alignHRight}) {
+                  Xoffset -= textWidth;
+                }
 
                 // Add text of color
                 ctx.fillStyle = lineColor;
                 // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', ${textXcorrection}, ${textYcorrection});
+                ctx.fillText('${text}', Xoffset, ${adjYBaseline});
               }
             }
           })();

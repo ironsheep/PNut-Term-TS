@@ -33,3 +33,4 @@ PLOT Window:
 - first draft sorta working - item locations bad!
 - set font to Parallax
 - Add save to bitmap
+- double buffer - draw to hidden canvas then bitblt over to live canvas

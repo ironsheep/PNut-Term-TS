@@ -22,15 +22,15 @@ export interface Position {
 export enum eVertJustification {
   VJ_UNKNOWN = 1,
   VJ_TOP = 3,
-  VJ_CENTER = 0,
+  VJ_MIDDLE = 0,
   VJ_BOTTOM = 2
 }
 
 export enum eHorizJustification {
-  VJ_UNKNOWN = 1,
-  VJ_LEFT = 3,
-  VJ_CENTER = 0,
-  VJ_RIGHT = 2
+  HJ_UNKNOWN = 1,
+  HJ_LEFT = 3,
+  HJ_CENTER = 0,
+  HJ_RIGHT = 2
 }
 
 export enum eTextWeight {
