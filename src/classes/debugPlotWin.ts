@@ -293,7 +293,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('fonts/parallax.ttf') format('truetype');
+            src: url('resources/fonts/parallax.ttf') format('truetype');
             font-weight: 400; /* Normal */
             font-style: normal;
           }
@@ -439,7 +439,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     this.logMessage(`---- at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
-    let foundColorThisLine: boolean = false;
     for (let index = 1; index < lineParts.length; index++) {
       if (lineParts[index].toUpperCase() == 'SET') {
         // set cursor position
@@ -452,11 +451,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       } else if (lineParts[index].toUpperCase() == 'TEXT') {
         // have TEXT {size {style {angle}}} 'text'
-        // record preceding color settings
-        if (foundColorThisLine) {
-          this.currTextColor = this.currFgColor;
-          foundColorThisLine = false;
-        }
+        //this.logMessage(`* UPD-INFO  TEXT directive idx=(${index})`);
         let size: number = 10;
         let style: string = '00000001';
         let angle: number = 0;
@@ -614,15 +609,25 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (DebugColor.isValidColorName(lineParts[index])) {
         // set color
         const colorName: string = lineParts[index];
-        let colorBrightness: number = 8;
+        let colorBrightness: number = 15; // default 15 for plot?
         if (index < lineParts.length - 1) {
           if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
             colorBrightness = Number(lineParts[++index]);
           }
         }
-        const textColor = new DebugColor(colorName, colorBrightness);
-        this.updatePlotDisplay(`COLOR ${textColor.rgbString}`);
-        foundColorThisLine = true;
+        this.logMessage(`* UPD-INFO index(${index}) is [${lineParts[index]}]`);
+        const namedColor = new DebugColor(colorName, colorBrightness);
+        // look ahead to see if next directive is TEXT
+        let isTextColor: boolean = false;
+        if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() == 'TEXT') {
+          isTextColor = true;
+        }
+        // emit the directive we need
+        if (isTextColor) {
+          this.updatePlotDisplay(`TEXTCOLOR ${namedColor.rgbString}`);
+        } else {
+          this.updatePlotDisplay(`COLOR ${namedColor.rgbString}`);
+        }
       } else {
         this.logMessage(`* UPD-ERROR  unknown directive: [${lineParts[1]}] of [${lineParts.join(' ')}]`);
       }
@@ -673,6 +678,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         //  CLEAR
         //  SET x y
         //  COLOR #rrggbb
+        //  TEXTCOLOR #rrggbb
         //  FONT size style[8chars] angle
         //  TEXT 'string'
         //  LINE x y linesize opacity
@@ -680,7 +686,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.deferredCommands.forEach((displayString) => {
           this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
           const lineParts: string[] = displayString.split(' ');
-          if (displayString.startsWith('TEXT')) {
+          if (displayString.startsWith('TEXT ')) {
             const message: string = displayString.substring(6, displayString.length - 1);
             this.writeStringToPlot(message);
           } else if (lineParts[0] == 'CLEAR') {
@@ -689,7 +695,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             if (this.clearCount > 0) {
               this.clearCount--;
               if (this.clearCount == 0) {
-                this.shouldWriteToCanvas = false;
+                // this.shouldWriteToCanvas = false; // XYZZY
               }
             }
           } else if (lineParts[0] == 'SET') {
@@ -715,6 +721,12 @@ export class DebugPlotWindow extends DebugWindowBase {
               this.currFgColor = lineParts[1];
             } else {
               this.logMessage(`* PUSH-ERROR  BAD parameters for COLOR [${displayString}]`);
+            }
+          } else if (lineParts[0] == 'TEXTCOLOR') {
+            if (lineParts.length == 2) {
+              this.currTextColor = lineParts[1];
+            } else {
+              this.logMessage(`* PUSH-ERROR  BAD parameters for TEXTCOLOR [${displayString}]`);
             }
           } else if (lineParts[0] == 'CIRCLE') {
             if (lineParts.length == 4) {
@@ -909,11 +921,14 @@ export class DebugPlotWindow extends DebugWindowBase {
       const fontSize: number = this.font.textSizePts;
       const [textXOffset, textYOffset] = this.getCursorXY();
       const vertLineInset: number = (lineHeight - textHeight) / 2;
-      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
-      const fgColor: string = this.currTextColor;
+      const textXcorrection: number = textXOffset - this.font.charWidth; // move 1 char left
+      //const textYcorrection: number = textYOffset + vertLineInset; // too far
+      //const textYcorrection: number = textYOffset + this.font.baseline; // too far
+      const textYcorrection: number = textYOffset;
+      const textColor: string = this.currTextColor;
       const fontWeight: string = this.fontWeightName(this.textStyle);
       this.logMessage(
-        `  -- fontWeight=(${fontWeight}), fontSize=(${fontSize}pt)[${textHeight}px], color=(${fgColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
+        `  -- fontWeight=(${fontWeight}), fontSize=(${fontSize}pt)[${textHeight}px], color=(${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
       );
       try {
         this.debugWindow.webContents.executeJavaScript(`
@@ -928,7 +943,7 @@ export class DebugPlotWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${fgColor}';
+                const lineColor = '${textColor}';
                 //const lineHeight = ${lineHeight};
 
                 // Add text background
@@ -942,7 +957,7 @@ export class DebugPlotWindow extends DebugWindowBase {
                 // Add text of color
                 ctx.fillStyle = lineColor;
                 // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
+                ctx.fillText('${text}', ${textXcorrection}, ${textYcorrection});
               }
             }
           })();
@@ -977,8 +992,17 @@ export class DebugPlotWindow extends DebugWindowBase {
     } else {
       newY = this.displaySpec.size.height - 1 - this.origin.y - y;
     }
+    newX = Math.round(newX);
+    newY = Math.round(newY);
     this.logMessage(`* getXY(${x},${y}) -> (${newX},${newY})`);
     return [newX, newY];
+  }
+
+  private polarToCartesianNew(length: number, angle: number): [number, number] {
+    const { sin, cos } = this.sinCos(angle);
+    const x: number = Math.round(length * cos);
+    const y: number = Math.round(length * sin);
+    return [x, y];
   }
 
   private sinCos(angle: number): { sin: number; cos: number } {
@@ -989,28 +1013,23 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
 
   private polarToCartesian(length: number, angle: number): [number, number] {
-    const { sin, cos } = this.sinCos(angle);
-    const x: number = length * cos;
-    const y: number = length * sin;
-    return [x, y];
-  }
-  private polarToCartesianOld(length: number, angle: number): [number, number] {
     // convert polar to cartesian
-    // smarty pants:
-    const rho_x: number = Math.round(length * Math.cos(angle));
-    const theta_y: number = Math.round(length * Math.sin(angle));
-    //const rho_x: number = Math.round(length * Math.cos(angle) * Math.PI);
-    //const theta_y: number = Math.round(length * Math.sin(angle) * Math.PI);
+    // Chips:
+    //   Tf := (Int64(theta_y) + Int64(vTheta)) / vTwoPi * Pi * 2;
+    //   SinCos(Tf, Yf, Xf);
+    //   theta_y := Round(Yf * rho_x);
+    //   rho_x := Round(Xf * rho_x);
+
+    // Smarty Pants:
+    //  const rho_x: number = Math.round(length * Math.cos(angle));
+    //  const theta_y: number = Math.round(length * Math.sin(angle));
+
     // Chip's way:
-    // ORIG Tf = (angle * this.polarConfig.offset) / this.polarConfig.twopi * Math.PI * 2
-    // all clusterd to upper right corner...~!~~~
-    /*
-    const offsetAngle = angle * this.polarConfig.offset;
-    let Tf = offsetAngle / this.polarConfig.twopi;
-    Tf = Tf * Math.PI * 2;
-    const theta_y = Math.round(Math.sin(Tf) * length);
-    const rho_x = Math.round(Math.cos(Tf) * length);
-*/
+    const Tf = ((angle + this.polarConfig.offset) / this.polarConfig.twopi) * Math.PI * 2;
+    const { sin, cos } = this.sinCos(Tf);
+    const theta_y = Math.round(sin * length);
+    const rho_x = Math.round(cos * length);
+
     this.logMessage(`* polarToCartesian(L:${length}, A:${angle}) -> (X:${rho_x}, Y:${theta_y})`);
     return [rho_x, theta_y];
   }
