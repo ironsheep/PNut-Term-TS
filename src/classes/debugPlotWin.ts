@@ -302,7 +302,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('fonts/parallax.ttf') format('truetype');
+            src: url('./resources/fonts/parallax.ttf') format('truetype');
             font-weight: 400; /* Normal */
             font-style: normal;
           }
@@ -311,7 +311,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: 'Parallax', sans-serif; // was Consolas
+            font-family: 'Parallax', Arial, sans-serif; // was Consolas
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
           }
@@ -980,7 +980,7 @@ export class DebugPlotWindow extends DebugWindowBase {
                 const lineColor = '${textColor}';
                 let Xoffset = ${textXOffset};
 
-                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax'; // was Consolas
+                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax', Arial, sans-serif; // was Consolas
                 const textWidth = ctx.measureText('${text}').width;
                 if(${alignHCenter}) {
                   Xoffset -= textWidth / 2;
