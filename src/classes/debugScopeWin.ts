@@ -504,6 +504,10 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
         //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
+        //  arm-level (?-1)
+        //  trigger-level (trigFire? 0)
+        //  trigger offset (0) samples / 2
+        // Holdoff (2-2048) samples
         this.triggerSpec.trigEnabled = true;
         if (lineParts.length > 2) {
           const desiredChannel: number = Number(lineParts[2]);
@@ -519,6 +523,13 @@ export class DebugScopeWindow extends DebugWindowBase {
               }
             } else if (lineParts[3].toUpperCase() == 'AUTO') {
               this.triggerSpec.trigAuto = true;
+              const channelSpec = this.channelSpecs[this.triggerSpec.trigChannel];
+              // arm range is 33% of max-min: (high - low) / 3 + low
+              const newArmLevel = (channelSpec.maxValue - channelSpec.minValue) / 3 + channelSpec.minValue;
+              this.triggerSpec.trigArmLevel = newArmLevel;
+              // trigger level is 50% of max-min: (high - low) / 2 + low
+              const newTrigLevel = (channelSpec.maxValue - channelSpec.minValue) / 2 + channelSpec.minValue;
+              this.triggerSpec.trigLevel = newTrigLevel;
             } else {
               this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
               this.triggerSpec.trigAuto = false;
