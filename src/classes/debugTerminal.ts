@@ -17,6 +17,7 @@ import { DebugScopeWindow } from './debugScopeWin';
 import { DebugWindowBase } from './debugWindowBase';
 import { DebugTermWindow } from './debugTermWin';
 import { DebugPlotWindow } from './debugPlotWin';
+import { DebugLogicWindow } from './debugLogicWin';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -189,6 +190,26 @@ export class DebugTerminal {
               const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
               // remember active displays!
               this.displays[scopeSpec.displayName] = scopeDisplay;
+              this.logMessage(`GOOD DISPLAY: Received`);
+              //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+            } else {
+              if (this.isLogging) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            foundDisplay = true;
+            break;
+          }
+          case this.DISPLAY_LOGIC: {
+            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
+            // create new window to display scope data
+            const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
+            this.logMessage(`* handleDebugCommand() - back from parse`);
+            if (isValid) {
+              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
+              const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
+              // remember active displays!
+              this.displays[logicSpec.displayName] = logicDisplay;
               this.logMessage(`GOOD DISPLAY: Received`);
               //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
             } else {

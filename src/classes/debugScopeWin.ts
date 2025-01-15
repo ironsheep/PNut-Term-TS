@@ -136,7 +136,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         const element = lineParts[index];
         switch (element.toUpperCase()) {
           case 'TITLE':
-            // esure we have one more value
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
               displaySpec.windowTitle = lineParts[++index];
             } else {
@@ -146,7 +146,7 @@ export class DebugScopeWindow extends DebugWindowBase {
             }
             break;
           case 'SIZE':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 2) {
               displaySpec.size.width = Number(lineParts[++index]);
               displaySpec.size.height = Number(lineParts[++index]);
@@ -156,7 +156,7 @@ export class DebugScopeWindow extends DebugWindowBase {
             }
             break;
           case 'SAMPLES':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 1) {
               displaySpec.nbrSamples = Number(lineParts[++index]);
             } else {

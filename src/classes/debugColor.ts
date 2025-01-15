@@ -23,16 +23,21 @@ export class DebugColor {
   static defaultFontBrightness: number = 12;
   static defaultGridBrightness: number = 6;
   private static colorNameToHex: { [key: string]: string } = {
-    BLACK: '#000000',
-    WHITE: '#FFFFFF',
-    ORANGE: '#FFA500',
-    BLUE: '#0000FF',
+    BLACK: '#000000', // default BACK
+    ORANGE: '#FF7F00',
+    OLIVE: '#7F7F00',
     GREEN: '#008000',
-    CYAN: '#00FFFF',
+    CYAN: '#00FFFF', // default PLOT
     RED: '#FF0000',
+    LIME: '#00FF00',
+    BLUE: '#3F3FFF',
+    BLUE2: '#0000FF',
     MAGENTA: '#FF00FF',
     YELLOW: '#FFFF00',
-    GRAY: '#808080'
+    WHITE: '#FFFFFF', // default TEXT
+    GRAY: '#404040', // default GRID
+    GRAY2: '#808080',
+    GRAY3: '#D0D0D0'
   };
 
   constructor(colorName: string, brightness: number = 8) {
@@ -107,7 +112,7 @@ export class DebugColor {
 
   private static colorNameToHexString(colorName: string): string {
     let hexString = DebugColor.colorNameToHex[colorName.toUpperCase()];
-    if (!hexString) {
+    if (hexString === undefined) {
       console.log(` DC: * colorNameToHexString: Unknown color name: ${colorName}`);
       hexString = '#5a5a5a'; // default to gray
     }
@@ -145,7 +150,11 @@ export class DebugColor {
       }
     }
 
-    console.log(` DC: * adjustBrightness(0x${color.toString(16)},${brightness}) -> 0x${adjustedColor.toString(16)}`);
+    console.log(
+      ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')},${brightness}) -> 0x${adjustedColor
+        .toString(16)
+        .padStart(6, '0')}`
+    );
 
     return adjustedColor;
   }

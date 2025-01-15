@@ -152,7 +152,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         const element = lineParts[index];
         switch (element.toUpperCase()) {
           case 'TITLE':
-            // esure we have one more value
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
               displaySpec.windowTitle = lineParts[++index];
             } else {
@@ -162,7 +162,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             }
             break;
           case 'POS':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 2) {
               displaySpec.position.x = Number(lineParts[++index]);
               displaySpec.position.y = Number(lineParts[++index]);
@@ -172,7 +172,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             }
             break;
           case 'SIZE':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 2) {
               displaySpec.size.width = Number(lineParts[++index]);
               displaySpec.size.height = Number(lineParts[++index]);
@@ -182,7 +182,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             }
             break;
           case 'BACKCOLOR':
-            // esure we have one more value
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
               const colorName: string = lineParts[++index];
               let colorBrightness: number = 15; // let's default to max brightness
@@ -485,7 +485,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           let displayString: string | undefined = undefined;
           // isolate string and display it. Advance index to next part after close quote
           if (currLinePart.substring(1).includes("'")) {
-            // string ends in this singel linepart
+            // string ends in this single linepart
             displayString = currLinePart.substring(1, currLinePart.length - 1);
           } else {
             // this will be a multi-part string

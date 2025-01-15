@@ -20,7 +20,9 @@ SCOPE Window:
 		- fix window size @done(2025-01-08)
 		
 LOGIC Window:
-	- start work
+	- start work @done(2025-01-14)
+	- figure out default channel colors (fm pascal)
+	- fix channel name parsing
 	
 TERM Window:
 	- get content updating @done(2025-01-09)

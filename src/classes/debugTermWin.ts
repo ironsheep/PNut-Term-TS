@@ -103,7 +103,7 @@ export class DebugTermWindow extends DebugWindowBase {
         const element = lineParts[index];
         switch (element.toUpperCase()) {
           case 'TITLE':
-            // esure we have one more value
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
               displaySpec.windowTitle = lineParts[++index];
             } else {
@@ -113,7 +113,7 @@ export class DebugTermWindow extends DebugWindowBase {
             }
             break;
           case 'POS':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 2) {
               displaySpec.position.x = Number(lineParts[++index]);
               displaySpec.position.y = Number(lineParts[++index]);
@@ -123,7 +123,7 @@ export class DebugTermWindow extends DebugWindowBase {
             }
             break;
           case 'SIZE':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 2) {
               displaySpec.size.columns = Number(lineParts[++index]);
               displaySpec.size.rows = Number(lineParts[++index]);
@@ -133,7 +133,7 @@ export class DebugTermWindow extends DebugWindowBase {
             }
             break;
           case 'TEXTSIZE':
-            // esure we have two more values
+            // ensure we have two more values
             if (index < lineParts.length - 1) {
               const sizeInPts: number = Number(lineParts[++index]);
               DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
@@ -143,7 +143,7 @@ export class DebugTermWindow extends DebugWindowBase {
             }
             break;
           case 'BACKCOLOR':
-            // esure we have one more value
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
               const colorName: string = lineParts[++index];
               let colorBrightness: number = 8;
@@ -161,7 +161,7 @@ export class DebugTermWindow extends DebugWindowBase {
             // here with
             //   COLOR fg-color0 bg-color0 [fg-color1 bg-color1 [fg-color2 bg-color2 [fg-color3 bg-color3]]]
             //   fg/bg-color is a color name, with optional brightness: {name [brightness]}
-            // esure we color names in pairs!
+            // ensure we color names in pairs!
             let colorComboIdx: number = 0;
             let fgColor: string | undefined = undefined;
             let bgColor: string | undefined = undefined;
@@ -424,7 +424,7 @@ export class DebugTermWindow extends DebugWindowBase {
         let displayString: string | undefined = undefined;
         // isolate string and display it. Advance index to next part after close quote
         if (currLinePart.substring(1).includes("'")) {
-          // string ends in this singel linepart
+          // string ends in this single linepart
           displayString = currLinePart.substring(1, currLinePart.length - 1);
         } else {
           // this will be a multi-part string
