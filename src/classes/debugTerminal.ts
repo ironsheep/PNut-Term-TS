@@ -519,7 +519,6 @@ and Electron <span id="electron-version"></span>.</P>
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...');
       }
-      this.mainWindow?.removeAllListeners();
     });
 
     this.mainWindow.on('closed', () => {
@@ -532,8 +531,10 @@ and Electron <span id="electron-version"></span>.</P>
 
   // Method to close all debug windows
   private closeAllDebugWindows(): void {
+    this.mainWindow?.removeAllListeners();
     const displayEntries = Object.entries(this.displays);
     displayEntries.forEach(([windowName, windowObject]) => {
+      this.logMessage(`* closeAllDebugWindows() - Closing window: ${windowName}`);
       const window: DebugWindowBase = windowObject as DebugWindowBase;
       window.closeDebugWindow();
     });

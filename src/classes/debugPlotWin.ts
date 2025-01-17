@@ -87,7 +87,8 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.canvasOffset = { x: displaySpec.size.width / 2, y: displaySpec.size.height / 2 };
     // start with default font size
     DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
-    DebugPlotWindow.calcStyleFromBitfield('00000001', this.textStyle);
+    const normalText: number = 0b00000001;
+    DebugPlotWindow.calcStyleFromBitfield(normalText, this.textStyle);
   }
 
   private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
@@ -359,7 +360,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
 
   public closeDebugWindow(): void {
-    this.logMessage(`at closeDebugWindow()`);
+    this.logMessage(`at closeDebugWindow() PLOT`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.removeAllListeners();
@@ -759,7 +760,14 @@ export class DebugPlotWindow extends DebugWindowBase {
           } else if (lineParts[0] == 'FONT') {
             if (lineParts.length == 4) {
               const size: number = parseFloat(lineParts[1]);
-              const style: string = lineParts[2];
+              const styleStr: string = lineParts[2];
+              let style: number = 0;
+              if (styleStr.startsWith('%')) {
+                // has binary prefix!
+                style = parseInt(styleStr.substring(1), 2); // binary
+              } else {
+                style = parseInt(styleStr, 10); // decimal
+              }
               const angle: number = parseFloat(lineParts[3]);
               this.setFontMetrics(size, style, angle, this.font, this.textStyle);
             } else {
@@ -774,7 +782,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
   }
 
-  private setFontMetrics(size: number, style: string, angle: number, font: FontMetrics, textStyle: TextStyle): void {
+  private setFontMetrics(size: number, style: number, angle: number, font: FontMetrics, textStyle: TextStyle): void {
     DebugPlotWindow.calcMetricsForFontPtSize(size, font);
     // now configure style and angle
     DebugPlotWindow.calcStyleFromBitfield(style, textStyle);
@@ -1066,25 +1074,6 @@ export class DebugPlotWindow extends DebugWindowBase {
 
     this.logMessage(`* polarToCartesian(L:${length}, A:${angle}) -> (X:${rho_x}, Y:${theta_y})`);
     return [rho_x, theta_y];
-  }
-
-  private fontWeightName(style: TextStyle): string {
-    let weightName: string = 'normal';
-    switch (style.weight) {
-      case 0:
-        weightName = 'light';
-        break;
-      case 1:
-        weightName = 'normal';
-        break;
-      case 2:
-        weightName = 'bold';
-        break;
-      case 3:
-        weightName = 'heavy';
-        break;
-    }
-    return weightName;
   }
 
   // Convert #rrggbb to rgba

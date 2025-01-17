@@ -83,41 +83,9 @@ export abstract class DebugWindowBase {
     metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
   }
 
-  static calcStyleFromBitfield(styleStr: string, textStyle: TextStyle): void {
-    // styleStr is a bitfield string of 8 bits
-    // style is %YYXXUIWW:
-    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
-    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
-    //   %U is underline: %1 = underline.
-    //   %I is italic: %1 = italic.
-    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
-    if (styleStr.length == 8) {
-      textStyle.vertAlign = parseInt(styleStr.substring(0, 2), 2);
-      textStyle.horizAlign = parseInt(styleStr.substring(2, 4), 2);
-      textStyle.underline = styleStr[4] === '1';
-      textStyle.italic = styleStr[5] === '1';
-      const weight: number = parseInt(styleStr.substring(6, 8), 2);
-      switch (weight) {
-        case 0:
-          textStyle.weight = eTextWeight.TW_LIGHT;
-          break;
-        case 1:
-          textStyle.weight = eTextWeight.TW_NORMAL;
-          break;
-        case 2:
-          textStyle.weight = eTextWeight.TW_BOLD;
-          break;
-        case 3:
-          textStyle.weight = eTextWeight.TW_HEAVY;
-          break;
-        default:
-          textStyle.weight = eTextWeight.TW_UNKNOWN;
-          break;
-      }
-    } else {
-      console.log(`Win: ERROR: Invalid style string(8): [${styleStr}](${styleStr.length})`);
-    }
-  }
+  // ----------------------------------------------------------------------
+  // CLASS (static) methods
+  //   NOTE: static since used by derived class static methods
 
   static getValidRgb24(possColorValue: string): [boolean, string] {
     let rgbValue: string = '#a5a5a5'; // gray for unknown color
@@ -144,6 +112,135 @@ export abstract class DebugWindowBase {
       }
     }
     return [isValid, rgbValue];
+  }
+
+  static calcStyleFrom(
+    vJust: eVertJustification,
+    hJust: eHorizJustification,
+    weight: eTextWeight,
+    underline: boolean = false,
+    italic: boolean = false
+  ): number {
+    // build styleStr is now a bitfield string of 8 bits
+    // style is %YYXXUIWW:
+    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %U is underline: %1 = underline.
+    //   %I is italic: %1 = italic.
+    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    let styleStr: string = '0b';
+    switch (vJust) {
+      case eVertJustification.VJ_MIDDLE:
+        styleStr += '00';
+        break;
+      case eVertJustification.VJ_BOTTOM:
+        styleStr += '10';
+        break;
+      case eVertJustification.VJ_TOP:
+        styleStr += '11';
+        break;
+      default:
+        styleStr += '00';
+        break;
+    }
+    switch (hJust) {
+      case eHorizJustification.HJ_CENTER:
+        styleStr += '00';
+        break;
+      case eHorizJustification.HJ_RIGHT:
+        styleStr += '10';
+        break;
+      case eHorizJustification.HJ_LEFT:
+        styleStr += '11';
+        break;
+      default:
+        styleStr += '00';
+        break;
+    }
+    styleStr += underline ? '1' : '0';
+    styleStr += italic ? '1' : '0';
+    switch (weight) {
+      case eTextWeight.TW_LIGHT:
+        styleStr += '00';
+        break;
+      case eTextWeight.TW_NORMAL:
+        styleStr += '01';
+        break;
+      case eTextWeight.TW_BOLD:
+        styleStr += '10';
+        break;
+      case eTextWeight.TW_HEAVY:
+        styleStr += '11';
+        break;
+      default:
+        styleStr += '01';
+        break;
+    }
+    // return numeric value of string
+    const value: number = Number(styleStr);
+    console.log(`Win: str=[${styleStr}] -> value=(${value})`);
+    return value;
+  }
+
+  static calcStyleFromBitfield(style: number, textStyle: TextStyle): void {
+    // convert number into a bitfield string
+    const styleStr: string = style.toString(2).padStart(8, '0');
+    // styleStr is now a bitfield string of 8 bits
+    // style is %YYXXUIWW:
+    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %U is underline: %1 = underline.
+    //   %I is italic: %1 = italic.
+    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    if (styleStr.length == 8) {
+      textStyle.vertAlign = parseInt(styleStr.substring(0, 2), 2);
+      textStyle.horizAlign = parseInt(styleStr.substring(2, 4), 2);
+      textStyle.underline = styleStr[4] === '1';
+      textStyle.italic = styleStr[5] === '1';
+      const weight: number = parseInt(styleStr.substring(6, 8), 2);
+      switch (weight) {
+        case 0:
+          textStyle.weight = eTextWeight.TW_LIGHT;
+          break;
+        case 1:
+          textStyle.weight = eTextWeight.TW_NORMAL;
+          break;
+        case 2:
+          textStyle.weight = eTextWeight.TW_BOLD;
+          break;
+        case 3:
+          textStyle.weight = eTextWeight.TW_HEAVY;
+          break;
+        default:
+          textStyle.weight = eTextWeight.TW_NORMAL;
+          break;
+      }
+    } else {
+      console.log(`Win: ERROR: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+    }
+    console.log(`Win: str=[${styleStr}] -> textStyle: ${JSON.stringify(textStyle)}`);
+  }
+
+  // ----------------------------------------------------------------------
+  // inherited by derived classes
+
+  protected fontWeightName(style: TextStyle): string {
+    let weightName: string = 'normal';
+    switch (style.weight) {
+      case eTextWeight.TW_LIGHT:
+        weightName = 'light';
+        break;
+      case eTextWeight.TW_NORMAL:
+        weightName = 'normal';
+        break;
+      case eTextWeight.TW_BOLD:
+        weightName = 'bold';
+        break;
+      case eTextWeight.TW_HEAVY:
+        weightName = 'heavy';
+        break;
+    }
+    return weightName;
   }
 
   // ----------------------------------------------------------------------

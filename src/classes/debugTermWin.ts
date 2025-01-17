@@ -382,7 +382,7 @@ export class DebugTermWindow extends DebugWindowBase {
   }
 
   public closeDebugWindow(): void {
-    this.logMessage(`at closeDebugWindow()`);
+    this.logMessage(`at closeDebugWindow() TERM`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.removeAllListeners();

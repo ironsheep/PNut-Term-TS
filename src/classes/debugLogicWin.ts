@@ -10,7 +10,17 @@ import { BrowserWindow, Menu } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
+import {
+  DebugWindowBase,
+  eHorizJustification,
+  eTextWeight,
+  eVertJustification,
+  FontMetrics,
+  Position,
+  Size,
+  TextStyle,
+  WindowColor
+} from './debugWindowBase';
 import { v8_0_0 } from 'pixi.js';
 
 export interface LogicDisplaySpec {
@@ -28,6 +38,7 @@ export interface LogicDisplaySpec {
   isPackedData: boolean;
   hideXY: boolean;
   channelSpecs: LogicChannelSpec[]; // one for each named channel bit-set
+  textStyle: TextStyle;
   logicChannels: number; // number of logic channel bits (32)
   topLogicChannel: number; // top-most logic channel bit (32 - 1)
 }
@@ -65,12 +76,14 @@ export class DebugLogicWindow extends DebugWindowBase {
   private triggerSpec: LogicTriggerSpec = {} as LogicTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
-  private channelInset: number = 10; // 10 pixels from top and bottom of window
-  private contentInset: number = 10; // 10 pixels from left and right of window
+  private channelInset: number = 0; // 10 pixels from top and bottom of window
+  private contentInset: number = 0; // 10 pixels from left and right of window
   private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
   private channelLineWidth: number = 2; // 2 pixels wide for channel data line
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private dbgLogMessageCount: number = 0; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private labelWdith: number = 0; // width of label canvas
+  private labelHeight: number = 0; // height of label canvas
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec) {
     super(ctx);
@@ -121,6 +134,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     displaySpec.channelSpecs = []; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     displaySpec.font = {} as FontMetrics; // ensure this is structured too! (CRASHED without this!)
+    displaySpec.textStyle = {} as TextStyle; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
     // set defaults
@@ -132,12 +146,18 @@ export class DebugLogicWindow extends DebugWindowBase {
     displaySpec.spacing = 8;
     displaySpec.rate = 1;
     displaySpec.lineSize = 1;
-    displaySpec.textSize = 12;
-    DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
     displaySpec.isPackedData = false;
     displaySpec.hideXY = false;
+    displaySpec.textSize = 12;
+    this.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
+    const labelTextSyle: number = this.calcStyleFrom(
+      eVertJustification.VJ_MIDDLE,
+      eHorizJustification.HJ_RIGHT,
+      eTextWeight.TW_NORMAL
+    );
+    this.calcStyleFromBitfield(labelTextSyle, displaySpec.textStyle);
     displaySpec.logicChannels = 32;
     displaySpec.topLogicChannel = displaySpec.logicChannels - 1;
 
@@ -201,7 +221,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 const colorOrColorName = lineParts[++index];
                 // if color is a number, then it is a rgb24 value
                 // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
-                const [isValidRgb24, colorHexRgb24] = DebugLogicWindow.getValidRgb24(colorOrColorName);
+                const [isValidRgb24, colorHexRgb24] = this.getValidRgb24(colorOrColorName);
                 console.log(
                   `CL: LogicDisplaySpec - colorOrColorName: [${colorOrColorName}], isValidRgb24=(${isValidRgb24})`
                 );
@@ -317,40 +337,12 @@ export class DebugLogicWindow extends DebugWindowBase {
   private createDebugWindow(): void {
     this.logMessage(`at createDebugWindow() LOGIC`);
     // calculate overall canvas sizes then window size from them!
-    /*
-    if (this.channelSpecs.length == 0) {
-      // create a DEFAULT channelSpec for only channel
-      const defaultColor: DebugColor = new DebugColor('GREEN');
-      this.channelSpecs.push({
-        name: 'Channel 0',
-        color: defaultColor.rgbString,
-        nbrBits: 1
-      });
-    }
-      */
 
-    // NOTES: Chip's size estimation:
-    //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
-    //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
-
-    const channelCanvases: string[] = [];
-    let windowCanvasHeight: number = 0;
-    if (this.channelSpecs.length > 0) {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
-        const channelSpec = this.channelSpecs[index];
-        const adjHeight = this.channelLineWidth / 2 + this.canvasMargin * 2 + 2 * this.channelInset; // inset is above and below
-        const adjWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
-        // create a canvas for each channel
-        channelCanvases.push(`<canvas id="channel-${index}" width="${adjWidth}" height="${adjHeight}"></canvas>`);
-        // account for channel height
-        windowCanvasHeight += 2 * this.channelInset + this.channelLineWidth / 2;
-      }
-    } else {
+    if (this.displaySpec.channelSpecs.length == 0) {
       // error if NO channel
       this.logMessage(`at createDebugWindow() LOGIC with NO channels!`);
     }
 
-    this.logMessage(`at createDebugWindow() LOGIC set up done... w/${channelCanvases.length} canvase(s)`);
     let labelMaxChars: number = 0;
     let activeBitChannels: number = 0;
     for (let index = 0; index < this.displaySpec.channelSpecs.length; index++) {
@@ -359,22 +351,29 @@ export class DebugLogicWindow extends DebugWindowBase {
       activeBitChannels += element.nbrBits;
     }
 
-    const labelCanvases: string[] = [];
+    const labelDivs: string[] = [];
     const dataCanvases: string[] = [];
 
-    const canvasHeight: number = this.displaySpec.font.lineHeight + 2 * 2;
-    const labelCanvasWidth: number = labelMaxChars * this.displaySpec.font.charWidth;
-    const dataCanvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const canvasHeight: number = this.displaySpec.font.lineHeight + 4;
+    const labelCanvasWidth: number = this.contentInset + labelMaxChars * (this.displaySpec.font.charWidth - 2);
+    const dataCanvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing + this.contentInset; // contentInset' for the Xoffset into window for canvas
+
+    const channelGroupHeight: number = canvasHeight * activeBitChannels;
+    const channelGroupWidth: number = labelCanvasWidth + dataCanvasWidth;
+
+    // pass to other users
+    this.labelHeight = canvasHeight;
+    this.labelWdith = labelCanvasWidth;
 
     for (let index = 0; index < activeBitChannels; index++) {
-      labelCanvases.push(`<canvas id="label-${index}" width="${labelCanvasWidth}" height="${canvasHeight}"></canvas>`);
-      dataCanvases.push(`<canvas id="data-${index}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
+      const idNbr: number = activeBitChannels - index - 1;
+      labelDivs.push(`<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${canvasHeight}"></div>`);
+      dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
     }
 
-    // set height so no scroller by default
-    const canvasesPlusWindowHeight = canvasHeight * activeBitChannels + 20 + 30; // 20 is for the channel labels, 30 for window menu bar (30 is guess on linux)
-    const windowHeight = canvasesPlusWindowHeight;
-    const windowWidth = labelCanvasWidth + dataCanvasWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    // set height so NO scroller by default
+    const windowHeight = channelGroupHeight + 2; // 2 is fudge to remove scroller; // + 10; // 30 for window menu bar (30 is guess on linux)
+    const windowWidth = channelGroupWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
     this.logMessage(
       `  -- LOGIC window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -438,25 +437,53 @@ export class DebugLogicWindow extends DebugWindowBase {
         <meta charset="UTF-8"></meta>
         <title>${displayName}</title>
         <style>
+          @font-face {
+            font-family: 'Parallax';
+            src: url('./fonts/Parallax.ttf') format('truetype');
+          }
           body {
             display: flex;
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
+            font-family: 'Parallax', sans-serif;
             font-size: 12px;
-            //background-color:rgb(234, 121, 86);
-            background-color: ${this.displaySpec.window.background};
+            background-color:rgb(234, 121, 86);
+            //background-color: ${this.displaySpec.window.background};
             color:rgb(191, 213, 93);
           }
-          #channel-titles {
+          #labels {
             display: flex;
             flex-direction: column; /* Arrange children in a column */
             flex-grow: 0;
+            //background-color:rgb(86, 234, 234);
+            background-color: ${this.displaySpec.window.background};
+            font-family: 'Parallax', sans-serif;
+            font-size: 12px;
             width: ${labelCanvasWidth}px;
-            background-color:rgb(234, 121, 86);
+            border-width: 1px;
+            border-style: solid;
+            border-color: ${this.displaySpec.window.background};
+            padding: 0px;
+            margin: 0px;
           }
-          #channel-data {
+          #labels > div {
+            flex-grow: 0;
+            display: flex;
+            justify-content: flex-end; /* Horizontally right-aligns the text */
+            align-items: center; /* Vertically center the text */
+            //background-color:rgba(188, 208, 208, 0.9);
+            height: ${canvasHeight}px;
+            // padding: top right bottom left;
+            padding: 0px 2px 0px 0px;
+            margin: 0px;
+          }
+          #labels > div > p {
+            // padding: top right bottom left;
+            padding: 0px;
+            margin: 0px;
+          }
+          #data {
             display: flex;
             flex-direction: column; /* Arrange children in a column */
             flex-grow: 0;
@@ -471,6 +498,12 @@ export class DebugLogicWindow extends DebugWindowBase {
             flex-direction: row; /* Arrange children in a row */
             flex-grow: 0;
           }
+          #label-2 {
+            background-color:rgb(231, 151, 240);
+          }
+          #data-2 {
+            background-color:rgb(240, 194, 151);
+          }
           canvas {
             //background-color:rgb(240, 194, 151);
             //background-color: ${this.displaySpec.window.background};
@@ -480,12 +513,12 @@ export class DebugLogicWindow extends DebugWindowBase {
       </head>
       <body>
         <div id="container">
-          <div id="channel-titles">
-            ${labelCanvases.join(' ')}
-        </div>
-          <div id="channel-data">
-            ${dataCanvases.join(' ')}
-        </div>
+          <div id="labels" width="${labelCanvasWidth}" height="${channelGroupHeight}">
+            ${labelDivs.join('\n')}
+          </div>
+          <div id="data" width="${dataCanvasWidth}" height="${channelGroupHeight}">
+            ${dataCanvases.join('\n')}
+          </div>
         </div>
       </body>
     </html>
@@ -504,12 +537,44 @@ export class DebugLogicWindow extends DebugWindowBase {
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      // FIXME: anything to do here??
+      // let's populate labels
+      this.loadLables();
     });
   }
 
+  private loadLables(): void {
+    // create labels for each channel and post it to the window
+    let bitNumber: number = 0;
+    for (let index = 0; index < this.displaySpec.channelSpecs.length; index++) {
+      const channelSpec = this.displaySpec.channelSpecs[index];
+      const nbrBits: number = channelSpec.nbrBits;
+      const color: string = channelSpec.color;
+      let bitIdx: number = 0;
+      // generate and set labels
+      let chanLabel: string;
+      let chanBitNumber: number = bitNumber + bitIdx;
+      if (nbrBits == 1) {
+        const canvasName = `label-${bitNumber}`; // name only
+        chanLabel = `${channelSpec.name}`;
+        this.updateLogicChannelLabel(canvasName, chanLabel, color);
+      } else {
+        for (bitIdx = 0; bitIdx < nbrBits; bitIdx++) {
+          chanBitNumber = bitNumber + bitIdx;
+          const canvasName = `label-${chanBitNumber}`;
+          if (bitIdx == 0) {
+            chanLabel = `${channelSpec.name} ${chanBitNumber}`; // name w/bit number suffix
+          } else {
+            chanLabel = `${chanBitNumber}`; // just bit number
+          }
+          this.updateLogicChannelLabel(canvasName, chanLabel, color);
+        }
+      }
+      bitNumber += nbrBits;
+    }
+  }
+
   public closeDebugWindow(): void {
-    this.logMessage(`at closeDebugWindow()`);
+    this.logMessage(`at closeDebugWindow() LOGIC`);
     // is destroyed should prevent crash on double close
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.removeAllListeners();
@@ -580,27 +645,49 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.channelSpecs.push(channelSpec);
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
-        //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
-        //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
-        //  arm-level (?-1)
-        //  trigger-level (trigFire? 0)
-        //  trigger offset (0) samples / 2
-        // Holdoff (2-2048) samples
+        //   TRIGGER1 mask2 match3 {sample_offset4}
         this.triggerSpec.trigEnabled = true;
+        let nextIndex: number = 2;
         if (lineParts.length > 2) {
-          const desiredChannel: number = Number(lineParts[2]);
-          if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
-            //this.triggerSpec.trigChannel = desiredChannel;
-          } else {
-            this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
-          }
-          if (lineParts.length > 3) {
-            if (lineParts[3].toUpperCase() == 'HOLDOFF') {
-              if (lineParts.length >= 4) {
-                this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
+          const maskStr: string = lineParts[2];
+          const matchStr: string = lineParts[3];
+          nextIndex = 4;
+          const mask = this.parseNumericValue(maskStr);
+          const match = this.parseNumericValue(matchStr);
+          if (mask !== undefined && match !== undefined) {
+            this.triggerSpec.trigMask = mask ? mask : 0;
+            this.triggerSpec.trigMatch = match ? match : 1;
+            if (lineParts.length > 3) {
+              const offsetStr: string = lineParts[4];
+              nextIndex = 5;
+              const offsetInSampels = this.parseNumericValue(maskStr);
+              if (
+                offsetInSampels !== undefined &&
+                offsetInSampels >= 0 &&
+                offsetInSampels < this.displaySpec.nbrSamples
+              ) {
+                this.triggerSpec.trigSampOffset = offsetInSampels;
+              } else {
+                this.logMessage(
+                  `at updateContent() with invalid sample_offset (max samples: ${
+                    this.displaySpec.nbrSamples
+                  }) in [${lineParts.join(' ')}]`
+                );
               }
-            } else {
             }
+            if (lineParts[nextIndex].toUpperCase() == 'HOLDOFF') {
+              // parse trigger spec update - inline HOLDOFF on TRIGGER line
+              //   HOLDOFF1 <2-2048>2
+              if (lineParts.length > nextIndex) {
+                this.triggerSpec.trigHoldoff = parseFloat(lineParts[nextIndex + 1]);
+              } else {
+                this.logMessage(
+                  `at updateContent() with invalid HOLDOFF @[${nextIndex + 1}] in [${lineParts.join(' ')}]`
+                );
+              }
+            }
+          } else {
+            this.logMessage(`at updateContent() with invalid mask or match in [${lineParts.join(' ')}]`);
           }
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
@@ -643,8 +730,7 @@ export class DebugLogicWindow extends DebugWindowBase {
         let didScroll: boolean = false; // in case we need this for performance of window update
         const numberChannels: number = this.channelSpecs.length;
         const nbrSamples = scopeSamples.length;
-        if (nbrSamples == numberChannels) {
-          /*
+        if (nbrSamples == 1) {
           if (this.dbgLogMessageCount > 0) {
             this.logMessage(
               `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
@@ -652,7 +738,7 @@ export class DebugLogicWindow extends DebugWindowBase {
               )}], lineparts=[${lineParts.join(',')}]`
             );
           }
-          */
+          /*
           for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
             let nextSample: number = Number(scopeSamples[chanIdx]);
             //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
@@ -665,6 +751,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
             this.updateLogicChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
           }
+          */
         } else {
           this.logMessage(
             `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
@@ -677,6 +764,17 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }
     }
+  }
+  private parseNumericValue(value: string): number | undefined {
+    // if string is [-][0-9]+ chars then is decimal number
+    // if string is '$'[0-9A-Fa-f]+ chars then is hex number
+    let desiredValue: number | undefined = undefined;
+    if (/^[-]?[0-9]+$/.test(value)) {
+      desiredValue = parseInt(value, 10);
+    } else if (/^\$[0-9A-Fa-f]+$/.test(value)) {
+      desiredValue = parseInt(value.substring(1), 16);
+    }
+    return desiredValue;
   }
 
   private calculateAutoTriggerAndScale() {
@@ -849,90 +947,122 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
   }
 
-  private updateLogicChannelLabel(name: string, colorString: string): void {
+  private updateLogicChannelLabel(divId: string, label: string, color: string): void {
     if (this.debugWindow) {
-      this.logMessage(`at updateLogicChannelLabel(${name}, ${colorString})`);
+      this.logMessage(`at updateLogicChannelLabel('${divId}', '${label}', ${color})`);
       try {
-        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
+        const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
-            const labelsDivision = document.getElementById('channel-titles');
-            if (labelsDivision) {
-              let labelContent = labelsDivision.innerHTML;
-              if (labelContent.includes('{labels here}')) {
-                labelContent = ''; // remove placeholder span
-              }
-              labelContent += '${channelLabel}';
-              labelsDivision.innerHTML = labelContent;
+            const labelDiv = document.getElementById('${divId}');
+            if (labelDiv) {
+              labelDiv.innerHTML = \'${labelSpan}'\;
             }
           })();
         `);
       } catch (error) {
-        console.error('Failed to update channel label:', error);
+        console.error(`Failed to update ${divId}: ${error}`);
       }
     }
   }
 
-  private drawHorizontalLine(canvasName: string, channelSpec: LogicChannelSpec, YOffset: number, gridColor: string) {
+  /*
+  private writeStringToCanvas(
+    canvasId: string,
+    text: string,
+    labelColor: string,
+    width: number,
+    height: number,
+    font: FontMetrics,
+    textStyle: TextStyle
+  ): void {
     if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor})`);
-      try {
-        const atTop: boolean = false; // YOffset == channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : horizLineWidth / 2 + this.channelLineWidth / 2) + this.channelInset + this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset})`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${gridColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
-
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 3px dash, 3px gap
-
-                // Draw the line
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${lineXOffset}, ${lineYOffset});
-                ctx.lineTo(canWidth, ${lineYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update line:', error);
+      this.logMessage(`at writeStringToCanvas('${canvasId}', '${text}' wh=(${width}x${height}))`);
+      const textHeight: number = font.charHeight;
+      const lineHeight: number = font.lineHeight;
+      const charWidth: number = font.charWidth;
+      const fontSize: number = font.textSizePts;
+      let [textXOffset, textYOffset] = [0, 0];
+      // now let's apply alignment effects
+      // let's start with horizontal alignment
+      let alignHString: string = '';
+      let alignVString: string = '';
+      switch (textStyle.horizAlign) {
+        // NOTE: start, end, left, right, center
+        case eHorizJustification.HJ_LEFT:
+          alignHString = 'left'; // also start
+          textXOffset = 0;
+          break;
+        case eHorizJustification.HJ_CENTER:
+          alignHString = 'center';
+          textXOffset = Math.round(width / 2);
+          break;
+        case eHorizJustification.HJ_RIGHT:
+          alignHString = 'right'; // also end
+          textXOffset = width;
+          break;
       }
-    }
-  }
+      switch (textStyle.vertAlign) {
+        // NOTE: top, hanging, middle, alphabetic, ideographic, bottom
+        case eVertJustification.VJ_TOP:
+          alignVString = 'top';
+          textYOffset = 0;
+          break;
+        case eVertJustification.VJ_MIDDLE:
+          alignVString = 'middle';
+          textYOffset = Math.round(height / 2);
+          break;
+        case eVertJustification.VJ_BOTTOM:
+          alignVString = 'bottom';
+          textYOffset = height;
+          break;
+      }
 
-  private drawHorizontalValue(canvasName: string, channelSpec: LogicChannelSpec, YOffset: number, textColor: string) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalValue(${canvasName}, ${YOffset}, ${textColor})`);
+      // @xy=30,0 text is showing bottom pixels, centered L/R
+      // @xy=30,-12 text is showing bottom pixels, align left?
+      // @xy=0,0 [lt,top] - left edge aligned, top edge aligned
+
+      // HORIZ
+      //alignHString = 'left';
+      alignHString = 'right';
+      const maxChars: number = Math.round(width / font.charWidth);
+      const extraChars = Math.max(maxChars - text.length, 0);
+      this.logMessage(`  -- maxChars=[${maxChars}], extraChars=[${extraChars}]`);
+      const leftEdgeOffset = (extraChars - 1) * font.charWidth; // 6 is a fudge factor (if too wide text moves to next line!)
+      const textWidth: number = text.length * font.charWidth;
+      this.logMessage(`  -- textWidth=[${textWidth}], leftEdgeOffset=[${leftEdgeOffset}]`);
+      //textXOffset = Math.min(leftEdgeOffset, width - font.charWidth - 2);
+      // attempt manually align "Mid 3" label
+      textXOffset = 10; // 5 ok, 8 ok
+      if (text.length < 4) {
+        textXOffset = 12; // our number only labels // 30 bad, 15 offset in Y? 13 also?
+      } else if (text.length < 5) {
+        textXOffset += 1; // our text only label // 4 offset in Y?, 2 also?
+      }
+
+      textXOffset = width - 10;
+
+      // VERT
+      //alignVString = 'top';
+      //textYOffset = Math.round((height - font.charHeight) / 2); // attempt vertical centering
+      alignVString = 'bottom';
+      textYOffset = height - 10; // attempt vertical centering
+
+      const textColor: string = labelColor;
+      const fontWeight: string = this.fontWeightName(textStyle);
+      const fontStyle: string = textStyle.italic ? 'italic ' : '';
+      //const fontSpec: string = `${fontStyle}${fontWeight} ${fontSize}pt Parallax sans-serif`; // was Consolas
+      const fontSpec: string = `${fontStyle}${fontWeight} ${fontSize}pt Consolas sans-serif`;
+      this.logMessage(`  --  fontSpec=[${fontSpec}], sz=(${fontSize}pt)[${textHeight}px] wd=(${charWidth}px)`);
+      // FIXME: UNDONE add underline support
+      this.logMessage(
+        `  -- alignHV=[${alignHString}, ${alignVString}], c=(${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
+      );
       try {
-        const atTop: boolean = false; // YOffset == channelSpec.maxValue;
-        const lineYOffset: number = atTop ? this.channelInset : this.channelInset;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? 0 : 0;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
+            const canvas = document.getElementById('${canvasId}');
 
             if (canvas && canvas instanceof HTMLCanvasElement) {
               // Get the canvas context
@@ -941,15 +1071,26 @@ export class DebugLogicWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${textColor}';
-                //const lineWidth = 2;
+                let Xoffset = ${textXOffset};
+                let Yoffset = ${textYOffset};
+                let textAlign = '${alignHString}';
+                let textBaseline = '${alignVString}';
 
-                // Set the dash pattern
-                //ctx.setLineDash([]); // Empty array for solid line
+                ctx.font = '${fontSpec}'; // was Consolas
 
-                // Add text
-                ctx.font = '9px Arial';
+                // Set text alignment
+                ctx.textAlign = textAlign; // Horizontally align the text
+                ctx.textBaseline = textBaseline; // Vertically align the text
+
+                // Set clipping region to the canvas size
+                ctx.beginPath();
+                ctx.rect(0, 0, canvas.width, canvas.height);
+                ctx.clip();
+
+                // Add text of color
                 ctx.fillStyle = lineColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+                // fillText(text, x, y [, maxWidth]); // where y is baseline
+                ctx.fillText('${text}', Xoffset, Xoffset);
               }
             }
           })();
@@ -959,71 +1100,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       }
     }
   }
-
-  private drawHorizontalLineAndValue(
-    canvasName: string,
-    channelSpec: LogicChannelSpec,
-    YOffset: number,
-    gridColor: string,
-    textColor: string
-  ) {
-    if (this.debugWindow) {
-      this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
-      try {
-        const atTop: boolean = YOffset == 0; // channelSpec.maxValue;
-        const horizLineWidth: number = 2;
-        const lineYOffset: number =
-          (atTop ? 0 - 1 : horizLineWidth / 2 + this.channelLineWidth / 2) + this.channelInset + this.canvasMargin;
-        const lineXOffset: number = this.canvasMargin;
-        const textYOffset: number = lineYOffset + (atTop ? 0 : 5); // 9pt font: offset text to top? rise from baseline, bottom? descend from line
-        const textXOffset: number = 5 + this.canvasMargin;
-        const value: number = atTop ? 0 : 1; // channelSpec.maxValue : channelSpec.minValue;
-        const valueText: string = this.stringForRangeValue(value);
-        this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), valueText=[${valueText}]`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${gridColor}';
-                const textColor = '${textColor}';
-                const lineWidth = ${horizLineWidth};
-                const canWidth = canvas.width - (2 * ${this.canvasMargin});
-
-                // Set the dash pattern
-                ctx.setLineDash([3, 3]); // 5px dash, 3px gap
-
-                // Measure the text width
-                ctx.font = '9px Arial';
-                const textMetrics = ctx.measureText('${valueText}');
-                const textWidth = textMetrics.width;
-
-                // Draw the line
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset}); // start of line
-                ctx.lineTo(canWidth, ${lineYOffset}); // draw to end of line
-                ctx.stroke();
-
-                // Add text
-                ctx.fillStyle = textColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update line & text:', error);
-      }
-    }
-  }
+  */
 
   private scaleAndInvertValue(value: number, channelSpec: LogicChannelSpec): number {
     // scale the value to the vertical channel size then invert the value

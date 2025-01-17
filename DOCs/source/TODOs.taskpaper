@@ -21,8 +21,13 @@ SCOPE Window:
 		
 LOGIC Window:
 	- start work @done(2025-01-14)
-	- figure out default channel colors (fm pascal)
-	- fix channel name parsing
+	- figure out default channel colors (fm pascal) @done(2025-01-16)
+	- fix channel name parsing @done(2025-01-16)
+	- display channel names @done(2025-01-16)
+	- display chanel waveforms
+	- set font to Parallax
+	- Add mouse hover mech, w/disable
+	- Add save to bitmap
 	
 TERM Window:
 	- get content updating @done(2025-01-09)
