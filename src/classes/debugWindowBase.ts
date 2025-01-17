@@ -41,6 +41,37 @@ export enum eTextWeight {
   TW_HEAVY // 900
 }
 
+export enum ePackedDataMode {
+  PDM_UNKNOWN,
+  PDM_LONGS_1BIT,
+  PDM_LONGS_2BIT,
+  PDM_LONGS_4BIT,
+  PDM_LONGS_8BIT,
+  PDM_LONGS_16BIT,
+  PDM_WORDS_1BIT,
+  PDM_WORDS_2BIT,
+  PDM_WORDS_4BIT,
+  PDM_WORDS_8BIT,
+  PDM_BYTES_1BIT,
+  PDM_BYTES_2BIT,
+  PDM_BYTES_4BIT
+}
+
+export enum ePackedDataWidth {
+  PDW_UNKNOWN,
+  PDW_BYTES,
+  PDW_WORDS,
+  PDW_LONGS
+}
+
+export interface PackedDataMode {
+  mode: ePackedDataMode;
+  bitsPerSample: number;
+  valueSize: ePackedDataWidth;
+  isAlternate: boolean;
+  isSigned: boolean;
+}
+
 export interface FontMetrics {
   textSizePts: number;
   charHeight: number;
@@ -241,6 +272,258 @@ export abstract class DebugWindowBase {
         break;
     }
     return weightName;
+  }
+
+  protected isPackedDataMode(possibleMode: string): [boolean, PackedDataMode] {
+    let havePackedDataStatus: boolean = false;
+    let desiredMode: PackedDataMode = {
+      mode: ePackedDataMode.PDM_UNKNOWN,
+      bitsPerSample: 0,
+      valueSize: ePackedDataWidth.PDW_UNKNOWN,
+      isAlternate: false,
+      isSigned: false
+    };
+    // define hash where key is mode string and value is ePackedDataMode
+    const modeMap = new Map<string, ePackedDataMode>([
+      ['longs_1bit', ePackedDataMode.PDM_LONGS_1BIT],
+      ['longs_2bit', ePackedDataMode.PDM_LONGS_2BIT],
+      ['longs_4bit', ePackedDataMode.PDM_LONGS_4BIT],
+      ['longs_8bit', ePackedDataMode.PDM_LONGS_8BIT],
+      ['longs_16bit', ePackedDataMode.PDM_LONGS_16BIT],
+      ['words_1bit', ePackedDataMode.PDM_WORDS_1BIT],
+      ['words_2bit', ePackedDataMode.PDM_WORDS_2BIT],
+      ['words_4bit', ePackedDataMode.PDM_WORDS_4BIT],
+      ['words_8bit', ePackedDataMode.PDM_WORDS_8BIT],
+      ['bytes_1bit', ePackedDataMode.PDM_BYTES_1BIT],
+      ['bytes_2bit', ePackedDataMode.PDM_BYTES_2BIT],
+      ['bytes_4bit', ePackedDataMode.PDM_BYTES_4BIT]
+    ]);
+    // if possible mode matches key in modeMap, then set mode and return true
+    if (modeMap.has(possibleMode.toLocaleLowerCase())) {
+      desiredMode.mode = modeMap.get(possibleMode.toLocaleLowerCase()) as ePackedDataMode;
+      havePackedDataStatus = true;
+      // now set our bitsPerSample based on new mode
+      switch (desiredMode.mode) {
+        case ePackedDataMode.PDM_LONGS_1BIT:
+        case ePackedDataMode.PDM_WORDS_1BIT:
+        case ePackedDataMode.PDM_BYTES_1BIT:
+          desiredMode.bitsPerSample = 1;
+          break;
+        case ePackedDataMode.PDM_LONGS_2BIT:
+        case ePackedDataMode.PDM_WORDS_2BIT:
+        case ePackedDataMode.PDM_BYTES_2BIT:
+          desiredMode.bitsPerSample = 2;
+          break;
+        case ePackedDataMode.PDM_LONGS_4BIT:
+        case ePackedDataMode.PDM_WORDS_4BIT:
+        case ePackedDataMode.PDM_BYTES_4BIT:
+          desiredMode.bitsPerSample = 4;
+          break;
+        case ePackedDataMode.PDM_LONGS_8BIT:
+        case ePackedDataMode.PDM_WORDS_8BIT:
+          desiredMode.bitsPerSample = 8;
+          break;
+        case ePackedDataMode.PDM_LONGS_16BIT:
+          desiredMode.bitsPerSample = 16;
+          break;
+        default:
+          desiredMode.bitsPerSample = 0;
+          break;
+      }
+      // now set our desiredMode.valueSize based on new mode
+      switch (desiredMode.mode) {
+        case ePackedDataMode.PDM_LONGS_1BIT:
+        case ePackedDataMode.PDM_LONGS_2BIT:
+        case ePackedDataMode.PDM_LONGS_4BIT:
+        case ePackedDataMode.PDM_LONGS_8BIT:
+        case ePackedDataMode.PDM_LONGS_16BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_LONGS;
+          break;
+        case ePackedDataMode.PDM_WORDS_1BIT:
+        case ePackedDataMode.PDM_WORDS_2BIT:
+        case ePackedDataMode.PDM_WORDS_4BIT:
+        case ePackedDataMode.PDM_WORDS_8BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_WORDS;
+          break;
+        case ePackedDataMode.PDM_BYTES_1BIT:
+        case ePackedDataMode.PDM_BYTES_2BIT:
+        case ePackedDataMode.PDM_BYTES_4BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_BYTES;
+          break;
+        default:
+          desiredMode.valueSize = ePackedDataWidth.PDW_UNKNOWN;
+          break;
+      }
+    }
+    this.logMessage(
+      `packedDataMode(${possibleMode}): isValid=(${havePackedDataStatus})  -> ${(JSON.stringify(desiredMode), null, 2)}`
+    );
+    return [havePackedDataStatus, desiredMode];
+  }
+
+  protected possibleyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
+    const sampleSet: number[] = [];
+    // FIXME: add ALT and SIGNED support
+    if (mode.mode == ePackedDataMode.PDM_UNKNOWN) {
+      sampleSet.push(numericValue);
+    } else {
+      // unpack the data based on configured mode generating a list of samples
+      // we have a single value which according to packed mode we need to unpack
+      switch (mode.valueSize) {
+        case ePackedDataWidth.PDW_BYTES:
+          // we have data as a byte [0-255] 8-bits
+          switch (mode.bitsPerSample) {
+            case 1:
+              // we have data as 8 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index < 8; index++) {
+                sampleSet.push((numericValue >> index) & 0x01);
+              }
+              break;
+
+            case 2:
+              // we have data as 4 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index < 4; index++) {
+                sampleSet.push((numericValue >> (index * 2)) & 0x03);
+              }
+              break;
+
+            case 4:
+              // we have data as 2 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index < 2; index++) {
+                sampleSet.push((numericValue >> (index * 4)) & 0x0f);
+              }
+              break;
+
+            default:
+              break;
+          }
+          break;
+
+        case ePackedDataWidth.PDW_WORDS:
+          // we have data as a word [0-65535] 16-bits
+          switch (mode.bitsPerSample) {
+            case 1:
+              // we have data as 16 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index < 16; index++) {
+                sampleSet.push((numericValue >> index) & 0x01);
+              }
+              break;
+            case 2:
+              // we have data as 8 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index < 8; index++) {
+                sampleSet.push((numericValue >> (index * 2)) & 0x03);
+              }
+              break;
+            case 4:
+              // we have data as 4 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index < 4; index++) {
+                sampleSet.push((numericValue >> (index * 4)) & 0x0f);
+              }
+              break;
+            case 8:
+              // we have data as 2 8-bit samples
+              // push each 8bits as a sample from LSB to MSB
+              for (let index = 0; index < 2; index++) {
+                sampleSet.push((numericValue >> (index * 8)) & 0xff);
+              }
+              break;
+
+            default:
+              break;
+          }
+          break;
+
+        case ePackedDataWidth.PDW_LONGS:
+          // we have data as a long 32-bits
+          switch (mode.bitsPerSample) {
+            case 1:
+              // we have data as 32 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index < 32; index++) {
+                sampleSet.push((numericValue >> index) & 0x01);
+              }
+              break;
+            case 2:
+              // we have data as 16 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index < 16; index++) {
+                sampleSet.push((numericValue >> (index * 2)) & 0x03);
+              }
+              break;
+            case 4:
+              // we have data as 8 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index < 8; index++) {
+                sampleSet.push((numericValue >> (index * 4)) & 0x0f);
+              }
+              break;
+            case 8:
+              // we have data as 4 8-bit samples
+              // push each 8bits as a sample from LSB to MSB
+              for (let index = 0; index < 4; index++) {
+                sampleSet.push((numericValue >> (index * 8)) & 0xff);
+              }
+              break;
+            case 16:
+              // we have data as 2 16-bit samples
+              // push each 16bits as a sample from LSB to MSB
+              for (let index = 0; index < 2; index++) {
+                sampleSet.push((numericValue >> (index * 16)) & 0xffff);
+              }
+              break;
+            default:
+              break;
+          }
+          break;
+
+        default:
+          break;
+      }
+    }
+    // Return the list of samples
+    return sampleSet;
+  }
+
+  protected isSpinNumber(value: string): [boolean, number] {
+    let isValieSpin2Number: boolean = false;
+    let spin2Value: number = 0;
+    // all numbers can contain '_' as digit separator
+    // NOTE: technically '_' can only be after first digit but this is compiler output we are parsing so
+    //   we assume it's correct and ignore this rule
+    const spin2ValueStr = value.replace(/_/g, '');
+    // check if starts with base-prefix '%' and rest is binary number [0-1]
+    if (spin2ValueStr[0] === '%' && /^[01]+$/.test(spin2ValueStr.substring(1))) {
+      spin2Value = parseInt(spin2ValueStr.substring(1), 2);
+      isValieSpin2Number = true;
+    }
+    // check if starts with base-prefix '%%' and rest is double-binary number [0-3]
+    if (spin2ValueStr.substring(0, 2) === '%%' && /^[0-3]+$/.test(spin2ValueStr.substring(2))) {
+      spin2Value = parseInt(spin2ValueStr.substring(2), 4);
+      isValieSpin2Number = true;
+    }
+    // check if starts with base-prefix '$' and rest is hex number [0-9A-Fa-f]
+    if (spin2ValueStr[0] === '$' && /^[0-9A-Fa-f]+$/.test(spin2ValueStr.substring(1))) {
+      spin2Value = parseInt(spin2ValueStr.substring(1), 16);
+      isValieSpin2Number = true;
+    }
+    // check if NO base-prefix or '.', (may have option leading '-' or '+') and rest is decimal number [0-9]
+    if (/^[-+]?[0-9]+$/.test(spin2ValueStr)) {
+      spin2Value = parseInt(spin2ValueStr, 10);
+      isValieSpin2Number = true;
+    }
+    // check if value contains '.' or 'e' or 'E' then it is a float number (may have option leading '-' or '+') rest is non[eE.] are decimal digits [0-9]
+    if (/^[-+]?[0-9]+[eE.]?[0-9]+$/.test(spin2ValueStr)) {
+      spin2Value = parseFloat(spin2ValueStr);
+      isValieSpin2Number = true;
+    }
+    this.logMessage(`isSpinNumber(${value}): isValid=(${isValieSpin2Number})  -> (${spin2Value})`);
+    return [isValieSpin2Number, spin2Value];
   }
 
   // ----------------------------------------------------------------------

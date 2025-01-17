@@ -13,9 +13,12 @@ import { DebugColor } from './debugColor';
 import {
   DebugWindowBase,
   eHorizJustification,
+  ePackedDataMode,
+  ePackedDataWidth,
   eTextWeight,
   eVertJustification,
   FontMetrics,
+  PackedDataMode,
   Position,
   Size,
   TextStyle,
@@ -52,7 +55,9 @@ export interface LogicChannelSpec {
 export interface LogicChannelBitSpec {
   name: string;
   color: string;
-  bitNumber: number;
+  chanNbr: number;
+  height: number;
+  base: number;
 }
 
 interface LogicChannelSamples {
@@ -70,7 +75,6 @@ export interface LogicTriggerSpec {
 
 export class DebugLogicWindow extends DebugWindowBase {
   private displaySpec: LogicDisplaySpec = {} as LogicDisplaySpec;
-  private channelSpecs: LogicChannelSpec[] = []; // one for each channel
   private channelBitSpecs: LogicChannelBitSpec[] = []; // one for each channel bit within the 32 possible channels
   private channelSamples: LogicChannelSamples[] = []; // one for each channel
   private triggerSpec: LogicTriggerSpec = {} as LogicTriggerSpec;
@@ -84,6 +88,8 @@ export class DebugLogicWindow extends DebugWindowBase {
   private dbgLogMessageCount: number = 0; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
   private labelWdith: number = 0; // width of label canvas
   private labelHeight: number = 0; // height of label canvas
+  private packedMode: PackedDataMode = {} as PackedDataMode;
+  private singleBitChannelCount: number = 0; // number of single bit channels
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec) {
     super(ctx);
@@ -96,6 +102,14 @@ export class DebugLogicWindow extends DebugWindowBase {
       trigMatch: 1,
       trigSampOffset: displaySpec.nbrSamples / 2,
       trigHoldoff: 0
+    };
+    // initially we don't have a packed mode...
+    this.packedMode = {
+      mode: ePackedDataMode.PDM_UNKNOWN,
+      bitsPerSample: 0,
+      valueSize: ePackedDataWidth.PDW_UNKNOWN,
+      isAlternate: false,
+      isSigned: false
     };
   }
 
@@ -179,7 +193,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           const defaultChannelColor = new DebugColor(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 15);
           newChannelSpec.color = defaultChannelColor.rgbString; // might be overridden below
           newChannelSpec.nbrBits = 1; // default to 1 bit (may be overridden below)
-          console.log(`CL: LogicDisplaySpec - new default: ${JSON.stringify(newChannelSpec, null, 2)}`);
+          //console.log(`CL: LogicDisplaySpec - new default: ${JSON.stringify(newChannelSpec, null, 2)}`);
 
           // display string at cursor position with current colors
           let displayString: string | undefined = undefined;
@@ -188,7 +202,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           if (currLinePart.substring(1).includes("'")) {
             // string ends as this single linepart
             displayString = currLinePart.substring(1, currLinePart.length - 1);
-            console.log(`CL:  -- displayString=[${displayString}]`);
+            //console.log(`CL:  -- displayString=[${displayString}]`);
           } else {
             // this will be a multi-part string
             const stringParts: string[] = [currLinePart.substring(1)];
@@ -207,7 +221,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             }
             displayString = stringParts.join(' ');
           }
-          console.log(`CL: LogicDisplaySpec - displayString=[${displayString}]`);
+          //console.log(`CL: LogicDisplaySpec - displayString=[${displayString}]`);
           if (displayString !== undefined) {
             // have name
             newChannelSpec.name = displayString;
@@ -247,7 +261,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 }
               }
             }
-            console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
+            //console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
             displaySpec.channelSpecs.push(newChannelSpec);
           } else {
             console.log(`CL: LogicDisplaySpec: missing closing quote for Channel name [${lineParts.join(' ')}]`);
@@ -343,18 +357,56 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage(`at createDebugWindow() LOGIC with NO channels!`);
     }
 
+    const canvasHeight: number = this.displaySpec.font.lineHeight + 4;
+
     let labelMaxChars: number = 0;
     let activeBitChannels: number = 0;
+    let channelBase: number = 0;
     for (let index = 0; index < this.displaySpec.channelSpecs.length; index++) {
-      const element = this.displaySpec.channelSpecs[index];
-      labelMaxChars = Math.max(labelMaxChars, element.name.length + 2); // add 2 for ' N' suffix
-      activeBitChannels += element.nbrBits;
+      const channelSpec = this.displaySpec.channelSpecs[index];
+      const bitsInGroup: number = channelSpec.nbrBits;
+      const groupColor: string = channelSpec.color;
+      labelMaxChars = Math.max(labelMaxChars, channelSpec.name.length + 2); // add 2 for ' N' suffix
+      for (let activeIdx = 0; activeIdx < bitsInGroup; activeIdx++) {
+        const bitIdx: number = activeBitChannels + activeIdx;
+        let chanLabel: string;
+        if (bitsInGroup == 1) {
+          chanLabel = `${channelSpec.name}`;
+        } else {
+          if (activeIdx == 0) {
+            chanLabel = `${channelSpec.name} ${bitIdx}`; // name w/bit number suffix
+          } else {
+            chanLabel = `${bitIdx}`; // just bit number
+          }
+        }
+        // fill in our channel bit spec
+        let newSpec: LogicChannelBitSpec = {} as LogicChannelBitSpec;
+        newSpec.name = chanLabel;
+        newSpec.color = groupColor;
+        newSpec.chanNbr = bitIdx;
+        newSpec.height = canvasHeight;
+        newSpec.base = channelBase;
+        // and update to next base
+        channelBase += canvasHeight;
+        // record the new bit spec
+        this.channelBitSpecs.push(newSpec);
+      }
+      activeBitChannels += bitsInGroup;
     }
+
+    this.logMessage(
+      `at createDebugWindow() LOGIC with ${activeBitChannels} active bit channels: [${JSON.stringify(
+        this.channelBitSpecs,
+        null,
+        2
+      )}]`
+    );
+
+    this.singleBitChannelCount = activeBitChannels;
 
     const labelDivs: string[] = [];
     const dataCanvases: string[] = [];
 
-    const canvasHeight: number = this.displaySpec.font.lineHeight + 4;
     const labelCanvasWidth: number = this.contentInset + labelMaxChars * (this.displaySpec.font.charWidth - 2);
     const dataCanvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing + this.contentInset; // contentInset' for the Xoffset into window for canvas
 
@@ -544,32 +596,11 @@ export class DebugLogicWindow extends DebugWindowBase {
 
   private loadLables(): void {
     // create labels for each channel and post it to the window
-    let bitNumber: number = 0;
-    for (let index = 0; index < this.displaySpec.channelSpecs.length; index++) {
-      const channelSpec = this.displaySpec.channelSpecs[index];
-      const nbrBits: number = channelSpec.nbrBits;
-      const color: string = channelSpec.color;
-      let bitIdx: number = 0;
-      // generate and set labels
-      let chanLabel: string;
-      let chanBitNumber: number = bitNumber + bitIdx;
-      if (nbrBits == 1) {
-        const canvasName = `label-${bitNumber}`; // name only
-        chanLabel = `${channelSpec.name}`;
-        this.updateLogicChannelLabel(canvasName, chanLabel, color);
-      } else {
-        for (bitIdx = 0; bitIdx < nbrBits; bitIdx++) {
-          chanBitNumber = bitNumber + bitIdx;
-          const canvasName = `label-${chanBitNumber}`;
-          if (bitIdx == 0) {
-            chanLabel = `${channelSpec.name} ${chanBitNumber}`; // name w/bit number suffix
-          } else {
-            chanLabel = `${chanBitNumber}`; // just bit number
-          }
-          this.updateLogicChannelLabel(canvasName, chanLabel, color);
-        }
-      }
-      bitNumber += nbrBits;
+    for (let bitIdx = 0; bitIdx < this.channelBitSpecs.length; bitIdx++) {
+      const channelBitSpec = this.channelBitSpecs[bitIdx];
+      const canvasName = `label-${bitIdx}`;
+      //  set labels
+      this.updateLogicChannelLabel(canvasName, channelBitSpec.name, channelBitSpec.color);
     }
   }
 
@@ -585,12 +616,10 @@ export class DebugLogicWindow extends DebugWindowBase {
 
   public updateContent(lineParts: string[]): void {
     // here with lineParts = ['`{displayName}, ...]
+    // ----------------------------------------------------------------
     // Valid directives are:
-    // --- these create a new channel spec
-    //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
-    //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
     // --- these update the trigger spec
-    //   TRIGGER <channel|-1> {arm-level {trigger-level {offset}}}
+    //   TRIGGER <channel|-1> {arm-level {trigger-level {offset}}} HOLDOFF <2-2048>
     //   HOLDOFF <2-2048>
     // --- these manage the window
     //   CLEAR
@@ -598,183 +627,136 @@ export class DebugLogicWindow extends DebugWindowBase {
     //   SAVE {WINDOW} 'filename' // save window to .bmp file
     // --- these paints new samples
     //   <numeric data> // data applied to channels in ascending order
-    //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
+    // ----------------------------------------------------------------
+    this.logMessage(`at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
     if (lineParts.length >= 2) {
       // have data, parse it
-      if (lineParts[1].charAt(0) == "'") {
-        // parse channel spec
-        let channelSpec: LogicChannelSpec = {} as LogicChannelSpec;
-        channelSpec.name = lineParts[1].slice(1, -1);
-        let colorName = 'GREEN';
-        let colorBrightness = 15;
-        if (lineParts[2].toUpperCase() == 'AUTO') {
-          // parse AUTO spec
-          //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
-          if (lineParts.length > 5) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[5];
-            this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 6) {
-            colorName = lineParts[6];
-          }
-          if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[7]);
-          }
-        } else {
-          // parse manual spec
-          //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
-          if (lineParts.length > 6) {
-            // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[6];
-            this.parseLegend(legend, channelSpec);
-          }
-          if (lineParts.length > 7) {
-            colorName = lineParts[7];
-          }
-          if (lineParts.length > 8) {
-            colorBrightness = Number(lineParts[8]);
-          }
-        }
-        const channelColor = new DebugColor(colorName, colorBrightness);
-        channelSpec.color = channelColor.rgbString;
-        // and record spec for this channel
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
-        this.channelSpecs.push(channelSpec);
-      } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
-        // parse trigger spec update
-        //   TRIGGER1 mask2 match3 {sample_offset4}
-        this.triggerSpec.trigEnabled = true;
-        let nextIndex: number = 2;
-        if (lineParts.length > 2) {
-          const maskStr: string = lineParts[2];
-          const matchStr: string = lineParts[3];
-          nextIndex = 4;
-          const mask = this.parseNumericValue(maskStr);
-          const match = this.parseNumericValue(matchStr);
-          if (mask !== undefined && match !== undefined) {
-            this.triggerSpec.trigMask = mask ? mask : 0;
-            this.triggerSpec.trigMatch = match ? match : 1;
-            if (lineParts.length > 3) {
-              const offsetStr: string = lineParts[4];
-              nextIndex = 5;
-              const offsetInSampels = this.parseNumericValue(maskStr);
-              if (
-                offsetInSampels !== undefined &&
-                offsetInSampels >= 0 &&
-                offsetInSampels < this.displaySpec.nbrSamples
-              ) {
-                this.triggerSpec.trigSampOffset = offsetInSampels;
-              } else {
-                this.logMessage(
-                  `at updateContent() with invalid sample_offset (max samples: ${
-                    this.displaySpec.nbrSamples
-                  }) in [${lineParts.join(' ')}]`
-                );
-              }
+      for (let index = 1; index < lineParts.length; index++) {
+        this.logMessage(`  -- at [${lineParts[index]}] in lineParts[${index}]`);
+        if (lineParts[index].toUpperCase() == 'TRIGGER') {
+          // parse trigger spec update
+          //   TRIGGER1 mask2 match3 {sample_offset4}
+          this.triggerSpec.trigEnabled = true;
+          // ensure we have at least two more values
+          if (index + 1 < lineParts.length - 2) {
+            const [isValidMask, mask] = this.isSpinNumber(lineParts[index + 1]);
+            if (isValidMask) {
+              index++; // show we consumed the mask value
             }
-            if (lineParts[nextIndex].toUpperCase() == 'HOLDOFF') {
-              // parse trigger spec update - inline HOLDOFF on TRIGGER line
-              //   HOLDOFF1 <2-2048>2
-              if (lineParts.length > nextIndex) {
-                this.triggerSpec.trigHoldoff = parseFloat(lineParts[nextIndex + 1]);
-              } else {
-                this.logMessage(
-                  `at updateContent() with invalid HOLDOFF @[${nextIndex + 1}] in [${lineParts.join(' ')}]`
-                );
+            const [isValidMatch, match] = this.isSpinNumber(lineParts[index + 1]);
+            if (isValidMatch) {
+              index++; // show we consumed the match value
+            }
+            if (isValidMask && isValidMatch) {
+              this.triggerSpec.trigMask = mask ? mask : 0;
+              this.triggerSpec.trigMatch = match ? match : 1;
+              if (index + 1 < lineParts.length - 1) {
+                const [isValidOffset, offsetInSamples] = this.isSpinNumber(lineParts[index + 1]);
+                if (isValidOffset) {
+                  if (offsetInSamples >= 0 && offsetInSamples < this.displaySpec.nbrSamples) {
+                    this.triggerSpec.trigSampOffset = offsetInSamples;
+                  }
+                  index++; // show we consumed the offset value
+                }
+              }
+            } else {
+              this.logMessage(`at updateContent() with invalid mask or match in [${lineParts.join(' ')}]`);
+            }
+          }
+          this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
+        } else if (lineParts[index].toUpperCase() == 'HOLDOFF') {
+          // parse trigger spec update
+          //   HOLDOFF1 <2-2048>2
+          if (lineParts.length > 2) {
+            const [isValidNumber, holdoff] = this.isSpinNumber(lineParts[index + 1]);
+            if (isValidNumber) {
+              this.triggerSpec.trigHoldoff = holdoff;
+              index++; // show we consumed the holdoff value
+            }
+          } else {
+            this.logMessage(`at updateContent() with invalid HOLDOFF @[${index + 1}] in [${lineParts.join(' ')}]`);
+          }
+          this.logMessage(
+            `at updateContent() with updated trigger-holdoffSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`
+          );
+        } else if (lineParts[index].toUpperCase() == 'CLEAR') {
+          // clear all channels
+          this.clearChannelData();
+        } else if (lineParts[index].toUpperCase() == 'CLOSE') {
+          // close the window
+          this.closeDebugWindow();
+        } else if (lineParts[index].toUpperCase() == 'SAVE') {
+          // save the window to a file
+          // FIXME: UNDONE: add code save the window to a file here
+        } else {
+          // do we have packed data spec?
+          const [isPackedData, newMode] = this.isPackedDataMode(lineParts[index]);
+          if (isPackedData) {
+            // remember the new mode so we can unpack the data correctly
+            this.packedMode = newMode;
+            // now look for ALT and SIGNED keywords which may follow
+            if (index + 1 < lineParts.length - 1) {
+              const nextKeyword = lineParts[index + 1].toUpperCase();
+              if (nextKeyword == 'ALT') {
+                this.packedMode.isAlternate = true;
+                index++;
+                if (index + 1 < lineParts.length - 1) {
+                  const nextKeyword = lineParts[index + 1].toUpperCase();
+                  if (nextKeyword == 'SIGNED') {
+                    this.packedMode.isSigned = true;
+                    index++;
+                  }
+                }
+              } else if (nextKeyword == 'SIGNED') {
+                this.packedMode.isSigned = true;
+                index++;
               }
             }
           } else {
-            this.logMessage(`at updateContent() with invalid mask or match in [${lineParts.join(' ')}]`);
+            // do we have number?
+            const [isValidNumber, numericValue] = this.isSpinNumber(lineParts[index]);
+            if (isValidNumber) {
+              if (this.isFirstNumericData) {
+                this.isFirstNumericData = false;
+                this.calculateAutoTriggerAndScale();
+                this.createDebugWindow();
+                this.initChannelSamples(); // after window is created so data it uses is available
+                this.logMessage(
+                  `* UPD-INFO working with packed-data-spec: ${JSON.stringify(this.packedMode, null, 2)}`
+                );
+              }
+              // FIXME: UNDONE: add code to update the window here with our single sample value
+              let scopeSamples: number[] = this.possibleyUnpackData(numericValue, this.packedMode);
+              for (let index = 1; index < scopeSamples.length; index++) {
+                const sample = scopeSamples[index];
+                this.recordSampleToChannels(sample);
+              }
+            } else {
+              this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+            }
           }
         }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
-        // parse trigger spec update
-        //   HOLDOFF1 <2-2048>2
-        if (lineParts.length > 2) {
-          this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
-        }
-        this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
-        this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'CLEAR') {
-        // clear all channels
-        this.clearChannelData();
-      } else if (lineParts[1].toUpperCase() == 'CLOSE') {
-        // close the window
-        this.closeDebugWindow();
-      } else if (lineParts[1].toUpperCase() == 'SAVE') {
-        // save the window to a file
-        // FIXME: UNDONE: add code save the window to a file here
-      } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
-        if (this.isFirstNumericData) {
-          this.isFirstNumericData = false;
-          this.calculateAutoTriggerAndScale();
-          this.initChannelSamples();
-          this.createDebugWindow();
-        }
-        let scopeSamples: number[] = [];
-        for (let index = 1; index < lineParts.length; index++) {
-          // spin2 output has underscores for commas in numbers, so remove them
-          const value: string = lineParts[index].replace(/_/g, '');
-          if (value !== '') {
-            const nextSample: number = parseFloat(value);
-            scopeSamples.push(nextSample);
-          }
-        }
-
-        // parse numeric data
-        let didScroll: boolean = false; // in case we need this for performance of window update
-        const numberChannels: number = this.channelSpecs.length;
-        const nbrSamples = scopeSamples.length;
-        if (nbrSamples == 1) {
-          if (this.dbgLogMessageCount > 0) {
-            this.logMessage(
-              `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
-                ','
-              )}], lineparts=[${lineParts.join(',')}]`
-            );
-          }
-          /*
-          for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
-            let nextSample: number = Number(scopeSamples[chanIdx]);
-            //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
-            // limit the sample to the channel's min/max?!
-            const channelSpec = this.channelSpecs[chanIdx];
-            // record our sample (shifting left if necessary)
-            didScroll = this.recordChannelSample(chanIdx, nextSample);
-            // update scope chanel canvas with new sample
-            const canvasName = `channel-${chanIdx}`;
-            //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-            this.updateLogicChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
-          }
-          */
-        } else {
-          this.logMessage(
-            `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
-              ','
-            )}]`
-          );
-        }
-        // FIXME: UNDONE: add code to update the window here
-      } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }
     }
   }
-  private parseNumericValue(value: string): number | undefined {
-    // if string is [-][0-9]+ chars then is decimal number
-    // if string is '$'[0-9A-Fa-f]+ chars then is hex number
-    let desiredValue: number | undefined = undefined;
-    if (/^[-]?[0-9]+$/.test(value)) {
-      desiredValue = parseInt(value, 10);
-    } else if (/^\$[0-9A-Fa-f]+$/.test(value)) {
-      desiredValue = parseInt(value.substring(1), 16);
+
+  private recordSampleToChannels(sample: number) {
+    // we have a single sample value than has a bit for each channel
+    //  isolate the bits for each channel and update each channel
+    const numberOfChannels = this.singleBitChannelCount;
+    for (let channelIdx = 0; channelIdx < numberOfChannels; channelIdx++) {
+      // create canvas name for channel
+      const canvasName = `data-${channelIdx}`;
+      // isolate bit from sample for this channel
+      const bitValue = (sample >> channelIdx) & 1;
+      // record the sample for this channel
+      const didScroll: boolean = this.recordChannelSample(channelIdx, bitValue);
+      // update the channel display
+      //this.logMessage(`* UPD-INFO recorded (${bitValue}) for ${canvasName}`);
+      const channelSpec: LogicChannelBitSpec = this.channelBitSpecs[channelIdx];
+      this.updateLogicChannelData(canvasName, channelSpec, this.channelSamples[channelIdx].samples, didScroll);
     }
-    return desiredValue;
   }
 
   private calculateAutoTriggerAndScale() {
@@ -793,10 +775,10 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.logMessage(`at initChannelSamples()`);
     // clear the channel data
     this.channelSamples = [];
-    if (this.channelSpecs.length == 0) {
+    if (this.channelBitSpecs.length == 0) {
       this.channelSamples.push({ samples: [] });
     } else {
-      for (let index = 0; index < this.channelSpecs.length; index++) {
+      for (let index = 0; index < this.channelBitSpecs.length; index++) {
         this.channelSamples.push({ samples: [] });
       }
     }
@@ -805,7 +787,7 @@ export class DebugLogicWindow extends DebugWindowBase {
 
   private clearChannelData() {
     this.logMessage(`at clearChannelData()`);
-    for (let index = 0; index < this.channelSamples.length; index++) {
+    for (let index = 0; index < this.channelBitSpecs.length; index++) {
       const channelSamples = this.channelSamples[index];
       // clear the channel data
       channelSamples.samples = [];
@@ -815,7 +797,7 @@ export class DebugLogicWindow extends DebugWindowBase {
   private recordChannelSample(channelIndex: number, sample: number): boolean {
     //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
     let didScroll: boolean = false;
-    if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
+    if (channelIndex >= 0 && channelIndex < this.channelBitSpecs.length) {
       const channelSamples = this.channelSamples[channelIndex];
       if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
         // remove oldest sample
@@ -830,14 +812,9 @@ export class DebugLogicWindow extends DebugWindowBase {
     return didScroll;
   }
 
-  private parseLegend(legend: string, channelSpec: LogicChannelSpec): void {
-    // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-    let validLegend: boolean = false;
-  }
-
   private updateLogicChannelData(
     canvasName: string,
-    channelSpec: LogicChannelSpec,
+    channelSpec: LogicChannelBitSpec,
     samples: number[],
     didScroll: boolean
   ): void {
@@ -861,7 +838,6 @@ export class DebugLogicWindow extends DebugWindowBase {
         const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
         const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
         // coord for current and previous samples
-        // NOTE:  this.channelSpecs[x].yBaseOffset is NOT used in our implementation
         const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
         const currYOffset: number =
           this.channelLineWidth / 2 + currSampleInverted + this.canvasMargin + this.channelInset;
@@ -1102,7 +1078,7 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
   */
 
-  private scaleAndInvertValue(value: number, channelSpec: LogicChannelSpec): number {
+  private scaleAndInvertValue(value: number, channelSpec: LogicChannelBitSpec): number {
     // scale the value to the vertical channel size then invert the value
     let possiblyScaledValue: number = value;
     const range: number = 0; // channelSpec.maxValue - channelSpec.minValue;

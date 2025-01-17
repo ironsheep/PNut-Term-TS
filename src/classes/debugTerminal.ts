@@ -132,6 +132,10 @@ export class DebugTerminal {
     this.processRxQueue();
   }
 
+  private emptyRxQueue() {
+    this.rxQueue = [];
+  }
+
   private processRxQueue() {
     if (!this.isProcessingQueue) {
       this.isProcessingQueue = true;
@@ -531,7 +535,11 @@ and Electron <span id="electron-version"></span>.</P>
 
   // Method to close all debug windows
   private closeAllDebugWindows(): void {
+    // step usb receiver
     this.mainWindow?.removeAllListeners();
+    // empty any pending messages
+    this.emptyRxQueue();
+    // shut down any active displays
     const displayEntries = Object.entries(this.displays);
     displayEntries.forEach(([windowName, windowObject]) => {
       this.logMessage(`* closeAllDebugWindows() - Closing window: ${windowName}`);

@@ -3,16 +3,17 @@ Add windows:
 	- TERM @done(2025-01-08)
 	- PLOT @done(2025-01-10)
 	- LOGIC
-	- SCOPE_XY
-	- FFT
+	- SCOPE_XY w/packed_data_mode
+	- FFT w/packed_data_mode
 	- SPECTRO
-	- BITMAP
+	- BITMAP w/packed_data_mode
 	- MIDI
 	
 SCOPE Window:
 	- Add mouse hover mech, with disable
 	- Add save to bitmap
 	- fix label division margins
+	- add packed data mode
 	- Single Channel
 		- working! @done(2025-01-09)
 	- Mulit-Channel
@@ -24,8 +25,9 @@ LOGIC Window:
 	- figure out default channel colors (fm pascal) @done(2025-01-16)
 	- fix channel name parsing @done(2025-01-16)
 	- display channel names @done(2025-01-16)
+	- add packed data mode @done(2025-01-17)
+	- set font to Parallax @done(2025-01-17)
 	- display chanel waveforms
-	- set font to Parallax
 	- Add mouse hover mech, w/disable
 	- Add save to bitmap
 	
