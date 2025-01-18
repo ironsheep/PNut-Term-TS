@@ -266,7 +266,7 @@ export class DebugTerminal {
             break;
         }
       }
-      if (!foundDisplay) {
+      if (!foundDisplay && this.mainWindow != null) {
         if (this.isLogging) {
           this.logMessage(`MAIN: Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }

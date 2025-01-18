@@ -80,13 +80,12 @@ export class DebugLogicWindow extends DebugWindowBase {
   private triggerSpec: LogicTriggerSpec = {} as LogicTriggerSpec;
   private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
-  private channelInset: number = 0; // 10 pixels from top and bottom of window
+  private channelVInset: number = 3; // 3 pixels from top and bottom of window
   private contentInset: number = 0; // 10 pixels from left and right of window
-  private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
-  private channelLineWidth: number = 2; // 2 pixels wide for channel data line
-  private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 0; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
-  private labelWdith: number = 0; // width of label canvas
+  private canvasMargin: number = 10; // 10 pixels from to (no left,) right, top, and bottom of canvas (NOT NEEDED)
+  private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
+  private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private labelWidth: number = 0; // width of label canvas
   private labelHeight: number = 0; // height of label canvas
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private singleBitChannelCount: number = 0; // number of single bit channels
@@ -137,7 +136,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     //   RATE <rate> [1-2048, default: 1]
     //   LINESIZE <half-pix> [1-7, default: 1]
     //   TEXTSIZE <half-pix> [6-200, default: editor font size]
-    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
+    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GRAY 4]
     //   'name' {1_32 {color}} [default: 1, default color]
     //   packed_data_mode
     //   HIDEXY
@@ -153,7 +152,7 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY', 4);
+    const gridColor: DebugColor = new DebugColor('GRAY3', 4);
     console.log(`CL: at parseLogicDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.nbrSamples = 32;
@@ -357,7 +356,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage(`at createDebugWindow() LOGIC with NO channels!`);
     }
 
-    const canvasHeight: number = this.displaySpec.font.lineHeight + 4;
+    const canvasHeight: number = this.displaySpec.font.lineHeight;
 
     let labelMaxChars: number = 0;
     let activeBitChannels: number = 0;
@@ -415,7 +414,7 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // pass to other users
     this.labelHeight = canvasHeight;
-    this.labelWdith = labelCanvasWidth;
+    this.labelWidth = labelCanvasWidth;
 
     for (let index = 0; index < activeBitChannels; index++) {
       const idNbr: number = activeBitChannels - index - 1;
@@ -424,8 +423,8 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
 
     // set height so NO scroller by default
-    const windowHeight = channelGroupHeight + 2; // 2 is fudge to remove scroller; // + 10; // 30 for window menu bar (30 is guess on linux)
-    const windowWidth = channelGroupWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const windowHeight = channelGroupHeight + 2 + this.canvasMargin * 2; // 2 is fudge to remove scroller;
+    const windowWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1; // 1 = no left margin!
     this.logMessage(
       `  -- LOGIC window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -500,8 +499,8 @@ export class DebugLogicWindow extends DebugWindowBase {
             padding: 0;
             font-family: 'Parallax', sans-serif;
             font-size: 12px;
-            background-color:rgb(234, 121, 86);
-            //background-color: ${this.displaySpec.window.background};
+            //background-color:rgb(234, 121, 86);
+            background-color: ${this.displaySpec.window.background};
             color:rgb(191, 213, 93);
           }
           #labels {
@@ -511,6 +510,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             //background-color:rgb(86, 234, 234);
             background-color: ${this.displaySpec.window.background};
             font-family: 'Parallax', sans-serif;
+            font-style: italic;
             font-size: 12px;
             width: ${labelCanvasWidth}px;
             border-width: 1px;
@@ -543,18 +543,21 @@ export class DebugLogicWindow extends DebugWindowBase {
             border-width: 1px;
             border-style: solid;
             border-color: ${this.displaySpec.window.grid};
-            background-color:rgb(96, 234, 86);
+            //background-color:rgb(96, 234, 86);
+            background-color: ${this.displaySpec.window.background};
           }
           #container {
             display: flex;
             flex-direction: row; /* Arrange children in a row */
             flex-grow: 0;
+            padding: top right bottom left;
+            padding: ${this.canvasMargin}px ${this.canvasMargin}px ${this.canvasMargin}px 0px;
           }
           #label-2 {
-            background-color:rgb(231, 151, 240);
+            //background-color:rgb(231, 151, 240);
           }
           #data-2 {
-            background-color:rgb(240, 194, 151);
+            //background-color:rgb(240, 194, 151);
           }
           canvas {
             //background-color:rgb(240, 194, 151);
@@ -727,8 +730,8 @@ export class DebugLogicWindow extends DebugWindowBase {
                 );
               }
               // FIXME: UNDONE: add code to update the window here with our single sample value
-              let scopeSamples: number[] = this.possibleyUnpackData(numericValue, this.packedMode);
-              for (let index = 1; index < scopeSamples.length; index++) {
+              let scopeSamples: number[] = this.possiblyUnpackData(numericValue, this.packedMode);
+              for (let index = 0; index < scopeSamples.length; index++) {
                 const sample = scopeSamples[index];
                 this.recordSampleToChannels(sample);
               }
@@ -744,6 +747,12 @@ export class DebugLogicWindow extends DebugWindowBase {
   private recordSampleToChannels(sample: number) {
     // we have a single sample value than has a bit for each channel
     //  isolate the bits for each channel and update each channel
+    const nbrBitsInSample: number = this.channelBitSpecs.length;
+    this.logMessage(
+      `at recordSampleToChannels(0b${sample.toString(2).padStart(nbrBitsInSample, '0')}) w/${
+        this.channelBitSpecs.length
+      } channels`
+    );
     const numberOfChannels = this.singleBitChannelCount;
     for (let channelIdx = 0; channelIdx < numberOfChannels; channelIdx++) {
       // create canvas name for channel
@@ -819,44 +828,50 @@ export class DebugLogicWindow extends DebugWindowBase {
     didScroll: boolean
   ): void {
     if (this.debugWindow) {
-      //if (this.dbgUpdateCount > 0) {
-      // DISABLE STOP this.dbgUpdateCount--;
-      //}
-      //if (this.dbgUpdateCount == 0) {
-      //  return;
-      //}
+      if (this.dbgUpdateCount > 0) {
+        this.dbgUpdateCount--;
+      }
+      if (this.dbgUpdateCount == 0) {
+        return;
+      }
       if (--this.dbgLogMessageCount > 0) {
         this.logMessage(
           `at updateLogicChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
         );
       }
+      const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
+      const canvasHeight: number = this.displaySpec.font.lineHeight;
+      const drawWidth: number = canvasWidth;
+      const drawHeight: number = canvasHeight - this.channelVInset * 2;
+
+      // get prior 0,1 and next 0,1
+      const currSample: number = samples[samples.length - 1];
+      const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : 0; // channels start at ZERO value
+      const currInvSample: number = 1 - currSample;
+      const prevInvSample: number = 1 - prevSample;
+      const havePrevSample: boolean = samples.length > 1;
+      // let's leave 2px at top and bottom of canvas (this.channelVInset) draw only in between...
+      this.logMessage(`  -- currInvSample=${currInvSample}, prevInvSample=${prevInvSample}`);
+
+      // offset to sample value
+      const currXOffset: number = (samples.length - 1) * this.displaySpec.spacing;
+      const currYOffset: number = currInvSample * drawHeight + this.channelVInset;
+
+      const prevXOffset: number = havePrevSample ? (samples.length - 2) * this.displaySpec.spacing : currXOffset;
+      const prevYOffset: number = havePrevSample ? prevInvSample * drawHeight + this.channelVInset : currYOffset;
+      //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
+      // draw region for the channel
+      const drawXOffset: number = this.channelVInset;
+      const drawYOffset: number = 0;
+      const channelColor: string = channelSpec.color;
+      const spacing: number = this.displaySpec.spacing;
+      if (this.dbgLogMessageCount > 0) {
+        this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
+        this.logMessage(
+          `  -- #${samples.length} currSample=(${currSample},#${samples.length}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
+        );
+      }
       try {
-        // placement need to be scale sample range to vertical canvas size
-        const currSample: number = samples[samples.length - 1];
-        const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        // Invert and scale the sample to to our display range
-        const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
-        const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
-        // coord for current and previous samples
-        const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
-        const currYOffset: number =
-          this.channelLineWidth / 2 + currSampleInverted + this.canvasMargin + this.channelInset;
-        const prevXOffset: number = this.canvasMargin + (samples.length - 2) * this.channelLineWidth;
-        const prevYOffset: number =
-          this.channelLineWidth / 2 + prevSampleInverted + this.canvasMargin + this.channelInset;
-        //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
-        // draw region for the channel
-        const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
-        const drawHeight: number = this.channelLineWidth / 2;
-        const drawXOffset: number = this.canvasMargin;
-        const drawYOffset: number = this.channelInset + this.canvasMargin;
-        const channelColor: string = channelSpec.color;
-        if (this.dbgLogMessageCount > 0) {
-          this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-          this.logMessage(
-            `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-          );
-        }
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -869,10 +884,11 @@ export class DebugLogicWindow extends DebugWindowBase {
               if (ctx) {
                 // Set the line color and width
                 const lineColor = '${channelColor}';
-                const lineWidth = ${this.channelLineWidth};
-                const scrollSpeed = lineWidth;
-                const canvWidth = ${drawWidth};
-                const canvHeight = ${drawHeight};
+                const lineWidth = ${this.displaySpec.lineSize};
+                const spacing = ${this.displaySpec.spacing};
+                const scrollSpeed = lineWidth + spacing;
+                const canvWidth = ${canvasWidth};
+                const canvHeight = ${canvasHeight};
                 const canvXOffset = ${drawXOffset};
                 const canvYOffset = ${drawYOffset};
 
@@ -907,8 +923,9 @@ export class DebugLogicWindow extends DebugWindowBase {
                 ctx.strokeStyle = lineColor;
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
-                ctx.moveTo(${prevXOffset}, ${prevYOffset});
+                ctx.moveTo(${prevXOffset}+${spacing}-1, ${prevYOffset});
                 ctx.lineTo(${currXOffset}, ${currYOffset});
+                ctx.lineTo(${currXOffset}+${spacing}-1, ${currYOffset});
                 ctx.stroke();
               }
             }
@@ -940,166 +957,5 @@ export class DebugLogicWindow extends DebugWindowBase {
         console.error(`Failed to update ${divId}: ${error}`);
       }
     }
-  }
-
-  /*
-  private writeStringToCanvas(
-    canvasId: string,
-    text: string,
-    labelColor: string,
-    width: number,
-    height: number,
-    font: FontMetrics,
-    textStyle: TextStyle
-  ): void {
-    if (this.debugWindow) {
-      this.logMessage(`at writeStringToCanvas('${canvasId}', '${text}' wh=(${width}x${height}))`);
-      const textHeight: number = font.charHeight;
-      const lineHeight: number = font.lineHeight;
-      const charWidth: number = font.charWidth;
-      const fontSize: number = font.textSizePts;
-      let [textXOffset, textYOffset] = [0, 0];
-      // now let's apply alignment effects
-      // let's start with horizontal alignment
-      let alignHString: string = '';
-      let alignVString: string = '';
-      switch (textStyle.horizAlign) {
-        // NOTE: start, end, left, right, center
-        case eHorizJustification.HJ_LEFT:
-          alignHString = 'left'; // also start
-          textXOffset = 0;
-          break;
-        case eHorizJustification.HJ_CENTER:
-          alignHString = 'center';
-          textXOffset = Math.round(width / 2);
-          break;
-        case eHorizJustification.HJ_RIGHT:
-          alignHString = 'right'; // also end
-          textXOffset = width;
-          break;
-      }
-      switch (textStyle.vertAlign) {
-        // NOTE: top, hanging, middle, alphabetic, ideographic, bottom
-        case eVertJustification.VJ_TOP:
-          alignVString = 'top';
-          textYOffset = 0;
-          break;
-        case eVertJustification.VJ_MIDDLE:
-          alignVString = 'middle';
-          textYOffset = Math.round(height / 2);
-          break;
-        case eVertJustification.VJ_BOTTOM:
-          alignVString = 'bottom';
-          textYOffset = height;
-          break;
-      }
-
-      // @xy=30,0 text is showing bottom pixels, centered L/R
-      // @xy=30,-12 text is showing bottom pixels, align left?
-      // @xy=0,0 [lt,top] - left edge aligned, top edge aligned
-
-      // HORIZ
-      //alignHString = 'left';
-      alignHString = 'right';
-      const maxChars: number = Math.round(width / font.charWidth);
-      const extraChars = Math.max(maxChars - text.length, 0);
-      this.logMessage(`  -- maxChars=[${maxChars}], extraChars=[${extraChars}]`);
-      const leftEdgeOffset = (extraChars - 1) * font.charWidth; // 6 is a fudge factor (if too wide text moves to next line!)
-      const textWidth: number = text.length * font.charWidth;
-      this.logMessage(`  -- textWidth=[${textWidth}], leftEdgeOffset=[${leftEdgeOffset}]`);
-      //textXOffset = Math.min(leftEdgeOffset, width - font.charWidth - 2);
-      // attempt manually align "Mid 3" label
-      textXOffset = 10; // 5 ok, 8 ok
-      if (text.length < 4) {
-        textXOffset = 12; // our number only labels // 30 bad, 15 offset in Y? 13 also?
-      } else if (text.length < 5) {
-        textXOffset += 1; // our text only label // 4 offset in Y?, 2 also?
-      }
-
-      textXOffset = width - 10;
-
-      // VERT
-      //alignVString = 'top';
-      //textYOffset = Math.round((height - font.charHeight) / 2); // attempt vertical centering
-      alignVString = 'bottom';
-      textYOffset = height - 10; // attempt vertical centering
-
-      const textColor: string = labelColor;
-      const fontWeight: string = this.fontWeightName(textStyle);
-      const fontStyle: string = textStyle.italic ? 'italic ' : '';
-      //const fontSpec: string = `${fontStyle}${fontWeight} ${fontSize}pt Parallax sans-serif`; // was Consolas
-      const fontSpec: string = `${fontStyle}${fontWeight} ${fontSize}pt Consolas sans-serif`;
-      this.logMessage(`  --  fontSpec=[${fontSpec}], sz=(${fontSize}pt)[${textHeight}px] wd=(${charWidth}px)`);
-      // FIXME: UNDONE add underline support
-      this.logMessage(
-        `  -- alignHV=[${alignHString}, ${alignVString}], c=(${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
-      );
-      try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasId}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${textColor}';
-                let Xoffset = ${textXOffset};
-                let Yoffset = ${textYOffset};
-                let textAlign = '${alignHString}';
-                let textBaseline = '${alignVString}';
-
-                ctx.font = '${fontSpec}'; // was Consolas
-
-                // Set text alignment
-                ctx.textAlign = textAlign; // Horizontally align the text
-                ctx.textBaseline = textBaseline; // Vertically align the text
-
-                // Set clipping region to the canvas size
-                ctx.beginPath();
-                ctx.rect(0, 0, canvas.width, canvas.height);
-                ctx.clip();
-
-                // Add text of color
-                ctx.fillStyle = lineColor;
-                // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', Xoffset, Xoffset);
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
-      }
-    }
-  }
-  */
-
-  private scaleAndInvertValue(value: number, channelSpec: LogicChannelBitSpec): number {
-    // scale the value to the vertical channel size then invert the value
-    let possiblyScaledValue: number = value;
-    const range: number = 0; // channelSpec.maxValue - channelSpec.minValue;
-    // if value range is different from display range then scale it
-    //if (channelSpec.ySize != range && range != 0) {
-    //  const adjustedValue = value - channelSpec.minValue;
-    //  possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
-    //}
-    const invertedValue: number = 0; // channelSpec.ySize - 1 - possiblyScaledValue;
-    if (this.dbgLogMessageCount > 0) {
-      this.logMessage(
-        `  -- scaleAndInvertValue(${value}) => (${possiblyScaledValue}->${invertedValue}) range=[${invertedValue}:${invertedValue}] ySize=(${invertedValue})`
-      );
-    }
-    return invertedValue;
-  }
-
-  private stringForRangeValue(value: number): string {
-    // add +/- prefix to range value
-    const prefix: string = value < 0 ? '' : '+';
-    const valueString: string = `${prefix}${value} `;
-    return valueString;
   }
 }

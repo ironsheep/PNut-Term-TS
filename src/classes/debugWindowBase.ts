@@ -355,13 +355,18 @@ export abstract class DebugWindowBase {
           break;
       }
     }
-    this.logMessage(
-      `packedDataMode(${possibleMode}): isValid=(${havePackedDataStatus})  -> ${(JSON.stringify(desiredMode), null, 2)}`
-    );
+    if (havePackedDataStatus == true) {
+      // only log attempt if is valid
+      this.logMessage(
+        `packedDataMode(${possibleMode}): isValid=(${havePackedDataStatus})  -> ${
+          (JSON.stringify(desiredMode), null, 2)
+        }`
+      );
+    }
     return [havePackedDataStatus, desiredMode];
   }
 
-  protected possibleyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
+  protected possiblyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
     const sampleSet: number[] = [];
     // FIXME: add ALT and SIGNED support
     if (mode.mode == ePackedDataMode.PDM_UNKNOWN) {
@@ -487,6 +492,7 @@ export abstract class DebugWindowBase {
       }
     }
     // Return the list of samples
+    //this.logMessage(`unpackData(${numericValue}), -> sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
     return sampleSet;
   }
 

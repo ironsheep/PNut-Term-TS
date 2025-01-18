@@ -5,6 +5,7 @@
 # PS1='${debian_chroot:+($debian_chroot)}\h:\w\$ '
 # umask 022
 set -o vi
+export HISTCONTROL=ignoredupes
 
 export NODE_OPTIONS="--max-old-space-size=8192" # 8G vs built-in 2G
 

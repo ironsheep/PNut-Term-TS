@@ -106,7 +106,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     //   DOTSIZE <pix> [0-32, default: 0]
     //   LINESIZE <half-pix> [0-32, default: 3]
     //   TEXTSIZE <half-pix> [6-200, default: editor font size]
-    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GREY 4]
+    //   COLOR <bgnd-color> {<grid-color>} [BLACK, GRAY 4]
     //   packed_data_mode
     //   HIDEXY
     console.log(`CL: at parseScopeDeclaration()`);
