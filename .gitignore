@@ -168,3 +168,4 @@ cython_debug/
 /prebuilds
 src/classes/f1.txt
 /fonts
+*.bmp

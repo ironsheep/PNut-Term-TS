@@ -11,7 +11,7 @@ Add windows:
 	
 SCOPE Window:
 	- Add mouse hover mech, with disable
-	- Add save to bitmap
+	- Add save to bitmap @done(2025-01-18)
 	- fix label division margins
 	- add packed data mode
 	- Single Channel
@@ -27,19 +27,19 @@ LOGIC Window:
 	- display channel names @done(2025-01-16)
 	- add packed data mode @done(2025-01-17)
 	- set font to Parallax @done(2025-01-17)
-	- display chanel waveforms
+	- display chanel waveforms @done(2025-01-17)
 	- Add mouse hover mech, w/disable
-	- Add save to bitmap
+	- Add save to bitmap @done(2025-01-18)
 	
 TERM Window:
 	- get content updating @done(2025-01-09)
 	- Add mouse hover mech, w/disable
 	- set font to Parallax
-	- Add save to bitmap
+	- Add save to bitmap @done(2025-01-18)
 	
 PLOT Window:
 - start work @done(2025-01-09)
-- first draft sorta working - item locations bad!
+- first draft sorta working - item locations bad! @done(2025-01-18)
 - set font to Parallax
-- Add save to bitmap
+- Add save to bitmap @done(2025-01-18)
 - double buffer - draw to hidden canvas then bitblt over to live canvas

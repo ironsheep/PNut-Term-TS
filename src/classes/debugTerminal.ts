@@ -194,6 +194,12 @@ export class DebugTerminal {
               const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
               // remember active displays!
               this.displays[scopeSpec.displayName] = scopeDisplay;
+              // remove it from list if it closes
+              scopeDisplay.on('closed', () => {
+                console.log(`Window ${scopeSpec.displayName} has closed.`);
+                // Optionally, remove the reference from the displays object
+                delete this.displays[scopeSpec.displayName];
+              });
               this.logMessage(`GOOD DISPLAY: Received`);
               //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
             } else {
@@ -214,6 +220,12 @@ export class DebugTerminal {
               const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
               // remember active displays!
               this.displays[logicSpec.displayName] = logicDisplay;
+              // remove it from list if it closes
+              logicDisplay.on('closed', () => {
+                console.log(`Window ${logicSpec.displayName} has closed.`);
+                // Optionally, remove the reference from the displays object
+                delete this.displays[logicSpec.displayName];
+              });
               this.logMessage(`GOOD DISPLAY: Received`);
               //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
             } else {
@@ -234,6 +246,12 @@ export class DebugTerminal {
               const termDisplay = new DebugTermWindow(this.context, termSpec);
               // remember active displays!
               this.displays[termSpec.displayName] = termDisplay;
+              // remove it from list if it closes
+              termDisplay.on('closed', () => {
+                console.log(`Window ${termSpec.displayName} has closed.`);
+                // Optionally, remove the reference from the displays object
+                delete this.displays[termSpec.displayName];
+              });
               this.logMessage(`GOOD DISPLAY: Received`);
             } else {
               if (this.isLogging) {
@@ -253,6 +271,12 @@ export class DebugTerminal {
               const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
               // remember active displays!
               this.displays[plotSpec.displayName] = plotDisplay;
+              // remove it from list if it closes
+              plotDisplay.on('closed', () => {
+                console.log(`Window ${plotSpec.displayName} has closed.`);
+                // Optionally, remove the reference from the displays object
+                delete this.displays[plotSpec.displayName];
+              });
               this.logMessage(`GOOD DISPLAY: Received`);
             } else {
               if (this.isLogging) {
@@ -329,12 +353,16 @@ export class DebugTerminal {
       <meta charset="UTF-8">
       <title>PNut TermDebug TS</title>
       <style>
+          @font-face {
+            font-family: 'Parallax';
+            src: url('./fonts/Parallax.ttf') format('truetype');
+          }
         body {
           display: flex;
           flex-direction: column;
           height: 100vh;
           margin: 0;
-          font-family: Arial, sans-serif; /* Use Arial or any sans-serif font */
+          font-family: 'Parallax', sans-serif; /* Use Arial or any sans-serif font */
           font-size: 12px; /* Set a smaller font size */
         }
         p {

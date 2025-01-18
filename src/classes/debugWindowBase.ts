@@ -5,9 +5,14 @@
 
 'use strict';
 
+import { BrowserWindow } from 'electron';
+import { Jimp } from 'jimp';
+import * as fs from 'fs';
+import EventEmitter from 'events';
 import { Context } from '../utils/context';
+import { localFSpecForFilename } from '../utils/files';
 
-// src/classes/debugWindow.ts
+// src/classes/debugWindowBase.ts
 
 export interface Size {
   width: number;
@@ -94,11 +99,13 @@ export interface WindowColor {
   grid: string;
 }
 
-export abstract class DebugWindowBase {
+export abstract class DebugWindowBase extends EventEmitter {
   private context: Context;
   private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
+  private _debugWindow: BrowserWindow | null = null;
 
   constructor(ctx: Context) {
+    super();
     this.context = ctx;
   }
   // Abstract methods that must be overridden by derived classes
@@ -112,6 +119,38 @@ export abstract class DebugWindowBase {
     metrics.charWidth = Math.round(metrics.charHeight * 0.6);
     metrics.lineHeight = Math.round(metrics.charHeight * 1.3); // 120%-140% using 130% of text height
     metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
+  }
+
+  // Setter for debugWindow property
+  protected set debugWindow(window: BrowserWindow | null) {
+    if (window != null) {
+      this.logMessage(`* New ${this.constructor.name} window`);
+      // Add event listeners for normal window events
+      this._debugWindow = window;
+      window.on('close', () => {
+        this.logMessage(`* ${this.constructor.name} window closing...`);
+        this.emit('close');
+      });
+
+      window.on('closed', () => {
+        this.logMessage(`* ${this.constructor.name} window closed`);
+        this.emit('closed');
+      });
+
+      // Add other event listeners as needed
+    } else {
+      // Remove event listeners and close the window
+      if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {
+        this._debugWindow.removeAllListeners();
+        this._debugWindow.close();
+      }
+      this._debugWindow = null;
+    }
+  }
+
+  // Getter for debugWindow property
+  protected get debugWindow(): BrowserWindow | null {
+    return this._debugWindow;
   }
 
   // ----------------------------------------------------------------------
@@ -366,6 +405,22 @@ export abstract class DebugWindowBase {
     return [havePackedDataStatus, desiredMode];
   }
 
+  protected signExtend(value: number, signBitNbr: number): number {
+    // Create a mask to zero out all bits above the sign bit
+    const mask = (1 << (signBitNbr + 1)) - 1;
+    value &= mask;
+
+    // Check if the sign bit is set
+    const isNegative = (value & (1 << signBitNbr)) !== 0;
+
+    if (isNegative) {
+      // If the sign bit is set, convert the value to a negative number
+      value = value - (1 << (signBitNbr + 1));
+    }
+
+    return value;
+  }
+
   protected possiblyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
     const sampleSet: number[] = [];
     // FIXME: add ALT and SIGNED support
@@ -490,7 +545,16 @@ export abstract class DebugWindowBase {
         default:
           break;
       }
+      // if SIGNED then sign extend each sample
+      if (mode.isSigned) {
+        for (let index = 0; index < sampleSet.length; index++) {
+          sampleSet[index] = this.signExtend(sampleSet[index], mode.bitsPerSample - 1);
+        }
+      }
+      // if ALT the alternate the samples
+      // FIXME: UNDONE add code here to recorder the samples
     }
+
     // Return the list of samples
     //this.logMessage(`unpackData(${numericValue}), -> sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
     return sampleSet;
@@ -530,6 +594,48 @@ export abstract class DebugWindowBase {
     }
     this.logMessage(`isSpinNumber(${value}): isValid=(${isValieSpin2Number})  -> (${spin2Value})`);
     return [isValieSpin2Number, spin2Value];
+  }
+
+  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+    if (this._debugWindow) {
+      const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+      const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+      const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
+      fs.writeFileSync(outputFSpec, bmpBuffer);
+      this.logMessage(`* BMP image [${outputFSpec}] saved successfully`);
+    }
+  }
+
+  protected removeStringQuotes(quotedString: string): string {
+    // remove leading and trailing quotes (' or ") if present
+    let value = quotedString;
+    if (value.length > 1) {
+      if (
+        (value[0] === '"' && value[value.length - 1] === '"') ||
+        (value[0] === "'" && value[value.length - 1] === "'")
+      ) {
+        value = value.substring(1, value.length - 1);
+      }
+    }
+    return value;
+  }
+
+  // ----------------------------------------------------------------------
+  // PRIVATE (utility) Methods
+
+  private captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
+    return new Promise((resolve) => {
+      window.webContents.capturePage().then((image) => {
+        const pngBuffer = image.toPNG();
+        resolve(pngBuffer);
+      });
+    });
+  }
+
+  private async convertPNGtoBMP(pngBuffer: Buffer): Promise<Buffer> {
+    const image = await Jimp.read(pngBuffer);
+    const bmpImage = await image.getBuffer('image/bmp');
+    return bmpImage;
   }
 
   // ----------------------------------------------------------------------

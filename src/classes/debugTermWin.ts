@@ -11,7 +11,6 @@ import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
-import { v8_0_0 } from 'pixi.js';
 
 export interface TermSize {
   columns: number;
@@ -36,7 +35,6 @@ export interface TermDisplaySpec {
 
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
-  private debugWindow: BrowserWindow | null = null;
   private isFirstDisplayData: boolean = true;
   private contentInset: number = 0; // 0 pixels from left and right of window
   // current terminal state
@@ -281,15 +279,6 @@ export class DebugTermWindow extends DebugWindowBase {
     });
 
     // hook window events before being shown
-    this.debugWindow.on('closed', () => {
-      this.logMessage('* Term window closed');
-      this.debugWindow = null;
-    });
-
-    this.debugWindow.on('close', () => {
-      this.logMessage('* Term window closing...');
-    });
-
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Term window will show...');
       this.debugWindow?.show();
@@ -327,12 +316,16 @@ export class DebugTermWindow extends DebugWindowBase {
         <meta charset="UTF-8"></meta>
         <title>${displayName}</title>
         <style>
+          @font-face {
+            font-family: 'Parallax';
+            src: url('./fonts/Parallax.ttf') format('truetype');
+          }
           body {
             display: flex;
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Consolas, sans-serif;
+            font-family: 'Parallax', sans-serif;
             font-size: ${this.displaySpec.font.textSizePts}pt;
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
@@ -383,12 +376,8 @@ export class DebugTermWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() TERM`);
-    // is destroyed should prevent crash on double close
-    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.removeAllListeners();
-      this.debugWindow.close();
-      this.debugWindow = null;
-    }
+    // let our base class do the work
+    this.debugWindow = null;
   }
 
   public updateContent(lineParts: string[]): void {
@@ -474,7 +463,13 @@ export class DebugTermWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
-        // FIXME: UNDONE: add code save the window to a file here
+        if (index + 1 < lineParts.length - 1) {
+          const saveFileName = this.removeStringQuotes(lineParts[++index]);
+          // save the window to a file (as BMP)
+          this.saveWindowToBMPFilename(saveFileName);
+        } else {
+          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
+        }
       } else {
         this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }

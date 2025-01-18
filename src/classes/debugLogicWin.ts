@@ -78,17 +78,17 @@ export class DebugLogicWindow extends DebugWindowBase {
   private channelBitSpecs: LogicChannelBitSpec[] = []; // one for each channel bit within the 32 possible channels
   private channelSamples: LogicChannelSamples[] = []; // one for each channel
   private triggerSpec: LogicTriggerSpec = {} as LogicTriggerSpec;
-  private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
   private channelVInset: number = 3; // 3 pixels from top and bottom of window
   private contentInset: number = 0; // 10 pixels from left and right of window
   private canvasMargin: number = 10; // 10 pixels from to (no left,) right, top, and bottom of canvas (NOT NEEDED)
-  private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
   private labelWidth: number = 0; // width of label canvas
   private labelHeight: number = 0; // height of label canvas
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private singleBitChannelCount: number = 0; // number of single bit channels
+  // diagnostics used to limit the number of samples displayed while testing
+  private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
+  private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec) {
     super(ctx);
@@ -373,9 +373,9 @@ export class DebugLogicWindow extends DebugWindowBase {
           chanLabel = `${channelSpec.name}`;
         } else {
           if (activeIdx == 0) {
-            chanLabel = `${channelSpec.name} ${bitIdx}`; // name w/bit number suffix
+            chanLabel = `${channelSpec.name} ${activeIdx}`; // name w/bit number suffix
           } else {
-            chanLabel = `${bitIdx}`; // just bit number
+            chanLabel = `${activeIdx}`; // just bit number
           }
         }
         // fill in our channel bit spec
@@ -443,15 +443,6 @@ export class DebugLogicWindow extends DebugWindowBase {
     });
 
     // hook window events before being shown
-    this.debugWindow.on('closed', () => {
-      this.logMessage('* Logic window closed');
-      this.debugWindow = null;
-    });
-
-    this.debugWindow.on('close', () => {
-      this.logMessage('* Logic window closing...');
-    });
-
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Logic window will show...');
       this.debugWindow?.show();
@@ -609,12 +600,8 @@ export class DebugLogicWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() LOGIC`);
-    // is destroyed should prevent crash on double close
-    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.removeAllListeners();
-      this.debugWindow.close();
-      this.debugWindow = null;
-    }
+    // let our base class do the work
+    this.debugWindow = null;
   }
 
   public updateContent(lineParts: string[]): void {
@@ -690,8 +677,14 @@ export class DebugLogicWindow extends DebugWindowBase {
           // close the window
           this.closeDebugWindow();
         } else if (lineParts[index].toUpperCase() == 'SAVE') {
-          // save the window to a file
-          // FIXME: UNDONE: add code save the window to a file here
+          // get filename for save
+          if (index + 1 < lineParts.length - 1) {
+            const saveFileName = this.removeStringQuotes(lineParts[++index]);
+            // save the window to a file (as BMP)
+            this.saveWindowToBMPFilename(saveFileName.substring(1, saveFileName.length - 1));
+          } else {
+            this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
+          }
         } else {
           // do we have packed data spec?
           const [isPackedData, newMode] = this.isPackedDataMode(lineParts[index]);
@@ -829,12 +822,13 @@ export class DebugLogicWindow extends DebugWindowBase {
   ): void {
     if (this.debugWindow) {
       if (this.dbgUpdateCount > 0) {
-        this.dbgUpdateCount--;
+        // DISABLE RUN FOREVER this.dbgUpdateCount--;
       }
       if (this.dbgUpdateCount == 0) {
         return;
       }
-      if (--this.dbgLogMessageCount > 0) {
+      // if (--this.dbgLogMessageCount > 0) {
+      if (this.dbgLogMessageCount > 0) {
         this.logMessage(
           `at updateLogicChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
         );

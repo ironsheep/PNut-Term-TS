@@ -24,6 +24,27 @@ export function getFormattedDateTime(): string {
   return `${year}${month}${day}-${hours}${minutes}`;
 }
 
+// return path to current folder with basename appended
+export function localFSpecForFilename(
+  ctx: Context,
+  filename: string,
+  fileType: string | undefined = undefined
+): string {
+  // get file type if any
+  const fileSuffix = path.extname(filename);
+  const basename: string = path.basename(filename).replace(fileSuffix, ''); // remove any path info
+  let fileTypeNoDot: string = fileType !== undefined ? fileType : '';
+  // remove dot if present
+  if (fileTypeNoDot.startsWith('.')) {
+    fileTypeNoDot = fileTypeNoDot.substring(1);
+  }
+  if (fileTypeNoDot.length == 0 && fileSuffix.length > 0) {
+    fileTypeNoDot = fileSuffix.substring(1);
+  }
+  const fileName: string = `${basename}.${fileTypeNoDot}`;
+  return path.join(ctx.currentFolder, fileName);
+}
+
 /**
  * filters interferring characters from URI form of fileSpec returning just a fileSpec
  * @export

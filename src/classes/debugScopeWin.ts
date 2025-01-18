@@ -62,7 +62,6 @@ export class DebugScopeWindow extends DebugWindowBase {
   private channelSpecs: ScopeChannelSpec[] = []; // one for each channel
   private channelSamples: ScopeChannelSamples[] = []; // one for each channel
   private triggerSpec: ScopeTriggerSpec = {} as ScopeTriggerSpec;
-  private debugWindow: BrowserWindow | null = null;
   private isFirstNumericData: boolean = true;
   private channelInset: number = 10; // 10 pixels from top and bottom of window
   private contentInset: number = 10; // 10 pixels from left and right of window
@@ -245,15 +244,6 @@ export class DebugScopeWindow extends DebugWindowBase {
     });
 
     // hook window events before being shown
-    this.debugWindow.on('closed', () => {
-      this.logMessage('* Scope window closed');
-      this.debugWindow = null;
-    });
-
-    this.debugWindow.on('close', () => {
-      this.logMessage('* Scope window closing...');
-    });
-
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Scope window will show...');
       this.debugWindow?.show();
@@ -291,12 +281,16 @@ export class DebugScopeWindow extends DebugWindowBase {
         <meta charset="UTF-8"></meta>
         <title>${displayName}</title>
         <style>
+          @font-face {
+            font-family: 'Parallax';
+            src: url('./fonts/Parallax.ttf') format('truetype');
+          }
           body {
             display: flex;
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
+            font-family: 'Parallax', sans-serif;
             font-size: 12px;
             //background-color:rgb(234, 121, 86);
             background-color: ${this.displaySpec.window.background};
@@ -412,12 +406,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() SCOPE`);
-    // is destroyed should prevent crash on double close
-    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.removeAllListeners();
-      this.debugWindow.close();
-      this.debugWindow = null;
-    }
+    // let our base class do the work
+    this.debugWindow = null;
   }
 
   public updateContent(lineParts: string[]): void {
@@ -560,7 +550,13 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[1].toUpperCase() == 'SAVE') {
         // save the window to a file
-        // FIXME: UNDONE: add code save the window to a file here
+        if (lineParts.length >= 2) {
+          const saveFileName = this.removeStringQuotes(lineParts[2]);
+          // save the window to a file (as BMP)
+          this.saveWindowToBMPFilename(saveFileName);
+        } else {
+          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
+        }
       } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
         if (this.isFirstNumericData) {
           this.isFirstNumericData = false;

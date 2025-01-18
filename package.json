@@ -45,7 +45,7 @@
     "send2pi": "scp ./release/pnut-*arm64.zip pi@pi5twr.home:/home/pi/Downloads",
     "getpirun": "scp pi@pi5twr.home:/home/pi/TEMP/l*.log ./LOGs",
     "getpiplot": "rm -f ./LOGs/p*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/p*.log ./LOGs",
-    "getpilogic": "rm -f ./LOGs/log*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/l*.log ./LOGs"
+    "getpilogic": "rm -f ./LOGs/log*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/l*.log ./LOGs;scp pi@pi5twr.home:/home/pi/TEMP/*.bmp ./LOGs"
   },
   "devDependencies": {
     "@types/electron": "^1.6.12",
@@ -60,11 +60,13 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@jimp/types": "^1.6.0",
     "@serialport/bindings-cpp": "^12.0.1",
     "@serialport/parser-readline": "12.0.0",
     "@serialport/stream": "12.0.0",
     "commander": "^12.1.0",
     "install": "^0.13.0",
+    "jimp": "^1.6.0",
     "npm": "^11.0.0",
     "pixi.js": "^8.6.6",
     "serialport": "^12.0.0"

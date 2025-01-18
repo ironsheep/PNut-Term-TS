@@ -56,7 +56,6 @@ export interface CartesianSpec {
 
 export class DebugPlotWindow extends DebugWindowBase {
   private displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
-  private debugWindow: BrowserWindow | null = null;
   private isFirstDisplayData: boolean = true;
   private contentInset: number = 0; // 0 pixels from left and right of window
   // current terminal state
@@ -255,15 +254,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     });
 
     // hook window events before being shown
-    this.debugWindow.on('closed', () => {
-      this.logMessage('* Plot window closed');
-      this.debugWindow = null;
-    });
-
-    this.debugWindow.on('close', () => {
-      this.logMessage('* Plot window closing...');
-    });
-
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Plot window will show...');
       this.debugWindow?.show();
@@ -303,16 +293,14 @@ export class DebugPlotWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./resources/fonts/parallax.ttf') format('truetype');
-            font-weight: 400; /* Normal */
-            font-style: normal;
+            src: url('./fonts/Parallax.ttf') format('truetype');
           }
           body {
             display: flex;
             flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: 'Parallax', Arial, sans-serif; // was Consolas
+            font-family: 'Parallax', sans-serif; // was Consolas
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
           }
@@ -361,12 +349,8 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() PLOT`);
-    // is destroyed should prevent crash on double close
-    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.removeAllListeners();
-      this.debugWindow.close();
-      this.debugWindow = null;
-    }
+    // let our base class do the work
+    this.debugWindow = null;
   }
 
   public updateContent(lineParts: string[]): void {
@@ -615,7 +599,13 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
-        // FIXME: UNDONE: add code save the window to a file here
+        if (index + 1 < lineParts.length - 1) {
+          const saveFileName = this.removeStringQuotes(lineParts[++index]);
+          // save the window to a file (as BMP)
+          this.saveWindowToBMPFilename(saveFileName);
+        } else {
+          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
+        }
       } else if (DebugColor.isValidColorName(lineParts[index])) {
         // set color
         const colorName: string = lineParts[index];
@@ -988,7 +978,7 @@ export class DebugPlotWindow extends DebugWindowBase {
                 const lineColor = '${textColor}';
                 let Xoffset = ${textXOffset};
 
-                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax', Arial, sans-serif; // was Consolas
+                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax', sans-serif; // was Consolas
                 const textWidth = ctx.measureText('${text}').width;
                 if(${alignHCenter}) {
                   Xoffset -= textWidth / 2;
