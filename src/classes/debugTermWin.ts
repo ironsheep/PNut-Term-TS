@@ -463,7 +463,7 @@ export class DebugTermWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
-        if (index + 1 < lineParts.length - 1) {
+        if (index + 1 < lineParts.length) {
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
           // save the window to a file (as BMP)
           this.saveWindowToBMPFilename(saveFileName);

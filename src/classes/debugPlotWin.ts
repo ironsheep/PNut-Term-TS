@@ -311,8 +311,8 @@ export class DebugPlotWindow extends DebugWindowBase {
             flex-grow: 0;
             flex-shrink: 0;
             padding: 2px;
-            background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
-            //background-color: ${this.displaySpec.window.background};
+            /* background-color: rgb(55, 63, 170); // ${this.displaySpec.window.background}; */
+            background-color: ${this.displaySpec.window.background};
             width: ${divWidth}px; /* Set a fixed width */
             height: ${divHeight}px; /* Set a fixed height */
           }
@@ -595,14 +595,15 @@ export class DebugPlotWindow extends DebugWindowBase {
         // clear window
         this.updatePlotDisplay(`CLEAR`);
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
-        // close the window
-        this.closeDebugWindow();
+        // request window close
+        this.updatePlotDisplay(`CLOSE`);
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
-        if (index + 1 < lineParts.length - 1) {
+        if (index + 1 < lineParts.length) {
+          // FIXME: this does not handle spaces in the filename
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
-          // save the window to a file (as BMP)
-          this.saveWindowToBMPFilename(saveFileName);
+          // requst save of window to a file (as BMP)
+          this.updatePlotDisplay(`SAVE '${saveFileName}'`);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
@@ -683,6 +684,8 @@ export class DebugPlotWindow extends DebugWindowBase {
         //  TEXT 'string'
         //  LINE x y linesize opacity
         //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
+        //  CLOSE - close the window
+        //  SAVE 'filename' - write window contents to named file
         this.deferredCommands.forEach((displayString) => {
           this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
           const lineParts: string[] = displayString.split(' ');
@@ -695,7 +698,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             if (this.clearCount > 0) {
               this.clearCount--;
               if (this.clearCount == 0) {
-                this.shouldWriteToCanvas = false; // XYZZY
+                //this.shouldWriteToCanvas = false; // XYZZY
               }
             }
           } else if (lineParts[0] == 'SET') {
@@ -763,6 +766,13 @@ export class DebugPlotWindow extends DebugWindowBase {
             } else {
               this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
             }
+          } else if (lineParts[0] == 'CLOSE') {
+            this.closeDebugWindow();
+          } else if (lineParts[0] == 'SAVE') {
+            const fileName: string = lineParts.join(' ').replace('SAVE ', '');
+            const saveFileName = this.removeStringQuotes(fileName);
+            // save the window to a file (as BMP)
+            this.saveWindowToBMPFilename(saveFileName);
           } else {
             this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
           }
@@ -957,7 +967,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           : 'Vbot';
       const textColor: string = this.currTextColor;
       const fontWeight: string = this.fontWeightName(this.textStyle);
-      const fontStyle: string = this.textStyle.italic ? 'italic' : 'normal';
+      const fontStyle: string = this.textStyle.italic ? 'italic ' : '';
       // FIXME: UNDONE add underline support
       this.logMessage(
         `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
@@ -978,7 +988,7 @@ export class DebugPlotWindow extends DebugWindowBase {
                 const lineColor = '${textColor}';
                 let Xoffset = ${textXOffset};
 
-                ctx.font = '${fontStyle} ${fontWeight} ${this.font.textSizePts}pt Parallax', sans-serif; // was Consolas
+                ctx.font = '${fontStyle}${fontWeight} ${this.font.textSizePts}pt Consolas, sans-serif'; // was Consolas
                 const textWidth = ctx.measureText('${text}').width;
                 if(${alignHCenter}) {
                   Xoffset -= textWidth / 2;

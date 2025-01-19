@@ -629,7 +629,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           //   TRIGGER1 mask2 match3 {sample_offset4}
           this.triggerSpec.trigEnabled = true;
           // ensure we have at least two more values
-          if (index + 1 < lineParts.length - 2) {
+          if (index + 1 < lineParts.length - 1) {
             const [isValidMask, mask] = this.isSpinNumber(lineParts[index + 1]);
             if (isValidMask) {
               index++; // show we consumed the mask value
@@ -641,7 +641,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             if (isValidMask && isValidMatch) {
               this.triggerSpec.trigMask = mask ? mask : 0;
               this.triggerSpec.trigMatch = match ? match : 1;
-              if (index + 1 < lineParts.length - 1) {
+              if (index + 1 < lineParts.length) {
                 const [isValidOffset, offsetInSamples] = this.isSpinNumber(lineParts[index + 1]);
                 if (isValidOffset) {
                   if (offsetInSamples >= 0 && offsetInSamples < this.displaySpec.nbrSamples) {
@@ -678,7 +678,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           this.closeDebugWindow();
         } else if (lineParts[index].toUpperCase() == 'SAVE') {
           // get filename for save
-          if (index + 1 < lineParts.length - 1) {
+          if (index + 1 < lineParts.length) {
             const saveFileName = this.removeStringQuotes(lineParts[++index]);
             // save the window to a file (as BMP)
             this.saveWindowToBMPFilename(saveFileName.substring(1, saveFileName.length - 1));
@@ -692,12 +692,12 @@ export class DebugLogicWindow extends DebugWindowBase {
             // remember the new mode so we can unpack the data correctly
             this.packedMode = newMode;
             // now look for ALT and SIGNED keywords which may follow
-            if (index + 1 < lineParts.length - 1) {
+            if (index + 1 < lineParts.length) {
               const nextKeyword = lineParts[index + 1].toUpperCase();
               if (nextKeyword == 'ALT') {
                 this.packedMode.isAlternate = true;
                 index++;
-                if (index + 1 < lineParts.length - 1) {
+                if (index + 1 < lineParts.length) {
                   const nextKeyword = lineParts[index + 1].toUpperCase();
                   if (nextKeyword == 'SIGNED') {
                     this.packedMode.isSigned = true;

@@ -10,6 +10,7 @@ import { app, BrowserWindow, Menu, MenuItem, dialog } from 'electron';
 import electron from 'electron';
 import { Context } from '../utils/context';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
+import { escapeHtml } from '../utils/htmlUtils';
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
@@ -142,7 +143,6 @@ export class DebugTerminal {
       const data: string | undefined = this.rxQueue.shift();
       if (data) {
         this.appendLog(data);
-        this.updateStatus();
         if (data.charAt(0) === '`' && !this.waitingForINIT) {
           // handle debug command
           this.handleDebugCommand(data);
@@ -522,7 +522,7 @@ and Electron <span id="electron-version"></span>.</P>
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
 
-    this.updateStatus();
+    this.updateStatus(); // set initial values
 
     // every second write a new log entry (DUMMY for TESTING)
     this.mainWindow.webContents.on('did-finish-load', () => {
@@ -542,7 +542,7 @@ and Electron <span id="electron-version"></span>.</P>
         // load the log file into the
         setInterval(() => {
           this.appendLog('Log message ' + new Date().toISOString());
-          this.updateStatus();
+          this.updateStatus(); // TEST CODE - TEST CODE - TEST CODE - TEST CODE
         }, 1000);
       }
     });
@@ -551,10 +551,10 @@ and Electron <span id="electron-version"></span>.</P>
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...');
       }
+      this.closeAllDebugWindows(); // close all child windows, too
     });
 
     this.mainWindow.on('closed', () => {
-      this.closeAllDebugWindows(); // close all child windows, too
       this.logMessage('* Main window closed');
       this.mainWindow = null;
       this.mainWindowOpen = false;
@@ -565,7 +565,10 @@ and Electron <span id="electron-version"></span>.</P>
   private closeAllDebugWindows(): void {
     // step usb receiver
     this.mainWindow?.removeAllListeners();
-    // empty any pending messages
+    // empty any pending messages by processing them...
+    this.processRxQueue();
+    // flsuh one last time in case there are any left
+    this.flushLogBuffer(); // will do nothing if buffer is empty
     this.emptyRxQueue();
     // shut down any active displays
     const displayEntries = Object.entries(this.displays);
@@ -627,7 +630,7 @@ and Electron <span id="electron-version"></span>.</P>
   }
 
   private updateStatus() {
-    if (this.mainWindow) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       try {
         this.mainWindow.webContents.executeJavaScript(`
           (function() {
@@ -643,7 +646,52 @@ and Electron <span id="electron-version"></span>.</P>
     }
   }
 
+  /*
+  // ----------------------------------------------------------------------
+  //   this didin't work but it is a good example of how to buffer log messages?
+  // ----------------------------------------------------------------------
+  private logBuffer: string[] = [];
+  private logBufferTimeout: NodeJS.Timeout | null = null;
+  private FLUSH_INERVAL_MS: number = 100; // Adjust the timeout as needed
+
   private appendLog(message: string) {
+    // Add the message to the buffer
+    this.logBuffer.push(message);
+
+    // If there is no timeout set, set one to process the buffer
+    if (this.logBufferTimeout == null) {
+      this.logBufferTimeout = setTimeout(() => {
+        this.flushLogBuffer();
+      }, this.FLUSH_INERVAL_MS);
+    }
+
+    // If logging to file, append to output file
+    if (this.loggingToFile) {
+      this.appendToFile(this.logFileSpec, `${message}\n`);
+    }
+  }
+
+  private flushLogBuffer() {
+    if (this.mainWindow && this.logBuffer.length > 0) {
+      const messages = this.logBuffer.join('\n');
+      this.mainWindow.webContents.executeJavaScript(`
+        (function() {
+          const logContent = document.getElementById('log-content');
+          const p = document.createElement('p');
+          p.textContent = "${messages.replace(/"/g, '\\"')}";
+          logContent.appendChild(p);
+          logContent.scrollTop = logContent.scrollHeight;
+        })();
+      `);
+      this.logBuffer = [];
+      this.logBufferTimeout = null;
+    }
+  }
+
+  // ----------------------------------------------------------------------
+  */
+
+  private appendLogOld(message: string) {
     if (this.mainWindow) {
       this.mainWindow.webContents.executeJavaScript(`
         (function() {
@@ -658,6 +706,44 @@ and Electron <span id="electron-version"></span>.</P>
     // and if logging, append to output file
     if (this.loggingToFile) {
       this.appendToFile(this.logFileSpec, `${message}\n`);
+    }
+  }
+
+  private PEND_MESSAGE_COUNT: number = 60;
+
+  private appendLog(message: string) {
+    if (this.mainWindow) {
+      this.logBuffer.push(message);
+      if (this.logBuffer.length > this.PEND_MESSAGE_COUNT) {
+        this.flushLogBuffer();
+      }
+    }
+    // and if logging, append to output file
+    if (this.loggingToFile) {
+      this.appendToFile(this.logFileSpec, `${message}\n`);
+    }
+  }
+
+  private logBuffer: string[] = [];
+
+  private flushLogBuffer() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed() && this.logBuffer.length > 0) {
+      // Serialize the logBuffer array to a JSON string
+      const messages = JSON.stringify(this.logBuffer);
+      this.mainWindow.webContents.executeJavaScript(`
+        (function() {
+          const logContent = document.getElementById('log-content');
+          const messagesArray = ${messages};  // Parse the JSON string to get the array
+          messagesArray.forEach(message => {
+            const p = document.createElement('p');
+            p.textContent = message;
+            logContent.appendChild(p);
+          });
+          logContent.scrollTop = logContent.scrollHeight;
+        })();
+      `);
+      this.logBuffer = [];
+      this.updateStatus();
     }
   }
 
