@@ -32,6 +32,7 @@ Add windows (Part 1):
 		- Add save to bitmap @done(2025-01-18)
 		- Add mouse hover mech, w/disable
 		- Set font to Parallax
+		- Add border around term window (text should be centered in DEMO
 		
 	PLOT Window:
 		- Start work @done(2025-01-09)
