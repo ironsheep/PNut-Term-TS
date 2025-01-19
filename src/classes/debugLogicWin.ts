@@ -504,8 +504,8 @@ export class DebugLogicWindow extends DebugWindowBase {
             font-style: italic;
             font-size: 12px;
             width: ${labelCanvasWidth}px;
-            border-width: 1px;
             border-style: solid;
+            border-width: 1px;
             border-color: ${this.displaySpec.window.background};
             padding: 0px;
             margin: 0px;
@@ -531,8 +531,8 @@ export class DebugLogicWindow extends DebugWindowBase {
             flex-direction: column; /* Arrange children in a column */
             flex-grow: 0;
             width: ${dataCanvasWidth}px;
-            border-width: 1px;
             border-style: solid;
+            border-width: 1px;
             border-color: ${this.displaySpec.window.grid};
             //background-color:rgb(96, 234, 86);
             background-color: ${this.displaySpec.window.background};

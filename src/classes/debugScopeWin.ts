@@ -10,7 +10,15 @@ import { BrowserWindow, Menu } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
-import { DebugWindowBase, Position, Size, WindowColor } from './debugWindowBase';
+import {
+  DebugWindowBase,
+  ePackedDataMode,
+  ePackedDataWidth,
+  PackedDataMode,
+  Position,
+  Size,
+  WindowColor
+} from './debugWindowBase';
 
 export interface ScopeDisplaySpec {
   displayName: string;
@@ -67,6 +75,8 @@ export class DebugScopeWindow extends DebugWindowBase {
   private contentInset: number = 10; // 10 pixels from left and right of window
   private canvasMargin: number = 0; // 3 pixels from left, right, top, and bottom of canvas (NOT NEEDED)
   private channelLineWidth: number = 2; // 2 pixels wide for channel data line
+  private packedMode: PackedDataMode = {} as PackedDataMode;
+  // diagnostics used to limit the number of samples displayed while testing
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
 
@@ -83,6 +93,14 @@ export class DebugScopeWindow extends DebugWindowBase {
       trigLevel: 0,
       trigRtOffset: 0,
       trigHoldoff: 0
+    };
+    // initially we don't have a packed mode...
+    this.packedMode = {
+      mode: ePackedDataMode.PDM_UNKNOWN,
+      bitsPerSample: 0,
+      valueSize: ePackedDataWidth.PDW_UNKNOWN,
+      isAlternate: false,
+      isSigned: false
     };
   }
 
@@ -115,7 +133,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY', 4);
+    const gridColor: DebugColor = new DebugColor('GRAY3', 4);
     console.log(`CL: at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
@@ -182,7 +200,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // calculate overall canvas sizes then window size from them!
     if (this.channelSpecs.length == 0) {
       // create a DEFAULT channelSpec for only channel
-      const defaultColor: DebugColor = new DebugColor('GREEN');
+      const defaultColor: DebugColor = new DebugColor('GREEN', 15);
       this.channelSpecs.push({
         name: 'Channel 0',
         color: defaultColor.rgbString,
@@ -205,13 +223,14 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     const channelCanvases: string[] = [];
     let windowCanvasHeight: number = 0;
+    let channelWidth: number = 0;
     if (this.channelSpecs.length > 0) {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
         const adjHeight = this.channelLineWidth / 2 + this.canvasMargin * 2 + channelSpec.ySize + 2 * this.channelInset; // inset is above and below
-        const adjWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
+        channelWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
         // create a canvas for each channel
-        channelCanvases.push(`<canvas id="channel-${index}" width="${adjWidth}" height="${adjHeight}"></canvas>`);
+        channelCanvases.push(`<canvas id="channel-${index}" width="${channelWidth}" height="${adjHeight}"></canvas>`);
         // account for channel height
         windowCanvasHeight += channelSpec.ySize + 2 * this.channelInset + this.channelLineWidth / 2;
       }
@@ -223,7 +242,8 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
 
     // set height so no scroller by default
-    const canvasePlusWindowHeight = windowCanvasHeight + 20 + 30; // 20 is for the channel labels, 30 for window menu bar (30 is guess on linux)
+    const channelLabelHeight = 13; // 13 pixels for channel labels 10pt + gap below
+    const canvasePlusWindowHeight = windowCanvasHeight + channelLabelHeight + this.contentInset * 2;
     const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
     const windowWidth = Math.max(this.displaySpec.size.width, this.displaySpec.nbrSamples * 2 + this.contentInset * 2); // contentInset' for the Xoffset into window for canvas
     this.logMessage(
@@ -292,19 +312,37 @@ export class DebugScopeWindow extends DebugWindowBase {
             padding: 0;
             font-family: 'Parallax', sans-serif;
             font-size: 12px;
-            //background-color:rgb(234, 121, 86);
+            /* background-color: rgb(237, 142, 238); */
             background-color: ${this.displaySpec.window.background};
             color:rgb(191, 213, 93);
           }
-          #channel-titles {
+          #container {
             display: flex;
-            justify-content: flex-start; // left edge grounded
-            align-items: center; // vertically centered
+            flex-direction: column; /* Arrange children in a column */
+            justify-content: flex-start;
+            margin: ${this.contentInset}px ${this.contentInset}px;  /* vert horiz -OR- top right bottom left */
+            padding: 0;
+            background-color: ${this.displaySpec.window.background};
+          }
+          #labels {
+            font-family: 'Parallax', sans-serif;
+            font-style: italic;
+            font-size: 10px;
+            /* display: flex; */
+            /* flex-direction: row;   Arrange children in a row */
+            /* justify-content: flex-start;  left edge grounded */
+            /* align-items: top; vertically at top */
+            /*  align-items: center;  vertically centered */
             flex-grow: 0;
-            gap: 10px;  // between labels
-            //margin: 10px;   // top, right, bottom, left
-            padding: 10px;
-            background-color:rgb(83, 221, 108);
+            gap: 10px; /* Create a 10px gap between items */
+            height: ${channelLabelHeight}px;
+            padding: 0px 0px 4px 0px;
+            /* background-color: rgb(225, 232, 191); */
+          }
+          #labels > p {
+            /* padding: top right bottom left; */
+            padding: 0px;
+            margin: 0px;
           }
           #channel-data {
             display: flex;
@@ -312,32 +350,36 @@ export class DebugScopeWindow extends DebugWindowBase {
             justify-content: flex-end;
             flex-grow: 0;
             margin: 0;
-            //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            /* background-color: rgb(55, 63, 170); */
           }
           #channels {
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
             flex-grow: 0;
-            margin: 0px 10px 10px 10px;   // top, right, bottom, left
-            padding: 0px;   // top, right, bottom, left
-            border-width: 1px;
+            margin: 0;   /* top, right, bottom, left */
+            padding: 0px;
             border-style: solid;
-            border-color: ${this.displaySpec.window.grid};
-            background-color:rgb(164, 22, 22); // ${this.displaySpec.window.background};
+            border-width: 1px;
+            border-color: ${this.displaySpec.window.grid}; */
+            /* border-color: rgb(29, 230, 106); */
+            background-color: rgb(164, 22, 22);
           }
           canvas {
-            //background-color:rgb(240, 194, 151);
+            /* background-color: rgb(240, 194, 151); */
             background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
         </style>
       </head>
       <body>
-        <div id="channel-titles"><span>{labels here}</span></div>
-        <div id="channel-data">
-          <div id="channels">${channelCanvases.join(' ')}</div>
-        </div>
+        <div id="container">
+          <div id="labels" width="${channelWidth}" height="${channelLabelHeight}">
+          </div>
+          <div id="channel-data">
+            <div id="channels">${channelCanvases.join(' ')}</div>
+          </div>
+      </div>
       </body>
     </html>
   `;
@@ -433,7 +475,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse channel spec
         let channelSpec: ScopeChannelSpec = {} as ScopeChannelSpec;
         channelSpec.name = lineParts[1].slice(1, -1);
-        let colorName = 'GREEN';
+        let colorName = 'LIME'; // vs. green
         let colorBrightness = 15;
         if (lineParts[2].toUpperCase() == 'AUTO') {
           // parse AUTO spec
@@ -458,17 +500,31 @@ export class DebugScopeWindow extends DebugWindowBase {
         } else {
           // parse manual spec
           //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
+          let isNumber: boolean = false;
+          let parsedValue: number = 0;
           if (lineParts.length > 2) {
-            channelSpec.minValue = parseFloat(lineParts[2]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
+            if (isNumber) {
+              channelSpec.minValue = parsedValue;
+            }
           }
           if (lineParts.length > 3) {
-            channelSpec.maxValue = parseFloat(lineParts[3]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
+            if (isNumber) {
+              channelSpec.maxValue = parsedValue;
+            }
           }
           if (lineParts.length > 4) {
-            channelSpec.ySize = Number(lineParts[4]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
+            if (isNumber) {
+              channelSpec.ySize = parsedValue;
+            }
           }
           if (lineParts.length > 5) {
-            channelSpec.yBaseOffset = Number(lineParts[5]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[5]);
+            if (isNumber) {
+              channelSpec.yBaseOffset = parsedValue;
+            }
           }
           if (lineParts.length > 6) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
@@ -509,7 +565,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           if (lineParts.length > 3) {
             if (lineParts[3].toUpperCase() == 'HOLDOFF') {
               if (lineParts.length >= 4) {
-                this.triggerSpec.trigHoldoff = parseFloat(lineParts[4]);
+                const [isNumber, trigHoldoff] = this.isSpinNumber(lineParts[4]);
+                if (isNumber) {
+                  this.triggerSpec.trigHoldoff = trigHoldoff;
+                }
               }
             } else if (lineParts[3].toUpperCase() == 'AUTO') {
               this.triggerSpec.trigAuto = true;
@@ -521,13 +580,22 @@ export class DebugScopeWindow extends DebugWindowBase {
               const newTrigLevel = (channelSpec.maxValue - channelSpec.minValue) / 2 + channelSpec.minValue;
               this.triggerSpec.trigLevel = newTrigLevel;
             } else {
-              this.triggerSpec.trigArmLevel = parseFloat(lineParts[3]);
+              let [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
+              if (isNumber) {
+                this.triggerSpec.trigArmLevel = parsedValue;
+              }
               this.triggerSpec.trigAuto = false;
               if (lineParts.length > 4) {
-                this.triggerSpec.trigLevel = parseFloat(lineParts[4]);
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
+                if (isNumber) {
+                  this.triggerSpec.trigLevel = parsedValue;
+                }
               }
               if (lineParts.length > 5) {
-                this.triggerSpec.trigRtOffset = parseFloat(lineParts[5]);
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[5]);
+                if (isNumber) {
+                  this.triggerSpec.trigRtOffset = parsedValue;
+                }
               }
             }
           }
@@ -538,7 +606,10 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
         if (lineParts.length > 2) {
-          this.triggerSpec.trigHoldoff = parseFloat(lineParts[2]);
+          const [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
+          if (isNumber) {
+            this.triggerSpec.trigHoldoff = parsedValue;
+          }
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
@@ -557,66 +628,98 @@ export class DebugScopeWindow extends DebugWindowBase {
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
-      } else if ((lineParts[1].charAt(0) >= '0' && lineParts[1].charAt(0) <= '9') || lineParts[1].charAt(0) == '-') {
-        if (this.isFirstNumericData) {
-          this.isFirstNumericData = false;
-          this.calculateAutoTriggerAndScale();
-          this.initChannelSamples();
-          this.createDebugWindow();
-        }
-        let scopeSamples: number[] = [];
-        for (let index = 1; index < lineParts.length; index++) {
-          // spin2 output has underscores for commas in numbers, so remove them
-          const value: string = lineParts[index].replace(/_/g, '');
-          if (value !== '') {
-            const nextSample: number = parseFloat(value);
-            scopeSamples.push(nextSample);
-          }
-        }
-
-        // parse numeric data
-        let didScroll: boolean = false; // in case we need this for performance of window update
-        const numberChannels: number = this.channelSpecs.length;
-        const nbrSamples = scopeSamples.length;
-        if (nbrSamples == numberChannels) {
-          /*
-          if (this.dbgLogMessageCount > 0) {
-            this.logMessage(
-              `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
-                ','
-              )}], lineparts=[${lineParts.join(',')}]`
-            );
-          }
-          */
-          for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
-            let nextSample: number = Number(scopeSamples[chanIdx]);
-            //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
-            // limit the sample to the channel's min/max?!
-            const channelSpec = this.channelSpecs[chanIdx];
-            if (nextSample < channelSpec.minValue) {
-              nextSample = channelSpec.minValue;
-              this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-            } else if (nextSample > channelSpec.maxValue) {
-              nextSample = channelSpec.maxValue;
-              this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+      } else {
+        // do we have packed data spec?
+        const [isPackedData, newMode] = this.isPackedDataMode(lineParts[1]);
+        if (isPackedData) {
+          // remember the new mode so we can unpack the data correctly
+          this.packedMode = newMode;
+          // now look for ALT and SIGNED keywords which may follow
+          if (lineParts.length > 2) {
+            const nextKeyword = lineParts[2].toUpperCase();
+            if (nextKeyword == 'ALT') {
+              this.packedMode.isAlternate = true;
+              if (lineParts.length > 3) {
+                const nextKeyword = lineParts[3].toUpperCase();
+                if (nextKeyword == 'SIGNED') {
+                  this.packedMode.isSigned = true;
+                }
+              }
+            } else if (nextKeyword == 'SIGNED') {
+              this.packedMode.isSigned = true;
             }
-            // record our sample (shifting left if necessary)
-            didScroll = this.recordChannelSample(chanIdx, nextSample);
-            // update scope chanel canvas with new sample
-            const canvasName = `channel-${chanIdx}`;
-            //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-            this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
           }
         } else {
-          this.logMessage(
-            `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
-              ','
-            )}]`
-          );
+          // do we have number?
+          const [isValidNumber, numericValue] = this.isSpinNumber(lineParts[1]);
+          if (isValidNumber) {
+            if (this.isFirstNumericData) {
+              this.isFirstNumericData = false;
+              this.calculateAutoTriggerAndScale();
+              this.initChannelSamples();
+              this.createDebugWindow();
+            }
+            let scopeSamples: number[] = [];
+            for (let index = 1; index < lineParts.length; index++) {
+              // spin2 output has underscores for commas in numbers, so remove them
+              const [isValidNumber, sampleValue] = this.isSpinNumber(lineParts[index]);
+              if (isValidNumber) {
+                scopeSamples.push(sampleValue);
+              } else {
+                this.logMessage(
+                  `* UPD-ERROR invalid numeric data: lineParts[${index}]=${lineParts[index]} of [${lineParts.join(
+                    ' '
+                  )}]`
+                );
+              }
+            }
+
+            // FIXME: add packed data mode unpacking here
+
+            // parse numeric data
+            let didScroll: boolean = false; // in case we need this for performance of window update
+            const numberChannels: number = this.channelSpecs.length;
+            const nbrSamples = scopeSamples.length;
+            if (nbrSamples == numberChannels) {
+              /*
+              if (this.dbgLogMessageCount > 0) {
+                this.logMessage(
+                  `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
+                    ','
+                  )}], lineparts=[${lineParts.join(',')}]`
+                );
+              }
+              */
+              for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
+                let nextSample: number = Number(scopeSamples[chanIdx]);
+                //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
+                // limit the sample to the channel's min/max?!
+                const channelSpec = this.channelSpecs[chanIdx];
+                if (nextSample < channelSpec.minValue) {
+                  nextSample = channelSpec.minValue;
+                  this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
+                } else if (nextSample > channelSpec.maxValue) {
+                  nextSample = channelSpec.maxValue;
+                  this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+                }
+                // record our sample (shifting left if necessary)
+                didScroll = this.recordChannelSample(chanIdx, nextSample);
+                // update scope chanel canvas with new sample
+                const canvasName = `channel-${chanIdx}`;
+                //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
+                this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+              }
+            } else {
+              this.logMessage(
+                `* UPD-ERROR wrong nbr of samples: #${numberChannels} channels, #${nbrSamples} samples of [${lineParts.join(
+                  ','
+                )}]`
+              );
+            }
+          } else {
+            this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+          }
         }
-        // FIXME: UNDONE: add code to update the window here
-      } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
       }
     }
   }
@@ -819,16 +922,13 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
       try {
-        const channelLabel: string = `<span style="color: ${colorString};">${name}</span>`;
+        const channelLabel: string = `<p style="color: ${colorString};">${name}</p>`;
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
-            const labelsDivision = document.getElementById('channel-titles');
+            const labelsDivision = document.getElementById('labels');
             if (labelsDivision) {
               let labelContent = labelsDivision.innerHTML;
-              if (labelContent.includes('{labels here}')) {
-                labelContent = ''; // remove placeholder span
-              }
-              labelContent += '${channelLabel}';
+              labelContent += \'${channelLabel}\';
               labelsDivision.innerHTML = labelContent;
             }
           })();

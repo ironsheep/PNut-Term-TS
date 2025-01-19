@@ -12,8 +12,9 @@ Add windows:
 SCOPE Window:
 	- Add mouse hover mech, with disable
 	- Add save to bitmap @done(2025-01-18)
-	- fix label division margins
-	- add packed data mode
+	- fix label division margins @done(2025-01-18)
+	- add packed data mode @done(2025-01-18)
+		- now unpack correctly...
 	- Single Channel
 		- working! @done(2025-01-09)
 	- Mulit-Channel
