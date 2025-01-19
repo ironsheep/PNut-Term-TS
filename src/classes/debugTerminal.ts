@@ -50,6 +50,7 @@ export class DebugTerminal {
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private rxQueue: string[] = [];
   private isProcessingQueue: boolean = false;
+  private immediateLog: boolean = false;
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -286,6 +287,7 @@ export class DebugTerminal {
     this.logMessage(`cleanupOnClose() ${windowName}`);
     // flush the log buffer
     this.flushLogBuffer();
+    this.immediateLog = true;
     const windowObject: DebugWindowBase = this.displays[windowName];
     // remove the window from the list of active displays
     delete this.displays[windowName];
@@ -710,6 +712,8 @@ and Electron <span id="electron-version"></span>.</P>
     if (this.mainWindow) {
       this.logBuffer.push(message);
       if (this.logBuffer.length > this.PEND_MESSAGE_COUNT) {
+        this.flushLogBuffer();
+      } else if (this.immediateLog) {
         this.flushLogBuffer();
       }
     }
