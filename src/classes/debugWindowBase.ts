@@ -286,7 +286,7 @@ export abstract class DebugWindowBase extends EventEmitter {
           break;
       }
     } else {
-      console.log(`Win: ERROR: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+      console.log(`Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`);
     }
     console.log(`Win: str=[${styleStr}] -> textStyle: ${JSON.stringify(textStyle)}`);
   }
@@ -596,13 +596,28 @@ export abstract class DebugWindowBase extends EventEmitter {
     return [isValieSpin2Number, spin2Value];
   }
 
+  // Method that calls the async function with a callback
+  protected saveWindowToBMPWithCallback(saveFileName: string, callback: () => void) {
+    this.saveWindowToBMPFilename(saveFileName)
+      .then(() => {
+        callback();
+      })
+      .catch((error) => {
+        console.error('Win: ERROR: saving window to BMP:', error);
+      });
+  }
+
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
     if (this._debugWindow) {
       const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
-      const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
-      fs.writeFileSync(outputFSpec, bmpBuffer);
-      this.logMessage(`* BMP image [${outputFSpec}] saved successfully`);
+      try {
+        const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
+        fs.writeFileSync(outputFSpec, bmpBuffer);
+        this.logMessage(`* BMP image [${outputFSpec}] saved successfully`);
+      } catch (error) {
+        console.error('Win: ERROR: saving BMP image:', error);
+      }
     }
   }
 
@@ -625,17 +640,29 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   private captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
     return new Promise((resolve) => {
-      window.webContents.capturePage().then((image) => {
-        const pngBuffer = image.toPNG();
-        resolve(pngBuffer);
-      });
+      try {
+        window.webContents.capturePage().then((image) => {
+          const desiredPngImage = image.toPNG();
+          resolve(desiredPngImage);
+        });
+      } catch (error) {
+        console.error('Win: ERROR: capturing window as PNG:', error);
+        const desiredPngImage: Buffer = Buffer.alloc(0);
+        resolve(desiredPngImage);
+      }
     });
   }
 
   private async convertPNGtoBMP(pngBuffer: Buffer): Promise<Buffer> {
-    const image = await Jimp.read(pngBuffer);
-    const bmpImage = await image.getBuffer('image/bmp');
-    return bmpImage;
+    let desiredBmpImage: Buffer;
+    try {
+      const image = await Jimp.read(pngBuffer);
+      desiredBmpImage = await image.getBuffer('image/bmp');
+    } catch (error) {
+      console.error('Win: ERROR: converting PNG to BMP:', error);
+      desiredBmpImage = Buffer.alloc(0);
+    }
+    return desiredBmpImage;
   }
 
   // ----------------------------------------------------------------------

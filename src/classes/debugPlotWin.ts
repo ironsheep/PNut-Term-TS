@@ -20,6 +20,7 @@ import {
   TextStyle,
   WindowColor
 } from './debugWindowBase';
+import { TIMEOUT } from 'dns';
 
 export interface LutColor {
   fgcolor: string;
@@ -596,14 +597,50 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.updatePlotDisplay(`CLEAR`);
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // request window close
-        this.updatePlotDisplay(`CLOSE`);
+        // NOPE this is immediate! this.updatePlotDisplay(`CLOSE`);
+        this.logMessage(`  -- Closing window!`);
+        this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
+        // FIXME: UNDONE we need to wait for prior UPDATE to complete!
+        /*
+        while (this.deferredCommands.length > 0) {
+          // wait for prior UPDATE to complete
+          this.logMessage(`* UPD-INFO  waiting for prior UPDATE to complete...`);
+          // do TIMEOUT...
+          setTimeout(() => {
+            // do nothing
+          }, 1000);
+        }
         // save the window to a file
         if (index + 1 < lineParts.length) {
           // FIXME: this does not handle spaces in the filename
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
           // requst save of window to a file (as BMP)
-          this.updatePlotDisplay(`SAVE '${saveFileName}'`);
+          // NOPE this is immediate!this.updatePlotDisplay(`SAVE '${saveFileName}'`);
+          // save the window to a file (as BMP)
+          this.logMessage(`* UPD-INFO saving to [${saveFileName}]`);
+          let isSaving: boolean = true;
+          this.saveWindowToBMPWithCallback(saveFileName, () => {
+            this.logMessage(`* UPD-INFO  window saved to [${saveFileName}]`);
+            isSaving = false; // we are done!
+          });
+
+          let waitCount: number = 0;
+          while (isSaving) {
+            // wait for save to complete
+            this.logMessage(`* UPD-INFO  waiting for save to complete... ${++waitCount} sec`);
+            // do TIMEOUT...
+            setTimeout(() => {
+              // do nothing
+            }, 1000); // 1000 ms = 1 sec
+          }
+          */
+        if (index + 1 < lineParts.length) {
+          // FIXME: this does not handle spaces in the filename
+          const saveFileName = this.removeStringQuotes(lineParts[++index]);
+          // save the window to a file (as BMP)
+          this.logMessage(`  -- writing BMP to [${saveFileName}]`);
+          this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
@@ -767,12 +804,16 @@ export class DebugPlotWindow extends DebugWindowBase {
               this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
             }
           } else if (lineParts[0] == 'CLOSE') {
+            this.logMessage(`* PUSH-INFO Closing window!`);
             this.closeDebugWindow();
           } else if (lineParts[0] == 'SAVE') {
             const fileName: string = lineParts.join(' ').replace('SAVE ', '');
             const saveFileName = this.removeStringQuotes(fileName);
             // save the window to a file (as BMP)
-            this.saveWindowToBMPFilename(saveFileName);
+            this.logMessage(`* PUSH-INFO saving to [${saveFileName}]`);
+            this.saveWindowToBMPWithCallback(saveFileName, () => {
+              this.logMessage(`* PUSH-INFO  window saved to [${saveFileName}]`);
+            });
           } else {
             this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
           }

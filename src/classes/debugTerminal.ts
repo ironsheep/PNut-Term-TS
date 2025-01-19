@@ -195,10 +195,8 @@ export class DebugTerminal {
               // remember active displays!
               this.displays[scopeSpec.displayName] = scopeDisplay;
               // remove it from list if it closes
-              scopeDisplay.on('closed', () => {
-                console.log(`Window ${scopeSpec.displayName} has closed.`);
-                // Optionally, remove the reference from the displays object
-                delete this.displays[scopeSpec.displayName];
+              scopeDisplay.on('close', () => {
+                this.cleanupOnClose(scopeSpec.displayName);
               });
               this.logMessage(`GOOD DISPLAY: Received`);
               //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
@@ -221,10 +219,8 @@ export class DebugTerminal {
               // remember active displays!
               this.displays[logicSpec.displayName] = logicDisplay;
               // remove it from list if it closes
-              logicDisplay.on('closed', () => {
-                console.log(`Window ${logicSpec.displayName} has closed.`);
-                // Optionally, remove the reference from the displays object
-                delete this.displays[logicSpec.displayName];
+              logicDisplay.on('close', () => {
+                this.cleanupOnClose(logicSpec.displayName);
               });
               this.logMessage(`GOOD DISPLAY: Received`);
               //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
@@ -247,10 +243,8 @@ export class DebugTerminal {
               // remember active displays!
               this.displays[termSpec.displayName] = termDisplay;
               // remove it from list if it closes
-              termDisplay.on('closed', () => {
-                console.log(`Window ${termSpec.displayName} has closed.`);
-                // Optionally, remove the reference from the displays object
-                delete this.displays[termSpec.displayName];
+              termDisplay.on('close', () => {
+                this.cleanupOnClose(termSpec.displayName);
               });
               this.logMessage(`GOOD DISPLAY: Received`);
             } else {
@@ -272,10 +266,8 @@ export class DebugTerminal {
               // remember active displays!
               this.displays[plotSpec.displayName] = plotDisplay;
               // remove it from list if it closes
-              plotDisplay.on('closed', () => {
-                console.log(`Window ${plotSpec.displayName} has closed.`);
-                // Optionally, remove the reference from the displays object
-                delete this.displays[plotSpec.displayName];
+              plotDisplay.on('close', () => {
+                this.cleanupOnClose(plotSpec.displayName);
               });
               this.logMessage(`GOOD DISPLAY: Received`);
             } else {
@@ -296,6 +288,14 @@ export class DebugTerminal {
         }
       }
     }
+  }
+
+  private cleanupOnClose(windowName: string) {
+    this.logMessage(`Window ${windowName} has closed.`);
+    // flush the log buffer
+    this.flushLogBuffer();
+    // remove the window from the list of active displays
+    delete this.displays[windowName];
   }
 
   // ----------------------------------------------------------------------
@@ -709,7 +709,7 @@ and Electron <span id="electron-version"></span>.</P>
     }
   }
 
-  private PEND_MESSAGE_COUNT: number = 60;
+  private PEND_MESSAGE_COUNT: number = 100;
 
   private appendLog(message: string) {
     if (this.mainWindow) {

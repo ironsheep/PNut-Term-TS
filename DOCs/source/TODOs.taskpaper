@@ -32,12 +32,14 @@ Add windows (Part 1):
 		- Add save to bitmap @done(2025-01-18)
 		- Add mouse hover mech, w/disable
 		- Set font to Parallax
+		
 	PLOT Window:
 		- Start work @done(2025-01-09)
 		- First draft sorta working - item locations bad! @done(2025-01-18)
 		- Add save to bitmap @done(2025-01-18)
 		- Double buffer - draw to hidden canvas then bitblt over to live canvas
 		- Set font to Parallax
+		- Fix timing problem between save and close
 	
 Add windows (Part 2):
 	- SCOPE_XY w/packed_data_mode
@@ -50,4 +52,4 @@ PREPARE FOR RELEASE:
 	- Remove extra copy of USB platform code
 	- Ensure Parallax font working
 	- Ensure working on all 3 platforms
-	
+
