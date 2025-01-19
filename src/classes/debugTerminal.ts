@@ -46,7 +46,7 @@ export class DebugTerminal {
     width: 800,
     height: 600
   };
-  private displays: { [key: string]: object } = {};
+  private displays: { [key: string]: DebugWindowBase } = {};
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private rxQueue: string[] = [];
   private isProcessingQueue: boolean = false;
@@ -193,13 +193,7 @@ export class DebugTerminal {
               // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
               const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
               // remember active displays!
-              this.displays[scopeSpec.displayName] = scopeDisplay;
-              // remove it from list if it closes
-              scopeDisplay.on('close', () => {
-                this.cleanupOnClose(scopeSpec.displayName);
-              });
-              this.logMessage(`GOOD DISPLAY: Received`);
-              //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+              this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
@@ -217,13 +211,7 @@ export class DebugTerminal {
               // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
               const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
               // remember active displays!
-              this.displays[logicSpec.displayName] = logicDisplay;
-              // remove it from list if it closes
-              logicDisplay.on('close', () => {
-                this.cleanupOnClose(logicSpec.displayName);
-              });
-              this.logMessage(`GOOD DISPLAY: Received`);
-              //this.logMessage(`GOOD DISPLAY: Received: ${JSON.stringify(scopeSpec, null, 2)}`);
+              this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
@@ -241,12 +229,7 @@ export class DebugTerminal {
               // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
               const termDisplay = new DebugTermWindow(this.context, termSpec);
               // remember active displays!
-              this.displays[termSpec.displayName] = termDisplay;
-              // remove it from list if it closes
-              termDisplay.on('close', () => {
-                this.cleanupOnClose(termSpec.displayName);
-              });
-              this.logMessage(`GOOD DISPLAY: Received`);
+              this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
@@ -264,12 +247,7 @@ export class DebugTerminal {
               // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
               const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
               // remember active displays!
-              this.displays[plotSpec.displayName] = plotDisplay;
-              // remove it from list if it closes
-              plotDisplay.on('close', () => {
-                this.cleanupOnClose(plotSpec.displayName);
-              });
-              this.logMessage(`GOOD DISPLAY: Received`);
+              this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
@@ -290,12 +268,29 @@ export class DebugTerminal {
     }
   }
 
+  private hookNotifcationsAndRememberWindow(windowName: string, windowObject: DebugWindowBase) {
+    this.logMessage(`GOOD DISPLAY: Received for ${windowName}`);
+    // esure we get notifications of window close
+    windowObject.on('close', () => {
+      this.logMessage(`CallBack: Window ${windowName} is closing.`);
+      this.cleanupOnClose(windowName);
+    });
+    windowObject.on('closed', () => {
+      this.logMessage(`CallBack: Window ${windowName} has closed.`);
+    });
+    // remember active displays!
+    this.displays[windowName] = windowObject;
+  }
+
   private cleanupOnClose(windowName: string) {
-    this.logMessage(`Window ${windowName} has closed.`);
+    this.logMessage(`cleanupOnClose() ${windowName}`);
     // flush the log buffer
     this.flushLogBuffer();
+    const windowObject: DebugWindowBase = this.displays[windowName];
     // remove the window from the list of active displays
     delete this.displays[windowName];
+    // and remove listeners
+    windowObject.removeAllListeners();
   }
 
   // ----------------------------------------------------------------------

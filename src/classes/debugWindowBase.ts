@@ -125,24 +125,19 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected set debugWindow(window: BrowserWindow | null) {
     if (window != null) {
       this.logMessage(`* New ${this.constructor.name} window`);
-      // Add event listeners for normal window events
       this._debugWindow = window;
-      window.on('close', () => {
-        this.logMessage(`* ${this.constructor.name} window closing...`);
-        this.emit('close');
-      });
 
-      window.on('closed', () => {
-        this.logMessage(`* ${this.constructor.name} window closed`);
-        this.emit('closed');
-      });
-
-      // Add other event listeners as needed
+      // Add OTHER event listeners as needed
     } else {
+      this.logMessage(`* Closing ${this.constructor.name} window`);
       // Remove event listeners and close the window
       if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {
+        this.logMessage(`* ${this.constructor.name} window closing...`);
+        this.emit('close'); // forward the event
         this._debugWindow.removeAllListeners();
         this._debugWindow.close();
+        this.logMessage(`* ${this.constructor.name} window closed`);
+        this.emit('closed'); // forward the event
       }
       this._debugWindow = null;
     }
