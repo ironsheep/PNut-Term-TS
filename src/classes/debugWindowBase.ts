@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import EventEmitter from 'events';
 import { Context } from '../utils/context';
 import { localFSpecForFilename } from '../utils/files';
+import { waitMSec } from '../utils/timerUtils';
 
 // src/classes/debugWindowBase.ts
 
@@ -591,9 +592,26 @@ export abstract class DebugWindowBase extends EventEmitter {
     return [isValieSpin2Number, spin2Value];
   }
 
+  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+    this.logMessage(`* SAVE entering save call w/[${filename}]`);
+    let isSaving: boolean = true;
+    this.saveWindowToBMPWithCallback(filename, () => {
+      this.logMessage(`* SAVE callback: save [${filename}] complete`);
+      isSaving = false; // we are done!
+    });
+
+    let waitMSCount: number = 0;
+    while (isSaving) {
+      this.logMessage(`* SAVE waiting for save to complete... ${waitMSCount} msec`);
+      waitMSCount += 20;
+      await waitMSec(20);
+    }
+    this.logMessage(`* SAVE exiting save call`);
+  }
+
   // Method that calls the async function with a callback
   protected saveWindowToBMPWithCallback(saveFileName: string, callback: () => void) {
-    this.saveWindowToBMPFilename(saveFileName)
+    this.saveWindowToBMP(saveFileName)
       .then(() => {
         callback();
       })
@@ -602,7 +620,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       });
   }
 
-  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+  protected async saveWindowToBMP(filename: string): Promise<void> {
     if (this._debugWindow) {
       const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);

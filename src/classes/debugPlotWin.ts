@@ -602,39 +602,6 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // FIXME: UNDONE we need to wait for prior UPDATE to complete!
-        /*
-        while (this.deferredCommands.length > 0) {
-          // wait for prior UPDATE to complete
-          this.logMessage(`* UPD-INFO  waiting for prior UPDATE to complete...`);
-          // do TIMEOUT...
-          setTimeout(() => {
-            // do nothing
-          }, 1000);
-        }
-        // save the window to a file
-        if (index + 1 < lineParts.length) {
-          // FIXME: this does not handle spaces in the filename
-          const saveFileName = this.removeStringQuotes(lineParts[++index]);
-          // requst save of window to a file (as BMP)
-          // NOPE this is immediate!this.updatePlotDisplay(`SAVE '${saveFileName}'`);
-          // save the window to a file (as BMP)
-          this.logMessage(`* UPD-INFO saving to [${saveFileName}]`);
-          let isSaving: boolean = true;
-          this.saveWindowToBMPWithCallback(saveFileName, () => {
-            this.logMessage(`* UPD-INFO  window saved to [${saveFileName}]`);
-            isSaving = false; // we are done!
-          });
-
-          let waitCount: number = 0;
-          while (isSaving) {
-            // wait for save to complete
-            this.logMessage(`* UPD-INFO  waiting for save to complete... ${++waitCount} sec`);
-            // do TIMEOUT...
-            setTimeout(() => {
-              // do nothing
-            }, 1000); // 1000 ms = 1 sec
-          }
-          */
         if (index + 1 < lineParts.length) {
           // FIXME: this does not handle spaces in the filename
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
