@@ -465,13 +465,19 @@ export class DebugTermWindow extends DebugWindowBase {
         this.clearTerm();
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
+        if (this.saveInProgress) {
+          this.logMessage(`* --UPD-WARNING-- attempt to close window while save in progress!`);
+        }
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
         if (index + 1 < lineParts.length) {
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
           // save the window to a file (as BMP)
-          this.saveWindowToBMPFilename(saveFileName);
+          this.saveWindowToBMPWithCallback(saveFileName, () => {
+            this.logMessage(`* Callback: saveWindowToBMPWithCallback(${saveFileName})`);
+          });
+          //this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }

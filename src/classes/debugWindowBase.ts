@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, NativeImage } from 'electron';
 import { Jimp } from 'jimp';
 import * as fs from 'fs';
 import EventEmitter from 'events';
@@ -104,6 +104,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   private context: Context;
   private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
+  private _saveInProgress: boolean = false;
 
   constructor(ctx: Context) {
     super();
@@ -120,6 +121,11 @@ export abstract class DebugWindowBase extends EventEmitter {
     metrics.charWidth = Math.round(metrics.charHeight * 0.6);
     metrics.lineHeight = Math.round(metrics.charHeight * 1.3); // 120%-140% using 130% of text height
     metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
+  }
+
+  protected set saveInProgress(value: boolean) {
+    this._saveInProgress = value;
+    this.logMessage(`* SAVE inProgress=(${value})`);
   }
 
   // Setter for debugWindow property
@@ -592,9 +598,76 @@ export abstract class DebugWindowBase extends EventEmitter {
     return [isValieSpin2Number, spin2Value];
   }
 
-  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+  protected saveWindowToBMPFilename(filename: string) {
+    if (this._debugWindow != null) {
+      this.logMessage(`* SAVE entering save call w/[${filename}]`);
+      let done = false;
+
+      this._debugWindow.webContents
+        .capturePage()
+        .then((image) => {
+          const bmpBuffer = image.toBitmap();
+          try {
+            const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
+            fs.writeFileSync(outputFSpec, bmpBuffer);
+            this.logMessage(`* SAVE BMP image [${outputFSpec}] saved successfully`);
+          } catch (error) {
+            console.error('Win: ERROR: saving BMP image:', error);
+          }
+          done = true;
+        })
+        .catch((err) => {
+          console.error('Win: ERROR: capturing page:', err);
+          done = true;
+        });
+
+      const startTime = Date.now();
+      const timeout = 100; // 100 ms timeout
+
+      require('deasync').loopWhile(() => {
+        if (done || Date.now() - startTime > timeout) {
+          return false; // This will break the loop
+        }
+        return true;
+      });
+
+      this.logMessage(`* SAVE exiting save call`);
+    }
+  }
+
+  /*
+      const done2 = new Promise((resolve) => {
+        if (this._debugWindow != null) {
+          this._debugWindow.webContents.capturePage().then((image) => {
+            const bmpBuffer = image.toBitmap();
+            resolve(true);
+          });
+        }
+      });
+
+      let loopCt: number = 0;
+      while (done === undefined) {
+        require('deasync').runLoopOnce();
+        console.log(`Win: waiting for save to complete... #${loopCt++}`);
+      }
+      */
+
+  /*
+      const startTime = Date.now();
+      const timeout = 200; // 1/20 second timeout
+
+      require('deasync').loopWhile(function () {
+        if (Date.now() - startTime > timeout) {
+          console.error('Win: ERROR Deasync loop timed out');
+          return false;
+        }
+      });
+      */
+
+  protected async saveWindowToBMPFilenameTry2(filename: string): Promise<void> {
     this.logMessage(`* SAVE entering save call w/[${filename}]`);
     let isSaving: boolean = true;
+    const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
     this.saveWindowToBMPWithCallback(filename, () => {
       this.logMessage(`* SAVE callback: save [${filename}] complete`);
       isSaving = false; // we are done!
@@ -622,6 +695,7 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   protected async saveWindowToBMP(filename: string): Promise<void> {
     if (this._debugWindow) {
+      this.saveInProgress = true;
       const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
       try {
@@ -631,6 +705,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       } catch (error) {
         console.error('Win: ERROR: saving BMP image:', error);
       }
+      this.saveInProgress = false;
     }
   }
 
