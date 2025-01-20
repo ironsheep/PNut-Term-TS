@@ -36,7 +36,8 @@ export interface TermDisplaySpec {
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private isFirstDisplayData: boolean = true;
-  private contentInset: number = 0; // 0 pixels from left and right of window
+  private contentInset: number = 6; // 6 pixels from left and right of window
+  private borderMargin: number = 10; // 10 pixels all around
   // current terminal state
   private deferredCommands: string[] = [];
   private cursorPosition: Position = { x: 0, y: 0 };
@@ -46,6 +47,8 @@ export class DebugTermWindow extends DebugWindowBase {
     super(ctx);
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
+    // adjust our contentInset for font size
+    this.contentInset = this.displaySpec.font.charWidth / 2;
   }
 
   get windowTitle(): string {
@@ -227,7 +230,7 @@ export class DebugTermWindow extends DebugWindowBase {
             displaySpec.delayedUpdate = true;
             break;
           case 'HIDEXY':
-            displaySpec.delayedUpdate = true;
+            displaySpec.hideXY = true;
             break;
 
           default:
@@ -254,13 +257,15 @@ export class DebugTermWindow extends DebugWindowBase {
     // set height so no scroller by default
     const canvasHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
     // for mono-spaced font width 1/2 ht in pts
-    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth + this.contentInset * 2; // contentInset' for the Xoffset into window for canvas
+    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
+    this.logMessage(
+      `  -- TERM canvas size=(${canvasWidth}x${canvasHeight}) char=(${this.displaySpec.font.charWidth}x${this.displaySpec.font.charHeight}) ln=(${this.displaySpec.font.lineHeight})`
+    );
+    const divHeight = canvasHeight + 4; // 4 is fudge number
+    const divWidth = canvasWidth + 4; // 4 is fudge number
 
-    const divHeight = canvasHeight + 4; // +20 for title bar (30 leaves black at bottom), 20 leaves black at bottom
-    const divWidth = canvasWidth + 4; // contentInset' for the Xoffset into window for canvas, 20 is extra pad
-
-    const windowHeight = canvasHeight + 4 + 4; // +4 add enough to not create vert. scroller
-    const windowWidth = canvasWidth + this.contentInset * 2 + 4 + 4; // contentInset' for the Xoffset into window for canvas, +4 add enough to not create horiz. scroller
+    const windowHeight = divHeight + this.borderMargin * 2;
+    const windowWidth = divWidth + this.borderMargin * 2;
     this.logMessage(
       `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
     );
@@ -318,7 +323,7 @@ export class DebugTermWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./fonts/Parallax.ttf') format('truetype');
+            src: url('./resources/fonts/Parallax.ttf') format('truetype');
           }
           body {
             display: flex;
@@ -337,8 +342,8 @@ export class DebugTermWindow extends DebugWindowBase {
             justify-content: flex-end;
             flex-grow: 0;
             flex-shrink: 0;
-            padding: 2px;
-            //background-color:rgb(55, 63, 170); // ${this.displaySpec.window.background};
+            padding: 10px;
+            //background-color:rgb(55, 170, 136);
             background-color: ${this.displaySpec.window.background};
             width: ${divWidth}px; /* Set a fixed width */
             height: ${divHeight}px; /* Set a fixed height */
@@ -614,16 +619,27 @@ export class DebugTermWindow extends DebugWindowBase {
       this.logMessage(`at writeStringToTerm(${text})`);
       try {
         const textHeight: number = this.displaySpec.font.charHeight;
+        const textSizePts: number = this.displaySpec.font.textSizePts;
         const lineHeight: number = this.displaySpec.font.lineHeight;
         const textYOffset: number = this.cursorPosition.y * lineHeight;
         const textXOffset: number = this.cursorPosition.x * this.displaySpec.font.charWidth + this.contentInset;
         const vertLineInset: number = (lineHeight - textHeight) / 2;
-        const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline;
+        const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline + 4; // 4 is fudge number
         const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+        // cts.font NOTEs:
+        // ORDER: [font-style] [font-variant] [font-weight] [font-size]/[line-height] [font-family]
+        // font-style: Can be "normal", "italic", or "oblique" (optional)
+        // font-variant: Can be "normal" or "small-caps" (optional)
+        // font-weight: Can be "normal", "bold", "bolder", "lighter", or a number between 100 and 900 (optional)
+        // font-size: Specified in pixels (px), em, or other valid CSS units (required)
+        // line-height: Specified after font-size, separated by a forward slash (optional)
+        // font-family: The name of the font family or a comma-separated list of font families (required)
+        const fontSpec: string = `normal ${textSizePts}pt Consolas, sans-serif`;
         this.logMessage(
-          `  -- textXY=(${textYOffset},${textXOffset}), height=(${textHeight}) colors=[${fgColor},${bgcolor}] text=[${text}]`
+          `  -- textXY=(${textYOffset},${textXOffset}), ht=(${textHeight}) colors=[${fgColor},${bgcolor}]`
         );
+        this.logMessage(`  -- text=[${text}] fontSpec=[${fontSpec}]`);
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             // Locate the canvas element by its ID
@@ -641,7 +657,7 @@ export class DebugTermWindow extends DebugWindowBase {
                 const lineHeight = ${lineHeight};
 
                 // Add text background
-                ctx.font = '${this.displaySpec.font.textSizePts}pt Consolas';
+                ctx.font = '${fontSpec}';
                 const textWidth = ctx.measureText('${text}').width;
 
                 // clear existing text & background

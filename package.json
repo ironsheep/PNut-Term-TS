@@ -45,8 +45,8 @@
     "send2pi": "scp ./release/pnut-*arm64.zip pi@pi5twr.home:/home/pi/Downloads",
     "getpirun": "scp pi@pi5twr.home:/home/pi/TEMP/la*.log ./LOGs",
     "getpiplot": "rm -f ./LOGs/p*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/p*.log ./LOGs",
-    "getpilogic": "rm -f ./LOGs/log*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/l*.log ./LOGs",
-    "getpiterm": "rm -f ./LOGs/log*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/t*.log ./LOGs",
+    "getpilogic": "rm -f ./LOGs/logi*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/l*.log ./LOGs",
+    "getpiterm": "rm -f ./LOGs/t*.log;scp pi@pi5twr.home:/home/pi/TEMP/Logs/t*.log ./LOGs",
     "getbmps": "scp pi@pi5twr.home:/home/pi/TEMP/*.bmp ./LOGs"
   },
   "devDependencies": {

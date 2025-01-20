@@ -303,7 +303,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./fonts/Parallax.ttf') format('truetype');
+            src: url('./resources/fonts/Parallax.ttf') format('truetype');
           }
           body {
             display: flex;
