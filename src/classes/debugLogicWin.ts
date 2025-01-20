@@ -92,6 +92,7 @@ export class DebugLogicWindow extends DebugWindowBase {
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec) {
     super(ctx);
+    this.windowLogPrefix = 'lcgW';
     // record our Debug Logic Window Spec
     this.displaySpec = displaySpec;
     // init default Trigger Spec

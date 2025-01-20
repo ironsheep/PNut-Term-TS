@@ -80,6 +80,7 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
     super(ctx);
+    this.windowLogPrefix = 'pltW';
     DebugColor.setDefaultBrightness(15); // set default brightness to max
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;

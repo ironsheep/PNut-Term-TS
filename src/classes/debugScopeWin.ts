@@ -82,6 +82,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
+    this.windowLogPrefix = 'scoW';
     // record our Debug Scope Window Spec
     this.displaySpec = displaySpec;
     // init default Trigger Spec

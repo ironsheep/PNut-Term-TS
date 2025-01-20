@@ -101,8 +101,9 @@ export interface WindowColor {
 }
 
 export abstract class DebugWindowBase extends EventEmitter {
-  private context: Context;
-  private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
+  protected context: Context;
+  protected windowLogPrefix: string = '?Base?'; // default if not overridden
+  protected isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
   private _saveInProgress: boolean = false;
 
@@ -125,25 +126,29 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   protected set saveInProgress(value: boolean) {
     this._saveInProgress = value;
-    this.logMessage(`* SAVE inProgress=(${value})`);
+    this.logMessageBase(`-> saveInProgress=(${value})`);
+  }
+
+  protected get saveInProgress(): boolean {
+    return this._saveInProgress;
   }
 
   // Setter for debugWindow property
   protected set debugWindow(window: BrowserWindow | null) {
     if (window != null) {
-      this.logMessage(`* New ${this.constructor.name} window`);
+      this.logMessageBase(`- New ${this.constructor.name} window`);
       this._debugWindow = window;
 
       // Add OTHER event listeners as needed
     } else {
-      this.logMessage(`* Closing ${this.constructor.name} window`);
+      this.logMessageBase(`- Closing ${this.constructor.name} window`);
       // Remove event listeners and close the window
       if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {
-        this.logMessage(`* ${this.constructor.name} window closing...`);
+        this.logMessageBase(`- ${this.constructor.name} window closing...`);
         this.emit('close'); // forward the event
         this._debugWindow.removeAllListeners();
         this._debugWindow.close();
-        this.logMessage(`* ${this.constructor.name} window closed`);
+        this.logMessageBase(`- ${this.constructor.name} window closed`);
         this.emit('closed'); // forward the event
       }
       this._debugWindow = null;
@@ -398,7 +403,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     }
     if (havePackedDataStatus == true) {
       // only log attempt if is valid
-      this.logMessage(
+      this.logMessageBase(
         `packedDataMode(${possibleMode}): isValid=(${havePackedDataStatus})  -> ${
           (JSON.stringify(desiredMode), null, 2)
         }`
@@ -558,7 +563,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     }
 
     // Return the list of samples
-    //this.logMessage(`unpackData(${numericValue}), -> sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
+    //this.logMessageBase(`unpackData(${numericValue}), -> sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
     return sampleSet;
   }
 
@@ -594,13 +599,13 @@ export abstract class DebugWindowBase extends EventEmitter {
       spin2Value = parseFloat(spin2ValueStr);
       isValieSpin2Number = true;
     }
-    this.logMessage(`isSpinNumber(${value}): isValid=(${isValieSpin2Number})  -> (${spin2Value})`);
+    this.logMessageBase(`isSpinNumber(${value}): isValid=(${isValieSpin2Number})  -> (${spin2Value})`);
     return [isValieSpin2Number, spin2Value];
   }
 
   protected saveWindowToBMPFilename(filename: string) {
     if (this._debugWindow != null) {
-      this.logMessage(`* SAVE entering save call w/[${filename}]`);
+      this.logMessageBase(`- SAVE entering save call w/[${filename}]`);
       let done = false;
 
       this._debugWindow.webContents
@@ -610,7 +615,7 @@ export abstract class DebugWindowBase extends EventEmitter {
           try {
             const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
             fs.writeFileSync(outputFSpec, bmpBuffer);
-            this.logMessage(`* SAVE BMP image [${outputFSpec}] saved successfully`);
+            this.logMessageBase(`- SAVE BMP image [${outputFSpec}] saved successfully`);
           } catch (error) {
             console.error('Win: ERROR: saving BMP image:', error);
           }
@@ -631,7 +636,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         return true;
       });
 
-      this.logMessage(`* SAVE exiting save call`);
+      this.logMessageBase(`- SAVE exiting save call`);
     }
   }
 
@@ -665,21 +670,21 @@ export abstract class DebugWindowBase extends EventEmitter {
       */
 
   protected async saveWindowToBMPFilenameTry2(filename: string): Promise<void> {
-    this.logMessage(`* SAVE entering save call w/[${filename}]`);
+    this.logMessageBase(`- SAVE entering save call w/[${filename}]`);
     let isSaving: boolean = true;
     const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
     this.saveWindowToBMPWithCallback(filename, () => {
-      this.logMessage(`* SAVE callback: save [${filename}] complete`);
+      this.logMessageBase(`- SAVE callback: save [${filename}] complete`);
       isSaving = false; // we are done!
     });
 
     let waitMSCount: number = 0;
     while (isSaving) {
-      this.logMessage(`* SAVE waiting for save to complete... ${waitMSCount} msec`);
+      this.logMessageBase(`- SAVE waiting for save to complete... ${waitMSCount} msec`);
       waitMSCount += 20;
       await waitMSec(20);
     }
-    this.logMessage(`* SAVE exiting save call`);
+    this.logMessageBase(`- SAVE exiting save call`);
   }
 
   // Method that calls the async function with a callback
@@ -701,7 +706,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       try {
         const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
-        this.logMessage(`* BMP image [${outputFSpec}] saved successfully`);
+        this.logMessageBase(`- BMP image [${outputFSpec}] saved successfully`);
       } catch (error) {
         console.error('Win: ERROR: saving BMP image:', error);
       }
@@ -755,10 +760,15 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   // ----------------------------------------------------------------------
 
-  protected logMessage(message: string): void {
+  protected logMessageBase(message: string): void {
+    this.logMessage(message, 'Base');
+  }
+
+  protected logMessage(message: string, prefix: string = ''): void {
     if (this.isLogging) {
       //Write to output window.
-      this.context.logger.logMessage('Win: ' + message);
+      const prefixStr = prefix.length > 0 ? prefix : this.windowLogPrefix;
+      this.context.logger.logMessage(`${prefixStr}: ${message}`);
     }
   }
 }

@@ -760,7 +760,7 @@ and Electron <span id="electron-version"></span>.</P>
   private logMessage(message: string): void {
     if (this.isLogging) {
       //Write to output window.
-      this.context.logger.logMessage('TRM: ' + message);
+      this.context.logger.logMessage('Tmnl: ' + message);
     }
   }
 }

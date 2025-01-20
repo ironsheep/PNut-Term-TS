@@ -45,6 +45,7 @@ export class DebugTermWindow extends DebugWindowBase {
 
   constructor(ctx: Context, displaySpec: TermDisplaySpec) {
     super(ctx);
+    this.windowLogPrefix = 'trmW';
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
     // adjust our contentInset for font size
@@ -466,7 +467,21 @@ export class DebugTermWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
         if (this.saveInProgress) {
-          this.logMessage(`* --UPD-WARNING-- attempt to close window while save in progress!`);
+          this.logMessage(`* UPD-WARNING  save in progress, waiting for save to finish...`);
+          let sleepDuration: number = 0;
+          const sleepIntervalInMS: number = 20;
+          while (this.saveInProgress) {
+            // wait for save to finish
+            this.logMessage(`  -- Waiting for save to finish... - ${sleepDuration} msec`);
+            sleepDuration += sleepIntervalInMS;
+            // let's do a 200ms timeout
+            const end = Date.now() + sleepIntervalInMS;
+            while (Date.now() < end) {
+              // This empty while loop allows other microtasks to run
+            }
+          }
+        } else {
+          this.logMessage(`* UPD-INFO (save complete) closing window...`);
         }
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
