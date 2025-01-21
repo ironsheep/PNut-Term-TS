@@ -605,7 +605,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // ----------------------------------------------------------------
     // Valid directives are:
@@ -682,7 +682,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           if (index + 1 < lineParts.length) {
             const saveFileName = this.removeStringQuotes(lineParts[++index]);
             // save the window to a file (as BMP)
-            this.saveWindowToBMPFilename(saveFileName.substring(1, saveFileName.length - 1));
+            await this.saveWindowToBMPFilename(saveFileName);
           } else {
             this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
           }

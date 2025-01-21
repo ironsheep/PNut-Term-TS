@@ -355,7 +355,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
     //   lut1_to_rgb24 - Set color mode. rgb24
@@ -607,8 +607,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           // FIXME: this does not handle spaces in the filename
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
           // save the window to a file (as BMP)
-          this.logMessage(`  -- writing BMP to [${saveFileName}]`);
-          this.saveWindowToBMPFilename(saveFileName);
+          await this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
@@ -689,8 +688,6 @@ export class DebugPlotWindow extends DebugWindowBase {
         //  TEXT 'string'
         //  LINE x y linesize opacity
         //  CIRCLE diameter linesize opacity - Where linesize 0 = filled circle
-        //  CLOSE - close the window
-        //  SAVE 'filename' - write window contents to named file
         this.deferredCommands.forEach((displayString) => {
           this.logMessage(`* PUSH-INFO displayString: [${displayString}]`);
           const lineParts: string[] = displayString.split(' ');
@@ -771,17 +768,6 @@ export class DebugPlotWindow extends DebugWindowBase {
             } else {
               this.logMessage(`* PUSH-ERROR  BAD parameters for FONT [${displayString}]`);
             }
-          } else if (lineParts[0] == 'CLOSE') {
-            this.logMessage(`* PUSH-INFO Closing window!`);
-            this.closeDebugWindow();
-          } else if (lineParts[0] == 'SAVE') {
-            const fileName: string = lineParts.join(' ').replace('SAVE ', '');
-            const saveFileName = this.removeStringQuotes(fileName);
-            // save the window to a file (as BMP)
-            this.logMessage(`* PUSH-INFO saving to [${saveFileName}]`);
-            this.saveWindowToBMPWithCallback(saveFileName, () => {
-              this.logMessage(`* PUSH-INFO  window saved to [${saveFileName}]`);
-            });
           } else {
             this.logMessage(`* PUSH-ERROR unknown directive: ${displayString}`);
           }

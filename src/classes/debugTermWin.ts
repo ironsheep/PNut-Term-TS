@@ -467,30 +467,13 @@ export class DebugTermWindow extends DebugWindowBase {
         this.clearTerm();
       } else if (lineParts[index].toUpperCase() == 'CLOSE') {
         // close the window
-        if (this.saveInProgress) {
-          this.logMessage(`* UPD-WARNING  save in progress, waiting for save to finish...`);
-          let sleepDuration: number = 0;
-          const sleepIntervalInMS: number = 100;
-          while (this.saveInProgress) {
-            // wait for save to finish
-            this.logMessage(`  -- Waiting for save to finish... - ${sleepDuration} msec`);
-            sleepDuration += sleepIntervalInMS;
-            // let's do a 200ms timeout
-            await waitMSec(sleepIntervalInMS);
-          }
-        } else {
-          this.logMessage(`* UPD-INFO (save complete) closing window...`);
-        }
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
         if (index + 1 < lineParts.length) {
           const saveFileName = this.removeStringQuotes(lineParts[++index]);
           // save the window to a file (as BMP)
-          this.saveWindowToBMPWithCallback(saveFileName, () => {
-            this.logMessage(`* Callback: saveWindowToBMPWithCallback(${saveFileName})`);
-          });
-          //this.saveWindowToBMPFilename(saveFileName);
+          await this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }

@@ -453,7 +453,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
     // --- these create a new channel spec
@@ -625,7 +625,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         if (lineParts.length >= 2) {
           const saveFileName = this.removeStringQuotes(lineParts[2]);
           // save the window to a file (as BMP)
-          this.saveWindowToBMPFilename(saveFileName);
+          await this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
