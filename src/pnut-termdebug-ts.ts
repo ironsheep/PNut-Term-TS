@@ -40,7 +40,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.0.1';
+  private version: string = '0.1.0';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;

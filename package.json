@@ -1,6 +1,6 @@
 {
   "name": "pnut-termdebug-ts",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A recreation of Chips' Debug listener but multiplatform",
   "keywords": [
     "cli",

@@ -31,12 +31,7 @@
     "gatekeeperAssess": false,
     "entitlements": "./buildSupport/entitlements.mac.plist",
     "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "extendInfo": "./buildSupport/Info.plist",
-    "publish": {
-      "provider": "github",
-      "owner": "ironsheep",
-      "repo": "PNut-TermDebug-TS"
-    }
+    "extendInfo": "./buildSupport/Info.plist"
   },
   "win": {
     "target": ["zip"],
