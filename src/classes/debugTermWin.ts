@@ -11,6 +11,7 @@ import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
+import { waitMSec } from '../utils/timerUtils';
 
 export interface TermSize {
   columns: number;
@@ -386,7 +387,7 @@ export class DebugTermWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
     // --- these manage the window
@@ -469,16 +470,13 @@ export class DebugTermWindow extends DebugWindowBase {
         if (this.saveInProgress) {
           this.logMessage(`* UPD-WARNING  save in progress, waiting for save to finish...`);
           let sleepDuration: number = 0;
-          const sleepIntervalInMS: number = 20;
+          const sleepIntervalInMS: number = 100;
           while (this.saveInProgress) {
             // wait for save to finish
             this.logMessage(`  -- Waiting for save to finish... - ${sleepDuration} msec`);
             sleepDuration += sleepIntervalInMS;
             // let's do a 200ms timeout
-            const end = Date.now() + sleepIntervalInMS;
-            while (Date.now() < end) {
-              // This empty while loop allows other microtasks to run
-            }
+            await waitMSec(sleepIntervalInMS);
           }
         } else {
           this.logMessage(`* UPD-INFO (save complete) closing window...`);
