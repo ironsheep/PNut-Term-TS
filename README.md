@@ -14,7 +14,28 @@ A recreation of Chips' Debug listener but multiplatform
 
 ## PNut-TermDebug-TS cross platform debug terminal
 
-This is our PNut Debug Windows and terminal ported to typescript and now available on all platforms.
+This is our PNut Debug Windows and terminal ported to typescript and now available on all platforms.  The intent of this tool is to make build, download and run as simple as edit and save file from within vscode.
+
+### PNut TermDebug TS
+
+PNut TermDebug TS is the 3rd component in the P2 Multi-platform Development Enviroment. The components are:
+
+1. **VSCode Spin2 Extension** for editing P1 and P2 code - supports running external compilers/downloaders
+2. **PNut_TS** compiler which is the PNut compiler rewritten in trypescript for Multi-platform use
+3. **PNut\_TermDebug_TS** (this tool) a terminal replacement for Propeller Serial Terminal with download and full debug display support.
+
+
+### Features of PNut TermDebug TS
+
+- Replacement for Propeller Serial Termainal
+- Downloads a compiled file to the P2 RAM or FLASH
+- Download from command-line enables file watcher which redownloads on file change
+- Switches to PST behavior after download
+- Has Built-in support for all debug displays supported by PNut
+- Full logging support for all traffic tofrom P2
+- Automatic timestamped log names for each new download
+- Filewatcher for automatic downloads can be disabled
+- Has the concept of last file download making re-download a simple button-press
 
 ---
 
