@@ -36,6 +36,9 @@ PNut TermDebug TS is the 3rd component in the P2 Multi-platform Development Envi
 - Automatic timestamped log names for each new download
 - Filewatcher for automatic downloads can be disabled
 - Has the concept of last file download making re-download a simple button-press
+- PropPlug can be selected from command-line or within terminal.
+- Last PropPlug used is remembered
+- "Only" PropPlug will automatically be used if none specified
 
 ---
 
