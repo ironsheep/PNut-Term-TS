@@ -1,7 +1,7 @@
 {
-  "appId": "biz.ironsheep.pnut-termdebug-ts",
-  "productName": "PNut-TermDebug-TS",
-  "files": ["dist/**/*", "!dist/pnut-termdebug-ts", "node_modules/**/*", "package.json", "prebuilds/**/*"],
+  "appId": "biz.ironsheep.pnut-term-ts",
+  "productName": "PNut-Term-TS",
+  "files": ["dist/**/*", "!dist/pnut-term-ts", "node_modules/**/*", "package.json", "prebuilds/**/*"],
   "extraResources": [
     {
       "from": "fonts/",
@@ -14,7 +14,7 @@
     "buildResources": "build"
   },
   "extraMetadata": {
-    "main": "dist/pnut-termdebug-ts.min.js",
+    "main": "dist/pnut-term-ts.min.js",
     "ElectronTeamId": "T67FW2JCJW"
   },
   "asar": true,
@@ -38,7 +38,7 @@
     "publish": {
       "provider": "github",
       "owner": "ironsheep",
-      "repo": "PNut-TermDebug-TS"
+      "repo": "PNut-Term-TS"
     }
   },
   "linux": {
@@ -47,7 +47,7 @@
     "publish": {
       "provider": "github",
       "owner": "ironsheep",
-      "repo": "PNut-TermDebug-TS"
+      "repo": "PNut-Term-TS"
     }
   },
   "afterSign": "scripts/notarize.js"

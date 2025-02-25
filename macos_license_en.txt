@@ -4,5 +4,5 @@
   "disagree": "Disagree",
   "print": "Print",
   "save": "Save",
-  "description": "Installation of PNut TermDebug TS"
+  "description": "Installation of PNut Term TS"
 }

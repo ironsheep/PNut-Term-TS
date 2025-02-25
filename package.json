@@ -1,7 +1,7 @@
 {
-  "name": "pnut-termdebug-ts",
+  "name": "pnut-term-ts",
   "version": "0.1.0",
-  "description": "A recreation of Chips' Debug listener but multiplatform",
+  "description": "A recreation of Chips' Debug listener but multiplatform combined with PST and downloader",
   "keywords": [
     "cli",
     "propeller2",
@@ -12,22 +12,22 @@
   ],
   "author": "Stephen M Moraco <stephen@ironsheep.biz>",
   "publisher": "IronSheepProductionsLLC",
-  "homepage": "https://github.com/ironsheep/PNut-TermDebug-TS",
+  "homepage": "https://github.com/ironsheep/PNut-Term-TS",
   "bugs": {
-    "url": "https://github.com/ironsheep/PNut-TermDebug-TS/issues"
+    "url": "https://github.com/ironsheep/PNut-Term-TS/issues"
   },
   "license": "MIT",
-  "main": "dist/pnut-termdebug-ts.js",
+  "main": "dist/pnut-term-ts.js",
   "bin": {
-    "pnut-termdebug-ts": "./dist/pnut-termdebug-ts.min.js"
+    "pnut-term-ts": "./dist/pnut-term-ts.min.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "help": "npm run build && dist/pnut-termdebug-ts.min.js --help",
-    "minify": "terser dist/pnut-termdebug-ts.js -c -m -o dist/pnut-termdebug-ts.min.js",
+    "help": "npm run build && dist/pnut-term-ts.min.js --help",
+    "minify": "terser dist/pnut-term-ts.js -c -m -o dist/pnut-term-ts.min.js",
     "clean": "shx rm -rf ./dist ./release ./prebuilds ./fonts",
-    "start": "node dist/pnut-termdebug-ts.min.js",
-    "postbuild": "shx chmod +x dist/pnut-termdebug-ts.min.js dist/pnut-termdebug-ts.js",
+    "start": "node dist/pnut-term-ts.min.js",
+    "postbuild": "shx chmod +x dist/pnut-term-ts.min.js dist/pnut-term-ts.js",
     "makeprebuild": "shx mkdir -p ./prebuilds && shx cp -r ./node_modules/@serialport/bindings-cpp/prebuilds/* ./prebuilds/",
     "makefonts": "shx mkdir -p ./fonts && shx cp -r ./src/fonts/* ./fonts/",
     "dist": "npm run packageLnx && npm run send2pi",
