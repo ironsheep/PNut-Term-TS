@@ -1,5 +1,5 @@
 name: 🎗️ Feature Request
-description: Suggest an idea for improving the PNut Term Debug TypeScript Implementation
+description: Suggest an idea for improving the PNut Term TypeScript Implementation
 labels:
   - enhancement
 
@@ -50,4 +50,4 @@ body:
 
   - type: markdown
     attributes:
-      value: Thank you for taking the time to request this enhancement! By doing so you are helping us make the PNut Term Debug TypeScript Implementation better
+      value: Thank you for taking the time to request this enhancement! By doing so you are helping us make the PNut Term TypeScript Implementation better

@@ -1,5 +1,5 @@
 name: 🐛 Bug Report
-description: Report an issue you are experiencing with the PNut Term Debug TypeScript Implementation.
+description: Report an issue you are experiencing with the PNut Term TypeScript Implementation.
 labels:
   - bug
 
@@ -15,7 +15,7 @@ body:
       label: and have you...
       description: Have you accomplished the following before submitting this issue?
       options:
-        - label: I updated to the latest PNut-TermDebug-TS version available
+        - label: I updated to the latest PNut-Term-TS version available
           required: true
 
   - type: input
@@ -23,8 +23,8 @@ body:
     validations:
       required: true
     attributes:
-      label: Version of PNut Term Debug TypeScript Implementation with the issue
-      description: Please specify which version of PNut Term Debug TypeScript Implementation you are using, and if this is a regression, what is the last known version that worked?
+      label: Version of PNut-Term-TS Implementation with the issue
+      description: Please specify which version of PNut Term TypeScript Implementation you are using, and if this is a regression, what is the last known version that worked?
       placeholder: |
         Ex: Failing in v1.43.0, last worked in v0.43.1
 
@@ -44,20 +44,20 @@ body:
     validations:
       required: true
     attributes:
-      label: Hardware, Operating System, Operating System version, PNut-TermDebug-TS version, Node version
+      label: Hardware, Operating System, Operating System version, PNut-Term-TS version, Node version
       description: |
         Provide details about the machine/software you are running on,
-        which operating system this is on, and what PNut-TermDebug-TS & Node version you are using.
+        which operating system this is on, and what PNut-Term-TS & Node version you are using.
         If possible try to replicate the issue in other installations and include your findings here.
       placeholder: |
         Hardware: Mac Pro
         OS Ver: macOS Monterey v12.6.6
-        PNut-TermDebug-TS Ver: 1.79.1 (Fm: pnut-termdebug-ts --help -v)
+        PNut-Term-TS Ver: 1.79.1 (Fm: pnut-term-ts --help -v)
         Node Ver: 16.13.0
       value: |
         Hardware:
         OS Ver:
-        PNut-TermDebug-TS Ver:
+        PNut-Term-TS Ver:
         Node Ver:
 
   - type: textarea
@@ -84,4 +84,4 @@ body:
 
   - type: markdown
     attributes:
-      value: "Thank you for taking the time to report this issue! By doing so you are helping us make the PNut Term Debug TypeScript Implementation better."
+      value: "Thank you for taking the time to report this issue! By doing so you are helping us make the PNut Term TypeScript Implementation better."

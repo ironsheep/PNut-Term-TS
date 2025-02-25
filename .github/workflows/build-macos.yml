@@ -50,7 +50,7 @@ jobs:
           security list-keychains
           security find-identity -v
 
-      - name: Build TermDebug app
+      - name: Build Term TS app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -61,7 +61,7 @@ jobs:
         run: |
           npm run packageMac
 
-      - name: Upload TermDebug artifacts
+      - name: Upload Term TS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-macos
