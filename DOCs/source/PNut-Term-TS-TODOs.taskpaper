@@ -1,9 +1,13 @@
 Adapt to new PNut-Term window shape and controls:
-	- Add Scope triggering
+	With scope 2ch demo:
+		- Add Scope triggering
+	With wait-for-term-CR demo:
+		- Add write to P2 via <INPUT></> entry
+	With any...:
 	- Add download to RAM/Flash
 	- Add baud rate support (menu/button)
 	- Add disconnect button
-	- Add write to P2 via <INPUT></> entry
+	
 	- Plan support for ANSI controls and PST controls (cursor pos., etc.)
 	- Proto bitmap drawing so we can plan new overlay mech.
 	

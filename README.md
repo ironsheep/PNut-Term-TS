@@ -32,12 +32,13 @@ PNut Term TS is the 3rd component in the P2 Multi-platform Development Enviromen
 - Switches to PST behavior after download
 - Has Built-in support for all debug displays supported by PNut
 - Full logging support for all traffic tofrom P2
-- Automatic timestamped log names for each new download
+- Automatic time-stamped log names for each new download
 - Filewatcher for automatic downloads can be disabled
 - Has the concept of last file download making re-download a simple button-press
 - PropPlug can be selected from command-line or within terminal.
 - Last PropPlug used is remembered
 - "Only" PropPlug will automatically be used if none specified
+- [Enable]/[Disable] releases USB port for use by other tools
 
 ---
 
