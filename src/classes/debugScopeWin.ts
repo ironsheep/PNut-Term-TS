@@ -652,6 +652,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
         } else {
           // do we have number?
+          this.logMessage(`at updateContent() with numeric data: [${lineParts}](${lineParts.length})`);
           const [isValidNumber, numericValue] = this.isSpinNumber(lineParts[1]);
           if (isValidNumber) {
             if (this.isFirstNumericData) {
@@ -963,7 +964,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
+                const lineColor = \'${gridColor}\';
                 const lineWidth = ${horizLineWidth};
                 const canWidth = canvas.width - (2 * ${this.canvasMargin});
 
@@ -1009,7 +1010,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${textColor}';
+                const lineColor = \'${textColor}\';
                 //const lineWidth = 2;
 
                 // Set the dash pattern
@@ -1062,8 +1063,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${gridColor}';
-                const textColor = '${textColor}';
+                const lineColor = \'${gridColor}\';
+                const textColor = \'${textColor}\';
                 const lineWidth = ${horizLineWidth};
                 const canWidth = canvas.width - (2 * ${this.canvasMargin});
 
@@ -1072,7 +1073,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
                 // Measure the text width
                 ctx.font = '9px Arial';
-                const textMetrics = ctx.measureText('${valueText}');
+                const textMetrics = ctx.measureText(\'${valueText}\');
                 const textWidth = textMetrics.width;
 
                 // Draw the line
@@ -1085,7 +1086,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
                 // Add text
                 ctx.fillStyle = textColor;
-                ctx.fillText('${valueText}', ${textXOffset}, ${textYOffset});
+                ctx.fillText(\'${valueText}\', ${textXOffset}, ${textYOffset});
               }
             }
           })();

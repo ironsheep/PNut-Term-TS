@@ -1,3 +1,12 @@
+Adapt to new PNut-Term window shape and controls:
+	- Add Scope triggering
+	- Add download to RAM/Flash
+	- Add baud rate support (menu/button)
+	- Add disconnect button
+	- Add write to P2 via <INPUT></> entry
+	- Plan support for ANSI controls and PST controls (cursor pos., etc.)
+	- Proto bitmap drawing so we can plan new overlay mech.
+	
 Add windows (Part 1):
 	- SCOPE @done(2025-01-07)
 	- TERM @done(2025-01-08)

@@ -288,16 +288,18 @@ export class UsbSerial extends EventEmitter {
   }
   */
 
-  private async write(value: string): Promise<void> {
+  public async write(value: string): Promise<void> {
     //this.logMessage(`--> Tx ...`);
     return new Promise((resolve, reject) => {
-      this._serialPort.write(value, (err) => {
-        if (err) reject(err);
-        else {
-          resolve();
-          this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
-        }
-      });
+      if (this.usbConnected) {
+        this._serialPort.write(value, (err) => {
+          if (err) reject(err);
+          else {
+            this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
+            resolve();
+          }
+        });
+      }
     });
   }
 

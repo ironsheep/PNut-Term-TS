@@ -598,7 +598,7 @@ export class DebugTermWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the bg color
-                const backgroundColor = '${bgcolor}';
+                const backgroundColor = \'${bgcolor}\';
 
                 // clear the entire canvas
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -654,12 +654,12 @@ export class DebugTermWindow extends DebugWindowBase {
 
               if (ctx) {
                 // Set the line color and width
-                const lineColor = '${fgColor}';
-                const backgroundColor = '${bgcolor}';
+                const lineColor = \'${fgColor}\';
+                const backgroundColor = \'${bgcolor}\';
                 const lineHeight = ${lineHeight};
 
                 // Add text background
-                ctx.font = '${fontSpec}';
+                ctx.font = \'${fontSpec}\';
                 const textWidth = ctx.measureText('${text}').width;
 
                 // clear existing text & background
@@ -674,7 +674,7 @@ export class DebugTermWindow extends DebugWindowBase {
                 // Add text of color
                 ctx.fillStyle = lineColor;
                 // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', ${textXOffset}, ${textYbaseline});
+                ctx.fillText(\'${text}\', ${textXOffset}, ${textYbaseline});
               }
             }
           })();

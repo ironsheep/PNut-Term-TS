@@ -376,8 +376,9 @@ export class DebugTerminalInTypeScript {
       while (theTerminal.isDone() == false) {
         await new Promise((resolve) => setTimeout(resolve, 10000)); // 10,000 mSec = 10 seconds
       }
+      this.context.logger.progressMsg('Terminal says done!');
 
-      // and rlease the serial port
+      // and release the serial port
       theTerminal.close();
     }
 

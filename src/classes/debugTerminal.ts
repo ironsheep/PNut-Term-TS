@@ -10,7 +10,6 @@ import { app, BrowserWindow, Menu, MenuItem, dialog } from 'electron';
 import electron from 'electron';
 import { Context } from '../utils/context';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
-import { escapeHtml } from '../utils/htmlUtils';
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
@@ -25,6 +24,13 @@ export interface WindowCoordinates {
   yOffset: number;
   width: number;
   height: number;
+}
+
+export interface TerminalColor {
+  xmitBGColor: string; // hex string '#RRGGBB'
+  rcvBGColor: string;
+  xmitFGColor: string;
+  rcvFGColor: string;
 }
 
 const DEFAULT_SERIAL_BAUD = 2000000;
@@ -50,7 +56,13 @@ export class DebugTerminal {
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private rxQueue: string[] = [];
   private isProcessingQueue: boolean = false;
-  private immediateLog: boolean = false;
+  private immediateLog: boolean = true;
+  private termColors: TerminalColor = {
+    xmitBGColor: '#FFF8E7', // hex string '#RRGGBB' yellowish pastel
+    rcvBGColor: '#8AB3E9', // cyan pastel
+    xmitFGColor: '#000000', // black
+    rcvFGColor: '#000000' // black
+  };
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -71,21 +83,18 @@ export class DebugTerminal {
       `* DebugTerminal() - ./src ${filesFound.length} files found: [${filesFound}]`
     );
     */
+  }
 
+  public initialize() {
+    this.logMessage('* initialize()');
+    // app.on('ready', this.createAppWindow);
     if (this._deviceNode.length > 0) {
       // we have a selected device. Attach to it.
       this.openSerialPort(this._deviceNode);
     }
-  }
-
-  public initialize() {
-    // app.on('ready', this.createAppWindow);
     app.whenReady().then(() => {
+      this.logMessage('* [whenReady]');
       this.createAppWindow();
-      // Update the status bar with the selected name
-      if (this._deviceNode.length > 0) {
-        this.updateStatusBarField('propPlug', this._deviceNode);
-      }
     });
 
     app.on('window-all-closed', () => {
@@ -97,6 +106,7 @@ export class DebugTerminal {
 
     app.on('activate', () => {
       if (this.mainWindow === null) {
+        this.logMessage('* [activate]');
         this.createAppWindow();
       }
     });
@@ -109,6 +119,7 @@ export class DebugTerminal {
 
   public async close(): Promise<void> {
     // Remove all listeners to prevent memory leaks and allow port to be reused
+    this.logMessage('* close()');
     if (this._serialPort !== undefined) {
       this._serialPort.removeAllListeners();
       await this._serialPort.close();
@@ -117,12 +128,31 @@ export class DebugTerminal {
   }
 
   // ----------------------------------------------------------------------
+  // this is our serial transmitter!!
+  //
+  public sendSerialData(data: string): void {
+    if (this._serialPort !== undefined) {
+      this._serialPort.write(data);
+    }
+  }
+  // ----------------------------------------------------------------------
   // this is our serial receiver!!
   //
-  private openSerialPort(deviceNode: string) {
+  private async openSerialPort(deviceNode: string) {
     UsbSerial.setCommBaudRate(this._serialBaud);
-    this._serialPort = new UsbSerial(this.context, deviceNode);
-    this._serialPort.on('data', (data) => this.handleSerialRx(data));
+    this.logMessage(`* openSerialPort() - ${deviceNode}`);
+    try {
+      this._serialPort = await new UsbSerial(this.context, deviceNode);
+    } catch (error) {
+      this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open. Error: ${error}`);
+    }
+    if (this._serialPort === undefined) {
+      this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open`);
+    }
+    if (this._serialPort !== undefined) {
+      this.logMessage(`* openSerialPort() - IS OPEN`);
+      this._serialPort.on('data', (data) => this.handleSerialRx(data));
+    }
   }
 
   private handleSerialRx(data: any) {
@@ -152,7 +182,7 @@ export class DebugTerminal {
             this.waitingForINIT = false;
           }
           if (this.isLogging) {
-            this.logMessage(`MAIN: Received: ${data}`);
+            this.logMessage(`* Received: ${data}`);
           }
         }
       }
@@ -169,6 +199,7 @@ export class DebugTerminal {
     //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
     // Split the data and remove empty values
     const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
+    this.logMessage(`* handleDebugCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
     const possibleName: string = lineParts[0].substring(1).toUpperCase();
     let foundDisplay: boolean = false;
     if (lineParts[0].charAt(0) === '`') {
@@ -178,15 +209,17 @@ export class DebugTerminal {
         if (displayName.toUpperCase() === possibleName) {
           // found it, route to the window handler
           const debugWindow = window as DebugWindowBase;
-          debugWindow.updateContent(lineParts); // NOTE: this will eventually show the debug window!
+          // remove commas from the data
+          const cleanedParts: string[] = lineParts.map((part) => part.replace(/,/g, ''));
+          debugWindow.updateContent(cleanedParts); // NOTE: this will eventually show the debug window!
           foundDisplay = true;
         }
       });
       if (!foundDisplay) {
         // 2nd, is it a window creation command?
+        this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
         switch (possibleName) {
           case this.DISPLAY_SCOPE: {
-            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
@@ -204,7 +237,6 @@ export class DebugTerminal {
             break;
           }
           case this.DISPLAY_LOGIC: {
-            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
@@ -222,7 +254,6 @@ export class DebugTerminal {
             break;
           }
           case this.DISPLAY_TERM: {
-            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
@@ -240,7 +271,6 @@ export class DebugTerminal {
             break;
           }
           case this.DISPLAY_PLOT: {
-            this.logMessage(`* handleDebugCommand() - [${possibleName}]`);
             // create new window to display scope data
             const [isValid, plotSpec] = DebugPlotWindow.parsePlotDeclaration(lineParts);
             this.logMessage(`* handleDebugCommand() - back from parse`);
@@ -258,12 +288,16 @@ export class DebugTerminal {
             break;
           }
           default:
+            this.logMessage(`ERROR: display [${possibleName}] not supported!`);
             break;
         }
       }
+      if (foundDisplay) {
+        this.immediateLog = false; // change from immediate log to buffered log
+      }
       if (!foundDisplay && this.mainWindow != null) {
         if (this.isLogging) {
-          this.logMessage(`MAIN: Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
+          this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
       }
     }
@@ -298,24 +332,33 @@ export class DebugTerminal {
   // ----------------------------------------------------------------------
   // this is our Window Configuration
   //
-  private CalcWindowCoords(): void {
+  private async CalcWindowCoords(): Promise<void> {
     const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize;
     console.log(`work area size: ${width} x ${height}`);
-    if (height < 800) {
-      // have small screen
-      // linux: 1280x720
-      this.mainWindowGeometry.width = Math.round(width / 2); // 1/2 screen width
-      // set to 80x24 porportioned screen
-      //this.mainWindowGeometry.height = Math.round(height / 2);
-      this.mainWindowGeometry.height = Math.round((height / 5) * 2);
-    } else {
-      // have larger screen
-      // macOS (rt): 3200x1775
-      // macOS (lt): 3200?x1775?
-      this.mainWindowGeometry.width = Math.round(width / 4); // 1/4 screen width
-      // set to 80x24 porportioned screen
-      this.mainWindowGeometry.height = Math.round(this.mainWindowGeometry.width / 3.3);
-    }
+
+    // Create a canvas element to measure text dimensions
+    const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
+    console.log(`     char size: ${charWidth} x ${charHeight}`);
+
+    // Calculate the required dimensions for 24 lines by 80 characters
+    const minWidth = 80 * charWidth; // Minimum width for 80 characters
+    const minHeight = (24 + 1) * charHeight; // Minimum height for 24 lines + 1 for xmit data entry
+
+    // have small screen
+    // linux: 1280x720
+    // set to 80x24 porportioned screen
+
+    // have larger screen
+    // macOS (rt): 3200x1775
+    // macOS (lt): 3200?x1775?
+    // set to 80x24 porportioned screen
+    const targetScreenWidth: number = height < 800 ? Math.round(width / 2) : Math.round(width / 4);
+    const targetScreenHeight: number =
+      height < 800 ? Math.round((height / 5) * 2) : Math.round(this.mainWindowGeometry.width / 3.3);
+
+    // Ensure the window is at least the minimum size
+    this.mainWindowGeometry.width = Math.max(minWidth, targetScreenWidth);
+    this.mainWindowGeometry.height = Math.max(minHeight, targetScreenHeight);
     // position window bottom-right
     this.mainWindowGeometry.xOffset = Math.round((width - this.mainWindowGeometry.width) / 4) * 3;
     this.mainWindowGeometry.yOffset = Math.round((height - this.mainWindowGeometry.height) / 4) * 3;
@@ -325,10 +368,11 @@ export class DebugTerminal {
     );
   }
 
-  private createAppWindow() {
+  private async createAppWindow() {
     this.logMessage(`* create App Window()`);
+    this.mainWindowOpen = true;
 
-    this.CalcWindowCoords();
+    await this.CalcWindowCoords();
 
     this.mainWindow = new BrowserWindow({
       width: this.mainWindowGeometry.width,
@@ -341,14 +385,17 @@ export class DebugTerminal {
       }
     });
 
-    this.mainWindowOpen = true;
+    const dataEntryBGColor: string = this.termColors.xmitBGColor;
+    const dataEntryFGColor: string = this.termColors.xmitFGColor;
+    const logContentBGColor: string = this.termColors.rcvBGColor;
+    const logContentFGColor: string = this.termColors.rcvFGColor;
 
     // and load the main window .html of the app
     const htmlContent = `
   <html>
     <head>
       <meta charset="UTF-8">
-      <title>PNut TermDebug TS</title>
+      <title>PNut Term TS</title>
       <style>
           @font-face {
             font-family: 'Parallax';
@@ -359,50 +406,85 @@ export class DebugTerminal {
           flex-direction: column;
           height: 100vh;
           margin: 0;
-          font-family: 'Parallax', sans-serif; /* Use Arial or any sans-serif font */
+          font-family: Consolas, sans-serif; /* Use Arial or any sans-serif font */
           font-size: 12px; /* Set a smaller font size */
         }
         p {
           margin: 0;
         }
+        #dataEntry {
+          position: fixed;
+          top: 0;
+          flex-grow: 1;
+          padding: 0px;
+          margin-bottom: 0px;
+          background-color: ${dataEntryBGColor};
+          color: ${dataEntryFGColor};
+          width: 100%; /* Make dataEntry span the full width */
+          z-index: 1;
+        }
         #log-content {
+          position: absolute;
+          top: 18px; /* Height of #dataEntry -10? */
+          bottom: 41px; /* Height of #status-bar -18? */
+          left: 0;
+          right: 0;
           flex-grow: 1;
           overflow-y: auto;
           padding: 10px;
-          background-color: #000000; /* Black background */
-          color: #00FF00; /* Lime-green text */
+          background-color: ${logContentBGColor};
+          color: ${logContentFGColor};
         }
         #status-bar {
+          position: fixed;
+          bottom: 0;
           display: flex;
           justify-content: flex-end;
           background-color: #f0f0f0;
           padding: 10px;
           border-top: 1px solid #ccc;
+          z-index: 1;
         }
-          .status-field {
-                  margin-left: 20px;
-                  display: flex;
-                  align-items: center;
-          }
-          .status-label {
-                  font-weight: bold;
-                  margin-right: 5px;
-          }
-          .status-value {
-                  padding: 2px 5px;
-                  background-color: #e0e0e0;
-                  border: 1px solid #ccc;
-                  border-radius: 3px;
-          }
+        .status-field {
+          margin-left: 20px;
+          display: flex;
+          align-items: center;
+        }
+        .status-label {
+          font-weight: bold;
+          margin-right: 5px;
+        }
+        .status-value {
+          padding: 2px 5px;
+          background-color: #e0e0e0;
+          border: 1px solid #ccc;
+          border-radius: 3px;
+        }
+        #kbd-entry {
+          width: 100%; /* Make kbd-entry span the full width */
+        }
+        #in-out {
+          width: 100%; /* Make kbd-entry span the full width */
+          display: flex;
+          flex-direction: column;
+          margin: 0px;
+          padding: 0px;
+        }
       </style>
     </head>
     <body>
-      <div id="log-content">
-          <h1>Hello World!</h1>
+      <div id="in-out">
+        <div id="kbd-entry">
+          <input type="text" id="dataEntry" placeholder="Enter text here">
+        </div>
+        <div id="log-content">
+            <h1>Hello World!</h1>
 <P>We are using Node.js <span id="node-version"></span>,
 Chromium <span id="chrome-version"></span>,
 and Electron <span id="electron-version"></span>.</P>
+<P>---------+---------+---------+---------+---------+---------+---------+---------+</P>
 </div>
+      </div>
       <div id="status-bar">
   <div id="logName" class="status-field">
     <span class="status-label">Log Name:</span>
@@ -428,7 +510,7 @@ and Electron <span id="electron-version"></span>.</P>
 
     const menuTemplate: (Electron.MenuItemConstructorOptions | MenuItem)[] = [
       {
-        label: 'PNut TermDebug TS', // Explicitly set the application name here
+        label: 'PNut Term TS', // Explicitly set the application name here
         submenu: [
           {
             label: '&About...',
@@ -436,8 +518,8 @@ and Electron <span id="electron-version"></span>.</P>
               // show about dialog
               dialog.showMessageBox(this.mainWindow!, {
                 type: 'info',
-                title: 'About PNut TermDebug TS',
-                message: 'PNut TermDebug TS\nVersion 1.0.0\n\nDeveloped by Your Iron Sheep Productions, LLC',
+                title: 'About PNut Term TS',
+                message: 'PNut Term TS\nVersion 1.0.0\n\n by Iron Sheep Productions, LLC',
                 buttons: ['OK']
               });
             }
@@ -524,6 +606,7 @@ and Electron <span id="electron-version"></span>.</P>
     // every second write a new log entry (DUMMY for TESTING)
     this.mainWindow.webContents.on('did-finish-load', () => {
       // if logging post filename to status bar
+      this.logMessage('* [did-finish-load]');
       let logDisplayName: string = this.context.runEnvironment.logFilename;
       if (logDisplayName.length == 0) {
         logDisplayName = '{none}';
@@ -533,12 +616,26 @@ and Electron <span id="electron-version"></span>.</P>
       }
       // Update the status bar with the selected name
       this.updateStatusBarField('logName', logDisplayName);
+      //   and PropPlug
+      if (this._deviceNode.length > 0) {
+        this.updateStatusBarField('propPlug', this._deviceNode);
+      }
+
+      this.hookTextInputControl('dataEntry', (event: Event) => {
+        const inputElement = event.target as HTMLInputElement;
+        console.log(`Input value: [${inputElement.value}]`);
+        if (event instanceof KeyboardEvent && event.key === 'Enter') {
+          this.sendSerialData(inputElement.value);
+          inputElement.value = '';
+        }
+      });
 
       if (this._serialPort === undefined) {
+        this.logMessage('* no serial port, generating test data');
         // TEST CODE - TEST CODE - TEST CODE - TEST CODE
         // load the log file into the
         setInterval(() => {
-          this.appendLog('Log message ' + new Date().toISOString());
+          this.appendLog('- TEST Log message ' + new Date().toISOString());
           this.updateStatus(); // TEST CODE - TEST CODE - TEST CODE - TEST CODE
         }, 1000);
       }
@@ -546,13 +643,13 @@ and Electron <span id="electron-version"></span>.</P>
 
     this.mainWindow.on('close', () => {
       if (!this.knownClosedBy) {
-        this.logMessage('[x]: Application is quitting...');
+        this.logMessage('[x]: Application is quitting...[close]');
       }
       this.closeAllDebugWindows(); // close all child windows, too
     });
 
     this.mainWindow.on('closed', () => {
-      this.logMessage('* Main window closed');
+      this.logMessage('* Main window [closed]');
       this.mainWindow = null;
       this.mainWindowOpen = false;
     });
@@ -598,6 +695,7 @@ and Electron <span id="electron-version"></span>.</P>
   private getRuntimeVersions() {
     if (this.mainWindow) {
       try {
+        // locate text in window and make substitutions...
         this.mainWindow.webContents.executeJavaScript(`
           const replaceText = (selector, text) => {
             const element = document.getElementById(selector);
@@ -617,6 +715,7 @@ and Electron <span id="electron-version"></span>.</P>
   private updateStatusBarField(fieldId: string, value: string) {
     if (this.mainWindow) {
       try {
+        // locate named element in status bar and update it
         this.mainWindow.webContents.executeJavaScript(
           `document.getElementById("${fieldId}").querySelector('.status-value').innerText = "${value}";`
         );
@@ -639,6 +738,67 @@ and Electron <span id="electron-version"></span>.</P>
         `);
       } catch (error) {
         console.error('Failed to update status:', error);
+      }
+    }
+  }
+
+  private async getFontMetrics(
+    fontSpec: string,
+    defaultCharWidth: number = 12,
+    defaultCharHeight: number = 12
+  ): Promise<{ charWidth: number; charHeight: number }> {
+    let charWidth = defaultCharWidth;
+    let charHeight = defaultCharHeight;
+    if (this.mainWindow) {
+      try {
+        const metrics = await this.mainWindow.webContents.executeJavaScript(`
+          (function() {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = \'${fontSpec}\'; // Set the font to match the one used in the app
+
+            // Measure the width and height of a single character
+            const metrics = context.measureText('M');
+            const charWidth = metrics.width;
+            const actualBoundingBoxAscent = metrics.actualBoundingBoxAscent || 0;
+            const actualBoundingBoxDescent = metrics.actualBoundingBoxDescent || 0;
+            const charHeight = actualBoundingBoxAscent + actualBoundingBoxDescent;
+
+            return { charWidth, charHeight };
+          })();
+        `);
+        // Override defaults with measured values
+        charWidth = metrics.charWidth;
+        charHeight = metrics.charHeight;
+      } catch (error) {
+        console.error('ERROR: getFontMetrics() Failed to get font metrics:', error);
+      }
+    } else {
+      console.error('ERROR: getFontMetrics() NO Main Window!');
+    }
+    console.error(`* getFontMetrics() -> (${charWidth}x${charHeight})`);
+    return { charWidth, charHeight }; // Default values
+  }
+
+  private hookTextInputControl(inputId: string, callback: (event: Event) => void): void {
+    if (this.mainWindow) {
+      try {
+        // Convert the callback function to a string
+        const callbackString = callback.toString();
+
+        // Inject JavaScript into the renderer process to attach the callback
+        this.mainWindow.webContents.executeJavaScript(`
+          (function() {
+            const inputElement = document.getElementById('${inputId}');
+            if (inputElement) {
+              inputElement.addEventListener('input', ${callbackString});
+            } else {
+              console.error('Input element with id "${inputId}" not found.');
+            }
+          })();
+        `);
+      } catch (error) {
+        console.error('Failed to hook input control:', error);
       }
     }
   }
@@ -711,9 +871,7 @@ and Electron <span id="electron-version"></span>.</P>
   private appendLog(message: string) {
     if (this.mainWindow) {
       this.logBuffer.push(message);
-      if (this.logBuffer.length > this.PEND_MESSAGE_COUNT) {
-        this.flushLogBuffer();
-      } else if (this.immediateLog) {
+      if (this.logBuffer.length > this.PEND_MESSAGE_COUNT || this.immediateLog) {
         this.flushLogBuffer();
       }
     }
