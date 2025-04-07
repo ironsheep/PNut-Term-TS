@@ -4,7 +4,7 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
-// src/classes/debugTerminal.ts
+// src/classes/mainWindow.ts
 
 import { app, BrowserWindow, Menu, MenuItem, dialog } from 'electron';
 import electron from 'electron';
@@ -34,7 +34,7 @@ export interface TerminalColor {
 }
 
 const DEFAULT_SERIAL_BAUD = 2000000;
-export class DebugTerminal {
+export class MainWindow {
   private context: Context;
   private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _deviceNode: string = '';
@@ -68,7 +68,7 @@ export class DebugTerminal {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
     if (this.isLogging) {
-      this.logMessage('DebugTerminal started.');
+      this.logMessage('MainWindow started.');
     }
     const currFileTime: string = getFormattedDateTime();
     this.logFilenameBase = `myApp-${currFileTime}.log`;
@@ -76,11 +76,11 @@ export class DebugTerminal {
     /*
     let filesFound: string[] = listFiles("./");
     this.logMessage(
-      `* DebugTerminal() - ./ ${filesFound.length} files found: [${filesFound}]`
+      `* MainWindow() - ./ ${filesFound.length} files found: [${filesFound}]`
     );
     filesFound = listFiles("./src");
     this.logMessage(
-      `* DebugTerminal() - ./src ${filesFound.length} files found: [${filesFound}]`
+      `* MainWindow() - ./src ${filesFound.length} files found: [${filesFound}]`
     );
     */
   }

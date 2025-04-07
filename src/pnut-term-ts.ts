@@ -9,7 +9,7 @@ import { Context } from './utils/context';
 import path from 'path';
 import { exec } from 'child_process';
 import { UsbSerial } from './utils/usb.serial';
-import { DebugTerminal } from './classes/debugTerminal';
+import { MainWindow } from './classes/mainWindow';
 import { app, crashReporter } from 'electron';
 import { getFormattedDateTime } from './utils/files';
 
@@ -347,7 +347,7 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
 
-    let theTerminal: DebugTerminal | undefined = undefined;
+    let theTerminal: MainWindow | undefined = undefined;
     if (!this.shouldAbort && !showingHelp && !showingNodeList) {
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
@@ -355,9 +355,9 @@ export class DebugTerminalInTypeScript {
       }
 
       try {
-        theTerminal = new DebugTerminal(this.context);
+        theTerminal = new MainWindow(this.context);
       } catch (error) {
-        this.context.logger.errorMsg(`* new DebugTerminal() Exception: ${error}`);
+        this.context.logger.errorMsg(`* new MainWindow() Exception: ${error}`);
         // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
         return Promise.resolve(-1);
       }
