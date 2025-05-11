@@ -56,6 +56,25 @@ Additional pages:
 - "Only" PropPlug will automatically be used if none specified
 - [Enable]/[Disable] releases USB port for use by other tools
 
+## Status of Debug Display Support
+
+We are implementing the Graphical Debug Display support over time. Here's a full list of the displays and the current support status of each:
+
+| Display | Status | Notes
+| --- | --- | --- |
+| Logic | in-progress | Needs Trigger Support |
+| Scope | in-progress | Needs Trigger Support |
+| Scope_XY | | *- not started* |
+| FFT | | *- not started*| 
+| Spectro | | *- not started* | 
+| Plot | in-progress | |
+| Term | done? | |
+| Bitmap | | *- not started* | 
+| MIDI |  | *- not started* | 
+| Debugger* | | *- not started* |  
+
+**NOTE:** *the debugger\* display is our full-screen debugger window*
+
 ## Installing PNut-Term-TS
 
 Install .zip files available for each release:
