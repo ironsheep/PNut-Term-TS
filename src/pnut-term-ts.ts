@@ -2,7 +2,7 @@
 /* eslint-disable no-console */
 /** @format */
 
-// src/pnut-termdebug-ts.ts
+// src/pnut-term-ts.ts
 'use strict';
 import { Command, CommanderError, type OptionValues } from 'commander';
 import { Context } from './utils/context';
@@ -47,7 +47,7 @@ export class DebugTerminalInTypeScript {
   private inContainer: boolean = false;
 
   constructor(argsOverride?: string[]) {
-    //console.log(`PNut-TermDebug-TS: argsOverride=[${argsOverride}]`);
+    //console.log(`PNut-Term-TS: argsOverride=[${argsOverride}]`);
     if (argsOverride !== undefined) {
       this.argsArray = argsOverride;
       //DebugTerminalInTypeScript.isTesting = true;
@@ -56,21 +56,21 @@ export class DebugTerminalInTypeScript {
     this.inContainer = findMatch(process.argv, 'workspace');
 
     process.stdout.on('error', (error: Error) => {
-      console.error(`PNut-TermDebug-TS: An error occurred on stdout: "${error.message}", Aborting.`);
+      console.error(`PNut-Term-TS: An error occurred on stdout: "${error.message}", Aborting.`);
       process.exit(1);
     });
 
     process.stderr.on('error', (error: Error) => {
-      console.error(`PNut-TermDebug-TS: An error occurred on stderr: "${error.message}", Aborting.`);
+      console.error(`PNut-Term-TS: An error occurred on stderr: "${error.message}", Aborting.`);
       process.exit(1);
     });
 
     process.stdout.on('close', () => {
-      console.log('PNut-TermDebug-TS: stdout was closed');
+      console.log('PNut-Term-TS: stdout was closed');
     });
 
     process.stderr.on('close', () => {
-      console.log('PNut-TermDebug-TS: stderr was closed');
+      console.log('PNut-Term-TS: stderr was closed');
     });
 
     this.context = new Context();
@@ -102,7 +102,7 @@ export class DebugTerminalInTypeScript {
       */
       // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
       crashReporter.start({ uploadToServer: false });
-      console.error('PNut-TermDebug-TS: Storing dumps inside: ', app.getPath('crashDumps'));
+      console.error('PNut-Term-TS: Storing dumps inside: ', app.getPath('crashDumps'));
       // macOS this is problematic, disable hardware acceleration
       //if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
       app.disableHardwareAcceleration();
@@ -133,17 +133,20 @@ export class DebugTerminalInTypeScript {
         // Highlight errors in color.
         outputError: (str, write) => write(this.errorColor(str))
       })
-      .name('pnut-termdebug-ts')
+      .name('pnut-term-ts')
       .version(`v${this.version}`, '-V, --version', 'Output the version number')
       //.version(`v${this.version}`)
       .usage('[optons]')
-      .description(`Serial Debug Terminal - v${this.version}`)
+      .description(`PNut Terminal TS - v${this.version}`)
+      .option('-f, --flash', 'Download to FLASH and run')
+      .option('-r, --ram', 'Download to RAM and run')
+      .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
       .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
-      .option('-d, --debug', 'Compile with DEBUG')
-      .option('-v, --verbose', 'Output verbose messages')
       .option('-l, --log <basename>', 'Specify .log file basename')
-      .option('-q, --quiet', 'Quiet mode (suppress banner and non-error text)');
+      .option('-d, --debug', 'Output term-app Debug messages')
+      .option('-v, --verbose', 'Output term-app Verbose messages')
+      .option('-q, --quiet', 'Quiet mode (suppress term-app banner and non-error text)');
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -151,8 +154,8 @@ export class DebugTerminalInTypeScript {
       'afterAll',
       `$-
       Example:
-         $ pnut-termdebug-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
-         $ pnut-termdebug-ts -l myApp -p P9cektn7  # run and log to myApp-YYMMDD-HHmm.log
+         $ pnut-term-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
+         $ pnut-term-ts -l myApp -p P9cektn7  # run and log to myApp-YYMMDD-HHmm.log
          `
     );
 
@@ -234,14 +237,14 @@ export class DebugTerminalInTypeScript {
 
     if (!options.quiet) {
       const signOnCompiler: string =
-        "Propeller Debug Terminal 'pnut-termdebug-ts' (c) 2024 Iron Sheep Productions, LLC., Parallax Inc.";
+        "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.";
       this.context.logger.infoMsg(`* ${signOnCompiler}`);
       const signOnVersion: string = `Version ${this.version}, {buildDateHere}`;
       this.context.logger.infoMsg(`* ${signOnVersion}`);
     }
 
     if (!options.quiet && !showingHelp) {
-      let commandLine: string = `pnut-termdebug-ts ${combinedArgs.slice(1).join(' ')}`;
+      let commandLine: string = `pnut-term-ts ${combinedArgs.slice(1).join(' ')}`;
       this.context.logger.infoMsg(`* ${commandLine}`);
     }
 
@@ -411,7 +414,7 @@ export class DebugTerminalInTypeScript {
     if (str.startsWith('$-')) {
       return `${str.substring(2)}`;
     } else {
-      return `PNut-TermDebug-TS: ${str}`;
+      return `PNut-Term-TS: ${str}`;
     }
   }
 

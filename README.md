@@ -29,7 +29,7 @@ PNut Term TS is the 3rd component in the P2 Multi-platform Development Enviromen
 On this Page:
 
 - [PNut-Term-TS Features](#features-of-pnut-term-ts) - key faetures of this implementation
-- [Installing PNut-Term-TS]() - installation notes for the supported platforms
+- [Installing PNut-Term-TS](#installing-pnut-term-ts) - installation notes for the supported platforms
 - [Repository Configuration](#repository-configuration) - more about this Repo.
 
 Additional pages:
@@ -88,8 +88,8 @@ Wanting to clone the PNut-Term-TS repository locally? Then start with Installing
 In general if you've not used docker before you'll follow these steps to get up and running:
 
 - Install [docker desktop](https://docs.docker.com/desktop/) - see install links on left panel
-- [Clone our repository](BUILD-RUN.md)
-- Open the repo in VSCode (also shown in above "clone..." page)
+- Clone our repository
+- Open the repo in VSCode
 
 VSCode will tell docker what image needs to be downloaded and then it will start the container and then ask you to [Reopen in Container]. Once you do reopen VSCode will then install the NPM packages to get your local copy ready to build and run.
 
