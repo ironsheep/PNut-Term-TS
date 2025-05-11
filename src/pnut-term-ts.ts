@@ -144,9 +144,9 @@ export class DebugTerminalInTypeScript {
       .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
       .option('-l, --log <basename>', 'Specify .log file basename')
-      .option('-d, --debug', 'Output term-app Debug messages')
-      .option('-v, --verbose', 'Output term-app Verbose messages')
-      .option('-q, --quiet', 'Quiet mode (suppress term-app banner and non-error text)');
+      .option('-d, --debug', 'Output Term-TS Debug messages')
+      .option('-v, --verbose', 'Output Term-TS Verbose messages')
+      .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)');
 
     this.program.addHelpText('beforeAll', `$-`);
 
