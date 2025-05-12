@@ -45,6 +45,7 @@ export class DebugTerminalInTypeScript {
   private context: Context;
   private shouldAbort: boolean = false;
   private inContainer: boolean = false;
+  private requiresFilename: boolean = false;
 
   constructor(argsOverride?: string[]) {
     //console.log(`PNut-Term-TS: argsOverride=[${argsOverride}]`);
@@ -138,8 +139,8 @@ export class DebugTerminalInTypeScript {
       //.version(`v${this.version}`)
       .usage('[optons]')
       .description(`PNut Terminal TS - v${this.version}`)
-      .option('-f, --flash', 'Download to FLASH and run')
-      .option('-r, --ram', 'Download to RAM and run')
+      .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
+      .option('-r, --ram <fileSpec>', 'Download to RAM and run')
       .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
       .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
@@ -154,8 +155,9 @@ export class DebugTerminalInTypeScript {
       'afterAll',
       `$-
       Example:
-         $ pnut-term-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
-         $ pnut-term-ts -l myApp -p P9cektn7  # run and log to myApp-YYMMDD-HHmm.log
+         $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
+         $ pnut-term-ts -l myApp -p P9cektn7                     # run and log to myApp-YYMMDD-HHmm.log
+         $ pnut-term-ts -l topFile -p P9cektn7 -r myTopfile.bin  # download myTopfile.bin to RAM, run with logging to topFile-YYMMDD-HHmm.log
          `
     );
 
@@ -252,6 +254,25 @@ export class DebugTerminalInTypeScript {
       console.log('arguments: %o', this.program.args);
       console.log('combArguments: %o', combinedArgs);
       console.log('options: %o', this.program.opts());
+    }
+
+    if (options.flash && options.ram) {
+      this.context.logger.errorMsg('Cannot use both FLASH and RAM options at the same time!');
+      this.shouldAbort = true;
+    }
+
+    if (options.flash && !options.ram) {
+      this.context.actions.writeFlash = true;
+      this.requiresFilename = true;
+      this.context.actions.binFilename = options.flash;
+      this.context.logger.progressMsg('Downloading to [${this.context.actions.binFilename}] FLASH');
+    }
+
+    if (options.ram && !options.flash) {
+      this.context.actions.writeRAM = true;
+      this.requiresFilename = true;
+      this.context.actions.binFilename = options.ram;
+      this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to RAM`);
     }
 
     if (this.shouldAbort == false) {

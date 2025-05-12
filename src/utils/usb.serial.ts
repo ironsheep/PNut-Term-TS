@@ -18,24 +18,14 @@ export class UsbSerial extends EventEmitter {
   private _deviceNode: string = '';
   private _serialPort: SerialPort;
   private _serialParser: ReadlineParser;
+  private _downloadBaud: number = DEFAULT_DOWNLOAD_BAUD;
   private _p2DeviceId: string = '';
   private _p2loadLimit: number = 0;
   private _latestError: string = '';
   private _dtrValue: boolean = false;
-
-  static async serialDeviceList(ctx?: Context): Promise<string[]> {
-    const devicesFound: string[] = [];
-    const ports = await SerialPort.list();
-    ports.forEach((port) => {
-      const tmpSerialNumber: string | undefined = port.serialNumber;
-      const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
-      const deviceNode: string = port.path;
-      if (port.vendorId == '0403' && port.productId == '6015') {
-        devicesFound.push(`${deviceNode},${serialNumber}`);
-      }
-    });
-    return devicesFound;
-  }
+  private _downloadChecksumGood = false;
+  private _downloadResponse: string = '';
+  private checkedForP2: boolean = false;
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -82,20 +72,42 @@ export class UsbSerial extends EventEmitter {
   }
   */
 
+  // ----------------------------------------------------------------------------
+  //   CLASS Methods (static)
+  // ----------------------------------------------------------------------------
+  //
   static setCommBaudRate(baudRate: number): void {
     UsbSerial.desiredCommsBaudRate = baudRate;
   }
 
-  get deviceInfo(): string {
-    return this._p2DeviceId;
+  static async serialDeviceList(ctx?: Context): Promise<string[]> {
+    const devicesFound: string[] = [];
+    const ports = await SerialPort.list();
+    ports.forEach((port) => {
+      const tmpSerialNumber: string | undefined = port.serialNumber;
+      const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
+      const deviceNode: string = port.path;
+      if (port.vendorId == '0403' && port.productId == '6015') {
+        devicesFound.push(`${deviceNode},${serialNumber}`);
+      }
+    });
+    return devicesFound;
   }
 
+  // ----------------------------------------------------------------------------
+  //   PUBLIC Instance Methods
+  // ----------------------------------------------------------------------------
+  //
   get deviceError(): string | undefined {
     let desiredText: string | undefined = undefined;
     if (this._latestError.length > 0) {
       desiredText = this._latestError;
     }
     return desiredText;
+  }
+
+  get deviceInfo(): string {
+    return this._p2DeviceId;
   }
 
   get foundP2(): boolean {
@@ -142,6 +154,122 @@ export class UsbSerial extends EventEmitter {
     });
   }
 
+  public async deviceIsPropellerV2(): Promise<boolean> {
+    const didCheck = await this.requestPropellerVersion(); // initiate request
+    let foundPropellerStatus: boolean = this.foundP2;
+    if (didCheck) {
+      await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+      const [deviceString, deviceErrorString] = this.getIdStringOrError();
+      if (deviceErrorString.length > 0) {
+        this.logMessage(`* deviceIsPropeller() ERROR: ${deviceErrorString}`);
+      } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
+        foundPropellerStatus = true;
+      }
+    }
+    this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus})`);
+    return foundPropellerStatus;
+  }
+
+  public async downloadNoCheck(uint8Bytes: Uint8Array) {
+    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
+    const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
+    if (this.usbConnected && uint8Bytes.length > 0) {
+      const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
+      await this.write(`${requestStartDownload}\r`);
+      //await this.write(dataBase64);
+      // Break this up into 128 char lines with > sync chars starting each
+      const LINE_LENGTH: number = 1024;
+      // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
+      const lineCount: number = dataBase64.length + LINE_LENGTH - 1 / LINE_LENGTH;
+      const lastLineLength: number = dataBase64.length % LINE_LENGTH;
+      for (let index = 0; index < lineCount; index++) {
+        const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
+        const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
+        await this.write('>' + singleLine);
+      }
+      await this.write(' ~\r');
+    }
+  }
+
+  public async download(uint8Bytes: Uint8Array, needsP2CheckumVerify: boolean): Promise<void> {
+    // reset our status indicators
+    this._downloadChecksumGood = false;
+    this._downloadResponse = '';
+    //
+    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
+    const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
+    this.logMessage(`* download() - port open (${this._serialPort.isOpen})`);
+    // wait for port to be open...
+    try {
+      const didOpen = await this.waitForPortOpen();
+      this.logMessage(`* download() port opened = (${didOpen}) `);
+
+      // Continue with download...
+      if (this.usbConnected && uint8Bytes.length > 0) {
+        // * Setup for download
+        // NOTE: Base64 encoding in typescript works by taking 3 bytes of data and encoding it as 4 printable
+        //  characters.If the total number of bytes is not a multiple of 3, the output is padded with one or
+        //  two = characters to make the length a multiple of 4.
+        const dataBase64: string = Buffer.from(uint8Bytes).toString('base64').replace(/=+$/, '');
+        // Break this up into 128 char lines with > sync chars starting each
+        const LINE_LENGTH: number = 512;
+        // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
+        const lineCount: number = Math.ceil(dataBase64.length / LINE_LENGTH); // Corrected lineCount calculation
+        const lastLineLength: number = dataBase64.length % LINE_LENGTH;
+        // log what we are sending (or first part of it)
+        this.dumpBytes(uint8Bytes, 0, 99, 'download-source');
+        const dumpBytes = dataBase64.length < 100 ? dataBase64 : `${dataBase64.substring(0, 99)}...`;
+        this.logMessage(`* download() SENDING [${dumpBytes}](${dataBase64.length})`);
+
+        // * Now do the download
+        await this.write(`${requestStartDownload}\r`);
+        for (let index = 0; index < lineCount; index++) {
+          const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
+          const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
+          await this.write('>' + singleLine);
+        }
+        // PNut doesn't send a leading space or a trailing CR/LF
+        if (needsP2CheckumVerify) {
+          const READ_RETRY_COUNT: number = 100;
+          this.stopReadListener();
+          this.write('?'); // removed AWAIT to allow read to happen earlier
+          let readValue: string = '';
+          let retryCount = READ_RETRY_COUNT;
+          while (null === (readValue = this._serialPort.read(1)) && --retryCount > 0) {
+            await waitMSec(1);
+          }
+          //const response = await this._serialPort.read(1);
+          //const statusMsg: string = this._downloadChecksumGood ? 'Checksum OK' : 'Checksum BAD';
+          this.startReadListener();
+          this.logMessage(`* download(RAM) end w/[${readValue}]`);
+        } else {
+          await this.write('~');
+        }
+      }
+    } catch (error) {
+      this.logMessage(`* download() ERROR: ${JSON.stringify(error, null, 2)}`);
+    }
+  }
+
+  public async write(value: string): Promise<void> {
+    //this.logMessage(`--> Tx ...`);
+    return new Promise((resolve, reject) => {
+      if (this.usbConnected) {
+        this._serialPort.write(value, (err) => {
+          if (err) reject(err);
+          else {
+            this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
+            resolve();
+          }
+        });
+      }
+    });
+  }
+
+  // ----------------------------------------------------------------------------
+  //   PRIVATE Instance Methods
+  // ----------------------------------------------------------------------------
+  //
   private handleSerialError(errMessage: string) {
     this.logMessage(`* handleSerialError() Error: ${errMessage}`);
     this._latestError = errMessage;
@@ -183,6 +311,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async toggleDTR(): Promise<void> {
+    // toggle the propPlug DTR line
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
     await this.setDtr(true);
@@ -190,7 +319,18 @@ export class UsbSerial extends EventEmitter {
     await this.setDtr(false);
   }
 
+  private startReadListener() {
+    // wait for any returned data
+    this._serialParser.on('data', (data) => this.handleSerialRx(data));
+  }
+
+  private stopReadListener() {
+    // stop waiting for any returned data
+    this._serialParser.off('data', (data) => this.handleSerialRx(data));
+  }
+
   private async requestP2IDString(): Promise<void> {
+    // request P2 ID-String
     const requestPropType: string = '> Prop_Chk 0 0 0 0';
     this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
@@ -208,25 +348,52 @@ export class UsbSerial extends EventEmitter {
     });*/
   }
 
-  public async download(uint8Bytes: Uint8Array) {
-    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
-    const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
-    if (this.usbConnected && uint8Bytes.length > 0) {
-      const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
-      await this.write(`${requestStartDownload}\r`);
-      //await this.write(dataBase64);
-      // Break this up into 128 char lines with > sync chars starting each
-      const LINE_LENGTH: number = 1024;
-      // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
-      const lineCount: number = dataBase64.length + LINE_LENGTH - 1 / LINE_LENGTH;
-      const lastLineLength: number = dataBase64.length % LINE_LENGTH;
-      for (let index = 0; index < lineCount; index++) {
-        const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
-        const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
-        await this.write('>' + singleLine);
+  private async requestPropellerVersion(): Promise<boolean> {
+    const requestPropType: string = '> Prop_Chk 0 0 0 0';
+    const didCheck = this.checkedForP2 == false;
+    if (this.checkedForP2 == false) {
+      this.logMessage(`* requestPropellerVersion() - port open (${this._serialPort.isOpen})`);
+      this.checkedForP2 = true;
+      try {
+        await this.waitForPortOpen();
+        // continue with ID effort...
+        await waitMSec(250);
+        await this.setDtr(true);
+        await waitMSec(10);
+        await this.setDtr(false);
+        // Fm Silicon Doc:
+        //   Unless preempted by a program in a SPI memory chip with a pull-up resistor on P60 (SPI_CK), the
+        //     serial loader becomes active within 15ms of reset being released.
+        //
+        //   If nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
+        //
+        // NO wait yields a 102 mSec delay on my mac Studio
+        await waitMSec(15); // at least a  15 mSec delay, yields a 230mSec delay when 2nd wait above is 100 mSec
+        await this.write(`${requestPropType}\r`);
+      } catch (error) {
+        this.logMessage(`* requestPropellerVersion() ERROR: ${JSON.stringify(error, null, 2)}`);
       }
-      await this.write(' ~\r');
     }
+    return didCheck;
+  }
+
+  private async waitForPortOpen(): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 2000 / 30; // 2 seconds / 30 ms
+
+      const intervalId = setInterval(async () => {
+        if (this._serialPort.isOpen) {
+          clearInterval(intervalId);
+          resolve(true);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(intervalId);
+          reject(new Error('Port did not open within 2 seconds'));
+        } else {
+          attempts++;
+        }
+      }, 30); // Check every 30ms
+    });
   }
 
   /*
@@ -287,21 +454,6 @@ export class UsbSerial extends EventEmitter {
     this.logMessage(`-- -------- -------- ------------------ --`);
   }
   */
-
-  public async write(value: string): Promise<void> {
-    //this.logMessage(`--> Tx ...`);
-    return new Promise((resolve, reject) => {
-      if (this.usbConnected) {
-        this._serialPort.write(value, (err) => {
-          if (err) reject(err);
-          else {
-            this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
-            resolve();
-          }
-        });
-      }
-    });
-  }
 
   private async drain(): Promise<void> {
     this.logMessage(`--> Tx drain`);
@@ -369,6 +521,32 @@ export class UsbSerial extends EventEmitter {
       desiredInterp = 'P2X8C4M64P Rev B/C - 8 cogs, 512KB hub, 64 smart pins';
     }
     return desiredInterp;
+  }
+
+  private dumpBytes(bytes: Uint8Array, startOffset: number, maxBytes: number, dumpId: string) {
+    /// dump hex and ascii data
+    let displayOffset: number = 0;
+    let currOffset = startOffset;
+    const byteCount = bytes.length > maxBytes ? maxBytes : bytes.length;
+    this.logMessage(`-- -------- ${dumpId} ------------------ --`);
+    while (displayOffset < byteCount) {
+      let hexPart = '';
+      let asciiPart = '';
+      const remainingBytes = byteCount - displayOffset;
+      const lineLength = remainingBytes > 16 ? 16 : remainingBytes;
+      for (let i = 0; i < lineLength; i++) {
+        const byteValue = bytes[currOffset + i];
+        hexPart += byteValue.toString(16).padStart(2, '0').toUpperCase() + ' ';
+        asciiPart += byteValue >= 0x20 && byteValue <= 0x7e ? String.fromCharCode(byteValue) : '.';
+      }
+      const offsetPart = displayOffset.toString(16).padStart(5, '0').toUpperCase();
+
+      this.logMessage(`${offsetPart}- ${hexPart.padEnd(48, ' ')}  '${asciiPart}'`);
+      currOffset += lineLength;
+      displayOffset += lineLength;
+    }
+    this.logMessage(`-- -------- ${'-'.repeat(dumpId.length)} ------------------ --`);
+    this.logMessage(`-- ${bytes.length} Bytes --`);
   }
 
   public logMessage(message: string): void {

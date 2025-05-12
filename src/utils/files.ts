@@ -160,6 +160,29 @@ export function loadFileAsString(fspec: string): string {
   return fileContent;
 }
 
+export function extFile(filename: string, ctx: Context): string {
+  // Get the path to the 'ext' distribution file
+  const fileSpec = path.join(ctx.extensionFolder, filename);
+  //const findStatus = fs.existsSync(fileSpec) ? 'FOUND' : 'NOT FOUND';
+  //logExtensionMessage(`* extDir([${filename}]) extFileUri.fsPath=[${extFileUri.fsPath}] ->(${findStatus})`);
+  return fileSpec;
+}
+
+export function getFlashLoaderBin(ctx: Context): Uint8Array {
+  // Get the path to the 'ext' distribution file
+  const flashLoaderBinFSPec = extFile('flash_loader.obj', ctx);
+  // Read the file
+  const flashLoaderBuffer = fs.readFileSync(flashLoaderBinFSPec);
+  // Convert the Buffer to a Uint8Array
+  const flashLoaderBin = new Uint8Array(
+    flashLoaderBuffer.buffer,
+    flashLoaderBuffer.byteOffset,
+    flashLoaderBuffer.length
+  );
+  //logExtensionMessage(`* getFlashLoaderBin() ->(${flashLoaderBin.length}) bytes`);
+  return flashLoaderBin;
+}
+
 const EMPTY_CONTENT_MARKER: string = 'XY$$ZZY';
 
 export function loadFileAsUint8Array(fspec: string, ctx: Context | undefined = undefined): Uint8Array {

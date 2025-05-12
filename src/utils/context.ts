@@ -5,16 +5,23 @@
 
 // src/utils/context.ts
 
-"use strict";
-import fs from "fs";
-import path from "path";
-import { Logger } from "../classes/logger";
+'use strict';
+import fs from 'fs';
+import path from 'path';
+import { Logger } from '../classes/logger';
 
+export interface Actions {
+  writeRAM: boolean;
+  writeFlash: boolean;
+  binFilename: string;
+  binDirspec: string;
+}
 export interface RuntimeEnvironment {
   serialPortDevices: string[];
   selectedPropPlug: string;
   logFilename: string;
   developerModeEnabled: boolean;
+  debugBaudrate: number;
 }
 export class Context {
   public libraryFolder: string;
@@ -22,22 +29,31 @@ export class Context {
   public currentFolder: string;
   public logger: Logger;
   public runEnvironment: RuntimeEnvironment;
+  public actions: Actions;
 
   constructor() {
     this.runEnvironment = {
-      selectedPropPlug: "",
+      selectedPropPlug: '',
       serialPortDevices: [],
       developerModeEnabled: false,
-      logFilename: "",
+      logFilename: '',
+      debugBaudrate: 2000000
     };
-    let possiblePath = path.join(__dirname, "../lib");
+    this.actions = {
+      writeRAM: false,
+      writeFlash: false,
+      binFilename: '',
+      binDirspec: ''
+    };
+
+    let possiblePath = path.join(__dirname, '../lib');
     if (!fs.existsSync(possiblePath)) {
-      possiblePath = path.join(__dirname, "lib");
+      possiblePath = path.join(__dirname, 'lib');
     }
     this.libraryFolder = possiblePath;
-    possiblePath = path.join(__dirname, "../ext");
+    possiblePath = path.join(__dirname, '../ext');
     if (!fs.existsSync(possiblePath)) {
-      possiblePath = path.join(__dirname, "ext");
+      possiblePath = path.join(__dirname, 'ext');
     }
     this.extensionFolder = possiblePath;
     this.currentFolder = process.cwd();
