@@ -171,12 +171,6 @@ export class DebugTerminalInTypeScript {
     // Combine process.argv with the modified this.argsArray
     const testArgsInterp = this.argsArray.length === 0 ? '[]' : this.argsArray.join(', ');
 
-    this.context.logger.logMessage(
-      `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
-        this.inContainer
-      }]`
-    );
-
     const combinedArgs: string[] = process.argv;
     try {
       this.program.parse(combinedArgs);
@@ -211,31 +205,21 @@ export class DebugTerminalInTypeScript {
     }
 
     const options: OptionValues = this.program.opts();
-    this.context.logger.logMessage('** options=');
-    Object.keys(options).forEach((key) => {
-      this.context.logger.logMessage(`  ${key}: ${options[key]}`);
-    });
 
-    if (options.verbose) {
-      this.context.logger.enabledVerbose();
-    } else {
-      options.verbose = false;
-    }
+    const showingHelp: boolean =
+      this.program.args.includes('--help') || this.program.args.includes('-h') || combinedArgs.includes('--help');
 
     if (options.debug) {
-      this.context.logger.enabledDebug();
+      options.quiet = false;
     } else {
-      options.debug = false;
+      options.debug = false; // force better value for later debug display
     }
 
-    this.context.logger.logMessage(`V=(${options.verbose}), D=(${options.debug})`);
-
-    if (this.context.runEnvironment.developerModeEnabled) {
-      this.context.logger.verboseMsg('PNUT_DEVELOP_MODE is enabled');
+    if (options.verbose) {
+      options.quiet = false;
+    } else {
+      options.verbose = false; // force better value for later debug display
     }
-
-    const showingHelp: boolean = this.program.args.includes('--help') || this.program.args.includes('-h');
-    const showingNodeList: boolean = options.dvcnodes;
 
     if (!options.quiet) {
       const signOnCompiler: string =
@@ -243,21 +227,40 @@ export class DebugTerminalInTypeScript {
       this.context.logger.infoMsg(`* ${signOnCompiler}`);
       const signOnVersion: string = `Version ${this.version}, {buildDateHere}`;
       this.context.logger.infoMsg(`* ${signOnVersion}`);
+      this.context.logger.logMessage(''); // blank line...
     }
 
-    if (!options.quiet && !showingHelp) {
+    if ((!showingHelp && !options.quiet) || (showingHelp && options.verbose)) {
       let commandLine: string = `pnut-term-ts ${combinedArgs.slice(1).join(' ')}`;
       this.context.logger.infoMsg(`* ${commandLine}`);
-    }
-
-    if (!options.verbose && !options.quiet && !showingHelp && !showingNodeList) {
+      this.context.logger.infoMsg(
+        `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
+          this.inContainer
+        }]`
+      );
+      console.log('- -------------------------------- -');
       console.log('arguments: %o', this.program.args);
       console.log('combArguments: %o', combinedArgs);
       console.log('options: %o', this.program.opts());
+      console.log('- -------------------------------- -');
     }
 
+    if (options.verbose) {
+      this.context.logger.enabledVerbose();
+    }
+
+    if (options.debug) {
+      this.context.logger.enabledDebug();
+    }
+
+    if (this.context.runEnvironment.developerModeEnabled) {
+      this.context.logger.verboseMsg('PNUT_DEVELOP_MODE is enabled');
+    }
+
+    const showingNodeList: boolean = options.dvcnodes;
+
     if (options.flash && options.ram) {
-      this.context.logger.errorMsg('Cannot use both FLASH and RAM options at the same time!');
+      this.context.logger.errorMsg('Please use only one of FLASH or RAM options!');
       this.shouldAbort = true;
     }
 
@@ -265,7 +268,7 @@ export class DebugTerminalInTypeScript {
       this.context.actions.writeFlash = true;
       this.requiresFilename = true;
       this.context.actions.binFilename = options.flash;
-      this.context.logger.progressMsg('Downloading to [${this.context.actions.binFilename}] FLASH');
+      this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to FLASH`);
     }
 
     if (options.ram && !options.flash) {
@@ -371,8 +374,13 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
 
+    const startMainWindow: boolean = !showingHelp && !showingNodeList && !this.shouldAbort;
+    this.context.logger.debugMsg(
+      `* showingHelp=(${showingHelp}), shouldAbort=(${this.shouldAbort}), startMainWindow=(${startMainWindow})`
+    );
+
     let theTerminal: MainWindow | undefined = undefined;
-    if (!this.shouldAbort && !showingHelp && !showingNodeList) {
+    if (startMainWindow) {
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
         this.context.logger.verboseMsg(`* Loading terminal attached to [${propPlug}]`);
@@ -406,7 +414,7 @@ export class DebugTerminalInTypeScript {
       theTerminal.close();
     }
 
-    if (!options.quiet && !showingHelp) {
+    if ((!options.quiet && !showingHelp) || (showingHelp && options.verbose)) {
       if (this.shouldAbort) {
         this.context.logger.progressMsg('Aborted!');
       } else {
