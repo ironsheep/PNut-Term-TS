@@ -4,7 +4,7 @@
 //  TODO: make it context/runtime option aware
 
 'use strict';
-import { BrowserWindow, Menu } from 'electron';
+import { BrowserWindow } from 'electron';
 // src/classes/debugLogicWin.ts
 
 import { Context } from '../utils/context';
@@ -579,7 +579,6 @@ export class DebugLogicWindow extends DebugWindowBase {
     } catch (error) {
       this.logMessage(`Failed to load URL: ${error}`);
     }
-    // Menu.setApplicationMenu(null); // DOESNT WORK!
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {

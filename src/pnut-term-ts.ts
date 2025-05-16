@@ -421,6 +421,7 @@ export class DebugTerminalInTypeScript {
         this.context.logger.progressMsg('Done');
       }
     }
+    app.exit(0);
     return Promise.resolve(0);
   }
 
