@@ -6,10 +6,11 @@
     "context": ".."
   },
   "appPort": ["5002:5002", "9123:8123"],
-  "postCreateCommand": "npm install",
-  "runArgs": [
-    "-v",
-    "${env:HOME}${env:USERPROFILE}/.ssh:/tmp/.ssh" // This is added so you can push from inside the container
+  "postCreateCommand": "npm install && npm install -g @anthropic-ai/claude-code && echo 'Claude Code installed. Run: claude auth login' to authenticate",
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-claude-data,target=/home/node/.claude,type=volume",
+    "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/tmp/.ssh,type=bind",
+    "source=/Users/stephen/Projects/Projects-ExtGit/IronSheepProductionsLLC/Propeller2/PNut-TypeScript/PNut-TS Support/PNut-REF,target=/pascal-source,type=bind"
   ],
   "extensions": [
     "github.vscode-pull-request-github",
