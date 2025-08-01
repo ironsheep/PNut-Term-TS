@@ -886,21 +886,135 @@ and Electron <span id="electron-version"></span>.</P>
   private flushLogBuffer() {
     if (this.mainWindow && !this.mainWindow.isDestroyed() && this.logBuffer.length > 0) {
       // Serialize the logBuffer array to a JSON string
-      const messages = JSON.stringify(this.logBuffer);
-      this.mainWindow.webContents.executeJavaScript(`
-        (function() {
-          const logContent = document.getElementById('log-content');
-          const messagesArray = ${messages};  // Parse the JSON string to get the array
-          messagesArray.forEach(message => {
-            const p = document.createElement('p');
-            p.textContent = message;
-            logContent.appendChild(p);
-          });
-          logContent.scrollTop = logContent.scrollHeight;
-        })();
-      `);
+      // -------------------------------------------------
+      // Control Characters
+      //   0x01 - HM: Home
+      //   0x02,x,y - PC: Cursor to x,y
+      //   0x03 - ML: Cursor Left
+      //   0x04 - MR: Cursor Right
+      //   0x05 - MU: Cursor Up
+      //   0x06 - MD: Cursor Down
+      //   0x07 - BP: Bell (beep speaker)
+      //   0x08 - BS: Backspace
+      //   0x09 - TB: Horizontal Tab
+      //   0x0A - LF: Line Feed
+      //   0x0B - CE: Clear to EOL
+      //   0x0C - CB: Clear lines below
+      //   0x0D - NL: Carriage Return
+      //   0x0E,x - PX: Set Cursor to x
+      //   0x0F,y - PY: Set Cursor to y
+      //   0x10 - CS: Clear Screen
+      // ---------------------------------------------------
+      // remove control characters from string, handle these separately
+
+      // Check if any string in the logBuffer contains control characters
+      const hasControlChars = this.logBuffer.some((currString) => /[\x01-\x10]/.test(currString));
+      if (hasControlChars) {
+        // since we have control characters, let's handle each string individually
+        for (let index = 0; index < this.logBuffer.length; index++) {
+          const currLine: string = this.logBuffer[index];
+          // handle control characters found in any of the strings BUT
+          // we need to handle each in the order we find and emit non-control characters as we go
+          // Control chars 0x02, 0x0e and 0x0f require x,y or x or y which are the next byte(s) in the string
+          // let's also gather the non-control in strings before we emit them.
+          let nonControlChars: string = '';
+          let i = 0;
+          while (i < currLine.length) {
+            const charCode = currLine.charCodeAt(i);
+            let x: number = 0;
+            let y: number = 0;
+            // Check if the character is a control character
+            if (charCode >= 1 && charCode <= 16) {
+              // first, emit any non-control characters
+              if (nonControlChars.length > 0) {
+                this.emitStrings([nonControlChars]);
+                nonControlChars = ''; // reset for next round
+              }
+              // Control character found
+              // XYZZY filter for control characters (add the control handlers here)
+              switch (charCode) {
+                case 1:
+                  // Do Home
+                  break;
+                case 2:
+                  // Do Cursor to x,y
+                  x = currLine.charCodeAt(i++);
+                  y = currLine.charCodeAt(i++);
+                  break;
+                case 3:
+                  // Do Cursor Left
+                  break;
+                case 4:
+                  // Do Cursor Right
+                  break;
+                case 5:
+                  // Do Cursor Up
+                  break;
+                case 6:
+                  // Do Cursor Down
+                  break;
+                case 7:
+                  // Do Bell (beep speaker)
+                  break;
+                case 8:
+                  // Do Backspace
+                  break;
+                case 9:
+                  // Do Horizontal Tab
+                  break;
+                case 10:
+                  // Do Line Feed
+                  break;
+                case 11:
+                  // Do Clear to EOL
+                  break;
+                case 12:
+                  // Do Clear lines below
+                  break;
+                case 13:
+                  // Do Carriage Return
+                  break;
+                case 14:
+                  // Set Cursor to x (next byte)
+                  x = currLine.charCodeAt(i++);
+                  break;
+                case 15:
+                  // Set Cursor to y (next byte)
+                  y = currLine.charCodeAt(i++);
+                  break;
+              }
+            } else {
+              // Non-control character
+              nonControlChars = `${nonControlChars}${currLine[i]}`;
+            }
+            i++;
+          }
+        }
+      } else {
+        // If no control characters are found, just append the logBuffer directly
+        this.emitStrings(this.logBuffer);
+      }
       this.logBuffer = [];
       this.updateStatus();
+    }
+  }
+
+  private emitStrings(buffer: string[]) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed() && buffer.length > 0) {
+      const messages = JSON.stringify(buffer);
+
+      this.mainWindow.webContents.executeJavaScript(`
+    (function() {
+      const logContent = document.getElementById('log-content');
+      const messagesArray = ${messages};  // Parse the JSON string to get the array
+      messagesArray.forEach(message => {
+        const p = document.createElement('p');
+        p.textContent = message;
+        logContent.appendChild(p);
+      });
+      logContent.scrollTop = logContent.scrollHeight;
+    })();
+  `);
     }
   }
 
