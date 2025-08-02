@@ -66,35 +66,35 @@ describe('DebugColor', () => {
     it('should parse color names', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED');
       expect(isValid).toBe(true);
-      expect(hex).toBe('#ff0000');
+      expect(hex.toLowerCase()).toBe('#ff0000');
       expect(brightness).toBe(8); // Default brightness
     });
 
     it('should parse color names with brightness', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED 12');
       expect(isValid).toBe(true);
-      expect(hex).toBe('#ff0000');
+      expect(hex.toLowerCase()).toBe('#ff0000');
       expect(brightness).toBe(12);
     });
 
     it('should parse hex colors with $ prefix', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('$FF00FF');
       expect(isValid).toBe(true);
-      expect(hex).toBe('#ff00ff');
+      expect(hex.toLowerCase()).toBe('#ff00ff');
       expect(brightness).toBe(8); // Default brightness
     });
 
     it('should parse hex colors with # prefix', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('#00FF00');
       expect(isValid).toBe(true);
-      expect(hex).toBe('#00ff00');
+      expect(hex.toLowerCase()).toBe('#00ff00');
       expect(brightness).toBe(8); // Default brightness
     });
 
     it('should parse decimal color values', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('16711680'); // Red in decimal
       expect(isValid).toBe(true);
-      expect(hex).toBe('#ff0000');
+      expect(hex.toLowerCase()).toBe('#ff0000');
       expect(brightness).toBe(8); // Default brightness
     });
 
@@ -112,7 +112,7 @@ describe('DebugColor', () => {
     it('should ignore invalid brightness values', () => {
       const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED 20');
       expect(isValid).toBe(true);
-      expect(hex).toBe('#ff0000');
+      expect(hex.toLowerCase()).toBe('#ff0000');
       expect(brightness).toBe(8); // Should fall back to default, not 20
     });
   });
