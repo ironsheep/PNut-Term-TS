@@ -62,6 +62,8 @@ The application follows a class-based architecture with clear separation of conc
 - `DisplaySpecParser` - Parse display specifications from debug commands
 - `PackedDataProcessor` - Handle 13 different packed data modes
 - `TriggerProcessor` - Trigger condition evaluation for scope/logic displays
+- `debugInputConstants` - PC_KEY and PC_MOUSE constants and interfaces from MouseCommands.PDF
+- `debugStatements` - Complete debug display types, configurations, and commands from debugStatements.pdf
 
 **Hardware Communication**: 
 - `UsbSerial` - USB serial communication with Propeller2 devices
@@ -125,6 +127,8 @@ The project uses GitHub Actions for automated builds:
 
 ## Reference Documentation
 
+### Primary Documentation Files
+
 The complete Spin2 language specification, which includes detailed debug display documentation and examples, is available at:
 - **Workspace Path**: `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf`
 - **Purpose**: This PDF contains the official Spin2 language reference including:
@@ -135,6 +139,23 @@ The complete Spin2 language specification, which includes detailed debug display
   - Color modes, packed data formats, and trigger specifications
 - **Version**: v51 (dated 2025-04-25)
 - **Usage**: Essential reference when implementing TypeScript debug windows from Pascal source
+
+### Additional Debug Documentation
+
+**PC_KEY and PC_MOUSE Commands**:
+- **Location**: `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` (note the typo in filename)
+- **TypeScript Implementation**: `src/classes/shared/debugInputConstants.ts`
+- **Contents**: Keyboard and mouse input handling for debug displays
+  - PC_KEY command for capturing keyboard input
+  - PC_MOUSE command for 7-long mouse status structure
+
+**Debug Statements Reference**:
+- **Location**: `/pascal-source/P2_PNut_Public/debugStatements.pdf`
+- **TypeScript Implementation**: `src/classes/shared/debugStatements.ts`
+- **Contents**: Comprehensive debug display documentation
+  - All 9 debug display types and their configurations
+  - Instantiation and feeding command syntax
+  - Color modes, packed data modes, and examples
 
 ## Pascal to TypeScript Debug Window Translation Guide
 
