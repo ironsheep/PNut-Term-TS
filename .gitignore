@@ -169,3 +169,4 @@ cython_debug/
 src/classes/f1.txt
 /fonts
 *.bmp
+/claudeSave

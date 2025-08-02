@@ -9,6 +9,10 @@ import { BrowserWindow } from 'electron';
 
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
+import { PackedDataProcessor } from './shared/packedDataProcessor';
+import { CanvasRenderer } from './shared/canvasRenderer';
+import { LogicTriggerProcessor } from './shared/triggerProcessor';
+import { DisplaySpecParser } from './shared/displaySpecParser';
 
 import {
   DebugWindowBase,
@@ -29,6 +33,7 @@ import { v8_0_0 } from 'pixi.js';
 export interface LogicDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
+  title: string; // for BaseDisplaySpec compatibility
   position: Position;
   size: Size;
   nbrSamples: number;
@@ -84,8 +89,15 @@ export class DebugLogicWindow extends DebugWindowBase {
   private canvasMargin: number = 10; // 10 pixels from to (no left,) right, top, and bottom of canvas (NOT NEEDED)
   private labelWidth: number = 0; // width of label canvas
   private labelHeight: number = 0; // height of label canvas
+  private canvasRenderer: CanvasRenderer = new CanvasRenderer();
+  private triggerProcessor: LogicTriggerProcessor;
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private singleBitChannelCount: number = 0; // number of single bit channels
+  // Trigger state properties
+  private triggerArmed: boolean = false;
+  private triggerFired: boolean = false;
+  private holdoffCounter: number = 0;
+  private triggerSampleIndex: number = -1; // Track which sample caused the trigger
   // diagnostics used to limit the number of samples displayed while testing
   private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
@@ -103,6 +115,8 @@ export class DebugLogicWindow extends DebugWindowBase {
       trigSampOffset: displaySpec.nbrSamples / 2,
       trigHoldoff: 0
     };
+    // Initialize the trigger processor
+    this.triggerProcessor = new LogicTriggerProcessor();
     // initially we don't have a packed mode...
     this.packedMode = {
       mode: ePackedDataMode.PDM_UNKNOWN,
@@ -268,75 +282,112 @@ export class DebugLogicWindow extends DebugWindowBase {
           }
           console.log(`CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`);
         } else {
-          switch (element.toUpperCase()) {
-            case 'TITLE':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.windowTitle = lineParts[++index];
-              } else {
-                // console.log() as we are in class static method, not derived class...
-                console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'POS':
-              // ensure we have two more values
-              if (index < lineParts.length - 2) {
-                displaySpec.position.x = Number(lineParts[++index]);
-                displaySpec.position.y = Number(lineParts[++index]);
-              } else {
-                console.log(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'SAMPLES':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.nbrSamples = Number(lineParts[++index]);
-              } else {
-                console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'SPACING':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.nbrSamples = Number(lineParts[++index]);
-              } else {
-                console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'LINESIZE':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.lineSize = Number(lineParts[++index]);
-              } else {
-                console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'TEXTSIZE':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.textSize = Number(lineParts[++index]);
-                DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
-              } else {
-                console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            // FIXME: UNDONE handle COLOR
-            // FIXME: UNDONE handle packedDataMode
-            case 'HIDEXY':
-              // just set it!
-              displaySpec.hideXY = true;
-              break;
+          // Try to parse common keywords first
+          const [parsed, newIndex] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
+          if (parsed) {
+            index = newIndex - 1; // Adjust for loop increment
+            // Special handling for TEXTSIZE
+            if (element.toUpperCase() === 'TEXTSIZE') {
+              DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
+            }
+          } else {
+            switch (element.toUpperCase()) {
+              case 'COLOR':
+                // Parse COLOR directive: COLOR <background> {<grid-color>}
+                const [colorParsed, colors, colorIndex] = DisplaySpecParser.parseColorKeyword(lineParts, index);
+                if (colorParsed) {
+                  displaySpec.window.background = colors.background;
+                  if (colors.grid) {
+                    displaySpec.window.grid = colors.grid;
+                  }
+                  index = colorIndex - 1; // Adjust for loop increment
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Invalid COLOR specification`);
+                  isValid = false;
+                }
+                break;
+              
+              // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
+              /*
+              case 'TITLE':
+                // ensure we have one more value
+                if (index < lineParts.length - 1) {
+                  displaySpec.windowTitle = lineParts[++index];
+                } else {
+                  // console.log() as we are in class static method, not derived class...
+                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  isValid = false;
+                }
+                break;
+              case 'POS':
+                // ensure we have two more values
+                if (index < lineParts.length - 2) {
+                  displaySpec.position.x = Number(lineParts[++index]);
+                  displaySpec.position.y = Number(lineParts[++index]);
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
+                  isValid = false;
+                }
+                break;
+              case 'SAMPLES':
+                // ensure we have one more value
+                if (index < lineParts.length - 1) {
+                  displaySpec.nbrSamples = Number(lineParts[++index]);
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  isValid = false;
+                }
+                break;
+              */
+              
+              case 'SPACING':
+                // ensure we have one more value
+                if (index < lineParts.length - 1) {
+                  displaySpec.spacing = Number(lineParts[++index]); // FIX: was incorrectly assigning to nbrSamples
+                  // Validate spacing range
+                  if (displaySpec.spacing < 1 || displaySpec.spacing > 32) {
+                    console.log(`CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`);
+                    displaySpec.spacing = Math.max(1, Math.min(32, displaySpec.spacing));
+                  }
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  isValid = false;
+                }
+                break;
+                
+              // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
+              /*
+              case 'LINESIZE':
+                // ensure we have one more value
+                if (index < lineParts.length - 1) {
+                  displaySpec.lineSize = Number(lineParts[++index]);
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  isValid = false;
+                }
+                break;
+              case 'TEXTSIZE':
+                // ensure we have one more value
+                if (index < lineParts.length - 1) {
+                  displaySpec.textSize = Number(lineParts[++index]);
+                  DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
+                } else {
+                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  isValid = false;
+                }
+              */
+                
+              // FIXME: UNDONE handle packedDataMode
+              case 'HIDEXY':
+                // just set it!
+                displaySpec.hideXY = true;
+                break;
 
-            default:
-              console.log(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
-              isValid = false;
-              break;
+              default:
+                console.log(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
+                isValid = false;
+                break;
+            }
           }
         }
         if (!isValid) {
@@ -482,7 +533,7 @@ export class DebugLogicWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./resources/fonts/Parallax.ttf') format('truetype');
+            src: url('${this.getParallaxFontUrl()}') format('truetype');
           }
           body {
             display: flex;
@@ -556,15 +607,51 @@ export class DebugLogicWindow extends DebugWindowBase {
             //background-color: ${this.displaySpec.window.background};
             margin: 0;
           }
+          #trigger-status {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 3px 8px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 10px;
+            font-family: Arial, sans-serif;
+            border-radius: 3px;
+            display: none; /* Hidden by default, shown when trigger is enabled */
+          }
+          #trigger-status.armed {
+            background-color: rgba(255, 165, 0, 0.8); /* Orange for armed */
+          }
+          #trigger-status.triggered {
+            background-color: rgba(0, 255, 0, 0.8); /* Green for triggered */
+          }
+          #trigger-position {
+            position: absolute;
+            width: 2px;
+            background-color: rgba(255, 0, 0, 0.8); /* Red trigger line */
+            height: ${channelGroupHeight}px;
+            pointer-events: none;
+            display: none; /* Hidden by default */
+            top: ${this.canvasMargin}px;
+            box-shadow: 0 0 4px rgba(255, 0, 0, 0.6); /* Add glow effect */
+            z-index: 10; /* Ensure it's above canvas elements */
+          }
+          @keyframes pulse {
+            0% { opacity: 0.8; transform: scaleX(1); }
+            50% { opacity: 1; transform: scaleX(1.5); }
+            100% { opacity: 0.8; transform: scaleX(1); }
+          }
         </style>
       </head>
       <body>
+        <div id="trigger-status">READY</div>
         <div id="container">
           <div id="labels" width="${labelCanvasWidth}" height="${channelGroupHeight}">
             ${labelDivs.join('\n')}
           </div>
           <div id="data" width="${dataCanvasWidth}" height="${channelGroupHeight}">
             ${dataCanvases.join('\n')}
+            <div id="trigger-position"></div>
           </div>
         </div>
       </body>
@@ -595,6 +682,74 @@ export class DebugLogicWindow extends DebugWindowBase {
       const canvasName = `label-${bitIdx}`;
       //  set labels
       this.updateLogicChannelLabel(canvasName, channelBitSpec.name, channelBitSpec.color);
+    }
+  }
+  
+  private updateTriggerStatus(): void {
+    if (this.debugWindow && this.triggerSpec.trigEnabled) {
+      let statusText = 'READY';
+      let statusClass = '';
+      
+      if (this.holdoffCounter > 0) {
+        statusText = `HOLDOFF (${this.holdoffCounter})`;
+        statusClass = 'triggered';
+      } else if (this.triggerFired) {
+        statusText = 'TRIGGERED';
+        statusClass = 'triggered';
+      } else if (this.triggerArmed) {
+        statusText = 'ARMED';
+        statusClass = 'armed';
+      }
+      
+      // Also show trigger mask/match values for debugging
+      const triggerInfo = `M:${this.triggerSpec.trigMask.toString(2).padStart(8, '0')} T:${this.triggerSpec.trigMatch.toString(2).padStart(8, '0')}`;
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const statusEl = document.getElementById('trigger-status');
+          if (statusEl) {
+            statusEl.innerHTML = '${statusText}<br><span style="font-size: 8px;">${triggerInfo}</span>';
+            statusEl.className = 'trigger-status ${statusClass}'.trim();
+            statusEl.style.display = 'block';
+          }
+        })();
+      `);
+    } else if (this.debugWindow) {
+      // Hide trigger status when trigger is disabled
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const statusEl = document.getElementById('trigger-status');
+          const posEl = document.getElementById('trigger-position');
+          if (statusEl) statusEl.style.display = 'none';
+          if (posEl) posEl.style.display = 'none';
+        })();
+      `);
+    }
+  }
+  
+  private updateTriggerPosition(): void {
+    if (this.debugWindow && this.triggerSpec.trigEnabled && this.triggerFired) {
+      // Calculate the actual trigger position based on current sample position
+      // The trigger fired at the current sample minus the offset
+      const currentSamplePos = this.channelSamples[0]?.samples.length || 0;
+      const triggerSamplePos = Math.max(0, currentSamplePos - this.triggerSpec.trigSampOffset);
+      const triggerXPos = triggerSamplePos * this.displaySpec.spacing;
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const posEl = document.getElementById('trigger-position');
+          if (posEl) {
+            posEl.style.left = '${triggerXPos}px';
+            posEl.style.display = 'block';
+            // Add pulsing animation when first triggered
+            posEl.style.animation = 'pulse 0.5s ease-in-out 2';
+            // Clear animation after it completes
+            setTimeout(() => {
+              posEl.style.animation = '';
+            }, 1000);
+          }
+        })();
+      `);
     }
   }
 
@@ -628,6 +783,10 @@ export class DebugLogicWindow extends DebugWindowBase {
           // parse trigger spec update
           //   TRIGGER1 mask2 match3 {sample_offset4}
           this.triggerSpec.trigEnabled = true;
+          // Update trigger status when first enabled
+          if (this.debugWindow) {
+            this.updateTriggerStatus();
+          }
           // ensure we have at least two more values
           if (index + 1 < lineParts.length - 1) {
             const [isValidMask, mask] = this.isSpinNumber(lineParts[index + 1]);
@@ -687,28 +846,57 @@ export class DebugLogicWindow extends DebugWindowBase {
           }
         } else {
           // do we have packed data spec?
-          const [isPackedData, newMode] = this.isPackedDataMode(lineParts[index]);
+          // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
+          // const [isPackedData, newMode] = this.isPackedDataMode(lineParts[index]);
+          // if (isPackedData) {
+          //   // remember the new mode so we can unpack the data correctly
+          //   this.packedMode = newMode;
+          //   // now look for ALT and SIGNED keywords which may follow
+          //   if (index + 1 < lineParts.length) {
+          //     const nextKeyword = lineParts[index + 1].toUpperCase();
+          //     if (nextKeyword == 'ALT') {
+          //       this.packedMode.isAlternate = true;
+          //       index++;
+          //       if (index + 1 < lineParts.length) {
+          //         const nextKeyword = lineParts[index + 1].toUpperCase();
+          //         if (nextKeyword == 'SIGNED') {
+          //           this.packedMode.isSigned = true;
+          //           index++;
+          //         }
+          //       }
+          //     } else if (nextKeyword == 'SIGNED') {
+          //       this.packedMode.isSigned = true;
+          //       index++;
+          //     }
+          //   }
+          
+          // Collect packed mode and any following keywords
+          const keywords: string[] = [];
+          let tempIndex = index;
+          
+          // Check if current word is a packed data mode
+          const [isPackedData, _] = PackedDataProcessor.validatePackedMode(lineParts[tempIndex]);
           if (isPackedData) {
-            // remember the new mode so we can unpack the data correctly
-            this.packedMode = newMode;
-            // now look for ALT and SIGNED keywords which may follow
-            if (index + 1 < lineParts.length) {
-              const nextKeyword = lineParts[index + 1].toUpperCase();
-              if (nextKeyword == 'ALT') {
-                this.packedMode.isAlternate = true;
-                index++;
-                if (index + 1 < lineParts.length) {
-                  const nextKeyword = lineParts[index + 1].toUpperCase();
-                  if (nextKeyword == 'SIGNED') {
-                    this.packedMode.isSigned = true;
-                    index++;
-                  }
-                }
-              } else if (nextKeyword == 'SIGNED') {
-                this.packedMode.isSigned = true;
-                index++;
+            // Collect the mode and any following ALT/SIGNED keywords
+            keywords.push(lineParts[tempIndex]);
+            tempIndex++;
+            
+            // Look for ALT and SIGNED keywords
+            while (tempIndex < lineParts.length) {
+              const keyword = lineParts[tempIndex].toUpperCase();
+              if (keyword === 'ALT' || keyword === 'SIGNED') {
+                keywords.push(keyword);
+                tempIndex++;
+              } else {
+                break;
               }
             }
+            
+            // Parse all keywords together
+            this.packedMode = PackedDataProcessor.parsePackedModeKeywords(keywords);
+            
+            // Update index to skip processed keywords
+            index = tempIndex - 1;
           } else {
             // do we have number?
             const [isValidNumber, numericValue] = this.isSpinNumber(lineParts[index]);
@@ -723,7 +911,9 @@ export class DebugLogicWindow extends DebugWindowBase {
                 );
               }
               // FIXME: UNDONE: add code to update the window here with our single sample value
-              let scopeSamples: number[] = this.possiblyUnpackData(numericValue, this.packedMode);
+              // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
+              // let scopeSamples: number[] = this.possiblyUnpackData(numericValue, this.packedMode);
+              let scopeSamples: number[] = PackedDataProcessor.unpackSamples(numericValue, this.packedMode);
               for (let index = 0; index < scopeSamples.length; index++) {
                 const sample = scopeSamples[index];
                 this.recordSampleToChannels(sample);
@@ -746,6 +936,55 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.channelBitSpecs.length
       } channels`
     );
+    
+    // Handle trigger evaluation if enabled
+    if (this.triggerSpec.trigEnabled) {
+      // Use trigger processor to evaluate the trigger condition
+      const triggerMet = this.triggerProcessor.evaluateTriggerCondition(sample, this.triggerSpec);
+      
+      // Update trigger state
+      if (triggerMet && !this.triggerArmed) {
+        // Trigger condition met, arm the trigger
+        this.triggerArmed = true;
+        this.triggerProcessor.updateTriggerState(true, false);
+        this.updateTriggerStatus();
+      } else if (this.triggerArmed && !this.triggerFired) {
+        // Already armed, check if we should fire
+        if (triggerMet) {
+          // Trigger fired!
+          this.triggerFired = true;
+          this.holdoffCounter = this.triggerSpec.trigHoldoff;
+          this.triggerProcessor.updateTriggerState(true, true);
+          // Remember which sample triggered (accounting for offset)
+          this.triggerSampleIndex = (this.channelSamples[0]?.samples.length || 0) - this.triggerSpec.trigSampOffset;
+          this.updateTriggerStatus();
+          this.updateTriggerPosition();
+        }
+      }
+      
+      // Handle holdoff countdown
+      if (this.holdoffCounter > 0) {
+        this.holdoffCounter--;
+        this.updateTriggerStatus(); // Update to show holdoff countdown
+        if (this.holdoffCounter === 0) {
+          // Holdoff expired, reset trigger
+          this.triggerArmed = false;
+          this.triggerFired = false;
+          this.triggerSampleIndex = -1;
+          this.triggerProcessor.resetTrigger();
+          this.updateTriggerStatus();
+        }
+      }
+      
+      // Only update display if no trigger enabled or trigger conditions met
+      if (!this.triggerArmed || this.triggerFired) {
+        // Proceed with normal sample recording
+      } else {
+        // Trigger enabled but not fired yet, skip this sample
+        return;
+      }
+    }
+    
     const numberOfChannels = this.singleBitChannelCount;
     for (let channelIdx = 0; channelIdx < numberOfChannels; channelIdx++) {
       // create canvas name for channel
@@ -865,66 +1104,112 @@ export class DebugLogicWindow extends DebugWindowBase {
           `  -- #${samples.length} currSample=(${currSample},#${samples.length}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
         );
       }
+      // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
+      // try {
+      //   this.debugWindow.webContents.executeJavaScript(`
+      //     (function() {
+      //       // Locate the canvas element by its ID
+      //       const canvas = document.getElementById('${canvasName}');
+      //
+      //       if (canvas && canvas instanceof HTMLCanvasElement) {
+      //         // Get the canvas context
+      //         const ctx = canvas.getContext('2d');
+      //
+      //         if (ctx) {
+      //           // Set the line color and width
+      //           const lineColor = '${channelColor}';
+      //           const lineWidth = ${this.displaySpec.lineSize};
+      //           const spacing = ${this.displaySpec.spacing};
+      //           const scrollSpeed = lineWidth + spacing;
+      //           const canvWidth = ${canvasWidth};
+      //           const canvHeight = ${canvasHeight};
+      //           const canvXOffset = ${drawXOffset};
+      //           const canvYOffset = ${drawYOffset};
+      //
+      //           if (${didScroll}) {
+      //             // Create an off-screen canvas
+      //             const offScreenCanvas = document.createElement('canvas');
+      //             offScreenCanvas.width = canvWidth - scrollSpeed;
+      //             offScreenCanvas.height = canvHeight;
+      //             const offScreenCtx = offScreenCanvas.getContext('2d');
+      //
+      //             if (offScreenCtx) {
+      //               // Copy the relevant part of the canvas to the off-screen canvas
+      //               //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+      //               offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
+      //
+      //               // Clear the original canvas
+      //               //  clearRect(x, y, width, height)
+      //               //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
+      //               // fix? artifact!! (maybe line-width caused?!!!)
+      //               ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
+      //
+      //               // Copy the content back to the original canvas
+      //               //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+      //               ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
+      //             }
+      //           }
+      //
+      //           // Set the solid line pattern
+      //           ctx.setLineDash([]); // Empty array for solid line
+      //
+      //           // Draw the new line segment
+      //           ctx.strokeStyle = lineColor;
+      //           ctx.lineWidth = lineWidth;
+      //           ctx.beginPath();
+      //           ctx.moveTo(${prevXOffset}+${spacing}-1, ${prevYOffset});
+      //           ctx.lineTo(${currXOffset}, ${currYOffset});
+      //           ctx.lineTo(${currXOffset}+${spacing}-1, ${currYOffset});
+      //           ctx.stroke();
+      //         }
+      //       }
+      //     })();
+      //   `);
+      
       try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('${canvasName}');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${channelColor}';
-                const lineWidth = ${this.displaySpec.lineSize};
-                const spacing = ${this.displaySpec.spacing};
-                const scrollSpeed = lineWidth + spacing;
-                const canvWidth = ${canvasWidth};
-                const canvHeight = ${canvasHeight};
-                const canvXOffset = ${drawXOffset};
-                const canvYOffset = ${drawYOffset};
-
-                if (${didScroll}) {
-                  // Create an off-screen canvas
-                  const offScreenCanvas = document.createElement('canvas');
-                  offScreenCanvas.width = canvWidth - scrollSpeed;
-                  offScreenCanvas.height = canvHeight;
-                  const offScreenCtx = offScreenCanvas.getContext('2d');
-
-                  if (offScreenCtx) {
-                    // Copy the relevant part of the canvas to the off-screen canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-
-                    // Clear the original canvas
-                    //  clearRect(x, y, width, height)
-                    //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
-                    // fix? artifact!! (maybe line-width caused?!!!)
-                    ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-
-                    // Copy the content back to the original canvas
-                    //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-                    ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-                  }
-                }
-
-                // Set the solid line pattern
-                ctx.setLineDash([]); // Empty array for solid line
-
-                // Draw the new line segment
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${prevXOffset}+${spacing}-1, ${prevYOffset});
-                ctx.lineTo(${currXOffset}, ${currYOffset});
-                ctx.lineTo(${currXOffset}+${spacing}-1, ${currYOffset});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
+        let jsCode = '';
+        
+        // Handle scrolling if needed
+        if (didScroll) {
+          const scrollSpeed = this.displaySpec.lineSize + spacing;
+          jsCode += this.canvasRenderer.scrollCanvas(canvasName, scrollSpeed, canvasWidth, canvasHeight, drawXOffset, drawYOffset);
+        }
+        
+        // Draw the logic signal lines
+        // Check if this is the trigger sample for highlighting
+        const isTriggerSample = this.triggerFired && 
+                                this.triggerSampleIndex >= 0 && 
+                                samples.length - 1 === this.triggerSampleIndex &&
+                                channelSpec === this.channelBitSpecs[0]; // Only highlight first channel
+        
+        // Use a brighter/different color for the trigger sample
+        const lineColor = isTriggerSample ? '#FF0000' : channelColor; // Red for trigger
+        const lineWidth = isTriggerSample ? this.displaySpec.lineSize + 1 : this.displaySpec.lineSize;
+        
+        // Draw horizontal line from previous position
+        jsCode += this.canvasRenderer.drawLine(
+          canvasName, 
+          prevXOffset + spacing - 1, 
+          prevYOffset, 
+          currXOffset, 
+          currYOffset, 
+          lineColor, 
+          lineWidth
+        );
+        
+        // Draw horizontal line at current position
+        jsCode += this.canvasRenderer.drawLine(
+          canvasName,
+          currXOffset,
+          currYOffset,
+          currXOffset + spacing - 1,
+          currYOffset,
+          lineColor,
+          lineWidth
+        );
+        
+        // Execute all the JavaScript at once
+        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`);
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }

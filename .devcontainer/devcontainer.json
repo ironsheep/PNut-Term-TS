@@ -34,5 +34,8 @@
     "editor.formatOnSave": true,
     "editor.formatOnType": true,
     "files.trimTrailingWhitespace": true
+  },
+  "containerEnv": {
+    "IS_SANDBOX": "1"
   }
 }

@@ -22,47 +22,50 @@ export class DebugColor {
   static defaultBrightness: number = 8;
   static defaultFontBrightness: number = 12;
   static defaultGridBrightness: number = 6;
+  // Chip's 10 basic colors from Pascal reference
   private static colorNameToHex: { [key: string]: string } = {
-    BLACK: '#000000', // default BACK
-    ORANGE: '#FF7F00',
-    OLIVE: '#7F7F00',
-    GREEN: '#008000',
-    CYAN: '#00FFFF', // default PLOT
-    RED: '#FF0000',
-    LIME: '#00FF00',
-    BLUE: '#3F3FFF',
-    BLUE2: '#0000FF',
-    MAGENTA: '#FF00FF',
-    YELLOW: '#FFFF00',
-    WHITE: '#FFFFFF', // default TEXT
-    GRAY: '#404040', // default GRID
-    GRAY2: '#808080',
-    GRAY3: '#D0D0D0'
+    BLACK: '#000000',   // Color 0
+    WHITE: '#FFFFFF',   // Color 1
+    ORANGE: '#FF7F00',  // Color 2 (was #FFA500 in parser)
+    BLUE: '#0000FF',    // Color 3
+    GREEN: '#00FF00',   // Color 4 (was #008000)
+    CYAN: '#00FFFF',    // Color 5
+    RED: '#FF0000',     // Color 6
+    MAGENTA: '#FF00FF', // Color 7
+    YELLOW: '#FFFF00',  // Color 8
+    GRAY: '#808080',    // Color 9
+    // Alternative spellings and legacy colors
+    GREY: '#808080',    // Alternative spelling
+    OLIVE: '#7F7F00',   // Legacy
+    LIME: '#00FF00',    // Legacy (same as GREEN)
+    BLUE2: '#0000FF',   // Legacy (same as BLUE)
+    GRAY2: '#808080',   // Legacy (same as GRAY)
+    GRAY3: '#D0D0D0'    // Legacy
   };
 
-  constructor(colorName: string, brightness: number = 8) {
-    // default birghtness is 8 when not specified
+  constructor(colorName: string, brightness: number = DebugColor.defaultBrightness) {
+    // Validate brightness is 0-15
+    if (brightness < 0 || brightness > 15) {
+      console.log(` DC: WARNING: brightness ${brightness} out of range 0-15, using default ${DebugColor.defaultBrightness}`);
+      brightness = DebugColor.defaultBrightness;
+    }
+    
     this.name = colorName;
     this._colorValue = DebugColor.colorNameToNumber(colorName);
     this._colorHexValue = DebugColor.colorNameToHexString(colorName);
     this._calcBrightness = this.brightnessForHex(this._colorHexValue);
-    this.fontBrightness = this._calcBrightness < 100 ? 12 : 6; // adjust font brightness based on starting brightness
     this._brightness = brightness;
+    
+    // Apply brightness to get the actual display color
     this._dimmedColorValue = this.adjustBrightness(this._colorValue, this._brightness);
-    // cache the dimmed color
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
+    
+    // Grid and font colors use their own brightness levels
     this.gridBrightness = DebugColor.defaultGridBrightness;
     this.fontBrightness = DebugColor.defaultFontBrightness;
-    this._brightness = DebugColor.defaultBrightness;
-    // note grid color is always brightness 4
-    this.gridColor =
-      this._brightness === this.gridBrightness
-        ? this.dimmedColor
-        : this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
-    this.fontColor =
-      this._brightness === this.fontBrightness
-        ? this.dimmedColor
-        : this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
+    
+    this.gridColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
+    this.fontColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
   }
 
   public static setDefaultBrightness(
@@ -104,10 +107,97 @@ export class DebugColor {
     return this.fontColor;
   }
 
+  /**
+   * Check if a color name is valid (case-insensitive)
+   */
   public static isValidColorName(colorName: string): boolean {
     const foundColor = DebugColor.colorNameToHex[colorName.toUpperCase()];
     console.log(` DC: * isValidColorName: ${colorName} -> ${foundColor}`);
-    return foundColor !== undefined ? true : false;
+    return foundColor !== undefined;
+  }
+
+  /**
+   * Parse a color specification which can be:
+   * - Color name: "RED"
+   * - Color name with brightness: "RED 12"
+   * - Hex color: "#FF0000" or "$FF0000"
+   * - Decimal value: "16711680"
+   * Returns [isValid, hexColor, brightness]
+   */
+  public static parseColorSpec(colorSpec: string): [boolean, string, number] {
+    let hexColor = '#000000';
+    let brightness = DebugColor.defaultBrightness;
+    let isValid = false;
+
+    // First check if it's a color name with optional brightness
+    const parts = colorSpec.trim().split(/\s+/);
+    if (parts.length >= 1) {
+      const colorName = parts[0].toUpperCase();
+      
+      // Check if it's a valid color name
+      if (DebugColor.colorNameToHex[colorName]) {
+        hexColor = DebugColor.colorNameToHex[colorName];
+        isValid = true;
+        
+        // Check for brightness value
+        if (parts.length >= 2) {
+          const brightnessValue = parseInt(parts[1], 10);
+          if (!isNaN(brightnessValue) && brightnessValue >= 0 && brightnessValue <= 15) {
+            brightness = brightnessValue;
+          }
+        }
+      } else {
+        // Not a color name, try other formats
+        // Check for hex with $ prefix
+        if (colorSpec.startsWith('$')) {
+          const hex = colorSpec.substring(1);
+          if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
+            hexColor = `#${hex}`;
+            isValid = true;
+          }
+        }
+        // Check for hex with # prefix
+        else if (colorSpec.startsWith('#')) {
+          const hex = colorSpec.substring(1);
+          if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
+            hexColor = colorSpec;
+            isValid = true;
+          }
+        }
+        // Check for decimal value
+        else if (/^\d+$/.test(colorSpec)) {
+          const value = parseInt(colorSpec, 10);
+          if (value >= 0 && value <= 0xffffff) {
+            hexColor = '#' + value.toString(16).padStart(6, '0');
+            isValid = true;
+          }
+        }
+      }
+    }
+
+    console.log(` DC: * parseColorSpec(${colorSpec}) -> valid=${isValid}, hex=${hexColor}, brightness=${brightness}`);
+    return [isValid, hexColor, brightness];
+  }
+
+  /**
+   * Create a DebugColor instance from a color specification string
+   */
+  public static fromColorSpec(colorSpec: string): DebugColor | null {
+    const [isValid, hexColor, brightness] = DebugColor.parseColorSpec(colorSpec);
+    if (!isValid) {
+      return null;
+    }
+    
+    // Find the color name that matches this hex value
+    let colorName = 'CUSTOM';
+    for (const [name, hex] of Object.entries(DebugColor.colorNameToHex)) {
+      if (hex.toUpperCase() === hexColor.toUpperCase()) {
+        colorName = name;
+        break;
+      }
+    }
+    
+    return new DebugColor(colorName, brightness);
   }
 
   private static colorNameToHexString(colorName: string): string {
@@ -132,14 +222,22 @@ export class DebugColor {
     return value;
   }
 
+  /**
+   * Adjust color brightness according to Chip's brightness system (0-15)
+   * 0 = black, 15 = full color, 1-14 = proportional brightness
+   */
   private adjustBrightness(color: number, brightness: number): number {
     let adjustedColor: number = 0x000000;
 
+    // Ensure brightness is in valid range 0-15
+    brightness = Math.max(0, Math.min(15, brightness));
+
     if (brightness === 0 || color === 0) {
-      adjustedColor = 0x000000; // Special handling for brightness 0: return black
+      adjustedColor = 0x000000; // Brightness 0: always black
     } else if (brightness === 15) {
-      adjustedColor = color; // Special handling for brightness 15: return original color
+      adjustedColor = color; // Brightness 15: full color
     } else {
+      // Brightness 1-14: scale each RGB component proportionally
       try {
         const r = ((color >> 16) & 0xff) * (brightness / 15);
         const g = ((color >> 8) & 0xff) * (brightness / 15);
@@ -151,12 +249,20 @@ export class DebugColor {
     }
 
     console.log(
-      ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')},${brightness}) -> 0x${adjustedColor
+      ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, ${brightness}) -> 0x${adjustedColor
         .toString(16)
         .padStart(6, '0')}`
     );
 
     return adjustedColor;
+  }
+
+  /**
+   * Get the RGB hex string with brightness applied
+   */
+  public rgbStringWithBrightness(brightness: number): string {
+    const adjustedColor = this.adjustBrightness(this._colorValue, brightness);
+    return this.hexColorString(adjustedColor);
   }
 
   private hexColorString(colorValue: number): string {

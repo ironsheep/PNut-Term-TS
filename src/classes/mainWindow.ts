@@ -117,6 +117,14 @@ export class MainWindow {
     return this.mainWindowOpen == true ? false : true;
   }
 
+  private getParallaxFontUrl(): string {
+    // In packaged app, use process.resourcesPath, in dev use relative path
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '../../../');
+    const fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
+    // Convert to file URL with forward slashes for cross-platform compatibility
+    return `file://${fontPath.replace(/\\/g, '/')}`;
+  }
+
   public async close(): Promise<void> {
     // Remove all listeners to prevent memory leaks and allow port to be reused
     this.logMessage('* close()');
@@ -399,7 +407,7 @@ export class MainWindow {
       <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./resources/fonts/Parallax.ttf') format('truetype');
+            src: url('${this.getParallaxFontUrl()}') format('truetype');
           }
         body {
           display: flex;

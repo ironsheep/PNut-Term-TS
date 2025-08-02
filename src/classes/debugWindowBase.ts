@@ -8,6 +8,7 @@
 import { BrowserWindow, NativeImage } from 'electron';
 import { Jimp } from 'jimp';
 import * as fs from 'fs';
+import * as path from 'path';
 import EventEmitter from 'events';
 import { Context } from '../utils/context';
 import { localFSpecForFilename } from '../utils/files';
@@ -320,6 +321,8 @@ export abstract class DebugWindowBase extends EventEmitter {
     return weightName;
   }
 
+  // MOVED TO PackedDataProcessor class - commented out but not deleted
+  /*
   protected isPackedDataMode(possibleMode: string): [boolean, PackedDataMode] {
     let havePackedDataStatus: boolean = false;
     let desiredMode: PackedDataMode = {
@@ -411,6 +414,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     }
     return [havePackedDataStatus, desiredMode];
   }
+  */
 
   protected signExtend(value: number, signBitNbr: number): number {
     // Create a mask to zero out all bits above the sign bit
@@ -428,6 +432,8 @@ export abstract class DebugWindowBase extends EventEmitter {
     return value;
   }
 
+  // MOVED TO PackedDataProcessor class - commented out but not deleted
+  /*
   protected possiblyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
     const sampleSet: number[] = [];
     // FIXME: add ALT and SIGNED support
@@ -566,6 +572,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     //this.logMessageBase(`unpackData(${numericValue}), -> sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
     return sampleSet;
   }
+  */
 
   protected isSpinNumber(value: string): [boolean, number] {
     let isValieSpin2Number: boolean = false;
@@ -632,6 +639,14 @@ export abstract class DebugWindowBase extends EventEmitter {
       }
     }
     return value;
+  }
+
+  protected getParallaxFontUrl(): string {
+    // In packaged app, use process.resourcesPath, in dev use relative path
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '../../../');
+    const fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
+    // Convert to file URL with forward slashes for cross-platform compatibility
+    return `file://${fontPath.replace(/\\/g, '/')}`;
   }
 
   // ----------------------------------------------------------------------

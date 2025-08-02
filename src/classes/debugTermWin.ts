@@ -325,7 +325,7 @@ export class DebugTermWindow extends DebugWindowBase {
         <style>
           @font-face {
             font-family: 'Parallax';
-            src: url('./resources/fonts/Parallax.ttf') format('truetype');
+            src: url('${this.getParallaxFontUrl()}') format('truetype');
           }
           body {
             display: flex;
