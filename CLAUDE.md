@@ -157,6 +157,15 @@ The complete Spin2 language specification, which includes detailed debug display
   - Instantiation and feeding command syntax
   - Color modes, packed data modes, and examples
 
+**Debug Testing Files**:
+- **Location**: `/pascal-source/P2_PNut_Public/DEBUG-TESTING/`
+- **Contents**: Test programs and binaries for debug windows
+  - `DEBUG_BITMAP_*.spin2/.bin` - Bitmap window test programs
+  - `DEBUG_Mouse_and_Keyboard.*` - Input testing programs
+  - `DEBUG_PLOT_*.spin2/.bin` - Plot window test programs
+  - Various `.bmp` files for testing bitmap loading
+  - Compiled binaries can be downloaded to P2 for testing
+
 ## Pascal to TypeScript Debug Window Translation Guide
 
 This section documents the translation from Chip Gracey's Pascal reference implementation to TypeScript classes.
