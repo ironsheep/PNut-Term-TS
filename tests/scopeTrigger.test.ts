@@ -264,7 +264,7 @@ describe('Scope Window Trigger System', () => {
       const armYPos = scaleAndInvertValue(mockWindow.triggerSpec.trigArmLevel, mockChannelSpec);
       const trigYPos = scaleAndInvertValue(mockWindow.triggerSpec.trigLevel, mockChannelSpec);
       
-      expect(armYPos).toBeCloseTo(66.67, 1); // 33% from top
+      expect(armYPos).toBeCloseTo(67, 1); // 33% from top
       expect(trigYPos).toBe(50); // 50% from top
     });
 

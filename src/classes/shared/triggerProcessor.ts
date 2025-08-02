@@ -223,9 +223,13 @@ export class ScopeTriggerProcessor extends TriggerProcessor {
       if (this.evaluateTriggerCondition(sample)) {
         this.updateTriggerState(false, true);
         this.setHoldoff(triggerSpec.trigHoldoff);
+        this.previousSample = sample;
         return true; // Update display on trigger
       }
     }
+
+    // Store current sample for next comparison
+    this.previousSample = sample;
 
     // Update display if triggered or no trigger is set
     return this.triggerFired || (this.armLevel === 0 && this.fireLevel === 0);

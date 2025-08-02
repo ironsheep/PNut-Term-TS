@@ -8,8 +8,7 @@
   "appPort": ["5002:5002", "9123:8123"],
   "postCreateCommand": "npm install && npm install -g @anthropic-ai/claude-code && echo 'Claude Code installed. Run: claude auth login' to authenticate",
   "mounts": [
-    "source=${localWorkspaceFolderBasename}-claude-data,target=/home/node/.claude,type=volume",
-    "source=${localWorkspaceFolderBasename}-claude-root-data,target=/root/.claude,type=volume",
+    "source=/Users/stephen/.claude,target=/root/.claude,type=bind",
     "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/tmp/.ssh,type=bind",
     "source=/Users/stephen/Projects/Projects-ExtGit/IronSheepProductionsLLC/Propeller2/PNut-TypeScript/PNut-TS Support/PNut-REF,target=/pascal-source,type=bind"
   ],

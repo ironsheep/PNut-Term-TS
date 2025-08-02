@@ -300,7 +300,7 @@ describe('Logic Window Trigger System', () => {
           mask: 0b10101010,
           match: 0b10000010,
           samples: [0b10000010, 0b11000011, 0b10100010],
-          expectedMatches: [true, true, true]
+          expectedMatches: [true, true, false]
         }
       ];
       

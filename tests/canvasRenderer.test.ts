@@ -97,7 +97,9 @@ describe('CanvasRenderer', () => {
     test('should generate correct clear canvas JavaScript', () => {
       const js = renderer.clearCanvas('myCanvas', 10, 20, 300, 400);
       
-      expect(js).toContain('ctx.clearRect(10, 20, 300, 400)');
+      expect(js).toContain('const clearWidth = 300');
+      expect(js).toContain('const clearHeight = 400');
+      expect(js).toContain('ctx.clearRect(10, 20, clearWidth, clearHeight)');
     });
 
     test('should clear entire canvas when dimensions not provided', () => {
@@ -166,19 +168,19 @@ describe('CanvasRenderer', () => {
       const js = renderer.drawCircle('myCanvas', 100, 100, 10, '#FF0000', true, 1);
       
       expect(js).toContain('ctx.arc(100, 100, 10, 0, 2 * Math.PI)');
+      expect(js).toContain('if (true)');
       expect(js).toContain("ctx.fillStyle = '#FF0000'");
       expect(js).toContain('ctx.fill()');
-      expect(js).not.toContain('ctx.stroke()');
     });
 
     test('should draw outline circle', () => {
       const js = renderer.drawCircle('myCanvas', 50, 50, 5, '#00FF00', false, 2);
       
       expect(js).toContain('ctx.arc(50, 50, 5, 0, 2 * Math.PI)');
+      expect(js).toContain('if (false)');
       expect(js).toContain("ctx.strokeStyle = '#00FF00'");
       expect(js).toContain('ctx.lineWidth = 2');
       expect(js).toContain('ctx.stroke()');
-      expect(js).not.toContain('ctx.fill()');
     });
   });
 

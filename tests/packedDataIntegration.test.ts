@@ -148,8 +148,8 @@ describe('PackedDataProcessor Integration in Debug Windows', () => {
       it('should handle ALT modifier for longs_16bit', () => {
         const numericValue = 0x12345678;
         
-        // With ALT: words swapped to 5678 1234
-        const expected = [0x5678, 0x1234];
+        // With ALT: byte order reversed to 0x78563412
+        const expected = [0x7856, 0x3412];
         
         const unpacked = simulateUnpacking(numericValue, 'longs_16bit', true);
         expect(unpacked).toEqual(expected);

@@ -33,6 +33,12 @@ This is part of the P2 Multi-platform Development Environment:
 - `npm run start` - Run the built application
 - `node dist/pnut-term-ts.min.js` - Direct execution
 
+### Testing Commands
+- `npm test` - Run Jest test suite
+- `npm run test:watch` - Run tests in watch mode for development
+- `npm run test:coverage` - Generate test coverage reports
+- `npm run test:verbose` - Run tests with verbose output
+
 ## Architecture Overview
 
 ### Core Application Structure
@@ -51,6 +57,12 @@ The application follows a class-based architecture with clear separation of conc
   - `DebugPlotWindow` - Data plotting interface
   - `DebugLogicWindow` - Logic analyzer display
 
+**Shared Classes** (in `src/classes/shared/`):
+- `CanvasRenderer` - HTML5 Canvas rendering operations
+- `DisplaySpecParser` - Parse display specifications from debug commands
+- `PackedDataProcessor` - Handle 13 different packed data modes
+- `TriggerProcessor` - Trigger condition evaluation for scope/logic displays
+
 **Hardware Communication**: 
 - `UsbSerial` - USB serial communication with Propeller2 devices
 - `Downloader` - Handles file downloads to P2 RAM/FLASH memory
@@ -63,8 +75,8 @@ The application follows a class-based architecture with clear separation of conc
 ### Debug Display System
 The application implements multiple debug display types with varying completion status:
 - **Terminal** (complete) - Basic text terminal interface
-- **Logic** (in-progress) - Logic analyzer display, needs trigger support
-- **Scope** (in-progress) - Oscilloscope display, needs trigger support  
+- **Logic** (complete) - Logic analyzer display with full trigger support
+- **Scope** (complete) - Oscilloscope display with full trigger support  
 - **Plot** (in-progress) - Data plotting interface
 - **Scope_XY, FFT, Spectro, Bitmap, MIDI, Debugger** - Not yet implemented
 
@@ -103,6 +115,14 @@ The application's core functionality revolves around:
 - **Memory Operations**: Supports both RAM and FLASH programming of P2 devices
 - **Cross-Platform**: Full support for Windows, macOS, and Linux including ARM64
 
+## CI/CD and GitHub Actions
+
+The project uses GitHub Actions for automated builds:
+- **macOS workflow** (`.github/workflows/build-macos.yml`): Automated signing and notarization
+- **Windows workflow** (`.github/workflows/build-win.yml`): Windows packaging
+- Targets Node.js 23 for modern JavaScript features
+- Automated artifact uploads for distribution
+
 ## Pascal to TypeScript Debug Window Translation Guide
 
 This section documents the translation from Chip Gracey's Pascal reference implementation to TypeScript classes.
@@ -137,8 +157,8 @@ dis_midi      = 8;    // MIDI visualization display
 
 | Pascal Type | TypeScript Class | Status | File Location |
 |-------------|------------------|---------|---------------|
-| `dis_logic` | `DebugLogicWindow` | In Progress | `src/classes/debugLogicWin.ts` |
-| `dis_scope` | `DebugScopeWindow` | In Progress | `src/classes/debugScopeWin.ts` |
+| `dis_logic` | `DebugLogicWindow` | Complete | `src/classes/debugLogicWin.ts` |
+| `dis_scope` | `DebugScopeWindow` | Complete | `src/classes/debugScopeWin.ts` |
 | `dis_scope_xy` | Not Implemented | Missing | - |
 | `dis_fft` | Not Implemented | Missing | - |
 | `dis_spectro` | Not Implemented | Missing | - |
@@ -225,3 +245,20 @@ dis_midi      = 8;    // MIDI visualization display
 - Implement trigger conditions and holdoff
 - Provide save-to-file capabilities
 - Follow Pascal parameter parsing conventions
+
+## Testing Infrastructure
+
+**Jest Configuration**:
+- Test files pattern: `*.test.ts` and `*.spec.ts`
+- 30-second timeout for complex integration tests
+- Coverage thresholds can be configured in `jest.config.js`
+
+**Running Specific Tests**:
+- Single test file: `npm test -- src/classes/debugColor.test.ts`
+- Pattern matching: `npm test -- --testNamePattern="color parsing"`
+- Debug mode: `node --inspect-brk node_modules/.bin/jest --runInBand`
+
+**Key Test Areas**:
+- Unit tests for color system, packed data processing, trigger evaluation
+- Integration tests for window creation and inter-component communication
+- Performance benchmarks for real-time data processing
