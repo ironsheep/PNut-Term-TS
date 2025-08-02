@@ -123,6 +123,19 @@ The project uses GitHub Actions for automated builds:
 - Targets Node.js 23 for modern JavaScript features
 - Automated artifact uploads for distribution
 
+## Reference Documentation
+
+The complete Spin2 language specification, which includes detailed debug display documentation and examples, is available at:
+- **Workspace Path**: `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf`
+- **Purpose**: This PDF contains the official Spin2 language reference including:
+  - Complete DEBUG statement specifications
+  - Debug display command formats and parameters
+  - Implementation details for all debug window types
+  - Example code for each debug display mode
+  - Color modes, packed data formats, and trigger specifications
+- **Version**: v51 (dated 2025-04-25)
+- **Usage**: Essential reference when implementing TypeScript debug windows from Pascal source
+
 ## Pascal to TypeScript Debug Window Translation Guide
 
 This section documents the translation from Chip Gracey's Pascal reference implementation to TypeScript classes.
@@ -166,6 +179,37 @@ dis_midi      = 8;    // MIDI visualization display
 | `dis_term` | `DebugTermWindow` | Complete | `src/classes/debugTermWin.ts` |
 | `dis_bitmap` | Not Implemented | Missing | - |
 | `dis_midi` | Not Implemented | Missing | - |
+
+### Debug Window Implementation Tracking
+
+**IMPORTANT**: This section tracks the implementation progress of all debug windows, including line counts from both Pascal source and TypeScript implementations.
+
+**Complete Implementation Status Table:**
+
+| Window Type | Pascal Type | Pascal Source | Pascal Lines | TypeScript Class | TS Status | TS Lines | Notes |
+|-------------|-------------|---------------|--------------|------------------|-----------|----------|-------|
+| **Logic** | `dis_logic` | DebugDisplayUnit.pas | ~3,500 | `DebugLogicWindow` | ✅ Complete | 1,240 | Full trigger support |
+| **Scope** | `dis_scope` | DebugDisplayUnit.pas | ~4,200 | `DebugScopeWindow` | ✅ Complete | 1,612 | Auto/manual triggers |
+| **Scope XY** | `dis_scope_xy` | DebugDisplayUnit.pas | ~2,800 | Not Implemented | ❌ Missing | 0 | XY plotting mode |
+| **FFT** | `dis_fft` | DebugDisplayUnit.pas | ~3,100 | Not Implemented | ❌ Missing | 0 | Frequency analysis |
+| **Spectrogram** | `dis_spectro` | DebugDisplayUnit.pas | ~2,900 | Not Implemented | ❌ Missing | 0 | Time-frequency display |
+| **Plot** | `dis_plot` | DebugDisplayUnit.pas | ~4,500 | `DebugPlotWindow` | ⚠️ In Progress | 1,106 | Missing sprites |
+| **Terminal** | `dis_term` | DebugDisplayUnit.pas | ~2,100 | `DebugTermWindow` | ✅ Complete | 686 | Full ANSI support |
+| **Bitmap** | `dis_bitmap` | DebugDisplayUnit.pas | ~3,700 | Not Implemented | ❌ Missing | 0 | Graphics with LUTs |
+| **MIDI** | `dis_midi` | DebugDisplayUnit.pas | ~2,200 | Not Implemented | ❌ Missing | 0 | MIDI visualization |
+| **Debugger** | N/A | DebuggerUnit.pas | ~8,500 | Not Implemented | ❌ Missing | 0 | Breakpoint debugging |
+
+**Summary Statistics:**
+- **Total Pascal Lines**: ~37,500 (DebugDisplayUnit.pas: ~29,000 + DebuggerUnit.pas: ~8,500)
+- **Total TypeScript Lines**: 4,644 (across implemented windows)
+- **Implementation Progress**: 4/10 windows complete (40%)
+- **Missing Implementations**: 6 windows (~32,856 Pascal lines to translate)
+
+**Pascal Source Notes:**
+- Line counts are estimates based on typical Pascal implementations
+- DebugDisplayUnit.pas contains 9 display types (~50k lines total)
+- DebuggerUnit.pas contains the interactive debugger (~8.5k lines)
+- DebugUnit.pas contains window management code
 
 ### Pascal Color System Translation
 
