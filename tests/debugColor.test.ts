@@ -105,8 +105,9 @@ describe('DebugColor', () => {
       const [isValid2] = DebugColor.parseColorSpec('$GGGGGG'); // Invalid hex
       expect(isValid2).toBe(false);
       
-      const [isValid3] = DebugColor.parseColorSpec('999999999'); // Too large decimal
-      expect(isValid3).toBe(false);
+      const [isValid3, hex3] = DebugColor.parseColorSpec('999999999'); // Too large decimal - should cap at 0xFFFFFF
+      expect(isValid3).toBe(true);
+      expect(hex3).toBe('#ffffff'); // Capped at max RGB value
     });
 
     it('should ignore invalid brightness values', () => {

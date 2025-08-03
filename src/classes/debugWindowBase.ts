@@ -13,6 +13,7 @@ import EventEmitter from 'events';
 import { Context } from '../utils/context';
 import { localFSpecForFilename } from '../utils/files';
 import { waitMSec } from '../utils/timerUtils';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 
 // src/classes/debugWindowBase.ts
 
@@ -168,27 +169,17 @@ export abstract class DebugWindowBase extends EventEmitter {
   static getValidRgb24(possColorValue: string): [boolean, string] {
     let rgbValue: string = '#a5a5a5'; // gray for unknown color
     let isValid: boolean = false;
-    // if color is a number, then it is a rgb24 value
-    // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
-    // return rgbValue as a #rrbbgg string
-    const possColorStr = possColorValue.replace(/_/g, '');
-    if (possColorStr.length > 0) {
-      if (possColorStr[0] === '$' && /^[0-9A-Fa-f]+$/.test(possColorValue.substring(1))) {
-        // hex value
-        const hexValue: string = possColorStr.substring(1);
-        if (hexValue.length === 6 || hexValue.length === 3) {
-          rgbValue = `#${hexValue}`;
-          isValid = true;
-        }
-      } else if (/^[0-9]+$/.test(possColorStr) && possColorStr.length > 3) {
-        // decimal value
-        const decValue: number = parseInt(possColorStr, 10);
-        if (decValue >= 0 && decValue <= 0xffffff) {
-          rgbValue = '#' + decValue.toString(16).padStart(6, '0');
-          isValid = true;
-        }
-      }
+    
+    // Use Spin2NumericParser to parse color value
+    // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
+    const colorValue = Spin2NumericParser.parseColor(possColorValue);
+    
+    if (colorValue !== null) {
+      // Convert to hex string format #RRGGBB
+      rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toUpperCase();
+      isValid = true;
     }
+    
     return [isValid, rgbValue];
   }
 

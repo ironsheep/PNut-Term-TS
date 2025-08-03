@@ -80,6 +80,7 @@ The application follows a class-based architecture with clear separation of conc
 - `debugStatements` - Complete debug display types, configurations, and commands from debugStatements.pdf
 - `LayerManager` - Manages up to 8 bitmap layers for debug windows with loading and cropping support
 - `SpriteManager` - Handles up to 256 sprite definitions with transformation capabilities (rotation, scaling, opacity)
+- `Spin2NumericParser` - Centralized parser for all Spin2 numeric formats (see Spin2 Numeric Formats section)
 
 **Hardware Communication**: 
 - `UsbSerial` - USB serial communication with Propeller2 devices
@@ -369,6 +370,135 @@ dis_midi      = 8;    // MIDI visualization display
 - Implement trigger conditions and holdoff
 - Provide save-to-file capabilities
 - Follow Pascal parameter parsing conventions
+
+## Spin2 Numeric Formats
+
+The Spin2 language supports multiple numeric formats for integer and floating-point values. All numeric values in debug commands and data streams must be parsed according to these formats:
+
+### Integer Formats (32-bit resolution)
+
+1. **Hexadecimal**: `$` prefix followed by hex digits (0-9, A-F, a-f) with optional underscores
+   - Examples: `$FF`, `$1234_ABCD`, `$00FF_00FF`
+   - Valid digits: 0-9, A-F, a-f
+   - Underscores allowed for readability
+
+2. **Decimal**: Optional minus sign followed by decimal digits with optional underscores
+   - Examples: `123`, `-456`, `1_000_000`, `-2_147_483_648`
+   - Valid digits: 0-9
+   - Underscores allowed for readability
+
+3. **Binary**: `%` prefix followed by binary digits (0-1) with optional underscores
+   - Examples: `%1010`, `%1111_0000`, `%1010_1010_1010_1010`
+   - Valid digits: 0-1
+   - Underscores allowed for readability
+
+4. **Quaternary (Double-binary)**: `%%` prefix followed by quaternary digits (0-3) with optional underscores
+   - Examples: `%%0123`, `%%33_22_11_00`, `%%3210`
+   - Valid digits: 0-3
+   - Underscores allowed for readability
+
+### Floating Point Format (32-bit IEEE 754 single precision)
+
+- Standard decimal notation with decimal point
+- Scientific notation with `e` or `E` exponent indicator
+- Examples:
+  - `-1.0` - Simple decimal
+  - `1_250_000.0` - With underscores for readability
+  - `1e9` - Scientific notation (1 × 10⁹)
+  - `5e-6` - Negative exponent (5 × 10⁻⁶)
+  - `-1.23456e-7` - Negative value with scientific notation
+
+### Parsing Requirements
+
+- All numeric formats should support underscores (`_`) for visual grouping
+- Integer values resolve to 32-bit signed integers
+- Floating point values follow IEEE 754 single precision format
+- Numeric parsing must be consistent across all debug windows and commands
+- Invalid numeric formats should be handled gracefully with appropriate error messages
+
+## Spin2NumericParser Usage
+
+The `Spin2NumericParser` class provides centralized parsing for all Spin2 numeric formats. Located in `src/classes/shared/spin2NumericParser.ts`, it ensures consistent numeric handling across the entire codebase.
+
+### Context-Aware Parsing Methods
+
+The parser provides specialized methods for different contexts, each with appropriate validation:
+
+**parseColor(value: string): number | null**
+- Parses color values (RGB 24-bit)
+- Accepts all numeric formats: `$FF0000`, `%11111111`, `%%3333`, `16711680`
+- Constrains values to 0-0xFFFFFF range
+- Returns null for invalid formats
+
+**parsePixel(value: string): number | null**
+- Parses pixel coordinates and dimensions
+- Integers only, no negatives allowed
+- Caps unreasonably large values at 65535
+- Used for screen positions, widths, heights
+
+**parseCoordinate(value: string): number | null**
+- Parses plot coordinates
+- Allows floating point and negative values
+- Supports scientific notation: `1.5e-3`, `-2.5`
+- Used for graph positions, data points
+
+**parseCount(value: string): number | null**
+- Parses quantities and counts
+- Positive integers only
+- Used for samples, sizes, indices
+
+**parseInteger(value: string, allowNegative: boolean = true): number | null**
+- General integer parsing with negative control
+- Rejects floating point values
+
+**parseFloat(value: string): number | null**
+- Accepts all numeric formats as floating point
+
+### Usage Examples
+
+```typescript
+import { Spin2NumericParser } from './shared/spin2NumericParser';
+
+// Color parsing
+const color = Spin2NumericParser.parseColor('$FF00FF');  // Returns 16711935
+const color2 = Spin2NumericParser.parseColor('MAGENTA'); // Returns null (not a number)
+
+// Coordinate parsing (allows negatives and floats)
+const x = Spin2NumericParser.parseCoordinate('-123.45'); // Returns -123.45
+const y = Spin2NumericParser.parseCoordinate('1.5e2');   // Returns 150
+
+// Pixel parsing (positive integers only)
+const width = Spin2NumericParser.parsePixel('1920');     // Returns 1920
+const invalid = Spin2NumericParser.parsePixel('-100');   // Returns null
+
+// Count parsing
+const samples = Spin2NumericParser.parseCount('1_000');  // Returns 1000
+```
+
+### Error Handling
+
+The parser logs descriptive errors to the console when invalid formats are encountered:
+- "Unknown numeric format" - for unrecognized patterns
+- "Negative value not allowed" - when negatives are used where not permitted
+- "Expected integer but got float" - when integers are required
+- "Color value exceeds 24-bit RGB range" - for colors > 0xFFFFFF
+
+### Important Notes
+
+- **Underscores**: All formats support underscores for readability (e.g., `$FF_00_FF`, `1_000_000`)
+- **Case Insensitive**: Hex digits are case-insensitive (`$FF` = `$ff`)
+- **Overflow Handling**: Values are capped at appropriate ranges rather than rejected
+- **Packed Data Streams**: The parser is NOT used for packed data streams - those are handled separately by `PackedDataProcessor`
+
+### Integration in Debug Windows
+
+All debug windows use the parser for consistent numeric handling:
+- `DebugWindowBase.getValidRgb24()` uses `parseColor()`
+- `DebugPlotWindow` uses `parseCoordinate()` for plot positions
+- `DisplaySpecParser` uses `parsePixel()` for window dimensions
+- `DebugBitmapWindow` uses `parseColor()` for color values
+
+This ensures that numeric values are parsed consistently throughout the application, supporting all Spin2 numeric formats wherever numbers are accepted.
 
 ## Testing Infrastructure
 

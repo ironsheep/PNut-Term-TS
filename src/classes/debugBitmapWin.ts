@@ -14,6 +14,7 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 import { BrowserWindow } from 'electron';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 
 /**
  * Bitmap window state
@@ -806,16 +807,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
   }
 
   /**
-   * Parse color value (handles $, %, and plain numbers)
+   * Parse color value (handles $hex, %binary, %%quaternary, and decimal)
+   * Note: PackedDataProcessor handles packed data streams separately
    */
   private parseColorValue(str: string): number {
-    if (str.startsWith('$')) {
-      return parseInt(str.substring(1), 16);
-    } else if (str.startsWith('%')) {
-      return parseInt(str.substring(1), 2);
-    } else {
-      return parseInt(str);
-    }
+    const value = Spin2NumericParser.parseColor(str);
+    return value !== null ? value : 0;
   }
 
   /**

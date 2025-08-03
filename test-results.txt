@@ -1,0 +1,4823 @@
+PASS tests/spacingDirective.test.ts (7.242 s)
+  SPACING Directive Fix in Logic Window
+    SPACING Directive Parsing
+      ✓ should correctly parse SPACING directive and assign to spacing property (47 ms)
+      ✓ should maintain default spacing when not specified (1 ms)
+      ✓ should validate spacing range (1-32 pixels) (1 ms)
+    Visual Sample Spacing
+      ✓ should calculate correct X positions for different spacing values (8 ms)
+      ✓ should draw samples at correct positions based on spacing (1 ms)
+      ✓ should handle scrolling with different spacing values
+    Window Size Calculations
+      ✓ should calculate window width based on samples * spacing
+      ✓ should update canvas dimensions when spacing changes (1 ms)
+      ✓ should maintain proper aspect ratio with different spacing (1 ms)
+    Edge Cases
+      ✓ should handle very small spacing (1 pixel) (1 ms)
+      ✓ should handle maximum spacing (32 pixels)
+      ✓ should handle spacing with different sample counts
+    Integration with Display Updates
+      ✓ should properly update display when spacing changes
+      ✓ should maintain data integrity when spacing changes (2 ms)
+    Real-world Usage Scenarios
+      ✓ should handle logic analyzer display with tight timing
+      ✓ should handle slow signal monitoring with wide spacing
+      ✓ should adapt to different screen resolutions (1 ms)
+
+PASS tests/scopeTrigger.test.ts (7.11 s)
+  Scope Window Trigger System
+    Auto-Trigger Calculation
+      ✓ should calculate 33% arm level and 50% trigger level (40 ms)
+      ✓ should handle different channel ranges (2 ms)
+    Channel Declaration Parsing
+      ✓ should parse AUTO trigger channel (1 ms)
+      ✓ should parse manual trigger levels
+      ✓ should parse TRIGGER command (9 ms)
+    Level Crossing Detection
+      ✓ should detect positive slope crossing (1 ms)
+      ✓ should arm on arm level crossing
+      ✓ should fire on trigger level crossing when armed
+    Slope Detection
+      ✓ should trigger on positive slope only
+      ✓ should trigger on negative slope only (1 ms)
+      ✓ should trigger on either slope
+    Visual Indicators
+      ✓ should show correct trigger level lines (1 ms)
+      ✓ should calculate trigger position correctly
+      ✓ should show status with channel and level info
+    Edge Cases
+      ✓ should not trigger when channel index invalid
+      ✓ should handle samples at exact trigger levels (1 ms)
+      ✓ should reset properly after holdoff
+
+PASS tests/tracePatternProcessor.test.ts (7.144 s)
+  TracePatternProcessor
+    Initialization
+      ✓ should start with default values (42 ms)
+      ✓ should set bitmap size with bounds
+      ✓ should clamp position when resizing (1 ms)
+    Pattern setting and initial positions
+      ✓ should set pattern 0 (right) starting at top-left
+      ✓ should set pattern 1 (left) starting at top-right (1 ms)
+      ✓ should set pattern 2 (right alt) starting at top-left
+      ✓ should set pattern 3 (left alt) starting at top-right (1 ms)
+      ✓ should set pattern 4 (down) starting at top-left
+      ✓ should set pattern 5 (up) starting at bottom-right
+      ✓ should set pattern 6 (down alt) starting at bottom-left (1 ms)
+      ✓ should set pattern 7 (up alt) starting at bottom-right
+      ✓ should enable scrolling with bit 3
+    Suggested rate
+      ✓ should suggest width for horizontal patterns (1 ms)
+      ✓ should suggest height for vertical patterns
+    Manual position setting
+      ✓ should set position within bounds (1 ms)
+      ✓ should clamp position to bounds
+    Pattern 0 - Right, no scroll
+      ✓ should move right along row (1 ms)
+      ✓ should wrap to next row
+      ✓ should wrap from bottom-right to top-left (1 ms)
+    Pattern 0 with scroll (pattern 8)
+      ✓ should scroll when reaching right edge
+    Pattern 1 - Left, no scroll
+      ✓ should move left along row (3 ms)
+      ✓ should wrap to next row (1 ms)
+    Pattern 4 - Down, no scroll
+      ✓ should move down column
+      ✓ should wrap to next column
+      ✓ should wrap from bottom-right to top-left
+    Pattern 5 - Up, no scroll
+      ✓ should move up column (1 ms)
+      ✓ should wrap to next column
+    All patterns with scrolling
+      ✓ should scroll correctly for pattern 8 (right/scroll left)
+      ✓ should scroll correctly for pattern 9 (left/scroll right)
+      ✓ should scroll correctly for pattern 10 (right/scroll left alt)
+      ✓ should scroll correctly for pattern 11 (left/scroll right alt)
+      ✓ should scroll correctly for pattern 12 (down/scroll up)
+      ✓ should scroll correctly for pattern 13 (up/scroll down)
+      ✓ should scroll correctly for pattern 14 (down/scroll up alt)
+      ✓ should scroll correctly for pattern 15 (up/scroll down alt)
+    Pattern descriptions
+      ✓ should return correct descriptions
+    Boundary wrapping
+      ✓ should handle single pixel bitmap
+      ✓ should handle wide bitmap
+      ✓ should handle tall bitmap (1 ms)
+
+PASS tests/packedDataIntegration.test.ts (7.096 s)
+  PackedDataProcessor Integration in Debug Windows
+    Logic Window Packed Data Integration
+      longs_1bit mode
+        ✓ should unpack 32 1-bit samples from a long (51 ms)
+        ✓ should handle ALT modifier for longs_1bit
+      longs_2bit mode
+        ✓ should unpack 16 2-bit samples from a long (1 ms)
+        ✓ should handle SIGNED modifier for longs_2bit (1 ms)
+      longs_4bit mode
+        ✓ should unpack 8 4-bit samples from a long
+        ✓ should handle ALT and SIGNED modifiers together (1 ms)
+      longs_8bit mode
+        ✓ should unpack 4 8-bit samples from a long
+        ✓ should handle SIGNED modifier for longs_8bit
+      longs_16bit mode
+        ✓ should unpack 2 16-bit samples from a long (1 ms)
+        ✓ should handle ALT modifier for longs_16bit
+    Scope Window Packed Data Integration
+      words_1bit mode
+        ✓ should unpack 16 1-bit samples from a word (1 ms)
+      words_2bit mode
+        ✓ should unpack 8 2-bit samples from a word
+      words_4bit mode
+        ✓ should unpack 4 4-bit samples from a word
+        ✓ should handle SIGNED modifier for words_4bit (1 ms)
+      words_8bit mode
+        ✓ should unpack 2 8-bit samples from a word
+        ✓ should handle ALT modifier for words_8bit
+    Bytes Packed Data Modes
+      bytes_1bit mode
+        ✓ should unpack 8 1-bit samples from a byte
+      bytes_2bit mode
+        ✓ should unpack 4 2-bit samples from a byte (1 ms)
+        ✓ should handle SIGNED modifier for bytes_2bit
+      bytes_4bit mode
+        ✓ should unpack 2 4-bit samples from a byte
+    Integration with Debug String Parsing
+      ✓ should parse and apply packed mode in Logic window
+      ✓ should parse and apply packed mode with modifiers in Scope window (1 ms)
+    Edge Cases and Error Handling
+      ✓ should handle invalid packed mode strings
+      ✓ should handle numeric overflow correctly
+      ✓ should maintain consistency between Logic and Scope unpacking (1 ms)
+    Real-world Debug Scenarios
+      ✓ should handle Logic analyzer data stream
+      ✓ should handle Scope ADC data stream
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(GRAY) -> valid=true, hex=#808080, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec($FF0000) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($0000FF) -> valid=true, hex=#0000FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 8) -> 0x008800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 8) -> 0x000088
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 8) -> 0x000088
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(16711680) -> valid=true, hex=#ff0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(255) -> valid=true, hex=#0000ff, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(WHITE) -> valid=true, hex=#FFFFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(CYAN) -> valid=true, hex=#00FFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($FF00FF) -> valid=true, hex=#FF00FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(CYAN 12) -> valid=true, hex=#00FFFF, brightness=12
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 8) -> 0x880000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+FAIL tests/colorTranslator.test.ts (7.953 s)
+  ColorTranslator
+    RGB24 mode
+      ✓ should pass through RGB24 values unchanged (53 ms)
+      ✓ should mask to 24 bits
+    RGB16 mode
+      ✕ should convert RGB16 565 format correctly (2 ms)
+    RGB8 mode
+      ✕ should convert RGB8 332 format correctly
+    LUT modes
+      ✓ should handle LUT1 mode (1-bit) (1 ms)
+      ✓ should handle LUT2 mode (2-bit)
+      ✓ should handle LUT4 mode (4-bit) (1 ms)
+      ✓ should handle LUT8 mode (8-bit) (1 ms)
+      ✓ should return 0 for undefined palette entries
+    LUMA8 modes
+      ✕ should handle LUMA8 with different color tunes (292 ms)
+      ✕ should handle LUMA8W (white to color) (87 ms)
+      ✕ should handle LUMA8X (black to color to white) (4 ms)
+    RGBI8 modes
+      ✕ should extract color index from upper 3 bits (5 ms)
+      ✕ should handle RGBI8W and RGBI8X modes (2 ms)
+    HSV modes
+      ✕ should handle HSV8 basic colors
+      ✕ should handle HSV8W (inverted colors) (1 ms)
+      ✕ should handle HSV8X (transition mode) (1 ms)
+      ✕ should handle HSV16 modes
+      ✕ should apply color tune offset
+    Edge cases
+      ✕ should handle maximum values (1 ms)
+      ✓ should handle zero values
+    parseColorMode
+      ✓ should parse valid color mode strings (1 ms)
+      ✓ should return null for invalid mode strings
+    Color mode getter
+      ✓ should return the current color mode
+
+  ● ColorTranslator › RGB16 mode › should convert RGB16 565 format correctly
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16252928
+    Received: 16711680
+
+      32 |       translator.setColorMode(ColorMode.RGB16);
+      33 |       // Test red (5 bits): 11111 000000 00000
+    > 34 |       expect(translator.translateColor(0xF800)).toBe(0xF80000);
+         |                                                 ^
+      35 |       // Test green (6 bits): 00000 111111 00000
+      36 |       expect(translator.translateColor(0x07E0)).toBe(0x00FC00);
+      37 |       // Test blue (5 bits): 00000 000000 11111
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:34:49)
+
+  ● ColorTranslator › RGB8 mode › should convert RGB8 332 format correctly
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 983040
+
+      46 |       translator.setColorMode(ColorMode.RGB8);
+      47 |       // Test red (3 bits): 111 00 000
+    > 48 |       expect(translator.translateColor(0xE0)).toBe(0xFF0000);
+         |                                               ^
+      49 |       // Test green (3 bits): 000 111 00
+      50 |       expect(translator.translateColor(0x1C)).toBe(0x00FF00);
+      51 |       // Test blue (2 bits): 000 00 11
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:48:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8 with different color tunes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16744192
+    Received: 8930304
+
+      116 |       translator.setColorMode(ColorMode.LUMA8, 0); // Orange
+      117 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+    > 118 |       expect(translator.translateColor(0xFF)).toBe(0xFF7F00); // Full orange
+          |                                               ^
+      119 |       expect(translator.translateColor(0x80)).toBe(0x7F3F00); // Half orange
+      120 |
+      121 |       translator.setColorMode(ColorMode.LUMA8, 4); // Red
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:118:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8W (white to color)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16777215
+    Received: 0
+
+      126 |     it('should handle LUMA8W (white to color)', () => {
+      127 |       translator.setColorMode(ColorMode.LUMA8W, 2); // Green
+    > 128 |       expect(translator.translateColor(0x00)).toBe(0xFFFFFF); // White
+          |                                               ^
+      129 |       expect(translator.translateColor(0xFF)).toBe(0x00FF00); // Full green
+      130 |       expect(translator.translateColor(0x80)).toBe(0x7FFF7F); // Half way
+      131 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:128:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8X (black to color to white)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 254
+    Received: 68
+
+      134 |       translator.setColorMode(ColorMode.LUMA8X, 1); // Blue
+      135 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+    > 136 |       expect(translator.translateColor(0x7F)).toBe(0x0000FE); // Almost full blue
+          |                                               ^
+      137 |       expect(translator.translateColor(0x80)).toBe(0x000000); // Start white transition
+      138 |       expect(translator.translateColor(0xFF)).toBe(0xFFFFFF); // White
+      139 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:136:47)
+
+  ● ColorTranslator › RGBI8 modes › should extract color index from upper 3 bits
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16744192
+    Received: 8930304
+
+      144 |       translator.setColorMode(ColorMode.RGBI8);
+      145 |       // Color index 0 (orange), intensity 0x1F
+    > 146 |       expect(translator.translateColor(0x1F)).toBe(0xFF7F00);
+          |                                               ^
+      147 |       // Color index 4 (red), intensity 0x1F
+      148 |       expect(translator.translateColor(0x9F)).toBe(0xFF0000);
+      149 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:146:47)
+
+  ● ColorTranslator › RGBI8 modes › should handle RGBI8W and RGBI8X modes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16777215
+    Received: 0
+
+      151 |     it('should handle RGBI8W and RGBI8X modes', () => {
+      152 |       translator.setColorMode(ColorMode.RGBI8W);
+    > 153 |       expect(translator.translateColor(0x00)).toBe(0xFFFFFF); // White
+          |                                               ^
+      154 |
+      155 |       translator.setColorMode(ColorMode.RGBI8X);
+      156 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:153:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8 basic colors
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 16711711
+
+      163 |       translator.setColorMode(ColorMode.HSV8, 0);
+      164 |       // Hue 0 (red), full saturation and value
+    > 165 |       expect(translator.translateColor(0xFF)).toBe(0xFF0000);
+          |                                               ^
+      166 |       // Hue 85 (green), full saturation and value
+      167 |       expect(translator.translateColor(0x5F)).toBe(0x00FF00);
+      168 |       // Hue 170 (blue), full saturation and value
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:165:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8W (inverted colors)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 65535
+    Received: 65504
+
+      173 |       translator.setColorMode(ColorMode.HSV8W, 0);
+      174 |       // Should invert the color
+    > 175 |       expect(translator.translateColor(0xFF)).toBe(0x00FFFF); // Cyan instead of red
+          |                                               ^
+      176 |     });
+      177 |
+      178 |     it('should handle HSV8X (transition mode)', () => {
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:175:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8X (transition mode)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16646144
+    Received: 0
+
+      179 |       translator.setColorMode(ColorMode.HSV8X, 0);
+      180 |       // Lower half: normal colors
+    > 181 |       expect(translator.translateColor(0x7F)).toBe(0xFE0000); // Almost full red
+          |                                               ^
+      182 |       // Upper half: inverted colors
+      183 |       expect(translator.translateColor(0xFF)).toBe(0x00FFFF); // Cyan
+      184 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:181:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV16 modes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 0
+
+      187 |       translator.setColorMode(ColorMode.HSV16, 0);
+      188 |       // 16-bit HSV with hue in upper byte
+    > 189 |       expect(translator.translateColor(0x00FF)).toBe(0xFF0000); // Red
+          |                                                 ^
+      190 |       expect(translator.translateColor(0x55FF)).toBe(0x00FF00); // Green
+      191 |       expect(translator.translateColor(0xAAFF)).toBe(0x0000FF); // Blue
+      192 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:189:49)
+
+  ● ColorTranslator › HSV modes › should apply color tune offset
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 65280
+    Received: 2096896
+
+      194 |     it('should apply color tune offset', () => {
+      195 |       translator.setColorMode(ColorMode.HSV8, 85); // Offset to green
+    > 196 |       expect(translator.translateColor(0x0F)).toBe(0x00FF00); // Green instead of red
+          |                                               ^
+      197 |     });
+      198 |   });
+      199 |
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:196:47)
+
+  ● ColorTranslator › Edge cases › should handle maximum values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16579836
+    Received: 16777215
+
+      204 |
+      205 |       translator.setColorMode(ColorMode.RGB16);
+    > 206 |       expect(translator.translateColor(0xFFFF)).toBe(0xFCFCFC);
+          |                                                 ^
+      207 |
+      208 |       translator.setColorMode(ColorMode.RGB8);
+      209 |       expect(translator.translateColor(0xFF)).toBe(0xFFFFFF);
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:206:49)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 15) -> 0xff0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(RED 12) -> valid=true, hex=#FF0000, brightness=12
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(PURPLE) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($GGGGGG) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(999999999) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(RED 20) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(INVALID_COLOR) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 6) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 4) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 6) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 8) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 6) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 6) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 15) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 6) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x000000, 12) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(WHITE) -> valid=true, hex=#FFFFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 4) -> 0x444444
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 8) -> 0x888888
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 15) -> 0xffffff
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(ORANGE) -> valid=true, hex=#FF7F00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 4) -> 0x442200
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 15) -> 0xff7f00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(BLUE) -> valid=true, hex=#0000FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 4) -> 0x000044
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 8) -> 0x000088
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 15) -> 0x0000ff
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(GREEN) -> valid=true, hex=#00FF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 4) -> 0x004400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 8) -> 0x008800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 15) -> 0x00ff00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(CYAN) -> valid=true, hex=#00FFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 4) -> 0x004444
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 8) -> 0x008888
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 15) -> 0x00ffff
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(RED) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 4) -> 0x440000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 8) -> 0x880000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 15) -> 0xff0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(MAGENTA) -> valid=true, hex=#FF00FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 6) -> 0x660066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 4) -> 0x440044
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 6) -> 0x660066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 8) -> 0x880088
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 6) -> 0x660066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 6) -> 0x660066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 15) -> 0xff00ff
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 6) -> 0x660066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 12) -> 0xcc00cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(YELLOW) -> valid=true, hex=#FFFF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 4) -> 0x444400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 8) -> 0x888800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 15) -> 0xffff00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * parseColorSpec(GRAY) -> valid=true, hex=#808080, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 6) -> 0x333333
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 4) -> 0x222222
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 6) -> 0x333333
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 8) -> 0x444444
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 6) -> 0x333333
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 6) -> 0x333333
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 15) -> 0x808080
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 6) -> 0x333333
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x808080, 12) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 8) -> 0x008888
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 8) -> 0x008888
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 8) -> 0x008800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+FAIL tests/colorCommand.test.ts (8.138 s)
+  COLOR Command Implementation
+    Logic Window COLOR Support
+      ✓ should parse COLOR with background only (347 ms)
+      ✓ should parse COLOR with background and grid (2 ms)
+      ✕ should parse COLOR with hex values (99 ms)
+      ✓ should parse COLOR with decimal values (3 ms)
+    Scope Window COLOR Support
+      ✕ should parse COLOR command in scope (21 ms)
+      ✕ should handle mixed color formats (2 ms)
+    Color Names with Brightness
+      ✕ should parse color name with brightness level
+      ✓ should apply brightness to color (9 ms)
+      ✓ should handle brightness in COLOR command (3 ms)
+    Invalid Color Handling
+      ✓ should reject invalid color names (1 ms)
+      ✓ should reject invalid hex values
+      ✓ should reject out of range decimal values
+      ✕ should reject invalid brightness values (1 ms)
+      ✓ should handle COLOR command with invalid color gracefully (1 ms)
+    All Standard Colors
+      ✓ should correctly parse BLACK (3 ms)
+      ✓ should apply brightness levels to BLACK (21 ms)
+      ✓ should correctly parse WHITE (1 ms)
+      ✓ should apply brightness levels to WHITE (10 ms)
+      ✓ should correctly parse ORANGE (1 ms)
+      ✓ should apply brightness levels to ORANGE (21 ms)
+      ✓ should correctly parse BLUE (1 ms)
+      ✓ should apply brightness levels to BLUE (6 ms)
+      ✓ should correctly parse GREEN
+      ✓ should apply brightness levels to GREEN (10 ms)
+      ✓ should correctly parse CYAN (1 ms)
+      ✓ should apply brightness levels to CYAN (7 ms)
+      ✓ should correctly parse RED
+      ✓ should apply brightness levels to RED (6 ms)
+      ✓ should correctly parse MAGENTA (1 ms)
+      ✓ should apply brightness levels to MAGENTA (8 ms)
+      ✓ should correctly parse YELLOW (1 ms)
+      ✓ should apply brightness levels to YELLOW (5 ms)
+      ✓ should correctly parse GRAY
+      ✓ should apply brightness levels to GRAY (7 ms)
+    Color Output Consistency
+      ✓ should produce consistent RGB values (6 ms)
+      ✓ should maintain correct grid and font brightness (2 ms)
+
+  ● COLOR Command Implementation › Logic Window COLOR Support › should parse COLOR with hex values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ff0000"
+    Received: "#FF0000"
+
+      44 |       
+      45 |       expect(isValid).toBe(true);
+    > 46 |       expect(windowColor.background).toBe('#ff0000'); // Red
+         |                                      ^
+      47 |       expect(windowColor.grid).toBe('#0000ff'); // Blue
+      48 |       expect(consumed).toBe(3);
+      49 |     });
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:46:38)
+
+  ● COLOR Command Implementation › Scope Window COLOR Support › should parse COLOR command in scope
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ffffff"
+    Received: "#FFFFFF"
+
+      71 |       
+      72 |       expect(isValid).toBe(true);
+    > 73 |       expect(windowColor.background).toBe('#ffffff');
+         |                                      ^
+      74 |       expect(windowColor.grid).toBe('#000000');
+      75 |     });
+      76 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:73:38)
+
+  ● COLOR Command Implementation › Scope Window COLOR Support › should handle mixed color formats
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#00ffff"
+    Received: "#00FFFF"
+
+      83 |       
+      84 |       expect(isValid).toBe(true);
+    > 85 |       expect(windowColor.background).toBe('#00ffff'); // Cyan
+         |                                      ^
+      86 |       expect(windowColor.grid).toBe('#ff00ff'); // Magenta
+      87 |     });
+      88 |   });
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:85:38)
+
+  ● COLOR Command Implementation › Color Names with Brightness › should parse color name with brightness level
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#00ffff"
+    Received: "#00FFFF"
+
+      94 |       
+      95 |       expect(isValid).toBe(true);
+    > 96 |       expect(hexColor).toBe('#00ffff');
+         |                        ^
+      97 |       expect(brightness).toBe(12);
+      98 |     });
+      99 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:96:24)
+
+  ● COLOR Command Implementation › Invalid Color Handling › should reject invalid brightness values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ff0000"
+    Received: "#FF0000"
+
+      154 |       
+      155 |       expect(isValid).toBe(true);
+    > 156 |       expect(hexColor).toBe('#ff0000');
+          |                        ^
+      157 |       expect(brightness).toBe(8); // Should fall back to default
+      158 |     });
+      159 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:156:24)
+
+PASS tests/logicTrigger.test.ts (7.922 s)
+  Logic Window Trigger System
+    Trigger Parsing
+      ✓ should parse TRIGGER command with mask and match (111 ms)
+      ✓ should parse TRIGGER command with offset (1 ms)
+      ✓ should parse HOLDOFF command
+    Trigger Evaluation
+      ✓ should arm trigger when condition matches
+      ✓ should not arm trigger when condition does not match (1 ms)
+      ✓ should fire trigger when armed and condition matches again
+    Holdoff Behavior
+      ✓ should countdown holdoff counter (41 ms)
+      ✓ should reset trigger after holdoff expires
+    Edge Cases
+      ✓ should handle simultaneous arm and trigger conditions
+      ✓ should handle trigger offset correctly
+      ✓ should ignore samples when trigger not enabled (1 ms)
+    Visual Indicators
+      ✓ should show correct status for each state
+      ✓ should calculate trigger position correctly
+    Complex Trigger Patterns
+      ✓ should handle multi-bit trigger patterns
+
+PASS tests/canvasRenderer.test.ts (7.728 s)
+  CanvasRenderer
+    plotPixelCtx
+      ✓ should plot a pixel using context directly (22 ms)
+      ✓ should handle boundary conditions (1 ms)
+      ✓ should parse hex colors correctly (1 ms)
+    plotScaledPixelCtx
+      ✓ should plot scaled pixel using fillRect (1 ms)
+      ✓ should handle various dot sizes (3 ms)
+      ✓ should clip to canvas bounds
+    scrollBitmapCtx
+      ✓ should handle horizontal scrolling (1 ms)
+      ✓ should handle vertical scrolling
+      ✓ should handle diagonal scrolling (1 ms)
+    drawLineCtx
+      ✓ should draw line with context directly
+      ✓ should handle default line width (1 ms)
+    drawDashedLineCtx
+      ✓ should draw dashed line with context
+      ✓ should use default dash pattern
+    drawTextCtx
+      ✓ should draw text with context directly
+      ✓ should use default font settings
+    clearCanvas
+      ✓ should clear specific area (1 ms)
+      ✓ should clear entire canvas when dimensions not provided
+    fillRect
+      ✓ should fill rectangle with context
+    drawVerticalLine
+      ✓ should draw solid vertical line (1 ms)
+      ✓ should draw dashed vertical line
+    drawHorizontalLine
+      ✓ should draw solid horizontal line (1 ms)
+      ✓ should draw dashed horizontal line
+    setupCanvas
+      ✓ should set up canvas defaults
+    drawCircleCtx
+      ✓ should draw filled circle (1 ms)
+      ✓ should draw outline circle
+    New context-based methods
+      drawOval
+        ✓ should draw filled oval
+        ✓ should draw outline oval (1 ms)
+      drawRect
+        ✓ should draw filled rectangle
+        ✓ should draw outline rectangle (1 ms)
+      setOpacity
+        ✓ should convert 0-255 range to 0-1 globalAlpha
+      drawRotatedText
+        ✓ should draw rotated text with transforms
+        ✓ should use default font settings for rotated text (1 ms)
+        ✓ should handle various angles
+    Legacy method compatibility
+      ✓ plotPixel should delegate to plotPixelLegacy (1 ms)
+      ✓ plotScaledPixel should delegate to plotScaledPixelLegacy
+      ✓ scrollBitmap should delegate to scrollBitmapLegacy
+    Performance and memory management
+      ✓ should use ImageData for single pixel operations
+      ✓ should use fillRect for scaled pixels
+      ✓ should handle large canvas dimensions efficiently (1 ms)
+
+FAIL tests/inputForwarder.test.ts
+  ● Test suite failed to run
+
+    [96mtests/inputForwarder.test.ts[0m:[93m18[0m:[93m18[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m18[0m     mockSerial = new UsbSerial(null as any) as jest.Mocked<UsbSerial>;
+    [7m  [0m [91m                 ~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/utils/usb.serial.ts[0m:[93m30[0m:[93m29[0m
+        [7m30[0m   constructor(ctx: Context, deviceNode: string) {
+        [7m  [0m [96m                            ~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'deviceNode' was not provided.
+
+  console.log
+     DC: * isValidColorName: BLACK -> #000000
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: black -> #000000
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: WHITE -> #FFFFFF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: white -> #FFFFFF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: ORANGE -> #FF7F00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: orange -> #FF7F00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: BLUE -> #0000FF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: blue -> #0000FF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: GREEN -> #00FF00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: green -> #00FF00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: CYAN -> #00FFFF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: cyan -> #00FFFF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: RED -> #FF0000
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: red -> #FF0000
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: MAGENTA -> #FF00FF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: magenta -> #FF00FF
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: YELLOW -> #FFFF00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: yellow -> #FFFF00
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: GRAY -> #808080
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: gray -> #808080
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+          at Array.forEach (<anonymous>)
+
+  console.log
+     DC: * isValidColorName: GREY -> #808080
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: PURPLE -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: PINK -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName:  -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 6) -> 0x666666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xffffff, 12) -> 0xcccccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 15) -> 0xff0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 15) -> 0x0000ff
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 8) -> 0x880000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 4) -> 0x004400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: WARNING: brightness -5 out of range 0-15, using default 8
+
+      at new DebugColor (src/classes/debugColor.ts:49:15)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 8) -> 0x880000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: WARNING: brightness 20 out of range 0-15, using default 8
+
+      at new DebugColor (src/classes/debugColor.ts:49:15)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 8) -> 0x880000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(RED) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(RED 12) -> valid=true, hex=#FF0000, brightness=12
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($FF00FF) -> valid=true, hex=#FF00FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(#00FF00) -> valid=true, hex=#00FF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(16711680) -> valid=true, hex=#ff0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(INVALID) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($GGGGGG) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(999999999) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(RED 20) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(CYAN) -> valid=true, hex=#00FFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 8) -> 0x008888
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 6) -> 0x006666
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ffff, 12) -> 0x00cccc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(YELLOW 12) -> valid=true, hex=#FFFF00, brightness=12
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 6) -> 0x666600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xffff00, 12) -> 0xcccc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec($FF7F00) -> valid=true, hex=#FF7F00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 8) -> 0x884400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 6) -> 0x663300
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff7f00, 12) -> 0xcc6600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * parseColorSpec(INVALID) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec() -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 10) -> 0xaa0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 6) -> 0x660000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff0000, 12) -> 0xcc0000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 10) -> 0x0000aa
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 6) -> 0x000066
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x0000ff, 12) -> 0x0000cc
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 8) -> 0x008800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 6) -> 0x006600
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 12) -> 0x00cc00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 0) -> 0x000000
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 4) -> 0x004400
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 8) -> 0x008800
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0x00ff00, 15) -> 0x00ff00
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 10) -> 0xaa00aa
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 4) -> 0x440044
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+  console.log
+     DC: * adjustBrightness(0xff00ff, 14) -> 0xee00ee
+
+      at DebugColor.adjustBrightness (src/classes/debugColor.ts:251:13)
+
+PASS tests/debugColor.test.ts (19.247 s)
+  DebugColor
+    Color Names
+      ✓ should validate all 10 basic color names (11458 ms)
+      ✓ should validate alternative spellings (4 ms)
+      ✓ should reject invalid color names (1 ms)
+    Brightness Levels
+      ✓ should handle brightness level 0 (black) (3 ms)
+      ✓ should handle brightness level 15 (full color) (4 ms)
+      ✓ should handle intermediate brightness levels (4 ms)
+      ✓ should clamp invalid brightness values (5 ms)
+    parseColorSpec
+      ✓ should parse color names (1 ms)
+      ✓ should parse color names with brightness (1 ms)
+      ✓ should parse hex colors with $ prefix (1 ms)
+      ✓ should parse hex colors with # prefix (2 ms)
+      ✓ should parse decimal color values (1 ms)
+      ✓ should handle invalid color specs (6 ms)
+      ✓ should ignore invalid brightness values
+    fromColorSpec
+      ✓ should create DebugColor from color name (1 ms)
+      ✓ should create DebugColor from color name with brightness (2 ms)
+      ✓ should create DebugColor from hex value (2 ms)
+      ✓ should return null for invalid color specs (1 ms)
+    Grid and Font Colors
+      ✓ should generate correct grid color (1 ms)
+      ✓ should generate correct font color (1 ms)
+    rgbStringWithBrightness
+      ✓ should return color at specified brightness (3 ms)
+    Default Brightness Settings
+      ✓ should allow changing default brightness values (1 ms)
+
+PASS tests/layerManager.test.ts (23.87 s)
+  LayerManager
+    constructor
+      ✓ should initialize with 8 null layers (80 ms)
+    loadLayer
+      ✓ should load a valid bitmap file (2 ms)
+      ✓ should support multiple image formats (1 ms)
+      ✓ should throw error for invalid layer index (28 ms)
+      ✓ should throw error for unsupported file format
+      ✓ should throw error if file not found
+      ✓ should throw error if image loading fails
+      ✓ should clear existing layer before loading new one (4 ms)
+    drawLayerToCanvas
+      ✓ should draw full layer in AUTO mode
+      ✓ should draw full layer at specified position in AUTO mode
+      ✓ should draw cropped region with manual crop rectangle
+      ✓ should throw error for invalid layer index (5 ms)
+      ✓ should throw error if layer not loaded (1 ms)
+      ✓ should handle draw errors gracefully
+    getLayerDimensions
+      ✓ should return dimensions of loaded layer (1 ms)
+      ✓ should return null for unloaded layer
+      ✓ should return null for invalid layer index
+    clearLayer
+      ✓ should clear a specific layer
+      ✓ should handle invalid layer index gracefully
+    clearAllLayers
+      ✓ should clear all layers (1 ms)
+    isLayerLoaded
+      ✓ should return true for loaded layer
+      ✓ should return false for unloaded layer
+      ✓ should return false for invalid layer index
+    edge cases
+      ✓ should handle cropping beyond canvas bounds
+      ✓ should handle drawing to different context types (1 ms)
+
+PASS tests/spriteManager.test.ts (23.894 s)
+  SpriteManager
+    constructor
+      ✓ should initialize with 256 null sprites (251 ms)
+    defineSprite
+      ✓ should define a simple sprite (1 ms)
+      ✓ should define multiple sprites (1 ms)
+      ✓ should throw error for invalid sprite ID (60 ms)
+      ✓ should throw error for invalid dimensions (2 ms)
+      ✓ should throw error for incorrect pixel data size (1 ms)
+      ✓ should throw error for incorrect color palette size (2 ms)
+      ✓ should throw error for out-of-range pixel indices
+      ✓ should copy arrays to prevent external modification
+      ✓ should overwrite existing sprite definition
+    drawSprite
+      ✓ should draw sprite at default orientation and scale (3 ms)
+      ✓ should handle all 8 orientations (1 ms)
+      ✓ should handle various scale factors (1 ms)
+      ✓ should handle opacity values (1 ms)
+      ✓ should throw error for invalid sprite ID (1 ms)
+      ✓ should throw error for undefined sprite (1 ms)
+      ✓ should throw error for invalid orientation (1 ms)
+      ✓ should throw error for invalid scale
+      ✓ should properly render sprite pixels (1 ms)
+      ✓ should handle context creation failure
+      ✓ should always restore context even on error (8 ms)
+    clearSprite
+      ✓ should clear a specific sprite
+      ✓ should handle invalid sprite IDs gracefully (1 ms)
+    clearAllSprites
+      ✓ should clear all sprites (8 ms)
+    isSpriteDefine
+      ✓ should return true for defined sprites
+      ✓ should return false for undefined sprites (1 ms)
+      ✓ should return false for invalid sprite IDs
+    getSpriteDimensions
+      ✓ should return dimensions of defined sprite
+      ✓ should return null for undefined sprite
+      ✓ should return null for invalid sprite ID
+    edge cases
+      ✓ should handle 1x1 sprites (1 ms)
+      ✓ should handle large sprites (1 ms)
+      ✓ should handle sprites with all same color
+      ✓ should handle extreme transformations
+
+PASS tests/lutManager.test.ts (23.901 s)
+  LUTManager
+    Basic operations
+      ✓ should start with empty palette (59 ms)
+      ✓ should set and get palette
+      ✓ should limit palette to 256 entries (1 ms)
+      ✓ should mask colors to 24-bit RGB
+      ✓ should return a copy of palette, not reference (1 ms)
+    Individual color operations
+      ✓ should get colors by index
+      ✓ should return 0 for undefined indices (1 ms)
+      ✓ should return 0 for out of bounds indices
+      ✓ should set individual colors
+      ✓ should expand palette when setting high indices (1 ms)
+      ✓ should ignore invalid indices for setColor
+      ✓ should mask individual colors to 24-bit
+    clearPalette
+      ✓ should clear all colors
+    loadFromLutColors
+      ✓ should load numeric values (1 ms)
+      ✓ should parse hex strings with $ prefix
+      ✓ should parse hex strings with # prefix
+      ✓ should parse hex strings without prefix
+      ✓ should handle mixed formats
+      ✓ should default invalid strings to 0 (3 ms)
+      ✓ should limit to 256 colors (1 ms)
+      ✓ should replace existing palette
+    hasColorsForMode
+      ✓ should check LUT1 mode (2 colors)
+      ✓ should check LUT2 mode (4 colors)
+      ✓ should check LUT4 mode (16 colors) (1 ms)
+      ✓ should check LUT8 mode (256 colors)
+    Integration with ColorTranslator
+      ✓ should provide palette for ColorTranslator LUT modes
+
+PASS tests/triggerProcessor.test.ts (24.333 s)
+  TriggerProcessor Base Class
+    ✓ should initialize with default state (60 ms)
+    ✓ should handle holdoff countdown (1 ms)
+    ✓ should update trigger state (1 ms)
+    ✓ should reset trigger state
+  LogicTriggerProcessor
+    evaluateTriggerCondition
+      ✓ should match exact pattern (1 ms)
+      ✓ should match with partial mask
+      ✓ should handle complex mask patterns (1 ms)
+    processSample
+      ✓ should always update display when no trigger is configured
+      ✓ should trigger on first matching sample
+      ✓ should implement holdoff after trigger
+      ✓ should re-trigger after holdoff expires
+  ScopeTriggerProcessor
+    trigger levels
+      ✓ should set and get trigger levels
+      ✓ should default to positive slope
+    evaluateTriggerCondition
+      ✓ should detect positive slope crossing
+      ✓ should detect negative slope crossing
+    processSample with arm/fire state machine
+      ✓ should implement arm then fire sequence for positive slope (1 ms)
+      ✓ should implement arm then fire sequence for negative slope
+      ✓ should handle holdoff correctly
+      ✓ should always update display when no trigger levels set
+    resetTrigger
+      ✓ should reset all state including previous sample
+    auto-trigger calculation
+      ✓ should calculate 33% arm and 50% fire levels (5 ms)
+      ✓ should handle negative ranges
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(WHITE) -> valid=true, hex=#FFFFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($FF0000) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(#00FF00) -> valid=true, hex=#00FF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(16711680) -> valid=true, hex=#ff0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(WHITE) -> valid=true, hex=#FFFFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(RED) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(GREEN) -> valid=true, hex=#00FF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * parseColorSpec(BLUE) -> valid=true, hex=#0000FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(CYAN) -> valid=true, hex=#00FFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(MAGENTA) -> valid=true, hex=#FF00FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(YELLOW) -> valid=true, hex=#FFFF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(ORANGE) -> valid=true, hex=#FF7F00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+FAIL tests/integrationTests.test.ts
+  ● Test suite failed to run
+
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m32[0m - [91merror[0m[90m TS2304: [0mCannot find name 'getTrigg'.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                               ~~~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'state'.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                     ~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m52[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m52[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'state'.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                     ~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m52[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m52[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m110[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'config'.
+
+    [7m110[0m                                      config.background;
+    [7m   [0m [91m                                     ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m122[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                         ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m50[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                 ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m58[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                         ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m50[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                 ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m58[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                         ~[0m
+
+  console.log
+     DC: * parseColorSpec(BLACK) -> valid=true, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(CYAN) -> valid=true, hex=#00FFFF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($FF0000) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(BLUE) -> valid=true, hex=#0000FF, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec(INVALID_COLOR) -> valid=false, hex=#000000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($FF0000) -> valid=true, hex=#FF0000, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+  console.log
+     DC: * parseColorSpec($00FF00) -> valid=true, hex=#00FF00, brightness=8
+
+      at Function.parseColorSpec (src/classes/debugColor.ts:178:13)
+
+FAIL tests/displaySpecParser.test.ts (24.68 s)
+  DisplaySpecParser
+    parseCommonKeywords
+      ✓ should parse TITLE keyword with quoted string (114 ms)
+      ✓ should parse TITLE keyword with single quotes
+      ✓ should parse TITLE keyword without quotes (1 ms)
+      ✓ should parse POS keyword with valid coordinates (1 ms)
+      ✓ should handle invalid POS coordinates
+      ✓ should parse SIZE keyword with valid dimensions (4 ms)
+      ✓ should reject SIZE with zero or negative dimensions
+      ✓ should parse SAMPLES keyword
+      ✓ should reject invalid SAMPLES value
+      ✓ should parse COLOR with background only (504 ms)
+      ✓ should parse COLOR with background and grid (2 ms)
+      ✓ should handle case-insensitive keywords (1 ms)
+      ✓ should return false for unknown keywords
+    parseColorKeyword
+      ✓ should parse hex color with $ prefix (1 ms)
+      ✓ should parse hex color with # prefix (1 ms)
+      ✓ should parse decimal color value (1 ms)
+      ✕ should parse color names (9 ms)
+      ✓ should parse color with background and grid (2 ms)
+      ✓ should handle mixed color formats (1 ms)
+      ✓ should reject invalid color values (1 ms)
+      ✓ should handle insufficient parameters
+    parsePosKeyword
+      ✓ should parse valid position (1 ms)
+      ✓ should handle negative coordinates
+      ✓ should reject non-numeric values
+      ✓ should handle insufficient parameters
+    validateParameterCount
+      ✓ should validate sufficient parameters (1 ms)
+      ✓ should reject insufficient parameters
+      ✓ should handle index offset correctly
+    real-world debug string parsing
+      ✕ should parse complete LOGIC declaration (1 ms)
+      ✓ should parse SCOPE declaration with hex colors (2 ms)
+
+  ● DisplaySpecParser › parseColorKeyword › should parse color names
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#FFA500"
+    Received: "#FF7F00"
+
+      190 |         expect(isValid).toBe(true);
+      191 |         expect(consumed).toBe(2);
+    > 192 |         expect(windowColor.background).toBe(test.hex);
+          |                                        ^
+      193 |       }
+      194 |     });
+      195 |
+
+      at Object.<anonymous> (tests/displaySpecParser.test.ts:192:40)
+
+  ● DisplaySpecParser › real-world debug string parsing › should parse complete LOGIC declaration
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "My Logic"
+    Received: "\"My"
+
+      301 |       let [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, spec);
+      302 |       expect(parsed).toBe(true);
+    > 303 |       expect(spec.title).toBe('My Logic');
+          |                          ^
+      304 |       index += consumed;
+      305 |       
+      306 |       // Parse POS
+
+      at Object.<anonymous> (tests/displaySpecParser.test.ts:303:26)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: #FF0000 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: #FF0000 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: #FF0000 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 3 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: $8FFF -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: #FF0000 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 1 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 2 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 3 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 4 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 5 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 6 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 7 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: AUTO -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: COLOR -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: #00FF00 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: AUTO -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+FAIL tests/debugPlotWin.integration.test.ts (25.537 s)
+  DebugPlotWindow Integration Tests
+    Complete drawing workflow
+      ✕ should handle color mode → load palette → draw shapes → UPDATE sequence (5042 ms)
+    Double buffering behavior
+      ✓ should not update display until UPDATE command (4 ms)
+      ✓ should support multiple UPDATE cycles (4 ms)
+    Layer compositing workflow
+      ✕ should load and composite multiple layers (35 ms)
+    Sprite animation workflow
+      ✓ should define sprites and animate them (5 ms)
+    Style persistence across commands
+      ✕ should maintain style settings throughout scene (3 ms)
+    Color mode switching
+      ✕ should handle color mode changes mid-scene (4 ms)
+    Complex scene composition
+      ✕ should compose a complex scene with all features (22 ms)
+    Error handling in workflows
+      ✓ should handle missing sprites gracefully (2 ms)
+      ✕ should handle invalid layer operations (4 ms)
+
+  ● DebugPlotWindow Integration Tests › Complete drawing workflow › should handle color mode → load palette → draw shapes → UPDATE sequence
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      218 |       
+      219 |       // Verify drawing operations happened
+    > 220 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled(); // DOT and BOX use fillRect
+          |                                       ^
+      221 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled(); // OVAL
+      222 |       
+      223 |       // Verify UPDATE triggered display copy
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:220:39)
+
+  ● DebugPlotWindow Integration Tests › Layer compositing workflow › should load and composite multiple layers
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      295 |       // Verify layers were drawn and composited
+      296 |       expect(mockWorkingCtx.drawImage).toHaveBeenCalled(); // CROP operations
+    > 297 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled(); // BOX between layers
+          |                                       ^
+      298 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalledWith(mockOffscreenCanvas, 0, 0);
+      299 |     });
+      300 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:297:39)
+
+  ● DebugPlotWindow Integration Tests › Style persistence across commands › should maintain style settings throughout scene
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      374 |       // Verify drawing operations occurred with styles
+      375 |       // Note: globalAlpha is saved/restored in local variables, not via save/restore methods
+    > 376 |       expect(mockWorkingCtx.putImageData).toHaveBeenCalled(); // DOT with default size 1 uses plotPixel->putImageData
+          |                                           ^
+      377 |       expect(mockWorkingCtx.strokeRect).toHaveBeenCalled(); // OBOX uses strokeRect
+      378 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled(); // OVAL uses ellipse
+      379 |       // The styles were applied during the operations even though globalAlpha was restored
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:376:43)
+
+  ● DebugPlotWindow Integration Tests › Color mode switching › should handle color mode changes mid-scene
+
+    expect(received).toBeTruthy()
+
+    Received: ""
+
+      409 |       
+      410 |       // Verify different color modes were used
+    > 411 |       expect(mockWorkingCtx.fillStyle).toBeTruthy();
+          |                                        ^
+      412 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled();
+      413 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled();
+      414 |     });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:411:40)
+
+  ● DebugPlotWindow Integration Tests › Complex scene composition › should compose a complex scene with all features
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 8
+    Received number of calls: 0
+
+      469 |       // Verify complex scene was rendered
+      470 |       expect(mockWorkingCtx.drawImage).toHaveBeenCalled(); // Background
+    > 471 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalledTimes(8); // Gradient boxes
+          |                                       ^
+      472 |       expect(mockWorkingCtx.save).toHaveBeenCalled(); // Sprite transforms
+      473 |       expect(mockWorkingCtx.beginPath).toHaveBeenCalled(); // Lines
+      474 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalledWith(mockOffscreenCanvas, 0, 0);
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:471:39)
+
+  ● DebugPlotWindow Integration Tests › Error handling in workflows › should handle invalid layer operations
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      501 |       
+      502 |       // Verify scene renders despite error
+    > 503 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled();
+          |                                       ^
+      504 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalled();
+      505 |     });
+      506 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:503:39)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: INVALID_COMMAND -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+PASS tests/debugBitmapWin.commands.test.ts (25.585 s)
+  DebugBitmapWindow Command Tests
+    CLEAR command with different color modes
+      ✓ should clear with RGB24 mode (default) (145 ms)
+      ✓ should clear with black background (1 ms)
+      ✓ should clear with white background (3 ms)
+      ✓ should clear after changing color mode (3 ms)
+    SET command with boundary conditions
+      ✓ should set position at origin (75 ms)
+      ✓ should set position at max bounds (2 ms)
+      ✓ should reject negative coordinates (5 ms)
+      ✓ should reject out of bounds coordinates (4 ms)
+      ✓ should handle decimal coordinates by truncating (2 ms)
+    TRACE patterns with and without scrolling
+      ✓ should set trace pattern 0 (right/no-scroll) (2 ms)
+      ✓ should set trace pattern 1 (left/no-scroll)
+      ✓ should set trace pattern 2 (right/scroll-left) (2 ms)
+      ✓ should set trace pattern 3 (left/scroll-right) (1 ms)
+      ✓ should set trace pattern 4 (down/no-scroll) (1 ms)
+      ✓ should set trace pattern 5 (up/no-scroll) (1 ms)
+      ✓ should set trace pattern 6 (down/scroll-up)
+      ✓ should set trace pattern 7 (up/scroll-down) (1 ms)
+      ✓ should handle scroll bit for pattern 8 (1 ms)
+      ✓ should handle scroll bit for pattern 9 (1 ms)
+      ✓ should handle scroll bit for pattern 10 (1 ms)
+      ✓ should handle scroll bit for pattern 11
+      ✓ should handle scroll bit for pattern 12 (1 ms)
+      ✓ should handle scroll bit for pattern 13 (1 ms)
+      ✓ should handle scroll bit for pattern 14 (7 ms)
+      ✓ should handle scroll bit for pattern 15 (1 ms)
+      ✓ should update rate when trace pattern changes (1 ms)
+    SCROLL command with positive/negative offsets
+      ✓ should scroll with positive X and Y (1 ms)
+      ✓ should scroll with negative X and Y
+      ✓ should scroll with mixed positive/negative (1 ms)
+      ✓ should clamp scroll values to bitmap size (1 ms)
+    Color mode switching and LUTCOLORS loading
+      ✓ should switch between color modes (1 ms)
+      ✓ should handle color mode with tune parameter
+      ✓ should load LUT colors in sequence (2 ms)
+      ✓ should skip non-numeric values in LUTCOLORS (1 ms)
+    PC_KEY/PC_MOUSE formatting
+      ✓ should enable keyboard input with PC_KEY (1 ms)
+      ✓ should enable mouse input with PC_MOUSE
+      ✓ should not process data after PC_KEY (1 ms)
+      ✓ should not process data after PC_MOUSE (1 ms)
+    SAVE command with various filenames
+      ✓ should save with simple filename
+      ✓ should save with path in filename
+      ✓ should save with WINDOW parameter (1 ms)
+      ✓ should use default filename when WINDOW is last parameter (10 ms)
+      ✓ should handle filenames with spaces (1 ms)
+      ✓ should handle filenames without extension
+    RATE command behavior
+      ✓ should set explicit rate (1 ms)
+      ✓ should use suggested rate when 0
+      ✓ should reset rate counter when rate changes (1 ms)
+    DOTSIZE command behavior
+      ✓ should set symmetric dot size
+      ✓ should set asymmetric dot size (1 ms)
+      ✓ should update input forwarder dot size (1 ms)
+      ✓ should clamp dot size to minimum 1 (1 ms)
+    SPARSE mode behavior
+      ✓ should enable sparse mode with color
+      ✓ should parse decimal color values (1 ms)
+      ✓ should parse binary color values (4 ms)
+
+FAIL tests/debugPlotWin.test.ts (25.616 s)
+  DebugPlotWindow
+    Constructor and Initialization
+      ✓ should create instance with display spec (4896 ms)
+      ✓ should initialize shared classes (22 ms)
+      ✕ should initialize double buffering (18 ms)
+      ✕ should set default values (95 ms)
+    Display Type Registration
+      ✓ should return correct display type (2 ms)
+    Shared Class Integration
+      ✕ should use ColorTranslator for color parsing (6 ms)
+      ✓ should use LUTManager for palette management (1 ms)
+      ✓ should initialize InputForwarder for PC_KEY/PC_MOUSE (2 ms)
+    Command Parsing
+      ✓ should handle all drawing commands (19 ms)
+      ✓ should handle all style commands (20 ms)
+      ✓ should handle layer commands (53 ms)
+      ✓ should handle sprite commands (11 ms)
+      ✓ should handle color mode commands (10 ms)
+      ✕ should handle coordinate system commands (2 ms)
+    Double Buffer Architecture
+      ✕ should have separate working and display canvases (1 ms)
+      ✕ should use OffscreenCanvas for working buffer
+      ✓ should only update display on UPDATE command (1 ms)
+    Window Management
+      ✓ should close window on CLOSE command (1 ms)
+      ✓ should save window to BMP on SAVE command (1 ms)
+    Error Handling
+      ✓ should handle invalid commands gracefully (1 ms)
+      ✓ should handle missing parameters (1 ms)
+      ✓ should handle non-matching display name (1 ms)
+    Coordinate Transformations
+      ✕ should handle plot coordinates with origin at center (1 ms)
+      ✓ should handle Y-axis inversion (1 ms)
+      ✕ should update origin with ORIGIN command (1 ms)
+    Coverage for New Functionality
+      ✓ should have high code coverage
+
+  ● DebugPlotWindow › Constructor and Initialization › should initialize double buffering
+
+    expect(received).toBeDefined()
+
+    Received: undefined
+
+      124 |       
+      125 |       // Working canvas and context are created in constructor
+    > 126 |       expect((plotWindow as any).workingCanvas).toBeDefined();
+          |                                                 ^
+      127 |       expect((plotWindow as any).workingCtx).toBeDefined();
+      128 |     });
+      129 |     
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:126:49)
+
+  ● DebugPlotWindow › Constructor and Initialization › should set default values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#FFFFFF"
+    Received: "#00FFFF"
+
+      136 |       expect((plotWindow as any).textAngle).toBe(0);
+      137 |       expect((plotWindow as any).colorMode).toBe('RGB24');
+    > 138 |       expect((plotWindow as any).currFgColor).toBe('#FFFFFF');
+          |                                               ^
+      139 |       expect((plotWindow as any).currBgColor).toBe('#000000');
+      140 |     });
+      141 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:138:47)
+
+  ● DebugPlotWindow › Shared Class Integration › should use ColorTranslator for color parsing
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "#FF0000"
+
+    Number of calls: 0
+
+      160 |       
+      161 |       // Verify ColorTranslator was used
+    > 162 |       expect(colorTranslator.translateColor).toHaveBeenCalledWith('#FF0000');
+          |                                              ^
+      163 |     });
+      164 |     
+      165 |     test('should use LUTManager for palette management', async () => {
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:162:46)
+
+  ● DebugPlotWindow › Command Parsing › should handle coordinate system commands
+
+    expect(received).resolves.toBeUndefined()
+
+    Received promise rejected instead of resolved
+    Rejected to value: [TypeError: Cannot read properties of undefined (reading 'charAt')]
+
+      272 |       
+      273 |       for (const cmd of coordCommands) {
+    > 274 |         await expect(plotWindow.updateContent(['TestPlot', ...cmd])).resolves.toBeUndefined();
+          |               ^
+      275 |       }
+      276 |     });
+      277 |   });
+
+      at expect (node_modules/@jest/expect/node_modules/expect/build/index.js:113:15)
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:274:15)
+
+  ● DebugPlotWindow › Double Buffer Architecture › should have separate working and display canvases
+
+    expect(received).toBeDefined()
+
+    Received: undefined
+
+      284 |     
+      285 |     test('should have separate working and display canvases', () => {
+    > 286 |       expect((plotWindow as any).workingCanvas).toBeDefined();
+          |                                                 ^
+      287 |       expect((plotWindow as any).workingCtx).toBeDefined();
+      288 |       expect((plotWindow as any).displayCanvas).toBeUndefined(); // Created when window opens
+      289 |     });
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:286:49)
+
+  ● DebugPlotWindow › Double Buffer Architecture › should use OffscreenCanvas for working buffer
+
+    TypeError: Cannot read properties of undefined (reading 'constructor')
+
+      290 |     
+      291 |     test('should use OffscreenCanvas for working buffer', () => {
+    > 292 |       expect((plotWindow as any).workingCanvas.constructor.name).toContain('OffscreenCanvas');
+          |                                                ^
+      293 |     });
+      294 |     
+      295 |     test('should only update display on UPDATE command', async () => {
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:292:48)
+
+  ● DebugPlotWindow › Coordinate Transformations › should handle plot coordinates with origin at center
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 128
+    Received: 0
+
+      367 |       // Origin is at center (128, 128) by default
+      368 |       const [x, y] = (plotWindow as any).getXY(0, 0);
+    > 369 |       expect(x).toBe(128);
+          |                 ^
+      370 |       expect(y).toBe(128);
+      371 |     });
+      372 |     
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:369:17)
+
+  ● DebugPlotWindow › Coordinate Transformations › should update origin with ORIGIN command
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 206
+    Received: 205
+
+      384 |       const [x, y] = (plotWindow as any).getXY(0, 0);
+      385 |       expect(x).toBe(50);
+    > 386 |       expect(y).toBe(206); // 256 - 50 (inverted Y)
+          |                 ^
+      387 |     });
+      388 |   });
+      389 |   
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:386:17)
+
+PASS tests/debugBitmapWin.integration.test.ts (25.396 s)
+  DebugBitmapWindow Integration Tests
+    ColorTranslator integration with bitmap plotting
+      ✓ should translate colors and plot pixels correctly (24 ms)
+      ✓ should handle LUT color modes with palette (1 ms)
+      ✓ should handle color tuning for LUMA and HSV modes (2 ms)
+    TracePatternProcessor with actual pixel updates
+      ✓ should update pixel positions according to trace pattern (1 ms)
+      ✓ should handle scroll patterns with canvas scrolling (1 ms)
+    InputForwarder with mocked serial communication
+      ✓ should forward keyboard events to serial (1 ms)
+      ✓ should forward mouse events with coordinate transformation (1 ms)
+      ✓ should set window dimensions for input coordinate validation (3 ms)
+    Rate cycling with display updates
+      ✓ should handle rate cycling correctly (1 ms)
+      ✓ should use suggested rate when rate is 0 (1 ms)
+    Sparse mode rendering
+      ✓ should skip pixels matching background in sparse mode (1 ms)
+      ✓ should plot all pixels in normal mode
+    PackedDataProcessor integration
+      ✓ should unpack data correctly for different color modes (1 ms)
+    Complete workflow integration
+      ✓ should handle a complete bitmap drawing workflow
+
+PASS tests/packedDataProcessor.test.ts (25.313 s)
+  PackedDataProcessor
+    validatePackedMode
+      ✓ should validate valid packed data modes (15 ms)
+      ✓ should set correct bits per sample (1 ms)
+      ✓ should set correct value size
+      ✓ should reject invalid modes (1 ms)
+    parsePackedModeKeywords
+      ✓ should parse mode with ALT and SIGNED keywords (10 ms)
+      ✓ should parse mode with only ALT keyword (1 ms)
+      ✓ should parse mode with only SIGNED keyword (1 ms)
+      ✓ should handle no keywords (2 ms)
+    unpackSamples
+      ✓ should return single value for unknown mode (1 ms)
+      ✓ should unpack bytes_1bit correctly (1 ms)
+      ✓ should unpack bytes_2bit correctly (1 ms)
+      ✓ should unpack words_1bit correctly
+      ✓ should unpack longs_4bit correctly
+      ✓ should handle signed mode correctly (3 ms)
+      ✓ should handle edge cases (1 ms)
+      ✓ should handle longs_16bit correctly
+    complex scenarios
+      ✓ should handle real debug string pattern: longs_1bit ALT SIGNED (6 ms)
+      ✓ should handle real debug string pattern: words_4bit
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    ERROR: parseBitmapDeclaration() - Bitmap display name missing
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:186:15)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    ERROR: parseBitmapDeclaration() - SIZE directive requires two numeric values between 1 and 2048
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:186:15)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    CL: at parseBitmapDeclaration()
+
+      at Function.parseBitmapDeclaration (src/classes/debugBitmapWin.ts:80:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+PASS tests/debugBitmapWin.test.ts (25.671 s)
+  DebugBitmapWindow
+    parseBitmapDeclaration
+      ✓ should parse a minimal bitmap declaration (124 ms)
+      ✓ should fail when display name is missing (2 ms)
+      ✓ should parse TITLE directive (2 ms)
+      ✓ should parse POS directive (2 ms)
+      ✓ should parse SIZE directive (1 ms)
+      ✓ should reject invalid SIZE values (1 ms)
+      ✓ should parse DOTSIZE directive (5 ms)
+      ✓ should parse COLOR directive (1 ms)
+      ✓ should parse HIDEXY directive (2 ms)
+    updateContent
+      ✓ should parse bitmap size as first two numeric values (1 ms)
+      ✓ should log error for invalid bitmap size (1 ms)
+      ✓ should handle CLEAR command
+      ✓ should handle SET command with valid coordinates (1 ms)
+      ✓ should log error for SET command with invalid coordinates (1 ms)
+      ✓ should handle UPDATE command
+      ✓ should handle SCROLL command
+      ✓ should handle TRACE command (1 ms)
+      ✓ should handle RATE command
+      ✓ should handle DOTSIZE command (1 ms)
+      ✓ should handle SPARSE command
+      ✓ should handle SAVE command (1 ms)
+      ✓ should handle SAVE WINDOW command (1 ms)
+      ✓ should handle PC_KEY command
+      ✓ should handle PC_MOUSE command (3 ms)
+    Color mode commands
+      ✓ should handle all color mode commands (2 ms)
+      ✓ should handle color mode with tune parameter (1 ms)
+      ✓ should handle LUTCOLORS command
+    Data processing
+      ✓ should process numeric data values (1 ms)
+      ✓ should skip non-numeric data values (1 ms)
+      ✓ should handle rate cycling
+      ✓ should skip pixels in sparse mode that match background (1 ms)
+      ✓ should use plotScaledPixel when DOTSIZE is greater than 1
+    closeDebugWindow
+      ✓ should stop input polling and clean up (1 ms)
+    Error handling
+      ✓ should log error when setting pixel position before size is defined
+      ✓ should log error for invalid pixel coordinates (1 ms)
+      ✓ should log error when plotting pixels before size is defined (1 ms)
+      ✓ should log error when saving before initialization (3 ms)
+    Packed data mode
+      ✓ should return correct packed data mode for LUT1
+      ✓ should return correct packed data mode for RGB16 (1 ms)
+      ✓ should return correct packed data mode for RGB24 (1 ms)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: 1 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: AUTO -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: AUTO -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: AUTO -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: 10 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 20 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 100 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: 0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+     DC: * isValidColorName: abc -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 2.0 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+     DC: * isValidColorName: 128 -> undefined
+
+      at Function.isValidColorName (src/classes/debugColor.ts:115:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+  console.log
+    Win: str=[00000001] -> textStyle: {"vertAlign":0,"horizAlign":0,"underline":false,"italic":false,"weight":2}
+
+      at Function.calcStyleFromBitfield (src/classes/debugWindowBase.ts:299:13)
+
+PASS tests/debugPlotWin.commands.test.ts (25.904 s)
+  DebugPlotWindow Commands
+    DOT command
+      ✓ should draw dot at current position with default size (57 ms)
+      ✓ should draw dot with custom size (2 ms)
+      ✓ should draw dot with custom size and opacity (1 ms)
+    BOX command
+      ✓ should draw filled box at current position (1 ms)
+      ✓ should draw box with line size (outline) (2 ms)
+      ✓ should draw box with opacity
+    OBOX command
+      ✓ should draw outlined box with default line size (1 ms)
+      ✓ should draw outlined box with custom line size (1 ms)
+    OVAL command
+      ✓ should draw filled oval at current position (2 ms)
+      ✓ should draw outlined oval with line size (1 ms)
+      ✓ should draw oval with opacity
+    UPDATE command
+      ✓ should call performUpdate to copy working buffer to display (1 ms)
+      ✓ should perform multiple updates (1 ms)
+    Double buffering behavior
+      ✓ should draw to working context without UPDATE (3 ms)
+      ✓ should only update display on UPDATE command (2 ms)
+    Coordinate transformation
+      ✓ should handle cartesian coordinates correctly
+      ✓ should handle polar coordinates (1 ms)
+    CLEAR command
+      ✓ should clear the plot canvas (1 ms)
+    Color handling
+      ✓ should use current foreground color for shapes
+      ✓ should handle color changes between shapes (1 ms)
+    Style commands
+      LINESIZE command
+        ✓ should set line width and persist across commands (1 ms)
+        ✓ should handle invalid line size values (1 ms)
+      OPACITY command
+        ✓ should set opacity and affect subsequent draws (1 ms)
+        ✓ should handle opacity boundary values (1 ms)
+        ✓ should restore opacity after drawing with custom opacity
+      TEXTANGLE command
+        ✓ should set text rotation angle in degrees (1 ms)
+        ✓ should handle angle wrapping (1 ms)
+      LUTCOLORS command
+        ✓ should load color palette into LUT (1 ms)
+        ✓ should handle different color formats (1 ms)
+        ✓ should handle partial palette loads (1 ms)
+        ✓ should validate color count matches specified count (1 ms)
+      Style persistence and integration
+        ✓ should maintain all style states across multiple commands (1 ms)
+        ✓ should work with color mode changes (3 ms)
+    Layer commands
+      LAYER command
+        ✓ should load bitmap file into specified layer (1 ms)
+        ✓ should convert layer index from 1-based to 0-based (2 ms)
+        ✓ should validate layer index bounds (1 ms)
+        ✓ should validate file extensions (1 ms)
+        ✓ should handle missing parameters (2 ms)
+        ✓ should handle load errors gracefully
+      CROP command
+        ✓ should draw layer in AUTO mode with default position (1 ms)
+        ✓ should draw layer in AUTO mode with specified position (1 ms)
+        ✓ should draw layer with manual crop rectangle (1 ms)
+        ✓ should draw layer with manual crop and destination (1 ms)
+        ✓ should validate layer is loaded (1 ms)
+        ✓ should validate layer index bounds (1 ms)
+        ✓ should handle missing parameters (2 ms)
+        ✓ should handle draw errors gracefully
+        ✓ should handle different layer indices (1 ms)
+      Layer command integration
+        ✓ should load and then crop a layer
+        ✓ should handle case sensitivity in commands (1 ms)
+    Sprite commands
+      SPRITEDEF command
+        ✓ should define a simple 2x2 sprite (1 ms)
+        ✓ should handle various number formats for colors (1 ms)
+        ✓ should validate sprite ID range (1 ms)
+        ✓ should reject invalid sprite parameters (1 ms)
+        ✓ should handle incomplete pixel data (2 ms)
+        ✓ should handle incomplete color palette (1 ms)
+        ✓ should handle large sprites (1 ms)
+      SPRITE command
+        ✓ should draw sprite with default parameters (1 ms)
+        ✓ should draw sprite with orientation
+        ✓ should draw sprite with orientation and scale (1 ms)
+        ✓ should draw sprite with all parameters (1 ms)
+        ✓ should draw sprite at current cursor position (1 ms)
+        ✓ should reject undefined sprites
+        ✓ should reject invalid sprite ID (1 ms)
+        ✓ should handle all 8 orientations (1 ms)
+        ✓ should handle various scale values (1 ms)
+        ✓ should skip non-numeric optional parameters (2 ms)
+      Sprite integration
+        ✓ should define and draw multiple sprites (1 ms)
+        ✓ should work with UPDATE command for double buffering (1 ms)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Summary of all failing tests
+FAIL tests/colorTranslator.test.ts (7.953 s)
+  ● ColorTranslator › RGB16 mode › should convert RGB16 565 format correctly
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16252928
+    Received: 16711680
+
+      32 |       translator.setColorMode(ColorMode.RGB16);
+      33 |       // Test red (5 bits): 11111 000000 00000
+    > 34 |       expect(translator.translateColor(0xF800)).toBe(0xF80000);
+         |                                                 ^
+      35 |       // Test green (6 bits): 00000 111111 00000
+      36 |       expect(translator.translateColor(0x07E0)).toBe(0x00FC00);
+      37 |       // Test blue (5 bits): 00000 000000 11111
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:34:49)
+
+  ● ColorTranslator › RGB8 mode › should convert RGB8 332 format correctly
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 983040
+
+      46 |       translator.setColorMode(ColorMode.RGB8);
+      47 |       // Test red (3 bits): 111 00 000
+    > 48 |       expect(translator.translateColor(0xE0)).toBe(0xFF0000);
+         |                                               ^
+      49 |       // Test green (3 bits): 000 111 00
+      50 |       expect(translator.translateColor(0x1C)).toBe(0x00FF00);
+      51 |       // Test blue (2 bits): 000 00 11
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:48:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8 with different color tunes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16744192
+    Received: 8930304
+
+      116 |       translator.setColorMode(ColorMode.LUMA8, 0); // Orange
+      117 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+    > 118 |       expect(translator.translateColor(0xFF)).toBe(0xFF7F00); // Full orange
+          |                                               ^
+      119 |       expect(translator.translateColor(0x80)).toBe(0x7F3F00); // Half orange
+      120 |
+      121 |       translator.setColorMode(ColorMode.LUMA8, 4); // Red
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:118:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8W (white to color)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16777215
+    Received: 0
+
+      126 |     it('should handle LUMA8W (white to color)', () => {
+      127 |       translator.setColorMode(ColorMode.LUMA8W, 2); // Green
+    > 128 |       expect(translator.translateColor(0x00)).toBe(0xFFFFFF); // White
+          |                                               ^
+      129 |       expect(translator.translateColor(0xFF)).toBe(0x00FF00); // Full green
+      130 |       expect(translator.translateColor(0x80)).toBe(0x7FFF7F); // Half way
+      131 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:128:47)
+
+  ● ColorTranslator › LUMA8 modes › should handle LUMA8X (black to color to white)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 254
+    Received: 68
+
+      134 |       translator.setColorMode(ColorMode.LUMA8X, 1); // Blue
+      135 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+    > 136 |       expect(translator.translateColor(0x7F)).toBe(0x0000FE); // Almost full blue
+          |                                               ^
+      137 |       expect(translator.translateColor(0x80)).toBe(0x000000); // Start white transition
+      138 |       expect(translator.translateColor(0xFF)).toBe(0xFFFFFF); // White
+      139 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:136:47)
+
+  ● ColorTranslator › RGBI8 modes › should extract color index from upper 3 bits
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16744192
+    Received: 8930304
+
+      144 |       translator.setColorMode(ColorMode.RGBI8);
+      145 |       // Color index 0 (orange), intensity 0x1F
+    > 146 |       expect(translator.translateColor(0x1F)).toBe(0xFF7F00);
+          |                                               ^
+      147 |       // Color index 4 (red), intensity 0x1F
+      148 |       expect(translator.translateColor(0x9F)).toBe(0xFF0000);
+      149 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:146:47)
+
+  ● ColorTranslator › RGBI8 modes › should handle RGBI8W and RGBI8X modes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16777215
+    Received: 0
+
+      151 |     it('should handle RGBI8W and RGBI8X modes', () => {
+      152 |       translator.setColorMode(ColorMode.RGBI8W);
+    > 153 |       expect(translator.translateColor(0x00)).toBe(0xFFFFFF); // White
+          |                                               ^
+      154 |
+      155 |       translator.setColorMode(ColorMode.RGBI8X);
+      156 |       expect(translator.translateColor(0x00)).toBe(0x000000); // Black
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:153:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8 basic colors
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 16711711
+
+      163 |       translator.setColorMode(ColorMode.HSV8, 0);
+      164 |       // Hue 0 (red), full saturation and value
+    > 165 |       expect(translator.translateColor(0xFF)).toBe(0xFF0000);
+          |                                               ^
+      166 |       // Hue 85 (green), full saturation and value
+      167 |       expect(translator.translateColor(0x5F)).toBe(0x00FF00);
+      168 |       // Hue 170 (blue), full saturation and value
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:165:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8W (inverted colors)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 65535
+    Received: 65504
+
+      173 |       translator.setColorMode(ColorMode.HSV8W, 0);
+      174 |       // Should invert the color
+    > 175 |       expect(translator.translateColor(0xFF)).toBe(0x00FFFF); // Cyan instead of red
+          |                                               ^
+      176 |     });
+      177 |
+      178 |     it('should handle HSV8X (transition mode)', () => {
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:175:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV8X (transition mode)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16646144
+    Received: 0
+
+      179 |       translator.setColorMode(ColorMode.HSV8X, 0);
+      180 |       // Lower half: normal colors
+    > 181 |       expect(translator.translateColor(0x7F)).toBe(0xFE0000); // Almost full red
+          |                                               ^
+      182 |       // Upper half: inverted colors
+      183 |       expect(translator.translateColor(0xFF)).toBe(0x00FFFF); // Cyan
+      184 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:181:47)
+
+  ● ColorTranslator › HSV modes › should handle HSV16 modes
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16711680
+    Received: 0
+
+      187 |       translator.setColorMode(ColorMode.HSV16, 0);
+      188 |       // 16-bit HSV with hue in upper byte
+    > 189 |       expect(translator.translateColor(0x00FF)).toBe(0xFF0000); // Red
+          |                                                 ^
+      190 |       expect(translator.translateColor(0x55FF)).toBe(0x00FF00); // Green
+      191 |       expect(translator.translateColor(0xAAFF)).toBe(0x0000FF); // Blue
+      192 |     });
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:189:49)
+
+  ● ColorTranslator › HSV modes › should apply color tune offset
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 65280
+    Received: 2096896
+
+      194 |     it('should apply color tune offset', () => {
+      195 |       translator.setColorMode(ColorMode.HSV8, 85); // Offset to green
+    > 196 |       expect(translator.translateColor(0x0F)).toBe(0x00FF00); // Green instead of red
+          |                                               ^
+      197 |     });
+      198 |   });
+      199 |
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:196:47)
+
+  ● ColorTranslator › Edge cases › should handle maximum values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 16579836
+    Received: 16777215
+
+      204 |
+      205 |       translator.setColorMode(ColorMode.RGB16);
+    > 206 |       expect(translator.translateColor(0xFFFF)).toBe(0xFCFCFC);
+          |                                                 ^
+      207 |
+      208 |       translator.setColorMode(ColorMode.RGB8);
+      209 |       expect(translator.translateColor(0xFF)).toBe(0xFFFFFF);
+
+      at Object.<anonymous> (tests/colorTranslator.test.ts:206:49)
+
+FAIL tests/colorCommand.test.ts (8.138 s)
+  ● COLOR Command Implementation › Logic Window COLOR Support › should parse COLOR with hex values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ff0000"
+    Received: "#FF0000"
+
+      44 |       
+      45 |       expect(isValid).toBe(true);
+    > 46 |       expect(windowColor.background).toBe('#ff0000'); // Red
+         |                                      ^
+      47 |       expect(windowColor.grid).toBe('#0000ff'); // Blue
+      48 |       expect(consumed).toBe(3);
+      49 |     });
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:46:38)
+
+  ● COLOR Command Implementation › Scope Window COLOR Support › should parse COLOR command in scope
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ffffff"
+    Received: "#FFFFFF"
+
+      71 |       
+      72 |       expect(isValid).toBe(true);
+    > 73 |       expect(windowColor.background).toBe('#ffffff');
+         |                                      ^
+      74 |       expect(windowColor.grid).toBe('#000000');
+      75 |     });
+      76 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:73:38)
+
+  ● COLOR Command Implementation › Scope Window COLOR Support › should handle mixed color formats
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#00ffff"
+    Received: "#00FFFF"
+
+      83 |       
+      84 |       expect(isValid).toBe(true);
+    > 85 |       expect(windowColor.background).toBe('#00ffff'); // Cyan
+         |                                      ^
+      86 |       expect(windowColor.grid).toBe('#ff00ff'); // Magenta
+      87 |     });
+      88 |   });
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:85:38)
+
+  ● COLOR Command Implementation › Color Names with Brightness › should parse color name with brightness level
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#00ffff"
+    Received: "#00FFFF"
+
+      94 |       
+      95 |       expect(isValid).toBe(true);
+    > 96 |       expect(hexColor).toBe('#00ffff');
+         |                        ^
+      97 |       expect(brightness).toBe(12);
+      98 |     });
+      99 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:96:24)
+
+  ● COLOR Command Implementation › Invalid Color Handling › should reject invalid brightness values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#ff0000"
+    Received: "#FF0000"
+
+      154 |       
+      155 |       expect(isValid).toBe(true);
+    > 156 |       expect(hexColor).toBe('#ff0000');
+          |                        ^
+      157 |       expect(brightness).toBe(8); // Should fall back to default
+      158 |     });
+      159 |
+
+      at Object.<anonymous> (tests/colorCommand.test.ts:156:24)
+
+FAIL tests/inputForwarder.test.ts
+  ● Test suite failed to run
+
+    [96mtests/inputForwarder.test.ts[0m:[93m18[0m:[93m18[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m18[0m     mockSerial = new UsbSerial(null as any) as jest.Mocked<UsbSerial>;
+    [7m  [0m [91m                 ~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/utils/usb.serial.ts[0m:[93m30[0m:[93m29[0m
+        [7m30[0m   constructor(ctx: Context, deviceNode: string) {
+        [7m  [0m [96m                            ~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'deviceNode' was not provided.
+
+FAIL tests/integrationTests.test.ts
+  ● Test suite failed to run
+
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m32[0m - [91merror[0m[90m TS2304: [0mCannot find name 'getTrigg'.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                               ~~~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'state'.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                     ~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m52[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m52[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'state'.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                     ~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m52[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'config'.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m52[0m - [91merror[0m[90m TS7005: [0mVariable 'config' implicitly has an 'any' type.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m110[0m:[93m38[0m - [91merror[0m[90m TS2503: [0mCannot find namespace 'config'.
+
+    [7m110[0m                                      config.background;
+    [7m   [0m [91m                                     ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m116[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                   ~~~~~~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m107[0m:[93m122[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m107[0m         const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+    [7m   [0m [91m                                                                                                                         ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m50[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                 ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m108[0m:[93m58[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m108[0m                                      state.fired ? config.triggerFired :
+    [7m   [0m [91m                                                         ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m50[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                 ~[0m
+    [96mtests/integrationTests.test.ts[0m:[93m109[0m:[93m58[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+    [7m109[0m                                      state.armed ? config.triggerArmed :
+    [7m   [0m [91m                                                         ~[0m
+
+FAIL tests/displaySpecParser.test.ts (24.68 s)
+  ● DisplaySpecParser › parseColorKeyword › should parse color names
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#FFA500"
+    Received: "#FF7F00"
+
+      190 |         expect(isValid).toBe(true);
+      191 |         expect(consumed).toBe(2);
+    > 192 |         expect(windowColor.background).toBe(test.hex);
+          |                                        ^
+      193 |       }
+      194 |     });
+      195 |
+
+      at Object.<anonymous> (tests/displaySpecParser.test.ts:192:40)
+
+  ● DisplaySpecParser › real-world debug string parsing › should parse complete LOGIC declaration
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "My Logic"
+    Received: "\"My"
+
+      301 |       let [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, spec);
+      302 |       expect(parsed).toBe(true);
+    > 303 |       expect(spec.title).toBe('My Logic');
+          |                          ^
+      304 |       index += consumed;
+      305 |       
+      306 |       // Parse POS
+
+      at Object.<anonymous> (tests/displaySpecParser.test.ts:303:26)
+
+FAIL tests/debugPlotWin.integration.test.ts (25.537 s)
+  ● DebugPlotWindow Integration Tests › Complete drawing workflow › should handle color mode → load palette → draw shapes → UPDATE sequence
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      218 |       
+      219 |       // Verify drawing operations happened
+    > 220 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled(); // DOT and BOX use fillRect
+          |                                       ^
+      221 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled(); // OVAL
+      222 |       
+      223 |       // Verify UPDATE triggered display copy
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:220:39)
+
+  ● DebugPlotWindow Integration Tests › Layer compositing workflow › should load and composite multiple layers
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      295 |       // Verify layers were drawn and composited
+      296 |       expect(mockWorkingCtx.drawImage).toHaveBeenCalled(); // CROP operations
+    > 297 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled(); // BOX between layers
+          |                                       ^
+      298 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalledWith(mockOffscreenCanvas, 0, 0);
+      299 |     });
+      300 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:297:39)
+
+  ● DebugPlotWindow Integration Tests › Style persistence across commands › should maintain style settings throughout scene
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      374 |       // Verify drawing operations occurred with styles
+      375 |       // Note: globalAlpha is saved/restored in local variables, not via save/restore methods
+    > 376 |       expect(mockWorkingCtx.putImageData).toHaveBeenCalled(); // DOT with default size 1 uses plotPixel->putImageData
+          |                                           ^
+      377 |       expect(mockWorkingCtx.strokeRect).toHaveBeenCalled(); // OBOX uses strokeRect
+      378 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled(); // OVAL uses ellipse
+      379 |       // The styles were applied during the operations even though globalAlpha was restored
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:376:43)
+
+  ● DebugPlotWindow Integration Tests › Color mode switching › should handle color mode changes mid-scene
+
+    expect(received).toBeTruthy()
+
+    Received: ""
+
+      409 |       
+      410 |       // Verify different color modes were used
+    > 411 |       expect(mockWorkingCtx.fillStyle).toBeTruthy();
+          |                                        ^
+      412 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled();
+      413 |       expect(mockWorkingCtx.ellipse).toHaveBeenCalled();
+      414 |     });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:411:40)
+
+  ● DebugPlotWindow Integration Tests › Complex scene composition › should compose a complex scene with all features
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 8
+    Received number of calls: 0
+
+      469 |       // Verify complex scene was rendered
+      470 |       expect(mockWorkingCtx.drawImage).toHaveBeenCalled(); // Background
+    > 471 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalledTimes(8); // Gradient boxes
+          |                                       ^
+      472 |       expect(mockWorkingCtx.save).toHaveBeenCalled(); // Sprite transforms
+      473 |       expect(mockWorkingCtx.beginPath).toHaveBeenCalled(); // Lines
+      474 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalledWith(mockOffscreenCanvas, 0, 0);
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:471:39)
+
+  ● DebugPlotWindow Integration Tests › Error handling in workflows › should handle invalid layer operations
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      501 |       
+      502 |       // Verify scene renders despite error
+    > 503 |       expect(mockWorkingCtx.fillRect).toHaveBeenCalled();
+          |                                       ^
+      504 |       expect(mockDisplayCtx.drawImage).toHaveBeenCalled();
+      505 |     });
+      506 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.integration.test.ts:503:39)
+
+FAIL tests/debugPlotWin.test.ts (25.616 s)
+  ● DebugPlotWindow › Constructor and Initialization › should initialize double buffering
+
+    expect(received).toBeDefined()
+
+    Received: undefined
+
+      124 |       
+      125 |       // Working canvas and context are created in constructor
+    > 126 |       expect((plotWindow as any).workingCanvas).toBeDefined();
+          |                                                 ^
+      127 |       expect((plotWindow as any).workingCtx).toBeDefined();
+      128 |     });
+      129 |     
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:126:49)
+
+  ● DebugPlotWindow › Constructor and Initialization › should set default values
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "#FFFFFF"
+    Received: "#00FFFF"
+
+      136 |       expect((plotWindow as any).textAngle).toBe(0);
+      137 |       expect((plotWindow as any).colorMode).toBe('RGB24');
+    > 138 |       expect((plotWindow as any).currFgColor).toBe('#FFFFFF');
+          |                                               ^
+      139 |       expect((plotWindow as any).currBgColor).toBe('#000000');
+      140 |     });
+      141 |   });
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:138:47)
+
+  ● DebugPlotWindow › Shared Class Integration › should use ColorTranslator for color parsing
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "#FF0000"
+
+    Number of calls: 0
+
+      160 |       
+      161 |       // Verify ColorTranslator was used
+    > 162 |       expect(colorTranslator.translateColor).toHaveBeenCalledWith('#FF0000');
+          |                                              ^
+      163 |     });
+      164 |     
+      165 |     test('should use LUTManager for palette management', async () => {
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:162:46)
+
+  ● DebugPlotWindow › Command Parsing › should handle coordinate system commands
+
+    expect(received).resolves.toBeUndefined()
+
+    Received promise rejected instead of resolved
+    Rejected to value: [TypeError: Cannot read properties of undefined (reading 'charAt')]
+
+      272 |       
+      273 |       for (const cmd of coordCommands) {
+    > 274 |         await expect(plotWindow.updateContent(['TestPlot', ...cmd])).resolves.toBeUndefined();
+          |               ^
+      275 |       }
+      276 |     });
+      277 |   });
+
+      at expect (node_modules/@jest/expect/node_modules/expect/build/index.js:113:15)
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:274:15)
+
+  ● DebugPlotWindow › Double Buffer Architecture › should have separate working and display canvases
+
+    expect(received).toBeDefined()
+
+    Received: undefined
+
+      284 |     
+      285 |     test('should have separate working and display canvases', () => {
+    > 286 |       expect((plotWindow as any).workingCanvas).toBeDefined();
+          |                                                 ^
+      287 |       expect((plotWindow as any).workingCtx).toBeDefined();
+      288 |       expect((plotWindow as any).displayCanvas).toBeUndefined(); // Created when window opens
+      289 |     });
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:286:49)
+
+  ● DebugPlotWindow › Double Buffer Architecture › should use OffscreenCanvas for working buffer
+
+    TypeError: Cannot read properties of undefined (reading 'constructor')
+
+      290 |     
+      291 |     test('should use OffscreenCanvas for working buffer', () => {
+    > 292 |       expect((plotWindow as any).workingCanvas.constructor.name).toContain('OffscreenCanvas');
+          |                                                ^
+      293 |     });
+      294 |     
+      295 |     test('should only update display on UPDATE command', async () => {
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:292:48)
+
+  ● DebugPlotWindow › Coordinate Transformations › should handle plot coordinates with origin at center
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 128
+    Received: 0
+
+      367 |       // Origin is at center (128, 128) by default
+      368 |       const [x, y] = (plotWindow as any).getXY(0, 0);
+    > 369 |       expect(x).toBe(128);
+          |                 ^
+      370 |       expect(y).toBe(128);
+      371 |     });
+      372 |     
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:369:17)
+
+  ● DebugPlotWindow › Coordinate Transformations › should update origin with ORIGIN command
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 206
+    Received: 205
+
+      384 |       const [x, y] = (plotWindow as any).getXY(0, 0);
+      385 |       expect(x).toBe(50);
+    > 386 |       expect(y).toBe(206); // 256 - 50 (inverted Y)
+          |                 ^
+      387 |     });
+      388 |   });
+      389 |   
+
+      at Object.<anonymous> (tests/debugPlotWin.test.ts:386:17)
+
+
+Test Suites: 7 failed, 16 passed, 23 total
+Tests:       34 failed, 569 passed, 603 total
+Snapshots:   0 total
+Time:        28.75 s, estimated 47 s
+Ran all test suites.

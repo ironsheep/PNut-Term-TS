@@ -6,6 +6,8 @@
 'use strict';
 // src/classes/debugColor.ts
 
+import { Spin2NumericParser } from './shared/spin2NumericParser';
+
 // Name-to-RGB hex lookup
 export class DebugColor {
   private _colorValue: number;
@@ -147,28 +149,18 @@ export class DebugColor {
           }
         }
       } else {
-        // Not a color name, try other formats
-        // Check for hex with $ prefix
-        if (colorSpec.startsWith('$')) {
-          const hex = colorSpec.substring(1);
-          if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
-            hexColor = `#${hex}`;
-            isValid = true;
-          }
+        // Not a color name, try parsing as numeric value
+        // Use Spin2NumericParser which supports $hex, %binary, %%quaternary, and decimal formats
+        const colorValue = Spin2NumericParser.parseColor(colorSpec);
+        if (colorValue !== null) {
+          hexColor = '#' + colorValue.toString(16).padStart(6, '0').toUpperCase();
+          isValid = true;
         }
-        // Check for hex with # prefix
+        // Also support # prefix for hex (web-style)
         else if (colorSpec.startsWith('#')) {
           const hex = colorSpec.substring(1);
           if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
             hexColor = colorSpec;
-            isValid = true;
-          }
-        }
-        // Check for decimal value
-        else if (/^\d+$/.test(colorSpec)) {
-          const value = parseInt(colorSpec, 10);
-          if (value >= 0 && value <= 0xffffff) {
-            hexColor = '#' + value.toString(16).padStart(6, '0');
             isValid = true;
           }
         }

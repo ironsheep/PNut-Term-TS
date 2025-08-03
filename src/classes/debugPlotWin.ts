@@ -15,6 +15,7 @@ import { LUTManager } from './shared/lutManager';
 import { InputForwarder } from './shared/inputForwarder';
 import { LayerManager, CropRect } from './shared/layerManager';
 import { SpriteManager } from './shared/spriteManager';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 
 import {
   DebugWindowBase,
@@ -536,8 +537,8 @@ export class DebugPlotWindow extends DebugWindowBase {
       if (lineParts[index].toUpperCase() == 'SET') {
         // set cursor position
         if (index < lineParts.length - 2) {
-          const x: number = parseFloat(lineParts[++index]);
-          const y: number = parseFloat(lineParts[++index]);
+          const x: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const y: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           this.updatePlotDisplay(`SET ${x} ${y}`);
         } else {
           this.logMessage(`* UPD-ERROR  missing parameters for SET [${lineParts.join(' ')}]`);
@@ -549,13 +550,13 @@ export class DebugPlotWindow extends DebugWindowBase {
         let style: string = '00000001';
         let angle: number = 0;
         if (index < lineParts.length - 1) {
-          size = parseFloat(lineParts[++index]);
+          size = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
               style = this.formatAs8BitBinary(lineParts[++index]);
               if (index < lineParts.length - 1) {
                 if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  angle = parseFloat(lineParts[++index]);
+                  angle = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
                 }
               }
             }
@@ -596,16 +597,16 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'LINE') {
         // draw a line: LINE <x> <y> {linesize {opacity}}
         if (index < lineParts.length - 2) {
-          const x: number = parseFloat(lineParts[++index]);
-          const y: number = parseFloat(lineParts[++index]);
+          const x: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const y: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           let lineSize: number = 1;
           let opacity: number = 255;
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              lineSize = parseFloat(lineParts[++index]);
+              lineSize = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 1;
               if (index < lineParts.length - 1) {
                 if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  opacity = parseFloat(lineParts[++index]);
+                  opacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
                 }
               }
             }
@@ -619,13 +620,13 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (index < lineParts.length - 1) {
           let lineSize: number = 0; // 0 = filled circle
           let opacity: number = 255;
-          const diameter: number = parseFloat(lineParts[++index]);
+          const diameter: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              lineSize = parseFloat(lineParts[++index]);
+              lineSize = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 1;
               if (index < lineParts.length - 1) {
                 if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  opacity = parseFloat(lineParts[++index]);
+                  opacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
                 }
               }
             }
@@ -640,8 +641,8 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           // have values
           if (index < lineParts.length - 2) {
-            this.origin.x = parseFloat(lineParts[++index]);
-            this.origin.y = parseFloat(lineParts[++index]);
+            this.origin.x = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            this.origin.y = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
             // calculate canvasOffet for origin
             this.canvasOffset = {
               //x: this.displaySpec.size.width - this.origin.x,
@@ -668,8 +669,8 @@ export class DebugPlotWindow extends DebugWindowBase {
         //   iff values are present, set mode to those values
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           if (index < lineParts.length - 2) {
-            this.polarConfig.twopi = parseFloat(lineParts[++index]);
-            this.polarConfig.offset = parseFloat(lineParts[++index]);
+            this.polarConfig.twopi = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            this.polarConfig.offset = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           }
         }
       } else if (lineParts[index].toUpperCase() == 'CARTESIAN') {
@@ -681,8 +682,8 @@ export class DebugPlotWindow extends DebugWindowBase {
         //   iff values are present, set mode to those values
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           if (index < lineParts.length - 2) {
-            const yDir: number = parseFloat(lineParts[++index]);
-            const xDir: number = parseFloat(lineParts[++index]);
+            const yDir: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            const xDir: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
             this.cartesianConfig.xdir = xDir == 0 ? false : true;
             this.cartesianConfig.ydir = yDir == 0 ? false : true;
           }
@@ -694,9 +695,9 @@ export class DebugPlotWindow extends DebugWindowBase {
         
         // Parse optional parameters
         if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-          dotSize = parseInt(lineParts[++index]);
+          dotSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 1;
           if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            dotOpacity = parseInt(lineParts[++index]);
+            dotOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
           }
         }
         
@@ -704,16 +705,16 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'BOX') {
         // BOX command - draw filled rectangle
         if (index + 2 < lineParts.length) {
-          const width = parseFloat(lineParts[++index]);
-          const height = parseFloat(lineParts[++index]);
+          const width = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const height = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           let boxLineSize = 0; // 0 = filled
           let boxOpacity = this.opacity;
           
           // Parse optional parameters
           if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            boxLineSize = parseInt(lineParts[++index]);
+            boxLineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              boxOpacity = parseInt(lineParts[++index]);
+              boxOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
             }
           }
           
@@ -722,16 +723,16 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'OBOX') {
         // OBOX command - draw outlined rectangle
         if (index + 2 < lineParts.length) {
-          const width = parseFloat(lineParts[++index]);
-          const height = parseFloat(lineParts[++index]);
+          const width = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const height = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           let boxLineSize = this.lineSize;
           let boxOpacity = this.opacity;
           
           // Parse optional parameters
           if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            boxLineSize = parseInt(lineParts[++index]);
+            boxLineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              boxOpacity = parseInt(lineParts[++index]);
+              boxOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
             }
           }
           
@@ -740,16 +741,16 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'OVAL') {
         // OVAL command - draw ellipse
         if (index + 2 < lineParts.length) {
-          const width = parseFloat(lineParts[++index]);
-          const height = parseFloat(lineParts[++index]);
+          const width = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const height = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           let ovalLineSize = 0; // 0 = filled
           let ovalOpacity = this.opacity;
           
           // Parse optional parameters
           if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            ovalLineSize = parseInt(lineParts[++index]);
+            ovalLineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              ovalOpacity = parseInt(lineParts[++index]);
+              ovalOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
             }
           }
           
@@ -761,7 +762,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'LAYER') {
         // LAYER command - load bitmap into layer
         if (index + 2 < lineParts.length) {
-          const layerIndex = parseInt(lineParts[++index]) - 1; // Convert 1-8 to 0-7
+          const layerIndex = (Spin2NumericParser.parseCount(lineParts[++index]) ?? 1) - 1; // Convert 1-8 to 0-7
           const filename = lineParts[++index];
           
           if (layerIndex >= 0 && layerIndex < 8) {
@@ -789,7 +790,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'CROP') {
         // CROP command - draw layer with optional cropping
         if (index + 1 < lineParts.length) {
-          const layerIndex = parseInt(lineParts[++index]) - 1; // Convert 1-8 to 0-7
+          const layerIndex = (Spin2NumericParser.parseCount(lineParts[++index]) ?? 1) - 1; // Convert 1-8 to 0-7
           
           if (layerIndex >= 0 && layerIndex < 8 && this.layerManager.isLayerLoaded(layerIndex)) {
             if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'AUTO') {
@@ -799,10 +800,10 @@ export class DebugPlotWindow extends DebugWindowBase {
               let destY = 0;
               
               if (index + 1 < lineParts.length) {
-                destX = parseInt(lineParts[++index]);
+                destX = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
               }
               if (index + 1 < lineParts.length) {
-                destY = parseInt(lineParts[++index]);
+                destY = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
               }
               
               if (this.workingCtx) {
@@ -816,10 +817,10 @@ export class DebugPlotWindow extends DebugWindowBase {
             } else if (index + 4 < lineParts.length) {
               // Manual crop mode - requires left, top, width, height
               const cropRect: CropRect = {
-                left: parseInt(lineParts[++index]),
-                top: parseInt(lineParts[++index]),
-                width: parseInt(lineParts[++index]),
-                height: parseInt(lineParts[++index])
+                left: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
+                top: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
+                width: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
+                height: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0
               };
               
               let destX = 0;
@@ -827,10 +828,10 @@ export class DebugPlotWindow extends DebugWindowBase {
               
               // Optional destination coordinates
               if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                destX = parseInt(lineParts[++index]);
+                destX = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
               }
               if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                destY = parseInt(lineParts[++index]);
+                destY = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
               }
               
               if (this.workingCtx) {
@@ -871,19 +872,19 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'LINESIZE') {
         // Set line size
         if (index + 1 < lineParts.length) {
-          this.lineSize = parseInt(lineParts[++index]);
+          this.lineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 1;
           this.logMessage(`  -- LINESIZE set to ${this.lineSize}`);
         }
       } else if (lineParts[index].toUpperCase() == 'OPACITY') {
         // Set opacity (0-255)
         if (index + 1 < lineParts.length) {
-          this.opacity = Math.max(0, Math.min(255, parseInt(lineParts[++index])));
+          this.opacity = Math.max(0, Math.min(255, Spin2NumericParser.parseCount(lineParts[++index]) ?? 255));
           this.logMessage(`  -- OPACITY set to ${this.opacity}`);
         }
       } else if (lineParts[index].toUpperCase() == 'TEXTANGLE') {
         // Set text angle in degrees
         if (index + 1 < lineParts.length) {
-          this.textAngle = parseFloat(lineParts[++index]);
+          this.textAngle = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
           this.logMessage(`  -- TEXTANGLE set to ${this.textAngle} degrees`);
         }
       } else if (lineParts[index].toUpperCase() == 'LUTCOLORS') {
@@ -895,14 +896,8 @@ export class DebugPlotWindow extends DebugWindowBase {
           const colorStr = lineParts[index];
           let colorValue: number | null = null;
           
-          // Parse color value (handles $hex, %binary, and decimal)
-          if (colorStr.startsWith('$')) {
-            colorValue = parseInt(colorStr.substring(1), 16);
-          } else if (colorStr.startsWith('%')) {
-            colorValue = parseInt(colorStr.substring(1), 2);
-          } else if (/^-?\d+$/.test(colorStr)) {
-            colorValue = parseInt(colorStr);
-          }
+          // Parse color value using Spin2NumericParser (handles $hex, %binary, %%quaternary, and decimal)
+          colorValue = Spin2NumericParser.parseColor(colorStr);
           
           if (colorValue !== null && !isNaN(colorValue)) {
             this.lutManager.setColor(colorIndex++, colorValue);
@@ -917,9 +912,9 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'SPRITEDEF') {
         // SPRITEDEF command - define a sprite
         if (index + 3 < lineParts.length) {
-          const spriteId = parseInt(lineParts[++index]);
-          const width = parseInt(lineParts[++index]);
-          const height = parseInt(lineParts[++index]);
+          const spriteId = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
+          const width = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
+          const height = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
           
           if (!isNaN(spriteId) && !isNaN(width) && !isNaN(height)) {
             const pixelCount = width * height;
@@ -928,7 +923,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             
             // Parse pixel data
             for (let i = 0; i < pixelCount && index + 1 < lineParts.length; i++) {
-              const pixelValue = parseInt(lineParts[++index]);
+              const pixelValue = Spin2NumericParser.parseColor(lineParts[++index]) ?? 0;
               if (!isNaN(pixelValue)) {
                 pixels.push(pixelValue);
               } else {
@@ -979,7 +974,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'SPRITE') {
         // SPRITE command - draw a sprite
         if (index + 1 < lineParts.length) {
-          const spriteId = parseInt(lineParts[++index]);
+          const spriteId = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
           
           if (!isNaN(spriteId)) {
             // Parse optional parameters
@@ -988,18 +983,18 @@ export class DebugPlotWindow extends DebugWindowBase {
             let opacity = 255;
             
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              orientation = parseInt(lineParts[++index]);
+              orientation = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
             }
             
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              const scaleValue = parseFloat(lineParts[++index]);
+              const scaleValue = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 1;
               if (!isNaN(scaleValue)) {
                 scale = scaleValue;
               }
             }
             
             if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              opacity = parseInt(lineParts[++index]);
+              opacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
             }
             
             // Draw sprite at current cursor position
@@ -1059,7 +1054,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           
           // Check for tune parameter
           if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            const tune = parseInt(lineParts[++index]) & 0x7;
+            const tune = (Spin2NumericParser.parseCount(lineParts[++index]) ?? 0) & 0x7;
             this.colorTranslator.setTune(tune);
             this.logMessage(`  -- Color tune set to ${tune}`);
           }

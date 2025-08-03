@@ -6,6 +6,7 @@
 
 import { Position, Size, WindowColor } from '../debugWindowBase';
 import { DebugColor } from '../debugColor';
+import { Spin2NumericParser } from './spin2NumericParser';
 
 export interface BaseDisplaySpec {
   title: string;
@@ -46,9 +47,9 @@ export class DisplaySpecParser {
 
       case 'SIZE':
         if (this.validateParameterCount(lineParts, index, 2)) {
-          const width = Number(lineParts[index + 1]);
-          const height = Number(lineParts[index + 2]);
-          if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
+          const width = Spin2NumericParser.parsePixel(lineParts[index + 1]);
+          const height = Spin2NumericParser.parsePixel(lineParts[index + 2]);
+          if (width !== null && height !== null && width > 0 && height > 0) {
             spec.size = { width, height };
             consumed = 3;
             return [true, consumed];
@@ -58,8 +59,8 @@ export class DisplaySpecParser {
 
       case 'SAMPLES':
         if (this.validateParameterCount(lineParts, index, 1)) {
-          const samples = Number(lineParts[index + 1]);
-          if (!isNaN(samples) && samples > 0) {
+          const samples = Spin2NumericParser.parseCount(lineParts[index + 1]);
+          if (samples !== null && samples > 0) {
             spec.nbrSamples = samples;
             consumed = 2;
             return [true, consumed];
@@ -104,7 +105,7 @@ export class DisplaySpecParser {
     
     // Check if next part is a brightness value (0-15)
     if (index + 2 < lineParts.length && /^\d+$/.test(lineParts[index + 2])) {
-      const brightness = parseInt(lineParts[index + 2], 10);
+      const brightness = Spin2NumericParser.parseCount(lineParts[index + 2]) ?? 0;
       if (brightness >= 0 && brightness <= 15) {
         bgColorSpec += ' ' + lineParts[index + 2];
         consumed++;
@@ -127,7 +128,7 @@ export class DisplaySpecParser {
       if (!this.isCommandKeyword(gridColorSpec)) {
         // Check for brightness value
         if (index + consumed < lineParts.length && /^\d+$/.test(lineParts[index + consumed])) {
-          const brightness = parseInt(lineParts[index + consumed], 10);
+          const brightness = Spin2NumericParser.parseCount(lineParts[index + consumed]) ?? 0;
           if (brightness >= 0 && brightness <= 15) {
             gridColorSpec += ' ' + lineParts[index + consumed];
             consumed++;
@@ -167,10 +168,10 @@ export class DisplaySpecParser {
       return [false, { x: 0, y: 0 }];
     }
 
-    const x = Number(lineParts[index + 1]);
-    const y = Number(lineParts[index + 2]);
+    const x = Spin2NumericParser.parseInteger(lineParts[index + 1], true); // Allow negatives for position
+    const y = Spin2NumericParser.parseInteger(lineParts[index + 2], true); // Allow negatives for position
 
-    if (isNaN(x) || isNaN(y)) {
+    if (x === null || y === null) {
       return [false, { x: 0, y: 0 }];
     }
 
