@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference - Pascal Source Location
+
+**IMPORTANT**: The Pascal reference source is located at `/pascal-source/` in the root filesystem, NOT in the workspace.
+
+**Key Pascal Files**:
+- `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` - Core debug display implementation
+- `/pascal-source/P2_PNut_Public/DebugUnit.pas` - Window management
+- `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` - Debugger functionality
+
+**Documentation PDFs**:
+- `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf` - Complete Spin2 reference
+- `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` - PC_KEY and PC_MOUSE specifications
+- `/pascal-source/P2_PNut_Public/debugStatements.pdf` - Debug display command reference
+
 ## Project Overview
 
 PNut-Term-TS is a cross-platform debug terminal for Parallax Propeller2 microcontrollers, built as an Electron application with TypeScript. It recreates Chip's Debug listener with multiplatform support, combining PST (Propeller Serial Terminal) functionality with downloader capabilities and comprehensive debug display support.
@@ -130,7 +144,8 @@ The project uses GitHub Actions for automated builds:
 ### Primary Documentation Files
 
 The complete Spin2 language specification, which includes detailed debug display documentation and examples, is available at:
-- **Workspace Path**: `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf`
+- **Absolute Path**: `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf`
+- **Note**: The pascal-source directory is located at the root of the filesystem (`/pascal-source/`), not within the workspace
 - **Purpose**: This PDF contains the official Spin2 language reference including:
   - Complete DEBUG statement specifications
   - Debug display command formats and parameters
@@ -143,14 +158,14 @@ The complete Spin2 language specification, which includes detailed debug display
 ### Additional Debug Documentation
 
 **PC_KEY and PC_MOUSE Commands**:
-- **Location**: `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` (note the typo in filename)
+- **Absolute Path**: `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` (note the typo in filename)
 - **TypeScript Implementation**: `src/classes/shared/debugInputConstants.ts`
 - **Contents**: Keyboard and mouse input handling for debug displays
   - PC_KEY command for capturing keyboard input
   - PC_MOUSE command for 7-long mouse status structure
 
 **Debug Statements Reference**:
-- **Location**: `/pascal-source/P2_PNut_Public/debugStatements.pdf`
+- **Absolute Path**: `/pascal-source/P2_PNut_Public/debugStatements.pdf`
 - **TypeScript Implementation**: `src/classes/shared/debugStatements.ts`
 - **Contents**: Comprehensive debug display documentation
   - All 9 debug display types and their configurations
@@ -174,8 +189,10 @@ This section documents the translation from Chip Gracey's Pascal reference imple
 
 The Pascal source files in `/pascal-source/P2_PNut_Public/` contain the original debug display implementations:
 
+**Important Note**: The pascal-source directory is located at the root filesystem (`/pascal-source/`), NOT within the workspace directory.
+
 **Key Files:**
-- `DebugDisplayUnit.pas` - Core debug display implementation (50k+ lines)
+- `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` - Core debug display implementation (50k+ lines)
 - `DebugUnit.pas` - Main debug form and window management
 - `DebuggerUnit.pas` - Debugger breakpoint functionality
 
@@ -225,15 +242,15 @@ dis_midi      = 8;    // MIDI visualization display
 | **Spectrogram** | `dis_spectro` | DebugDisplayUnit.pas | ~2,900 | Not Implemented | ❌ Missing | 0 | Time-frequency display |
 | **Plot** | `dis_plot` | DebugDisplayUnit.pas | ~4,500 | `DebugPlotWindow` | ⚠️ In Progress | 1,106 | Missing sprites |
 | **Terminal** | `dis_term` | DebugDisplayUnit.pas | ~2,100 | `DebugTermWindow` | ✅ Complete | 686 | Full ANSI support |
-| **Bitmap** | `dis_bitmap` | DebugDisplayUnit.pas | ~3,700 | Not Implemented | ❌ Missing | 0 | Graphics with LUTs |
+| **Bitmap** | `dis_bitmap` | DebugDisplayUnit.pas | ~3,700 | `DebugBitmapWindow` | ✅ Complete | 962 | Full implementation |
 | **MIDI** | `dis_midi` | DebugDisplayUnit.pas | ~2,200 | Not Implemented | ❌ Missing | 0 | MIDI visualization |
 | **Debugger** | N/A | DebuggerUnit.pas | ~8,500 | Not Implemented | ❌ Missing | 0 | Breakpoint debugging |
 
 **Summary Statistics:**
 - **Total Pascal Lines**: ~37,500 (DebugDisplayUnit.pas: ~29,000 + DebuggerUnit.pas: ~8,500)
-- **Total TypeScript Lines**: 4,644 (across implemented windows)
-- **Implementation Progress**: 4/10 windows complete (40%)
-- **Missing Implementations**: 6 windows (~32,856 Pascal lines to translate)
+- **Total TypeScript Lines**: 5,606 (across implemented windows)
+- **Implementation Progress**: 5/10 windows complete (50%)
+- **Missing Implementations**: 5 windows (~29,156 Pascal lines to translate)
 
 **Pascal Source Notes:**
 - Line counts are estimates based on typical Pascal implementations
