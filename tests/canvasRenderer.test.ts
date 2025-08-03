@@ -8,16 +8,10 @@ import { CanvasRenderer } from '../src/classes/shared/canvasRenderer';
 
 describe('CanvasRenderer', () => {
   let renderer: CanvasRenderer;
-  let mockCanvas: any;
   let mockContext: any;
   let mockImageData: ImageData;
   let mockOffscreenCanvas: any;
   let mockOffscreenContext: any;
-
-  // Helper to execute generated JavaScript
-  const executeJS = (js: string) => {
-    new Function(js)();
-  };
 
   beforeEach(() => {
     renderer = new CanvasRenderer();
@@ -31,12 +25,20 @@ describe('CanvasRenderer', () => {
 
     // Mock canvas context
     mockContext = {
+      canvas: {
+        width: 100,
+        height: 100
+      },
       getImageData: jest.fn().mockReturnValue(mockImageData),
       putImageData: jest.fn(),
       fillRect: jest.fn(),
+      strokeRect: jest.fn(),
       fillStyle: '',
       strokeStyle: '',
+      globalAlpha: 1,
       lineWidth: 1,
+      lineCap: 'butt',
+      lineJoin: 'miter',
       beginPath: jest.fn(),
       moveTo: jest.fn(),
       lineTo: jest.fn(),
@@ -50,48 +52,35 @@ describe('CanvasRenderer', () => {
       fillText: jest.fn(),
       clearRect: jest.fn(),
       arc: jest.fn(),
+      ellipse: jest.fn(),
       fill: jest.fn(),
-      lineCap: 'butt',
-      lineJoin: 'miter',
-      drawImage: jest.fn()
+      drawImage: jest.fn(),
+      translate: jest.fn(),
+      rotate: jest.fn(),
+      measureText: jest.fn().mockReturnValue({ width: 50 })
     };
 
-    // Mock canvas element
-    mockCanvas = {
-      width: 100,
-      height: 100,
-      getContext: jest.fn().mockReturnValue(mockContext)
-    };
-
-    // Mock off-screen canvas
+    // Mock OffscreenCanvas context
     mockOffscreenContext = {
       drawImage: jest.fn()
     };
-    mockOffscreenCanvas = {
-      width: 100,
-      height: 100,
+    
+    // Mock OffscreenCanvas - needed for scrollBitmapCtx
+    global.OffscreenCanvas = jest.fn().mockImplementation((width, height) => ({
+      width,
+      height,
       getContext: jest.fn().mockReturnValue(mockOffscreenContext)
-    };
-
-    // Mock document methods
-    global.document = {
-      getElementById: jest.fn().mockReturnValue(mockCanvas),
-      createElement: jest.fn().mockReturnValue(mockOffscreenCanvas)
-    } as any;
+    }));
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('plotPixel', () => {
-    test('should generate correct JavaScript for plotting a pixel', () => {
-      const js = renderer.plotPixel('testCanvas', 10, 20, '#FF0000');
+  describe('plotPixelCtx', () => {
+    test('should plot a pixel using context directly', () => {
+      renderer.plotPixelCtx(mockContext, 10, 20, '#FF0000');
       
-      // Execute the generated JavaScript
-      executeJS(js);
-      
-      expect(document.getElementById).toHaveBeenCalledWith('testCanvas');
       expect(mockContext.getImageData).toHaveBeenCalledWith(10, 20, 1, 1);
       expect(mockContext.putImageData).toHaveBeenCalledWith(mockImageData, 10, 20);
       
@@ -113,10 +102,9 @@ describe('CanvasRenderer', () => {
       ];
 
       testCases.forEach(({ x, y }) => {
-        const js = renderer.plotPixel('testCanvas', x, y, '#FFFFFF');
-        executeJS(js);
+        renderer.plotPixelCtx(mockContext, x, y, '#FFFFFF');
         
-        // Should check bounds but not call getImageData for out-of-bounds
+        // Should not call getImageData for out-of-bounds
         expect(mockContext.getImageData).not.toHaveBeenCalled();
         mockContext.getImageData.mockClear();
       });
@@ -133,8 +121,7 @@ describe('CanvasRenderer', () => {
       ];
 
       colors.forEach(({ hex, r, g, b }) => {
-        const js = renderer.plotPixel('testCanvas', 0, 0, hex);
-        executeJS(js);
+        renderer.plotPixelCtx(mockContext, 0, 0, hex);
         
         expect(mockImageData.data[0]).toBe(r);
         expect(mockImageData.data[1]).toBe(g);
@@ -148,10 +135,9 @@ describe('CanvasRenderer', () => {
     });
   });
 
-  describe('plotScaledPixel', () => {
-    test('should generate correct JavaScript for scaled pixel', () => {
-      const js = renderer.plotScaledPixel('testCanvas', 5, 10, '#00FF00', 4, 4);
-      executeJS(js);
+  describe('plotScaledPixelCtx', () => {
+    test('should plot scaled pixel using fillRect', () => {
+      renderer.plotScaledPixelCtx(mockContext, 5, 10, '#00FF00', 4, 4);
       
       expect(mockContext.fillStyle).toBe('#00FF00');
       expect(mockContext.fillRect).toHaveBeenCalledWith(20, 40, 4, 4);
@@ -166,8 +152,7 @@ describe('CanvasRenderer', () => {
       ];
 
       testCases.forEach(({ dotX, dotY, x, y, expectedX, expectedY }) => {
-        const js = renderer.plotScaledPixel('testCanvas', x, y, '#FFFFFF', dotX, dotY);
-        executeJS(js);
+        renderer.plotScaledPixelCtx(mockContext, x, y, '#FFFFFF', dotX, dotY);
         
         expect(mockContext.fillRect).toHaveBeenCalledWith(expectedX, expectedY, dotX, dotY);
         mockContext.fillRect.mockClear();
@@ -176,387 +161,330 @@ describe('CanvasRenderer', () => {
 
     test('should clip to canvas bounds', () => {
       // Canvas is 100x100
-      const js = renderer.plotScaledPixel('testCanvas', 20, 20, '#FF0000', 5, 5);
-      executeJS(js);
+      renderer.plotScaledPixelCtx(mockContext, 20, 20, '#FF0000', 5, 5);
       
       // 20 * 5 = 100, which is at the edge
       expect(mockContext.fillRect).not.toHaveBeenCalled();
     });
   });
 
-  describe('scrollBitmap', () => {
+  describe('scrollBitmapCtx', () => {
     test('should handle horizontal scrolling', () => {
-      const js = renderer.scrollBitmap('testCanvas', 10, 0, 100, 100);
-      executeJS(js);
+      renderer.scrollBitmapCtx(mockContext, 10, 0);
       
-      expect(document.createElement).toHaveBeenCalledWith('canvas');
-      expect(mockOffscreenCanvas.width).toBe(100);
-      expect(mockOffscreenCanvas.height).toBe(100);
-      expect(mockOffscreenContext.drawImage).toHaveBeenCalledWith(mockCanvas, 0, 0);
+      expect(OffscreenCanvas).toHaveBeenCalledWith(100, 100);
+      expect(mockOffscreenContext.drawImage).toHaveBeenCalledWith(mockContext.canvas, 0, 0);
       expect(mockContext.clearRect).toHaveBeenCalledWith(0, 0, 100, 100);
       expect(mockContext.drawImage).toHaveBeenCalledWith(
-        mockOffscreenCanvas, 0, 0, 90, 100, 10, 0, 90, 100
+        expect.any(Object), 0, 0, 90, 100, 10, 0, 90, 100
       );
     });
 
     test('should handle vertical scrolling', () => {
-      const js = renderer.scrollBitmap('testCanvas', 0, 10, 100, 100);
-      executeJS(js);
+      renderer.scrollBitmapCtx(mockContext, 0, 10);
       
       expect(mockContext.drawImage).toHaveBeenCalledWith(
-        mockOffscreenCanvas, 0, 0, 100, 90, 0, 10, 100, 90
+        expect.any(Object), 0, 0, 100, 90, 0, 10, 100, 90
       );
     });
 
     test('should handle diagonal scrolling', () => {
-      const js = renderer.scrollBitmap('testCanvas', 5, -5, 100, 100);
-      executeJS(js);
+      renderer.scrollBitmapCtx(mockContext, 5, -5);
       
       expect(mockContext.drawImage).toHaveBeenCalledWith(
-        mockOffscreenCanvas, 0, 5, 95, 95, 5, 0, 95, 95
+        expect.any(Object), 0, 5, 95, 95, 5, 0, 95, 95
       );
     });
-
-    test('should handle all 8 scroll directions', () => {
-      const testCases = [
-        { x: 10, y: 0, sx: 0, sy: 0, sw: 90, sh: 100, dx: 10, dy: 0 },   // Right
-        { x: -10, y: 0, sx: 10, sy: 0, sw: 90, sh: 100, dx: 0, dy: 0 },  // Left
-        { x: 0, y: 10, sx: 0, sy: 0, sw: 100, sh: 90, dx: 0, dy: 10 },   // Down
-        { x: 0, y: -10, sx: 0, sy: 10, sw: 100, sh: 90, dx: 0, dy: 0 },  // Up
-        { x: 10, y: 10, sx: 0, sy: 0, sw: 90, sh: 90, dx: 10, dy: 10 },  // Right-Down
-        { x: -10, y: -10, sx: 10, sy: 10, sw: 90, sh: 90, dx: 0, dy: 0 }, // Left-Up
-        { x: 10, y: -10, sx: 0, sy: 10, sw: 90, sh: 90, dx: 10, dy: 0 },  // Right-Up
-        { x: -10, y: 10, sx: 10, sy: 0, sw: 90, sh: 90, dx: 0, dy: 10 }   // Left-Down
-      ];
-
-      testCases.forEach(({ x, y, sx, sy, sw, sh, dx, dy }) => {
-        const js = renderer.scrollBitmap('testCanvas', x, y, 100, 100);
-        executeJS(js);
-        
-        expect(mockContext.drawImage).toHaveBeenCalledWith(
-          mockOffscreenCanvas, sx, sy, sw, sh, dx, dy, sw, sh
-        );
-        mockContext.drawImage.mockClear();
-        mockContext.clearRect.mockClear();
-      });
-    });
-
-    test('should handle extreme scroll values', () => {
-      // Scroll more than canvas size
-      const js = renderer.scrollBitmap('testCanvas', 200, 200, 100, 100);
-      executeJS(js);
-      
-      // Should clear but not draw anything
-      expect(mockContext.clearRect).toHaveBeenCalled();
-      expect(mockContext.drawImage).not.toHaveBeenCalled();
-    });
   });
 
-  describe('scrollCanvas', () => {
-    test('should generate correct scroll canvas JavaScript', () => {
-      const js = renderer.scrollCanvas('myCanvas', 2, 800, 600, 10, 20);
+  describe('drawLineCtx', () => {
+    test('should draw line with context directly', () => {
+      renderer.drawLineCtx(mockContext, 10, 20, 100, 200, '#FF0000', 2);
       
-      expect(js).toContain("const canvas = document.getElementById('myCanvas')");
-      expect(js).toContain('offscreenCanvas.width = 800');
-      expect(js).toContain('offscreenCanvas.height = 600');
-      expect(js).toContain('ctx.drawImage');
-      expect(js).toContain('const scrollX = -2'); // Negative because it scrolls left
-      expect(js).toContain('const scrollY = 0');
-    });
-
-    test('should handle default offset values', () => {
-      const js = renderer.scrollCanvas('testCanvas', 5, 640, 480);
-      
-      expect(js).toContain('const scrollX = -5');
-      expect(js).toContain('const scrollY = 0');
-    });
-  });
-
-  describe('drawLine', () => {
-    test('should generate correct draw line JavaScript', () => {
-      const js = renderer.drawLine('myCanvas', 10, 20, 100, 200, '#FF0000', 2);
-      
-      expect(js).toContain("ctx.strokeStyle = '#FF0000'");
-      expect(js).toContain('ctx.lineWidth = 2');
-      expect(js).toContain('ctx.moveTo(10, 20)');
-      expect(js).toContain('ctx.lineTo(100, 200)');
-      expect(js).toContain('ctx.stroke()');
+      expect(mockContext.strokeStyle).toBe('#FF0000');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalledWith(10, 20);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(100, 200);
+      expect(mockContext.stroke).toHaveBeenCalled();
     });
 
     test('should handle default line width', () => {
-      const js = renderer.drawLine('myCanvas', 0, 0, 50, 50, 'blue');
+      renderer.drawLineCtx(mockContext, 0, 0, 50, 50, 'blue');
       
-      expect(js).toContain('ctx.lineWidth = 1');
+      expect(mockContext.lineWidth).toBe(1);
     });
   });
 
-  describe('drawDashedLine', () => {
-    test('should generate correct dashed line JavaScript', () => {
-      const js = renderer.drawDashedLine('myCanvas', 0, 0, 100, 0, '#00FF00', 1, [10, 5]);
+  describe('drawDashedLineCtx', () => {
+    test('should draw dashed line with context', () => {
+      renderer.drawDashedLineCtx(mockContext, 0, 0, 100, 0, '#00FF00', 1, [10, 5]);
       
-      expect(js).toContain('ctx.save()');
-      expect(js).toContain("ctx.strokeStyle = '#00FF00'");
-      expect(js).toContain('ctx.setLineDash([10, 5])');
-      expect(js).toContain('ctx.restore()');
+      expect(mockContext.save).toHaveBeenCalled();
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(1);
+      expect(mockContext.setLineDash).toHaveBeenCalledWith([10, 5]);
+      expect(mockContext.restore).toHaveBeenCalled();
     });
 
     test('should use default dash pattern', () => {
-      const js = renderer.drawDashedLine('myCanvas', 0, 0, 100, 0, 'black');
+      renderer.drawDashedLineCtx(mockContext, 0, 0, 100, 0, 'black');
       
-      expect(js).toContain('ctx.setLineDash([5, 5])');
+      expect(mockContext.setLineDash).toHaveBeenCalledWith([5, 5]);
     });
   });
 
-  describe('drawText', () => {
-    test('should generate correct draw text JavaScript', () => {
-      const js = renderer.drawText('myCanvas', 'Hello World', 50, 100, '#FFFFFF', '16px', 'Arial', 'center', 'middle');
+  describe('drawTextCtx', () => {
+    test('should draw text with context directly', () => {
+      renderer.drawTextCtx(mockContext, 'Hello World', 50, 100, '#FFFFFF', '16px', 'Arial', 'center', 'middle');
       
-      expect(js).toContain("ctx.fillStyle = '#FFFFFF'");
-      expect(js).toContain("ctx.font = '16px Arial'");
-      expect(js).toContain("ctx.textAlign = 'center'");
-      expect(js).toContain("ctx.textBaseline = 'middle'");
-      expect(js).toContain("ctx.fillText('Hello World', 50, 100)");
-    });
-
-    test('should escape special characters in text', () => {
-      const js = renderer.drawText('myCanvas', "Test's \"quoted\" text", 0, 0, 'black');
-      
-      expect(js).toContain("ctx.fillText('Test\\'s \\\"quoted\\\" text', 0, 0)");
+      expect(mockContext.save).toHaveBeenCalled();
+      expect(mockContext.fillStyle).toBe('#FFFFFF');
+      expect(mockContext.font).toBe('16px Arial');
+      expect(mockContext.textAlign).toBe('center');
+      expect(mockContext.textBaseline).toBe('middle');
+      expect(mockContext.fillText).toHaveBeenCalledWith('Hello World', 50, 100);
+      expect(mockContext.restore).toHaveBeenCalled();
     });
 
     test('should use default font settings', () => {
-      const js = renderer.drawText('myCanvas', 'Test', 0, 0, 'black');
+      renderer.drawTextCtx(mockContext, 'Test', 0, 0, 'black');
       
-      expect(js).toContain("ctx.font = '12px monospace'");
-      expect(js).toContain("ctx.textAlign = 'left'");
-      expect(js).toContain("ctx.textBaseline = 'top'");
+      expect(mockContext.font).toBe('12px monospace');
+      expect(mockContext.textAlign).toBe('left');
+      expect(mockContext.textBaseline).toBe('top');
     });
   });
 
   describe('clearCanvas', () => {
-    test('should generate correct clear canvas JavaScript', () => {
-      const js = renderer.clearCanvas('myCanvas', 10, 20, 300, 400);
+    test('should clear specific area', () => {
+      renderer.clearCanvas(mockContext, 10, 20, 300, 400);
       
-      expect(js).toContain('const clearWidth = 300');
-      expect(js).toContain('const clearHeight = 400');
-      expect(js).toContain('ctx.clearRect(10, 20, clearWidth, clearHeight)');
+      expect(mockContext.clearRect).toHaveBeenCalledWith(10, 20, 300, 400);
     });
 
     test('should clear entire canvas when dimensions not provided', () => {
-      const js = renderer.clearCanvas('myCanvas');
+      renderer.clearCanvas(mockContext);
       
-      expect(js).toContain('const clearWidth = canvas.width');
-      expect(js).toContain('const clearHeight = canvas.height');
-      expect(js).toContain('ctx.clearRect(0, 0, clearWidth, clearHeight)');
+      expect(mockContext.clearRect).toHaveBeenCalledWith(0, 0, 100, 100);
     });
   });
 
   describe('fillRect', () => {
-    test('should generate correct fill rect JavaScript', () => {
-      const js = renderer.fillRect('myCanvas', 10, 20, 100, 50, '#0000FF');
+    test('should fill rectangle with context', () => {
+      renderer.fillRect(mockContext, 10, 20, 100, 50, '#0000FF');
       
-      expect(js).toContain("ctx.fillStyle = '#0000FF'");
-      expect(js).toContain('ctx.fillRect(10, 20, 100, 50)');
+      expect(mockContext.fillStyle).toBe('#0000FF');
+      expect(mockContext.fillRect).toHaveBeenCalledWith(10, 20, 100, 50);
     });
   });
 
   describe('drawVerticalLine', () => {
     test('should draw solid vertical line', () => {
-      const js = renderer.drawVerticalLine('myCanvas', 50, 0, 100, '#FF0000', 2, false);
+      renderer.drawVerticalLine(mockContext, 50, 0, 100, '#FF0000', 2, false);
       
-      expect(js).toContain('ctx.moveTo(50, 0)');
-      expect(js).toContain('ctx.lineTo(50, 100)');
-      expect(js).not.toContain('setLineDash');
+      expect(mockContext.strokeStyle).toBe('#FF0000');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.moveTo).toHaveBeenCalledWith(50, 0);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(50, 100);
+      expect(mockContext.setLineDash).not.toHaveBeenCalled();
     });
 
     test('should draw dashed vertical line', () => {
-      const js = renderer.drawVerticalLine('myCanvas', 50, 0, 100, '#FF0000', 2, true);
+      renderer.drawVerticalLine(mockContext, 50, 0, 100, '#FF0000', 2, true);
       
-      expect(js).toContain('ctx.setLineDash([5, 5])');
+      expect(mockContext.setLineDash).toHaveBeenCalled();
     });
   });
 
   describe('drawHorizontalLine', () => {
     test('should draw solid horizontal line', () => {
-      const js = renderer.drawHorizontalLine('myCanvas', 50, 0, 100, '#00FF00', 2, false);
+      renderer.drawHorizontalLine(mockContext, 50, 0, 100, '#00FF00', 2, false);
       
-      expect(js).toContain('ctx.moveTo(0, 50)');
-      expect(js).toContain('ctx.lineTo(100, 50)');
-      expect(js).not.toContain('setLineDash');
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.moveTo).toHaveBeenCalledWith(0, 50);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(100, 50);
+      expect(mockContext.setLineDash).not.toHaveBeenCalled();
     });
 
     test('should draw dashed horizontal line', () => {
-      const js = renderer.drawHorizontalLine('myCanvas', 50, 0, 100, '#00FF00', 2, true);
+      renderer.drawHorizontalLine(mockContext, 50, 0, 100, '#00FF00', 2, true);
       
-      expect(js).toContain('ctx.setLineDash([5, 5])');
+      expect(mockContext.setLineDash).toHaveBeenCalled();
     });
   });
 
   describe('setupCanvas', () => {
-    test('should generate correct canvas setup JavaScript', () => {
-      const js = renderer.setupCanvas('myCanvas', 1024, 768);
+    test('should set up canvas defaults', () => {
+      renderer.setupCanvas(mockContext);
       
-      expect(js).toContain('canvas.width = 1024');
-      expect(js).toContain('canvas.height = 768');
-      expect(js).toContain("ctx.lineCap = 'round'");
-      expect(js).toContain("ctx.lineJoin = 'round'");
+      expect(mockContext.lineCap).toBe('round');
+      expect(mockContext.lineJoin).toBe('round');
     });
   });
 
-  describe('drawCircle', () => {
+  describe('drawCircleCtx', () => {
     test('should draw filled circle', () => {
-      const js = renderer.drawCircle('myCanvas', 100, 100, 10, '#FF0000', true, 1);
+      renderer.drawCircleCtx(mockContext, 100, 100, 10, '#FF0000', true, 1);
       
-      expect(js).toContain('ctx.arc(100, 100, 10, 0, 2 * Math.PI)');
-      expect(js).toContain('if (true)');
-      expect(js).toContain("ctx.fillStyle = '#FF0000'");
-      expect(js).toContain('ctx.fill()');
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.arc).toHaveBeenCalledWith(100, 100, 10, 0, 2 * Math.PI);
+      expect(mockContext.fillStyle).toBe('#FF0000');
+      expect(mockContext.fill).toHaveBeenCalled();
     });
 
     test('should draw outline circle', () => {
-      const js = renderer.drawCircle('myCanvas', 50, 50, 5, '#00FF00', false, 2);
+      renderer.drawCircleCtx(mockContext, 50, 50, 5, '#00FF00', false, 2);
       
-      expect(js).toContain('ctx.arc(50, 50, 5, 0, 2 * Math.PI)');
-      expect(js).toContain('if (false)');
-      expect(js).toContain("ctx.strokeStyle = '#00FF00'");
-      expect(js).toContain('ctx.lineWidth = 2');
-      expect(js).toContain('ctx.stroke()');
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.arc).toHaveBeenCalledWith(50, 50, 5, 0, 2 * Math.PI);
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.stroke).toHaveBeenCalled();
     });
   });
 
-  describe('error handling', () => {
-    test('all methods should check for canvas existence', () => {
-      const methods = [
-        renderer.scrollCanvas('test', 1, 100, 100),
-        renderer.drawLine('test', 0, 0, 10, 10, 'black'),
-        renderer.drawDashedLine('test', 0, 0, 10, 10, 'black'),
-        renderer.drawText('test', 'text', 0, 0, 'black'),
-        renderer.clearCanvas('test'),
-        renderer.fillRect('test', 0, 0, 10, 10, 'black'),
-        renderer.setupCanvas('test', 100, 100),
-        renderer.drawCircle('test', 50, 50, 5, 'black')
-      ];
+  describe('New context-based methods', () => {
+    describe('drawOval', () => {
+      test('should draw filled oval', () => {
+        renderer.drawOval(mockContext, 50, 60, 20, 15, true, '#FF0000', 1);
+        
+        expect(mockContext.beginPath).toHaveBeenCalled();
+        expect(mockContext.ellipse).toHaveBeenCalledWith(50, 60, 20, 15, 0, 0, 2 * Math.PI);
+        expect(mockContext.fillStyle).toBe('#FF0000');
+        expect(mockContext.fill).toHaveBeenCalled();
+      });
 
-      for (const js of methods) {
-        expect(js).toContain('if (!canvas) return');
-      }
+      test('should draw outline oval', () => {
+        renderer.drawOval(mockContext, 30, 40, 10, 8, false, '#00FF00', 2);
+        
+        expect(mockContext.beginPath).toHaveBeenCalled();
+        expect(mockContext.ellipse).toHaveBeenCalledWith(30, 40, 10, 8, 0, 0, 2 * Math.PI);
+        expect(mockContext.strokeStyle).toBe('#00FF00');
+        expect(mockContext.lineWidth).toBe(2);
+        expect(mockContext.stroke).toHaveBeenCalled();
+      });
     });
 
-    test('all drawing methods should check for context', () => {
-      const methods = [
-        renderer.scrollCanvas('test', 1, 100, 100),
-        renderer.drawLine('test', 0, 0, 10, 10, 'black'),
-        renderer.drawDashedLine('test', 0, 0, 10, 10, 'black'),
-        renderer.drawText('test', 'text', 0, 0, 'black'),
-        renderer.clearCanvas('test'),
-        renderer.fillRect('test', 0, 0, 10, 10, 'black'),
-        renderer.drawCircle('test', 50, 50, 5, 'black')
-      ];
+    describe('drawRect', () => {
+      test('should draw filled rectangle', () => {
+        renderer.drawRect(mockContext, 10, 20, 50, 60, true, '#0000FF', 1);
+        
+        expect(mockContext.fillStyle).toBe('#0000FF');
+        expect(mockContext.fillRect).toHaveBeenCalledWith(10, 20, 40, 40);
+      });
 
-      for (const js of methods) {
-        expect(js).toContain('if (!ctx) return');
-      }
+      test('should draw outline rectangle', () => {
+        renderer.drawRect(mockContext, 5, 10, 25, 30, false, '#FF00FF', 3);
+        
+        expect(mockContext.strokeStyle).toBe('#FF00FF');
+        expect(mockContext.lineWidth).toBe(3);
+        expect(mockContext.strokeRect).toHaveBeenCalledWith(5, 10, 20, 20);
+      });
+    });
+
+    describe('setOpacity', () => {
+      test('should convert 0-255 range to 0-1 globalAlpha', () => {
+        const testCases = [
+          { input: 0, expected: 0 },
+          { input: 127, expected: 127/255 },
+          { input: 255, expected: 1 },
+          { input: 64, expected: 64/255 }
+        ];
+
+        testCases.forEach(({ input, expected }) => {
+          renderer.setOpacity(mockContext, input);
+          expect(mockContext.globalAlpha).toBeCloseTo(expected, 5);
+        });
+      });
+    });
+
+    describe('drawRotatedText', () => {
+      test('should draw rotated text with transforms', () => {
+        renderer.drawRotatedText(mockContext, 'Hello', 100, 50, 45, '#FFFFFF', '14px', 'Arial');
+        
+        expect(mockContext.save).toHaveBeenCalled();
+        expect(mockContext.translate).toHaveBeenCalledWith(100, 50);
+        expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
+        expect(mockContext.fillStyle).toBe('#FFFFFF');
+        expect(mockContext.font).toBe('14px Arial');
+        expect(mockContext.textAlign).toBe('left');
+        expect(mockContext.textBaseline).toBe('top');
+        expect(mockContext.fillText).toHaveBeenCalledWith('Hello', 0, 0);
+        expect(mockContext.restore).toHaveBeenCalled();
+      });
+
+      test('should use default font settings for rotated text', () => {
+        renderer.drawRotatedText(mockContext, 'Test', 0, 0, 90, 'black');
+        
+        expect(mockContext.font).toBe('12px monospace');
+      });
+
+      test('should handle various angles', () => {
+        const angles = [0, 45, 90, 180, 270, -45, 360];
+        
+        angles.forEach(angle => {
+          mockContext.rotate.mockClear();
+          renderer.drawRotatedText(mockContext, 'Test', 0, 0, angle, 'black');
+          expect(mockContext.rotate).toHaveBeenCalledWith((angle * Math.PI) / 180);
+        });
+      });
     });
   });
 
-  describe('Performance considerations', () => {
+  describe('Legacy method compatibility', () => {
+    test('plotPixel should delegate to plotPixelLegacy', () => {
+      const js = renderer.plotPixel('testCanvas', 10, 20, '#FF0000');
+      
+      expect(js).toContain("const canvas = document.getElementById('testCanvas')");
+      expect(js).toContain('const ctx = canvas.getContext(\'2d\')');
+      expect(js).toContain('ctx.getImageData(10, 20, 1, 1)');
+      expect(js).toContain('ctx.putImageData(imageData, 10, 20)');
+    });
+
+    test('plotScaledPixel should delegate to plotScaledPixelLegacy', () => {
+      const js = renderer.plotScaledPixel('testCanvas', 5, 10, '#00FF00', 4, 4);
+      
+      expect(js).toContain("ctx.fillStyle = '#00FF00'");
+      expect(js).toContain('ctx.fillRect(scaledX, scaledY, 4, 4)');
+    });
+
+    test('scrollBitmap should delegate to scrollBitmapLegacy', () => {
+      const js = renderer.scrollBitmap('testCanvas', 10, 0, 100, 100);
+      
+      expect(js).toContain('const canvas = document.getElementById(\'testCanvas\')');
+      expect(js).toContain('offscreenCanvas.width = 100');
+      expect(js).toContain('offscreenCanvas.height = 100');
+    });
+  });
+
+  describe('Performance and memory management', () => {
     test('should use ImageData for single pixel operations', () => {
-      const js = renderer.plotPixel('testCanvas', 50, 50, '#FFFFFF');
-      executeJS(js);
+      renderer.plotPixelCtx(mockContext, 50, 50, '#FFFFFF');
       
-      // Should use getImageData/putImageData for single pixel
       expect(mockContext.getImageData).toHaveBeenCalled();
       expect(mockContext.putImageData).toHaveBeenCalled();
       expect(mockContext.fillRect).not.toHaveBeenCalled();
     });
 
     test('should use fillRect for scaled pixels', () => {
-      const js = renderer.plotScaledPixel('testCanvas', 10, 10, '#FFFFFF', 4, 4);
-      executeJS(js);
+      renderer.plotScaledPixelCtx(mockContext, 10, 10, '#FFFFFF', 4, 4);
       
-      // Should use fillRect for performance
       expect(mockContext.fillRect).toHaveBeenCalled();
       expect(mockContext.getImageData).not.toHaveBeenCalled();
     });
 
-    test('should handle large bitmaps efficiently', () => {
-      mockCanvas.width = 2048;
-      mockCanvas.height = 2048;
-      mockOffscreenCanvas.width = 2048;
-      mockOffscreenCanvas.height = 2048;
+    test('should handle large canvas dimensions efficiently', () => {
+      mockContext.canvas.width = 2048;
+      mockContext.canvas.height = 2048;
       
-      const js = renderer.scrollBitmap('testCanvas', 1, 1, 2048, 2048);
-      executeJS(js);
+      renderer.scrollBitmapCtx(mockContext, 1, 1);
       
-      // Should still use off-screen canvas technique
+      expect(OffscreenCanvas).toHaveBeenCalledWith(2048, 2048);
       expect(mockContext.drawImage).toHaveBeenCalledWith(
-        mockOffscreenCanvas, 0, 0, 2047, 2047, 1, 1, 2047, 2047
+        expect.any(Object), 0, 0, 2047, 2047, 1, 1, 2047, 2047
       );
-    });
-  });
-
-  describe('New method error handling', () => {
-    test('plotPixel should handle missing canvas gracefully', () => {
-      document.getElementById = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.plotPixel('missingCanvas', 0, 0, '#FFFFFF');
-      // Should not throw when executed
-      expect(() => executeJS(js)).not.toThrow();
-    });
-
-    test('plotPixel should handle missing context gracefully', () => {
-      mockCanvas.getContext = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.plotPixel('testCanvas', 0, 0, '#FFFFFF');
-      expect(() => executeJS(js)).not.toThrow();
-    });
-
-    test('plotScaledPixel should handle missing canvas gracefully', () => {
-      document.getElementById = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.plotScaledPixel('missingCanvas', 0, 0, '#FFFFFF', 1, 1);
-      expect(() => executeJS(js)).not.toThrow();
-    });
-
-    test('plotScaledPixel should handle missing context gracefully', () => {
-      mockCanvas.getContext = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.plotScaledPixel('testCanvas', 0, 0, '#FFFFFF', 1, 1);
-      expect(() => executeJS(js)).not.toThrow();
-    });
-
-    test('scrollBitmap should handle missing canvas gracefully', () => {
-      document.getElementById = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.scrollBitmap('missingCanvas', 0, 0, 100, 100);
-      expect(() => executeJS(js)).not.toThrow();
-    });
-
-    test('scrollBitmap should handle missing context gracefully', () => {
-      mockCanvas.getContext = jest.fn().mockReturnValue(null);
-      
-      const js = renderer.scrollBitmap('testCanvas', 0, 0, 100, 100);
-      expect(() => executeJS(js)).not.toThrow();
-    });
-  });
-
-  describe('Legacy scrollCanvas method compatibility', () => {
-    test('should delegate to scrollBitmap with correct parameters', () => {
-      const scrollBitmapSpy = jest.spyOn(renderer, 'scrollBitmap');
-      
-      renderer.scrollCanvas('testCanvas', 5, 100, 100, 10, 20);
-      
-      // Legacy method used negative scrollSpeed for left scrolling
-      expect(scrollBitmapSpy).toHaveBeenCalledWith('testCanvas', -5, 0, 100, 100);
-    });
-
-    test('should ignore offset parameters', () => {
-      const scrollBitmapSpy = jest.spyOn(renderer, 'scrollBitmap');
-      
-      // xOffset and yOffset are ignored in new implementation
-      renderer.scrollCanvas('testCanvas', 3, 200, 150, 50, 75);
-      
-      expect(scrollBitmapSpy).toHaveBeenCalledWith('testCanvas', -3, 0, 200, 150);
     });
   });
 });

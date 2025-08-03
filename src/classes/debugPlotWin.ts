@@ -9,6 +9,12 @@ import { BrowserWindow } from 'electron';
 
 import { Context } from '../utils/context';
 import { DebugColor } from './debugColor';
+import { CanvasRenderer } from './shared/canvasRenderer';
+import { ColorTranslator, ColorMode } from './shared/colorTranslator';
+import { LUTManager } from './shared/lutManager';
+import { InputForwarder } from './shared/inputForwarder';
+import { LayerManager, CropRect } from './shared/layerManager';
+import { SpriteManager } from './shared/spriteManager';
 
 import {
   DebugWindowBase,
@@ -77,6 +83,25 @@ export class DebugPlotWindow extends DebugWindowBase {
   private currTextColor: string = '#00FFFF'; // #RRGGBB string
 
   private shouldWriteToCanvas: boolean = true;
+  
+  // Double buffering support
+  private workingCanvas?: OffscreenCanvas;
+  private workingCtx?: OffscreenCanvasRenderingContext2D;
+  private displayCanvas?: HTMLCanvasElement;
+  private displayCtx?: CanvasRenderingContext2D;
+  
+  // Shared classes for enhanced functionality
+  private canvasRenderer: CanvasRenderer;
+  private colorTranslator: ColorTranslator;
+  private lutManager: LUTManager;
+  private inputForwarder: InputForwarder;
+  private layerManager: LayerManager;
+  private spriteManager: SpriteManager;
+  
+  // State for new features
+  private opacity: number = 255; // 0-255
+  private textAngle: number = 0; // degrees
+  private colorMode: ColorMode = ColorMode.RGB24;
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
     super(ctx);
@@ -90,6 +115,15 @@ export class DebugPlotWindow extends DebugWindowBase {
     DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
     const normalText: number = 0b00000001;
     DebugPlotWindow.calcStyleFromBitfield(normalText, this.textStyle);
+    
+    // Initialize shared classes
+    this.canvasRenderer = new CanvasRenderer();
+    this.lutManager = new LUTManager();
+    this.colorTranslator = new ColorTranslator();
+    this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+    this.inputForwarder = new InputForwarder();
+    this.layerManager = new LayerManager();
+    this.spriteManager = new SpriteManager();
   }
 
   private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
@@ -346,11 +380,74 @@ export class DebugPlotWindow extends DebugWindowBase {
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
       this.logMessage('at did-finish-load');
+      this.setupDoubleBuffering();
+    });
+  }
+  
+  private setupDoubleBuffering(): void {
+    if (!this.debugWindow) return;
+    
+    // Create working canvas for double buffering
+    this.workingCanvas = new OffscreenCanvas(
+      this.displaySpec.size.width,
+      this.displaySpec.size.height
+    );
+    this.workingCtx = this.workingCanvas.getContext('2d') || undefined;
+    
+    if (this.workingCtx) {
+      // Initialize working canvas
+      this.canvasRenderer.setupCanvas(this.workingCtx);
+      
+      // Clear to background color
+      const bgColor = this.displaySpec.window.background;
+      this.canvasRenderer.clearCanvas(this.workingCtx);
+      this.canvasRenderer.fillRect(
+        this.workingCtx,
+        0, 0,
+        this.displaySpec.size.width,
+        this.displaySpec.size.height,
+        bgColor
+      );
+    }
+  }
+  
+  private performUpdate(): void {
+    if (!this.workingCanvas || !this.debugWindow) return;
+    
+    this.logMessage('at performUpdate() - copying working canvas to display');
+    
+    // Convert OffscreenCanvas to blob and then to data URL
+    this.workingCanvas.convertToBlob().then(blob => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        
+        // Update the display canvas with the working canvas content
+        this.debugWindow?.webContents.executeJavaScript(`
+          (function() {
+            const canvas = document.getElementById('plot-area');
+            if (canvas && canvas instanceof HTMLCanvasElement) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                const img = new Image();
+                img.onload = function() {
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0);
+                };
+                img.src = '${dataUrl}';
+              }
+            }
+          })();
+        `);
+      };
+      reader.readAsDataURL(blob);
     });
   }
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() PLOT`);
+    // Stop input forwarding
+    this.inputForwarder.stopPolling();
     // let our base class do the work
     this.debugWindow = null;
   }
@@ -590,9 +687,169 @@ export class DebugPlotWindow extends DebugWindowBase {
             this.cartesianConfig.ydir = yDir == 0 ? false : true;
           }
         }
+      } else if (lineParts[index].toUpperCase() == 'DOT') {
+        // DOT command - draw a dot at current position
+        let dotSize = this.lineSize;
+        let dotOpacity = this.opacity;
+        
+        // Parse optional parameters
+        if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+          dotSize = parseInt(lineParts[++index]);
+          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            dotOpacity = parseInt(lineParts[++index]);
+          }
+        }
+        
+        this.drawDotToPlot(dotSize, dotOpacity);
+      } else if (lineParts[index].toUpperCase() == 'BOX') {
+        // BOX command - draw filled rectangle
+        if (index + 2 < lineParts.length) {
+          const width = parseFloat(lineParts[++index]);
+          const height = parseFloat(lineParts[++index]);
+          let boxLineSize = 0; // 0 = filled
+          let boxOpacity = this.opacity;
+          
+          // Parse optional parameters
+          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            boxLineSize = parseInt(lineParts[++index]);
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              boxOpacity = parseInt(lineParts[++index]);
+            }
+          }
+          
+          this.drawBoxToPlot(width, height, boxLineSize, boxOpacity);
+        }
+      } else if (lineParts[index].toUpperCase() == 'OBOX') {
+        // OBOX command - draw outlined rectangle
+        if (index + 2 < lineParts.length) {
+          const width = parseFloat(lineParts[++index]);
+          const height = parseFloat(lineParts[++index]);
+          let boxLineSize = this.lineSize;
+          let boxOpacity = this.opacity;
+          
+          // Parse optional parameters
+          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            boxLineSize = parseInt(lineParts[++index]);
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              boxOpacity = parseInt(lineParts[++index]);
+            }
+          }
+          
+          this.drawBoxToPlot(width, height, boxLineSize, boxOpacity);
+        }
+      } else if (lineParts[index].toUpperCase() == 'OVAL') {
+        // OVAL command - draw ellipse
+        if (index + 2 < lineParts.length) {
+          const width = parseFloat(lineParts[++index]);
+          const height = parseFloat(lineParts[++index]);
+          let ovalLineSize = 0; // 0 = filled
+          let ovalOpacity = this.opacity;
+          
+          // Parse optional parameters
+          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            ovalLineSize = parseInt(lineParts[++index]);
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              ovalOpacity = parseInt(lineParts[++index]);
+            }
+          }
+          
+          this.drawOvalToPlot(width, height, ovalLineSize, ovalOpacity);
+        }
       } else if (lineParts[index].toUpperCase() == 'UPDATE') {
-        // update window with latest content
-        this.pushDisplayListToPlot();
+        // UPDATE command - copy working canvas to display
+        this.performUpdate();
+      } else if (lineParts[index].toUpperCase() == 'LAYER') {
+        // LAYER command - load bitmap into layer
+        if (index + 2 < lineParts.length) {
+          const layerIndex = parseInt(lineParts[++index]) - 1; // Convert 1-8 to 0-7
+          const filename = lineParts[++index];
+          
+          if (layerIndex >= 0 && layerIndex < 8) {
+            // Validate file extension
+            const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+            const supportedFormats = ['.bmp', '.png', '.jpg', '.jpeg', '.gif'];
+            
+            if (supportedFormats.includes(ext)) {
+              this.layerManager.loadLayer(layerIndex, filename)
+                .then(() => {
+                  this.logMessage(`  -- Loaded layer ${layerIndex + 1} from ${filename}`);
+                })
+                .catch(error => {
+                  this.logMessage(`  -- Error loading layer: ${error.message}`);
+                });
+            } else {
+              this.logMessage(`  -- Unsupported file format: ${ext}`);
+            }
+          } else {
+            this.logMessage(`  -- Invalid layer index: ${layerIndex + 1} (must be 1-8)`);
+          }
+        } else {
+          this.logMessage(`  -- LAYER command requires layer index and filename`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'CROP') {
+        // CROP command - draw layer with optional cropping
+        if (index + 1 < lineParts.length) {
+          const layerIndex = parseInt(lineParts[++index]) - 1; // Convert 1-8 to 0-7
+          
+          if (layerIndex >= 0 && layerIndex < 8 && this.layerManager.isLayerLoaded(layerIndex)) {
+            if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'AUTO') {
+              // AUTO mode - draw full layer at specified position
+              index++; // Skip 'AUTO'
+              let destX = 0;
+              let destY = 0;
+              
+              if (index + 1 < lineParts.length) {
+                destX = parseInt(lineParts[++index]);
+              }
+              if (index + 1 < lineParts.length) {
+                destY = parseInt(lineParts[++index]);
+              }
+              
+              if (this.workingCtx) {
+                try {
+                  this.layerManager.drawLayerToCanvas(this.workingCtx, layerIndex, null, destX, destY);
+                  this.logMessage(`  -- Drew layer ${layerIndex + 1} in AUTO mode at (${destX}, ${destY})`);
+                } catch (error: any) {
+                  this.logMessage(`  -- Error drawing layer: ${error.message}`);
+                }
+              }
+            } else if (index + 4 < lineParts.length) {
+              // Manual crop mode - requires left, top, width, height
+              const cropRect: CropRect = {
+                left: parseInt(lineParts[++index]),
+                top: parseInt(lineParts[++index]),
+                width: parseInt(lineParts[++index]),
+                height: parseInt(lineParts[++index])
+              };
+              
+              let destX = 0;
+              let destY = 0;
+              
+              // Optional destination coordinates
+              if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                destX = parseInt(lineParts[++index]);
+              }
+              if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                destY = parseInt(lineParts[++index]);
+              }
+              
+              if (this.workingCtx) {
+                try {
+                  this.layerManager.drawLayerToCanvas(this.workingCtx, layerIndex, cropRect, destX, destY);
+                  this.logMessage(`  -- Drew layer ${layerIndex + 1} cropped (${cropRect.left},${cropRect.top},${cropRect.width},${cropRect.height}) at (${destX}, ${destY})`);
+                } catch (error: any) {
+                  this.logMessage(`  -- Error drawing layer: ${error.message}`);
+                }
+              }
+            } else {
+              this.logMessage(`  -- CROP command requires layer index and either AUTO or crop parameters`);
+            }
+          } else {
+            this.logMessage(`  -- Layer ${layerIndex + 1} is not loaded or invalid`);
+          }
+        } else {
+          this.logMessage(`  -- CROP command requires layer index`);
+        }
       } else if (lineParts[index].toUpperCase() == 'CLEAR') {
         // clear window
         this.updatePlotDisplay(`CLEAR`);
@@ -611,6 +868,208 @@ export class DebugPlotWindow extends DebugWindowBase {
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
+      } else if (lineParts[index].toUpperCase() == 'LINESIZE') {
+        // Set line size
+        if (index + 1 < lineParts.length) {
+          this.lineSize = parseInt(lineParts[++index]);
+          this.logMessage(`  -- LINESIZE set to ${this.lineSize}`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'OPACITY') {
+        // Set opacity (0-255)
+        if (index + 1 < lineParts.length) {
+          this.opacity = Math.max(0, Math.min(255, parseInt(lineParts[++index])));
+          this.logMessage(`  -- OPACITY set to ${this.opacity}`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'TEXTANGLE') {
+        // Set text angle in degrees
+        if (index + 1 < lineParts.length) {
+          this.textAngle = parseFloat(lineParts[++index]);
+          this.logMessage(`  -- TEXTANGLE set to ${this.textAngle} degrees`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'LUTCOLORS') {
+        // Load LUT colors
+        this.logMessage(`  -- LUTCOLORS loading palette`);
+        let colorIndex = 0;
+        index++; // Move past LUTCOLORS
+        while (index < lineParts.length) {
+          const colorStr = lineParts[index];
+          let colorValue: number | null = null;
+          
+          // Parse color value (handles $hex, %binary, and decimal)
+          if (colorStr.startsWith('$')) {
+            colorValue = parseInt(colorStr.substring(1), 16);
+          } else if (colorStr.startsWith('%')) {
+            colorValue = parseInt(colorStr.substring(1), 2);
+          } else if (/^-?\d+$/.test(colorStr)) {
+            colorValue = parseInt(colorStr);
+          }
+          
+          if (colorValue !== null && !isNaN(colorValue)) {
+            this.lutManager.setColor(colorIndex++, colorValue);
+            if (colorIndex >= 256) break; // Max LUT size
+          }
+          index++;
+        }
+        // Update color translator with new palette
+        this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+        this.logMessage(`  -- Loaded ${colorIndex} colors into LUT`);
+        index--; // Back up one since the loop will increment
+      } else if (lineParts[index].toUpperCase() == 'SPRITEDEF') {
+        // SPRITEDEF command - define a sprite
+        if (index + 3 < lineParts.length) {
+          const spriteId = parseInt(lineParts[++index]);
+          const width = parseInt(lineParts[++index]);
+          const height = parseInt(lineParts[++index]);
+          
+          if (!isNaN(spriteId) && !isNaN(width) && !isNaN(height)) {
+            const pixelCount = width * height;
+            const pixels: number[] = [];
+            const colors: number[] = [];
+            
+            // Parse pixel data
+            for (let i = 0; i < pixelCount && index + 1 < lineParts.length; i++) {
+              const pixelValue = parseInt(lineParts[++index]);
+              if (!isNaN(pixelValue)) {
+                pixels.push(pixelValue);
+              } else {
+                this.logMessage(`  -- Invalid pixel value at position ${i}`);
+                break;
+              }
+            }
+            
+            // Parse color palette (256 colors)
+            for (let i = 0; i < 256 && index + 1 < lineParts.length; i++) {
+              let colorValue: number | null = null;
+              const colorStr = lineParts[++index];
+              
+              // Parse color value (handles $hex, %binary, and decimal)
+              if (colorStr.startsWith('$')) {
+                colorValue = parseInt(colorStr.substring(1), 16);
+              } else if (colorStr.startsWith('%')) {
+                colorValue = parseInt(colorStr.substring(1), 2);
+              } else if (/^-?\d+$/.test(colorStr)) {
+                colorValue = parseInt(colorStr);
+              }
+              
+              if (colorValue !== null && !isNaN(colorValue)) {
+                colors.push(colorValue);
+              } else {
+                this.logMessage(`  -- Invalid color value at position ${i}`);
+                break;
+              }
+            }
+            
+            // Validate we got all required data
+            if (pixels.length === pixelCount && colors.length === 256) {
+              try {
+                this.spriteManager.defineSprite(spriteId, width, height, pixels, colors);
+                this.logMessage(`  -- Defined sprite ${spriteId} (${width}x${height})`);
+              } catch (error: any) {
+                this.logMessage(`  -- Error defining sprite: ${error.message}`);
+              }
+            } else {
+              this.logMessage(`  -- Incomplete sprite data: got ${pixels.length}/${pixelCount} pixels and ${colors.length}/256 colors`);
+            }
+          } else {
+            this.logMessage(`  -- Invalid sprite parameters`);
+          }
+        } else {
+          this.logMessage(`  -- SPRITEDEF requires id, width, and height`);
+        }
+      } else if (lineParts[index].toUpperCase() == 'SPRITE') {
+        // SPRITE command - draw a sprite
+        if (index + 1 < lineParts.length) {
+          const spriteId = parseInt(lineParts[++index]);
+          
+          if (!isNaN(spriteId)) {
+            // Parse optional parameters
+            let orientation = 0;
+            let scale = 1.0;
+            let opacity = 255;
+            
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              orientation = parseInt(lineParts[++index]);
+            }
+            
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              const scaleValue = parseFloat(lineParts[++index]);
+              if (!isNaN(scaleValue)) {
+                scale = scaleValue;
+              }
+            }
+            
+            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+              opacity = parseInt(lineParts[++index]);
+            }
+            
+            // Draw sprite at current cursor position
+            if (this.workingCtx && this.spriteManager.isSpriteDefine(spriteId)) {
+              try {
+                this.spriteManager.drawSprite(
+                  this.workingCtx,
+                  spriteId,
+                  this.cursorPosition.x,
+                  this.cursorPosition.y,
+                  orientation,
+                  scale,
+                  opacity
+                );
+                this.logMessage(`  -- Drew sprite ${spriteId} at (${this.cursorPosition.x}, ${this.cursorPosition.y}) with orientation=${orientation}, scale=${scale}, opacity=${opacity}`);
+              } catch (error: any) {
+                this.logMessage(`  -- Error drawing sprite: ${error.message}`);
+              }
+            } else {
+              this.logMessage(`  -- Sprite ${spriteId} is not defined`);
+            }
+          } else {
+            this.logMessage(`  -- Invalid sprite ID`);
+          }
+        } else {
+          this.logMessage(`  -- SPRITE requires sprite ID`);
+        }
+      } else if (this.isColorModeCommand(lineParts[index])) {
+        // Color mode commands (LUT1, RGB24, etc.)
+        const colorModeStr = lineParts[index].toUpperCase();
+        const colorModeMap: { [key: string]: ColorMode } = {
+          'LUT1': ColorMode.LUT1,
+          'LUT2': ColorMode.LUT2,
+          'LUT4': ColorMode.LUT4,
+          'LUT8': ColorMode.LUT8,
+          'LUMA8': ColorMode.LUMA8,
+          'LUMA8W': ColorMode.LUMA8W,
+          'LUMA8X': ColorMode.LUMA8X,
+          'HSV8': ColorMode.HSV8,
+          'HSV8W': ColorMode.HSV8W,
+          'HSV8X': ColorMode.HSV8X,
+          'RGBI8': ColorMode.RGBI8,
+          'RGBI8W': ColorMode.RGBI8W,
+          'RGBI8X': ColorMode.RGBI8X,
+          'RGB8': ColorMode.RGB8,
+          'HSV16': ColorMode.HSV16,
+          'HSV16W': ColorMode.HSV16W,
+          'HSV16X': ColorMode.HSV16X,
+          'RGB16': ColorMode.RGB16,
+          'RGB24': ColorMode.RGB24
+        };
+        
+        if (colorModeStr in colorModeMap) {
+          this.colorMode = colorModeMap[colorModeStr];
+          this.colorTranslator.setColorMode(this.colorMode);
+          this.logMessage(`  -- Color mode set to ${colorModeStr}`);
+          
+          // Check for tune parameter
+          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+            const tune = parseInt(lineParts[++index]) & 0x7;
+            this.colorTranslator.setTune(tune);
+            this.logMessage(`  -- Color tune set to ${tune}`);
+          }
+        }
+      } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
+        // Enable keyboard input forwarding
+        this.enableKeyboardInput();
+      } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
+        // Enable mouse input forwarding
+        this.enableMouseInput();
       } else if (DebugColor.isValidColorName(lineParts[index])) {
         // set color
         const colorName: string = lineParts[index];
@@ -795,46 +1254,27 @@ export class DebugPlotWindow extends DebugWindowBase {
   // ----------------- Canvas Drawing Routines -----------------
   //
   private clearPlotCanvas(): void {
-    if (this.debugWindow) {
+    if (this.workingCtx) {
       this.logMessage(`at clearPlot()`);
-      try {
-        const bgcolor: string = this.displaySpec.window.background;
-        this.logMessage(`  -- bgcolor=[${bgcolor}]`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('plot-area');
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the bg color
-                const backgroundColor = '${bgcolor}';
-
-                // clear the entire canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // fill canvas with background
-                ctx.fillStyle = backgroundColor;
-                ctx.fillRect(0, 00, canvas.width, canvas.height);
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
-      }
+      const bgcolor: string = this.displaySpec.window.background;
+      this.logMessage(`  -- bgcolor=[${bgcolor}]`);
+      
+      // Clear the working canvas
+      this.canvasRenderer.clearCanvas(this.workingCtx);
+      this.canvasRenderer.fillRect(
+        this.workingCtx,
+        0, 0,
+        this.displaySpec.size.width,
+        this.displaySpec.size.height,
+        bgcolor
+      );
     }
   }
 
   private drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
-    // NOTE: no precise anti-aliased line drawing in canvas, so we'll just draw a line
-    if (this.debugWindow) {
+    if (this.workingCtx) {
       this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
       const fgColor: string = this.currFgColor;
-      const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
       if (this.coordinateMode == eCoordModes.CM_POLAR) {
         [x, y] = this.polarToCartesian(x, y);
       }
@@ -843,43 +1283,32 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.logMessage(
         `  -- fm(${plotFmCoordX},${plotFmCoordY}) - to(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`
       );
-      try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('plot-area');
 
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context/updateCo
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                // rgbs are 0..255, opacity is 0..1
-                const lineColor = '${rgbaColorString}';
-                const lineWidth = ${lineSize};
-
-                // Add line of color
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.beginPath();
-                ctx.moveTo(${plotFmCoordX}, ${plotFmCoordY});
-                ctx.lineTo(${plotToCoordX}, ${plotToCoordY});
-                ctx.stroke();
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
-      }
+      // Save current state
+      const savedAlpha = this.workingCtx.globalAlpha;
+      
+      // Set opacity
+      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
+      
+      // Draw the line
+      this.canvasRenderer.drawLineCtx(
+        this.workingCtx,
+        plotFmCoordX,
+        plotFmCoordY,
+        plotToCoordX,
+        plotToCoordY,
+        fgColor,
+        lineSize
+      );
+      
+      // Restore alpha
+      this.workingCtx.globalAlpha = savedAlpha;
     }
   }
 
   private drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
-    if (this.debugWindow) {
+    if (this.workingCtx) {
       const fgColor: string = this.currFgColor;
-      const rgbaColorString: string = this.hexToRgba(fgColor, opacity / 255);
       const [plotCoordX, plotCoordY] = this.getCursorXY();
       const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
       const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
@@ -887,46 +1316,31 @@ export class DebugPlotWindow extends DebugWindowBase {
         `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${plotCoordX},${plotCoordY})`
       );
       this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
-      try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('plot-area');
 
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${rgbaColorString}';
-                const lineWidth = ${lineSize};
-
-                // Add circle of color
-                ctx.strokeStyle = lineColor;
-                ctx.lineWidth = lineWidth;
-                ctx.fillStyle = lineColor; // Set the fill color
-
-                ctx.beginPath();
-                // arc(x, y, radius, startAngle, endAngle, anticlockwise)
-                ctx.arc(${plotCoordX}, ${plotCoordY}, ${diameter / 2}, 0, 2 * Math.PI);
-                if (lineWidth === 0) {
-                  ctx.fill(); // Fill the circle if lineSize is 0
-                } else {
-                  ctx.stroke(); // Stroke the circle otherwise
-                }
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
-      }
+      // Save current state
+      const savedAlpha = this.workingCtx.globalAlpha;
+      
+      // Set opacity
+      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
+      
+      // Draw the circle
+      this.canvasRenderer.drawCircleCtx(
+        this.workingCtx,
+        plotCoordX,
+        plotCoordY,
+        diameter / 2,
+        fgColor,
+        lineSize === 0, // filled if lineSize is 0
+        lineSize
+      );
+      
+      // Restore alpha
+      this.workingCtx.globalAlpha = savedAlpha;
     }
   }
 
   private writeStringToPlot(text: string): void {
-    if (this.debugWindow) {
+    if (this.workingCtx) {
       this.logMessage(`at writeStringToPlot('${text}')`);
       const textHeight: number = this.font.charHeight;
       const lineHeight: number = this.font.lineHeight;
@@ -967,40 +1381,49 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.logMessage(
         `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
       );
-      try {
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('plot-area');
 
+      // Calculate text position with alignment
+      let xPos = textXOffset;
+      const fontFullSpec = `${fontStyle}${fontWeight} ${this.font.textSizePts}pt Consolas, sans-serif`;
+      
+      if (alignHCenter || alignHRight) {
+        // We need to measure text width for alignment
+        this.workingCtx.save();
+        this.workingCtx.font = fontFullSpec;
+        const textWidth = this.workingCtx.measureText(text).width;
+        if (alignHCenter) {
+          xPos -= textWidth / 2;
+        } else if (alignHRight) {
+          xPos -= textWidth;
+        }
+        this.workingCtx.restore();
+      }
 
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = '${textColor}';
-                let Xoffset = ${textXOffset};
-
-                ctx.font = '${fontStyle}${fontWeight} ${this.font.textSizePts}pt Consolas, sans-serif'; // was Consolas
-                const textWidth = ctx.measureText('${text}').width;
-                if(${alignHCenter}) {
-                  Xoffset -= textWidth / 2;
-                } else if(${alignHRight}) {
-                  Xoffset -= textWidth;
-                }
-
-                // Add text of color
-                ctx.fillStyle = lineColor;
-                // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText('${text}', Xoffset, ${adjYBaseline});
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
+      // Check if we need rotated text
+      if (this.textAngle !== 0) {
+        this.canvasRenderer.drawRotatedText(
+          this.workingCtx,
+          text,
+          xPos,
+          adjYBaseline,
+          this.textAngle,
+          textColor,
+          fontSize + 'pt',
+          'Consolas, sans-serif'
+        );
+      } else {
+        // Regular text drawing
+        this.canvasRenderer.drawTextCtx(
+          this.workingCtx,
+          text,
+          xPos,
+          adjYBaseline,
+          textColor,
+          fontSize + 'pt',
+          'Consolas, sans-serif',
+          'left',
+          'alphabetic'
+        );
       }
     }
   }
@@ -1033,6 +1456,171 @@ export class DebugPlotWindow extends DebugWindowBase {
     newY = Math.round(newY);
     this.logMessage(`* getXY(${x},${y}) -> (${newX},${newY})`);
     return [newX, newY];
+  }
+  
+  private isColorModeCommand(command: string): boolean {
+    const colorModes = [
+      'LUT1', 'LUT2', 'LUT4', 'LUT8',
+      'LUMA8', 'LUMA8W', 'LUMA8X',
+      'HSV8', 'HSV8W', 'HSV8X',
+      'RGBI8', 'RGBI8W', 'RGBI8X', 'RGB8',
+      'HSV16', 'HSV16W', 'HSV16X', 'RGB16',
+      'RGB24'
+    ];
+    return colorModes.includes(command.toUpperCase());
+  }
+  
+  private drawDotToPlot(dotSize: number, opacity: number): void {
+    if (this.workingCtx) {
+      const [plotCoordX, plotCoordY] = this.getCursorXY();
+      const fgColor = this.currFgColor;
+      
+      this.logMessage(`at drawDotToPlot(${dotSize}, ${opacity}) @(${plotCoordX},${plotCoordY})`);
+      
+      // Save current state
+      const savedAlpha = this.workingCtx.globalAlpha;
+      
+      // Set opacity
+      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
+      
+      // Draw dot as a scaled pixel or small circle
+      if (dotSize <= 1) {
+        this.canvasRenderer.plotPixelCtx(this.workingCtx, plotCoordX, plotCoordY, fgColor);
+      } else {
+        this.canvasRenderer.drawCircleCtx(
+          this.workingCtx,
+          plotCoordX,
+          plotCoordY,
+          dotSize / 2,
+          fgColor,
+          true, // filled
+          0
+        );
+      }
+      
+      // Restore alpha
+      this.workingCtx.globalAlpha = savedAlpha;
+    }
+  }
+  
+  private drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): void {
+    if (this.workingCtx) {
+      const [plotCoordX, plotCoordY] = this.getCursorXY();
+      const fgColor = this.currFgColor;
+      
+      this.logMessage(`at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+      
+      // Save current state
+      const savedAlpha = this.workingCtx.globalAlpha;
+      
+      // Set opacity
+      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
+      
+      // Calculate rectangle bounds (centered on cursor)
+      const x1 = plotCoordX - width / 2;
+      const y1 = plotCoordY - height / 2;
+      const x2 = plotCoordX + width / 2;
+      const y2 = plotCoordY + height / 2;
+      
+      // Draw rectangle (filled if lineSize is 0)
+      this.canvasRenderer.drawRect(
+        this.workingCtx,
+        x1, y1, x2, y2,
+        lineSize === 0, // filled if lineSize is 0
+        fgColor,
+        lineSize
+      );
+      
+      // Restore alpha
+      this.workingCtx.globalAlpha = savedAlpha;
+    }
+  }
+  
+  private drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): void {
+    if (this.workingCtx) {
+      const [plotCoordX, plotCoordY] = this.getCursorXY();
+      const fgColor = this.currFgColor;
+      
+      this.logMessage(`at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+      
+      // Save current state
+      const savedAlpha = this.workingCtx.globalAlpha;
+      
+      // Set opacity
+      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
+      
+      // Draw oval (filled if lineSize is 0)
+      this.canvasRenderer.drawOval(
+        this.workingCtx,
+        plotCoordX,
+        plotCoordY,
+        width / 2,  // rx
+        height / 2, // ry
+        lineSize === 0, // filled if lineSize is 0
+        fgColor,
+        lineSize
+      );
+      
+      // Restore alpha
+      this.workingCtx.globalAlpha = savedAlpha;
+    }
+  }
+  
+  private enableKeyboardInput(): void {
+    this.logMessage('Enabling keyboard input forwarding');
+    this.inputForwarder.startPolling();
+    
+    // Set up keyboard event handlers in the window
+    if (this.debugWindow) {
+      this.debugWindow.webContents.executeJavaScript(`
+        document.addEventListener('keydown', (event) => {
+          // Send key event to main process
+          if (window.electronAPI && window.electronAPI.sendKeyEvent) {
+            window.electronAPI.sendKeyEvent(event.key, event.keyCode, event.shiftKey, event.ctrlKey, event.altKey);
+          }
+          event.preventDefault();
+        });
+      `);
+    }
+  }
+  
+  private enableMouseInput(): void {
+    this.logMessage('Enabling mouse input forwarding');
+    this.inputForwarder.startPolling();
+    
+    // Set window dimensions for coordinate calculation
+    this.inputForwarder.setWindowDimensions(
+      this.displaySpec.size.width,
+      this.displaySpec.size.height
+    );
+    
+    // Set up mouse event handlers in the window
+    if (this.debugWindow) {
+      this.debugWindow.webContents.executeJavaScript(`
+        const canvas = document.getElementById('plot-area');
+        if (canvas) {
+          canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, event.buttons, 0);
+            }
+          });
+          
+          canvas.addEventListener('wheel', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const delta = Math.sign(event.deltaY);
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, event.buttons, delta);
+            }
+            event.preventDefault();
+          });
+        }
+      `);
+    }
   }
 
   private polarToCartesianNew(length: number, angle: number): [number, number] {
