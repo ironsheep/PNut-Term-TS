@@ -18,6 +18,7 @@ import { DebugWindowBase } from './debugWindowBase';
 import { DebugTermWindow } from './debugTermWin';
 import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
+import { DebugBitmapWindow } from './debugBitmapWin';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -202,6 +203,7 @@ export class MainWindow {
   private DISPLAY_TERM: string = 'TERM';
   private DISPLAY_PLOT: string = 'PLOT';
   private DISPLAY_LOGIC: string = 'LOGIC';
+  private DISPLAY_BITMAP: string = 'BITMAP';
 
   private handleDebugCommand(data: string) {
     //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
@@ -287,6 +289,23 @@ export class MainWindow {
               const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
+            } else {
+              if (this.isLogging) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            foundDisplay = true;
+            break;
+          }
+          case this.DISPLAY_BITMAP: {
+            // create new window to display bitmap data
+            const [isValid, bitmapSpec] = DebugBitmapWindow.parseBitmapDeclaration(lineParts);
+            this.logMessage(`* handleDebugCommand() - back from parse`);
+            if (isValid) {
+              // create new window from spec, recording the new window has name: bitmapSpec.displayName so we can find it later
+              const bitmapDisplay = new DebugBitmapWindow(bitmapSpec.title, bitmapSpec.displayName, this.context);
+              // remember active displays!
+              this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
             } else {
               if (this.isLogging) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);

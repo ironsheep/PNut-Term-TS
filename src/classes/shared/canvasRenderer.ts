@@ -10,16 +10,83 @@
  */
 export class CanvasRenderer {
   /**
-   * Scroll canvas content horizontally
-   * Uses off-screen canvas technique for smooth scrolling
+   * Plot a single pixel on the canvas
+   * Works with bitmap pixels and directly manipulates ImageData
    */
-  scrollCanvas(
+  plotPixel(canvasId: string, x: number, y: number, color: string): string {
+    return `
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // Clip to canvas bounds
+      if (${x} < 0 || ${x} >= canvas.width || ${y} < 0 || ${y} >= canvas.height) return;
+      
+      // Get image data for single pixel
+      const imageData = ctx.getImageData(${x}, ${y}, 1, 1);
+      const data = imageData.data;
+      
+      // Parse color hex string
+      const color = '${color}';
+      const r = parseInt(color.substr(1, 2), 16);
+      const g = parseInt(color.substr(3, 2), 16);
+      const b = parseInt(color.substr(5, 2), 16);
+      
+      // Set pixel color
+      data[0] = r;
+      data[1] = g;
+      data[2] = b;
+      data[3] = 255; // Full opacity
+      
+      // Put pixel back
+      ctx.putImageData(imageData, ${x}, ${y});
+    `;
+  }
+
+  /**
+   * Plot a scaled pixel (rectangle) on the canvas
+   * Handles DOTSIZE scaling efficiently using fillRect
+   */
+  plotScaledPixel(
     canvasId: string,
-    scrollSpeed: number,
+    x: number,
+    y: number,
+    color: string,
+    dotSizeX: number,
+    dotSizeY: number
+  ): string {
+    return `
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // Calculate scaled position
+      const scaledX = ${x} * ${dotSizeX};
+      const scaledY = ${y} * ${dotSizeY};
+      
+      // Clip to canvas bounds
+      if (scaledX >= canvas.width || scaledY >= canvas.height) return;
+      
+      // Set fill color and draw rectangle
+      ctx.fillStyle = '${color}';
+      ctx.fillRect(scaledX, scaledY, ${dotSizeX}, ${dotSizeY});
+    `;
+  }
+
+  /**
+   * Scroll bitmap content in any direction
+   * Supports all 8 scroll directions from Pascal implementation
+   */
+  scrollBitmap(
+    canvasId: string,
+    scrollX: number,
+    scrollY: number,
     canvasWidth: number,
-    canvasHeight: number,
-    xOffset: number = 0,
-    yOffset: number = 0
+    canvasHeight: number
   ): string {
     return `
       const canvas = document.getElementById('${canvasId}');
@@ -40,13 +107,40 @@ export class CanvasRenderer {
       // Clear the main canvas
       ctx.clearRect(0, 0, ${canvasWidth}, ${canvasHeight});
       
-      // Draw the off-screen canvas back with horizontal scroll
-      ctx.drawImage(
-        offscreenCanvas,
-        ${scrollSpeed}, 0, ${canvasWidth - scrollSpeed}, ${canvasHeight},
-        ${xOffset}, ${yOffset}, ${canvasWidth - scrollSpeed}, ${canvasHeight}
-      );
+      // Calculate source and destination rectangles for scrolling
+      const scrollX = ${scrollX};
+      const scrollY = ${scrollY};
+      
+      // Source rectangle (what part of the image to copy)
+      let sx = Math.max(0, -scrollX);
+      let sy = Math.max(0, -scrollY);
+      let sw = ${canvasWidth} - Math.abs(scrollX);
+      let sh = ${canvasHeight} - Math.abs(scrollY);
+      
+      // Destination rectangle (where to draw it)
+      let dx = Math.max(0, scrollX);
+      let dy = Math.max(0, scrollY);
+      
+      // Draw the scrolled content
+      if (sw > 0 && sh > 0) {
+        ctx.drawImage(offscreenCanvas, sx, sy, sw, sh, dx, dy, sw, sh);
+      }
     `;
+  }
+
+  /**
+   * Legacy horizontal scroll method for backward compatibility
+   */
+  scrollCanvas(
+    canvasId: string,
+    scrollSpeed: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    xOffset: number = 0,
+    yOffset: number = 0
+  ): string {
+    // Delegate to new scrollBitmap method
+    return this.scrollBitmap(canvasId, -scrollSpeed, 0, canvasWidth, canvasHeight);
   }
 
   /**
