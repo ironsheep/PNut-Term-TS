@@ -12,14 +12,23 @@ This guide contains common development commands and scenarios for working with P
 - `npm run minify` - Minify the built JavaScript using Terser
 
 ### Test Commands
+
+**Basic Testing:**
 - `npm test` - Run all tests (includes automatic build via pretest)
 - `npm test -- tests/specific-file.test.ts` - Run a specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching a pattern
 - `npm run test:watch` - Run tests in watch mode for development
-- `npm run test:coverage` - Generate test coverage reports
 - `npm run test:nobuild` - Run tests without building
-- `npm run test:sequential` - Run tests sequentially (less resource intensive)
-- `npm run test:throttled` - Run with memory limits and reduced workers
+
+**Coverage Commands:**
+- `npm run test:coverage` - **Default: Sequential coverage** (recommended for reliability)
+- `npm run test:coverage:parallel` - Parallel coverage (faster but may timeout)
+- `npm run test:coverage:throttled` - Throttled coverage (2 workers + extra memory)
+
+**Resource Management:**
+- `npm run test:sequential` - Run tests sequentially (prevents resource conflicts)
+- `npm run test:limited` - Limited to 2 workers
+- `npm run test:throttled` - Memory limits + reduced workers + leak detection
 
 ### Development Tools
 - `npm run clean` - Remove build artifacts (`./dist`, `./release`, `./prebuilds`, `./fonts`)
@@ -171,3 +180,18 @@ npm run test:throttled
 # or
 npm run test:sequential
 ```
+
+### Coverage execution issues
+The Electron-based test suite with 800+ tests can experience resource conflicts:
+
+**✅ Recommended (default):**
+```bash
+npm run test:coverage  # Sequential execution - reliable
+```
+
+**⚡ Alternative (faster but risky):**
+```bash
+npm run test:coverage:parallel  # May timeout under resource pressure
+```
+
+**Why sequential is default:** Our comprehensive testing showed that parallel execution can cause timeout and resource conflicts with the large Electron-based test suite, while sequential execution provides 100% reliability with only modest time increase (~90-120 seconds total).
