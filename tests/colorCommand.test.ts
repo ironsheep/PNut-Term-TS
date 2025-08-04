@@ -4,7 +4,7 @@
 
 // tests/colorCommand.test.ts
 
-import { DebugColor } from '../src/classes/debugColor';
+import { DebugColor } from '../src/classes/shared/debugColor';
 import { DisplaySpecParser } from '../src/classes/shared/displaySpecParser';
 
 describe('COLOR Command Implementation', () => {

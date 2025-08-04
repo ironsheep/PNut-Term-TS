@@ -6,7 +6,7 @@
 'use strict';
 // src/classes/debugColor.ts
 
-import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { Spin2NumericParser } from './spin2NumericParser';
 
 // Name-to-RGB hex lookup
 export class DebugColor {

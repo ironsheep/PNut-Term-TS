@@ -8,7 +8,7 @@ import { BrowserWindow } from 'electron';
 // src/classes/debugTermWin.ts
 
 import { Context } from '../utils/context';
-import { DebugColor } from './debugColor';
+import { DebugColor } from './shared/debugColor';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { waitMSec } from '../utils/timerUtils';

@@ -4,7 +4,7 @@
 
 // tests/debugColor.test.ts
 
-import { DebugColor } from '../src/classes/debugColor';
+import { DebugColor } from '../src/classes/shared/debugColor';
 
 describe('DebugColor', () => {
   describe('Color Names', () => {

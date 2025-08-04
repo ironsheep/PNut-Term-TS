@@ -8,7 +8,7 @@ import { BrowserWindow } from 'electron';
 // src/classes/debugScopeWin.ts
 
 import { Context } from '../utils/context';
-import { DebugColor } from './debugColor';
+import { DebugColor } from './shared/debugColor';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ScopeTriggerProcessor } from './shared/triggerProcessor';

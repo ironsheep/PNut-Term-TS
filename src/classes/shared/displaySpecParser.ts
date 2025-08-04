@@ -5,7 +5,7 @@
 // src/classes/shared/displaySpecParser.ts
 
 import { Position, Size, WindowColor } from '../debugWindowBase';
-import { DebugColor } from '../debugColor';
+import { DebugColor } from './debugColor';
 import { Spin2NumericParser } from './spin2NumericParser';
 
 export interface BaseDisplaySpec {

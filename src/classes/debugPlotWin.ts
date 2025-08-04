@@ -8,7 +8,7 @@ import { BrowserWindow } from 'electron';
 // src/classes/debugPlotWin.ts
 
 import { Context } from '../utils/context';
-import { DebugColor } from './debugColor';
+import { DebugColor } from './shared/debugColor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { LUTManager } from './shared/lutManager';

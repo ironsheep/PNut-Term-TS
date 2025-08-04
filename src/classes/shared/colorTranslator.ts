@@ -4,7 +4,7 @@
 
 // src/classes/shared/colorTranslator.ts
 
-import { DebugColor } from '../debugColor';
+import { DebugColor } from './debugColor';
 
 /**
  * Color mode enumeration matching Pascal implementation
