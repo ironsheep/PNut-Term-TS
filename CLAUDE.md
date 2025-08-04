@@ -222,14 +222,14 @@ The Pascal source files in `/pascal-source/P2_PNut_Public/` contain the original
 | **Plot** | `dis_plot` | DebugDisplayUnit.pas | ~4,500 | `DebugPlotWindow` | ✅ Complete | 1,694 | Double buffering, layers, sprites |
 | **Terminal** | `dis_term` | DebugDisplayUnit.pas | ~2,100 | `DebugTermWindow` | ✅ Complete | 686 | Full ANSI support |
 | **Bitmap** | `dis_bitmap` | DebugDisplayUnit.pas | ~3,700 | `DebugBitmapWindow` | ✅ Complete | 962 | Full implementation |
-| **MIDI** | `dis_midi` | DebugDisplayUnit.pas | ~2,200 | Not Implemented | ❌ Missing | 0 | MIDI visualization |
+| **MIDI** | `dis_midi` | DebugDisplayUnit.pas | ~2,200 | `DebugMidiWindow` | ✅ Complete | 623 | Piano keyboard, velocity viz |
 | **Debugger** | N/A | DebuggerUnit.pas | ~8,500 | Not Implemented | ❌ Missing | 0 | Breakpoint debugging |
 
 **Summary Statistics:**
 - **Total Pascal Lines**: ~37,500 (DebugDisplayUnit.pas: ~29,000 + DebuggerUnit.pas: ~8,500)
-- **Total TypeScript Lines**: 6,194 (across implemented windows)
-- **Implementation Progress**: 6/10 windows complete (60%)
-- **Missing Implementations**: 4 windows (~16,700 Pascal lines to translate)
+- **Total TypeScript Lines**: 6,817 (across implemented windows)
+- **Implementation Progress**: 7/10 windows complete (70%)
+- **Missing Implementations**: 3 windows (~14,500 Pascal lines to translate)
 
 **Pascal Source Notes:**
 - Line counts are estimates based on typical Pascal implementations
@@ -660,3 +660,13 @@ All debug windows use consistent patterns for:
 - Save functionality through `saveWindowToBMPFilename()`
 
 This architecture ensures consistency across all debug window implementations while allowing window-specific customizations through virtual method overrides.
+
+## MIDI Debug Window Implementation
+
+The MIDI debug window (`src/classes/debugMidiWin.ts`) provides a visual piano keyboard display for MIDI note events:
+- **Piano Keyboard Layout**: Uses shared `PianoKeyboardLayout` class for accurate key geometry calculations
+- **MIDI Protocol Support**: Full note-on/note-off message parsing with 5-state machine matching Pascal
+- **Velocity Visualization**: Colored bars show note velocity (0-127) as key press depth
+- **Channel Filtering**: Monitor specific MIDI channel (0-15) or all channels
+- **Pascal Parity**: Exact formula compatibility with MidiKeySize = 8 + size * 4
+- **Future Enhancements**: Mouse interaction for playing notes (not in Pascal implementation)

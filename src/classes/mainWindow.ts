@@ -19,6 +19,7 @@ import { DebugTermWindow } from './debugTermWin';
 import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
 import { DebugBitmapWindow } from './debugBitmapWin';
+import { DebugMidiWindow } from './debugMidiWin';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -204,6 +205,7 @@ export class MainWindow {
   private DISPLAY_PLOT: string = 'PLOT';
   private DISPLAY_LOGIC: string = 'LOGIC';
   private DISPLAY_BITMAP: string = 'BITMAP';
+  private DISPLAY_MIDI: string = 'MIDI';
 
   private handleDebugCommand(data: string) {
     //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
@@ -311,6 +313,25 @@ export class MainWindow {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
+            foundDisplay = true;
+            break;
+          }
+          case this.DISPLAY_MIDI: {
+            // MIDI window instantiation: Extract display name
+            let displayName = 'MIDI';
+            if (lineParts.length > 1) {
+              displayName = lineParts[1];
+            }
+            // Create new MIDI window
+            const midiDisplay = new DebugMidiWindow(this.context);
+            midiDisplay.windowTitle = displayName;
+            midiDisplay.createDebugWindow();
+            // Process remaining parameters
+            if (lineParts.length > 2) {
+              midiDisplay.updateContent(lineParts.slice(2));
+            }
+            // Remember active display
+            this.hookNotifcationsAndRememberWindow(displayName, midiDisplay);
             foundDisplay = true;
             break;
           }
