@@ -714,20 +714,29 @@ When testing mouse support:
 
 ### Running Tests - Best Practices
 
-**IMPORTANT**: The `npm test` command includes a build step, which can mask test output and cause confusion.
+**UPDATE**: As of 2025-08-04, the build step has been moved to `pretest`, so `npm test` now runs cleanly!
 
 **Recommended Test Commands**:
-1. **Run all tests without build**: `./node_modules/.bin/jest`
-2. **Run specific test file**: `./node_modules/.bin/jest tests/debugLogicWin.test.ts`
-3. **Run tests with summary only**: `./node_modules/.bin/jest --silent`
-4. **Run tests with coverage**: `./node_modules/.bin/jest --coverage`
+1. **Run all tests (with automatic build)**: `npm test`
+2. **Run specific test file**: `npm test -- tests/debugLogicWin.test.ts`
+3. **Run tests without build**: `npm run test:nobuild`
+4. **Run tests with coverage**: `npm run test:coverage`
 5. **Watch mode for development**: `npm run test:watch`
+6. **Run with pattern**: `npm test -- --testNamePattern="mouse"`
 
-**Common Issues**:
-- **Pattern matching confusion**: Arguments after `npm test` may be interpreted as test name patterns
-  - Example: `npm test 2` will run tests matching `/2/i` pattern
-- **Build output noise**: Use jest directly to avoid build output
-- **Large output**: Many tests have console.log statements that clutter output
+**IMPORTANT**: Always use `--` when passing arguments to jest through npm:
+- ✅ Correct: `npm test -- tests/debugLogicWin.test.ts`
+- ❌ Wrong: `npm test tests/debugLogicWin.test.ts` (may cause pattern matching issues)
+
+**Benefits of the new setup**:
+- `npm test` now shows clean test output (build runs in `pretest`)
+- Pattern matching works as expected: `npm test tests/debug*`
+- Skip build when needed with `npm run test:nobuild`
+- Coverage commands no longer need separate build steps
+
+**For quick test runs without build**:
+- Use `npm run test:nobuild` or `./node_modules/.bin/jest` directly
+- This is faster when you know the code is already built
 
 ### Known Test Failures (As of 2025-08-04)
 

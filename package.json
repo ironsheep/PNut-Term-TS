@@ -22,10 +22,12 @@
     "pnut-term-ts": "./dist/pnut-term-ts.min.js"
   },
   "scripts": {
-    "test": "npm run build && jest",
+    "pretest": "npm run build",
+    "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "npm run build && jest --coverage",
-    "test:verbose": "npm run build && jest --verbose",
+    "test:coverage": "jest --coverage",
+    "test:verbose": "jest --verbose",
+    "test:nobuild": "jest",
     "help": "npm run build && dist/pnut-term-ts.min.js --help",
     "minify": "terser dist/pnut-term-ts.js -c -m -o dist/pnut-term-ts.min.js",
     "clean": "shx rm -rf ./dist ./release ./prebuilds ./fonts",
