@@ -46,6 +46,8 @@ This is part of the P2 Multi-platform Development Environment:
 ### Essential Commands
 - `npm run build` - Full build pipeline
 - `npm test` - Run all tests (includes build)
+- `npm run test:coverage` - **Default: Sequential coverage** (recommended)
+- `npm run test:coverage:parallel` - Parallel coverage (faster, may timeout)
 - `npm run clean` - Clean build artifacts
 - `tsc --noEmit` - Quick type check
 - Main executable: `dist/pnut-term-ts.min.js`
@@ -160,8 +162,13 @@ grep -r "FIXME" src/
 **Quick Commands**:
 ```bash
 npm test                                    # Run all tests
+npm run test:coverage                       # Coverage (sequential - reliable)
+npm run test:coverage:parallel              # Coverage (parallel - faster but may timeout)
+npm run test:sequential                     # All tests sequential
 npm test -- tests/specific.test.ts          # Run specific test
 npm test -- --testNamePattern="pattern"     # Run by pattern
 ```
+
+**Coverage Note**: Default coverage is now sequential for reliability. Use `test:coverage:parallel` only if you need speed and can tolerate potential timeout issues.
 
 For detailed testing guidance, see [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#running-tests-efficiently).
