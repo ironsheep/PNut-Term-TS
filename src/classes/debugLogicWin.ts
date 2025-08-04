@@ -844,6 +844,16 @@ export class DebugLogicWindow extends DebugWindowBase {
           } else {
             this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
           }
+        } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
+          // Enable keyboard input forwarding
+          this.enableKeyboardInput();
+          // PC_KEY must be last command
+          break;
+        } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
+          // Enable mouse input forwarding
+          this.enableMouseInput();
+          // PC_MOUSE must be last command
+          break;
         } else {
           // do we have packed data spec?
           // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
@@ -1236,5 +1246,54 @@ export class DebugLogicWindow extends DebugWindowBase {
         console.error(`Failed to update ${divId}: ${error}`);
       }
     }
+  }
+
+  /**
+   * Get the canvas element ID for this window
+   */
+  protected getCanvasId(): string {
+    return 'canvas'; // Logic window uses 'canvas' as the ID
+  }
+
+  /**
+   * Transform mouse coordinates to logic-specific coordinates
+   * X: negative sample index from current position
+   * Y: channel number
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Calculate margins and dimensions
+    const marginLeft = this.contentInset + this.labelWidth;
+    const marginTop = this.channelVInset;
+    const width = this.displaySpec.size.width - this.contentInset - this.labelWidth;
+    const height = this.displaySpec.size.height - 2 * this.channelVInset;
+    
+    // Check if mouse is within the display area
+    if (x >= marginLeft && x < marginLeft + width && 
+        y >= marginTop && y < marginTop + height) {
+      // Transform to logic coordinates
+      // X: negative sample number (samples back from current)
+      const sampleX = -Math.floor((marginLeft + width - 1 - x) / this.displaySpec.spacing);
+      // Y: channel number (0-based from top)
+      const channelY = Math.floor((y - marginTop) / this.displaySpec.font.charHeight);
+      
+      return { x: sampleX, y: channelY };
+    } else {
+      // Mouse is outside display area
+      return { x: -1, y: -1 };
+    }
+  }
+
+  /**
+   * Get pixel color getter for mouse events
+   */
+  protected getPixelColorGetter(): ((x: number, y: number) => number) | undefined {
+    return (x: number, y: number) => {
+      if (this.debugWindow) {
+        // This would need to be implemented to sample pixel color from canvas
+        // For now, return a default value
+        return 0x000000;
+      }
+      return -1;
+    };
   }
 }

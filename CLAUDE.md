@@ -573,6 +573,90 @@ All debug windows use the parser for consistent numeric handling:
 
 This ensures that numeric values are parsed consistently throughout the application, supporting all Spin2 numeric formats wherever numbers are accepted.
 
+## Mouse and Keyboard Input Support
+
+### Overview
+
+The debug windows now support PC_KEY and PC_MOUSE commands for input forwarding from the host PC to the P2 device, achieving feature parity with the Pascal implementation.
+
+### Architecture
+
+**Base Class Integration (DebugWindowBase)**:
+- Protected `inputForwarder: InputForwarder` member shared by all debug windows
+- Protected `wheelTimer` and `lastWheelDelta` for 100ms wheel event debouncing
+- Protected methods `enableKeyboardInput()` and `enableMouseInput()` for consistent setup
+- Abstract method `getCanvasId()` that derived classes must implement
+- Virtual methods for customization:
+  - `transformMouseCoordinates()` - window-specific coordinate transformation
+  - `getPixelColorGetter()` - optional pixel color sampling
+
+**InputForwarder Class** (existing, reused):
+- Manages keyboard and mouse event queuing
+- Handles serial communication with P2 device
+- Supports all PC_KEY values and 7-long PC_MOUSE structure
+- Implements proper data formatting for P2 communication
+
+### Window-Specific Implementations
+
+**DebugLogicWindow**:
+- Parses PC_KEY and PC_MOUSE commands in `updateContent()`
+- Transforms mouse coordinates to logic-specific format:
+  - X: Negative sample index (samples back from current position)
+  - Y: Channel number (0-based from top)
+- Canvas ID: 'canvas'
+
+**DebugScopeWindow**:
+- Parses PC_KEY and PC_MOUSE commands in `updateContent()`
+- Transforms mouse coordinates to scope-specific format:
+  - X: Pixel position within display area (0 to width-1)
+  - Y: Inverted pixel position (bottom = 0)
+- Canvas ID: 'canvas'
+
+**DebugPlotWindow** (existing support enhanced):
+- Already had InputForwarder integration
+- Removed duplicate private methods in favor of base class implementation
+- Canvas ID: 'plot-area'
+
+**DebugBitmapWindow** (existing support enhanced):
+- Already had InputForwarder integration
+- Removed duplicate private methods in favor of base class implementation
+- Canvas ID: dynamically generated bitmapCanvasId
+
+**DebugTermWindow**:
+- Minimal implementation (terminal doesn't typically need mouse)
+- Canvas ID: 'terminal-canvas'
+
+### PC_MOUSE Data Structure
+
+The PC_MOUSE command returns a 7-long structure to the P2:
+```
+LONG 0: xpos        // X position within DEBUG Display (negative if outside)
+LONG 1: ypos        // Y position within DEBUG Display (negative if outside)
+LONG 2: wheeldelta  // Scroll wheel delta: 0, +1, or -1
+LONG 3: lbutton     // Left button state: 0 or -1 if pressed
+LONG 4: mbutton     // Middle button state: 0 or -1 if pressed
+LONG 5: rbutton     // Right button state: 0 or -1 if pressed
+LONG 6: pixel       // Pixel color at mouse position: $00_RR_GG_BB or -1 if outside
+```
+
+### Key Features
+
+- **Coordinate Transformation**: Each window type transforms raw canvas coordinates to its specific coordinate system
+- **Wheel Debouncing**: 100ms timer prevents wheel event spam, matching Pascal behavior
+- **Out-of-Bounds Detection**: Returns -1 for position when mouse is outside display area
+- **Button State Tracking**: Maintains current state of all three mouse buttons
+- **Pixel Color Sampling**: Placeholder for future implementation (currently returns 0x000000)
+- **Event Queuing**: Uses existing InputForwarder queue system for reliable event delivery
+
+### Testing Considerations
+
+When testing mouse support:
+1. Ensure P2 device is connected and running debug display code
+2. PC_KEY or PC_MOUSE must be the last command in a DEBUG() statement
+3. The debug window must have focus for keyboard events
+4. Mouse coordinates are transformed based on window type
+5. Wheel events are debounced with 100ms timeout
+
 ## Testing Infrastructure
 
 **Jest Configuration**:

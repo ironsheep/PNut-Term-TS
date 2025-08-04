@@ -745,6 +745,16 @@ export class DebugScopeWindow extends DebugWindowBase {
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
+      } else if (lineParts[1].toUpperCase() == 'PC_KEY') {
+        // Enable keyboard input forwarding
+        this.enableKeyboardInput();
+        // PC_KEY must be last command
+        return;
+      } else if (lineParts[1].toUpperCase() == 'PC_MOUSE') {
+        // Enable mouse input forwarding
+        this.enableMouseInput();
+        // PC_MOUSE must be last command
+        return;
       } else {
         // do we have packed data spec?
         // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
@@ -1608,5 +1618,54 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCodeTrig} ${trigLabelCode} })();`);
       }
     }
+  }
+
+  /**
+   * Get the canvas element ID for this window
+   */
+  protected getCanvasId(): string {
+    return 'canvas'; // Scope window uses 'canvas' as the ID
+  }
+
+  /**
+   * Transform mouse coordinates to scope-specific coordinates
+   * X: pixel position within display area (0 to width-1)
+   * Y: inverted pixel position (bottom = 0)
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Calculate margins and dimensions
+    const marginLeft = this.contentInset;
+    const marginTop = this.channelInset;
+    const width = this.displaySpec.size.width - 2 * this.contentInset;
+    const height = this.displaySpec.size.height - 2 * this.channelInset;
+    
+    // Check if mouse is within the display area
+    if (x >= marginLeft && x < marginLeft + width && 
+        y >= marginTop && y < marginTop + height) {
+      // Transform to scope coordinates
+      // X: relative to left margin
+      const scopeX = x - marginLeft;
+      // Y: inverted with bottom = 0
+      const scopeY = marginTop + height - 1 - y;
+      
+      return { x: scopeX, y: scopeY };
+    } else {
+      // Mouse is outside display area
+      return { x: -1, y: -1 };
+    }
+  }
+
+  /**
+   * Get pixel color getter for mouse events
+   */
+  protected getPixelColorGetter(): ((x: number, y: number) => number) | undefined {
+    return (x: number, y: number) => {
+      if (this.debugWindow) {
+        // This would need to be implemented to sample pixel color from canvas
+        // For now, return a default value
+        return 0x000000;
+      }
+      return -1;
+    };
   }
 }

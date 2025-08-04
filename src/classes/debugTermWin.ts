@@ -683,4 +683,11 @@ export class DebugTermWindow extends DebugWindowBase {
       }
     }
   }
+
+  /**
+   * Get the canvas element ID for this window
+   */
+  protected getCanvasId(): string {
+    return 'terminal-canvas'; // Terminal window uses a different approach, but we need to provide an ID
+  }
 }

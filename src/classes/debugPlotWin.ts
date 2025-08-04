@@ -12,7 +12,6 @@ import { DebugColor } from './debugColor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { LUTManager } from './shared/lutManager';
-import { InputForwarder } from './shared/inputForwarder';
 import { LayerManager, CropRect } from './shared/layerManager';
 import { SpriteManager } from './shared/spriteManager';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
@@ -95,7 +94,6 @@ export class DebugPlotWindow extends DebugWindowBase {
   private canvasRenderer: CanvasRenderer;
   private colorTranslator: ColorTranslator;
   private lutManager: LUTManager;
-  private inputForwarder: InputForwarder;
   private layerManager: LayerManager;
   private spriteManager: SpriteManager;
   
@@ -122,7 +120,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.lutManager = new LUTManager();
     this.colorTranslator = new ColorTranslator();
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
-    this.inputForwarder = new InputForwarder();
     this.layerManager = new LayerManager();
     this.spriteManager = new SpriteManager();
   }
@@ -1560,63 +1557,6 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.workingCtx.globalAlpha = savedAlpha;
     }
   }
-  
-  private enableKeyboardInput(): void {
-    this.logMessage('Enabling keyboard input forwarding');
-    this.inputForwarder.startPolling();
-    
-    // Set up keyboard event handlers in the window
-    if (this.debugWindow) {
-      this.debugWindow.webContents.executeJavaScript(`
-        document.addEventListener('keydown', (event) => {
-          // Send key event to main process
-          if (window.electronAPI && window.electronAPI.sendKeyEvent) {
-            window.electronAPI.sendKeyEvent(event.key, event.keyCode, event.shiftKey, event.ctrlKey, event.altKey);
-          }
-          event.preventDefault();
-        });
-      `);
-    }
-  }
-  
-  private enableMouseInput(): void {
-    this.logMessage('Enabling mouse input forwarding');
-    this.inputForwarder.startPolling();
-    
-    // Set window dimensions for coordinate calculation
-    this.inputForwarder.setWindowDimensions(
-      this.displaySpec.size.width,
-      this.displaySpec.size.height
-    );
-    
-    // Set up mouse event handlers in the window
-    if (this.debugWindow) {
-      this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('plot-area');
-        if (canvas) {
-          canvas.addEventListener('mousemove', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, event.buttons, 0);
-            }
-          });
-          
-          canvas.addEventListener('wheel', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            const delta = Math.sign(event.deltaY);
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, event.buttons, delta);
-            }
-            event.preventDefault();
-          });
-        }
-      `);
-    }
-  }
 
   private polarToCartesianNew(length: number, angle: number): [number, number] {
     const { sin, cos } = this.sinCos(angle);
@@ -1685,5 +1625,12 @@ export class DebugPlotWindow extends DebugWindowBase {
     const plotY: number = cursor.y + this.canvasOffset.y * 2;
     this.logMessage(`* plotToCanvasCoord(${cursor.x},${cursor.y}) -> (${plotX},${plotY})`);
     return [plotX, plotY];
+  }
+
+  /**
+   * Get the canvas element ID for this window
+   */
+  protected getCanvasId(): string {
+    return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
 }

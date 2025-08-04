@@ -14,6 +14,7 @@ import { Context } from '../utils/context';
 import { localFSpecForFilename } from '../utils/files';
 import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { InputForwarder } from './shared/inputForwarder';
 
 // src/classes/debugWindowBase.ts
 
@@ -108,10 +109,14 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
   private _saveInProgress: boolean = false;
+  protected inputForwarder: InputForwarder;
+  protected wheelTimer: NodeJS.Timeout | null = null;
+  protected lastWheelDelta: number = 0;
 
   constructor(ctx: Context) {
     super();
     this.context = ctx;
+    this.inputForwarder = new InputForwarder();
   }
   // Abstract methods that must be overridden by derived classes
   //abstract createDebugWindow(): void;
@@ -144,6 +149,13 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Add OTHER event listeners as needed
     } else {
       this.logMessageBase(`- Closing ${this.constructor.name} window`);
+      // Stop input forwarding
+      this.inputForwarder.stopPolling();
+      // Clear wheel timer
+      if (this.wheelTimer) {
+        clearTimeout(this.wheelTimer);
+        this.wheelTimer = null;
+      }
       // Remove event listeners and close the window
       if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {
         this.logMessageBase(`- ${this.constructor.name} window closing...`);
@@ -638,6 +650,179 @@ export abstract class DebugWindowBase extends EventEmitter {
     const fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
     // Convert to file URL with forward slashes for cross-platform compatibility
     return `file://${fontPath.replace(/\\/g, '/')}`;
+  }
+
+  // ----------------------------------------------------------------------
+  // Mouse and Keyboard Input Support Methods
+
+  /**
+   * Enable keyboard input forwarding for PC_KEY command
+   */
+  protected enableKeyboardInput(): void {
+    this.logMessageBase('Enabling keyboard input forwarding');
+    this.inputForwarder.startPolling();
+    
+    if (this.debugWindow) {
+      this.debugWindow.webContents.executeJavaScript(`
+        document.addEventListener('keydown', (event) => {
+          if (window.electronAPI && window.electronAPI.sendKeyEvent) {
+            window.electronAPI.sendKeyEvent(event.key, event.keyCode, event.shiftKey, event.ctrlKey, event.altKey);
+          }
+        });
+      `);
+    }
+  }
+
+  /**
+   * Enable mouse input forwarding for PC_MOUSE command
+   * Derived classes should override getMouseCoordinateTransform() to provide window-specific transformations
+   */
+  protected enableMouseInput(): void {
+    this.logMessageBase('Enabling mouse input forwarding');
+    this.inputForwarder.startPolling();
+    
+    if (this.debugWindow) {
+      // Get canvas ID from derived class
+      const canvasId = this.getCanvasId();
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        const canvas = document.getElementById('${canvasId}');
+        if (canvas) {
+          let mouseButtons = { left: false, middle: false, right: false };
+          
+          // Mouse move handler
+          canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          // Mouse button handlers
+          canvas.addEventListener('mousedown', (event) => {
+            if (event.button === 0) mouseButtons.left = true;
+            else if (event.button === 1) mouseButtons.middle = true;
+            else if (event.button === 2) mouseButtons.right = true;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          canvas.addEventListener('mouseup', (event) => {
+            if (event.button === 0) mouseButtons.left = false;
+            else if (event.button === 1) mouseButtons.middle = false;
+            else if (event.button === 2) mouseButtons.right = false;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          // Mouse wheel handler with 100ms debounce
+          canvas.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            const delta = Math.sign(event.deltaY) * -1; // Normalize to -1, 0, 1
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, delta);
+            }
+          });
+          
+          // Mouse leave handler
+          canvas.addEventListener('mouseleave', (event) => {
+            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(-1, -1, mouseButtons, 0);
+            }
+          });
+        }
+      `);
+      
+      // Set up mouse event handlers
+      this.setupMouseEventHandlers();
+    }
+  }
+
+  /**
+   * Set up IPC handlers for mouse events
+   */
+  private setupMouseEventHandlers(): void {
+    if (!this.debugWindow) return;
+    
+    // Handle mouse events from renderer
+    this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+      if (channel === 'mouse-event') {
+        const [x, y, buttons, wheelDelta] = args;
+        
+        // Handle wheel events with 100ms timer
+        if (wheelDelta !== 0) {
+          this.lastWheelDelta = wheelDelta;
+          if (this.wheelTimer) {
+            clearTimeout(this.wheelTimer);
+          }
+          this.wheelTimer = setTimeout(() => {
+            this.lastWheelDelta = 0;
+          }, 100);
+        }
+        
+        // Transform coordinates based on window type
+        const transformed = this.transformMouseCoordinates(x, y);
+        
+        // Get pixel color at position
+        const pixelGetter = this.getPixelColorGetter();
+        
+        // Queue the mouse event
+        this.inputForwarder.queueMouseEvent(
+          transformed.x,
+          transformed.y,
+          buttons,
+          this.lastWheelDelta,
+          pixelGetter
+        );
+      } else if (channel === 'key-event') {
+        const [key] = args;
+        this.inputForwarder.queueKeyEvent(key);
+      }
+    });
+  }
+
+  /**
+   * Transform mouse coordinates for the specific window type
+   * Override this in derived classes for window-specific transformations
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Default implementation - no transformation
+    return { x, y };
+  }
+
+  /**
+   * Get the canvas element ID for this window
+   * Must be overridden by derived classes
+   */
+  protected abstract getCanvasId(): string;
+
+  /**
+   * Get a function that returns pixel color at given coordinates
+   * Override in derived classes if pixel color sampling is needed
+   */
+  protected getPixelColorGetter(): ((x: number, y: number) => number) | undefined {
+    // Default implementation - no pixel color sampling
+    return undefined;
   }
 
   // ----------------------------------------------------------------------

@@ -104,7 +104,7 @@ describe('Comprehensive Integration Tests', () => {
       ];
 
       states.forEach(state => {
-        const indicatorColor = getTrigg                                                                            config.triggerHoldoff :
+        const indicatorColor = state.holdoff > 0 ? config.triggerHoldoff :
                                      state.fired ? config.triggerFired :
                                      state.armed ? config.triggerArmed :
                                      config.background;

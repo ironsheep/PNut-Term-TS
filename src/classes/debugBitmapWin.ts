@@ -8,7 +8,6 @@ import { DebugWindowBase } from './debugWindowBase';
 import { Context } from '../utils/context';
 import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { LUTManager } from './shared/lutManager';
-import { InputForwarder } from './shared/inputForwarder';
 import { TracePatternProcessor } from './shared/tracePatternProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { BrowserWindow } from 'electron';
@@ -56,7 +55,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private state: BitmapState;
   private colorTranslator: ColorTranslator;
   private lutManager: LUTManager;
-  private inputForwarder: InputForwarder;
   private traceProcessor: TracePatternProcessor;
   private canvasRenderer: CanvasRenderer;
   // Offscreen canvas not needed since we're drawing directly via CanvasRenderer
@@ -219,7 +217,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.lutManager = new LUTManager();
     this.colorTranslator = new ColorTranslator();
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
-    this.inputForwarder = new InputForwarder();
     this.traceProcessor = new TracePatternProcessor();
     this.canvasRenderer = new CanvasRenderer();
 
@@ -614,50 +611,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
     }
   }
 
-  /**
-   * Enable keyboard input forwarding
-   */
-  private enableKeyboardInput(): void {
-    this.inputForwarder.startPolling();
-    
-    // Set up keyboard event handlers
-    if (!this.debugWindow) return;
-    this.debugWindow.webContents.executeJavaScript(`
-      document.addEventListener('keydown', (event) => {
-        // Send key event to main process
-        window.electronAPI.sendKeyEvent(event.key);
-      });
-    `);
-  }
-
-  /**
-   * Enable mouse input forwarding
-   */
-  private enableMouseInput(): void {
-    this.inputForwarder.startPolling();
-    
-    // Set up mouse event handlers
-    if (!this.debugWindow) return;
-    this.debugWindow.webContents.executeJavaScript(`
-      const canvas = document.getElementById('${this.bitmapCanvasId}');
-      if (canvas) {
-        canvas.addEventListener('mousemove', (event) => {
-          const rect = canvas.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
-          window.electronAPI.sendMouseEvent(x, y, event.buttons, 0);
-        });
-        
-        canvas.addEventListener('wheel', (event) => {
-          const rect = canvas.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
-          const delta = Math.sign(event.deltaY);
-          window.electronAPI.sendMouseEvent(x, y, event.buttons, delta);
-        });
-      }
-    `);
-  }
 
   /**
    * Parse color mode commands
@@ -955,5 +908,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
   logMessage(message: string): void {
     // Use base class logging
     super.logMessage(message, this.windowLogPrefix);
+  }
+
+  /**
+   * Get the canvas element ID for this window
+   */
+  protected getCanvasId(): string {
+    return this.bitmapCanvasId; // Bitmap window uses bitmapCanvasId
   }
 }

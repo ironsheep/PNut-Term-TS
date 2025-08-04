@@ -15,7 +15,7 @@ describe('InputForwarder', () => {
 
   beforeEach(() => {
     forwarder = new InputForwarder();
-    mockSerial = new UsbSerial(null as any) as jest.Mocked<UsbSerial>;
+    mockSerial = new UsbSerial(null as any, 'mock-device') as jest.Mocked<UsbSerial>;
     mockSerial.write = jest.fn().mockResolvedValue(undefined);
     
     jest.useFakeTimers();
