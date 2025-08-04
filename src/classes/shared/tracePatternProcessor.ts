@@ -17,17 +17,29 @@ interface TraceState {
 }
 
 /**
- * Scroll direction for bitmap scrolling
- */
-interface ScrollDirection {
-  x: number;
-  y: number;
-}
-
-/**
- * TracePatternProcessor implements the 8 trace patterns from Pascal SetTrace/StepTrace
- * Patterns 0-7 control pixel plotting direction
- * Bit 3 (patterns 8-15) enables auto-scrolling
+ * TracePatternProcessor implements the 16 trace patterns for bitmap display
+ * 
+ * Trace values 0-15 control image orientation (rotation/flipping) and scrolling:
+ * 
+ * Without scrolling (0-7):
+ * - 0: Normal orientation - left-to-right, top-to-bottom
+ * - 1: Horizontal flip - right-to-left, top-to-bottom
+ * - 2: Vertical flip - left-to-right, bottom-to-top
+ * - 3: 180° rotation (H+V flip) - right-to-left, bottom-to-top
+ * - 4: 90° CCW rotation + V flip - top-to-bottom, left-to-right
+ * - 5: 90° CCW rotation - bottom-to-top, left-to-right
+ * - 6: 90° CW rotation - top-to-bottom, right-to-left
+ * - 7: 90° CW rotation + V flip - bottom-to-top, right-to-left
+ * 
+ * With scrolling (8-15):
+ * - 8: Vertical flip + scrolling (orientation of trace=2)
+ * - 9: 180° rotation + scrolling (orientation of trace=3)
+ * - 10: Normal + scrolling (orientation of trace=0)
+ * - 11: Horizontal flip + scrolling (orientation of trace=1)
+ * - 12: 90° CW rotation + scrolling (orientation of trace=6)
+ * - 13: 90° CW + V flip + scrolling (orientation of trace=7)
+ * - 14: 90° CCW + V flip + scrolling (orientation of trace=4)
+ * - 15: 90° CCW rotation + scrolling (orientation of trace=5)
  */
 export class TracePatternProcessor {
   private state: TraceState;
@@ -51,44 +63,75 @@ export class TracePatternProcessor {
     this.state.width = Math.max(1, Math.min(2048, width));
     this.state.height = Math.max(1, Math.min(2048, height));
     
-    // Clamp current position to new bounds
-    this.state.pixelX = Math.min(this.state.pixelX, this.state.width - 1);
-    this.state.pixelY = Math.min(this.state.pixelY, this.state.height - 1);
+    // Reset position based on current pattern
+    this.resetPositionForPattern();
   }
 
   /**
    * Set trace pattern (0-15)
-   * Patterns 0-7: directional patterns
-   * Patterns 8-15: same as 0-7 with auto-scroll enabled
    */
   public setPattern(pattern: number, modifyRate: boolean = true): void {
-    const basePattern = pattern & 0x7;
-    this.state.pattern = basePattern;
+    pattern = pattern & 0xF; // Ensure 0-15
+    
+    // Determine base pattern and scroll state
     this.state.scrollEnabled = (pattern & 0x8) !== 0;
     
-    // Set initial pixel position based on pattern (Pascal SetTrace)
-    switch (basePattern) {
-      case 0: // Right, start top-left
-      case 2: // Down, start top-left
+    // Map trace values to actual orientation patterns
+    if (pattern < 8) {
+      // Direct mapping for non-scrolling patterns
+      this.state.pattern = pattern;
+    } else {
+      // Remapped patterns for scrolling modes
+      const scrollMapping = [2, 3, 0, 1, 6, 7, 4, 5];
+      this.state.pattern = scrollMapping[pattern - 8];
+    }
+    
+    // Set initial position based on pattern
+    this.resetPositionForPattern();
+  }
+
+  /**
+   * Reset position based on current pattern
+   */
+  private resetPositionForPattern(): void {
+    switch (this.state.pattern) {
+      case 0: // Normal: left-to-right, top-to-bottom
         this.state.pixelX = 0;
         this.state.pixelY = 0;
         break;
         
-      case 1: // Left, start top-right
-      case 5: // Up, start bottom-right
+      case 1: // H flip: right-to-left, top-to-bottom
         this.state.pixelX = this.state.width - 1;
-        this.state.pixelY = basePattern === 1 ? 0 : this.state.height - 1;
-        break;
-        
-      case 3: // Down, start top-right
-      case 4: // Down, start top-left
-        this.state.pixelX = basePattern === 3 ? this.state.width - 1 : 0;
         this.state.pixelY = 0;
         break;
         
-      case 6: // Down, start bottom-left
-      case 7: // Up, start bottom-left
-        this.state.pixelX = basePattern === 6 ? 0 : this.state.width - 1;
+      case 2: // V flip: left-to-right, bottom-to-top
+        this.state.pixelX = 0;
+        this.state.pixelY = this.state.height - 1;
+        break;
+        
+      case 3: // 180° rotation: right-to-left, bottom-to-top
+        this.state.pixelX = this.state.width - 1;
+        this.state.pixelY = this.state.height - 1;
+        break;
+        
+      case 4: // 90° CCW + V flip: top-to-bottom, left-to-right
+        this.state.pixelX = 0;
+        this.state.pixelY = 0;
+        break;
+        
+      case 5: // 90° CCW: bottom-to-top, left-to-right
+        this.state.pixelX = 0;
+        this.state.pixelY = this.state.height - 1;
+        break;
+        
+      case 6: // 90° CW: top-to-bottom, right-to-left
+        this.state.pixelX = this.state.width - 1;
+        this.state.pixelY = 0;
+        break;
+        
+      case 7: // 90° CW + V flip: bottom-to-top, right-to-left
+        this.state.pixelX = this.state.width - 1;
         this.state.pixelY = this.state.height - 1;
         break;
     }
@@ -99,9 +142,9 @@ export class TracePatternProcessor {
    * Used when RATE=0 to set appropriate default
    */
   public getSuggestedRate(): number {
-    const basePattern = this.state.pattern & 0x7;
-    // Horizontal patterns use width, vertical use height
-    return (basePattern >= 0 && basePattern <= 3) ? this.state.width : this.state.height;
+    // For patterns 0-3 (horizontal scan), use width
+    // For patterns 4-7 (vertical scan), use height
+    return (this.state.pattern <= 3) ? this.state.width : this.state.height;
   }
 
   /**
@@ -110,6 +153,8 @@ export class TracePatternProcessor {
   public setPosition(x: number, y: number): void {
     this.state.pixelX = Math.max(0, Math.min(this.state.width - 1, x));
     this.state.pixelY = Math.max(0, Math.min(this.state.height - 1, y));
+    // When position is set manually via SET command, cancel scrolling to match Pascal behavior
+    this.state.scrollEnabled = false;
   }
 
   /**
@@ -128,19 +173,18 @@ export class TracePatternProcessor {
 
   /**
    * Step to next pixel position according to pattern
-   * Matches Pascal StepTrace implementation
    */
   public step(): void {
     const scroll = this.state.scrollEnabled;
     
     switch (this.state.pattern) {
-      case 0: // Right, scroll left
+      case 0: // Normal: left-to-right, top-to-bottom
         if (this.state.pixelX < this.state.width - 1) {
           this.state.pixelX++;
         } else {
           this.state.pixelX = 0;
           if (scroll) {
-            this.triggerScroll(0, 1);
+            this.triggerScroll(0, 1); // Scroll down
           } else if (this.state.pixelY < this.state.height - 1) {
             this.state.pixelY++;
           } else {
@@ -149,13 +193,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 1: // Left, scroll right
+      case 1: // H flip: right-to-left, top-to-bottom
         if (this.state.pixelX > 0) {
           this.state.pixelX--;
         } else {
           this.state.pixelX = this.state.width - 1;
           if (scroll) {
-            this.triggerScroll(0, 1);
+            this.triggerScroll(0, 1); // Scroll down
           } else if (this.state.pixelY < this.state.height - 1) {
             this.state.pixelY++;
           } else {
@@ -164,13 +208,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 2: // Right, scroll left (alternate)
+      case 2: // V flip: left-to-right, bottom-to-top
         if (this.state.pixelX < this.state.width - 1) {
           this.state.pixelX++;
         } else {
           this.state.pixelX = 0;
           if (scroll) {
-            this.triggerScroll(0, -1);
+            this.triggerScroll(0, -1); // Scroll up
           } else if (this.state.pixelY > 0) {
             this.state.pixelY--;
           } else {
@@ -179,13 +223,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 3: // Left, scroll right (alternate)
+      case 3: // 180° rotation: right-to-left, bottom-to-top
         if (this.state.pixelX > 0) {
           this.state.pixelX--;
         } else {
           this.state.pixelX = this.state.width - 1;
           if (scroll) {
-            this.triggerScroll(0, -1);
+            this.triggerScroll(0, -1); // Scroll up
           } else if (this.state.pixelY > 0) {
             this.state.pixelY--;
           } else {
@@ -194,13 +238,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 4: // Down, scroll up
+      case 4: // 90° CCW + V flip: top-to-bottom, left-to-right
         if (this.state.pixelY < this.state.height - 1) {
           this.state.pixelY++;
         } else {
           this.state.pixelY = 0;
           if (scroll) {
-            this.triggerScroll(1, 0);
+            this.triggerScroll(1, 0); // Scroll right
           } else if (this.state.pixelX < this.state.width - 1) {
             this.state.pixelX++;
           } else {
@@ -209,13 +253,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 5: // Up, scroll down
+      case 5: // 90° CCW: bottom-to-top, left-to-right
         if (this.state.pixelY > 0) {
           this.state.pixelY--;
         } else {
           this.state.pixelY = this.state.height - 1;
           if (scroll) {
-            this.triggerScroll(1, 0);
+            this.triggerScroll(1, 0); // Scroll right
           } else if (this.state.pixelX < this.state.width - 1) {
             this.state.pixelX++;
           } else {
@@ -224,13 +268,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 6: // Down, scroll up (alternate)
+      case 6: // 90° CW: top-to-bottom, right-to-left
         if (this.state.pixelY < this.state.height - 1) {
           this.state.pixelY++;
         } else {
           this.state.pixelY = 0;
           if (scroll) {
-            this.triggerScroll(-1, 0);
+            this.triggerScroll(-1, 0); // Scroll left
           } else if (this.state.pixelX > 0) {
             this.state.pixelX--;
           } else {
@@ -239,13 +283,13 @@ export class TracePatternProcessor {
         }
         break;
         
-      case 7: // Up, scroll down (alternate)
+      case 7: // 90° CW + V flip: bottom-to-top, right-to-left
         if (this.state.pixelY > 0) {
           this.state.pixelY--;
         } else {
           this.state.pixelY = this.state.height - 1;
           if (scroll) {
-            this.triggerScroll(-1, 0);
+            this.triggerScroll(-1, 0); // Scroll left
           } else if (this.state.pixelX > 0) {
             this.state.pixelX--;
           } else {
@@ -266,51 +310,16 @@ export class TracePatternProcessor {
   }
 
   /**
-   * Get current pattern
+   * Get the current actual trace value (0-15)
    */
-  public getPattern(): number {
-    return this.state.pattern | (this.state.scrollEnabled ? 0x8 : 0);
-  }
-
-  /**
-   * Check if scrolling is enabled
-   */
-  public isScrollEnabled(): boolean {
-    return this.state.scrollEnabled;
-  }
-
-  /**
-   * Get pattern description
-   */
-  public static getPatternDescription(pattern: number): string {
-    const basePattern = pattern & 0x7;
-    const scroll = (pattern & 0x8) !== 0;
-    
-    const descriptions = [
-      'Right', // 0
-      'Left',  // 1
-      'Right', // 2
-      'Left',  // 3
-      'Down',  // 4
-      'Up',    // 5
-      'Down',  // 6
-      'Up'     // 7
-    ];
-    
-    const scrollDescriptions = [
-      'scroll left',   // 0
-      'scroll right',  // 1
-      'scroll left',   // 2
-      'scroll right',  // 3
-      'scroll up',     // 4
-      'scroll down',   // 5
-      'scroll up',     // 6
-      'scroll down'    // 7
-    ];
-    
-    const base = descriptions[basePattern];
-    const scrollText = scroll ? scrollDescriptions[basePattern] : 'no scroll';
-    
-    return `${base}, ${scrollText}`;
+  public getTraceValue(): number {
+    if (!this.state.scrollEnabled) {
+      return this.state.pattern;
+    } else {
+      // Reverse map from pattern to scrolling trace value
+      const reverseMapping = [10, 11, 8, 9, 14, 15, 12, 13];
+      const index = [0, 1, 2, 3, 4, 5, 6, 7].indexOf(this.state.pattern);
+      return reverseMapping[index];
+    }
   }
 }

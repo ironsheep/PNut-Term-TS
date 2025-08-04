@@ -810,3 +810,59 @@ node --inspect-brk ./node_modules/.bin/jest tests/debugLogicWin.test.ts --runInB
 - Unit tests for color system, packed data processing, trigger evaluation
 - Integration tests for window creation and inter-component communication
 - Performance benchmarks for real-time data processing
+
+## Bitmap Display Trace and Rate Parameters
+
+### Trace Parameter (0-15)
+
+The `trace` parameter controls the pixel plotting order and image orientation when data is streamed to the bitmap display. It combines rotation, flipping, and optional scrolling behavior.
+
+**Values 0-7 (without scrolling):**
+- **0**: Normal orientation - left-to-right, top-to-bottom
+- **1**: Horizontal flip - right-to-left, top-to-bottom
+- **2**: Vertical flip - left-to-right, bottom-to-top
+- **3**: 180° rotation (H+V flip) - right-to-left, bottom-to-top
+- **4**: 90° CCW rotation + V flip - top-to-bottom, left-to-right
+- **5**: 90° CCW rotation - bottom-to-top, left-to-right
+- **6**: 90° CW rotation - top-to-bottom, right-to-left
+- **7**: 90° CW rotation + V flip - bottom-to-top, right-to-left
+
+**Values 8-15 (with scrolling enabled):**
+When bit 3 is set, scrolling is enabled with a specific orientation mapping:
+- **8**: Vertical flip + scrolling (same orientation as trace=2)
+- **9**: 180° rotation + scrolling (same orientation as trace=3)
+- **10**: Normal orientation + scrolling (same orientation as trace=0)
+- **11**: Horizontal flip + scrolling (same orientation as trace=1)
+- **12**: 90° CW rotation + scrolling (same orientation as trace=6)
+- **13**: 90° CW rotation + V flip + scrolling (same orientation as trace=7)
+- **14**: 90° CCW rotation + V flip + scrolling (same orientation as trace=4)
+- **15**: 90° CCW rotation + scrolling (same orientation as trace=5)
+
+**Key Implementation Notes:**
+- The scrolling bit (bit 3) doesn't simply add scrolling to the base orientation
+- Values 8-15 use a remapped orientation pattern: the equivalent non-scrolling orientation can be found by XORing with 0b1010 (10)
+- When scrolling is enabled, the bitmap shifts its content instead of wrapping when reaching edges
+- Scroll direction depends on the data flow direction for that trace mode
+
+### Rate Parameter
+
+The `rate` parameter controls display update frequency:
+- **0**: Manual update control only (no automatic updates)
+- **-1**: Converted to width × height (update after full screen is drawn)
+- **Positive values**: Update display after this many pixels are plotted
+
+**Example Configurations:**
+- `trace=0, rate=1`: Normal raster scan, update every pixel (real-time display)
+- `trace=0, rate=640`: Normal raster scan, update after each line (for 640-width display)
+- `trace=10, rate=-1`: Normal orientation with scrolling, update after full screen
+- `trace=5, rate=0`: 90° CCW rotation, manual update control only
+
+### Internal Implementation
+
+The bitmap display maintains:
+- Current pixel position (vPixelX, vPixelY)
+- Rate counter (vRateCount) that increments with each plotted pixel
+- Trace mode determines starting position and movement pattern
+- StepTrace() advances position according to trace mode after each pixel
+- RateCycle() checks if display update is needed based on rate parameter
+- When scrolling is enabled and edge is reached, ScrollBitmap() shifts content
