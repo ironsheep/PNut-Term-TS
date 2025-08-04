@@ -12,29 +12,29 @@
 | debugBitmapWin.test.ts | ❌ FAIL | 2s | Some tests passing |
 | debugColor.test.ts | ❌ FAIL | 1s | Some tests passing |
 | debugLogicWin.test.ts | ❌ FAIL | 2s | All 3 tests failing |
-| debugMidiWin.integration.test.ts | (pending) | - | - |
-| debugMidiWin.test.ts | (pending) | - | - |
-| debugPlotWin.commands.test.ts | (pending) | - | - |
-| debugPlotWin.integration.test.ts | (pending) | - | - |
-| debugPlotWin.test.ts | (pending) | - | - |
-| debugScopeWin.test.ts | (pending) | - | - |
-| debugTermWin.test.ts | (pending) | - | - |
-| debugWindowBase.test.ts | (pending) | - | - |
-| displaySpecParser.test.ts | (pending) | - | - |
-| inputForwarder.test.ts | (pending) | - | - |
-| integrationTests.test.ts | (pending) | - | - |
-| layerManager.test.ts | (pending) | - | - |
-| logicTrigger.test.ts | (pending) | - | - |
-| lutManager.test.ts | (pending) | - | - |
-| packedDataIntegration.test.ts | (pending) | - | - |
-| packedDataProcessor.test.ts | (pending) | - | - |
-| pianoKeyboardLayout.test.ts | (pending) | - | - |
-| scopeTrigger.test.ts | (pending) | - | - |
-| spacingDirective.test.ts | (pending) | - | - |
-| spin2NumericParser.test.ts | (pending) | - | - |
-| spriteManager.test.ts | (pending) | - | - |
-| tracePatternProcessor.test.ts | (pending) | - | - |
-| triggerProcessor.test.ts | (pending) | - | - |
+| debugMidiWin.integration.test.ts | ✅ PASS | 2s | 14 tests passing (but Jest didn't exit cleanly) |
+| debugMidiWin.test.ts | ✅ PASS | 2s | 20 tests passing |
+| debugPlotWin.commands.test.ts | ❌ FAIL | 3s | 8 of 111 tests failing |
+| debugPlotWin.integration.test.ts | ✅ PASS | 3s | 10 tests passing |
+| debugPlotWin.test.ts | ✅ PASS | 3s | 26 tests passing |
+| debugScopeWin.test.ts | ❌ FAIL | 3s | 6 tests failing (InputForwarder issues) |
+| debugTermWin.test.ts | ❌ FAIL | 3s | Compilation errors |
+| debugWindowBase.test.ts | ✅ PASS | 3s | 29 tests passing |
+| displaySpecParser.test.ts | ✅ PASS | 3s | 30 tests passing |
+| inputForwarder.test.ts | ✅ PASS | 3s | 35 tests passing |
+| integrationTests.test.ts | ❌ FAIL | 3s | 3 of 13 tests failing |
+| layerManager.test.ts | ✅ PASS | 3s | 25 tests passing |
+| logicTrigger.test.ts | ✅ PASS | 3s | 14 tests passing |
+| lutManager.test.ts | ✅ PASS | 3s | 26 tests passing |
+| packedDataIntegration.test.ts | ✅ PASS | 3s | 27 tests passing |
+| packedDataProcessor.test.ts | ✅ PASS | 3s | 26 tests passing |
+| pianoKeyboardLayout.test.ts | ✅ PASS | 3s | 9 tests passing |
+| scopeTrigger.test.ts | ✅ PASS | 3s | 17 tests passing |
+| spacingDirective.test.ts | ✅ PASS | 3s | 17 tests passing |
+| spin2NumericParser.test.ts | ✅ PASS | 1-2s | 44 tests passing (runs with each test) |
+| spriteManager.test.ts | ✅ PASS | 3s | 34 tests passing |
+| tracePatternProcessor.test.ts | ✅ PASS | 3s | 41 tests passing |
+| triggerProcessor.test.ts | ✅ PASS | 3s | 22 tests passing |
 
 ## Known Issues by Test File
 

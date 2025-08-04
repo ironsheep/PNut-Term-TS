@@ -138,7 +138,9 @@ All debug windows support PC_KEY and PC_MOUSE commands for input forwarding to P
 
 ## Technical Debt
 
-Search for technical debt markers in the codebase:
+**See [`docs/TECHNICAL-DEBT.md`](docs/TECHNICAL-DEBT.md) for comprehensive technical debt tracking.**
+
+Quick commands to find inline debt markers:
 ```bash
 grep -r "TECH-DEBT" src/
 grep -r "TODO" src/
