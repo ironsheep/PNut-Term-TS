@@ -618,6 +618,13 @@ The debug windows now support PC_KEY and PC_MOUSE commands for input forwarding 
   - X: Pixel position within display area (0 to width-1)
   - Y: Inverted pixel position (bottom = 0)
 - Canvas ID: 'canvas'
+- **Visual Coordinate Display** (matching Pascal implementation):
+  - Shows coordinate tooltip near cursor when hovering over display area
+  - Format: `x,y` (e.g., "125,400")
+  - Crosshair overlay for precise positioning
+  - Display colors match window's grid/background colors
+  - Auto-positions to avoid window edges
+  - Y-axis is inverted: bottom of display = 0, top = height-1
 
 **DebugPlotWindow** (existing support enhanced):
 - Already had InputForwarder integration

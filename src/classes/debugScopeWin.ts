@@ -478,10 +478,45 @@ export class DebugScopeWindow extends DebugWindowBase {
             50% { opacity: 1; }
             100% { opacity: 0.8; }
           }
+          #coordinate-display {
+            position: absolute;
+            padding: 2px 4px;
+            background-color: ${this.displaySpec.window.background};
+            color: ${this.displaySpec.window.grid};
+            border: 1px solid ${this.displaySpec.window.grid};
+            font-family: 'Parallax', monospace;
+            font-size: 11px;
+            font-style: normal;
+            pointer-events: none;
+            display: none;
+            z-index: 20;
+            white-space: nowrap;
+          }
+          #crosshair-horizontal, #crosshair-vertical {
+            position: absolute;
+            background-color: ${this.displaySpec.window.grid};
+            opacity: 0.5;
+            pointer-events: none;
+            display: none;
+            z-index: 15;
+          }
+          #crosshair-horizontal {
+            height: 1px;
+            width: 100%;
+            left: 0;
+          }
+          #crosshair-vertical {
+            width: 1px;
+            height: 100%;
+            top: 0;
+          }
         </style>
       </head>
       <body>
         <div id="trigger-status">READY</div>
+        <div id="coordinate-display"></div>
+        <div id="crosshair-horizontal"></div>
+        <div id="crosshair-vertical"></div>
         <div id="container">
           <div id="labels" width="${channelWidth}" height="${channelLabelHeight}">
           </div>
@@ -1667,5 +1702,96 @@ export class DebugScopeWindow extends DebugWindowBase {
       }
       return -1;
     };
+  }
+
+  /**
+   * Override enableMouseInput to add coordinate display functionality
+   */
+  protected enableMouseInput(): void {
+    // Call base implementation first
+    super.enableMouseInput();
+    
+    // Add coordinate display functionality
+    if (this.debugWindow) {
+      const marginLeft = this.contentInset;
+      const marginTop = this.channelInset;
+      const displayWidth = this.displaySpec.size.width - 2 * this.contentInset;
+      const displayHeight = this.displaySpec.size.height - 2 * this.channelInset;
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const container = document.getElementById('container');
+          const coordDisplay = document.getElementById('coordinate-display');
+          const crosshairH = document.getElementById('crosshair-horizontal');
+          const crosshairV = document.getElementById('crosshair-vertical');
+          
+          if (container && coordDisplay && crosshairH && crosshairV) {
+            // Track mouse position
+            let lastMouseX = -1;
+            let lastMouseY = -1;
+            
+            container.addEventListener('mousemove', (event) => {
+              const rect = container.getBoundingClientRect();
+              const x = event.clientX - rect.left;
+              const y = event.clientY - rect.top;
+              
+              // Calculate relative position within data area
+              const dataX = x - ${marginLeft};
+              const dataY = y - ${marginTop};
+              
+              // Check if within display area
+              if (dataX >= 0 && dataX < ${displayWidth} && 
+                  dataY >= 0 && dataY < ${displayHeight}) {
+                
+                // Calculate scope coordinates
+                const scopeX = dataX;
+                const scopeY = ${displayHeight} - 1 - dataY;
+                
+                // Update coordinate display
+                coordDisplay.textContent = scopeX + ',' + scopeY;
+                coordDisplay.style.display = 'block';
+                
+                // Position the display near cursor, avoiding edges
+                const displayRect = coordDisplay.getBoundingClientRect();
+                let displayX = event.clientX + 10;
+                let displayY = event.clientY - displayRect.height - 10;
+                
+                // Adjust if too close to edges
+                if (displayX + displayRect.width > window.innerWidth - 10) {
+                  displayX = event.clientX - displayRect.width - 10;
+                }
+                if (displayY < 10) {
+                  displayY = event.clientY + 10;
+                }
+                
+                coordDisplay.style.left = displayX + 'px';
+                coordDisplay.style.top = displayY + 'px';
+                
+                // Update crosshair position
+                crosshairH.style.display = 'block';
+                crosshairV.style.display = 'block';
+                crosshairH.style.top = event.clientY + 'px';
+                crosshairV.style.left = event.clientX + 'px';
+                
+                lastMouseX = x;
+                lastMouseY = y;
+              } else {
+                // Hide displays when outside data area
+                coordDisplay.style.display = 'none';
+                crosshairH.style.display = 'none';
+                crosshairV.style.display = 'none';
+              }
+            });
+            
+            // Hide displays when mouse leaves container
+            container.addEventListener('mouseleave', () => {
+              coordDisplay.style.display = 'none';
+              crosshairH.style.display = 'none';
+              crosshairV.style.display = 'none';
+            });
+          }
+        })();
+      `);
+    }
   }
 }
