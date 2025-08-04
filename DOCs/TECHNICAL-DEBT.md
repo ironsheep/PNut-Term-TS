@@ -73,18 +73,6 @@ Run `grep -r "TECH-DEBT" src/` to find inline technical debt markers.
 ### FIXME Items
 Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 
-## Known Issues from Test Suite
-
-### Failing Tests
-- **debugTermWin.test.ts** - Compilation errors due to constructor parameter changes
-- **debugScopeWin.test.ts** - InputForwarder mock issues causing test failures
-- **debugPlotWin.commands.test.ts** - Parameter validation issues (8 failing tests)
-- **integrationTests.test.ts** - Color expectation mismatches (3 failing tests)
-
-### Test Infrastructure Issues
-- InputForwarder mocks are brittle and cause crashes in some test suites
-- Jest doesn't exit cleanly for some tests (async operations not properly cleaned up)
-
 ## Architecture Issues
 
 ### Missing Implementations
@@ -98,8 +86,9 @@ Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 - Include full command context in error messages
 
 ## Performance Considerations
-- Test suite takes ~90 seconds to run all tests sequentially
-- Some tests have memory leaks or unclosed handles
+- Canvas rendering operations should be optimized for real-time data
+- Serial communication should avoid blocking the event loop
+- Consider using OffscreenCanvas for complex rendering operations
 
 ## Documentation Gaps
 - Missing JSDoc comments for many public methods
