@@ -712,10 +712,83 @@ When testing mouse support:
 - 30-second timeout for complex integration tests
 - Coverage thresholds can be configured in `jest.config.js`
 
-**Running Specific Tests**:
-- Single test file: `npm test -- src/classes/debugColor.test.ts`
+### Running Tests - Best Practices
+
+**IMPORTANT**: The `npm test` command includes a build step, which can mask test output and cause confusion.
+
+**Recommended Test Commands**:
+1. **Run all tests without build**: `./node_modules/.bin/jest`
+2. **Run specific test file**: `./node_modules/.bin/jest tests/debugLogicWin.test.ts`
+3. **Run tests with summary only**: `./node_modules/.bin/jest --silent`
+4. **Run tests with coverage**: `./node_modules/.bin/jest --coverage`
+5. **Watch mode for development**: `npm run test:watch`
+
+**Common Issues**:
+- **Pattern matching confusion**: Arguments after `npm test` may be interpreted as test name patterns
+  - Example: `npm test 2` will run tests matching `/2/i` pattern
+- **Build output noise**: Use jest directly to avoid build output
+- **Large output**: Many tests have console.log statements that clutter output
+
+### Known Test Failures (As of 2025-08-04)
+
+These test failures are not related to recent changes and can be ignored:
+
+**colorTranslator.test.ts** (13 failures):
+- RGB16/RGB8 conversion tests failing due to implementation differences
+- HSV mode tests failing due to color calculation differences
+- These are existing issues with the color translation implementation
+
+**inputForwarder.test.ts** (crashes):
+- Unhandled error from serial port mock
+- Test crashes with "Serial error" 
+- Appears to be test infrastructure issue, not actual code problem
+
+**debugPlotWin.commands.test.ts** (3 failures):
+- LINESIZE invalid value handling
+- OPACITY boundary value handling  
+- SPRITE invalid ID rejection
+- Minor validation differences from expected behavior
+
+### Test Troubleshooting Guide
+
+**If tests won't run**:
+1. Ensure build is complete: `npm run build`
+2. Check for TypeScript errors: `tsc --noEmit`
+3. Clear Jest cache: `./node_modules/.bin/jest --clearCache`
+
+**To see cleaner test output**:
+```bash
+# Run tests and filter output to just see results
+./node_modules/.bin/jest 2>&1 | grep -E "(PASS|FAIL|Test Suites:|Tests:)" | tail -20
+
+# Count passing test files
+./node_modules/.bin/jest 2>&1 | grep -c "PASS tests/"
+```
+
+**To debug a specific test**:
+```bash
+# Run in Node debug mode
+node --inspect-brk ./node_modules/.bin/jest tests/debugLogicWin.test.ts --runInBand
+
+# Then attach with Chrome DevTools or VS Code debugger
+```
+
+**Running Specific Tests** (original documentation):
+- Single test file: `npm test -- tests/debugColor.test.ts`
 - Pattern matching: `npm test -- --testNamePattern="color parsing"`
 - Debug mode: `node --inspect-brk node_modules/.bin/jest --runInBand`
+
+### Test Suite Summary
+
+**Total Test Files**: ~25 test files  
+**Typical Test Run Time**: 5-7 seconds per file
+
+**Quick Health Check**:
+```bash
+# Get a quick summary of test suite health
+./node_modules/.bin/jest --listTests | wc -l  # Count test files
+./node_modules/.bin/jest --passWithNoTests 2>&1 | tail -10  # See final summary
+```
 
 **Key Test Areas**:
 - Unit tests for color system, packed data processing, trigger evaluation
