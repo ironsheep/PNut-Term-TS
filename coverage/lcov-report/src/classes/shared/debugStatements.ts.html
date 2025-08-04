@@ -503,7 +503,39 @@
 <a name='L438'></a><a href='#L438'>438</a>
 <a name='L439'></a><a href='#L439'>439</a>
 <a name='L440'></a><a href='#L440'>440</a>
-<a name='L441'></a><a href='#L441'>441</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a>
+<a name='L443'></a><a href='#L443'>443</a>
+<a name='L444'></a><a href='#L444'>444</a>
+<a name='L445'></a><a href='#L445'>445</a>
+<a name='L446'></a><a href='#L446'>446</a>
+<a name='L447'></a><a href='#L447'>447</a>
+<a name='L448'></a><a href='#L448'>448</a>
+<a name='L449'></a><a href='#L449'>449</a>
+<a name='L450'></a><a href='#L450'>450</a>
+<a name='L451'></a><a href='#L451'>451</a>
+<a name='L452'></a><a href='#L452'>452</a>
+<a name='L453'></a><a href='#L453'>453</a>
+<a name='L454'></a><a href='#L454'>454</a>
+<a name='L455'></a><a href='#L455'>455</a>
+<a name='L456'></a><a href='#L456'>456</a>
+<a name='L457'></a><a href='#L457'>457</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -956,17 +988,33 @@
  * 
  * The debug system supports 9 different graphical display types that can be
  * instantiated and fed data for visualization.
+ * 
+ * ## Pascal to TypeScript Mapping
+ * 
+ * These constants map to the Pascal display type constants from DebugDisplayUnit.pas:
+ * ```pascal
+ * // Pascal Display Type Constants (from DebugDisplayUnit.pas:22-30)
+ * dis_logic     = 0;    // Logic analyzer display
+ * dis_scope     = 1;    // Oscilloscope display  
+ * dis_scope_xy  = 2;    // XY Scope display
+ * dis_fft       = 3;    // FFT frequency analysis
+ * dis_spectro   = 4;    // Spectrogram display
+ * dis_plot      = 5;    // Data plotting display
+ * dis_term      = 6;    // Terminal text display
+ * dis_bitmap    = 7;    // Bitmap graphics display
+ * dis_midi      = 8;    // MIDI visualization display
+ * ```
  */
 <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export enum D</span>ebugDisplayType {</span>
-<span class="cstat-no" title="statement not covered" >  LOGIC = 'LOGIC',          // Logic analyzer with single and multi-bit labels, 1..32 channels, can trigger on pattern</span>
-<span class="cstat-no" title="statement not covered" >  SCOPE = 'SCOPE',          // Oscilloscope with 1..8 channels, can trigger on level with hysteresis</span>
-<span class="cstat-no" title="statement not covered" >  SCOPE_XY = 'SCOPE_XY',    // XY oscilloscope with 1..8 channels, persistence of 0..512 samples, polar mode, log scale mode</span>
-<span class="cstat-no" title="statement not covered" >  FFT = 'FFT',              // Fast Fourier Transform with 1..8 channels, 4..2048 points, windowed results, log scale mode</span>
-<span class="cstat-no" title="statement not covered" >  SPECTRO = 'SPECTRO',      // Spectrograph with 4..2048-point FFT, windowed results, phase-coloring, and log scale mode</span>
-<span class="cstat-no" title="statement not covered" >  PLOT = 'PLOT',            // General-purpose plotter with cartesian and polar modes</span>
-<span class="cstat-no" title="statement not covered" >  TERM = 'TERM',            // Text terminal with up to 300 x 200 characters, 6..200 point font size, 4 simultaneous color schemes</span>
-<span class="cstat-no" title="statement not covered" >  BITMAP = 'BITMAP',        // Bitmap, 1..2048 x 1..2048 pixels, 1/2/4/8/16/32-bit pixels with 19 color systems</span>
-<span class="cstat-no" title="statement not covered" >  MIDI = 'MIDI',            // Piano keyboard with 1..128 keys, velocity depiction, variable screen scale</span>
+<span class="cstat-no" title="statement not covered" >  LOGIC = 'LOGIC',          // Logic analyzer with single and multi-bit labels, 1..32 channels, can trigger on pattern (dis_logic = 0)</span>
+<span class="cstat-no" title="statement not covered" >  SCOPE = 'SCOPE',          // Oscilloscope with 1..8 channels, can trigger on level with hysteresis (dis_scope = 1)</span>
+<span class="cstat-no" title="statement not covered" >  SCOPE_XY = 'SCOPE_XY',    // XY oscilloscope with 1..8 channels, persistence of 0..512 samples, polar mode, log scale mode (dis_scope_xy = 2)</span>
+<span class="cstat-no" title="statement not covered" >  FFT = 'FFT',              // Fast Fourier Transform with 1..8 channels, 4..2048 points, windowed results, log scale mode (dis_fft = 3)</span>
+<span class="cstat-no" title="statement not covered" >  SPECTRO = 'SPECTRO',      // Spectrograph with 4..2048-point FFT, windowed results, phase-coloring, and log scale mode (dis_spectro = 4)</span>
+<span class="cstat-no" title="statement not covered" >  PLOT = 'PLOT',            // General-purpose plotter with cartesian and polar modes (dis_plot = 5)</span>
+<span class="cstat-no" title="statement not covered" >  TERM = 'TERM',            // Text terminal with up to 300 x 200 characters, 6..200 point font size, 4 simultaneous color schemes (dis_term = 6)</span>
+<span class="cstat-no" title="statement not covered" >  BITMAP = 'BITMAP',        // Bitmap, 1..2048 x 1..2048 pixels, 1/2/4/8/16/32-bit pixels with 19 color systems (dis_bitmap = 7)</span>
+<span class="cstat-no" title="statement not covered" >  MIDI = 'MIDI',            // Piano keyboard with 1..128 keys, velocity depiction, variable screen scale (dis_midi = 8)</span>
 }
 &nbsp;
 /**
@@ -1390,7 +1438,7 @@ export interface PlotCommands {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-08-04T02:45:23.923Z
+                at 2025-08-04T16:45:35.619Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
