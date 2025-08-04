@@ -171,3 +171,4 @@ src/classes/f1.txt
 *.bmp
 /claudeSave
 WORK_STATE.md
+tasks/
