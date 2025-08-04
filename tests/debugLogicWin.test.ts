@@ -1,67 +1,84 @@
 import { DebugLogicWindow, LogicDisplaySpec } from '../src/classes/debugLogicWin';
-import { Context } from '../src/utils/context';
-import { BrowserWindow } from 'electron';
 import { 
   createMockContext, 
   createMockBrowserWindow, 
-  createMockCanvas,
   setupDebugWindowTest,
   cleanupDebugWindowTest 
 } from './shared/mockHelpers';
+import { BrowserWindow } from 'electron';
+
+// Store reference to mock BrowserWindow instances
+let mockBrowserWindowInstances: any[] = [];
 
 // Mock Electron
-jest.mock('electron', () => ({
-  BrowserWindow: jest.fn().mockImplementation(() => ({
-    loadURL: jest.fn(),
-    webContents: {
-      executeJavaScript: jest.fn().mockResolvedValue(undefined),
-      send: jest.fn(),
-      on: jest.fn()
+jest.mock('electron', () => {
+  const createMockBrowserWindow = require('./shared/mockHelpers').createMockBrowserWindow;
+  return {
+    BrowserWindow: jest.fn().mockImplementation(() => {
+      const mockWindow = createMockBrowserWindow();
+      mockBrowserWindowInstances.push(mockWindow);
+      return mockWindow;
+    }),
+    app: {
+      getPath: jest.fn().mockReturnValue('/mock/path')
     },
-    on: jest.fn(),
-    once: jest.fn(),
-    removeAllListeners: jest.fn(),
-    close: jest.fn(),
-    isDestroyed: jest.fn().mockReturnValue(false),
-    setAlwaysOnTop: jest.fn(),
-    setMenu: jest.fn()
-  })),
-  app: {
-    getPath: jest.fn().mockReturnValue('/mock/path')
-  },
-  ipcMain: {
-    on: jest.fn(),
-    removeAllListeners: jest.fn()
-  }
+    ipcMain: {
+      on: jest.fn(),
+      removeAllListeners: jest.fn()
+    }
+  };
+});
+
+// Mock file system
+jest.mock('fs', () => ({
+  existsSync: jest.fn(),
+  mkdirSync: jest.fn(),
+  writeFileSync: jest.fn()
+}));
+
+// Mock InputForwarder with complete interface
+jest.mock('../src/classes/shared/inputForwarder', () => ({
+  InputForwarder: jest.fn().mockImplementation(() => ({
+    stopPolling: jest.fn(),
+    startPolling: jest.fn(),
+    enableKeyboard: jest.fn(),
+    enableMouse: jest.fn(),
+    setMouseCoordinateTransform: jest.fn()
+  }))
 }));
 
 // Mock other dependencies
-jest.mock('../src/utils/context');
 jest.mock('../src/classes/shared/debugColor');
 jest.mock('../src/classes/shared/packedDataProcessor');
 jest.mock('../src/classes/shared/triggerProcessor');
 jest.mock('../src/classes/shared/canvasRenderer');
 jest.mock('../src/classes/shared/displaySpecParser');
 
+// Mock Jimp
+jest.mock('jimp', () => ({
+  Jimp: {
+    read: jest.fn().mockResolvedValue({
+      getBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-bmp-data'))
+    })
+  }
+}));
+
 describe('DebugLogicWindow', () => {
   let debugLogicWindow: DebugLogicWindow;
-  let mockContext: jest.Mocked<Context>;
+  let mockContext: any;
   let mockBrowserWindow: any;
   let mockDisplaySpec: LogicDisplaySpec;
+  let mockLogger: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // Clear mock instances
+    mockBrowserWindowInstances = [];
     
-    mockContext = {
-      logMessage: jest.fn(),
-      runtime: {
-        isDebugMode: false
-      },
-      logger: {
-        logMessage: jest.fn()
-      }
-    } as any;
-
+    // Setup test environment
+    const testSetup = setupDebugWindowTest();
+    mockContext = testSetup.mockContext;
+    mockLogger = mockContext.logger;
+    
     mockDisplaySpec = {
       displayName: 'LOGIC',
       windowTitle: 'Logic Display',
@@ -103,22 +120,11 @@ describe('DebugLogicWindow', () => {
       topLogicChannel: 31
     };
 
-    mockBrowserWindow = new BrowserWindow();
-    (BrowserWindow as any).mockImplementation(() => mockBrowserWindow);
-
     debugLogicWindow = new DebugLogicWindow(mockContext, mockDisplaySpec);
-    
-    // Set up default inputForwarder mock
-    debugLogicWindow['inputForwarder'] = {
-      setMouseCoordinateTransform: jest.fn()
-    } as any;
   });
 
   afterEach(() => {
     cleanupDebugWindowTest();
-    if (debugLogicWindow) {
-      debugLogicWindow.closeDebugWindow();
-    }
   });
 
   describe('Mouse Coordinate Display', () => {
@@ -165,30 +171,25 @@ describe('DebugLogicWindow', () => {
     });
 
     it('should call enableMouseInput and set up coordinate display', () => {
-      const mockDebugWindow = {
-        webContents: {
-          executeJavaScript: jest.fn(),
-          on: jest.fn()
-        },
-        setMenu: jest.fn(),
-        loadURL: jest.fn()
-      };
-      debugLogicWindow['debugWindow'] = mockDebugWindow as any;
-      debugLogicWindow['inputForwarder'] = {
-        startPolling: jest.fn(),
-        setMouseCoordinateTransform: jest.fn()
-      } as any;
-
+      // Create a window first
+      debugLogicWindow['createDebugWindow']();
+      
+      // Get the created mock window
+      const mockWindow = mockBrowserWindowInstances[0];
+      expect(mockWindow).toBeDefined();
+      
       // Enable mouse input
       debugLogicWindow['enableMouseInput']();
 
-      // Should start polling and add coordinate display JavaScript
+      // Should start polling
       expect(debugLogicWindow['inputForwarder'].startPolling).toHaveBeenCalled();
-      expect(mockDebugWindow.webContents.executeJavaScript).toHaveBeenCalled();
+      
+      // Should add coordinate display JavaScript
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
       
       // Check that the JavaScript includes coordinate display setup
-      const jsCall = mockDebugWindow.webContents.executeJavaScript.mock.calls.find(
-        call => call[0].includes('coordinate-display')
+      const jsCall = mockWindow.webContents.executeJavaScript.mock.calls.find(
+        (call: any) => call[0].includes('coordinate-display')
       );
       expect(jsCall).toBeDefined();
       expect(jsCall[0]).toContain('coordDisplay.textContent = sampleX + \',\' + channelY');

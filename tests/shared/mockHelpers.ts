@@ -277,6 +277,7 @@ export function createMockBrowserWindow(overrides: any = {}) {
     removeListener: jest.fn(),
     removeAllListeners: jest.fn(),
     emit: jest.fn(),
+    setMenu: jest.fn(),
     ...overrides
   };
 

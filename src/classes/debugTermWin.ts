@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron';
 import { Context } from '../utils/context';
 import { DebugColor } from './shared/debugColor';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { CanvasRenderer } from './shared/canvasRenderer';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { waitMSec } from '../utils/timerUtils';
@@ -35,6 +36,38 @@ export interface TermDisplaySpec {
   hideXY: boolean;
 }
 
+/**
+ * Debug Terminal Window Implementation
+ * 
+ * IMPORTANT: This is NOT a standard terminal emulator. It follows the Pascal PNut
+ * implementation which repurposes some ASCII control characters for debug-specific functions.
+ * 
+ * Key differences from standard terminals:
+ * - ASCII 7 (BELL) is used for color combo #3 selection, not an audible bell
+ * - ASCII 4-7 select color combos 0-3 respectively
+ * - No native ANSI escape sequence support in Pascal (we've added it as an enhancement)
+ * - Limited to the specific commands needed for P2 debug output
+ * 
+ * Supported numeric commands:
+ * - 0: Clear screen and home cursor
+ * - 1: Home cursor
+ * - 2: Set column (followed by column number)
+ * - 3: Set row (followed by row number)
+ * - 4-7: Select color combo 0-3
+ * - 8: Backspace (with line wrap)
+ * - 9: Tab (advance to next 8-column boundary)
+ * - 10: Line feed
+ * - 13: Carriage return
+ * - 32-255: Printable characters
+ * 
+ * String commands:
+ * - CLEAR: Clear screen
+ * - UPDATE: Force display update
+ * - SAVE WINDOW 'filename': Save to BMP
+ * - CLOSE: Close window
+ * - PC_KEY: Enable keyboard forwarding
+ * - PC_MOUSE: Enable mouse forwarding
+ */
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private isFirstDisplayData: boolean = true;
@@ -44,6 +77,7 @@ export class DebugTermWindow extends DebugWindowBase {
   private deferredCommands: string[] = [];
   private cursorPosition: Position = { x: 0, y: 0 };
   private selectedCombo: number = 0;
+  private canvasRenderer: CanvasRenderer = new CanvasRenderer();
 
   constructor(ctx: Context, displaySpec: TermDisplaySpec) {
     super(ctx);
@@ -430,7 +464,9 @@ export class DebugTermWindow extends DebugWindowBase {
     //    32..255 = Printable character.
     //   'string' - printable characters
     //
-    //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
+    // Preserve original command for error logging (required by base class)
+    const unparsedCommand = lineParts.join(' ');
+    //this.logMessage(`at updateContent(${unparsedCommand})`);
     // ON first numeric data, create the window! then do update
     for (let index = 1; index < lineParts.length; index++) {
       const currLinePart = lineParts[index];
@@ -515,7 +551,7 @@ export class DebugTermWindow extends DebugWindowBase {
         this.enableMouseInput();
         break; // PC_MOUSE must be last command
       } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]} of [${lineParts.join(' ')}]`);
+        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]}\nCommand: ${unparsedCommand}`);
       }
     }
   }
@@ -666,69 +702,174 @@ export class DebugTermWindow extends DebugWindowBase {
   private writeStringToTerm(text: string): void {
     if (this.debugWindow) {
       this.logMessage(`at writeStringToTerm(${text})`);
-      try {
-        const textHeight: number = this.displaySpec.font.charHeight;
-        const textSizePts: number = this.displaySpec.font.textSizePts;
-        const lineHeight: number = this.displaySpec.font.lineHeight;
-        const textYOffset: number = this.cursorPosition.y * lineHeight;
-        const textXOffset: number = this.cursorPosition.x * this.displaySpec.font.charWidth + this.contentInset;
-        const vertLineInset: number = (lineHeight - textHeight) / 2;
-        const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline + 4; // 4 is fudge number
-        const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
-        const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-        // cts.font NOTEs:
-        // ORDER: [font-style] [font-variant] [font-weight] [font-size]/[line-height] [font-family]
-        // font-style: Can be "normal", "italic", or "oblique" (optional)
-        // font-variant: Can be "normal" or "small-caps" (optional)
-        // font-weight: Can be "normal", "bold", "bolder", "lighter", or a number between 100 and 900 (optional)
-        // font-size: Specified in pixels (px), em, or other valid CSS units (required)
-        // line-height: Specified after font-size, separated by a forward slash (optional)
-        // font-family: The name of the font family or a comma-separated list of font families (required)
-        const fontSpec: string = `normal ${textSizePts}pt Consolas, sans-serif`;
-        this.logMessage(
-          `  -- textXY=(${textYOffset},${textXOffset}), ht=(${textHeight}) colors=[${fgColor},${bgcolor}]`
-        );
-        this.logMessage(`  -- text=[${text}] fontSpec=[${fontSpec}]`);
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            // Locate the canvas element by its ID
-            const canvas = document.getElementById('text-area');
-
-
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              // Get the canvas context
-              const ctx = canvas.getContext('2d');
-
-              if (ctx) {
-                // Set the line color and width
-                const lineColor = \'${fgColor}\';
-                const backgroundColor = \'${bgcolor}\';
-                const lineHeight = ${lineHeight};
-
-                // Add text background
-                ctx.font = \'${fontSpec}\';
-                const textWidth = ctx.measureText('${text}').width;
-
-                // clear existing text & background
-                // clearRect(x, y, width, height);
-                ctx.clearRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
-
-                // Add text background color
-                ctx.fillStyle = backgroundColor;
-                // fillRect(x, y, width, height);
-                ctx.fillRect(${textXOffset}, ${textYOffset}, textWidth, lineHeight);
-
-                // Add text of color
-                ctx.fillStyle = lineColor;
-                // fillText(text, x, y [, maxWidth]); // where y is baseline
-                ctx.fillText(\'${text}\', ${textXOffset}, ${textYbaseline});
-              }
-            }
-          })();
-        `);
-      } catch (error) {
-        console.error('Failed to update text:', error);
+      
+      // Process string character by character, handling ANSI escape sequences
+      let i = 0;
+      while (i < text.length) {
+        const char = text.charAt(i);
+        
+        // Check for ESC character (ASCII 27)
+        if (char === '\x1B' && i + 1 < text.length && text.charAt(i + 1) === '[') {
+          // Start of ANSI escape sequence
+          i += 2; // Skip ESC[
+          
+          // Parse the escape sequence
+          const sequence = this.parseAnsiSequence(text, i);
+          if (sequence) {
+            this.processAnsiCommand(sequence.command, sequence.params);
+            i = sequence.endIndex;
+          }
+        } else {
+          // Regular character - write to terminal
+          this.writeCharToTerm(char);
+          i++;
+        }
       }
+    }
+  }
+
+  /**
+   * Parse ANSI escape sequence starting after ESC[
+   * Returns the command, parameters, and end index
+   * 
+   * NOTE: ANSI escape sequence support is a TypeScript enhancement not present in the
+   * Pascal implementation. This allows P2 programs to use standard terminal control
+   * sequences for cursor movement and screen control in addition to the numeric commands.
+   */
+  private parseAnsiSequence(text: string, startIndex: number): { command: string; params: number[]; endIndex: number } | null {
+    let i = startIndex;
+    let paramStr = '';
+    
+    // Collect digits and semicolons
+    while (i < text.length && (text.charAt(i) >= '0' && text.charAt(i) <= '9' || text.charAt(i) === ';')) {
+      paramStr += text.charAt(i);
+      i++;
+    }
+    
+    // Get the command character
+    if (i < text.length) {
+      const command = text.charAt(i);
+      const params = paramStr ? paramStr.split(';').map(p => parseInt(p, 10) || 0) : [];
+      return { command, params, endIndex: i + 1 };
+    }
+    
+    return null;
+  }
+
+  /**
+   * Process ANSI escape sequence command
+   */
+  private processAnsiCommand(command: string, params: number[]): void {
+    switch (command) {
+      case 'A': // Cursor up
+        const upLines = params[0] || 1;
+        this.cursorPosition.y = Math.max(0, this.cursorPosition.y - upLines);
+        break;
+        
+      case 'B': // Cursor down
+        const downLines = params[0] || 1;
+        this.cursorPosition.y = Math.min(this.displaySpec.size.rows - 1, this.cursorPosition.y + downLines);
+        break;
+        
+      case 'C': // Cursor forward
+        const rightCols = params[0] || 1;
+        this.cursorPosition.x = Math.min(this.displaySpec.size.columns - 1, this.cursorPosition.x + rightCols);
+        break;
+        
+      case 'D': // Cursor back
+        const leftCols = params[0] || 1;
+        this.cursorPosition.x = Math.max(0, this.cursorPosition.x - leftCols);
+        break;
+        
+      case 'H': // Cursor position
+      case 'f': // Cursor position (alternate)
+        const row = (params[0] || 1) - 1; // Convert to 0-based
+        const col = (params[1] || 1) - 1; // Convert to 0-based
+        this.cursorPosition.y = Math.max(0, Math.min(this.displaySpec.size.rows - 1, row));
+        this.cursorPosition.x = Math.max(0, Math.min(this.displaySpec.size.columns - 1, col));
+        break;
+        
+      case 'J': // Erase display
+        if (params[0] === 2) {
+          // Clear entire screen
+          this.clearTerm();
+        }
+        break;
+        
+      case 'K': // Erase line
+        if (params[0] === 0 || params[0] === undefined) {
+          // Clear from cursor to end of line
+          this.clearLineFromCursor();
+        }
+        break;
+        
+      case 'm': // Set graphics mode (colors)
+        // Basic color support - could be expanded
+        this.processColorCommand(params);
+        break;
+        
+      default:
+        this.logMessage(`Unknown ANSI command: ESC[${params.join(';')}${command}`);
+    }
+  }
+
+  /**
+   * Write a single character to the terminal at the current cursor position
+   */
+  private writeCharToTerm(char: string): void {
+    if (!this.debugWindow) return;
+    
+    try {
+      const textHeight: number = this.displaySpec.font.charHeight;
+      const textSizePts: number = this.displaySpec.font.textSizePts;
+      const lineHeight: number = this.displaySpec.font.lineHeight;
+      const charWidth: number = this.displaySpec.font.charWidth;
+      const textYOffset: number = this.cursorPosition.y * lineHeight + this.contentInset;
+      const textXOffset: number = this.cursorPosition.x * charWidth + this.contentInset;
+      const vertLineInset: number = (lineHeight - textHeight) / 2;
+      const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline;
+      const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
+      const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+      const fontSpec: string = `normal ${textSizePts}pt Consolas, monospace`;
+      
+      // Use the canvas renderer instead of direct JavaScript
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const canvas = document.getElementById('text-area');
+          if (canvas && canvas instanceof HTMLCanvasElement) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              // Clear character cell
+              ctx.fillStyle = '${bgcolor}';
+              ctx.fillRect(${textXOffset}, ${textYOffset}, ${charWidth}, ${lineHeight});
+              
+              // Draw character
+              ctx.font = '${fontSpec}';
+              ctx.fillStyle = '${fgColor}';
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'alphabetic';
+              ctx.fillText('${char}', ${textXOffset}, ${textYbaseline});
+            }
+          }
+        })();
+      `);
+      
+      // Advance cursor
+      this.cursorPosition.x++;
+      
+      // Handle line wrap
+      if (this.cursorPosition.x >= this.displaySpec.size.columns) {
+        this.cursorPosition.x = 0;
+        this.cursorPosition.y++;
+        
+        // Handle scroll if at bottom
+        if (this.cursorPosition.y >= this.displaySpec.size.rows) {
+          this.scrollUp();
+          this.cursorPosition.y = this.displaySpec.size.rows - 1;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to write character:', error);
     }
   }
 
@@ -737,5 +878,121 @@ export class DebugTermWindow extends DebugWindowBase {
    */
   protected getCanvasId(): string {
     return 'terminal-canvas'; // Terminal window uses a different approach, but we need to provide an ID
+  }
+
+  /**
+   * Clear from cursor to end of line
+   */
+  private clearLineFromCursor(): void {
+    if (!this.debugWindow) return;
+    
+    const charWidth = this.displaySpec.font.charWidth;
+    const lineHeight = this.displaySpec.font.lineHeight;
+    const startX = this.cursorPosition.x * charWidth + this.contentInset;
+    const y = this.cursorPosition.y * lineHeight + this.contentInset;
+    const width = (this.displaySpec.size.columns - this.cursorPosition.x) * charWidth;
+    const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+    
+    this.debugWindow.webContents.executeJavaScript(`
+      (function() {
+        const canvas = document.getElementById('text-area');
+        if (canvas && canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '${bgcolor}';
+            ctx.fillRect(${startX}, ${y}, ${width}, ${lineHeight});
+          }
+        }
+      })();
+    `);
+  }
+
+  /**
+   * Scroll terminal content up by one line
+   */
+  private scrollUp(): void {
+    if (!this.debugWindow) return;
+    
+    const lineHeight = this.displaySpec.font.lineHeight;
+    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
+    const canvasHeight = this.displaySpec.size.rows * lineHeight;
+    const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+    
+    // Use canvas renderer to scroll
+    this.debugWindow.webContents.executeJavaScript(
+      this.canvasRenderer.scrollBitmap(
+        'text-area',
+        0,
+        -lineHeight,
+        canvasWidth + 2 * this.contentInset,
+        canvasHeight + 2 * this.contentInset
+      )
+    );
+    
+    // Clear the bottom line after scrolling
+    this.debugWindow.webContents.executeJavaScript(`
+      (function() {
+        const canvas = document.getElementById('text-area');
+        if (canvas && canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '${bgcolor}';
+            ctx.fillRect(${this.contentInset}, ${(this.displaySpec.size.rows - 1) * lineHeight + this.contentInset}, ${canvasWidth}, ${lineHeight});
+          }
+        }
+      })();
+    `);
+  }
+
+  /**
+   * Process ANSI color commands (ESC[...m)
+   */
+  private processColorCommand(params: number[]): void {
+    // Basic ANSI color support
+    for (const param of params) {
+      if (param >= 30 && param <= 37) {
+        // Foreground color - map to color combos if available
+        // This is a simplified implementation
+        if (param === 37) this.selectedCombo = 0; // White
+        else if (param === 32) this.selectedCombo = 1; // Green
+      } else if (param === 0) {
+        // Reset to default
+        this.selectedCombo = 0;
+      }
+    }
+  }
+
+  /**
+   * Transform mouse coordinates to terminal character positions
+   * X: column number (0-based)
+   * Y: row number (0-based)
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Calculate margins
+    const marginLeft = this.contentInset;
+    const marginTop = this.contentInset;
+    
+    // Check if mouse is within the terminal area
+    const terminalWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
+    const terminalHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
+    
+    if (x >= marginLeft && x < marginLeft + terminalWidth && 
+        y >= marginTop && y < marginTop + terminalHeight) {
+      // Transform to character coordinates
+      const relX = x - marginLeft;
+      const relY = y - marginTop;
+      
+      // Convert to column and row
+      const column = Math.floor(relX / this.displaySpec.font.charWidth);
+      const row = Math.floor(relY / this.displaySpec.font.lineHeight);
+      
+      return { 
+        x: Math.max(0, Math.min(column, this.displaySpec.size.columns - 1)),
+        y: Math.max(0, Math.min(row, this.displaySpec.size.rows - 1))
+      };
+    }
+    
+    // Outside terminal area
+    return { x: -1, y: -1 };
   }
 }

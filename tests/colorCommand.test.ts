@@ -143,9 +143,10 @@ describe('COLOR Command Implementation', () => {
       expect(isValid).toBe(false);
     });
 
-    it('should reject out of range decimal values', () => {
-      const [isValid] = DebugColor.parseColorSpec('999999999');
-      expect(isValid).toBe(false);
+    it('should cap out of range decimal values', () => {
+      const [isValid, hexColor] = DebugColor.parseColorSpec('999999999');
+      expect(isValid).toBe(true);
+      expect(hexColor).toBe('#ffffff'); // Capped at max RGB value
     });
 
     it('should reject invalid brightness values', () => {

@@ -61,6 +61,36 @@ export interface CartesianSpec {
   xdir: boolean; // If xdir is 0, the X axis points right. If xdir is non-0, the X axis points left.
 }
 
+/**
+ * Debug Plot Window Implementation
+ * 
+ * IMPORTANT: This implementation follows Pascal PNut behavior for parameter handling.
+ * 
+ * Key Pascal Behavioral Differences:
+ * 
+ * 1. **Parameter Validation**:
+ *    - Pascal does NOT validate numeric ranges (e.g., opacity can exceed 0-255)
+ *    - Pascal does NOT convert negative values to positive (e.g., negative linesize is valid)
+ *    - Pascal does NOT clamp values to "safe" ranges
+ * 
+ * 2. **Invalid Parameter Handling**:
+ *    - When parsing fails, Pascal keeps the previous value (doesn't use defaults)
+ *    - Non-numeric parameters are silently ignored, retaining current values
+ *    - Required parameters (like BOX width/height) abandon the command if invalid
+ * 
+ * 3. **Command-Specific Behaviors**:
+ *    - **DOT**: Uses current lineSize and opacity if parameters are invalid/missing
+ *    - **BOX**: Requires valid width/height; linesize defaults to 0 (filled), not vLineSize
+ *    - **LINESIZE**: Accepts any integer including negatives (used in FFT for special modes)
+ *    - **OPACITY**: Accepts any integer without range validation
+ * 
+ * 4. **Coordinate Systems**:
+ *    - Negative dimensions in BOX/OVAL are drawn as-is (not converted to positive)
+ *    - This allows for directional drawing based on sign
+ * 
+ * Note: Tests expecting defensive programming (clamping, validation, etc.) may fail
+ * as this implementation prioritizes Pascal parity over input validation.
+ */
 export class DebugPlotWindow extends DebugWindowBase {
   private displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
   private isFirstDisplayData: boolean = true;
@@ -787,32 +817,50 @@ export class DebugPlotWindow extends DebugWindowBase {
         let dotSize = this.lineSize;
         let dotOpacity = this.opacity;
         
-        // Parse optional parameters
-        if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-          dotSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 1;
-          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            dotOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
+        // Parse optional parameters - match Pascal behavior
+        if (index + 1 < lineParts.length) {
+          const sizeParsed = Spin2NumericParser.parseInteger(lineParts[++index], true);
+          if (sizeParsed !== null) {
+            dotSize = sizeParsed; // Pascal doesn't convert negatives or clamp
+          }
+          
+          if (index + 1 < lineParts.length) {
+            const opacityParsed = Spin2NumericParser.parseInteger(lineParts[++index], true);
+            if (opacityParsed !== null) {
+              dotOpacity = opacityParsed; // Pascal doesn't clamp opacity
+            }
           }
         }
         
         this.drawDotToPlot(dotSize, dotOpacity);
       } else if (lineParts[index].toUpperCase() == 'BOX') {
-        // BOX command - draw filled rectangle
+        // BOX command - draw filled rectangle (requires width and height)
         if (index + 2 < lineParts.length) {
-          const width = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-          const height = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-          let boxLineSize = 0; // 0 = filled
-          let boxOpacity = this.opacity;
+          // Parse required width and height - Pascal uses Break if these fail
+          const parsedWidth = Spin2NumericParser.parseCoordinate(lineParts[++index]);
+          const parsedHeight = Spin2NumericParser.parseCoordinate(lineParts[++index]);
           
-          // Parse optional parameters
-          if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            boxLineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
-            if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              boxOpacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
+          if (parsedWidth !== null && parsedHeight !== null) {
+            let boxLineSize = 0; // 0 = filled (Pascal default, not vLineSize)
+            let boxOpacity = this.opacity;
+            
+            // Parse optional parameters
+            if (index + 1 < lineParts.length) {
+              const lineSizeParsed = Spin2NumericParser.parseInteger(lineParts[++index], true);
+              if (lineSizeParsed !== null) {
+                boxLineSize = lineSizeParsed; // Pascal doesn't convert negatives
+                
+                if (index + 1 < lineParts.length) {
+                  const opacityParsed = Spin2NumericParser.parseInteger(lineParts[++index], true);
+                  if (opacityParsed !== null) {
+                    boxOpacity = opacityParsed; // Pascal doesn't clamp
+                  }
+                }
+              }
             }
+            
+            this.drawBoxToPlot(parsedWidth, parsedHeight, boxLineSize, boxOpacity);
           }
-          
-          this.drawBoxToPlot(width, height, boxLineSize, boxOpacity);
         }
       } else if (lineParts[index].toUpperCase() == 'OBOX') {
         // OBOX command - draw outlined rectangle
@@ -1022,23 +1070,26 @@ export class DebugPlotWindow extends DebugWindowBase {
         // Set line size
         if (index + 1 < lineParts.length) {
           const sizeStr = lineParts[++index];
-          const sizeParsed = Spin2NumericParser.parseCount(sizeStr);
-          this.lineSize = sizeParsed ?? 1;
-          if (sizeParsed === null) {
-            this.logParsingWarning(unparsedCommand, 'LINESIZE', sizeStr, 1);
+          const sizeParsed = Spin2NumericParser.parseInteger(sizeStr, true);
+          if (sizeParsed !== null) {
+            this.lineSize = sizeParsed; // Pascal doesn't validate/clamp linesize
+          } else {
+            // Pascal doesn't change lineSize if parsing fails
+            this.logParsingWarning(unparsedCommand, 'LINESIZE', sizeStr, this.lineSize);
           }
           this.logMessage(`  -- LINESIZE set to ${this.lineSize}`);
         }
       } else if (lineParts[index].toUpperCase() == 'OPACITY') {
-        // Set opacity (0-255)
+        // Set opacity
         if (index + 1 < lineParts.length) {
           const opacityStr = lineParts[++index];
-          const opacityParsed = Spin2NumericParser.parseCount(opacityStr);
-          const opacityValue = opacityParsed ?? 255;
-          if (opacityParsed === null) {
-            this.logParsingWarning(unparsedCommand, 'OPACITY', opacityStr, 255);
+          const opacityParsed = Spin2NumericParser.parseInteger(opacityStr, true);
+          if (opacityParsed !== null) {
+            this.opacity = opacityParsed; // Pascal doesn't clamp opacity
+          } else {
+            // Pascal doesn't change opacity if parsing fails
+            this.logParsingWarning(unparsedCommand, 'OPACITY', opacityStr, this.opacity);
           }
-          this.opacity = Math.max(0, Math.min(255, opacityValue));
           this.logMessage(`  -- OPACITY set to ${this.opacity}`);
         }
       } else if (lineParts[index].toUpperCase() == 'TEXTANGLE') {
@@ -1139,9 +1190,10 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'SPRITE') {
         // SPRITE command - draw a sprite
         if (index + 1 < lineParts.length) {
-          const spriteId = Spin2NumericParser.parseCount(lineParts[++index]) ?? 0;
+          const spriteIdParam = lineParts[++index];
+          const spriteId = Spin2NumericParser.parseCount(spriteIdParam);
           
-          if (!isNaN(spriteId)) {
+          if (spriteId !== null && !isNaN(spriteId)) {
             // Parse optional parameters
             let orientation = 0;
             let scale = 1.0;

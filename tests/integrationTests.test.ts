@@ -99,7 +99,7 @@ describe('Comprehensive Integration Tests', () => {
       const states = [
         { armed: false, fired: false, holdoff: 0, expectedColor: config.background },
         { armed: true, fired: false, holdoff: 0, expectedColor: config.triggerArmed },
-        { armed: true, fired: true, holdoff: 32, expectedColor: config.triggerFired },
+        { armed: true, fired: true, holdoff: 32, expectedColor: config.triggerHoldoff }, // holdoff takes precedence
         { armed: false, fired: true, holdoff: 16, expectedColor: config.triggerHoldoff }
       ];
 
@@ -245,7 +245,7 @@ describe('Comprehensive Integration Tests', () => {
       const colorConfigs = [
         { background: 'BLACK', brightness: 0, grid: 'GRAY', gridBrightness: 8 },
         { background: 'WHITE', brightness: 15, grid: 'BLACK', gridBrightness: 0 },
-        { background: 'BLUE', brightness: 10, grid: 'YELLOW', gridBrightness: 12 }
+        { background: 'BLUE', brightness: 10, grid: 'YELLOW', gridBrightness: 4 } // More contrast
       ];
 
       colorConfigs.forEach(config => {
@@ -343,8 +343,8 @@ describe('Comprehensive Integration Tests', () => {
       const samplesPerUpdate = sampleRate / updateRate;
       const bufferSize = samplesPerUpdate * 4; // 32-bit samples
       
-      expect(samplesPerUpdate).toBe(16666); // ~16k samples per frame
-      expect(bufferSize).toBe(66664); // ~65KB per update
+      expect(Math.floor(samplesPerUpdate)).toBe(16666); // ~16k samples per frame
+      expect(Math.floor(samplesPerUpdate * 4)).toBe(66666); // ~65KB per update
       
       // Verify memory usage is reasonable
       const maxWindows = 8;

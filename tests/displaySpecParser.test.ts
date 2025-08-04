@@ -119,7 +119,7 @@ describe('DisplaySpecParser', () => {
       expect(parsed).toBe(true);
       expect(consumed).toBe(3);
       expect(spec.window.background).toBe('#000000');
-      expect(spec.window.grid).toBe('#FFFFFF');
+      expect(spec.window.grid).toBe('#ffffff');
     });
 
     test('should handle case-insensitive keywords', () => {
@@ -147,7 +147,7 @@ describe('DisplaySpecParser', () => {
       
       expect(isValid).toBe(true);
       expect(consumed).toBe(2);
-      expect(windowColor.background).toBe('#FF0000');
+      expect(windowColor.background).toBe('#ff0000');
     });
 
     test('should parse hex color with # prefix', () => {
@@ -165,7 +165,7 @@ describe('DisplaySpecParser', () => {
       
       expect(isValid).toBe(true);
       expect(consumed).toBe(2);
-      expect(windowColor.background).toBe('#FF0000');
+      expect(windowColor.background).toBe('#ff0000');
     });
 
     test('should parse color names', () => {
@@ -189,7 +189,7 @@ describe('DisplaySpecParser', () => {
         
         expect(isValid).toBe(true);
         expect(consumed).toBe(2);
-        expect(windowColor.background).toBe(test.hex);
+        expect(windowColor.background).toBe(test.hex.toLowerCase());
       }
     });
 
@@ -200,7 +200,7 @@ describe('DisplaySpecParser', () => {
       expect(isValid).toBe(true);
       expect(consumed).toBe(3);
       expect(windowColor.background).toBe('#000000');
-      expect(windowColor.grid).toBe('#00FFFF');
+      expect(windowColor.grid).toBe('#00ffff');
     });
 
     test('should handle mixed color formats', () => {
@@ -209,8 +209,8 @@ describe('DisplaySpecParser', () => {
       
       expect(isValid).toBe(true);
       expect(consumed).toBe(3);
-      expect(windowColor.background).toBe('#FF0000');
-      expect(windowColor.grid).toBe('#0000FF');
+      expect(windowColor.background).toBe('#ff0000');
+      expect(windowColor.grid).toBe('#0000ff');
     });
 
     test('should reject invalid color values', () => {
@@ -331,8 +331,8 @@ describe('DisplaySpecParser', () => {
       // Parse COLOR
       let [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, spec);
       expect(parsed).toBe(true);
-      expect(spec.window.background).toBe('#FF0000');
-      expect(spec.window.grid).toBe('#00FF00');
+      expect(spec.window.background).toBe('#ff0000');
+      expect(spec.window.grid).toBe('#00ff00');
       index += consumed;
       
       // Parse SIZE

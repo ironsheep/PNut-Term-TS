@@ -11,7 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - If the task requires external knowledge or create package, also research to get latest knowledge (Use task tool for research)
 - Don't over plan it, always think MVP
 - Once you write the plan, firstly ask me to review it. Do not continue until I approve the plan.
-- Once I've approved the plan then create a to-do list with paragraph-length to-dos. Include every part of the plan synthesising my feedback.
+- Once I've approved the plan then create a to-dos list with paragraph-length to-dos. Include every part of the plan synthesising my feedback.
+- Let's remember that we like to make to-dos lists with this much detail from now on
 
 ### While implementing
 - You should update the plan as you work.

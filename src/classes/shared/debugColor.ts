@@ -27,14 +27,14 @@ export class DebugColor {
   // Chip's 10 basic colors from Pascal reference
   private static colorNameToHex: { [key: string]: string } = {
     BLACK: '#000000',   // Color 0
-    WHITE: '#FFFFFF',   // Color 1
-    ORANGE: '#FF7F00',  // Color 2 (was #FFA500 in parser)
-    BLUE: '#0000FF',    // Color 3
-    GREEN: '#00FF00',   // Color 4 (was #008000)
-    CYAN: '#00FFFF',    // Color 5
-    RED: '#FF0000',     // Color 6
-    MAGENTA: '#FF00FF', // Color 7
-    YELLOW: '#FFFF00',  // Color 8
+    WHITE: '#ffffff',   // Color 1
+    ORANGE: '#ff7f00',  // Color 2 (was #FFA500 in parser)
+    BLUE: '#0000ff',    // Color 3
+    GREEN: '#00ff00',   // Color 4 (was #008000)
+    CYAN: '#00ffff',    // Color 5
+    RED: '#ff0000',     // Color 6
+    MAGENTA: '#ff00ff', // Color 7
+    YELLOW: '#ffff00',  // Color 8
     GRAY: '#808080',    // Color 9
     // Alternative spellings and legacy colors
     GREY: '#808080',    // Alternative spelling
@@ -153,7 +153,7 @@ export class DebugColor {
         // Use Spin2NumericParser which supports $hex, %binary, %%quaternary, and decimal formats
         const colorValue = Spin2NumericParser.parseColor(colorSpec);
         if (colorValue !== null) {
-          hexColor = '#' + colorValue.toString(16).padStart(6, '0').toUpperCase();
+          hexColor = '#' + colorValue.toString(16).padStart(6, '0');
           isValid = true;
         }
         // Also support # prefix for hex (web-style)

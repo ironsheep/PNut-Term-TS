@@ -59,7 +59,8 @@ describe('DebugBitmapWindow', () => {
       show: jest.fn(),
       on: jest.fn(),
       webContents: {
-        executeJavaScript: jest.fn().mockResolvedValue(undefined)
+        executeJavaScript: jest.fn().mockResolvedValue(undefined),
+        on: jest.fn()
       }
     };
     (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mockImplementation(() => mockBrowserWindow);

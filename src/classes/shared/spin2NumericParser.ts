@@ -393,7 +393,7 @@ export class Spin2NumericParser {
 
     if (result > 0xFFFFFF) {
       this.logError('Color value exceeds 24-bit RGB range', value);
-      return 0xFFFFFF;
+      return 0xFFFFFF; // Cap at max RGB value
     }
 
     return result;

@@ -25,6 +25,25 @@ The following classes currently have no test files:
 
 ## Code Quality Issues
 
+### Window Classes Review
+- **TODO**: Review all debug window classes before release to ensure:
+  - Proper use of shared CanvasRenderer for all canvas operations
+  - Direct canvas manipulation via executeJavaScript should be moved to CanvasRenderer
+  - CSS/HTML usage should be consistent and centralized
+  - All windows properly extend DebugWindowBase features
+  - InputForwarder integration is consistent across all windows
+  - Error handling with unparsed command strings is implemented
+
+### Missing Pascal Behavior Documentation
+- **TODO**: Add comprehensive Pascal behavior documentation comments before class declarations:
+  - `debugLogicWin.ts` - Missing detailed Pascal implementation notes
+  - `debugScopeWin.ts` - Missing detailed Pascal implementation notes
+  - `debugPlotWin.ts` - Missing detailed Pascal implementation notes
+  - `debugBitmapWin.ts` - Has some but needs expansion on Pascal differences
+  - `debugMidiWin.ts` - Has good documentation, verify completeness
+  - `debugTermWin.ts` - ✓ Complete (just added)
+  - Note: Document any TypeScript enhancements beyond Pascal (like ANSI in Term)
+
 ### TECH-DEBT Markers in Code
 Run `grep -r "TECH-DEBT" src/` to find inline technical debt markers.
 
