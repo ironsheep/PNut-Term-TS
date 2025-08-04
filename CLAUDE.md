@@ -604,6 +604,13 @@ The debug windows now support PC_KEY and PC_MOUSE commands for input forwarding 
   - X: Negative sample index (samples back from current position)
   - Y: Channel number (0-based from top)
 - Canvas ID: 'canvas'
+- **Visual Coordinate Display** (matching Pascal implementation):
+  - Shows coordinate tooltip near cursor when hovering over display area
+  - Format: `-samples,channel` (e.g., "-47,3")
+  - Crosshair overlay for precise positioning
+  - Display colors match window's grid/background colors
+  - Auto-positions to avoid window edges
+  - Only visible when mouse is within the logic data display area
 
 **DebugScopeWindow**:
 - Parses PC_KEY and PC_MOUSE commands in `updateContent()`
@@ -648,6 +655,46 @@ LONG 6: pixel       // Pixel color at mouse position: $00_RR_GG_BB or -1 if outs
 - **Pixel Color Sampling**: Placeholder for future implementation (currently returns 0x000000)
 - **Event Queuing**: Uses existing InputForwarder queue system for reliable event delivery
 
+### Logic Window Mouse Behavior Details
+
+The logic window provides an enhanced mouse experience that matches the Pascal reference implementation:
+
+**Visual Feedback**:
+1. **Coordinate Display Tooltip**:
+   - Appears near the mouse cursor when hovering over the logic data area
+   - Shows format: `-samples,channel` where:
+     - Negative sample number indicates samples back from current/latest sample
+     - Channel number is 0-based from top of display
+   - Example: "-47,3" means 47 samples ago on channel 3
+   - Tooltip background matches window background color
+   - Text color matches grid color for consistency
+   - Auto-positions to avoid clipping at window edges
+
+2. **Crosshair Overlay**:
+   - Thin horizontal and vertical lines intersecting at cursor position
+   - Uses grid color with 50% opacity
+   - Helps with precise sample and channel identification
+   - Only visible when mouse is within the data display area
+
+**Coordinate System**:
+- **X-axis (Samples)**:
+  - Calculated as: `-Math.floor((displayWidth - 1 - mouseX) / spacing)`
+  - Negative values count backwards from the right edge (current position)
+  - -1 = most recent sample, -2 = one sample back, etc.
+  - Allows intuitive reference to "how many samples ago" an event occurred
+
+- **Y-axis (Channels)**:
+  - Calculated as: `Math.floor((mouseY - marginTop) / charHeight)`
+  - Zero-based index from top of display
+  - Direct correspondence to visual channel layout
+
+**Implementation Notes**:
+- Coordinate display is added via `enableMouseInput()` override in DebugLogicWindow
+- Uses absolute positioning for tooltip and crosshair elements
+- Mouse events are captured on the container element
+- Display elements have `pointer-events: none` to avoid interfering with mouse input
+- Coordinates are calculated using the same formulas as the Pascal implementation
+
 ### Testing Considerations
 
 When testing mouse support:
@@ -656,6 +703,7 @@ When testing mouse support:
 3. The debug window must have focus for keyboard events
 4. Mouse coordinates are transformed based on window type
 5. Wheel events are debounced with 100ms timeout
+6. For logic window, verify coordinate tooltip appears and shows correct negative sample indices
 
 ## Testing Infrastructure
 
