@@ -1,18 +1,66 @@
 /**
  * Spin2 Numeric Parser
  * 
- * Centralized parser for all Spin2 numeric formats including:
- * - Hexadecimal: $FF, $00_FF_00 (case-insensitive)
- * - Decimal: 123, -456, 1_000_000 (only format supporting negatives)
- * - Binary: %1010, %1111_0000
- * - Quaternary: %%0123, %%33_22_11_00
- * - Floating point: 1.5, -2.3e4, 5e-6
+ * Centralized parser for all Spin2 numeric formats. The Spin2 language supports multiple 
+ * numeric formats for integer and floating-point values. All numeric values in debug 
+ * commands and data streams must be parsed according to these formats.
  * 
- * All formats support underscores for visual grouping.
- * All integer values resolve to 32-bit signed integers.
- * Floating point values follow IEEE 754 single precision format.
+ * ## Integer Formats (32-bit resolution)
  * 
- * Note: This parser is for command parameters and color values.
+ * 1. **Hexadecimal**: `$` prefix followed by hex digits (0-9, A-F, a-f) with optional underscores
+ *    - Examples: `$FF`, `$1234_ABCD`, `$00FF_00FF`
+ *    - Valid digits: 0-9, A-F, a-f (case-insensitive)
+ *    - Underscores allowed for readability
+ *    - No negative support (always interpreted as unsigned)
+ * 
+ * 2. **Decimal**: Optional minus sign followed by decimal digits with optional underscores
+ *    - Examples: `123`, `-456`, `1_000_000`, `-2_147_483_648`
+ *    - Valid digits: 0-9
+ *    - Underscores allowed for readability
+ *    - Only format that supports negative numbers
+ * 
+ * 3. **Binary**: `%` prefix followed by binary digits (0-1) with optional underscores
+ *    - Examples: `%1010`, `%1111_0000`, `%1010_1010_1010_1010`
+ *    - Valid digits: 0-1
+ *    - Underscores allowed for readability
+ *    - No negative support
+ * 
+ * 4. **Quaternary (Double-binary)**: `%%` prefix followed by quaternary digits (0-3) with optional underscores
+ *    - Examples: `%%0123`, `%%33_22_11_00`, `%%3210`
+ *    - Valid digits: 0-3
+ *    - Underscores allowed for readability
+ *    - No negative support
+ * 
+ * ## Floating Point Format (32-bit IEEE 754 single precision)
+ * 
+ * - Standard decimal notation with decimal point
+ * - Scientific notation with `e` or `E` exponent indicator
+ * - Examples:
+ *   - `-1.0` - Simple decimal
+ *   - `1_250_000.0` - With underscores for readability
+ *   - `1e9` - Scientific notation (1 × 10⁹)
+ *   - `5e-6` - Negative exponent (5 × 10⁻⁶)
+ *   - `-1.23456e-7` - Negative value with scientific notation
+ * 
+ * ## Parsing Requirements
+ * 
+ * - All numeric formats support underscores (`_`) for visual grouping
+ * - Integer values resolve to 32-bit signed integers
+ * - Floating point values follow IEEE 754 single precision format
+ * - Numeric parsing must be consistent across all debug windows and commands
+ * - Invalid numeric formats are handled gracefully with appropriate error messages
+ * 
+ * ## Context-Aware Methods
+ * 
+ * The parser provides specialized methods for different contexts:
+ * - `parseColor()` - RGB 24-bit values (0-0xFFFFFF)
+ * - `parsePixel()` - Screen coordinates (positive integers only)
+ * - `parseCoordinate()` - Plot coordinates (floats and negatives allowed)
+ * - `parseCount()` - Quantities and counts (positive integers)
+ * - `parseInteger()` - General integer parsing with negative control
+ * - `parseFloat()` - Accepts all numeric formats as floating point
+ * 
+ * **Note**: This parser is for command parameters and color values.
  * Packed data streams are handled separately by PackedDataProcessor.
  */
 

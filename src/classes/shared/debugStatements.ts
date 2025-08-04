@@ -11,17 +11,33 @@
  * 
  * The debug system supports 9 different graphical display types that can be
  * instantiated and fed data for visualization.
+ * 
+ * ## Pascal to TypeScript Mapping
+ * 
+ * These constants map to the Pascal display type constants from DebugDisplayUnit.pas:
+ * ```pascal
+ * // Pascal Display Type Constants (from DebugDisplayUnit.pas:22-30)
+ * dis_logic     = 0;    // Logic analyzer display
+ * dis_scope     = 1;    // Oscilloscope display  
+ * dis_scope_xy  = 2;    // XY Scope display
+ * dis_fft       = 3;    // FFT frequency analysis
+ * dis_spectro   = 4;    // Spectrogram display
+ * dis_plot      = 5;    // Data plotting display
+ * dis_term      = 6;    // Terminal text display
+ * dis_bitmap    = 7;    // Bitmap graphics display
+ * dis_midi      = 8;    // MIDI visualization display
+ * ```
  */
 export enum DebugDisplayType {
-  LOGIC = 'LOGIC',          // Logic analyzer with single and multi-bit labels, 1..32 channels, can trigger on pattern
-  SCOPE = 'SCOPE',          // Oscilloscope with 1..8 channels, can trigger on level with hysteresis
-  SCOPE_XY = 'SCOPE_XY',    // XY oscilloscope with 1..8 channels, persistence of 0..512 samples, polar mode, log scale mode
-  FFT = 'FFT',              // Fast Fourier Transform with 1..8 channels, 4..2048 points, windowed results, log scale mode
-  SPECTRO = 'SPECTRO',      // Spectrograph with 4..2048-point FFT, windowed results, phase-coloring, and log scale mode
-  PLOT = 'PLOT',            // General-purpose plotter with cartesian and polar modes
-  TERM = 'TERM',            // Text terminal with up to 300 x 200 characters, 6..200 point font size, 4 simultaneous color schemes
-  BITMAP = 'BITMAP',        // Bitmap, 1..2048 x 1..2048 pixels, 1/2/4/8/16/32-bit pixels with 19 color systems
-  MIDI = 'MIDI',            // Piano keyboard with 1..128 keys, velocity depiction, variable screen scale
+  LOGIC = 'LOGIC',          // Logic analyzer with single and multi-bit labels, 1..32 channels, can trigger on pattern (dis_logic = 0)
+  SCOPE = 'SCOPE',          // Oscilloscope with 1..8 channels, can trigger on level with hysteresis (dis_scope = 1)
+  SCOPE_XY = 'SCOPE_XY',    // XY oscilloscope with 1..8 channels, persistence of 0..512 samples, polar mode, log scale mode (dis_scope_xy = 2)
+  FFT = 'FFT',              // Fast Fourier Transform with 1..8 channels, 4..2048 points, windowed results, log scale mode (dis_fft = 3)
+  SPECTRO = 'SPECTRO',      // Spectrograph with 4..2048-point FFT, windowed results, phase-coloring, and log scale mode (dis_spectro = 4)
+  PLOT = 'PLOT',            // General-purpose plotter with cartesian and polar modes (dis_plot = 5)
+  TERM = 'TERM',            // Text terminal with up to 300 x 200 characters, 6..200 point font size, 4 simultaneous color schemes (dis_term = 6)
+  BITMAP = 'BITMAP',        // Bitmap, 1..2048 x 1..2048 pixels, 1/2/4/8/16/32-bit pixels with 19 color systems (dis_bitmap = 7)
+  MIDI = 'MIDI',            // Piano keyboard with 1..128 keys, velocity depiction, variable screen scale (dis_midi = 8)
 }
 
 /**

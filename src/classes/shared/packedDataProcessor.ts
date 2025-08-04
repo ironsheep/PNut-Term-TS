@@ -12,18 +12,75 @@ import { ePackedDataMode, ePackedDataWidth, PackedDataMode } from '../debugWindo
  * This class implements the packed data format specification documented in:
  * /pascal-source/P2_PNut_Public/packedData.pdf
  * 
- * Packed data modes efficiently convey sub-byte data types by packing multiple values
- * into bytes, words, or longs. The host side (this processor) unpacks them according
- * to the specified mode, with optional ALT reordering and SIGNED extension.
+ * ## Overview
  * 
- * Important: This processor operates on raw binary data values received from the
+ * Packed data formats enable efficient transmission of sub-byte data types by packing 
+ * multiple values into bytes, words, or longs. The host side (this processor) unpacks 
+ * them according to the specified mode, with optional ALT reordering and SIGNED extension.
+ * 
+ * ## Syntax
+ * ```
+ * packed_data_mode {ALT} {SIGNED}
+ * ```
+ * 
+ * ## Optional Modifiers
+ * 
+ * **ALT Keyword**: 
+ * - Reorders bits, double-bits, or nibbles within each byte end-to-end on the host side
+ * - Useful for bitmap data where bitfields are out-of-order with respect to the DEBUG display
+ * - Simplifies handling of data composed in standard formats
+ * 
+ * **SIGNED Keyword**:
+ * - Causes all unpacked data values to be sign-extended on the host side
+ * - Converts unsigned ranges to signed ranges as specified in the table below
+ * 
+ * ## Complete Packed Data Modes
+ * 
+ * | Mode | Description | Values per Unit | Unsigned Range | Signed Range |
+ * |------|-------------|-----------------|----------------|--------------|
+ * | **LONGS_1BIT** | Each long → 32 separate 1-bit values | 32 | 0..1 | -1..0 |
+ * | **LONGS_2BIT** | Each long → 16 separate 2-bit values | 16 | 0..3 | -2..1 |
+ * | **LONGS_4BIT** | Each long → 8 separate 4-bit values | 8 | 0..15 | -8..7 |
+ * | **LONGS_8BIT** | Each long → 4 separate 8-bit values | 4 | 0..255 | -128..127 |
+ * | **LONGS_16BIT** | Each long → 2 separate 16-bit values | 2 | 0..65,535 | -32,768..32,767 |
+ * | **WORDS_1BIT** | Each word → 16 separate 1-bit values | 16 | 0..1 | -1..0 |
+ * | **WORDS_2BIT** | Each word → 8 separate 2-bit values | 8 | 0..3 | -2..1 |
+ * | **WORDS_4BIT** | Each word → 4 separate 4-bit values | 4 | 0..15 | -8..7 |
+ * | **WORDS_8BIT** | Each word → 2 separate 8-bit values | 2 | 0..255 | -128..127 |
+ * | **BYTES_1BIT** | Each byte → 8 separate 1-bit values | 8 | 0..1 | -1..0 |
+ * | **BYTES_2BIT** | Each byte → 4 separate 2-bit values | 4 | 0..3 | -2..1 |
+ * | **BYTES_4BIT** | Each byte → 2 separate 4-bit values | 2 | 0..15 | -8..7 |
+ * 
+ * ## Processing Details
+ * 
+ * 1. **Extraction Order**: Values are extracted starting from the LSB (Least Significant Bit) of the received value
+ * 2. **Sign Extension**: When SIGNED is specified, values are sign-extended to their full range
+ * 3. **ALT Reordering**: When ALT is specified, bit groups within each byte are reversed in order
+ * 4. **Data Flow**: Raw packed data → Unpacking → Optional ALT reordering → Optional sign extension → Final values
+ * 
+ * ## ALT Reordering Implementation
+ * 
+ * The ALT modifier reverses the order of bit groups within each byte:
+ * - **1-bit mode**: All 8 bits in a byte are reversed (bit 7→0, 6→1, etc.)
+ * - **2-bit mode**: The 4 groups of 2 bits are reversed in order
+ * - **4-bit mode**: The 2 nibbles in a byte are swapped
+ * - **8-bit mode**: Bytes within words/longs are processed individually
+ * - **16-bit mode**: Each 16-bit value is treated as 2 bytes, ALT applied per byte
+ * 
+ * For WORDS and LONGS modes, ALT is applied to each constituent byte independently, 
+ * ensuring consistent behavior across all data widths.
+ * 
+ * ## Implementation Notes
+ * 
+ * - The 13th packed data mode `NO_PACKING = 0` represents normal unpacked data (no processing)
+ * - This processor handles all 12 packed modes plus the no-packing mode
+ * - Numeric values in packed data streams are NOT parsed by `Spin2NumericParser` - they arrive as raw binary data
+ * - **ALT modifier is fully implemented** - reverses bit groups within each byte as per specification
+ * - **SIGNED modifier is fully implemented** - sign-extends values based on their bit width
+ * 
+ * **Important**: This processor operates on raw binary data values received from the
  * serial stream, not text representations. The Spin2NumericParser is not used here
  * because values arrive as already-parsed integers.
- * 
- * Supported modes:
- * - 12 packed modes (LONGS/WORDS/BYTES with 1/2/4/8/16 bit samples)
- * - ALT modifier: Reverses bit groups within each byte
- * - SIGNED modifier: Sign-extends unpacked values
  */
 export class PackedDataProcessor {
   /**

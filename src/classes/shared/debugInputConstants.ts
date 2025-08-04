@@ -67,6 +67,29 @@ export function isPrintableAscii(keyValue: number): boolean {
  * Command: PC_MOUSE(pointer_to_7_longs)
  *
  * Returns the current host-PC mouse status into a 7-long structure inside the chip.
+ * This command enables debug windows to forward mouse input from the host PC to the P2 device.
+ *
+ * ## PC_MOUSE Data Structure
+ * 
+ * The PC_MOUSE command returns a 7-long structure to the P2:
+ * ```
+ * LONG 0: xpos        // X position within DEBUG Display (negative if outside)
+ * LONG 1: ypos        // Y position within DEBUG Display (negative if outside)
+ * LONG 2: wheeldelta  // Scroll wheel delta: 0, +1, or -1
+ * LONG 3: lbutton     // Left button state: 0 or -1 if pressed
+ * LONG 4: mbutton     // Middle button state: 0 or -1 if pressed
+ * LONG 5: rbutton     // Right button state: 0 or -1 if pressed
+ * LONG 6: pixel       // Pixel color at mouse position: $00_RR_GG_BB or -1 if outside
+ * ```
+ * 
+ * ## Window-Specific Coordinate Transformations
+ * 
+ * Each debug window type transforms mouse coordinates to its specific coordinate system:
+ * - **Logic Window**: X = negative sample index, Y = channel number (0-based)
+ * - **Scope Window**: X = pixel position (0 to width-1), Y = inverted (bottom = 0)
+ * - **Plot Window**: Standard pixel coordinates
+ * - **Bitmap Window**: Standard pixel coordinates
+ * - **Term Window**: Character cell coordinates
  *
  * Requirements:
  * - Must be the last command in a DEBUG() statement

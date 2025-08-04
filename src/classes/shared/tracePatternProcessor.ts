@@ -19,27 +19,48 @@ interface TraceState {
 /**
  * TracePatternProcessor implements the 16 trace patterns for bitmap display
  * 
- * Trace values 0-15 control image orientation (rotation/flipping) and scrolling:
+ * ## Trace Parameter (0-15)
  * 
- * Without scrolling (0-7):
- * - 0: Normal orientation - left-to-right, top-to-bottom
- * - 1: Horizontal flip - right-to-left, top-to-bottom
- * - 2: Vertical flip - left-to-right, bottom-to-top
- * - 3: 180° rotation (H+V flip) - right-to-left, bottom-to-top
- * - 4: 90° CCW rotation + V flip - top-to-bottom, left-to-right
- * - 5: 90° CCW rotation - bottom-to-top, left-to-right
- * - 6: 90° CW rotation - top-to-bottom, right-to-left
- * - 7: 90° CW rotation + V flip - bottom-to-top, right-to-left
+ * The `trace` parameter controls the pixel plotting order and image orientation when 
+ * data is streamed to the bitmap display. It combines rotation, flipping, and optional 
+ * scrolling behavior.
  * 
- * With scrolling (8-15):
- * - 8: Vertical flip + scrolling (orientation of trace=2)
- * - 9: 180° rotation + scrolling (orientation of trace=3)
- * - 10: Normal + scrolling (orientation of trace=0)
- * - 11: Horizontal flip + scrolling (orientation of trace=1)
- * - 12: 90° CW rotation + scrolling (orientation of trace=6)
- * - 13: 90° CW + V flip + scrolling (orientation of trace=7)
- * - 14: 90° CCW + V flip + scrolling (orientation of trace=4)
- * - 15: 90° CCW rotation + scrolling (orientation of trace=5)
+ * ### Values 0-7 (without scrolling):
+ * - **0**: Normal orientation - left-to-right, top-to-bottom
+ * - **1**: Horizontal flip - right-to-left, top-to-bottom
+ * - **2**: Vertical flip - left-to-right, bottom-to-top
+ * - **3**: 180° rotation (H+V flip) - right-to-left, bottom-to-top
+ * - **4**: 90° CCW rotation + V flip - top-to-bottom, left-to-right
+ * - **5**: 90° CCW rotation - bottom-to-top, left-to-right
+ * - **6**: 90° CW rotation - top-to-bottom, right-to-left
+ * - **7**: 90° CW rotation + V flip - bottom-to-top, right-to-left
+ * 
+ * ### Values 8-15 (with scrolling enabled):
+ * When bit 3 is set, scrolling is enabled with a specific orientation mapping:
+ * - **8**: Vertical flip + scrolling (same orientation as trace=2)
+ * - **9**: 180° rotation + scrolling (same orientation as trace=3)
+ * - **10**: Normal orientation + scrolling (same orientation as trace=0)
+ * - **11**: Horizontal flip + scrolling (same orientation as trace=1)
+ * - **12**: 90° CW rotation + scrolling (same orientation as trace=6)
+ * - **13**: 90° CW rotation + V flip + scrolling (same orientation as trace=7)
+ * - **14**: 90° CCW rotation + V flip + scrolling (same orientation as trace=4)
+ * - **15**: 90° CCW rotation + scrolling (same orientation as trace=5)
+ * 
+ * ### Key Implementation Notes:
+ * - The scrolling bit (bit 3) doesn't simply add scrolling to the base orientation
+ * - Values 8-15 use a remapped orientation pattern: the equivalent non-scrolling 
+ *   orientation can be found by XORing with 0b1010 (10)
+ * - When scrolling is enabled, the bitmap shifts its content instead of wrapping 
+ *   when reaching edges
+ * - Scroll direction depends on the data flow direction for that trace mode
+ * 
+ * ## Internal Implementation
+ * 
+ * The bitmap display maintains:
+ * - Current pixel position (pixelX, pixelY)
+ * - Trace mode determines starting position and movement pattern
+ * - stepPixel() advances position according to trace mode after each pixel
+ * - When scrolling is enabled and edge is reached, scrollBitmap() shifts content
  */
 export class TracePatternProcessor {
   private state: TraceState;

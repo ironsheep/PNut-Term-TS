@@ -201,10 +201,34 @@ The Pascal source files in `/pascal-source/P2_PNut_Public/` contain the original
 
 ### Debug Window Types and Constants
 
-**See**: `src/classes/shared/debugStatements.ts` for:
-- `DebugDisplayType` enum with all 9 display types
-- Pascal to TypeScript constant mappings
-- Complete interface definitions for each display type
+Based on Pascal source analysis, the debug system supports 9 display types:
+
+```pascal
+// Pascal Display Type Constants (from DebugDisplayUnit.pas:22-30)
+dis_logic     = 0;    // Logic analyzer display
+dis_scope     = 1;    // Oscilloscope display  
+dis_scope_xy  = 2;    // XY Scope display
+dis_fft       = 3;    // FFT frequency analysis
+dis_spectro   = 4;    // Spectrogram display
+dis_plot      = 5;    // Data plotting display
+dis_term      = 6;    // Terminal text display
+dis_bitmap    = 7;    // Bitmap graphics display
+dis_midi      = 8;    // MIDI visualization display
+```
+
+**TypeScript Translation Status:**
+
+| Pascal Type | TypeScript Class | Status | File Location |
+|-------------|------------------|---------|---------------|
+| `dis_logic` | `DebugLogicWindow` | Complete | `src/classes/debugLogicWin.ts` |
+| `dis_scope` | `DebugScopeWindow` | Complete | `src/classes/debugScopeWin.ts` |
+| `dis_scope_xy` | Not Implemented | Missing | - |
+| `dis_fft` | Not Implemented | Missing | - |
+| `dis_spectro` | Not Implemented | Missing | - |
+| `dis_plot` | `DebugPlotWindow` | Complete | `src/classes/debugPlotWin.ts` |
+| `dis_term` | `DebugTermWindow` | Complete | `src/classes/debugTermWin.ts` |
+| `dis_bitmap` | Not Implemented | Missing | - |
+| `dis_midi` | Not Implemented | Missing | - |
 
 ### Debug Window Implementation Tracking
 
@@ -347,40 +371,207 @@ The Pascal source files in `/pascal-source/P2_PNut_Public/` contain the original
 - Provide save-to-file capabilities
 - Follow Pascal parameter parsing conventions
 
-## Technical Documentation References
+## Spin2 Numeric Formats
 
-### Spin2 Numeric Formats
+The Spin2 language supports multiple numeric formats for integer and floating-point values. All numeric values in debug commands and data streams must be parsed according to these formats:
 
-**See**: `src/classes/shared/spin2NumericParser.ts` for complete documentation of all Spin2 numeric formats including:
-- Integer formats: hexadecimal (`$`), decimal, binary (`%`), quaternary (`%%`)
-- Floating point formats with scientific notation
-- Context-aware parsing methods for different use cases
-- Full JSDoc with examples and parsing requirements
+### Integer Formats (32-bit resolution)
 
-### Packed Data Format Specifications
+1. **Hexadecimal**: `$` prefix followed by hex digits (0-9, A-F, a-f) with optional underscores
+   - Examples: `$FF`, `$1234_ABCD`, `$00FF_00FF`
+   - Valid digits: 0-9, A-F, a-f
+   - Underscores allowed for readability
 
-**See**: `src/classes/shared/packedDataProcessor.ts` for complete documentation including:
-- All 12 packed data modes with detailed specifications
-- ALT modifier implementation (bit reordering within bytes)
-- SIGNED modifier implementation (sign extension)
-- Complete mode table with ranges and values per unit
-- Processing flow and implementation details
+2. **Decimal**: Optional minus sign followed by decimal digits with optional underscores
+   - Examples: `123`, `-456`, `1_000_000`, `-2_147_483_648`
+   - Valid digits: 0-9
+   - Underscores allowed for readability
 
-**Reference PDF**: `/pascal-source/P2_PNut_Public/packedData.pdf`
+3. **Binary**: `%` prefix followed by binary digits (0-1) with optional underscores
+   - Examples: `%1010`, `%1111_0000`, `%1010_1010_1010_1010`
+   - Valid digits: 0-1
+   - Underscores allowed for readability
 
-### PC_MOUSE Data Structure
+4. **Quaternary (Double-binary)**: `%%` prefix followed by quaternary digits (0-3) with optional underscores
+   - Examples: `%%0123`, `%%33_22_11_00`, `%%3210`
+   - Valid digits: 0-3
+   - Underscores allowed for readability
 
-**See**: `src/classes/shared/debugInputConstants.ts` for complete PC_MOUSE documentation including:
-- 7-long structure definition with all fields
-- Window-specific coordinate transformations
-- Helper functions and constants
-- MouseStatus TypeScript interface
+### Floating Point Format (32-bit IEEE 754 single precision)
 
-### Bitmap Display Trace and Rate Parameters
+- Standard decimal notation with decimal point
+- Scientific notation with `e` or `E` exponent indicator
+- Examples:
+  - `-1.0` - Simple decimal
+  - `1_250_000.0` - With underscores for readability
+  - `1e9` - Scientific notation (1 × 10⁹)
+  - `5e-6` - Negative exponent (5 × 10⁻⁶)
+  - `-1.23456e-7` - Negative value with scientific notation
 
-**See**: 
-- `src/classes/shared/tracePatternProcessor.ts` - Complete trace parameter documentation (0-15)
-- `src/classes/debugBitmapWin.ts` - Rate parameter documentation and implementation
+### Parsing Requirements
+
+- All numeric formats should support underscores (`_`) for visual grouping
+- Integer values resolve to 32-bit signed integers
+- Floating point values follow IEEE 754 single precision format
+- Numeric parsing must be consistent across all debug windows and commands
+- Invalid numeric formats should be handled gracefully with appropriate error messages
+
+## Spin2NumericParser Usage
+
+The `Spin2NumericParser` class provides centralized parsing for all Spin2 numeric formats. Located in `src/classes/shared/spin2NumericParser.ts`, it ensures consistent numeric handling across the entire codebase.
+
+### Context-Aware Parsing Methods
+
+The parser provides specialized methods for different contexts, each with appropriate validation:
+
+**parseColor(value: string): number | null**
+- Parses color values (RGB 24-bit)
+- Accepts all numeric formats: `$FF0000`, `%11111111`, `%%3333`, `16711680`
+- Constrains values to 0-0xFFFFFF range
+- Returns null for invalid formats
+
+**parsePixel(value: string): number | null**
+- Parses pixel coordinates and dimensions
+- Integers only, no negatives allowed
+- Caps unreasonably large values at 65535
+- Used for screen positions, widths, heights
+
+**parseCoordinate(value: string): number | null**
+- Parses plot coordinates
+- Allows floating point and negative values
+- Supports scientific notation: `1.5e-3`, `-2.5`
+- Used for graph positions, data points
+
+**parseCount(value: string): number | null**
+- Parses quantities and counts
+- Positive integers only
+- Used for samples, sizes, indices
+
+**parseInteger(value: string, allowNegative: boolean = true): number | null**
+- General integer parsing with negative control
+- Rejects floating point values
+
+**parseFloat(value: string): number | null**
+- Accepts all numeric formats as floating point
+
+### Usage Examples
+
+```typescript
+import { Spin2NumericParser } from './shared/spin2NumericParser';
+
+// Color parsing
+const color = Spin2NumericParser.parseColor('$FF00FF');  // Returns 16711935
+const color2 = Spin2NumericParser.parseColor('MAGENTA'); // Returns null (not a number)
+
+// Coordinate parsing (allows negatives and floats)
+const x = Spin2NumericParser.parseCoordinate('-123.45'); // Returns -123.45
+const y = Spin2NumericParser.parseCoordinate('1.5e2');   // Returns 150
+
+// Pixel parsing (positive integers only)
+const width = Spin2NumericParser.parsePixel('1920');     // Returns 1920
+const invalid = Spin2NumericParser.parsePixel('-100');   // Returns null
+
+// Count parsing
+const samples = Spin2NumericParser.parseCount('1_000');  // Returns 1000
+```
+
+### Error Handling
+
+The parser logs descriptive errors to the console when invalid formats are encountered:
+- "Unknown numeric format" - for unrecognized patterns
+- "Negative value not allowed" - when negatives are used where not permitted
+- "Expected integer but got float" - when integers are required
+- "Color value exceeds 24-bit RGB range" - for colors > 0xFFFFFF
+
+### Important Notes
+
+- **Underscores**: All formats support underscores for readability (e.g., `$FF_00_FF`, `1_000_000`)
+- **Case Insensitive**: Hex digits are case-insensitive (`$FF` = `$ff`)
+- **Overflow Handling**: Values are capped at appropriate ranges rather than rejected
+- **Packed Data Streams**: The parser is NOT used for packed data streams - those are handled separately by `PackedDataProcessor`
+
+## Packed Data Format Specifications
+
+The packed data format specifications are documented in `/pascal-source/P2_PNut_Public/packedData.pdf`. These formats enable efficient transmission of sub-byte data types by packing multiple values into bytes, words, or longs.
+
+### Syntax
+```
+packed_data_mode {ALT} {SIGNED}
+```
+
+### Optional Modifiers
+
+**ALT Keyword**: 
+- Reorders bits, double-bits, or nibbles within each byte end-to-end on the host side
+- Useful for bitmap data where bitfields are out-of-order with respect to the DEBUG display
+- Simplifies handling of data composed in standard formats
+
+**SIGNED Keyword**:
+- Causes all unpacked data values to be sign-extended on the host side
+- Converts unsigned ranges to signed ranges as specified in the table below
+
+### Complete Packed Data Modes
+
+| Mode | Description | Values per Unit | Unsigned Range | Signed Range |
+|------|-------------|-----------------|----------------|--------------|
+| **LONGS_1BIT** | Each long → 32 separate 1-bit values | 32 | 0..1 | -1..0 |
+| **LONGS_2BIT** | Each long → 16 separate 2-bit values | 16 | 0..3 | -2..1 |
+| **LONGS_4BIT** | Each long → 8 separate 4-bit values | 8 | 0..15 | -8..7 |
+| **LONGS_8BIT** | Each long → 4 separate 8-bit values | 4 | 0..255 | -128..127 |
+| **LONGS_16BIT** | Each long → 2 separate 16-bit values | 2 | 0..65,535 | -32,768..32,767 |
+| **WORDS_1BIT** | Each word → 16 separate 1-bit values | 16 | 0..1 | -1..0 |
+| **WORDS_2BIT** | Each word → 8 separate 2-bit values | 8 | 0..3 | -2..1 |
+| **WORDS_4BIT** | Each word → 4 separate 4-bit values | 4 | 0..15 | -8..7 |
+| **WORDS_8BIT** | Each word → 2 separate 8-bit values | 2 | 0..255 | -128..127 |
+| **BYTES_1BIT** | Each byte → 8 separate 1-bit values | 8 | 0..1 | -1..0 |
+| **BYTES_2BIT** | Each byte → 4 separate 2-bit values | 4 | 0..3 | -2..1 |
+| **BYTES_4BIT** | Each byte → 2 separate 4-bit values | 2 | 0..15 | -8..7 |
+
+### Processing Details
+
+1. **Extraction Order**: Values are extracted starting from the LSB (Least Significant Bit) of the received value
+2. **Sign Extension**: When SIGNED is specified, values are sign-extended to their full range
+3. **ALT Reordering**: When ALT is specified, bit groups within each byte are reversed in order
+4. **Data Flow**: Raw packed data → Unpacking → Optional ALT reordering → Optional sign extension → Final values
+
+### Implementation Notes
+
+- The 13th packed data mode `NO_PACKING = 0` represents normal unpacked data (no processing)
+- Packed data is processed by `PackedDataProcessor` class in `src/classes/shared/packedDataProcessor.ts`
+- The processor handles all 12 packed modes plus the no-packing mode
+- Numeric values in packed data streams are NOT parsed by `Spin2NumericParser` - they arrive as raw binary data
+- **ALT modifier is fully implemented** - reverses bit groups within each byte as per specification
+- **SIGNED modifier is fully implemented** - sign-extends values based on their bit width
+
+### ALT Reordering Implementation Details
+
+The ALT modifier reverses the order of bit groups within each byte:
+- **1-bit mode**: All 8 bits in a byte are reversed (bit 7→0, 6→1, etc.)
+- **2-bit mode**: The 4 groups of 2 bits are reversed in order
+- **4-bit mode**: The 2 nibbles in a byte are swapped
+- **8-bit mode**: Bytes within words/longs are processed individually
+- **16-bit mode**: Each 16-bit value is treated as 2 bytes, ALT applied per byte
+
+For WORDS and LONGS modes, ALT is applied to each constituent byte independently, ensuring consistent behavior across all data widths.
+
+### Testing Strategy
+
+Comprehensive unit tests for PackedDataProcessor include:
+- All 12 packed modes tested with and without ALT modifier
+- Edge cases: 0x00, 0xFF, 0x55, 0xAA for bit pattern verification
+- Combined ALT and SIGNED modifier tests
+- Multi-byte values (WORDS/LONGS) to verify per-byte ALT application
+- Test file: `tests/packedDataProcessor.test.ts` with 26 passing tests
+
+### Integration in Debug Windows
+
+All debug windows use the parser for consistent numeric handling:
+- `DebugWindowBase.getValidRgb24()` uses `parseColor()`
+- `DebugPlotWindow` uses `parseCoordinate()` for plot positions
+- `DisplaySpecParser` uses `parsePixel()` for window dimensions
+- `DebugBitmapWindow` uses `parseColor()` for color values
+
+This ensures that numeric values are parsed consistently throughout the application, supporting all Spin2 numeric formats wherever numbers are accepted.
 
 ## Mouse and Keyboard Input Support
 
@@ -460,6 +651,19 @@ The debug windows now support PC_KEY and PC_MOUSE commands for input forwarding 
   - File save support (SAVE {WINDOW} 'filename')
 - Uses Spin2NumericParser for all numeric parameters
 - Uses DebugColor for color management
+
+### PC_MOUSE Data Structure
+
+The PC_MOUSE command returns a 7-long structure to the P2:
+```
+LONG 0: xpos        // X position within DEBUG Display (negative if outside)
+LONG 1: ypos        // Y position within DEBUG Display (negative if outside)
+LONG 2: wheeldelta  // Scroll wheel delta: 0, +1, or -1
+LONG 3: lbutton     // Left button state: 0 or -1 if pressed
+LONG 4: mbutton     // Middle button state: 0 or -1 if pressed
+LONG 5: rbutton     // Right button state: 0 or -1 if pressed
+LONG 6: pixel       // Pixel color at mouse position: $00_RR_GG_BB or -1 if outside
+```
 
 ### Key Features
 
@@ -650,13 +854,58 @@ node --inspect-brk ./node_modules/.bin/jest tests/debugLogicWin.test.ts --runInB
 - Integration tests for window creation and inter-component communication
 - Performance benchmarks for real-time data processing
 
-## Integration in Debug Windows
+## Bitmap Display Trace and Rate Parameters
 
-All debug windows use consistent patterns for:
-- Numeric parsing via `Spin2NumericParser` for all user-provided values
-- Packed data handling via `PackedDataProcessor` for binary data streams
-- Color management through `DebugColor` and `ColorTranslator`
-- Input forwarding using `InputForwarder` base class integration
-- Save functionality through `saveWindowToBMPFilename()`
+### Trace Parameter (0-15)
 
-This architecture ensures consistency across all debug window implementations while allowing window-specific customizations through virtual method overrides.
+The `trace` parameter controls the pixel plotting order and image orientation when data is streamed to the bitmap display. It combines rotation, flipping, and optional scrolling behavior.
+
+**Values 0-7 (without scrolling):**
+- **0**: Normal orientation - left-to-right, top-to-bottom
+- **1**: Horizontal flip - right-to-left, top-to-bottom
+- **2**: Vertical flip - left-to-right, bottom-to-top
+- **3**: 180° rotation (H+V flip) - right-to-left, bottom-to-top
+- **4**: 90° CCW rotation + V flip - top-to-bottom, left-to-right
+- **5**: 90° CCW rotation - bottom-to-top, left-to-right
+- **6**: 90° CW rotation - top-to-bottom, right-to-left
+- **7**: 90° CW rotation + V flip - bottom-to-top, right-to-left
+
+**Values 8-15 (with scrolling enabled):**
+When bit 3 is set, scrolling is enabled with a specific orientation mapping:
+- **8**: Vertical flip + scrolling (same orientation as trace=2)
+- **9**: 180° rotation + scrolling (same orientation as trace=3)
+- **10**: Normal orientation + scrolling (same orientation as trace=0)
+- **11**: Horizontal flip + scrolling (same orientation as trace=1)
+- **12**: 90° CW rotation + scrolling (same orientation as trace=6)
+- **13**: 90° CW rotation + V flip + scrolling (same orientation as trace=7)
+- **14**: 90° CCW rotation + V flip + scrolling (same orientation as trace=4)
+- **15**: 90° CCW rotation + scrolling (same orientation as trace=5)
+
+**Key Implementation Notes:**
+- The scrolling bit (bit 3) doesn't simply add scrolling to the base orientation
+- Values 8-15 use a remapped orientation pattern: the equivalent non-scrolling orientation can be found by XORing with 0b1010 (10)
+- When scrolling is enabled, the bitmap shifts its content instead of wrapping when reaching edges
+- Scroll direction depends on the data flow direction for that trace mode
+
+### Rate Parameter
+
+The `rate` parameter controls display update frequency:
+- **0**: Manual update control only (no automatic updates)
+- **-1**: Converted to width × height (update after full screen is drawn)
+- **Positive values**: Update display after this many pixels are plotted
+
+**Example Configurations:**
+- `trace=0, rate=1`: Normal raster scan, update every pixel (real-time display)
+- `trace=0, rate=640`: Normal raster scan, update after each line (for 640-width display)
+- `trace=10, rate=-1`: Normal orientation with scrolling, update after full screen
+- `trace=5, rate=0`: 90° CCW rotation, manual update control only
+
+### Internal Implementation
+
+The bitmap display maintains:
+- Current pixel position (vPixelX, vPixelY)
+- Rate counter (vRateCount) that increments with each plotted pixel
+- Trace mode determines starting position and movement pattern
+- StepTrace() advances position according to trace mode after each pixel
+- RateCycle() checks if display update is needed based on rate parameter
+- When scrolling is enabled and edge is reached, ScrollBitmap() shifts content

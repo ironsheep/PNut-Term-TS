@@ -50,6 +50,30 @@ export interface BitmapDisplaySpec {
 /**
  * DebugBitmapWindow implements the BITMAP debug display (type 7)
  * Supports bitmap graphics with various color modes, trace patterns, and input handling
+ * 
+ * ## Rate Parameter
+ * 
+ * The `rate` parameter controls display update frequency:
+ * - **0**: Manual update control only (no automatic updates)
+ * - **-1**: Converted to width × height (update after full screen is drawn)
+ * - **Positive values**: Update display after this many pixels are plotted
+ * 
+ * ### Example Configurations:
+ * - `trace=0, rate=1`: Normal raster scan, update every pixel (real-time display)
+ * - `trace=0, rate=640`: Normal raster scan, update after each line (for 640-width display)
+ * - `trace=10, rate=-1`: Normal orientation with scrolling, update after full screen
+ * - `trace=5, rate=0`: 90° CCW rotation, manual update control only
+ * 
+ * ### Internal Implementation:
+ * - Rate counter (rateCounter) increments with each plotted pixel
+ * - When rateCounter reaches the rate value, display is updated and counter resets
+ * - Rate value of -1 is automatically converted to width × height during initialization
+ * 
+ * ## Trace Parameter
+ * 
+ * See TracePatternProcessor class documentation for complete trace parameter details.
+ * The trace parameter (0-15) controls pixel plotting order and image orientation,
+ * combining rotation, flipping, and optional scrolling behavior.
  */
 export class DebugBitmapWindow extends DebugWindowBase {
   private state: BitmapState;
