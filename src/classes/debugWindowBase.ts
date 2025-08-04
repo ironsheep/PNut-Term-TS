@@ -18,6 +18,41 @@ import { InputForwarder } from './shared/inputForwarder';
 
 // src/classes/debugWindowBase.ts
 
+/**
+ * TECH-DEBT: Critical Implementation Requirement - Preserve Unparsed Debug Strings
+ * 
+ * All debug window implementations that extend DebugWindowBase MUST preserve the original
+ * unparsed debug command strings for enhanced error logging and debugging support.
+ * 
+ * Requirements:
+ * 1. Store the raw, unparsed debug command string before any processing
+ * 2. Include this string in all error log messages when parsing fails or invalid values are detected
+ * 3. Pass the unparsed string to Logger when reporting warnings about defensive defaults
+ * 
+ * Example implementation pattern:
+ * ```typescript
+ * updateContent(lineParts: string[]): void {
+ *   const unparsedCommand = lineParts.join(' '); // Preserve original command
+ *   
+ *   // ... parsing logic ...
+ *   
+ *   if (isNaN(parsedValue)) {
+ *     this.logger.warn(`Debug command parsing error:\n${unparsedCommand}\nInvalid value '${valueStr}' for parameter X, using default: 0`);
+ *     parsedValue = 0; // Defensive default
+ *   }
+ * }
+ * ```
+ * 
+ * This requirement is critical for:
+ * - Helping users debug their Spin2 DEBUG() statements
+ * - Supporting product issues by seeing exact user input
+ * - Maintaining consistency across all debug window types
+ * - Providing clear error messages that show context
+ * 
+ * TODO: Audit all debug window implementations to ensure compliance
+ * TODO: Add unparsedCommand parameter to common error logging methods
+ */
+
 export interface Size {
   width: number;
   height: number;

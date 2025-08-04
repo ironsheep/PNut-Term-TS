@@ -51,5 +51,26 @@ module.exports = {
   verbose: true,
   
   // Timeout for tests (30 seconds)
-  testTimeout: 30000
+  testTimeout: 30000,
+  
+  // Resource Management Options (commented out by default)
+  // Uncomment the options below to throttle test execution:
+  
+  // Run tests sequentially to reduce resource usage
+  // maxWorkers: 1,
+  
+  // Use 50% of available CPU cores
+  // maxWorkers: "50%",
+  
+  // Detect open handles (helps identify resource leaks)
+  // detectOpenHandles: true,
+  
+  // Force exit after tests complete
+  // forceExit: true,
+  
+  // Bail after first test failure (speeds up feedback)
+  // bail: 1,
+  
+  // Limit concurrent test files
+  // maxConcurrency: 5
 };

@@ -8,21 +8,18 @@ import { DebugPlotWindow } from '../src/classes/debugPlotWin';
 import { Context } from '../src/utils/context';
 import { PlotDisplaySpec } from '../src/classes/debugPlotWin';
 import { ColorMode } from '../src/classes/shared/colorTranslator';
+import { 
+  createMockContext, 
+  createMockBrowserWindow, 
+  createMockOffscreenCanvas,
+  createMockCanvasContext,
+  setupDebugWindowTest,
+  cleanupDebugWindowTest 
+} from './shared/mockHelpers';
 
 // Mock Electron
 jest.mock('electron', () => ({
-  BrowserWindow: jest.fn().mockImplementation(() => ({
-    on: jest.fn(),
-    once: jest.fn(),
-    setMenu: jest.fn(),
-    removeMenu: jest.fn(),
-    loadURL: jest.fn(),
-    show: jest.fn(),
-    webContents: {
-      on: jest.fn(),
-      executeJavaScript: jest.fn().mockResolvedValue(undefined)
-    }
-  }))
+  BrowserWindow: jest.fn().mockImplementation(() => createMockBrowserWindow())
 }));
 
 // Mock fs/promises for LayerManager
@@ -41,19 +38,16 @@ describe('DebugPlotWindow Integration Tests', () => {
   let mockDisplayCanvas: any;
   
   beforeEach(() => {
-    // Mock Context with logger
-    mockContext = {
+    // Use shared mock setup
+    const testSetup = setupDebugWindowTest();
+    mockContext = createMockContext({
       runtime: {
         msWaitBeforeClose: 500,
         isFileLoggingEnabled: false,
         loggedTraffic: jest.fn(),
         logTrafficMessage: jest.fn()
-      },
-      logger: {
-        log: jest.fn(),
-        logMessage: jest.fn()
       }
-    } as any;
+    });
     
     // Mock display spec
     displaySpec = {
@@ -74,62 +68,13 @@ describe('DebugPlotWindow Integration Tests', () => {
     // Create plot window instance
     plotWindow = new DebugPlotWindow(mockContext, displaySpec);
     
-    // Mock OffscreenCanvas with working context
-    mockWorkingCtx = {
-      canvas: { width: 256, height: 256 },
-      globalAlpha: 1,
-      lineWidth: 1,
-      save: jest.fn(),
-      restore: jest.fn(),
-      drawImage: jest.fn(),
-      fillRect: jest.fn(),
-      strokeRect: jest.fn(),
-      clearRect: jest.fn(),
-      beginPath: jest.fn(),
-      moveTo: jest.fn(),
-      lineTo: jest.fn(),
-      stroke: jest.fn(),
-      arc: jest.fn(),
-      ellipse: jest.fn(),
-      fill: jest.fn(),
-      fillStyle: '',
-      strokeStyle: '',
-      setLineDash: jest.fn(),
-      translate: jest.fn(),
-      rotate: jest.fn(),
-      scale: jest.fn(),
-      getImageData: jest.fn().mockReturnValue({
-        data: new Uint8ClampedArray(4),
-        width: 1,
-        height: 1
-      }),
-      putImageData: jest.fn(),
-      createImageData: jest.fn().mockImplementation((w, h) => ({
-        data: new Uint8ClampedArray(w * h * 4),
-        width: w,
-        height: h
-      }))
-    };
-    
-    mockOffscreenCanvas = {
-      width: 256,
-      height: 256,
-      getContext: jest.fn().mockReturnValue(mockWorkingCtx),
-      convertToBlob: jest.fn().mockResolvedValue(new Blob())
-    };
-    
-    global.OffscreenCanvas = jest.fn().mockImplementation(() => mockOffscreenCanvas) as any;
+    // Create mocked canvases
+    mockOffscreenCanvas = createMockOffscreenCanvas(256, 256);
+    mockWorkingCtx = mockOffscreenCanvas.getContext('2d');
     
     // Mock display canvas and context
-    mockDisplayCtx = {
-      drawImage: jest.fn()
-    };
-    
-    mockDisplayCanvas = {
-      width: 256,
-      height: 256,
-      getContext: jest.fn().mockReturnValue(mockDisplayCtx)
-    };
+    mockDisplayCanvas = testSetup.mockCanvas;
+    mockDisplayCtx = mockDisplayCanvas.getContext('2d');
     
     // Setup double buffering
     (plotWindow as any).workingCanvas = mockOffscreenCanvas;
@@ -149,29 +94,38 @@ describe('DebugPlotWindow Integration Tests', () => {
     (plotWindow as any).origin = { x: 128, y: 128 };
     (plotWindow as any).canvasOffset = { x: 128, y: 128 };
     
-    // Mock CanvasRenderer methods
+    // Mock CanvasRenderer methods to call through to the canvas context
     const mockCanvasRenderer = (plotWindow as any).canvasRenderer;
     if (mockCanvasRenderer) {
-      jest.spyOn(mockCanvasRenderer, 'plotPixelCtx').mockImplementation(() => {
-        mockWorkingCtx.getImageData();
-        mockWorkingCtx.putImageData();
+      jest.spyOn(mockCanvasRenderer, 'plotPixelCtx').mockImplementation((ctx: any) => {
+        ctx.getImageData(0, 0, 1, 1);
+        ctx.putImageData({} as any, 0, 0);
       });
-      jest.spyOn(mockCanvasRenderer, 'drawCircleCtx').mockImplementation(() => {
-        mockWorkingCtx.arc();
-        mockWorkingCtx.fill();
+      jest.spyOn(mockCanvasRenderer, 'drawCircleCtx').mockImplementation((ctx: any) => {
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
       });
-      jest.spyOn(mockCanvasRenderer, 'fillRect').mockImplementation(() => {
-        mockWorkingCtx.fillRect();
+      jest.spyOn(mockCanvasRenderer, 'fillRect').mockImplementation((ctx: any, x1: any, y1: any, x2: any, y2: any, color: any) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
       });
-      jest.spyOn(mockCanvasRenderer, 'drawRect').mockImplementation(() => {
-        mockWorkingCtx.strokeRect();
+      jest.spyOn(mockCanvasRenderer, 'drawRect').mockImplementation((ctx: any, x1: any, y1: any, x2: any, y2: any, filled: any, color: any, lineWidth: any) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        if (filled) {
+          ctx.fillStyle = color;
+          ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+        } else {
+          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        }
       });
-      jest.spyOn(mockCanvasRenderer, 'drawOval').mockImplementation(() => {
-        mockWorkingCtx.ellipse();
-        mockWorkingCtx.fill();
+      jest.spyOn(mockCanvasRenderer, 'drawOval').mockImplementation((ctx: any) => {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 10, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
       });
-      jest.spyOn(mockCanvasRenderer, 'setOpacity').mockImplementation((...args: any[]) => {
-        const [ctx, opacity] = args;
+      jest.spyOn(mockCanvasRenderer, 'setOpacity').mockImplementation((ctx: any, opacity: any) => {
         ctx.globalAlpha = opacity / 255;
       });
     }
@@ -191,7 +145,7 @@ describe('DebugPlotWindow Integration Tests', () => {
   });
   
   afterEach(() => {
-    jest.clearAllMocks();
+    cleanupDebugWindowTest();
   });
   
   describe('Complete drawing workflow', () => {
@@ -373,7 +327,7 @@ describe('DebugPlotWindow Integration Tests', () => {
       
       // Verify drawing operations occurred with styles
       // Note: globalAlpha is saved/restored in local variables, not via save/restore methods
-      expect(mockWorkingCtx.putImageData).toHaveBeenCalled(); // DOT with default size 1 uses plotPixel->putImageData
+      expect(mockWorkingCtx.fill).toHaveBeenCalled(); // DOT with size 5 uses drawCircleCtx
       expect(mockWorkingCtx.strokeRect).toHaveBeenCalled(); // OBOX uses strokeRect
       expect(mockWorkingCtx.ellipse).toHaveBeenCalled(); // OVAL uses ellipse
       // The styles were applied during the operations even though globalAlpha was restored

@@ -11,21 +11,17 @@ import { CanvasRenderer } from '../src/classes/shared/canvasRenderer';
 import { ColorTranslator, ColorMode } from '../src/classes/shared/colorTranslator';
 import { LUTManager } from '../src/classes/shared/lutManager';
 import { InputForwarder } from '../src/classes/shared/inputForwarder';
+import { 
+  createMockContext, 
+  createMockBrowserWindow, 
+  createMockOffscreenCanvas,
+  setupDebugWindowTest,
+  cleanupDebugWindowTest 
+} from './shared/mockHelpers';
 
 // Mock Electron
 jest.mock('electron', () => ({
-  BrowserWindow: jest.fn().mockImplementation(() => ({
-    on: jest.fn(),
-    once: jest.fn(),
-    setMenu: jest.fn(),
-    removeMenu: jest.fn(),
-    loadURL: jest.fn(),
-    show: jest.fn(),
-    webContents: {
-      on: jest.fn(),
-      executeJavaScript: jest.fn().mockResolvedValue(undefined)
-    }
-  }))
+  BrowserWindow: jest.fn().mockImplementation(() => createMockBrowserWindow())
 }));
 
 describe('DebugPlotWindow Commands', () => {
@@ -113,7 +109,7 @@ describe('DebugPlotWindow Commands', () => {
   });
   
   afterEach(() => {
-    jest.clearAllMocks();
+    cleanupDebugWindowTest();
   });
   
   describe('DOT command', () => {
@@ -156,6 +152,42 @@ describe('DebugPlotWindow Commands', () => {
       
       expect(mockCanvasRenderer.setOpacity).toHaveBeenCalledWith(mockWorkingCtx, 128);
       expect(mockCanvasRenderer.drawCircleCtx).toHaveBeenCalled();
+    });
+    
+    test('should handle invalid size parameter with default', async () => {
+      (plotWindow as any).cursorPosition = { x: 0, y: 0 };
+      (plotWindow as any).lineSize = 1;
+      
+      // Invalid size should default to lineSize
+      await plotWindow.updateContent(['TestPlot', 'DOT', 'invalid']);
+      
+      expect(mockCanvasRenderer.drawCircleCtx).toHaveBeenCalledWith(
+        mockWorkingCtx,
+        expect.any(Number),
+        expect.any(Number),
+        0.5, // radius = lineSize/2 = 1/2
+        expect.any(String),
+        true,
+        0
+      );
+    });
+    
+    test('should handle negative size as default', async () => {
+      (plotWindow as any).cursorPosition = { x: 0, y: 0 };
+      (plotWindow as any).lineSize = 2;
+      
+      // Negative size should default to lineSize
+      await plotWindow.updateContent(['TestPlot', 'DOT', '-5']);
+      
+      expect(mockCanvasRenderer.drawCircleCtx).toHaveBeenCalledWith(
+        mockWorkingCtx,
+        expect.any(Number),
+        expect.any(Number),
+        1, // radius = lineSize/2 = 2/2
+        expect.any(String),
+        true,
+        0
+      );
     });
   });
   
@@ -206,6 +238,42 @@ describe('DebugPlotWindow Commands', () => {
       
       expect(mockCanvasRenderer.setOpacity).toHaveBeenCalledWith(mockWorkingCtx, 200);
       expect(mockCanvasRenderer.drawRect).toHaveBeenCalled();
+    });
+    
+    test('should handle invalid width/height with defaults', async () => {
+      (plotWindow as any).cursorPosition = { x: 0, y: 0 };
+      
+      // Invalid width defaults to 1, invalid height defaults to 1
+      await plotWindow.updateContent(['TestPlot', 'BOX', 'invalid', 'bad']);
+      
+      expect(mockCanvasRenderer.drawRect).toHaveBeenCalledWith(
+        mockWorkingCtx,
+        127.5, // x1 = 128 - 0.5
+        127.5, // y1 = 128 - 0.5
+        128.5, // x2 = 128 + 0.5
+        128.5, // y2 = 128 + 0.5
+        true,
+        expect.any(String),
+        0
+      );
+    });
+    
+    test('should handle negative dimensions as positive', async () => {
+      (plotWindow as any).cursorPosition = { x: 0, y: 0 };
+      
+      // Negative dimensions should be treated as positive
+      await plotWindow.updateContent(['TestPlot', 'BOX', '-20', '-30']);
+      
+      expect(mockCanvasRenderer.drawRect).toHaveBeenCalledWith(
+        mockWorkingCtx,
+        118, // x1 = 128 - 10
+        113, // y1 = 128 - 15
+        138, // x2 = 128 + 10
+        143, // y2 = 128 + 15
+        true,
+        expect.any(String),
+        0
+      );
     });
   });
   
@@ -435,22 +503,28 @@ describe('DebugPlotWindow Commands', () => {
         expect((plotWindow as any).lineSize).toBe(5);
       });
       
-      test('should handle invalid line size values', async () => {
+      test('should handle invalid line size values with defensive defaults', async () => {
         // Set initial line size
         await plotWindow.updateContent(['TestPlot', 'LINESIZE', '2']);
         expect((plotWindow as any).lineSize).toBe(2);
         
-        // Try invalid values - they will set NaN or negative values
+        // Invalid string should default to 1
         await plotWindow.updateContent(['TestPlot', 'LINESIZE', 'abc']);
-        expect((plotWindow as any).lineSize).toBeNaN(); // parseInt returns NaN
+        expect((plotWindow as any).lineSize).toBe(1);
         
-        // Reset to valid value
-        await plotWindow.updateContent(['TestPlot', 'LINESIZE', '2']);
-        
+        // Negative values should be clamped to 1
         await plotWindow.updateContent(['TestPlot', 'LINESIZE', '-5']);
-        expect((plotWindow as any).lineSize).toBe(-5); // Negative values are allowed (may be used for special modes)
+        expect((plotWindow as any).lineSize).toBe(1);
         
-        // Valid value should work
+        // Zero should be allowed (for special drawing modes)
+        await plotWindow.updateContent(['TestPlot', 'LINESIZE', '0']);
+        expect((plotWindow as any).lineSize).toBe(0);
+        
+        // Very large values should be clamped to 255
+        await plotWindow.updateContent(['TestPlot', 'LINESIZE', '300']);
+        expect((plotWindow as any).lineSize).toBe(255);
+        
+        // Valid value should work normally
         await plotWindow.updateContent(['TestPlot', 'LINESIZE', '10']);
         expect((plotWindow as any).lineSize).toBe(10);
       });
@@ -503,6 +577,20 @@ describe('DebugPlotWindow Commands', () => {
         await plotWindow.updateContent(['TestPlot', 'DOT']);
         expect(mockCanvasRenderer.setOpacity).toHaveBeenLastCalledWith(mockWorkingCtx, 200);
       });
+      
+      test('should handle invalid opacity values with defensive defaults', async () => {
+        // Invalid string should default to 255
+        await plotWindow.updateContent(['TestPlot', 'OPACITY', 'invalid']);
+        expect((plotWindow as any).opacity).toBe(255);
+        
+        // Empty string should default to 255
+        await plotWindow.updateContent(['TestPlot', 'OPACITY', '']);
+        expect((plotWindow as any).opacity).toBe(255);
+        
+        // Floating point values should be truncated
+        await plotWindow.updateContent(['TestPlot', 'OPACITY', '128.7']);
+        expect((plotWindow as any).opacity).toBe(128);
+      });
     });
     
     describe('TEXTANGLE command', () => {
@@ -527,6 +615,20 @@ describe('DebugPlotWindow Commands', () => {
         
         await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '-370']);
         expect((plotWindow as any).textAngle).toBe(-370);
+      });
+      
+      test('should handle invalid angle values with defensive defaults', async () => {
+        // Invalid string should default to 0
+        await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', 'invalid']);
+        expect((plotWindow as any).textAngle).toBe(0);
+        
+        // Empty string should default to 0
+        await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '']);
+        expect((plotWindow as any).textAngle).toBe(0);
+        
+        // Very large angles are allowed (no clamping)
+        await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '3600']);
+        expect((plotWindow as any).textAngle).toBe(3600);
       });
     });
     

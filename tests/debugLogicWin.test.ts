@@ -1,6 +1,13 @@
 import { DebugLogicWindow, LogicDisplaySpec } from '../src/classes/debugLogicWin';
 import { Context } from '../src/utils/context';
 import { BrowserWindow } from 'electron';
+import { 
+  createMockContext, 
+  createMockBrowserWindow, 
+  createMockCanvas,
+  setupDebugWindowTest,
+  cleanupDebugWindowTest 
+} from './shared/mockHelpers';
 
 // Mock Electron
 jest.mock('electron', () => ({
@@ -105,6 +112,13 @@ describe('DebugLogicWindow', () => {
     debugLogicWindow['inputForwarder'] = {
       setMouseCoordinateTransform: jest.fn()
     } as any;
+  });
+
+  afterEach(() => {
+    cleanupDebugWindowTest();
+    if (debugLogicWindow) {
+      debugLogicWindow.closeDebugWindow();
+    }
   });
 
   describe('Mouse Coordinate Display', () => {

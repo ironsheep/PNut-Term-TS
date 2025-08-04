@@ -5,6 +5,7 @@
 import { InputForwarder } from '../src/classes/shared/inputForwarder';
 import { UsbSerial } from '../src/utils/usb.serial';
 import { PC_KEY_VALUES, MOUSE_BUTTON_STATE, MOUSE_POSITION } from '../src/classes/shared/debugInputConstants';
+import { createMockUsbSerial } from './shared/mockHelpers';
 
 // Mock UsbSerial
 jest.mock('../src/utils/usb.serial');
@@ -15,16 +16,20 @@ describe('InputForwarder', () => {
 
   beforeEach(() => {
     forwarder = new InputForwarder();
-    mockSerial = new UsbSerial(null as any, 'mock-device') as jest.Mocked<UsbSerial>;
-    mockSerial.write = jest.fn().mockResolvedValue(undefined);
+    mockSerial = createMockUsbSerial();
     
-    jest.useFakeTimers();
+    // Remove all event listeners to prevent test interference
+    forwarder.removeAllListeners();
+    
+    jest.useFakeTimers({ legacyFakeTimers: false });
   });
 
   afterEach(() => {
     forwarder.stopPolling();
+    forwarder.removeAllListeners(); // Clean up event listeners
     jest.clearAllTimers();
     jest.useRealTimers();
+    jest.clearAllMocks();
   });
 
   describe('Initialization', () => {
@@ -246,7 +251,7 @@ describe('InputForwarder', () => {
       forwarder.startPolling();
       
       // Advance timer by 16ms (one poll interval)
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       expect(mockSerial.write).toHaveBeenCalledTimes(1);
       expect(forwarder.getQueueSize()).toBe(0);
@@ -257,7 +262,7 @@ describe('InputForwarder', () => {
         { left: true, middle: false, right: false }, 0);
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       expect(mockSerial.write).toHaveBeenCalledTimes(1);
       expect(forwarder.getQueueSize()).toBe(0);
@@ -267,7 +272,7 @@ describe('InputForwarder', () => {
       forwarder.queueKeyEvent('A'); // ASCII 65
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       const callArg = mockSerial.write.mock.calls[0][0];
       const buffer = Buffer.from(callArg, 'base64');
@@ -281,7 +286,7 @@ describe('InputForwarder', () => {
         { left: true, middle: false, right: true }, 1);
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       const callArg = mockSerial.write.mock.calls[0][0];
       const buffer = Buffer.from(callArg, 'base64');
@@ -301,7 +306,7 @@ describe('InputForwarder', () => {
         { left: false, middle: false, right: false }, 0);
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       const callArg = mockSerial.write.mock.calls[0][0];
       const buffer = Buffer.from(callArg, 'base64');
@@ -317,13 +322,24 @@ describe('InputForwarder', () => {
       const errorHandler = jest.fn();
       forwarder.on('error', errorHandler);
       
+      forwarder.setUsbSerial(mockSerial);
       forwarder.queueKeyEvent('A');
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
-      await Promise.resolve(); // Let async operation complete
+      // Advance timers and flush promises
+      await jest.advanceTimersByTimeAsync(16);
       
-      expect(errorHandler).toHaveBeenCalled();
+      expect(errorHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('Failed to process key event')
+        })
+      );
+      
+      // Verify error includes context
+      const error = errorHandler.mock.calls[0][0];
+      expect(error.eventDetails).toBeDefined();
+      expect(error.eventDetails.type).toBe('key');
+      expect(error.eventDetails.data.value).toBe(65); // 'A'
     });
 
     it('should continue processing after error', async () => {
@@ -331,14 +347,24 @@ describe('InputForwarder', () => {
         .mockRejectedValueOnce(new Error('Serial error'))
         .mockResolvedValueOnce(undefined);
       
+      const errorHandler = jest.fn();
+      forwarder.on('error', errorHandler);
+      
       forwarder.queueKeyEvent('A');
       forwarder.queueKeyEvent('B');
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(32); // Two poll intervals
-      await Promise.resolve();
+      // First interval - error
+      await jest.advanceTimersByTimeAsync(16);
+      
+      expect(errorHandler).toHaveBeenCalledTimes(1);
+      expect(mockSerial.write).toHaveBeenCalledTimes(1);
+      
+      // Second interval - success
+      await jest.advanceTimersByTimeAsync(16);
       
       expect(mockSerial.write).toHaveBeenCalledTimes(2);
+      expect(forwarder.getQueueSize()).toBe(0); // Both processed
     });
 
     it('should clear queue on stop', () => {
@@ -353,15 +379,104 @@ describe('InputForwarder', () => {
   });
 
   describe('No serial connection', () => {
-    it('should not process events without serial', () => {
+    it('should not process events without serial', async () => {
       // No serial set
       forwarder.queueKeyEvent('A');
       forwarder.startPolling();
       
-      jest.advanceTimersByTime(16);
+      await jest.advanceTimersByTimeAsync(16);
       
       expect(mockSerial.write).not.toHaveBeenCalled();
       expect(forwarder.getQueueSize()).toBe(1); // Still in queue
+    });
+    
+    it('should not process events when no serial is set', async () => {
+      const errorHandler = jest.fn();
+      forwarder.on('error', errorHandler);
+      
+      forwarder.queueKeyEvent('A');
+      forwarder.startPolling();
+      
+      await jest.advanceTimersByTimeAsync(16);
+      
+      // Queue should remain unchanged because processEventQueue returns early
+      expect(forwarder.getQueueSize()).toBe(1);
+      
+      // No errors should be emitted because processEventQueue returns early
+      expect(errorHandler).not.toHaveBeenCalled();
+    });
+  });
+  
+  describe('Disconnection handling', () => {
+    beforeEach(() => {
+      forwarder.setUsbSerial(mockSerial);
+    });
+    
+    it('should handle port disconnection error', async () => {
+      mockSerial.write.mockRejectedValueOnce(new Error('port is not open'));
+      
+      const errorHandler = jest.fn();
+      const disconnectedHandler = jest.fn();
+      forwarder.on('error', errorHandler);
+      forwarder.on('disconnected', disconnectedHandler);
+      
+      forwarder.queueKeyEvent('A');
+      forwarder.startPolling();
+      
+      await jest.advanceTimersByTimeAsync(16);
+      
+      expect(errorHandler).toHaveBeenCalled();
+      expect(disconnectedHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'USB serial connection lost'
+        })
+      );
+      expect(forwarder.isActive).toBe(false); // Should stop polling
+    });
+    
+    it('should handle device disconnected error', async () => {
+      mockSerial.write.mockRejectedValueOnce(new Error('device disconnected'));
+      
+      const disconnectedHandler = jest.fn();
+      forwarder.on('disconnected', disconnectedHandler);
+      
+      forwarder.setUsbSerial(mockSerial);
+      forwarder.queueKeyEvent('A');
+      forwarder.startPolling();
+      
+      await jest.advanceTimersByTimeAsync(16);
+      
+      expect(disconnectedHandler).toHaveBeenCalled();
+    });
+    
+    it('should support reconnection', () => {
+      const reconnectedHandler = jest.fn();
+      forwarder.on('reconnected', reconnectedHandler);
+      
+      const newSerial = createMockUsbSerial();
+      forwarder.reconnect(newSerial);
+      
+      expect(reconnectedHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'USB serial connection restored'
+        })
+      );
+    });
+    
+    it('should not auto-restart polling after reconnect', () => {
+      forwarder.startPolling();
+      expect(forwarder.isActive).toBe(true);
+      
+      // Simulate disconnection
+      forwarder['handleDisconnection']();
+      expect(forwarder.isActive).toBe(false);
+      
+      // Reconnect
+      const newSerial = createMockUsbSerial();
+      forwarder.reconnect(newSerial);
+      
+      // Should still be stopped
+      expect(forwarder.isActive).toBe(false);
     });
   });
 });

@@ -123,13 +123,25 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.layerManager = new LayerManager();
     this.spriteManager = new SpriteManager();
   }
+  
+  /**
+   * Log a warning about an invalid parameter with defensive default
+   * TECH-DEBT: Enhanced error logging with full command context
+   */
+  private logParsingWarning(unparsedCommand: string, paramName: string, invalidValue: string | null, defaultValue: any): void {
+    const valueDisplay = invalidValue === null ? 'missing' : `'${invalidValue}'`;
+    this.logMessage(`WARNING: Debug command parsing error:\n${unparsedCommand}\nInvalid ${valueDisplay} value for parameter ${paramName}, using default: ${defaultValue}`);
+  }
 
   private static nextPartIsNumeric(lineParts: string[], index: number): boolean {
     let numericStatus: boolean = false;
-    let firstChar: string = lineParts[index + 1].charAt(0);
-    // 0-9 or negative sign prefix
-    if ((firstChar >= '0' && firstChar <= '9') || firstChar == '-') {
-      numericStatus = true;
+    // Check bounds first
+    if (index + 1 < lineParts.length) {
+      let firstChar: string = lineParts[index + 1].charAt(0);
+      // 0-9 or negative sign prefix
+      if ((firstChar >= '0' && firstChar <= '9') || firstChar == '-') {
+        numericStatus = true;
+      }
     }
     return numericStatus;
   }
@@ -471,6 +483,9 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     //   ORIGIN {x_pos y_pos} Set the origin point to cartesian (x_pos, y_pos) or to the current (x, y) if no values are specified. 0, 0
     //
+    
+    // TECH-DEBT: Preserve unparsed command for enhanced error logging
+    const unparsedCommand = lineParts.join(' ');
     //   SET <x> <y> - Set the drawing position to (x, y). After LINE, the endpoint becomes the new drawing position.
     //
     //   DOT {linesize {opacity}} - Draw a dot at the current position with optional LINESIZE and OPACITY overrides.
@@ -534,11 +549,24 @@ export class DebugPlotWindow extends DebugWindowBase {
       if (lineParts[index].toUpperCase() == 'SET') {
         // set cursor position
         if (index < lineParts.length - 2) {
-          const x: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-          const y: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const xStr = lineParts[++index];
+          const yStr = lineParts[++index];
+          const xParsed = Spin2NumericParser.parseCoordinate(xStr);
+          const yParsed = Spin2NumericParser.parseCoordinate(yStr);
+          
+          const x = xParsed ?? 0;
+          const y = yParsed ?? 0;
+          
+          if (xParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'SET x', xStr, 0);
+          }
+          if (yParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'SET y', yStr, 0);
+          }
+          
           this.updatePlotDisplay(`SET ${x} ${y}`);
         } else {
-          this.logMessage(`* UPD-ERROR  missing parameters for SET [${lineParts.join(' ')}]`);
+          this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing parameters for SET command`);
         }
       } else if (lineParts[index].toUpperCase() == 'TEXT') {
         // have TEXT {size {style {angle}}} 'text'
@@ -547,13 +575,24 @@ export class DebugPlotWindow extends DebugWindowBase {
         let style: string = '00000001';
         let angle: number = 0;
         if (index < lineParts.length - 1) {
-          size = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const sizeStr = lineParts[++index];
+          const sizeParsed = Spin2NumericParser.parseCoordinate(sizeStr);
+          size = sizeParsed ?? 10;
+          if (sizeParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'TEXT size', sizeStr, 10);
+          }
+          
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
               style = this.formatAs8BitBinary(lineParts[++index]);
               if (index < lineParts.length - 1) {
                 if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  angle = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+                  const angleStr = lineParts[++index];
+                  const angleParsed = Spin2NumericParser.parseCoordinate(angleStr);
+                  angle = angleParsed ?? 0;
+                  if (angleParsed === null) {
+                    this.logParsingWarning(unparsedCommand, 'TEXT angle', angleStr, 0);
+                  }
                 }
               }
             }
@@ -588,36 +627,64 @@ export class DebugPlotWindow extends DebugWindowBase {
           if (displayString !== undefined) {
             this.updatePlotDisplay(`TEXT '${displayString}'`);
           } else {
-            this.logMessage(`* UPD-ERROR  missing closing quote for TEXT [${lineParts.join(' ')}]`);
+            this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing closing quote for TEXT command`);
           }
         }
       } else if (lineParts[index].toUpperCase() == 'LINE') {
         // draw a line: LINE <x> <y> {linesize {opacity}}
         if (index < lineParts.length - 2) {
-          const x: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-          const y: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const xStr = lineParts[++index];
+          const yStr = lineParts[++index];
+          const xParsed = Spin2NumericParser.parseCoordinate(xStr);
+          const yParsed = Spin2NumericParser.parseCoordinate(yStr);
+          const x = xParsed ?? 0;
+          const y = yParsed ?? 0;
+          
+          if (xParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'LINE x', xStr, 0);
+          }
+          if (yParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'LINE y', yStr, 0);
+          }
+          
           let lineSize: number = 1;
           let opacity: number = 255;
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              lineSize = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 1;
+              const lineSizeStr = lineParts[++index];
+              const lineSizeParsed = Spin2NumericParser.parseCoordinate(lineSizeStr);
+              lineSize = lineSizeParsed ?? 1;
+              if (lineSizeParsed === null) {
+                this.logParsingWarning(unparsedCommand, 'LINE linesize', lineSizeStr, 1);
+              }
+              
               if (index < lineParts.length - 1) {
                 if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  opacity = Spin2NumericParser.parseCount(lineParts[++index]) ?? 255;
+                  const opacityStr = lineParts[++index];
+                  const opacityParsed = Spin2NumericParser.parseCount(opacityStr);
+                  opacity = opacityParsed ?? 255;
+                  if (opacityParsed === null) {
+                    this.logParsingWarning(unparsedCommand, 'LINE opacity', opacityStr, 255);
+                  }
                 }
               }
             }
           }
           this.updatePlotDisplay(`LINE ${x} ${y} ${lineSize} ${opacity}`);
         } else {
-          this.logMessage(`* UPD-ERROR  missing parameters for LINE [${lineParts.join(' ')}]`);
+          this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing parameters for LINE command`);
         }
       } else if (lineParts[index].toUpperCase() == 'CIRCLE') {
         // draw a circle: CIRCLE <diameter> {linesize {opacity}}
         if (index < lineParts.length - 1) {
           let lineSize: number = 0; // 0 = filled circle
           let opacity: number = 255;
-          const diameter: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const diameterStr = lineParts[++index];
+          const diameterParsed = Spin2NumericParser.parseCoordinate(diameterStr);
+          const diameter = diameterParsed ?? 0;
+          if (diameterParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'CIRCLE diameter', diameterStr, 0);
+          }
           if (index < lineParts.length - 1) {
             if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
               lineSize = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 1;
@@ -630,7 +697,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           }
           this.updatePlotDisplay(`CIRCLE ${diameter} ${lineSize} ${opacity}`);
         } else {
-          this.logMessage(`* UPD-ERROR  missing parameters for CIRCLE [${lineParts.join(' ')}]`);
+          this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing parameters for CIRCLE command`);
         }
       } else if (lineParts[index].toUpperCase() == 'ORIGIN') {
         // set origin position
@@ -638,8 +705,18 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           // have values
           if (index < lineParts.length - 2) {
-            this.origin.x = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-            this.origin.y = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            const xStr = lineParts[++index];
+            const yStr = lineParts[++index];
+            const xParsed = Spin2NumericParser.parseCoordinate(xStr);
+            const yParsed = Spin2NumericParser.parseCoordinate(yStr);
+            this.origin.x = xParsed ?? 0;
+            this.origin.y = yParsed ?? 0;
+            if (xParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'ORIGIN x', xStr, 0);
+            }
+            if (yParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'ORIGIN y', yStr, 0);
+            }
             // calculate canvasOffet for origin
             this.canvasOffset = {
               //x: this.displaySpec.size.width - this.origin.x,
@@ -648,7 +725,7 @@ export class DebugPlotWindow extends DebugWindowBase {
               y: this.origin.y
             };
           } else {
-            this.logMessage(`* UPD-ERROR  missing parameters for ORIGIN [${lineParts.join(' ')}]`);
+            this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing parameters for ORIGIN command`);
           }
         } else {
           // no ORIGIN params, so set to cursor position
@@ -666,8 +743,18 @@ export class DebugPlotWindow extends DebugWindowBase {
         //   iff values are present, set mode to those values
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           if (index < lineParts.length - 2) {
-            this.polarConfig.twopi = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-            this.polarConfig.offset = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            const twopiStr = lineParts[++index];
+            const offsetStr = lineParts[++index];
+            const twopiParsed = Spin2NumericParser.parseCoordinate(twopiStr);
+            const offsetParsed = Spin2NumericParser.parseCoordinate(offsetStr);
+            this.polarConfig.twopi = twopiParsed ?? 0x100000000;
+            this.polarConfig.offset = offsetParsed ?? 0;
+            if (twopiParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'POLAR twopi', twopiStr, '0x100000000');
+            }
+            if (offsetParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'POLAR offset', offsetStr, 0);
+            }
           }
         }
       } else if (lineParts[index].toUpperCase() == 'CARTESIAN') {
@@ -679,8 +766,18 @@ export class DebugPlotWindow extends DebugWindowBase {
         //   iff values are present, set mode to those values
         if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
           if (index < lineParts.length - 2) {
-            const yDir: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
-            const xDir: number = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+            const yDirStr = lineParts[++index];
+            const xDirStr = lineParts[++index];
+            const yDirParsed = Spin2NumericParser.parseCoordinate(yDirStr);
+            const xDirParsed = Spin2NumericParser.parseCoordinate(xDirStr);
+            const yDir = yDirParsed ?? 0;
+            const xDir = xDirParsed ?? 0;
+            if (yDirParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'CARTESIAN ydir', yDirStr, 0);
+            }
+            if (xDirParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'CARTESIAN xdir', xDirStr, 0);
+            }
             this.cartesianConfig.xdir = xDir == 0 ? false : true;
             this.cartesianConfig.ydir = yDir == 0 ? false : true;
           }
@@ -759,7 +856,13 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'LAYER') {
         // LAYER command - load bitmap into layer
         if (index + 2 < lineParts.length) {
-          const layerIndex = (Spin2NumericParser.parseCount(lineParts[++index]) ?? 1) - 1; // Convert 1-8 to 0-7
+          const layerIndexStr = lineParts[++index];
+          const layerIndexParsed = Spin2NumericParser.parseCount(layerIndexStr);
+          const layerIndexValue = layerIndexParsed ?? 1;
+          if (layerIndexParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'LAYER index', layerIndexStr, 1);
+          }
+          const layerIndex = layerIndexValue - 1; // Convert 1-8 to 0-7
           const filename = lineParts[++index];
           
           if (layerIndex >= 0 && layerIndex < 8) {
@@ -787,7 +890,13 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'CROP') {
         // CROP command - draw layer with optional cropping
         if (index + 1 < lineParts.length) {
-          const layerIndex = (Spin2NumericParser.parseCount(lineParts[++index]) ?? 1) - 1; // Convert 1-8 to 0-7
+          const layerIndexStr = lineParts[++index];
+          const layerIndexParsed = Spin2NumericParser.parseCount(layerIndexStr);
+          const layerIndexValue = layerIndexParsed ?? 1;
+          if (layerIndexParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'LAYER index', layerIndexStr, 1);
+          }
+          const layerIndex = layerIndexValue - 1; // Convert 1-8 to 0-7
           
           if (layerIndex >= 0 && layerIndex < 8 && this.layerManager.isLayerLoaded(layerIndex)) {
             if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'AUTO') {
@@ -797,10 +906,20 @@ export class DebugPlotWindow extends DebugWindowBase {
               let destY = 0;
               
               if (index + 1 < lineParts.length) {
-                destX = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
+                const destXStr = lineParts[++index];
+                const destXParsed = Spin2NumericParser.parsePixel(destXStr);
+                destX = destXParsed ?? 0;
+                if (destXParsed === null) {
+                  this.logParsingWarning(unparsedCommand, 'CROP AUTO destX', destXStr, 0);
+                }
               }
               if (index + 1 < lineParts.length) {
-                destY = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
+                const destYStr = lineParts[++index];
+                const destYParsed = Spin2NumericParser.parsePixel(destYStr);
+                destY = destYParsed ?? 0;
+                if (destYParsed === null) {
+                  this.logParsingWarning(unparsedCommand, 'CROP AUTO destY', destYStr, 0);
+                }
               }
               
               if (this.workingCtx) {
@@ -813,22 +932,55 @@ export class DebugPlotWindow extends DebugWindowBase {
               }
             } else if (index + 4 < lineParts.length) {
               // Manual crop mode - requires left, top, width, height
+              const leftStr = lineParts[++index];
+              const topStr = lineParts[++index];
+              const widthStr = lineParts[++index];
+              const heightStr = lineParts[++index];
+              
+              const leftParsed = Spin2NumericParser.parsePixel(leftStr);
+              const topParsed = Spin2NumericParser.parsePixel(topStr);
+              const widthParsed = Spin2NumericParser.parsePixel(widthStr);
+              const heightParsed = Spin2NumericParser.parsePixel(heightStr);
+              
               const cropRect: CropRect = {
-                left: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
-                top: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
-                width: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0,
-                height: Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0
+                left: leftParsed ?? 0,
+                top: topParsed ?? 0,
+                width: widthParsed ?? 0,
+                height: heightParsed ?? 0
               };
+              
+              if (leftParsed === null) {
+                this.logParsingWarning(unparsedCommand, 'CROP left', leftStr, 0);
+              }
+              if (topParsed === null) {
+                this.logParsingWarning(unparsedCommand, 'CROP top', topStr, 0);
+              }
+              if (widthParsed === null) {
+                this.logParsingWarning(unparsedCommand, 'CROP width', widthStr, 0);
+              }
+              if (heightParsed === null) {
+                this.logParsingWarning(unparsedCommand, 'CROP height', heightStr, 0);
+              }
               
               let destX = 0;
               let destY = 0;
               
               // Optional destination coordinates
               if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                destX = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
+                const destXStr = lineParts[++index];
+                const destXParsed = Spin2NumericParser.parsePixel(destXStr);
+                destX = destXParsed ?? 0;
+                if (destXParsed === null) {
+                  this.logParsingWarning(unparsedCommand, 'CROP destX', destXStr, 0);
+                }
               }
               if (index + 1 < lineParts.length && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                destY = Spin2NumericParser.parsePixel(lineParts[++index]) ?? 0;
+                const destYStr = lineParts[++index];
+                const destYParsed = Spin2NumericParser.parsePixel(destYStr);
+                destY = destYParsed ?? 0;
+                if (destYParsed === null) {
+                  this.logParsingWarning(unparsedCommand, 'CROP destY', destYStr, 0);
+                }
               }
               
               if (this.workingCtx) {
@@ -869,19 +1021,35 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'LINESIZE') {
         // Set line size
         if (index + 1 < lineParts.length) {
-          this.lineSize = Spin2NumericParser.parseCount(lineParts[++index]) ?? 1;
+          const sizeStr = lineParts[++index];
+          const sizeParsed = Spin2NumericParser.parseCount(sizeStr);
+          this.lineSize = sizeParsed ?? 1;
+          if (sizeParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'LINESIZE', sizeStr, 1);
+          }
           this.logMessage(`  -- LINESIZE set to ${this.lineSize}`);
         }
       } else if (lineParts[index].toUpperCase() == 'OPACITY') {
         // Set opacity (0-255)
         if (index + 1 < lineParts.length) {
-          this.opacity = Math.max(0, Math.min(255, Spin2NumericParser.parseCount(lineParts[++index]) ?? 255));
+          const opacityStr = lineParts[++index];
+          const opacityParsed = Spin2NumericParser.parseCount(opacityStr);
+          const opacityValue = opacityParsed ?? 255;
+          if (opacityParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'OPACITY', opacityStr, 255);
+          }
+          this.opacity = Math.max(0, Math.min(255, opacityValue));
           this.logMessage(`  -- OPACITY set to ${this.opacity}`);
         }
       } else if (lineParts[index].toUpperCase() == 'TEXTANGLE') {
         // Set text angle in degrees
         if (index + 1 < lineParts.length) {
-          this.textAngle = Spin2NumericParser.parseCoordinate(lineParts[++index]) ?? 0;
+          const angleStr = lineParts[++index];
+          const angleParsed = Spin2NumericParser.parseCoordinate(angleStr);
+          this.textAngle = angleParsed ?? 0;
+          if (angleParsed === null) {
+            this.logParsingWarning(unparsedCommand, 'TEXTANGLE', angleStr, 0);
+          }
           this.logMessage(`  -- TEXTANGLE set to ${this.textAngle} degrees`);
         }
       } else if (lineParts[index].toUpperCase() == 'LUTCOLORS') {
@@ -1062,6 +1230,14 @@ export class DebugPlotWindow extends DebugWindowBase {
       } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
         // Enable mouse input forwarding
         this.enableMouseInput();
+      } else if (lineParts[index].toUpperCase() == 'COLOR') {
+        // Handle COLOR command with color value
+        if (index + 1 < lineParts.length) {
+          const colorValue = lineParts[++index];
+          this.updatePlotDisplay(`COLOR ${colorValue}`);
+        } else {
+          this.logMessage(`* UPD-ERROR  COLOR command missing color value`);
+        }
       } else if (DebugColor.isValidColorName(lineParts[index])) {
         // set color
         const colorName: string = lineParts[index];

@@ -117,58 +117,53 @@ export class ColorTranslator {
       case ColorMode.LUMA8:
       case ColorMode.LUMA8W:
       case ColorMode.LUMA8X:
-        v = this.colorTune & 7;
-        pixelValue = pixelValue & 0xFF;
-        result = this.processLumaMode(pixelValue, v, this.colorMode);
-        break;
-
       case ColorMode.RGBI8:
       case ColorMode.RGBI8W:
       case ColorMode.RGBI8X:
-        v = (pixelValue >> 5) & 7;
-        pixelValue = ((pixelValue & 0x1F) << 3) | ((pixelValue & 0x1C) >> 2);
-        result = this.processLumaMode(pixelValue, v, this.colorMode);
+        result = this.processLumaRgbiMode(pixelValue);
         break;
+
 
       case ColorMode.HSV8:
       case ColorMode.HSV8W:
       case ColorMode.HSV8X:
+        // Expand 8-bit HSV to 16-bit: HHHHSSSS -> HHHHHHHH SSSSSSSS
         pixelValue = ((pixelValue & 0xF0) * 0x110) | ((pixelValue & 0x0F) * 0x11);
-        v = this.polarColors[((pixelValue >> 8) + this.colorTune) & 0xFF];
-        pixelValue = pixelValue & 0xFF;
-        w = (this.colorMode === ColorMode.HSV8W) || 
-            (this.colorMode === ColorMode.HSV8X && pixelValue >= 0x80);
-        if (this.colorMode === ColorMode.HSV8X) {
-          pixelValue = pixelValue >= 0x80 ? ((pixelValue & 0x7F) << 1) ^ 0xFE : pixelValue << 1;
-        }
-        if (w) v = v ^ 0xFFFFFF;
-        result = this.multiplyColorComponents(v, pixelValue);
-        break;
-
-      case ColorMode.RGB8:
-        result = ((pixelValue & 0xE0) * 0x0001249) & 0xFF0000 |
-                 ((pixelValue & 0x1C) * 0x00091C) & 0x00FF00 |
-                 ((pixelValue & 0x03) * 0x000055) & 0x0000FF;
-        break;
-
+        // Fall through to HSV16 processing - NO BREAK HERE
       case ColorMode.HSV16:
       case ColorMode.HSV16W:
       case ColorMode.HSV16X:
         v = this.polarColors[((pixelValue >> 8) + this.colorTune) & 0xFF];
         pixelValue = pixelValue & 0xFF;
-        w = (this.colorMode === ColorMode.HSV16W) || 
-            (this.colorMode === ColorMode.HSV16X && pixelValue >= 0x80);
-        if (this.colorMode === ColorMode.HSV16X) {
+        w = (this.colorMode === ColorMode.HSV8W || this.colorMode === ColorMode.HSV16W) || 
+            ((this.colorMode === ColorMode.HSV8X || this.colorMode === ColorMode.HSV16X) && pixelValue >= 0x80);
+        if (this.colorMode === ColorMode.HSV8X || this.colorMode === ColorMode.HSV16X) {
           pixelValue = pixelValue >= 0x80 ? ((pixelValue & 0x7F) << 1) ^ 0xFE : pixelValue << 1;
         }
         if (w) v = v ^ 0xFFFFFF;
-        result = this.multiplyColorComponents(v, pixelValue);
+        result = (((v >> 16) & 0xFF) * pixelValue + 0xFF) >> 8 << 16 |
+                 (((v >> 8) & 0xFF) * pixelValue + 0xFF) >> 8 << 8 |
+                 (((v >> 0) & 0xFF) * pixelValue + 0xFF) >> 8 << 0;
+        if (w) result = result ^ 0xFFFFFF;
+        break;
+
+      case ColorMode.RGB8:
+        // Pascal: p and $E0 * $1236E and $FF0000 or
+        //          p and $1C *   $91C and $00FF00 or
+        //          p and $03 *    $55 and $0000FF
+        result = ((pixelValue & 0xE0) * 0x01236E) & 0xFF0000 |
+                 ((pixelValue & 0x1C) * 0x00091C) & 0x00FF00 |
+                 ((pixelValue & 0x03) * 0x000055) & 0x0000FF;
         break;
 
       case ColorMode.RGB16:
-        result = ((pixelValue & 0xF800) << 8) | ((pixelValue & 0xE000) << 3) |
-                 ((pixelValue & 0x07E0) << 5) | ((pixelValue & 0x0600) >> 1) |
-                 ((pixelValue & 0x001F) << 3) | ((pixelValue & 0x001C) >> 2);
+        // Pascal expansion of 565 format to 888
+        // Red: expand 5 bits to 8 bits by replicating top 3 bits
+        // Green: expand 6 bits to 8 bits by replicating top 2 bits  
+        // Blue: expand 5 bits to 8 bits by replicating top 3 bits
+        result = ((pixelValue & 0xF800) << 8) | ((pixelValue & 0xE000) << 3) |  // R
+                 ((pixelValue & 0x07E0) << 5) | ((pixelValue & 0x0600) >> 1) |  // G
+                 ((pixelValue & 0x001F) << 3) | ((pixelValue & 0x001C) >> 2);   // B
         break;
 
       case ColorMode.RGB24:
@@ -181,38 +176,66 @@ export class ColorTranslator {
 
   /**
    * Process LUMA and RGBI color modes
+   * Matches Pascal implementation exactly
    */
-  private processLumaMode(pixelValue: number, colorIndex: number, mode: ColorMode): number {
-    const baseColorName = BASE_COLORS[colorIndex];
-    const baseColor = new DebugColor(baseColorName);
-    const baseRgb = baseColor.rgbValue;
-
-    let r = (baseRgb >> 16) & 0xFF;
-    let g = (baseRgb >> 8) & 0xFF;
-    let b = baseRgb & 0xFF;
-
-    const isWhiteMode = mode === ColorMode.LUMA8W || mode === ColorMode.RGBI8W;
-    const isXMode = mode === ColorMode.LUMA8X || mode === ColorMode.RGBI8X;
-
-    if (isXMode && pixelValue >= 0x80) {
-      // X modes: scale from color to white for values >= 0x80
-      pixelValue = ((pixelValue & 0x7F) << 1) ^ 0xFE;
-      r = r ^ 0xFF;
-      g = g ^ 0xFF;
-      b = b ^ 0xFF;
-    } else if (isWhiteMode) {
-      // W modes: scale from white to color
-      r = r ^ 0xFF;
-      g = g ^ 0xFF;
-      b = b ^ 0xFF;
+  private processLumaRgbiMode(pixelValue: number): number {
+    let p = pixelValue;
+    let v: number;
+    let w: boolean;
+    
+    // Determine color index and intensity
+    if (this.colorMode === ColorMode.LUMA8 || 
+        this.colorMode === ColorMode.LUMA8W || 
+        this.colorMode === ColorMode.LUMA8X) {
+      v = this.colorTune & 7;
+      p = p & 0xFF;
+    } else {
+      // RGBI modes
+      v = (p >> 5) & 7;
+      p = ((p & 0x1F) << 3) | ((p & 0x1C) >> 2);
     }
-
-    // Apply pixel value scaling
-    r = ((r * pixelValue + 0xFF) >> 8) & 0xFF;
-    g = ((g * pixelValue + 0xFF) >> 8) & 0xFF;
-    b = ((b * pixelValue + 0xFF) >> 8) & 0xFF;
-
-    return (r << 16) | (g << 8) | b;
+    
+    // Determine if we're in white mode
+    w = (this.colorMode === ColorMode.LUMA8W || this.colorMode === ColorMode.RGBI8W) ||
+        ((this.colorMode === ColorMode.LUMA8X || this.colorMode === ColorMode.RGBI8X) && 
+         (v !== 7) && (p >= 0x80));
+    
+    // Handle X modes
+    if ((this.colorMode === ColorMode.LUMA8X || this.colorMode === ColorMode.RGBI8X) && (v !== 7)) {
+      if (p >= 0x80) {
+        p = (~p & 0x7F) << 1;
+      } else {
+        p = p << 1;
+      }
+    }
+    
+    let result: number;
+    
+    if (w) {
+      // From white to color
+      if (v === 0) {
+        // Orange special case
+        result = (((p << 7) & 0x007F00) | p) ^ 0xFFFFFF;
+      } else {
+        if (v !== 7) v = v ^ 7;
+        result = ((((v >> 2) & 1) * p) << 16) |
+                 ((((v >> 1) & 1) * p) << 8) |
+                 ((((v >> 0) & 1) * p) << 0);
+        result = result ^ 0xFFFFFF;
+      }
+    } else {
+      // From black to color
+      if (v === 0) {
+        // Orange special case
+        result = (p << 16) | ((p << 7) & 0x007F00);
+      } else {
+        result = ((((v >> 2) & 1) * p) << 16) |
+                 ((((v >> 1) & 1) * p) << 8) |
+                 ((((v >> 0) & 1) * p) << 0);
+      }
+    }
+    
+    return result;
   }
 
   /**
@@ -233,22 +256,24 @@ export class ColorTranslator {
     const tuning = -7.2; // Pascal constant for exact red alignment
     
     for (let i = 0; i < 256; i++) {
-      const k = (i / 255.0) * 6.0 + tuning / 60.0;
-      const j = Math.floor(k);
-      const f = k - j;
+      const v = [0, 0, 0];
       
-      let v = [0, 0, 0];
-      
-      switch (j % 6) {
-        case 0: v = [255, Math.round(f * 255), 0]; break;
-        case 1: v = [Math.round((1 - f) * 255), 255, 0]; break;
-        case 2: v = [0, 255, Math.round(f * 255)]; break;
-        case 3: v = [0, Math.round((1 - f) * 255), 255]; break;
-        case 4: v = [Math.round(f * 255), 0, 255]; break;
-        case 5: v = [255, 0, Math.round((1 - f) * 255)]; break;
+      for (let j = 0; j < 3; j++) {
+        let k = i + tuning + j * 256 / 3;
+        if (k >= 256) k = k - 256;
+        
+        if (k < 256 * 2/6) {
+          v[j] = 0;
+        } else if (k < 256 * 3/6) {
+          v[j] = Math.round((k - 256 * 2/6) / (256 * 3/6 - 256 * 2/6) * 255);
+        } else if (k < 256 * 5/6) {
+          v[j] = 255;
+        } else {
+          v[j] = Math.round((256 * 6/6 - k) / (256 * 6/6 - 256 * 5/6) * 255);
+        }
       }
       
-      this.polarColors[i] = (v[0] << 16) | (v[1] << 8) | v[2];
+      this.polarColors[i] = (v[2] << 16) | (v[1] << 8) | v[0];
     }
   }
 

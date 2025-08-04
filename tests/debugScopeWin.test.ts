@@ -1,24 +1,17 @@
 import { DebugScopeWindow, ScopeDisplaySpec } from '../src/classes/debugScopeWin';
 import { Context } from '../src/utils/context';
 import { BrowserWindow } from 'electron';
+import { 
+  createMockContext, 
+  createMockBrowserWindow, 
+  createMockCanvas,
+  setupDebugWindowTest,
+  cleanupDebugWindowTest 
+} from './shared/mockHelpers';
 
 // Mock Electron
 jest.mock('electron', () => ({
-  BrowserWindow: jest.fn().mockImplementation(() => ({
-    loadURL: jest.fn(),
-    webContents: {
-      executeJavaScript: jest.fn().mockResolvedValue(undefined),
-      send: jest.fn(),
-      on: jest.fn()
-    },
-    on: jest.fn(),
-    once: jest.fn(),
-    removeAllListeners: jest.fn(),
-    close: jest.fn(),
-    isDestroyed: jest.fn().mockReturnValue(false),
-    setAlwaysOnTop: jest.fn(),
-    setMenu: jest.fn()
-  })),
+  BrowserWindow: jest.fn().mockImplementation(() => createMockBrowserWindow()),
   app: {
     getPath: jest.fn().mockReturnValue('/mock/path')
   },
@@ -43,17 +36,14 @@ describe('DebugScopeWindow', () => {
   let mockDisplaySpec: ScopeDisplaySpec;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // Use shared mock setup
+    const testSetup = setupDebugWindowTest();
     
-    mockContext = {
-      logMessage: jest.fn(),
+    mockContext = createMockContext({
       runtime: {
         isDebugMode: false
-      },
-      logger: {
-        logMessage: jest.fn()
       }
-    } as any;
+    });
 
     mockDisplaySpec = {
       displayName: 'SCOPE',
@@ -83,6 +73,13 @@ describe('DebugScopeWindow', () => {
     debugScopeWindow['inputForwarder'] = {
       setMouseCoordinateTransform: jest.fn()
     } as any;
+  });
+
+  afterEach(() => {
+    cleanupDebugWindowTest();
+    if (debugScopeWindow) {
+      debugScopeWindow.closeDebugWindow();
+    }
   });
 
   describe('Mouse Coordinate Display', () => {

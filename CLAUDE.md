@@ -510,6 +510,42 @@ The logic window provides an enhanced mouse experience that matches the Pascal r
 - Display elements have `pointer-events: none` to avoid interfering with mouse input
 - Coordinates are calculated using the same formulas as the Pascal implementation
 
+## Technical Debt Tracking
+
+### Important Implementation Requirements
+
+Technical debt items and implementation requirements are tracked as comments throughout the codebase. Key areas:
+
+**TECH-DEBT: Preserve Unparsed Debug Strings**
+- All debug window implementations MUST preserve the original unparsed debug command strings
+- Required for enhanced error logging and debugging user issues
+- See detailed requirements in `DebugWindowBase` class documentation
+- Critical for product support and issue resolution
+
+**TECH-DEBT: Error Logging Context**
+- When logging errors from invalid parameters, include the full original debug command
+- Helps users understand what caused the error and correct their debug statements
+- Implemented in Plot window, needs to be added to other windows
+
+**TECH-DEBT: Test Infrastructure**
+- Some tests have brittle mock expectations that should be refactored
+- InputForwarder tests need proper error handling to prevent crashes
+- Consider more integration tests vs unit tests for complex interactions
+
+### Finding Technical Debt Items
+
+To find all technical debt items in the codebase:
+```bash
+# Search for TECH-DEBT comments
+grep -r "TECH-DEBT" src/
+
+# Search for TODO comments  
+grep -r "TODO" src/
+
+# Search for FIXME comments
+grep -r "FIXME" src/
+```
+
 ### Testing Considerations
 
 When testing mouse support:

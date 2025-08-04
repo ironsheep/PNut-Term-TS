@@ -77,7 +77,11 @@ export class InputForwarder extends EventEmitter {
     
     this.isPolling = true;
     this.pollInterval = setInterval(() => {
-      this.processEventQueue();
+      // Wrap in promise catch to handle any errors
+      this.processEventQueue().catch(error => {
+        // Error is already emitted in processEvent, just log for debugging
+        console.error('InputForwarder: Error in processEventQueue:', error);
+      });
     }, InputForwarder.POLL_INTERVAL_MS);
   }
 
@@ -212,8 +216,21 @@ export class InputForwarder extends EventEmitter {
         await this.sendMouseEvent(event.status);
       }
     } catch (error) {
+      // Enhance error with event context
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const contextualError = new Error(
+        `InputForwarder: Failed to process ${event.type} event: ${errorMessage}`
+      );
+      
+      // Attach event details for debugging
+      (contextualError as any).eventDetails = {
+        type: event.type,
+        timestamp: event.timestamp,
+        data: event.type === 'key' ? { value: event.value } : { status: event.status }
+      };
+      
       // Emit error but don't crash
-      this.emit('error', error);
+      this.emit('error', contextualError);
     }
   }
 
@@ -221,35 +238,65 @@ export class InputForwarder extends EventEmitter {
    * Send PC_KEY event to P2
    */
   private async sendKeyEvent(keyValue: number): Promise<void> {
-    if (!this.usbSerial) return;
+    if (!this.usbSerial) {
+      this.emit('error', new Error('No USB serial connection available for PC_KEY'));
+      return;
+    }
 
-    // Format: PC_KEY response as 4-byte long value
-    const buffer = Buffer.allocUnsafe(4);
-    buffer.writeUInt32LE(keyValue, 0);
-    
-    // Send to P2
-    await this.usbSerial.write(buffer.toString('base64'));
+    try {
+      // Format: PC_KEY response as 4-byte long value
+      const buffer = Buffer.allocUnsafe(4);
+      buffer.writeUInt32LE(keyValue, 0);
+      
+      // Send to P2
+      await this.usbSerial.write(buffer.toString('base64'));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if it's a disconnection error
+      if (errorMessage.includes('port is not open') || errorMessage.includes('disconnected')) {
+        this.handleDisconnection();
+      }
+      
+      // Re-throw the error so it can be caught in processEvent
+      throw error;
+    }
   }
 
   /**
    * Send PC_MOUSE event to P2
    */
   private async sendMouseEvent(status: MouseStatus): Promise<void> {
-    if (!this.usbSerial) return;
+    if (!this.usbSerial) {
+      this.emit('error', new Error('No USB serial connection available for PC_MOUSE'));
+      return;
+    }
 
-    // Format: PC_MOUSE response as 7 longs (28 bytes)
-    const buffer = Buffer.allocUnsafe(28);
-    
-    buffer.writeInt32LE(status.xpos, 0);
-    buffer.writeInt32LE(status.ypos, 4);
-    buffer.writeInt32LE(status.wheeldelta, 8);
-    buffer.writeInt32LE(status.lbutton, 12);
-    buffer.writeInt32LE(status.mbutton, 16);
-    buffer.writeInt32LE(status.rbutton, 20);
-    buffer.writeInt32LE(status.pixel, 24);
-    
-    // Send to P2
-    await this.usbSerial.write(buffer.toString('base64'));
+    try {
+      // Format: PC_MOUSE response as 7 longs (28 bytes)
+      const buffer = Buffer.allocUnsafe(28);
+      
+      buffer.writeInt32LE(status.xpos, 0);
+      buffer.writeInt32LE(status.ypos, 4);
+      buffer.writeInt32LE(status.wheeldelta, 8);
+      buffer.writeInt32LE(status.lbutton, 12);
+      buffer.writeInt32LE(status.mbutton, 16);
+      buffer.writeInt32LE(status.rbutton, 20);
+      buffer.writeInt32LE(status.pixel, 24);
+      
+      // Send to P2
+      await this.usbSerial.write(buffer.toString('base64'));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if it's a disconnection error
+      if (errorMessage.includes('port is not open') || errorMessage.includes('disconnected')) {
+        this.handleDisconnection();
+      }
+      
+      // Re-throw the error so it can be caught in processEvent
+      throw error;
+    }
   }
 
   /**
@@ -271,5 +318,36 @@ export class InputForwarder extends EventEmitter {
    */
   public get isActive(): boolean {
     return this.isPolling;
+  }
+  
+  /**
+   * Handle disconnection by stopping polling and clearing state
+   * TECH-DEBT: Enhanced error recovery for serial disconnection
+   */
+  private handleDisconnection(): void {
+    // Stop polling to prevent further errors
+    this.stopPolling();
+    
+    // Clear the USB serial reference to prevent further write attempts
+    this.usbSerial = null;
+    
+    // Emit a disconnection event for the window to handle
+    this.emit('disconnected', {
+      message: 'USB serial connection lost',
+      timestamp: Date.now()
+    });
+  }
+  
+  /**
+   * Attempt to reconnect with a new USB serial instance
+   * Call this after re-establishing connection in the parent window
+   */
+  public reconnect(serial: UsbSerial): void {
+    this.usbSerial = serial;
+    // Don't automatically restart polling - let the window decide
+    this.emit('reconnected', {
+      message: 'USB serial connection restored',
+      timestamp: Date.now()
+    });
   }
 }
