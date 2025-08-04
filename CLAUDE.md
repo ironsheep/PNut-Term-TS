@@ -719,6 +719,37 @@ When testing mouse support:
 - 30-second timeout for complex integration tests
 - Coverage thresholds can be configured in `jest.config.js`
 
+### Test Coverage Status (as of 2025-08-04)
+
+**Base Class Testing**:
+- **DebugWindowBase**: ✅ Complete test coverage (29 tests passing)
+  - Color validation (names and numeric formats)
+  - Text style encoding/decoding
+  - Font metrics calculations
+  - Window lifecycle management
+  - Input forwarding setup
+  - Save to BMP functionality
+  - Abstract method enforcement
+
+**Window-Specific Testing**:
+- **DebugTermWindow**: ⚠️ Test file created but not integrated
+- **DebugScopeWindow**: ✅ Existing tests (integration level)
+- **DebugLogicWindow**: ✅ Existing tests (integration level)
+- **DebugPlotWindow**: ✅ Comprehensive tests (command and integration)
+- **DebugBitmapWindow**: ✅ Comprehensive tests (command and integration)
+
+**Shared Component Testing**:
+- **Spin2NumericParser**: ✅ Complete coverage (44 tests passing)
+- **PackedDataProcessor**: ✅ Complete coverage (26 tests passing)
+- **ColorTranslator**: ⚠️ Some failing tests (implementation differences)
+- **InputForwarder**: ⚠️ Test infrastructure issues
+
+**Testing Strategy**:
+1. Base class (DebugWindowBase) tests common functionality once
+2. Window-specific tests focus on unique behavior
+3. Shared components have dedicated unit tests
+4. Integration tests verify inter-component communication
+
 ### Running Tests - Best Practices
 
 **UPDATE**: As of 2025-08-04, the build step has been moved to `pretest`, so `npm test` now runs cleanly!

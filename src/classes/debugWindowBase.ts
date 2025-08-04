@@ -182,14 +182,36 @@ export abstract class DebugWindowBase extends EventEmitter {
     let rgbValue: string = '#a5a5a5'; // gray for unknown color
     let isValid: boolean = false;
     
-    // Use Spin2NumericParser to parse color value
-    // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
-    const colorValue = Spin2NumericParser.parseColor(possColorValue);
+    // First try to parse as a color name using DebugColor
+    const colorNameToHex: { [key: string]: string } = {
+      BLACK: '#000000',
+      WHITE: '#ffffff',
+      ORANGE: '#ff6600',
+      BLUE: '#0080ff',
+      GREEN: '#00ff00',
+      CYAN: '#00ffff',
+      RED: '#ff0000',
+      MAGENTA: '#ff00ff',
+      YELLOW: '#ffff00',
+      BROWN: '#906020',
+      GRAY: '#808080',
+      GREY: '#808080'  // Alternative spelling
+    };
     
-    if (colorValue !== null) {
-      // Convert to hex string format #RRGGBB
-      rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toUpperCase();
+    const upperColorName = possColorValue.toUpperCase();
+    if (colorNameToHex[upperColorName]) {
+      rgbValue = colorNameToHex[upperColorName];
       isValid = true;
+    } else {
+      // Try to parse as numeric value using Spin2NumericParser
+      // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
+      const colorValue = Spin2NumericParser.parseColor(possColorValue);
+      
+      if (colorValue !== null) {
+        // Convert to hex string format #RRGGBB
+        rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toLowerCase();
+        isValid = true;
+      }
     }
     
     return [isValid, rgbValue];

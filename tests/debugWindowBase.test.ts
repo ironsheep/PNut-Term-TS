@@ -1,0 +1,495 @@
+import { DebugWindowBase, eVertJustification, eHorizJustification, eTextWeight, FontMetrics, TextStyle } from '../src/classes/debugWindowBase';
+import { Context } from '../src/utils/context';
+import { BrowserWindow } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Mock Electron
+jest.mock('electron', () => ({
+  BrowserWindow: jest.fn().mockImplementation(() => ({
+    loadURL: jest.fn(),
+    webContents: {
+      executeJavaScript: jest.fn().mockResolvedValue(undefined),
+      send: jest.fn(),
+      on: jest.fn(),
+      capturePage: jest.fn().mockResolvedValue({
+        toPNG: jest.fn().mockResolvedValue(Buffer.from('mock-png-data'))
+      })
+    },
+    on: jest.fn(),
+    once: jest.fn(),
+    removeAllListeners: jest.fn(),
+    close: jest.fn(),
+    isDestroyed: jest.fn().mockReturnValue(false),
+    setAlwaysOnTop: jest.fn(),
+    setMenu: jest.fn()
+  })),
+  app: {
+    getPath: jest.fn().mockReturnValue('/mock/path')
+  },
+  nativeImage: {
+    createFromBuffer: jest.fn().mockReturnValue({
+      toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
+    })
+  }
+}));
+
+// Mock file system
+jest.mock('fs', () => ({
+  existsSync: jest.fn(),
+  mkdirSync: jest.fn(),
+  writeFileSync: jest.fn()
+}));
+
+// Mock InputForwarder
+jest.mock('../src/classes/shared/inputForwarder', () => ({
+  InputForwarder: jest.fn().mockImplementation(() => ({
+    stopPolling: jest.fn(),
+    startPolling: jest.fn(),
+    enableKeyboard: jest.fn(),
+    enableMouse: jest.fn()
+  }))
+}));
+
+// Mock jimp
+jest.mock('jimp', () => ({
+  Jimp: {
+    create: jest.fn().mockResolvedValue({
+      bitmap: {
+        width: 100,
+        height: 100,
+        data: Buffer.alloc(40000)
+      },
+      getPixelColor: jest.fn().mockReturnValue(0xFF0000FF),
+      setPixelColor: jest.fn(),
+      write: jest.fn().mockResolvedValue(undefined)
+    })
+  }
+}));
+
+// Create a concrete implementation for testing
+class TestDebugWindow extends DebugWindowBase {
+  constructor(ctx: Context) {
+    super(ctx);
+    this.windowLogPrefix = 'TestWin';
+  }
+
+  closeDebugWindow(): void {
+    // Test implementation
+  }
+
+  updateContent(lineParts: string[]): void {
+    // Test implementation
+  }
+
+  protected getCanvasId(): string {
+    return 'test-canvas';
+  }
+}
+
+describe('DebugWindowBase', () => {
+  let testWindow: TestDebugWindow;
+  let mockContext: Context;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    mockContext = {
+      logMessage: jest.fn(),
+      logger: {
+        logMessage: jest.fn()
+      },
+      runtime: {
+        verbose: false
+      }
+    } as any;
+
+    testWindow = new TestDebugWindow(mockContext);
+  });
+
+  describe('Color Validation', () => {
+    describe('getValidRgb24', () => {
+      it('should recognize color names', () => {
+        const colorTests = [
+          { input: 'BLACK', expected: '#000000' },
+          { input: 'WHITE', expected: '#ffffff' },
+          { input: 'ORANGE', expected: '#ff6600' },
+          { input: 'BLUE', expected: '#0080ff' },
+          { input: 'GREEN', expected: '#00ff00' },
+          { input: 'CYAN', expected: '#00ffff' },
+          { input: 'RED', expected: '#ff0000' },
+          { input: 'MAGENTA', expected: '#ff00ff' },
+          { input: 'YELLOW', expected: '#ffff00' },
+          { input: 'BROWN', expected: '#906020' },
+          { input: 'gray', expected: '#808080' },  // Case insensitive
+          { input: 'GRAY', expected: '#808080' }
+        ];
+
+        colorTests.forEach(test => {
+          const [isValid, color] = DebugWindowBase.getValidRgb24(test.input);
+          expect(isValid).toBe(true);
+          expect(color).toBe(test.expected);
+        });
+      });
+
+      it('should parse numeric color values', () => {
+        const [isValid1, color1] = DebugWindowBase.getValidRgb24('$FF0000');
+        expect(isValid1).toBe(true);
+        expect(color1.toLowerCase()).toBe('#ff0000');
+
+        const [isValid2, color2] = DebugWindowBase.getValidRgb24('16711680');
+        expect(isValid2).toBe(true);
+        expect(color2.toLowerCase()).toBe('#ff0000');
+
+        const [isValid3, color3] = DebugWindowBase.getValidRgb24('%11111111_00000000_00000000');
+        expect(isValid3).toBe(true);
+        expect(color3.toLowerCase()).toBe('#ff0000');
+      });
+
+      it('should handle invalid color values', () => {
+        const [isValid1, color1] = DebugWindowBase.getValidRgb24('INVALID');
+        expect(isValid1).toBe(false);
+        expect(color1).toBe('#a5a5a5'); // Default gray
+
+        const [isValid2, color2] = DebugWindowBase.getValidRgb24('');
+        expect(isValid2).toBe(false);
+        expect(color2).toBe('#a5a5a5');
+      });
+
+      it('should clamp out-of-range numeric values', () => {
+        const [isValid, color] = DebugWindowBase.getValidRgb24('$FFFFFF00');
+        expect(isValid).toBe(true);
+        expect(color.toLowerCase()).toBe('#ffffff'); // Clamped to 24-bit max
+      });
+    });
+  });
+
+  describe('Text Style Encoding', () => {
+    describe('calcStyleFrom', () => {
+      it('should encode text styles correctly', () => {
+        // Test default style
+        const style1 = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_MIDDLE,
+          eHorizJustification.HJ_CENTER,
+          eTextWeight.TW_NORMAL
+        );
+        expect(style1).toBe(0b00000001); // Middle, center, normal weight
+
+        // Test with all options
+        const style2 = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_TOP,
+          eHorizJustification.HJ_LEFT,
+          eTextWeight.TW_BOLD,
+          true,  // underline
+          true   // italic
+        );
+        expect(style2).toBe(0b11111110); // Top, left, underline, italic, bold
+      });
+
+      it('should handle all vertical justifications', () => {
+        const middleStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_MIDDLE,
+          eHorizJustification.HJ_CENTER,
+          eTextWeight.TW_NORMAL
+        );
+        expect((middleStyle >> 6) & 0b11).toBe(0b00);
+
+        const bottomStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_BOTTOM,
+          eHorizJustification.HJ_CENTER,
+          eTextWeight.TW_NORMAL
+        );
+        expect((bottomStyle >> 6) & 0b11).toBe(0b10);
+
+        const topStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_TOP,
+          eHorizJustification.HJ_CENTER,
+          eTextWeight.TW_NORMAL
+        );
+        expect((topStyle >> 6) & 0b11).toBe(0b11);
+      });
+
+      it('should handle all horizontal justifications', () => {
+        const centerStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_MIDDLE,
+          eHorizJustification.HJ_CENTER,
+          eTextWeight.TW_NORMAL
+        );
+        expect((centerStyle >> 4) & 0b11).toBe(0b00);
+
+        const rightStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_MIDDLE,
+          eHorizJustification.HJ_RIGHT,
+          eTextWeight.TW_NORMAL
+        );
+        expect((rightStyle >> 4) & 0b11).toBe(0b10);
+
+        const leftStyle = DebugWindowBase.calcStyleFrom(
+          eVertJustification.VJ_MIDDLE,
+          eHorizJustification.HJ_LEFT,
+          eTextWeight.TW_NORMAL
+        );
+        expect((leftStyle >> 4) & 0b11).toBe(0b11);
+      });
+
+      it('should handle all font weights', () => {
+        const weights = [
+          { weight: eTextWeight.TW_LIGHT, expected: 0b00 },
+          { weight: eTextWeight.TW_NORMAL, expected: 0b01 },
+          { weight: eTextWeight.TW_BOLD, expected: 0b10 },
+          { weight: eTextWeight.TW_HEAVY, expected: 0b11 }
+        ];
+
+        weights.forEach(test => {
+          const style = DebugWindowBase.calcStyleFrom(
+            eVertJustification.VJ_MIDDLE,
+            eHorizJustification.HJ_CENTER,
+            test.weight
+          );
+          expect(style & 0b11).toBe(test.expected);
+        });
+      });
+    });
+
+    describe('calcStyleFromBitfield', () => {
+      it('should decode text styles correctly', () => {
+        const textStyle: TextStyle = {
+          vertAlign: eVertJustification.VJ_UNKNOWN,
+          horizAlign: eHorizJustification.HJ_UNKNOWN,
+          underline: false,
+          italic: false,
+          weight: eTextWeight.TW_UNKNOWN,
+          angle: 0
+        };
+
+        // Test decoding of encoded style
+        DebugWindowBase.calcStyleFromBitfield(0b11111110, textStyle);
+        expect(textStyle.vertAlign).toBe(0b11); // TOP
+        expect(textStyle.horizAlign).toBe(0b11); // LEFT
+        expect(textStyle.underline).toBe(true);
+        expect(textStyle.italic).toBe(true);
+        expect(textStyle.weight).toBe(eTextWeight.TW_BOLD);
+      });
+
+      it('should handle invalid bitfield gracefully', () => {
+        const textStyle: TextStyle = {
+          vertAlign: eVertJustification.VJ_MIDDLE,
+          horizAlign: eHorizJustification.HJ_CENTER,
+          underline: false,
+          italic: false,
+          weight: eTextWeight.TW_NORMAL,
+          angle: 0
+        };
+
+        // Should not crash on invalid input
+        DebugWindowBase.calcStyleFromBitfield(1234567890, textStyle);
+        // Style should remain unchanged for very large numbers
+      });
+    });
+  });
+
+  describe('Font Metrics', () => {
+    it('should calculate font metrics correctly', () => {
+      const metrics: FontMetrics = {
+        textSizePts: 0,
+        charHeight: 0,
+        charWidth: 0,
+        lineHeight: 0,
+        baseline: 0
+      };
+
+      DebugWindowBase.calcMetricsForFontPtSize(14, metrics);
+      expect(metrics.textSizePts).toBe(14);
+      expect(metrics.charHeight).toBe(19); // 14 * 1.333 = 18.662 → 19
+      expect(metrics.charWidth).toBe(11);  // 19 * 0.6 = 11.4 → 11
+      expect(metrics.lineHeight).toBe(25); // 19 * 1.3 = 24.7 → 25
+      expect(metrics.baseline).toBe(14);   // 19 * 0.7 + 0.5 = 13.8 → 14
+
+      // Test another size
+      DebugWindowBase.calcMetricsForFontPtSize(21, metrics);
+      expect(metrics.textSizePts).toBe(21);
+      expect(metrics.charHeight).toBe(28); // 21 * 1.333 = 27.993 → 28
+      expect(metrics.charWidth).toBe(17);  // 28 * 0.6 = 16.8 → 17
+      expect(metrics.lineHeight).toBe(36); // 28 * 1.3 = 36.4 → 36
+      expect(metrics.baseline).toBe(20);   // 28 * 0.7 + 0.5 = 20.1 → 20
+    });
+  });
+
+  describe('Window Lifecycle', () => {
+    it('should initialize with context', () => {
+      expect(testWindow['context']).toBe(mockContext);
+      expect(testWindow['windowLogPrefix']).toBe('TestWin');
+    });
+
+    it('should handle window assignment', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      
+      expect(testWindow['_debugWindow']).toBe(mockWindow);
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: - New TestDebugWindow window');
+    });
+
+    it('should handle window destruction', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      
+      // Mock event listener registration
+      const closeSpy = jest.fn();
+      const closedSpy = jest.fn();
+      testWindow.on('close', closeSpy);
+      testWindow.on('closed', closedSpy);
+      
+      testWindow['debugWindow'] = null;
+      
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: - Closing TestDebugWindow window');
+      expect(mockWindow.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('Input Helpers', () => {
+    it('should validate spin numbers', () => {
+      const [isValid1, value1] = testWindow['isSpinNumber']('123');
+      expect(isValid1).toBe(true);
+      expect(value1).toBe(123);
+
+      const [isValid2, value2] = testWindow['isSpinNumber']('$FF');
+      expect(isValid2).toBe(true);
+      expect(value2).toBe(255);
+
+      const [isValid3, value3] = testWindow['isSpinNumber']('%1010');
+      expect(isValid3).toBe(true);
+      expect(value3).toBe(10);
+
+      const [isValid4, value4] = testWindow['isSpinNumber']('invalid');
+      expect(isValid4).toBe(false);
+      expect(value4).toBe(0);
+    });
+
+    it('should remove string quotes', () => {
+      expect(testWindow['removeStringQuotes']('"hello"')).toBe('hello');
+      expect(testWindow['removeStringQuotes']("'world'")).toBe('world');
+      expect(testWindow['removeStringQuotes']('no quotes')).toBe('no quotes');
+      expect(testWindow['removeStringQuotes']('"mixed\'quotes"')).toBe('mixed\'quotes');
+    });
+
+    it('should get parallax font URL', () => {
+      const url = testWindow['getParallaxFontUrl']();
+      expect(url).toContain('Parallax.ttf');
+      expect(url).toMatch(/^file:\/\//);
+    });
+  });
+
+  describe('Window Capture', () => {
+    it('should save window to BMP file', async () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['_debugWindow'] = mockWindow;
+      
+      // Setup fs mocks
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.mkdirSync as jest.Mock).mockReturnValue(undefined);
+      
+      await testWindow['saveWindowToBMPFilename']('test.bmp');
+      
+      expect(mockWindow.webContents.capturePage).toHaveBeenCalled();
+    });
+
+    it('should handle save errors gracefully', async () => {
+      testWindow['_debugWindow'] = null;
+      
+      // Should not throw when no window
+      await expect(testWindow['saveWindowToBMPFilename']('test.bmp')).resolves.not.toThrow();
+    });
+  });
+
+  describe('Abstract Method Enforcement', () => {
+    it('should require getCanvasId implementation', () => {
+      expect(testWindow['getCanvasId']()).toBe('test-canvas');
+    });
+
+    it('should require closeDebugWindow implementation', () => {
+      expect(() => testWindow.closeDebugWindow()).not.toThrow();
+    });
+
+    it('should require updateContent implementation', () => {
+      expect(() => testWindow.updateContent(['test'])).not.toThrow();
+    });
+  });
+
+  describe('Font Weight Names', () => {
+    it('should return correct font weight names', () => {
+      const testCases = [
+        { weight: eTextWeight.TW_LIGHT, expected: 'light' },
+        { weight: eTextWeight.TW_NORMAL, expected: 'normal' },
+        { weight: eTextWeight.TW_BOLD, expected: 'bold' },
+        { weight: eTextWeight.TW_HEAVY, expected: 'heavy' },
+        { weight: eTextWeight.TW_UNKNOWN, expected: 'normal' }
+      ];
+
+      testCases.forEach(test => {
+        const style: TextStyle = {
+          vertAlign: eVertJustification.VJ_MIDDLE,
+          horizAlign: eHorizJustification.HJ_CENTER,
+          underline: false,
+          italic: false,
+          weight: test.weight,
+          angle: 0
+        };
+        expect(testWindow['fontWeightName'](style)).toBe(test.expected);
+      });
+    });
+  });
+
+  describe('Mouse and Keyboard Input', () => {
+    it('should enable keyboard input', () => {
+      testWindow['enableKeyboardInput']();
+      expect(testWindow['inputForwarder']).toBeDefined();
+    });
+
+    it('should enable mouse input', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['_debugWindow'] = mockWindow;
+      
+      // Create a mock DOM environment
+      const mockContainer = {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        style: {}
+      };
+      
+      mockWindow.webContents.executeJavaScript = jest.fn().mockImplementation((script) => {
+        if (script.includes('getElementById')) {
+          return Promise.resolve(mockContainer);
+        }
+        return Promise.resolve(undefined);
+      });
+
+      testWindow['enableMouseInput']();
+      expect(testWindow['inputForwarder']).toBeDefined();
+    });
+
+    it('should transform mouse coordinates (default implementation)', () => {
+      const coords = testWindow['transformMouseCoordinates'](100, 200);
+      expect(coords).toEqual({ x: 100, y: 200 });
+    });
+
+    it('should return undefined for pixel color getter by default', () => {
+      const getter = testWindow['getPixelColorGetter']();
+      expect(getter).toBeUndefined();
+    });
+  });
+
+  describe('Logging', () => {
+    it('should log messages with prefix', () => {
+      testWindow['logMessage']('test message');
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('TestWin: test message');
+
+      testWindow['logMessage']('another message', 'CUSTOM');
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('CUSTOM: another message');
+    });
+
+    it('should log base messages', () => {
+      testWindow['logMessageBase']('base message');
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: base message');
+    });
+  });
+});
