@@ -637,8 +637,20 @@ The debug windows now support PC_KEY and PC_MOUSE commands for input forwarding 
 - Canvas ID: dynamically generated bitmapCanvasId
 
 **DebugTermWindow**:
-- Minimal implementation (terminal doesn't typically need mouse)
-- Canvas ID: 'terminal-canvas'
+- Full terminal emulation with color support
+- Canvas ID: 'text-area' (uses HTML5 Canvas for text rendering)
+- PC_KEY and PC_MOUSE commands supported for input forwarding
+- Features from Pascal implementation:
+  - 4 simultaneous color combinations (selectable via control codes 4-7)
+  - Character-cell based display (1-256 columns × 1-256 rows)
+  - Full cursor control (home, goto X/Y)
+  - Automatic scrolling when reaching bottom
+  - Tab stops at 8-character boundaries
+  - Backspace with line wrapping
+  - Clear screen functionality
+  - File save support (SAVE {WINDOW} 'filename')
+- Uses Spin2NumericParser for all numeric parameters
+- Uses DebugColor for color management
 
 ### PC_MOUSE Data Structure
 

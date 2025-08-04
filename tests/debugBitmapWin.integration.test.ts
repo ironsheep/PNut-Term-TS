@@ -22,7 +22,8 @@ jest.mock('electron', () => ({
     show: jest.fn(),
     on: jest.fn(),
     webContents: {
-      executeJavaScript: jest.fn().mockResolvedValue(undefined)
+      executeJavaScript: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn()
     }
   }))
 }));

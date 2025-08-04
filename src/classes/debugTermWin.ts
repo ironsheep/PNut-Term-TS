@@ -9,6 +9,7 @@ import { BrowserWindow } from 'electron';
 
 import { Context } from '../utils/context';
 import { DebugColor } from './shared/debugColor';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { waitMSec } from '../utils/timerUtils';
@@ -118,8 +119,15 @@ export class DebugTermWindow extends DebugWindowBase {
           case 'POS':
             // ensure we have two more values
             if (index < lineParts.length - 2) {
-              displaySpec.position.x = Number(lineParts[++index]);
-              displaySpec.position.y = Number(lineParts[++index]);
+              const x = Spin2NumericParser.parsePixel(lineParts[++index]);
+              const y = Spin2NumericParser.parsePixel(lineParts[++index]);
+              if (x !== null && y !== null) {
+                displaySpec.position.x = x;
+                displaySpec.position.y = y;
+              } else {
+                console.log(`CL: TermDisplaySpec: Invalid position values`);
+                isValid = false;
+              }
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -128,18 +136,30 @@ export class DebugTermWindow extends DebugWindowBase {
           case 'SIZE':
             // ensure we have two more values
             if (index < lineParts.length - 2) {
-              displaySpec.size.columns = Number(lineParts[++index]);
-              displaySpec.size.rows = Number(lineParts[++index]);
+              const columns = Spin2NumericParser.parseCount(lineParts[++index]);
+              const rows = Spin2NumericParser.parseCount(lineParts[++index]);
+              if (columns !== null && rows !== null && columns >= 1 && rows >= 1) {
+                displaySpec.size.columns = Math.min(columns, 256);
+                displaySpec.size.rows = Math.min(rows, 256);
+              } else {
+                console.log(`CL: TermDisplaySpec: Invalid size values (must be 1-256)`);
+                isValid = false;
+              }
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
           case 'TEXTSIZE':
-            // ensure we have two more values
+            // ensure we have one more value
             if (index < lineParts.length - 1) {
-              const sizeInPts: number = Number(lineParts[++index]);
-              DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
+              const sizeInPts = Spin2NumericParser.parseCount(lineParts[++index]);
+              if (sizeInPts !== null && sizeInPts >= 6 && sizeInPts <= 200) {
+                DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
+              } else {
+                console.log(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);
+                isValid = false;
+              }
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -469,15 +489,33 @@ export class DebugTermWindow extends DebugWindowBase {
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
         // save the window to a file
-        if (index + 1 < lineParts.length) {
-          const saveFileName = this.removeStringQuotes(lineParts[++index]);
+        let saveWindow = false;
+        let fileNameIndex = index + 1;
+        
+        // Check for optional WINDOW parameter
+        if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'WINDOW') {
+          saveWindow = true;
+          fileNameIndex = index + 2;
+        }
+        
+        if (fileNameIndex < lineParts.length) {
+          const saveFileName = this.removeStringQuotes(lineParts[fileNameIndex]);
           // save the window to a file (as BMP)
           await this.saveWindowToBMPFilename(saveFileName);
+          index = fileNameIndex; // Update index to skip processed parameters
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
+      } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
+        // Enable keyboard input forwarding
+        this.enableKeyboardInput();
+        break; // PC_KEY must be last command
+      } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
+        // Enable mouse input forwarding
+        this.enableMouseInput();
+        break; // PC_MOUSE must be last command
       } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]} of [${lineParts.join(' ')}]`);
       }
     }
   }
@@ -524,7 +562,12 @@ export class DebugTermWindow extends DebugWindowBase {
             case 2:
               // set column to next character value
               if (numbers.length > 1) {
-                this.cursorPosition.x = parseInt(numbers[1], 10);
+                const column = Spin2NumericParser.parsePixel(numbers[1]);
+                if (column !== null) {
+                  this.cursorPosition.x = Math.min(column, this.displaySpec.size.columns - 1);
+                } else {
+                  this.logMessage(`* UPD-ERROR  invalid column value for action 2: ${numbers[1]}`);
+                }
               } else {
                 this.logMessage(`* UPD-ERROR  missing column value for action 2`);
               }
@@ -532,7 +575,12 @@ export class DebugTermWindow extends DebugWindowBase {
             case 3:
               // set row to next character value
               if (numbers.length > 1) {
-                this.cursorPosition.y = parseInt(numbers[1], 10);
+                const row = Spin2NumericParser.parsePixel(numbers[1]);
+                if (row !== null) {
+                  this.cursorPosition.y = Math.min(row, this.displaySpec.size.rows - 1);
+                } else {
+                  this.logMessage(`* UPD-ERROR  invalid row value for action 3: ${numbers[1]}`);
+                }
               } else {
                 this.logMessage(`* UPD-ERROR  missing row value for action 3`);
               }

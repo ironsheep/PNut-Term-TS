@@ -30,7 +30,7 @@ jest.mock('electron', () => ({
 
 // Mock other dependencies
 jest.mock('../src/utils/context');
-jest.mock('../src/classes/debugColor');
+jest.mock('../src/classes/shared/debugColor');
 jest.mock('../src/classes/shared/packedDataProcessor');
 jest.mock('../src/classes/shared/triggerProcessor');
 jest.mock('../src/classes/shared/canvasRenderer');
