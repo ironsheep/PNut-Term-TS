@@ -223,6 +223,9 @@ Create a detailed implementation plan (`/tasks/[WINDOW_TYPE]_IMPLEMENTATION.md`)
     - [ ] Update total test count (e.g., "1014 tests across 33 files")
     - [ ] Add any new shared classes to coverage status section
     - [ ] Document any test fixes or special considerations in Recent Fixes section
+  - [ ] **Update Claude helper scripts for new test files**:
+    - [ ] Add new test files to `scripts/claude/run-all-tests.sh` TEST_FILES array
+    - [ ] Add new test files to `scripts/claude/check_tests.sh` if applicable
 
 ## Example: SCOPE_XY Planning Success
 The SCOPE_XY window planning followed this process:
