@@ -163,6 +163,119 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   }
 
   /**
+   * Override enableMouseInput to add SCOPE_XY-specific coordinate transformation
+   */
+  protected enableMouseInput(): void {
+    // Call base implementation first
+    super.enableMouseInput();
+    
+    // Add SCOPE_XY-specific coordinate display functionality
+    if (!this.hideXY && this.debugWindow && !this.debugWindow.isDestroyed()) {
+      // Set up mouse move handler for coordinate display
+      this.debugWindow.webContents.on('console-message', (_event, _level, message) => {
+        // Parse mouse coordinates from console messages if needed
+        if (message.startsWith('MOUSE:')) {
+          const coords = message.substring(6).split(',');
+          if (coords.length === 2) {
+            const screenX = parseInt(coords[0]);
+            const screenY = parseInt(coords[1]);
+            
+            // Transform to data coordinates
+            const dataCoords = this.screenToDataCoordinates(screenX, screenY);
+            
+            // Display coordinates in window title or overlay
+            const coordStr = this.polar ? 
+              `R:${dataCoords.x} θ:${dataCoords.y}` :
+              `X:${dataCoords.x} Y:${dataCoords.y}`;
+            
+            if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+              this.debugWindow.setTitle(`${this.windowTitle} - ${coordStr}`);
+            }
+          }
+        }
+      });
+      
+      // Inject mouse tracking JavaScript
+      const trackingScript = `
+        document.addEventListener('mousemove', (e) => {
+          const canvas = document.getElementById('${this.scopeXyCanvasId}');
+          if (canvas) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
+          }
+        });
+      `;
+      
+      this.debugWindow.webContents.executeJavaScript(trackingScript).catch(err => {
+        console.error('Failed to inject mouse tracking:', err);
+      });
+    }
+  }
+
+  /**
+   * Transform screen coordinates to data coordinates
+   */
+  private screenToDataCoordinates(screenX: number, screenY: number): { x: number; y: number } {
+    // Convert screen coordinates to data values
+    const centerX = this.radius;
+    const centerY = this.radius;
+    
+    // Offset from center
+    const x = screenX - centerX;
+    const y = centerY - screenY; // Y is inverted in screen coordinates
+    
+    if (this.polar) {
+      // Convert cartesian screen coords to polar data values
+      const r = Math.sqrt(x * x + y * y);
+      let dataRadius: number;
+      
+      if (this.logScale && r > 0) {
+        // Inverse log transformation
+        // Original: rf = (log2(r+1) / log2(range+1)) * scale
+        // Inverse: r = 2^((rf/scale) * log2(range+1)) - 1
+        const normalizedR = r / this.scale;
+        dataRadius = Math.pow(2, normalizedR * Math.log2(this.range + 1)) - 1;
+      } else {
+        dataRadius = r / this.scale;
+      }
+      
+      // Calculate angle in data units
+      const angleRad = Math.atan2(-y, x); // Adjust for screen coords
+      const normalizedAngle = (angleRad + Math.PI) / (2 * Math.PI); // 0 to 1
+      const dataAngle = Math.floor((normalizedAngle * this.twopi - this.theta)) & 0xFFFFFFFF;
+      
+      return { x: Math.floor(dataRadius), y: dataAngle };
+    } else {
+      // Cartesian mode
+      let dataX: number;
+      let dataY: number;
+      
+      if (this.logScale) {
+        // Inverse log transformation for cartesian
+        const r = Math.sqrt(x * x + y * y);
+        if (r > 0) {
+          const normalizedR = r / this.scale;
+          const originalR = Math.pow(2, normalizedR * Math.log2(this.range + 1)) - 1;
+          const theta = Math.atan2(y, x);
+          dataX = originalR * Math.cos(theta);
+          dataY = originalR * Math.sin(theta);
+        } else {
+          dataX = 0;
+          dataY = 0;
+        }
+      } else {
+        // Simple linear scaling
+        dataX = x / this.scale;
+        dataY = y / this.scale;
+      }
+      
+      return { x: Math.floor(dataX), y: Math.floor(dataY) };
+    }
+  }
+
+  /**
    * Parse SCOPE_XY display declaration
    */
   static parseScopeXyDeclaration(lineParts: string[]): [boolean, ScopeXyDisplaySpec] {
@@ -492,7 +605,33 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       }
 
       if (upperElement === 'SAVE') {
-        // TODO: Implement save functionality
+        // Handle SAVE command with optional WINDOW parameter
+        let saveWindow = false;
+        let filename = 'scope_xy.bmp';
+        const saveIdx = elements.indexOf(element);
+        
+        if (saveIdx + 1 < elements.length) {
+          if (elements[saveIdx + 1].toUpperCase() === 'WINDOW') {
+            saveWindow = true;
+            if (saveIdx + 2 < elements.length) {
+              filename = elements[saveIdx + 2];
+            }
+            elements.splice(saveIdx + 1, 2); // Remove WINDOW and filename
+          } else {
+            filename = elements[saveIdx + 1];
+            elements.splice(saveIdx + 1, 1); // Remove filename
+          }
+        }
+        
+        // Use inherited method from DebugWindowBase
+        if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+          if (saveWindow) {
+            this.saveWindowToBMPFilename(filename);
+          } else {
+            // For now, save the whole window (canvas-only save would need additional implementation)
+            this.saveWindowToBMPFilename(filename);
+          }
+        }
         continue;
       }
 
@@ -502,12 +641,14 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       }
 
       if (upperElement === 'PC_KEY') {
-        // TODO: Implement keyboard forwarding
+        // Enable keyboard forwarding to P2 device
+        this.enableKeyboardInput();
         continue;
       }
 
       if (upperElement === 'PC_MOUSE') {
-        // TODO: Implement mouse forwarding
+        // Enable mouse forwarding to P2 device
+        this.enableMouseInput();
         continue;
       }
 
