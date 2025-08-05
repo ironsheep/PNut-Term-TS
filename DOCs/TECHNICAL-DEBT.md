@@ -94,3 +94,11 @@ Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 - Missing JSDoc comments for many public methods
 - No API documentation for public interfaces
 - Limited examples for debug window implementations
+
+## Specific Technical Debt Items
+
+### TECH-DEBT-001: Main Window needs ANSI escape sequence support
+- **Issue**: Main serial terminal window should support ANSI escape sequences but currently doesn't
+- **Impact**: P2 programs using standard terminal control sequences won't display correctly
+- **Fix**: Implement ANSI escape sequence parsing in MainWindow (not debug windows)
+- **Note**: Debug windows (TERM, etc.) should NOT have ANSI support to match Pascal implementation

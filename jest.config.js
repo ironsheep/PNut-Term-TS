@@ -4,7 +4,7 @@ module.exports = {
   preset: 'ts-jest',
   
   // Test environment
-  testEnvironment: 'node',
+  testEnvironment: 'jsdom',
   
   // Root directories for tests
   roots: ['<rootDir>/tests', '<rootDir>/src'],
@@ -19,6 +19,11 @@ module.exports = {
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest'
   },
+  
+  // Don't ignore jimp in node_modules - it needs to be transformed
+  transformIgnorePatterns: [
+    'node_modules/(?!(jimp))'
+  ],
   
   // Module file extensions
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
@@ -37,10 +42,11 @@ module.exports = {
   ],
   
   // Setup files
-  setupFilesAfterEnv: [],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup/jest.setup.ts'],
   
   // Module name mapping for imports
   moduleNameMapper: {
+    '^jimp$': '<rootDir>/tests/mocks/jimp.mock.js',
     '^@/(.*)$': '<rootDir>/src/$1'
   },
   

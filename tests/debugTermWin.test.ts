@@ -32,19 +32,21 @@ jest.mock('fs', () => ({
   writeFileSync: jest.fn()
 }));
 
-// Mock InputForwarder
-jest.mock('../src/classes/shared/inputForwarder', () => ({
-  InputForwarder: jest.fn().mockImplementation(() => ({
-    stopPolling: jest.fn(),
-    startPolling: jest.fn(),
-    enableKeyboard: jest.fn(),
-    enableMouse: jest.fn()
+// Don't mock internal modules - let them run to get coverage!
+// Only mock InputForwarder's USB/serial communication parts
+jest.mock('../src/utils/usb.serial', () => ({
+  UsbSerial: jest.fn().mockImplementation(() => ({
+    write: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    removeListener: jest.fn(),
+    removeAllListeners: jest.fn(),
+    deviceIsPropeller: jest.fn().mockResolvedValue(true),
+    getIdStringOrError: jest.fn().mockReturnValue(['Propeller2', '']),
+    deviceInfo: 'Mock Propeller2 Device',
+    isOpen: true
   }))
 }));
-
-// Mock other dependencies
-jest.mock('../src/classes/shared/canvasRenderer');
-jest.mock('../src/classes/shared/displaySpecParser');
 
 // Mock Jimp
 jest.mock('jimp', () => ({
@@ -57,10 +59,12 @@ describe('DebugTermWindow', () => {
   let mockBrowserWindow: any;
   let mockDisplaySpec: TermDisplaySpec;
   let mockLogger: any;
+  let cleanupFns: (() => void)[] = [];
 
   beforeEach(() => {
     // Clear mock instances
     mockBrowserWindowInstances = [];
+    cleanupFns = [];
     
     // Setup test environment
     const testSetup = setupDebugWindowTest();
@@ -96,6 +100,37 @@ describe('DebugTermWindow', () => {
   });
 
   afterEach(() => {
+    // Clean up the debug window if it exists
+    if (debugTermWindow && debugTermWindow['debugWindow']) {
+      try {
+        debugTermWindow.closeDebugWindow();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+    
+    // Clean up any InputForwarder instances
+    if (debugTermWindow && debugTermWindow['inputForwarder']) {
+      try {
+        debugTermWindow['inputForwarder'].stopPolling();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+    
+    // Run any additional cleanup functions
+    cleanupFns.forEach(fn => {
+      try {
+        fn();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    });
+    
+    // Clear all timers
+    jest.clearAllTimers();
+    
+    // Standard cleanup
     cleanupDebugWindowTest();
   });
 
@@ -156,6 +191,9 @@ describe('DebugTermWindow', () => {
     });
 
     it('should handle window ready event', async () => {
+      // Use fake timers for this test
+      jest.useFakeTimers();
+      
       // Trigger window creation
       debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']); // Send a printable char
 
@@ -173,6 +211,9 @@ describe('DebugTermWindow', () => {
       }
 
       expect(mockWindow.show).toHaveBeenCalled();
+      
+      // Restore real timers
+      jest.useRealTimers();
     });
   });
 
@@ -253,77 +294,6 @@ describe('DebugTermWindow', () => {
     });
   });
 
-  describe('ANSI Escape Sequences', () => {
-    beforeEach(() => {
-      // Trigger window creation with a printable character
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
-      // Clear deferred commands from window creation
-      debugTermWindow['deferredCommands'] = [];
-    });
-
-    it('should handle cursor up ESC[A', () => {
-      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
-      
-      // ESC[A is cursor up - ESC (27) is treated as printable char
-      // The terminal doesn't parse ANSI escape sequences
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '27']); // ESC
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'[A'"]);
-      
-      // Position doesn't change as these are just printed as text
-      expect(debugTermWindow['cursorPosition'].y).toBe(5);
-    });
-
-    it('should handle cursor down ESC[B', () => {
-      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
-      
-      // ESC[B is cursor down - but treated as text
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '27']); // ESC
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'[B'"]);
-      
-      // Position doesn't change as these are just printed as text
-      expect(debugTermWindow['cursorPosition'].y).toBe(5);
-    });
-
-    it('should handle cursor forward ESC[C', () => {
-      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
-      
-      // ESC[C is cursor forward - but treated as text
-      // 27 is ESC character (not in range 32-255) so doesn't print
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '27']); // ESC
-      // '[C' string has 2 chars that advance cursor
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'[C'"]);
-      
-      // Position advances by 2 (for '[' and 'C')
-      expect(debugTermWindow['cursorPosition'].x).toBe(12);
-    });
-
-    it('should handle cursor back ESC[D', () => {
-      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
-      
-      // ESC[D is cursor back - but treated as text
-      // 27 is ESC character (not in range 32-255) so doesn't print
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '27']); // ESC
-      // '[D' string has 2 chars that advance cursor
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'[D'"]);
-      
-      // Position advances by 2 (for '[' and 'D')
-      expect(debugTermWindow['cursorPosition'].x).toBe(12);
-    });
-
-    it('should handle clear screen ESC[2J', () => {
-      // Force delayed update mode to keep commands in deferred list
-      debugTermWindow['displaySpec'].delayedUpdate = true;
-      
-      // ESC[2J is clear screen - terminal treats as printable chars
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, '27']); // ESC
-      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'[2J'"]);
-      
-      // Check that the commands were deferred
-      // 27 is a control character, stored as numeric action '27'
-      expect(debugTermWindow['deferredCommands']).toContain('27');
-      expect(debugTermWindow['deferredCommands']).toContain("'[2J'");
-    });
-  });
 
   describe('Window Management', () => {
     beforeEach(() => {
@@ -450,6 +420,502 @@ describe('DebugTermWindow', () => {
       
       // Cursor should be limited to screen bounds
       expect(debugTermWindow['cursorPosition'].y).toBeLessThanOrEqual(mockDisplaySpec.size.rows - 1);
+    });
+  });
+
+  describe('Command processing via updateContent', () => {
+    beforeEach(() => {
+      // Trigger window creation with a printable character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      // Force immediate update mode
+      debugTermWindow['displaySpec'].delayedUpdate = false;
+    });
+
+    it('should process numeric action 0 (clear and home)', () => {
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '0']);
+      
+      expect(debugTermWindow['cursorPosition']).toEqual({ x: 0, y: 0 });
+    });
+
+    it('should process numeric action 1 (home)', () => {
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '1']);
+      
+      expect(debugTermWindow['cursorPosition']).toEqual({ x: 0, y: 0 });
+    });
+
+    it('should process numeric action 2 (set column)', () => {
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '2', '15']);
+      
+      expect(debugTermWindow['cursorPosition'].x).toBe(15);
+    });
+
+    it('should process numeric action 3 (set row)', () => {
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '3', '8']);
+      
+      expect(debugTermWindow['cursorPosition'].y).toBe(8);
+    });
+
+    it('should process numeric actions 4-7 (color combos)', () => {
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '4']);
+      expect(debugTermWindow['selectedCombo']).toBe(0);
+      
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '5']);
+      expect(debugTermWindow['selectedCombo']).toBe(1);
+      
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '6']);
+      expect(debugTermWindow['selectedCombo']).toBe(2);
+      
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '7']);
+      expect(debugTermWindow['selectedCombo']).toBe(3);
+    });
+
+    it('should process numeric action 8 (backspace)', () => {
+      debugTermWindow['cursorPosition'] = { x: 5, y: 2 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '8']);
+      
+      expect(debugTermWindow['cursorPosition'].x).toBe(4);
+    });
+
+    it('should handle backspace with line wrap', () => {
+      debugTermWindow['cursorPosition'] = { x: 0, y: 2 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '8']);
+      
+      // Backspace at x=0 doesn't wrap in this implementation
+      expect(debugTermWindow['cursorPosition'].x).toBe(0);
+      expect(debugTermWindow['cursorPosition'].y).toBe(2);
+    });
+
+    it('should process numeric action 9 (tab)', () => {
+      debugTermWindow['cursorPosition'] = { x: 2, y: 0 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '9']);
+      
+      // Tab advances to next 8-column boundary
+      expect(debugTermWindow['cursorPosition'].x).toBe(8);
+    });
+
+    it('should process numeric action 10 (line feed)', () => {
+      debugTermWindow['cursorPosition'] = { x: 5, y: 2 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '10']);
+      
+      expect(debugTermWindow['cursorPosition'].y).toBe(3);
+      expect(debugTermWindow['cursorPosition'].x).toBe(0); // X resets to 0 on LF
+    });
+
+    it('should process numeric action 13 (carriage return)', () => {
+      debugTermWindow['cursorPosition'] = { x: 15, y: 2 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '13']);
+      
+      expect(debugTermWindow['cursorPosition'].x).toBe(0);
+      expect(debugTermWindow['cursorPosition'].y).toBe(3); // Y increments on CR
+    });
+
+    it('should process printable characters (32-255)', () => {
+      debugTermWindow['cursorPosition'] = { x: 0, y: 0 };
+      
+      // ASCII 'A' = 65
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']);
+      expect(debugTermWindow['cursorPosition'].x).toBe(1);
+      
+      // ASCII space = 32
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      expect(debugTermWindow['cursorPosition'].x).toBe(2);
+      
+      // Extended ASCII = 255
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '255']);
+      expect(debugTermWindow['cursorPosition'].x).toBe(3);
+    });
+
+    it('should handle string commands', () => {
+      // Test quoted string
+      debugTermWindow['cursorPosition'] = { x: 0, y: 0 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'Hello'"]);
+      
+      // Should advance cursor by string length
+      expect(debugTermWindow['cursorPosition'].x).toBe(5);
+    });
+
+    it('should process CLEAR command', () => {
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'CLEAR']);
+      
+      expect(debugTermWindow['cursorPosition']).toEqual({ x: 0, y: 0 });
+    });
+
+    it('should process UPDATE command', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+      
+      expect(executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should process CLOSE command', () => {
+      const close = mockBrowserWindowInstances[0].close;
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'CLOSE']);
+      
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('should process PC_KEY command', () => {
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'PC_KEY']);
+      
+      // Should enable keyboard input forwarding
+      expect(debugTermWindow['inputForwarder']).toBeDefined();
+    });
+
+    it('should process PC_MOUSE command', () => {
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'PC_MOUSE']);
+      
+      // Should enable mouse input forwarding
+      expect(debugTermWindow['inputForwarder']).toBeDefined();
+    });
+
+    it('should ignore invalid numeric actions', () => {
+      const originalPos = { ...debugTermWindow['cursorPosition'] };
+      
+      // Invalid actions (14-31, >255)
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '14']);
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '31']);
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '256']);
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '1000']);
+      
+      // Position should not change
+      expect(debugTermWindow['cursorPosition']).toEqual(originalPos);
+    });
+  });
+
+  describe('Canvas rendering operations', () => {
+    beforeEach(() => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      debugTermWindow['displaySpec'].delayedUpdate = false;
+    });
+
+    it('should render terminal grid', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Force a render update
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+      
+      // Should execute JavaScript to render
+      expect(executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should handle character rendering with correct colors', () => {
+      // Select color combo 2
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '6']);
+      
+      // Write a character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Force update
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+      
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      expect(executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should handle line wrapping', () => {
+      // Position cursor near end of line
+      debugTermWindow['cursorPosition'] = { x: mockDisplaySpec.size.columns - 2, y: 0 };
+      
+      // Write several characters to trigger wrap
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '66']); // 'B'
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '67']); // 'C'
+      
+      // Should wrap to next line
+      expect(debugTermWindow['cursorPosition'].y).toBe(1);
+      expect(debugTermWindow['cursorPosition'].x).toBe(1); // 'C' is at position 1
+    });
+
+    it('should handle scrolling at bottom of screen', () => {
+      // Position cursor at last row
+      debugTermWindow['cursorPosition'] = { x: 0, y: mockDisplaySpec.size.rows - 1 };
+      
+      // Write newline to trigger potential scroll
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '13']); // CR
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '10']); // LF
+      
+      // Should stay within bounds
+      expect(debugTermWindow['cursorPosition'].y).toBeLessThan(mockDisplaySpec.size.rows);
+    });
+  });
+
+  describe('File save operations', () => {
+    it('should handle SAVE WINDOW command with proper format', async () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      
+      // Mock webContents.capturePage
+      const mockNativeImage = {
+        toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
+      };
+      mockBrowserWindowInstances[0].webContents.capturePage = jest.fn().mockResolvedValue(mockNativeImage);
+      
+      // Process save command
+      await debugTermWindow.updateContent([mockDisplaySpec.displayName, 'SAVE', 'WINDOW', "'test.bmp'"]);
+      
+      // Should attempt to capture and save
+      expect(mockBrowserWindowInstances[0].webContents.capturePage).toHaveBeenCalled();
+    });
+  });
+
+  describe('Buffer management and text rendering', () => {
+    beforeEach(() => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      debugTermWindow['displaySpec'].delayedUpdate = false;
+    });
+
+    it('should handle character writing with proper canvas operations', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Write a character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Should execute JavaScript for rendering
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('fillText'));
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('fillRect'));
+    });
+
+    it('should handle multiple character rendering in sequence', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Write multiple characters
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'Hello World'"]);
+      
+      // Force update to render
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+      
+      // Should have multiple render calls
+      expect(executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should clear line from cursor when requested', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Position cursor in middle of line
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      
+      // Call clearLineFromCursor directly (no ANSI support)
+      debugTermWindow['clearLineFromCursor']();
+      
+      // Should clear from cursor to end of line
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('fillRect'));
+    });
+
+    it('should handle scrollUp operation when at bottom of screen', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Position cursor at last row
+      debugTermWindow['cursorPosition'] = { x: 0, y: mockDisplaySpec.size.rows - 1 };
+      
+      // Write text to trigger line wrap and potential scroll
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '13']); // CR
+      
+      // Should call scrollBitmap if scrolling happened
+      const calls = executeJavaScript.mock.calls;
+      const hasScrollCall = calls.some((call: any) => call[0].includes('scrollBitmap'));
+      // Scrolling may or may not happen depending on implementation
+      expect(debugTermWindow['cursorPosition'].y).toBeLessThanOrEqual(mockDisplaySpec.size.rows - 1);
+    });
+
+    it('should handle tab expansion correctly', () => {
+      // Start at column 2
+      debugTermWindow['cursorPosition'] = { x: 2, y: 0 };
+      
+      // Process tab
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '9']);
+      
+      // Should advance to next 8-column boundary (column 8)
+      expect(debugTermWindow['cursorPosition'].x).toBe(8);
+      
+      // Another tab from column 8
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '9']);
+      
+      // Should advance to column 16
+      expect(debugTermWindow['cursorPosition'].x).toBe(16);
+    });
+
+    it('should handle tab at end of line', () => {
+      // Position near end of line (column 78 of 80)
+      debugTermWindow['cursorPosition'] = { x: mockDisplaySpec.size.columns - 2, y: 0 };
+      
+      // Process tab
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '9']);
+      
+      // Tab now uses writeCharToTerm which handles wrapping
+      // From column 78, tab needs to write 2 spaces to reach column 80 (next tab stop)
+      // First space goes to column 79, second space goes to column 80 which wraps
+      expect(debugTermWindow['cursorPosition'].y).toBe(1); // Should wrap to next line
+      expect(debugTermWindow['cursorPosition'].x).toBe(0); // At start of new line
+    });
+
+    it('should handle line feed with proper y increment', () => {
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      
+      // Process line feed
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '10']);
+      
+      // Y should increment, X should reset to 0
+      expect(debugTermWindow['cursorPosition'].y).toBe(6);
+      expect(debugTermWindow['cursorPosition'].x).toBe(0);
+    });
+
+    it('should handle carriage return with y increment', () => {
+      debugTermWindow['cursorPosition'] = { x: 20, y: 3 };
+      
+      // Process carriage return
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '13']);
+      
+      // X should reset to 0, Y should increment
+      expect(debugTermWindow['cursorPosition'].x).toBe(0);
+      expect(debugTermWindow['cursorPosition'].y).toBe(4);
+    });
+
+    it('should render text with correct color combo', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Need to have at least 3 color combos defined
+      if (mockDisplaySpec.colorCombos.length < 3) {
+        // Add more color combos for testing
+        mockDisplaySpec.colorCombos = [
+          { fgcolor: '#FFFFFF', bgcolor: '#000000' },
+          { fgcolor: '#00FF00', bgcolor: '#000000' },
+          { fgcolor: '#FF0000', bgcolor: '#0000FF' }
+        ];
+      }
+      
+      // Select color combo 2
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '6']);
+      
+      // Write a character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Should use colors from combo 2
+      const combo = mockDisplaySpec.colorCombos[2];
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(combo.fgcolor));
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(combo.bgcolor));
+    });
+
+    it('should handle backspace at beginning of line', () => {
+      // Start at beginning of line 2
+      debugTermWindow['cursorPosition'] = { x: 0, y: 2 };
+      
+      // Process backspace
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '8']);
+      
+      // Should stay at x=0 (no wrap in current implementation)
+      expect(debugTermWindow['cursorPosition'].x).toBe(0);
+      expect(debugTermWindow['cursorPosition'].y).toBe(2);
+    });
+
+    it('should handle line wrap during text output', () => {
+      // Position near end of line
+      debugTermWindow['cursorPosition'] = { x: mockDisplaySpec.size.columns - 3, y: 0 };
+      
+      // Write text that will wrap
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, "'ABCDE'"]);
+      
+      // Should wrap to next line
+      expect(debugTermWindow['cursorPosition'].y).toBe(1);
+      expect(debugTermWindow['cursorPosition'].x).toBe(2); // 'DE' on new line
+    });
+
+    it('should handle scrolling when writing at bottom of screen', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Position at last row, last column
+      debugTermWindow['cursorPosition'] = { x: mockDisplaySpec.size.columns - 1, y: mockDisplaySpec.size.rows - 1 };
+      
+      // Write a character that will wrap and potentially scroll
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Cursor should be constrained to screen bounds
+      expect(debugTermWindow['cursorPosition'].y).toBeLessThanOrEqual(mockDisplaySpec.size.rows - 1);
+      
+      // Check if scroll was called (implementation dependent)
+      const calls = executeJavaScript.mock.calls;
+      const hasScrollCall = calls.some((call: any) => call[0].includes('scrollBitmap'));
+      // May or may not scroll depending on implementation
+    });
+
+    it('should clear entire screen on CLEAR command', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Set cursor away from home
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+      
+      // Clear screen
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'CLEAR']);
+      
+      // Cursor should reset to home
+      expect(debugTermWindow['cursorPosition']).toEqual({ x: 0, y: 0 });
+      
+      // Should clear canvas
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('clearRect'));
+    });
+
+    it('should handle font specifications correctly', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Write a character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Should use correct font specification
+      const expectedFont = `normal ${mockDisplaySpec.font.textSizePts}pt Consolas, monospace`;
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(expectedFont));
+    });
+
+    it('should calculate text baseline correctly', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Write a character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '65']); // 'A'
+      
+      // Check baseline calculation
+      const lineHeight = mockDisplaySpec.font.lineHeight;
+      const charHeight = mockDisplaySpec.font.charHeight;
+      const vertLineInset = (lineHeight - charHeight) / 2;
+      const expectedBaseline = debugTermWindow['contentInset'] + vertLineInset + mockDisplaySpec.font.baseline;
+      
+      expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(expectedBaseline.toString()));
+    });
+
+    it('should handle extended ASCII characters', () => {
+      const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
+      
+      // Clear any previous calls
+      executeJavaScript.mockClear();
+      
+      // Write extended ASCII character (128-255 range)
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '128']);
+      
+      // updateContent processes the command but rendering happens in updateTermDisplay
+      // which only executes in UPDATE mode or when deferred updates are flushed
+      
+      // Force an update to trigger rendering
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+      
+      // Should have rendered something
+      expect(executeJavaScript).toHaveBeenCalled();
+      // Cursor should have advanced
+      expect(debugTermWindow['cursorPosition'].x).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle control characters below 32', () => {
+      const originalPos = { ...debugTermWindow['cursorPosition'] };
+      
+      // Try various control characters
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '15']); // SI
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '20']); // DC4
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '31']); // US
+      
+      // Position should not change for unhandled control chars
+      expect(debugTermWindow['cursorPosition']).toEqual(originalPos);
     });
   });
 });

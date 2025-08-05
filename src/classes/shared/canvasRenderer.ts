@@ -673,4 +673,97 @@ export class CanvasRenderer {
       ctx.restore();
     `;
   }
+
+  /**
+   * Draw a character for Terminal Window
+   * Returns JavaScript string for execution
+   */
+  drawCharacter(
+    canvasId: string,
+    char: string,
+    x: number,
+    y: number,
+    charWidth: number,
+    lineHeight: number,
+    baseline: number,
+    font: string,
+    fgColor: string,
+    bgColor: string
+  ): string {
+    // Escape the character for JavaScript
+    const escapedChar = char.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\\/g, '\\\\');
+    
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (canvas && canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Clear character cell with background color
+            ctx.fillStyle = '${bgColor}';
+            ctx.fillRect(${x}, ${y}, ${charWidth}, ${lineHeight});
+            
+            // Draw character
+            ctx.font = '${font}';
+            ctx.fillStyle = '${fgColor}';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText('${escapedChar}', ${x}, ${y + baseline});
+          }
+        }
+      })();
+    `;
+  }
+
+  /**
+   * Clear a character cell for Terminal Window
+   * Returns JavaScript string for execution
+   */
+  clearCharacterCell(
+    canvasId: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    bgColor: string
+  ): string {
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (canvas && canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '${bgColor}';
+            ctx.fillRect(${x}, ${y}, ${width}, ${height});
+          }
+        }
+      })();
+    `;
+  }
+
+  /**
+   * Clear entire canvas and fill with background color
+   * Returns JavaScript string for execution
+   */
+  clearCanvasWithBackground(
+    canvasId: string,
+    bgColor: string
+  ): string {
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (canvas && canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Clear the entire canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Fill canvas with background color
+            ctx.fillStyle = '${bgColor}';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+        }
+      })();
+    `;
+  }
 }

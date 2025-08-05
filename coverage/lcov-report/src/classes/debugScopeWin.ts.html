@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">1.42% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/562</span>
+                <span class='fraction'>8/562</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">1.44% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/554</span>
+                <span class='fraction'>8/554</span>
             </div>
         
             
@@ -1866,21 +1866,17 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1933,7 +1929,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -3663,17 +3663,17 @@
 //  TODO: make it context/runtime option aware
 &nbsp;
 'use strict';
-<span class="cstat-no" title="statement not covered" >import { BrowserWindow } from 'electron';</span>
+import { BrowserWindow } from 'electron';
 // src/classes/debugScopeWin.ts
 &nbsp;
 import { Context } from '../utils/context';
-<span class="cstat-no" title="statement not covered" >import { DebugColor } from './shared/debugColor';</span>
-<span class="cstat-no" title="statement not covered" >import { PackedDataProcessor } from './shared/packedDataProcessor';</span>
-<span class="cstat-no" title="statement not covered" >import { CanvasRenderer } from './shared/canvasRenderer';</span>
-<span class="cstat-no" title="statement not covered" >import { ScopeTriggerProcessor } from './shared/triggerProcessor';</span>
-<span class="cstat-no" title="statement not covered" >import { DisplaySpecParser } from './shared/displaySpecParser';</span>
+import { DebugColor } from './shared/debugColor';
+import { PackedDataProcessor } from './shared/packedDataProcessor';
+import { CanvasRenderer } from './shared/canvasRenderer';
+import { ScopeTriggerProcessor } from './shared/triggerProcessor';
+import { DisplaySpecParser } from './shared/displaySpecParser';
 &nbsp;
-<span class="cstat-no" title="statement not covered" >import {</span>
+import {
   DebugWindowBase,
   ePackedDataMode,
   ePackedDataWidth,
@@ -3730,7 +3730,7 @@ export interface ScopeTriggerSpec {
   trigHoldoff: number; // in samples required, from trigger to trigger
 }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >export class D</span>ebugScopeWindow extends DebugWindowBase {
+export class DebugScopeWindow extends DebugWindowBase {
   private <span class="cstat-no" title="statement not covered" >displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;</span>
   private <span class="cstat-no" title="statement not covered" >channelSpecs: ScopeChannelSpec[] = []; </span>// one for each channel
   private <span class="cstat-no" title="statement not covered" >channelSamples: ScopeChannelSamples[] = []; </span>// one for each channel
@@ -5461,7 +5461,7 @@ export interface ScopeTriggerSpec {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-08-04T23:44:10.640Z
+                at 2025-08-05T00:57:02.685Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
