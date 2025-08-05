@@ -57,7 +57,9 @@ describe('CanvasRenderer', () => {
       drawImage: jest.fn(),
       translate: jest.fn(),
       rotate: jest.fn(),
-      measureText: jest.fn().mockReturnValue({ width: 50 })
+      measureText: jest.fn().mockReturnValue({ width: 50 }),
+      quadraticCurveTo: jest.fn(),
+      closePath: jest.fn()
     };
 
     // Mock OffscreenCanvas context
@@ -485,6 +487,410 @@ describe('CanvasRenderer', () => {
       expect(mockContext.drawImage).toHaveBeenCalledWith(
         expect.any(Object), 0, 0, 2047, 2047, 1, 1, 2047, 2047
       );
+    });
+  });
+
+  describe('drawRoundedRectCtx', () => {
+    test('should draw filled rounded rectangle', () => {
+      renderer.drawRoundedRectCtx(mockContext, 10, 20, 100, 50, 5, true, '#FF0000', 2);
+      
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalledWith(15, 20);
+      expect(mockContext.lineTo).toHaveBeenCalled();
+      expect(mockContext.quadraticCurveTo).toHaveBeenCalled();
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.fillStyle).toBe('#FF0000');
+      expect(mockContext.fill).toHaveBeenCalled();
+    });
+
+    test('should draw outlined rounded rectangle', () => {
+      renderer.drawRoundedRectCtx(mockContext, 0, 0, 50, 30, 3, false, '#00FF00', 2);
+      
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.stroke).toHaveBeenCalled();
+      expect(mockContext.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drawPolygon', () => {
+    test('should draw filled polygon', () => {
+      renderer.drawPolygon(mockContext, 50, 50, 6, 20, true, '#0000FF', 1);
+      
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalled();
+      expect(mockContext.lineTo).toHaveBeenCalledTimes(5); // 6 sides - 1 moveTo
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.fillStyle).toBe('#0000FF');
+      expect(mockContext.fill).toHaveBeenCalled();
+    });
+
+    test('should draw outlined polygon', () => {
+      renderer.drawPolygon(mockContext, 50, 50, 3, 15, false, '#FF00FF', 3);
+      
+      expect(mockContext.strokeStyle).toBe('#FF00FF');
+      expect(mockContext.lineWidth).toBe(3);
+      expect(mockContext.stroke).toHaveBeenCalled();
+      expect(mockContext.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drawArc', () => {
+    test('should draw filled arc', () => {
+      renderer.drawArc(mockContext, 50, 50, 30, 20, 0, 90, true, '#FF0000', 2);
+      
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.ellipse).toHaveBeenCalledWith(50, 50, 30, 20, 0, 0, Math.PI/2, false);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(50, 50);
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.fillStyle).toBe('#FF0000');
+      expect(mockContext.fill).toHaveBeenCalled();
+    });
+
+    test('should draw outlined arc', () => {
+      renderer.drawArc(mockContext, 100, 100, 40, 40, 45, 180, false, '#00FF00', 3);
+      
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(3);
+      expect(mockContext.stroke).toHaveBeenCalled();
+      expect(mockContext.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drawTriangle', () => {
+    test('should draw filled triangle', () => {
+      renderer.drawTriangle(mockContext, 10, 10, 50, 10, 30, 40, true, '#0000FF', 1);
+      
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalledWith(10, 10);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(50, 10);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(30, 40);
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.fillStyle).toBe('#0000FF');
+      expect(mockContext.fill).toHaveBeenCalled();
+    });
+
+    test('should draw outlined triangle', () => {
+      renderer.drawTriangle(mockContext, 0, 0, 20, 0, 10, 20, false, '#FF00FF', 2);
+      
+      expect(mockContext.strokeStyle).toBe('#FF00FF');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.stroke).toHaveBeenCalled();
+      expect(mockContext.fill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drawBezier', () => {
+    test('should draw bezier curve', () => {
+      renderer.drawBezier(mockContext, 0, 0, 50, 50, 100, 0, '#FF0000', 2);
+      
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalledWith(0, 0);
+      expect(mockContext.quadraticCurveTo).toHaveBeenCalledWith(50, 50, 100, 0);
+      expect(mockContext.strokeStyle).toBe('#FF0000');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.stroke).toHaveBeenCalled();
+    });
+  });
+
+  describe('floodFill', () => {
+    test('should perform flood fill', () => {
+      // Mock document.createElement for the temp canvas
+      const mockTempCanvas = {
+        width: 1,
+        height: 1,
+        getContext: jest.fn().mockReturnValue({
+          fillStyle: '',
+          fillRect: jest.fn(),
+          getImageData: jest.fn().mockReturnValue({
+            data: new Uint8ClampedArray([255, 0, 0, 255])
+          })
+        })
+      };
+      
+      const originalCreateElement = document.createElement;
+      document.createElement = jest.fn().mockReturnValue(mockTempCanvas);
+      
+      // Mock larger image data for flood fill
+      const largeImageData = {
+        data: new Uint8ClampedArray(400), // 10x10 image
+        width: 10,
+        height: 10
+      };
+      
+      // Set all pixels to white initially
+      for (let i = 0; i < largeImageData.data.length; i += 4) {
+        largeImageData.data[i] = 255;
+        largeImageData.data[i + 1] = 255;
+        largeImageData.data[i + 2] = 255;
+        largeImageData.data[i + 3] = 255;
+      }
+      
+      mockContext.getImageData.mockReturnValue(largeImageData);
+      
+      renderer.floodFill(mockContext, 5, 5, '#FF0000');
+      
+      expect(mockContext.getImageData).toHaveBeenCalledWith(0, 0, 100, 100);
+      expect(mockContext.putImageData).toHaveBeenCalled();
+      
+      // Restore original createElement
+      document.createElement = originalCreateElement;
+    });
+
+    test('should return early if fill color matches target color', () => {
+      const mockTempCanvas = {
+        width: 1,
+        height: 1,
+        getContext: jest.fn().mockReturnValue({
+          fillStyle: '',
+          fillRect: jest.fn(),
+          getImageData: jest.fn().mockReturnValue({
+            data: new Uint8ClampedArray([255, 0, 0, 255])
+          })
+        })
+      };
+      
+      document.createElement = jest.fn().mockReturnValue(mockTempCanvas);
+      
+      const imageData = {
+        data: new Uint8ClampedArray([255, 0, 0, 255]),
+        width: 1,
+        height: 1
+      };
+      
+      mockContext.getImageData.mockReturnValue(imageData);
+      
+      renderer.floodFill(mockContext, 0, 0, '#FF0000');
+      
+      // Should not call putImageData if colors match
+      expect(mockContext.putImageData).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drawGrid', () => {
+    test('should draw grid lines', () => {
+      renderer.drawGrid(mockContext, 100, 100, 20, 25, '#808080', 1);
+      
+      expect(mockContext.save).toHaveBeenCalled();
+      expect(mockContext.strokeStyle).toBe('#808080');
+      expect(mockContext.lineWidth).toBe(1);
+      expect(mockContext.setLineDash).toHaveBeenCalledWith([2, 2]);
+      
+      // Should draw vertical lines
+      expect(mockContext.moveTo).toHaveBeenCalledWith(20, 0);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(20, 100);
+      
+      // Should draw horizontal lines
+      expect(mockContext.moveTo).toHaveBeenCalledWith(0, 25);
+      expect(mockContext.lineTo).toHaveBeenCalledWith(100, 25);
+      
+      expect(mockContext.restore).toHaveBeenCalled();
+    });
+  });
+
+  describe('drawWaveform', () => {
+    test('should draw waveform from samples', () => {
+      const samples = [0, 50, 100, 50, 0, -50, -100, -50, 0];
+      
+      renderer.drawWaveform(mockContext, samples, 10, 5, 1, 50, '#00FF00', 2);
+      
+      expect(mockContext.strokeStyle).toBe('#00FF00');
+      expect(mockContext.lineWidth).toBe(2);
+      expect(mockContext.beginPath).toHaveBeenCalled();
+      expect(mockContext.moveTo).toHaveBeenCalledWith(10, 50);
+      expect(mockContext.lineTo).toHaveBeenCalledTimes(8);
+      expect(mockContext.stroke).toHaveBeenCalled();
+    });
+
+    test('should handle empty samples array', () => {
+      renderer.drawWaveform(mockContext, [], 0, 1, 1, 0, '#FFFFFF', 1);
+      
+      expect(mockContext.beginPath).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Legacy string-based methods', () => {
+    describe('scrollCanvas', () => {
+      test('should convert scrollSpeed to scrollBitmap parameters', () => {
+        const js = renderer.scrollCanvas('testCanvas', 5, 100, 100);
+        
+        expect(js).toContain('const scrollX = -5');
+        expect(js).toContain('const scrollY = 0');
+      });
+    });
+
+    describe('drawLine', () => {
+      test('should return JavaScript for drawing line', () => {
+        const js = renderer.drawLine('testCanvas', 0, 0, 100, 100, '#FF0000', 2);
+        
+        expect(js).toContain("ctx.strokeStyle = '#FF0000'");
+        expect(js).toContain('ctx.lineWidth = 2');
+        expect(js).toContain('ctx.moveTo(0, 0)');
+        expect(js).toContain('ctx.lineTo(100, 100)');
+      });
+    });
+
+    describe('drawText', () => {
+      test('should return JavaScript for drawing text', () => {
+        const js = renderer.drawText('testCanvas', 'Hello', 50, 50, '#000000', '16px', 'Arial', 'center', 'middle');
+        
+        expect(js).toContain("ctx.fillStyle = '#000000'");
+        expect(js).toContain("ctx.font = '16px Arial'");
+        expect(js).toContain("ctx.textAlign = 'center'");
+        expect(js).toContain("ctx.textBaseline = 'middle'");
+        expect(js).toContain("ctx.fillText('Hello', 50, 50)");
+      });
+
+      test('should escape quotes in text', () => {
+        const js = renderer.drawText('testCanvas', "Text with 'quotes' and \"double\"", 0, 0, 'black');
+        
+        expect(js).toContain("Text with \\'quotes\\' and \\\"double\\\"");
+      });
+    });
+
+    describe('drawCircle', () => {
+      test('should return JavaScript for drawing circle', () => {
+        const js = renderer.drawCircle('testCanvas', 50, 50, 10, '#FF0000', true);
+        
+        expect(js).toContain('ctx.arc(50, 50, 10, 0, 2 * Math.PI)');
+        expect(js).toContain("ctx.fillStyle = '#FF0000'");
+        expect(js).toContain('ctx.fill()');
+      });
+    });
+
+    describe('drawDashedLine', () => {
+      test('should return JavaScript for drawing dashed line', () => {
+        const js = renderer.drawDashedLine('testCanvas', 0, 0, 100, 0, '#000000', 2, [10, 5]);
+        
+        expect(js).toContain('ctx.setLineDash([10, 5])');
+        expect(js).toContain("ctx.strokeStyle = '#000000'");
+        expect(js).toContain('ctx.lineWidth = 2');
+      });
+    });
+
+    describe('drawCharacter', () => {
+      test('should return JavaScript for drawing character', () => {
+        const js = renderer.drawCharacter('testCanvas', 'A', 10, 20, 8, 16, 12, '12px monospace', '#FFFFFF', '#000000');
+        
+        expect(js).toContain("ctx.fillStyle = '#000000'");
+        expect(js).toContain('ctx.fillRect(10, 20, 8, 16)');
+        expect(js).toContain("ctx.font = '12px monospace'");
+        expect(js).toContain("ctx.fillStyle = '#FFFFFF'");
+        expect(js).toContain("ctx.fillText('A', 10, 32)");
+      });
+
+      test('should escape special characters', () => {
+        const js = renderer.drawCharacter('testCanvas', '\\', 0, 0, 8, 16, 12, 'font', '#FFF', '#000');
+        
+        // The backslash should be escaped to \\\\ in the JavaScript string
+        expect(js).toContain("ctx.fillText('\\\\', 0, 12)");
+      });
+    });
+
+    describe('clearCharacterCell', () => {
+      test('should return JavaScript for clearing character cell', () => {
+        const js = renderer.clearCharacterCell('testCanvas', 10, 20, 8, 16, '#000000');
+        
+        expect(js).toContain("ctx.fillStyle = '#000000'");
+        expect(js).toContain('ctx.fillRect(10, 20, 8, 16)');
+      });
+    });
+
+    describe('clearCanvasWithBackground', () => {
+      test('should return JavaScript for clearing canvas with background', () => {
+        const js = renderer.clearCanvasWithBackground('testCanvas', '#FF0000');
+        
+        expect(js).toContain('ctx.clearRect(0, 0, canvas.width, canvas.height)');
+        expect(js).toContain("ctx.fillStyle = '#FF0000'");
+        expect(js).toContain('ctx.fillRect(0, 0, canvas.width, canvas.height)');
+      });
+    });
+
+    describe('drawRoundedRect', () => {
+      test('should return JavaScript for drawing rounded rectangle', () => {
+        const js = renderer.drawRoundedRect('testCanvas', 10, 20, 100, 50, 5, true, '#0000FF');
+        
+        expect(js).toContain('ctx.moveTo(10 + 5, 20)');
+        expect(js).toContain('ctx.quadraticCurveTo');
+        expect(js).toContain("ctx.fillStyle = '#0000FF'");
+        expect(js).toContain('ctx.fill()');
+      });
+    });
+
+    describe('drawGridLines', () => {
+      test('should return JavaScript for drawing grid lines', () => {
+        const js = renderer.drawGridLines('testCanvas', 200, 200, 50, 50, '#808080');
+        
+        expect(js).toContain("ctx.strokeStyle = '#808080'");
+        expect(js).toContain('ctx.setLineDash([2, 2])');
+        expect(js).toContain('for (let x = 50; x < 200; x += 50)');
+        expect(js).toContain('for (let y = 50; y < 200; y += 50)');
+      });
+    });
+
+    describe('updateElementHTML', () => {
+      test('should return JavaScript for updating element HTML', () => {
+        const js = renderer.updateElementHTML('myDiv', '<b>Hello</b>');
+        
+        expect(js).toContain("element.innerHTML = '<b>Hello</b>'");
+      });
+
+      test('should escape quotes in HTML', () => {
+        const js = renderer.updateElementHTML('myDiv', "<div class='test'>Content</div>");
+        
+        expect(js).toContain("<div class=\\'test\\'>Content</div>");
+      });
+    });
+
+    describe('drawConnectedLines', () => {
+      test('should return JavaScript for drawing connected lines', () => {
+        const points = [
+          { x: 0, y: 0 },
+          { x: 50, y: 50 },
+          { x: 100, y: 0 }
+        ];
+        
+        const js = renderer.drawConnectedLines('testCanvas', points, '#FF0000', 2);
+        
+        expect(js).toContain('ctx.moveTo(0, 0)');
+        expect(js).toContain('ctx.lineTo(50, 50)');
+        expect(js).toContain('ctx.lineTo(100, 0)');
+        expect(js).toContain("ctx.strokeStyle = '#FF0000'");
+        expect(js).toContain('ctx.lineWidth = 2');
+      });
+
+      test('should handle empty points array', () => {
+        const js = renderer.drawConnectedLines('testCanvas', [], '#000000');
+        
+        expect(js).toBe('');
+      });
+    });
+  });
+
+  describe('Edge cases and error handling', () => {
+    test('should handle missing offscreen context in scrollBitmapCtx', () => {
+      const mockFailingOffscreenCanvas = {
+        width: 100,
+        height: 100,
+        getContext: jest.fn().mockReturnValue(null)
+      };
+      
+      global.OffscreenCanvas = jest.fn().mockImplementation(() => mockFailingOffscreenCanvas);
+      
+      // Should not throw
+      expect(() => {
+        renderer.scrollBitmapCtx(mockContext, 10, 10);
+      }).not.toThrow();
+      
+      // Should return early without drawing
+      expect(mockContext.drawImage).not.toHaveBeenCalled();
+    });
+
+    test('should handle out of bounds scrolling', () => {
+      renderer.scrollBitmapCtx(mockContext, 200, 200);
+      
+      // sw and sh would be negative, so no drawing should occur
+      expect(mockContext.drawImage).not.toHaveBeenCalled();
     });
   });
 });
