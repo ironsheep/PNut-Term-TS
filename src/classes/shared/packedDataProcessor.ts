@@ -114,6 +114,7 @@ export class PackedDataProcessor {
       ['bytes_4bit', ePackedDataMode.PDM_BYTES_4BIT]
     ]);
 
+
     // if possible mode matches key in modeMap, then set mode and return true
     if (modeMap.has(possibleMode.toLocaleLowerCase())) {
       desiredMode.mode = modeMap.get(possibleMode.toLocaleLowerCase()) as ePackedDataMode;

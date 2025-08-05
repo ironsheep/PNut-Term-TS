@@ -63,6 +63,23 @@ This is part of the P2 Multi-platform Development Environment:
 - `tsc --noEmit` - Quick type check
 - Main executable: `dist/pnut-term-ts.min.js`
 
+### Claude Helper Scripts
+Located in `scripts/claude/` directory:
+- `run-all-tests.sh` - Runs all test files individually with detailed pass/fail reporting
+- `test-runner.sh` - Runs a single test file (pass filename as argument)
+- `check_tests.sh` - Quick check of recently fixed test files
+
+### Jest/NPM Test Command Gotcha
+**IMPORTANT**: When running npm test with shell redirection, always use `--` to separate npm args:
+```bash
+# WRONG - Jest will interpret "2" as part of test pattern
+npm test tests/file.test.ts 2>&1 | grep something
+
+# CORRECT - Use -- to separate npm arguments
+npm test -- tests/file.test.ts 2>&1 | grep something
+```
+Without `--`, Jest treats everything after the filename as test name patterns to match.
+
 ### Documentation References
 - **Development Guide**: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) - Commands, scenarios, troubleshooting
 - **Architecture**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, data flow, components

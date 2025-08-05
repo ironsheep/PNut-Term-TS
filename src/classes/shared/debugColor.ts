@@ -48,7 +48,7 @@ export class DebugColor {
   constructor(colorName: string, brightness: number = DebugColor.defaultBrightness) {
     // Validate brightness is 0-15
     if (brightness < 0 || brightness > 15) {
-      console.log(` DC: WARNING: brightness ${brightness} out of range 0-15, using default ${DebugColor.defaultBrightness}`);
+      // console.log(` DC: WARNING: brightness ${brightness} out of range 0-15, using default ${DebugColor.defaultBrightness}`);
       brightness = DebugColor.defaultBrightness;
     }
     
@@ -114,7 +114,7 @@ export class DebugColor {
    */
   public static isValidColorName(colorName: string): boolean {
     const foundColor = DebugColor.colorNameToHex[colorName.toUpperCase()];
-    console.log(` DC: * isValidColorName: ${colorName} -> ${foundColor}`);
+    // console.log(` DC: * isValidColorName: ${colorName} -> ${foundColor}`);
     return foundColor !== undefined;
   }
 
@@ -167,7 +167,7 @@ export class DebugColor {
       }
     }
 
-    console.log(` DC: * parseColorSpec(${colorSpec}) -> valid=${isValid}, hex=${hexColor}, brightness=${brightness}`);
+    // console.log(` DC: * parseColorSpec(${colorSpec}) -> valid=${isValid}, hex=${hexColor}, brightness=${brightness}`);
     return [isValid, hexColor, brightness];
   }
 
@@ -195,7 +195,7 @@ export class DebugColor {
   private static colorNameToHexString(colorName: string): string {
     let hexString = DebugColor.colorNameToHex[colorName.toUpperCase()];
     if (hexString === undefined) {
-      console.log(` DC: * colorNameToHexString: Unknown color name: ${colorName}`);
+      // console.log(` DC: * colorNameToHexString: Unknown color name: ${colorName}`);
       hexString = '#5a5a5a'; // default to gray
     }
     //console.log(`colorNameToHexString: ${colorName} -> ${hexString}`);
@@ -236,15 +236,15 @@ export class DebugColor {
         const b = (color & 0xff) * (brightness / 15);
         adjustedColor = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
       } catch (error) {
-        console.log(` DC: ERROR adjusting brightness: ${error}`);
+        // console.log(` DC: ERROR adjusting brightness: ${error}`);
       }
     }
 
-    console.log(
-      ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, ${brightness}) -> 0x${adjustedColor
-        .toString(16)
-        .padStart(6, '0')}`
-    );
+    // console.log(
+    //   ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, ${brightness}) -> 0x${adjustedColor
+    //     .toString(16)
+    //     .padStart(6, '0')}`
+    // );
 
     return adjustedColor;
   }

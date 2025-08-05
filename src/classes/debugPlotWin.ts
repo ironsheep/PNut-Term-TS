@@ -494,7 +494,9 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
-    // Valid directives are:
+    // Valid directives are (based on Pascal PNut implementation):
+    //
+    // === Color and Drawing Mode Commands ===
     //   lut1_to_rgb24 - Set color mode. rgb24
     //
     //   LUTCOLORS <rgb24 rgb24> <...> - For LUT1..LUT8 color modes, load the LUT with rgb24 colors. Use HEX_LONG_ARRAY_ to load values. [default colors 0..7]
@@ -507,17 +509,26 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     //   OPACITY <level> - Set the opacity level for DOT, LINE, CIRCLE, OVAL, BOX, and OBOX drawing. [0..255 = clear..opaque] [Default: 255]
     //
-    //   PRECISE Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. disabled
-    //
     //   LINESIZE <size> -  Set the line size in pixels for DOT and LINE drawing. [Default: 1]
     //
+    // === Coordinate System Commands ===
     //   ORIGIN {x_pos y_pos} Set the origin point to cartesian (x_pos, y_pos) or to the current (x, y) if no values are specified. 0, 0
     //
-    
-    // TECH-DEBT: Preserve unparsed command for enhanced error logging
-    const unparsedCommand = lineParts.join(' ');
     //   SET <x> <y> - Set the drawing position to (x, y). After LINE, the endpoint becomes the new drawing position.
     //
+    //   PRECISE Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. disabled
+    //
+    //   POLAR {twopi {offset}} - Set polar mode, twopi value, and offset. For example, POLAR -12 -3 would be like a clock face.
+    //     For a twopi value of $100000000 or -$100000000, use 0 or -1.
+    //     In polar mode, (x, y) coordinates are interpreted as (length, angle).
+    //     [Default: $100000000, 0]
+    //
+    //   CARTESIAN {ydir {xdir}} - Set cartesian mode and optionally set Y and X axis polarity. Cartesian mode is the default.
+    //     If ydir is 0, the Y axis points up. If ydir is non-0, the Y axis points down.
+    //     If xdir is 0, the X axis points right. If xdir is non-0, the X axis points left.
+    //     [Default: 0, 0]
+    //
+    // === Drawing Commands ===
     //   DOT {linesize {opacity}} - Draw a dot at the current position with optional LINESIZE and OPACITY overrides.
     //
     //   LINE <x> <y> {linesize {opacity}} - Draw a line from the current position to (x,y) with optional LINESIZE and OPACITY overrides.
@@ -531,20 +542,13 @@ export class DebugPlotWindow extends DebugWindowBase {
     //   OBOX <width> <height> <x_radius> <y_radius> {linesize {opacity}} - Draw a rounded box around the current position with width, height, x and y radii,
     //     and optional line size none/0 = solid) and OPACITY override.
     //
-    //   TEXTSIZE <size> - Set the text size (6..200). 10
-    //
-    //   TEXTSTYLE style_YYXXUIWW - Set the text style to %YYXXUIWW:
-    //     %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
-    //     %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
-    //     %U is underline: %1 = underline.
-    //     %I is italic: %1 = italic.
-    //     %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
-    //     %00000001
-    //
+    // === Text Commands ===
     //   TEXTANGLE <angle> - Set the text angle. In cartesian mode, the angle is in degrees. [Default: 0]
     //
     //   TEXT {size {style {angle}}} 'text' - Draw text with overrides for size, style, and angle. To change text color, declare a color just before TEXT.
+    //     NOTE: TEXTSIZE and TEXTSTYLE as separate commands are not implemented - use TEXT overrides instead
     //
+    // === Sprite Commands ===
     //   SPRITEDEF <id> <x_dim> <y_dim> pixels… colors… - Define a sprite. Unique ID must be 0..255. Dimensions must each be 1..32. Pixels are bytes which select
     //     palette colors, ordered left-to-right, then top-to-bottom. Colors are longs which define the palette
     //     referenced by the pixel bytes; $AARRGGBB values specify alpha-blend, red, green, and blue.
@@ -553,16 +557,13 @@ export class DebugPlotWindow extends DebugWindowBase {
     //     per the first eight TRACE modes. Scale is 1..64. See the DEBUG_PLOT_Sprites.spin2 file.
     //     <id>, 0, 1, 255
     //
-    //   POLAR {twopi {offset}} - Set polar mode, twopi value, and offset. For example, POLAR -12 -3 would be like a clock face.
-    //     For a twopi value of $100000000 or -$100000000, use 0 or -1.
-    //     In polar mode, (x, y) coordinates are interpreted as (length, angle).
-    //     [Default: $100000000, 0]
+    // === Layer Commands ===
+    //   LAYER <layer#> <filename> {crop-left crop-top crop-right crop-bottom} - Load bitmap file into layer (1..8)
     //
-    //   CARTESIAN {ydir {xdir}} - Set cartesian mode and optionally set Y and X axis polarity. Cartesian mode is the default.
-    //     If ydir is 0, the Y axis points up. If ydir is non-0, the Y axis points down.
-    //     If xdir is 0, the X axis points right. If xdir is non-0, the X axis points left.
-    //     [Default: 0, 0]
+    //   CROP <layer#> {left top width height {left_plot top_plot}} - Copy layer image to plot
+    //   CROP <layer#> AUTO <left_plot> <top_plot> - Copy whole layer at specified position
     //
+    // === Window Control Commands ===
     //   CLEAR - Clear the plot to the background color.
     //
     //   UPDATE - Update the window with the current plot. Used in UPDATE mode.
@@ -571,8 +572,20 @@ export class DebugPlotWindow extends DebugWindowBase {
     //
     //   CLOSE - Close the window.
     //
+    // === Input Commands ===
+    //   PC_KEY - Enable keyboard input forwarding to P2
+    //   PC_MOUSE - Enable mouse input forwarding to P2
+    //
+    // === NOT IMPLEMENTED (from Pascal) ===
+    //   TEXTSIZE, TEXTSTYLE (use TEXT with overrides instead)
+    //   MOVETO, FILL, FLOOD, SCROLL, ARC, TRI, BEZIER, POLY, FONT
+    //
     //   *  Color is a modal value, else BLACK / WHITE or ORANGE / BLUE / GREEN / CYAN / RED / MAGENTA / YELLOW / GRAY followed by an optional 0..15 for brightness (default is 8).
     //
+    
+    // TECH-DEBT: Preserve unparsed command for enhanced error logging
+    const unparsedCommand = lineParts.join(' ');
+    
     this.logMessage(`---- at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
     for (let index = 1; index < lineParts.length; index++) {
@@ -899,7 +912,8 @@ export class DebugPlotWindow extends DebugWindowBase {
           this.drawOvalToPlot(width, height, ovalLineSize, ovalOpacity);
         }
       } else if (lineParts[index].toUpperCase() == 'UPDATE') {
-        // UPDATE command - copy working canvas to display
+        // UPDATE command - process deferred commands then copy working canvas to display
+        this.pushDisplayListToPlot();
         this.performUpdate();
       } else if (lineParts[index].toUpperCase() == 'LAYER') {
         // LAYER command - load bitmap into layer

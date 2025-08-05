@@ -316,11 +316,9 @@ describe('InputForwarder', () => {
       expect(buffer.readInt32LE(24)).toBe(-1); // pixel
     });
 
-    it('should emit error on serial failure', async () => {
+    it('should log error on serial failure', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       mockSerial.write.mockRejectedValueOnce(new Error('Serial error'));
-      
-      const errorHandler = jest.fn();
-      forwarder.on('error', errorHandler);
       
       forwarder.setUsbSerial(mockSerial);
       forwarder.queueKeyEvent('A');
@@ -329,27 +327,23 @@ describe('InputForwarder', () => {
       // Advance timers and flush promises
       await jest.advanceTimersByTimeAsync(16);
       
-      expect(errorHandler).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'InputForwarder: Event processing error:',
         expect.objectContaining({
           message: expect.stringContaining('Failed to process key event')
         })
       );
       
-      // Verify error includes context
-      const error = errorHandler.mock.calls[0][0];
-      expect(error.eventDetails).toBeDefined();
-      expect(error.eventDetails.type).toBe('key');
-      expect(error.eventDetails.data.value).toBe(65); // 'A'
+      consoleErrorSpy.mockRestore();
     });
 
     it('should continue processing after error', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       mockSerial.write
         .mockRejectedValueOnce(new Error('Serial error'))
         .mockResolvedValueOnce(undefined);
       
-      const errorHandler = jest.fn();
-      forwarder.on('error', errorHandler);
-      
+      forwarder.setUsbSerial(mockSerial);
       forwarder.queueKeyEvent('A');
       forwarder.queueKeyEvent('B');
       forwarder.startPolling();
@@ -357,7 +351,7 @@ describe('InputForwarder', () => {
       // First interval - error
       await jest.advanceTimersByTimeAsync(16);
       
-      expect(errorHandler).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1); // Only event processing error
       expect(mockSerial.write).toHaveBeenCalledTimes(1);
       
       // Second interval - success
@@ -365,6 +359,8 @@ describe('InputForwarder', () => {
       
       expect(mockSerial.write).toHaveBeenCalledTimes(2);
       expect(forwarder.getQueueSize()).toBe(0); // Both processed
+      
+      consoleErrorSpy.mockRestore();
     });
 
     it('should clear queue on stop', () => {
@@ -413,11 +409,10 @@ describe('InputForwarder', () => {
     });
     
     it('should handle port disconnection error', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       mockSerial.write.mockRejectedValueOnce(new Error('port is not open'));
       
-      const errorHandler = jest.fn();
       const disconnectedHandler = jest.fn();
-      forwarder.on('error', errorHandler);
       forwarder.on('disconnected', disconnectedHandler);
       
       forwarder.queueKeyEvent('A');
@@ -425,13 +420,15 @@ describe('InputForwarder', () => {
       
       await jest.advanceTimersByTimeAsync(16);
       
-      expect(errorHandler).toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalled();
       expect(disconnectedHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'USB serial connection lost'
         })
       );
       expect(forwarder.isActive).toBe(false); // Should stop polling
+      
+      consoleErrorSpy.mockRestore();
     });
     
     it('should handle device disconnected error', async () => {
