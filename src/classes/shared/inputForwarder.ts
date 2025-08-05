@@ -229,8 +229,8 @@ export class InputForwarder extends EventEmitter {
         data: event.type === 'key' ? { value: event.value } : { status: event.status }
       };
       
-      // Emit error but don't crash
-      this.emit('error', contextualError);
+      // Log error instead of emitting to prevent unhandled error crashes
+      console.error('InputForwarder: Event processing error:', contextualError);
     }
   }
 
@@ -239,8 +239,7 @@ export class InputForwarder extends EventEmitter {
    */
   private async sendKeyEvent(keyValue: number): Promise<void> {
     if (!this.usbSerial) {
-      this.emit('error', new Error('No USB serial connection available for PC_KEY'));
-      return;
+      throw new Error('No USB serial connection available for PC_KEY');
     }
 
     try {
@@ -268,8 +267,7 @@ export class InputForwarder extends EventEmitter {
    */
   private async sendMouseEvent(status: MouseStatus): Promise<void> {
     if (!this.usbSerial) {
-      this.emit('error', new Error('No USB serial connection available for PC_MOUSE'));
-      return;
+      throw new Error('No USB serial connection available for PC_MOUSE');
     }
 
     try {
