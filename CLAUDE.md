@@ -14,6 +14,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Once I've approved the plan then create a to-dos list with paragraph-length to-dos. Include every part of the plan synthesising my feedback.
 - Let's remember that we like to make to-dos lists with this much detail from now on
 
+### Todo List Format
+- **ALWAYS use exhaustive, paragraph-form descriptions** for each todo item
+- Each todo should be a complete paragraph explaining all steps, context, and goals
+- Include specific implementation details, file references, and expected outcomes
+- Reference relevant documentation or Pascal source files when applicable
+- Provide time estimates and priority levels
+- Never use brief bullet points - always comprehensive descriptions
+
 ### While implementing
 - You should update the plan as you work.
 - After you complete a task in the plan you should update and append details descript of the changes you made, so following tasks can easily handed over to other engineers.
@@ -99,7 +107,7 @@ The Pascal reference implementation and documentation are located at `/pascal-so
 | Logic | `DebugLogicWindow` | ✅ Complete | Full trigger support |
 | Scope | `DebugScopeWindow` | ✅ Complete | Auto/manual triggers |
 | Plot | `DebugPlotWindow` | ✅ Complete | Double buffering, layers, sprites |
-| Terminal | `DebugTermWindow` | ✅ Complete | Full ANSI support |
+| Terminal | `DebugTermWindow` | ✅ Complete | ~70% test coverage, no ANSI |
 | Bitmap | `DebugBitmapWindow` | ✅ Complete | All trace patterns |
 | MIDI | `DebugMidiWindow` | ✅ Complete | Piano keyboard display |
 | Scope XY | Not Implemented | ❌ Missing | XY plotting mode |
