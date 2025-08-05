@@ -185,21 +185,21 @@ describe('DebugLogicWindow', () => {
       expect(spec.hideXY).toBe(false);
     });
 
-    it.skip('should parse TITLE directive', () => {
+    it('should parse TITLE directive', () => {
       const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'TITLE', 'My Logic Window']);
       
       expect(isValid).toBe(true);
       expect(spec.windowTitle).toBe('My Logic Window');
     });
 
-    it.skip('should parse POS directive', () => {
+    it('should parse POS directive', () => {
       const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'POS', '100', '200']);
       
       expect(isValid).toBe(true);
       expect(spec.position).toEqual({ x: 100, y: 200 });
     });
 
-    it.skip('should parse SAMPLES directive', () => {
+    it('should parse SAMPLES directive', () => {
       const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'SAMPLES', '128']);
       
       expect(isValid).toBe(true);
@@ -213,7 +213,7 @@ describe('DebugLogicWindow', () => {
       expect(spec.spacing).toBe(16);
     });
 
-    it.skip('should parse COLOR directive with background and grid', () => {
+    it('should parse COLOR directive with background and grid', () => {
       const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'COLOR', 'BLUE', 'YELLOW']);
       
       expect(isValid).toBe(true);
@@ -532,14 +532,14 @@ describe('DebugLogicWindow', () => {
       triggerWindowCreation(debugLogicWindow, 'LOGIC');
     });
 
-    it.skip('should arm trigger when enabled', () => {
+    it('should arm trigger when enabled', () => {
       testCommand(debugLogicWindow, 'LOGIC', ['TRIGGER', '255', '128'], () => {
         expect(debugLogicWindow['triggerArmed']).toBe(true);
         expect(debugLogicWindow['triggerFired']).toBe(false);
       });
     });
 
-    it.skip('should fire trigger on matching data', () => {
+    it('should fire trigger on matching data', () => {
       // Set up trigger
       testCommand(debugLogicWindow, 'LOGIC', ['TRIGGER', '255', '128'], () => {});
       
@@ -549,7 +549,7 @@ describe('DebugLogicWindow', () => {
       });
     });
 
-    it.skip('should respect holdoff period', () => {
+    it('should respect holdoff period', () => {
       // Set up trigger with holdoff
       testCommand(debugLogicWindow, 'LOGIC', ['TRIGGER', '255', '128'], () => {});
       testCommand(debugLogicWindow, 'LOGIC', ['HOLDOFF', '10'], () => {});
@@ -608,7 +608,7 @@ describe('DebugLogicWindow', () => {
       }).not.toThrow();
     });
 
-    it.skip('should handle missing parameters for directives', () => {
+    it('should handle missing parameters for directives', () => {
       const [isValid] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'POS', '100']);
       expect(isValid).toBe(false);
     });

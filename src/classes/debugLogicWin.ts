@@ -198,7 +198,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     if (lineParts.length > 2) {
       for (let index = 2; index < lineParts.length; index++) {
         const element = lineParts[index];
-        console.log(`CL: LogicDisplaySpec - element=[${element}] of lineParts[${index}]`);
+        //console.log(`CL: LogicDisplaySpec - element=[${element}] of lineParts[${index}]`);
         if (element.startsWith("'")) {
           // have channel name...
           const newChannelSpec: LogicChannelSpec = {} as LogicChannelSpec;
@@ -283,12 +283,16 @@ export class DebugLogicWindow extends DebugWindowBase {
           console.log(`CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`);
         } else {
           // Try to parse common keywords first
-          const [parsed, newIndex] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
+          const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
           if (parsed) {
-            index = newIndex - 1; // Adjust for loop increment
+            index = index + consumed - 1; // Adjust for loop increment
             // Special handling for TEXTSIZE
             if (element.toUpperCase() === 'TEXTSIZE') {
               DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
+            }
+            // Special handling for TITLE - copy title to windowTitle
+            if (element.toUpperCase() === 'TITLE' && displaySpec.title) {
+              displaySpec.windowTitle = displaySpec.title;
             }
             continue; // Skip to next iteration after successful parse
           } else {
@@ -819,6 +823,10 @@ export class DebugLogicWindow extends DebugWindowBase {
           // parse trigger spec update
           //   TRIGGER1 mask2 match3 {sample_offset4}
           this.triggerSpec.trigEnabled = true;
+          // Arm the trigger when enabled
+          this.triggerArmed = true;
+          this.triggerFired = false;
+          this.holdoffCounter = 0;
           // Update trigger status when first enabled
           if (this.debugWindow) {
             this.updateTriggerStatus();
@@ -989,12 +997,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       const triggerMet = this.triggerProcessor.evaluateTriggerCondition(sample, this.triggerSpec);
       
       // Update trigger state
-      if (triggerMet && !this.triggerArmed) {
-        // Trigger condition met, arm the trigger
-        this.triggerArmed = true;
-        this.triggerProcessor.updateTriggerState(true, false);
-        this.updateTriggerStatus();
-      } else if (this.triggerArmed && !this.triggerFired) {
+      if (this.triggerArmed && !this.triggerFired) {
         // Already armed, check if we should fire
         if (triggerMet) {
           // Trigger fired!

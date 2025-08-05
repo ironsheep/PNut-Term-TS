@@ -71,6 +71,65 @@ export interface ScopeTriggerSpec {
   trigHoldoff: number; // in samples required, from trigger to trigger
 }
 
+/**
+ * Debug SCOPE Window implementation
+ * 
+ * Displays real-time oscilloscope-style waveforms with multiple channels.
+ * 
+ * === DECLARATION SYNTAX ===
+ * `SCOPE {display_name} {directives...}
+ * 
+ * Directives:
+ *   TITLE <title>            - Override window title
+ *   POS <left> <top>         - Window position [default: 0,0]
+ *   SIZE <width> <height>    - Window size [32-2048, default: 256x256]
+ *   SAMPLES <nbr>            - Sample buffer size [16-2048, default: 256]
+ *   RATE <rate>              - Sample rate divisor [1-2048, default: 1]
+ *   DOTSIZE <pix>            - Dot size for sample points [0-32, default: 0]
+ *   LINESIZE <half-pix>      - Line width [0-32, default: 3]
+ *   TEXTSIZE <half-pix>      - Text size [6-200, default: 12]
+ *   COLOR <bg> {<grid>}      - Colors [default: BLACK, GRAY 4]
+ *   HIDEXY                   - Hide coordinate display
+ * 
+ * === CHANNEL SPECIFICATION ===
+ * '{name}' {min} {max} {y-size} {y-base} {legend} {color} {bright}
+ * '{name}' AUTO {y-size} {y-base} {legend} {color} {bright}
+ * 
+ * Where:
+ *   name    - Channel display name
+ *   min/max - Value range (AUTO uses 0-255)
+ *   y-size  - Vertical display size in pixels
+ *   y-base  - Y baseline offset
+ *   legend  - %abcd format (a=max legend, b=min legend, c=max line, d=min line)
+ *   color   - Channel color name
+ *   bright  - Color brightness (0-15)
+ * 
+ * === RUNTIME COMMANDS ===
+ *   TRIGGER <ch> {arm} {trig} {offset} - Configure trigger
+ *   TRIGGER <ch> AUTO                  - Auto trigger on channel
+ *   TRIGGER <ch> HOLDOFF <samples>     - Set trigger holdoff
+ *   CLEAR                              - Clear all channel data
+ *   CLOSE                              - Close window
+ *   SAVE 'filename'                    - Save window as BMP
+ *   PC_KEY                             - Enable keyboard forwarding
+ *   PC_MOUSE                           - Enable mouse forwarding
+ *   LINE <size>                        - Update line width
+ *   DOT <size>                         - Update dot size
+ *   <numeric>                          - Add sample data
+ *   <packed_mode> <data>               - Add packed samples
+ * 
+ * === PACKED DATA MODES ===
+ *   BYTE2, BYTE4, WORD2, LONG         - Unsigned packed formats
+ *   BYTE2S, BYTE4S, WORD2S, LONGS     - Signed packed formats
+ *   Can be followed by ALT and/or SIGNED modifiers
+ * 
+ * === IMPLEMENTATION NOTES ===
+ * - Channels are created dynamically when '{name}' is encountered
+ * - First numeric data triggers window creation
+ * - Y-axis is inverted (0 at top)
+ * - Supports auto-scaling and manual trigger levels
+ * - Mouse coordinates show with optional Y-axis inversion
+ */
 export class DebugScopeWindow extends DebugWindowBase {
   private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
   private channelSpecs: ScopeChannelSpec[] = []; // one for each channel
@@ -93,6 +152,13 @@ export class DebugScopeWindow extends DebugWindowBase {
   // diagnostics used to limit the number of samples displayed while testing
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  
+  protected logMessage(message: string): void {
+    // if (this.dbgLogMessageCount > 0) {
+      super.logMessage(message);
+    //   this.dbgLogMessageCount--;
+    // }
+  }
 
   constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
     super(ctx);
@@ -144,7 +210,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     //   COLOR <bgnd-color> {<grid-color>} [BLACK, GRAY 4]
     //   packed_data_mode
     //   HIDEXY
-    console.log(`CL: at parseScopeDeclaration()`);
+    // console.log(`CL: at parseScopeDeclaration()`);
     let displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
@@ -152,7 +218,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY3', 4);
-    console.log(`CL: at parseScopeDeclaration() with colors...`);
+    // console.log(`CL: at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.nbrSamples = 256;
@@ -162,9 +228,10 @@ export class DebugScopeWindow extends DebugWindowBase {
     displaySpec.textSize = 12; // Default editor font size - will be adjusted if needed
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
+    displaySpec.hideXY = false; // Default to showing coordinates
 
     // now parse overrides to defaults
-    console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
+    // console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
@@ -174,9 +241,9 @@ export class DebugScopeWindow extends DebugWindowBase {
         const element = lineParts[index];
         
         // Try to parse common keywords first
-        const [parsed, newIndex] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
         if (parsed) {
-          index = newIndex - 1; // Adjust for loop increment
+          index = index + consumed - 1; // Adjust for loop increment
         } else {
           switch (element.toUpperCase()) {
             case 'COLOR':
@@ -189,7 +256,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 }
                 index = colorIndex - 1; // Adjust for loop increment
               } else {
-                console.log(`CL: ScopeDisplaySpec: Invalid COLOR specification`);
+                // console.log(`CL: ScopeDisplaySpec: Invalid COLOR specification`);
                 isValid = false;
               }
               break;
@@ -201,7 +268,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 displaySpec.position = pos;
                 index += 2; // Skip x and y values
               } else {
-                console.log(`CL: ScopeDisplaySpec: Invalid POS specification`);
+                // console.log(`CL: ScopeDisplaySpec: Invalid POS specification`);
                 isValid = false;
               }
               break;
@@ -211,7 +278,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               if (index < lineParts.length - 1) {
                 displaySpec.rate = Number(lineParts[++index]);
               } else {
-                console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
                 isValid = false;
               }
               break;
@@ -228,7 +295,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 displaySpec.windowTitle = lineParts[++index];
               } else {
                 // console.log() as we are in class static method, not derived class...
-                console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
                 isValid = false;
               }
               break;
@@ -238,23 +305,23 @@ export class DebugScopeWindow extends DebugWindowBase {
                 displaySpec.size.width = Number(lineParts[++index]);
                 displaySpec.size.height = Number(lineParts[++index]);
               } else {
-                console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
-            case 'SAMPLES':
-              // ensure we have two more values
-              if (index < lineParts.length - 1) {
-                displaySpec.nbrSamples = Number(lineParts[++index]);
-              } else {
-                console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
                 isValid = false;
               }
               break;
             */
+            case 'SAMPLES':
+              // ensure we have one more value
+              if (index < lineParts.length - 1) {
+                displaySpec.nbrSamples = Number(lineParts[++index]);
+              } else {
+                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
+                isValid = false;
+              }
+              break;
 
             default:
-              console.log(`CL: ScopeDisplaySpec: Unknown directive: ${element}`);
+              // console.log(`CL: ScopeDisplaySpec: Unknown directive: ${element}`);
               break;
           }
         }
@@ -263,31 +330,13 @@ export class DebugScopeWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`CL: at end of parseScopeDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    // console.log(`CL: at end of parseScopeDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
   private createDebugWindow(): void {
     this.logMessage(`at createDebugWindow() SCOPE`);
-    // calculate overall canvas sizes then window size from them!
-    if (this.channelSpecs.length == 0) {
-      // create a DEFAULT channelSpec for only channel
-      const defaultColor: DebugColor = new DebugColor('GREEN', 15);
-      this.channelSpecs.push({
-        name: 'Channel 0',
-        color: defaultColor.rgbString,
-        gridColor: defaultColor.gridRgbString,
-        textColor: defaultColor.fontRgbString,
-        minValue: 0,
-        maxValue: 255,
-        ySize: this.displaySpec.size.height,
-        yBaseOffset: 0,
-        lgndShowMax: true,
-        lgndShowMin: true,
-        lgndShowMaxLine: true,
-        lgndShowMinLine: true
-      });
-    }
+    // Default channel creation has been moved to updateContent when first numeric data arrives
 
     // NOTES: Chip's size estimation:
     //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
@@ -532,6 +581,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     try {
       this.debugWindow.setMenu(null);
+      this.debugWindow.setTitle(this.windowTitle);
       this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
     } catch (error) {
       this.logMessage(`Failed to load URL: ${error}`);
@@ -600,6 +650,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   public async updateContent(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
+    this.logMessage(`at updateContent() with lineParts=[${lineParts.join(', ')}]`);
     // --- these create a new channel spec
     //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
     //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
@@ -620,14 +671,26 @@ export class DebugScopeWindow extends DebugWindowBase {
         // parse channel spec
         let channelSpec: ScopeChannelSpec = {} as ScopeChannelSpec;
         channelSpec.name = lineParts[1].slice(1, -1);
+        // Set defaults for all channel properties
+        channelSpec.minValue = 0;
+        channelSpec.maxValue = 255;
+        channelSpec.ySize = this.displaySpec.size.height;
+        channelSpec.yBaseOffset = 0;
+        channelSpec.lgndShowMax = true;
+        channelSpec.lgndShowMin = true;
+        channelSpec.lgndShowMaxLine = true;
+        channelSpec.lgndShowMinLine = true;
         let colorName = 'LIME'; // vs. green
         let colorBrightness = 15;
-        if (lineParts[2].toUpperCase() == 'AUTO') {
+        if (lineParts[2].toUpperCase().startsWith('AUTO')) {
           // parse AUTO spec - set trigger auto mode for this channel
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
           // Auto means we should use auto trigger for this channel
           this.triggerSpec.trigAuto = true;
           this.triggerSpec.trigChannel = this.channelSpecs.length; // Current channel being added
+          // AUTO channels default to 0-255 range
+          channelSpec.minValue = 0;
+          channelSpec.maxValue = 255;
           if (lineParts.length > 3) {
             channelSpec.ySize = Number(lineParts[3]);
           }
@@ -694,6 +757,12 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
         this.channelSpecs.push(channelSpec);
+        
+        // If window is already created, we need to add a corresponding channelSample
+        if (!this.isFirstNumericData && this.channelSamples.length < this.channelSpecs.length) {
+          this.channelSamples.push({ samples: [] });
+          this.logMessage(`at updateContent() added channelSample for new channel, now have ${this.channelSamples.length} samples`);
+        }
       } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
@@ -790,6 +859,22 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.enableMouseInput();
         // PC_MOUSE must be last command
         return;
+      } else if (lineParts[1].toUpperCase() == 'LINE') {
+        // Update line width
+        if (lineParts.length > 2) {
+          const lineSize = Number(lineParts[2]);
+          if (!isNaN(lineSize) && lineSize >= 0 && lineSize <= 32) {
+            this.displaySpec.lineSize = lineSize;
+          }
+        }
+      } else if (lineParts[1].toUpperCase() == 'DOT') {
+        // Update dot size
+        if (lineParts.length > 2) {
+          const dotSize = Number(lineParts[2]);
+          if (!isNaN(dotSize) && dotSize >= 0 && dotSize <= 32) {
+            this.displaySpec.dotSize = dotSize;
+          }
+        }
       } else {
         // do we have packed data spec?
         // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
@@ -840,10 +925,28 @@ export class DebugScopeWindow extends DebugWindowBase {
         } else {
           // do we have number?
           this.logMessage(`at updateContent() with numeric data: [${lineParts}](${lineParts.length})`);
-          const [isValidNumber, numericValue] = this.isSpinNumber(lineParts[1]);
+          const [isValidNumber] = this.isSpinNumber(lineParts[1]);
           if (isValidNumber) {
             if (this.isFirstNumericData) {
               this.isFirstNumericData = false;
+              // Create default channel if none exist
+              if (this.channelSpecs.length == 0) {
+                const defaultColor: DebugColor = new DebugColor('GREEN', 15);
+                this.channelSpecs.push({
+                  name: 'Channel 0',
+                  color: defaultColor.rgbString,
+                  gridColor: defaultColor.gridRgbString,
+                  textColor: defaultColor.fontRgbString,
+                  minValue: 0,
+                  maxValue: 255,
+                  ySize: this.displaySpec.size.height,
+                  yBaseOffset: 0,
+                  lgndShowMax: true,
+                  lgndShowMin: true,
+                  lgndShowMaxLine: true,
+                  lgndShowMinLine: true
+                });
+              }
               this.calculateAutoTriggerAndScale();
               this.initChannelSamples();
               this.createDebugWindow();
@@ -880,6 +983,7 @@ export class DebugScopeWindow extends DebugWindowBase {
             let didScroll: boolean = false; // in case we need this for performance of window update
             const numberChannels: number = this.channelSpecs.length;
             const nbrSamples = scopeSamples.length;
+            this.logMessage(`* UPD-INFO channels=${numberChannels}, samples=${nbrSamples}, samples=[${scopeSamples.join(',')}]`);
             if (nbrSamples == numberChannels) {
               /*
               if (this.dbgLogMessageCount > 0) {
@@ -904,10 +1008,16 @@ export class DebugScopeWindow extends DebugWindowBase {
                 }
                 // record our sample (shifting left if necessary)
                 didScroll = this.recordChannelSample(chanIdx, nextSample);
+                this.logMessage(`* UPD-INFO recorded sample ${nextSample} for channel ${chanIdx}, channelSamples[${chanIdx}].samples.length=${this.channelSamples[chanIdx].samples.length}`);
                 // update scope chanel canvas with new sample
                 const canvasName = `channel-${chanIdx}`;
                 //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-                this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+                // Check if channel samples exist before accessing
+                if (this.channelSamples[chanIdx]) {
+                  this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+                } else {
+                  this.logMessage(`* UPD-ERROR channel samples not initialized for channel ${chanIdx}`);
+                }
               }
             } else {
               this.logMessage(
@@ -961,10 +1071,19 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private clearChannelData() {
     this.logMessage(`at clearChannelData()`);
-    for (let index = 0; index < this.channelSamples.length; index++) {
-      const channelSamples = this.channelSamples[index];
-      // clear the channel data
-      channelSamples.samples = [];
+    // Ensure channelSamples array matches channelSpecs
+    if (this.channelSamples.length !== this.channelSpecs.length) {
+      this.channelSamples = [];
+      for (let i = 0; i < this.channelSpecs.length; i++) {
+        this.channelSamples.push({ samples: [] });
+      }
+    } else {
+      // Clear existing samples
+      for (let index = 0; index < this.channelSamples.length; index++) {
+        const channelSamples = this.channelSamples[index];
+        // clear the channel data
+        channelSamples.samples = [];
+      }
     }
   }
 
@@ -982,7 +1101,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       );
       
       // Process the sample with the trigger processor
-      const shouldUpdateDisplay = this.triggerProcessor.processSample(sample, {
+      this.triggerProcessor.processSample(sample, {
         trigHoldoff: this.triggerSpec.trigHoldoff
       });
       
@@ -1460,13 +1579,19 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private scaleAndInvertValue(value: number, channelSpec: ScopeChannelSpec): number {
     // scale the value to the vertical channel size then invert the value
-    let possiblyScaledValue: number = value;
     const range: number = channelSpec.maxValue - channelSpec.minValue;
-    // if value range is different from display range then scale it
-    if (channelSpec.ySize != range && range != 0) {
-      const adjustedValue = value - channelSpec.minValue;
+    const adjustedValue = value - channelSpec.minValue;
+    let possiblyScaledValue: number;
+    
+    // Scale the value to fit in the display range
+    if (range != 0) {
       possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
+    } else {
+      possiblyScaledValue = 0;
     }
+    
+    // Clamp to valid range
+    possiblyScaledValue = Math.max(0, Math.min(channelSpec.ySize - 1, possiblyScaledValue));
     const invertedValue: number = channelSpec.ySize - 1 - possiblyScaledValue;
     if (this.dbgLogMessageCount > 0) {
       this.logMessage(
@@ -1528,7 +1653,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       `);
       
       // Reset window title
-      this.debugWindow.setTitle(this.displaySpec.windowTitle);
+      this.debugWindow.setTitle(this.windowTitle);
     }
   }
   
@@ -1694,7 +1819,7 @@ export class DebugScopeWindow extends DebugWindowBase {
    * Get pixel color getter for mouse events
    */
   protected getPixelColorGetter(): ((x: number, y: number) => number) | undefined {
-    return (x: number, y: number) => {
+    return (_x: number, _y: number) => {
       if (this.debugWindow) {
         // This would need to be implemented to sample pixel color from canvas
         // For now, return a default value
