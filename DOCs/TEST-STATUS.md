@@ -3,15 +3,26 @@
 ## Test Execution Results (2025-08-05)
 
 **Current Status: ✅ ALL TESTS PASSING (100% Pass Rate)**
-**Total Tests: 954 tests across 31 files**
+**Total Tests: 1014 tests across 33 files**
 
 ### Progress Summary
-- **Total Test Files**: 31
-- **Passing**: 31 files ✅
+- **Total Test Files**: 33
+- **Passing**: 33 files ✅
 - **Failing**: 0 files
 - **Skipped Tests**: 0 (all .skip modifiers removed)
 
 ### Recent Fixes (2025-08-05)
+- **debugScopeXyWin.test.ts**: 
+  - Fixed test to use proper shared mock helpers from tests/shared/*
+  - Added triggerWindowReady() helper to initialize renderer
+  - Fixed CLEAR command test (expects fillRect not clearRect)
+  - All 30 tests now passing
+- **persistenceManager.test.ts**: 
+  - New test file for PersistenceManager class
+  - 30 tests covering circular buffer and opacity calculations
+- **scopeXyRenderer.test.ts**: 
+  - New test file for ScopeXyRenderer class
+  - 30 tests covering transformations and rendering
 - **debugLogicWin.test.ts**: 
   - Removed 8 .skip modifiers
   - Fixed window title parsing (DisplaySpecParser now sets windowTitle)
@@ -45,6 +56,7 @@
 | debugPlotWin.integration.test.ts | ✅ PASS | 10/10 | 3s | Plot integration features |
 | debugPlotWin.test.ts | ✅ PASS | 48/48 | 3s | Plot window - Fixed all mock and deferred cmd issues |
 | debugScopeWin.test.ts | ✅ PASS | 52/52 | 2s | Scope window - Fixed infinite loop bug |
+| debugScopeXyWin.test.ts | ✅ PASS | 30/30 | 2s | Scope XY window - Complete implementation |
 | debugTermWin.test.ts | ✅ PASS | 64/64 | 3s | Terminal window - 70% coverage, ANSI removed |
 | debugWindowBase.test.ts | ✅ PASS | 29/29 | 3s | Base window functionality |
 | displaySpecParser.test.ts | ✅ PASS | 30/30 | 3s | Display specification parsing |
@@ -55,8 +67,10 @@
 | lutManager.test.ts | ✅ PASS | 26/26 | 3s | Color lookup tables |
 | packedDataIntegration.test.ts | ✅ PASS | 27/27 | 3s | Packed data processing |
 | packedDataProcessor.test.ts | ✅ PASS | 26/26 | 3s | Data packing algorithms |
+| persistenceManager.test.ts | ✅ PASS | 30/30 | 2s | Persistence buffer management |
 | pianoKeyboardLayout.test.ts | ✅ PASS | 9/9 | 3s | MIDI piano keyboard |
 | scopeTrigger.test.ts | ✅ PASS | 17/17 | 3s | Oscilloscope triggers |
+| scopeXyRenderer.test.ts | ✅ PASS | 30/30 | 2s | Scope XY rendering transformations |
 | spacingDirective.test.ts | ✅ PASS | 17/17 | 3s | Bitmap spacing commands |
 | spin2NumericParser.test.ts | ✅ PASS | 44/44 | 1-2s | Spin2 numeric parsing |
 | spriteManager.test.ts | ✅ PASS | 34/34 | 3s | Bitmap sprite management |
@@ -66,7 +80,7 @@
 ## Test Infrastructure
 
 ### Key Achievements
-- **954 tests** across 31 test files (932 → 954 with canvasRenderer additions)
+- **1014 tests** across 33 test files (954 → 1014 with Scope XY additions)
 - **100% pass rate** achieved through systematic fixes
 - **No skipped tests** - all .skip modifiers removed
 - **Pascal compliance** maintained throughout test fixes
@@ -80,7 +94,9 @@
 - **debugColor.ts**: 97.84% ✅
 - **layerManager.ts**: 94.33% ✅
 - **lutManager.ts**: 100% ✅
+- **persistenceManager.ts**: 100% ✅ (NEW)
 - **pianoKeyboardLayout.ts**: 100% ✅
+- **scopeXyRenderer.ts**: 100% ✅ (NEW)
 - **spriteManager.ts**: 100% ✅
 - **inputForwarder.ts**: 93.02% ✅
 - **triggerProcessor.ts**: 95.89% ✅

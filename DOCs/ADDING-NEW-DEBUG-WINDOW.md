@@ -151,6 +151,27 @@ Create a detailed implementation plan (`/tasks/[WINDOW_TYPE]_IMPLEMENTATION.md`)
   - New shared classes MUST achieve 100% coverage
   - Document any uncovered edge cases as technical debt
 
+### Test Implementation Standards
+**MANDATORY**: All tests must use shared test utilities for consistency:
+- Use `tests/shared/mockHelpers.ts` for:
+  - `createMockContext()` - Standard Context mock
+  - `createMockBrowserWindow()` - Electron BrowserWindow mock
+  - `createMockCanvasContext()` - Canvas 2D context mock
+  - `setupDebugWindowTest()` - Complete test environment setup
+- Use `tests/shared/debugWindowTestUtils.ts` for:
+  - `setupDebugWindowTests()` - Standard debug window test setup
+  - `triggerWindowCreation()` - Trigger BrowserWindow creation
+  - `testCommand()` - Test command processing
+  
+**Test Validation Before Completion**:
+1. Run individual test file: `npx jest tests/[window].test.ts`
+   - MUST show "Test Suites: 1 passed" (no failures allowed)
+2. Run coverage: `npm run test:coverage`
+3. Use Claude helper scripts: `bash scripts/claude/check_tests.sh`
+4. Verify no TypeScript errors in test files
+5. Ensure all tests pass in Docker container environment
+6. **CRITICAL**: If any test fails, the window is NOT complete - fix implementation or adjust tests to match actual behavior
+
 ### Documentation Requirements
 **JSDoc must include**:
 - Feature description and purpose
@@ -181,11 +202,27 @@ Create a detailed implementation plan (`/tasks/[WINDOW_TYPE]_IMPLEMENTATION.md`)
 - [ ] Get approval before starting
 - [ ] Create task list after plan approval
 - [ ] Implement in phases with tests
+- [ ] **Ensure all tests pass BEFORE marking complete**:
+  - [ ] All unit tests must pass without errors
+  - [ ] Every new test added must run without failures
+  - [ ] Coverage tests must run without errors
+  - [ ] Tests MUST use shared utilities from `tests/shared/*` for consistency
+  - [ ] No skipped tests without documented technical debt
 - [ ] Achieve minimum test coverage:
   - [ ] 80%+ for window implementation
   - [ ] 100% for new shared classes
   - [ ] 100% for existing shared class modifications
 - [ ] Document any technical debt
+- [ ] **Update project documentation after completion**:
+  - [ ] Update CLAUDE.md implementation progress table (window count & percentage)
+  - [ ] Update CLAUDE.md debug display status summary
+  - [ ] Add window to docs/ARCHITECTURE.md implemented windows list
+  - [ ] Add window to docs/TECHNICAL-DEBT.md Pascal documentation list
+  - [ ] **Update docs/TEST-STATUS.md with all new test files**:
+    - [ ] Add new test files to the test results table with pass/fail status and timings
+    - [ ] Update total test count (e.g., "1014 tests across 33 files")
+    - [ ] Add any new shared classes to coverage status section
+    - [ ] Document any test fixes or special considerations in Recent Fixes section
 
 ## Example: SCOPE_XY Planning Success
 The SCOPE_XY window planning followed this process:

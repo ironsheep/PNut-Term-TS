@@ -38,6 +38,7 @@ The following classes currently have no test files:
 - **TODO**: Add comprehensive Pascal behavior documentation comments before class declarations:
   - `debugLogicWin.ts` - Missing detailed Pascal implementation notes
   - `debugScopeWin.ts` - Missing detailed Pascal implementation notes
+  - `debugScopeXYWin.ts` - ✓ Complete (has comprehensive JSDoc with Pascal references)
   - `debugPlotWin.ts` - Missing detailed Pascal implementation notes
   - `debugBitmapWin.ts` - Has some but needs expansion on Pascal differences
   - `debugMidiWin.ts` - Has good documentation, verify completeness
@@ -76,7 +77,6 @@ Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 ## Architecture Issues
 
 ### Missing Implementations
-- **Scope_XY** window type - Not implemented
 - **FFT** window type - Not implemented  
 - **Spectro** window type - Not implemented
 - **Debugger** window type - Not implemented

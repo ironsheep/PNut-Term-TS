@@ -69,6 +69,8 @@ Located in `scripts/claude/` directory:
 - `test-runner.sh` - Runs a single test file (pass filename as argument)
 - `check_tests.sh` - Quick check of recently fixed test files
 
+**Important**: This project runs in a Docker container environment. Tests must be run sequentially (one at a time) to avoid resource conflicts and ensure reliable results. The Claude helper scripts were specifically created to handle this by iterating over test files one by one.
+
 ### Jest/NPM Test Command Gotcha
 **IMPORTANT**: When running npm test with shell redirection, always use `--` to separate npm args:
 ```bash

@@ -40,7 +40,8 @@ abstract updateContent(lineParts: string[]): void;
 **Implemented Windows**:
 - `DebugTermWindow` - Terminal emulation with ANSI support
 - `DebugLogicWindow` - Logic analyzer with trigger support
-- `DebugScopeWindow` - Oscilloscope with trigger support  
+- `DebugScopeWindow` - Oscilloscope with trigger support
+- `DebugScopeXYWindow` - XY oscilloscope with persistence modes
 - `DebugPlotWindow` - 2D plotting with layers and sprites
 - `DebugBitmapWindow` - Bitmap display with trace patterns
 - `DebugMidiWindow` - MIDI visualization with piano keyboard
