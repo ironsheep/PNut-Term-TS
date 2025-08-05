@@ -113,49 +113,27 @@ export function testNumericAction(
 }
 
 /**
- * Mock strategy configuration for debug windows
+ * Mock strategy notes for debug windows
  * 
- * This encapsulates the lessons learned about what to mock vs what to let run.
+ * This documents the lessons learned about what to mock vs what to let run.
+ * 
+ * Mock only external dependencies:
+ * - Electron (BrowserWindow, app, nativeImage)
+ * - File system (fs)
+ * - USB serial communication
+ * 
+ * DO NOT mock internal modules - let them run!
+ * - canvasRenderer
+ * - displaySpecParser
+ * - colorTranslator
+ * - inputForwarder (except USB)
+ * - debugColor
+ * - packedDataProcessor
+ * - triggerProcessor
+ * 
+ * Each test file should set up its own mocks at the top level,
+ * not inside functions, to avoid hoisting issues.
  */
-export function configureMocks() {
-  // Mock only external dependencies
-  jest.mock('electron', () => ({
-    BrowserWindow: jest.fn().mockImplementation(() => createMockBrowserWindow()),
-    app: { getPath: jest.fn().mockReturnValue('/mock/path') },
-    nativeImage: {
-      createFromBuffer: jest.fn().mockReturnValue({
-        toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
-      })
-    }
-  }));
-  
-  jest.mock('fs', () => ({
-    existsSync: jest.fn(),
-    mkdirSync: jest.fn(),
-    writeFileSync: jest.fn()
-  }));
-  
-  // Mock USB serial for InputForwarder
-  jest.mock('../../src/utils/usb.serial', () => ({
-    UsbSerial: jest.fn().mockImplementation(() => ({
-      write: jest.fn().mockResolvedValue(undefined),
-      close: jest.fn().mockResolvedValue(undefined),
-      on: jest.fn(),
-      removeListener: jest.fn(),
-      removeAllListeners: jest.fn(),
-      deviceIsPropeller: jest.fn().mockResolvedValue(true),
-      getIdStringOrError: jest.fn().mockReturnValue(['Propeller2', '']),
-      deviceInfo: 'Mock Propeller2 Device',
-      isOpen: true
-    }))
-  }));
-  
-  // DO NOT mock internal modules - let them run!
-  // - canvasRenderer
-  // - displaySpecParser
-  // - colorTranslator
-  // - inputForwarder (except USB)
-}
 
 /**
  * Standard test patterns for debug windows

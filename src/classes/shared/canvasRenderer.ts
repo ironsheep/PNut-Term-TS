@@ -675,6 +675,309 @@ export class CanvasRenderer {
   }
 
   /**
+   * Draw a rounded rectangle directly on context (for MIDI window)
+   * Used for piano keys with rounded corners
+   */
+  drawRoundedRectCtx(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+    filled: boolean,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    
+    if (filled) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw a polygon (for POLY command in Plot window)
+   */
+  drawPolygon(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
+    sides: number,
+    radius: number,
+    filled: boolean,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.beginPath();
+    
+    for (let i = 0; i < sides; i++) {
+      const angle = (i * 2 * Math.PI) / sides - Math.PI / 2;
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    
+    ctx.closePath();
+    
+    if (filled) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw an arc (for ARC command in Plot window)
+   */
+  drawArc(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
+    rx: number,
+    ry: number,
+    startAngle: number,
+    endAngle: number,
+    filled: boolean,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, rx, ry, 0, 
+      (startAngle * Math.PI) / 180,
+      (endAngle * Math.PI) / 180,
+      false
+    );
+    
+    if (filled) {
+      ctx.lineTo(centerX, centerY);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw a triangle (for TRI command in Plot window)
+   */
+  drawTriangle(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    x3: number,
+    y3: number,
+    filled: boolean,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+    ctx.closePath();
+    
+    if (filled) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw a Bezier curve (for BEZIER command in Plot window)
+   */
+  drawBezier(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x1, y1, x2, y2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+
+  /**
+   * Flood fill algorithm (for FLOOD command in Plot window)
+   * Note: This is a simplified implementation
+   */
+  floodFill(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    x: number,
+    y: number,
+    fillColor: string
+  ): void {
+    // Convert fill color to RGBA
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 1;
+    tempCanvas.height = 1;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+    
+    tempCtx.fillStyle = fillColor;
+    tempCtx.fillRect(0, 0, 1, 1);
+    const fillData = tempCtx.getImageData(0, 0, 1, 1).data;
+    
+    // Get canvas image data
+    const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    // Get target color
+    const targetIndex = (y * width + x) * 4;
+    const targetR = data[targetIndex];
+    const targetG = data[targetIndex + 1];
+    const targetB = data[targetIndex + 2];
+    const targetA = data[targetIndex + 3];
+    
+    // Check if target color is same as fill color
+    if (targetR === fillData[0] && targetG === fillData[1] && 
+        targetB === fillData[2] && targetA === fillData[3]) {
+      return;
+    }
+    
+    // Simple flood fill using a stack
+    const stack: [number, number][] = [[x, y]];
+    
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop()!;
+      
+      if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
+      
+      const index = (cy * width + cx) * 4;
+      
+      // Check if this pixel matches target color
+      if (data[index] === targetR && data[index + 1] === targetG &&
+          data[index + 2] === targetB && data[index + 3] === targetA) {
+        // Fill this pixel
+        data[index] = fillData[0];
+        data[index + 1] = fillData[1];
+        data[index + 2] = fillData[2];
+        data[index + 3] = fillData[3];
+        
+        // Add neighbors to stack
+        stack.push([cx + 1, cy]);
+        stack.push([cx - 1, cy]);
+        stack.push([cx, cy + 1]);
+        stack.push([cx, cy - 1]);
+      }
+    }
+    
+    // Put the modified image data back
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  /**
+   * Draw grid lines (for Logic and Scope windows)
+   */
+  drawGrid(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    width: number,
+    height: number,
+    gridSpacingX: number,
+    gridSpacingY: number,
+    gridColor: string,
+    lineWidth: number = 1
+  ): void {
+    ctx.save();
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([2, 2]);
+    
+    // Vertical lines
+    for (let x = gridSpacingX; x < width; x += gridSpacingX) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    
+    // Horizontal lines
+    for (let y = gridSpacingY; y < height; y += gridSpacingY) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
+
+  /**
+   * Draw waveform connecting sample points (for Scope window)
+   */
+  drawWaveform(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    samples: number[],
+    xStart: number,
+    xSpacing: number,
+    yScale: number,
+    yOffset: number,
+    color: string,
+    lineWidth: number = 1
+  ): void {
+    if (samples.length === 0) return;
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    
+    for (let i = 0; i < samples.length; i++) {
+      const x = xStart + i * xSpacing;
+      const y = yOffset - samples[i] * yScale;
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    
+    ctx.stroke();
+  }
+
+  /**
    * Draw a character for Terminal Window
    * Returns JavaScript string for execution
    */
@@ -763,6 +1066,164 @@ export class CanvasRenderer {
             ctx.fillRect(0, 0, canvas.width, canvas.height);
           }
         }
+      })();
+    `;
+  }
+
+  /**
+   * Legacy methods for windows that haven't been refactored yet
+   * These return JavaScript strings for execution via executeJavaScript
+   */
+  
+  /**
+   * Draw rounded rectangle (legacy method for MIDI window)
+   * Returns JavaScript string for execution
+   */
+  drawRoundedRect(
+    canvasId: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+    filled: boolean,
+    color: string,
+    lineWidth: number = 1
+  ): string {
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.beginPath();
+        ctx.moveTo(${x} + ${radius}, ${y});
+        ctx.lineTo(${x} + ${width} - ${radius}, ${y});
+        ctx.quadraticCurveTo(${x} + ${width}, ${y}, ${x} + ${width}, ${y} + ${radius});
+        ctx.lineTo(${x} + ${width}, ${y} + ${height} - ${radius});
+        ctx.quadraticCurveTo(${x} + ${width}, ${y} + ${height}, ${x} + ${width} - ${radius}, ${y} + ${height});
+        ctx.lineTo(${x} + ${radius}, ${y} + ${height});
+        ctx.quadraticCurveTo(${x}, ${y} + ${height}, ${x}, ${y} + ${height} - ${radius});
+        ctx.lineTo(${x}, ${y} + ${radius});
+        ctx.quadraticCurveTo(${x}, ${y}, ${x} + ${radius}, ${y});
+        ctx.closePath();
+        
+        if (${filled}) {
+          ctx.fillStyle = '${color}';
+          ctx.fill();
+        } else {
+          ctx.strokeStyle = '${color}';
+          ctx.lineWidth = ${lineWidth};
+          ctx.stroke();
+        }
+      })();
+    `;
+  }
+
+  /**
+   * Draw grid lines (legacy method for Logic window)
+   * Returns JavaScript string for execution
+   */
+  drawGridLines(
+    canvasId: string,
+    width: number,
+    height: number,
+    gridSpacingX: number,
+    gridSpacingY: number,
+    gridColor: string,
+    lineWidth: number = 1
+  ): string {
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.save();
+        ctx.strokeStyle = '${gridColor}';
+        ctx.lineWidth = ${lineWidth};
+        ctx.setLineDash([2, 2]);
+        
+        // Vertical lines
+        for (let x = ${gridSpacingX}; x < ${width}; x += ${gridSpacingX}) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, ${height});
+          ctx.stroke();
+        }
+        
+        // Horizontal lines
+        for (let y = ${gridSpacingY}; y < ${height}; y += ${gridSpacingY}) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(${width}, y);
+          ctx.stroke();
+        }
+        
+        ctx.restore();
+      })();
+    `;
+  }
+
+  /**
+   * Update innerHTML of an element (for Logic window labels)
+   * Returns JavaScript string for execution
+   */
+  updateElementHTML(
+    elementId: string,
+    htmlContent: string
+  ): string {
+    // Escape quotes in HTML content
+    const escapedHTML = htmlContent.replace(/'/g, "\\'");
+    
+    return `
+      (function() {
+        const element = document.getElementById('${elementId}');
+        if (element) {
+          element.innerHTML = '${escapedHTML}';
+        }
+      })();
+    `;
+  }
+
+  /**
+   * Draw connected line segments (for Logic window sample display)
+   * Returns JavaScript string for execution
+   */
+  drawConnectedLines(
+    canvasId: string,
+    points: Array<{x: number, y: number}>,
+    color: string,
+    lineWidth: number = 1
+  ): string {
+    if (points.length === 0) return '';
+    
+    let pathCommands = '';
+    points.forEach((point, index) => {
+      if (index === 0) {
+        pathCommands += `ctx.moveTo(${point.x}, ${point.y});\n`;
+      } else {
+        pathCommands += `ctx.lineTo(${point.x}, ${point.y});\n`;
+      }
+    });
+    
+    return `
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.strokeStyle = '${color}';
+        ctx.lineWidth = ${lineWidth};
+        ctx.beginPath();
+        ${pathCommands}
+        ctx.stroke();
       })();
     `;
   }

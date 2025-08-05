@@ -290,6 +290,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             if (element.toUpperCase() === 'TEXTSIZE') {
               DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
             }
+            continue; // Skip to next iteration after successful parse
           } else {
             switch (element.toUpperCase()) {
               case 'COLOR':
@@ -1269,14 +1270,8 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage(`at updateLogicChannelLabel('${divId}', '${label}', ${color})`);
       try {
         const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            const labelDiv = document.getElementById('${divId}');
-            if (labelDiv) {
-              labelDiv.innerHTML = \'${labelSpan}'\;
-            }
-          })();
-        `);
+        const jsCode = this.canvasRenderer.updateElementHTML(divId, labelSpan);
+        this.debugWindow.webContents.executeJavaScript(jsCode);
       } catch (error) {
         console.error(`Failed to update ${divId}: ${error}`);
       }

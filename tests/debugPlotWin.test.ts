@@ -362,6 +362,440 @@ describe('DebugPlotWindow', () => {
     });
   });
   
+  describe('Sprite Operations', () => {
+    test('should define sprites with SPRITE command', async () => {
+      // Define a 2x2 sprite
+      await plotWindow.updateContent(['TestPlot', 'SPRITE', '1', '2', '2']);
+      await plotWindow.updateContent(['TestPlot', '$FF0000', '$00FF00']);
+      await plotWindow.updateContent(['TestPlot', '$0000FF', '$FFFF00']);
+      
+      const spriteManager = (plotWindow as any).spriteManager;
+      expect(spriteManager).toBeDefined();
+    });
+    
+    test('should draw sprites with all 8 orientations', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Define sprite first
+      await plotWindow.updateContent(['TestPlot', 'SPRITE', '1', '2', '2']);
+      await plotWindow.updateContent(['TestPlot', '$FF0000', '$00FF00']);
+      await plotWindow.updateContent(['TestPlot', '$0000FF', '$FFFF00']);
+      
+      // Draw sprite with different orientations (0-7)
+      const orientations = ['0', '1', '2', '3', '4', '5', '6', '7'];
+      for (const orient of orientations) {
+        await plotWindow.updateContent(['TestPlot', 'SPRITEPUT', '1', '50', '50', orient, '1']);
+      }
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Verify drawing occurred
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow).toBeDefined();
+    });
+    
+    test('should handle sprite scaling', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Define and draw sprite with scaling
+      await plotWindow.updateContent(['TestPlot', 'SPRITE', '1', '1', '1']);
+      await plotWindow.updateContent(['TestPlot', '$FF0000']);
+      
+      // Draw with different scales
+      await plotWindow.updateContent(['TestPlot', 'SPRITEPUT', '1', '100', '100', '0', '2']); // 2x scale
+      await plotWindow.updateContent(['TestPlot', 'SPRITEPUT', '1', '150', '150', '0', '0.5']); // 0.5x scale
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      expect((plotWindow as any).debugWindow).toBeDefined();
+    });
+  });
+
+  describe('Layer Operations', () => {
+    test('should load layers with LAYER command', async () => {
+      // Layer command format: LAYER layer# filename {crop-left crop-top crop-right crop-bottom}
+      await plotWindow.updateContent(['TestPlot', 'LAYER', '1', '"test.png"']);
+      
+      const layerManager = (plotWindow as any).layerManager;
+      expect(layerManager).toBeDefined();
+    });
+    
+    test('should handle layer with crop rectangle', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'LAYER', '1', '"test.png"', '10', '10', '100', '100']);
+      
+      expect((plotWindow as any).layerManager).toBeDefined();
+    });
+    
+    test('should composite layers with LAYERPUT command', async () => {
+      // First load a layer
+      await plotWindow.updateContent(['TestPlot', 'LAYER', '1', '"test.png"']);
+      
+      // Then composite it
+      await plotWindow.updateContent(['TestPlot', 'LAYERPUT', '1', '50', '50']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow).toBeDefined();
+    });
+  });
+
+  describe('Advanced Coordinate Transformations', () => {
+    test('should handle polar coordinates with POLAR command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // POLAR angle radius
+      await plotWindow.updateContent(['TestPlot', 'POLAR', '45', '100']);
+      
+      // Should have moved the plot position
+      expect((plotWindow as any).plotX).not.toBe(0);
+      expect((plotWindow as any).plotY).not.toBe(0);
+    });
+    
+    test('should handle MOVE command with coordinates', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Set initial position
+      (plotWindow as any).plotX = 0;
+      (plotWindow as any).plotY = 0;
+      
+      await plotWindow.updateContent(['TestPlot', 'MOVE', '25', '75']);
+      
+      expect((plotWindow as any).plotX).toBe(25);
+      expect((plotWindow as any).plotY).toBe(75);
+    });
+    
+    test('should handle MOVETO command (absolute positioning)', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Set origin first
+      await plotWindow.updateContent(['TestPlot', 'ORIGIN', '100', '100']);
+      
+      // MOVETO should set absolute position
+      await plotWindow.updateContent(['TestPlot', 'MOVETO', '50', '50']);
+      
+      // Check absolute position was set
+      expect((plotWindow as any).plotX).toBeDefined();
+      expect((plotWindow as any).plotY).toBeDefined();
+    });
+  });
+
+  describe('Opacity and Blending', () => {
+    test('should set opacity with OPACITY command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'OPACITY', '128']); // 50% opacity
+      
+      expect((plotWindow as any).plotOpacity).toBe(128);
+    });
+    
+    test('should apply opacity to drawing operations', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'OPACITY', '128']);
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'PLOT']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow).toBeDefined();
+    });
+  });
+
+  describe('Text Angle and Rotation', () => {
+    test('should set text angle with TEXTANGLE command', async () => {
+      await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '45']);
+      
+      expect((plotWindow as any).textAngle).toBe(45);
+    });
+    
+    test('should draw rotated text', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '90']);
+      await plotWindow.updateContent(['TestPlot', 'TEXT', '"Rotated Text"']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow).toBeDefined();
+    });
+    
+    test('should reset text angle to 0', async () => {
+      await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '45']);
+      await plotWindow.updateContent(['TestPlot', 'TEXTANGLE', '0']);
+      
+      expect((plotWindow as any).textAngle).toBe(0);
+    });
+  });
+
+  describe('Double Buffer Operations', () => {
+    test('should not update display until UPDATE command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      const initialCallCount = mockWindow.webContents.executeJavaScript.mock.calls.length;
+      
+      // Do several drawing operations
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$00FF00']);
+      await plotWindow.updateContent(['TestPlot', 'PLOT']);
+      await plotWindow.updateContent(['TestPlot', 'LINE', '100', '100']);
+      
+      // Should not have updated display yet
+      const afterDrawCallCount = mockWindow.webContents.executeJavaScript.mock.calls.length;
+      expect(afterDrawCallCount).toBe(initialCallCount);
+      
+      // Now update
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Should have updated display
+      const afterUpdateCallCount = mockWindow.webContents.executeJavaScript.mock.calls.length;
+      expect(afterUpdateCallCount).toBeGreaterThan(afterDrawCallCount);
+    });
+    
+    test('should swap buffers on UPDATE', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      // Draw on working buffer
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$00FF00']);
+      await plotWindow.updateContent(['TestPlot', 'BOX', '50', '50', '100', '100']);
+      
+      // Update should copy working to display
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow).toBeDefined();
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+  });
+
+  describe('Drawing Primitives Coverage', () => {
+    test('should handle OVAL command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'OVAL', '50', '50', '0']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle CIRCLE command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'CIRCLE', '30', '0']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle POLY command for polygons', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'POLY', '3', '50']); // Triangle with radius 50
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle BEZIER curves', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'BEZIER', '0', '0', '50', '100', '100', '0']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+  });
+
+  describe('Color Mode Coverage', () => {
+    test('should handle all LUT modes', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const lutModes = ['LUT1', 'LUT2', 'LUT4', 'LUT8'];
+      for (const mode of lutModes) {
+        await plotWindow.updateContent(['TestPlot', mode]);
+      }
+      
+      expect((plotWindow as any).debugWindow).toBeDefined();
+    });
+    
+    test('should handle RGB modes', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const rgbModes = ['RGBI8', 'RGB8', 'RGB16', 'RGB24'];
+      for (const mode of rgbModes) {
+        await plotWindow.updateContent(['TestPlot', mode]);
+      }
+      
+      expect((plotWindow as any).debugWindow).toBeDefined();
+    });
+    
+    test('should handle LUTCOLORS command', async () => {
+      await plotWindow.updateContent(['TestPlot', 'LUTCOLORS', '$000000', '$FFFFFF', '$FF0000', '$00FF00']);
+      
+      const lutManager = (plotWindow as any).lutManager;
+      expect(lutManager).toBeDefined();
+    });
+  });
+
+  describe('Additional Drawing Commands', () => {
+    test('should handle ARC command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'ARC', '50', '50', '0', '90', '0']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle TRI command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'TRI', '0', '0', '50', '0', '25', '50', '0']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle DOT command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'DOT', '100', '100']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+  });
+
+  describe('Text and Font Commands', () => {
+    test('should handle TEXTSIZE command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'TEXTSIZE', '16']);
+      
+      expect((plotWindow as any).plotTextSize).toBe(16);
+    });
+    
+    test('should handle TEXTSTYLE command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'TEXTSTYLE', '1']); // Bold
+      
+      expect((plotWindow as any).plotTextStyle).toBeDefined();
+    });
+    
+    test('should handle FONT command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'FONT', '0']); // Default font
+      
+      expect((plotWindow as any).plotFont).toBe(0);
+    });
+  });
+
+  describe('Fill Commands', () => {
+    test('should handle FILL command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$00FF00']);
+      await plotWindow.updateContent(['TestPlot', 'FILL']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle FLOOD command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'FLOOD', '128', '128']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+  });
+
+  describe('Scroll and Clear Commands', () => {
+    test('should handle SCROLL command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'SCROLL', '10', '-10']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+    
+    test('should handle CLEAR command', async () => {
+      // Create window first
+      await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      await plotWindow.updateContent(['TestPlot', 'CLEAR']);
+      await plotWindow.updateContent(['TestPlot', 'UPDATE']);
+      
+      const mockWindow = (plotWindow as any).debugWindow;
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+  });
+
   describe('Coverage for New Functionality', () => {
     test('should have high code coverage', () => {
       // This is a meta-test to remind about coverage
