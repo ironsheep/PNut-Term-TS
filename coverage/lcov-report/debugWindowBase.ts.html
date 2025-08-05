@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for debugTermWin.ts</title>
+    <title>Code coverage report for debugWindowBase.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="prettify.css" />
     <link rel="stylesheet" href="base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="index.html">All files</a> debugTermWin.ts</h1>
+        <h1><a href="index.html">All files</a> debugWindowBase.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">80.61% </span>
+                <span class="strong">83.4% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>287/356</span>
+                <span class='fraction'>206/247</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">75.91% </span>
+                <span class="strong">80.48% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>104/137</span>
+                <span class='fraction'>66/82</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">77.27% </span>
+                <span class="strong">87.87% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>17/22</span>
+                <span class='fraction'>29/33</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">81.03% </span>
+                <span class="strong">83.73% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>282/348</span>
+                <span class='fraction'>206/246</span>
             </div>
         
             
@@ -911,21 +911,103 @@
 <a name='L846'></a><a href='#L846'>846</a>
 <a name='L847'></a><a href='#L847'>847</a>
 <a name='L848'></a><a href='#L848'>848</a>
-<a name='L849'></a><a href='#L849'>849</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L849'></a><a href='#L849'>849</a>
+<a name='L850'></a><a href='#L850'>850</a>
+<a name='L851'></a><a href='#L851'>851</a>
+<a name='L852'></a><a href='#L852'>852</a>
+<a name='L853'></a><a href='#L853'>853</a>
+<a name='L854'></a><a href='#L854'>854</a>
+<a name='L855'></a><a href='#L855'>855</a>
+<a name='L856'></a><a href='#L856'>856</a>
+<a name='L857'></a><a href='#L857'>857</a>
+<a name='L858'></a><a href='#L858'>858</a>
+<a name='L859'></a><a href='#L859'>859</a>
+<a name='L860'></a><a href='#L860'>860</a>
+<a name='L861'></a><a href='#L861'>861</a>
+<a name='L862'></a><a href='#L862'>862</a>
+<a name='L863'></a><a href='#L863'>863</a>
+<a name='L864'></a><a href='#L864'>864</a>
+<a name='L865'></a><a href='#L865'>865</a>
+<a name='L866'></a><a href='#L866'>866</a>
+<a name='L867'></a><a href='#L867'>867</a>
+<a name='L868'></a><a href='#L868'>868</a>
+<a name='L869'></a><a href='#L869'>869</a>
+<a name='L870'></a><a href='#L870'>870</a>
+<a name='L871'></a><a href='#L871'>871</a>
+<a name='L872'></a><a href='#L872'>872</a>
+<a name='L873'></a><a href='#L873'>873</a>
+<a name='L874'></a><a href='#L874'>874</a>
+<a name='L875'></a><a href='#L875'>875</a>
+<a name='L876'></a><a href='#L876'>876</a>
+<a name='L877'></a><a href='#L877'>877</a>
+<a name='L878'></a><a href='#L878'>878</a>
+<a name='L879'></a><a href='#L879'>879</a>
+<a name='L880'></a><a href='#L880'>880</a>
+<a name='L881'></a><a href='#L881'>881</a>
+<a name='L882'></a><a href='#L882'>882</a>
+<a name='L883'></a><a href='#L883'>883</a>
+<a name='L884'></a><a href='#L884'>884</a>
+<a name='L885'></a><a href='#L885'>885</a>
+<a name='L886'></a><a href='#L886'>886</a>
+<a name='L887'></a><a href='#L887'>887</a>
+<a name='L888'></a><a href='#L888'>888</a>
+<a name='L889'></a><a href='#L889'>889</a>
+<a name='L890'></a><a href='#L890'>890</a>
+<a name='L891'></a><a href='#L891'>891</a>
+<a name='L892'></a><a href='#L892'>892</a>
+<a name='L893'></a><a href='#L893'>893</a>
+<a name='L894'></a><a href='#L894'>894</a>
+<a name='L895'></a><a href='#L895'>895</a>
+<a name='L896'></a><a href='#L896'>896</a>
+<a name='L897'></a><a href='#L897'>897</a>
+<a name='L898'></a><a href='#L898'>898</a>
+<a name='L899'></a><a href='#L899'>899</a>
+<a name='L900'></a><a href='#L900'>900</a>
+<a name='L901'></a><a href='#L901'>901</a>
+<a name='L902'></a><a href='#L902'>902</a>
+<a name='L903'></a><a href='#L903'>903</a>
+<a name='L904'></a><a href='#L904'>904</a>
+<a name='L905'></a><a href='#L905'>905</a>
+<a name='L906'></a><a href='#L906'>906</a>
+<a name='L907'></a><a href='#L907'>907</a>
+<a name='L908'></a><a href='#L908'>908</a>
+<a name='L909'></a><a href='#L909'>909</a>
+<a name='L910'></a><a href='#L910'>910</a>
+<a name='L911'></a><a href='#L911'>911</a>
+<a name='L912'></a><a href='#L912'>912</a>
+<a name='L913'></a><a href='#L913'>913</a>
+<a name='L914'></a><a href='#L914'>914</a>
+<a name='L915'></a><a href='#L915'>915</a>
+<a name='L916'></a><a href='#L916'>916</a>
+<a name='L917'></a><a href='#L917'>917</a>
+<a name='L918'></a><a href='#L918'>918</a>
+<a name='L919'></a><a href='#L919'>919</a>
+<a name='L920'></a><a href='#L920'>920</a>
+<a name='L921'></a><a href='#L921'>921</a>
+<a name='L922'></a><a href='#L922'>922</a>
+<a name='L923'></a><a href='#L923'>923</a>
+<a name='L924'></a><a href='#L924'>924</a>
+<a name='L925'></a><a href='#L925'>925</a>
+<a name='L926'></a><a href='#L926'>926</a>
+<a name='L927'></a><a href='#L927'>927</a>
+<a name='L928'></a><a href='#L928'>928</a>
+<a name='L929'></a><a href='#L929'>929</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -974,39 +1056,57 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">64x</span>
-<span class="cline-any cline-yes">64x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">64x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">64x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1017,206 +1117,136 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-yes">356x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-yes">119x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">202x</span>
+<span class="cline-any cline-yes">146x</span>
+<span class="cline-any cline-yes">146x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1203x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1224,316 +1254,456 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">132x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">132x</span>
-<span class="cline-any cline-yes">140x</span>
-<span class="cline-any cline-yes">140x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">136x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">114x</span>
-<span class="cline-any cline-yes">114x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">114x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">67x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">47x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">22x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">16x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">112x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">112x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">110x</span>
+<span class="cline-any cline-yes">110x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">112x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">62x</span>
+<span class="cline-any cline-yes">62x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">123x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">123x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-yes">54x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">123x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">122x</span>
+<span class="cline-any cline-yes">62x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">128x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">122x</span>
-<span class="cline-any cline-yes">122x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">122x</span>
-<span class="cline-any cline-yes">70x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">52x</span>
-<span class="cline-any cline-yes">52x</span>
-<span class="cline-any cline-yes">52x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1542,67 +1712,35 @@
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">22x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">122x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">70x</span>
-<span class="cline-any cline-yes">70x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">70x</span>
-<span class="cline-any cline-yes">88x</span>
-<span class="cline-any cline-yes">88x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1611,23 +1749,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">110x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">110x</span>
-<span class="cline-any cline-yes">109x</span>
-<span class="cline-any cline-yes">109x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">109x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1639,24 +1763,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">109x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">109x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">109x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1664,23 +1779,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1688,23 +1794,17 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1712,42 +1812,30 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1757,6 +1845,78 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">342x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1355x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1355x</span>
+<span class="cline-any cline-yes">1355x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/** @format */
@@ -1765,846 +1925,926 @@
 //  TODO: make it context/runtime option aware
 &nbsp;
 'use strict';
-import { BrowserWindow } from 'electron';
-// src/classes/debugTermWin.ts
 &nbsp;
+import { BrowserWindow, NativeImage } from 'electron';
+import { Jimp } from 'jimp';
+import * as fs from 'fs';
+import * as path from 'path';
+import EventEmitter from 'events';
 import { Context } from '../utils/context';
-import { DebugColor } from './shared/debugColor';
-import { Spin2NumericParser } from './shared/spin2NumericParser';
-import { CanvasRenderer } from './shared/canvasRenderer';
-&nbsp;
-import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
+import { localFSpecForFilename } from '../utils/files';
 import { waitMSec } from '../utils/timerUtils';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { InputForwarder } from './shared/inputForwarder';
 &nbsp;
-export interface TermSize {
-  columns: number;
-  rows: number;
-}
-export interface ColorCombo {
-  fgcolor: string;
-  bgcolor: string;
-}
-export interface TermDisplaySpec {
-  displayName: string;
-  windowTitle: string; // composite or override w/TITLE
-  position: Position;
-  size: TermSize;
-  font: FontMetrics;
-  window: WindowColor;
-  textColor: string;
-  colorCombos: ColorCombo[];
-  delayedUpdate: boolean;
-  hideXY: boolean;
-}
+// src/classes/debugWindowBase.ts
 &nbsp;
 /**
- * Debug Terminal Window Implementation
+ * TECH-DEBT: Critical Implementation Requirement - Preserve Unparsed Debug Strings
  * 
- * IMPORTANT: This is NOT a standard terminal emulator. It follows the Pascal PNut
- * implementation which repurposes some ASCII control characters for debug-specific functions.
+ * All debug window implementations that extend DebugWindowBase MUST preserve the original
+ * unparsed debug command strings for enhanced error logging and debugging support.
  * 
- * Key differences from standard terminals:
- * - ASCII 7 (BELL) is used for color combo #3 selection, not an audible bell
- * - ASCII 4-7 select color combos 0-3 respectively
- * - No ANSI escape sequence support (matches Pascal implementation)
- * - Limited to the specific commands needed for P2 debug output
+ * Requirements:
+ * 1. Store the raw, unparsed debug command string before any processing
+ * 2. Include this string in all error log messages when parsing fails or invalid values are detected
+ * 3. Pass the unparsed string to Logger when reporting warnings about defensive defaults
  * 
- * Supported numeric commands:
- * - 0: Clear screen and home cursor
- * - 1: Home cursor
- * - 2: Set column (followed by column number)
- * - 3: Set row (followed by row number)
- * - 4-7: Select color combo 0-3
- * - 8: Backspace (with line wrap)
- * - 9: Tab (advance to next 8-column boundary)
- * - 10: Line feed
- * - 13: Carriage return
- * - 32-255: Printable characters
+ * Example implementation pattern:
+ * ```typescript
+ * updateContent(lineParts: string[]): void {
+ *   const unparsedCommand = lineParts.join(' '); // Preserve original command
+ *   
+ *   // ... parsing logic ...
+ *   
+ *   if (isNaN(parsedValue)) {
+ *     this.logger.warn(`Debug command parsing error:\n${unparsedCommand}\nInvalid value '${valueStr}' for parameter X, using default: 0`);
+ *     parsedValue = 0; // Defensive default
+ *   }
+ * }
+ * ```
  * 
- * String commands:
- * - CLEAR: Clear screen
- * - UPDATE: Force display update
- * - SAVE WINDOW 'filename': Save to BMP
- * - CLOSE: Close window
- * - PC_KEY: Enable keyboard forwarding
- * - PC_MOUSE: Enable mouse forwarding
+ * This requirement is critical for:
+ * - Helping users debug their Spin2 DEBUG() statements
+ * - Supporting product issues by seeing exact user input
+ * - Maintaining consistency across all debug window types
+ * - Providing clear error messages that show context
+ * 
+ * TODO: Audit all debug window implementations to ensure compliance
+ * TODO: Add unparsedCommand parameter to common error logging methods
  */
-export class DebugTermWindow extends DebugWindowBase {
-  private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
-  private isFirstDisplayData: boolean = true;
-  private contentInset: number = 6; // 6 pixels from left and right of window
-  private borderMargin: number = 10; // 10 pixels all around
-  // current terminal state
-  private deferredCommands: string[] = [];
-  private cursorPosition: Position = { x: 0, y: 0 };
-  private selectedCombo: number = 0;
-  private canvasRenderer: CanvasRenderer = new CanvasRenderer();
 &nbsp;
-  constructor(ctx: Context, displaySpec: TermDisplaySpec) {
-    super(ctx);
-    this.windowLogPrefix = 'trmW';
-    // record our Debug Term Window Spec
-    this.displaySpec = displaySpec;
-    // adjust our contentInset for font size
-    this.contentInset = this.displaySpec.font.charWidth / 2;
+export interface Size {
+  width: number;
+  height: number;
+}
+&nbsp;
+export interface Position {
+  x: number;
+  y: number;
+}
+&nbsp;
+export enum eVertJustification {
+  VJ_UNKNOWN = 1,
+  VJ_TOP = 3,
+  VJ_MIDDLE = 0,
+  VJ_BOTTOM = 2
+}
+&nbsp;
+export enum eHorizJustification {
+  HJ_UNKNOWN = 1,
+  HJ_LEFT = 3,
+  HJ_CENTER = 0,
+  HJ_RIGHT = 2
+}
+&nbsp;
+export enum eTextWeight {
+  TW_UNKNOWN,
+  TW_LIGHT, // 300
+  TW_NORMAL, // 400
+  TW_BOLD, // 700
+  TW_HEAVY // 900
+}
+&nbsp;
+export enum ePackedDataMode {
+  PDM_UNKNOWN,
+  PDM_LONGS_1BIT,
+  PDM_LONGS_2BIT,
+  PDM_LONGS_4BIT,
+  PDM_LONGS_8BIT,
+  PDM_LONGS_16BIT,
+  PDM_WORDS_1BIT,
+  PDM_WORDS_2BIT,
+  PDM_WORDS_4BIT,
+  PDM_WORDS_8BIT,
+  PDM_BYTES_1BIT,
+  PDM_BYTES_2BIT,
+  PDM_BYTES_4BIT
+}
+&nbsp;
+export enum ePackedDataWidth {
+  PDW_UNKNOWN,
+  PDW_BYTES,
+  PDW_WORDS,
+  PDW_LONGS
+}
+&nbsp;
+export interface PackedDataMode {
+  mode: ePackedDataMode;
+  bitsPerSample: number;
+  valueSize: ePackedDataWidth;
+  isAlternate: boolean;
+  isSigned: boolean;
+}
+&nbsp;
+export interface FontMetrics {
+  textSizePts: number;
+  charHeight: number;
+  charWidth: number;
+  lineHeight: number;
+  baseline: number;
+}
+&nbsp;
+export interface TextStyle {
+  vertAlign: eVertJustification;
+  horizAlign: eHorizJustification;
+  underline: boolean;
+  italic: boolean;
+  weight: eTextWeight;
+  angle: number;
+}
+&nbsp;
+export interface WindowColor {
+  background: string; // hex string '#RRGGBB'
+  grid: string;
+}
+&nbsp;
+export abstract class DebugWindowBase extends EventEmitter {
+  protected context: Context;
+  protected windowLogPrefix: string = '?Base?'; // default if not overridden
+  protected isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
+  private _debugWindow: BrowserWindow | null = null;
+  private _saveInProgress: boolean = false;
+  protected inputForwarder: InputForwarder;
+  protected wheelTimer: NodeJS.Timeout | null = null;
+  protected lastWheelDelta: number = 0;
+&nbsp;
+  constructor(ctx: Context) {
+    super();
+    this.context = ctx;
+    this.inputForwarder = new InputForwarder();
+  }
+  // Abstract methods that must be overridden by derived classes
+  //abstract createDebugWindow(): void;
+  abstract closeDebugWindow(): void;
+  abstract updateContent(lineParts: string[]): void;
+&nbsp;
+  static calcMetricsForFontPtSize(fontSize: number, metrics: FontMetrics): void {
+    metrics.textSizePts = fontSize;
+    metrics.charHeight = Math.round(metrics.textSizePts * 1.333);
+    metrics.charWidth = Math.round(metrics.charHeight * 0.6);
+    metrics.lineHeight = Math.round(metrics.charHeight * 1.3); // 120%-140% using 130% of text height
+    metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5); // 20%-30% from bottom (force round up)
   }
 &nbsp;
-  get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} TERM`;
-    if (this.displaySpec.windowTitle !== undefined &amp;&amp; this.displaySpec.windowTitle.length &gt; 0) {
-      desiredValue = this.displaySpec.windowTitle;
+  protected set saveInProgress(value: boolean) {
+    this._saveInProgress = value;
+    this.logMessageBase(`-&gt; saveInProgress=(${value})`);
+  }
+&nbsp;
+<span class="fstat-no" title="function not covered" >  protected get s</span>aveInProgress(): boolean {
+<span class="cstat-no" title="statement not covered" >    return this._saveInProgress;</span>
+  }
+&nbsp;
+  // Setter for debugWindow property
+  protected set debugWindow(window: BrowserWindow | null) {
+    if (window != null) {
+      this.logMessageBase(`- New ${this.constructor.name} window`);
+      this._debugWindow = window;
+&nbsp;
+      // Add OTHER event listeners as needed
+    } else {
+      this.logMessageBase(`- Closing ${this.constructor.name} window`);
+      // Stop input forwarding
+      this.inputForwarder.stopPolling();
+      // Clear wheel timer
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (this.wheelTimer) {
+<span class="cstat-no" title="statement not covered" >        clearTimeout(this.wheelTimer);</span>
+<span class="cstat-no" title="statement not covered" >        this.wheelTimer = null;</span>
+      }
+      // Remove event listeners and close the window
+      if (this._debugWindow != null &amp;&amp; !this._debugWindow.isDestroyed()) {
+        this.logMessageBase(`- ${this.constructor.name} window closing...`);
+        this.emit('close'); // forward the event
+        this._debugWindow.removeAllListeners();
+        this._debugWindow.close();
+        this.logMessageBase(`- ${this.constructor.name} window closed`);
+        this.emit('closed'); // forward the event
+      }
+      this._debugWindow = null;
     }
-    return desiredValue;
   }
 &nbsp;
-  static parseTermDeclaration(lineParts: string[]): [boolean, TermDisplaySpec] {
-    // here with lineParts = ['`TERM', {displayName}, ...]
-    // Valid directives are:
-    //   TITLE &lt;title&gt;
-    //   POS &lt;left&gt; &lt;top&gt; [default: 0, 0]
-    //   SIZE &lt;columns&gt; &lt;rows&gt; [default: 40, 20]
-    //   TEXTSIZE &lt;half-pix&gt; [6-200, default: editor font size]
-    //   COLOR &lt;text-color&gt; {{{{&lt;bgnd-color&gt; {&lt;#0-color&gt;}} {&lt;#0-color&gt;}} {&lt;#0-color&gt;}}
-    //   BACKCOLOR &lt;color&gt; [default: black]
-    //   UPDATE [default: automatic update]
-    //   HIDEXY [default: not hidden]
-    console.log(`CL: at parseTermDeclaration()`);
-    let displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
-    displaySpec.colorCombos = [] as ColorCombo[]; // ensure this is structured too! (CRASHED without this!)
-    displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
-    displaySpec.font = {} as FontMetrics; // ensure this is structured too! (CRASHED without this!)
+  // Getter for debugWindow property
+  protected get debugWindow(): BrowserWindow | null {
+    return this._debugWindow;
+  }
+&nbsp;
+  // ----------------------------------------------------------------------
+  // CLASS (static) methods
+  //   NOTE: static since used by derived class static methods
+&nbsp;
+  static getValidRgb24(possColorValue: string): [boolean, string] {
+    let rgbValue: string = '#a5a5a5'; // gray for unknown color
     let isValid: boolean = false;
-&nbsp;
-    // set defaults
-    const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    const textColor: DebugColor = new DebugColor('ORANGE', 15);
-    console.log(`CL: at parseTermDeclaration() with colors...`);
-    displaySpec.position = { x: 0, y: 0 };
-    displaySpec.size = { columns: 40, rows: 20 };
-    DebugWindowBase.calcMetricsForFontPtSize(12, displaySpec.font);
-    displaySpec.window.background = bkgndColor.rgbString;
-    displaySpec.window.grid = gridColor.rgbString;
-    displaySpec.textColor = textColor.rgbString;
-    displaySpec.delayedUpdate = false;
-    displaySpec.hideXY = false;
-    // by default we have combo #0 defined
-    displaySpec.colorCombos.push({ fgcolor: displaySpec.textColor, bgcolor: displaySpec.window.background });
-&nbsp;
-    // now parse overrides to defaults
-    console.log(`CL: at overrides TermDisplaySpec: ${lineParts}`);
-    if (lineParts.length &gt; 1) {
-      displaySpec.displayName = lineParts[1];
-      isValid = true; // invert default value
+    
+    // First try to parse as a color name using DebugColor
+    const colorNameToHex: { [key: string]: string } = {
+      BLACK: '#000000',
+      WHITE: '#ffffff',
+      ORANGE: '#ff6600',
+      BLUE: '#0080ff',
+      GREEN: '#00ff00',
+      CYAN: '#00ffff',
+      RED: '#ff0000',
+      MAGENTA: '#ff00ff',
+      YELLOW: '#ffff00',
+      BROWN: '#906020',
+      GRAY: '#808080',
+      GREY: '#808080'  // Alternative spelling
+    };
+    
+    const upperColorName = possColorValue.toUpperCase();
+    if (colorNameToHex[upperColorName]) {
+      rgbValue = colorNameToHex[upperColorName];
+      isValid = true;
+    } else {
+      // Try to parse as numeric value using Spin2NumericParser
+      // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
+      const colorValue = Spin2NumericParser.parseColor(possColorValue);
+      
+      if (colorValue !== null) {
+        // Convert to hex string format #RRGGBB
+        rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toLowerCase();
+        isValid = true;
+      }
     }
-    if (lineParts.length &gt; 2) {
-      for (let index = 2; index &lt; lineParts.length; index++) {
-        const element = lineParts[index];
-        switch (element.toUpperCase()) {
-          case 'TITLE':
-            // ensure we have one more value
-            if (index &lt; lineParts.length - 1) {
-              displaySpec.windowTitle = lineParts[++index];
-            } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-              // console.log() as we are in class static method, not derived class...
-<span class="cstat-no" title="statement not covered" >              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);</span>
-<span class="cstat-no" title="statement not covered" >              isValid = false;</span>
-            }
-            break;
-          case 'POS':
-            // ensure we have two more values
-            if (index &lt; lineParts.length - 2) {
-              const x = Spin2NumericParser.parsePixel(lineParts[++index]);
-              const y = Spin2NumericParser.parsePixel(lineParts[++index]);
-              if (x !== null &amp;&amp; y !== null) {
-                displaySpec.position.x = x;
-                displaySpec.position.y = y;
-              } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                console.log(`CL: TermDisplaySpec: Invalid position values`);</span>
-<span class="cstat-no" title="statement not covered" >                isValid = false;</span>
-              }
-            } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);</span>
-<span class="cstat-no" title="statement not covered" >              isValid = false;</span>
-            }
-            break;
-          case 'SIZE':
-            // ensure we have two more values
-            if (index &lt; lineParts.length - 2) {
-              const columns = Spin2NumericParser.parseCount(lineParts[++index]);
-              const rows = Spin2NumericParser.parseCount(lineParts[++index]);
-              if (columns !== null &amp;&amp; rows !== null &amp;&amp; columns &gt;= 1 &amp;&amp; rows &gt;= 1) {
-                displaySpec.size.columns = Math.min(columns, 256);
-                displaySpec.size.rows = Math.min(rows, 256);
-              } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                console.log(`CL: TermDisplaySpec: Invalid size values (must be 1-256)`);</span>
-<span class="cstat-no" title="statement not covered" >                isValid = false;</span>
-              }
-            } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);</span>
-<span class="cstat-no" title="statement not covered" >              isValid = false;</span>
-            }
-            break;
-          case 'TEXTSIZE':
-            // ensure we have one more value
-            if (index &lt; lineParts.length - 1) {
-              const sizeInPts = Spin2NumericParser.parseCount(lineParts[++index]);
-              if (sizeInPts !== null &amp;&amp; sizeInPts &gt;= 6 &amp;&amp; sizeInPts &lt;= 200) {
-                DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
-              } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                console.log(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);</span>
-<span class="cstat-no" title="statement not covered" >                isValid = false;</span>
-              }
-            } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);</span>
-<span class="cstat-no" title="statement not covered" >              isValid = false;</span>
-            }
-            break;
-<span class="branch-4 cbranch-no" title="branch not covered" >          case 'BACKCOLOR':</span>
-            // ensure we have one more value
-<span class="cstat-no" title="statement not covered" >            if (index &lt; lineParts.length - 1) {</span>
-              const colorName: string = <span class="cstat-no" title="statement not covered" >lineParts[++index];</span>
-              let colorBrightness: number = <span class="cstat-no" title="statement not covered" >8;</span>
-<span class="cstat-no" title="statement not covered" >              <span class="missing-if-branch" title="if path not taken" >I</span>if (index &lt; lineParts.length - 1) {</span>
-<span class="cstat-no" title="statement not covered" >                colorBrightness = Number(lineParts[++index]);</span>
-              }
-              const textColor = <span class="cstat-no" title="statement not covered" >new DebugColor(colorName, colorBrightness);</span>
-<span class="cstat-no" title="statement not covered" >              displaySpec.textColor = textColor.rgbString;</span>
-            } else {
-<span class="cstat-no" title="statement not covered" >              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);</span>
-<span class="cstat-no" title="statement not covered" >              isValid = false;</span>
-            }
-<span class="cstat-no" title="statement not covered" >            break;</span>
-          case 'COLOR':
-            // here with
-            //   COLOR fg-color0 bg-color0 [fg-color1 bg-color1 [fg-color2 bg-color2 [fg-color3 bg-color3]]]
-            //   fg/bg-color is a color name, with optional brightness: {name [brightness]}
-            // ensure we color names in pairs!
-            let colorComboIdx: number = 0;
-            let fgColor: string | undefined = undefined;
-            let bgColor: string | undefined = undefined;
-            let haveName: boolean = false;
-            let fgColorName: string | undefined = undefined;
-            let bgColorName: string | undefined = undefined;
-            for (let colorIdx = index + 1; colorIdx &lt; lineParts.length; colorIdx++) {
-              const element = lineParts[colorIdx];
-              <span class="missing-if-branch" title="if path not taken" >I</span>if (fgColor !== undefined &amp;&amp; bgColor !== undefined) {
-                // have both fg and bg colors, make a color combo
-                const channelColor: ColorCombo = <span class="cstat-no" title="statement not covered" >{ fgcolor: fgColor, bgcolor: bgColor };</span>
-<span class="cstat-no" title="statement not covered" >                <span class="missing-if-branch" title="if path not taken" >I</span>if (colorComboIdx == 0) {</span>
-                  // remove our default color combo
-<span class="cstat-no" title="statement not covered" >                  displaySpec.colorCombos = [];</span>
-                }
-<span class="cstat-no" title="statement not covered" >                displaySpec.colorCombos.push(channelColor);</span>
-<span class="cstat-no" title="statement not covered" >                colorComboIdx++;</span>
-              } else if (!haveName) {
-                // color name
-                const newColorName = element.toUpperCase();
-                if (fgColorName === undefined) {
-                  fgColorName = newColorName;
-                } else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="if path not taken" >I</span><span class="missing-if-branch" title="else path not taken" >E</span>if (bgColorName === undefined) {</span>
-<span class="cstat-no" title="statement not covered" >                  bgColorName = newColorName;</span>
-                }
-                haveName = true;
-              } else {
-                // this could be color brightness or next name...
-                let colorBrightness: number = 8;
-                const possibleBrightness: string = lineParts[colorIdx + 1];
-                // if possible is numeric then we have brightness
-                const numericResult = possibleBrightness.match(/^-{0,1}\d+$/);
-                if (numericResult != null) {
-                  // have brightness for latest colorName
-                  colorBrightness = Number(lineParts[++colorIdx]);
-                  <span class="missing-if-branch" title="if path not taken" >I</span>if (fgColorName !== undefined) {
-                    // this is fg brightness
-<span class="cstat-no" title="statement not covered" >                    fgColor = new DebugColor(fgColorName, colorBrightness).rgbString;</span>
-<span class="cstat-no" title="statement not covered" >                    fgColorName = undefined;</span>
-                  } else if (bgColorName !== undefined) {
-                    // this is bg brightness
-                    bgColor = new DebugColor(bgColorName, colorBrightness).rgbString;
-                    bgColorName = undefined;
-                  }
-                  haveName = false; // next up we're looking for next color name
-                } else {
-                  // have next color name
-                  // record current color as fg then save bgColorName
-                  if (fgColorName !== undefined) {
-                    fgColor = new DebugColor(fgColorName).rgbString;
-                    fgColorName = undefined;
-                  } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                    console.log(`CL: TermDisplaySpec: Missing fgColorName for ${element}`);</span>
-                  }
-                  const newColorName = element.toUpperCase();
-                  bgColorName = newColorName;
-                  // we have the bg color name
-                  haveName = true;
-                }
-              }
-            }
-            break;
+    
+    return [isValid, rgbValue];
+  }
 &nbsp;
-          case 'UPDATE':
-            displaySpec.delayedUpdate = true;
-            break;
-          case 'HIDEXY':
-            displaySpec.hideXY = true;
-            break;
+  static calcStyleFrom(
+    vJust: eVertJustification,
+    hJust: eHorizJustification,
+    weight: eTextWeight,
+    underline: boolean = false,
+    italic: boolean = false
+  ): number {
+    // build styleStr is now a bitfield string of 8 bits
+    // style is %YYXXUIWW:
+    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %U is underline: %1 = underline.
+    //   %I is italic: %1 = italic.
+    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    let styleStr: string = '0b';
+    switch (vJust) {
+      case eVertJustification.VJ_MIDDLE:
+        styleStr += '00';
+        break;
+      case eVertJustification.VJ_BOTTOM:
+        styleStr += '10';
+        break;
+      case eVertJustification.VJ_TOP:
+        styleStr += '11';
+        break;
+<span class="branch-3 cbranch-no" title="branch not covered" >      default:</span>
+<span class="cstat-no" title="statement not covered" >        styleStr += '00';</span>
+<span class="cstat-no" title="statement not covered" >        break;</span>
+    }
+    switch (hJust) {
+      case eHorizJustification.HJ_CENTER:
+        styleStr += '00';
+        break;
+      case eHorizJustification.HJ_RIGHT:
+        styleStr += '10';
+        break;
+      case eHorizJustification.HJ_LEFT:
+        styleStr += '11';
+        break;
+<span class="branch-3 cbranch-no" title="branch not covered" >      default:</span>
+<span class="cstat-no" title="statement not covered" >        styleStr += '00';</span>
+<span class="cstat-no" title="statement not covered" >        break;</span>
+    }
+    styleStr += underline ? '1' : '0';
+    styleStr += italic ? '1' : '0';
+    switch (weight) {
+      case eTextWeight.TW_LIGHT:
+        styleStr += '00';
+        break;
+      case eTextWeight.TW_NORMAL:
+        styleStr += '01';
+        break;
+      case eTextWeight.TW_BOLD:
+        styleStr += '10';
+        break;
+      case eTextWeight.TW_HEAVY:
+        styleStr += '11';
+        break;
+<span class="branch-4 cbranch-no" title="branch not covered" >      default:</span>
+<span class="cstat-no" title="statement not covered" >        styleStr += '01';</span>
+<span class="cstat-no" title="statement not covered" >        break;</span>
+    }
+    // return numeric value of string
+    const value: number = Number(styleStr);
+    console.log(`Win: str=[${styleStr}] -&gt; value=(${value})`);
+    return value;
+  }
 &nbsp;
-          default:
-            console.log(`CL: TermDisplaySpec: Unknown directive: ${element}`);
-            break;
-        }
-        <span class="missing-if-branch" title="if path not taken" >I</span>if (!isValid) {
+  static calcStyleFromBitfield(style: number, textStyle: TextStyle): void {
+    // convert number into a bitfield string
+    const styleStr: string = style.toString(2).padStart(8, '0');
+    // styleStr is now a bitfield string of 8 bits
+    // style is %YYXXUIWW:
+    //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
+    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %U is underline: %1 = underline.
+    //   %I is italic: %1 = italic.
+    //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
+    if (styleStr.length == 8) {
+      textStyle.vertAlign = parseInt(styleStr.substring(0, 2), 2);
+      textStyle.horizAlign = parseInt(styleStr.substring(2, 4), 2);
+      textStyle.underline = styleStr[4] === '1';
+      textStyle.italic = styleStr[5] === '1';
+      const weight: number = parseInt(styleStr.substring(6, 8), 2);
+      switch (weight) {
+<span class="branch-0 cbranch-no" title="branch not covered" >        case 0:</span>
+<span class="cstat-no" title="statement not covered" >          textStyle.weight = eTextWeight.TW_LIGHT;</span>
 <span class="cstat-no" title="statement not covered" >          break;</span>
-        }
+        case 1:
+          textStyle.weight = eTextWeight.TW_NORMAL;
+          break;
+        case 2:
+          textStyle.weight = eTextWeight.TW_BOLD;
+          break;
+<span class="branch-3 cbranch-no" title="branch not covered" >        case 3:</span>
+<span class="cstat-no" title="statement not covered" >          textStyle.weight = eTextWeight.TW_HEAVY;</span>
+<span class="cstat-no" title="statement not covered" >          break;</span>
+<span class="branch-4 cbranch-no" title="branch not covered" >        default:</span>
+<span class="cstat-no" title="statement not covered" >          textStyle.weight = eTextWeight.TW_NORMAL;</span>
+<span class="cstat-no" title="statement not covered" >          break;</span>
+      }
+    } else {
+      console.log(`Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+    }
+    console.log(`Win: str=[${styleStr}] -&gt; textStyle: ${JSON.stringify(textStyle)}`);
+  }
+&nbsp;
+  // ----------------------------------------------------------------------
+  // inherited by derived classes
+&nbsp;
+  protected fontWeightName(style: TextStyle): string {
+    let weightName: string = 'normal';
+    switch (style.weight) {
+      case eTextWeight.TW_LIGHT:
+        weightName = 'light';
+        break;
+      case eTextWeight.TW_NORMAL:
+        weightName = 'normal';
+        break;
+      case eTextWeight.TW_BOLD:
+        weightName = 'bold';
+        break;
+      case eTextWeight.TW_HEAVY:
+        weightName = 'heavy';
+        break;
+    }
+    return weightName;
+  }
+&nbsp;
+  // MOVED TO PackedDataProcessor class - commented out but not deleted
+  /*
+  protected isPackedDataMode(possibleMode: string): [boolean, PackedDataMode] {
+    let havePackedDataStatus: boolean = false;
+    let desiredMode: PackedDataMode = {
+      mode: ePackedDataMode.PDM_UNKNOWN,
+      bitsPerSample: 0,
+      valueSize: ePackedDataWidth.PDW_UNKNOWN,
+      isAlternate: false,
+      isSigned: false
+    };
+    // define hash where key is mode string and value is ePackedDataMode
+    const modeMap = new Map&lt;string, ePackedDataMode&gt;([
+      ['longs_1bit', ePackedDataMode.PDM_LONGS_1BIT],
+      ['longs_2bit', ePackedDataMode.PDM_LONGS_2BIT],
+      ['longs_4bit', ePackedDataMode.PDM_LONGS_4BIT],
+      ['longs_8bit', ePackedDataMode.PDM_LONGS_8BIT],
+      ['longs_16bit', ePackedDataMode.PDM_LONGS_16BIT],
+      ['words_1bit', ePackedDataMode.PDM_WORDS_1BIT],
+      ['words_2bit', ePackedDataMode.PDM_WORDS_2BIT],
+      ['words_4bit', ePackedDataMode.PDM_WORDS_4BIT],
+      ['words_8bit', ePackedDataMode.PDM_WORDS_8BIT],
+      ['bytes_1bit', ePackedDataMode.PDM_BYTES_1BIT],
+      ['bytes_2bit', ePackedDataMode.PDM_BYTES_2BIT],
+      ['bytes_4bit', ePackedDataMode.PDM_BYTES_4BIT]
+    ]);
+    // if possible mode matches key in modeMap, then set mode and return true
+    if (modeMap.has(possibleMode.toLocaleLowerCase())) {
+      desiredMode.mode = modeMap.get(possibleMode.toLocaleLowerCase()) as ePackedDataMode;
+      havePackedDataStatus = true;
+      // now set our bitsPerSample based on new mode
+      switch (desiredMode.mode) {
+        case ePackedDataMode.PDM_LONGS_1BIT:
+        case ePackedDataMode.PDM_WORDS_1BIT:
+        case ePackedDataMode.PDM_BYTES_1BIT:
+          desiredMode.bitsPerSample = 1;
+          break;
+        case ePackedDataMode.PDM_LONGS_2BIT:
+        case ePackedDataMode.PDM_WORDS_2BIT:
+        case ePackedDataMode.PDM_BYTES_2BIT:
+          desiredMode.bitsPerSample = 2;
+          break;
+        case ePackedDataMode.PDM_LONGS_4BIT:
+        case ePackedDataMode.PDM_WORDS_4BIT:
+        case ePackedDataMode.PDM_BYTES_4BIT:
+          desiredMode.bitsPerSample = 4;
+          break;
+        case ePackedDataMode.PDM_LONGS_8BIT:
+        case ePackedDataMode.PDM_WORDS_8BIT:
+          desiredMode.bitsPerSample = 8;
+          break;
+        case ePackedDataMode.PDM_LONGS_16BIT:
+          desiredMode.bitsPerSample = 16;
+          break;
+        default:
+          desiredMode.bitsPerSample = 0;
+          break;
+      }
+      // now set our desiredMode.valueSize based on new mode
+      switch (desiredMode.mode) {
+        case ePackedDataMode.PDM_LONGS_1BIT:
+        case ePackedDataMode.PDM_LONGS_2BIT:
+        case ePackedDataMode.PDM_LONGS_4BIT:
+        case ePackedDataMode.PDM_LONGS_8BIT:
+        case ePackedDataMode.PDM_LONGS_16BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_LONGS;
+          break;
+        case ePackedDataMode.PDM_WORDS_1BIT:
+        case ePackedDataMode.PDM_WORDS_2BIT:
+        case ePackedDataMode.PDM_WORDS_4BIT:
+        case ePackedDataMode.PDM_WORDS_8BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_WORDS;
+          break;
+        case ePackedDataMode.PDM_BYTES_1BIT:
+        case ePackedDataMode.PDM_BYTES_2BIT:
+        case ePackedDataMode.PDM_BYTES_4BIT:
+          desiredMode.valueSize = ePackedDataWidth.PDW_BYTES;
+          break;
+        default:
+          desiredMode.valueSize = ePackedDataWidth.PDW_UNKNOWN;
+          break;
       }
     }
-    console.log(`CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
-    return [isValid, displaySpec];
+    if (havePackedDataStatus == true) {
+      // only log attempt if is valid
+      this.logMessageBase(
+        `packedDataMode(${possibleMode}): isValid=(${havePackedDataStatus})  -&gt; ${
+          (JSON.stringify(desiredMode), null, 2)
+        }`
+      );
+    }
+    return [havePackedDataStatus, desiredMode];
   }
+  */
 &nbsp;
-  private createDebugWindow(): void {
-    this.logMessage(`at createDebugWindow() TERM`);
-    // calculate overall canvas sizes then window size from them!
+  protected <span class="fstat-no" title="function not covered" >signExtend(</span>value: number, signBitNbr: number): number {
+    // Create a mask to zero out all bits above the sign bit
+    const mask = <span class="cstat-no" title="statement not covered" >(1 &lt;&lt; (signBitNbr + 1)) - 1;</span>
+<span class="cstat-no" title="statement not covered" >    value &amp;= mask;</span>
 &nbsp;
-    // NOTES: Chip's size estimation:
-    //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
-    //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
+    // Check if the sign bit is set
+    const isNegative = <span class="cstat-no" title="statement not covered" >(value &amp; (1 &lt;&lt; signBitNbr)) !== 0;</span>
 &nbsp;
-    // set height so no scroller by default
-    const canvasHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
-    // for mono-spaced font width 1/2 ht in pts
-    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
-    this.logMessage(
-      `  -- TERM canvas size=(${canvasWidth}x${canvasHeight}) char=(${this.displaySpec.font.charWidth}x${this.displaySpec.font.charHeight}) ln=(${this.displaySpec.font.lineHeight})`
-    );
-    const divHeight = canvasHeight + 4; // 4 is fudge number
-    const divWidth = canvasWidth + 4; // 4 is fudge number
-&nbsp;
-    const windowHeight = divHeight + this.borderMargin * 2;
-    const windowWidth = divWidth + this.borderMargin * 2;
-    this.logMessage(
-      `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
-    );
-&nbsp;
-    // now generate the window with the calculated sizes
-    const displayName: string = this.windowTitle;
-    this.debugWindow = new BrowserWindow({
-      width: windowWidth,
-      height: windowHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
-      }
-    });
-&nbsp;
-    // hook window events before being shown
-    this.debugWindow.on('ready-to-show', <span class="fstat-no" title="function not covered" >() =</span>&gt; {
-<span class="cstat-no" title="statement not covered" >      this.logMessage('* Term window will show...');</span>
-<span class="cstat-no" title="statement not covered" >      this.debugWindow?.show();</span>
-    });
-&nbsp;
-    this.debugWindow.on('show', <span class="fstat-no" title="function not covered" >() =</span>&gt; {
-<span class="cstat-no" title="statement not covered" >      this.logMessage('* Term window shown');</span>
-    });
-&nbsp;
-    this.debugWindow.on('page-title-updated', <span class="fstat-no" title="function not covered" >() =</span>&gt; {
-<span class="cstat-no" title="statement not covered" >      this.logMessage('* Term window title updated');</span>
-    });
-&nbsp;
-    this.debugWindow.once('ready-to-show', () =&gt; {
-      this.logMessage('at ready-to-show');
-      if (this.debugWindow) {
-        // The following only works for linux/windows
-        if (process.platform !== 'darwin') {
-          try {
-            //this.debugWindow.setMenu(null); // NO menu for this window  || NO WORKEE!
-            this.debugWindow.removeMenu(); // Alternative to setMenu(null) with less side effects
-            //this.debugWindow.setMenuBarVisibility(false); // Alternative to setMenu(null) with less side effects || NO WORKEE!
-          } catch (error) {
-            this.logMessage(`Failed to remove menu: ${error}`);
-          }
-        }
-        this.debugWindow.show();
-      }
-    });
-&nbsp;
-    // and load this window .html content
-    const htmlContent = `
-    &lt;html&gt;
-      &lt;head&gt;
-        &lt;meta charset="UTF-8"&gt;&lt;/meta&gt;
-        &lt;title&gt;${displayName}&lt;/title&gt;
-        &lt;style&gt;
-          @font-face {
-            font-family: 'Parallax';
-            src: url('${this.getParallaxFontUrl()}') format('truetype');
-          }
-          body {
-            display: flex;
-            flex-direction: column;
-            margin: 0;
-            padding: 0;
-            font-family: 'Parallax', sans-serif;
-            font-size: ${this.displaySpec.font.textSizePts}pt;
-            //background-color: ${this.displaySpec.window.background};
-            background-color: rgb(140, 52, 130);
-            color: ${this.displaySpec.textColor};
-          }
-          #terminal-data {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            flex-grow: 0;
-            flex-shrink: 0;
-            padding: 10px;
-            //background-color:rgb(55, 170, 136);
-            background-color: ${this.displaySpec.window.background};
-            width: ${divWidth}px; /* Set a fixed width */
-            height: ${divHeight}px; /* Set a fixed height */
-          }
-          canvas {
-            // background-color:rgb(9, 201, 28);
-            background-color: ${this.displaySpec.window.background};
-            margin: 0;
-          }
-        &lt;/style&gt;
-      &lt;/head&gt;
-      &lt;body&gt;
-        &lt;div id="terminal-data"&gt;
-          &lt;canvas id="text-area" width="${canvasWidth}" height="${canvasHeight}"&gt;&lt;/canvas&gt;
-        &lt;/div&gt;
-      &lt;/body&gt;
-    &lt;/html&gt;
-  `;
-&nbsp;
-    this.logMessage(`at createDebugWindow() TERM with htmlContent: ${htmlContent}`);
-&nbsp;
-    try {
-      this.debugWindow.setMenu(null);
-      this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
-    } catch (error) {
-<span class="cstat-no" title="statement not covered" >      this.logMessage(`Failed to load URL: ${error}`);</span>
+<span class="cstat-no" title="statement not covered" >    <span class="missing-if-branch" title="if path not taken" >I</span>if (isNegative) {</span>
+      // If the sign bit is set, convert the value to a negative number
+<span class="cstat-no" title="statement not covered" >      value = value - (1 &lt;&lt; (signBitNbr + 1));</span>
     }
 &nbsp;
-    // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.on('did-finish-load', <span class="fstat-no" title="function not covered" >() =</span>&gt; {
-<span class="cstat-no" title="statement not covered" >      this.logMessage('at did-finish-load');</span>
-    });
+<span class="cstat-no" title="statement not covered" >    return value;</span>
   }
 &nbsp;
-  public closeDebugWindow(): void {
-    this.logMessage(`at closeDebugWindow() TERM`);
-    // let our base class do the work
-    this.debugWindow = null;
-  }
-&nbsp;
-  public async updateContent(lineParts: string[]): Promise&lt;void&gt; {
-    // here with lineParts = ['`{displayName}, ...]
-    // Valid directives are:
-    // --- these manage the window
-    //   CLEAR
-    //   UPDATE
-    //   SAVE {WINDOW} 'filename' - save window to .bmp file
-    //   CLOSE
-    // --- these paint content, select colors or move the cursor
-    //   &lt;numeric data&gt; - controls or characters
-    //    0 = Clear terminal display and home cursor.
-    //    1 = Home cursor.
-    //    2 = Set column to next character value. [2 n]
-    //    3 = Set row to next character value. [3 n]
-    //    4 = Select color combo #0
-    //    5 = Select color combo #1
-    //    6 = Select color combo #2
-    //    7 = Select color combo #3
-    //    8 = Backspace.
-    //    9 = Tab to next 8th column.
-    //    13+10 or 13 or 10 = New line.
-    //    32..255 = Printable character.
-    //   'string' - printable characters
-    //
-    // Preserve original command for error logging (required by base class)
-    const unparsedCommand = lineParts.join(' ');
-    //this.logMessage(`at updateContent(${unparsedCommand})`);
-    // ON first numeric data, create the window! then do update
-    for (let index = 1; index &lt; lineParts.length; index++) {
-      const currLinePart = lineParts[index];
-      if (currLinePart.charAt(0) == "'") {
-        // display string at cursor position with current colors
-        let displayString: string | undefined = undefined;
-        // isolate string and display it. Advance index to next part after close quote
-        if (currLinePart.substring(1).includes("'")) {
-          // string ends in this single linepart
-          displayString = currLinePart.substring(1, currLinePart.length - 1);
-        } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-          // this will be a multi-part string
-          const stringParts: string[] = <span class="cstat-no" title="statement not covered" >[currLinePart.substring(1)];</span>
-<span class="cstat-no" title="statement not covered" >          while (index &lt; lineParts.length - 1) {</span>
-<span class="cstat-no" title="statement not covered" >            index++;</span>
-            const nextLinePart = <span class="cstat-no" title="statement not covered" >lineParts[index];</span>
-<span class="cstat-no" title="statement not covered" >            if (nextLinePart.includes("'")) {</span>
-              // last part of string
-<span class="cstat-no" title="statement not covered" >              stringParts.push(nextLinePart.substring(0, nextLinePart.length - 1));</span>
-<span class="cstat-no" title="statement not covered" >              break; </span>// exit loop
-            } else {
-<span class="cstat-no" title="statement not covered" >              stringParts.push(nextLinePart);</span>
-            }
-          }
-<span class="cstat-no" title="statement not covered" >          displayString = stringParts.join(' ');</span>
-        }
-        if (displayString !== undefined) {
-          this.updateTermDisplay(`'${displayString}'`);
-        }
-      } else if (lineParts[index].charAt(0) &gt;= '0' &amp;&amp; lineParts[index].charAt(0) &lt;= '9') {
-        // numeric data (actions, mostly)
-        const action: number = parseInt(lineParts[index], 10);
-        if (action == 2 || action == 3) {
-          // pass param value with goto line, goto column
-          if (index + 1 &lt; lineParts.length) {
-            this.updateTermDisplay(`${action} ${lineParts[index + 1]}`);
-          } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >            this.logMessage(`* UPD-ERROR  missing value for action ${action}`);</span>
-          }
-        }
-        if (action &gt;= 32 &amp;&amp; action &lt;= 255) {
-          // printable character
-          this.updateTermDisplay(`'${String.fromCharCode(action)}'`);
-        } else {
-          // all other actions
-          this.updateTermDisplay(`${action}`);
-        }
-      } else if (lineParts[index].toUpperCase() == 'UPDATE') {
-        // update window with latest content
-        this.pushDisplayListToTerm();
-      } else if (lineParts[index].toUpperCase() == 'CLEAR') {
-        // clear window
-        this.clearTerm();
-      } else if (lineParts[index].toUpperCase() == 'CLOSE') {
-        // close the window
-        this.closeDebugWindow();
-      } else if (lineParts[index].toUpperCase() == 'SAVE') {
-        // save the window to a file
-        let saveWindow = false;
-        let fileNameIndex = index + 1;
-        
-        // Check for optional WINDOW parameter
-        if (index + 1 &lt; lineParts.length &amp;&amp; lineParts[index + 1].toUpperCase() === 'WINDOW') {
-          saveWindow = true;
-          fileNameIndex = index + 2;
-        }
-        
-        if (fileNameIndex &lt; lineParts.length) {
-          const saveFileName = this.removeStringQuotes(lineParts[fileNameIndex]);
-          // save the window to a file (as BMP)
-          await this.saveWindowToBMPFilename(saveFileName);
-          index = fileNameIndex; // Update index to skip processed parameters
-        } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);</span>
-        }
-      } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
-        // Enable keyboard input forwarding
-        this.enableKeyboardInput();
-        break; // PC_KEY must be last command
-      } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
-        // Enable mouse input forwarding
-        this.enableMouseInput();
-        break; // PC_MOUSE must be last command
-      } else {
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]}\nCommand: ${unparsedCommand}`);
-      }
-    }
-  }
-&nbsp;
-  private updateTermDisplay(text: string): void {
-    // add action to our display list
-    //this.logMessage(`* updateTermDisplay(${text})`);
-    this.deferredCommands.push(text);
-    // create window if not already
-    if (this.isFirstDisplayData) {
-      this.isFirstDisplayData = false;
-      this.createDebugWindow();
-    }
-    // if not deferred update the act on display list now
-    if (this.displaySpec.delayedUpdate == false) {
-      // act on display list now
-      this.pushDisplayListToTerm();
-    }
-  }
-&nbsp;
-  private pushDisplayListToTerm() {
-    if (this.deferredCommands.length &gt; 0) {
-      // act on display list now
-      this.deferredCommands.forEach((displayString) =&gt; {
-        this.logMessage(`* UPD-INFO displayString: [${displayString}]`);
-        // these will be numbers (actions) or strings (display)
-        // NOTE: 32-255 will arrive as single char strings 'char'
-        if (displayString.charAt(0) == "'") {
-          this.writeStringToTerm(displayString.substring(1, displayString.length - 1));
-        } else {
-          // this is a numeric action
-          //cursor pos cases are 2, 3 and will arrive as '2 n' or '3 n'
-          const numbers: string[] = displayString.split(' ');
-          const action: number = parseInt(numbers[0], 10);
-          switch (action) {
-            case 0:
-              // clear terminal display and home cursor
-              this.clearTerm();
-              break;
+  // MOVED TO PackedDataProcessor class - commented out but not deleted
+  /*
+  protected possiblyUnpackData(numericValue: number, mode: PackedDataMode): number[] {
+    const sampleSet: number[] = [];
+    // FIXME: add ALT and SIGNED support
+    if (mode.mode == ePackedDataMode.PDM_UNKNOWN) {
+      sampleSet.push(numericValue);
+    } else {
+      // unpack the data based on configured mode generating a list of samples
+      // we have a single value which according to packed mode we need to unpack
+      switch (mode.valueSize) {
+        case ePackedDataWidth.PDW_BYTES:
+          // we have data as a byte [0-255] 8-bits
+          switch (mode.bitsPerSample) {
             case 1:
-              // home cursor
-              this.cursorPosition = { x: 0, y: 0 };
+              // we have data as 8 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index &lt; 8; index++) {
+                sampleSet.push((numericValue &gt;&gt; index) &amp; 0x01);
+              }
+              break;
+&nbsp;
+            case 2:
+              // we have data as 4 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 4; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 2)) &amp; 0x03);
+              }
+              break;
+&nbsp;
+            case 4:
+              // we have data as 2 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 2; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 4)) &amp; 0x0f);
+              }
+              break;
+&nbsp;
+            default:
+              break;
+          }
+          break;
+&nbsp;
+        case ePackedDataWidth.PDW_WORDS:
+          // we have data as a word [0-65535] 16-bits
+          switch (mode.bitsPerSample) {
+            case 1:
+              // we have data as 16 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index &lt; 16; index++) {
+                sampleSet.push((numericValue &gt;&gt; index) &amp; 0x01);
+              }
               break;
             case 2:
-              // set column to next character value
-              if (numbers.length &gt; 1) {
-                const column = Spin2NumericParser.parsePixel(numbers[1]);
-                if (column !== null) {
-                  this.cursorPosition.x = Math.min(column, this.displaySpec.size.columns - 1);
-                } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                  this.logMessage(`* UPD-ERROR  invalid column value for action 2: ${numbers[1]}`);</span>
-                }
-              } else {
-                this.logMessage(`* UPD-ERROR  missing column value for action 2`);
-              }
-              break;
-            case 3:
-              // set row to next character value
-              if (numbers.length &gt; 1) {
-                const row = Spin2NumericParser.parsePixel(numbers[1]);
-                if (row !== null) {
-                  this.cursorPosition.y = Math.min(row, this.displaySpec.size.rows - 1);
-                } else <span class="missing-if-branch" title="else path not taken" >E</span>{
-<span class="cstat-no" title="statement not covered" >                  this.logMessage(`* UPD-ERROR  invalid row value for action 3: ${numbers[1]}`);</span>
-                }
-              } else {
-                this.logMessage(`* UPD-ERROR  missing row value for action 3`);
+              // we have data as 8 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 8; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 2)) &amp; 0x03);
               }
               break;
             case 4:
-            case 5:
-            case 6:
-            case 7:
-              // select color combo #0-3
-              this.selectedCombo = action - 4;
+              // we have data as 4 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 4; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 4)) &amp; 0x0f);
+              }
               break;
             case 8:
-              // backspace
-              if (this.cursorPosition.x &gt; 0) {
-                this.cursorPosition.x--;
+              // we have data as 2 8-bit samples
+              // push each 8bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 2; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 8)) &amp; 0xff);
               }
               break;
-            case 9:
-              // move to next tab column (tabwidth 8)
-              // move cursor to next tabstop
-              const spacesToTab = 8 - (this.cursorPosition.x % 8);
-              for (let i = 0; i &lt; spacesToTab; i++) {
-                // Use writeCharToTerm to handle wrapping properly like Pascal's TERM_Chr
-                this.writeCharToTerm(' ');
+&nbsp;
+            default:
+              break;
+          }
+          break;
+&nbsp;
+        case ePackedDataWidth.PDW_LONGS:
+          // we have data as a long 32-bits
+          switch (mode.bitsPerSample) {
+            case 1:
+              // we have data as 32 single bit samples
+              // push each bit as a sample from LSB to MSB
+              for (let index = 0; index &lt; 32; index++) {
+                sampleSet.push((numericValue &gt;&gt; index) &amp; 0x01);
               }
               break;
-            case 10:
-            case 13:
-              // reset cursor to start of next line
-              this.cursorPosition.x = 0;
-              if (this.cursorPosition.y &lt; this.displaySpec.size.rows - 1) {
-                this.cursorPosition.y += 1;
+            case 2:
+              // we have data as 16 2-bit samples
+              // push each 2bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 16; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 2)) &amp; 0x03);
+              }
+              break;
+            case 4:
+              // we have data as 8 4-bit samples
+              // push each 4bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 8; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 4)) &amp; 0x0f);
+              }
+              break;
+            case 8:
+              // we have data as 4 8-bit samples
+              // push each 8bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 4; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 8)) &amp; 0xff);
+              }
+              break;
+            case 16:
+              // we have data as 2 16-bit samples
+              // push each 16bits as a sample from LSB to MSB
+              for (let index = 0; index &lt; 2; index++) {
+                sampleSet.push((numericValue &gt;&gt; (index * 16)) &amp; 0xffff);
               }
               break;
             default:
-              this.logMessage(`* UPD-ERROR  unknown action: ${action}`);
               break;
           }
+          break;
+&nbsp;
+        default:
+          break;
+      }
+      // if SIGNED then sign extend each sample
+      if (mode.isSigned) {
+        for (let index = 0; index &lt; sampleSet.length; index++) {
+          sampleSet[index] = this.signExtend(sampleSet[index], mode.bitsPerSample - 1);
         }
-      });
-      this.deferredCommands = []; // all done, empty the list
+      }
+      // if ALT the alternate the samples
+      // FIXME: UNDONE add code here to recorder the samples
     }
+&nbsp;
+    // Return the list of samples
+    //this.logMessageBase(`unpackData(${numericValue}), -&gt; sampleSet=[${JSON.stringify(sampleSet, null, 2)}]`);
+    return sampleSet;
+  }
+  */
+&nbsp;
+  protected isSpinNumber(value: string): [boolean, number] {
+    let isValieSpin2Number: boolean = false;
+    let spin2Value: number = 0;
+    // all numbers can contain '_' as digit separator
+    // NOTE: technically '_' can only be after first digit but this is compiler output we are parsing so
+    //   we assume it's correct and ignore this rule
+    const spin2ValueStr = value.replace(/_/g, '');
+    // check if starts with base-prefix '%' and rest is binary number [0-1]
+    if (spin2ValueStr[0] === '%' &amp;&amp; /^[01]+$/.test(spin2ValueStr.substring(1))) {
+      spin2Value = parseInt(spin2ValueStr.substring(1), 2);
+      isValieSpin2Number = true;
+    }
+    // check if starts with base-prefix '%%' and rest is double-binary number [0-3]
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (spin2ValueStr.substring(0, 2) === '%%' &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >/^[0-3]+$/.test(spin2ValueStr.substring(2)))</span> {
+<span class="cstat-no" title="statement not covered" >      spin2Value = parseInt(spin2ValueStr.substring(2), 4);</span>
+<span class="cstat-no" title="statement not covered" >      isValieSpin2Number = true;</span>
+    }
+    // check if starts with base-prefix '$' and rest is hex number [0-9A-Fa-f]
+    if (spin2ValueStr[0] === '$' &amp;&amp; /^[0-9A-Fa-f]+$/.test(spin2ValueStr.substring(1))) {
+      spin2Value = parseInt(spin2ValueStr.substring(1), 16);
+      isValieSpin2Number = true;
+    }
+    // check if NO base-prefix or '.', (may have option leading '-' or '+') and rest is decimal number [0-9]
+    if (/^[-+]?[0-9]+$/.test(spin2ValueStr)) {
+      spin2Value = parseInt(spin2ValueStr, 10);
+      isValieSpin2Number = true;
+    }
+    // check if value contains '.' or 'e' or 'E' then it is a float number (may have option leading '-' or '+') rest is non[eE.] are decimal digits [0-9]
+    if (/^[-+]?[0-9]+[eE.]?[0-9]+$/.test(spin2ValueStr)) {
+      spin2Value = parseFloat(spin2ValueStr);
+      isValieSpin2Number = true;
+    }
+    this.logMessageBase(`isSpinNumber(${value}): isValid=(${isValieSpin2Number})  -&gt; (${spin2Value})`);
+    return [isValieSpin2Number, spin2Value];
   }
 &nbsp;
-  private clearTerm(): void {
-    // erase the text display area
-    this.clearTextArea();
-    // home the cursorPosition
-    this.cursorPosition = { x: 0, y: 0 };
-  }
-&nbsp;
-  private clearTextArea(): void {
-    if (this.debugWindow) {
-      this.logMessage(`at clearTextArea()`);
+  protected async saveWindowToBMPFilename(filename: string): Promise&lt;void&gt; {
+    if (this._debugWindow) {
+      this.logMessage(`  -- writing BMP to [${filename}]`);
+      this.saveInProgress = true;
+      const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+      const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
       try {
-        const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-        this.logMessage(`  -- bgcolor=[${bgcolor}]`);
-        const jsCode = this.canvasRenderer.clearCanvasWithBackground('text-area', bgcolor);
-        this.debugWindow.webContents.executeJavaScript(jsCode);
+        const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
+<span class="cstat-no" title="statement not covered" >        fs.writeFileSync(outputFSpec, bmpBuffer);</span>
+<span class="cstat-no" title="statement not covered" >        this.logMessageBase(`- BMP image [${outputFSpec}] saved successfully`);</span>
       } catch (error) {
-<span class="cstat-no" title="statement not covered" >        console.error('Failed to update text:', error);</span>
+        console.error('Win: ERROR: saving BMP image:', error);
       }
+      this.saveInProgress = false;
     }
   }
 &nbsp;
-  private writeStringToTerm(text: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at writeStringToTerm(${text})`);
-      
-      // Process string character by character
-      for (let i = 0; i &lt; text.length; i++) {
-        const char = text.charAt(i);
-        this.writeCharToTerm(char);
+  protected removeStringQuotes(quotedString: string): string {
+    // remove leading and trailing quotes (' or ") if present
+    let value = quotedString;
+    if (value.length &gt; 1) {
+      if (
+        (value[0] === '"' &amp;&amp; value[value.length - 1] === '"') ||
+        (value[0] === "'" &amp;&amp; value[value.length - 1] === "'")
+      ) {
+        value = value.substring(1, value.length - 1);
       }
+    }
+    return value;
+  }
+&nbsp;
+  protected getParallaxFontUrl(): string {
+    // In packaged app, use process.resourcesPath, in dev use relative path
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '../../../');
+    const fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
+    // Convert to file URL with forward slashes for cross-platform compatibility
+    return `file://${fontPath.replace(/\\/g, '/')}`;
+  }
+&nbsp;
+  // ----------------------------------------------------------------------
+  // Mouse and Keyboard Input Support Methods
+&nbsp;
+  /**
+   * Enable keyboard input forwarding for PC_KEY command
+   */
+  protected enableKeyboardInput(): void {
+    this.logMessageBase('Enabling keyboard input forwarding');
+    this.inputForwarder.startPolling();
+    
+    if (this.debugWindow) {
+      this.debugWindow.webContents.executeJavaScript(`
+        document.addEventListener('keydown', (event) =&gt; {
+          if (window.electronAPI &amp;&amp; window.electronAPI.sendKeyEvent) {
+            window.electronAPI.sendKeyEvent(event.key, event.keyCode, event.shiftKey, event.ctrlKey, event.altKey);
+          }
+        });
+      `);
     }
   }
 &nbsp;
   /**
-   * Write a single character to the terminal at the current cursor position
+   * Enable mouse input forwarding for PC_MOUSE command
+   * Derived classes should override getMouseCoordinateTransform() to provide window-specific transformations
    */
-  private writeCharToTerm(char: string): void {
+  protected enableMouseInput(): void {
+    this.logMessageBase('Enabling mouse input forwarding');
+    this.inputForwarder.startPolling();
+    
+    if (this.debugWindow) {
+      // Get canvas ID from derived class
+      const canvasId = this.getCanvasId();
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        const canvas = document.getElementById('${canvasId}');
+        if (canvas) {
+          let mouseButtons = { left: false, middle: false, right: false };
+          
+          // Mouse move handler
+          canvas.addEventListener('mousemove', (event) =&gt; {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI &amp;&amp; window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          // Mouse button handlers
+          canvas.addEventListener('mousedown', (event) =&gt; {
+            if (event.button === 0) mouseButtons.left = true;
+            else if (event.button === 1) mouseButtons.middle = true;
+            else if (event.button === 2) mouseButtons.right = true;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI &amp;&amp; window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          canvas.addEventListener('mouseup', (event) =&gt; {
+            if (event.button === 0) mouseButtons.left = false;
+            else if (event.button === 1) mouseButtons.middle = false;
+            else if (event.button === 2) mouseButtons.right = false;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI &amp;&amp; window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
+            }
+          });
+          
+          // Mouse wheel handler with 100ms debounce
+          canvas.addEventListener('wheel', (event) =&gt; {
+            event.preventDefault();
+            const delta = Math.sign(event.deltaY) * -1; // Normalize to -1, 0, 1
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            if (window.electronAPI &amp;&amp; window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(x, y, mouseButtons, delta);
+            }
+          });
+          
+          // Mouse leave handler
+          canvas.addEventListener('mouseleave', (event) =&gt; {
+            if (window.electronAPI &amp;&amp; window.electronAPI.sendMouseEvent) {
+              window.electronAPI.sendMouseEvent(-1, -1, mouseButtons, 0);
+            }
+          });
+        }
+      `);
+      
+      // Set up mouse event handlers
+      this.setupMouseEventHandlers();
+    }
+  }
+&nbsp;
+  /**
+   * Set up IPC handlers for mouse events
+   */
+  private setupMouseEventHandlers(): void {
     <span class="missing-if-branch" title="if path not taken" >I</span>if (!this.debugWindow) <span class="cstat-no" title="statement not covered" >return;</span>
     
-    try {
-      const textHeight: number = this.displaySpec.font.charHeight;
-      const textSizePts: number = this.displaySpec.font.textSizePts;
-      const lineHeight: number = this.displaySpec.font.lineHeight;
-      const charWidth: number = this.displaySpec.font.charWidth;
-      const textYOffset: number = this.cursorPosition.y * lineHeight + this.contentInset;
-      const textXOffset: number = this.cursorPosition.x * charWidth + this.contentInset;
-      const vertLineInset: number = (lineHeight - textHeight) / 2;
-      const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline;
-      const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
-      const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-      const fontSpec: string = `normal ${textSizePts}pt Consolas, monospace`;
-      
-      // Use the canvas renderer for character drawing
-      const jsCode = this.canvasRenderer.drawCharacter(
-        'text-area',
-        char,
-        textXOffset,
-        textYOffset,
-        charWidth,
-        lineHeight,
-        this.displaySpec.font.baseline + vertLineInset,
-        fontSpec,
-        fgColor,
-        bgcolor
-      );
-      this.debugWindow.webContents.executeJavaScript(jsCode);
-      
-      // Advance cursor
-      this.cursorPosition.x++;
-      
-      // Handle line wrap
-      if (this.cursorPosition.x &gt;= this.displaySpec.size.columns) {
-        this.cursorPosition.x = 0;
-        this.cursorPosition.y++;
+    // Handle mouse events from renderer
+    this.debugWindow.webContents.on('ipc-message', <span class="fstat-no" title="function not covered" >(e</span>vent, channel, ...args) =&gt; {
+<span class="cstat-no" title="statement not covered" >      if (channel === 'mouse-event') {</span>
+        const [x, y, buttons, wheelDelta] = <span class="cstat-no" title="statement not covered" >args;</span>
         
-        // Handle scroll if at bottom
-        if (this.cursorPosition.y &gt;= this.displaySpec.size.rows) {
-          this.scrollUp();
-          this.cursorPosition.y = this.displaySpec.size.rows - 1;
+        // Handle wheel events with 100ms timer
+<span class="cstat-no" title="statement not covered" >        <span class="missing-if-branch" title="if path not taken" >I</span>if (wheelDelta !== 0) {</span>
+<span class="cstat-no" title="statement not covered" >          this.lastWheelDelta = wheelDelta;</span>
+<span class="cstat-no" title="statement not covered" >          <span class="missing-if-branch" title="if path not taken" >I</span>if (this.wheelTimer) {</span>
+<span class="cstat-no" title="statement not covered" >            clearTimeout(this.wheelTimer);</span>
+          }
+<span class="cstat-no" title="statement not covered" >          this.wheelTimer = setTimeout(<span class="fstat-no" title="function not covered" >() =</span>&gt; {</span>
+<span class="cstat-no" title="statement not covered" >            this.lastWheelDelta = 0;</span>
+          }, 100);
         }
+        
+        // Transform coordinates based on window type
+        const transformed = <span class="cstat-no" title="statement not covered" >this.transformMouseCoordinates(x, y);</span>
+        
+        // Get pixel color at position
+        const pixelGetter = <span class="cstat-no" title="statement not covered" >this.getPixelColorGetter();</span>
+        
+        // Queue the mouse event
+<span class="cstat-no" title="statement not covered" >        this.inputForwarder.queueMouseEvent(</span>
+          transformed.x,
+          transformed.y,
+          buttons,
+          this.lastWheelDelta,
+          pixelGetter
+        );
+      } else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="if path not taken" >I</span>if (channel === 'key-event') {</span>
+        const [key] = <span class="cstat-no" title="statement not covered" >args;</span>
+<span class="cstat-no" title="statement not covered" >        this.inputForwarder.queueKeyEvent(key);</span>
       }
-    } catch (error) {
-      console.error('Failed to write character:', error);
-    }
+    });
+  }
+&nbsp;
+  /**
+   * Transform mouse coordinates for the specific window type
+   * Override this in derived classes for window-specific transformations
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Default implementation - no transformation
+    return { x, y };
   }
 &nbsp;
   /**
    * Get the canvas element ID for this window
+   * Must be overridden by derived classes
    */
-  protected getCanvasId(): string {
-    return 'terminal-canvas'; // Terminal window uses a different approach, but we need to provide an ID
-  }
+  protected abstract getCanvasId(): string;
 &nbsp;
   /**
-   * Clear from cursor to end of line
+   * Get a function that returns pixel color at given coordinates
+   * Override in derived classes if pixel color sampling is needed
    */
-  private clearLineFromCursor(): void {
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (!this.debugWindow) <span class="cstat-no" title="statement not covered" >return;</span>
-    
-    const charWidth = this.displaySpec.font.charWidth;
-    const lineHeight = this.displaySpec.font.lineHeight;
-    const startX = this.cursorPosition.x * charWidth + this.contentInset;
-    const y = this.cursorPosition.y * lineHeight + this.contentInset;
-    const width = (this.displaySpec.size.columns - this.cursorPosition.x) * charWidth;
-    const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-    
-    const jsCode = this.canvasRenderer.clearCharacterCell(
-      'text-area',
-      startX,
-      y,
-      width,
-      lineHeight,
-      bgcolor
-    );
-    this.debugWindow.webContents.executeJavaScript(jsCode);
+  protected getPixelColorGetter(): ((x: number, y: number) =&gt; number) | undefined {
+    // Default implementation - no pixel color sampling
+    return undefined;
   }
 &nbsp;
-  /**
-   * Scroll terminal content up by one line
-   */
-  private scrollUp(): void {
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (!this.debugWindow) <span class="cstat-no" title="statement not covered" >return;</span>
-    
-    const lineHeight = this.displaySpec.font.lineHeight;
-    const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
-    const canvasHeight = this.displaySpec.size.rows * lineHeight;
-    const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-    
-    // Use canvas renderer to scroll
-    this.debugWindow.webContents.executeJavaScript(
-      this.canvasRenderer.scrollBitmap(
-        'text-area',
-        0,
-        -lineHeight,
-        canvasWidth + 2 * this.contentInset,
-        canvasHeight + 2 * this.contentInset
-      )
-    );
-    
-    // Clear the bottom line after scrolling
-    const clearJsCode = this.canvasRenderer.clearCharacterCell(
-      'text-area',
-      this.contentInset,
-      (this.displaySpec.size.rows - 1) * lineHeight + this.contentInset,
-      canvasWidth,
-      lineHeight,
-      bgcolor
-    );
-    this.debugWindow.webContents.executeJavaScript(clearJsCode);
+  // ----------------------------------------------------------------------
+  // PRIVATE (utility) Methods
+&nbsp;
+  private captureWindowAsPNG(window: BrowserWindow): Promise&lt;Buffer&gt; {
+    return new Promise((resolve) =&gt; {
+      try {
+        window.webContents.capturePage().then((image) =&gt; {
+          const desiredPngImage = image.toPNG();
+          resolve(desiredPngImage);
+        });
+      } catch (error) {
+        console.error('Win: ERROR: capturing window as PNG:', error);
+        const desiredPngImage: Buffer = Buffer.alloc(0);
+        resolve(desiredPngImage);
+      }
+    });
   }
 &nbsp;
-  /**
-   * Transform mouse coordinates to terminal character positions
-   * X: column number (0-based)
-   * Y: row number (0-based)
-   */
-  protected <span class="fstat-no" title="function not covered" >transformMouseCoordinates(</span>x: number, y: number): { x: number; y: number } {
-    // Calculate margins
-    const marginLeft = <span class="cstat-no" title="statement not covered" >this.contentInset;</span>
-    const marginTop = <span class="cstat-no" title="statement not covered" >this.contentInset;</span>
-    
-    // Check if mouse is within the terminal area
-    const terminalWidth = <span class="cstat-no" title="statement not covered" >this.displaySpec.size.columns * this.displaySpec.font.charWidth;</span>
-    const terminalHeight = <span class="cstat-no" title="statement not covered" >this.displaySpec.size.rows * this.displaySpec.font.lineHeight;</span>
-    
-<span class="cstat-no" title="statement not covered" >    <span class="missing-if-branch" title="if path not taken" >I</span>if (x &gt;= marginLeft &amp;&amp; x &lt; marginLeft + terminalWidth &amp;&amp; </span>
-        y &gt;= marginTop &amp;&amp; y &lt; marginTop + terminalHeight) {
-      // Transform to character coordinates
-      const relX = <span class="cstat-no" title="statement not covered" >x - marginLeft;</span>
-      const relY = <span class="cstat-no" title="statement not covered" >y - marginTop;</span>
-      
-      // Convert to column and row
-      const column = <span class="cstat-no" title="statement not covered" >Math.floor(relX / this.displaySpec.font.charWidth);</span>
-      const row = <span class="cstat-no" title="statement not covered" >Math.floor(relY / this.displaySpec.font.lineHeight);</span>
-      
-<span class="cstat-no" title="statement not covered" >      return { </span>
-        x: Math.max(0, Math.min(column, this.displaySpec.size.columns - 1)),
-        y: Math.max(0, Math.min(row, this.displaySpec.size.rows - 1))
-      };
+  private async convertPNGtoBMP(pngBuffer: Buffer): Promise&lt;Buffer&gt; {
+    let desiredBmpImage: Buffer;
+    try {
+      const image = await Jimp.read(pngBuffer);
+<span class="cstat-no" title="statement not covered" >      desiredBmpImage = await image.getBuffer('image/bmp');</span>
+    } catch (error) {
+      console.error('Win: ERROR: converting PNG to BMP:', error);
+      desiredBmpImage = Buffer.alloc(0);
     }
-    
-    // Outside terminal area
-<span class="cstat-no" title="statement not covered" >    return { x: -1, y: -1 };</span>
+    return desiredBmpImage;
+  }
+&nbsp;
+  // ----------------------------------------------------------------------
+&nbsp;
+  protected logMessageBase(message: string): void {
+    this.logMessage(message, 'Base');
+  }
+&nbsp;
+  protected logMessage(message: string, prefix: string = ''): void {
+    if (this.isLogging) {
+      //Write to output window.
+      const prefixStr = prefix.length &gt; 0 ? prefix : this.windowLogPrefix;
+      this.context.logger.logMessage(`${prefixStr}: ${message}`);
+    }
   }
 }
 &nbsp;</pre></td></tr></table></pre>

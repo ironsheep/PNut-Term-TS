@@ -4,27 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Plan & Review
 
-### Before Starting work
-- Always in plan mode to make a plan
-- After get the plan, make sure you write the plan to ./tasks/TASK_NAME.md
-- The plan should be a detailed implementation plan and the reasoning behind them, as well as tasks broken down.
-- If the task requires external knowledge or create package, also research to get latest knowledge (Use task tool for research)
-- Don't over plan it, always think MVP
-- Once you write the plan, firstly ask me to review it. Do not continue until I approve the plan.
-- Once I've approved the plan then create a to-dos list with paragraph-length to-dos. Include every part of the plan synthesising my feedback.
-- Let's remember that we like to make to-dos lists with this much detail from now on
+### Before Starting Work
+- Always start in plan mode to create a comprehensive plan
+- Write the plan to ./tasks/TASK_NAME.md with detailed implementation steps and reasoning
+- Research any external dependencies or latest packages if needed (use Task tool)
+- Keep plans focused on MVP - don't over-engineer
+- Present the plan for review and wait for approval before proceeding
+- After approval, create a detailed todo list with paragraph-length descriptions that incorporate all feedback
 
 ### Todo List Format
-- **ALWAYS use exhaustive, paragraph-form descriptions** for each todo item
-- Each todo should be a complete paragraph explaining all steps, context, and goals
-- Include specific implementation details, file references, and expected outcomes
-- Reference relevant documentation or Pascal source files when applicable
-- Provide time estimates and priority levels
-- Never use brief bullet points - always comprehensive descriptions
+- **Always write comprehensive paragraph descriptions** for each todo item
+- Include: specific steps, file references, context, and expected outcomes
+- Reference Pascal source files or documentation where relevant
+- Add time estimates and priority levels
+- Never use brief bullet points - be thorough and explicit
 
-### While implementing
-- You should update the plan as you work.
-- After you complete a task in the plan you should update and append details descript of the changes you made, so following tasks can easily handed over to other engineers.
+### While Implementing
+- Update the plan document as work progresses
+- After completing each task, document what was changed in detail
+- Include enough information for another engineer to understand and continue the work
+- **Maintain compaction-ready state**: Always keep work in a committable state with clear documentation
+- **When user warns about compaction**: 
+  - Immediately save current state to a CURRENT_STATE_BEFORE_COMPACT.md file
+  - Document: completed tasks, in-progress work, next steps, and key context
+  - Confirm when ready for compaction
+- **Best resume instructions**: Tell user to ask "show me the current todo list and read CURRENT_STATE_BEFORE_COMPACT.md" to restore context
 
 ## Quick Reference - Pascal Source Location
 
