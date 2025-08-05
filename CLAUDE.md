@@ -98,8 +98,8 @@ The application uses a class-based architecture with Electron for cross-platform
 - Shared utilities in `src/classes/shared/`
 
 **Debug Display Implementation Status**:
-- ✅ Complete: Terminal, Logic, Scope, Plot, Bitmap, MIDI
-- ❌ Not implemented: Scope_XY, FFT, Spectro, Debugger
+- ✅ Complete: Terminal, Logic, Scope, Scope XY, Plot, Bitmap, MIDI
+- ❌ Not implemented: FFT, Spectro, Debugger
 
 For detailed architecture information, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -121,20 +121,23 @@ The Pascal reference implementation and documentation are located at `/pascal-so
 - `/pascal-source/P2_PNut_Public/DebugUnit.pas` - Window management
 - `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` - Debugger functionality (~8.5k lines)
 
-**Implementation Progress** (7/10 windows complete - 70%):
+**Implementation Progress** (7/10 debug windows complete - 70%):
 
 | Window | TypeScript Class | Status | Notes |
 |--------|------------------|--------|-------|
+| Main* | `MainWindow` | ⚠️ Partial | Custom app window, needs menu/toolbar |
+| Terminal | `DebugTermWindow` | ✅ Complete | ~70% test coverage, no ANSI |
 | Logic | `DebugLogicWindow` | ✅ Complete | Full trigger support |
 | Scope | `DebugScopeWindow` | ✅ Complete | Auto/manual triggers |
+| Scope XY | `DebugScopeXYWindow` | ✅ Complete | XY plotting with persistence |
 | Plot | `DebugPlotWindow` | ✅ Complete | Double buffering, layers, sprites |
-| Terminal | `DebugTermWindow` | ✅ Complete | ~70% test coverage, no ANSI |
 | Bitmap | `DebugBitmapWindow` | ✅ Complete | All trace patterns |
 | MIDI | `DebugMidiWindow` | ✅ Complete | Piano keyboard display |
-| Scope XY | Not Implemented | ❌ Missing | XY plotting mode |
 | FFT | Not Implemented | ❌ Missing | Frequency analysis |
 | Spectro | Not Implemented | ❌ Missing | Time-frequency display |
 | Debugger | Not Implemented | ❌ Missing | Breakpoint debugging |
+
+*Main Window is a custom creation for this app, not from Pascal source
 
 ## Pascal Translation Notes
 
