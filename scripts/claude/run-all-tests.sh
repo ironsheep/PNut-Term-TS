@@ -12,6 +12,10 @@ TEST_FILES=(
 "debugBitmapWin.integration.test.ts"
 "debugBitmapWin.test.ts"
 "debugColor.test.ts"
+"debugFftCircularBuffer.test.ts"
+"debugFftDataManagement.test.ts"
+"debugFftRendering.test.ts"
+"debugFftWin.test.ts"
 "debugLogicWin.test.ts"
 "debugMidiWin.integration.test.ts"
 "debugMidiWin.test.ts"
@@ -23,6 +27,8 @@ TEST_FILES=(
 "debugTermWin.test.ts"
 "debugWindowBase.test.ts"
 "displaySpecParser.test.ts"
+"fftAccuracyVerification.test.ts"
+"fftProcessor.test.ts"
 "inputForwarder.test.ts"
 "integrationTests.test.ts"
 "layerManager.test.ts"
@@ -39,6 +45,7 @@ TEST_FILES=(
 "spriteManager.test.ts"
 "tracePatternProcessor.test.ts"
 "triggerProcessor.test.ts"
+"windowFunctions.test.ts"
 )
 
 FAILED_FILES=()

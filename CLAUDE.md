@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Before Starting Work
 - Always start in plan mode to create a comprehensive plan
-- Write the plan to ./tasks/TASK_NAME.md with detailed implementation steps and reasoning
+- Write the plan to `tasks/TASK_NAME.md` with detailed implementation steps and reasoning
 - Research any external dependencies or latest packages if needed (use Task tool)
 - Keep plans focused on MVP - don't over-engineer
 - Present the plan for review and wait for approval before proceeding
@@ -25,10 +25,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Include enough information for another engineer to understand and continue the work
 - **Maintain compaction-ready state**: Always keep work in a committable state with clear documentation
 - **When user warns about compaction**: 
-  - Immediately save current state to a CURRENT_STATE_BEFORE_COMPACT.md file
+  - Immediately save current state to a CURRENT_STATE_BEFORE_COMPACT.md file **in the tasks/ folder**
   - Document: completed tasks, in-progress work, next steps, and key context
   - Confirm when ready for compaction
-- **Best resume instructions**: Tell user to ask "show me the current todo list and read CURRENT_STATE_BEFORE_COMPACT.md" to restore context
+- **Best resume instructions**: Tell user to ask "show me the current todo list and read tasks/CURRENT_STATE_BEFORE_COMPACT.md" to restore context
+
+### Important File Organization
+- **ALWAYS place state files in the `tasks/` folder**, never in the root directory:
+  - Implementation plans: `tasks/[FEATURE]_IMPLEMENTATION.md`
+  - State files: `tasks/CURRENT_STATE_*.md`
+  - Final states: `tasks/FINAL_STATE_*.md`
+  - Progress tracking: `tasks/[FEATURE]_PROGRESS.md`
+- **Root directory should only contain**:
+  - Project configuration files (package.json, tsconfig.json, etc.)
+  - Standard documentation (README.md, CLAUDE.md, LICENSE, etc.)
+  - Build artifacts (dist/, coverage/, etc.)
 
 ## Quick Reference - Pascal Source Location
 
@@ -100,8 +111,8 @@ The application uses a class-based architecture with Electron for cross-platform
 - Shared utilities in `src/classes/shared/`
 
 **Debug Display Implementation Status**:
-- ✅ Complete: Terminal, Logic, Scope, Scope XY, Plot, Bitmap, MIDI
-- ❌ Not implemented: FFT, Spectro, Debugger
+- ✅ Complete: Terminal, Logic, Scope, Scope XY, Plot, Bitmap, MIDI, FFT
+- ❌ Not implemented: Spectro, Debugger
 
 For detailed architecture information, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -123,7 +134,7 @@ The Pascal reference implementation and documentation are located at `/pascal-so
 - `/pascal-source/P2_PNut_Public/DebugUnit.pas` - Window management
 - `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` - Debugger functionality (~8.5k lines)
 
-**Implementation Progress** (7/10 debug windows complete - 70%):
+**Implementation Progress** (9/10 debug windows complete - 90%):
 
 | Window | TypeScript Class | Status | Notes |
 |--------|------------------|--------|-------|
@@ -135,7 +146,7 @@ The Pascal reference implementation and documentation are located at `/pascal-so
 | Plot | `DebugPlotWindow` | ✅ Complete | Double buffering, layers, sprites |
 | Bitmap | `DebugBitmapWindow` | ✅ Complete | All trace patterns |
 | MIDI | `DebugMidiWindow` | ✅ Complete | Piano keyboard display |
-| FFT | Not Implemented | ❌ Missing | Frequency analysis |
+| FFT | `DebugFFTWindow` | ✅ Complete | Cooley-Tukey FFT, line/bar/dot modes, 82.6% test coverage |
 | Spectro | Not Implemented | ❌ Missing | Time-frequency display |
 | Debugger | Not Implemented | ❌ Missing | Breakpoint debugging |
 

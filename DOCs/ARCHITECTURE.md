@@ -45,6 +45,7 @@ abstract updateContent(lineParts: string[]): void;
 - `DebugPlotWindow` - 2D plotting with layers and sprites
 - `DebugBitmapWindow` - Bitmap display with trace patterns
 - `DebugMidiWindow` - MIDI visualization with piano keyboard
+- `DebugFFTWindow` - FFT spectrum analyzer with line/bar/dot modes
 
 #### 4. Hardware Communication Layer
 **USB Serial**: `src/utils/usb.serial.ts`

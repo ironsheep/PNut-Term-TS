@@ -10,6 +10,15 @@ test_files=(
   "tests/debugScopeXyWin.test.ts"
   "tests/persistenceManager.test.ts"
   "tests/scopeXyRenderer.test.ts"
+  # FFT tests added December 2024
+  "tests/debugFftWin.test.ts"
+  "tests/fftProcessor.test.ts"
+  "tests/windowFunctions.test.ts"
+  "tests/debugFftCircularBuffer.test.ts"
+  # FFT tests with partial failures
+  "tests/debugFftDataManagement.test.ts"
+  "tests/fftAccuracyVerification.test.ts"
+  "tests/debugFftRendering.test.ts"
 )
 
 echo "Checking test status for fixed files..."

@@ -227,7 +227,9 @@ Create a detailed implementation plan (`/tasks/[WINDOW_TYPE]_IMPLEMENTATION.md`)
     - [ ] Add new test files to `scripts/claude/run-all-tests.sh` TEST_FILES array
     - [ ] Add new test files to `scripts/claude/check_tests.sh` if applicable
 
-## Example: SCOPE_XY Planning Success
+## Example Success Stories
+
+### SCOPE_XY Window Implementation
 The SCOPE_XY window planning followed this process:
 1. Analyzed Pascal source for display modes, persistence, transformations
 2. Found 3 test examples in DEBUG-TESTING
@@ -237,5 +239,52 @@ The SCOPE_XY window planning followed this process:
 6. Specified exact Pascal constants to use
 7. Deferred sub-pixel precision to technical debt
 8. Achieved consensus on all implementation decisions
+
+### FFT Window Implementation (December 2024)
+The FFT window implementation demonstrated the effectiveness of this process:
+1. **Planning Phase**: Created comprehensive 42-task plan across 5 phases
+2. **Pascal Analysis**: Discovered non-standard Hanning window formula requiring exact replication
+3. **Shared Classes Created**: 
+   - `FFTProcessor` - Cooley-Tukey algorithm with 12-bit fixed-point math
+   - `WindowFunctions` - Window function utilities with Pascal's exact formulas
+4. **Test-Driven Development**: Created 7 test files with ~145 tests total
+5. **Time Efficiency**: Completed in 3.5 hours vs 7.5 hour estimate (53% faster)
+6. **Technical Debt Documented**: 
+   - Hanning window mathematical differences tracked for discussion with Pascal author
+   - Static method logging limitations identified
+7. **Phased Implementation**:
+   - Phase 1: Core infrastructure and base class
+   - Phase 2: FFT processing algorithm
+   - Phase 3: Data management and circular buffers
+   - Phase 4: Rendering with line/bar/dot modes
+   - Phase 5: Polish with CLEAR/SAVE commands
+8. **Key Success Factors**:
+   - Frequent state saving prevented loss during auto-compaction
+   - Incremental testing caught issues early
+   - Clear task tracking with actual vs estimated times
+   - Documentation throughout the process
+
+**Result**: 80% feature parity achieved with Pascal implementation, all core functionality working, comprehensive test coverage established.
+
+## Lessons Learned from FFT Implementation
+
+### What Worked Well
+1. **Frequent State Saving**: Creating CURRENT_STATE documents before auto-compaction prevented work loss
+2. **Phased Approach**: Breaking into 5 phases with clear boundaries enabled systematic progress
+3. **Early Algorithm Testing**: Creating fftProcessor.test.ts early caught mathematical issues
+4. **Task Time Tracking**: Recording actual vs estimated times improved future planning
+
+### Areas for Improvement
+1. **Keyword Parsing**: Should have added DOT, LINE, RANGE keywords to parser immediately
+2. **Mock Completeness**: Test mocks need isDestroyed() and other base class methods
+3. **Documentation Updates**: Should update project docs incrementally, not leave until end
+4. **Static Method Logging**: Identified limitation that needs architectural solution
+
+### Recommendations for Next Window
+1. Start with keyword parsing for any new display-specific commands
+2. Create comprehensive mocks for base class methods before writing tests
+3. Update documentation files after each phase completion
+4. Use TodoWrite tool consistently for task tracking
+5. Save state at least every 30 minutes or before context gets large
 
 This process ensures thorough understanding before coding begins, reducing rework and ensuring Pascal parity.
