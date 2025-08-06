@@ -63,16 +63,17 @@ The following classes currently have no test files:
   - InputForwarder integration is consistent across all windows
   - Error handling with unparsed command strings is implemented
 
-### Missing Pascal Behavior Documentation
-- **TODO**: Add comprehensive Pascal behavior documentation comments before class declarations:
-  - `debugLogicWin.ts` - Missing detailed Pascal implementation notes
-  - `debugScopeWin.ts` - Missing detailed Pascal implementation notes
-  - `debugScopeXYWin.ts` - ✓ Complete (has comprehensive JSDoc with Pascal references)
-  - `debugPlotWin.ts` - Missing detailed Pascal implementation notes
-  - `debugBitmapWin.ts` - Has some but needs expansion on Pascal differences
-  - `debugMidiWin.ts` - Has good documentation, verify completeness
-  - `debugTermWin.ts` - ✓ Complete (just added)
-  - Note: Document any TypeScript enhancements beyond Pascal (like ANSI in Term)
+### ✅ COMPLETED: Pascal Behavior Documentation
+- **DONE (2025-08-06)**: All debug windows now have comprehensive JSDoc documentation:
+  - `debugLogicWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugScopeWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugScopeXYWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugPlotWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugBitmapWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugMidiWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugTermWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - `debugFftWin.ts` - ✓ Complete JSDoc with Pascal references added
+  - All windows now reference specific Pascal procedures with line numbers from DebugDisplayUnit.pas
 
 ### TECH-DEBT Markers in Code
 Run `grep -r "TECH-DEBT" src/` to find inline technical debt markers.
@@ -119,9 +120,11 @@ Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 - Consider using OffscreenCanvas for complex rendering operations
 
 ## Documentation Gaps
-- Missing JSDoc comments for many public methods
-- No API documentation for public interfaces
-- Limited examples for debug window implementations
+- ✅ **COMPLETED**: JSDoc comments for all debug window classes (2025-08-06)
+- ✅ **COMPLETED**: All debug windows now have Spin2 code examples
+- ✅ **COMPLETED**: Pascal procedure references with line numbers added
+- **TODO**: JSDoc comments for utility classes and shared components
+- **TODO**: API documentation for public interfaces in shared classes
 
 ## Specific Technical Debt Items
 
