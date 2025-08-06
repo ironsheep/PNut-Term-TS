@@ -48,32 +48,85 @@ export interface BitmapDisplaySpec {
 }
 
 /**
- * DebugBitmapWindow implements the BITMAP debug display (type 7)
- * Supports bitmap graphics with various color modes, trace patterns, and input handling
+ * Debug BITMAP Window - Raster Graphics Display
  * 
- * ## Rate Parameter
+ * Displays bitmap/raster graphics with configurable trace patterns, color modes, and update rates.
+ * Supports 12 different trace patterns for pixel plotting order and image orientation transformations.
  * 
- * The `rate` parameter controls display update frequency:
- * - **0**: Manual update control only (no automatic updates)
- * - **-1**: Converted to width × height (update after full screen is drawn)
- * - **Positive values**: Update display after this many pixels are plotted
+ * ## Features
+ * - **Trace Patterns**: 12 different pixel plotting patterns (0-11) with rotation, flipping, and scrolling
+ * - **Sparse Mode**: Memory-efficient mode for sparse pixel data
+ * - **Color Modes**: Multiple color interpretation modes with tuning parameters
+ * - **Manual/Auto Update**: Configurable update rates from real-time to full-screen buffering
+ * - **LUT Support**: Lookup table colors for palette-based graphics
+ * - **Input Forwarding**: PC_KEY and PC_MOUSE support with coordinate transformation
  * 
- * ### Example Configurations:
- * - `trace=0, rate=1`: Normal raster scan, update every pixel (real-time display)
- * - `trace=0, rate=640`: Normal raster scan, update after each line (for 640-width display)
- * - `trace=10, rate=-1`: Normal orientation with scrolling, update after full screen
- * - `trace=5, rate=0`: 90° CCW rotation, manual update control only
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SIZE width height` - Set bitmap dimensions (4-2048, default: 256x256)
+ * - `DOTSIZE x y` - Set pixel size multiplier (1-32, default: 1x1)
+ * - `RATE rate` - Update frequency (0=manual, -1=full screen, >0=pixel count, default: 1)
+ * - `SPARSE` - Enable sparse mode for memory efficiency
+ * - `TRACE pattern` - Set trace pattern (0-11, default: 0 for normal raster scan)
+ * - `CTUNE tune` - Color tuning parameter for color mode adjustment
+ * - `COLOR bg` - Background color (default: BLACK)
+ * - `HIDEXY` - Hide coordinate display
  * 
- * ### Internal Implementation:
- * - Rate counter (rateCounter) increments with each plotted pixel
- * - When rateCounter reaches the rate value, display is updated and counter resets
- * - Rate value of -1 is automatically converted to width × height during initialization
+ * ## Data Format
+ * Pixel data is fed as color values, coordinates are determined by trace pattern:
+ * - Direct pixel values: color data interpreted based on color mode
+ * - Coordinate pairs: explicit x,y positioning when supported by trace pattern
+ * - Packed data: efficient bulk pixel transfer using standard packed modes
+ * - Example: `debug(\`MyBitmap TRACE 0 RATE 1\`(pixel_color))`
  * 
- * ## Trace Parameter
+ * ## Commands
+ * - `CLEAR` - Clear display and reset pixel position
+ * - `UPDATE` - Force display update (when UPDATE directive is used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display or entire window
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding to P2
+ * - `PC_MOUSE` - Enable mouse input forwarding to P2
+ * - `TRACE pattern` - Change trace pattern during runtime
+ * - `RATE count` - Change update rate during runtime
+ * - `LUT index color` - Set lookup table color
+ * - `CTUNE value` - Adjust color tuning parameter
  * 
- * See TracePatternProcessor class documentation for complete trace parameter details.
- * The trace parameter (0-15) controls pixel plotting order and image orientation,
- * combining rotation, flipping, and optional scrolling behavior.
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `BITMAP_Configure` procedure (line 2364)
+ * - Update: `BITMAP_Update` procedure (line 2408)
+ * - Trace pattern handling: `Bitmap_Trace_Process` procedures
+ * - Color management: `Bitmap_Color_Set` procedures
+ * 
+ * ## Examples
+ * ```spin2
+ * ' Basic bitmap with normal raster scan
+ * debug(`BITMAP MyBitmap SIZE 320 240 TRACE 0 RATE 320)
+ * repeat y from 0 to 239
+ *   repeat x from 0 to 319
+ *     color := (x << 16) | (y << 8) | ((x+y) & $FF)
+ *     debug(`MyBitmap \`(color))
+ * 
+ * ' Rotated display with sparse mode
+ * debug(`BITMAP MyBitmap SIZE 128 128 TRACE 5 SPARSE RATE -1)
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Supports 12 trace patterns combining rotation, flipping, and scrolling behavior
+ * - Rate parameter controls update frequency: 0=manual, -1=full screen, >0=pixel count
+ * - Sparse mode optimizes memory usage for images with large empty areas
+ * - Color tuning parameter adjusts color interpretation and gamma correction
+ * - Coordinate transformation for mouse input matches selected trace pattern
+ * - LUT manager provides efficient palette-based color mapping
+ * 
+ * ## Deviations from Pascal
+ * - Enhanced color validation and error handling
+ * - Additional sparse mode optimizations for memory efficiency
+ * - Improved trace pattern coordinate calculations for accuracy
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_BITMAP.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugBitmapWindow extends DebugWindowBase {
   private state: BitmapState;

@@ -86,9 +86,17 @@ export interface ScopeXyDisplaySpec {
  * debug(`SCOPE_XY MyXY SIZE 80 RANGE 8 SAMPLES 0 LOGSCALE 'Logscale')
  * ```
  * 
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `SCOPE_XY_Configure` procedure (line 1386)
+ * - Update: `SCOPE_XY_Update` procedure (line 1443)
+ * - Coordinate transformation: `ScopeXY_Transform` procedures
+ * - Persistence management: `ScopeXY_Persistence` procedures
+ * 
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SCOPE_XY_Grid.spin2
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SCOPE_XY_LogScale.spin2
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SCOPE_XY_Spiral.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugScopeXyWindow extends DebugWindowBase {
   private renderer: ScopeXyRenderer | null = null;

@@ -72,63 +72,90 @@ export interface ScopeTriggerSpec {
 }
 
 /**
- * Debug SCOPE Window implementation
+ * Debug SCOPE Window - Oscilloscope Waveform Display
  * 
  * Displays real-time oscilloscope-style waveforms with multiple channels.
+ * Supports trigger modes, auto-scaling, and packed data formats for high-performance data visualization.
  * 
- * === DECLARATION SYNTAX ===
- * `SCOPE {display_name} {directives...}
+ * ## Features
+ * - **Multi-Channel Display**: Up to 8 channels with independent configurations
+ * - **Trigger Modes**: Manual trigger levels with arm/trigger thresholds, AUTO mode, and holdoff control
+ * - **Data Visualization**: Real-time waveform rendering with configurable dot and line sizes
+ * - **Packed Data Support**: Efficient data transfer using BYTE2/4, WORD2, LONG formats with SIGNED/ALT modifiers
+ * - **Auto-scaling**: Automatic min/max detection for channel ranges
+ * - **Coordinate Display**: Mouse position feedback with optional Y-axis inversion
  * 
- * Directives:
- *   TITLE <title>            - Override window title
- *   POS <left> <top>         - Window position [default: 0,0]
- *   SIZE <width> <height>    - Window size [32-2048, default: 256x256]
- *   SAMPLES <nbr>            - Sample buffer size [16-2048, default: 256]
- *   RATE <rate>              - Sample rate divisor [1-2048, default: 1]
- *   DOTSIZE <pix>            - Dot size for sample points [0-32, default: 0]
- *   LINESIZE <half-pix>      - Line width [0-32, default: 3]
- *   TEXTSIZE <half-pix>      - Text size [6-200, default: 12]
- *   COLOR <bg> {<grid>}      - Colors [default: BLACK, GRAY 4]
- *   HIDEXY                   - Hide coordinate display
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SIZE width height` - Set window size (32-2048, default: 256x256)
+ * - `SAMPLES nbr` - Sample buffer size (16-2048, default: 256)
+ * - `RATE rate` - Sample rate divisor (1-2048, default: 1)
+ * - `DOTSIZE pix` - Dot size for sample points (0-32, default: 0)
+ * - `LINESIZE half-pix` - Line width (0-32, default: 3)
+ * - `TEXTSIZE half-pix` - Text size for labels (6-200, default: 12)
+ * - `COLOR bg {grid}` - Window and grid colors (default: BLACK, GRAY 4)
+ * - `HIDEXY` - Hide coordinate display
  * 
- * === CHANNEL SPECIFICATION ===
- * '{name}' {min} {max} {y-size} {y-base} {legend} {color} {bright}
- * '{name}' AUTO {y-size} {y-base} {legend} {color} {bright}
+ * ## Data Format
+ * Channel configuration: `'{name}' {min} {max} {y-size} {y-base} {legend} {color} {bright}`
+ * Auto-scaling mode: `'{name}' AUTO {y-size} {y-base} {legend} {color} {bright}`
+ * - name: Channel display name
+ * - min/max: Value range (AUTO uses 0-255)
+ * - y-size: Vertical display size in pixels
+ * - y-base: Y baseline offset
+ * - legend: %abcd format (a=max legend, b=min legend, c=max line, d=min line)
+ * - color: Channel color name, bright: Color brightness (0-15)
+ * - Example: `debug(\`MyScope 'Ch1' 0 1024 100 50 %1111 RED 15\`(sample_value))`
  * 
- * Where:
- *   name    - Channel display name
- *   min/max - Value range (AUTO uses 0-255)
- *   y-size  - Vertical display size in pixels
- *   y-base  - Y baseline offset
- *   legend  - %abcd format (a=max legend, b=min legend, c=max line, d=min line)
- *   color   - Channel color name
- *   bright  - Color brightness (0-15)
+ * ## Commands
+ * - `CLEAR` - Clear all channel data and reset display
+ * - `UPDATE` - Force display update (when UPDATE directive is used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display or entire window
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding to P2
+ * - `PC_MOUSE` - Enable mouse input forwarding to P2
+ * - `TRIGGER ch {arm} {trig} {offset}` - Configure trigger levels for channel
+ * - `TRIGGER ch AUTO` - Enable auto trigger on channel
+ * - `TRIGGER ch HOLDOFF samples` - Set trigger holdoff period
+ * - `LINE size` - Update line width, `DOT size` - Update dot size
+ * - Packed data modes: `BYTE2/4`, `WORD2`, `LONG` with optional `SIGNED`/`ALT` modifiers
  * 
- * === RUNTIME COMMANDS ===
- *   TRIGGER <ch> {arm} {trig} {offset} - Configure trigger
- *   TRIGGER <ch> AUTO                  - Auto trigger on channel
- *   TRIGGER <ch> HOLDOFF <samples>     - Set trigger holdoff
- *   CLEAR                              - Clear all channel data
- *   CLOSE                              - Close window
- *   SAVE 'filename'                    - Save window as BMP
- *   PC_KEY                             - Enable keyboard forwarding
- *   PC_MOUSE                           - Enable mouse forwarding
- *   LINE <size>                        - Update line width
- *   DOT <size>                         - Update dot size
- *   <numeric>                          - Add sample data
- *   <packed_mode> <data>               - Add packed samples
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `SCOPE_Configure` procedure (line 1151)
+ * - Update: `SCOPE_Update` procedure (line 1209)
+ * - Trigger handling: `Scope_Trigger` procedures
+ * - Channel management: `Scope_Channel_Config` procedures
  * 
- * === PACKED DATA MODES ===
- *   BYTE2, BYTE4, WORD2, LONG         - Unsigned packed formats
- *   BYTE2S, BYTE4S, WORD2S, LONGS     - Signed packed formats
- *   Can be followed by ALT and/or SIGNED modifiers
+ * ## Examples
+ * ```spin2
+ * ' Basic scope with two channels
+ * debug(`SCOPE MyScope SIZE 400 300 SAMPLES 512 RATE 2)
+ * debug(`MyScope 'Voltage' 0 3300 120 10 %1111 YELLOW 15)
+ * debug(`MyScope 'Current' 0 1000 120 140 %1111 CYAN 15)
  * 
- * === IMPLEMENTATION NOTES ===
- * - Channels are created dynamically when '{name}' is encountered
- * - First numeric data triggers window creation
- * - Y-axis is inverted (0 at top)
- * - Supports auto-scaling and manual trigger levels
- * - Mouse coordinates show with optional Y-axis inversion
+ * repeat
+ *   voltage := adc_read(0)
+ *   current := adc_read(1)
+ *   debug(`MyScope \`(voltage, current))
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Channels are created dynamically when channel configuration is encountered
+ * - First numeric data triggers window creation and display initialization
+ * - Y-axis is inverted (0 at top) to match Pascal implementation
+ * - Supports both manual trigger levels and automatic triggering
+ * - Mouse coordinates display with optional Y-axis inversion for debugging
+ * - Efficient packed data processing for high-speed data acquisition scenarios
+ * 
+ * ## Deviations from Pascal
+ * - Enhanced mouse coordinate display with pixel-level precision
+ * - Additional color validation and error handling
+ * - Improved trigger state management and visual feedback
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SCOPE.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugScopeWindow extends DebugWindowBase {
   private displaySpec: ScopeDisplaySpec = {} as ScopeDisplaySpec;

@@ -62,34 +62,89 @@ export interface CartesianSpec {
 }
 
 /**
- * Debug Plot Window Implementation
+ * Debug PLOT Window - Sprite-based Graphics Display
  * 
- * IMPORTANT: This implementation follows Pascal PNut behavior for parameter handling.
+ * Provides 2D graphics plotting with sprites, layers, and coordinate transformations.
+ * Supports both Cartesian and Polar coordinate systems with programmable LUT colors and double buffering.
  * 
- * Key Pascal Behavioral Differences:
+ * ## Features
+ * - **Sprite Management**: Dynamic sprite creation, transformation, and layer management
+ * - **Coordinate Systems**: Cartesian (with configurable axis directions) and Polar modes
+ * - **Layer Support**: Multiple drawing layers with opacity and blending modes
+ * - **Double Buffering**: Smooth animation with automatic buffer swapping
+ * - **LUT Colors**: Lookup table colors for efficient palette-based rendering
+ * - **Drawing Primitives**: DOT, LINE, ARC, BOX, OVAL, and text rendering
+ * - **Transformations**: Scale, rotate, and position sprites with real-time updates
  * 
- * 1. **Parameter Validation**:
- *    - Pascal does NOT validate numeric ranges (e.g., opacity can exceed 0-255)
- *    - Pascal does NOT convert negative values to positive (e.g., negative linesize is valid)
- *    - Pascal does NOT clamp values to "safe" ranges
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SIZE width height` - Set window size (32-2048, default: 256x256)
+ * - `DOTSIZE x y` - Set dot dimensions (1-32, default: 1x1)
+ * - `CARTESIAN xdir ydir` - Set Cartesian axis directions (0=normal, 1=inverted)
+ * - `POLAR twopi offset` - Set polar coordinate system parameters
+ * - `COLOR bg {grid}` - Window and grid colors (default: BLACK)
+ * - Packing modes: `LONGS`, `WORDS`, `BYTES` with optional `SIGNED`/`ALT` modifiers
+ * - `HIDEXY` - Hide coordinate display
  * 
- * 2. **Invalid Parameter Handling**:
- *    - When parsing fails, Pascal keeps the previous value (doesn't use defaults)
- *    - Non-numeric parameters are silently ignored, retaining current values
- *    - Required parameters (like BOX width/height) abandon the command if invalid
+ * ## Data Format
+ * Drawing commands: `DOT x y`, `LINE x1 y1 x2 y2`, `BOX x y width height`
+ * Sprite operations: `SPRITE name x y scale rotation`
+ * Color commands: `LUT index color`, `LUTFILL start count color`
+ * Coordinate data can be fed as individual values or packed data streams
+ * - Example: `debug(\`MyPlot DOT 100 150 LINESIZE 2 RED 15\`)`
  * 
- * 3. **Command-Specific Behaviors**:
- *    - **DOT**: Uses current lineSize and opacity if parameters are invalid/missing
- *    - **BOX**: Requires valid width/height; linesize defaults to 0 (filled), not vLineSize
- *    - **LINESIZE**: Accepts any integer including negatives (used in FFT for special modes)
- *    - **OPACITY**: Accepts any integer without range validation
+ * ## Commands
+ * - `CLEAR` - Clear display and reset all layers
+ * - `UPDATE` - Force display update (when UPDATE directive is used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display or entire window
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding to P2
+ * - `PC_MOUSE` - Enable mouse input forwarding to P2
+ * - `DOT x y` - Draw dot at coordinates, `LINE x1 y1 x2 y2` - Draw line
+ * - `BOX x y w h` - Draw rectangle, `OVAL x y w h` - Draw ellipse
+ * - `ARC x y r start end` - Draw arc, `TEXT x y 'string'` - Draw text
+ * - `LINESIZE size` - Set line width, `OPACITY level` - Set transparency
+ * - `SPRITE name x y` - Position sprite, `LUT index color` - Set palette color
  * 
- * 4. **Coordinate Systems**:
- *    - Negative dimensions in BOX/OVAL are drawn as-is (not converted to positive)
- *    - This allows for directional drawing based on sign
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `PLOT_Configure` procedure (line 1864)
+ * - Update: `PLOT_Update` procedure (line 1918)
+ * - Sprite management: `Plot_Sprite_Create`, `Plot_Sprite_Update` procedures
+ * - Layer operations: `Plot_Layer_Manage` procedures
+ * - Drawing primitives: `Plot_Draw_*` procedure families
  * 
- * Note: Tests expecting defensive programming (clamping, validation, etc.) may fail
- * as this implementation prioritizes Pascal parity over input validation.
+ * ## Examples
+ * ```spin2
+ * ' Basic plotting with sprites
+ * debug(`PLOT MyPlot SIZE 320 240 CARTESIAN 0 1)
+ * debug(`MyPlot LUT 1 RED 15)
+ * debug(`MyPlot LUT 2 BLUE 15)
+ * 
+ * ' Draw animated sprite
+ * repeat angle from 0 to 359
+ *   x := qsin(angle, 100, 30)
+ *   y := qcos(angle, 100, 30) 
+ *   debug(`MyPlot CLEAR DOT \`(x+160, y+120))
+ *   waitms(10)
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Follows Pascal PNut behavior for parameter handling (no range validation)
+ * - Sprite system supports dynamic creation and transformation
+ * - Layer management enables complex overlay graphics
+ * - Double buffering prevents flicker during rapid updates
+ * - Invalid parameters retain previous values rather than using defaults
+ * - Negative dimensions in BOX/OVAL are drawn as-is for directional drawing
+ * 
+ * ## Deviations from Pascal
+ * - Enhanced sprite transformation matrix calculations
+ * - Additional error logging for debugging purposes
+ * - Improved memory management for large sprite collections
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_PLOT.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugPlotWindow extends DebugWindowBase {
   private displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;

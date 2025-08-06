@@ -130,7 +130,15 @@ export interface FFTChannelSpec {
  * - Circular buffer stores 2048 samples × 8 channels
  * - Renders channels in reverse order for proper overlay
  * 
+ * === PASCAL REFERENCE ===
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `FFT_Configure` procedure (line 1552)
+ * - Update: `FFT_Update` procedure (line 1620)
+ * - FFT processing: `FFT_Process` and `FFT_Calculate` procedures
+ * - Channel management: `FFT_Channel_Config` procedures
+ * 
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_FFT.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugFFTWindow extends DebugWindowBase {
   private displaySpec: FFTDisplaySpec;

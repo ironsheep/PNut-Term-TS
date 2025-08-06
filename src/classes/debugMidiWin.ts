@@ -25,6 +25,89 @@ import { PianoKeyboardLayout, KeyInfo } from './shared/pianoKeyboardLayout';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { DebugColor } from './shared/debugColor';
 
+/**
+ * Debug MIDI Window - MIDI Keyboard Visualization
+ * 
+ * Displays a piano keyboard that visualizes MIDI note events in real-time with velocity indication.
+ * Supports configurable keyboard size, key range, channel filtering, and mouse interaction for MIDI output.
+ * 
+ * ## Features
+ * - **Piano Keyboard Display**: Variable-size keyboard (SIZE 1-50) with 88-key default range
+ * - **MIDI Protocol Support**: Standard MIDI note-on/off message parsing (0x80-0x90)
+ * - **Channel Filtering**: Monitor specific MIDI channels (0-15) with color coding
+ * - **Velocity Visualization**: Colored velocity bars showing note intensity (0-127)
+ * - **Key Labeling**: MIDI note numbers displayed on piano keys
+ * - **Mouse Interaction**: Click keys to generate MIDI output (note-on/off)
+ * 
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SIZE keysize` - Set keyboard size (1-50, affects key width, default: 4)
+ * - `RANGE first last` - Set key range (0-127, default: 21-108 for 88-key piano)
+ * - `CHANNEL ch` - Set MIDI channel to monitor (0-15, default: 0)
+ * - `COLOR bg {key_color}` - Background and key colors
+ * - `HIDEXY` - Hide coordinate display
+ * 
+ * ## Data Format
+ * MIDI data is fed as standard MIDI protocol messages:
+ * - Note-on: 0x90 + channel, followed by note (0-127) and velocity (0-127)
+ * - Note-off: 0x80 + channel, followed by note and velocity (ignored)
+ * - Data can be fed byte-by-byte or as complete MIDI messages
+ * - Example: `debug(\`MyMIDI \`($90, note, velocity))  ' Note-on`
+ * 
+ * ## Commands
+ * - `CLEAR` - Clear all active notes and reset keyboard display
+ * - `UPDATE` - Force display update (when UPDATE directive is used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display or entire window
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding to P2
+ * - `PC_MOUSE` - Enable mouse input forwarding to P2
+ * - `CHANNEL ch` - Change monitored MIDI channel during runtime
+ * - `RANGE first last` - Change key range during runtime
+ * - MIDI bytes: Direct MIDI protocol data (0x80-0x9F for note events)
+ * 
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `MIDI_Configure` procedure (line 2484)
+ * - Update: `MIDI_Update` procedure (line 2582)  
+ * - Note handling: `MIDI_Note_Process` procedures
+ * - Keyboard rendering: `MIDI_Draw_Keyboard` procedures
+ * 
+ * ## Examples
+ * ```spin2
+ * ' Basic MIDI keyboard monitor
+ * debug(`MIDI MyKeyboard SIZE 6 RANGE 36 84 CHANNEL 0)
+ * 
+ * ' Send note-on and note-off
+ * note := 60  ' Middle C
+ * velocity := 100
+ * debug(`MyKeyboard \`($90, note, velocity))  ' Note-on
+ * waitms(500)
+ * debug(`MyKeyboard \`($80, note, 0))        ' Note-off
+ * 
+ * ' Monitor multiple notes
+ * repeat
+ *   debug(`MyKeyboard \`($90, 60, 100))  ' C
+ *   debug(`MyKeyboard \`($90, 64, 80))   ' E  
+ *   debug(`MyKeyboard \`($90, 67, 90))   ' G
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Implements exact Pascal MIDI debug window behavior including key layout
+ * - MIDI state machine parses incoming bytes according to MIDI protocol
+ * - Velocity bars use color intensity to show note velocity (0-127)
+ * - Piano keyboard layout handles both white and black key positioning
+ * - Mouse coordinates are transformed to MIDI note numbers for interaction
+ * - Supports future enhancements: multi-channel display with color coding
+ * 
+ * ## Deviations from Pascal  
+ * - Enhanced mouse interaction for bidirectional MIDI communication
+ * - Additional velocity visualization options and color schemes
+ * - Improved keyboard layout calculations for various screen resolutions
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_MIDI.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
+ */
 export class DebugMidiWindow extends DebugWindowBase {
   // Window properties
   protected windowId: number = 0;

@@ -78,6 +78,85 @@ export interface LogicTriggerSpec {
   trigHoldoff: number; // in samples required, from trigger to trigger (default nbrSamples)
 }
 
+/**
+ * Debug LOGIC Window - Logic Analyzer Display
+ * 
+ * A multi-channel logic analyzer for visualizing digital signals from Propeller 2 microcontrollers.
+ * Displays up to 32 digital channels with configurable triggering, channel grouping, and packed data modes.
+ * 
+ * ## Features
+ * - **32-Channel Logic Analyzer**: Display up to 32 independent digital signals
+ * - **Channel Grouping**: Combine multiple bits into named channels with custom widths
+ * - **Trigger System**: Configurable mask/match triggering with holdoff
+ * - **Packed Data Modes**: Support for 12 different packed data formats
+ * - **Auto-scrolling**: Continuous data capture with automatic scrolling
+ * - **Custom Colors**: Per-channel color configuration
+ * 
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SAMPLES count` - Number of samples to display (4-2048, default: 32)
+ * - `SPACING pixels` - Pixel width per sample (default: 8)
+ * - `RATE divisor` - Sample rate divisor (1-2048, default: 1)
+ * - `LINESIZE half-pix` - Line thickness (1-7, default: 1)
+ * - `TEXTSIZE half-pix` - Text size (6-200, default: editor font size)
+ * - `COLOR bg {grid}` - Background and grid colors (default: BLACK, GRAY 4)
+ * - `'name' {bits {color}}` - Define channel (default: 1 bit, auto-color)
+ * - `TRIGGER mask match {offset {holdoff}}` - Configure triggering
+ * - `HIDEXY` - Hide mouse coordinate display
+ * - Packed data modes - Enable packed data processing
+ * 
+ * ## Data Format
+ * Data is fed as 32-bit values representing logic states:
+ * - Each bit represents one logic channel (0=low, 1=high)
+ * - Channels can be grouped and named via configuration
+ * - Packed data modes allow compressed multi-sample transfers
+ * - Example: `debug(\`Logic \`(portA | (portB << 8)))`
+ * 
+ * ## Commands
+ * - `numeric_data` - 32-bit logic sample data
+ * - `CLEAR` - Clear display and sample buffer
+ * - `UPDATE` - Force display update (when UPDATE directive used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding
+ * - `PC_MOUSE` - Enable mouse input forwarding
+ * 
+ * ## Trigger System
+ * - **Mask**: Specifies which bits to monitor (1=monitor, 0=ignore)
+ * - **Match**: Pattern to match on monitored bits
+ * - **Offset**: Sample position for trigger (default: SAMPLES/2)
+ * - **Holdoff**: Minimum samples between triggers (default: SAMPLES)
+ * - Trigger fires when: `(data & mask) == match`
+ * 
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `LOGIC_Configure` procedure (line 926)
+ * - Update: `LOGIC_Update` procedure (line 1034)
+ * - Trigger handling: Part of LOGIC_Update procedure
+ * 
+ * ## Examples
+ * ```spin2
+ * ' Basic 8-channel logic analyzer
+ * debug(`LOGIC MyLogic SAMPLES 64 'Port[7..0]' 8)
+ * repeat
+ *   debug(`MyLogic `(ina[7..0]))
+ * 
+ * ' Triggered capture with named channels
+ * debug(`LOGIC MyLogic TRIGGER $FF $80 'Data' 8 'Clock' 'Enable')
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Channel colors cycle through: LIME, RED, CYAN, YELLOW, MAGENTA, BLUE, ORANGE, OLIVE
+ * - Trigger processor handles edge detection and holdoff timing
+ * - Packed data processor supports all 12 P2 packed modes with ALT/SIGNED variants
+ * 
+ * ## Deviations from Pascal
+ * - None - Full Pascal compatibility maintained
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_LOGIC.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
+ */
 export class DebugLogicWindow extends DebugWindowBase {
   private displaySpec: LogicDisplaySpec = {} as LogicDisplaySpec;
   private channelBitSpecs: LogicChannelBitSpec[] = []; // one for each channel bit within the 32 possible channels

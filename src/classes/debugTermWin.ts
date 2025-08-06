@@ -37,36 +37,82 @@ export interface TermDisplaySpec {
 }
 
 /**
- * Debug Terminal Window Implementation
+ * Debug TERM Window - Text Terminal Display
  * 
- * IMPORTANT: This is NOT a standard terminal emulator. It follows the Pascal PNut
- * implementation which repurposes some ASCII control characters for debug-specific functions.
+ * A monospace text terminal for displaying debug output from Propeller 2 microcontrollers.
+ * This implementation follows the Pascal PNut design, repurposing ASCII control characters
+ * for debug-specific functions rather than standard terminal emulation.
  * 
- * Key differences from standard terminals:
- * - ASCII 7 (BELL) is used for color combo #3 selection, not an audible bell
- * - ASCII 4-7 select color combos 0-3 respectively
- * - No ANSI escape sequence support (matches Pascal implementation)
- * - Limited to the specific commands needed for P2 debug output
+ * ## Features
+ * - **Monospace Text Display**: Fixed-width character grid with configurable size
+ * - **Color Combinations**: Up to 4 foreground/background color pairs (combos 0-3)
+ * - **Cursor Control**: Direct positioning, home, backspace, and tab support
+ * - **Auto-scrolling**: Automatic scroll when text reaches bottom of display
+ * - **Mouse/Keyboard Forwarding**: PC_KEY and PC_MOUSE input forwarding to P2
  * 
- * Supported numeric commands:
- * - 0: Clear screen and home cursor
- * - 1: Home cursor
- * - 2: Set column (followed by column number)
- * - 3: Set row (followed by row number)
- * - 4-7: Select color combo 0-3
- * - 8: Backspace (with line wrap)
- * - 9: Tab (advance to next 8-column boundary)
- * - 10: Line feed
- * - 13: Carriage return
- * - 32-255: Printable characters
+ * ## Configuration Parameters
+ * - `TITLE 'string'` - Set window caption
+ * - `POS left top` - Set window position (default: 0, 0)
+ * - `SIZE columns rows` - Set terminal size in characters (1-256, default: 40x20)
+ * - `TEXTSIZE half-pix` - Set font size (6-200, default: editor font size)
+ * - `COLOR fg bg {fg1 bg1 {fg2 bg2 {fg3 bg3}}}` - Define color combos (default: ORANGE on BLACK)
+ * - `BACKCOLOR color {brightness}` - Set default text color (deprecated, use COLOR)
+ * - `UPDATE` - Enable deferred update mode (requires UPDATE command)
+ * - `HIDEXY` - Hide mouse coordinate display
  * 
- * String commands:
- * - CLEAR: Clear screen
- * - UPDATE: Force display update
- * - SAVE WINDOW 'filename': Save to BMP
- * - CLOSE: Close window
- * - PC_KEY: Enable keyboard forwarding
- * - PC_MOUSE: Enable mouse forwarding
+ * ## Data Format
+ * Data is fed as numeric control codes or quoted strings:
+ * - Numeric values 0-31: Control codes for cursor and color management
+ * - Numeric values 32-255: Direct character codes
+ * - Quoted strings: Text to display at current cursor position
+ * - Example: `debug(\`Term 0 'Hello' 13 10 'World')`
+ * 
+ * ## Commands
+ * - `0` - Clear screen and home cursor
+ * - `1` - Home cursor only
+ * - `2 column` - Set cursor column (0-based)
+ * - `3 row` - Set cursor row (0-based)
+ * - `4-7` - Select color combo 0-3
+ * - `8` - Backspace (with line wrap)
+ * - `9` - Tab to next 8-column boundary
+ * - `10` or `13` - Line feed/carriage return
+ * - `32-255` - Display character at cursor
+ * - `'string'` - Display string at cursor
+ * - `CLEAR` - Clear terminal display
+ * - `UPDATE` - Force display update (when UPDATE directive used)
+ * - `SAVE {WINDOW} 'filename'` - Save bitmap of display
+ * - `CLOSE` - Close the window
+ * - `PC_KEY` - Enable keyboard input forwarding
+ * - `PC_MOUSE` - Enable mouse input forwarding
+ * 
+ * ## Pascal Reference
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `TERM_Configure` procedure (line 2181)
+ * - Update: `TERM_Update` procedure (line 2223)
+ * - Character handling: `TERM_Chr` procedure
+ * 
+ * ## Examples
+ * ```spin2
+ * ' Basic terminal output
+ * debug(`TERM MyTerm SIZE 80 24 'Hello, World!')
+ * 
+ * ' Using color combos
+ * debug(`TERM MyTerm COLOR WHITE BLACK RED YELLOW)
+ * debug(`MyTerm 4 'Default' 5 ' Red on Yellow')
+ * ```
+ * 
+ * ## Implementation Notes
+ * - Tab width is fixed at 8 columns
+ * - Line wrapping occurs at column boundary
+ * - Scrolling preserves current color combo for cleared lines
+ * 
+ * ## Deviations from Pascal
+ * - **No ANSI Support**: ANSI escape sequences removed to match Pascal implementation
+ * - **ASCII 7 Repurposed**: BELL character (ASCII 7) selects color combo 3, not audio bell
+ * - **Color Combo Limit**: Limited to 4 color combinations (Pascal design)
+ * 
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_TERM.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
