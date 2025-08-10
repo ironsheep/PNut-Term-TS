@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(echo:*)",
+      "Bash(npm test)",
+      "Bash(npm run build:*)",
+      "Bash(grep:*)",
+      "Bash(awk:*)",
+      "Bash(npm test:*)",
+      "Bash(node:*)",
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(mv:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run test:sequential:*)",
+      "Bash(npm run test:*)"
+    ],
+    "deny": []
+  }
+}

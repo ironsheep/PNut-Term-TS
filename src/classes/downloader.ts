@@ -11,7 +11,6 @@ import { UsbSerial } from '../utils/usb.serial';
 
 export class Downloader {
   private context: Context;
-  private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private serialPort: UsbSerial;
 
   constructor(ctx: Context, serialPort: UsbSerial) {
@@ -166,7 +165,7 @@ export class Downloader {
   // ----------------------------------------------------------------------
 
   private logMessage(message: string): void {
-    if (this.isLogging) {
+    if (this.context.runEnvironment.loggingEnabled) {
       //Write to output window.
       this.context.logger.logMessage('Dnldr: ' + message);
     }

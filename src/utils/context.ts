@@ -23,6 +23,11 @@ export interface RuntimeEnvironment {
   developerModeEnabled: boolean;
   debugBaudrate: number;
   ideMode: boolean;
+  rtsOverride: boolean;
+  loggingEnabled: boolean;
+  loggingLevel: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
+  logToFile: boolean;
+  logToConsole: boolean;
 }
 export class Context {
   public libraryFolder: string;
@@ -39,7 +44,12 @@ export class Context {
       developerModeEnabled: false,
       logFilename: '',
       debugBaudrate: 2000000,
-      ideMode: false
+      ideMode: false,
+      rtsOverride: false,     // Default to DTR unless IDE specifies RTS
+      loggingEnabled: false,  // Default to false for production
+      loggingLevel: 'INFO',   // Default log level
+      logToFile: false,
+      logToConsole: true
     };
     this.actions = {
       writeRAM: false,
@@ -60,5 +70,6 @@ export class Context {
     this.extensionFolder = possiblePath;
     this.currentFolder = process.cwd();
     this.logger = new Logger();
+    this.logger.setContext(this);
   }
 }

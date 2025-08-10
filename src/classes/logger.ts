@@ -1,18 +1,38 @@
 /** @format */
 
 // this is our common logging mechanism
-//  TODO: make it context/runtime option aware
+//  Now context/runtime option aware
 
 "use strict";
 // src/classes/logger.ts
+
+import { Context } from '../utils/context';
 
 export class Logger {
   private verboseEnabled: boolean = false;
   private debugEnabled: boolean = false;
   private programName: string = "{notSet}";
+  private context: Context | undefined;
+
+  public setContext(context: Context) {
+    this.context = context;
+  }
 
   public setProgramName(name: string) {
     this.programName = name;
+  }
+
+  private shouldLog(level: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE'): boolean {
+    if (!this.context || !this.context.runEnvironment.loggingEnabled) {
+      return level === 'ERROR'; // Always log errors
+    }
+    
+    const levels = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
+    const configuredLevel = this.context.runEnvironment.loggingLevel;
+    const configuredIndex = levels.indexOf(configuredLevel);
+    const requestedIndex = levels.indexOf(level);
+    
+    return requestedIndex <= configuredIndex;
   }
 
   public enabledVerbose() {
@@ -26,8 +46,10 @@ export class Logger {
   }
 
   public errorMsg(message: string | unknown) {
-    const redMessage: string = this.errorColor(message);
-    this.logErrorMessage(`${this.programName}: ERROR- ${redMessage}`);
+    if (this.shouldLog('ERROR')) {
+      const redMessage: string = this.errorColor(message);
+      this.logErrorMessage(`${this.programName}: ERROR- ${redMessage}`);
+    }
   }
 
   public compilerErrorMsg(message: string, underTest: boolean = false) {
@@ -44,7 +66,7 @@ export class Logger {
   }
 
   public verboseMsg(message: string): void {
-    if (this.verboseEnabled) {
+    if (this.verboseEnabled && this.shouldLog('DEBUG')) {
       if (message.length == 0) {
         this.logMessage(``); // blank line
       } else {
@@ -54,7 +76,7 @@ export class Logger {
   }
 
   public debugMsg(message: string): void {
-    if (this.debugEnabled) {
+    if (this.debugEnabled && this.shouldLog('DEBUG')) {
       if (message.length == 0) {
         this.logMessage(``); // blank line
       } else {
@@ -64,16 +86,22 @@ export class Logger {
   }
 
   public infoMsg(message: string): void {
-    this.logMessage(`${this.programName}: ${message}`);
+    if (this.shouldLog('INFO')) {
+      this.logMessage(`${this.programName}: ${message}`);
+    }
   }
 
   public warningMsg(message: string): void {
-    const yellowMessage: string = this.warningColor(message);
-    this.logErrorMessage(`${this.programName}: WARNING- ${yellowMessage}`);
+    if (this.shouldLog('WARN')) {
+      const yellowMessage: string = this.warningColor(message);
+      this.logErrorMessage(`${this.programName}: WARNING- ${yellowMessage}`);
+    }
   }
 
   public progressMsg(message: string): void {
-    this.logMessage(`${this.programName}: ${message}`);
+    if (this.shouldLog('INFO')) {
+      this.logMessage(`${this.programName}: ${message}`);
+    }
   }
 
   private errorColor(str: string | unknown): string {
@@ -93,7 +121,13 @@ export class Logger {
    * @memberof Logger
    */
   public logMessage(message: string) {
-    process.stdout.write(`${message}\r\n`);
+    // Only log if context is not set, or if logging is enabled
+    if (!this.context || this.context.runEnvironment.loggingEnabled) {
+      if (!this.context || this.context.runEnvironment.logToConsole) {
+        process.stdout.write(`${message}\r\n`);
+      }
+      // TODO: Add file logging support when logToFile is true
+    }
   }
   /**
    * Write message to stderr with trailing CRLF
@@ -105,6 +139,7 @@ export class Logger {
     if (typeof message !== "string") {
       this.logMessage(`* logErrorMessage() - message is ${typeof message}`);
     }
+    // Errors should always be logged regardless of logging settings
     process.stderr.write(`${message}\r\n`);
   }
 }

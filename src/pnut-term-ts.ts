@@ -148,17 +148,27 @@ export class DebugTerminalInTypeScript {
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
-      .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration');
+      .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
+      .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)');
 
     this.program.addHelpText('beforeAll', `$-`);
 
     this.program.addHelpText(
       'afterAll',
       `$-
-      Example:
+      Examples:
          $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
          $ pnut-term-ts -l myApp -p P9cektn7                     # run and log to myApp-YYMMDD-HHmm.log
          $ pnut-term-ts -l topFile -p P9cektn7 -r myTopfile.bin  # download myTopfile.bin to RAM, run with logging to topFile-YYMMDD-HHmm.log
+         $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
+         $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
+
+      Device Control:
+         DTR (Data Terminal Ready): Used by Parallax PropPlug devices
+         RTS (Request To Send): Used by some non-Parallax devices
+         
+         In standalone mode: Use DTR/RTS toggle buttons in the toolbar
+         In IDE mode: VSCode SPIN2 extension controls DTR/RTS via --rts flag
          `
     );
 
@@ -225,6 +235,17 @@ export class DebugTerminalInTypeScript {
     // Store IDE mode flag in context for UI adaptation
     if (options.ide) {
       this.context.runEnvironment.ideMode = true;
+    }
+
+    // Validate and store RTS override flag (only allowed with IDE mode)
+    if (options.rts) {
+      if (!options.ide) {
+        this.context.logger.errorMsg('--rts option requires --ide mode');
+        this.shouldAbort = true;
+      } else {
+        this.context.runEnvironment.rtsOverride = true;
+        this.context.logger.verboseMsg('RTS override enabled for IDE mode');
+      }
     }
 
     if (!options.quiet) {

@@ -1,0 +1,240 @@
+[
+  {
+    "sessionId": "2025-08-10T03-12-23-811Z-breakpoint-hit-1754795543811",
+    "filename": "2025-08-10T03-12-23-811Z-breakpoint-hit-1754795543811.jsonl",
+    "metadata": {
+      "sessionName": "breakpoint-hit-1754795543811",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1754795543811,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 106,
+      "messageCount": 0,
+      "fileSize": 201
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-23-806Z-breakpoint-hit-1754795543805",
+    "filename": "2025-08-10T03-12-23-806Z-breakpoint-hit-1754795543805.jsonl",
+    "metadata": {
+      "sessionName": "breakpoint-hit-1754795543805",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1754795543805,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 4,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-23-801Z-breakpoint-hit-1754795543801",
+    "filename": "2025-08-10T03-12-23-801Z-breakpoint-hit-1754795543801.jsonl",
+    "metadata": {
+      "sessionName": "breakpoint-hit-1754795543801",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1754795543801,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 3,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-23-794Z-memory-inspection-1754795543794",
+    "filename": "2025-08-10T03-12-23-794Z-memory-inspection-1754795543794.jsonl",
+    "metadata": {
+      "sessionName": "memory-inspection-1754795543794",
+      "description": "Records memory read/write operations",
+      "timestamp": 1754795543794,
+      "testScenario": "memory-inspection",
+      "tags": [
+        "window",
+        "automatic"
+      ],
+      "duration": 5,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-23-786Z-multi-cog-1754795543786",
+    "filename": "2025-08-10T03-12-23-786Z-multi-cog-1754795543786.jsonl",
+    "metadata": {
+      "sessionName": "multi-cog-1754795543786",
+      "description": "Records multi-COG debugging operations",
+      "timestamp": 1754795543786,
+      "testScenario": "multi-cog",
+      "tags": [
+        "multi-cog",
+        "automatic"
+      ],
+      "duration": 6,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-23-285Z-high-frequency-sampled-1754795543284",
+    "filename": "2025-08-10T03-12-23-285Z-high-frequency-sampled-1754795543284.jsonl",
+    "metadata": {
+      "sessionName": "high-frequency-sampled-1754795543284",
+      "description": "Records high-speed data streams with sampling (sampled)",
+      "timestamp": 1754795543284,
+      "testScenario": "high-frequency",
+      "tags": [
+        "high-speed",
+        "automatic-sampled",
+        "sampled"
+      ],
+      "duration": 495,
+      "messageCount": 0,
+      "fileSize": 250
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-22-266Z-breakpoint-hit-1754795542266",
+    "filename": "2025-08-10T03-12-22-266Z-breakpoint-hit-1754795542266.jsonl",
+    "metadata": {
+      "sessionName": "breakpoint-hit-1754795542266",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1754795542266,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 5,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-22-158Z-error-recovery-1754795542158",
+    "filename": "2025-08-10T03-12-22-158Z-error-recovery-1754795542158.jsonl",
+    "metadata": {
+      "sessionName": "error-recovery-1754795542158",
+      "description": "Records error conditions and recovery",
+      "timestamp": 1754795542158,
+      "testScenario": "error-recovery",
+      "tags": [
+        "error",
+        "automatic"
+      ],
+      "duration": 106,
+      "messageCount": 0,
+      "fileSize": 201
+    }
+  },
+  {
+    "sessionId": "2025-08-10T03-12-22-013Z-breakpoint-hit-1754795542013",
+    "filename": "2025-08-10T03-12-22-013Z-breakpoint-hit-1754795542013.jsonl",
+    "metadata": {
+      "sessionName": "breakpoint-hit-1754795542013",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1754795542013,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 142,
+      "messageCount": 0,
+      "fileSize": 201
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-638Z-test-binary-playback",
+    "filename": "2025-08-10T01-16-04-638Z-test-binary-playback.jsonl",
+    "metadata": {
+      "sessionName": "test-binary-playback",
+      "timestamp": 1754788564638,
+      "duration": 0,
+      "messageCount": 1,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-634Z-test-playback",
+    "filename": "2025-08-10T01-16-04-634Z-test-playback.jsonl",
+    "metadata": {
+      "sessionName": "test-playback",
+      "timestamp": 1754788564634,
+      "duration": 0,
+      "messageCount": 2,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-615Z-test-buffer",
+    "filename": "2025-08-10T01-16-04-615Z-test-buffer.jsonl",
+    "metadata": {
+      "sessionName": "test-buffer",
+      "timestamp": 1754788564615,
+      "duration": 15,
+      "messageCount": 1001,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-454Z-test-record",
+    "filename": "2025-08-10T01-16-04-454Z-test-record.jsonl",
+    "metadata": {
+      "sessionName": "test-record",
+      "timestamp": 1754788564454,
+      "duration": 156,
+      "messageCount": 1,
+      "fileSize": 196
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-452Z-test1",
+    "filename": "2025-08-10T01-16-04-452Z-test1.jsonl",
+    "metadata": {
+      "sessionName": "test1",
+      "timestamp": 1754788564452,
+      "duration": 1,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-04-450Z-test-session",
+    "filename": "2025-08-10T01-16-04-450Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1754788564450,
+      "duration": 0,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-10T01-16-02-334Z-test-all-windows",
+    "filename": "2025-08-10T01-16-02-334Z-test-all-windows.jsonl",
+    "metadata": {
+      "sessionName": "test-all-windows",
+      "description": "Test recording all window types",
+      "timestamp": 1754788562334,
+      "windowTypes": [
+        "terminal",
+        "scope",
+        "logic"
+      ],
+      "duration": 0,
+      "messageCount": 2,
+      "fileSize": 0
+    }
+  }
+]

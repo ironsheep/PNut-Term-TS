@@ -21,7 +21,7 @@ import { DebugLogicWindow } from './debugLogicWin';
 import { DebugBitmapWindow } from './debugBitmapWin';
 import { DebugMidiWindow } from './debugMidiWin';
 import { WindowRouter } from './shared/windowRouter';
-// import { Downloader } from '../utils/downloader'; // TODO: Implement downloader
+import { Downloader } from './downloader';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -40,7 +40,6 @@ export interface TerminalColor {
 const DEFAULT_SERIAL_BAUD = 2000000;
 export class MainWindow {
   private context: Context;
-  private isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _deviceNode: string = '';
   private _serialPort: UsbSerial | undefined = undefined;
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
@@ -52,8 +51,9 @@ export class MainWindow {
   private logFileSpec: string = '';
   private windowRouter: WindowRouter = WindowRouter.getInstance();
   private dtrState: boolean = false;
+  private rtsState: boolean = false;
   private activeCogs: Set<number> = new Set();
-  // private downloader: Downloader | undefined; // TODO: Implement downloader
+  private downloader: Downloader | undefined;
   private echoOffEnabled: boolean = false;
   private recentTransmitBuffer: string[] = [];
   private transmitTimestamp: number = 0;
@@ -78,7 +78,7 @@ export class MainWindow {
   constructor(ctx: Context) {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
-    if (this.isLogging) {
+    if (this.context.runEnvironment.loggingEnabled) {
       this.logMessage('MainWindow started.');
     }
     const currFileTime: string = getFormattedDateTime();
@@ -179,11 +179,11 @@ export class MainWindow {
       this._serialPort.on('data', (data) => this.handleSerialRx(data));
       this.updateConnectionStatus(true);
       
-      // Initialize downloader if not already done
-      // TODO: Implement downloader
-      // if (!this.downloader) {
-      //   this.downloader = new Downloader(this.context, this._serialPort);
-      // }
+      // Initialize downloader with serial port
+      if (!this.downloader && this._serialPort) {
+        this.downloader = new Downloader(this.context, this._serialPort);
+        this.logMessage(`* openSerialPort() - Downloader initialized`);
+      }
     }
   }
 
@@ -245,7 +245,7 @@ export class MainWindow {
           if (data.startsWith('Cog')) {
             this.waitingForINIT = false;
           }
-          if (this.isLogging) {
+          if (this.context.runEnvironment.loggingEnabled) {
             this.logMessage(`* Received: ${data}`);
           }
         }
@@ -295,7 +295,7 @@ export class MainWindow {
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
             } else {
-              if (this.isLogging) {
+              if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
@@ -312,7 +312,7 @@ export class MainWindow {
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
             } else {
-              if (this.isLogging) {
+              if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
@@ -329,7 +329,7 @@ export class MainWindow {
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
             } else {
-              if (this.isLogging) {
+              if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
@@ -346,7 +346,7 @@ export class MainWindow {
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
             } else {
-              if (this.isLogging) {
+              if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
@@ -363,7 +363,7 @@ export class MainWindow {
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
             } else {
-              if (this.isLogging) {
+              if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
             }
@@ -398,7 +398,7 @@ export class MainWindow {
         this.immediateLog = false; // change from immediate log to buffered log
       }
       if (!foundDisplay && this.mainWindow != null) {
-        if (this.isLogging) {
+        if (this.context.runEnvironment.loggingEnabled) {
           this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
       }
@@ -492,8 +492,100 @@ export class MainWindow {
     const logContentBGColor: string = this.termColors.rcvBGColor;
     const logContentFGColor: string = this.termColors.rcvFGColor;
 
+    // Check if we're in IDE mode
+    const isIdeMode = this.context.runEnvironment.ideMode;
+
     // and load the main window .html of the app
-    const htmlContent = `
+    const htmlContent = isIdeMode ? this.createIDEModeHTML() : this.createStandardHTML();
+
+    this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+    // Only set up menu in standard mode
+    if (!isIdeMode) {
+      this.setupApplicationMenu();
+    } else {
+      // Remove menu bar completely in IDE mode
+      this.mainWindow.setMenuBarVisibility(false);
+      Menu.setApplicationMenu(null);
+    }
+
+    this.setupWindowHandlers();
+  }
+
+  private createIDEModeHTML(): string {
+    const logContentBGColor: string = this.termColors.rcvBGColor;
+    const logContentFGColor: string = this.termColors.rcvFGColor;
+    
+    // Minimal UI for IDE mode - just log content
+    return `
+  <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>PNut Term TS - IDE Mode</title>
+      <style>
+        @font-face {
+          font-family: 'Parallax';
+          src: url('${this.getParallaxFontUrl()}') format('truetype');
+        }
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: Consolas, 'Courier New', monospace;
+          font-size: 12px;
+          overflow: hidden;
+        }
+        #log-content {
+          position: absolute;
+          top: 0;
+          bottom: 20px;
+          left: 0;
+          right: 0;
+          overflow-y: auto;
+          padding: 5px;
+          background-color: ${logContentBGColor};
+          color: ${logContentFGColor};
+          font-family: 'Parallax', Consolas, monospace;
+        }
+        #status-bar {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 20px;
+          background-color: #f0f0f0;
+          border-top: 1px solid #ccc;
+          display: flex;
+          align-items: center;
+          padding: 0 5px;
+          font-size: 11px;
+        }
+        .status-field {
+          margin-right: 15px;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="log-content"></div>
+      <div id="status-bar">
+        <div class="status-field">
+          <span id="connection-status">Disconnected</span>
+        </div>
+        <div class="status-field">
+          <span id="port-info"></span>
+        </div>
+      </div>
+    </body>
+  </html>`;
+  }
+
+  private createStandardHTML(): string {
+    const dataEntryBGColor: string = this.termColors.xmitBGColor;
+    const dataEntryFGColor: string = this.termColors.xmitFGColor;
+    const logContentBGColor: string = this.termColors.rcvBGColor;
+    const logContentFGColor: string = this.termColors.rcvFGColor;
+
+    // Standard mode with full UI
+    return `
   <html>
     <head>
       <meta charset="UTF-8">
@@ -627,6 +719,7 @@ export class MainWindow {
         </div>
         <div id="toolbar">
           <button id="dtr-toggle" class="toolbar-button">DTR: OFF</button>
+          <button id="rts-toggle" class="toolbar-button">RTS: OFF</button>
           <button id="download-ram" class="toolbar-button">RAM</button>
           <button id="download-flash" class="toolbar-button">FLASH</button>
           <div class="toolbar-separator"></div>
@@ -676,16 +769,15 @@ and Electron <span id="electron-version"></span>.</P>
         </div>
       </div>
     </body>
-  </html>
-`;
+  </html>`;
+  }
 
-    this.mainWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
-
+  private setupWindowHandlers(): void {
     // Inject JavaScript into the renderer process
     this.getRuntimeVersions();
     
-    // Set up IPC handlers for toolbar events
-    this.mainWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+    // Set up IPC handlers for toolbar events (both IDE and standard modes)
+    this.mainWindow!.webContents.on('ipc-message', (event, channel, ...args) => {
       switch (channel) {
         case 'toggle-echo':
           this.echoOffEnabled = args[0];
@@ -697,6 +789,9 @@ and Electron <span id="electron-version"></span>.</P>
           break;
         case 'toggle-dtr':
           this.toggleDTR();
+          break;
+        case 'toggle-rts':
+          this.toggleRTS();
           break;
         case 'download-ram':
           this.downloadToRAM();
@@ -718,11 +813,16 @@ and Electron <span id="electron-version"></span>.</P>
     });
     
     // Set up toolbar button event handlers
-    this.mainWindow.webContents.once('dom-ready', () => {
+    this.mainWindow!.webContents.once('dom-ready', () => {
       this.mainWindow!.webContents.executeJavaScript(`
         // DTR Toggle
         document.getElementById('dtr-toggle').addEventListener('click', () => {
           window.electronAPI.send('toggle-dtr');
+        });
+        
+        // RTS Toggle
+        document.getElementById('rts-toggle').addEventListener('click', () => {
+          window.electronAPI.send('toggle-rts');
         });
         
         // Download buttons
@@ -748,7 +848,9 @@ and Electron <span id="electron-version"></span>.</P>
         });
       `);
     });
+  }
 
+  private createApplicationMenu(): void {
     const menuTemplate: (Electron.MenuItemConstructorOptions | MenuItem)[] = [
       {
         label: 'PNut Term TS', // Explicitly set the application name here
@@ -839,6 +941,11 @@ and Electron <span id="electron-version"></span>.</P>
             accelerator: 'CmdOrCtrl+D',
             click: () => this.toggleDTR()
           },
+          {
+            label: 'Toggle RTS',
+            accelerator: 'CmdOrCtrl+R',
+            click: () => this.toggleRTS()
+          },
           { type: 'separator' },
           {
             label: 'Start Recording',
@@ -917,11 +1024,17 @@ and Electron <span id="electron-version"></span>.</P>
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
+  }
 
+  private setupApplicationMenu(): void {
+    // This method is called from createAppWindow() and sets up the full menu
+    // The actual menu template is defined above this line
+    this.createApplicationMenu();
+    
     this.updateStatus(); // set initial values
 
     // every second write a new log entry (DUMMY for TESTING)
-    this.mainWindow.webContents.on('did-finish-load', () => {
+    this.mainWindow!.webContents.on('did-finish-load', () => {
       // if logging post filename to status bar
       this.logMessage('* [did-finish-load]');
       let logDisplayName: string = this.context.runEnvironment.logFilename;
@@ -958,14 +1071,14 @@ and Electron <span id="electron-version"></span>.</P>
       }
     });
 
-    this.mainWindow.on('close', () => {
+    this.mainWindow!.on('close', () => {
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...[close]');
       }
       this.closeAllDebugWindows(); // close all child windows, too
     });
 
-    this.mainWindow.on('closed', () => {
+    this.mainWindow!.on('closed', () => {
       this.logMessage('* Main window [closed]');
       this.mainWindow = null;
       this.mainWindowOpen = false;
@@ -1347,20 +1460,45 @@ and Electron <span id="electron-version"></span>.</P>
   // ----------------------------------------------------------------------
 
   private logMessage(message: string): void {
-    if (this.isLogging) {
+    if (this.context.runEnvironment.loggingEnabled) {
       //Write to output window.
       this.context.logger.logMessage('Tmnl: ' + message);
     }
   }
 
   // UI Control Methods
-  private toggleDTR(): void {
+  private async toggleDTR(): Promise<void> {
     this.dtrState = !this.dtrState;
     if (this._serialPort) {
-      // this._serialPort.set({ dtr: this.dtrState }); // TODO: Implement DTR control
+      try {
+        await this._serialPort.setDTR(this.dtrState);
+        this.logMessage(`DTR hardware set to ${this.dtrState ? 'ON' : 'OFF'}`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logMessage(`ERROR: Failed to set DTR: ${errorMsg}`);
+        // Revert state on error
+        this.dtrState = !this.dtrState;
+      }
     }
     this.updateToolbarButton('dtr-toggle', `DTR: ${this.dtrState ? 'ON' : 'OFF'}`);
     this.logMessage(`DTR toggled to ${this.dtrState ? 'ON' : 'OFF'}`);
+  }
+
+  private async toggleRTS(): Promise<void> {
+    this.rtsState = !this.rtsState;
+    if (this._serialPort) {
+      try {
+        await this._serialPort.setRTS(this.rtsState);
+        this.logMessage(`RTS hardware set to ${this.rtsState ? 'ON' : 'OFF'}`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logMessage(`ERROR: Failed to set RTS: ${errorMsg}`);
+        // Revert state on error
+        this.rtsState = !this.rtsState;
+      }
+    }
+    this.updateToolbarButton('rts-toggle', `RTS: ${this.rtsState ? 'ON' : 'OFF'}`);
+    this.logMessage(`RTS toggled to ${this.rtsState ? 'ON' : 'OFF'}`);
   }
 
   private async downloadToRAM(): Promise<void> {
@@ -1372,10 +1510,31 @@ and Electron <span id="electron-version"></span>.</P>
     
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
-      if (this._serialPort) {
-        // TODO: Implement downloader
-        // await this.downloader.downloadToRAM(filePath);
-        this.logMessage(`Downloaded ${path.basename(filePath)} to RAM`);
+      if (this._serialPort && this.downloader) {
+        try {
+          this.logMessage(`Downloading ${path.basename(filePath)} to RAM...`);
+          this.updateRecordingStatus(`Downloading to RAM...`);
+          
+          // Download to RAM (toFlash = false)
+          await this.downloader.download(filePath, false);
+          
+          this.logMessage(`Successfully downloaded ${path.basename(filePath)} to RAM`);
+          this.updateRecordingStatus(`Download complete`);
+          
+          // Brief status display then clear
+          setTimeout(() => {
+            this.updateRecordingStatus('Ready');
+          }, 2000);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this.logMessage(`ERROR: Failed to download to RAM: ${errorMsg}`);
+          this.updateRecordingStatus(`Download failed`);
+          
+          dialog.showErrorBox('Download Failed', `Failed to download to RAM:\n${errorMsg}`);
+        }
+      } else {
+        this.logMessage(`ERROR: Serial port or downloader not initialized`);
+        dialog.showErrorBox('Not Connected', 'Please connect to a Propeller 2 device first.');
       }
     }
   }

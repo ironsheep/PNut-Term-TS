@@ -13,7 +13,6 @@ export class UsbSerial extends EventEmitter {
   static desiredCommsBaudRate: number = DEFAULT_DOWNLOAD_BAUD;
 
   private context: Context;
-  private isLogging: boolean = false;
   private endOfLineStr: string = '\r\n';
   private _deviceNode: string = '';
   private _serialPort: SerialPort;
@@ -23,6 +22,7 @@ export class UsbSerial extends EventEmitter {
   private _p2loadLimit: number = 0;
   private _latestError: string = '';
   private _dtrValue: boolean = false;
+  private _rtsValue: boolean = false;
   private _downloadChecksumGood = false;
   private _downloadResponse: string = '';
   private checkedForP2: boolean = false;
@@ -31,7 +31,7 @@ export class UsbSerial extends EventEmitter {
     super();
     this.context = ctx;
     this._deviceNode = deviceNode;
-    if (this.isLogging) {
+    if (this.context.runEnvironment.loggingEnabled) {
       this.logMessage('Spin/Spin2 USB.Serial log started.');
     }
     this.logMessage(`* Connecting to ${this._deviceNode}`);
@@ -281,7 +281,13 @@ export class UsbSerial extends EventEmitter {
     //const myBuffer: Buffer = Buffer.from(myString, "utf8");
     //const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
     //this.downloadNew(myUint8Array);
-    await this.toggleDTR();
+    
+    // Use RTS instead of DTR if IDE mode has RTS override
+    if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+      await this.toggleRTS();
+    } else {
+      await this.toggleDTR();
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -310,6 +316,22 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
+  public async setDTR(value: boolean): Promise<void> {
+    // Set the DTR line state
+    if (!this._serialPort || !this._serialPort.isOpen) {
+      throw new Error('Serial port is not open');
+    }
+    await this.setDtr(value);
+  }
+
+  public async setRTS(value: boolean): Promise<void> {
+    // Set the RTS line state
+    if (!this._serialPort || !this._serialPort.isOpen) {
+      throw new Error('Serial port is not open');
+    }
+    await this.setRts(value);
+  }
+
   private async toggleDTR(): Promise<void> {
     // toggle the propPlug DTR line
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
@@ -317,6 +339,15 @@ export class UsbSerial extends EventEmitter {
     await this.setDtr(true);
     await waitSec(1);
     await this.setDtr(false);
+  }
+
+  private async toggleRTS(): Promise<void> {
+    // toggle the propPlug RTS line
+    this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
+    await waitSec(1);
+    await this.setRts(true);
+    await waitSec(1);
+    await this.setRts(false);
   }
 
   private startReadListener() {
@@ -334,9 +365,17 @@ export class UsbSerial extends EventEmitter {
     const requestPropType: string = '> Prop_Chk 0 0 0 0';
     this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
-    await this.setDtr(true);
-    await waitSec(1);
-    await this.setDtr(false);
+    
+    // Use RTS instead of DTR if IDE mode has RTS override
+    if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+      await this.setRts(true);
+      await waitSec(1);
+      await this.setRts(false);
+    } else {
+      await this.setDtr(true);
+      await waitSec(1);
+      await this.setDtr(false);
+    }
     //this.logMessage(`  -- plug reset!`);
     // NO wait yields a 1.5 mSec delay on my mac Studio
     // NOTE: if nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
@@ -358,9 +397,17 @@ export class UsbSerial extends EventEmitter {
         await this.waitForPortOpen();
         // continue with ID effort...
         await waitMSec(250);
-        await this.setDtr(true);
-        await waitMSec(10);
-        await this.setDtr(false);
+        
+        // Use RTS instead of DTR if IDE mode has RTS override
+        if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+          await this.setRts(true);
+          await waitMSec(10);
+          await this.setRts(false);
+        } else {
+          await this.setDtr(true);
+          await waitMSec(10);
+          await this.setDtr(false);
+        }
         // Fm Silicon Doc:
         //   Unless preempted by a program in a SPI memory chip with a pull-up resistor on P60 (SPI_CK), the
         //     serial loader becomes active within 15ms of reset being released.
@@ -483,6 +530,21 @@ export class UsbSerial extends EventEmitter {
     });
   }
 
+  private async setRts(value: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this._serialPort.set({ rts: value }, (err) => {
+        if (err) {
+          this.logMessage(`RTS: ERROR:${err.name} - ${err.message}`);
+          reject(err);
+        } else {
+          this._rtsValue = value;
+          this.logMessage(`RTS: ${value}`);
+          resolve();
+        }
+      });
+    });
+  }
+
   private limitForVerLetter(idLetter: string): number {
     let desiredvalue: number = 0;
     if (idLetter === 'A') {
@@ -550,7 +612,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   public logMessage(message: string): void {
-    if (this.isLogging) {
+    if (this.context.runEnvironment.loggingEnabled) {
       //Write to output window.
       this.context.logger.logMessage(message);
     }
