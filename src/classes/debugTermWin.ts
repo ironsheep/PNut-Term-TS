@@ -125,8 +125,8 @@ export class DebugTermWindow extends DebugWindowBase {
   private selectedCombo: number = 0;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
 
-  constructor(ctx: Context, displaySpec: TermDisplaySpec) {
-    super(ctx);
+  constructor(ctx: Context, displaySpec: TermDisplaySpec, windowId: string = `terminal-${Date.now()}`) {
+    super(ctx, windowId, 'terminal');
     this.windowLogPrefix = 'trmW';
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
@@ -401,6 +401,8 @@ export class DebugTermWindow extends DebugWindowBase {
 
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       if (this.debugWindow) {
         // The following only works for linux/windows
         if (process.platform !== 'darwin') {

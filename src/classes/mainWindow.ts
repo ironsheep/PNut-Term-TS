@@ -20,6 +20,8 @@ import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
 import { DebugBitmapWindow } from './debugBitmapWin';
 import { DebugMidiWindow } from './debugMidiWin';
+import { WindowRouter } from './shared/windowRouter';
+// import { Downloader } from '../utils/downloader'; // TODO: Implement downloader
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -48,6 +50,13 @@ export class MainWindow {
   private loggingToFile: boolean = false;
   private waitingForINIT: boolean = true;
   private logFileSpec: string = '';
+  private windowRouter: WindowRouter = WindowRouter.getInstance();
+  private dtrState: boolean = false;
+  private activeCogs: Set<number> = new Set();
+  // private downloader: Downloader | undefined; // TODO: Implement downloader
+  private echoOffEnabled: boolean = false;
+  private recentTransmitBuffer: string[] = [];
+  private transmitTimestamp: number = 0;
   private mainWindowGeometry: WindowCoordinates = {
     xOffset: 0,
     yOffset: 0,
@@ -143,6 +152,12 @@ export class MainWindow {
   public sendSerialData(data: string): void {
     if (this._serialPort !== undefined) {
       this._serialPort.write(data);
+      
+      // Store transmitted characters for echo filtering
+      if (this.echoOffEnabled) {
+        this.recentTransmitBuffer = data.split('');
+        this.transmitTimestamp = Date.now();
+      }
     }
   }
   // ----------------------------------------------------------------------
@@ -162,6 +177,13 @@ export class MainWindow {
     if (this._serialPort !== undefined) {
       this.logMessage(`* openSerialPort() - IS OPEN`);
       this._serialPort.on('data', (data) => this.handleSerialRx(data));
+      this.updateConnectionStatus(true);
+      
+      // Initialize downloader if not already done
+      // TODO: Implement downloader
+      // if (!this.downloader) {
+      //   this.downloader = new Downloader(this.context, this._serialPort);
+      // }
     }
   }
 
@@ -170,8 +192,40 @@ export class MainWindow {
     let cleanedData = data.replace(/\0/g, ''); // remove any NULLs
     cleanedData = cleanedData.replace(/\x0a\x0d/g, '\x0a'); // replace any CRLFs with LFs
     cleanedData = cleanedData.replace(/\x0d/g, '\x0a'); // replace any CRs with LFs
-    this.rxQueue.push(cleanedData);
-    this.processRxQueue();
+    
+    // Echo Off filtering: Remove characters that match recently transmitted ones
+    if (this.echoOffEnabled && this.recentTransmitBuffer.length > 0) {
+      const timeSinceTransmit = Date.now() - this.transmitTimestamp;
+      // Only filter if within 100ms of transmission
+      if (timeSinceTransmit < 100) {
+        const chars = cleanedData.split('');
+        const filtered: string[] = [];
+        
+        for (const char of chars) {
+          // Check if this character matches one in our transmit buffer
+          const txIndex = this.recentTransmitBuffer.indexOf(char);
+          if (txIndex !== -1) {
+            // Remove from transmit buffer (consume the echo)
+            this.recentTransmitBuffer.splice(txIndex, 1);
+          } else {
+            // Not an echo, keep it
+            filtered.push(char);
+          }
+        }
+        
+        cleanedData = filtered.join('');
+        
+        // Clear transmit buffer if time window expired
+        if (this.recentTransmitBuffer.length > 0 && timeSinceTransmit >= 100) {
+          this.recentTransmitBuffer = [];
+        }
+      }
+    }
+    
+    if (cleanedData.length > 0) {
+      this.rxQueue.push(cleanedData);
+      this.processRxQueue();
+    }
   }
 
   private emptyRxQueue() {
@@ -473,7 +527,7 @@ export class MainWindow {
         }
         #log-content {
           position: absolute;
-          top: 18px; /* Height of #dataEntry -10? */
+          top: 50px; /* Height of #dataEntry + toolbar */
           bottom: 41px; /* Height of #status-bar -18? */
           left: 0;
           right: 0;
@@ -483,15 +537,61 @@ export class MainWindow {
           background-color: ${logContentBGColor};
           color: ${logContentFGColor};
         }
+        #toolbar {
+          position: fixed;
+          top: 18px;
+          left: 0;
+          right: 0;
+          height: 32px;
+          background-color: #f5f5f5;
+          border-bottom: 1px solid #ddd;
+          display: flex;
+          align-items: center;
+          padding: 0 10px;
+          z-index: 2;
+        }
+        .toolbar-button {
+          margin: 0 5px;
+          padding: 4px 8px;
+          background-color: #fff;
+          border: 1px solid #ccc;
+          border-radius: 3px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .toolbar-button:hover {
+          background-color: #e8e8e8;
+        }
+        .toolbar-button:active {
+          background-color: #d0d0d0;
+        }
+        .toolbar-button.active {
+          background-color: #4CAF50;
+          color: white;
+        }
+        .toolbar-separator {
+          width: 1px;
+          height: 20px;
+          background-color: #ccc;
+          margin: 0 10px;
+        }
         #status-bar {
           position: fixed;
           bottom: 0;
           display: flex;
-          justify-content: flex-end;
+          justify-content: space-between;
           background-color: #f0f0f0;
           padding: 10px;
           border-top: 1px solid #ccc;
           z-index: 1;
+        }
+        .status-left {
+          display: flex;
+          align-items: center;
+        }
+        .status-right {
+          display: flex;
+          align-items: center;
         }
         .status-field {
           margin-left: 20px;
@@ -525,6 +625,16 @@ export class MainWindow {
         <div id="kbd-entry">
           <input type="text" id="dataEntry" placeholder="Enter text here">
         </div>
+        <div id="toolbar">
+          <button id="dtr-toggle" class="toolbar-button">DTR: OFF</button>
+          <button id="download-ram" class="toolbar-button">RAM</button>
+          <button id="download-flash" class="toolbar-button">FLASH</button>
+          <div class="toolbar-separator"></div>
+          <button id="record-btn" class="toolbar-button">⏺ Record</button>
+          <button id="playback-btn" class="toolbar-button">▶ Play</button>
+          <div class="toolbar-separator"></div>
+          <span id="recording-status" style="color: #666; font-size: 12px;">Ready</span>
+        </div>
         <div id="log-content">
             <h1>Hello World!</h1>
 <P>We are using Node.js <span id="node-version"></span>,
@@ -534,18 +644,36 @@ and Electron <span id="electron-version"></span>.</P>
 </div>
       </div>
       <div id="status-bar">
-  <div id="logName" class="status-field">
-    <span class="status-label">Log Name:</span>
-    <span class="status-value"> </span>
-  </div>
-  <div id="propPlug" class="status-field">
-    <span class="status-label">Prop Plug:</span>
-    <span class="status-value"> </span>
-  </div>
-  <div id="otherField" class="status-field">
-    <span class="status-label">Nbr Lines:</span>
-    <span class="status-value"> </span>
-  </div>
+        <div class="status-left">
+          <div id="connection-status" class="status-field">
+            <span class="status-label">Connection:</span>
+            <span class="status-value" id="conn-status">Disconnected</span>
+          </div>
+          <div id="active-cogs" class="status-field">
+            <span class="status-label">Active COGs:</span>
+            <span class="status-value" id="cogs-status">None</span>
+          </div>
+          <div id="echo-control" class="status-field">
+            <label style="display: flex; align-items: center;" title="When checked, filters out echoed characters from receive display">
+              <input type="checkbox" id="echo-checkbox" style="margin-right: 5px;">
+              <span class="status-label">Echo Off</span>
+            </label>
+          </div>
+        </div>
+        <div class="status-right">
+          <div id="logName" class="status-field">
+            <span class="status-label">Log:</span>
+            <span class="status-value"> </span>
+          </div>
+          <div id="propPlug" class="status-field">
+            <span class="status-label">Port:</span>
+            <span class="status-value"> </span>
+          </div>
+          <div id="otherField" class="status-field">
+            <span class="status-label">Lines:</span>
+            <span class="status-value"> </span>
+          </div>
+        </div>
       </div>
     </body>
   </html>
@@ -555,6 +683,71 @@ and Electron <span id="electron-version"></span>.</P>
 
     // Inject JavaScript into the renderer process
     this.getRuntimeVersions();
+    
+    // Set up IPC handlers for toolbar events
+    this.mainWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+      switch (channel) {
+        case 'toggle-echo':
+          this.echoOffEnabled = args[0];
+          this.logMessage(`Echo Off ${this.echoOffEnabled ? 'enabled' : 'disabled'} - filtering echoed characters`);
+          if (!this.echoOffEnabled) {
+            // Clear buffer when turning off
+            this.recentTransmitBuffer = [];
+          }
+          break;
+        case 'toggle-dtr':
+          this.toggleDTR();
+          break;
+        case 'download-ram':
+          this.downloadToRAM();
+          break;
+        case 'download-flash':
+          this.downloadToFlash();
+          break;
+        case 'toggle-recording':
+          if (this.windowRouter.getRoutingStats().recordingActive) {
+            this.stopRecording();
+          } else {
+            this.startRecording();
+          }
+          break;
+        case 'play-recording':
+          this.playRecording();
+          break;
+      }
+    });
+    
+    // Set up toolbar button event handlers
+    this.mainWindow.webContents.once('dom-ready', () => {
+      this.mainWindow!.webContents.executeJavaScript(`
+        // DTR Toggle
+        document.getElementById('dtr-toggle').addEventListener('click', () => {
+          window.electronAPI.send('toggle-dtr');
+        });
+        
+        // Download buttons
+        document.getElementById('download-ram').addEventListener('click', () => {
+          window.electronAPI.send('download-ram');
+        });
+        document.getElementById('download-flash').addEventListener('click', () => {
+          window.electronAPI.send('download-flash');
+        });
+        
+        // Recording buttons
+        document.getElementById('record-btn').addEventListener('click', () => {
+          window.electronAPI.send('toggle-recording');
+        });
+        document.getElementById('playback-btn').addEventListener('click', () => {
+          window.electronAPI.send('play-recording');
+        });
+        
+        // Echo checkbox - send IPC message to main process
+        document.getElementById('echo-checkbox').addEventListener('change', (e) => {
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.send('toggle-echo', e.target.checked);
+        });
+      `);
+    });
 
     const menuTemplate: (Electron.MenuItemConstructorOptions | MenuItem)[] = [
       {
@@ -575,6 +768,7 @@ and Electron <span id="electron-version"></span>.</P>
           { type: 'separator' },
           {
             label: '&Quit',
+            accelerator: 'CmdOrCtrl+Q',
             click: () => {
               console.log('MENU: Application is quitting...');
               this.knownClosedBy = true;
@@ -617,10 +811,56 @@ and Electron <span id="electron-version"></span>.</P>
         ]
       },
       {
-        label: 'ProPlug',
+        label: 'Edit',
+        submenu: [
+          { label: 'Cut', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+          { label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+          { label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
+          { type: 'separator' },
+          { label: 'Select All', accelerator: 'CmdOrCtrl+A', role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'Debug',
         submenu: [
           {
-            label: 'Select...',
+            label: 'Download to RAM',
+            accelerator: 'CmdOrCtrl+R',
+            click: () => this.downloadToRAM()
+          },
+          {
+            label: 'Download to Flash',
+            accelerator: 'CmdOrCtrl+F',
+            click: () => this.downloadToFlash()
+          },
+          { type: 'separator' },
+          {
+            label: 'Toggle DTR',
+            accelerator: 'CmdOrCtrl+D',
+            click: () => this.toggleDTR()
+          },
+          { type: 'separator' },
+          {
+            label: 'Start Recording',
+            accelerator: 'CmdOrCtrl+Shift+R',
+            click: () => this.startRecording()
+          },
+          {
+            label: 'Stop Recording',
+            click: () => this.stopRecording()
+          },
+          {
+            label: 'Play Recording...',
+            accelerator: 'CmdOrCtrl+Shift+P',
+            click: () => this.playRecording()
+          }
+        ]
+      },
+      {
+        label: 'Tools',
+        submenu: [
+          {
+            label: 'Select Serial Port...',
             click: () => {
               const names = this.context.runEnvironment.serialPortDevices; // List of names
               dialog
@@ -641,6 +881,35 @@ and Electron <span id="electron-version"></span>.</P>
                   console.error('Failed to show plug select dialog:', error);
                 });
             }
+          },
+          {
+            label: 'Baud Rate...',
+            click: () => this.selectBaudRate()
+          }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { label: 'Minimize', accelerator: 'CmdOrCtrl+M', role: 'minimize' },
+          { label: 'Close', accelerator: 'CmdOrCtrl+W', role: 'close' },
+          { type: 'separator' },
+          { label: 'Bring All to Front', role: 'front' }
+        ]
+      },
+      {
+        label: 'Help',
+        submenu: [
+          {
+            label: 'Documentation',
+            click: () => {
+              electron.shell.openExternal('https://github.com/parallaxinc/PNut-Term-TS');
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'Debug Command Reference',
+            click: () => this.showDebugCommandReference()
           }
         ]
       }
@@ -1081,6 +1350,169 @@ and Electron <span id="electron-version"></span>.</P>
     if (this.isLogging) {
       //Write to output window.
       this.context.logger.logMessage('Tmnl: ' + message);
+    }
+  }
+
+  // UI Control Methods
+  private toggleDTR(): void {
+    this.dtrState = !this.dtrState;
+    if (this._serialPort) {
+      // this._serialPort.set({ dtr: this.dtrState }); // TODO: Implement DTR control
+    }
+    this.updateToolbarButton('dtr-toggle', `DTR: ${this.dtrState ? 'ON' : 'OFF'}`);
+    this.logMessage(`DTR toggled to ${this.dtrState ? 'ON' : 'OFF'}`);
+  }
+
+  private async downloadToRAM(): Promise<void> {
+    const result = await dialog.showOpenDialog(this.mainWindow!, {
+      title: 'Select Binary File to Download to RAM',
+      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin'] }],
+      properties: ['openFile']
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      if (this._serialPort) {
+        // TODO: Implement downloader
+        // await this.downloader.downloadToRAM(filePath);
+        this.logMessage(`Downloaded ${path.basename(filePath)} to RAM`);
+      }
+    }
+  }
+
+  private async downloadToFlash(): Promise<void> {
+    const result = await dialog.showOpenDialog(this.mainWindow!, {
+      title: 'Select Binary File to Download to Flash',
+      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin'] }],
+      properties: ['openFile']
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      if (this._serialPort) {
+        // TODO: Implement downloader
+        // await this.downloader.downloadToFlash(filePath);
+        this.logMessage(`Downloaded ${path.basename(filePath)} to Flash`);
+      }
+    }
+  }
+
+  private startRecording(): void {
+    const metadata = {
+      sessionName: `session-${getFormattedDateTime()}`,
+      description: 'Debug session recording',
+      startTime: Date.now(),
+      serialPort: this._deviceNode,
+      baudRate: this._serialBaud
+    };
+    
+    this.windowRouter.startRecording(metadata);
+    this.updateRecordingStatus('Recording...');
+    this.updateToolbarButton('record-btn', '⏹ Stop');
+  }
+
+  private stopRecording(): void {
+    this.windowRouter.stopRecording();
+    this.updateRecordingStatus('Ready');
+    this.updateToolbarButton('record-btn', '⏺ Record');
+  }
+
+  private async playRecording(): Promise<void> {
+    const result = await dialog.showOpenDialog(this.mainWindow!, {
+      title: 'Select Recording to Play',
+      filters: [{ name: 'Recording Files', extensions: ['jsonl'] }],
+      properties: ['openFile']
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      this.updateRecordingStatus('Playing...');
+      await this.windowRouter.playRecording(filePath, 1.0);
+      this.updateRecordingStatus('Ready');
+    }
+  }
+
+  private selectBaudRate(): void {
+    const baudRates = ['115200', '230400', '460800', '921600', '2000000'];
+    dialog.showMessageBox(this.mainWindow!, {
+      type: 'question',
+      buttons: baudRates,
+      title: 'Select Baud Rate',
+      message: 'Choose baud rate:'
+    }).then((response) => {
+      this._serialBaud = parseInt(baudRates[response.response]);
+      if (this._serialPort) {
+        UsbSerial.setCommBaudRate(this._serialBaud);
+      }
+      this.logMessage(`Baud rate set to ${this._serialBaud}`);
+    });
+  }
+
+  private showDebugCommandReference(): void {
+    dialog.showMessageBox(this.mainWindow!, {
+      type: 'info',
+      title: 'Debug Command Reference',
+      message: 'Debug Command Reference',
+      detail: 'DEBUG TERM - Open terminal window\nDEBUG SCOPE - Open scope window\nDEBUG LOGIC - Open logic analyzer\nDEBUG PLOT - Open plot window\nDEBUG BITMAP - Open bitmap display\nDEBUG MIDI - Open MIDI display\nDEBUG FFT - Open FFT analyzer',
+      buttons: ['OK']
+    });
+  }
+
+  private updateToolbarButton(id: string, text: string): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.executeJavaScript(`
+        const btn = document.getElementById('${id}');
+        if (btn) btn.textContent = '${text}';
+      `);
+    }
+  }
+
+  private updateRecordingStatus(status: string): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.executeJavaScript(`
+        const status = document.getElementById('recording-status');
+        if (status) status.textContent = '${status}';
+      `);
+    }
+  }
+
+  private updateConnectionStatus(connected: boolean): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.executeJavaScript(`
+        const status = document.getElementById('conn-status');
+        if (status) {
+          status.textContent = '${connected ? 'Connected' : 'Disconnected'}';
+          status.style.color = '${connected ? '#4CAF50' : '#666'}';
+        }
+      `);
+    }
+  }
+
+  private updateActiveCogs(cogs: Set<number>): void {
+    const cogList = Array.from(cogs).sort().join(', ') || 'None';
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.executeJavaScript(`
+        const status = document.getElementById('cogs-status');
+        if (status) status.textContent = '${cogList}';
+      `);
+    }
+  }
+
+  private toggleEchoOff(): void {
+    this.echoOffEnabled = !this.echoOffEnabled;
+    this.updateEchoCheckbox(this.echoOffEnabled);
+    this.logMessage(`Echo Off ${this.echoOffEnabled ? 'enabled' : 'disabled'} - filtering echoed characters`);
+    if (!this.echoOffEnabled) {
+      this.recentTransmitBuffer = [];
+    }
+  }
+
+  private updateEchoCheckbox(checked: boolean): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.executeJavaScript(`
+        const checkbox = document.getElementById('echo-checkbox');
+        if (checkbox) checkbox.checked = ${checked};
+      `);
     }
   }
 }

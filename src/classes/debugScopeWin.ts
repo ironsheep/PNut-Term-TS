@@ -187,8 +187,8 @@ export class DebugScopeWindow extends DebugWindowBase {
     // }
   }
 
-  constructor(ctx: Context, displaySpec: ScopeDisplaySpec) {
-    super(ctx);
+  constructor(ctx: Context, displaySpec: ScopeDisplaySpec, windowId: string = `scope-${Date.now()}`) {
+    super(ctx, windowId, 'scope');
     this.windowLogPrefix = 'scoW';
     // record our Debug Scope Window Spec
     this.displaySpec = displaySpec;
@@ -427,6 +427,8 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       if (this.debugWindow) {
         // The following only works for linux/windows
         if (process.platform !== 'darwin') {

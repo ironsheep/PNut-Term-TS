@@ -182,8 +182,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     magnitude: number;
   }> = [];
 
-  constructor(context: Context, displaySpec: FFTDisplaySpec) {
-    super(context);
+  constructor(context: Context, displaySpec: FFTDisplaySpec, windowId: string = `fft-${Date.now()}`) {
+    super(context, windowId, 'fft');
     this.windowLogPrefix = 'fftW';
     
     // Initialize FFT processor and window functions
@@ -1794,6 +1794,8 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     // Remove menu on Linux/Windows
     this.debugWindow.once('ready-to-show', () => {
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       if (this.debugWindow && process.platform !== 'darwin') {
         try {
           this.debugWindow.removeMenu();

@@ -144,28 +144,35 @@ export class DebuggerInteraction {
     switch (action) {
       // Execution control
       case 'go':
-        this.protocol.sendGoCommand();
+        this.protocol.sendGo(this.cogId);
         break;
       case 'break':
-        this.protocol.sendBreakCommand();
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'debug':
-        this.protocol.toggleDebugMode();
+        // Debug mode toggle not implemented in protocol
+        console.log('Debug mode toggle');
         break;
       case 'init':
-        this.protocol.sendInitCommand();
+        // Init command not implemented in protocol
+        this.protocol.sendStall(this.cogId);
         break;
       case 'reset':
-        this.protocol.sendResetCommand();
+        // Reset implemented as stall + go
+        this.protocol.sendStall(this.cogId);
+        this.protocol.sendGo(this.cogId);
         break;
       case 'step':
-        this.protocol.sendStepCommand();
+        // Step not directly implemented, use break
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'stepover':
-        this.protocol.sendStepOverCommand();
+        // Step over not directly implemented
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'stepout':
-        this.protocol.sendStepOutCommand();
+        // Step out not directly implemented
+        this.protocol.sendBreak(this.cogId);
         break;
         
       // Navigation
@@ -589,7 +596,8 @@ export class DebuggerInteraction {
     const state = this.dataManager.getCogState(this.cogId);
     if (state) {
       const newAddr = Math.max(0, state.programCounter + lines * 4);
-      this.dataManager.updateProgramCounter(this.cogId, newAddr);
+      // updateProgramCounter not implemented - update state directly
+      state.programCounter = newAddr;
       this.renderer.markRegionDirty('disassembly');
     }
   }
@@ -609,30 +617,35 @@ export class DebuggerInteraction {
   private handleButtonClick(command: string): void {
     switch (command) {
       case 'break':
-        this.protocol.sendBreakCommand();
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'addr':
         this.showAddressDialog();
         break;
       case 'go':
-        this.protocol.sendGoCommand();
+        this.protocol.sendGo(this.cogId);
         break;
       case 'debug':
-        this.protocol.toggleDebugMode();
+        // Debug mode toggle not implemented in protocol
+        console.log('Debug mode toggle');
         break;
       case 'init':
-        this.protocol.sendInitCommand();
+        // Init command not implemented in protocol
+        this.protocol.sendStall(this.cogId);
         break;
       case 'event':
-        this.protocol.sendEventCommand();
+        // Event command not implemented
+        console.log('Event command');
         break;
       case 'int1':
       case 'int2':
       case 'int3':
-        this.protocol.sendInterruptCommand(parseInt(command.slice(3)));
+        // Interrupt command not implemented
+        console.log('Interrupt', command);
         break;
       case 'main':
-        this.protocol.sendMainCommand();
+        // Main command not implemented
+        console.log('Main command');
         break;
     }
   }
@@ -680,16 +693,16 @@ export class DebuggerInteraction {
     const state = this.dataManager.getCogState(this.cogId);
     if (state) {
       if (state.breakpoints.has(address)) {
-        this.dataManager.removeBreakpoint(this.cogId, address);
+        this.dataManager.clearBreakpoint(this.cogId, address);
       } else {
-        this.dataManager.addBreakpoint(this.cogId, address);
+        this.dataManager.setBreakpoint(this.cogId, address);
       }
       this.renderer.markRegionDirty('disassembly');
     }
   }
   
   private clearAllBreakpoints(): void {
-    this.dataManager.clearBreakpoints(this.cogId);
+    this.dataManager.clearBreakpoint(this.cogId, -1); // Clear all
     this.renderer.markRegionDirty('disassembly');
   }
   

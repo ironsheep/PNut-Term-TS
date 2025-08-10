@@ -22,6 +22,7 @@ export interface RuntimeEnvironment {
   logFilename: string;
   developerModeEnabled: boolean;
   debugBaudrate: number;
+  ideMode: boolean;
 }
 export class Context {
   public libraryFolder: string;
@@ -37,7 +38,8 @@ export class Context {
       serialPortDevices: [],
       developerModeEnabled: false,
       logFilename: '',
-      debugBaudrate: 2000000
+      debugBaudrate: 2000000,
+      ideMode: false
     };
     this.actions = {
       writeRAM: false,

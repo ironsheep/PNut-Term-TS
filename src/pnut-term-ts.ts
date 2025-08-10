@@ -147,7 +147,8 @@ export class DebugTerminalInTypeScript {
       .option('-l, --log <basename>', 'Specify .log file basename')
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
-      .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)');
+      .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
+      .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration');
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -219,6 +220,11 @@ export class DebugTerminalInTypeScript {
       options.quiet = false;
     } else {
       options.verbose = false; // force better value for later debug display
+    }
+
+    // Store IDE mode flag in context for UI adaptation
+    if (options.ide) {
+      this.context.runEnvironment.ideMode = true;
     }
 
     if (!options.quiet) {

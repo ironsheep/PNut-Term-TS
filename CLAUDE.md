@@ -1,215 +1,95 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Essential guidance for Claude Code when working with this repository.
 
-## Plan & Review
+## 🎯 Todo-MCP Task Management
 
-### Before Starting Work
-- Always start in plan mode to create a comprehensive plan
-- Write the plan to `tasks/TASK_NAME.md` with detailed implementation steps and reasoning
-- Research any external dependencies or latest packages if needed (use Task tool)
-- Keep plans focused on MVP - don't over-engineer
-- Present the plan for review and wait for approval before proceeding
-- After approval, create a detailed todo list with paragraph-length descriptions that incorporate all feedback
+**CRITICAL v6.6 CONFUSION**: The "id" parameter actually wants POSITION, not task ID!
+- **Position**: 1, 2, 3... (changes when list reorders)
+- **Task ID**: «#22», «#49»... (permanent, shown for reference only)
+- **ALWAYS USE POSITION** for start/complete/update operations
+- **WARNING**: Create returns "#49" (no guillemets) but list shows "«#49»" - inconsistent!
 
-### Todo List Format
-- **Always write comprehensive paragraph descriptions** for each todo item
-- Include: specific steps, file references, context, and expected outcomes
-- Reference Pascal source files or documentation where relevant
-- Add time estimates and priority levels
-- Never use brief bullet points - be thorough and explicit
-
-### While Implementing
-- Update the plan document as work progresses
-- After completing each task, document what was changed in detail
-- Include enough information for another engineer to understand and continue the work
-- **Maintain compaction-ready state**: Always keep work in a committable state with clear documentation
-- **When user warns about compaction**: 
-  - Immediately save current state to a CURRENT_STATE_BEFORE_COMPACT.md file **in the tasks/ folder**
-  - Document: completed tasks, in-progress work, next steps, and key context
-  - Confirm when ready for compaction
-- **Best resume instructions**: Tell user to ask "show me the current todo list and read tasks/CURRENT_STATE_BEFORE_COMPACT.md" to restore context
-
-### Important File Organization
-- **ALWAYS place state files in the `tasks/` folder**, never in the root directory:
-  - Implementation plans: `tasks/[FEATURE]_IMPLEMENTATION.md`
-  - State files: `tasks/CURRENT_STATE_*.md`
-  - Final states: `tasks/FINAL_STATE_*.md`
-  - Progress tracking: `tasks/[FEATURE]_PROGRESS.md`
-- **Root directory should only contain**:
-  - Project configuration files (package.json, tsconfig.json, etc.)
-  - Standard documentation (README.md, CLAUDE.md, LICENSE, etc.)
-  - Build artifacts (dist/, coverage/, etc.)
-
-## Quick Reference - Pascal Source Location
-
-**IMPORTANT**: The Pascal reference source is located at `/pascal-source/` in the root filesystem, NOT in the workspace.
-
-**Key Pascal Files**:
-- `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` - Core debug display implementation
-- `/pascal-source/P2_PNut_Public/DebugUnit.pas` - Window management
-- `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` - Debugger functionality
-
-**Documentation PDFs**:
-- `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf` - Complete Spin2 reference
-- `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` - PC_KEY and PC_MOUSE specifications
-- `/pascal-source/P2_PNut_Public/debugStatements.pdf` - Debug display command reference
-
-## Project Overview
-
-PNut-Term-TS is a cross-platform debug terminal for Parallax Propeller2 microcontrollers, built as an Electron application with TypeScript. It recreates Chip's Debug listener with multiplatform support, combining PST (Propeller Serial Terminal) functionality with downloader capabilities and comprehensive debug display support.
-
-This is part of the P2 Multi-platform Development Environment:
-1. VSCode Spin2 Extension (editing P1/P2 code)
-2. PNut-TS compiler (multiplatform PNut compiler in TypeScript)
-3. PNut-Term-TS (this tool) - terminal replacement with download and debug support
-
-## Quick Command Reference
-
-### Essential Commands
-- `npm run build` - Full build pipeline
-- `npm test` - Run all tests (includes build)
-- `npm run test:coverage` - Generate coverage reports (sequential for reliability)
-- `npm run clean` - Clean build artifacts
-- `tsc --noEmit` - Quick type check
-- Main executable: `dist/pnut-term-ts.min.js`
-
-### Claude Helper Scripts
-Located in `scripts/claude/` directory:
-- `run-all-tests.sh` - Runs all test files individually with detailed pass/fail reporting
-- `test-runner.sh` - Runs a single test file (pass filename as argument)
-- `check_tests.sh` - Quick check of recently fixed test files
-
-**Important**: This project runs in a Docker container environment. Tests must be run sequentially (one at a time) to avoid resource conflicts and ensure reliable results. The Claude helper scripts were specifically created to handle this by iterating over test files one by one.
-
-### Jest/NPM Test Command Gotcha
-**IMPORTANT**: When running npm test with shell redirection, always use `--` to separate npm args:
 ```bash
-# WRONG - Jest will interpret "2" as part of test pattern
-npm test tests/file.test.ts 2>&1 | grep something
+# Starting work (single recovery command!)
+mcp__todo-mcp__context_resume                    # Shows tasks + saved context
 
-# CORRECT - Use -- to separate npm arguments
-npm test -- tests/file.test.ts 2>&1 | grep something
-```
-Without `--`, Jest treats everything after the filename as test name patterns to match.
+# Working efficiently  
+mcp__todo-mcp__todo_list                         # See positions (1,2,3...) and IDs («#n»)
+mcp__todo-mcp__todo_start id:1                   # USE POSITION not «#n»!
+mcp__todo-mcp__todo_complete id:1                # Position from list, not task ID
+mcp__todo-mcp__todo_update id:3 status:"in_progress"  # Position 3, not «#3»
 
-### Documentation References
-- **Development Guide**: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) - Commands, scenarios, troubleshooting
-- **Architecture**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, data flow, components
-- **Build System**: [`docs/BUILD-SYSTEM.md`](docs/BUILD-SYSTEM.md) - Build pipeline, configuration
-- **Test Status**: [`docs/TEST-STATUS.md`](docs/TEST-STATUS.md) - Current test suite status
-
-## High-Level Architecture
-
-The application uses a class-based architecture with Electron for cross-platform GUI:
-
-**Core Structure**:
-- Entry point: `src/pnut-term-ts.ts` (CLI interface)
-- Window management: `MainWindow` class with factory pattern
-- Debug windows: All extend `DebugWindowBase`
-- Hardware communication: `UsbSerial` and `Downloader` classes
-- Shared utilities in `src/classes/shared/`
-
-**Debug Display Implementation Status**:
-- ✅ Complete: Terminal, Logic, Scope, Scope XY, Plot, Bitmap, MIDI, FFT
-- ❌ Not implemented: Spectro, Debugger
-
-For detailed architecture information, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Pascal Source References
-
-The Pascal reference implementation and documentation are located at `/pascal-source/` (root filesystem):
-
-**Essential Documentation**:
-- `/pascal-source/P2_PNut_Public/P2 Spin2 Documentation v51-250425.pdf` - Complete Spin2 reference
-- `/pascal-source/P2_PNut_Public/MouseComamnds.pdf` - PC_KEY and PC_MOUSE specifications  
-- `/pascal-source/P2_PNut_Public/debugStatements.pdf` - Debug command reference
-
-**Test Files**: `/pascal-source/P2_PNut_Public/DEBUG-TESTING/` contains test programs and binaries
-
-## Debug Window Implementation Status
-
-**Key Pascal Source Files**:
-- `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` - Core debug display (~50k lines)
-- `/pascal-source/P2_PNut_Public/DebugUnit.pas` - Window management
-- `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` - Debugger functionality (~8.5k lines)
-
-**Implementation Progress** (9/10 debug windows complete - 90%):
-
-| Window | TypeScript Class | Status | Notes |
-|--------|------------------|--------|-------|
-| Main* | `MainWindow` | ⚠️ Partial | Custom app window, needs menu/toolbar |
-| Terminal | `DebugTermWindow` | ✅ Complete | ~70% test coverage, no ANSI |
-| Logic | `DebugLogicWindow` | ✅ Complete | Full trigger support |
-| Scope | `DebugScopeWindow` | ✅ Complete | Auto/manual triggers |
-| Scope XY | `DebugScopeXYWindow` | ✅ Complete | XY plotting with persistence |
-| Plot | `DebugPlotWindow` | ✅ Complete | Double buffering, layers, sprites |
-| Bitmap | `DebugBitmapWindow` | ✅ Complete | All trace patterns |
-| MIDI | `DebugMidiWindow` | ✅ Complete | Piano keyboard display |
-| FFT | `DebugFFTWindow` | ✅ Complete | Cooley-Tukey FFT, line/bar/dot modes, 82.6% test coverage |
-| Spectro | Not Implemented | ❌ Missing | Time-frequency display |
-| Debugger | Not Implemented | ❌ Missing | Breakpoint debugging |
-
-*Main Window is a custom creation for this app, not from Pascal source
-
-## Pascal Translation Notes
-
-For detailed Pascal translation guidance and implementation patterns, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-**Key Translation Resources**:
-- `src/classes/shared/debugStatements.ts` - TypeScript constants and interfaces
-- `src/classes/debugColor.ts` - Color system implementation
-- `src/classes/shared/packedDataProcessor.ts` - Packed data handling
-
-## Key Shared Components
-
-**Data Processing**:
-- `src/classes/shared/spin2NumericParser.ts` - All Spin2 numeric formats
-- `src/classes/shared/packedDataProcessor.ts` - 12 packed data modes with ALT/SIGNED modifiers
-- `src/classes/shared/debugInputConstants.ts` - PC_KEY/PC_MOUSE definitions
-- `src/classes/shared/tracePatternProcessor.ts` - Bitmap trace patterns
-
-**Rendering Support**:
-- `src/classes/shared/canvasRenderer.ts` - HTML5 Canvas operations
-- `src/classes/shared/layerManager.ts` - Bitmap layer management
-- `src/classes/shared/spriteManager.ts` - Sprite transformations
-
-## Input Support
-
-All debug windows support PC_KEY and PC_MOUSE commands for input forwarding to P2 devices:
-
-- **Base Integration**: `InputForwarder` class in `DebugWindowBase`
-- **Mouse Features**: Coordinate transformation, wheel debouncing, visual feedback
-- **Window-Specific**: Each window type implements custom coordinate systems
-- **Logic/Scope Windows**: Show coordinate tooltips and crosshairs (Pascal parity)
-
-## Technical Debt
-
-**See [`docs/TECHNICAL-DEBT.md`](docs/TECHNICAL-DEBT.md) for comprehensive technical debt tracking.**
-
-Quick commands to find inline debt markers:
-```bash
-grep -r "TECH-DEBT" src/
-grep -r "TODO" src/
-grep -r "FIXME" src/
+# Track my state (CRITICAL for compaction recovery!)
+mcp__todo-mcp__context_set "working_on" "debugFFT.ts:234 fixing transform"
+mcp__todo-mcp__context_set "blocked_by" "need Pascal source for window functions"
+mcp__todo-mcp__context_set "next_step" "implement Hanning after amplitude fix"
 ```
 
-**Key Requirements**:
+**My patterns**: Always set "working_on" when starting tasks, "blocked_by" when stuck, "next_step" before breaks
+**BEST PRACTICE**: When storing task references in context, ALWAYS use task IDs («#n») not positions - positions change but IDs are permanent!
+
+## 📋 Dual Task System Strategy
+
+**Todo-MCP** (Persistent): Project features, bugs, session-spanning work
+**TodoWrite** (Temporary): Quick implementation steps, test fixes within session
+
+```bash
+# Workflow: MCP for strategy, TodoWrite for tactics
+mcp__todo-mcp__todo_create content:"Implement Spectro window" estimate_minutes:120
+TodoWrite: ["Study Pascal source", "Create class structure", "Add tests"]
+
+# Promote discoveries to MCP
+mcp__todo-mcp__todo_create content:"[FOUND] Refactor InputForwarder" estimate_minutes:60
+```
+
+**Rule**: Start with MCP for main task → Break down with TodoWrite → Promote important findings
+
+## Critical Workflow
+
+### Plan & Review (REQUIRED)
+- Start in plan mode → Write plan to `tasks/TASK_NAME.md`
+- Present plan for approval → Wait for user confirmation
+- Create detailed todo list with paragraph descriptions
+- Update plan document as work progresses
+
+### File Organization (STRICT)
+**tasks/ folder ONLY**:
+- Implementation plans: `tasks/[FEATURE]_IMPLEMENTATION.md`
+- State files: `tasks/CURRENT_STATE_*.md`
+- Progress tracking: `tasks/[FEATURE]_PROGRESS.md`
+
+**NEVER create in root**: Only project configs, standard docs (README, LICENSE), and build artifacts belong in root.
+
+### Compaction Recovery
+When warned about compaction:
+1. Save state to `tasks/CURRENT_STATE_BEFORE_COMPACT.md`
+2. Document: completed work, in-progress, next steps
+3. Resume: "show me todo list and read tasks/CURRENT_STATE_BEFORE_COMPACT.md"
+
+## Project Context
+
+PNut-Term-TS: Cross-platform debug terminal for Parallax Propeller2, Electron/TypeScript app recreating Chip's Debug listener.
+
+**Quick Build**: `npm run build` → `npm test` → Main: `dist/pnut-term-ts.min.js`
+
+**Architecture**: Entry `src/pnut-term-ts.ts` → `MainWindow` → Debug windows extend `DebugWindowBase`
+
+## External References (Read Only When Needed)
+
+- [`docs/COMMANDS.md`](docs/COMMANDS.md) - All build/test commands, helper scripts
+- [`docs/IMPLEMENTATION-STATUS.md`](docs/IMPLEMENTATION-STATUS.md) - Window implementation progress
+- [`docs/PASCAL-REFERENCES.md`](docs/PASCAL-REFERENCES.md) - Pascal source locations
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, components
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) - Development scenarios
+- [`docs/BUILD-SYSTEM.md`](docs/BUILD-SYSTEM.md) - Build pipeline details
+- [`docs/TEST-STATUS.md`](docs/TEST-STATUS.md) - Test suite status
+- [`docs/TECHNICAL-DEBT.md`](docs/TECHNICAL-DEBT.md) - Tech debt tracking
+
+## Key Requirements
+
+- Run tests sequentially (Docker container environment)
+- Use `--` separator with npm test redirects: `npm test -- file.test.ts 2>&1`
 - Preserve unparsed debug strings for error logging
 - Include full command context in error messages
-- Fix brittle test mocks and InputForwarder crashes
-
-## Testing
-
-**Test Status**: See [`docs/TEST-STATUS.md`](docs/TEST-STATUS.md) for current test suite status and known issues.
-
-**Quick Commands**:
-```bash
-npm test                                    # Run all tests
-npm run test:sequential                     # All tests sequential (for resource management)
-npm run test:coverage                       # Coverage reports (sequential execution)
-npm test -- tests/specific.test.ts          # Run specific test
-npm test -- --testNamePattern="pattern"     # Run by pattern
-```
-
-For complete testing guidance including coverage options, see [`DOCs/DEVELOPMENT.md`](DOCs/DEVELOPMENT.md).
+- Update test files when adding new classes to `scripts/claude/`

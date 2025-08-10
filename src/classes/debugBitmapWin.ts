@@ -265,8 +265,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
     return [isValid, displaySpec];
   }
 
-  constructor(windowTitle: string, idString: string, context: Context) {
-    super(context);
+  constructor(windowTitle: string, idString: string, context: Context, windowId: string = `bitmap-${Date.now()}`) {
+    super(context, windowId, 'bitmap');
     
     // Save window properties
     this.windowTitle = windowTitle;
@@ -971,6 +971,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Bitmap window will show...');
       this.debugWindow?.show();
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
     });
     
     this.debugWindow.on('closed', () => {

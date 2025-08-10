@@ -110,7 +110,7 @@ import { DebugColor } from './shared/debugColor';
  */
 export class DebugMidiWindow extends DebugWindowBase {
   // Window properties
-  protected windowId: number = 0;
+  protected midiWindowId: number = 0; // Rename to avoid conflict with base class
   protected _windowTitle: string = 'MIDI';
   protected vWidth: number = 256;
   protected vHeight: number = 256;
@@ -138,14 +138,14 @@ export class DebugMidiWindow extends DebugWindowBase {
   private canvas: HTMLCanvasElement | null = null;
   private canvasCtx: CanvasRenderingContext2D | null = null;
 
-  constructor(ctx: Context) {
-    super(ctx);
+  constructor(ctx: Context, windowId: string = `midi-${Date.now()}`) {
+    super(ctx, windowId, 'midi');
     
     // Calculate initial key size using Pascal formula
     this.keySize = 8 + this.midiSize * 4; // MidiSizeBase=8, MidiSizeFactor=4
     
     // Window ID will be set by MainWindow
-    this.windowId = Date.now() % 1000000;
+    this.midiWindowId = Date.now() % 1000000;
   }
 
   // Getter for window title
@@ -165,13 +165,13 @@ export class DebugMidiWindow extends DebugWindowBase {
   createDebugWindow(): void {
     // Create window HTML structure
     const windowHtml = `
-      <div class="debug-window midi-window" id="debug-window-${this.windowId}">
+      <div class="debug-window midi-window" id="debug-window-${this.midiWindowId}">
         <div class="title-bar">
           <span class="title">${this._windowTitle}</span>
-          <button class="close-btn" onclick="window.debugWindows?.get(${this.windowId})?.closeDebugWindow()">×</button>
+          <button class="close-btn" onclick="window.debugWindows?.get(${this.midiWindowId})?.closeDebugWindow()">×</button>
         </div>
-        <div class="content" id="content-${this.windowId}">
-          <canvas id="midi-canvas-${this.windowId}"></canvas>
+        <div class="content" id="content-${this.midiWindowId}">
+          <canvas id="midi-canvas-${this.midiWindowId}"></canvas>
         </div>
       </div>
     `;
@@ -183,11 +183,14 @@ export class DebugMidiWindow extends DebugWindowBase {
     }
 
     // Get canvas reference
-    this.canvas = document.getElementById(`midi-canvas-${this.windowId}`) as HTMLCanvasElement;
+    this.canvas = document.getElementById(`midi-canvas-${this.midiWindowId}`) as HTMLCanvasElement;
     this.canvasCtx = this.canvas?.getContext('2d') || null;
 
     // Calculate keyboard layout
     this.updateKeyboardLayout();
+
+    // Register with WindowRouter when window is ready
+    this.registerWithRouter();
 
     // Enable input forwarding if requested
     if (this.pcKeyEnabled) {
@@ -223,7 +226,7 @@ export class DebugMidiWindow extends DebugWindowBase {
     }
 
     // Update window size
-    const window = document.getElementById(`debug-window-${this.windowId}`);
+    const window = document.getElementById(`debug-window-${this.midiWindowId}`);
     if (window) {
       window.style.width = `${layout.totalWidth}px`;
       window.style.height = `${layout.totalHeight + 30}px`; // Add title bar height
@@ -509,14 +512,14 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Get canvas ID for input forwarding
    */
   protected getCanvasId(): string {
-    return `midi-canvas-${this.windowId}`;
+    return `midi-canvas-${this.midiWindowId}`;
   }
   
   /**
    * Set window title
    */
   private setWindowTitle(title: string): void {
-    const titleElement = document.querySelector(`#debug-window-${this.windowId} .title`);
+    const titleElement = document.querySelector(`#debug-window-${this.midiWindowId} .title`);
     if (titleElement) {
       titleElement.textContent = title;
     }
@@ -526,7 +529,7 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Set window position
    */
   private setWindowPosition(x: number, y: number): void {
-    const windowElement = document.getElementById(`debug-window-${this.windowId}`);
+    const windowElement = document.getElementById(`debug-window-${this.midiWindowId}`);
     if (windowElement) {
       windowElement.style.left = `${x}px`;
       windowElement.style.top = `${y}px`;
@@ -537,7 +540,7 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Clean up resources when window is closed
    */
   closeDebugWindow(): void {
-    const windowElement = document.getElementById(`debug-window-${this.windowId}`);
+    const windowElement = document.getElementById(`debug-window-${this.midiWindowId}`);
     if (windowElement) {
       windowElement.remove();
     }

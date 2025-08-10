@@ -181,8 +181,8 @@ export class DebugLogicWindow extends DebugWindowBase {
   private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
 
-  constructor(ctx: Context, displaySpec: LogicDisplaySpec) {
-    super(ctx);
+  constructor(ctx: Context, displaySpec: LogicDisplaySpec, windowId: string = `logic-${Date.now()}`) {
+    super(ctx, windowId, 'logic');
     this.windowLogPrefix = 'lcgW';
     // record our Debug Logic Window Spec
     this.displaySpec = displaySpec;
@@ -594,6 +594,8 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       if (this.debugWindow) {
         // The following only works for linux/windows
         if (process.platform !== 'darwin') {

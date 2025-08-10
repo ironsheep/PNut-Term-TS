@@ -69,8 +69,8 @@ jest.mock('jimp', () => ({
 
 // Create a concrete implementation for testing
 class TestDebugWindow extends DebugWindowBase {
-  constructor(ctx: Context) {
-    super(ctx);
+  constructor(ctx: Context, windowId: string = 'test-window', windowType: string = 'test') {
+    super(ctx, windowId, windowType);
     this.windowLogPrefix = 'TestWin';
   }
 

@@ -9,6 +9,7 @@
   "postCreateCommand": "npm install && npm install -g @anthropic-ai/claude-code && echo 'Claude Code installed. Run: claude auth login' to authenticate",
   "mounts": [
     "source=/Users/stephen/.claude,target=/root/.claude,type=bind",
+    "source=/Users/stephen/container-tools,target=/opt/container-tools,type=bind",
     "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/tmp/.ssh,type=bind",
     "source=/Users/stephen/Projects/Projects-ExtGit/IronSheepProductionsLLC/Propeller2/PNut-TypeScript/PNut-TS Support/PNut-REF,target=/pascal-source,type=bind"
   ],

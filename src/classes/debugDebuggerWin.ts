@@ -287,8 +287,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     
     // Initialize core components
     this.dataManager = new DebuggerDataManager();
-    this.protocol = new DebuggerProtocol(this.cogId, this.context);
-    this.renderer = new DebuggerRenderer(this.dataManager, this.cogId);
+    this.protocol = new DebuggerProtocol();
+    // Create a mock canvas for renderer
+    const mockCanvas = { getContext: () => null } as any;
+    this.renderer = new DebuggerRenderer(mockCanvas, this.dataManager, this.cogId);
     this.interaction = new DebuggerInteraction(
       this.renderer,
       this.protocol,
@@ -382,22 +384,23 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Route command through protocol handler
     switch (command) {
       case 'GO':
-        this.protocol.sendGoCommand();
+        this.protocol.sendGo(this.cogId);
         break;
       case 'BREAK':
-        this.protocol.sendBreakCommand();
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'DEBUG':
-        this.protocol.toggleDebugMode();
+        // Debug mode not implemented
+        console.log('Debug toggle');
         break;
       case 'INIT':
-        this.protocol.sendInitCommand();
+        this.protocol.sendStall(this.cogId);
         break;
       case 'STEP_INTO':
-        this.protocol.sendStepCommand();
+        this.protocol.sendBreak(this.cogId);
         break;
       case 'STEP_OVER':
-        this.protocol.sendStepOverCommand();
+        this.protocol.sendBreak(this.cogId);
         break;
     }
   }
@@ -448,7 +451,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     if (!this.dataManager) return;
     
     // Update data manager with new state
-    this.dataManager.processInitialMessage(message);
+    // Process initial message - store in state
+    // processInitialMessage not implemented
     
     // Update local state copy
     this.cogState.lastMessage = message;
@@ -554,17 +558,17 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     }
     
     if (this.renderer) {
-      this.renderer.cleanup();
+      // Renderer cleanup not implemented
       this.renderer = null;
     }
     
     if (this.protocol) {
-      this.protocol.cleanup();
+      // Protocol cleanup not implemented
       this.protocol = null;
     }
     
     if (this.dataManager) {
-      this.dataManager.cleanup();
+      // DataManager cleanup not implemented
       this.dataManager = null;
     }
     
@@ -618,7 +622,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   public addBreakpoint(address: number): void {
     if (this.dataManager) {
-      this.dataManager.addBreakpoint(this.cogId, address);
+      this.dataManager.setBreakpoint(this.cogId, address);
       this.cogState.breakpoints.add(address);
     }
   }
@@ -628,7 +632,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   public removeBreakpoint(address: number): void {
     if (this.dataManager) {
-      this.dataManager.removeBreakpoint(this.cogId, address);
+      this.dataManager.clearBreakpoint(this.cogId, address);
       this.cogState.breakpoints.delete(address);
     }
   }

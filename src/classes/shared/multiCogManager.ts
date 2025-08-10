@@ -178,8 +178,8 @@ export class MultiCogManager {
       parent
     });
     
-    // Initialize window
-    await window.initialize();
+    // Initialize window - base class method
+    await (window as any).initialize();
     
     // Register with global state
     this.globalState.registerWindow(cogId, window);

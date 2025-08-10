@@ -187,8 +187,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private textAngle: number = 0; // degrees
   private colorMode: ColorMode = ColorMode.RGB24;
 
-  constructor(ctx: Context, displaySpec: PlotDisplaySpec) {
-    super(ctx);
+  constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
+    super(ctx, windowId, 'plot');
     this.windowLogPrefix = 'pltW';
     DebugColor.setDefaultBrightness(15); // set default brightness to max
     // record our Debug Plot Window Spec
@@ -400,6 +400,8 @@ export class DebugPlotWindow extends DebugWindowBase {
 
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       if (this.debugWindow) {
         // The following only works for linux/windows
         if (process.platform !== 'darwin') {

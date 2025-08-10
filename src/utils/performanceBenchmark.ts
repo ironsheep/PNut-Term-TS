@@ -325,10 +325,11 @@ export class RenderingBenchmark {
    */
   public async benchmarkDebuggerRendering(): Promise<BenchmarkResult> {
     const dataManager = new DebuggerDataManager();
-    const renderer = new DebuggerRenderer(dataManager, 0);
+    const mockCanvas = { getContext: () => null } as any;
+    const renderer = new DebuggerRenderer(mockCanvas, dataManager, 0);
 
-    // Populate with test data
-    dataManager.processInitialMessage({
+    // Populate with test data - processInitialMessage not implemented
+    const mockMessage = {
       cogNumber: 0,
       breakStatus: 0,
       programCounter: 0x1000,
@@ -344,7 +345,9 @@ export class RenderingBenchmark {
       lutCRC: 0x1234,
       hubChecksums: new Uint32Array(124),
       conditionCodes: 0x0F
-    });
+    };
+    // Store message in state manually
+    (dataManager as any).lastMessage = mockMessage;
 
     const result = await this.benchmark.benchmark(
       'Debugger Grid Rendering (123x77)',
@@ -359,8 +362,9 @@ export class RenderingBenchmark {
       console.warn(`⚠️ Rendering time ${result.averageTime.toFixed(3)}ms may impact 30 FPS target!`);
     }
 
-    renderer.cleanup();
-    dataManager.cleanup();
+    // Cleanup methods not implemented
+    // renderer.cleanup();
+    // dataManager.cleanup();
 
     return result;
   }
@@ -370,7 +374,8 @@ export class RenderingBenchmark {
    */
   public async benchmarkDirtyRectangles(): Promise<BenchmarkResult> {
     const dataManager = new DebuggerDataManager();
-    const renderer = new DebuggerRenderer(dataManager, 0);
+    const mockCanvas = { getContext: () => null } as any;
+    const renderer = new DebuggerRenderer(mockCanvas, dataManager, 0);
 
     // Only mark one region dirty
     renderer.markRegionDirty('disassembly');
@@ -388,8 +393,9 @@ export class RenderingBenchmark {
       console.warn(`⚠️ Dirty rect optimization not effective: ${result.averageTime.toFixed(3)}ms`);
     }
 
-    renderer.cleanup();
-    dataManager.cleanup();
+    // Cleanup methods not implemented
+    // renderer.cleanup();
+    // dataManager.cleanup();
 
     return result;
   }

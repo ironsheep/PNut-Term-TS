@@ -148,8 +148,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     0x808000  // clOlive
   ];
 
-  constructor(ctx: Context) {
-    super(ctx);
+  constructor(ctx: Context, windowId: string = `scopexy-${Date.now()}`) {
+    super(ctx, windowId, 'scopexy');
     this.windowLogPrefix = 'CL-scopeXy';
 
     // Initialize shared components
@@ -353,6 +353,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // Wait for window to be ready, then initialize
     this.debugWindow.webContents.on('did-finish-load', () => {
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
       // Initialize renderer after canvas is ready
       this.initializeRenderer();
       this.render();

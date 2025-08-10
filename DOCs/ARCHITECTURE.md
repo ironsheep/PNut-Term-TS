@@ -435,6 +435,7 @@ abstract updateContent(lineParts: string[]): void;
 - `DebugBitmapWindow` - Bitmap display with trace patterns
 - `DebugMidiWindow` - MIDI visualization with piano keyboard
 - `DebugFFTWindow` - FFT spectrum analyzer with line/bar/dot modes
+- `DebugDebuggerWindow` - Full P2 interactive debugger with multi-COG support
 
 #### 4. Hardware Communication Layer
 **USB Serial**: `src/utils/usb.serial.ts`
@@ -466,6 +467,65 @@ abstract updateContent(lineParts: string[]): void;
 **Input Handling**:
 - `InputForwarder` - Keyboard/mouse event forwarding
 - `debugInputConstants` - PC_KEY/PC_MOUSE definitions
+
+## Debugger Window Architecture
+
+### Overview
+The P2 Debugger Window provides comprehensive debugging capabilities for all 8 COGs (cores) of the Propeller 2 microcontroller. It implements a full interactive debugger with Pascal parity, matching the original PNut debugger exactly.
+
+### Key Components
+
+**Core Infrastructure**:
+- `DebuggerProtocol` - Manages bidirectional P2 serial communication
+- `DebuggerDataManager` - Caches COG/LUT/HUB memory with checksum-based change detection
+- `DebuggerRenderer` - Renders 123x77 character grid UI with all regions
+- `DebuggerInteraction` - Handles mouse/keyboard input with Pascal shortcuts
+- `Disassembler` - Decodes P2 instructions with SKIP pattern support
+
+**Multi-COG Support**:
+- `MultiCogManager` - Coordinates multiple debugger windows (up to 8)
+- `GlobalCogState` - Shared state for breakpoint coordination (RequestCOGBRK)
+- Window cascading with configurable positioning
+- Synchronized debugging operations across COGs
+
+**Advanced Features**:
+- `AdvancedDebuggerFeatures` - Heat maps, smart pins, HUB viewer
+- Heat map visualization with decay rate of 2 (Pascal HitDecayRate)
+- Smart pin monitoring for all 64 P2 I/O pins
+- HUB memory viewer with mini-map navigation
+- Call stack tracking (8 levels)
+- Event and interrupt monitoring
+
+### Dual Protocol Architecture
+
+The debugger uniquely supports two simultaneous protocols:
+
+1. **Binary Protocol** (Debugger-specific):
+   - 20-long initial messages from P2
+   - COG/LUT CRCs and HUB checksums
+   - Memory block requests/responses
+   - Routed by COG ID to specific windows
+
+2. **Text Protocol** (DEBUG commands):
+   - Standard DEBUG window commands
+   - Coexists with binary protocol
+   - WindowRouter handles discrimination
+
+### Memory Management
+
+**Efficient Caching Strategy**:
+- COG: 64 blocks of 16 longs each
+- LUT: 64 blocks of 16 longs each
+- HUB: 124 blocks of 4KB with 128-byte sub-blocks
+- Checksum-based change detection minimizes data transfer
+- Fresh state on window open (no persistence between sessions)
+
+### Performance Optimizations
+
+- **Dirty Rectangle Rendering**: Only redraws changed regions
+- **<1ms Routing**: WindowRouter ensures minimal latency
+- **Heat Map Decay**: Efficient memory access pattern visualization
+- **30+ FPS Updates**: Smooth scrolling and interaction
 
 ## Data Flow Architecture
 

@@ -5,6 +5,12 @@
  * and other browser APIs needed by our debug windows.
  */
 
+// Mock Electron APIs before any tests run
+jest.mock('electron', () => {
+  const { electronMock } = require('../mocks/electron.mock');
+  return electronMock;
+});
+
 // Add missing globals that our code expects
 global.requestAnimationFrame = (callback: FrameRequestCallback): number => {
   return setTimeout(() => callback(Date.now()), 0) as unknown as number;

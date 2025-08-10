@@ -15,6 +15,7 @@ import { localFSpecForFilename } from '../utils/files';
 import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
+import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRouter';
 
 // src/classes/debugWindowBase.ts
 
@@ -147,11 +148,20 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected inputForwarder: InputForwarder;
   protected wheelTimer: NodeJS.Timeout | null = null;
   protected lastWheelDelta: number = 0;
+  
+  // WindowRouter integration
+  protected windowRouter: WindowRouter;
+  protected windowId: string;
+  protected windowType: string;
+  private isRegisteredWithRouter: boolean = false;
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, windowId: string, windowType: string) {
     super();
     this.context = ctx;
     this.inputForwarder = new InputForwarder();
+    this.windowRouter = WindowRouter.getInstance();
+    this.windowId = windowId;
+    this.windowType = windowType;
   }
   // Abstract methods that must be overridden by derived classes
   //abstract createDebugWindow(): void;
@@ -184,6 +194,8 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Add OTHER event listeners as needed
     } else {
       this.logMessageBase(`- Closing ${this.constructor.name} window`);
+      // Unregister from WindowRouter
+      this.unregisterFromRouter();
       // Stop input forwarding
       this.inputForwarder.stopPolling();
       // Clear wheel timer
@@ -207,6 +219,82 @@ export abstract class DebugWindowBase extends EventEmitter {
   // Getter for debugWindow property
   protected get debugWindow(): BrowserWindow | null {
     return this._debugWindow;
+  }
+
+  // ----------------------------------------------------------------------
+  // WindowRouter integration methods
+  // ----------------------------------------------------------------------
+
+  /**
+   * Register this window with WindowRouter for message routing
+   * Should be called when the window is ready to receive messages
+   */
+  protected registerWithRouter(): void {
+    if (!this.isRegisteredWithRouter) {
+      try {
+        this.windowRouter.registerWindow(this.windowId, this.windowType, this.handleRouterMessage.bind(this));
+        this.isRegisteredWithRouter = true;
+        this.logMessageBase(`- Registered with WindowRouter: ${this.windowId} (${this.windowType})`);
+      } catch (error) {
+        this.logMessageBase(`- Failed to register with WindowRouter: ${error}`);
+      }
+    }
+  }
+
+  /**
+   * Unregister this window from WindowRouter
+   * Should be called when window is closing
+   */
+  protected unregisterFromRouter(): void {
+    if (this.isRegisteredWithRouter) {
+      this.windowRouter.unregisterWindow(this.windowId);
+      this.isRegisteredWithRouter = false;
+      this.logMessageBase(`- Unregistered from WindowRouter: ${this.windowId}`);
+    }
+  }
+
+  /**
+   * Handle messages from WindowRouter
+   * This method processes both SerialMessage objects and raw data
+   */
+  private handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
+    try {
+      if (typeof message === 'string') {
+        // Text message - parse and process
+        const lineParts = message.split(' ');
+        this.updateContent(lineParts);
+      } else if (message instanceof Uint8Array) {
+        // Binary data - convert to text for debug processing
+        // Most debug windows expect text commands, debugger window handles binary
+        const textMessage = new TextDecoder().decode(message);
+        const lineParts = textMessage.split(' ');
+        this.updateContent(lineParts);
+      } else if (typeof message === 'object' && message.type && message.data) {
+        // SerialMessage object
+        if (message.type === 'text' && typeof message.data === 'string') {
+          const lineParts = (message.data as string).split(' ');
+          this.updateContent(lineParts);
+        } else if (message.type === 'binary' && message.data instanceof Uint8Array) {
+          // Handle binary data (mainly for debugger window)
+          const textMessage = new TextDecoder().decode(message.data as Uint8Array);
+          const lineParts = textMessage.split(' ');
+          this.updateContent(lineParts);
+        }
+      }
+    } catch (error) {
+      this.logMessageBase(`- Error handling router message: ${error}`);
+    }
+  }
+
+  /**
+   * Get window information for WindowRouter
+   */
+  public getWindowInfo(): { windowId: string; windowType: string; isRegistered: boolean } {
+    return {
+      windowId: this.windowId,
+      windowType: this.windowType,
+      isRegistered: this.isRegisteredWithRouter
+    };
   }
 
   // ----------------------------------------------------------------------
