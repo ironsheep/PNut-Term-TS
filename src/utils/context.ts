@@ -27,7 +27,10 @@ export interface RuntimeEnvironment {
   loggingEnabled: boolean;
   loggingLevel: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
   logToFile: boolean;
+  consoleMode: boolean;
   logToConsole: boolean;
+  verbose: boolean;
+  quiet: boolean;
 }
 export class Context {
   public libraryFolder: string;
@@ -49,7 +52,10 @@ export class Context {
       loggingEnabled: false,  // Default to false for production
       loggingLevel: 'INFO',   // Default log level
       logToFile: false,
-      logToConsole: true
+      logToConsole: true,
+      verbose: false,
+      quiet: false,
+      consoleMode: false      // Default to no console delay
     };
     this.actions = {
       writeRAM: false,

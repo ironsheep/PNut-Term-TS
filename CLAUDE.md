@@ -1,290 +1,171 @@
 # CLAUDE.md
 
-Essential guidance for Claude Code when working with this repository.
+Essential guidance for Claude Code in PNut-Term-TS repository.
 
-## 🎯 Todo-MCP Task Management (v0.6.8)
-
-### Dual-Parameter Resolution (v0.6.8 - RESOLVED!)
-
-**Position vs ID confusion RESOLVED!** Dual-parameter resolution now supports both:
-- **Position**: Use `position_id:1` (changes when list reorders) 
-- **Task ID**: Use `task_id:"#22"` (permanent, immutable reference)
-- **Legacy**: Still supports `id:1` for backward compatibility (position-based)
-- **Priority**: If both provided, `task_id` takes precedence with validation
-- **Best Practice**: Use `position_id` for interactive work, `task_id` for automation
-
-### Working Efficiently with v0.6.8
-
+## 🚨 SESSION START - MANDATORY
 ```bash
-# Starting work (single recovery command!)
-mcp__todo-mcp__context_resume                    # Shows tasks + saved context
+mcp__todo-mcp__context_resume  # ALWAYS FIRST - Shows tasks/context/state
+```
+**NON-OPTIONAL**: Shows in-progress tasks, recent context (10min), current state. Without this = flying blind.
 
-# CRITICAL v0.6.8 Parameter Formats:
-# - Most functions use id:22 (number, no #) for legacy compatibility
-# - Tag functions accept BOTH task_id:"#49" OR position_id:1
-# - estimate_minutes MUST be number, not string
+## 🔄 Work Assessment
+- **Complex**: Multi-window debug, race conditions, architecture → deeper analysis
+- **Documentation**: User guides, API docs → consider model upgrade
+- **Standard**: Defined features, tests → normal execution
+- **Simple**: Typos, configs → quick mode
 
-# Task operations (most use id parameter as number)
-mcp__todo-mcp__todo_list                         # See positions (1,2,3...) and IDs (#n)
-mcp__todo-mcp__todo_start id:22                  # Start by task ID (number, no #)
-mcp__todo-mcp__todo_complete id:22               # Must start before complete!
-mcp__todo-mcp__todo_update id:22 status:"in_progress" estimate_minutes:90
+## 🎯 Todo MCP Mastery
 
-# Tag operations (dual-parameter support)
-mcp__todo-mcp__todo_tag_add task_id:"#49" tags:["urgent"]      # By permanent ID
-mcp__todo-mcp__todo_tag_add position_id:1 tags:["backend"]    # OR by position
+### Reference: `.todo-mcp/mastery/`
+Living docs - record patterns/friction/workarounds as discovered.
 
-# Track state for recovery
-mcp__todo-mcp__context_set key:"working_on" value:"debugFFT.ts:234 fixing transform"
-mcp__todo-mcp__context_set key:"blocked_by" value:"need Pascal source"
+### Core Concepts
+- **Position IDs ephemeral**: `position_id:1` = current list position
+- **Task IDs permanent**: `#42` = same task always
+- **TodoWrite = ONE MCP task**: Subtasks only, not project tracker
+- **Context = pointers**: Store "see /docs/x.md" not 5000 words
+- **Value size kills**: 10 huge values crash, 100 tiny fine
+
+### Workflows
+
+**Start:**
+```bash
+mcp__todo-mcp__todo_list
+mcp__todo-mcp__todo_start position_id:1
+TodoWrite: ["Step 1", "Step 2"]  # Current task only
+mcp__todo-mcp__context_set key:"task_#N_steps" value:'[TodoWrite]'
 ```
 
-### Key Features
-
-**Tag Auto-Extraction**  
-- **Inline**: `"Fix the #bug"` → Content: "Fix the bug", Tags: [bug]
-- **Trailing**: `"Fix parser #urgent"` → Content: "Fix parser", Tags: [urgent]
-
-**Bulk Operations (Atomic)**
+**Safe test:**
 ```bash
-mcp__todo-mcp__todo_bulk operation:"set_priority" filters:{priority:"low"} data:{priority:"high"}
-mcp__todo-mcp__todo_bulk operation:"add_tags" filters:{status:"created"} data:{tags:["urgent"]}
+mcp__todo-mcp__project_dump include_context:false
+# Run dangerous tests
+mcp__todo-mcp__project_restore file:"dump.json" mode:"replace" include_context:false
 ```
 
-### Safe Data Management
-
+**Complete:**
 ```bash
-mcp__todo-mcp__todo_archive                      # Safe: exports then clears completed
-mcp__todo-mcp__project_dump include_context:true # Full backup with context
-mcp__todo-mcp__project_restore file:"dump.json" mode:"merge"  # Restore from backup
+mcp__todo-mcp__todo_complete position_id:1
+mcp__todo-mcp__context_get_all  # Review accumulated
+context_delete pattern:"task_#N_*"  # Clean stale
+TodoWrite: []  # Clear
 ```
 
-### Context Management
-
+**Crash recovery:**
 ```bash
-mcp__todo-mcp__context_delete pattern:"temp*"    # Pattern deletion
-mcp__todo-mcp__context_resume                    # Post-compaction recovery
+mcp__todo-mcp__context_resume
+mcp__todo-mcp__context_get_all  # If incomplete
 ```
 
-### Quick Actions
-- "I'm back" → `mcp__todo-mcp__context_resume`
-- "next task" → `mcp__todo-mcp__todo_next`
-- "archive completed" → `mcp__todo-mcp__todo_archive`
-
-### Critical v0.6.8 Gotchas
-
-**Parameter Formats (MUST be exact):**
-- `id:22` - Number without # (most functions)
-- `task_id:"#49"` - String with # (tag functions only)
-- `estimate_minutes:60` - Always number, never string
-- `priority:"high"` - Exact: critical/high/medium/low/backlog
-- `status:"in_progress"` - Exact: created/in_progress/paused/completed
-
-**Workflow Rules:**
-- MUST `todo_start` before `todo_complete` (enforced!)
-- Only ONE task in_progress at a time (auto-pauses others)
-- Bulk operations are atomic (all succeed or all fail)
-- Archive replaces clear_completed (safer with backup)
-
-## 🧹 Context Hygiene Strategy
-
-**LEARNED: Context serves TWO purposes - crash recovery AND cross-activity continuity**
-
-**Cross-Activity Continuity Pattern:**
-When planning scope covers multiple related activities (e.g., 34 tasks in one project):
-- Context naturally accumulates valuable patterns, decisions, learnings
-- Each activity benefits from previous activity's discoveries
-- Implementation patterns discovered early inform all subsequent work
-- Friction points accumulate across activities for tool improvement
-- This is INTENTIONAL continuity, not accidental accumulation
-
-**The Balance:**
-- Within project: Accumulate valuable cross-activity context
-- Between projects: Clean slate with only universal lessons
-- Within activity: Clean up temporary/status keys when done
-- Across activities: Preserve patterns, learnings, architectural decisions
-
-**Use Context For (HIGH VALUE):**
+### Parameters (Tested 2025-08-19)
 ```bash
-# Cross-session continuity  
-mcp__todo-mcp__context_set "implementation_order" "Tasks #22,#23,#24 sequence critical"
-mcp__todo-mcp__context_set "lesson_mcp_id_confusion" "Always use position not task ID"
-mcp__todo-mcp__context_set "workaround_autosort" "Store manual order in context"
-mcp__todo-mcp__context_set "recovery_electron_mocks" "Add to jest.setup.js for tests"
+estimate_minutes: 60      # NUMBER
+priority: "high"          # Any case
+status: "in_progress"     # Exact lowercase
+task_id: #42             # No quotes
 ```
 
-**Don't Use Context For (LOW VALUE):**
-- Current task status (`working_on` - MCP tasks handle this better)
-- Progress percentages (`15 of 30 complete` - duplicates MCP data)
-- Implementation details (belong in code comments/docs)
-- Temporary debugging state (clean up when resolved)
+### Async Input
+New request mid-work? Create MCP task: `todo_create content:"[request]" priority:"high"`
 
-**Context Cleanup Pattern:**
+### Critical Rules
+- **Must start before complete** - System enforced, will error otherwise
+- **One in_progress** - Only ONE task active at a time (automatic)
+- **Context bridge discipline** - ALWAYS save TodoWrite to context after changes (crash insurance)
+- **Archive > delete** - Use `todo_archive` for safe export with backup
+- **Atomic operations** - Bulk ops are all-or-nothing; if ANY ID invalid, ENTIRE operation rolls back
+- Pattern cleanup > individual
+- Full ref: `.todo-mcp/mastery/`
+
+## ⚠️ DTR/RTS Control Lines
+
+**Mutually exclusive** - device uses ONE:
+- Parallax Prop Plugs → **DTR**
+- FTDI USB → Usually **DTR**
+- Chinese clones → Often **RTS**
+
+Both trigger `onDTRReset()`/`onRTSReset()`, clear logs, create visual separation.
+Log which used: "[DTR RESET]" vs "[RTS RESET]"
+
+See `DOCs/project-specific/DTR-RTS-CONTROL-LINES.md`
+
+## ⚠️ Test Execution Container
+
+**NEVER `npm test` directly** - saturates container → lockup/termination
+
+**USE:**
 ```bash
-# IMMEDIATE: Clean up when task completes
-mcp__todo-mcp__context_delete "current_task"         # Delete RIGHT AFTER task complete
-mcp__todo-mcp__context_delete "task_#X_progress"     # Remove progress tracking
-mcp__todo-mcp__context_delete "working_on"           # Clear active work status
-
-# PERIODIC: Review context age (keys get stale!)
-mcp__todo-mcp__context_get_all                       # Check for old keys
-# Delete keys > 2 hours old unless prefixed lesson_, friction_, recovery_
-
-# AT MILESTONES: Bulk cleanup
-mcp__todo-mcp__context_delete "build_fixes_temp"     # Resolved issues
-mcp__todo-mcp__context_delete "debugger_progress"    # Completed work
+scripts/claude/run_tests_sequentially.sh
+# Audit first: ls tests/*.test.ts vs cat script
 ```
 
-**Age Guidelines (Learned from 67→24 key cleanup):**
-- Status keys > 2 hours: Likely stale, delete
-- Progress keys > 4 hours: Outdated, delete  
-- Task completion keys > 1 hour after complete: Delete
-- Implementation details > 1 day: Move to docs, then delete
-- Lesson/friction/recovery: Keep indefinitely
-- Session/handoff keys: Keep until next session starts
-- Build/fix keys: Delete once issue resolved
+Rules:
+- No `npm test` without args (parallel)
+- Use sequential script for full runs
+- Individual OK: `npm test -- specific.test.ts`
+- Keep script updated
 
-**What I Learned About Aging:**
-- Without cleanup, I accumulated 58 keys over 8 hours
-- 43 of 67 keys (64%) were deletable old status/progress
-- Most keys become stale within 2-4 hours
-- Good hygiene should maintain <20 keys normally
-- Prefix naming (temp_, current_) makes bulk cleanup easier
+## ⚠️ Shell Redirection NPM
 
-**Context Key Naming:**
-- `lesson_`: Permanent learning (keep forever)
-- `workaround_`: Tool/process fixes (keep until tool fixed)
-- `recovery_`: Crash/problem solutions (keep for future)
-- `friction_`: Tool problems (keep for improvement reports)
-- `temp_`, `current_`, `active_`: Temporary (delete when done)
-- `session_`, `handoff_`: Cross-session continuity (delete after use)
-- Unprefixed status keys: Clean up aggressively (2-4 hour lifetime)
+NPM passes `2>&1` as literal args!
 
-**Ideal context_resume Behavior (v6.8+):**
+**WRONG:**
 ```bash
-# If <10 keys: Show all with preview
-# If 10-25 keys: Show categorized summary
-# If >25 keys: Show cleanup warnings
-
-# Always show aging hints:
-⚠️ "current_task" (7h old) - Task #31 completed, consider deletion
-✅ 3 lesson_* keys - Permanent learning, keep
-🤔 "implementation_status" (3h old) - Review for relevance
+npm test file.test.ts 2>&1  # "2" becomes filename
 ```
 
-## 📋 Dual Task System Strategy
-
-**Todo-MCP** (Persistent): Project features, bugs, session-spanning work
-**TodoWrite** (Temporary): Quick implementation steps, test fixes within session
-
+**CORRECT:**
 ```bash
-# Workflow: MCP for strategy, TodoWrite for tactics
-mcp__todo-mcp__todo_create content:"Implement Spectro window" estimate_minutes:120
-TodoWrite: ["Study Pascal source", "Create class structure", "Add tests"]
-
-# Promote discoveries to MCP
-mcp__todo-mcp__todo_create content:"[FOUND] Refactor InputForwarder" estimate_minutes:60
+npm test -- file.test.ts 2>&1  # -- stops parsing
+npx jest file.test.ts 2>&1     # Direct execution
+npm test -s                     # Silent mode
 ```
 
-**Rule**: Start with MCP for main task → Break down with TodoWrite → Promote important findings
+## Build/Package
 
-## 🎓 Advanced Dual System Patterns
+- **USE**: `./scripts/create-electron-ready-package.sh` (macOS)
+- **DON'T**: `npm run packageMac` (broken - missing dmg-license)
+- See `PACKAGING.md`
 
-**TodoWrite → MCP Promotion Pattern:**
-```bash
-# 1. Explore in TodoWrite (disposable, fast)
-TodoWrite: ["Research echo behavior", "Test with PST", "Document findings"]
+## Workflow
 
-# 2. Promote discoveries to permanent MCP tasks  
-mcp__todo-mcp__todo_create content:"[CRITICAL] Echo is NOT local echo - it's filtering received chars that match recently sent ones" estimate_minutes:30
+### Planning
+- Plan → `tasks/TASK_NAME.md`
+- Present → Wait approval
+- Todo list with descriptions
+- Update as progressing
 
-# 3. Clean TodoWrite when MCP task created
-TodoWrite: []  # Good hygiene
-```
+### Files
+**tasks/ ONLY:**
+- `[FEATURE]_IMPLEMENTATION.md`
+- `CURRENT_STATE_*.md`
+- `[FEATURE]_PROGRESS.md`
 
-**Context + Task Integration (v0.6.8):**
-```bash
-# Store task sequences using permanent IDs (not positions!)
-mcp__todo-mcp__context_set key:"implementation_sequence" value:"Must do #22→#23→#24 (dependencies!)"
-
-# Track estimation accuracy for learning
-mcp__todo-mcp__context_set key:"lesson_estimation" value:"Task #31: 6h est, 8m actual - over-estimating complex tasks"
-```
-
-**Session Handoff Protocol:**
-```bash
-# Before major interruption/compaction
-mcp__todo-mcp__context_set key:"session_handoff" value:"Mid-task #34: completed interaction class, need integration with debugWindow.ts line 245"
-
-# After interruption - use context_resume for perfect continuity
-```
-
-**Anti-Patterns to Avoid:**
-- ❌ Don't track current task in context (use MCP task status)
-- ❌ Don't leave TodoWrite populated between MCP tasks (creates confusion)
-- ❌ Don't estimate less than 15 minutes (MCP overhead not worth it)
-- ❌ Don't store progress percentages in context (MCP calculates better)
-
-## Critical Workflow
-
-### Plan & Review (REQUIRED)
-- Start in plan mode → Write plan to `tasks/TASK_NAME.md`
-- Present plan for approval → Wait for user confirmation
-- Create detailed todo list with paragraph descriptions
-- Update plan document as work progresses
-
-### File Organization (STRICT)
-**tasks/ folder ONLY**:
-- Implementation plans: `tasks/[FEATURE]_IMPLEMENTATION.md`
-- State files: `tasks/CURRENT_STATE_*.md`
-- Progress tracking: `tasks/[FEATURE]_PROGRESS.md`
-
-**NEVER create in root**: Only project configs, standard docs (README, LICENSE), and build artifacts belong in root.
+**NEVER root** except configs/README/LICENSE/builds
 
 ### Compaction Recovery
-When warned about compaction:
-1. Save state to `tasks/CURRENT_STATE_BEFORE_COMPACT.md`
-2. Document: completed work, in-progress, next steps
-3. Resume: "show me todo list and read tasks/CURRENT_STATE_BEFORE_COMPACT.md"
+1. Save: `tasks/CURRENT_STATE_BEFORE_COMPACT.md`
+2. Document: completed/in-progress/next
+3. Resume: todo list + read state file
 
-## Project Context
+## Project
 
-PNut-Term-TS: Cross-platform debug terminal for Parallax Propeller2, Electron/TypeScript app recreating Chip's Debug listener.
+**PNut-Term-TS**: Cross-platform debug terminal for Parallax Propeller2, Electron/TypeScript
 
-**Quick Build**: `npm run build` → `npm test` → Main: `dist/pnut-term-ts.min.js`
+**Build**: `npm run build` → `npm test` → `dist/pnut-term-ts.min.js`
 
-**Architecture**: Entry `src/pnut-term-ts.ts` → `MainWindow` → Debug windows extend `DebugWindowBase`
+**Architecture**: `src/pnut-term-ts.ts` → `MainWindow` → Debug windows extend `DebugWindowBase`
 
-## External References CLAUDE specific
+## References
 
-📁 **Portable process guidance in `docs/claude-process/`** (carry to new projects):
-- `context-management.md` - Context state hygiene and cleanup patterns
-- `dual-system-strategy.md` - MCP vs TodoWrite task management
-- `todowrite-lifecycle.md` - TodoWrite lifecycle tied to task execution
-- `output-formatting.md` - MCP human-readable output standards (NO raw JSON)
+📁 `DOCs/pure-process/`: Universal patterns
+📁 `DOCs/project-specific/`: Architecture, commands, status, Pascal sources, build, tests, debt, user guide
+📁 `DOCs/REPOSITORY-ORGANIZATION.md`: Repo structure
 
-📁 **Project-specific guidance in `docs/claude-reference/`** (todo-mcp only):
-- `mcp-commands.md` - MCP command reference, position/ID handling
-- `workflows.md` - Development workflows, compaction recovery
-- `task-format.md` - STF format, dual task system strategy
-- `testing-standards.md` - Testing requirements and standards
-- `working-principles.md` - Todo management, state preservation, tool usage
+## Requirements
 
-## External References (Read Only When Needed)
-
-- [`docs/COMMANDS.md`](docs/COMMANDS.md) - All build/test commands, helper scripts
-- [`docs/IMPLEMENTATION-STATUS.md`](docs/IMPLEMENTATION-STATUS.md) - Window implementation progress
-- [`docs/PASCAL-REFERENCES.md`](docs/PASCAL-REFERENCES.md) - Pascal source locations
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, components
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) - Development scenarios
-- [`docs/BUILD-SYSTEM.md`](docs/BUILD-SYSTEM.md) - Build pipeline details
-- [`docs/TEST-STATUS.md`](docs/TEST-STATUS.md) - Test suite status
-- [`docs/TECHNICAL-DEBT.md`](docs/TECHNICAL-DEBT.md) - Tech debt tracking
-
-## Key Requirements
-
-- Run tests sequentially (Docker container environment)
-- Use `--` separator with npm test redirects: `npm test -- file.test.ts 2>&1`
-- Preserve unparsed debug strings for error logging
-- Include full command context in error messages
-- Update test files when adding new classes to `scripts/claude/`
+- Sequential tests (Docker environment)
+- Use `--` with npm test redirects
+- Preserve unparsed debug strings
+- Full command context in errors
+- Update test files in `scripts/claude/`

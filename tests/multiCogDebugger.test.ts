@@ -75,7 +75,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create 8 debugger windows for COGs 0-7
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
       }
 
@@ -97,7 +97,7 @@ describe('Multi-COG Debugger Support', () => {
       
       for (let cogId = 0; cogId < 3; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
         
         // Capture the handler for this COG
@@ -135,7 +135,7 @@ describe('Multi-COG Debugger Support', () => {
       const mockWindows: any[] = [];
       
       // Mock BrowserWindow to track positions
-      (BrowserWindow as jest.Mock).mockImplementation(() => {
+      (BrowserWindow as unknown as jest.Mock).mockImplementation(() => {
         const mockWindow = {
           loadURL: jest.fn(),
           on: jest.fn(),
@@ -177,7 +177,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create 2 debugger windows
       for (let cogId = 0; cogId < 2; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
         
         const dataManager = (window as any).dataManager as jest.Mocked<DebuggerDataManager>;
@@ -188,14 +188,14 @@ describe('Multi-COG Debugger Support', () => {
       const dm0 = dataManagers.get(0)!;
       const dm1 = dataManagers.get(1)!;
       
-      dm0.addBreakpoint.mockImplementation(() => {});
-      dm1.addBreakpoint.mockImplementation(() => {});
+      dm0.setBreakpoint.mockImplementation(() => {});
+      dm1.setBreakpoint.mockImplementation(() => {});
       
-      dm0.addBreakpoint(0, 0x1000);
-      dm1.addBreakpoint(1, 0x2000);
+      dm0.setBreakpoint(0, 0x1000);
+      dm1.setBreakpoint(1, 0x2000);
       
-      expect(dm0.addBreakpoint).toHaveBeenCalledWith(0, 0x1000);
-      expect(dm1.addBreakpoint).toHaveBeenCalledWith(1, 0x2000);
+      expect(dm0.setBreakpoint).toHaveBeenCalledWith(0, 0x1000);
+      expect(dm1.setBreakpoint).toHaveBeenCalledWith(1, 0x2000);
     });
 
     it('should support shared COGBRK request', async () => {
@@ -264,7 +264,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create all 8 COG windows
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windowList.push(window);
         windows.push(window);
       }
@@ -301,7 +301,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create 3 windows
       for (let cogId = 0; cogId < 3; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
       }
       
@@ -320,7 +320,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create all 8 windows
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
       }
       
@@ -342,7 +342,7 @@ describe('Multi-COG Debugger Support', () => {
       // Create 4 debugger windows
       for (let cogId = 0; cogId < 4; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         windows.push(window);
       }
       

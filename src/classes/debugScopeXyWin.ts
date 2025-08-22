@@ -8,6 +8,7 @@ import { ScopeXyRenderer } from './shared/scopeXyRenderer';
 import { PersistenceManager } from './shared/persistenceManager';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 /**
  * Scope XY display specification
@@ -333,10 +334,24 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       </html>
     `;
 
-    // Create browser window
+    // Calculate window dimensions
+    const windowWidth = size + 16;
+    const windowHeight = size + 39;
+    
+    // Use WindowPlacer for intelligent positioning
+    const windowPlacer = WindowPlacer.getInstance();
+    const placementConfig: PlacementConfig = {
+      dimensions: { width: windowWidth, height: windowHeight },
+      avoidOverlap: true
+    };
+    const position = windowPlacer.getNextPosition(`scopexy-${this.windowTitle}`, placementConfig);
+
+    // Create browser window with calculated position
     this.debugWindow = new BrowserWindow({
-      width: size + 16,
-      height: size + 39,
+      width: windowWidth,
+      height: windowHeight,
+      x: position.x,
+      y: position.y,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -351,10 +366,20 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Load content
     this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this.windowContent)}`);
 
-    // Wait for window to be ready, then initialize
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    // Pattern A: Use ready-to-show event like working prototype windows
+    this.debugWindow.once('ready-to-show', () => {
+      this.logMessage('at ready-to-show');
       // Register with WindowRouter when window is ready
       this.registerWithRouter();
+      // Register with WindowPlacer for position tracking
+      windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
+      if (this.debugWindow) {
+        this.debugWindow.show();
+      }
+    });
+    
+    // Initialize renderer after content loads
+    this.debugWindow.webContents.on('did-finish-load', () => {
       // Initialize renderer after canvas is ready
       this.initializeRenderer();
       this.render();
@@ -401,7 +426,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   /**
    * Update content with new data
    */
-  updateContent(lineParts: string[]): void {
+  protected processMessageImmediate(lineParts: string[]): void {
     const unparsedCommand = lineParts.join(' ');
     this.handleData(unparsedCommand);
   }

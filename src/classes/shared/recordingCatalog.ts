@@ -37,6 +37,13 @@ export class RecordingCatalog {
   
   constructor(basePath: string = path.join(process.cwd(), 'tests', 'recordings')) {
     this.catalogPath = path.join(basePath, 'catalog.json');
+    
+    // Ensure directory exists
+    const dir = path.dirname(this.catalogPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
     this.loadCatalog();
   }
   

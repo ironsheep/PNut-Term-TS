@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { LogicTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
   DebugWindowBase,
@@ -181,8 +182,10 @@ export class DebugLogicWindow extends DebugWindowBase {
   private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
 
-  constructor(ctx: Context, displaySpec: LogicDisplaySpec, windowId: string = `logic-${Date.now()}`) {
-    super(ctx, windowId, 'logic');
+  constructor(ctx: Context, displaySpec: LogicDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID for proper routing
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'logic');
     this.windowLogPrefix = 'lcgW';
     // record our Debug Logic Window Spec
     this.displaySpec = displaySpec;
@@ -204,6 +207,13 @@ export class DebugLogicWindow extends DebugWindowBase {
       isAlternate: false,
       isSigned: false
     };
+    
+    // CRITICAL FIX: Create window immediately, don't wait for numeric data
+    // This ensures windows appear when created, even if closed before data arrives
+    this.logMessage('Creating LOGIC window immediately in constructor');
+    this.calculateAutoTriggerAndScale();
+    this.createDebugWindow();
+    this.initChannelSamples();
   }
 
   public static colorNameFmChanNumber(chanNumber: number): string {
@@ -561,8 +571,25 @@ export class DebugLogicWindow extends DebugWindowBase {
     // set height so NO scroller by default
     const windowHeight = channelGroupHeight + 2 + this.canvasMargin * 2; // 2 is fudge to remove scroller;
     const windowWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1; // 1 = no left margin!
+    // Check if position was explicitly set or is still at default (0,0)
+    let windowX = this.displaySpec.position.x;
+    let windowY = this.displaySpec.position.y;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (windowX === 0 && windowY === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`logic-${this.displaySpec.displayName}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+      this.logMessage(`  -- LOGIC using auto-placement: ${windowX},${windowY}`);
+    }
+    
     this.logMessage(
-      `  -- LOGIC window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
+      `  -- LOGIC window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
     );
 
     // now generate the window with the calculated sizes
@@ -570,14 +597,20 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
+      x: windowX,
+      y: windowY,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
 
+    // Register window with WindowPlacer for position tracking
+    if (this.debugWindow) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`logic-${this.displaySpec.displayName}`, this.debugWindow);
+    }
+    
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Logic window will show...');
@@ -631,6 +664,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             //background-color:rgb(234, 121, 86);
             background-color: ${this.displaySpec.window.background};
             color:rgb(191, 213, 93);
+            overflow: hidden; /* CRITICAL: Prevent scrollbars */
           }
           #labels {
             display: flex;
@@ -880,7 +914,12 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public async updateContent(lineParts: string[]): Promise<void> {
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // ----------------------------------------------------------------
     // Valid directives are:
@@ -1038,9 +1077,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             if (isValidNumber) {
               if (this.isFirstNumericData) {
                 this.isFirstNumericData = false;
-                this.calculateAutoTriggerAndScale();
-                this.createDebugWindow();
-                this.initChannelSamples(); // after window is created so data it uses is available
+                // Window already created in constructor, just log the packed data spec
                 this.logMessage(
                   `* UPD-INFO working with packed-data-spec: ${JSON.stringify(this.packedMode, null, 2)}`
                 );

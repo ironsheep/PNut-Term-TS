@@ -3,14 +3,14 @@
 // tests/memoryLeakDetection.test.ts
 
 import { MemoryProfiler, WindowLeakDetector, MemoryBaseline } from '../src/utils/memoryProfiler';
-import { DebugTermWin } from '../src/classes/debugTermWin';
-import { DebugScopeWin } from '../src/classes/debugScopeWin';
-import { DebugLogicWin } from '../src/classes/debugLogicWin';
-import { DebugPlotWin } from '../src/classes/debugPlotWin';
-import { DebugMidiWin } from '../src/classes/debugMidiWin';
-import { DebugBitmapWin } from '../src/classes/debugBitmapWin';
-import { DebugFftWin } from '../src/classes/debugFftWin';
-import { DebugScopeXyWin } from '../src/classes/debugScopeXyWin';
+import { DebugTermWindowdow } from '../src/classes/debugTermWin';
+import { DebugScopeWindowdow } from '../src/classes/debugScopeWin';
+import { DebugLogicWindowdow } from '../src/classes/debugLogicWin';
+import { DebugPlotWindowdow } from '../src/classes/debugPlotWin';
+import { DebugMidiWindowdow } from '../src/classes/debugMidiWin';
+import { DebugBitmapWindowdow } from '../src/classes/debugBitmapWin';
+import { DebugFFTWindow } from '../src/classes/debugFftWin';
+import { DebugScopeXyWindowdow } from '../src/classes/debugScopeXyWin';
 import { DebugDebuggerWindow } from '../src/classes/debugDebuggerWin';
 import { WindowRouter } from '../src/classes/shared/windowRouter';
 import { Context } from '../src/utils/context';
@@ -60,8 +60,8 @@ describe('Memory Leak Detection', () => {
       const iterations = 100;
       
       for (let i = 0; i < iterations; i++) {
-        const window = new DebugTermWin(context);
-        await window.initialize();
+        const window = new DebugTermWindow(context);
+        // Window is initialized in constructor
         
         // Simulate some activity
         window.updateContent('Test data ' + i);
@@ -100,8 +100,8 @@ describe('Memory Leak Detection', () => {
       const iterations = 50;
       
       for (let i = 0; i < iterations; i++) {
-        const window = new DebugScopeWin(context);
-        await window.initialize();
+        const window = new DebugScopeWindow(context);
+        // Window is initialized in constructor
         
         // Simulate scope data
         window.updateContent('DEBUG SCOPE 1,2,3,4,5,6,7,8');
@@ -132,7 +132,7 @@ describe('Memory Leak Detection', () => {
       for (let i = 0; i < iterations; i++) {
         const cogId = i % 8; // Test different COG IDs
         const window = new DebugDebuggerWindow(context, cogId);
-        await window.initialize();
+        // Window is initialized in constructor
         
         // Simulate debugger activity
         const binaryData = new Uint8Array(80);
@@ -159,7 +159,7 @@ describe('Memory Leak Detection', () => {
   
   describe('Event Listener and Timer Cleanup', () => {
     it('should clean up event listeners on window close', async () => {
-      const window = new DebugTermWin(context);
+      const window = new DebugTermWindow(context);
       const windowId = 'test-terminal';
       
       leakDetector.trackWindow(window, windowId);
@@ -242,18 +242,18 @@ describe('Memory Leak Detection', () => {
       const windows: any[] = [];
       
       // Create 8 different window types
-      windows.push(new DebugTermWin(context));
-      windows.push(new DebugScopeWin(context));
-      windows.push(new DebugLogicWin(context));
-      windows.push(new DebugPlotWin(context));
-      windows.push(new DebugMidiWin(context));
-      windows.push(new DebugBitmapWin(context));
-      windows.push(new DebugFftWin(context));
-      windows.push(new DebugScopeXyWin(context));
+      windows.push(new DebugTermWindow(context));
+      windows.push(new DebugScopeWindow(context));
+      windows.push(new DebugLogicWindow(context));
+      windows.push(new DebugPlotWindow(context));
+      windows.push(new DebugMidiWindow(context));
+      windows.push(new DebugBitmapWindow(context));
+      windows.push(new DebugFFTWindow(context));
+      windows.push(new DebugScopeXyWindow(context));
       
       // Initialize all windows
       for (const window of windows) {
-        await window.initialize();
+        // Window is initialized in constructor
       }
       
       // Simulate activity on all windows
@@ -299,8 +299,8 @@ describe('Memory Leak Detection', () => {
       
       // Rapidly create and destroy windows
       for (let i = 0; i < 50; i++) {
-        const window = new DebugTermWin(context);
-        await window.initialize();
+        const window = new DebugTermWindow(context);
+        // Window is initialized in constructor
         window.updateContent('Rapid test ' + i);
         window.closeDebugWindow();
         
@@ -423,7 +423,7 @@ describe('Memory Leak Detection', () => {
       
       // Terminal window baseline
       baseline.capture();
-      const terminal = new DebugTermWin(context);
+      const terminal = new DebugTermWindow(context);
       await terminal.initialize();
       let diff = baseline.compare();
       if (diff) {
@@ -434,7 +434,7 @@ describe('Memory Leak Detection', () => {
       
       // Scope window baseline
       baseline.capture();
-      const scope = new DebugScopeWin(context);
+      const scope = new DebugScopeWindow(context);
       await scope.initialize();
       diff = baseline.compare();
       if (diff) {
@@ -445,7 +445,7 @@ describe('Memory Leak Detection', () => {
       
       // Logic window baseline
       baseline.capture();
-      const logic = new DebugLogicWin(context);
+      const logic = new DebugLogicWindow(context);
       await logic.initialize();
       diff = baseline.compare();
       if (diff) {

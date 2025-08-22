@@ -53,7 +53,9 @@ describe('WindowRouter Integration with All Window Types', () => {
       windowTypes.forEach(type => {
         const handler = jest.fn();
         handlers.set(type, handler);
-        router.registerWindow(`${type}-1`, type, handler);
+        // Debugger windows use COG ID, so register as debugger-0 for COG 0
+        const windowId = type === 'debugger' ? 'debugger-0' : `${type}-1`;
+        router.registerWindow(windowId, type, handler);
       });
       
       // Verify all windows are registered
@@ -120,14 +122,18 @@ describe('WindowRouter Integration with All Window Types', () => {
       // Stop recording
       router.stopRecording();
       
-      // Verify recording file exists
-      const recordingFiles = fs.readdirSync(path.dirname(testRecordingPath))
+      // Verify recording file exists in the correct directory
+      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+      if (!fs.existsSync(recordingsDir)) {
+        fs.mkdirSync(recordingsDir, { recursive: true });
+      }
+      const recordingFiles = fs.readdirSync(recordingsDir)
         .filter(f => f.includes('test-all-windows'));
       expect(recordingFiles.length).toBeGreaterThan(0);
       
       // Clean up recording file
       recordingFiles.forEach(file => {
-        const filePath = path.join(path.dirname(testRecordingPath), file);
+        const filePath = path.join(recordingsDir, file);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
@@ -135,8 +141,25 @@ describe('WindowRouter Integration with All Window Types', () => {
     });
     
     it('should playback recorded messages to correct window types', async () => {
-      // Create a test recording file
+      // Create recordings directory if needed
+      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+      if (!fs.existsSync(recordingsDir)) {
+        fs.mkdirSync(recordingsDir, { recursive: true });
+      }
+      testRecordingPath = path.join(recordingsDir, 'test-playback.jsonl');
+      
+      // Create a test recording file with metadata
+      const metadata = {
+        metadata: {
+          sessionName: 'test-playback',
+          description: 'Test playback',
+          startTime: Date.now(),
+          windowTypes: ['terminal', 'scope', 'debugger']
+        }
+      };
+      
       const messages = [
+        metadata,
         {
           timestamp: Date.now(),
           windowId: 'terminal-1',
@@ -181,8 +204,8 @@ describe('WindowRouter Integration with All Window Types', () => {
       router.registerWindow('scope-1', 'scope', handlers.scope);
       router.registerWindow('debugger-0', 'debugger', handlers.debugger);
       
-      // Playback in headless mode (no window creation)
-      await router.playRecording(testRecordingPath, 10.0, true);
+      // Playback at high speed (not headless so handlers get called)
+      await router.playRecording(testRecordingPath, 100.0, false);
       
       // Verify messages were routed correctly
       expect(handlers.terminal).toHaveBeenCalled();
@@ -267,7 +290,9 @@ describe('WindowRouter Integration with All Window Types', () => {
       
       // Register windows
       Object.entries(handlers).forEach(([type, handler]) => {
-        router.registerWindow(`${type}-test`, type, handler);
+        // Terminal window must have ID 'terminal' for default routing
+        const windowId = type === 'terminal' ? 'terminal' : `${type}-test`;
+        router.registerWindow(windowId, type, handler);
       });
       
       // Test routing with various DEBUG formats

@@ -91,7 +91,8 @@ export class DebuggerProtocol extends EventEmitter {
     this.lastActivityTime = Date.now();
 
     // Add to buffer
-    const uint8Data = new Uint8Array(data);
+    // CRITICAL FIX: Properly convert Buffer to Uint8Array to avoid data corruption
+    const uint8Data = new Uint8Array(data.buffer, data.byteOffset, data.length);
     for (let i = 0; i < uint8Data.length; i++) {
       if (this.bufferPosition < this.messageBuffer.length) {
         this.messageBuffer[this.bufferPosition++] = uint8Data[i];

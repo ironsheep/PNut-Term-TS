@@ -62,6 +62,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private protocol: DebuggerProtocol | null = null;
   private dataManager: DebuggerDataManager | null = null;
   private interaction: DebuggerInteraction | null = null;
+  
+  // Message queue for initial messages before window is ready
+  private initialMessageQueue: Uint8Array[] = [];
+  private isDebuggerReady: boolean = false;
 
   constructor(
     context: Context,
@@ -88,6 +92,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.cogState = this.createFreshCogState(cogId);
     
     this.logMessage(`DebugDebuggerWindow created for COG ${cogId}`);
+    
+    // Create the actual Electron window
+    this.createDebugWindow(windowDetails);
   }
 
   /**
@@ -279,34 +286,97 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
+   * Queue initial message before window is ready
+   */
+  public queueInitialMessage(data: Uint8Array): void {
+    if (this.isDebuggerReady) {
+      // Window is ready, process immediately
+      this.processDebuggerMessage(data);
+    } else {
+      // Queue for later processing
+      this.initialMessageQueue.push(data);
+      console.log(`[DEBUGGER] Queued initial message for COG ${this.cogId}, queue length: ${this.initialMessageQueue.length}`);
+    }
+  }
+  
+  /**
+   * Process debugger message (80-byte initial or other protocol messages)
+   */
+  private processDebuggerMessage(data: Uint8Array): void {
+    if (!this.dataManager) {
+      console.log(`[DEBUGGER] Data manager not ready for COG ${this.cogId}, message will be lost`);
+      return;
+    }
+    
+    // Convert Uint8Array to Buffer for compatibility
+    const buffer = Buffer.from(data);
+    this.handleMessage(buffer);
+  }
+  
+  /**
+   * Process queued messages
+   */
+  private processQueuedMessages(): void {
+    if (this.initialMessageQueue.length > 0) {
+      console.log(`[DEBUGGER] Processing ${this.initialMessageQueue.length} queued messages for COG ${this.cogId}`);
+      for (const message of this.initialMessageQueue) {
+        this.processDebuggerMessage(message);
+      }
+      this.initialMessageQueue = [];
+    }
+  }
+  
+  /**
    * Initialize window after creation
    */
   protected async initializeWindow(): Promise<void> {
     // Register with WindowRouter when window is ready
     this.registerWithRouter();
     
-    // Initialize core components
+    // Initialize core components that don't need DOM
     this.dataManager = new DebuggerDataManager();
     this.protocol = new DebuggerProtocol();
-    // Create a mock canvas for renderer
-    const mockCanvas = { getContext: () => null } as any;
-    this.renderer = new DebuggerRenderer(mockCanvas, this.dataManager, this.cogId);
-    this.interaction = new DebuggerInteraction(
-      this.renderer,
-      this.protocol,
-      this.dataManager,
-      this.cogId
-    );
     
-    // Get canvas reference
-    this.debugWindow?.webContents.executeJavaScript(`
-      const canvas = document.getElementById('canvas');
-      canvas ? { width: canvas.width, height: canvas.height } : null
-    `).then((result) => {
-      if (result) {
-        this.logMessage(`Canvas initialized: ${result.width}x${result.height}`);
-        this.startUpdateLoop();
-      }
+    // Wait for DOM to be ready, then create canvas-dependent components
+    this.debugWindow?.webContents.once('did-finish-load', () => {
+      // Now it's safe to get the canvas and create the renderer
+      this.debugWindow?.webContents.executeJavaScript(`
+        const canvas = document.getElementById('canvas');
+        if (canvas) {
+          // Return canvas for verification
+          { id: 'canvas', width: canvas.width, height: canvas.height }
+        } else {
+          null
+        }
+      `).then((canvasInfo) => {
+        if (canvasInfo) {
+          this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
+          
+          // Create a proxy canvas that will delegate to the real canvas
+          // For now, we'll need to handle rendering differently
+          // The renderer needs to be refactored to work with remote canvas
+          
+          // For now, skip renderer creation to avoid the error
+          // TODO: Refactor DebuggerRenderer to work with Electron's remote canvas
+          
+          this.interaction = new DebuggerInteraction(
+            null as any, // Temporarily pass null for renderer
+            this.protocol,
+            this.dataManager,
+            this.cogId
+          );
+          
+          this.startUpdateLoop();
+          
+          // Mark window as ready and process any queued messages
+          this.isDebuggerReady = true;
+          this.processQueuedMessages();
+        } else {
+          console.error(`[DEBUGGER] Canvas element not found for COG ${this.cogId}`);
+        }
+      }).catch((error) => {
+        console.error(`[DEBUGGER] Failed to get canvas for COG ${this.cogId}:`, error);
+      });
     });
     
     // Set up IPC handlers for keyboard/mouse
@@ -513,38 +583,171 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private renderDebuggerDisplay(): void {
     if (!this.renderer || !this.debugWindow) return;
     
-    // Get the rendered text grid
-    const grid = this.renderer.render();
-    
-    // Send grid to window for display
-    this.debugWindow.webContents.executeJavaScript(`
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Clear canvas
-        ctx.fillStyle = '#1e1e1e';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Render text grid
-        ctx.font = '14px Parallax, monospace';
-        ctx.textBaseline = 'top';
-        
-        const grid = ${JSON.stringify(grid)};
-        for (let y = 0; y < grid.length; y++) {
-          for (let x = 0; x < grid[y].length; x++) {
-            const cell = grid[y][x];
-            if (cell.char !== ' ') {
-              ctx.fillStyle = cell.fg || '#c0c0c0';
-              ctx.fillText(cell.char, x * 8, y * 16);
+    try {
+      // Get the rendered text grid
+      const grid = this.renderer.render();
+      
+      // Send grid to window for display
+      this.debugWindow.webContents.executeJavaScript(`
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Clear canvas
+          ctx.fillStyle = '#1e1e1e';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Render text grid
+          ctx.font = '14px Parallax, monospace';
+          ctx.textBaseline = 'top';
+          
+          const grid = ${JSON.stringify(grid)};
+          for (let y = 0; y < grid.length; y++) {
+            for (let x = 0; x < grid[y].length; x++) {
+              const cell = grid[y][x];
+              if (cell.char !== ' ') {
+                ctx.fillStyle = cell.fg || '#c0c0c0';
+                ctx.fillText(cell.char, x * 8, y * 16);
+              }
             }
           }
         }
-      }
-    `).catch((error) => {
+      `).catch((error) => {
+        this.logMessage(`Error executing JavaScript: ${error}`);
+      });
+    } catch (error) {
       this.logMessage(`Error rendering: ${error}`);
-    });
+    }
   }
 
+  /**
+   * Generate HTML content for the debugger window
+   */
+  public getHTML(): string {
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>P2 Debugger - COG ${this.cogId}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #${DEBUG_COLORS.BG_DEFAULT.toString(16).padStart(6, '0')};
+            color: #${DEBUG_COLORS.FG_ACTIVE.toString(16).padStart(6, '0')};
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow: hidden;
+        }
+        #debugger-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background-color: #222;
+            color: #0F0;
+            padding: 2px 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="debugger-canvas"></canvas>
+    <div class="status-bar">
+        COG ${this.cogId} - Ready
+    </div>
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Initialize canvas
+        const canvas = document.getElementById('debugger-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 24; // Account for status bar
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Handle keyboard input
+        document.addEventListener('keydown', (e) => {
+            ipcRenderer.send('debugger-key', { 
+                cogId: ${this.cogId},
+                key: e.key,
+                code: e.code,
+                shift: e.shiftKey,
+                ctrl: e.ctrlKey,
+                alt: e.altKey
+            });
+        });
+        
+        // Handle mouse input
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            ipcRenderer.send('debugger-click', {
+                cogId: ${this.cogId},
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            });
+        });
+        
+        // Handle render updates from main process
+        ipcRenderer.on('render-update', (event, data) => {
+            // Render logic will go here
+            console.log('Render update for COG ${this.cogId}:', data);
+        });
+    </script>
+</body>
+</html>`;
+  }
+  
+  /**
+   * Create the Electron BrowserWindow
+   */
+  private createDebugWindow(windowDetails?: any): void {
+    const width = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8 + 20;
+    const height = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16 + 40;
+    const x = windowDetails?.x;
+    const y = windowDetails?.y;
+    
+    this.logMessage(`Creating debugger window for COG ${this.cogId}: ${width}x${height}`);
+    
+    this.debugWindow = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      title: `P2 Debugger - COG ${this.cogId}`,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+    
+    // Set up window content
+    const html = this.getHTML();
+    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    
+    // Hook window events
+    this.debugWindow.on('ready-to-show', () => {
+      this.logMessage(`Debugger window for COG ${this.cogId} ready to show`);
+      this.debugWindow?.show();
+      // Initialize window after it's shown
+      this.initializeWindow();
+    });
+    
+    this.debugWindow.on('closed', () => {
+      this.logMessage(`Debugger window for COG ${this.cogId} closed`);
+      this.closeDebugWindow();
+    });
+  }
+  
   /**
    * Required abstract method - close window
    */
@@ -586,7 +789,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   /**
    * Required abstract method - update content
    */
-  public updateContent(data: any): void {
+  protected processMessageImmediate(data: any): void {
     // Handle content updates
     if (data.binary) {
       this.handleBinaryMessage(data.binary);
@@ -661,6 +864,33 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   public onClose(handler: () => void): void {
     if (this.debugWindow) {
       this.debugWindow.on('closed', handler);
+    }
+  }
+
+  /**
+   * Handle incoming debugger protocol message
+   * This method is called by MainWindow when debugger data arrives
+   */
+  public handleMessage(rawData: Buffer): void {
+    if (!this.dataManager) {
+      this.logMessage(`[DEBUGGER] Received data but data manager not initialized for COG ${this.cogId}`);
+      return;
+    }
+    
+    // Process the debugger protocol data directly through data manager
+    // The data manager will parse and store the state
+    try {
+      // Convert buffer to appropriate format for data manager
+      // Assuming the data manager handles raw debugger protocol messages
+      // For now, just log that we received data
+      this.logMessage(`[DEBUGGER] Received ${rawData.length} bytes of data for COG ${this.cogId}`);
+      
+      // Update the display
+      if (this.renderer) {
+        this.renderer.render();
+      }
+    } catch (error) {
+      this.logMessage(`[DEBUGGER] Error processing data for COG ${this.cogId}: ${error}`);
     }
   }
 }

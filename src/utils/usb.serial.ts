@@ -47,9 +47,16 @@ export class UsbSerial extends EventEmitter {
     this._serialPort.on('error', (err) => this.handleSerialError(err.message));
     this._serialPort.on('open', () => this.handleSerialOpen());
 
-    // wait for any returned data
+    // For MainWindow: Get RAW data (not parsed) so we can detect binary debugger protocol
+    // The parser is still needed for internal P2 version checking, but MainWindow needs raw bytes
+    this._serialPort.on('data', (data: Buffer) => {
+      // Emit raw data for MainWindow to handle (can be binary or text)
+      this.emit('data', data);
+    });
+    
+    // Also set up parser for internal use (P2 version detection, etc)
     this._serialParser = this._serialPort.pipe(new ReadlineParser({ delimiter: this.endOfLineStr }));
-    this._serialParser.on('data', (data) => this.handleSerialRx(data));
+    this._serialParser.on('data', (data) => this.handleSerialRxInternal(data));
 
     // now open the port
     this._serialPort.open((err) => {
@@ -290,10 +297,11 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
+  // Internal handler for parsed text data (used for P2 version detection)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private handleSerialRx(data: any) {
+  private handleSerialRxInternal(data: any) {
     this.logMessage(`<-- Rx [${data}]`);
-    this.emit('data', data.toString());
+    // Don't emit here - raw data is emitted directly from serial port
     const lines: string[] = data.split(/\r?\n/).filter(Boolean);
     let propFound: boolean = false;
     if (lines.length > 0) {
@@ -352,12 +360,12 @@ export class UsbSerial extends EventEmitter {
 
   private startReadListener() {
     // wait for any returned data
-    this._serialParser.on('data', (data) => this.handleSerialRx(data));
+    this._serialParser.on('data', (data) => this.handleSerialRxInternal(data));
   }
 
   private stopReadListener() {
     // stop waiting for any returned data
-    this._serialParser.off('data', (data) => this.handleSerialRx(data));
+    this._serialParser.off('data', (data) => this.handleSerialRxInternal(data));
   }
 
   private async requestP2IDString(): Promise<void> {

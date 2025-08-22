@@ -15,6 +15,7 @@ import { LUTManager } from './shared/lutManager';
 import { LayerManager, CropRect } from './shared/layerManager';
 import { SpriteManager } from './shared/spriteManager';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
   DebugWindowBase,
@@ -367,8 +368,25 @@ export class DebugPlotWindow extends DebugWindowBase {
 
     const windowHeight = canvasHeight + 4 + 4; // +4 add enough to not create vert. scroller
     const windowWidth = canvasWidth + this.contentInset * 2 + 4 + 4; // contentInset' for the Xoffset into window for canvas, +4 add enough to not create horiz. scroller
+    // Check if position was explicitly set or is still at default (0,0)
+    let windowX = this.displaySpec.position.x;
+    let windowY = this.displaySpec.position.y;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (windowX === 0 && windowY === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`plot-${this.displaySpec.displayName}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+      this.logMessage(`  -- PLOT using auto-placement: ${windowX},${windowY}`);
+    }
+    
     this.logMessage(
-      `  -- PLOT window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
+      `  -- PLOT window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
     );
 
     // now generate the window with the calculated sizes
@@ -376,14 +394,20 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
+      x: windowX,
+      y: windowY,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
 
+    // Register window with WindowPlacer for position tracking
+    if (this.debugWindow) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`plot-${this.displaySpec.displayName}`, this.debugWindow);
+    }
+    
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Plot window will show...');
@@ -549,7 +573,12 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public async updateContent(lineParts: string[]): Promise<void> {
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are (based on Pascal PNut implementation):
     //

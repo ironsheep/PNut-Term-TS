@@ -10,7 +10,16 @@ import path from 'path';
 import { exec } from 'child_process';
 import { UsbSerial } from './utils/usb.serial';
 import { MainWindow } from './classes/mainWindow';
-import { app, crashReporter } from 'electron';
+// Import electron conditionally to avoid startup issues
+let app: any, crashReporter: any;
+try {
+  const electron = require('electron');
+  app = electron.app;
+  crashReporter = electron.crashReporter;
+} catch (error) {
+  // Electron not available or not in proper context
+  console.warn('Warning: Electron not available, running in CLI mode');
+}
 import { getFormattedDateTime } from './utils/files';
 
 // NOTEs re-stdio in js/ts
@@ -102,15 +111,23 @@ export class DebugTerminalInTypeScript {
       Trace/BPT trap: 5
       */
       // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
-      crashReporter.start({ uploadToServer: false });
-      console.error('PNut-Term-TS: Storing dumps inside: ', app.getPath('crashDumps'));
+      if (crashReporter && crashReporter.start) {
+        crashReporter.start({ uploadToServer: false });
+      }
+      if (app && app.getPath) {
+        console.error('PNut-Term-TS: Storing dumps inside: ', app.getPath('crashDumps'));
+      }
       // macOS this is problematic, disable hardware acceleration
       //if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
-      app.disableHardwareAcceleration();
+      if (app && app.disableHardwareAcceleration) {
+        app.disableHardwareAcceleration();
+      }
       //}
 
       // Disable network service sandbox
-      app.commandLine.appendSwitch('no-sandbox');
+      if (app && app.commandLine && app.commandLine.appendSwitch) {
+        app.commandLine.appendSwitch('no-sandbox');
+      }
     }
   }
 
@@ -149,7 +166,8 @@ export class DebugTerminalInTypeScript {
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
       .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
-      .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)');
+      .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)')
+      .option('--console-mode', 'Running with console output - adds delay before close');
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -394,6 +412,17 @@ export class DebugTerminalInTypeScript {
       havePropPlug = true;
     }
 
+    // Store verbose/quiet flags in context
+    this.context.runEnvironment.verbose = options.verbose || false;
+    this.context.runEnvironment.quiet = options.quiet || false;
+    this.context.runEnvironment.consoleMode = options.consoleMode || false;
+
+    // Report font folder location when verbose
+    if (this.context.runEnvironment.verbose) {
+      const fontPath = path.join(__dirname, '..', 'fonts');
+      this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
+    }
+
     if (options.log) {
       // generate log file basename
       const dateTimeStr: string = getFormattedDateTime();
@@ -401,9 +430,29 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
 
-    const startMainWindow: boolean = !showingHelp && !showingNodeList && !this.shouldAbort;
+    // Check if we're in a standalone environment without Electron
+    const hasElectron = (() => {
+      try {
+        const electron = require('electron');
+        console.log('[STARTUP] Electron detected, version:', electron.app?.getVersion?.() || 'unknown');
+        return true;
+      } catch (error) {
+        console.log('[STARTUP] Electron not available:', error);
+        return false;
+      }
+    })();
+    
+    const startMainWindow: boolean = !showingHelp && !showingNodeList && !this.shouldAbort && hasElectron;
+    console.log(`[STARTUP] Decision: hasElectron=${hasElectron}, startMainWindow=${startMainWindow}`);
+    
+    if (!hasElectron && !showingHelp && !showingNodeList && !this.shouldAbort) {
+      console.log('📟 CLI Mode: Running without GUI (Electron not available)');
+      console.log('💡 For full GUI experience, run the Electron version');
+      return Promise.resolve(0);
+    }
+    
     this.context.logger.debugMsg(
-      `* showingHelp=(${showingHelp}), shouldAbort=(${this.shouldAbort}), startMainWindow=(${startMainWindow})`
+      `* showingHelp=(${showingHelp}), shouldAbort=(${this.shouldAbort}), startMainWindow=(${startMainWindow}), hasElectron=(${hasElectron})`
     );
 
     let theTerminal: MainWindow | undefined = undefined;

@@ -10,6 +10,7 @@ import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { LUTManager } from './shared/lutManager';
 import { TracePatternProcessor } from './shared/tracePatternProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 import { BrowserWindow } from 'electron';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
@@ -136,6 +137,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private canvasRenderer: CanvasRenderer;
   // Offscreen canvas not needed since we're drawing directly via CanvasRenderer
   private bitmapCanvasId: string;
+  private initialPosition?: { x: number; y: number };
   private idString: string;
   private windowTitle: string;
   private windowContent: string = '';
@@ -265,13 +267,14 @@ export class DebugBitmapWindow extends DebugWindowBase {
     return [isValid, displaySpec];
   }
 
-  constructor(windowTitle: string, idString: string, context: Context, windowId: string = `bitmap-${Date.now()}`) {
+  constructor(windowTitle: string, idString: string, context: Context, position?: { x: number; y: number }, windowId: string = `bitmap-${Date.now()}`) {
     super(context, windowId, 'bitmap');
     
     // Save window properties
     this.windowTitle = windowTitle;
     this.idString = idString;
     this.windowLogPrefix = 'bitW';
+    this.initialPosition = position;
     
     // Initialize state with defaults
     this.state = {
@@ -323,7 +326,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
   /**
    * Process debug commands and data
    */
-  updateContent(lineParts: string[]): void {
+  protected processMessageImmediate(lineParts: string[]): void {
     let dataStartIndex = 0;
 
     // Process commands
@@ -926,16 +929,40 @@ export class DebugBitmapWindow extends DebugWindowBase {
     const windowWidth = canvasWidth + 20; // Add some padding
     const windowHeight = canvasHeight + 40; // Add title bar height
     
+    // Check if position was explicitly set or use WindowPlacer
+    let windowX = this.initialPosition?.x || 0;
+    let windowY = this.initialPosition?.y || 0;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (windowX === 0 && windowY === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`bitmap-${this.idString}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+    }
+    
     // Create the browser window
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
+      x: windowX,
+      y: windowY,
       title: this.windowTitle,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
+    
+    // Register window with WindowPlacer for position tracking
+    if (this.debugWindow) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`bitmap-${this.idString}`, this.debugWindow);
+    }
     
     // Set up the HTML content
     const fullHtml = `

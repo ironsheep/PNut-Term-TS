@@ -922,7 +922,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Update FFT window content with new data
    */
-  updateContent(lineParts: string[]): void {
+  protected processMessageImmediate(lineParts: string[]): void {
     const unparsedCommand = lineParts.join(' ');
     
     // Skip the display name (first part)

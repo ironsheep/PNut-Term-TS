@@ -346,7 +346,7 @@ export class DebugMidiWindow extends DebugWindowBase {
   /**
    * Process MIDI data and commands
    */
-  updateContent(lineParts: string[]): void {
+  protected processMessageImmediate(lineParts: string[]): void {
     let i = 0;
     
     while (i < lineParts.length) {

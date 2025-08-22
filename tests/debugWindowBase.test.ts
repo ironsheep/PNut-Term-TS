@@ -3,6 +3,7 @@ import { Context } from '../src/utils/context';
 import { BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WindowRouter } from '../src/classes/shared/windowRouter';
 
 // Mock Electron
 jest.mock('electron', () => ({
@@ -67,8 +68,21 @@ jest.mock('jimp', () => ({
   }
 }));
 
+// Mock WindowRouter
+jest.mock('../src/classes/shared/windowRouter', () => ({
+  WindowRouter: {
+    getInstance: jest.fn().mockReturnValue({
+      registerWindow: jest.fn(),
+      unregisterWindow: jest.fn(),
+      routeMessage: jest.fn()
+    })
+  }
+}));
+
 // Create a concrete implementation for testing
 class TestDebugWindow extends DebugWindowBase {
+  public processedMessages: string[][] = [];
+  
   constructor(ctx: Context, windowId: string = 'test-window', windowType: string = 'test') {
     super(ctx, windowId, windowType);
     this.windowLogPrefix = 'TestWin';
@@ -78,8 +92,9 @@ class TestDebugWindow extends DebugWindowBase {
     // Test implementation
   }
 
-  updateContent(lineParts: string[]): void {
-    // Test implementation
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Track processed messages for testing
+    this.processedMessages.push(lineParts);
   }
 
   protected getCanvasId(): string {
@@ -490,6 +505,140 @@ describe('DebugWindowBase', () => {
     it('should log base messages', () => {
       testWindow['logMessageBase']('base message');
       expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: base message');
+    });
+  });
+
+  describe('Message Queuing', () => {
+    let queueTestWindow: TestDebugWindow;
+    
+    beforeEach(() => {
+      // Create a fresh instance for queue tests
+      queueTestWindow = new TestDebugWindow(mockContext, 'queue-test', 'QUEUE');
+      // Track processed messages
+      queueTestWindow.processedMessages = [];
+    });
+    
+    it('should queue messages when window is not ready', () => {
+      // Send messages before window is ready
+      queueTestWindow.updateContent(['message', '1']);
+      queueTestWindow.updateContent(['message', '2']);
+      queueTestWindow.updateContent(['message', '3']);
+      
+      // Messages should not be processed yet
+      expect(queueTestWindow.processedMessages).toHaveLength(0);
+      
+      // Logger should indicate queuing
+      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Queued message')
+      );
+    });
+    
+    it('should process messages immediately when window is ready', () => {
+      // Mark window as ready first
+      queueTestWindow['onWindowReady']();
+      
+      // Send messages
+      queueTestWindow.updateContent(['immediate', '1']);
+      queueTestWindow.updateContent(['immediate', '2']);
+      
+      // Messages should be processed immediately
+      expect(queueTestWindow.processedMessages).toHaveLength(2);
+      expect(queueTestWindow.processedMessages[0]).toEqual(['immediate', '1']);
+      expect(queueTestWindow.processedMessages[1]).toEqual(['immediate', '2']);
+    });
+    
+    it('should process queued messages when window becomes ready', () => {
+      // Queue messages
+      queueTestWindow.updateContent(['queued', '1']);
+      queueTestWindow.updateContent(['queued', '2']);
+      queueTestWindow.updateContent(['queued', '3']);
+      
+      expect(queueTestWindow.processedMessages).toHaveLength(0);
+      
+      // Mark window as ready
+      queueTestWindow['onWindowReady']();
+      
+      // All queued messages should be processed
+      expect(queueTestWindow.processedMessages).toHaveLength(3);
+      expect(queueTestWindow.processedMessages[0]).toEqual(['queued', '1']);
+      expect(queueTestWindow.processedMessages[1]).toEqual(['queued', '2']);
+      expect(queueTestWindow.processedMessages[2]).toEqual(['queued', '3']);
+    });
+    
+    it('should preserve message order when processing queue', () => {
+      // Queue messages in specific order
+      const messages = [
+        ['first', 'message'],
+        ['second', 'message'],
+        ['third', 'message'],
+        ['fourth', 'message']
+      ];
+      
+      messages.forEach(msg => queueTestWindow.updateContent(msg));
+      
+      // Process queue
+      queueTestWindow['onWindowReady']();
+      
+      // Verify order is preserved
+      expect(queueTestWindow.processedMessages).toEqual(messages);
+    });
+    
+    it('should clear queue after processing', () => {
+      // Queue messages
+      queueTestWindow.updateContent(['test', '1']);
+      queueTestWindow.updateContent(['test', '2']);
+      
+      // Process queue
+      queueTestWindow['onWindowReady']();
+      
+      // Queue new messages after ready
+      queueTestWindow.updateContent(['new', '1']);
+      
+      // Should only have 3 messages total
+      expect(queueTestWindow.processedMessages).toHaveLength(3);
+      expect(queueTestWindow.processedMessages[2]).toEqual(['new', '1']);
+    });
+    
+    it('should not process queue twice if onWindowReady called multiple times', () => {
+      // Queue messages
+      queueTestWindow.updateContent(['test', '1']);
+      queueTestWindow.updateContent(['test', '2']);
+      
+      // Call onWindowReady twice
+      queueTestWindow['onWindowReady']();
+      queueTestWindow['onWindowReady']();
+      
+      // Messages should only be processed once
+      expect(queueTestWindow.processedMessages).toHaveLength(2);
+    });
+    
+    it('should mark window as ready when registerWithRouter is called', () => {
+      // Mock WindowRouter.getInstance
+      const mockRouter = {
+        registerWindow: jest.fn()
+      };
+      (WindowRouter.getInstance as jest.Mock).mockReturnValue(mockRouter);
+      
+      queueTestWindow['registerWithRouter']();
+      
+      // Window should be ready
+      queueTestWindow.updateContent(['test']);
+      expect(queueTestWindow.processedMessages).toHaveLength(1);
+    });
+    
+    it('should clone message arrays to avoid reference issues', () => {
+      const originalMessage = ['mutable', 'array'];
+      queueTestWindow.updateContent(originalMessage);
+      
+      // Modify original array
+      originalMessage[0] = 'modified';
+      originalMessage[1] = 'content';
+      
+      // Process queue
+      queueTestWindow['onWindowReady']();
+      
+      // Should have original values, not modified ones
+      expect(queueTestWindow.processedMessages[0]).toEqual(['mutable', 'array']);
     });
   });
 });

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DMG Volume Icon Generator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .canvas-container {
+            display: inline-block;
+            margin: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 1px solid #ddd;
+        }
+        h2 {
+            color: #333;
+        }
+        .instructions {
+            max-width: 800px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0051D5;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 PNut-Term-TS DMG Volume Icon Generator</h1>
+    
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Open this HTML file in a browser (on your Mac)</li>
+            <li>The canvas below shows the volume icon design</li>
+            <li>Right-click each canvas and "Save Image As..."</li>
+            <li>Save as PNG files in buildSupport/dmg-assets/</li>
+            <li>Use create-icns.sh to convert to ICNS format</li>
+        </ol>
+    </div>
+
+    <div class="canvas-container">
+        <h2>DMG Volume Icon (512x512)</h2>
+        <canvas id="volumeIcon" width="512" height="512"></canvas>
+        <br>
+        <button onclick="downloadCanvas('volumeIcon', 'dmg-volume-icon.png')">Download Volume Icon</button>
+    </div>
+
+    <div class="canvas-container">
+        <h2>Application Icon (512x512)</h2>
+        <canvas id="appIcon" width="512" height="512"></canvas>
+        <br>
+        <button onclick="downloadCanvas('appIcon', 'app-icon.png')">Download App Icon</button>
+    </div>
+
+    <script>
+        // Draw DMG Volume Icon (External drive with propeller overlay)
+        function drawVolumeIcon() {
+            const canvas = document.getElementById('volumeIcon');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Draw external drive shape (stylized)
+            const driveX = size * 0.15;
+            const driveY = size * 0.25;
+            const driveWidth = size * 0.7;
+            const driveHeight = size * 0.5;
+            
+            // Drive body gradient
+            const gradient = ctx.createLinearGradient(driveX, driveY, driveX, driveY + driveHeight);
+            gradient.addColorStop(0, '#E8E8E8');
+            gradient.addColorStop(0.5, '#D0D0D0');
+            gradient.addColorStop(1, '#B8B8B8');
+            
+            // Draw drive body with rounded corners
+            ctx.fillStyle = gradient;
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 2;
+            roundedRect(ctx, driveX, driveY, driveWidth, driveHeight, 20);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Draw drive details (ventilation slots)
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 5; i++) {
+                const slotY = driveY + driveHeight * 0.7 + (i * 8);
+                ctx.beginPath();
+                ctx.moveTo(driveX + 20, slotY);
+                ctx.lineTo(driveX + driveWidth - 20, slotY);
+                ctx.stroke();
+            }
+            
+            // Draw LED indicator
+            ctx.fillStyle = '#00FF00';
+            ctx.beginPath();
+            ctx.arc(driveX + driveWidth - 30, driveY + 25, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw label area
+            ctx.fillStyle = '#FAFAFA';
+            roundedRect(ctx, driveX + 20, driveY + 40, driveWidth - 40, 80, 5);
+            ctx.fill();
+            ctx.strokeStyle = '#CCC';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // Add PNut-Term-TS text
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 28px -apple-system, Helvetica, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('PNut-Term-TS', size/2, driveY + 80);
+            
+            // Draw propeller overlay (larger, more prominent)
+            const propX = size / 2;
+            const propY = size * 0.65;
+            const propRadius = 80;
+            
+            // Propeller background circle (semi-transparent white)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.beginPath();
+            ctx.arc(propX, propY, propRadius + 20, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw propeller blades
+            ctx.strokeStyle = '#1E3A5F';
+            ctx.fillStyle = '#1E3A5F';
+            ctx.lineWidth = 8;
+            
+            for (let angle = 0; angle < 360; angle += 120) {
+                ctx.save();
+                ctx.translate(propX, propY);
+                ctx.rotate((angle * Math.PI) / 180);
+                
+                // Blade
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, -propRadius);
+                ctx.stroke();
+                
+                // Blade tip (circle)
+                ctx.beginPath();
+                ctx.arc(0, -propRadius, 15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+            
+            // Center hub
+            ctx.fillStyle = '#FF0000';
+            ctx.beginPath();
+            ctx.arc(propX, propY, 12, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Add shine effect to hub
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(propX - 3, propY - 3, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Draw Application Icon (Just propeller on blue background)
+        function drawAppIcon() {
+            const canvas = document.getElementById('appIcon');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Background gradient
+            const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+            gradient.addColorStop(0, '#2E5A8F');
+            gradient.addColorStop(1, '#1E3A5F');
+            
+            // Draw rounded square background
+            ctx.fillStyle = gradient;
+            roundedRect(ctx, 40, 40, size - 80, size - 80, 60);
+            ctx.fill();
+            
+            // Draw propeller
+            const propX = size / 2;
+            const propY = size / 2;
+            const propRadius = 120;
+            
+            // Draw propeller blades
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.lineWidth = 12;
+            
+            for (let angle = 0; angle < 360; angle += 120) {
+                ctx.save();
+                ctx.translate(propX, propY);
+                ctx.rotate((angle * Math.PI) / 180);
+                
+                // Blade shaft
+                ctx.beginPath();
+                ctx.moveTo(0, -20);
+                ctx.lineTo(0, -propRadius);
+                ctx.stroke();
+                
+                // Blade tip (teardrop shape)
+                ctx.beginPath();
+                ctx.arc(0, -propRadius, 25, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+            
+            // Center hub with gradient
+            const hubGradient = ctx.createRadialGradient(propX, propY, 0, propX, propY, 20);
+            hubGradient.addColorStop(0, '#FF4444');
+            hubGradient.addColorStop(1, '#CC0000');
+            
+            ctx.fillStyle = hubGradient;
+            ctx.beginPath();
+            ctx.arc(propX, propY, 20, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Add shine to hub
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(propX - 5, propY - 5, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Add text at bottom
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 36px -apple-system, Helvetica, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('PNut-Term-TS', size/2, size - 60);
+        }
+        
+        // Helper function for rounded rectangles
+        function roundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+        
+        // Download canvas as PNG
+        function downloadCanvas(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // Draw icons on load
+        window.onload = function() {
+            drawVolumeIcon();
+            drawAppIcon();
+        };
+    </script>
+</body>
+</html>

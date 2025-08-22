@@ -16,6 +16,7 @@ import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
 import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRouter';
+import { MessageQueue, BatchedMessageQueue } from './shared/messageQueue';
 
 // src/classes/debugWindowBase.ts
 
@@ -32,7 +33,7 @@ import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRoute
  * 
  * Example implementation pattern:
  * ```typescript
- * updateContent(lineParts: string[]): void {
+ * protected processMessageImmediate(lineParts: string[]): void {
  *   const unparsedCommand = lineParts.join(' '); // Preserve original command
  *   
  *   // ... parsing logic ...
@@ -145,6 +146,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
   private _saveInProgress: boolean = false;
+  private isClosing: boolean = false; // Prevent recursive close handling
   protected inputForwarder: InputForwarder;
   protected wheelTimer: NodeJS.Timeout | null = null;
   protected lastWheelDelta: number = 0;
@@ -155,6 +157,10 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected windowType: string;
   private isRegisteredWithRouter: boolean = false;
 
+  // Per-window message queuing to handle window creation delays
+  private messageQueue: MessageQueue<any>;
+  private isWindowReady: boolean = false;
+
   constructor(ctx: Context, windowId: string, windowType: string) {
     super();
     this.context = ctx;
@@ -162,11 +168,42 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.windowRouter = WindowRouter.getInstance();
     this.windowId = windowId;
     this.windowType = windowType;
+    
+    // Initialize startup message queue 
+    // Will transition to BatchedMessageQueue when window is ready
+    this.messageQueue = new MessageQueue<any>(1000, 5000);
+    
+    // Phase 1: Register window instance immediately for early message routing
+    this.windowRouter.registerWindowInstance(this.windowId, this.windowType, this);
   }
   // Abstract methods that must be overridden by derived classes
   //abstract createDebugWindow(): void;
   abstract closeDebugWindow(): void;
-  abstract updateContent(lineParts: string[]): void;
+  
+  /**
+   * Process message content immediately. Must be implemented by derived classes.
+   * This is called either immediately (if window is ready) or when queued messages are processed.
+   */
+  protected abstract processMessageImmediate(lineParts: string[] | any): void;
+  
+  /**
+   * Public method for updating content. Handles queuing if window not ready.
+   * Derived classes should NOT override this - override processMessageImmediate instead.
+   */
+  updateContent(lineParts: string[] | any): void {
+    if (this.isWindowReady) {
+      // Window is ready, process immediately
+      this.processMessageImmediate(lineParts);
+    } else {
+      // Window not ready yet, queue the message
+      const queued = this.messageQueue.enqueue(lineParts);
+      if (queued) {
+        this.logMessageBase(`- Queued message for ${this.windowType} (${this.messageQueue.size} in queue)`);
+      } else {
+        this.logMessageBase(`- WARNING: Message queue full for ${this.windowType}, message dropped`);
+      }
+    }
+  }
 
   static calcMetricsForFontPtSize(fontSize: number, metrics: FontMetrics): void {
     metrics.textSizePts = fontSize;
@@ -193,7 +230,22 @@ export abstract class DebugWindowBase extends EventEmitter {
 
       // Add OTHER event listeners as needed
     } else {
+      // Prevent recursive close handling
+      if (this.isClosing) {
+        this.logMessageBase(`- Already closing ${this.constructor.name} window, preventing recursion`);
+        return;
+      }
+      this.isClosing = true;
+      
       this.logMessageBase(`- Closing ${this.constructor.name} window`);
+      // Reset window ready state and clear any pending messages
+      this.isWindowReady = false;
+      
+      // Stop batch processing if it's a BatchedMessageQueue
+      if (this.messageQueue instanceof BatchedMessageQueue) {
+        (this.messageQueue as BatchedMessageQueue<any>).stopBatchProcessing();
+      }
+      this.messageQueue.clear();
       // Unregister from WindowRouter
       this.unregisterFromRouter();
       // Stop input forwarding
@@ -213,6 +265,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         this.emit('closed'); // forward the event
       }
       this._debugWindow = null;
+      this.isClosing = false;
     }
   }
 
@@ -226,6 +279,57 @@ export abstract class DebugWindowBase extends EventEmitter {
   // ----------------------------------------------------------------------
 
   /**
+   * Mark window as ready and process any queued messages.
+   * Should be called by derived classes when their window is fully initialized.
+   */
+  protected onWindowReady(): void {
+    if (this.isWindowReady) {
+      this.logMessageBase(`- Window already marked as ready`);
+      return;
+    }
+    
+    this.isWindowReady = true;
+    this.logMessageBase(`- Window marked as ready for ${this.windowType}`);
+    
+    // Process any queued messages
+    if (!this.messageQueue.isEmpty) {
+      const stats = this.messageQueue.getStats();
+      this.logMessageBase(`- Processing ${stats.currentSize} queued messages`);
+      
+      // Process all queued messages
+      const queuedMessages = this.messageQueue.dequeueAll();
+      
+      for (const message of queuedMessages) {
+        try {
+          this.processMessageImmediate(message);
+        } catch (error) {
+          this.logMessageBase(`- Error processing queued message: ${error}`);
+        }
+      }
+      
+      // Log stats if there were dropped messages
+      if (stats.droppedCount > 0) {
+        this.logMessageBase(`- WARNING: ${stats.droppedCount} messages were dropped from queue`);
+      }
+    }
+    
+    // CRITICAL: Use immediate processing to prevent message reordering
+    // P2 Architecture Rule: "There should never, never, never be any message reordering"
+    this.logMessageBase(`- Transitioning to IMMEDIATE processing (no batching delays)`);
+    const oldQueue = this.messageQueue;
+    
+    // Use simple MessageQueue for immediate processing (no batching)
+    this.messageQueue = new MessageQueue<any>(
+      1000,    // maxSize: 1000 messages  
+      5000     // maxAgeMs: 5 second expiry
+    );
+    
+    // Clean up old startup queue
+    oldQueue.clear();
+    this.logMessageBase(`- Immediate processing active (zero delay)`);
+  }
+
+  /**
    * Register this window with WindowRouter for message routing
    * Should be called when the window is ready to receive messages
    */
@@ -235,6 +339,9 @@ export abstract class DebugWindowBase extends EventEmitter {
         this.windowRouter.registerWindow(this.windowId, this.windowType, this.handleRouterMessage.bind(this));
         this.isRegisteredWithRouter = true;
         this.logMessageBase(`- Registered with WindowRouter: ${this.windowId} (${this.windowType})`);
+        
+        // Mark window as ready when registered with router
+        this.onWindowReady();
       } catch (error) {
         this.logMessageBase(`- Failed to register with WindowRouter: ${error}`);
       }
@@ -264,21 +371,17 @@ export abstract class DebugWindowBase extends EventEmitter {
         const lineParts = message.split(' ');
         this.updateContent(lineParts);
       } else if (message instanceof Uint8Array) {
-        // Binary data - convert to text for debug processing
-        // Most debug windows expect text commands, debugger window handles binary
-        const textMessage = new TextDecoder().decode(message);
-        const lineParts = textMessage.split(' ');
-        this.updateContent(lineParts);
+        // Binary data - pass through as-is for windows that handle binary
+        // DebugLoggerWindow and DebugDebuggerWindow need raw binary
+        this.updateContent(message);
       } else if (typeof message === 'object' && message.type && message.data) {
         // SerialMessage object
         if (message.type === 'text' && typeof message.data === 'string') {
           const lineParts = (message.data as string).split(' ');
           this.updateContent(lineParts);
         } else if (message.type === 'binary' && message.data instanceof Uint8Array) {
-          // Handle binary data (mainly for debugger window)
-          const textMessage = new TextDecoder().decode(message.data as Uint8Array);
-          const lineParts = textMessage.split(' ');
-          this.updateContent(lineParts);
+          // Handle binary data - pass through as-is
+          this.updateContent(message.data as Uint8Array);
         }
       }
     } catch (error) {

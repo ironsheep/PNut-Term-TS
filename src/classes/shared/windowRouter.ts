@@ -21,6 +21,7 @@ export interface SerialMessage {
   data: Uint8Array | string;
   timestamp: number;
   source?: string;
+  cogId?: number;  // Optional COG ID for debugger messages
 }
 
 /**
@@ -88,6 +89,9 @@ export class WindowRouter extends EventEmitter {
   // Window management
   private windows: Map<string, { type: string; handler: WindowHandler; stats: WindowInfo }> = new Map();
   
+  // Two-tiered registration: Track window instances even before they're ready
+  private windowInstances: Map<string, { type: string; instance: any; isReady: boolean }> = new Map();
+  
   // Recording state
   private isRecording: boolean = false;
   private recordingMetadata: RecordingMetadata | null = null;
@@ -146,15 +150,39 @@ export class WindowRouter extends EventEmitter {
   }
   
   /**
-   * Register a debug window for message routing
+   * Phase 1: Register window instance (called during window construction)
+   * This allows early message routing to window's internal queue
+   */
+  public registerWindowInstance(windowId: string, windowType: string, instance: any): void {
+    this.logger.debug('REGISTER_INSTANCE', `Registering window instance: ${windowId} (${windowType})`);
+    
+    this.windowInstances.set(windowId, {
+      type: windowType,
+      instance: instance,
+      isReady: false
+    });
+    
+    this.logger.info('REGISTER_INSTANCE', `Window instance registered: ${windowId} (${windowType}). Can receive messages to queue.`);
+  }
+  
+  /**
+   * Phase 2: Register window handler (called when window is ready)
+   * This enables direct message processing
    */
   public registerWindow(windowId: string, windowType: string, handler: WindowHandler): void {
-    this.logger.debug('REGISTER', `Registering window: ${windowId} (${windowType})`);
+    this.logger.debug('REGISTER', `Registering window handler: ${windowId} (${windowType})`);
     
     if (this.windows.has(windowId)) {
       const error = new Error(`Window ${windowId} is already registered`);
       this.logger.logError('REGISTER', error);
       throw error;
+    }
+    
+    // Mark instance as ready if it exists
+    const instance = this.windowInstances.get(windowId);
+    if (instance) {
+      instance.isReady = true;
+      this.logger.debug('REGISTER', `Marked window instance ${windowId} as ready`);
     }
     
     const windowInfo: WindowInfo = {
@@ -201,7 +229,8 @@ export class WindowRouter extends EventEmitter {
       this.logger.trace('ROUTE', `Routing ${message.type} message (${dataSize} bytes)`);
       
       if (message.type === 'binary') {
-        this.routeBinaryMessage(message.data as Uint8Array);
+        // Use tagged COG ID if available
+        this.routeBinaryMessage(message.data as Uint8Array, message.cogId);
       } else {
         this.routeTextMessage(message.data as string);
       }
@@ -224,16 +253,54 @@ export class WindowRouter extends EventEmitter {
   
   /**
    * Route binary message (debugger protocol)
+   * @param data Binary data to route
+   * @param taggedCogId Optional pre-extracted COG ID from message tag
    */
-  public routeBinaryMessage(data: Uint8Array): void {
+  public routeBinaryMessage(data: Uint8Array, taggedCogId?: number): void {
     const startTime = performance.now();
     
-    // Extract COG ID from binary message (assuming it's in first byte's lower 3 bits)
-    const cogId = data.length > 0 ? (data[0] & 0x07) : 0;
+    // Use tagged COG ID if provided, otherwise extract from 32-bit little-endian word
+    // P2 debugger protocol: COG ID is first 32-bit little-endian word (not just first byte!)
+    let extractedCogId = 0;
+    if (data.length >= 4) {
+      // Extract 32-bit little-endian COG ID
+      extractedCogId = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
+    } else if (data.length > 0) {
+      // Fallback for shorter messages
+      extractedCogId = data[0];
+    }
+    const cogId = taggedCogId !== undefined ? taggedCogId : extractedCogId;
+    
+    // Validate COG ID  
+    if (cogId > 0x07 && taggedCogId === undefined) {
+      this.logger.warn('ROUTE_BINARY', `Invalid COG ID extracted: 0x${extractedCogId.toString(16).toUpperCase()} (expected 0x00-0x07)`);
+    }
     const windowId = `debugger-${cogId}`;
     
     this.logger.debug('ROUTE_BINARY', `Routing binary message to COG ${cogId} (${data.length}B)`);
     
+    // ALWAYS route binary messages to DebugLogger window for logging/analysis
+    let loggerWindowFound = false;
+    for (const [winId, window] of this.windows) {
+      if (window.type === 'logger') {  // DebugLoggerWindow registers as 'logger' type
+        window.handler(data);  // Send raw Uint8Array for hex formatting
+        window.stats.messagesReceived++;
+        loggerWindowFound = true;
+        
+        if (this.isRecording) {
+          this.recordMessage(winId, window.type, 'binary', data);
+        }
+      }
+    }
+    
+    // Defensive error logging: warn if no logger window found for binary data
+    if (!loggerWindowFound) {
+      this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive binary message from COG ${cogId} (${data.length}B)`);
+      console.warn(`[ROUTING] ⚠️ Binary debugger message from COG ${cogId} received but no DebugLoggerWindow registered! Message will be lost.`);
+      console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
+    }
+    
+    // Also route to specific debugger window if it exists
     const window = this.windows.get(windowId);
     if (window) {
       window.handler(data);
@@ -258,18 +325,74 @@ export class WindowRouter extends EventEmitter {
   }
   
   /**
-   * Route text message (DEBUG commands)
+   * Route text message (DEBUG commands, Cog messages, etc.)
    */
   public routeTextMessage(text: string): void {
     const startTime = performance.now();
     
-    // Parse window type from DEBUG command
-    // Format: "DEBUG windowType data..." or just terminal output
-    
     let handled = false;
     
-    // Check for DEBUG command
-    if (text.startsWith('DEBUG ')) {
+    // 1. Check for Cog messages, INIT messages, OR backtick commands (all P2 debug output)
+    if (text.startsWith('Cog') || text.includes('INIT') || text.includes('`')) {
+      this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
+      
+      // Always route to DebugLogger window for logging
+      let loggerWindowFound = false;
+      for (const [windowId, window] of this.windows) {
+        if (window.type === 'logger') {  // DebugLoggerWindow registers as 'logger' type
+          console.log(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
+          window.handler(text);
+          window.stats.messagesReceived++;
+          handled = true;
+          loggerWindowFound = true;
+          
+          if (this.isRecording) {
+            this.recordMessage(windowId, window.type, 'text', text);
+          }
+        }
+      }
+      
+      // Defensive error logging: warn if no logger window found
+      if (!loggerWindowFound) {
+        this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive Cog message: "${text.substring(0, 50)}..."`);
+        console.warn('[ROUTING] ⚠️ Cog message received but no DebugLoggerWindow registered! Message will be lost.');
+        console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
+      }
+      
+      // Check for embedded backtick commands in Cog messages
+      if (text.includes('`')) {
+        const tickIndex = text.indexOf('`');
+        const embeddedCommand = text.substring(tickIndex);
+        this.logger.debug('ROUTE', `Found embedded command in Cog message: ${embeddedCommand}`);
+        
+        // Parse and route the embedded command
+        this.routeBacktickCommand(embeddedCommand);
+      }
+      
+      // Detect P2 processor reset/reboot events  
+      if (text.startsWith('Cog0') && text.includes('INIT')) {
+        // Check for the golden synchronization marker
+        if (text.includes('$0000_0000 $0000_0000 load')) {
+          this.logger.info('ROUTE', '🎯 P2 SYSTEM REBOOT detected - golden sync marker found');
+          console.log(`[P2 SYNC] 🎯 SYSTEM REBOOT: ${text}`);
+          // Emit special event for complete synchronization reset
+          this.emit('p2SystemReboot', { message: text, timestamp: Date.now() });
+        } else {
+          this.logger.info('ROUTE', 'Processor reset detected (Cog0 INIT)');
+          // Regular processor reset event
+          this.emit('processorReset', { message: text });
+        }
+      }
+    }
+    // 2. Check for standalone backtick commands
+    else if (text.includes('`')) {
+      const tickIndex = text.indexOf('`');
+      const command = text.substring(tickIndex);
+      this.routeBacktickCommand(command);
+      handled = true;
+    }
+    // 3. Check for DEBUG command format
+    else if (text.startsWith('DEBUG ')) {
       const parts = text.split(' ', 3);
       if (parts.length >= 2) {
         const windowType = parts[1].toLowerCase();
@@ -290,7 +413,7 @@ export class WindowRouter extends EventEmitter {
       }
     }
     
-    // Default to terminal window if not a DEBUG command
+    // Default to terminal window if not handled
     if (!handled) {
       const terminalWindow = this.windows.get('terminal');
       if (terminalWindow) {
@@ -306,6 +429,105 @@ export class WindowRouter extends EventEmitter {
     // Update statistics
     const routingTime = performance.now() - startTime;
     this.updateRoutingStats(routingTime, text);
+  }
+  
+  /**
+   * Parse and route backtick commands to appropriate debug windows
+   */
+  private routeBacktickCommand(command: string): void {
+    // Backtick commands have format: `WINDOWTYPE command data...
+    // Example: `TERM MyTerm SIZE 80 25
+    
+    console.log(`[ROUTER DEBUG] routeBacktickCommand called with: "${command}"`);
+    
+    if (!command.startsWith('`')) {
+      console.log(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command}"`);
+      this.logger.warn('ROUTE', `Invalid backtick command: ${command}`);
+      return;
+    }
+    
+    // CRITICAL: Never create COG-0 windows from backtick commands
+    // COG0 is the system COG and should never have a debug window
+    if (command.includes('COG-0') || command.includes('COG0')) {
+      console.log(`[ROUTER DEBUG] ⚠️ Ignoring COG-0 backtick command (system COG): "${command}"`);
+      this.logger.info('ROUTE', 'Ignoring COG-0 backtick command (system COG)');
+      return;
+    }
+    
+    // Remove the backtick and parse
+    const cleanCommand = command.substring(1).trim();
+    const parts = cleanCommand.split(' ');
+    
+    console.log(`[ROUTER DEBUG] Parsed command: "${cleanCommand}", parts: [${parts.join(', ')}]`);
+    
+    if (parts.length < 1) {
+      console.log(`[ROUTER DEBUG] ❌ Empty backtick command`);
+      this.logger.warn('ROUTE', `Empty backtick command`);
+      return;
+    }
+    
+    // First check if this is a CLOSE command (e.g., `MyLogic close)
+    const windowName = parts[0]; // Keep original case for window name
+    const isCloseCommand = parts.length >= 2 && parts[1].toLowerCase() === 'close';
+    
+    // CRITICAL: Never create COG-0 windows
+    if (windowName === 'COG-0' || windowName === 'COG0') {
+      console.log(`[ROUTER DEBUG] ⚠️ Blocking COG-0 window creation (system COG)`);
+      this.logger.info('ROUTE', 'Blocked COG-0 window creation attempt');
+      return;
+    }
+    
+    console.log(`[ROUTER DEBUG] Looking for window: "${windowName}"${isCloseCommand ? ' (CLOSE command)' : ''}`);
+    console.log(`[ROUTER DEBUG] Registered windows: [${Array.from(this.windows.keys()).join(', ')}]`);
+    
+    if (isCloseCommand) {
+      // Handle CLOSE command - find and close the window
+      console.log(`[ROUTER DEBUG] Processing CLOSE command for window: "${windowName}"`);
+      const window = this.windows.get(windowName);
+      if (window) {
+        console.log(`[ROUTER DEBUG] ✅ Found window "${windowName}" - sending close command`);
+        window.handler(command); // Let the window handle its own close
+        // Window will unregister itself when it closes
+        return;
+      } else {
+        console.log(`[ROUTER DEBUG] ❌ Window "${windowName}" not found for CLOSE command`);
+        return; // Don't emit windowNeeded for CLOSE commands
+      }
+    }
+    
+    // Try to route to window by exact name first (e.g., MyLogic, MyTerm)
+    let routed = false;
+    const window = this.windows.get(windowName);
+    if (window) {
+      console.log(`[ROUTER DEBUG] ✅ Found window by name: "${windowName}"`);
+      // Send the full command including backtick for window to parse
+      window.handler(command);
+      window.stats.messagesReceived++;
+      routed = true;
+      
+      if (this.isRecording) {
+        this.recordMessage(windowName, window.type, 'text', command);
+      }
+    }
+    
+    if (!routed) {
+      // Log error to terminal for user visibility
+      const errorMsg = `ERROR: Unknown window '${windowName}' - cannot route command: ${command}`;
+      console.log(`[ROUTER DEBUG] 🚨 No window found for "${windowName}" - emitting windowNeeded event`);
+      this.logger.error('ROUTE', errorMsg);
+      
+      // Send error to terminal window for user visibility
+      const terminalWindow = this.windows.get('terminal');
+      if (terminalWindow) {
+        terminalWindow.handler(`\n${errorMsg}\n`);
+      }
+      
+      // Emit event in case someone wants to handle missing windows
+      console.log(`[ROUTER DEBUG] 📡 Emitting windowNeeded event: type="${windowName}", command="${command}"`);
+      this.emit('windowNeeded', { type: windowName, command: command, error: errorMsg });
+    } else {
+      console.log(`[ROUTER DEBUG] ✅ Successfully routed command to existing window`);
+    }
   }
   
   /**
@@ -481,7 +703,8 @@ export class WindowRouter extends EventEmitter {
         if (window) {
           if (message.messageType === 'binary') {
             const data = Buffer.from(message.data, 'base64');
-            window.handler(new Uint8Array(data));
+            // CRITICAL FIX: Properly convert Buffer to Uint8Array to avoid data corruption
+            window.handler(new Uint8Array(data.buffer, data.byteOffset, data.length));
           } else {
             window.handler(message.data);
           }

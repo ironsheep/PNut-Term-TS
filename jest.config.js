@@ -46,6 +46,7 @@ module.exports = {
   
   // Module name mapping for imports
   moduleNameMapper: {
+    '^serialport$': '<rootDir>/tests/__mocks__/serialport.js',
     '^jimp$': '<rootDir>/tests/mocks/jimp.mock.js',
     '^@/(.*)$': '<rootDir>/src/$1'
   },

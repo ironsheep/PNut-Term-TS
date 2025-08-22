@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ScopeTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
   DebugWindowBase,
@@ -394,8 +395,25 @@ export class DebugScopeWindow extends DebugWindowBase {
     const canvasePlusWindowHeight = windowCanvasHeight + channelLabelHeight + this.contentInset * 2;
     const windowHeight = Math.max(this.displaySpec.size.height, canvasePlusWindowHeight);
     const windowWidth = Math.max(this.displaySpec.size.width, this.displaySpec.nbrSamples * 2 + this.contentInset * 2); // contentInset' for the Xoffset into window for canvas
+    // Check if position was explicitly set or is still at default (0,0)
+    let windowX = this.displaySpec.position.x;
+    let windowY = this.displaySpec.position.y;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (windowX === 0 && windowY === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`scope-${this.displaySpec.displayName}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+      this.logMessage(`  -- SCOPE using auto-placement: ${windowX},${windowY}`);
+    }
+    
     this.logMessage(
-      `  -- SCOPE window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
+      `  -- SCOPE window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
     );
 
     // now generate the window with the calculated sizes
@@ -403,14 +421,20 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
+      x: windowX,
+      y: windowY,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
 
+    // Register window with WindowPlacer for position tracking
+    if (this.debugWindow) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`scope-${this.displaySpec.displayName}`, this.debugWindow);
+    }
+    
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Scope window will show...');
@@ -676,7 +700,12 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public async updateContent(lineParts: string[]): Promise<void> {
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
     this.logMessage(`at updateContent() with lineParts=[${lineParts.join(', ')}]`);

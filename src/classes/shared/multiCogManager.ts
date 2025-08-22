@@ -244,6 +244,7 @@ export class MultiCogManager {
         // Route to appropriate debugger window
         const window = this.globalState.getWindow(cogId);
         if (window) {
+          // Pass binary data to debugger window - it will handle it via processMessageImmediate
           window.updateContent({ binary: data });
         }
       }

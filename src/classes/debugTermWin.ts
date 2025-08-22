@@ -14,6 +14,7 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { waitMSec } from '../utils/timerUtils';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 export interface TermSize {
   columns: number;
@@ -125,13 +126,20 @@ export class DebugTermWindow extends DebugWindowBase {
   private selectedCombo: number = 0;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
 
-  constructor(ctx: Context, displaySpec: TermDisplaySpec, windowId: string = `terminal-${Date.now()}`) {
-    super(ctx, windowId, 'terminal');
+  constructor(ctx: Context, displaySpec: TermDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID for proper routing
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'terminal');
     this.windowLogPrefix = 'trmW';
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
     // adjust our contentInset for font size
     this.contentInset = this.displaySpec.font.charWidth / 2;
+    
+    // CRITICAL FIX: Create window immediately, don't wait for data
+    // This ensures windows appear when created, even if closed before data arrives
+    this.logMessage('Creating TERM window immediately in constructor');
+    this.createDebugWindow();
   }
 
   get windowTitle(): string {
@@ -368,8 +376,25 @@ export class DebugTermWindow extends DebugWindowBase {
 
     const windowHeight = divHeight + this.borderMargin * 2;
     const windowWidth = divWidth + this.borderMargin * 2;
+    // Check if position was explicitly set or is still at default (0,0)
+    let windowX = this.displaySpec.position.x;
+    let windowY = this.displaySpec.position.y;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (windowX === 0 && windowY === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`term-${this.displaySpec.displayName}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+      this.logMessage(`  -- TERM using auto-placement: ${windowX},${windowY}`);
+    }
+    
     this.logMessage(
-      `  -- TERM window size: ${windowWidth}x${windowHeight} @${this.displaySpec.position.x},${this.displaySpec.position.y}`
+      `  -- TERM window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
     );
 
     // now generate the window with the calculated sizes
@@ -377,14 +402,20 @@ export class DebugTermWindow extends DebugWindowBase {
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
+      x: windowX,
+      y: windowY,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
 
+    // Register window with WindowPlacer for position tracking
+    if (this.debugWindow) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`term-${this.displaySpec.displayName}`, this.debugWindow);
+    }
+    
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Term window will show...');
@@ -439,6 +470,7 @@ export class DebugTermWindow extends DebugWindowBase {
             //background-color: ${this.displaySpec.window.background};
             background-color: rgb(140, 52, 130);
             color: ${this.displaySpec.textColor};
+            overflow: hidden; /* CRITICAL: Prevent scrollbars */
           }
           #terminal-data {
             display: flex;
@@ -488,7 +520,12 @@ export class DebugTermWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  public async updateContent(lineParts: string[]): Promise<void> {
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     // here with lineParts = ['`{displayName}, ...]
     // Valid directives are:
     // --- these manage the window
@@ -608,10 +645,9 @@ export class DebugTermWindow extends DebugWindowBase {
     // add action to our display list
     //this.logMessage(`* updateTermDisplay(${text})`);
     this.deferredCommands.push(text);
-    // create window if not already
+    // Window already created in constructor, just mark that we have data
     if (this.isFirstDisplayData) {
       this.isFirstDisplayData = false;
-      this.createDebugWindow();
     }
     // if not deferred update the act on display list now
     if (this.displaySpec.delayedUpdate == false) {

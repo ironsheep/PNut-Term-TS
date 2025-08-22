@@ -1,11 +1,11 @@
 [
   {
-    "sessionId": "2025-08-10T03-12-23-811Z-breakpoint-hit-1754795543811",
-    "filename": "2025-08-10T03-12-23-811Z-breakpoint-hit-1754795543811.jsonl",
+    "sessionId": "2025-08-21T08-55-49-599Z-breakpoint-hit-1755766549599",
+    "filename": "2025-08-21T08-55-49-599Z-breakpoint-hit-1755766549599.jsonl",
     "metadata": {
-      "sessionName": "breakpoint-hit-1754795543811",
+      "sessionName": "breakpoint-hit-1755766549599",
       "description": "Records when a breakpoint is hit",
-      "timestamp": 1754795543811,
+      "timestamp": 1755766549599,
       "testScenario": "breakpoint-hit",
       "tags": [
         "breakpoint",
@@ -17,29 +17,12 @@
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-23-806Z-breakpoint-hit-1754795543805",
-    "filename": "2025-08-10T03-12-23-806Z-breakpoint-hit-1754795543805.jsonl",
+    "sessionId": "2025-08-21T08-55-49-595Z-breakpoint-hit-1755766549595",
+    "filename": "2025-08-21T08-55-49-595Z-breakpoint-hit-1755766549595.jsonl",
     "metadata": {
-      "sessionName": "breakpoint-hit-1754795543805",
+      "sessionName": "breakpoint-hit-1755766549595",
       "description": "Records when a breakpoint is hit",
-      "timestamp": 1754795543805,
-      "testScenario": "breakpoint-hit",
-      "tags": [
-        "breakpoint",
-        "automatic"
-      ],
-      "duration": 4,
-      "messageCount": 0,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T03-12-23-801Z-breakpoint-hit-1754795543801",
-    "filename": "2025-08-10T03-12-23-801Z-breakpoint-hit-1754795543801.jsonl",
-    "metadata": {
-      "sessionName": "breakpoint-hit-1754795543801",
-      "description": "Records when a breakpoint is hit",
-      "timestamp": 1754795543801,
+      "timestamp": 1755766549595,
       "testScenario": "breakpoint-hit",
       "tags": [
         "breakpoint",
@@ -51,182 +34,132 @@
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-23-794Z-memory-inspection-1754795543794",
-    "filename": "2025-08-10T03-12-23-794Z-memory-inspection-1754795543794.jsonl",
+    "sessionId": "2025-08-21T08-55-49-591Z-breakpoint-hit-1755766549591",
+    "filename": "2025-08-21T08-55-49-591Z-breakpoint-hit-1755766549591.jsonl",
     "metadata": {
-      "sessionName": "memory-inspection-1754795543794",
+      "sessionName": "breakpoint-hit-1755766549591",
+      "description": "Records when a breakpoint is hit",
+      "timestamp": 1755766549591,
+      "testScenario": "breakpoint-hit",
+      "tags": [
+        "breakpoint",
+        "automatic"
+      ],
+      "duration": 3,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-21T08-55-49-585Z-memory-inspection-1755766549585",
+    "filename": "2025-08-21T08-55-49-585Z-memory-inspection-1755766549585.jsonl",
+    "metadata": {
+      "sessionName": "memory-inspection-1755766549585",
       "description": "Records memory read/write operations",
-      "timestamp": 1754795543794,
+      "timestamp": 1755766549585,
       "testScenario": "memory-inspection",
       "tags": [
         "window",
         "automatic"
       ],
-      "duration": 5,
+      "duration": 4,
       "messageCount": 0,
       "fileSize": 0
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-23-786Z-multi-cog-1754795543786",
-    "filename": "2025-08-10T03-12-23-786Z-multi-cog-1754795543786.jsonl",
+    "sessionId": "2025-08-21T08-55-49-579Z-multi-cog-1755766549579",
+    "filename": "2025-08-21T08-55-49-579Z-multi-cog-1755766549579.jsonl",
     "metadata": {
-      "sessionName": "multi-cog-1754795543786",
+      "sessionName": "multi-cog-1755766549579",
       "description": "Records multi-COG debugging operations",
-      "timestamp": 1754795543786,
+      "timestamp": 1755766549579,
       "testScenario": "multi-cog",
       "tags": [
         "multi-cog",
         "automatic"
       ],
-      "duration": 6,
+      "duration": 4,
       "messageCount": 0,
       "fileSize": 0
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-23-285Z-high-frequency-sampled-1754795543284",
-    "filename": "2025-08-10T03-12-23-285Z-high-frequency-sampled-1754795543284.jsonl",
+    "sessionId": "2025-08-21T08-55-49-087Z-high-frequency-sampled-1755766549087",
+    "filename": "2025-08-21T08-55-49-087Z-high-frequency-sampled-1755766549087.jsonl",
     "metadata": {
-      "sessionName": "high-frequency-sampled-1754795543284",
+      "sessionName": "high-frequency-sampled-1755766549087",
       "description": "Records high-speed data streams with sampling (sampled)",
-      "timestamp": 1754795543284,
+      "timestamp": 1755766549087,
       "testScenario": "high-frequency",
       "tags": [
         "high-speed",
         "automatic-sampled",
         "sampled"
       ],
-      "duration": 495,
+      "duration": 488,
       "messageCount": 0,
       "fileSize": 250
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-22-266Z-breakpoint-hit-1754795542266",
-    "filename": "2025-08-10T03-12-22-266Z-breakpoint-hit-1754795542266.jsonl",
+    "sessionId": "2025-08-21T08-55-48-069Z-breakpoint-hit-1755766548069",
+    "filename": "2025-08-21T08-55-48-069Z-breakpoint-hit-1755766548069.jsonl",
     "metadata": {
-      "sessionName": "breakpoint-hit-1754795542266",
+      "sessionName": "breakpoint-hit-1755766548069",
       "description": "Records when a breakpoint is hit",
-      "timestamp": 1754795542266,
+      "timestamp": 1755766548069,
       "testScenario": "breakpoint-hit",
       "tags": [
         "breakpoint",
         "automatic"
       ],
-      "duration": 5,
+      "duration": 4,
       "messageCount": 0,
       "fileSize": 0
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-22-158Z-error-recovery-1754795542158",
-    "filename": "2025-08-10T03-12-22-158Z-error-recovery-1754795542158.jsonl",
+    "sessionId": "2025-08-21T08-55-47-959Z-error-recovery-1755766547959",
+    "filename": "2025-08-21T08-55-47-959Z-error-recovery-1755766547959.jsonl",
     "metadata": {
-      "sessionName": "error-recovery-1754795542158",
+      "sessionName": "error-recovery-1755766547959",
       "description": "Records error conditions and recovery",
-      "timestamp": 1754795542158,
+      "timestamp": 1755766547959,
       "testScenario": "error-recovery",
       "tags": [
         "error",
         "automatic"
       ],
-      "duration": 106,
+      "duration": 108,
       "messageCount": 0,
       "fileSize": 201
     }
   },
   {
-    "sessionId": "2025-08-10T03-12-22-013Z-breakpoint-hit-1754795542013",
-    "filename": "2025-08-10T03-12-22-013Z-breakpoint-hit-1754795542013.jsonl",
+    "sessionId": "2025-08-21T08-55-47-819Z-breakpoint-hit-1755766547819",
+    "filename": "2025-08-21T08-55-47-819Z-breakpoint-hit-1755766547819.jsonl",
     "metadata": {
-      "sessionName": "breakpoint-hit-1754795542013",
+      "sessionName": "breakpoint-hit-1755766547819",
       "description": "Records when a breakpoint is hit",
-      "timestamp": 1754795542013,
+      "timestamp": 1755766547819,
       "testScenario": "breakpoint-hit",
       "tags": [
         "breakpoint",
         "automatic"
       ],
-      "duration": 142,
+      "duration": 138,
       "messageCount": 0,
       "fileSize": 201
     }
   },
   {
-    "sessionId": "2025-08-10T01-16-04-638Z-test-binary-playback",
-    "filename": "2025-08-10T01-16-04-638Z-test-binary-playback.jsonl",
-    "metadata": {
-      "sessionName": "test-binary-playback",
-      "timestamp": 1754788564638,
-      "duration": 0,
-      "messageCount": 1,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-04-634Z-test-playback",
-    "filename": "2025-08-10T01-16-04-634Z-test-playback.jsonl",
-    "metadata": {
-      "sessionName": "test-playback",
-      "timestamp": 1754788564634,
-      "duration": 0,
-      "messageCount": 2,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-04-615Z-test-buffer",
-    "filename": "2025-08-10T01-16-04-615Z-test-buffer.jsonl",
-    "metadata": {
-      "sessionName": "test-buffer",
-      "timestamp": 1754788564615,
-      "duration": 15,
-      "messageCount": 1001,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-04-454Z-test-record",
-    "filename": "2025-08-10T01-16-04-454Z-test-record.jsonl",
-    "metadata": {
-      "sessionName": "test-record",
-      "timestamp": 1754788564454,
-      "duration": 156,
-      "messageCount": 1,
-      "fileSize": 196
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-04-452Z-test1",
-    "filename": "2025-08-10T01-16-04-452Z-test1.jsonl",
-    "metadata": {
-      "sessionName": "test1",
-      "timestamp": 1754788564452,
-      "duration": 1,
-      "messageCount": 0,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-04-450Z-test-session",
-    "filename": "2025-08-10T01-16-04-450Z-test-session.jsonl",
-    "metadata": {
-      "sessionName": "test-session",
-      "description": "Test recording",
-      "timestamp": 1754788564450,
-      "duration": 0,
-      "messageCount": 0,
-      "fileSize": 0
-    }
-  },
-  {
-    "sessionId": "2025-08-10T01-16-02-334Z-test-all-windows",
-    "filename": "2025-08-10T01-16-02-334Z-test-all-windows.jsonl",
+    "sessionId": "2025-08-20T20-36-01-683Z-test-all-windows",
+    "filename": "2025-08-20T20-36-01-683Z-test-all-windows.jsonl",
     "metadata": {
       "sessionName": "test-all-windows",
       "description": "Test recording all window types",
-      "timestamp": 1754788562334,
+      "timestamp": 1755722161683,
       "windowTypes": [
         "terminal",
         "scope",
@@ -234,6 +167,73 @@
       ],
       "duration": 0,
       "messageCount": 2,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-399Z-test-binary-playback",
+    "filename": "2025-08-20T20-35-58-399Z-test-binary-playback.jsonl",
+    "metadata": {
+      "sessionName": "test-binary-playback",
+      "timestamp": 1755722158399,
+      "duration": 0,
+      "messageCount": 1,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-394Z-test-playback",
+    "filename": "2025-08-20T20-35-58-394Z-test-playback.jsonl",
+    "metadata": {
+      "sessionName": "test-playback",
+      "timestamp": 1755722158394,
+      "duration": 1,
+      "messageCount": 2,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-380Z-test-buffer",
+    "filename": "2025-08-20T20-35-58-380Z-test-buffer.jsonl",
+    "metadata": {
+      "sessionName": "test-buffer",
+      "timestamp": 1755722158380,
+      "duration": 12,
+      "messageCount": 1001,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-220Z-test-record",
+    "filename": "2025-08-20T20-35-58-220Z-test-record.jsonl",
+    "metadata": {
+      "sessionName": "test-record",
+      "timestamp": 1755722158220,
+      "duration": 156,
+      "messageCount": 1,
+      "fileSize": 196
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-218Z-test1",
+    "filename": "2025-08-20T20-35-58-218Z-test1.jsonl",
+    "metadata": {
+      "sessionName": "test1",
+      "timestamp": 1755722158218,
+      "duration": 1,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2025-08-20T20-35-58-216Z-test-session",
+    "filename": "2025-08-20T20-35-58-216Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1755722158215,
+      "duration": 0,
+      "messageCount": 0,
       "fileSize": 0
     }
   }

@@ -1,0 +1,179 @@
+/** @format */
+
+/* COG Window Theme Styles - Dormant and Active States */
+
+/* ============================================
+   DORMANT THEME - Window has no traffic
+   Faded, non-prominent, doesn't draw attention
+   ============================================ */
+
+body.cog-dormant {
+  /* Muted background */
+  background-color: #1a1a1a !important;
+  
+  /* Smooth transition when switching to active */
+  transition: all 0.3s ease-in-out;
+}
+
+/* Dormant terminal area */
+body.cog-dormant .terminal-area,
+body.cog-dormant pre,
+body.cog-dormant .debug-content {
+  /* Faded text colors */
+  color: #666 !important;
+  background-color: #0d0d0d !important;
+  
+  /* Slightly reduced contrast */
+  opacity: 0.85;
+}
+
+/* Dormant status indicator */
+.cog-dormant-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 40px;
+  background: rgba(26, 26, 26, 0.95);
+  border-radius: 12px;
+  border: 1px solid #333;
+  
+  /* Larger, but faded font for message */
+  font-size: 18px;
+  color: #555;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  
+  /* Subtle shadow */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  
+  /* Ensure it's on top but not intrusive */
+  z-index: 100;
+}
+
+.cog-dormant-indicator .cog-title {
+  font-size: 24px;
+  color: #666;
+  margin-bottom: 20px;
+  font-weight: 300;
+}
+
+.cog-dormant-indicator .status-text {
+  font-size: 16px;
+  color: #4a4a4a;
+  margin-bottom: 10px;
+}
+
+.cog-dormant-indicator .waiting-text {
+  font-size: 14px;
+  color: #3a3a3a;
+  font-style: italic;
+}
+
+/* Dormant window title bar */
+body.cog-dormant .window-title,
+body.cog-dormant .title-bar {
+  background: linear-gradient(to bottom, #2a2a2a, #1a1a1a) !important;
+  color: #555 !important;
+}
+
+/* Dormant scrollbars */
+body.cog-dormant ::-webkit-scrollbar {
+  background: #0d0d0d;
+}
+
+body.cog-dormant ::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+/* ============================================
+   ACTIVE THEME - Window has received traffic
+   Normal vibrant colors, draws appropriate attention
+   ============================================ */
+
+body.cog-active {
+  /* Standard terminal background */
+  background-color: #000000 !important;
+  
+  /* Smooth transition from dormant */
+  transition: all 0.3s ease-in-out;
+}
+
+/* Active terminal area */
+body.cog-active .terminal-area,
+body.cog-active pre,
+body.cog-active .debug-content {
+  /* Full contrast text */
+  color: #00ff00 !important;
+  background-color: #000000 !important;
+  opacity: 1;
+}
+
+/* Active window title bar */
+body.cog-active .window-title,
+body.cog-active .title-bar {
+  background: linear-gradient(to bottom, #2a4a2a, #1a3a1a) !important;
+  color: #00ff00 !important;
+}
+
+/* Active scrollbars */
+body.cog-active ::-webkit-scrollbar {
+  background: #0a0a0a;
+}
+
+body.cog-active ::-webkit-scrollbar-thumb {
+  background: #00ff00;
+  opacity: 0.5;
+}
+
+/* ============================================
+   TRANSITION EFFECTS
+   Smooth switching between states
+   ============================================ */
+
+/* Fade in animation for content */
+@keyframes fadeInContent {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Apply animation when switching to active */
+body.cog-active .terminal-content {
+  animation: fadeInContent 0.4s ease-out;
+}
+
+/* Hide dormant indicator instantly when active */
+body.cog-active .cog-dormant-indicator {
+  display: none !important;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Flash effect when first message arrives */
+.cog-first-message {
+  animation: flashActive 0.5s ease-out;
+}
+
+@keyframes flashActive {
+  0% { background-color: #001a00; }
+  50% { background-color: #003300; }
+  100% { background-color: #000000; }
+}
+
+/* Pulse effect for waiting indicator */
+.cog-dormant-indicator .waiting-text {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}

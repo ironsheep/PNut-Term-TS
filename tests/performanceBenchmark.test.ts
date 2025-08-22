@@ -250,7 +250,7 @@ describe('Performance Benchmarks', () => {
       const mockRouter = WindowRouter.getInstance() as jest.Mocked<WindowRouter>;
       
       // Mock very fast routing
-      mockRouter.routeTextMessage = jest.fn(() => {
+      mockRouter.routeTextMessage = jest.fn((text: string) => {
         // Simulate < 1ms operation
       });
 

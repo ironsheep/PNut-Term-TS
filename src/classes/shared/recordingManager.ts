@@ -160,8 +160,16 @@ export class RecordingManager {
                (msg.data[0] & 0x80) !== 0; // Breakpoint flag in message
       },
       action: (msg) => {
+        // Extract COG ID using proper 32-bit little-endian
+        let cogId = 0;
+        if (msg.data.length >= 4) {
+          cogId = msg.data[0] | (msg.data[1] << 8) | (msg.data[2] << 16) | (msg.data[3] << 24);
+        } else if (msg.data.length > 0) {
+          cogId = msg.data[0] & 0x07; // Fallback for short messages
+        }
+        
         this.startScenarioRecording('breakpoint-hit', {
-          cogId: msg.data[0] & 0x07,
+          cogId: cogId,
           address: msg.address,
           timestamp: Date.now()
         });

@@ -21,9 +21,9 @@ describe('DebuggerInteraction', () => {
 
   beforeEach(() => {
     // Create mock instances
-    mockRenderer = new DebuggerRenderer(null as any, cogId) as jest.Mocked<DebuggerRenderer>;
-    mockProtocol = new DebuggerProtocol(cogId, null as any) as jest.Mocked<DebuggerProtocol>;
     mockDataManager = new DebuggerDataManager() as jest.Mocked<DebuggerDataManager>;
+    mockRenderer = new DebuggerRenderer(null as any, mockDataManager, cogId) as jest.Mocked<DebuggerRenderer>;
+    mockProtocol = new DebuggerProtocol() as jest.Mocked<DebuggerProtocol>;
 
     // Create interaction instance
     interaction = new DebuggerInteraction(
@@ -59,7 +59,7 @@ describe('DebuggerInteraction', () => {
       const handled = interaction.handleKeyboard(event);
 
       expect(handled).toBe(true);
-      expect(mockProtocol.sendGoCommand).toHaveBeenCalled();
+      expect(mockProtocol.sendGo).toHaveBeenCalledWith(cogId);
     });
 
     it('should handle B key for BREAK command', () => {
@@ -67,7 +67,7 @@ describe('DebuggerInteraction', () => {
       const handled = interaction.handleKeyboard(event);
 
       expect(handled).toBe(true);
-      expect(mockProtocol.sendBreakCommand).toHaveBeenCalled();
+      expect(mockProtocol.sendBreak).toHaveBeenCalledWith(cogId);
     });
 
     it('should handle D key for DEBUG toggle', () => {
@@ -149,7 +149,7 @@ describe('DebuggerInteraction', () => {
 
       interaction.handleMouseClick(100, 5, 0);
 
-      expect(mockProtocol.sendGoCommand).toHaveBeenCalled();
+      expect(mockProtocol.sendGo).toHaveBeenCalledWith(cogId);
       expect(mockRenderer.handleMouseClick).toHaveBeenCalledWith(100, 5);
     });
 

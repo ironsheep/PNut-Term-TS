@@ -5,7 +5,7 @@
 import { Context } from '../src/utils/context';
 import { DebugTerminalInTypeScript } from '../src/pnut-term-ts';
 
-describe.skip('IDE Mode Detection', () => {
+describe('IDE Mode Detection', () => {
   it('should default to ideMode false when --ide is not provided', () => {
     const context = new Context();
     expect(context.runEnvironment.ideMode).toBe(false);
