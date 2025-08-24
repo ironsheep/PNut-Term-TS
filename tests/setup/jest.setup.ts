@@ -27,6 +27,17 @@ if (!global.performance) {
   } as any;
 }
 
+// Add setImmediate polyfill for test environment
+if (typeof global.setImmediate === 'undefined') {
+  global.setImmediate = ((fn: Function, ...args: any[]) => {
+    return setTimeout(fn, 0, ...args);
+  }) as any;
+}
+
+if (typeof global.clearImmediate === 'undefined') {
+  global.clearImmediate = clearTimeout as any;
+}
+
 // Ensure TextEncoder/TextDecoder are available
 if (!global.TextEncoder) {
   const util = require('util');

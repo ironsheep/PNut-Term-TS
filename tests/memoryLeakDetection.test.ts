@@ -3,14 +3,14 @@
 // tests/memoryLeakDetection.test.ts
 
 import { MemoryProfiler, WindowLeakDetector, MemoryBaseline } from '../src/utils/memoryProfiler';
-import { DebugTermWindowdow } from '../src/classes/debugTermWin';
-import { DebugScopeWindowdow } from '../src/classes/debugScopeWin';
-import { DebugLogicWindowdow } from '../src/classes/debugLogicWin';
-import { DebugPlotWindowdow } from '../src/classes/debugPlotWin';
-import { DebugMidiWindowdow } from '../src/classes/debugMidiWin';
-import { DebugBitmapWindowdow } from '../src/classes/debugBitmapWin';
+import { DebugTermWindow } from '../src/classes/debugTermWin';
+import { DebugScopeWindow } from '../src/classes/debugScopeWin';
+import { DebugLogicWindow } from '../src/classes/debugLogicWin';
+import { DebugPlotWindow } from '../src/classes/debugPlotWin';
+import { DebugMidiWindow } from '../src/classes/debugMidiWin';
+import { DebugBitmapWindow } from '../src/classes/debugBitmapWin';
 import { DebugFFTWindow } from '../src/classes/debugFftWin';
-import { DebugScopeXyWindowdow } from '../src/classes/debugScopeXyWin';
+import { DebugScopeXyWindow } from '../src/classes/debugScopeXyWin';
 import { DebugDebuggerWindow } from '../src/classes/debugDebuggerWin';
 import { WindowRouter } from '../src/classes/shared/windowRouter';
 import { Context } from '../src/utils/context';

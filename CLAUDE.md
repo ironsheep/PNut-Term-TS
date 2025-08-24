@@ -8,6 +8,69 @@ mcp__todo-mcp__context_resume  # ALWAYS FIRST - Shows tasks/context/state
 ```
 **NON-OPTIONAL**: Shows in-progress tasks, recent context (10min), current state. Without this = flying blind.
 
+### 🏔️ SESSION MINDSET - TECHNICAL CLIMBING
+**Before ANY work**: Remember we follow **Technical Climbing Methodology**
+- **Start from last protection point** (working code + tests + documentation)  
+- **Place protection before climbing** (document/test what works before changing)
+- **Never fall below protection** (don't break working functionality)
+- **Document immediately** when something works or fails
+
+## 📚 WORK TYPE GUIDANCE - READ FIRST
+
+### Starting New Work - Document Dispatch System
+
+**Before ANY work**, identify work type and read required guidance:
+
+### 🏔️ **UNIVERSAL FOUNDATION - READ FIRST FOR ALL WORK TYPES**
+**MANDATORY**: `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Core philosophy for making progress while placing protection
+
+### 🐛 **DEBUGGING/BUG FIXING**
+Required Reading Order:
+1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: protection through tests + documentation
+2. `DOCs/pure-process/CODE-REPAIR-METHODOLOGY.md` - What NOT to do, surgical fixes only
+3. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Tests are truth, systematic debugging  
+4. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Component analysis, dependency planning
+5. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - How to test in this codebase
+
+### 🔧 **FEATURE DEVELOPMENT**
+Required Reading Order:
+1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: building on working protection
+2. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Test-first development
+3. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Change impact planning
+4. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - Testing patterns
+5. `DOCs/project-specific/ARCHITECTURE.md` - System understanding
+
+### 🧪 **TEST CREATION/FIXING**
+Required Reading Order:
+1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: tests as protection
+2. `DOCs/project-specific/TESTING-STANDARDS.md` - Byte-perfect validation requirements
+3. `tests/README-TESTING-STANDARDS.md` - Test patterns and templates
+4. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - Component testing patterns
+5. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Testing discipline
+
+### 🏗️ **ARCHITECTURE CHANGES**
+Required Reading Order:
+1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: preserve working systems
+2. `DOCs/pure-process/CODE-REPAIR-METHODOLOGY.md` - Preserve working systems
+3. `DOCs/project-specific/ARCHITECTURE.md` - Current system understanding
+4. `DOCs/pure-process/SHARED-COMPONENT-REQUIREMENTS.md` - Component boundaries
+5. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Change impact analysis
+
+### 📝 **DOCUMENTATION WORK**
+Required Reading Order:
+1. `DOCs/REPOSITORY-ORGANIZATION.md` - File organization
+2. `DOCs/project-specific/ARCHITECTURE.md` - System overview
+3. Current documentation being updated
+4. Related process documentation
+
+**Process**: Read required docs → Understand current state → Plan approach → Get approval → Execute
+
+### 🔄 **LIVING DOCUMENTATION SYSTEM**
+- **Process breakdowns** → Upgrade documentation immediately  
+- **New patterns discovered** → Add to appropriate process docs
+- **Repeated mistakes** → Strengthen guidance to prevent recurrence
+- **Every failure** is an opportunity to improve our process documentation
+
 ## 🔄 Work Assessment
 - **Complex**: Multi-window debug, race conditions, architecture → deeper analysis
 - **Documentation**: User guides, API docs → consider model upgrade
@@ -104,6 +167,25 @@ Rules:
 - Use sequential script for full runs
 - Individual OK: `npm test -- specific.test.ts`
 - Keep script updated
+
+## 🚨 TESTING STANDARDS - BYTE-PERFECT VALIDATION
+
+**CRITICAL RULE: Perfect Data = Perfect Validation**
+
+When you have 100% of actual bytes, validate 100% of actual bytes:
+- **Account for every single input byte** - `totalExtracted === totalInput`
+- **Validate byte-by-byte content** - `Array.from(actual) === Array.from(expected)`
+- **Check exact message boundaries** - CR/LF positioning must be perfect
+- **Verify precise classification** - No approximations, exact counts only
+
+**NEVER:**
+- Count messages instead of validating bytes
+- Use "length > 5" or similar approximations  
+- Allow ANY unaccounted bytes
+- Let broken systems reach human testing
+
+**Process:** Tests MUST fail loud/fast → Fix code → Tests pass → THEN human testing
+**See:** `DOCs/project-specific/TESTING-STANDARDS.md` and `tests/README-TESTING-STANDARDS.md`
 
 ## ⚠️ Shell Redirection NPM
 

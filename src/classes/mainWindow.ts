@@ -35,7 +35,9 @@ import { DebugMidiWindow } from './debugMidiWin';
 import { DebugLoggerWindow } from './debugLoggerWin';
 import { DebugCOGWindow } from './debugCOGWindow';
 import { WindowRouter } from './shared/windowRouter';
-import { DebuggerMessageParser, MessageType, ParsedMessage } from './shared/debuggerMessageParser';
+import { SerialMessageProcessor } from './shared/serialMessageProcessor';
+import { MessageType, ExtractedMessage } from './shared/messageExtractor';
+import { RouteDestination } from './shared/messageRouter';
 import { COGWindowManager, COGDisplayMode } from './shared/cogWindowManager';
 import { COGHistoryManager } from './shared/cogHistoryManager';
 import { PlacementStrategy } from '../utils/windowPlacer';
@@ -110,7 +112,7 @@ export class MainWindow {
   };
   
   // Debugger message parsing and COG window management
-  private debuggerParser: DebuggerMessageParser;
+  private serialProcessor: SerialMessageProcessor;
   private cogWindowManager: COGWindowManager;
   private cogHistoryManager: COGHistoryManager;
   private cogLogExporter: COGLogExporter;
@@ -126,14 +128,14 @@ export class MainWindow {
       this.logMessage('MainWindow started.');
     }
     
-    // Initialize debugger message parser and COG managers
-    this.debuggerParser = new DebuggerMessageParser();
+    // Initialize Two-Tier Pattern Matching serial processor and COG managers
+    this.serialProcessor = new SerialMessageProcessor(true); // Enable performance logging
     this.cogWindowManager = new COGWindowManager();
     this.cogHistoryManager = new COGHistoryManager();
     this.cogLogExporter = new COGLogExporter();
     
-    // Set up debugger parser event handlers
-    this.setupDebuggerParserEvents();
+    // Set up Two-Tier Pattern Matching event handlers
+    this.setupSerialProcessorEvents();
     
     // Set up COG window creator
     this.cogWindowManager.setWindowCreator((cogId: number) => {
@@ -195,126 +197,181 @@ export class MainWindow {
   /**
    * Setup event handlers for debugger message parser
    */
-  private setupDebuggerParserEvents(): void {
-    this.debuggerParser.on('message', (message: ParsedMessage) => {
-      // Handle different message types
-      switch (message.type) {
-        case MessageType.INITIAL_DEBUGGER:
-          this.handleInitialDebuggerMessage(message);
-          break;
-        case MessageType.DEBUGGER_PROTOCOL:
-          this.handleDebuggerProtocolMessage(message);
-          break;
-        case MessageType.TEXT:
-          // Route text to terminal
-          this.handleTextMessage(message);
-          break;
-        case MessageType.BINARY_UNKNOWN:
-          // Display hex dump in debug logger
-          this.handleUnknownBinaryMessage(message);
-          break;
+  private setupSerialProcessorEvents(): void {
+    // Create routing destinations for Two-Tier Pattern Matching
+    const debugLoggerDestination: RouteDestination = {
+      name: 'DebugLogger',
+      handler: (message: ExtractedMessage) => {
+        this.routeToDebugLogger(message);
       }
+    };
+
+    const windowCreatorDestination: RouteDestination = {
+      name: 'WindowCreator', 
+      handler: (message: ExtractedMessage) => {
+        this.handleWindowCommand(message);
+      }
+    };
+
+    const debuggerWindowDestination: RouteDestination = {
+      name: 'DebuggerWindow',
+      handler: (message: ExtractedMessage) => {
+        this.routeToDebuggerWindow(message);
+      }
+    };
+
+    // Apply standard P2 routing configuration
+    this.serialProcessor.applyStandardRouting(
+      debugLoggerDestination,
+      windowCreatorDestination, 
+      debuggerWindowDestination
+    );
+
+    // Start the processor
+    this.serialProcessor.start();
+
+    // Handle processor events
+    this.serialProcessor.on('resetDetected', (event: any) => {
+      console.log(`[TWO-TIER] ${event.type} reset detected`);
     });
-    
-    this.debuggerParser.on('syncStatus', (status: any) => {
+
+    this.serialProcessor.on('syncStatusChanged', (status: any) => {
       if (status.synchronized) {
-        console.log(`[DEBUGGER SYNC] ✅ Synchronized via ${status.source}`);
-      } else if (status.expected) {
-        console.log(`[DEBUGGER SYNC] ⚠️ Expected sync but lost!`);
-        // Could show visual indicator in debug logger
+        console.log(`[TWO-TIER] ✅ Synchronized via ${status.source}`);
+      } else {
+        console.log(`[TWO-TIER] ⚠️ Lost synchronization`);
       }
     });
   }
-  
+
   /**
-   * Handle initial 80-byte debugger message - creates debugger window
+   * Route message to Debug Logger (Terminal FIRST principle)
    */
-  private handleInitialDebuggerMessage(message: ParsedMessage): void {
-    const cogId = message.cogId!;
-    console.log(`[DEBUGGER] 🎯 Initial debugger message for COG ${cogId}`);
-    
-    // Note: COG 0 is the system/loader COG and rarely needs debugging,
-    // but we'll allow it if an actual 80-byte debugger packet requests it
-    if (cogId === 0) {
-      console.log(`[DEBUGGER] ⚠️ COG 0 debugger message received (unusual but allowed)`);
-    }
-    
-    // Route to Debug Logger with binary type 'debugger'
-    this.routeBinaryToDebugLogger(message.rawData, 'debugger');
-    
-    // Create debugger window for this COG
-    const debuggerWindowId = `debugger-${cogId}`;
-    if (!this.displays[debuggerWindowId]) {
-      console.log(`[DEBUGGER] Creating debugger window for COG ${cogId}...`);
-      try {
-        // Import DebugDebuggerWindow if not already imported
-        const { DebugDebuggerWindow } = require('./debugDebuggerWin');
-        const debuggerWindow = new DebugDebuggerWindow(this.context, cogId);
-        this.displays[debuggerWindowId] = debuggerWindow;
-        
-        // Queue the initial message for the window to process after it's ready
-        debuggerWindow.queueInitialMessage(message.rawData);
-        
-        // Set up cleanup handler
-        debuggerWindow.on('close', () => {
-          this.logMessage(`Debugger window for COG ${cogId} closed`);
-          console.log(`[DEBUGGER] COG ${cogId} window closed by user`);
-          delete this.displays[debuggerWindowId];
-        });
-        
-        // Send the initial message to the window using proper format
-        // DebugDebuggerWindow expects an object with binary property
-        debuggerWindow.processMessageImmediate({ binary: message.rawData });
-        
-        this.logMessage(`Auto-created debugger window for COG ${cogId}`);
-      } catch (error) {
-        this.logMessage(`ERROR: Failed to create debugger window for COG ${cogId}: ${error}`);
-        console.error(`[DEBUGGER] Failed to create window for COG ${cogId}:`, error);
+  private routeToDebugLogger(message: ExtractedMessage): void {
+    // Use type-safe handoff to debug logger - no more guessing!
+    if (this.debugLoggerWindow) {
+      // Convert buffer to appropriate data type
+      let data: string[] | Uint8Array;
+      
+      if (message.type === MessageType.DEBUGGER_80BYTE) {
+        // Binary data stays as Uint8Array
+        data = message.data;
+      } else {
+        // Text data converted to string array
+        const textData = new TextDecoder().decode(message.data);
+        data = textData.split(/\s+/).filter(part => part.length > 0);
       }
+      
+      // Direct type-safe call - no router guessing needed
+      this.debugLoggerWindow.processTypedMessage(message.type, data);
+    } else {
+      // Fallback to router if debug logger not available
+      const routerMessage = {
+        type: 'text' as const,
+        data: this.formatMessageForDisplay(message),
+        timestamp: message.timestamp,
+        cogId: message.metadata?.cogId
+      };
+      this.windowRouter.routeMessage(routerMessage);
+    }
+  }
+
+  /**
+   * Handle window command (backtick commands)
+   */
+  private handleWindowCommand(message: ExtractedMessage): void {
+    if (message.metadata?.windowCommand) {
+      console.log(`[TWO-TIER] Window command: ${message.metadata.windowCommand}`);
+      // Route to appropriate window creation logic
+      this.windowRouter.routeMessage({
+        type: 'text',
+        data: message.metadata.windowCommand,
+        timestamp: message.timestamp
+      });
+    }
+  }
+
+  /**
+   * Route to debugger window (80-byte packets)
+   */
+  private routeToDebuggerWindow(message: ExtractedMessage): void {
+    if (message.metadata?.cogId !== undefined) {
+      console.log(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
+      // Route binary debugger data to appropriate COG debugger window
+      this.windowRouter.routeMessage({
+        type: 'binary',
+        data: message.data,
+        timestamp: message.timestamp,
+        cogId: message.metadata.cogId
+      });
+    }
+  }
+
+  /**
+   * Format extracted message for display in debug logger
+   */
+  private formatMessageForDisplay(message: ExtractedMessage): string {
+    let displayText = '';
+    
+    switch (message.type) {
+      case MessageType.TERMINAL_OUTPUT:
+        displayText = new TextDecoder().decode(message.data);
+        break;
+      case MessageType.COG_MESSAGE:
+        displayText = new TextDecoder().decode(message.data);
+        break;
+      case MessageType.P2_SYSTEM_INIT:
+        displayText = `[GOLDEN SYNC] ${new TextDecoder().decode(message.data)}`;
+        break;
+      case MessageType.DB_PACKET:
+        displayText = this.formatHexDump(message.data, 'DB_PACKET');
+        break;
+      case MessageType.INVALID_COG:
+        displayText = `[INVALID COG] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(message.data)}`;
+        break;
+      case MessageType.INCOMPLETE_DEBUG:
+        displayText = `[INCOMPLETE] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(message.data)}`;
+        break;
+      default:
+        displayText = this.formatHexDump(message.data, message.type);
     }
     
-    // Binary message was already routed to debug logger via routeBinaryToDebugLogger
-    // Don't route again to avoid duplication
+    return displayText;
   }
-  
+
   /**
-   * Handle debugger protocol message (0xDB header)
+   * Format binary data as hex dump for display
    */
-  private handleDebuggerProtocolMessage(message: ParsedMessage): void {
-    // Route to Debug Logger with binary type 'debugger'
-    this.routeBinaryToDebugLogger(message.rawData, 'debugger');
+  private formatHexDump(data: Uint8Array, label: string): string {
+    const lines: string[] = [`[${label}] ${data.length} bytes:`];
+    const bytesPerLine = 16;
     
-    // Route to appropriate debugger window if exists
-    if (message.cogId !== undefined) {
-      const debuggerWindowId = `debugger-${message.cogId}`;
-      const window = this.displays[debuggerWindowId];
-      if (window) {
-        // @ts-ignore - handleMessage will be implemented in DebugDebuggerWindow
-        window.handleMessage(message.rawData);
+    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+      const lineBytes = data.slice(offset, Math.min(offset + bytesPerLine, data.length));
+      
+      let hexPart = '';
+      for (let i = 0; i < bytesPerLine; i++) {
+        if (i < lineBytes.length) {
+          hexPart += `$${lineBytes[i].toString(16).toUpperCase().padStart(2, '0')} `;
+        } else {
+          hexPart += '    ';
+        }
+        if (i === 7) hexPart += ' ';
       }
+      
+      let asciiPart = '';
+      for (let i = 0; i < lineBytes.length; i++) {
+        const byte = lineBytes[i] & 0x7F;
+        asciiPart += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
+      }
+      
+      const offsetHex = offset.toString(16).padStart(4, '0');
+      lines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
     }
+    
+    return lines.join('\n');
   }
   
-  /**
-   * Handle text message - route through window router (no double routing)
-   */
-  private handleTextMessage(message: ParsedMessage): void {
-    // Route through window router - it will handle debug logger routing
-    this.windowRouter.routeMessage({
-      type: 'text',
-      data: message.displayText || '',
-      timestamp: message.timestamp
-    });
-  }
-  
-  /**
-   * Handle unknown binary message - show hex dump ONLY in debug logger
-   */
-  private handleUnknownBinaryMessage(message: ParsedMessage): void {
-    // Route to Debug Logger with binary type 'p2_raw'
-    this.routeBinaryToDebugLogger(message.rawData, 'p2_raw');
-    // Do NOT send binary data to terminal
-  }
   
   /**
    * Create a COG splitter window
@@ -387,30 +444,6 @@ export class MainWindow {
     }
   }
   
-  /**
-   * Route message to debug logger window
-   */
-  private routeToDebugLogger(message: string): void {
-    if (!this.debugLoggerWindow) {
-      // Auto-create debug logger if needed
-      try {
-        this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
-        this.displays['DebugLogger'] = this.debugLoggerWindow;
-        
-        this.debugLoggerWindow.on('close', () => {
-          delete this.displays['DebugLogger'];
-          this.debugLoggerWindow = null;
-        });
-      } catch (error) {
-        console.error('[DEBUG LOGGER] Failed to create:', error);
-        return;
-      }
-    }
-    
-    if (this.debugLoggerWindow) {
-      this.debugLoggerWindow.logMessage(message);
-    }
-  }
   
   /**
    * Route binary data to debug logger with type information
@@ -753,7 +786,7 @@ export class MainWindow {
         // Build ASCII part
         let asciiPart = '';
         for (let i = 0; i < lineBytes.length; i++) {
-          const byte = lineBytes[i];
+          const byte = lineBytes[i] & 0x7F; // Mask with 0x7F to clean up binary data display
           asciiPart += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
         }
         
@@ -764,18 +797,27 @@ export class MainWindow {
       console.log('[SERIAL RX HEX/ASCII]:');
       hexLines.forEach(line => console.log(line));
       
-      // CRITICAL FIX: Properly convert Buffer to Uint8Array to avoid data corruption
-      // Use Buffer's offset and length to ensure we get the right data
-      const uint8Data = new Uint8Array(data.buffer, data.byteOffset, data.length);
-      this.debuggerParser.processData(uint8Data);
+      // Two-Tier Pattern Matching: Process serial data through new architecture
+      this.serialProcessor.receiveData(data);
       return;
     }
     
     if (typeof data === 'string') {
-      console.log(`[SERIAL RX] Text data: ${data.length} chars`);
-      // Convert string to Uint8Array and process through debugger parser
-      const uint8Data = new TextEncoder().encode(data);
-      this.debuggerParser.processData(uint8Data);
+      console.log(`[SERIAL RX] Text data: ${data.length} chars: "${data}"`);
+      
+      // GROUND ZERO RECOVERY: Check for Cog-prefixed messages first (backward compatibility)
+      if (data.startsWith('Cog')) {
+        console.log(`[DEBUG] Potential COG message found: "${data}", length: ${data.length}, char[3]: "${data[3]}", char[4]: "${data[4]}"`);
+        if (data.length > 4 && data[4] === ' ') {
+          console.log(`[COG DETECTION] Found Cog message: ${data}`);
+          this.handleCogMessage(data);
+          return; // Don't process through new architecture for backward compatibility
+        }
+      }
+      
+      // Convert string to Buffer and process through Two-Tier Pattern Matching
+      const buffer = Buffer.from(data);
+      this.serialProcessor.receiveData(buffer);
       return;
     }
   }
@@ -862,7 +904,7 @@ export class MainWindow {
     
     // 2. Reset debugger parser state  
     console.log(`[P2 SYNC] 🔄 Resetting debugger parser state`);
-    this.debuggerParser.onDTRReset(); // Trigger parser reset
+    this.serialProcessor.onDTRReset(); // Trigger Two-Tier reset
     
     // 3. Clear and restart the Debug Logger session
     if (this.debugLoggerWindow) {
@@ -1277,8 +1319,8 @@ export class MainWindow {
   /**
    * Handle Cog-prefixed messages - route to debug logger and extract embedded commands
    */
-  // REMOVED: handleCogMessage - Cog messages now route through WindowRouter
-  private REMOVED_handleCogMessage(data: string): void {
+  // RESTORED: handleCogMessage - Temporarily restored for Ground Zero Recovery
+  private handleCogMessage(data: string): void {
     // Auto-create debug logger window on first Cog or INIT message
     if (!this.debugLoggerWindow) {
       console.log('[DEBUG LOGGER] Creating debug logger window...');
@@ -1464,6 +1506,7 @@ export class MainWindow {
   private updateControlLineUI(): void {
     // Regenerate the toolbar HTML with the correct control
     const toolbarHTML = this.getControlLineHTML();
+    const isIdeMode = this.context.runEnvironment.ideMode;
     
     // Update the toolbar element
     this.safeExecuteJS(`
@@ -2029,8 +2072,8 @@ export class MainWindow {
           }
           
           // Initialize menu bar for standalone mode
-          const isIdeMode = ${isIdeMode ? 'true' : 'false'};
-          if (!isIdeMode) {
+          const isIdeModeJS = ${this.context.runEnvironment.ideMode};
+          if (!isIdeModeJS) {
             const menuBar = document.getElementById('menu-bar');
             if (menuBar) {
               console.log('[MENU] Initializing menu bar...');
@@ -2316,7 +2359,7 @@ export class MainWindow {
         }
         
         // Initialize HTML menu bar for standalone mode
-        const isStandalone = ${!isIdeMode};
+        const isStandalone = ${!this.context.runEnvironment.ideMode};
         if (isStandalone) {
           // Wait for DOM to be fully ready before initializing menu
           if (document.readyState === 'loading') {
@@ -3713,7 +3756,7 @@ export class MainWindow {
             this.debugLoggerWindow.handleDTRReset();
           }
           // Signal parser that DTR reset occurred - expect sync
-          this.debuggerParser.onDTRReset();
+          this.serialProcessor.onDTRReset();
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -3736,7 +3779,7 @@ export class MainWindow {
             this.debugLoggerWindow.handleDTRReset(); // Same reset behavior for RTS
           }
           // Sync parser on RTS reset (using RTS-specific method)
-          this.debuggerParser.onRTSReset();
+          this.serialProcessor.onRTSReset();
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -3759,7 +3802,7 @@ export class MainWindow {
             this.debugLoggerWindow.handleDTRReset();
           }
           // Signal parser that DTR reset occurred - expect sync
-          this.debuggerParser.onDTRReset();
+          this.serialProcessor.onDTRReset();
           
           // Save DTR preference for this device when successfully used
           this.saveDeviceControlLine('DTR');
@@ -3778,8 +3821,8 @@ export class MainWindow {
       }
     }
     // Update checkbox via webContents send (IPC)
-    if (this.browserWindow?.webContents) {
-      this.browserWindow.webContents.send('update-dtr-state', this.dtrState);
+    if (this.mainWindow?.webContents) {
+      this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
     }
     this.logMessage(`[DTR TOGGLE] State changed to ${this.dtrState ? 'ON' : 'OFF'}`);
   }
@@ -3798,7 +3841,7 @@ export class MainWindow {
             this.debugLoggerWindow.handleDTRReset(); // Same reset behavior for RTS
           }
           // Sync parser on RTS reset (using RTS-specific method)
-          this.debuggerParser.onRTSReset();
+          this.serialProcessor.onRTSReset();
           
           // Save RTS preference for this device when successfully used
           this.saveDeviceControlLine('RTS');
@@ -3817,8 +3860,8 @@ export class MainWindow {
       }
     }
     // Update checkbox via webContents send (IPC)
-    if (this.browserWindow?.webContents) {
-      this.browserWindow.webContents.send('update-rts-state', this.rtsState);
+    if (this.mainWindow?.webContents) {
+      this.mainWindow.webContents.send('update-rts-state', this.rtsState);
     }
     this.logMessage(`[RTS TOGGLE] State changed to ${this.rtsState ? 'ON' : 'OFF'}`);
   }

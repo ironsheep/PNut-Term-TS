@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
+import { MessageType } from './shared/messageExtractor';
 
 export interface DebugLoggerTheme {
   name: string;
@@ -19,6 +20,18 @@ export interface DebugLoggerTheme {
 /**
  * Debug Logger Window - Singleton window that captures ALL debug output
  * This is the "Tall Thin Man" - a heads-up console positioned at bottom-right
+ * 
+ * RESPONSIBILITIES:
+ * - Display formatted debugger messages (80-byte packets, DB packets)
+ * - Log all messages to timestamped files for analysis
+ * - Provide defensive display of misclassified binary data
+ * - Handle high-throughput data with batched rendering (2Mbps capable)
+ * 
+ * NOT RESPONSIBLE FOR:
+ * - Message classification or routing (MessageExtractor handles this)
+ * - Serial data parsing or protocol interpretation
+ * - Window management beyond its own singleton instance
+ * - Terminal output display (MainWindow handles this)
  */
 export class DebugLoggerWindow extends DebugWindowBase {
   /**
@@ -562,6 +575,99 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Update status bar
     this.updateStatusBar();
   }
+
+  /**
+   * Process message with type information (type-safe handoff)
+   */
+  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array): void {
+    console.log(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
+    
+    switch(messageType) {
+      case MessageType.DEBUGGER_80BYTE:
+        // Binary debugger data - display with proper 80-byte formatting
+        if (data instanceof Uint8Array) {
+          const formatted = this.format80ByteDebuggerMessage(data);
+          this.appendMessage(formatted, 'debugger-formatted');
+          this.writeToLog(formatted);
+        }
+        break;
+        
+      case MessageType.DB_PACKET:
+        // DB prefix messages - use same hex format as 80-byte
+        if (data instanceof Uint8Array) {
+          const formatted = this.format80ByteDebuggerMessage(data);
+          this.appendMessage(formatted, 'debugger-formatted');
+          this.writeToLog(formatted);
+        }
+        break;
+        
+      case MessageType.COG_MESSAGE:
+      case MessageType.P2_SYSTEM_INIT:
+        // Text data - display as readable text (should go to main console)
+        if (Array.isArray(data)) {
+          const message = data.join(' ');
+          this.appendMessage(message, 'cog-message');
+          this.writeToLog(message);
+        } else if (typeof data === 'string') {
+          this.appendMessage(data, 'cog-message');
+          this.writeToLog(data);
+        }
+        break;
+        
+      case MessageType.TERMINAL_OUTPUT:
+        // DEFENSIVE: Check if data is actually ASCII before displaying
+        if (data instanceof Uint8Array) {
+          if (this.isASCIIData(data)) {
+            // Convert to string and display
+            const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(data);
+            this.appendMessage(textMessage, 'cog-message');
+            this.writeToLog(textMessage);
+          } else {
+            // Binary data misclassified as terminal - display as hex fallback
+            const hexFallback = this.formatBinaryAsHexFallback(data);
+            this.appendMessage(hexFallback, 'binary-message');
+            this.writeToLog(hexFallback);
+          }
+        } else if (Array.isArray(data)) {
+          const message = data.join(' ');
+          this.appendMessage(message, 'cog-message');
+          this.writeToLog(message);
+        } else if (typeof data === 'string') {
+          this.appendMessage(data, 'cog-message');
+          this.writeToLog(data);
+        }
+        break;
+        
+      case MessageType.INVALID_COG:
+      case MessageType.INCOMPLETE_DEBUG:
+        // Error/warning messages
+        const errorMsg = Array.isArray(data) ? data.join(' ') : 
+                        (data instanceof Uint8Array ? new TextDecoder().decode(data) : String(data));
+        this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
+        this.writeToLog(`[WARNING] ${errorMsg}`);
+        break;
+        
+      default:
+        // Fallback - use safe display with defensive binary check
+        if (data instanceof Uint8Array) {
+          if (this.isASCIIData(data)) {
+            const textData = new TextDecoder().decode(data);
+            this.appendMessage(`[${messageType}] ${textData}`, 'generic-message');
+            this.writeToLog(`[${messageType}] ${textData}`);
+          } else {
+            const hexData = this.formatBinaryAsHexFallback(data);
+            this.appendMessage(`[${messageType}] ${hexData}`, 'binary-message');
+            this.writeToLog(`[${messageType}] ${hexData}`);
+          }
+        } else {
+          const displayData = Array.isArray(data) ? data.join(' ') : String(data);
+          this.appendMessage(`[${messageType}] ${displayData}`, 'generic-message');
+          this.writeToLog(`[${messageType}] ${displayData}`);
+        }
+    }
+    
+    this.updateStatusBar();
+  }
   
   /**
    * Update the status bar with current file info
@@ -858,7 +964,114 @@ export class DebugLoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Format binary data as hex dump with Spin-2 notation
+   * Check if binary data is valid ASCII (defensive display)
+   */
+  private isASCIIData(data: Uint8Array): boolean {
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      // Allow printable ASCII (32-126), tabs (9), line feeds (10), carriage returns (13)
+      if (!(byte >= 32 && byte <= 126) && byte !== 9 && byte !== 10 && byte !== 13) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Format 80+ byte debugger messages with proper spacing
+   * Format: 4 groups of 8 bytes, pairs of 16 bytes separated by extra space
+   */
+  private format80ByteDebuggerMessage(data: Uint8Array): string {
+    if (data.length === 0) return 'Cog ? (empty debugger message)';
+    
+    const firstByte = data[0];
+    const cogId = firstByte <= 0x07 ? firstByte : -1;
+    const lines: string[] = [];
+    
+    const prefix = cogId >= 0 
+      ? `Cog ${cogId} ` 
+      : `INVALID(0x${firstByte.toString(16).toUpperCase()}) `;
+    const indent = ' '.repeat(prefix.length);
+    
+    // Process in groups of 16 bytes per line
+    for (let offset = 0; offset < data.length; offset += 16) {
+      const lineBytes: string[] = [];
+      const endOffset = Math.min(offset + 16, data.length);
+      
+      // First group of 8 bytes
+      for (let i = offset; i < Math.min(offset + 8, endOffset); i++) {
+        const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
+        lineBytes.push(`$${hex}`);
+      }
+      
+      // Add extra space between pairs of 8 bytes
+      if (endOffset > offset + 8) {
+        lineBytes.push(' '); // Extra space separator
+        
+        // Second group of 8 bytes
+        for (let i = offset + 8; i < endOffset; i++) {
+          const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
+          lineBytes.push(`$${hex}`);
+        }
+      }
+      
+      // First line gets Cog prefix, subsequent lines get indent
+      const linePrefix = offset === 0 ? prefix : indent;
+      lines.push(linePrefix + lineBytes.join(' '));
+    }
+    
+    return lines.join('\n');
+  }
+
+  /**
+   * Format binary data as hex fallback (when misclassified as terminal)
+   */
+  private formatBinaryAsHexFallback(data: Uint8Array): string {
+    if (data.length === 0) return '[BINARY: empty]';
+    
+    // Use standard hex display with ASCII interpretation
+    const lines: string[] = [];
+    const bytesPerLine = 16;
+    
+    lines.push(`[BINARY DATA: ${data.length} bytes - displaying as hex]`);
+    
+    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+      const lineBytes: string[] = [];
+      const asciiBytes: string[] = [];
+      const endOffset = Math.min(offset + bytesPerLine, data.length);
+      
+      // Hex representation
+      for (let i = offset; i < endOffset; i++) {
+        const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
+        lineBytes.push(hex);
+        
+        // ASCII interpretation
+        const byte = data[i];
+        if (byte >= 32 && byte <= 126) {
+          asciiBytes.push(String.fromCharCode(byte));
+        } else {
+          asciiBytes.push('.');
+        }
+      }
+      
+      // Add padding for hex display alignment
+      while (lineBytes.length < bytesPerLine) {
+        lineBytes.push('  ');
+        asciiBytes.push(' ');
+      }
+      
+      const hexPart = lineBytes.join(' ');
+      const asciiPart = asciiBytes.join('');
+      const offsetStr = offset.toString(16).padStart(4, '0').toUpperCase();
+      
+      lines.push(`  ${offsetStr}: ${hexPart}  |${asciiPart}|`);
+    }
+    
+    return lines.join('\n');
+  }
+
+  /**
+   * Format binary data as hex dump with Spin-2 notation (legacy method)
    * Format: "Cog N $xx $xx $xx $xx $xx $xx $xx $xx  $xx $xx $xx $xx $xx $xx $xx $xx"
    * Subsequent lines are indented to align with hex data
    */

@@ -269,12 +269,12 @@ export class DebuggerMessageParser extends EventEmitter {
               this.emitDebuggerProtocolMessage(message, messageType);
               this.consumeBytes(totalSize);
             
-            // We found valid debugger traffic - mark as synchronized
-            if (!this.isSynchronized) {
-              this.isSynchronized = true;
-              this.emit('syncStatus', { synchronized: true, source: 'protocol' });
-            }
-            continue;
+              // We found valid debugger traffic - mark as synchronized
+              if (!this.isSynchronized) {
+                this.isSynchronized = true;
+                this.emit('syncStatus', { synchronized: true, source: 'protocol' });
+              }
+              continue;
             }
           } else {
             // Wait for complete message
@@ -310,10 +310,10 @@ export class DebuggerMessageParser extends EventEmitter {
                   this.emitInitialDebuggerMessage(message);
                   this.consumeBytes(80);
                 
-                if (!this.isSynchronized) {
-                  this.isSynchronized = true;
-                  this.emit('syncStatus', { synchronized: true, source: 'initial' });
-                }
+                  if (!this.isSynchronized) {
+                    this.isSynchronized = true;
+                    this.emit('syncStatus', { synchronized: true, source: 'initial' });
+                  }
                   continue;
                 }
               }
@@ -327,96 +327,32 @@ export class DebuggerMessageParser extends EventEmitter {
                 this.emitInitialDebuggerMessage(message);
                 this.consumeBytes(80);
               
-              if (!this.isSynchronized) {
-                this.isSynchronized = true;
-                this.emit('syncStatus', { synchronized: true, source: 'initial' });
+                if (!this.isSynchronized) {
+                  this.isSynchronized = true;
+                  this.emit('syncStatus', { synchronized: true, source: 'initial' });
+                }
+                continue;
               }
-              continue;
             }
           }
         }
       } else {
         // Not enough data for 80-byte packet
-        console.log(`[PARSE] Not text, not 0xDB, only ${remaining} bytes, waiting for 80+`);
-        break;
-      }
-
-      // OLD CODE KEPT FOR REFERENCE (commented out):
-      /*
-      // OPPORTUNISTIC: Check for 80-byte initial debugger message
-      if (remaining >= 80) {
-        if (this.isValidInitialMessage(currentData)) {
-          const message = currentData.slice(0, 80);
-          this.emitInitialDebuggerMessage(message);
-          processed += 80;
-          
-          // Initial message is good sync indicator if we validated it
-          if (!this.isSynchronized) {
-            this.isSynchronized = true;
-            this.emit('syncStatus', { synchronized: true, source: 'initial' });
+        // Fallback: no clear pattern found
+        // If we have a lot of data, process conservatively
+        if (usedBytes >= 256) {
+          console.log(`[PARSE] No clear pattern in ${usedBytes} bytes - processing as unknown binary`);
+          const chunk = this.peekBytes(0, 256);
+          if (chunk) {
+            this.emitUnknownBinaryMessage(chunk);
+            this.consumeBytes(256);
           }
           continue;
+        } else {
+          // Not enough data, wait for more
+          console.log(`[PARSE] Not text, not 0xDB, only ${usedBytes} bytes, waiting for more`);
+          break;
         }
-      }
-      
-      // Sophisticated boundary detection for mixed binary/text streams
-      // Use EOL markers to intelligently split binary from ASCII text
-      const boundary = this.findBinaryTextBoundary(currentData);
-      
-      if (boundary.found) {
-        console.log(`[BOUNDARY] Found boundary at offset ${boundary.offset}: binary=${boundary.binaryLength} bytes, text="${boundary.textPreview}"`);
-        
-        // Process binary portion if any
-        if (boundary.binaryLength > 0) {
-          const binaryChunk = currentData.slice(0, boundary.binaryLength);
-          this.emitUnknownBinaryMessage(binaryChunk);
-          processed += boundary.binaryLength;
-          continue;
-        }
-        
-        // Process text portion  
-        if (boundary.textLength > 0) {
-          const textChunk = currentData.slice(boundary.binaryLength, boundary.offset);
-          this.emitTextMessage(textChunk);
-          processed += boundary.textLength;
-          
-          // Good text is sync indicator
-          if (!this.isSynchronized && textChunk.length > 10) {
-            this.isSynchronized = true;
-            this.emit('syncStatus', { synchronized: true, source: 'text' });
-          }
-          continue;
-        }
-      }
-      */
-      
-      // Fallback: no clear pattern found
-      // If we have a lot of data, process conservatively
-      if (remaining >= 256) {
-        console.log(`[PARSE] No clear pattern in ${remaining} bytes - processing as unknown binary`);
-        const chunk = currentData.slice(0, 256);
-        this.emitUnknownBinaryMessage(chunk);
-        processed += 256;
-        continue;
-      }
-      
-      // Not enough data for reliable processing, wait for more
-      break;
-    }
-
-    // Move unprocessed data to beginning of buffer
-    // TODO: Implement circular buffer to avoid this copying
-    if (processed > 0) {
-      const unprocessedBytes = this.bufferPos - processed;
-      if (unprocessedBytes > 0) {
-        console.log(`[PARSER] Moving ${unprocessedBytes} unprocessed bytes to start (processed ${processed} of ${this.bufferPos})`);
-        // Use memmove-style copy for overlapping regions
-        const temp = new Uint8Array(unprocessedBytes);
-        temp.set(this.buffer.subarray(processed, this.bufferPos));
-        this.buffer.set(temp, 0);
-        this.bufferPos = unprocessedBytes;
-      } else {
-        this.bufferPos = 0;
       }
     }
   }

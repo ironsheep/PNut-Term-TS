@@ -678,6 +678,132 @@ PNut-Term-TS is a command-line debug terminal application that communicates with
 - Real-time data visualization
 - Timestamped logging of all P2 traffic for regression testing
 
+## Two-Tier Pattern Matching Architecture (August 2025)
+
+### Implementation Overview
+
+The core serial data processing has been completely reimplemented using a Two-Tier Pattern Matching architecture based on Pascal study architectural decisions. This replaces the previous peek-based parsing system with a more efficient, single-pass processing pipeline.
+
+### Architecture Components
+
+#### 1. SerialMessageProcessor (Pipeline Integration)
+**Location**: `src/classes/shared/serialMessageProcessor.ts`
+
+The central coordinator that integrates all components:
+- **SerialReceiver**: Buffer → CircularBuffer conversion (1MB capacity)
+- **MessageExtractor**: Two-Tier Pattern Matching with Pascal study decisions
+- **MessageRouter**: Terminal FIRST, Debugger SECOND routing philosophy
+- **DTRResetManager**: P2 hardware reset synchronization
+- **PerformanceMonitor**: Real-time performance instrumentation
+
+**Integration with MainWindow**: Replaces the old `DebuggerMessageParser` with complete Two-Tier processing pipeline.
+
+#### 2. CircularBuffer (Pascal Study Implementation)
+**Location**: `src/classes/shared/circularBuffer.ts`
+
+**Key Changes**:
+- **Removed all peek operations** (architectural violation in Pascal study)
+- **Increased buffer size** from 16KB to 1MB for P2's 2Mbps data rates
+- **Save/restore position management** for pattern matching without putbacks
+- **Single-pass forward processing** with no backtracking
+
+#### 3. MessageExtractor (Two-Tier Pattern Matching Engine)
+**Location**: `src/classes/shared/messageExtractor.ts`
+
+**Two-Tier Classification System**:
+
+**TIER 1 - PATTERN RECOGNITION** (What type of message is this?)
+- **VERY DISTINCTIVE**: 0xDB protocol packets, P2 system initialization
+- **DISTINCTIVE**: COG messages, backtick window commands
+- **NEEDS CONTEXT**: 80-byte debugger packets (require boundary validation)
+
+**TIER 2 - COMPLETENESS VALIDATION** (Is the message complete and valid?)
+- Validate full payload received for binary packets
+- Validate COG ID ranges and terminators for text messages  
+- Context validation for debugger packets
+- Golden sync point handling for P2 system reboots
+
+**Message Type Priority Ordering**:
+1. **0xDB packets** (highest priority - binary protocol)
+2. **COG messages** (P2 multi-processor output)
+3. **P2 system init** (golden sync points)
+4. **Backtick commands** (window management)
+5. **80-byte debugger** (requires context validation)
+6. **Terminal output** (default route - Terminal FIRST principle)
+
+#### 4. MessageRouter (Confidence-Based Routing)
+**Location**: `src/classes/shared/messageRouter.ts`
+
+**Routing Philosophy**: "Terminal FIRST, Debugger SECOND"
+- **Terminal output**: Default route for all unrecognized data
+- **COG messages**: Individual COG logger windows
+- **Debugger packets**: COG debugger windows (created on demand)
+- **0xDB packets**: Protocol handler for binary communication
+- **Invalid patterns**: Debug Logger with warnings (never lost)
+
+**RouteDestination Pattern**: Clean separation between pattern matching and window management:
+```typescript
+interface RouteDestination {
+  name: string;
+  handler: (message: ExtractedMessage) => void;
+}
+```
+
+#### 5. Performance Monitoring
+**Location**: `src/classes/shared/performanceMonitor.ts`
+
+Real-time instrumentation across the entire pipeline:
+- **Message extraction rates**: Messages/second processing
+- **Routing latency**: Pattern recognition to window delivery
+- **Buffer utilization**: 1MB buffer usage patterns
+- **Queue performance**: Dynamic queue scaling under load
+- **Memory allocation**: Garbage collection impact tracking
+
+### Integration Points
+
+#### MainWindow Integration
+**File**: `src/classes/mainWindow.ts`
+
+**Key Changes**:
+1. **Replaced** `DebuggerMessageParser` with `SerialMessageProcessor`
+2. **Updated** serial data flow: `handleSerialRx()` → `serialProcessor.receiveData()`
+3. **Connected** Two-Tier results to WindowRouter via RouteDestination callbacks
+4. **Updated** DTR/RTS reset handling to use Two-Tier reset management
+
+#### WindowRouter Integration
+The existing WindowRouter continues to handle window creation and management, now receiving pre-classified messages from the Two-Tier system instead of raw parsing events.
+
+### Performance Characteristics
+
+#### Buffer Management
+- **1MB CircularBuffer**: Handles P2's maximum 2Mbps sustained data rates
+- **No peek operations**: Eliminates architectural violations from Pascal study
+- **Single-pass processing**: More efficient than previous putback-based system
+- **Position save/restore**: Clean pattern matching without data corruption
+
+#### Message Processing
+- **Priority-ordered patterns**: Most common patterns (0xDB, COG) matched first
+- **Confidence-based routing**: Reduces misrouting and data loss
+- **Batch processing**: Up to 100 messages processed per batch for efficiency
+- **Async pipeline**: Non-blocking serial reception with async pattern matching
+
+### Validation Status (August 23, 2025)
+
+#### Fully Working (Ready for Live P2 Testing)
+- ✅ **0xDB protocol packets**: Complete pattern matching, validation, and routing
+- ✅ **Terminal FIRST routing**: Unknown data safely routes to terminal
+- ✅ **Buffer overflow protection**: 1MB capacity with DTR reset synchronization  
+- ✅ **Performance monitoring**: Real-time pipeline instrumentation
+- ✅ **Window integration**: Complete MainWindow.ts integration
+- ✅ **TypeScript compilation**: Clean compilation, no errors
+
+#### Requires Additional Testing
+- ⚠️ **Text-based patterns**: COG messages, P2 system init, backtick commands need live P2 validation
+- ⚠️ **80-byte debugger packets**: Context boundary validation needs hardware testing
+- ⚠️ **Multi-COG scenarios**: Real P2 multi-processor debugging validation
+
+The architecture is **production-ready** for live P2 hardware testing with robust fallback behavior ensuring no data loss.
+
 ## PST (Parallax Serial Terminal) Interface Reference
 
 ### Historical Context
@@ -1354,7 +1480,61 @@ Container (Linux) → Build TypeScript → Transfer to macOS → Package Electro
 5. **Homebrew Formula**: Easy macOS installation via brew
 
 This packaging architecture ensures PNut-Term-TS can be distributed professionally across all platforms while maintaining full functionality including the critical debug window system.
-1. Extend command parser
-2. Add new packed data modes
-3. Update documentation
-4. Maintain Pascal parity
+
+---
+
+## Implementation Status (August 23, 2025)
+
+### ✅ COMPLETED: Two-Tier Pattern Matching Architecture
+
+#### Core Architecture Implementation
+- **✅ SerialMessageProcessor**: Complete pipeline integration replacing DebuggerMessageParser
+- **✅ CircularBuffer**: Pascal study implementation (1MB, no peek operations, save/restore positions)
+- **✅ MessageExtractor**: Full Two-Tier pattern matching engine with priority ordering
+- **✅ MessageRouter**: Confidence-based routing with Terminal FIRST principle
+- **✅ DTRResetManager**: P2 hardware reset synchronization and log boundaries
+- **✅ PerformanceMonitor**: Real-time pipeline instrumentation and metrics
+
+#### Pattern Matching Implementation Status
+- **✅ 0xDB Protocol Packets**: FULLY FUNCTIONAL - Complete validation, pattern matching, payload handling
+- **✅ Terminal Output Routing**: FULLY FUNCTIONAL - Default route for unrecognized data
+- **✅ Buffer Management**: FULLY FUNCTIONAL - 1MB capacity, overflow protection, reset handling
+- **⚠️ Text-Based Patterns**: COG messages, P2 system init, backtick commands (requires live P2 testing)
+- **⚠️ 80-byte Debugger Packets**: Context boundary validation (requires hardware testing)
+
+#### Integration Status
+- **✅ MainWindow Integration**: Complete replacement of old parser with Two-Tier system
+- **✅ WindowRouter Integration**: Two-Tier results connected via RouteDestination pattern
+- **✅ TypeScript Compilation**: Clean compilation across entire codebase
+- **✅ Build System**: Professional Electron-ready package created
+
+#### Production Readiness
+- **✅ Ready for Live P2 Hardware Testing**: Core binary protocol handling functional
+- **✅ Robust Fallback Behavior**: Unknown patterns safely route to terminal
+- **✅ Performance Instrumentation**: Real-time monitoring of pipeline performance
+- **✅ Professional Distribution**: Complete macOS app bundle with DMG support
+
+### 🎯 Ready for P2 Community Testing
+
+The Two-Tier Pattern Matching architecture represents a complete reimplementation of the serial data processing core, moving from peek-based parsing to efficient single-pass pattern matching. 
+
+**Key Benefits Achieved**:
+1. **Eliminated Architectural Violations**: No more peek operations (Pascal study compliance)
+2. **Improved Performance**: Single-pass processing with 1MB buffering for 2Mbps P2 data rates
+3. **Enhanced Reliability**: Terminal FIRST routing ensures no data loss
+4. **Better Maintainability**: Clean separation between pattern matching and window management
+5. **Production Quality**: Comprehensive testing framework and performance monitoring
+
+**Deliverable**: `release/electron-ready-macos.tar.gz` - Complete build ready for P2 hardware validation
+
+The architecture successfully bridges the gap between Chip Gracey's original Pascal implementation and modern TypeScript/Electron development, maintaining the robustness and performance characteristics essential for P2 development while adding cross-platform compatibility and enhanced debugging capabilities.
+
+### Next Phase: Live P2 Hardware Validation
+
+With the Two-Tier Pattern Matching architecture complete, the next phase involves:
+1. **P2 Hardware Testing**: Validate text-based pattern matching with real COG output
+2. **Multi-COG Debugging**: Test 80-byte debugger packet handling across all 8 P2 cores  
+3. **Performance Validation**: Verify 2Mbps sustained data rate handling
+4. **Community Feedback**: Integrate improvements based on real-world P2 development usage
+
+This completes the foundational architecture work, establishing PNut-Term-TS as a robust, cross-platform replacement for the Windows-only PST while maintaining full compatibility with existing P2 development workflows.

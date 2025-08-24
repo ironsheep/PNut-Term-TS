@@ -7,6 +7,7 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import { RecordingCatalog, CatalogEntry } from './recordingCatalog';
 import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
+import { safeDisplayString } from '../../utils/displayUtils';
 
 /**
  * Window handler callback for routing messages to debug windows
@@ -369,6 +370,9 @@ export class WindowRouter extends EventEmitter {
         this.routeBacktickCommand(embeddedCommand);
       }
       
+      // DISABLED: False reboot detection - only actual DTR/RTS events should trigger resets
+      // Normal P2 debug messages should NOT trigger system reboot events
+      /*
       // Detect P2 processor reset/reboot events  
       if (text.startsWith('Cog0') && text.includes('INIT')) {
         // Check for the golden synchronization marker
@@ -382,7 +386,7 @@ export class WindowRouter extends EventEmitter {
           // Regular processor reset event
           this.emit('processorReset', { message: text });
         }
-      }
+      */
     }
     // 2. Check for standalone backtick commands
     else if (text.includes('`')) {
@@ -458,7 +462,7 @@ export class WindowRouter extends EventEmitter {
     const cleanCommand = command.substring(1).trim();
     const parts = cleanCommand.split(' ');
     
-    console.log(`[ROUTER DEBUG] Parsed command: "${cleanCommand}", parts: [${parts.join(', ')}]`);
+    console.log(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
     
     if (parts.length < 1) {
       console.log(`[ROUTER DEBUG] ❌ Empty backtick command`);
@@ -511,9 +515,11 @@ export class WindowRouter extends EventEmitter {
     }
     
     if (!routed) {
-      // Log error to terminal for user visibility
-      const errorMsg = `ERROR: Unknown window '${windowName}' - cannot route command: ${command}`;
-      console.log(`[ROUTER DEBUG] 🚨 No window found for "${windowName}" - emitting windowNeeded event`);
+      // Log error to terminal for user visibility - safely display binary data
+      const safeWindowName = safeDisplayString(windowName);
+      const safeCommand = safeDisplayString(command);
+      const errorMsg = `ERROR: Unknown window '${safeWindowName}' - cannot route command: ${safeCommand}`;
+      console.log(`[ROUTER DEBUG] 🚨 No window found for "${safeWindowName}" - emitting windowNeeded event`);
       this.logger.error('ROUTE', errorMsg);
       
       // Send error to terminal window for user visibility
