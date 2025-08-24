@@ -173,6 +173,35 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
+   * Process messages synchronously for testing
+   * Returns the count of messages processed
+   */
+  public processMessagesSync(): number {
+    let messagesProcessed = 0;
+    const maxBatchSize = 1000; // Higher limit for testing
+    
+    while (!this.inputQueue.isEmpty() && messagesProcessed < maxBatchSize) {
+      const message = this.inputQueue.dequeue();
+      if (!message) break;
+
+      try {
+        this.routeMessage(message);
+        messagesProcessed++;
+      } catch (error) {
+        console.error('[MessageRouter] Error routing message:', error);
+        this.routingErrors++;
+        this.emit('routingError', { message, error });
+      }
+    }
+
+    if (messagesProcessed > 0) {
+      this.emit('batchProcessed', messagesProcessed);
+    }
+
+    return messagesProcessed;
+  }
+
+  /**
    * Process a batch of messages
    */
   private processMessageBatch(): void {
