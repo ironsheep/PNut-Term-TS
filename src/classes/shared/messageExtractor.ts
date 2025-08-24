@@ -927,11 +927,13 @@ export class MessageExtractor extends EventEmitter {
       }
     };
 
-    // Log message classification for debugging
-    const preview = messageData.length > 0 ? 
-      `[${Array.from(messageData.slice(0, Math.min(8, messageData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${messageData.length > 8 ? '...' : ''}]` : 
-      '[empty]';
-    console.log(`[MessageExtractor] CLASSIFIED: ${pattern.messageType} - ${messageData.length} bytes - ${preview}`);
+    // Log message classification for debugging (disabled in production)
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_CLASSIFICATION) {
+      const preview = messageData.length > 0 ? 
+        `[${Array.from(messageData.slice(0, Math.min(8, messageData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${messageData.length > 8 ? '...' : ''}]` : 
+        '[empty]';
+      console.log(`[MessageExtractor] CLASSIFIED: ${pattern.messageType} - ${messageData.length} bytes - ${preview}`);
+    }
 
     return extractedMessage;
   }
@@ -949,10 +951,13 @@ export class MessageExtractor extends EventEmitter {
         this.totalBytesExtracted += invalidData.length;
         
         // Log message classification for debugging
-        const preview = invalidData.length > 0 ? 
-          `[${Array.from(invalidData.slice(0, Math.min(8, invalidData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${invalidData.length > 8 ? '...' : ''}]` : 
-          '[empty]';
-        console.log(`[MessageExtractor] CLASSIFIED: INVALID_COG - ${invalidData.length} bytes - ${preview}`);
+        // Log invalid COG classification for debugging (disabled in production)
+        if (process.env.NODE_ENV === 'development' || process.env.DEBUG_CLASSIFICATION) {
+          const preview = invalidData.length > 0 ? 
+            `[${Array.from(invalidData.slice(0, Math.min(8, invalidData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${invalidData.length > 8 ? '...' : ''}]` : 
+            '[empty]';
+          console.log(`[MessageExtractor] CLASSIFIED: INVALID_COG - ${invalidData.length} bytes - ${preview}`);
+        }
 
         return {
           type: MessageType.INVALID_COG,
@@ -989,10 +994,13 @@ export class MessageExtractor extends EventEmitter {
     this.totalBytesExtracted += terminalData.length;
 
     // Log message classification for debugging
-    const preview = terminalData.length > 0 ? 
-      `[${Array.from(terminalData.slice(0, Math.min(8, terminalData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${terminalData.length > 8 ? '...' : ''}]` : 
-      '[empty]';
-    console.log(`[MessageExtractor] CLASSIFIED: TERMINAL_OUTPUT (fallback) - ${terminalData.length} bytes - ${preview}`);
+    // Log terminal output classification for debugging (disabled in production) 
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_CLASSIFICATION) {
+      const preview = terminalData.length > 0 ? 
+        `[${Array.from(terminalData.slice(0, Math.min(8, terminalData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${terminalData.length > 8 ? '...' : ''}]` : 
+        '[empty]';
+      console.log(`[MessageExtractor] CLASSIFIED: TERMINAL_OUTPUT (fallback) - ${terminalData.length} bytes - ${preview}`);
+    }
 
     return {
       type: MessageType.TERMINAL_OUTPUT,

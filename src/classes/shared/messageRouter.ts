@@ -134,7 +134,10 @@ export class MessageRouter extends EventEmitter {
       this.routingConfig[messageType].push(destination);
       this.destinationCounts[destination.name] = 0;
       
+      // Reduce registration logging noise in production
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_ROUTING) {
       console.log(`[MessageRouter] Registered ${destination.name} for ${messageType} messages`);
+    }
     }
   }
 
