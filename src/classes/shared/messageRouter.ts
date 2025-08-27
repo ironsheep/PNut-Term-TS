@@ -244,7 +244,11 @@ export class MessageRouter extends EventEmitter {
    * Route a single message to its destinations
    */
   private routeMessage(message: ExtractedMessage): void {
+    console.log(`[TWO-TIER] 🎯 Routing message: ${message.type}, ${message.data.length} bytes`);
+    
     const destinations = this.routingConfig[message.type];
+    
+    console.log(`[TWO-TIER] 🎯 Found ${destinations?.length || 0} destinations for ${message.type}`);
     
     if (!destinations || destinations.length === 0) {
       console.warn(`[MessageRouter] No destinations for ${message.type} message`);

@@ -2,7 +2,7 @@
 'use strict';
 
 import { SerialPort } from 'serialport';
-import { ReadlineParser } from '@serialport/parser-readline';
+// ReadlineParser REMOVED - was corrupting binary data and killing performance!
 import { waitMSec, waitSec } from './timerUtils';
 import { Context } from './context';
 import { EventEmitter } from 'events';
@@ -16,7 +16,8 @@ export class UsbSerial extends EventEmitter {
   private endOfLineStr: string = '\r\n';
   private _deviceNode: string = '';
   private _serialPort: SerialPort;
-  private _serialParser: ReadlineParser;
+  // Parser removed - was corrupting binary data! Now using manual P2 detection
+  private _p2DetectionBuffer: string = '';
   private _downloadBaud: number = DEFAULT_DOWNLOAD_BAUD;
   private _p2DeviceId: string = '';
   private _p2loadLimit: number = 0;
@@ -47,16 +48,15 @@ export class UsbSerial extends EventEmitter {
     this._serialPort.on('error', (err) => this.handleSerialError(err.message));
     this._serialPort.on('open', () => this.handleSerialOpen());
 
-    // For MainWindow: Get RAW data (not parsed) so we can detect binary debugger protocol
-    // The parser is still needed for internal P2 version checking, but MainWindow needs raw bytes
+    // Handle ALL data through raw handler - no parser interference!
+    // Parser was corrupting binary data and destroying performance
     this._serialPort.on('data', (data: Buffer) => {
-      // Emit raw data for MainWindow to handle (can be binary or text)
+      // Emit raw data immediately for MainWindow (preserves binary integrity)
       this.emit('data', data);
+      
+      // Also check for P2 detection strings in the raw data
+      this.checkForP2Response(data);
     });
-    
-    // Also set up parser for internal use (P2 version detection, etc)
-    this._serialParser = this._serialPort.pipe(new ReadlineParser({ delimiter: this.endOfLineStr }));
-    this._serialParser.on('data', (data) => this.handleSerialRxInternal(data));
 
     // now open the port
     this._serialPort.open((err) => {
@@ -262,13 +262,22 @@ export class UsbSerial extends EventEmitter {
     //this.logMessage(`--> Tx ...`);
     return new Promise((resolve, reject) => {
       if (this.usbConnected) {
-        this._serialPort.write(value, (err) => {
-          if (err) reject(err);
-          else {
+        this._serialPort.write(value, async (err) => {
+          if (err) {
+            reject(err);
+          } else {
             this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
-            resolve();
+            // Ensure data is fully transmitted before returning
+            try {
+              await this.drain();
+              resolve();
+            } catch (drainErr) {
+              reject(drainErr);
+            }
           }
         });
+      } else {
+        reject(new Error('Serial port not connected'));
       }
     });
   }
@@ -297,30 +306,35 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
-  // Internal handler for parsed text data (used for P2 version detection)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private handleSerialRxInternal(data: any) {
-    this.logMessage(`<-- Rx [${data}]`);
-    // Don't emit here - raw data is emitted directly from serial port
-    const lines: string[] = data.split(/\r?\n/).filter(Boolean);
-    let propFound: boolean = false;
-    if (lines.length > 0) {
-      for (let index = 0; index < lines.length; index++) {
-        const replyString: string = 'Prop_Ver ';
-        const currLine = lines[index];
-        if (currLine.startsWith(replyString) && currLine.length == 10) {
-          this.logMessage(`  -- REPLY [${currLine}](${currLine.length})`);
-          const idLetter = currLine.charAt(replyString.length);
-          this._p2DeviceId = this.descriptionForVerLetter(idLetter);
-          this._p2loadLimit = this.limitForVerLetter(idLetter);
-          propFound = true;
-          break;
-        }
+  // Check raw data for P2 version response (no parser needed!)
+  private checkForP2Response(data: Buffer): void {
+    // Convert to string for P2 detection only
+    const text = data.toString('utf8', 0, data.length);
+    this._p2DetectionBuffer += text;
+    
+    // Look for complete lines
+    const lines = this._p2DetectionBuffer.split(/\r?\n/);
+    
+    // Keep incomplete line in buffer
+    this._p2DetectionBuffer = lines.pop() || '';
+    
+    // Process complete lines
+    for (const line of lines) {
+      if (line.startsWith('Prop_Ver ') && line.length === 10) {
+        this.logMessage(`  -- P2 DETECTED [${line}]`);
+        const idLetter = line.charAt(9);
+        this._p2DeviceId = this.descriptionForVerLetter(idLetter);
+        this._p2loadLimit = this.limitForVerLetter(idLetter);
+        this.logMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit}`);
+        // Clear buffer after successful detection
+        this._p2DetectionBuffer = '';
+        break;
       }
     }
-    if (propFound == true) {
-      // log findings...
-      this.logMessage(`* FOUND Prop: [${this._p2DeviceId}]`);
+    
+    // Prevent buffer from growing too large
+    if (this._p2DetectionBuffer.length > 1000) {
+      this._p2DetectionBuffer = this._p2DetectionBuffer.slice(-100);
     }
   }
 
@@ -359,13 +373,13 @@ export class UsbSerial extends EventEmitter {
   }
 
   private startReadListener() {
-    // wait for any returned data
-    this._serialParser.on('data', (data) => this.handleSerialRxInternal(data));
+    // P2 detection now handled in checkForP2Response
+    // No separate listener needed - performance improvement!
   }
 
   private stopReadListener() {
-    // stop waiting for any returned data
-    this._serialParser.off('data', (data) => this.handleSerialRxInternal(data));
+    // P2 detection now handled in checkForP2Response  
+    // No separate listener needed - performance improvement!
   }
 
   private async requestP2IDString(): Promise<void> {
@@ -388,7 +402,8 @@ export class UsbSerial extends EventEmitter {
     // NO wait yields a 1.5 mSec delay on my mac Studio
     // NOTE: if nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
     await waitMSec(15);
-    return await this.write(`${requestPropType}\r`);
+    await this.write(`${requestPropType}\r`);
+    // drain() now called inside write() for guaranteed delivery
     /*return new Promise((resolve, reject) => {
       //this.logMessage(`* requestP2IDString() - EXIT`);
       resolve();
@@ -425,6 +440,7 @@ export class UsbSerial extends EventEmitter {
         // NO wait yields a 102 mSec delay on my mac Studio
         await waitMSec(15); // at least a  15 mSec delay, yields a 230mSec delay when 2nd wait above is 100 mSec
         await this.write(`${requestPropType}\r`);
+        // drain() now called inside write() for guaranteed delivery
       } catch (error) {
         this.logMessage(`* requestPropellerVersion() ERROR: ${JSON.stringify(error, null, 2)}`);
       }

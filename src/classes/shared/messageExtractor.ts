@@ -1010,23 +1010,10 @@ export class MessageExtractor extends EventEmitter {
     };
   }
 
-  /**
-   * Consume remaining data up to limit (for terminal output when no terminator found)
-   */
-  private consumeRemainingData(maxBytes: number): Uint8Array | null {
-    const bytes: number[] = [];
-    
-    while (bytes.length < maxBytes && this.buffer.hasData()) {
-      const result = this.buffer.next();
-      if (result.status !== NextStatus.DATA) {
-        break;
-      }
-      
-      bytes.push(result.value!);
-    }
-    
-    return bytes.length > 0 ? new Uint8Array(bytes) : null;
-  }
+  // consumeRemainingData REMOVED - Would break pattern sync!
+  // This function was destructive to pattern matching as it could
+  // consume sync bytes needed for re-synchronization.
+  // DO NOT RE-IMPLEMENT - breaks Two-Tier Pattern Matching
 
   /**
    * FIXED: Consume complete line with proper EOL handling

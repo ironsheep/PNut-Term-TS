@@ -64,8 +64,10 @@ export interface DeviceSettings {
 }
 
 export interface GlobalSettings {
-  defaultControlLine: 'DTR' | 'RTS';
-  deviceSettings: { [deviceId: string]: DeviceSettings };
+  defaultControlLine?: 'DTR' | 'RTS';
+  deviceSettings?: { [deviceId: string]: DeviceSettings };
+  devices?: any[];  // For compatibility with initialization
+  selectedDeviceIndex?: number;
 }
 
 const DEFAULT_SERIAL_BAUD = 2000000;
@@ -125,8 +127,15 @@ export class MainWindow {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
     if (this.context.runEnvironment.loggingEnabled) {
-      this.logMessage('MainWindow started.');
+      this.context.logger.forceLogMessage('MainWindow started.');
     }
+    
+    // Initialize default settings immediately to prevent null reference crashes
+    this.globalSettings = {
+      devices: [],
+      selectedDeviceIndex: 0
+    };
+    this.settingsFilePath = '';  // Will be set properly in loadSettings()
     
     // Initialize Two-Tier Pattern Matching serial processor and COG managers
     this.serialProcessor = new SerialMessageProcessor(true); // Enable performance logging
@@ -135,7 +144,9 @@ export class MainWindow {
     this.cogLogExporter = new COGLogExporter();
     
     // Set up Two-Tier Pattern Matching event handlers
+    console.log('[TWO-TIER] 🔧 Setting up SerialProcessor event handlers...');
     this.setupSerialProcessorEvents();
+    console.log('[TWO-TIER] ✅ SerialProcessor event handlers setup complete');
     
     // Set up COG window creator
     this.cogWindowManager.setWindowCreator((cogId: number) => {
@@ -228,7 +239,9 @@ export class MainWindow {
     );
 
     // Start the processor
+    console.log('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
     this.serialProcessor.start();
+    console.log('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
 
     // Handle processor events
     this.serialProcessor.on('resetDetected', (event: any) => {
@@ -248,7 +261,15 @@ export class MainWindow {
    * Route message to Debug Logger (Terminal FIRST principle)
    */
   private routeToDebugLogger(message: ExtractedMessage): void {
+    console.log(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
+    
     // Use type-safe handoff to debug logger - no more guessing!
+    if (this.debugLoggerWindow) {
+      console.log(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
+    } else {
+      console.log(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
+    }
+    
     if (this.debugLoggerWindow) {
       // Convert buffer to appropriate data type
       let data: string[] | Uint8Array;
@@ -400,12 +421,20 @@ export class MainWindow {
     // Track in displays
     this.displays[windowId] = cogWindow;
     
+    // Update UI with active COGs when window opens
+    const activeCogs = this.cogWindowManager.getActiveCOGs();
+    this.updateActiveCogs(activeCogs);
+    
     // Listen for close event
     cogWindow.on('cog-window-closed', (closedCogId: number) => {
       console.log(`[COG WINDOW] COG ${closedCogId} window closed`);
       this.cogWindowManager.onWindowClosed(closedCogId);
       delete this.displays[`COG-${closedCogId}`];
       this.windowRouter.unregisterWindow(`COG${closedCogId}`);
+      
+      // Update UI with active COGs
+      const activeCogs = this.cogWindowManager.getActiveCOGs();
+      this.updateActiveCogs(activeCogs);
     });
     
     // Listen for export request
@@ -589,7 +618,7 @@ export class MainWindow {
   }
 
   public initialize() {
-    this.logMessage('* initialize()');
+    this.context.logger.forceLogMessage('* initialize()');
     console.log('[STARTUP] MainWindow.initialize() called');
     // app.on('ready', this.createAppWindow);
     // CRITICAL FIX: Don't open serial port until DOM is ready!
@@ -1385,9 +1414,11 @@ export class MainWindow {
     const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize;
     console.log(`work area size: ${width} x ${height}`);
 
-    // Create a canvas element to measure text dimensions
-    const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
-    console.log(`     char size: ${charWidth} x ${charHeight}`);
+    // Use default font metrics for initial window sizing
+    // Actual metrics will be measured after window loads
+    const charWidth = 12; // Default character width
+    const charHeight = 18; // Default character height
+    console.log(`     char size (default): ${charWidth} x ${charHeight}`);
 
     // Calculate the required dimensions for 24 lines by 80 characters
     const minWidth = 80 * charWidth; // Minimum width for 80 characters
@@ -1419,7 +1450,7 @@ export class MainWindow {
 
   private async createAppWindow() {
     console.log('[STARTUP] createAppWindow() called');
-    this.logMessage(`* create App Window()`);
+    this.context.logger.forceLogMessage(`* create App Window()`);
     this.mainWindowOpen = true;
 
     try {
@@ -1470,11 +1501,6 @@ export class MainWindow {
     }
 
     this.setupWindowHandlers();
-    
-    // Load terminal mode setting after window is ready
-    this.mainWindow.webContents.once('did-finish-load', () => {
-      this.loadTerminalMode();
-    });
   }
 
   /**
@@ -2150,7 +2176,7 @@ export class MainWindow {
     // Inject JavaScript into the renderer process
     
     // Set up IPC handlers for toolbar events (both IDE and standard modes)
-    this.mainWindow!.webContents.on('ipc-message', (event, channel, ...args) => {
+    this.mainWindow!.webContents.on('ipc-message', (event: any, channel: any, ...args: any[]) => {
       switch (channel) {
         case 'set-terminal-mode':
           const mode = args[0] as 'PST' | 'ANSI';
@@ -2235,13 +2261,58 @@ export class MainWindow {
       }
     });
     
-    // Set up toolbar button event handlers
+    // Set up toolbar button event handlers and load settings
     this.mainWindow!.webContents.once('did-finish-load', () => {
       const isIdeMode = this.context.runEnvironment.ideMode;
       
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
       this.createDebugLoggerWindow();
+      
+      // Load terminal mode setting after window is ready
+      this.loadTerminalMode();
+      
+      // Measure actual font metrics now that window is ready
+      this.measureAndStoreFontMetrics();
+      
+      // Initialize download mode LEDs after DOM is ready
+      this.updateDownloadMode(this.downloadMode);
+      
+      // Initialize activity LEDs to OFF state
+      this.safeExecuteJS(`
+        const txLed = document.getElementById('tx-led');
+        const rxLed = document.getElementById('rx-led');
+        if (txLed) {
+          txLed.style.color = '#333';
+          txLed.style.fontSize = '20px';
+          txLed.style.textShadow = '0 0 2px #000';
+        }
+        if (rxLed) {
+          rxLed.style.color = '#333';
+          rxLed.style.fontSize = '20px';
+          txLed.style.textShadow = '0 0 2px #000';
+        }
+      `, 'initialize-activity-leds');
+      
+      // Initialize serial connection after DOM is ready
+      if (this._deviceNode.length > 0 && !this._serialPort) {
+        this.logMessage(`* Opening serial port after DOM ready: ${this._deviceNode}`);
+        this.openSerialPort(this._deviceNode);
+      }
+      
+      // Setup logging configuration
+      let logDisplayName: string = this.context.runEnvironment.logFilename;
+      if (logDisplayName.length == 0) {
+        logDisplayName = '{none}';
+        this.loggingToFile = false;
+      } else {
+        this.enableLogging(logDisplayName);
+      }
+      
+      // Update status bar with device info
+      if (this._deviceNode.length > 0) {
+        this.updateStatusBarField('propPlug', this._deviceNode);
+      }
       
       this.safeExecuteJS(`
         // Check if ipcRenderer is available in window context
@@ -2536,6 +2607,66 @@ export class MainWindow {
           }
         }
       `, 'toolbar-event-handlers');
+      
+      // Setup text input control for data entry
+      this.hookTextInputControl('dataEntry', (event: Event) => {
+        const inputElement = event.target as HTMLInputElement;
+        console.log(`Input value: [${inputElement.value}]`);
+        if (event instanceof KeyboardEvent && event.key === 'Enter') {
+          this.sendSerialData(inputElement.value);
+          inputElement.value = '';
+        }
+      });
+      
+      // Check serial port status after window loads - delayed to let async operations complete
+      setTimeout(async () => {
+        if (this._serialPort === undefined) {
+          if (this._deviceNode.length > 0) {
+            // Device was specified but connection failed
+            this.appendLog(`⚠️ Waiting for serial port: ${this._deviceNode}`);
+            this.appendLog(`   Try: File > Select PropPlug to choose a different device`);
+          } else {
+            // No device specified - check what's available
+            try {
+              const { UsbSerial } = require('../utils/usb.serial');
+              const availableDevices = await UsbSerial.serialDeviceList();
+              
+              if (availableDevices.length === 0) {
+                this.appendLog(`⚠️ No PropPlug devices found`);
+                this.appendLog(`   • Connect your PropPlug device via USB`);
+                this.appendLog(`   • Use File > Select PropPlug after connecting a device`);
+                this.updateConnectionStatus(false);
+                this.updateStatusBarField('propPlug', 'No devices found');
+              } else if (availableDevices.length === 1) {
+                // Single device found - should have been auto-selected
+                const deviceInfo = availableDevices[0].split(',');
+                const devicePath = deviceInfo[0];
+                this.appendLog(`ℹ️ Found PropPlug device: ${devicePath}`);
+                this.appendLog(`   Auto-connecting...`);
+                this._deviceNode = devicePath;
+                this.updateStatusBarField('propPlug', `${devicePath} (connecting...)`);
+                await this.openSerialPort(devicePath);
+              } else {
+                // Multiple devices found
+                this.appendLog(`⚠️ Multiple PropPlug devices found (${availableDevices.length} devices)`);
+                this.appendLog(`   Available devices:`);
+                availableDevices.forEach((device: any, index: any) => {
+                  const devicePath = device.split(',')[0];
+                  this.appendLog(`   ${index + 1}. ${devicePath}`);
+                });
+                this.appendLog(`   Use: File > Select PropPlug to choose a device`);
+                this.appendLog(`   Or restart with: -p <device_path>`);
+                this.updateConnectionStatus(false);
+                this.updateStatusBarField('propPlug', `${availableDevices.length} devices found`);
+              }
+            } catch (error) {
+              this.appendLog(`⚠️ Error scanning for devices: ${error}`);
+              this.updateConnectionStatus(false);
+              this.updateStatusBarField('propPlug', 'Error scanning');
+            }
+          }
+        }
+      }, 500);
     });
   }
 
@@ -2687,7 +2818,7 @@ export class MainWindow {
                   defaultPath: `./Logs/${this.logFilenameBase}`,
                   filters: [{ name: 'Text Files', extensions: ['txt'] }]
                 })
-                .then((result) => {
+                .then((result: any) => {
                   if (!result.canceled && result.filePath) {
                     const logFilename: string = this.enableLogging(result.filePath);
                     // Log name field removed from status bar per user request
@@ -2771,7 +2902,7 @@ export class MainWindow {
                   title: 'Select Prop Plug',
                   message: 'Choose a lProp Plug:'
                 })
-                .then((response) => {
+                .then((response: any) => {
                   const propPlug: string = names[response.response];
                   this.context.runEnvironment.selectedPropPlug = propPlug;
 
@@ -2932,112 +3063,10 @@ export class MainWindow {
     
     this.updateStatus(); // set initial values
 
-    // every second write a new log entry (DUMMY for TESTING)
-    this.mainWindow!.webContents.on('did-finish-load', () => {
-      // if logging post filename to status bar
-      this.logMessage('* [did-finish-load]');
-      
-      // CRITICAL FIX: Initialize download mode LEDs after DOM is ready
-      this.updateDownloadMode(this.downloadMode);
-      
-      // Initialize activity LEDs to OFF state
-      this.safeExecuteJS(`
-        const txLed = document.getElementById('tx-led');
-        const rxLed = document.getElementById('rx-led');
-        if (txLed) {
-          txLed.style.color = '#333';
-          txLed.style.fontSize = '20px';
-          txLed.style.textShadow = '0 0 2px #000';
-        }
-        if (rxLed) {
-          rxLed.style.color = '#333';
-          rxLed.style.fontSize = '20px';
-          rxLed.style.textShadow = '0 0 2px #000';
-        }
-      `, 'initialize activity LEDs');
-      
-      // CRITICAL FIX: Open serial port AFTER DOM is ready so RX/TX LEDs work!
-      if (this._deviceNode.length > 0 && !this._serialPort) {
-        this.logMessage(`* Opening serial port after DOM ready: ${this._deviceNode}`);
-        this.openSerialPort(this._deviceNode);
-      }
-      
-      let logDisplayName: string = this.context.runEnvironment.logFilename;
-      if (logDisplayName.length == 0) {
-        logDisplayName = '{none}';
-        this.loggingToFile = false;
-      } else {
-        this.enableLogging(logDisplayName);
-      }
-      // Log name field removed from status bar per user request
-      //   and PropPlug
-      if (this._deviceNode.length > 0) {
-        this.updateStatusBarField('propPlug', this._deviceNode);
-      }
+    // REMOVED: Duplicate did-finish-load handler eliminated to fix race condition
+    // All DOM initialization now consolidated in single handler above (line ~2248)
 
-      this.hookTextInputControl('dataEntry', (event: Event) => {
-        const inputElement = event.target as HTMLInputElement;
-        console.log(`Input value: [${inputElement.value}]`);
-        if (event instanceof KeyboardEvent && event.key === 'Enter') {
-          this.sendSerialData(inputElement.value);
-          inputElement.value = '';
-        }
-      });
-
-      // Check serial port status after window loads
-      setTimeout(async () => {
-        if (this._serialPort === undefined) {
-          if (this._deviceNode.length > 0) {
-            // Device was specified but connection failed - error already shown
-            this.appendLog(`⚠️ Waiting for serial port: ${this._deviceNode}`);
-            this.appendLog(`   Try: File > Select PropPlug to choose a different device`);
-          } else {
-            // No device specified - check what's available
-            try {
-              const { UsbSerial } = require('../utils/usb.serial');
-              const availableDevices = await UsbSerial.serialDeviceList();
-              
-              if (availableDevices.length === 0) {
-                // No devices found at all
-                this.appendLog(`⚠️ No PropPlug devices found`);
-                this.appendLog(`   • Check that your device is plugged in`);
-                this.appendLog(`   • If using a USB hub, try unplugging and replugging it`);
-                this.appendLog(`   • Use File > Select PropPlug after connecting a device`);
-                this.updateConnectionStatus(false);
-                this.updateStatusBarField('propPlug', 'No devices found');
-              } else if (availableDevices.length === 1) {
-                // Single device found - should have been auto-selected
-                const deviceInfo = availableDevices[0].split(',');
-                const devicePath = deviceInfo[0];
-                this.appendLog(`ℹ️ Found PropPlug device: ${devicePath}`);
-                this.appendLog(`   Auto-connecting...`);
-                this._deviceNode = devicePath;
-                this.updateStatusBarField('propPlug', `${devicePath} (connecting...)`);
-                await this.openSerialPort(devicePath);
-              } else {
-                // Multiple devices found
-                this.appendLog(`⚠️ Multiple PropPlug devices found (${availableDevices.length} devices)`);
-                this.appendLog(`   Available devices:`);
-                availableDevices.forEach((device, index) => {
-                  const devicePath = device.split(',')[0];
-                  this.appendLog(`   ${index + 1}. ${devicePath}`);
-                });
-                this.appendLog(`   Use: File > Select PropPlug to choose a device`);
-                this.appendLog(`   Or restart with: -p <device_path>`);
-                this.updateConnectionStatus(false);
-                this.updateStatusBarField('propPlug', `${availableDevices.length} devices found`);
-              }
-            } catch (error) {
-              this.appendLog(`⚠️ Error scanning for devices: ${error}`);
-              this.updateConnectionStatus(false);
-              this.updateStatusBarField('propPlug', 'Error scanning');
-            }
-          }
-        }
-      }, 500); // Small delay to let async port open complete
-    });
-
-    this.mainWindow!.on('close', (event) => {
+    this.mainWindow!.on('close', (event: any) => {
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...[close]');
       }
@@ -3197,6 +3226,19 @@ export class MainWindow {
     }
     console.error(`* getFontMetrics() -> (${charWidth}x${charHeight})`);
     return { charWidth, charHeight }; // Default values
+  }
+
+  private async measureAndStoreFontMetrics(): Promise<void> {
+    try {
+      const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
+      console.log(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
+      
+      // Store for future use - could be used for dynamic window sizing
+      // For now, just log the actual measurements
+      // TODO: Could implement window resize if metrics differ significantly from defaults
+    } catch (error) {
+      console.error('[FONT METRICS] Error measuring fonts after window load:', error);
+    }
   }
 
   private hookTextInputControl(inputId: string, callback: (event: Event) => void): void {
@@ -3480,9 +3522,22 @@ export class MainWindow {
     // then from project .json file in a future sprint
     this.safeExecuteJS(`
       (function() {
-        const mode = localStorage.getItem('terminal-mode') || 'PST';
-        const controlLine = localStorage.getItem('control-line-mode') || 'DTR';
-        return { mode, controlLine };
+        try {
+          // Check if localStorage is available
+          if (typeof localStorage === 'undefined') {
+            console.warn('[TERMINAL MODE] localStorage not available, using defaults');
+            return { mode: 'PST', controlLine: 'DTR' };
+          }
+          
+          const mode = localStorage.getItem('terminal-mode') || 'PST';
+          const controlLine = localStorage.getItem('control-line-mode') || 'DTR';
+          console.log('[TERMINAL MODE] Successfully loaded from localStorage:', { mode, controlLine });
+          return { mode, controlLine };
+        } catch (error) {
+          console.error('[TERMINAL MODE] Error accessing localStorage:', error);
+          console.log('[TERMINAL MODE] Using default values: PST, DTR');
+          return { mode: 'PST', controlLine: 'DTR' };
+        }
       })();
     `, 'load terminal mode').then((result) => {
       if (result && typeof result === 'object') {
@@ -3495,7 +3550,19 @@ export class MainWindow {
         if (this.controlLineMode !== 'DTR') {
           this.updateControlLineUI();
         }
+      } else {
+        // Fallback if script execution failed completely
+        console.warn('[TERMINAL MODE] Script execution failed, using fallback defaults');
+        this.terminalMode = 'PST';
+        this.controlLineMode = 'DTR';
+        this.logMessage(`Terminal mode set to fallback defaults: ${this.terminalMode}, ${this.controlLineMode}`);
       }
+    }).catch((error) => {
+      console.error('[TERMINAL MODE] safeExecuteJS failed:', error);
+      // Ultimate fallback
+      this.terminalMode = 'PST';
+      this.controlLineMode = 'DTR';
+      this.logMessage(`Terminal mode set to ultimate fallback: ${this.terminalMode}, ${this.controlLineMode}`);
     });
   }
   
@@ -3744,6 +3811,9 @@ export class MainWindow {
   // UI Control Methods
   private async setDTR(state: boolean): Promise<void> {
     this.dtrState = state;
+    // Update UI checkbox to reflect state
+    this.updateCheckbox('dtr-checkbox', this.dtrState);
+    
     if (this._serialPort) {
       try {
         await this._serialPort.setDTR(this.dtrState);
@@ -3767,6 +3837,9 @@ export class MainWindow {
 
   private async setRTS(state: boolean): Promise<void> {
     this.rtsState = state;
+    // Update UI checkbox to reflect state
+    this.updateCheckbox('rts-checkbox', this.rtsState);
+    
     if (this._serialPort) {
       try {
         await this._serialPort.setRTS(this.rtsState);
@@ -4057,7 +4130,7 @@ export class MainWindow {
       buttons: baudRates,
       title: 'Select Baud Rate',
       message: 'Choose baud rate:'
-    }).then((response) => {
+    }).then((response: any) => {
       this._serialBaud = parseInt(baudRates[response.response]);
       if (this._serialPort) {
         UsbSerial.setCommBaudRate(this._serialBaud);
@@ -4416,15 +4489,16 @@ export class MainWindow {
    */
   private getDeviceControlLine(): 'DTR' | 'RTS' {
     const deviceId = this.getCurrentDeviceId();
-    const deviceSettings = this.globalSettings.deviceSettings[deviceId];
+    const deviceSettings = this.globalSettings.deviceSettings?.[deviceId];
     
     if (deviceSettings) {
       this.logMessage(`📋 Using saved ${deviceSettings.controlLine} for device ${deviceId}`);
       return deviceSettings.controlLine;
     }
     
-    this.logMessage(`📋 Using default ${this.globalSettings.defaultControlLine} for new device ${deviceId}`);
-    return this.globalSettings.defaultControlLine;
+    const defaultLine = this.globalSettings.defaultControlLine || 'DTR';
+    this.logMessage(`📋 Using default ${defaultLine} for new device ${deviceId}`);
+    return defaultLine;
   }
 
   /**
@@ -4432,6 +4506,11 @@ export class MainWindow {
    */
   private saveDeviceControlLine(controlLine: 'DTR' | 'RTS'): void {
     const deviceId = this.getCurrentDeviceId();
+    
+    // Ensure deviceSettings object exists
+    if (!this.globalSettings.deviceSettings) {
+      this.globalSettings.deviceSettings = {};
+    }
     
     this.globalSettings.deviceSettings[deviceId] = {
       controlLine,

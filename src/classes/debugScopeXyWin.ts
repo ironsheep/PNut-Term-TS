@@ -371,10 +371,12 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       this.logMessage('at ready-to-show');
       // Register with WindowRouter when window is ready
       this.registerWithRouter();
-      // Register with WindowPlacer for position tracking
-      windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
+      // Register with WindowPlacer for position tracking - check for null
       if (this.debugWindow) {
+        windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
         this.debugWindow.show();
+      } else {
+        console.warn('[ScopeXY] Cannot register with WindowPlacer - debugWindow is null');
       }
     });
     
@@ -832,6 +834,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         const combinedScript = plotScripts.join('\n');
         return this.debugWindow.webContents.executeJavaScript(combinedScript);
       }
+      return Promise.resolve(); // Return resolved promise when no scripts to execute
     }).catch(err => {
       console.error('Render error:', err);
     });

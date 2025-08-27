@@ -205,6 +205,8 @@ export class SerialMessageProcessor extends EventEmitter {
    * This is the entry point for all serial data
    */
   public receiveData(data: Buffer): void {
+    console.log(`[TWO-TIER] 🔄 SerialMessageProcessor.receiveData(): ${data.length} bytes, running: ${this.isRunning}`);
+    
     if (!this.isRunning) {
       console.warn('[Processor] Received data while not running, ignoring');
       return;

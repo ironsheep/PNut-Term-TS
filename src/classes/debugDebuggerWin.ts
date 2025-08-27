@@ -359,12 +359,17 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           // For now, skip renderer creation to avoid the error
           // TODO: Refactor DebuggerRenderer to work with Electron's remote canvas
           
-          this.interaction = new DebuggerInteraction(
-            null as any, // Temporarily pass null for renderer
-            this.protocol,
-            this.dataManager,
-            this.cogId
-          );
+          // Only create interaction if protocol and dataManager are initialized
+          if (this.protocol && this.dataManager) {
+            this.interaction = new DebuggerInteraction(
+              null as any, // Temporarily pass null for renderer - TODO: implement
+              this.protocol,
+              this.dataManager,
+              this.cogId
+            );
+          } else {
+            console.warn('[DebuggerWin] Cannot create interaction - protocol or dataManager not initialized');
+          }
           
           this.startUpdateLoop();
           
@@ -790,13 +795,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Required abstract method - update content
    */
   protected processMessageImmediate(data: any): void {
-    // Handle content updates
-    if (data.binary) {
-      this.handleBinaryMessage(data.binary);
-    }
-    if (data.text) {
-      this.handleTextMessage(data.text);
-    }
+    // Route through the main message handler
+    this.handleDebuggerMessage(data);
   }
 
   /**

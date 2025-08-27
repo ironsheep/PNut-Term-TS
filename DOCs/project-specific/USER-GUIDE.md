@@ -17,6 +17,12 @@
 14. [Recording & Playback](#recording--playback)
 15. [Keyboard Shortcuts](#keyboard-shortcuts)
 16. [Troubleshooting](#troubleshooting)
+17. [Advanced Topics](#advanced-topics)
+    - [Custom Window Layouts](#custom-window-layouts)
+    - [Scripting](#scripting)
+    - [Serial Communication Architecture](#serial-communication-architecture)
+    - [Performance Tuning](#performance-tuning)
+    - [Integration](#integration)
 
 ## Introduction
 
@@ -722,15 +728,47 @@ async function runTests() {
 }
 ```
 
+### Serial Communication Architecture
+
+#### High-Performance Binary Protocol
+The P2 Debug Terminal uses a direct raw binary communication pipeline optimized for the Propeller 2's mixed ASCII/binary debug protocol:
+
+**Key Features:**
+- **Zero-copy data path** from serial port to message processors
+- **No UTF-8 conversion overhead** - binary data remains binary
+- **Manual P2 detection** without parser interference
+- **Guaranteed delivery** using drain() after writes
+- **Two-Tier Pattern Matching** for robust message extraction
+
+**Technical Implementation:**
+1. **Raw Buffer Processing**: All serial data handled as raw bytes
+2. **Pattern Recognition**: Hardware-optimized sync pattern detection
+3. **Message Routing**: Direct dispatch to specialized debug windows
+4. **Circular Buffering**: Lock-free buffers prevent data loss at high speeds
+
+**Performance Benefits:**
+- Supports full 16 Mbps debug speeds
+- Enables P2 checksum verification during downloads
+- Zero null-byte corruption in binary streams
+- Microsecond-precision timing preservation
+
+#### DTR/RTS Control Lines
+The terminal supports both DTR and RTS control for different USB adapters:
+- **Parallax Prop Plugs**: Use DTR (default)
+- **FTDI USB adapters**: Usually DTR
+- **Generic adapters**: May require RTS
+
+Control lines trigger P2 reset and provide visual log separation.
+
 ### Performance Tuning
 
 #### High-Speed Data
 For data rates >1 Mbps:
-1. Increase buffer sizes in Settings
-2. Use binary protocol when possible
-3. Enable hardware flow control
-4. Consider sampling/decimation
-5. Use recording for post-analysis
+1. Buffer sizes auto-adjust for optimal throughput
+2. Binary protocol preserved without conversion
+3. Hardware flow control optional (not required)
+4. Pattern matching handles any data rate
+5. Use recording for zero-loss capture
 
 #### Multiple Windows
 When running many windows:

@@ -269,16 +269,16 @@ export class DebugTerminalInTypeScript {
     if (!options.quiet) {
       const signOnCompiler: string =
         "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.";
-      this.context.logger.infoMsg(`* ${signOnCompiler}`);
+      this.context.logger.forceLogMessage(`* ${signOnCompiler}`);
       const signOnVersion: string = `Version ${this.version}, {buildDateHere}`;
-      this.context.logger.infoMsg(`* ${signOnVersion}`);
-      this.context.logger.logMessage(''); // blank line...
+      this.context.logger.forceLogMessage(`* ${signOnVersion}`);
+      this.context.logger.forceLogMessage(''); // blank line...
     }
 
     if ((!showingHelp && !options.quiet) || (showingHelp && options.verbose)) {
       let commandLine: string = `pnut-term-ts ${combinedArgs.slice(1).join(' ')}`;
-      this.context.logger.infoMsg(`* ${commandLine}`);
-      this.context.logger.infoMsg(
+      this.context.logger.forceLogMessage(`* ${commandLine}`);
+      this.context.logger.forceLogMessage(
         `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
           this.inContainer
         }]`

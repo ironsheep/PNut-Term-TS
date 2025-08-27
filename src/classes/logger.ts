@@ -142,4 +142,20 @@ export class Logger {
     // Errors should always be logged regardless of logging settings
     process.stderr.write(`${message}\r\n`);
   }
+
+  /**
+   * Force write message to stdout with trailing CRLF, bypassing all logging flags
+   * Used for system startup messages that should always appear in console
+   *
+   * @param {string} message
+   * @memberof Logger
+   */
+  public forceLogMessage(message: string) {
+    if (typeof message !== "string") {
+      process.stdout.write(`* forceLogMessage() - message is ${typeof message}\r\n`);
+      return;
+    }
+    // System messages should always be logged to console regardless of settings
+    process.stdout.write(`${message}\r\n`);
+  }
 }

@@ -33,16 +33,21 @@ export enum ColorMode {
 
 /**
  * Base colors for LUMA and RGBI modes (0-7)
+ * Maps color index to name for documentation purposes
+ * Index 0: Orange (special case - handled differently)
+ * Index 1-6: Primary/secondary colors (RGB bits)
+ * Index 7: Gray (equal RGB values)
+ * Note: Not used in computation, kept for reference
  */
 const BASE_COLORS = [
-  'ORANGE',  // 0
-  'BLUE',    // 1
-  'GREEN',   // 2
-  'CYAN',    // 3
-  'RED',     // 4
-  'MAGENTA', // 5
-  'YELLOW',  // 6
-  'GRAY'     // 7
+  'ORANGE',  // 0 - Special: R=255, G=127, B=0
+  'BLUE',    // 1 - RGB bits: 001
+  'GREEN',   // 2 - RGB bits: 010  
+  'CYAN',    // 3 - RGB bits: 011
+  'RED',     // 4 - RGB bits: 100
+  'MAGENTA', // 5 - RGB bits: 101
+  'YELLOW',  // 6 - RGB bits: 110
+  'GRAY'     // 7 - RGB bits: 111 (equal values)
 ];
 
 /**
@@ -129,7 +134,7 @@ export class ColorTranslator {
       case ColorMode.HSV8X:
         // Expand 8-bit HSV to 16-bit: HHHHSSSS -> HHHHHHHH SSSSSSSS
         pixelValue = ((pixelValue & 0xF0) * 0x110) | ((pixelValue & 0x0F) * 0x11);
-        // Fall through to HSV16 processing - NO BREAK HERE
+        // INTENTIONAL FALLTHROUGH to HSV16 processing
       case ColorMode.HSV16:
       case ColorMode.HSV16W:
       case ColorMode.HSV16X:

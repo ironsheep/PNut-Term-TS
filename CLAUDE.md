@@ -120,6 +120,28 @@ mcp__todo-mcp__context_resume
 mcp__todo-mcp__context_get_all  # If incomplete
 ```
 
+### Advanced Filtering (v0.6.8.2+)
+
+**Context Search (No More Key Guessing):**
+```bash
+context_get pattern:"task_*"                    # Glob patterns  
+context_get pattern:"/^session_.*/"             # Regex patterns
+context_get key:"specific_key" minutes_back:30  # Time window
+```
+
+**Smart Task Filtering:**
+```bash
+todo_next priority:"critical"                   # Priority focus
+todo_next status:"created" tags:["sonnet"]      # Model-specific work
+todo_next status:"pending"                      # Ready to start
+```
+
+**Multi-Model Workflows:**
+- Tag tasks by model: `#sonnet`, `#haiku`, `#opus`
+- Filter work: `todo_next tags:["sonnet"]` for Sonnet-specific tasks
+- Time-boxed context: `context_get pattern:"session_*" minutes_back:60`
+- Pattern discovery: `context_resume` shows grouped patterns
+
 ### Parameters (Tested 2025-08-19)
 ```bash
 estimate_minutes: 60      # NUMBER

@@ -359,6 +359,19 @@ export class COGWindowManager extends EventEmitter {
   }
 
   /**
+   * Get set of currently active COGs (those with windows)
+   */
+  public getActiveCOGs(): Set<number> {
+    const activeCogs = new Set<number>();
+    for (const [cogId, state] of this.cogStates) {
+      if (state.window && !state.window.isDestroyed()) {
+        activeCogs.add(cogId);
+      }
+    }
+    return activeCogs;
+  }
+
+  /**
    * Reset all states
    */
   public reset(): void {
