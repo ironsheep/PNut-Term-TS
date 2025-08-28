@@ -167,6 +167,47 @@ export class COGWindowManager extends EventEmitter {
     }
     
     this.emit('cogTraffic', { cogId, messageCount: state.messageCount });
+    
+    // Emit active COGs update when a COG becomes active for the first time
+    if (wasInactive) {
+      this.emit('activeCOGsChanged', {
+        cogId,
+        activeCOGs: this.getActiveCOGs(),
+        displayText: this.getActiveCOGsDisplay()
+      });
+    }
+  }
+
+  /**
+   * Get list of active COG IDs (COGs that have received traffic)
+   * Returns array of COG IDs sorted numerically
+   */
+  public getActiveCOGs(): number[] {
+    const activeCOGs: number[] = [];
+    
+    for (const [cogId, state] of this.cogStates) {
+      if (state.hasTraffic) {
+        activeCOGs.push(cogId);
+      }
+    }
+    
+    return activeCOGs.sort((a, b) => a - b);
+  }
+  
+  /**
+   * Check if any COGs are active
+   */
+  public hasActiveCOGs(): boolean {
+    return this.getActiveCOGs().length > 0;
+  }
+  
+  /**
+   * Get formatted string of active COGs for display
+   * Returns format like "0,1,3" or "None" if no active COGs
+   */
+  public getActiveCOGsDisplay(): string {
+    const activeCOGs = this.getActiveCOGs();
+    return activeCOGs.length > 0 ? activeCOGs.join(',') : 'None';
   }
 
   /**
@@ -361,7 +402,7 @@ export class COGWindowManager extends EventEmitter {
   /**
    * Get set of currently active COGs (those with windows)
    */
-  public getActiveCOGs(): Set<number> {
+  public getCOGsWithWindows(): Set<number> {
     const activeCogs = new Set<number>();
     for (const [cogId, state] of this.cogStates) {
       if (state.window && !state.window.isDestroyed()) {

@@ -18,6 +18,7 @@ import { DebuggerRenderer } from './shared/debuggerRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
 import { DebuggerInteraction } from './shared/debuggerInteraction';
+import { MessagePool, PooledMessage } from './shared/messagePool';
 
 /**
  * DebugDebuggerWindow - Interactive debugger window for Parallax Propeller 2 COGs
@@ -793,10 +794,42 @@ export class DebugDebuggerWindow extends DebugWindowBase {
 
   /**
    * Required abstract method - update content
+   * Handles both PooledMessage objects and raw data for backward compatibility
    */
   protected processMessageImmediate(data: any): void {
-    // Route through the main message handler
-    this.handleDebuggerMessage(data);
+    let actualData: any;
+    let pooledMessage: PooledMessage | null = null;
+    
+    // Check if this is a PooledMessage that needs to be released
+    if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
+      pooledMessage = data as PooledMessage;
+      actualData = pooledMessage.data;
+      console.log(`[DEBUGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+    } else {
+      actualData = data;
+    }
+    
+    try {
+      // Route through the main message handler
+      this.handleDebuggerMessage(actualData);
+    } catch (error) {
+      console.error(`[DEBUGGER] Error processing message: ${error}`);
+    } finally {
+      // Always release the pooled message if we have one
+      if (pooledMessage) {
+        try {
+          const messagePool = MessagePool.getInstance();
+          const wasLastConsumer = messagePool.release(pooledMessage);
+          if (wasLastConsumer) {
+            console.log(`[DEBUGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+          } else {
+            console.log(`[DEBUGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+          }
+        } catch (releaseError) {
+          console.error(`[DEBUGGER] Error releasing pooled message: ${releaseError}`);
+        }
+      }
+    }
   }
 
   /**

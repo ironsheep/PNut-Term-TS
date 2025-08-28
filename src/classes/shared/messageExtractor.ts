@@ -67,13 +67,20 @@ export interface MessagePattern {
 }
 
 /**
- * Extracted message with enhanced Two-Tier metadata
+ * Extracted message with enhanced Two-Tier metadata and reference counting
  */
 export interface ExtractedMessage {
   type: MessageType;
   data: Uint8Array;
   timestamp: number;
   confidence: 'VERY_DISTINCTIVE' | 'DISTINCTIVE' | 'NEEDS_CONTEXT' | 'DEFAULT';
+  
+  // Reference counting for single-copy message passing
+  consumerCount?: number;       // Total number of consumers
+  consumersRemaining?: number;  // How many consumers still need this message
+  disposed?: boolean;            // Flag to catch double-release bugs
+  poolId?: number;              // ID from message pool for tracking
+  
   metadata?: {
     cogId?: number;
     windowCommand?: string;
@@ -122,6 +129,16 @@ export class MessageExtractor extends EventEmitter {
   private outputQueue: DynamicQueue<ExtractedMessage>;
   private lastScanPosition: number = 0;
   private partialMessageDetected: boolean = false;
+  
+  // Batch extraction configuration
+  private readonly MAX_BATCH_SIZE = 100;  // Process up to 100 messages per batch
+  private readonly MAX_BATCH_TIME_MS = 10; // Process for up to 10ms
+  
+  // Batch extraction metrics
+  private totalBatches = 0;
+  private totalBatchTime = 0;
+  private totalBatchMessages = 0;
+  private largestBatch = 0;
   
   // Statistics
   private messagesExtracted: Record<MessageType, number> = {
@@ -792,15 +809,75 @@ export class MessageExtractor extends EventEmitter {
   }
 
   /**
-   * Extract messages from buffer
+   * Extract a batch of messages efficiently
+   * Returns array of extracted messages and whether more might be available
+   */
+  public extractBatch(): { messages: ExtractedMessage[], hasMore: boolean } {
+    const batchStart = performance.now();
+    const messages: ExtractedMessage[] = [];
+    let batchTime = 0;
+
+    // Process up to MAX_BATCH_SIZE messages or MAX_BATCH_TIME_MS milliseconds
+    while (this.buffer.hasData() && 
+           messages.length < this.MAX_BATCH_SIZE &&
+           batchTime < this.MAX_BATCH_TIME_MS) {
+      
+      const extracted = this.extractNextMessage();
+      
+      if (extracted) {
+        messages.push(extracted);
+        
+        // Record performance metrics
+        if (this.performanceMonitor) {
+          this.performanceMonitor.recordExtraction();
+          this.performanceMonitor.recordMessage();
+        }
+      } else {
+        // No complete message available
+        break;
+      }
+      
+      // Update batch time
+      batchTime = performance.now() - batchStart;
+    }
+
+    // Update batch metrics
+    if (messages.length > 0) {
+      this.totalBatches++;
+      this.totalBatchTime += batchTime;
+      this.totalBatchMessages += messages.length;
+      this.largestBatch = Math.max(this.largestBatch, messages.length);
+      
+      // Log batch performance in development
+      if (process.env.NODE_ENV === 'development' && messages.length > 10) {
+        const avgTime = (batchTime / messages.length * 1000).toFixed(0);
+        console.log(`[MessageExtractor] Batch: ${messages.length} messages in ${batchTime.toFixed(2)}ms (${avgTime}μs/msg)`);
+      }
+    }
+
+    return {
+      messages,
+      hasMore: this.buffer.hasData() && this.partialMessageDetected
+    };
+  }
+
+  /**
+   * Extract messages from buffer (legacy interface)
    * Called by SerialReceiver via setImmediate
    * Returns true if more data might be extractable
    */
   public extractMessages(): boolean {
+    const batchStart = performance.now();
     let messagesExtracted = 0;
     let continueExtracting = true;
+    let batchTime = 0;
 
-    while (continueExtracting && this.buffer.hasData()) {
+    // Process up to MAX_BATCH_SIZE messages or MAX_BATCH_TIME_MS milliseconds
+    while (continueExtracting && 
+           this.buffer.hasData() && 
+           messagesExtracted < this.MAX_BATCH_SIZE &&
+           batchTime < this.MAX_BATCH_TIME_MS) {
+      
       const extracted = this.extractNextMessage();
       
       if (extracted) {
@@ -827,10 +904,24 @@ export class MessageExtractor extends EventEmitter {
         // No complete message available
         continueExtracting = false;
       }
+      
+      // Update batch time
+      batchTime = performance.now() - batchStart;
     }
 
+    // Update batch metrics
     if (messagesExtracted > 0) {
+      this.totalBatches++;
+      this.totalBatchTime += batchTime;
+      this.totalBatchMessages += messagesExtracted;
+      this.largestBatch = Math.max(this.largestBatch, messagesExtracted);
+      
       this.emit('messagesExtracted', messagesExtracted);
+      
+      // Log batch performance in development
+      if (process.env.NODE_ENV === 'development' && messagesExtracted > 10) {
+        console.log(`[MessageExtractor] Batch: ${messagesExtracted} messages in ${batchTime.toFixed(2)}ms (${(batchTime / messagesExtracted * 1000).toFixed(0)}μs/msg)`);
+      }
     }
 
     return this.buffer.hasData() && this.partialMessageDetected;
@@ -914,12 +1005,20 @@ export class MessageExtractor extends EventEmitter {
     this.messagesExtracted[pattern.messageType]++;
     this.totalBytesExtracted += totalLength;
 
-    // Create extracted message with Two-Tier metadata
-    const extractedMessage = {
+    // Determine consumer count based on message type routing
+    // All messages go to logger + one other destination
+    const consumerCount = 2;  // Logger + destination window
+    
+    // Create extracted message with Two-Tier metadata and reference counting
+    const extractedMessage: ExtractedMessage = {
       type: pattern.messageType,
       data: messageData,
       timestamp: Date.now(),
       confidence: pattern.confidence,
+      // Reference counting initialization
+      consumerCount: consumerCount,
+      consumersRemaining: consumerCount,
+      disposed: false,
       metadata: {
         ...metadata,
         validationStatus: validation.status as 'COMPLETE' | 'INCOMPLETE' | 'INVALID',
@@ -986,7 +1085,8 @@ export class MessageExtractor extends EventEmitter {
     let terminalData = this.consumeToEOL(1024);
     
     // If no complete line found, return null to wait for more data
-    if (!terminalData || terminalData.length === 0) {
+    // Note: Empty lines (just EOL) are valid messages, so we only check for null
+    if (terminalData === null) {
       return null; // Wait for complete message
     }
 
@@ -1016,22 +1116,22 @@ export class MessageExtractor extends EventEmitter {
   // DO NOT RE-IMPLEMENT - breaks Two-Tier Pattern Matching
 
   /**
-   * FIXED: Consume complete line with proper EOL handling
+   * OPTIMIZED: Consume complete line with proper EOL handling
    * Handles: CR, LF, CRLF, LFCR - returns null if no complete line found
+   * Future optimization: Use extractRange when buffer supports peek operations
    */
   private consumeToEOL(maxBytes: number): Uint8Array | null {
+    // Save initial position and reset if no EOL found
     this.buffer.savePosition();
+    
+    // For now, use array collection until we add peek support to buffer
     const bytes: number[] = [];
     let foundEOL = false;
     
     // CRITICAL: Limit search to prevent scanning into binary COG packet data
-    // ASCII messages in P2 debugger are typically under 50 bytes
-    // COG packets immediately follow ASCII messages and contain 0x0A/0x0D bytes  
-    // that are NOT EOL terminators - they're binary data that would confuse the parser
-    // The COG1 packet has false 0x0A at position ~26, so we must stop before that
-    const searchLimit = Math.min(maxBytes, 45); // Conservative limit - must find EOL within 45 bytes
+    const searchLimit = Math.min(maxBytes, 45);
     
-    
+    // Scan for EOL
     while (bytes.length < searchLimit && this.buffer.hasData()) {
       const result = this.buffer.next();
       if (result.status !== NextStatus.DATA) {
@@ -1042,43 +1142,47 @@ export class MessageExtractor extends EventEmitter {
       
       // Check for EOL patterns
       if (result.value === 0x0D || result.value === 0x0A) { // CR or LF
+        foundEOL = true;
+        
         // Look ahead for CRLF or LFCR pattern
         if (this.buffer.hasData()) {
+          this.buffer.savePosition();
           const nextResult = this.buffer.next();
           if (nextResult.status === NextStatus.DATA) {
             const nextByte = nextResult.value!;
             // Check for two-character EOL patterns
             if ((result.value === 0x0D && nextByte === 0x0A) || // CRLF
                 (result.value === 0x0A && nextByte === 0x0D)) { // LFCR
+              // It's a two-character EOL, consume it
               bytes.push(nextByte);
             } else {
-              // Single character EOL, put back the next byte
+              // Single character EOL, restore position to leave nextByte in buffer
               this.buffer.restorePosition();
-              // Re-extract up to the single EOL
-              this.buffer.savePosition();
-              const finalBytes: number[] = [];
-              for (let i = 0; i < bytes.length - 1; i++) {
-                const b = this.buffer.next();
-                if (b.status === NextStatus.DATA) finalBytes.push(b.value!);
-              }
-              // Add the single EOL character
-              const eol = this.buffer.next();
-              if (eol.status === NextStatus.DATA) finalBytes.push(eol.value!);
-              return new Uint8Array(finalBytes);
             }
+          } else {
+            // Couldn't read next byte, restore position
+            this.buffer.restorePosition();
           }
         }
-        foundEOL = true;
         break;
       }
     }
     
     if (foundEOL) {
-      const result = new Uint8Array(bytes);
-      return result;
+      // Calculate EOL length
+      let eolLength = 1;
+      if (bytes.length >= 2) {
+        const lastTwo = bytes.slice(-2);
+        if ((lastTwo[0] === 0x0D && lastTwo[1] === 0x0A) || 
+            (lastTwo[0] === 0x0A && lastTwo[1] === 0x0D)) {
+          eolLength = 2;
+        }
+      }
+      
+      // Return data without EOL - single allocation here
+      return new Uint8Array(bytes.slice(0, bytes.length - eolLength));
     } else {
-      // No complete line found within search limit, restore position and wait
-      // This prevents scanning into binary COG packet data looking for false EOL patterns
+      // No complete line found, restore position
       this.buffer.restorePosition();
       return null;
     }
@@ -1104,6 +1208,27 @@ export class MessageExtractor extends EventEmitter {
     }
     
     return bytes.length > 0 ? new Uint8Array(bytes) : null;
+  }
+
+  /**
+   * Get batch extraction statistics
+   */
+  public getBatchStats() {
+    const avgBatchSize = this.totalBatches > 0 ? 
+      this.totalBatchMessages / this.totalBatches : 0;
+    const avgBatchTime = this.totalBatches > 0 ? 
+      this.totalBatchTime / this.totalBatches : 0;
+    const avgMessageTime = this.totalBatchMessages > 0 ?
+      (this.totalBatchTime / this.totalBatchMessages) * 1000 : 0; // in microseconds
+    
+    return {
+      totalBatches: this.totalBatches,
+      totalMessages: this.totalBatchMessages,
+      avgBatchSize: avgBatchSize.toFixed(1),
+      largestBatch: this.largestBatch,
+      avgBatchTimeMs: avgBatchTime.toFixed(2),
+      avgMessageTimeMicros: avgMessageTime.toFixed(1)
+    };
   }
 
   /**

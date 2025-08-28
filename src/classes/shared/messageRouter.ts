@@ -6,13 +6,15 @@ import { EventEmitter } from 'events';
 import { DynamicQueue } from './dynamicQueue';
 import { ExtractedMessage, MessageType } from './messageExtractor';
 import { PerformanceMonitor } from './performanceMonitor';
+import { MessagePool, PooledMessage } from './messagePool';
 
 /**
  * Route destination interface
+ * Updated to handle both PooledMessage references and legacy ExtractedMessage copies
  */
 export interface RouteDestination {
   name: string;
-  handler: (message: ExtractedMessage) => void;
+  handler: (message: ExtractedMessage | PooledMessage) => void;
 }
 
 /**
@@ -48,6 +50,11 @@ export interface RouterStats {
   queueHighWaterMark: number;
   processingPending: boolean;
   totalMessagesRouted: number;
+  
+  // Message pool integration statistics
+  pooledMessagesRouted: number;
+  copyOperationsAvoided: number;
+  averageConsumerCount: number;
 }
 
 /**
@@ -101,10 +108,30 @@ export class MessageRouter extends EventEmitter {
   
   // Performance monitoring
   private performanceMonitor: PerformanceMonitor | null = null;
+  
+  // Message pool integration
+  private messagePool: MessagePool;
+  private pooledMessagesRouted: number = 0;
+  private copyOperationsAvoided: number = 0;
+  private totalConsumerCount: number = 0;
+  
+  // Adaptive timer configuration
+  private timerIntervals = {
+    fast: 2,     // High load: 2ms
+    normal: 5,   // Normal: 5ms 
+    idle: 20     // Idle: 20ms
+  };
+  private currentTimerInterval: number = 5; // Start with normal
+  private lastProcessingTime: number = 0;
+  private messageVelocity: number = 0; // Messages per second
+  private lastVelocityCheck: number = Date.now();
+  private processingTimer: NodeJS.Timeout | null = null;
+  private messagesInLastSecond: number = 0;
 
   constructor(inputQueue: DynamicQueue<ExtractedMessage>) {
     super();
     this.inputQueue = inputQueue;
+    this.messagePool = MessagePool.getInstance();
     
     // Initialize empty routing config for Two-Tier Pattern Matching
     this.routingConfig = {
@@ -153,7 +180,7 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Process messages from queue
+   * Process messages from queue using adaptive timer instead of setImmediate
    * Called when new messages are available
    * Returns true if more processing might be needed
    */
@@ -166,13 +193,76 @@ export class MessageRouter extends EventEmitter {
       return false; // Nothing to process
     }
 
-    // Schedule async processing
+    // Schedule async processing with adaptive timer
     this.processingPending = true;
-    setImmediate(() => {
-      this.processMessageBatch();
-    });
+    this.scheduleProcessingWithTimer();
 
     return true;
+  }
+  
+  /**
+   * Schedule message processing using adaptive timer intervals
+   */
+  private scheduleProcessingWithTimer(): void {
+    // Clear any existing timer
+    if (this.processingTimer) {
+      clearTimeout(this.processingTimer);
+    }
+    
+    // Update timer interval based on load
+    this.updateAdaptiveTimer();
+    
+    this.processingTimer = setTimeout(() => {
+      this.processMessageBatch();
+    }, this.currentTimerInterval);
+  }
+  
+  /**
+   * Update timer interval based on message velocity and processing time
+   */
+  private updateAdaptiveTimer(): void {
+    const now = Date.now();
+    
+    // Calculate message velocity (messages per second)
+    if (now - this.lastVelocityCheck >= 1000) {
+      this.messageVelocity = this.messagesInLastSecond;
+      this.messagesInLastSecond = 0;
+      this.lastVelocityCheck = now;
+    }
+    
+    // Determine appropriate timer interval with hysteresis
+    let targetInterval: number;
+    
+    if (this.messageVelocity > 100 || this.lastProcessingTime > 10) {
+      // High load: >100 msgs/sec or processing taking >10ms
+      targetInterval = this.timerIntervals.fast;
+    } else if (this.messageVelocity > 20 || this.lastProcessingTime > 3) {
+      // Normal load: >20 msgs/sec or processing taking >3ms
+      targetInterval = this.timerIntervals.normal;
+    } else {
+      // Idle: low message rate and fast processing
+      targetInterval = this.timerIntervals.idle;
+    }
+    
+    // Implement hysteresis to prevent timer thrashing
+    const currentCategory = this.getTimerCategory(this.currentTimerInterval);
+    const targetCategory = this.getTimerCategory(targetInterval);
+    
+    // Only change if moving to different category or significant difference
+    if (currentCategory !== targetCategory || 
+        Math.abs(this.currentTimerInterval - targetInterval) > 2) {
+      this.currentTimerInterval = targetInterval;
+      console.log(`[MessageRouter] Adaptive timer: ${targetInterval}ms (velocity: ${this.messageVelocity} msg/s, processing: ${this.lastProcessingTime}ms)`);
+    }
+  }
+  
+  /**
+   * Get timer category for hysteresis logic
+   */
+  private getTimerCategory(interval: number): 'fast' | 'normal' | 'idle' {
+    if (interval <= this.timerIntervals.fast) return 'fast';
+    if (interval <= this.timerIntervals.normal) return 'normal';
+    return 'idle';
   }
 
   /**
@@ -205,9 +295,10 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Process a batch of messages
+   * Process a batch of messages (process ALL available messages, not just one)
    */
   private processMessageBatch(): void {
+    const batchStartTime = Date.now();
     let messagesProcessed = 0;
     const maxBatchSize = 100; // Process up to 100 messages per batch
 
@@ -225,23 +316,25 @@ export class MessageRouter extends EventEmitter {
       }
     }
 
+    // Record processing time for adaptive timer
+    this.lastProcessingTime = Date.now() - batchStartTime;
+    this.messagesInLastSecond += messagesProcessed;
+    
     this.processingPending = false;
 
     if (messagesProcessed > 0) {
       this.emit('batchProcessed', messagesProcessed);
     }
 
-    // If queue still has messages, schedule another batch
+    // If queue still has messages, schedule another batch with adaptive timer
     if (!this.inputQueue.isEmpty()) {
-      setImmediate(() => {
-        this.processingPending = true;
-        this.processMessageBatch();
-      });
+      this.processingPending = true;
+      this.scheduleProcessingWithTimer();
     }
   }
 
   /**
-   * Route a single message to its destinations
+   * Route a single message to its destinations using reference counting
    */
   private routeMessage(message: ExtractedMessage): void {
     console.log(`[TWO-TIER] 🎯 Routing message: ${message.type}, ${message.data.length} bytes`);
@@ -266,25 +359,58 @@ export class MessageRouter extends EventEmitter {
       this.performanceMonitor.recordMessageLatency(message.timestamp, Date.now());
     }
 
-    // Route to each destination
+    // CRITICAL CHANGE: Use MessagePool for reference counting instead of copying
+    // Always add debug logger as additional consumer (everything goes to logger)
+    const totalConsumers = destinations.length;
+    this.totalConsumerCount += totalConsumers;
+    
+    console.log(`[MessageRouter] Creating pooled message for ${totalConsumers} consumers`);
+    
+    // Acquire pooled message with correct consumer count
+    const pooledMessage = this.messagePool.acquire(message.data, message.type, totalConsumers);
+    
+    if (!pooledMessage) {
+      console.error(`[MessageRouter] Failed to acquire pooled message for ${message.type}`);
+      this.routingErrors++;
+      return;
+    }
+    
+    // Copy metadata to pooled message
+    pooledMessage.metadata = {
+      originalTimestamp: message.timestamp,
+      confidence: message.confidence,
+      extractorMetadata: message.metadata
+    };
+    
+    this.pooledMessagesRouted++;
+    this.copyOperationsAvoided += (totalConsumers - 1); // We avoided N-1 copy operations
+    
+    console.log(`[MessageRouter] Pooled message #${pooledMessage.poolId} created with ${pooledMessage.consumerCount} consumers`);
+
+    // Route reference to each destination - NO COPYING
     for (const destination of destinations) {
       try {
-        // Copy message data if routing to multiple destinations
-        const messageCopy = destinations.length > 1 
-          ? this.copyMessage(message)
-          : message;
-
-        destination.handler(messageCopy);
+        // Pass the SAME pooled message reference to each destination
+        // Each destination is responsible for calling release() when done
+        destination.handler(pooledMessage);
         this.destinationCounts[destination.name]++;
 
         this.emit('messageRouted', {
-          message: messageCopy,
+          message: pooledMessage,
           destination: destination.name
         });
 
       } catch (error) {
         console.error(`[MessageRouter] Error routing to ${destination.name}:`, error);
         this.routingErrors++;
+        
+        // If routing failed, we need to release this consumer's reference
+        try {
+          this.messagePool.release(pooledMessage);
+          console.log(`[MessageRouter] Released failed consumer reference for ${destination.name}`);
+        } catch (releaseError) {
+          console.error(`[MessageRouter] Error releasing failed consumer reference:`, releaseError);
+        }
         
         // Record routing error
         if (this.performanceMonitor) {
@@ -301,9 +427,12 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Create a copy of message for multiple routing
+   * DEPRECATED: Message copying eliminated by reference counting
+   * This method is kept for backward compatibility but should not be used
    */
   private copyMessage(message: ExtractedMessage): ExtractedMessage {
+    console.warn('[MessageRouter] DEPRECATED: copyMessage() called - should use reference counting instead');
+    this.copyOperationsAvoided--; // Decrement since we're still copying
     return {
       type: message.type,
       data: new Uint8Array(message.data), // Copy the data array
@@ -334,10 +463,12 @@ export class MessageRouter extends EventEmitter {
     // 0xDB packets to debug logger
     this.registerDestination(MessageType.DB_PACKET, debugLogger);
 
-    // 80-byte debugger packets to debugger windows if available
+    // 80-byte debugger packets to both debugger windows and debug logger
     if (debuggerWindow) {
       this.registerDestination(MessageType.DEBUGGER_80BYTE, debuggerWindow);
     }
+    // Also send to debug logger so user can see the binary debug data
+    this.registerDestination(MessageType.DEBUGGER_80BYTE, debugLogger);
 
     // Backtick window commands to window creator
     this.registerDestination(MessageType.BACKTICK_WINDOW, windowCreator);
@@ -374,11 +505,14 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Get router statistics
+   * Get router statistics including message pool metrics
    */
   public getStats(): RouterStats {
     const queueStats = this.inputQueue.getStats();
     const totalRouted = Object.values(this.messagesRouted).reduce((a, b) => a + b, 0);
+    const avgConsumerCount = this.pooledMessagesRouted > 0 
+      ? (this.totalConsumerCount / this.pooledMessagesRouted) 
+      : 0;
 
     return {
       messagesRouted: { ...this.messagesRouted },
@@ -386,12 +520,57 @@ export class MessageRouter extends EventEmitter {
       routingErrors: this.routingErrors,
       queueHighWaterMark: queueStats.highWaterMark,
       processingPending: this.processingPending,
-      totalMessagesRouted: totalRouted
+      totalMessagesRouted: totalRouted,
+      
+      // Message pool integration statistics
+      pooledMessagesRouted: this.pooledMessagesRouted,
+      copyOperationsAvoided: this.copyOperationsAvoided,
+      averageConsumerCount: Math.round(avgConsumerCount * 10) / 10 // Round to 1 decimal
     };
   }
 
   /**
-   * Reset statistics
+   * Configure adaptive timer intervals
+   * @param fast Interval for high load (default: 2ms)
+   * @param normal Interval for normal load (default: 5ms)
+   * @param idle Interval for idle (default: 20ms)
+   */
+  public configureAdaptiveTimer(fast: number = 2, normal: number = 5, idle: number = 20): void {
+    this.timerIntervals = { fast, normal, idle };
+    console.log(`[MessageRouter] Adaptive timer configured: fast=${fast}ms, normal=${normal}ms, idle=${idle}ms`);
+  }
+  
+  /**
+   * Get current timer configuration and status
+   */
+  public getTimerStatus(): {
+    currentInterval: number;
+    messageVelocity: number;
+    lastProcessingTime: number;
+    configuration: { fast: number; normal: number; idle: number };
+  } {
+    return {
+      currentInterval: this.currentTimerInterval,
+      messageVelocity: this.messageVelocity,
+      lastProcessingTime: this.lastProcessingTime,
+      configuration: { ...this.timerIntervals }
+    };
+  }
+  
+  /**
+   * Stop adaptive timer processing (cleanup)
+   */
+  public stopAdaptiveTimer(): void {
+    if (this.processingTimer) {
+      clearTimeout(this.processingTimer);
+      this.processingTimer = null;
+    }
+    this.processingPending = false;
+    console.log('[MessageRouter] Adaptive timer stopped');
+  }
+
+  /**
+   * Reset statistics including message pool metrics
    */
   public resetStats(): void {
     for (const key in this.messagesRouted) {
@@ -401,6 +580,17 @@ export class MessageRouter extends EventEmitter {
       this.destinationCounts[key] = 0;
     }
     this.routingErrors = 0;
+    
+    // Reset message pool statistics
+    this.pooledMessagesRouted = 0;
+    this.copyOperationsAvoided = 0;
+    this.totalConsumerCount = 0;
+    
+    // Reset adaptive timer statistics
+    this.messageVelocity = 0;
+    this.messagesInLastSecond = 0;
+    this.lastProcessingTime = 0;
+    this.currentTimerInterval = this.timerIntervals.normal;
   }
 
   /**

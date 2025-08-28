@@ -1111,9 +1111,9 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   protected logMessage(message: string, prefix: string = ''): void {
     if (this.isLogging) {
-      //Write to output window.
+      // Debug window lifecycle messages are system diagnostics, should go to console
       const prefixStr = prefix.length > 0 ? prefix : this.windowLogPrefix;
-      this.context.logger.logMessage(`${prefixStr}: ${message}`);
+      this.context.logger.forceLogMessage(`${prefixStr}: ${message}`);
     }
   }
 }

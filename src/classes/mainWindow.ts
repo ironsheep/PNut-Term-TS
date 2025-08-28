@@ -7,7 +7,7 @@
 // src/classes/mainWindow.ts
 
 // Import electron conditionally for standalone compatibility
-let app: any, BrowserWindow: any, Menu: any, MenuItem: any, dialog: any, electron: any;
+let app: any, BrowserWindow: any, Menu: any, MenuItem: any, dialog: any, electron: any, ipcMain: any;
 try {
   const electronImport = require('electron');
   app = electronImport.app;
@@ -16,6 +16,7 @@ try {
   MenuItem = electronImport.MenuItem;
   dialog = electronImport.dialog;
   electron = electronImport;
+  ipcMain = electronImport.ipcMain;
 } catch (error) {
   // Running in standalone mode without Electron
   console.warn('Warning: Electron not available, running in CLI mode');
@@ -38,6 +39,7 @@ import { WindowRouter } from './shared/windowRouter';
 import { SerialMessageProcessor } from './shared/serialMessageProcessor';
 import { MessageType, ExtractedMessage } from './shared/messageExtractor';
 import { RouteDestination } from './shared/messageRouter';
+import { PooledMessage } from './shared/messagePool';
 import { COGWindowManager, COGDisplayMode } from './shared/cogWindowManager';
 import { COGHistoryManager } from './shared/cogHistoryManager';
 import { PlacementStrategy } from '../utils/windowPlacer';
@@ -122,6 +124,12 @@ export class MainWindow {
   // Device settings storage
   private globalSettings: GlobalSettings;
   private settingsFilePath: string;
+  
+  // Performance monitoring for status bar
+  private performanceUpdateTimer: NodeJS.Timeout | null = null;
+  private readonly PERFORMANCE_UPDATE_INTERVAL = 100; // 10fps maximum
+  private lastPerformanceState: 'normal' | 'warning' | 'critical' | 'error' = 'normal';
+  private performanceFlashTimer: NodeJS.Timeout | null = null;
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -151,6 +159,12 @@ export class MainWindow {
     // Set up COG window creator
     this.cogWindowManager.setWindowCreator((cogId: number) => {
       return this.createCOGWindow(cogId);
+    });
+    
+    // Listen for active COG changes to update status bar
+    this.cogWindowManager.on('activeCOGsChanged', (data: { cogId: number; activeCOGs: number[]; displayText: string }) => {
+      console.log(`[COG STATUS] COG ${data.cogId} became active, now active: ${data.displayText}`);
+      this.updateActiveCogs(data.activeCOGs);
     });
     
     // Listen for WindowRouter events
@@ -212,21 +226,21 @@ export class MainWindow {
     // Create routing destinations for Two-Tier Pattern Matching
     const debugLoggerDestination: RouteDestination = {
       name: 'DebugLogger',
-      handler: (message: ExtractedMessage) => {
+      handler: (message: ExtractedMessage | PooledMessage) => {
         this.routeToDebugLogger(message);
       }
     };
 
     const windowCreatorDestination: RouteDestination = {
       name: 'WindowCreator', 
-      handler: (message: ExtractedMessage) => {
+      handler: (message: ExtractedMessage | PooledMessage) => {
         this.handleWindowCommand(message);
       }
     };
 
     const debuggerWindowDestination: RouteDestination = {
       name: 'DebuggerWindow',
-      handler: (message: ExtractedMessage) => {
+      handler: (message: ExtractedMessage | PooledMessage) => {
         this.routeToDebuggerWindow(message);
       }
     };
@@ -242,6 +256,8 @@ export class MainWindow {
     console.log('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
     this.serialProcessor.start();
     console.log('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
+    
+    // Performance monitoring will be started after DOM is ready (in did-finish-load handler)
 
     // Handle processor events
     this.serialProcessor.on('resetDetected', (event: any) => {
@@ -260,7 +276,7 @@ export class MainWindow {
   /**
    * Route message to Debug Logger (Terminal FIRST principle)
    */
-  private routeToDebugLogger(message: ExtractedMessage): void {
+  private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
     console.log(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
     
     // Use type-safe handoff to debug logger - no more guessing!
@@ -300,7 +316,7 @@ export class MainWindow {
   /**
    * Handle window command (backtick commands)
    */
-  private handleWindowCommand(message: ExtractedMessage): void {
+  private handleWindowCommand(message: ExtractedMessage | PooledMessage): void {
     if (message.metadata?.windowCommand) {
       console.log(`[TWO-TIER] Window command: ${message.metadata.windowCommand}`);
       // Route to appropriate window creation logic
@@ -315,7 +331,7 @@ export class MainWindow {
   /**
    * Route to debugger window (80-byte packets)
    */
-  private routeToDebuggerWindow(message: ExtractedMessage): void {
+  private routeToDebuggerWindow(message: ExtractedMessage | PooledMessage): void {
     if (message.metadata?.cogId !== undefined) {
       console.log(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
       // Route binary debugger data to appropriate COG debugger window
@@ -331,7 +347,7 @@ export class MainWindow {
   /**
    * Format extracted message for display in debug logger
    */
-  private formatMessageForDisplay(message: ExtractedMessage): string {
+  private formatMessageForDisplay(message: ExtractedMessage | PooledMessage): string {
     let displayText = '';
     
     switch (message.type) {
@@ -488,6 +504,12 @@ export class MainWindow {
           delete this.displays['DebugLogger'];
           this.debugLoggerWindow = null;
         });
+        
+        // Connect performance monitor for warnings
+        const components = this.serialProcessor.getComponents();
+        if (components.performanceMonitor) {
+          this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
+        }
       } catch (error) {
         console.error('[DEBUG LOGGER] Failed to create:', error);
         return;
@@ -505,7 +527,7 @@ export class MainWindow {
         // Use 16-byte/line format with ASCII for raw P2 data
         formattedMessage = this.formatRawBinary(data);
       }
-      this.debugLoggerWindow.logMessage(formattedMessage);
+      this.debugLoggerWindow.logSerialMessage(formattedMessage);
     }
   }
   
@@ -866,7 +888,7 @@ export class MainWindow {
         // Use 16-byte/line format with ASCII for raw P2 data
         formattedMessage = this.formatRawBinary(data);
       }
-      this.debugLoggerWindow.logMessage(formattedMessage);
+      this.debugLoggerWindow.logSerialMessage(formattedMessage);
     }
   }
   
@@ -909,6 +931,13 @@ export class MainWindow {
       this.debugLoggerWindow.on('export-cog-logs-requested', () => {
         console.log('[MAIN] Export COG logs requested');
       });
+      
+      // Connect performance monitor for warnings
+      const components = this.serialProcessor.getComponents();
+      if (components.performanceMonitor) {
+        this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
+        console.log('[DEBUG LOGGER] Connected to performance monitor for warnings');
+      }
       
       if (this.context.runEnvironment.loggingEnabled) {
         this.logMessage('Auto-created Debug Logger Window - logging started immediately');
@@ -1365,6 +1394,12 @@ export class MainWindow {
           delete this.displays['DebugLogger'];
           this.debugLoggerWindow = null;
         });
+        
+        // Connect performance monitor for warnings
+        const components = this.serialProcessor.getComponents();
+        if (components.performanceMonitor) {
+          this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
+        }
         
         if (this.context.runEnvironment.loggingEnabled) {
           this.logMessage('Auto-created Debug Logger Window for Cog messages');
@@ -1939,6 +1974,10 @@ export class MainWindow {
             <span class="status-label">Active COGs:</span>
             <span class="status-value" id="cogs-status">None</span>
           </div>
+          <div id="performance-display" class="status-field" title="Performance metrics: throughput | buffer usage | queue depth | status">
+            <span id="perf-indicator" style="color: #00FF00; margin-right: 3px; font-size: 16px; text-shadow: 0 0 2px #000;">⚡</span>
+            <span class="status-value" id="perf-metrics">0kb/s | Buffer: 0% | Queue: 0 | ✓</span>
+          </div>
           <div id="log-status" class="status-field">
             <span class="status-label">Logging</span>
             <span id="log-led" style="color: #FFBF00; margin-left: 5px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
@@ -1966,6 +2005,8 @@ export class MainWindow {
       <script>
         // IPC Setup - runs directly in renderer with node integration
         const { ipcRenderer } = require('electron');
+        // Expose ipcRenderer globally for all scripts to use
+        window.ipcRenderer = ipcRenderer;
         
         // Wait for DOM to be ready
         document.addEventListener('DOMContentLoaded', () => {
@@ -2172,6 +2213,118 @@ export class MainWindow {
   </html>`;
   }
 
+  /**
+   * Set up IPC handlers for DTR/RTS and other toolbar controls
+   */
+  private setupIPCHandlers(): void {
+    if (!ipcMain) {
+      console.warn('[IPC] ipcMain not available, skipping IPC handler setup');
+      return;
+    }
+
+    // Remove any existing handlers to avoid duplicates
+    ipcMain.removeAllListeners('toggle-dtr');
+    ipcMain.removeAllListeners('toggle-rts');
+    
+    // DTR Toggle Handler - State Management (press-on/press-off, NOT auto-toggle)
+    ipcMain.on('toggle-dtr', async () => {
+      console.log('[IPC] Received toggle-dtr request');
+      // State management: explicitly set next state
+      const newState = !this.dtrState;
+      console.log(`[IPC] Setting DTR to: ${newState} (was ${this.dtrState})`);
+      
+      // Actually control the DTR line on serial port
+      if (this._serialPort) {
+        try {
+          await this._serialPort.setDTR(newState);
+          console.log(`[IPC] DTR line set to: ${newState}`);
+          
+          // Only update state after successful hardware change
+          this.dtrState = newState;
+          
+          // Trigger reset when DTR is asserted (going high)
+          if (this.dtrState) {
+            console.log('[IPC] DTR asserted, triggering reset');
+            if (this.debugLoggerWindow) {
+              this.debugLoggerWindow.handleDTRReset();
+              console.log('[IPC] DTR Reset triggered in Debug Logger');
+            }
+          } else {
+            console.log('[IPC] DTR de-asserted');
+          }
+          
+          // Update the checkbox in the renderer after successful change
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
+          }
+        } catch (error) {
+          console.error('[IPC] Error setting DTR:', error);
+          // Don't change state on error - keep checkbox in sync with actual state
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
+          }
+        }
+      } else {
+        console.warn('[IPC] No serial port connected, cannot set DTR');
+        // Still update state when no port connected (for UI consistency)
+        this.dtrState = newState;
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
+        }
+      }
+    });
+    
+    // RTS Toggle Handler - State Management (press-on/press-off, NOT auto-toggle)
+    ipcMain.on('toggle-rts', async () => {
+      console.log('[IPC] Received toggle-rts request');
+      // State management: explicitly set next state
+      const newState = !this.rtsState;
+      console.log(`[IPC] Setting RTS to: ${newState} (was ${this.rtsState})`);
+      
+      // Actually control the RTS line on serial port
+      if (this._serialPort) {
+        try {
+          await this._serialPort.setRTS(newState);
+          console.log(`[IPC] RTS line set to: ${newState}`);
+          
+          // Only update state after successful hardware change
+          this.rtsState = newState;
+          
+          // Trigger reset when RTS is asserted (going high)
+          if (this.rtsState) {
+            console.log('[IPC] RTS asserted, triggering reset');
+            if (this.debugLoggerWindow) {
+              this.debugLoggerWindow.handleRTSReset();
+              console.log('[IPC] RTS Reset triggered in Debug Logger');
+            }
+          } else {
+            console.log('[IPC] RTS de-asserted');
+          }
+          
+          // Update the checkbox in the renderer after successful change
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('update-rts-state', this.rtsState);
+          }
+        } catch (error) {
+          console.error('[IPC] Error setting RTS:', error);
+          // Don't change state on error - keep checkbox in sync with actual state
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('update-rts-state', this.rtsState);
+          }
+        }
+      } else {
+        console.warn('[IPC] No serial port connected, cannot set RTS');
+        // Still update state when no port connected (for UI consistency)
+        this.rtsState = newState;
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('update-rts-state', this.rtsState);
+        }
+      }
+    });
+    
+    console.log('[IPC] DTR/RTS handlers registered');
+  }
+  
   private setupWindowHandlers(): void {
     // Inject JavaScript into the renderer process
     
@@ -2261,6 +2414,9 @@ export class MainWindow {
       }
     });
     
+    // Set up IPC handlers for DTR/RTS control
+    this.setupIPCHandlers();
+    
     // Set up toolbar button event handlers and load settings
     this.mainWindow!.webContents.once('did-finish-load', () => {
       const isIdeMode = this.context.runEnvironment.ideMode;
@@ -2277,6 +2433,10 @@ export class MainWindow {
       
       // Initialize download mode LEDs after DOM is ready
       this.updateDownloadMode(this.downloadMode);
+      
+      // Start performance monitoring now that DOM is ready
+      this.startPerformanceMonitoring();
+      console.log('[PERF DISPLAY] Performance monitoring started after DOM ready');
       
       // Initialize activity LEDs to OFF state
       this.safeExecuteJS(`
@@ -2314,13 +2474,20 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
       
+      // First, expose ipcRenderer to the window in a separate call
+      this.mainWindow.webContents.send('init-ipc');
+      
+      // Then set up event handlers using simple JavaScript
       this.safeExecuteJS(`
-        // Check if ipcRenderer is available in window context
-        const ipcRenderer = window.ipcRenderer || (window.require && window.require('electron').ipcRenderer);
-        if (!ipcRenderer) {
-          console.error('[IPC ERROR] ipcRenderer not available in renderer context');
-          return;
-        }
+        (function() {
+          // Use the pre-exposed window.ipcRenderer from HTML template
+          if (!window.ipcRenderer) {
+            console.error('[IPC ERROR] window.ipcRenderer not available - may need to wait for DOM ready');
+            return;
+          }
+          
+          // ipcRenderer is already exposed on window from the HTML template
+          const ipcRenderer = window.ipcRenderer;
         
         // DTR button setup - direct pattern like RAM/FLASH
         const dtrToggle = document.getElementById('dtr-toggle');
@@ -2429,183 +2596,9 @@ export class MainWindow {
           });
         }
         
-        // Initialize HTML menu bar for standalone mode
-        const isStandalone = ${!this.context.runEnvironment.ideMode};
-        if (isStandalone) {
-          // Wait for DOM to be fully ready before initializing menu
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-              initializeMenuBar();
-            });
-          } else {
-            // DOM is already ready
-            initializeMenuBar();
-          }
-          
-          function initializeMenuBar() {
-            try {
-              // Since we can't require modules in renderer context, check if the menu-bar element exists
-              const menuContainer = document.getElementById('menu-bar');
-              if (!menuContainer) {
-                console.warn('[MENU BAR] menu-bar container not found');
-                return;
-              }
-              
-              // Simple HTML menu bar implementation
-              console.log('[MENU BAR] Initializing HTML menu bar...');
-          
-          // Define menu structure
-          const menus = [
-            {
-              label: 'File',
-              items: [
-                { label: 'Open...', accelerator: 'CmdOrCtrl+O', click: () => ipcRenderer.send('menu-open') },
-                { label: 'Save Log...', accelerator: 'CmdOrCtrl+S', click: () => ipcRenderer.send('menu-save-log') },
-                { type: 'separator' },
-                { label: process.platform === 'darwin' ? 'Preferences...' : 'Settings...', 
-                  accelerator: 'CmdOrCtrl+,', 
-                  click: () => ipcRenderer.send('menu-settings') },
-                { type: 'separator' },
-                { label: 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => ipcRenderer.send('menu-quit') }
-              ]
-            },
-            {
-              label: 'Edit',
-              items: [
-                { label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
-                { label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
-                { label: 'Select All', accelerator: 'CmdOrCtrl+A', role: 'selectAll' },
-                { type: 'separator' },
-                { label: 'Clear Terminal', accelerator: 'CmdOrCtrl+L', click: () => ipcRenderer.send('menu-clear') }
-              ]
-            },
-            {
-              label: 'Device',
-              items: [
-                { label: 'Connect...', click: () => ipcRenderer.send('menu-connect') },
-                { label: 'Disconnect', click: () => ipcRenderer.send('menu-disconnect') },
-                { type: 'separator' },
-                { label: 'Download to RAM', accelerator: 'F10', click: () => ipcRenderer.send('download-ram') },
-                { label: 'Download to FLASH', accelerator: 'F11', click: () => ipcRenderer.send('download-flash') },
-                { type: 'separator' },
-                { label: 'Send DTR Reset', click: () => ipcRenderer.send('toggle-dtr') }
-              ]
-            },
-            {
-              label: 'View',
-              items: [
-                { label: 'Show Line Endings', type: 'checkbox', checked: false, 
-                  click: () => ipcRenderer.send('menu-toggle-line-endings') },
-                { label: 'Echo Off', type: 'checkbox', checked: false,
-                  click: () => ipcRenderer.send('menu-toggle-echo') },
-                { type: 'separator' },
-                { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', 
-                  click: () => ipcRenderer.send('menu-zoom-in') },
-                { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', 
-                  click: () => ipcRenderer.send('menu-zoom-out') },
-                { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', 
-                  click: () => ipcRenderer.send('menu-zoom-reset') }
-              ]
-            },
-            {
-              label: 'Debug',
-              items: [
-                { label: 'Start Recording', accelerator: 'CmdOrCtrl+R', 
-                  click: () => ipcRenderer.send('toggle-recording') },
-                { label: 'Play Recording...', click: () => ipcRenderer.send('play-recording') },
-                { type: 'separator' },
-                { label: 'Open Debug Logger', click: () => ipcRenderer.send('menu-open-logger') },
-                { label: 'Split Cog Output', type: 'checkbox', checked: false,
-                  click: () => ipcRenderer.send('menu-toggle-cog-split') }
-              ]
-            },
-            {
-              label: 'Help',
-              items: [
-                { label: 'About PNut-Term-TS', click: () => ipcRenderer.send('menu-about') },
-                { label: 'Check for Updates...', click: () => ipcRenderer.send('menu-check-updates') },
-                { type: 'separator' },
-                { label: 'Debug Command Reference', click: () => ipcRenderer.send('menu-debug-reference') },
-                { label: 'Documentation', click: () => ipcRenderer.send('menu-docs') }
-              ]
-            }
-          ];
-          
-              // Create simple menu HTML
-              let menuHTML = '<div class="menu-container">';
-              menus.forEach((menu, menuIndex) => {
-                menuHTML += '<div class="menu-item" data-menu="' + menuIndex + '">';
-                menuHTML += '<span class="menu-label">' + menu.label + '</span>';
-                menuHTML += '<div class="menu-dropdown" id="dropdown-' + menuIndex + '">';
-                
-                menu.items.forEach((item, itemIndex) => {
-                  if (item.type === 'separator') {
-                    menuHTML += '<hr class="menu-separator">';
-                  } else {
-                    const itemId = 'menu-' + menuIndex + '-' + itemIndex;
-                    menuHTML += '<div class="menu-dropdown-item" data-action="' + itemId + '">';
-                    menuHTML += item.label;
-                    if (item.accelerator) {
-                      menuHTML += '<span class="accelerator">' + item.accelerator + '</span>';
-                    }
-                    menuHTML += '</div>';
-                  }
-                });
-                
-                menuHTML += '</div></div>';
-              });
-              menuHTML += '</div>';
-              
-              // Add CSS
-              menuHTML += '<style>';
-              menuHTML += '.menu-container { display: flex; background: #2d2d30; border-bottom: 1px solid #464647; font-size: 13px; user-select: none; }';
-              menuHTML += '.menu-item { position: relative; padding: 8px 12px; color: #cccccc; cursor: pointer; }';
-              menuHTML += '.menu-item:hover { background: #094771; }';
-              menuHTML += '.menu-dropdown { display: none; position: absolute; top: 100%; left: 0; background: #383838; border: 1px solid #464647; min-width: 200px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }';
-              menuHTML += '.menu-dropdown-item { padding: 8px 16px; color: #cccccc; cursor: pointer; display: flex; justify-content: space-between; }';
-              menuHTML += '.menu-dropdown-item:hover { background: #094771; }';
-              menuHTML += '.accelerator { color: #999999; font-size: 11px; }';
-              menuHTML += '.menu-separator { border: none; border-top: 1px solid #464647; margin: 4px 0; }';
-              menuHTML += '</style>';
-              
-              menuContainer.innerHTML = menuHTML;
-              
-              // Add event handlers
-              document.querySelectorAll('.menu-item').forEach((menuItem, menuIndex) => {
-                const dropdown = document.getElementById('dropdown-' + menuIndex);
-                
-                menuItem.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  // Close all other dropdowns
-                  document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
-                  // Toggle this dropdown
-                  dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
-                });
-              });
-              
-              // Close dropdowns when clicking outside
-              document.addEventListener('click', () => {
-                document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
-              });
-              
-              // Handle menu item clicks
-              document.querySelectorAll('.menu-dropdown-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                  const action = e.currentTarget.getAttribute('data-action');
-                  console.log('[MENU BAR] Menu action:', action);
-                  // Here we would handle the menu actions
-                  // For now just close the dropdown
-                  document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
-                });
-              });
-              
-              console.log('[MENU BAR] HTML menu bar initialized successfully');
-            } catch (error) {
-              console.error('[MENU BAR] Failed to initialize HTML menu bar:', error);
-              // Fallback: Log the error but don't crash
-            }
-          }
-        }
+        // The menu is already initialized above at lines 2102-2168
+        // No need for duplicate initialization here
+        })();
       `, 'toolbar-event-handlers');
       
       // Setup text input control for data entry
@@ -3109,6 +3102,9 @@ export class MainWindow {
 
   // Method to close all debug windows
   private closeAllDebugWindows(): void {
+    // Stop performance monitoring
+    this.stopPerformanceMonitoring();
+    
     // step usb receiver
     this.mainWindow?.removeAllListeners();
     // flush one last time in case there are any left
@@ -3505,9 +3501,219 @@ export class MainWindow {
 
   private logMessage(message: string): void {
     if (this.context.runEnvironment.loggingEnabled) {
-      //Write to output window.
-      this.context.logger.logMessage('Tmnl: ' + message);
+      // Terminal system messages should go to console, not Debug Logger window
+      // These are startup diagnostics, not P2 serial data
+      this.context.logger.forceLogMessage('Tmnl: ' + message);
     }
+  }
+
+  /**
+   * Update Active COGs display in status bar
+   */
+  private updateActiveCogs(activeCogs: number[]): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+    
+    const displayText = activeCogs.length > 0 ? activeCogs.join(',') : 'None';
+    
+    // Update the status bar UI
+    this.mainWindow.webContents.executeJavaScript(`
+      const cogsStatus = document.getElementById('cogs-status');
+      if (cogsStatus) {
+        cogsStatus.textContent = '${displayText}';
+        console.log('[COG STATUS] Updated Active COGs display: ${displayText}');
+      } else {
+        console.warn('[COG STATUS] cogs-status element not found in DOM');
+      }
+    `).catch((error: any) => {
+      console.error('[COG STATUS] Error updating Active COGs display:', error);
+    });
+  }
+
+  /**
+   * Start performance monitoring for status bar
+   */
+  private startPerformanceMonitoring(): void {
+    if (this.performanceUpdateTimer) {
+      return; // Already running
+    }
+
+    // Verify DOM elements exist before starting monitoring
+    this.verifyPerformanceElementsReady().then(ready => {
+      if (ready) {
+        this.performanceUpdateTimer = setInterval(() => {
+          this.updatePerformanceDisplay();
+        }, this.PERFORMANCE_UPDATE_INTERVAL);
+        console.log('[PERF DISPLAY] Performance monitoring timer started');
+      } else {
+        console.warn('[PERF DISPLAY] Performance elements not ready, retrying in 500ms...');
+        setTimeout(() => this.startPerformanceMonitoring(), 500);
+      }
+    });
+  }
+  
+  /**
+   * Verify that performance display DOM elements exist
+   */
+  private async verifyPerformanceElementsReady(): Promise<boolean> {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return false;
+    }
+    
+    try {
+      const result = await this.safeExecuteJS(`
+        (function() {
+          const perfMetrics = document.getElementById('perf-metrics');
+          const perfIndicator = document.getElementById('perf-indicator');
+          return !!(perfMetrics && perfIndicator);
+        })();
+      `, 'verifyPerformanceElementsReady');
+      return result === true;
+    } catch (error) {
+      console.error('[PERF DISPLAY] Error verifying elements:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Stop performance monitoring
+   */
+  private stopPerformanceMonitoring(): void {
+    if (this.performanceUpdateTimer) {
+      clearInterval(this.performanceUpdateTimer);
+      this.performanceUpdateTimer = null;
+    }
+    if (this.performanceFlashTimer) {
+      clearTimeout(this.performanceFlashTimer);
+      this.performanceFlashTimer = null;
+    }
+  }
+
+  /**
+   * Update performance display in status bar
+   */
+  private updatePerformanceDisplay(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    try {
+      // Get performance snapshot from serial processor
+      const stats = this.serialProcessor.getStats();
+      const perfSnapshot = stats.performance;
+      
+      if (!perfSnapshot) {
+        return;
+      }
+
+      // Calculate metrics
+      const throughputKbps = (perfSnapshot.metrics.throughput.bytesPerSecond / 1024).toFixed(1);
+      const bufferUsage = perfSnapshot.metrics.bufferUsagePercent.toFixed(0);
+      
+      // Get queue depths (sum of all queues)
+      let totalQueueDepth = 0;
+      for (const [name, queueStats] of Object.entries(perfSnapshot.metrics.queues)) {
+        if (queueStats && typeof queueStats === 'object' && 'currentDepth' in queueStats) {
+          totalQueueDepth += (queueStats as any).currentDepth || 0;
+        }
+      }
+
+      // Determine performance state based on metrics
+      let newState: 'normal' | 'warning' | 'critical' | 'error' = 'normal';
+      let statusSymbol = '✓';
+      let indicatorColor = '#00FF00'; // Green
+
+      // Buffer usage thresholds
+      if (perfSnapshot.metrics.bufferUsagePercent >= 95) {
+        newState = 'error';
+        statusSymbol = '⚠';
+        indicatorColor = '#FF0000'; // Red
+      } else if (perfSnapshot.metrics.bufferUsagePercent >= 80) {
+        newState = 'critical';
+        statusSymbol = '!';
+        indicatorColor = '#FF8000'; // Orange
+      } else if (perfSnapshot.metrics.bufferUsagePercent >= 60 || totalQueueDepth >= 100) {
+        newState = 'warning';
+        statusSymbol = '~';
+        indicatorColor = '#FFFF00'; // Yellow
+      }
+
+      // Queue depth thresholds
+      if (totalQueueDepth >= 500) {
+        newState = 'error';
+        statusSymbol = '⚠';
+        indicatorColor = '#FF0000'; // Red
+      } else if (totalQueueDepth >= 200) {
+        if (newState === 'normal') {
+          newState = 'critical';
+          statusSymbol = '!';
+          indicatorColor = '#FF8000'; // Orange
+        }
+      }
+
+      // Check for data loss events
+      if (perfSnapshot.metrics.events.bufferOverflows > 0 || perfSnapshot.metrics.events.queueOverflows > 0) {
+        newState = 'error';
+        statusSymbol = '✗';
+        indicatorColor = '#FF0000'; // Red
+      }
+
+      // Format display string
+      const metricsText = `${throughputKbps}kb/s | Buffer: ${bufferUsage}% | Queue: ${totalQueueDepth} | ${statusSymbol}`;
+
+      // Flash indicator on state change
+      if (newState !== this.lastPerformanceState) {
+        this.flashPerformanceIndicator();
+        this.lastPerformanceState = newState;
+      }
+
+      // Update the status bar using safeExecuteJS like working status updates
+      this.safeExecuteJS(`
+        (function() {
+          const perfMetrics = document.getElementById('perf-metrics');
+          const perfIndicator = document.getElementById('perf-indicator');
+          if (perfMetrics) {
+            perfMetrics.textContent = '${metricsText}';
+          }
+          if (perfIndicator) {
+            perfIndicator.style.color = '${indicatorColor}';
+          }
+        })();
+      `, 'updatePerformanceDisplay');
+
+    } catch (error) {
+      console.error('[PERF DISPLAY] Error in updatePerformanceDisplay:', error);
+    }
+  }
+
+  /**
+   * Flash performance indicator on state change
+   */
+  private flashPerformanceIndicator(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    if (this.performanceFlashTimer) {
+      clearTimeout(this.performanceFlashTimer);
+    }
+
+    // Flash effect: bright -> normal using safeExecuteJS
+    this.safeExecuteJS(`
+      (function() {
+        const perfIndicator = document.getElementById('perf-indicator');
+        if (perfIndicator) {
+          const originalColor = perfIndicator.style.color;
+          perfIndicator.style.color = '#FFFFFF';
+          perfIndicator.style.textShadow = '0 0 8px #FFFFFF';
+          setTimeout(() => {
+            perfIndicator.style.color = originalColor;
+            perfIndicator.style.textShadow = '0 0 2px #000';
+          }, 200);
+        }
+      })();
+    `, 'flashPerformanceIndicator');
   }
 
   // Terminal mode tracking
@@ -3862,11 +4068,15 @@ export class MainWindow {
   }
 
   private async toggleDTR(): Promise<void> {
-    this.dtrState = !this.dtrState;
+    // State management: press-on/press-off (NOT auto-toggle)
+    const newState = !this.dtrState;
     if (this._serialPort) {
       try {
-        await this._serialPort.setDTR(this.dtrState);
-        this.logMessage(`[DTR] Hardware control set to ${this.dtrState ? 'ON' : 'OFF'}`);
+        await this._serialPort.setDTR(newState);
+        this.logMessage(`[DTR] Hardware control set to ${newState ? 'ON' : 'OFF'}`);
+        
+        // Only update state after successful hardware change
+        this.dtrState = newState;
         
         // If DTR goes high, reset the Debug Logger and sync parser
         if (this.dtrState) {
@@ -3889,9 +4099,11 @@ export class MainWindow {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logMessage(`ERROR: Failed to set DTR: ${errorMsg}`);
-        // Revert state on error
-        this.dtrState = !this.dtrState;
+        // Don't change state on error
       }
+    } else {
+      // No serial port, just update state for UI consistency
+      this.dtrState = newState;
     }
     // Update checkbox via webContents send (IPC)
     if (this.mainWindow?.webContents) {
@@ -3901,17 +4113,21 @@ export class MainWindow {
   }
 
   private async toggleRTS(): Promise<void> {
-    this.rtsState = !this.rtsState;
+    // State management: press-on/press-off (NOT auto-toggle)
+    const newState = !this.rtsState;
     if (this._serialPort) {
       try {
-        await this._serialPort.setRTS(this.rtsState);
-        this.logMessage(`[RTS] Hardware control set to ${this.rtsState ? 'ON' : 'OFF'}`);
+        await this._serialPort.setRTS(newState);
+        this.logMessage(`[RTS] Hardware control set to ${newState ? 'ON' : 'OFF'}`);
+        
+        // Only update state after successful hardware change
+        this.rtsState = newState;
         
         // If RTS goes high, reset the Debug Logger
         if (this.rtsState) {
           this.logMessage(`[RTS RESET] Device reset via RTS - clearing log and synchronizing parser`);
           if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleDTRReset(); // Same reset behavior for RTS
+            this.debugLoggerWindow.handleRTSReset();
           }
           // Sync parser on RTS reset (using RTS-specific method)
           this.serialProcessor.onRTSReset();
@@ -3928,8 +4144,7 @@ export class MainWindow {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logMessage(`ERROR: Failed to set RTS: ${errorMsg}`);
-        // Revert state on error
-        this.rtsState = !this.rtsState;
+        // Don't change state on error
       }
     }
     // Update checkbox via webContents send (IPC)
@@ -4557,13 +4772,6 @@ export class MainWindow {
     `, `updateCheckbox-${id}`);
   }
 
-  private updateActiveCogs(cogs: Set<number>): void {
-    const cogList = Array.from(cogs).sort().join(', ') || 'None';
-    this.safeExecuteJS(`
-      const status = document.getElementById('cogs-status');
-      if (status) status.textContent = '${cogList}';
-    `, 'updateActiveCogs');
-  }
 
   private toggleEchoOff(): void {
     this.echoOffEnabled = !this.echoOffEnabled;

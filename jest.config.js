@@ -17,7 +17,9 @@ module.exports = {
   
   // Transform files with ts-jest
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: 'tsconfig.test.json'
+    }]
   },
   
   // Don't ignore jimp in node_modules - it needs to be transformed

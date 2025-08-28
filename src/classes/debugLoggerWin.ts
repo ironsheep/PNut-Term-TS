@@ -10,11 +10,23 @@ import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
 import { MessageType } from './shared/messageExtractor';
+import { MessagePool, PooledMessage } from './shared/messagePool';
+import { PerformanceMonitor } from './shared/performanceMonitor';
 
 export interface DebugLoggerTheme {
   name: string;
   foregroundColor: string;
   backgroundColor: string;
+}
+
+/**
+ * Performance warning entry
+ */
+interface PerformanceWarning {
+  timestamp: number;
+  level: 'WARN' | 'CRITICAL' | 'ERROR' | 'RECOVERY';
+  message: string;
+  details?: any;
 }
 
 /**
@@ -62,6 +74,13 @@ export class DebugLoggerWindow extends DebugWindowBase {
   private sessionStartTime: number = performance.now();
   private lastMessageTime: number = 0;
   private lastFullTimestamp: string = '';
+  
+  // Performance warning tracking
+  private performanceMonitor: PerformanceMonitor | null = null;
+  private warningHistory: PerformanceWarning[] = [];
+  private readonly MAX_WARNING_HISTORY = 100;
+  private warningRateLimiter: Map<string, number> = new Map(); // key -> lastWarningTime
+  private readonly WARNING_COOLDOWN_MS = 5000; // 5 second cooldown per warning type
 
   // Predefined themes
   private static readonly THEMES = {
@@ -161,7 +180,8 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.notifyLoggingStatus(true);
       
     } catch (error) {
-      this.logMessage(`Failed to initialize log file: ${error}`);
+      // Use base class logMessage to send to console, not Debug Logger window
+      super.logMessage(`Failed to initialize log file: ${error}`, 'DebugLogger');
       // Fall back to console logging only
       this.notifyLoggingStatus(false);
     }
@@ -394,6 +414,13 @@ export class DebugLoggerWindow extends DebugWindowBase {
       color: #808080;
       font-style: italic;
     }
+    .error-message {
+      color: #FF6B6B;
+      font-weight: bold;
+      background-color: #2D1B1B;
+      padding: 2px 4px;
+      border-left: 3px solid #FF6B6B;
+    }
     .binary-message {
       color: #00FFFF;  /* Cyan for binary hex dumps */
       font-family: 'Courier New', monospace;
@@ -530,20 +557,62 @@ export class DebugLoggerWindow extends DebugWindowBase {
 
   /**
    * Process messages immediately (required by base class)
+   * Handles both PooledMessage objects and raw data for backward compatibility
    */
   protected processMessageImmediate(lineParts: string[] | any): void {
     console.log('[DEBUG LOGGER] processMessageImmediate called with:', lineParts);
     
+    let actualData: string[] | any;
+    let pooledMessage: PooledMessage | null = null;
+    
+    // Check if this is a PooledMessage that needs to be released
+    if (lineParts && typeof lineParts === 'object' && 'poolId' in lineParts && 'consumerCount' in lineParts) {
+      pooledMessage = lineParts as PooledMessage;
+      actualData = pooledMessage.data;
+      console.log(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+    } else {
+      actualData = lineParts;
+    }
+    
+    try {
+      // Extract data immediately before any async operations
+      this.processMessageImmediateSync(actualData);
+    } catch (error) {
+      console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
+    } finally {
+      // Always release the pooled message if we have one
+      if (pooledMessage) {
+        try {
+          const messagePool = MessagePool.getInstance();
+          const wasLastConsumer = messagePool.release(pooledMessage);
+          if (wasLastConsumer) {
+            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+          } else {
+            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+          }
+        } catch (releaseError) {
+          console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Internal synchronous message processing (extracted for proper release timing)
+   */
+  private processMessageImmediateSync(actualData: string[] | any): void {
+    console.log('[DEBUG LOGGER] processMessageImmediateSync called with:', actualData);
+    
     // Handle binary data (debugger protocol)
-    if (lineParts instanceof Uint8Array) {
-      console.log('[DEBUG LOGGER] Processing binary debugger message:', lineParts.length, 'bytes');
-      const hexFormatted = this.formatBinaryAsHex(lineParts);
+    if (actualData instanceof Uint8Array) {
+      console.log('[DEBUG LOGGER] Processing binary debugger message:', actualData.length, 'bytes');
+      const hexFormatted = this.formatBinaryAsHex(actualData);
       this.appendMessage(hexFormatted, 'binary-message');
       this.writeToLog(hexFormatted);
     }
     // Handle string array (standard Cog messages)
-    else if (Array.isArray(lineParts)) {
-      const message = lineParts.join(' ');
+    else if (Array.isArray(actualData)) {
+      const message = actualData.join(' ');
       console.log('[DEBUG LOGGER] Processing array message:', message);
       
       // Check if this is a formatted debugger message
@@ -559,17 +628,17 @@ export class DebugLoggerWindow extends DebugWindowBase {
       }
     } 
     // Handle raw string
-    else if (typeof lineParts === 'string') {
-      console.log('[DEBUG LOGGER] Processing string message:', lineParts);
+    else if (typeof actualData === 'string') {
+      console.log('[DEBUG LOGGER] Processing string message:', actualData);
       
       // Check if this is a formatted debugger message
-      if (lineParts.includes('=== Initial Debugger Message') || 
-          lineParts.includes('=== Debugger Protocol')) {
-        this.appendMessage(lineParts, 'debugger-formatted');
+      if (actualData.includes('=== Initial Debugger Message') || 
+          actualData.includes('=== Debugger Protocol')) {
+        this.appendMessage(actualData, 'debugger-formatted');
       } else {
-        this.appendMessage(lineParts, 'cog-message');
+        this.appendMessage(actualData, 'cog-message');
       }
-      this.writeToLog(lineParts);
+      this.writeToLog(actualData);
     }
     
     // Update status bar
@@ -578,15 +647,55 @@ export class DebugLoggerWindow extends DebugWindowBase {
 
   /**
    * Process message with type information (type-safe handoff)
+   * Handles both PooledMessage objects and raw data for backward compatibility
    */
-  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array): void {
+  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array | PooledMessage): void {
     console.log(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
     
+    let actualData: string[] | Uint8Array;
+    let pooledMessage: PooledMessage | null = null;
+    
+    // Check if this is a PooledMessage that needs to be released
+    if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
+      pooledMessage = data as PooledMessage;
+      actualData = pooledMessage.data as string[] | Uint8Array;
+      console.log(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+    } else {
+      actualData = data as string[] | Uint8Array;
+    }
+    
+    try {
+      // Extract data immediately before any async operations
+      this.processTypedMessageSync(messageType, actualData);
+    } catch (error) {
+      console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
+    } finally {
+      // Always release the pooled message if we have one
+      if (pooledMessage) {
+        try {
+          const messagePool = MessagePool.getInstance();
+          const wasLastConsumer = messagePool.release(pooledMessage);
+          if (wasLastConsumer) {
+            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+          } else {
+            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+          }
+        } catch (releaseError) {
+          console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Internal synchronous message processing (extracted for proper release timing)
+   */
+  private processTypedMessageSync(messageType: MessageType, actualData: string[] | Uint8Array): void {
     switch(messageType) {
       case MessageType.DEBUGGER_80BYTE:
         // Binary debugger data - display with proper 80-byte formatting
-        if (data instanceof Uint8Array) {
-          const formatted = this.format80ByteDebuggerMessage(data);
+        if (actualData instanceof Uint8Array) {
+          const formatted = this.formatDebuggerMessage(actualData);
           this.appendMessage(formatted, 'debugger-formatted');
           this.writeToLog(formatted);
         }
@@ -594,8 +703,8 @@ export class DebugLoggerWindow extends DebugWindowBase {
         
       case MessageType.DB_PACKET:
         // DB prefix messages - use same hex format as 80-byte
-        if (data instanceof Uint8Array) {
-          const formatted = this.format80ByteDebuggerMessage(data);
+        if (actualData instanceof Uint8Array) {
+          const formatted = this.formatDebuggerMessage(actualData);
           this.appendMessage(formatted, 'debugger-formatted');
           this.writeToLog(formatted);
         }
@@ -604,63 +713,63 @@ export class DebugLoggerWindow extends DebugWindowBase {
       case MessageType.COG_MESSAGE:
       case MessageType.P2_SYSTEM_INIT:
         // Text data - display as readable text (should go to main console)
-        if (Array.isArray(data)) {
-          const message = data.join(' ');
+        if (Array.isArray(actualData)) {
+          const message = actualData.join(' ');
           this.appendMessage(message, 'cog-message');
           this.writeToLog(message);
-        } else if (typeof data === 'string') {
-          this.appendMessage(data, 'cog-message');
-          this.writeToLog(data);
+        } else if (typeof actualData === 'string') {
+          this.appendMessage(actualData, 'cog-message');
+          this.writeToLog(actualData);
         }
         break;
         
       case MessageType.TERMINAL_OUTPUT:
         // DEFENSIVE: Check if data is actually ASCII before displaying
-        if (data instanceof Uint8Array) {
-          if (this.isASCIIData(data)) {
+        if (actualData instanceof Uint8Array) {
+          if (this.isASCIIData(actualData)) {
             // Convert to string and display
-            const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(data);
+            const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
             this.appendMessage(textMessage, 'cog-message');
             this.writeToLog(textMessage);
           } else {
             // Binary data misclassified as terminal - display as hex fallback
-            const hexFallback = this.formatBinaryAsHexFallback(data);
+            const hexFallback = this.formatBinaryAsHexFallback(actualData);
             this.appendMessage(hexFallback, 'binary-message');
             this.writeToLog(hexFallback);
           }
-        } else if (Array.isArray(data)) {
-          const message = data.join(' ');
+        } else if (Array.isArray(actualData)) {
+          const message = actualData.join(' ');
           this.appendMessage(message, 'cog-message');
           this.writeToLog(message);
-        } else if (typeof data === 'string') {
-          this.appendMessage(data, 'cog-message');
-          this.writeToLog(data);
+        } else if (typeof actualData === 'string') {
+          this.appendMessage(actualData, 'cog-message');
+          this.writeToLog(actualData);
         }
         break;
         
       case MessageType.INVALID_COG:
       case MessageType.INCOMPLETE_DEBUG:
         // Error/warning messages
-        const errorMsg = Array.isArray(data) ? data.join(' ') : 
-                        (data instanceof Uint8Array ? new TextDecoder().decode(data) : String(data));
+        const errorMsg = Array.isArray(actualData) ? actualData.join(' ') : 
+                        (actualData instanceof Uint8Array ? new TextDecoder().decode(actualData) : String(actualData));
         this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
         this.writeToLog(`[WARNING] ${errorMsg}`);
         break;
         
       default:
         // Fallback - use safe display with defensive binary check
-        if (data instanceof Uint8Array) {
-          if (this.isASCIIData(data)) {
-            const textData = new TextDecoder().decode(data);
+        if (actualData instanceof Uint8Array) {
+          if (this.isASCIIData(actualData)) {
+            const textData = new TextDecoder().decode(actualData);
             this.appendMessage(`[${messageType}] ${textData}`, 'generic-message');
             this.writeToLog(`[${messageType}] ${textData}`);
           } else {
-            const hexData = this.formatBinaryAsHexFallback(data);
+            const hexData = this.formatBinaryAsHexFallback(actualData);
             this.appendMessage(`[${messageType}] ${hexData}`, 'binary-message');
             this.writeToLog(`[${messageType}] ${hexData}`);
           }
         } else {
-          const displayData = Array.isArray(data) ? data.join(' ') : String(data);
+          const displayData = Array.isArray(actualData) ? actualData.join(' ') : String(actualData);
           this.appendMessage(`[${messageType}] ${displayData}`, 'generic-message');
           this.writeToLog(`[${messageType}] ${displayData}`);
         }
@@ -847,9 +956,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Log a regular message (public interface for mainWindow)
+   * Log a serial message from P2 hardware (public interface for mainWindow)
+   * This is for SERIAL DATA ONLY - not for application diagnostic messages
    */
-  public logMessage(message: string): void {
+  public logSerialMessage(message: string): void {
     // Determine message type based on content
     let messageType = 'cog-message';
     
@@ -890,6 +1000,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.debugWindow.webContents.send('clear-output');
     }
     this.lineBuffer = [];
+    this.renderQueue = [];  // Clear pending messages to prevent them showing after reset
     
     // Write separator in log file only if stream is still writable
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
@@ -916,6 +1027,27 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     // Log system message
     this.logSystemMessage('DTR Reset - New session started');
+  }
+
+  /**
+   * Handle RTS reset - close current log and start new one
+   */
+  public handleRTSReset(): void {
+    // Close current log file
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      this.logFile.write(`\n=== RTS Reset at ${new Date().toISOString()} ===\n`);
+      this.logFile.end();
+      this.logFile = null; // Clear reference after ending
+    }
+    
+    // Clear the display (must be after logFile.end() to avoid write-after-end)
+    this.clearOutput();
+    
+    // Create new log file
+    this.initializeLogFile();
+    
+    // Log system message
+    this.logSystemMessage('RTS Reset - New session started');
   }
 
   /**
@@ -978,10 +1110,12 @@ export class DebugLoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Format 80+ byte debugger messages with proper spacing
-   * Format: 4 groups of 8 bytes, pairs of 16 bytes separated by extra space
+   * Format debugger messages (80-byte packets and DB packets) 
+   * Format: 'Cog N' header followed by 32 bytes per line, no ASCII interpretation
+   * Groups of 8 bytes separated by single space, groups of 16 by double space
+   * 3-digit hex offsets at line start
    */
-  private format80ByteDebuggerMessage(data: Uint8Array): string {
+  private formatDebuggerMessage(data: Uint8Array): string {
     if (data.length === 0) return 'Cog ? (empty debugger message)';
     
     const firstByte = data[0];
@@ -989,35 +1123,113 @@ export class DebugLoggerWindow extends DebugWindowBase {
     const lines: string[] = [];
     
     const prefix = cogId >= 0 
-      ? `Cog ${cogId} ` 
-      : `INVALID(0x${firstByte.toString(16).toUpperCase()}) `;
-    const indent = ' '.repeat(prefix.length);
+      ? `Cog ${cogId}:` 
+      : `INVALID(0x${firstByte.toString(16).toUpperCase()}):`;
     
-    // Process in groups of 16 bytes per line
-    for (let offset = 0; offset < data.length; offset += 16) {
-      const lineBytes: string[] = [];
-      const endOffset = Math.min(offset + 16, data.length);
+    // Add header line
+    lines.push(prefix);
+    
+    const bytesPerLine = 32;
+    
+    // Process in groups of 32 bytes per line
+    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+      const lineLongs: string[] = [];
+      const endOffset = Math.min(offset + bytesPerLine, data.length);
       
-      // First group of 8 bytes
-      for (let i = offset; i < Math.min(offset + 8, endOffset); i++) {
-        const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
-        lineBytes.push(`$${hex}`);
+      // Build hex representation as 32-bit longs with proper spacing
+      for (let i = offset; i < endOffset; i += 4) {
+        // Combine four bytes into a 32-bit long (byte order 0,1,2,3 as they appear)
+        if (i + 3 < data.length) {
+          // Full 4 bytes available
+          const byte0 = data[i].toString(16).padStart(2, '0').toUpperCase();
+          const byte1 = data[i+1].toString(16).padStart(2, '0').toUpperCase();
+          const byte2 = data[i+2].toString(16).padStart(2, '0').toUpperCase();
+          const byte3 = data[i+3].toString(16).padStart(2, '0').toUpperCase();
+          lineLongs.push(`$${byte0}${byte1}${byte2}${byte3}`);
+        } else {
+          // Handle partial bytes at end
+          let hex = '';
+          for (let j = i; j < Math.min(i + 4, data.length); j++) {
+            hex += data[j].toString(16).padStart(2, '0').toUpperCase();
+          }
+          lineLongs.push(`$${hex}`);
+        }
+        
+        // Add spacing after groups (counting longs, not bytes)
+        const longPos = (i - offset) / 4;
+        if (longPos === 1 && i + 4 < endOffset) {
+          lineLongs.push(' '); // Single space after 8 bytes (2 longs)
+        } else if (longPos === 3 && i + 4 < endOffset) {
+          lineLongs.push('  '); // Double space after 16 bytes (4 longs)
+        } else if (longPos === 5 && i + 4 < endOffset) {
+          lineLongs.push(' '); // Single space after 24 bytes (6 longs)
+        }
+        // Note: 32-byte boundary would need triple space but we're at line end
       }
       
-      // Add extra space between pairs of 8 bytes
-      if (endOffset > offset + 8) {
-        lineBytes.push(' '); // Extra space separator
+      // Format with 3-digit hex offset: "000: $XXXXXXXX $XXXXXXXX ..."
+      const offsetStr = offset.toString(16).padStart(3, '0').toUpperCase();
+      const hexPart = lineLongs.join(' ');
+      const formattedLine = `  ${offsetStr}: ${hexPart}`;
+      
+      lines.push(formattedLine);
+    }
+    
+    return lines.join('\n');
+  }
+
+  /**
+   * Format other binary data with hex dump and ASCII interpretation
+   * Format: 16 bytes per line with ASCII sidebar
+   * Used for non-debugger binary messages
+   */
+  private formatBinaryWithAscii(data: Uint8Array): string {
+    if (data.length === 0) return '(empty binary data)';
+    
+    const lines: string[] = [];
+    const bytesPerLine = 16;
+    
+    // Process in groups of 16 bytes per line with hex + ASCII display
+    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+      const lineBytes: string[] = [];
+      const asciiBytes: string[] = [];
+      const endOffset = Math.min(offset + bytesPerLine, data.length);
+      
+      // Build hex representation with proper spacing
+      for (let i = offset; i < endOffset; i++) {
+        const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
+        lineBytes.push(`$${hex}`);
         
-        // Second group of 8 bytes
-        for (let i = offset + 8; i < endOffset; i++) {
-          const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
-          lineBytes.push(`$${hex}`);
+        // Build ASCII representation
+        const byte = data[i];
+        if (byte >= 32 && byte <= 126) {
+          asciiBytes.push(String.fromCharCode(byte));
+        } else {
+          asciiBytes.push('.');
+        }
+        
+        // Add extra space after 8 bytes for readability
+        if ((i - offset) === 7 && i + 1 < endOffset) {
+          lineBytes.push(' '); // Extra space between groups of 8
         }
       }
       
-      // First line gets Cog prefix, subsequent lines get indent
-      const linePrefix = offset === 0 ? prefix : indent;
-      lines.push(linePrefix + lineBytes.join(' '));
+      // Pad hex display to consistent width (for alignment)
+      const hexWidth = 51; // Width for 16 bytes: "$XX $XX ... $XX  $XX $XX ... $XX"
+      const hexPart = lineBytes.join(' ');
+      const paddedHexPart = hexPart.padEnd(hexWidth);
+      
+      // Pad ASCII to 16 characters
+      while (asciiBytes.length < bytesPerLine) {
+        asciiBytes.push(' ');
+      }
+      
+      // Format: "  XXXX: $XX $XX ... $XX  |ASCII_CHARS|"
+      const offsetStr = offset.toString(16).padStart(4, '0').toUpperCase();
+      const asciiPart = asciiBytes.join('');
+      const formattedLine = `  ${offsetStr}: ${paddedHexPart} |${asciiPart}|`;
+      
+      lines.push(formattedLine);
     }
     
     return lines.join('\n');
@@ -1118,5 +1330,178 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   public getBufferedLines(): string[] {
     return [...this.lineBuffer];
+  }
+
+  /**
+   * Set performance monitor for warnings
+   */
+  public setPerformanceMonitor(monitor: PerformanceMonitor): void {
+    this.performanceMonitor = monitor;
+    
+    // Listen for performance threshold events
+    monitor.on('threshold', (alert) => {
+      this.handlePerformanceThreshold(alert);
+    });
+  }
+
+  /**
+   * Handle performance threshold alerts
+   */
+  private handlePerformanceThreshold(alert: any): void {
+    const now = Date.now();
+    const alertKey = `${alert.type}_${alert.component || 'general'}`;
+    
+    // Check rate limiting
+    const lastWarningTime = this.warningRateLimiter.get(alertKey) || 0;
+    if (now - lastWarningTime < this.WARNING_COOLDOWN_MS) {
+      return; // Skip this warning due to rate limiting
+    }
+    
+    this.warningRateLimiter.set(alertKey, now);
+    
+    let level: 'WARN' | 'CRITICAL' | 'ERROR' = 'WARN';
+    let message = '';
+    
+    switch (alert.type) {
+      case 'buffer':
+        const usage = alert.usagePercent || alert.details?.usagePercent;
+        if (usage >= 95) {
+          level = 'CRITICAL';
+          message = `[PERF_CRITICAL] Buffer ${usage.toFixed(1)}% full, data loss imminent`;
+        } else if (usage >= 80) {
+          level = 'WARN';
+          message = `[PERF_WARN] Buffer usage ${usage.toFixed(1)}% exceeds threshold`;
+        }
+        break;
+        
+      case 'queue':
+        const depth = alert.depth || alert.details?.depth;
+        const name = alert.name || alert.component || 'unknown';
+        if (depth >= 1000) {
+          level = 'CRITICAL';
+          message = `[PERF_CRITICAL] Queue '${name}' depth ${depth} indicates processing lag`;
+        } else {
+          level = 'WARN';
+          message = `[PERF_WARN] Queue '${name}' depth ${depth} exceeds threshold`;
+        }
+        break;
+        
+      case 'latency':
+        const latency = alert.latencyMs || alert.details?.latencyMs;
+        if (latency >= 500) {
+          level = 'CRITICAL';
+          message = `[PERF_CRITICAL] Processing latency ${latency}ms causes real-time loss`;
+        } else {
+          level = 'WARN';
+          message = `[PERF_WARN] Processing latency ${latency}ms exceeds threshold`;
+        }
+        break;
+        
+      default:
+        message = `[PERF_WARN] Performance threshold exceeded: ${JSON.stringify(alert)}`;
+    }
+    
+    // Add context and recommendations
+    message += this.getPerformanceRecommendations(alert.type, alert);
+    
+    // Log the warning
+    this.logPerformanceWarning(level, message, alert);
+  }
+
+  /**
+   * Log a performance warning with proper formatting
+   */
+  public logPerformanceWarning(level: 'WARN' | 'CRITICAL' | 'ERROR' | 'RECOVERY', message: string, details?: any): void {
+    const warning: PerformanceWarning = {
+      timestamp: Date.now(),
+      level,
+      message,
+      details
+    };
+    
+    // Add to history (circular buffer)
+    this.warningHistory.push(warning);
+    if (this.warningHistory.length > this.MAX_WARNING_HISTORY) {
+      this.warningHistory.shift();
+    }
+    
+    // Format for display
+    const formattedMessage = `${message}`;
+    
+    // Use appropriate styling based on level
+    let messageType = 'system-message';
+    if (level === 'CRITICAL' || level === 'ERROR') {
+      messageType = 'error-message';
+    }
+    
+    this.appendMessage(formattedMessage, messageType);
+    this.writeToLog(`[${level}] ${message}`);
+  }
+
+  /**
+   * Log data rate warning
+   */
+  public logDataRateWarning(currentRate: number, sustainableRate: number): void {
+    const message = `[PERF_WARN] Data rate ${(currentRate/1024/1024).toFixed(1)}Mbps exceeds sustainable rate ${(sustainableRate/1024/1024).toFixed(1)}Mbps`;
+    this.logPerformanceWarning('WARN', message, { currentRate, sustainableRate });
+  }
+
+  /**
+   * Log dropped bytes warning
+   */
+  public logDroppedBytesWarning(droppedCount: number, timeWindowMs: number = 1000): void {
+    const level = droppedCount > 1000 ? 'ERROR' : 'CRITICAL';
+    const message = `[PERF_${level}] Dropped ${droppedCount.toLocaleString()} bytes in last ${timeWindowMs}ms`;
+    this.logPerformanceWarning(level, message, { droppedCount, timeWindowMs });
+  }
+
+  /**
+   * Log recovery message when conditions improve
+   */
+  public logPerformanceRecovery(metric: string, currentValue: number, threshold: number): void {
+    const message = `[PERF_RECOVERY] ${metric} recovered: ${currentValue} below threshold ${threshold}`;
+    this.logPerformanceWarning('RECOVERY', message, { metric, currentValue, threshold });
+  }
+
+  /**
+   * Get performance recommendations based on alert type
+   */
+  private getPerformanceRecommendations(alertType: string, alert: any): string {
+    const recommendations = [];
+    
+    switch (alertType) {
+      case 'buffer':
+        recommendations.push('Consider: reduce baud rate');
+        recommendations.push('close unused windows');
+        recommendations.push('enable emergency mode');
+        break;
+        
+      case 'queue':
+        recommendations.push('Consider: reduce message volume');
+        recommendations.push('check for blocking operations');
+        break;
+        
+      case 'latency':
+        recommendations.push('Consider: reduce UI update frequency');
+        recommendations.push('disable non-essential features');
+        break;
+    }
+    
+    return recommendations.length > 0 ? ` (${recommendations.join(', ')})` : '';
+  }
+
+  /**
+   * Get recent performance warnings for diagnostics
+   */
+  public getWarningHistory(limit: number = 50): PerformanceWarning[] {
+    return this.warningHistory.slice(-limit);
+  }
+
+  /**
+   * Clear warning history
+   */
+  public clearWarningHistory(): void {
+    this.warningHistory = [];
+    this.warningRateLimiter.clear();
   }
 }

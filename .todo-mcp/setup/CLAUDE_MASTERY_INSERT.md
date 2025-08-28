@@ -1,109 +1,119 @@
-## 🚨 SESSION START PROTOCOL - DO THIS FIRST!
+# Todo MCP Mastery Operations for CLAUDE.md
 
-### 1. 🔴 MANDATORY: Restore Context (DO THIS IMMEDIATELY)
+## DEPLOYMENT INSTRUCTIONS FOR CLAUDE
+
+1. **FIRST**: Remove ALL existing Todo MCP content from CLAUDE.md:
+   - Delete any sections about Todo MCP v0.6.8, v0.6.8.1
+   - Remove all TodoWrite guidance
+   - Clear any context management patterns related to todo-mcp
+   - Keep only: Project info, build process, general rules
+
+2. **THEN**: Insert everything below the line into CLAUDE.md
+   - **CRITICAL PLACEMENT**: Insert IMMEDIATELY after project info
+   - **MUST BE EARLY**: Enables automatic recovery from auto-compaction
+   - This replaces all previous Todo MCP documentation
+   - Single source of truth, no version conflicts
+
+**WHY PLACEMENT MATTERS**: When Claude auto-compacts or conversation resets, having `context_resume` early in CLAUDE.md means Claude automatically recovers state without human intervention.
+
+---
+
+## 🎯 CRITICAL: SESSION START PROTOCOL (EXECUTE IMMEDIATELY)
+
+**MANDATORY ON SESSION START/RESUME:**
 ```bash
-mcp__todo-mcp__context_resume    # ALWAYS FIRST - Shows where you left off
-```
-**This is NOT optional** - This command:
-- Shows tasks in progress with elapsed time
-- Displays recent context keys (10-minute window)
-- Reveals current work state
-- Provides the "Where was I?" answer
-
-Without this, you're flying blind. ALWAYS run this before any other work.
-
-### 2. Work Assessment
-Consider the nature of today's work:
-- Complex debugging or architectural decisions → May benefit from deeper analysis
-- Implementation of defined features → Standard execution mode
-- Simple bug fixes or updates → Quick focused work
-
-## 🔄 MODEL CONSIDERATIONS
-
-### When to Consider Model Switching:
-- **Complex Problem Solving**: Multi-window debugging, race conditions, architectural refactoring
-- **Documentation Generation**: User guides, API documentation, comprehensive comments
-- **Strategic Planning**: Feature design, test strategy, refactoring approach
-- **Simple Execution**: File moves, basic edits, straightforward bug fixes
-
-### Work Type Assessment:
-- **Deep Analysis Needed**: Complex state management, event routing, memory leaks
-- **Standard Development**: Implementing defined features, writing tests
-- **Quick Tasks**: Typo fixes, simple updates, configuration changes
-
-## 🎯 Todo MCP v0.6.8.1 Operational Mastery
-
-### 🔴 PRIMARY REFERENCE: `.todo-mcp/mastery/`
-**This folder is THE authoritative source for Todo MCP usage.**
-- When in doubt, check mastery docs first
-- Record new patterns discovered here
-- Document friction points as they arise
-- Keep these docs LIVE with learnings
-
-**Living Documentation Protocol:**
-- Discover pattern → Test it → Document in mastery/
-- Hit friction → Understand it → Record in mastery/
-- Find workaround → Verify it → Add to mastery/
-
-### Core Concepts (30 seconds to mastery)
-
-**Position IDs are ephemeral**: `position_id:1` = first in CURRENT list. Filter/sort = NEW universe.  
-**Task IDs are permanent**: `#42` = same task always. Use for automation/uncertainty.  
-**TodoWrite = ONE MCP task only**: Never multiple MCP IDs. It's subtasks, not a project tracker.  
-**Context = pointers not payloads**: Store "see /docs/analysis.md" not 5000 words.  
-**Value size kills, not key count**: 10 huge values crash. 100 tiny values fine.
-
-### Critical Workflows
-
-**Starting work:**
-```bash
-mcp__todo-mcp__todo_list                # Current tasks
-mcp__todo-mcp__todo_start position_id:1 # Begin task
-TodoWrite: ["Step 1", "Step 2"]         # Break down current task only
-mcp__todo-mcp__context_set key:"task_#N_steps" value:'[TodoWrite snapshot]'
+mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
+# Provides: current tasks, context state, next recommendations
 ```
 
-**Safe testing (dump/restore pattern):**
-```bash
-mcp__todo-mcp__project_dump include_context:false  # Backup first
-# Run dangerous tests
-mcp__todo-mcp__project_restore file:"dump.json" mode:"replace" include_context:false
-```
+**ALWAYS execute this command FIRST before any other work.**
 
-**Task completion review:**
+## Todo MCP Mastery Operations
+
+### Dual System Strategy
+**MCP Tasks**: Persistent, session-spanning, permanent ID «#N»  
+**TodoWrite**: Current task breakdown only, cleared on completion
+
 ```bash
+# CORRECT workflow
+mcp__todo-mcp__todo_create content:"Feature implementation" estimate_minutes:180
+mcp__todo-mcp__todo_start position_id:1
+TodoWrite: ["Step 1", "Step 2", "Step 3"]  # Single task breakdown only
+# Work through steps...
 mcp__todo-mcp__todo_complete position_id:1
-mcp__todo-mcp__context_get_all  # What accumulated?
-# Delete stale: context_delete pattern:"task_#N_*" (if done)
-# Externalize: Move lessons to docs, delete context
 TodoWrite: []  # Clear for next task
 ```
 
-### Recovery After Crash
+### Core Parameters
 ```bash
-mcp__todo-mcp__context_resume           # Primary recovery
-mcp__todo-mcp__context_get_all          # If resume incomplete
-# Reconstruct TodoWrite from context
-# Resume interrupted task
+# Most functions use position_id OR task_id
+mcp__todo-mcp__todo_start position_id:1          # Interactive
+mcp__todo-mcp__todo_complete task_id:"#22"       # Automation
+
+# Critical data types
+estimate_minutes:60        # Number, not string
+priority:"high"           # lowercase: critical/high/medium/low/backlog
+force:true               # Boolean, not string
 ```
 
-### Parameter Truth (Empirically Tested 2025-08-19)
+### Context Hygiene (40-Key Target)
+
+**VALUE SIZE matters more than key count**:
+- Keep values under 500 chars (pointers, not payloads)
+- Use patterns for bulk operations
+
 ```bash
-estimate_minutes: 60      # NUMBER not string
-priority: "high"          # Any case (HIGH/high/High)
-status: "in_progress"     # Exact lowercase only
-task_id: #42             # No quotes in parameter
+# Pattern-based cleanup (v0.6.8.2)
+mcp__todo-mcp__context_get pattern:"temp_*"        # Audit first
+mcp__todo-mcp__context_delete pattern:"temp_*"     # Then delete
+
+# Temporal filtering
+mcp__todo-mcp__context_get pattern:"temp_*" minutes_back:60  # Last hour
+
+# Auto-compaction protection
+mcp__todo-mcp__context_set key:"task_#N_steps" value:"✓Step1|→Step2|Step3"
 ```
 
-### Async Input Protocol
-User gives new direction mid-work? Don't break TodoWrite discipline:
-1. Create MCP task: `todo_create content:"[new request]" priority:"high"`
-2. Use sequence/priority for ordering
-3. Let MCP manage queue
+### Quick Commands
+```bash
+# Recovery
+mcp__todo-mcp__context_resume     # "WHERE WAS I?"
+mcp__todo-mcp__todo_next          # Smart task recommendation
 
-### Quick Reference
-- **Start task before complete** (enforced)
-- **One task in_progress** (automatic)
-- **Archive > delete** (preserves backup)
-- **Pattern cleanup** > individual keys
-- **Full mastery**: `.todo-mcp/mastery/` folder
+# Cleanup
+mcp__todo-mcp__todo_archive       # Archive completed tasks
+mcp__todo-mcp__context_delete pattern:"temp_*"    # Clean temporary
+
+# Backup
+mcp__todo-mcp__project_dump include_context:true  # Complete backup
+```
+
+### Task Lifecycle
+1. **Start** before work: `todo_start position_id:1`
+2. **Complete** after work: `todo_complete position_id:1`
+3. **Archive** when done: `todo_archive`
+4. Only ONE task `in_progress` at a time (auto-enforced)
+
+### Anti-Patterns to Avoid
+- ❌ Multiple MCP task IDs in TodoWrite
+- ❌ Large values in context (>500 chars)
+- ❌ Deleting without audit
+- ❌ Ignoring context_resume on start
+
+### Optional: Filesystem MCP (If Available)
+```bash
+# Check availability
+mcp__filesystem__list_directory path:"."
+
+# If available, prefer for file operations:
+mcp__filesystem__read_text_file     # Instead of cat
+mcp__filesystem__write_file         # Instead of echo
+# Benefits: No approval prompts, faster, structured output
+```
+
+### Deep Learning Resources
+Study `.todo-mcp/mastery/` documentation for comprehensive patterns:
+- `01_DUAL_SYSTEM_MASTERY_STRATEGY.md`
+- `02_CONTEXT_HYGIENE_MASTERY.md`
+- `03_TODO_MCP_MASTERY_INTERFACE.md`
+- `04_ANTI_PATTERN_ENFORCEMENT.md`

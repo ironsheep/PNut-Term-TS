@@ -77,90 +77,106 @@ Required Reading Order:
 - **Standard**: Defined features, tests → normal execution
 - **Simple**: Typos, configs → quick mode
 
-## 🎯 Todo MCP Mastery
+## 🎯 CRITICAL: SESSION START PROTOCOL (EXECUTE IMMEDIATELY)
 
-### Reference: `.todo-mcp/mastery/`
-Living docs - record patterns/friction/workarounds as discovered.
-
-### Core Concepts
-- **Position IDs ephemeral**: `position_id:1` = current list position
-- **Task IDs permanent**: `#42` = same task always
-- **TodoWrite = ONE MCP task**: Subtasks only, not project tracker
-- **Context = pointers**: Store "see /docs/x.md" not 5000 words
-- **Value size kills**: 10 huge values crash, 100 tiny fine
-
-### Workflows
-
-**Start:**
+**MANDATORY ON SESSION START/RESUME:**
 ```bash
-mcp__todo-mcp__todo_list
+mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
+# Provides: current tasks, context state, next recommendations
+```
+
+**ALWAYS execute this command FIRST before any other work.**
+
+## Todo MCP Mastery Operations
+
+### Dual System Strategy
+**MCP Tasks**: Persistent, session-spanning, permanent ID «#N»  
+**TodoWrite**: Current task breakdown only, cleared on completion
+
+```bash
+# CORRECT workflow
+mcp__todo-mcp__todo_create content:"Feature implementation" estimate_minutes:180
 mcp__todo-mcp__todo_start position_id:1
-TodoWrite: ["Step 1", "Step 2"]  # Current task only
-mcp__todo-mcp__context_set key:"task_#N_steps" value:'[TodoWrite]'
-```
-
-**Safe test:**
-```bash
-mcp__todo-mcp__project_dump include_context:false
-# Run dangerous tests
-mcp__todo-mcp__project_restore file:"dump.json" mode:"replace" include_context:false
-```
-
-**Complete:**
-```bash
+TodoWrite: ["Step 1", "Step 2", "Step 3"]  # Single task breakdown only
+# Work through steps...
 mcp__todo-mcp__todo_complete position_id:1
-mcp__todo-mcp__context_get_all  # Review accumulated
-context_delete pattern:"task_#N_*"  # Clean stale
-TodoWrite: []  # Clear
+TodoWrite: []  # Clear for next task
 ```
 
-**Crash recovery:**
+### Core Parameters
 ```bash
-mcp__todo-mcp__context_resume
-mcp__todo-mcp__context_get_all  # If incomplete
+# Most functions use position_id OR task_id
+mcp__todo-mcp__todo_start position_id:1          # Interactive
+mcp__todo-mcp__todo_complete task_id:"#22"       # Automation
+
+# Critical data types
+estimate_minutes:60        # Number, not string
+priority:"high"           # lowercase: critical/high/medium/low/backlog
+force:true               # Boolean, not string
 ```
 
-### Advanced Filtering (v0.6.8.2+)
+### Context Hygiene (40-Key Target)
 
-**Context Search (No More Key Guessing):**
+**VALUE SIZE matters more than key count**:
+- Keep values under 500 chars (pointers, not payloads)
+- Use patterns for bulk operations
+
 ```bash
-context_get pattern:"task_*"                    # Glob patterns  
-context_get pattern:"/^session_.*/"             # Regex patterns
-context_get key:"specific_key" minutes_back:30  # Time window
+# Pattern-based cleanup (v0.6.8.2)
+mcp__todo-mcp__context_get pattern:"temp_*"        # Audit first
+mcp__todo-mcp__context_delete pattern:"temp_*"     # Then delete
+
+# Temporal filtering
+mcp__todo-mcp__context_get pattern:"temp_*" minutes_back:60  # Last hour
+
+# Auto-compaction protection
+mcp__todo-mcp__context_set key:"task_#N_steps" value:"✓Step1|→Step2|Step3"
 ```
 
-**Smart Task Filtering:**
+### Quick Commands
 ```bash
-todo_next priority:"critical"                   # Priority focus
-todo_next status:"created" tags:["sonnet"]      # Model-specific work
-todo_next status:"pending"                      # Ready to start
+# Recovery
+mcp__todo-mcp__context_resume     # "WHERE WAS I?"
+mcp__todo-mcp__todo_next          # Smart task recommendation
+
+# Cleanup
+mcp__todo-mcp__todo_archive       # Archive completed tasks
+mcp__todo-mcp__context_delete pattern:"temp_*"    # Clean temporary
+
+# Backup
+mcp__todo-mcp__project_dump include_context:true  # Complete backup
 ```
 
-**Multi-Model Workflows:**
-- Tag tasks by model: `#sonnet`, `#haiku`, `#opus`
-- Filter work: `todo_next tags:["sonnet"]` for Sonnet-specific tasks
-- Time-boxed context: `context_get pattern:"session_*" minutes_back:60`
-- Pattern discovery: `context_resume` shows grouped patterns
+### Task Lifecycle
+1. **Start** before work: `todo_start position_id:1`
+2. **Complete** after work: `todo_complete position_id:1`
+3. **Archive** when done: `todo_archive`
+4. Only ONE task `in_progress` at a time (auto-enforced)
 
-### Parameters (Tested 2025-08-19)
+### Anti-Patterns to Avoid
+- ❌ Multiple MCP task IDs in TodoWrite
+- ❌ Large values in context (>500 chars)
+- ❌ Deleting without audit
+- ❌ Ignoring context_resume on start
+
+### Optional: Filesystem MCP (If Available)
 ```bash
-estimate_minutes: 60      # NUMBER
-priority: "high"          # Any case
-status: "in_progress"     # Exact lowercase
-task_id: #42             # No quotes
+# Check availability
+mcp__filesystem__list_directory path:"."
+
+# If available, prefer for file operations:
+mcp__filesystem__read_text_file     # Instead of cat
+mcp__filesystem__write_file         # Instead of echo
+# Benefits: No approval prompts, faster, structured output
 ```
 
-### Async Input
-New request mid-work? Create MCP task: `todo_create content:"[request]" priority:"high"`
-
-### Critical Rules
-- **Must start before complete** - System enforced, will error otherwise
-- **One in_progress** - Only ONE task active at a time (automatic)
-- **Context bridge discipline** - ALWAYS save TodoWrite to context after changes (crash insurance)
-- **Archive > delete** - Use `todo_archive` for safe export with backup
-- **Atomic operations** - Bulk ops are all-or-nothing; if ANY ID invalid, ENTIRE operation rolls back
-- Pattern cleanup > individual
-- Full ref: `.todo-mcp/mastery/`
+### Deep Learning Resources
+Study `.todo-mcp/mastery/` documentation for comprehensive patterns:
+- `01_DUAL_SYSTEM_MASTERY_STRATEGY.md`
+- `02_CONTEXT_HYGIENE_MASTERY.md`
+- `03_TODO_MCP_MASTERY_INTERFACE.md`
+- `04_ANTI_PATTERN_ENFORCEMENT.md`
+- **Track friction**: `.todo-mcp/reference/FRICTION_LOG_v0.6.8.2.md` - Record issues & successes as discovered
 
 ## ⚠️ DTR/RTS Control Lines
 

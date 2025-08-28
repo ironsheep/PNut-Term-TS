@@ -5,6 +5,7 @@
 import { DebugWindowBase } from './debugWindowBase';
 import { Context } from '../utils/context';
 import { PlacementStrategy } from '../utils/windowPlacer';
+import { MessagePool, PooledMessage } from './shared/messagePool';
 
 /**
  * @class DebugCOGWindow
@@ -454,14 +455,46 @@ export class DebugCOGWindow extends DebugWindowBase {
 
   /**
    * Required abstract method implementation
+   * Handles both PooledMessage objects and raw data for backward compatibility
    */
   protected processMessageImmediate(lineParts: string[] | any): void {
-    // COG windows process messages through processCOGMessage
-    // This is here to satisfy the abstract requirement
-    if (typeof lineParts === 'string') {
-      this.processCOGMessage(lineParts);
-    } else if (Array.isArray(lineParts)) {
-      this.processCOGMessage(lineParts.join(' '));
+    let actualData: string[] | any;
+    let pooledMessage: PooledMessage | null = null;
+    
+    // Check if this is a PooledMessage that needs to be released
+    if (lineParts && typeof lineParts === 'object' && 'poolId' in lineParts && 'consumerCount' in lineParts) {
+      pooledMessage = lineParts as PooledMessage;
+      actualData = pooledMessage.data;
+      console.log(`[COG ${this.cogId}] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+    } else {
+      actualData = lineParts;
+    }
+    
+    try {
+      // Extract data immediately and process
+      // COG windows process messages through processCOGMessage
+      if (typeof actualData === 'string') {
+        this.processCOGMessage(actualData);
+      } else if (Array.isArray(actualData)) {
+        this.processCOGMessage(actualData.join(' '));
+      }
+    } catch (error) {
+      console.error(`[COG ${this.cogId}] Error processing message: ${error}`);
+    } finally {
+      // Always release the pooled message if we have one
+      if (pooledMessage) {
+        try {
+          const messagePool = MessagePool.getInstance();
+          const wasLastConsumer = messagePool.release(pooledMessage);
+          if (wasLastConsumer) {
+            console.log(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+          } else {
+            console.log(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+          }
+        } catch (releaseError) {
+          console.error(`[COG ${this.cogId}] Error releasing pooled message: ${releaseError}`);
+        }
+      }
     }
   }
 

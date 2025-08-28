@@ -166,8 +166,8 @@ export class Downloader {
 
   private logMessage(message: string): void {
     if (this.context.runEnvironment.loggingEnabled) {
-      //Write to output window.
-      this.context.logger.logMessage('Dnldr: ' + message);
+      // Downloader messages are system status, should go to console not Debug Logger
+      this.context.logger.forceLogMessage('Dnldr: ' + message);
     }
   }
 }

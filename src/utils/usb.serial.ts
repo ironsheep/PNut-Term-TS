@@ -637,8 +637,8 @@ export class UsbSerial extends EventEmitter {
 
   public logMessage(message: string): void {
     if (this.context.runEnvironment.loggingEnabled) {
-      //Write to output window.
-      this.context.logger.logMessage(message);
+      // USB serial status messages are system diagnostics, should go to console
+      this.context.logger.forceLogMessage(message);
     }
   }
 }
