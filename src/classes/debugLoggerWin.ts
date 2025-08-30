@@ -692,7 +692,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private processTypedMessageSync(messageType: MessageType, actualData: string[] | Uint8Array): void {
     switch(messageType) {
-      case MessageType.DEBUGGER_80BYTE:
+      case MessageType.DEBUGGER_416BYTE:
         // Binary debugger data - display with proper 80-byte formatting
         if (actualData instanceof Uint8Array) {
           const formatted = this.formatDebuggerMessage(actualData);
@@ -1110,10 +1110,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Format debugger messages (80-byte packets and DB packets) 
+   * Format debugger messages (416-byte packets showing only 40-byte status block)
    * Format: 'Cog N' header followed by 32 bytes per line, no ASCII interpretation
    * Groups of 8 bytes separated by single space, groups of 16 by double space
    * 3-digit hex offsets at line start
+   * For 416-byte packets: Shows first 40 bytes (status block) then "... [376 more bytes]"
    */
   private formatDebuggerMessage(data: Uint8Array): string {
     if (data.length === 0) return 'Cog ? (empty debugger message)';
@@ -1131,15 +1132,18 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     const bytesPerLine = 32;
     
+    // For 416-byte packets, only show first 40 bytes (status block)
+    const bytesToShow = data.length === 416 ? 40 : data.length;
+    
     // Process in groups of 32 bytes per line
-    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+    for (let offset = 0; offset < bytesToShow; offset += bytesPerLine) {
       const lineLongs: string[] = [];
-      const endOffset = Math.min(offset + bytesPerLine, data.length);
+      const endOffset = Math.min(offset + bytesPerLine, bytesToShow);
       
       // Build hex representation as 32-bit longs with proper spacing
       for (let i = offset; i < endOffset; i += 4) {
         // Combine four bytes into a 32-bit long (byte order 0,1,2,3 as they appear)
-        if (i + 3 < data.length) {
+        if (i + 3 < bytesToShow) {
           // Full 4 bytes available
           const byte0 = data[i].toString(16).padStart(2, '0').toUpperCase();
           const byte1 = data[i+1].toString(16).padStart(2, '0').toUpperCase();
@@ -1149,7 +1153,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
         } else {
           // Handle partial bytes at end
           let hex = '';
-          for (let j = i; j < Math.min(i + 4, data.length); j++) {
+          for (let j = i; j < Math.min(i + 4, bytesToShow); j++) {
             hex += data[j].toString(16).padStart(2, '0').toUpperCase();
           }
           lineLongs.push(`$${hex}`);
@@ -1173,6 +1177,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
       const formattedLine = `  ${offsetStr}: ${hexPart}`;
       
       lines.push(formattedLine);
+    }
+    
+    // Add indicator for 416-byte packets that we're only showing the status block
+    if (data.length === 416) {
+      lines.push(`  ... [${data.length - bytesToShow} more bytes]`);
     }
     
     return lines.join('\n');

@@ -223,6 +223,9 @@ export class MainWindow {
    * Setup event handlers for debugger message parser
    */
   private setupSerialProcessorEvents(): void {
+    // CRITICAL: Import and setup debugger response handler
+    const { DebuggerResponse } = require('./shared/debuggerResponse');
+    const debuggerResponse = new DebuggerResponse();
     // Create routing destinations for Two-Tier Pattern Matching
     const debugLoggerDestination: RouteDestination = {
       name: 'DebugLogger',
@@ -251,6 +254,39 @@ export class MainWindow {
       windowCreatorDestination, 
       debuggerWindowDestination
     );
+    
+    // CRITICAL: Listen for debugger packets that require response
+    this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
+      console.log('[DEBUGGER RESPONSE] Received debugger packet, sending stub response...');
+      
+      // STUB: Send 52 bytes of zeros to release P2 lock and allow next COG to transmit
+      // This is a minimal "I don't need anything" response that releases lock #15
+      const stubResponse = new Uint8Array(52); // All zeros by default
+      
+      // Extract COG ID from packet for logging
+      const cogId = packet[0];
+      
+      // Send stub response via serial port
+      if (this._serialPort) {
+        console.log(`[DEBUGGER RESPONSE] Sending 52-byte zero stub for COG${cogId} to release lock`);
+        // Convert binary response to string for serial transmission
+        const responseString = String.fromCharCode(...stubResponse);
+        this._serialPort.write(responseString);
+      } else {
+        console.error('[DEBUGGER RESPONSE] Serial port not available to send response!');
+      }
+    });
+    
+    // Reset debugger response state on DTR/RTS reset
+    this.serialProcessor.on('dtrReset', () => {
+      console.log('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
+      debuggerResponse.reset();
+    });
+    
+    this.serialProcessor.on('rtsReset', () => {
+      console.log('[DEBUGGER RESPONSE] RTS reset detected, clearing response state');
+      debuggerResponse.reset();
+    });
 
     // Start the processor
     console.log('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
@@ -290,7 +326,7 @@ export class MainWindow {
       // Convert buffer to appropriate data type
       let data: string[] | Uint8Array;
       
-      if (message.type === MessageType.DEBUGGER_80BYTE) {
+      if (message.type === MessageType.DEBUGGER_416BYTE) {
         // Binary data stays as Uint8Array
         data = message.data;
       } else {
@@ -815,7 +851,10 @@ export class MainWindow {
     }
     
     if (Buffer.isBuffer(data)) {
-      console.log(`[SERIAL RX] Received ${data.length} bytes`);
+      // Add microsecond timestamp using process.hrtime
+      const hrtime = process.hrtime();
+      const microseconds = Math.floor(hrtime[0] * 1000000 + hrtime[1] / 1000);
+      console.log(`[SERIAL RX ${microseconds}µs] Received ${data.length} bytes`);
       
       // Log hex and ASCII for debugging - same format as debug logger
       const hexLines: string[] = [];
@@ -1588,36 +1627,44 @@ export class MainWindow {
             toolbar.insertBefore(temp.firstChild, separator);
           }
           
-          // Re-attach event handlers
+          // Re-attach event handlers (with duplicate prevention)
           ${this.controlLineMode === 'DTR' ? `
             const dtrToggle = document.getElementById('dtr-toggle');
             const dtrCheckbox = document.getElementById('dtr-checkbox');
-            if (dtrToggle) {
+            if (dtrToggle && !dtrToggle.hasAttribute('data-listener-attached')) {
+              dtrToggle.setAttribute('data-listener-attached', 'true');
               dtrToggle.addEventListener('click', () => {
                 window.ipcRenderer.send('toggle-dtr');
               });
             }
             if (dtrCheckbox) {
-              dtrCheckbox.addEventListener('change', (e) => {
-                if (!e.isTrusted) return;
-                window.ipcRenderer.send('toggle-dtr');
-              });
+              if (!dtrCheckbox.hasAttribute('data-listener-attached')) {
+                dtrCheckbox.setAttribute('data-listener-attached', 'true');
+                dtrCheckbox.addEventListener('change', (e) => {
+                  if (!e.isTrusted) return;
+                  window.ipcRenderer.send('toggle-dtr');
+                });
+              }
               // Set current state
               dtrCheckbox.checked = ${this.dtrState};
             }
           ` : `
             const rtsToggle = document.getElementById('rts-toggle');
             const rtsCheckbox = document.getElementById('rts-checkbox');
-            if (rtsToggle) {
+            if (rtsToggle && !rtsToggle.hasAttribute('data-listener-attached')) {
+              rtsToggle.setAttribute('data-listener-attached', 'true');
               rtsToggle.addEventListener('click', () => {
                 window.ipcRenderer.send('toggle-rts');
               });
             }
             if (rtsCheckbox) {
-              rtsCheckbox.addEventListener('change', (e) => {
-                if (!e.isTrusted) return;
-                window.ipcRenderer.send('toggle-rts');
-              });
+              if (!rtsCheckbox.hasAttribute('data-listener-attached')) {
+                rtsCheckbox.setAttribute('data-listener-attached', 'true');
+                rtsCheckbox.addEventListener('change', (e) => {
+                  if (!e.isTrusted) return;
+                  window.ipcRenderer.send('toggle-rts');
+                });
+              }
               // Set current state
               rtsCheckbox.checked = ${this.rtsState};
             }
@@ -2010,45 +2057,6 @@ export class MainWindow {
         
         // Wait for DOM to be ready
         document.addEventListener('DOMContentLoaded', () => {
-          // DTR button setup
-          const dtrToggle = document.getElementById('dtr-toggle');
-          const dtrCheckbox = document.getElementById('dtr-checkbox');
-          
-          console.log('[DTR SETUP] DTR Toggle found:', !!dtrToggle);
-          console.log('[DTR SETUP] DTR Checkbox found:', !!dtrCheckbox);
-          
-          if (dtrToggle) {
-            dtrToggle.addEventListener('click', () => {
-              console.log('[DTR] Button clicked');
-              ipcRenderer.send('toggle-dtr');
-            });
-          }
-          if (dtrCheckbox) {
-            dtrCheckbox.addEventListener('change', (e) => {
-              if (!e.isTrusted) return;
-              console.log('[DTR] Checkbox changed');
-              ipcRenderer.send('toggle-dtr');
-            });
-          }
-          
-          // RTS button setup  
-          const rtsToggle = document.getElementById('rts-toggle');
-          const rtsCheckbox = document.getElementById('rts-checkbox');
-          
-          if (rtsToggle) {
-            rtsToggle.addEventListener('click', () => {
-              console.log('[RTS] Button clicked');
-              ipcRenderer.send('toggle-rts');
-            });
-          }
-          if (rtsCheckbox) {
-            rtsCheckbox.addEventListener('change', (e) => {
-              if (!e.isTrusted) return;
-              console.log('[RTS] Checkbox changed');
-              ipcRenderer.send('toggle-rts');
-            });
-          }
-          
           // RAM/FLASH buttons
           const ramBtn = document.getElementById('download-ram');
           if (ramBtn) {
@@ -2140,10 +2148,12 @@ export class MainWindow {
           
           // Initialize menu bar for standalone mode
           const isIdeModeJS = ${this.context.runEnvironment.ideMode};
+          console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
+          console.log('[MENU] Menu bar element exists:', !!document.getElementById('menu-bar'));
           if (!isIdeModeJS) {
             const menuBar = document.getElementById('menu-bar');
             if (menuBar) {
-              console.log('[MENU] Initializing menu bar...');
+              console.log('[MENU] Initializing menu bar HTML...');
               menuBar.innerHTML = \`
                 <div class="menu-container">
                   <div class="menu-item" data-menu="file">
@@ -2204,8 +2214,13 @@ export class MainWindow {
                 document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
               });
               
-              console.log('[MENU] Menu bar initialized');
+              console.log('[MENU] Menu bar initialized successfully');
+              console.log('[MENU] Menu HTML content length:', menuBar.innerHTML.length);
+            } else {
+              console.error('[MENU] Menu bar element not found!');
             }
+          } else {
+            console.log('[MENU] Skipping menu initialization - IDE mode is enabled');
           }
         });
       </script>
@@ -2249,6 +2264,9 @@ export class MainWindow {
               this.debugLoggerWindow.handleDTRReset();
               console.log('[IPC] DTR Reset triggered in Debug Logger');
             }
+            
+            // Signal parser that DTR reset occurred
+            this.serialProcessor.onDTRReset();
           } else {
             console.log('[IPC] DTR de-asserted');
           }
@@ -2489,20 +2507,22 @@ export class MainWindow {
           // ipcRenderer is already exposed on window from the HTML template
           const ipcRenderer = window.ipcRenderer;
         
-        // DTR button setup - direct pattern like RAM/FLASH
+        // DTR button setup - only do this once, not duplicated
         const dtrToggle = document.getElementById('dtr-toggle');
         const dtrCheckbox = document.getElementById('dtr-checkbox');
         
         console.log('[DTR SETUP] DTR Toggle found:', !!dtrToggle);
         console.log('[DTR SETUP] DTR Checkbox found:', !!dtrCheckbox);
         
-        if (dtrToggle) {
+        if (dtrToggle && !dtrToggle.hasAttribute('data-listener-attached')) {
+          dtrToggle.setAttribute('data-listener-attached', 'true');
           dtrToggle.addEventListener('click', () => {
             console.log('[DTR] Button clicked');
             ipcRenderer.send('toggle-dtr');
           });
         }
-        if (dtrCheckbox) {
+        if (dtrCheckbox && !dtrCheckbox.hasAttribute('data-listener-attached')) {
+          dtrCheckbox.setAttribute('data-listener-attached', 'true');
           dtrCheckbox.addEventListener('change', (e) => {
             if (!e.isTrusted) return; // Ignore programmatic changes
             console.log('[DTR] Checkbox changed');
@@ -2510,20 +2530,22 @@ export class MainWindow {
           });
         }
         
-        // RTS button setup - direct pattern like RAM/FLASH
+        // RTS button setup - only do this once, not duplicated
         const rtsToggle = document.getElementById('rts-toggle');
         const rtsCheckbox = document.getElementById('rts-checkbox');
         
         console.log('[RTS SETUP] RTS Toggle found:', !!rtsToggle);
         console.log('[RTS SETUP] RTS Checkbox found:', !!rtsCheckbox);
         
-        if (rtsToggle) {
+        if (rtsToggle && !rtsToggle.hasAttribute('data-listener-attached')) {
+          rtsToggle.setAttribute('data-listener-attached', 'true');
           rtsToggle.addEventListener('click', () => {
             console.log('[RTS] Button clicked');
             ipcRenderer.send('toggle-rts');
           });
         }
-        if (rtsCheckbox) {
+        if (rtsCheckbox && !rtsCheckbox.hasAttribute('data-listener-attached')) {
+          rtsCheckbox.setAttribute('data-listener-attached', 'true');
           rtsCheckbox.addEventListener('change', (e) => {
             if (!e.isTrusted) return; // Ignore programmatic changes
             console.log('[RTS] Checkbox changed');
@@ -4033,6 +4055,14 @@ export class MainWindow {
           }
           // Signal parser that DTR reset occurred - expect sync
           this.serialProcessor.onDTRReset();
+        } else {
+          // DTR OFF - maintain logging continuity, just log the state change
+          this.logMessage(`[DTR] Control line released - continuing normal operation`);
+          // Ensure Debug Logger continues logging without interruption
+          if (this.debugLoggerWindow) {
+            // No reset needed - just continue logging
+            this.debugLoggerWindow.logSystemMessage('[DTR OFF] Control line released');
+          }
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -4059,6 +4089,14 @@ export class MainWindow {
           }
           // Sync parser on RTS reset (using RTS-specific method)
           this.serialProcessor.onRTSReset();
+        } else {
+          // RTS OFF - maintain logging continuity, just log the state change
+          this.logMessage(`[RTS] Control line released - continuing normal operation`);
+          // Ensure Debug Logger continues logging without interruption
+          if (this.debugLoggerWindow) {
+            // No reset needed - just continue logging
+            this.debugLoggerWindow.logSystemMessage('[RTS OFF] Control line released');
+          }
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -4068,23 +4106,25 @@ export class MainWindow {
   }
 
   private async toggleDTR(): Promise<void> {
-    // State management: press-on/press-off (NOT auto-toggle)
+    // DTR Toggle: State Management (press-on/press-off, NOT auto-toggle)
     const newState = !this.dtrState;
+    this.logMessage(`[DTR TOGGLE] Setting DTR to: ${newState} (was ${this.dtrState})`);
+    
     if (this._serialPort) {
       try {
         await this._serialPort.setDTR(newState);
-        this.logMessage(`[DTR] Hardware control set to ${newState ? 'ON' : 'OFF'}`);
+        this.logMessage(`[DTR TOGGLE] DTR line set to: ${newState}`);
         
         // Only update state after successful hardware change
         this.dtrState = newState;
         
-        // If DTR goes high, reset the Debug Logger and sync parser
+        // Trigger reset when DTR is asserted (going high)
         if (this.dtrState) {
-          this.logMessage(`[DTR RESET] Device reset via DTR - clearing log and synchronizing parser`);
+          this.logMessage(`[DTR TOGGLE] DTR asserted - triggering reset`);
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.handleDTRReset();
           }
-          // Signal parser that DTR reset occurred - expect sync
+          // Signal parser that DTR reset occurred
           this.serialProcessor.onDTRReset();
           
           // Save DTR preference for this device when successfully used
@@ -4095,16 +4135,21 @@ export class MainWindow {
             this.controlLineMode = 'DTR';
             this.updateControlLineUI();
           }
+        } else {
+          this.logMessage(`[DTR TOGGLE] DTR de-asserted`);
         }
+        
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logMessage(`ERROR: Failed to set DTR: ${errorMsg}`);
-        // Don't change state on error
+        // Don't change state on error - keep checkbox in sync with actual state
       }
     } else {
-      // No serial port, just update state for UI consistency
+      this.logMessage(`[DTR TOGGLE] No serial port connected - updating state for UI consistency`);
+      // Still update state when no port connected (for UI consistency)
       this.dtrState = newState;
     }
+    
     // Update checkbox via webContents send (IPC)
     if (this.mainWindow?.webContents) {
       this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
@@ -4853,12 +4898,16 @@ export class MainWindow {
     const symbol = isLogging ? '●' : '○';
     const color = isLogging ? '#00FF00' : '#333';
     this.safeExecuteJS(`
-      // Update log LED indicator
-      const logLed = document.getElementById('log-led');
-      if (logLed) {
-        logLed.textContent = '${symbol}';
-        logLed.style.color = '${color}';
-      }
+      (function() {
+        // Update log LED indicator
+        const logLed = document.getElementById('log-led');
+        if (logLed) {
+          logLed.textContent = '${symbol}';
+          logLed.style.color = '${color}';
+        } else {
+          console.warn('[LOG LED] Element not found in DOM');
+        }
+      })();
     `, 'updateLoggingStatus');
   }
 }

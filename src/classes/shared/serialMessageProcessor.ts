@@ -133,6 +133,12 @@ export class SerialMessageProcessor extends EventEmitter {
       const isBeforeReset = this.dtrResetManager.isMessageBeforeReset(event.message.timestamp);
       this.dtrResetManager.updateMessageCounts(isBeforeReset);
     });
+    
+    // CRITICAL: Forward debugger packet event for P2 response
+    this.router.on('debuggerPacketReceived', (packet: Uint8Array) => {
+      console.log('[Processor] Forwarding debuggerPacketReceived event');
+      this.emit('debuggerPacketReceived', packet);
+    });
 
     this.router.on('routingError', (error) => {
       console.error('[Processor] Routing error:', error);
@@ -143,6 +149,12 @@ export class SerialMessageProcessor extends EventEmitter {
     this.dtrResetManager.on('resetDetected', (event) => {
       console.log(`[Processor] ${event.type} reset detected`);
       this.emit('resetDetected', event);
+      // Also emit specific event for reset type
+      if (event.type === 'DTR') {
+        this.emit('dtrReset', event);
+      } else if (event.type === 'RTS') {
+        this.emit('rtsReset', event);
+      }
     });
 
     this.dtrResetManager.on('rotateLog', (event) => {

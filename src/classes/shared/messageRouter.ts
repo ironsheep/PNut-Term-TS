@@ -30,7 +30,7 @@ export interface RoutingConfig {
   [MessageType.BACKTICK_WINDOW]: RouteDestination[];
   
   // TIER 2: NEEDS CONTEXT
-  [MessageType.DEBUGGER_80BYTE]: RouteDestination[];
+  [MessageType.DEBUGGER_416BYTE]: RouteDestination[];
   
   // DEFAULT ROUTE
   [MessageType.TERMINAL_OUTPUT]: RouteDestination[];
@@ -67,7 +67,7 @@ export interface RouterStats {
  * ROUTING PHILOSOPHY:
  * - TERMINAL_OUTPUT → Main terminal (blue window) by default
  * - COG_MESSAGE → Individual COG logger windows  
- * - DEBUGGER_80BYTE → COG debugger windows (creates on demand)
+ * - DEBUGGER_416BYTE → COG debugger windows (creates on demand)
  * - DB_PACKET → Protocol handler for 0xDB packets
  * - P2_SYSTEM_INIT → Debug Logger + golden sync processing
  * - BACKTICK_WINDOW → Window command processor
@@ -97,7 +97,7 @@ export class MessageRouter extends EventEmitter {
     [MessageType.DB_PACKET]: 0,
     [MessageType.COG_MESSAGE]: 0,
     [MessageType.BACKTICK_WINDOW]: 0,
-    [MessageType.DEBUGGER_80BYTE]: 0,
+    [MessageType.DEBUGGER_416BYTE]: 0,
     [MessageType.P2_SYSTEM_INIT]: 0,
     [MessageType.TERMINAL_OUTPUT]: 0,
     [MessageType.INCOMPLETE_DEBUG]: 0,
@@ -138,7 +138,7 @@ export class MessageRouter extends EventEmitter {
       [MessageType.DB_PACKET]: [],
       [MessageType.COG_MESSAGE]: [],
       [MessageType.BACKTICK_WINDOW]: [],
-      [MessageType.DEBUGGER_80BYTE]: [],
+      [MessageType.DEBUGGER_416BYTE]: [],
       [MessageType.P2_SYSTEM_INIT]: [],
       [MessageType.TERMINAL_OUTPUT]: [],
       [MessageType.INCOMPLETE_DEBUG]: [],
@@ -352,6 +352,12 @@ export class MessageRouter extends EventEmitter {
     // Update statistics
     this.messagesRouted[message.type]++;
     
+    // CRITICAL: Emit event for debugger packets that require response
+    if (message.type === 'DEBUGGER_416BYTE' && message.data instanceof Uint8Array) {
+      console.log('[MessageRouter] Emitting debuggerPacketReceived event for P2 response');
+      this.emit('debuggerPacketReceived', message.data);
+    }
+    
     // Record performance metrics
     if (this.performanceMonitor) {
       this.performanceMonitor.recordRouting();
@@ -465,10 +471,10 @@ export class MessageRouter extends EventEmitter {
 
     // 80-byte debugger packets to both debugger windows and debug logger
     if (debuggerWindow) {
-      this.registerDestination(MessageType.DEBUGGER_80BYTE, debuggerWindow);
+      this.registerDestination(MessageType.DEBUGGER_416BYTE, debuggerWindow);
     }
     // Also send to debug logger so user can see the binary debug data
-    this.registerDestination(MessageType.DEBUGGER_80BYTE, debugLogger);
+    this.registerDestination(MessageType.DEBUGGER_416BYTE, debugLogger);
 
     // Backtick window commands to window creator
     this.registerDestination(MessageType.BACKTICK_WINDOW, windowCreator);

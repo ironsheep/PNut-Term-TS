@@ -1153,13 +1153,21 @@ The P2 Debugger Window provides comprehensive debugging capabilities for all 8 C
 The debugger uniquely supports two simultaneous protocols:
 
 1. **Binary Protocol** (Debugger-specific):
-   - 20-long initial messages from P2
-   - COG/LUT CRCs and HUB checksums
-   - Memory block requests/responses
-   - Routed by COG ID to specific windows
+   - 416-byte debugger packets (104 longs) per COG
+   - Packet structure:
+     - Status block: 40 bytes (10 longs)
+       - First long: COG ID (0x00000001 for COG1, 0x00000002 for COG2, etc.)
+       - Remaining 9 longs: Break status, stack pointers, PC, registers, etc.
+     - CRC block: 128 bytes (32 longs) for COG/LUT memory verification
+     - Hub checksums: 248 bytes (62 longs) for HUB memory tracking
+   - All multi-byte values are little-endian
+   - Serial format: 8-N-1 at configured baud rate
+   - TX pin must stay high when idle (for clean packet boundaries)
+   - Routed by COG ID to specific debugger windows
 
 2. **Text Protocol** (DEBUG commands):
    - Standard DEBUG window commands
+   - ASCII messages in format: "CogN  [content]\r\n"
    - Coexists with binary protocol
    - WindowRouter handles discrimination
 
@@ -1214,6 +1222,31 @@ P2 Device → USB Serial → Downloader → WindowRouter → Debug Windows
 - Usage: Regression testing, error analysis
 - Parse errors: Logged with context for debugging
 - First toolchain to provide automatic regression logging
+
+### P2 Debugger Protocol Details (Discovered via Analysis)
+
+**Transmission Sequence** (from Spin sender code analysis):
+1. ASCII COG initialization message: "CogN  INIT XXXXXXXX XXXXXXXX load\r\n" (37 bytes)
+2. Binary debugger packet (416 bytes total):
+   - Sent immediately after ASCII message
+   - Contains complete COG state and memory checksums
+
+**Packet Timing**:
+- Packets can be sent back-to-back or with delays
+- TX line stays high between packets (idle state)
+- Timing gaps help identify packet boundaries in serial stream
+
+**Multiple COG Support**:
+- Each COG sends its own ASCII message + 416-byte packet pair
+- COG ID in first long of status block identifies the sender
+- Debugger windows are opened based on received COG IDs
+- Up to 8 COGs (0-7) can be debugged simultaneously
+
+**Current Implementation Issue**:
+- MessageExtractor expects 80-byte packets (20 longs)
+- Actual packets are 416 bytes (104 longs)
+- This causes extraction to fail after first 80 bytes
+- COG2 and subsequent packets are not recognized
 
 ### Debug Command Processing
 

@@ -18,7 +18,7 @@ export enum MessageType {
   BACKTICK_WINDOW = 'BACKTICK_WINDOW',        // Backtick window commands with catalog validation
   
   // TIER 2: NEEDS CONTEXT VALIDATION  
-  DEBUGGER_80BYTE = 'DEBUGGER_80BYTE',        // COG ID (0-7) + 79 bytes with validation
+  DEBUGGER_416BYTE = 'DEBUGGER_416BYTE',      // COG ID (0-7) + 415 bytes (full packet)
   P2_SYSTEM_INIT = 'P2_SYSTEM_INIT',          // "Cog0 INIT $0000_0000 $0000_0000 load"
   
   // DEFAULT ROUTE
@@ -145,7 +145,7 @@ export class MessageExtractor extends EventEmitter {
     [MessageType.DB_PACKET]: 0,
     [MessageType.COG_MESSAGE]: 0,
     [MessageType.BACKTICK_WINDOW]: 0,
-    [MessageType.DEBUGGER_80BYTE]: 0,
+    [MessageType.DEBUGGER_416BYTE]: 0,
     [MessageType.P2_SYSTEM_INIT]: 0,
     [MessageType.TERMINAL_OUTPUT]: 0,
     [MessageType.INCOMPLETE_DEBUG]: 0,
@@ -213,17 +213,17 @@ export class MessageExtractor extends EventEmitter {
       description: 'Backtick window commands with catalog validation'
     },
 
-    // TIER 2: 80+ byte Debugger Packet - NEEDS CONTEXT (Priority 5)
+    // TIER 2: 416-byte Debugger Packet - NEEDS CONTEXT (Priority 5)
     {
-      messageType: MessageType.DEBUGGER_80BYTE,
+      messageType: MessageType.DEBUGGER_416BYTE,
       confidence: 'NEEDS_CONTEXT',
       tier1Pattern: [
         { type: PatternElementType.COG_ID_BINARY, min: 0, max: 7 },
-        { type: PatternElementType.ANY_BYTE, length: 79 }       // Minimum remaining packet data
+        { type: PatternElementType.ANY_BYTE, length: 415 }       // Remaining packet data (40 status + 128 CRC + 248 hub)
       ],
       tier2Validation: ['VALIDATE_DEBUGGER_PACKET_SIZE', 'VALIDATE_COG_CONTEXT'],
       priority: 5,
-      description: '80+ byte debugger packets with binary COG IDs (0x00-0x07)'
+      description: '416-byte debugger packets: 40-byte status + 128-byte CRC + 248-byte hub checksums'
     }
   ];
 
@@ -769,18 +769,18 @@ export class MessageExtractor extends EventEmitter {
   }
 
   /**
-   * Validate debugger packet size (flexible 80+ bytes)
-   * Use heuristics to determine packet boundaries without look-ahead
+   * Validate debugger packet size (exactly 416 bytes)
+   * P2 debugger sends: 40-byte status + 128-byte CRC + 248-byte hub checksums
    */
   private validateDebuggerPacketSize(metadata: any): { valid: boolean; status: string; warning?: string } {
     this.buffer.savePosition();
     
-    // FIXED: For COG debugger packets, we know they are exactly 80 bytes
-    // Don't scan for boundaries - embedded EOL bytes would confuse boundary detection
+    // CRITICAL: COG debugger packets are exactly 416 bytes
+    // Don't scan for boundaries - binary data could contain any byte value
     
     let availableBytes = 0;
     // Count exactly how many bytes are available (including the COG ID)
-    while (availableBytes < 80 && this.buffer.hasData()) {
+    while (availableBytes < 416 && this.buffer.hasData()) {
       const result = this.buffer.next();
       if (result.status !== NextStatus.DATA) {
         break;
@@ -790,13 +790,13 @@ export class MessageExtractor extends EventEmitter {
     
     this.buffer.restorePosition();
     
-    // We need exactly 80 bytes for a complete COG packet
-    if (availableBytes >= 80) {
-      metadata.actualPacketSize = 80; // Always exactly 80 bytes
+    // We need exactly 416 bytes for a complete COG packet
+    if (availableBytes >= 416) {
+      metadata.actualPacketSize = 416; // Always exactly 416 bytes
       return { valid: true, status: 'COMPLETE' };
     }
     
-    return { valid: false, status: 'INCOMPLETE', warning: `Insufficient data: ${availableBytes} bytes (need exactly 80)` };
+    return { valid: false, status: 'INCOMPLETE', warning: `Insufficient data: ${availableBytes} bytes (need exactly 416)` };
   }
 
   /**
@@ -878,7 +878,7 @@ export class MessageExtractor extends EventEmitter {
            messagesExtracted < this.MAX_BATCH_SIZE &&
            batchTime < this.MAX_BATCH_TIME_MS) {
       
-      const extracted = this.extractNextMessage();
+        const extracted = this.extractNextMessage();
       
       if (extracted) {
         messagesExtracted++;
@@ -984,7 +984,7 @@ export class MessageExtractor extends EventEmitter {
     }
     
     // For debugger packets, use actual measured size if available
-    if (pattern.messageType === MessageType.DEBUGGER_80BYTE && metadata.actualPacketSize) {
+    if (pattern.messageType === MessageType.DEBUGGER_416BYTE && metadata.actualPacketSize) {
       totalLength = metadata.actualPacketSize;
     }
     
