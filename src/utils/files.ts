@@ -130,9 +130,9 @@ export function dirExists(pathSpec: string): boolean {
 export function ensureDirExists(dirSpec: string): void {
   if (!dirExists(dirSpec)) {
     fs.mkdirSync(dirSpec, { recursive: true });
-    //console.log(`Log folder created at: ${dirSpec}`);
+    console.log(`[UTIL] Log folder created at: ${dirSpec}`);
   } else {
-    //console.log(`Log folder already exists at: ${dirSpec}`);
+    console.log(`[UTIL] Log folder already exists at: ${dirSpec}`);
   }
 }
 

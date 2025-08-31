@@ -232,6 +232,80 @@ PNut-Term-TS combines behaviors from two distinct Parallax tools for Windows:
   - Integrated/lightweight window
   - Missing from PNut-Term-TS
 
+## Menu System Architecture (Platform-Specific By Design)
+
+### Intentional Dual-Menu Design on macOS
+
+The menu system in PNut-Term-TS uses a **deliberately different approach** for each platform, with macOS having a unique dual-menu architecture that may appear redundant but is intentional:
+
+#### Key Design Decision: Always `setMenuBarVisibility(false)`
+
+In both standalone and IDE modes, we set `mainWindow.setMenuBarVisibility(false)`. This is **NOT** a mistake or redundancy - it's intentional:
+
+```typescript
+if (!isIdeMode) {
+  // Standard mode: Use custom HTML menu bar
+  this.mainWindow.setMenuBarVisibility(false);  // Disable Electron's native in-window menu
+} else {
+  // IDE mode: No menus at all
+  this.mainWindow.setMenuBarVisibility(false);  // Disable Electron's native in-window menu
+}
+```
+
+**Why FALSE in both cases:**
+- We **never** want Electron's native in-window menu bar
+- We use our **custom HTML menu system** for cross-platform consistency
+- This gives us full control over styling, behavior, and user experience
+
+#### Platform-Specific Behavior
+
+**macOS (Standalone Mode):**
+- **System Menu Bar** (top of screen): Full native macOS menu created via `Menu.setApplicationMenu()`
+  - Contains: PNut-Term-TS (app menu), Edit, Window menus
+  - Provides standard macOS keyboard shortcuts and behaviors
+  - Users expect this on macOS for consistency with other apps
+- **HTML Menu Bar** (in window): Custom menu system with File, Edit, Debug, Tools, Window, Help
+  - Provides application-specific functionality
+  - Consistent with Windows/Linux experience
+  - Primary interaction point for debug operations
+- **Result**: Intentional dual-menu system - system menu for macOS conventions, HTML menu for app features
+
+**macOS (IDE Mode):**
+- **System Menu Bar**: Still created (minimal - just app essentials)
+- **HTML Menu Bar**: Not created
+- **Result**: Minimal interface for VSCode integration
+
+**Windows/Linux (Standalone Mode):**
+- **System Menu**: None (`Menu.setApplicationMenu(null)`)
+- **HTML Menu Bar**: Full custom menu system
+- **Native Menu Bar**: Disabled via `setMenuBarVisibility(false)`
+- **Result**: Single, consistent HTML menu system
+
+**Windows/Linux (IDE Mode):**
+- **System Menu**: None
+- **HTML Menu Bar**: Not created
+- **Native Menu Bar**: Disabled
+- **Result**: No menus at all
+
+#### Why This Architecture?
+
+1. **Cross-Platform Consistency**: The HTML menu looks and behaves identically across all platforms
+2. **macOS Convention Compliance**: Mac users expect certain system menu items (Quit, About, Preferences)
+3. **Full Control**: HTML/CSS/JS menus can be precisely styled and controlled
+4. **No Native Conflicts**: By disabling Electron's native in-window menu, we avoid conflicts
+5. **IDE Integration**: Clean integration with VSCode when launched in IDE mode
+
+#### Common Misconception
+
+It may appear that having both a system menu and HTML menu on macOS is redundant, but this is **intentional**:
+- The system menu provides macOS-standard operations (Cmd+Q for quit, etc.)
+- The HTML menu provides application-specific features with consistent UX
+- Some operations may appear in both, giving users choice of interaction style
+
+#### Implementation Note
+
+The `setMenuBarVisibility(false)` call does **NOT** affect the macOS system menu bar (which is always at the top of the screen). It only controls whether there would be an additional native menu bar inside the window itself - which we never want because we use our custom HTML implementation.
+
 ### Debug Traffic Architecture
 
 #### Critical Baud Rate Distinction

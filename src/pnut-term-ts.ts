@@ -255,15 +255,11 @@ export class DebugTerminalInTypeScript {
       this.context.runEnvironment.ideMode = true;
     }
 
-    // Validate and store RTS override flag (only allowed with IDE mode)
+    // Store RTS override flag (works in both standalone and IDE modes)
     if (options.rts) {
-      if (!options.ide) {
-        this.context.logger.errorMsg('--rts option requires --ide mode');
-        this.shouldAbort = true;
-      } else {
-        this.context.runEnvironment.rtsOverride = true;
-        this.context.logger.verboseMsg('RTS override enabled for IDE mode');
-      }
+      this.context.runEnvironment.rtsOverride = true;
+      const modeText = options.ide ? 'IDE mode' : 'standalone mode';
+      this.context.logger.verboseMsg(`RTS control line enabled for ${modeText}`);
     }
 
     if (!options.quiet) {

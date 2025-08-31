@@ -161,26 +161,43 @@ export class DebugLoggerWindow extends DebugWindowBase {
     try {
       // Create logs directory
       const logsDir = path.join(process.cwd(), 'logs');
+      console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
       
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
       const basename = 'debug';
-      this.logFilePath = path.join(logsDir, `${basename}_${timestamp}_debug.log`);
+      this.logFilePath = path.join(logsDir, `${basename}_${timestamp}.log`); // Remove duplicate "_debug"
+      console.log('[DEBUG LOGGER] Log file path:', this.logFilePath);
       
       // Create write stream
       this.logFile = fs.createWriteStream(this.logFilePath, { flags: 'a' });
+      console.log('[DEBUG LOGGER] Write stream created successfully');
       
-      // Write header
+      // Write header and force flush to ensure file is created
       this.logFile.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
       this.logFile.write(`Program: ${basename}\n`);
-      this.logFile.write(`=====================================\n\n`);
+      this.logFile.write(`=====================================\n\n`, (err) => {
+        if (err) {
+          console.error('[DEBUG LOGGER] Failed to write header:', err);
+        } else {
+          console.log('[DEBUG LOGGER] Log file header written and flushed');
+        }
+      });
+      
+      // Force a sync to ensure file is created on disk
+      if (this.logFile && 'fd' in this.logFile) {
+        fs.fsyncSync((this.logFile as any).fd);
+        console.log('[DEBUG LOGGER] Log file synced to disk');
+      }
       
       // Notify MainWindow that logging started
       this.notifyLoggingStatus(true);
+      console.log('[DEBUG LOGGER] Log file initialized successfully at:', this.logFilePath);
       
     } catch (error) {
       // Use base class logMessage to send to console, not Debug Logger window
+      console.error('[DEBUG LOGGER] Failed to initialize log file:', error);
       super.logMessage(`Failed to initialize log file: ${error}`, 'DebugLogger');
       // Fall back to console logging only
       this.notifyLoggingStatus(false);
@@ -920,15 +937,22 @@ export class DebugLoggerWindow extends DebugWindowBase {
       const timestamp = new Date().toISOString();
       this.writeBuffer.push(`[${timestamp}] ${message}\n`);
       
+      // Log first few writes to confirm it's working
+      if (this.writeBuffer.length <= 3) {
+        console.log('[DEBUG LOGGER] Added to write buffer:', message.substring(0, 50));
+      }
+      
       // Schedule write if not already scheduled
       if (!this.writeTimer) {
         this.writeTimer = setTimeout(() => this.flushWriteBuffer(), this.WRITE_INTERVAL_MS);
       }
       
-      // Force flush if buffer is getting large (4KB)
-      if (this.writeBuffer.join('').length > 4096) {
+      // Force flush if buffer is getting large (4KB) or if this is the first write
+      if (this.writeBuffer.join('').length > 4096 || this.writeBuffer.length === 1) {
         this.flushWriteBuffer();
       }
+    } else {
+      console.warn('[DEBUG LOGGER] writeToLog called but logFile is null');
     }
   }
   
@@ -948,10 +972,14 @@ export class DebugLoggerWindow extends DebugWindowBase {
       // Async write with error handling
       this.logFile.write(data, (err) => {
         if (err) {
-          console.error('Failed to write to log file:', err);
+          console.error('[DEBUG LOGGER] Failed to write to log file:', err);
           // Could implement disk full handling here
+        } else {
+          console.log(`[DEBUG LOGGER] Flushed ${data.length} bytes to log file`);
         }
       });
+    } else if (this.writeBuffer.length > 0) {
+      console.warn('[DEBUG LOGGER] flushWriteBuffer called but logFile is null or not writable');
     }
   }
 

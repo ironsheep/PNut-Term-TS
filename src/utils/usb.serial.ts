@@ -298,8 +298,8 @@ export class UsbSerial extends EventEmitter {
     //const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
     //this.downloadNew(myUint8Array);
     
-    // Use RTS instead of DTR if IDE mode has RTS override
-    if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+    // Use RTS instead of DTR if RTS override is enabled
+    if (this.context.runEnvironment.rtsOverride) {
       await this.toggleRTS();
     } else {
       await this.toggleDTR();
@@ -388,8 +388,8 @@ export class UsbSerial extends EventEmitter {
     this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
     
-    // Use RTS instead of DTR if IDE mode has RTS override
-    if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+    // Use RTS instead of DTR if RTS override is enabled
+    if (this.context.runEnvironment.rtsOverride) {
       await this.setRts(true);
       await waitSec(1);
       await this.setRts(false);
@@ -421,8 +421,8 @@ export class UsbSerial extends EventEmitter {
         // continue with ID effort...
         await waitMSec(250);
         
-        // Use RTS instead of DTR if IDE mode has RTS override
-        if (this.context.runEnvironment.ideMode && this.context.runEnvironment.rtsOverride) {
+        // Use RTS instead of DTR if RTS override is enabled
+        if (this.context.runEnvironment.rtsOverride) {
           await this.setRts(true);
           await waitMSec(10);
           await this.setRts(false);

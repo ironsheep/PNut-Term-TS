@@ -2,14 +2,20 @@
 
 Essential guidance for Claude Code in PNut-Term-TS repository.
 
-## 🚨 SESSION START - MANDATORY
+## 🎯 CRITICAL: SESSION START PROTOCOL (EXECUTE IMMEDIATELY)
+
+**MANDATORY ON SESSION START/RESUME:**
+
 ```bash
-mcp__todo-mcp__context_resume  # ALWAYS FIRST - Shows tasks/context/state
+mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
+# Provides: current tasks, context state, next recommendations - everything needed
 ```
-**NON-OPTIONAL**: Shows in-progress tasks, recent context (10min), current state. Without this = flying blind.
+
+**ALWAYS execute this command FIRST before any other work.**
 
 ### 🏔️ SESSION MINDSET - TECHNICAL CLIMBING
 **Before ANY work**: Remember we follow **Technical Climbing Methodology**
+
 - **Start from last protection point** (working code + tests + documentation)  
 - **Place protection before climbing** (document/test what works before changing)
 - **Never fall below protection** (don't break working functionality)
@@ -120,6 +126,20 @@ force:true               # Boolean, not string
 **VALUE SIZE matters more than key count**:
 - Keep values under 500 chars (pointers, not payloads)
 - Use patterns for bulk operations
+
+**🔔 TodoWrite Reminder = Context Assessment Point**
+When TodoWrite reminders appear, **ASSESS** (don't auto-save):
+- **"Have I discovered something I haven't preserved?"** → Save if yes
+- **"Is there a critical insight that would be lost?"** → Save if yes
+- **"Am I at a natural checkpoint worth marking?"** → Save if yes
+- **"Would future-me need this context?"** → Save if yes
+
+**Save ONLY when valuable**, examples:
+- `context_set key:"lesson_cog2_fails" value:"COG2 extraction stops after COG1"`
+- `context_set key:"workaround_dtr_double" value:"Check sequence numbers"`
+- Skip if: routine progress, obvious steps, temporary state
+
+**Goal**: Quality over quantity - preserve insights, not activity
 
 ```bash
 # Pattern-based cleanup (v0.6.8.2)

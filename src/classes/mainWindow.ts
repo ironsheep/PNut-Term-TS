@@ -2241,103 +2241,16 @@ export class MainWindow {
     ipcMain.removeAllListeners('toggle-dtr');
     ipcMain.removeAllListeners('toggle-rts');
     
-    // DTR Toggle Handler - State Management (press-on/press-off, NOT auto-toggle)
+    // DTR Toggle Handler - Delegate to toggleDTR to avoid duplication
     ipcMain.on('toggle-dtr', async () => {
-      console.log('[IPC] Received toggle-dtr request');
-      // State management: explicitly set next state
-      const newState = !this.dtrState;
-      console.log(`[IPC] Setting DTR to: ${newState} (was ${this.dtrState})`);
-      
-      // Actually control the DTR line on serial port
-      if (this._serialPort) {
-        try {
-          await this._serialPort.setDTR(newState);
-          console.log(`[IPC] DTR line set to: ${newState}`);
-          
-          // Only update state after successful hardware change
-          this.dtrState = newState;
-          
-          // Trigger reset when DTR is asserted (going high)
-          if (this.dtrState) {
-            console.log('[IPC] DTR asserted, triggering reset');
-            if (this.debugLoggerWindow) {
-              this.debugLoggerWindow.handleDTRReset();
-              console.log('[IPC] DTR Reset triggered in Debug Logger');
-            }
-            
-            // Signal parser that DTR reset occurred
-            this.serialProcessor.onDTRReset();
-          } else {
-            console.log('[IPC] DTR de-asserted');
-          }
-          
-          // Update the checkbox in the renderer after successful change
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
-          }
-        } catch (error) {
-          console.error('[IPC] Error setting DTR:', error);
-          // Don't change state on error - keep checkbox in sync with actual state
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
-          }
-        }
-      } else {
-        console.warn('[IPC] No serial port connected, cannot set DTR');
-        // Still update state when no port connected (for UI consistency)
-        this.dtrState = newState;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
-        }
-      }
+      console.log('[IPC] Received toggle-dtr request, delegating to toggleDTR()');
+      await this.toggleDTR();
     });
     
-    // RTS Toggle Handler - State Management (press-on/press-off, NOT auto-toggle)
+    // RTS Toggle Handler - Delegate to toggleRTS to avoid duplication
     ipcMain.on('toggle-rts', async () => {
-      console.log('[IPC] Received toggle-rts request');
-      // State management: explicitly set next state
-      const newState = !this.rtsState;
-      console.log(`[IPC] Setting RTS to: ${newState} (was ${this.rtsState})`);
-      
-      // Actually control the RTS line on serial port
-      if (this._serialPort) {
-        try {
-          await this._serialPort.setRTS(newState);
-          console.log(`[IPC] RTS line set to: ${newState}`);
-          
-          // Only update state after successful hardware change
-          this.rtsState = newState;
-          
-          // Trigger reset when RTS is asserted (going high)
-          if (this.rtsState) {
-            console.log('[IPC] RTS asserted, triggering reset');
-            if (this.debugLoggerWindow) {
-              this.debugLoggerWindow.handleRTSReset();
-              console.log('[IPC] RTS Reset triggered in Debug Logger');
-            }
-          } else {
-            console.log('[IPC] RTS de-asserted');
-          }
-          
-          // Update the checkbox in the renderer after successful change
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('update-rts-state', this.rtsState);
-          }
-        } catch (error) {
-          console.error('[IPC] Error setting RTS:', error);
-          // Don't change state on error - keep checkbox in sync with actual state
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('update-rts-state', this.rtsState);
-          }
-        }
-      } else {
-        console.warn('[IPC] No serial port connected, cannot set RTS');
-        // Still update state when no port connected (for UI consistency)
-        this.rtsState = newState;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('update-rts-state', this.rtsState);
-        }
-      }
+      console.log('[IPC] Received toggle-rts request, delegating to toggleRTS()');
+      await this.toggleRTS();
     });
     
     console.log('[IPC] DTR/RTS handlers registered');
@@ -2483,6 +2396,8 @@ export class MainWindow {
       if (logDisplayName.length == 0) {
         logDisplayName = '{none}';
         this.loggingToFile = false;
+        // Initialize log LED to OFF state
+        this.updateLoggingStatus(false);
       } else {
         this.enableLogging(logDisplayName);
       }
@@ -2492,89 +2407,8 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
       
-      // First, expose ipcRenderer to the window in a separate call
-      this.mainWindow.webContents.send('init-ipc');
-      
-      // Then set up event handlers using simple JavaScript
+      // Set up font selector dropdown (this is the only one not in HTML template)
       this.safeExecuteJS(`
-        (function() {
-          // Use the pre-exposed window.ipcRenderer from HTML template
-          if (!window.ipcRenderer) {
-            console.error('[IPC ERROR] window.ipcRenderer not available - may need to wait for DOM ready');
-            return;
-          }
-          
-          // ipcRenderer is already exposed on window from the HTML template
-          const ipcRenderer = window.ipcRenderer;
-        
-        // DTR button setup - only do this once, not duplicated
-        const dtrToggle = document.getElementById('dtr-toggle');
-        const dtrCheckbox = document.getElementById('dtr-checkbox');
-        
-        console.log('[DTR SETUP] DTR Toggle found:', !!dtrToggle);
-        console.log('[DTR SETUP] DTR Checkbox found:', !!dtrCheckbox);
-        
-        if (dtrToggle && !dtrToggle.hasAttribute('data-listener-attached')) {
-          dtrToggle.setAttribute('data-listener-attached', 'true');
-          dtrToggle.addEventListener('click', () => {
-            console.log('[DTR] Button clicked');
-            ipcRenderer.send('toggle-dtr');
-          });
-        }
-        if (dtrCheckbox && !dtrCheckbox.hasAttribute('data-listener-attached')) {
-          dtrCheckbox.setAttribute('data-listener-attached', 'true');
-          dtrCheckbox.addEventListener('change', (e) => {
-            if (!e.isTrusted) return; // Ignore programmatic changes
-            console.log('[DTR] Checkbox changed');
-            ipcRenderer.send('toggle-dtr');
-          });
-        }
-        
-        // RTS button setup - only do this once, not duplicated
-        const rtsToggle = document.getElementById('rts-toggle');
-        const rtsCheckbox = document.getElementById('rts-checkbox');
-        
-        console.log('[RTS SETUP] RTS Toggle found:', !!rtsToggle);
-        console.log('[RTS SETUP] RTS Checkbox found:', !!rtsCheckbox);
-        
-        if (rtsToggle && !rtsToggle.hasAttribute('data-listener-attached')) {
-          rtsToggle.setAttribute('data-listener-attached', 'true');
-          rtsToggle.addEventListener('click', () => {
-            console.log('[RTS] Button clicked');
-            ipcRenderer.send('toggle-rts');
-          });
-        }
-        if (rtsCheckbox && !rtsCheckbox.hasAttribute('data-listener-attached')) {
-          rtsCheckbox.setAttribute('data-listener-attached', 'true');
-          rtsCheckbox.addEventListener('change', (e) => {
-            if (!e.isTrusted) return; // Ignore programmatic changes
-            console.log('[RTS] Checkbox changed');
-            ipcRenderer.send('toggle-rts');
-          });
-        }
-        
-        // Download mode buttons (RAM/FLASH) - just set mode
-        const ramBtn = document.getElementById('download-ram');
-        if (ramBtn) {
-          ramBtn.addEventListener('click', () => {
-            ipcRenderer.send('download-ram');
-          });
-        }
-        const flashBtn = document.getElementById('download-flash');
-        if (flashBtn) {
-          flashBtn.addEventListener('click', () => {
-            ipcRenderer.send('download-flash');
-          });
-        }
-        
-        // Download file button - opens file dialog
-        const downloadBtn = document.getElementById('download-file');
-        if (downloadBtn) {
-          downloadBtn.addEventListener('click', () => {
-            ipcRenderer.send('download-file');
-          });
-        }
-        
         // Font selector dropdown
         const fontSelector = document.getElementById('font-selector');
         const logContent = document.getElementById('log-content');
@@ -2595,33 +2429,7 @@ export class MainWindow {
           fontSelector.value = savedFont;
           logContent.classList.add('font-' + savedFont);
         }
-        
-        // Recording buttons
-        const recordBtn = document.getElementById('record-btn');
-        if (recordBtn) {
-          recordBtn.addEventListener('click', () => {
-            ipcRenderer.send('toggle-recording');
-          });
-        }
-        const playbackBtn = document.getElementById('playback-btn');
-        if (playbackBtn) {
-          playbackBtn.addEventListener('click', () => {
-            ipcRenderer.send('play-recording');
-          });
-        }
-        
-        // Echo checkbox - send IPC message to main process
-        const echoCheckbox = document.getElementById('echo-checkbox');
-        if (echoCheckbox) {
-          echoCheckbox.addEventListener('change', (e) => {
-            ipcRenderer.send('toggle-echo', e.target.checked);
-          });
-        }
-        
-        // The menu is already initialized above at lines 2102-2168
-        // No need for duplicate initialization here
-        })();
-      `, 'toolbar-event-handlers');
+      `, 'font-selector-setup');
       
       // Setup text input control for data entry
       this.hookTextInputControl('dataEntry', (event: Event) => {
@@ -3157,16 +2965,8 @@ export class MainWindow {
       this.logFileSpec = path.join(logFolder, filename);
     }
     
-    // Update log LED (green filled when logging, gray empty when not)
-    const logSymbol = this.loggingToFile ? '●' : '○';
-    const logColor = this.loggingToFile ? '#00FF00' : '#808080';
-    this.safeExecuteJS(`
-      const logLed = document.getElementById('log-led');
-      if (logLed) {
-        logLed.textContent = '${logSymbol}';
-        logLed.style.color = '${logColor}';
-      }
-    `, 'updateActiveUIElements-logLed');
+    // Update log LED using the dedicated function
+    this.updateLoggingStatus(this.loggingToFile, filename);
     
     return filename;
   }
@@ -4047,15 +3847,10 @@ export class MainWindow {
         await this._serialPort.setDTR(this.dtrState);
         this.logMessage(`[DTR] Hardware control set to ${this.dtrState ? 'ON' : 'OFF'}`);
         
-        // If DTR goes high, reset the Debug Logger and sync parser
-        if (this.dtrState) {
-          this.logMessage(`[DTR RESET] Device reset via DTR - clearing log and synchronizing parser`);
-          if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleDTRReset();
-          }
-          // Signal parser that DTR reset occurred - expect sync
-          this.serialProcessor.onDTRReset();
-        } else {
+        // NOTE: Reset handling moved to toggleDTR() to avoid duplication
+        // This method is for direct state setting without reset logic
+        
+        if (!this.dtrState) {
           // DTR OFF - maintain logging continuity, just log the state change
           this.logMessage(`[DTR] Control line released - continuing normal operation`);
           // Ensure Debug Logger continues logging without interruption
@@ -4081,15 +3876,10 @@ export class MainWindow {
         await this._serialPort.setRTS(this.rtsState);
         this.logMessage(`[RTS] Hardware control set to ${this.rtsState ? 'ON' : 'OFF'}`);
         
-        // If RTS goes high, reset the Debug Logger
-        if (this.rtsState) {
-          this.logMessage(`[RTS RESET] Device reset via RTS - clearing log and synchronizing parser`);
-          if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleDTRReset(); // Same reset behavior for RTS
-          }
-          // Sync parser on RTS reset (using RTS-specific method)
-          this.serialProcessor.onRTSReset();
-        } else {
+        // NOTE: Reset handling moved to toggleRTS() to avoid duplication
+        // This method is for direct state setting without reset logic
+        
+        if (!this.rtsState) {
           // RTS OFF - maintain logging continuity, just log the state change
           this.logMessage(`[RTS] Control line released - continuing normal operation`);
           // Ensure Debug Logger continues logging without interruption
