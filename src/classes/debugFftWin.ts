@@ -15,6 +15,7 @@ import { ColorTranslator } from './shared/colorTranslator';
 import { InputForwarder } from './shared/inputForwarder';
 import { FFTProcessor } from './shared/fftProcessor';
 import { WindowFunctions } from './shared/windowFunctions';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
   DebugWindowBase,
@@ -1769,17 +1770,36 @@ export class DebugFFTWindow extends DebugWindowBase {
   private createDebugWindow(): void {
     this.logMessage(`Creating FFT debug window: ${this.displaySpec.windowTitle}`);
     
+    let x = this.displaySpec.position.x;
+    let y = this.displaySpec.position.y;
+    
+    // If position is at default (0,0), use WindowPlacer for intelligent positioning
+    if (x === 0 && y === 0) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: this.canvasWidth, height: this.canvasHeight },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`fft-${this.displaySpec.displayName}`, placementConfig);
+      x = position.x;
+      y = position.y;
+    }
+    
     // Create browser window
     this.debugWindow = new BrowserWindow({
       width: this.canvasWidth,
       height: this.canvasHeight,
-      x: this.displaySpec.position.x,
-      y: this.displaySpec.position.y,
+      x,
+      y,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
       }
     });
+
+    // Register window with WindowPlacer for position tracking
+    const windowPlacer = WindowPlacer.getInstance();
+    windowPlacer.registerWindow(`fft-${this.displaySpec.displayName}`, this.debugWindow);
 
     // Set up window event handlers
     this.debugWindow.on('ready-to-show', () => {

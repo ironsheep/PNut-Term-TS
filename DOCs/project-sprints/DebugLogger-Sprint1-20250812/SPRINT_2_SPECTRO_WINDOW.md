@@ -117,6 +117,35 @@ PUB spectro_test()
 - [ ] Zoom controls
 - [ ] Export capability
 
+## Architectural Guidelines (Based on Debug Window Standardization)
+
+### CRITICAL: Follow Established Patterns From Day One
+**Based on lessons from debugMidiWin.ts standardization work**
+
+#### ✅ Architecture Checklist
+- **Constructor**: `(ctx: Context, displaySpec: SpectroDisplaySpec, windowId?: string)`
+- **Import**: `BrowserWindow, CanvasRenderer, WindowPlacer, DisplaySpecParser`
+- **Extend**: `DebugWindowBase` properly
+- **Canvas**: Use shared `CanvasRenderer` - never direct canvas context
+- **Positioning**: `WindowPlacer` integration from start
+- **Window**: `BrowserWindow` pattern, not embedded HTML
+
+#### ❌ Avoid These Mistakes (debugMidiWin.ts lessons)
+- Don't create embedded HTML divs in main window
+- Don't use direct canvas context (`this.canvasCtx`)
+- Don't implement custom drawing primitives (use CanvasRenderer)
+- Don't skip WindowPlacer integration
+- Don't use non-standard constructor signatures
+
+#### 📋 Copy Patterns From
+- **Constructor**: `debugScopeWin.ts:191`
+- **WindowPlacer**: `debugFftWin.ts:1776-1785`
+- **BrowserWindow**: `debugFftWin.ts:1788-1798`
+- **CanvasRenderer**: Any scope/fft/logic window
+- **DisplaySpec**: `debugScopeWin.ts` ScopeDisplaySpec interface
+
+**This prevents architectural debt that requires later standardization work.**
+
 ## Risk Mitigation
 
 ### Risk: Complex FFT/Display Code
@@ -126,6 +155,10 @@ PUB spectro_test()
 ### Risk: Performance Issues
 - **Mitigation**: Optimize rendering pipeline
 - **Fallback**: Reduce FFT size or update rate
+
+### Risk: Architectural Inconsistency
+- **Mitigation**: Follow established patterns above from day one
+- **Fallback**: Will require standardization work later
 
 ### Risk: Time Constraint
 - **Mitigation**: Focus on core functionality first

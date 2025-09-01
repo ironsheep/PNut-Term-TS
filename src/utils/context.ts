@@ -40,7 +40,7 @@ export class Context {
   public runEnvironment: RuntimeEnvironment;
   public actions: Actions;
 
-  constructor() {
+  constructor(startupDirectory?: string) {
     this.runEnvironment = {
       selectedPropPlug: '',
       serialPortDevices: [],
@@ -74,7 +74,8 @@ export class Context {
       possiblePath = path.join(__dirname, 'ext');
     }
     this.extensionFolder = possiblePath;
-    this.currentFolder = process.cwd();
+    // Use provided startup directory, fallback to process.cwd() for compatibility
+    this.currentFolder = startupDirectory || process.cwd();
     this.logger = new Logger();
     this.logger.setContext(this);
   }

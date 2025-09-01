@@ -159,8 +159,8 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private initializeLogFile(): void {
     try {
-      // Create logs directory
-      const logsDir = path.join(process.cwd(), 'logs');
+      // Create logs directory using context startup directory
+      const logsDir = path.join(this.context.currentFolder, 'logs');
       console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
       
@@ -174,22 +174,34 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile = fs.createWriteStream(this.logFilePath, { flags: 'a' });
       console.log('[DEBUG LOGGER] Write stream created successfully');
       
-      // Write header and force flush to ensure file is created
-      this.logFile.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
-      this.logFile.write(`Program: ${basename}\n`);
-      this.logFile.write(`=====================================\n\n`, (err) => {
-        if (err) {
-          console.error('[DEBUG LOGGER] Failed to write header:', err);
-        } else {
-          console.log('[DEBUG LOGGER] Log file header written and flushed');
-        }
+      // Wait for the stream to be ready before writing
+      this.logFile.once('open', (fd) => {
+        console.log('[DEBUG LOGGER] Write stream opened with fd:', fd);
+        
+        // Write header and force flush to ensure file is created
+        this.logFile!.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
+        this.logFile!.write(`Program: ${basename}\n`);
+        this.logFile!.write(`=====================================\n\n`, (err) => {
+          if (err) {
+            console.error('[DEBUG LOGGER] Failed to write header:', err);
+          } else {
+            console.log('[DEBUG LOGGER] Log file header written and flushed');
+            
+            // Now we can safely sync since fd is available
+            try {
+              fs.fsyncSync(fd);
+              console.log('[DEBUG LOGGER] Log file synced to disk');
+            } catch (syncErr) {
+              console.error('[DEBUG LOGGER] Failed to sync log file:', syncErr);
+            }
+          }
+        });
       });
       
-      // Force a sync to ensure file is created on disk
-      if (this.logFile && 'fd' in this.logFile) {
-        fs.fsyncSync((this.logFile as any).fd);
-        console.log('[DEBUG LOGGER] Log file synced to disk');
-      }
+      // Handle stream errors
+      this.logFile.once('error', (err) => {
+        console.error('[DEBUG LOGGER] Write stream error:', err);
+      })
       
       // Notify MainWindow that logging started
       this.notifyLoggingStatus(true);

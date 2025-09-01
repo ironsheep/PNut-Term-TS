@@ -77,6 +77,16 @@ export class RouterLogger {
   private flushTimer: NodeJS.Timeout | null = null;
   private isEnabled: boolean = false;
   
+  // Static property to store startup directory for log files
+  private static startupDirectory: string = process.cwd();
+  
+  /**
+   * Set the startup directory for log file creation
+   */
+  public static setStartupDirectory(directory: string): void {
+    RouterLogger.startupDirectory = directory;
+  }
+  
   // Performance tracking
   private metricsBuffer: PerformanceMetrics[] = [];
   private lastMetricsTime: number = 0;
@@ -170,7 +180,7 @@ export class RouterLogger {
     }
     
     const timestamp = new Date().toISOString().split('T')[0];
-    return path.join(process.cwd(), 'logs', `router-${timestamp}.log`);
+    return path.join(RouterLogger.startupDirectory, 'logs', `router-${timestamp}.log`);
   }
 
   /**
@@ -431,7 +441,7 @@ export class RouterLogger {
    */
   public saveDiagnosticDump(filePath?: string): string {
     const dump = this.generateDiagnosticDump();
-    const outputPath = filePath || path.join(process.cwd(), 'logs', `router-diagnostic-${Date.now()}.json`);
+    const outputPath = filePath || path.join(RouterLogger.startupDirectory, 'logs', `router-diagnostic-${Date.now()}.json`);
     
     // Ensure directory exists
     const dir = path.dirname(outputPath);

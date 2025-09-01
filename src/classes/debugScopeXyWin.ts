@@ -100,6 +100,8 @@ export interface ScopeXyDisplaySpec {
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugScopeXyWindow extends DebugWindowBase {
+  private displaySpec: ScopeXyDisplaySpec;
+  
   private renderer: ScopeXyRenderer | null = null;
   private persistenceManager: PersistenceManager;
   private canvasRenderer: CanvasRenderer | null = null;
@@ -149,9 +151,11 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     0x808000  // clOlive
   ];
 
-  constructor(ctx: Context, windowId: string = `scopexy-${Date.now()}`) {
+  constructor(ctx: Context, displaySpec: ScopeXyDisplaySpec, windowId: string = `scopexy-${Date.now()}`) {
     super(ctx, windowId, 'scopexy');
     this.windowLogPrefix = 'CL-scopeXy';
+    
+    this.displaySpec = displaySpec;
 
     // Initialize shared components
     this.colorTranslator = new ColorTranslator();

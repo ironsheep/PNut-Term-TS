@@ -35,6 +35,7 @@ import { DebugBitmapWindow } from './debugBitmapWin';
 import { DebugMidiWindow } from './debugMidiWin';
 import { DebugLoggerWindow } from './debugLoggerWin';
 import { DebugCOGWindow } from './debugCOGWindow';
+import { DebugDebuggerWindow } from './debugDebuggerWin';
 import { WindowRouter } from './shared/windowRouter';
 import { SerialMessageProcessor } from './shared/serialMessageProcessor';
 import { MessageType, ExtractedMessage } from './shared/messageExtractor';
@@ -170,8 +171,8 @@ export class MainWindow {
     // Listen for WindowRouter events
     this.setupWindowRouterEventListeners();
     
-    // Initialize device settings
-    this.settingsFilePath = path.join(process.cwd(), 'pnut-term-settings.json');
+    // Initialize device settings using context startup directory
+    this.settingsFilePath = path.join(this.context.currentFolder, 'pnut-term-settings.json');
     this.loadGlobalSettings();
     
     const currFileTime: string = getFormattedDateTime();
@@ -255,25 +256,20 @@ export class MainWindow {
       debuggerWindowDestination
     );
     
-    // CRITICAL: Listen for debugger packets that require response
+    // Listen for debugger packets to create/update debugger windows
     this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
-      console.log('[DEBUGGER RESPONSE] Received debugger packet, sending stub response...');
-      
-      // STUB: Send 52 bytes of zeros to release P2 lock and allow next COG to transmit
-      // This is a minimal "I don't need anything" response that releases lock #15
-      const stubResponse = new Uint8Array(52); // All zeros by default
-      
-      // Extract COG ID from packet for logging
       const cogId = packet[0];
+      console.log(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
       
-      // Send stub response via serial port
-      if (this._serialPort) {
-        console.log(`[DEBUGGER RESPONSE] Sending 52-byte zero stub for COG${cogId} to release lock`);
-        // Convert binary response to string for serial transmission
-        const responseString = String.fromCharCode(...stubResponse);
-        this._serialPort.write(responseString);
-      } else {
-        console.error('[DEBUGGER RESPONSE] Serial port not available to send response!');
+      // Create debugger window directly like other debug windows (scope, plot, etc.)
+      const windowName = `debugger-${cogId}`;
+      
+      // Check if window already exists
+      if (!this.displays[windowName]) {
+        console.log(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
+        const debuggerDisplay = new DebugDebuggerWindow(this.context, cogId);
+        this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
+        console.log(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
     });
     
@@ -392,6 +388,16 @@ export class MainWindow {
         break;
       case MessageType.COG_MESSAGE:
         displayText = new TextDecoder().decode(message.data);
+        // Extract COG ID from message and notify COGWindowManager
+        const cogMatch = displayText.match(/^Cog(\d)\s\s/);
+        if (cogMatch) {
+          const cogId = parseInt(cogMatch[1], 10);
+          if (cogId >= 0 && cogId <= 7) {
+            // Notify COG window manager about this COG activity
+            this.cogWindowManager.onCOGTraffic(cogId, message);
+            console.log(`[COG TRACKING] COG${cogId} message detected, updating display`);
+          }
+        }
         break;
       case MessageType.P2_SYSTEM_INIT:
         displayText = `[GOLDEN SYNC] ${new TextDecoder().decode(message.data)}`;
@@ -404,6 +410,12 @@ export class MainWindow {
         break;
       case MessageType.INCOMPLETE_DEBUG:
         displayText = `[INCOMPLETE] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(message.data)}`;
+        break;
+      case MessageType.DEBUGGER_416BYTE:
+        // Handle 416-byte debugger packets
+        const cogId = message.data[0];
+        displayText = `[DEBUGGER] COG${cogId} 416-byte packet received`;
+        // Debugger window creation is now handled by the 'debuggerPacketReceived' event listener
         break;
       default:
         displayText = this.formatHexDump(message.data, message.type);
@@ -444,7 +456,6 @@ export class MainWindow {
     
     return lines.join('\n');
   }
-  
   
   /**
    * Create a COG splitter window
@@ -1341,7 +1352,7 @@ export class MainWindow {
             this.logMessage(`* handleDebugCommand() - back from parse`);
             if (isValid) {
               // create new window from spec, recording the new window has name: bitmapSpec.displayName so we can find it later
-              const bitmapDisplay = new DebugBitmapWindow(bitmapSpec.title, bitmapSpec.displayName, this.context, bitmapSpec.position);
+              const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
               // remember active displays!
               this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
             } else {
@@ -1353,21 +1364,18 @@ export class MainWindow {
             break;
           }
           case this.DISPLAY_MIDI: {
-            // MIDI window instantiation: Extract display name
-            let displayName = 'MIDI';
-            if (lineParts.length > 1) {
-              displayName = lineParts[1];
+            // Create new MIDI window using standardized pattern
+            const [isValid, midiSpec] = DebugMidiWindow.parseMidiDeclaration(lineParts);
+            if (isValid) {
+              // create new window from spec, recording the new window has name: midiSpec.displayName so we can find it later
+              const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
+              // remember active displays!
+              this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
+            } else {
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
             }
-            // Create new MIDI window
-            const midiDisplay = new DebugMidiWindow(this.context);
-            midiDisplay.windowTitle = displayName;
-            midiDisplay.createDebugWindow();
-            // Process remaining parameters
-            if (lineParts.length > 2) {
-              midiDisplay.updateContent(lineParts.slice(2));
-            }
-            // Remember active display
-            this.hookNotifcationsAndRememberWindow(displayName, midiDisplay);
             foundDisplay = true;
             break;
           }
@@ -1980,11 +1988,11 @@ export class MainWindow {
       </style>
     </head>
     <body>
+      <div id="menu-bar"></div>
       <div id="in-out">
         <div id="kbd-entry">
           <input type="text" id="dataEntry" placeholder="Enter text here">
         </div>
-        <div id="menu-bar"></div>
         <div id="toolbar">
           ${this.getControlLineHTML()}
           <div class="toolbar-separator"></div>
@@ -2050,13 +2058,17 @@ export class MainWindow {
         </div>
       </div>
       <script>
+        console.log('[MENU] Script execution started');
         // IPC Setup - runs directly in renderer with node integration
         const { ipcRenderer } = require('electron');
+        console.log('[MENU] ipcRenderer loaded:', !!ipcRenderer);
         // Expose ipcRenderer globally for all scripts to use
         window.ipcRenderer = ipcRenderer;
         
         // Wait for DOM to be ready
+        console.log('[MENU] Setting up DOMContentLoaded event listener');
         document.addEventListener('DOMContentLoaded', () => {
+          console.log('[MENU] DOMContentLoaded event fired!');
           // RAM/FLASH buttons
           const ramBtn = document.getElementById('download-ram');
           if (ramBtn) {
@@ -2150,10 +2162,12 @@ export class MainWindow {
           const isIdeModeJS = ${this.context.runEnvironment.ideMode};
           console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
           console.log('[MENU] Menu bar element exists:', !!document.getElementById('menu-bar'));
-          if (!isIdeModeJS) {
-            const menuBar = document.getElementById('menu-bar');
-            if (menuBar) {
-              console.log('[MENU] Initializing menu bar HTML...');
+          
+          // FORCE MENU DISPLAY - Disable conditional behavior for debugging
+          console.log('[MENU] FORCING menu display regardless of IDE mode');
+          const menuBar = document.getElementById('menu-bar');
+          if (menuBar) {
+            console.log('[MENU] Initializing menu bar HTML...');
               menuBar.innerHTML = \`
                 <div class="menu-container">
                   <div class="menu-item" data-menu="file">
@@ -2219,9 +2233,6 @@ export class MainWindow {
             } else {
               console.error('[MENU] Menu bar element not found!');
             }
-          } else {
-            console.log('[MENU] Skipping menu initialization - IDE mode is enabled');
-          }
         });
       </script>
     </body>
@@ -2296,12 +2307,8 @@ export class MainWindow {
             this.recentTransmitBuffer = [];
           }
           break;
-        case 'toggle-dtr':
-          this.toggleDTR();
-          break;
-        case 'toggle-rts':
-          this.toggleRTS();
-          break;
+        // DTR/RTS toggles are handled by setupIPCHandlers() to avoid duplication
+        // case 'toggle-dtr' and 'toggle-rts' removed from here
         case 'download-ram':
           this.setDownloadMode('ram');
           break;
@@ -2407,29 +2414,35 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
       
-      // Set up font selector dropdown (this is the only one not in HTML template)
-      this.safeExecuteJS(`
-        // Font selector dropdown
-        const fontSelector = document.getElementById('font-selector');
-        const logContent = document.getElementById('log-content');
-        if (fontSelector && logContent) {
-          fontSelector.addEventListener('change', (e) => {
-            // Remove all font classes
-            logContent.className = logContent.className.replace(/font-[\\w-]+/g, '').trim();
-            // Add the selected font class
-            const selectedFont = e.target.value;
-            logContent.classList.add('font-' + selectedFont);
+      // Set up font selector dropdown - defer until DOM is ready
+      this.mainWindow!.webContents.once('dom-ready', () => {
+        this.safeExecuteJS(`
+          // Font selector dropdown - DOM should be ready now
+          const fontSelector = document.getElementById('font-selector');
+          const logContent = document.getElementById('log-content');
+          if (fontSelector && logContent) {
+            console.log('[FONT SELECTOR] Elements found, setting up...');
+            fontSelector.addEventListener('change', (e) => {
+              // Remove all font classes
+              logContent.className = logContent.className.replace(/font-[\\w-]+/g, '').trim();
+              // Add the selected font class
+              const selectedFont = e.target.value;
+              logContent.classList.add('font-' + selectedFont);
+              
+              // Store preference (could be saved to settings file later)
+              localStorage.setItem('terminal-font', selectedFont);
+            });
             
-            // Store preference (could be saved to settings file later)
-            localStorage.setItem('terminal-font', selectedFont);
-          });
-          
-          // Load saved preference
-          const savedFont = localStorage.getItem('terminal-font') || 'default';
-          fontSelector.value = savedFont;
-          logContent.classList.add('font-' + savedFont);
-        }
-      `, 'font-selector-setup');
+            // Load saved preference
+            const savedFont = localStorage.getItem('terminal-font') || 'default';
+            fontSelector.value = savedFont;
+            logContent.classList.add('font-' + savedFont);
+            console.log('[FONT SELECTOR] Setup complete with font:', savedFont);
+          } else {
+            console.error('[FONT SELECTOR] Elements not found - fontSelector:', !!fontSelector, 'logContent:', !!logContent);
+          }
+        `, 'font-selector-setup');
+      });
       
       // Setup text input control for data entry
       this.hookTextInputControl('dataEntry', (event: Event) => {

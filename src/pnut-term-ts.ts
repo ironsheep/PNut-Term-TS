@@ -83,7 +83,14 @@ export class DebugTerminalInTypeScript {
       console.log('PNut-Term-TS: stderr was closed');
     });
 
-    this.context = new Context();
+    // Capture startup directory BEFORE Electron initialization
+    // This ensures we get the directory where user launched the command
+    const startupDirectory = process.cwd();
+    this.context = new Context(startupDirectory);
+    
+    // Set startup directory for all logging systems
+    const { RouterLogger } = require('./classes/shared/routerLogger');
+    RouterLogger.setStartupDirectory(startupDirectory);
 
     if (!this.inContainer) {
       // --------------------------------------------------

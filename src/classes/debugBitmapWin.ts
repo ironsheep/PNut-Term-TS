@@ -130,6 +130,8 @@ export interface BitmapDisplaySpec {
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugBitmapWindow extends DebugWindowBase {
+  private displaySpec: BitmapDisplaySpec;
+  
   private state: BitmapState;
   private colorTranslator: ColorTranslator;
   private lutManager: LUTManager;
@@ -267,14 +269,16 @@ export class DebugBitmapWindow extends DebugWindowBase {
     return [isValid, displaySpec];
   }
 
-  constructor(windowTitle: string, idString: string, context: Context, position?: { x: number; y: number }, windowId: string = `bitmap-${Date.now()}`) {
-    super(context, windowId, 'bitmap');
+  constructor(ctx: Context, displaySpec: BitmapDisplaySpec, windowId: string = `bitmap-${Date.now()}`) {
+    super(ctx, windowId, 'bitmap');
     
-    // Save window properties
-    this.windowTitle = windowTitle;
-    this.idString = idString;
+    this.displaySpec = displaySpec;
+    
+    // Initialize from displaySpec
+    this.windowTitle = displaySpec.title;
+    this.idString = displaySpec.displayName;
     this.windowLogPrefix = 'bitW';
-    this.initialPosition = position;
+    this.initialPosition = displaySpec.position;
     
     // Initialize state with defaults
     this.state = {

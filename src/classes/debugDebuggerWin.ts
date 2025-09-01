@@ -6,6 +6,7 @@ import { BrowserWindow } from 'electron';
 import { Context } from '../utils/context';
 import { DebugWindowBase } from './debugWindowBase';
 import { WindowRouter } from './shared/windowRouter';
+import { WindowPlacer, PlacementConfig, PlacementStrategy } from '../utils/windowPlacer';
 import {
   DebuggerInitialMessage,
   COGDebugState,
@@ -48,6 +49,7 @@ import { MessagePool, PooledMessage } from './shared/messagePool';
 export class DebugDebuggerWindow extends DebugWindowBase {
   private cogId: number;
   private cogState: COGDebugState;
+  private currentDebuggerPacket: Uint8Array | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private charWidth: number = 8;
@@ -309,9 +311,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       return;
     }
     
-    // Convert Uint8Array to Buffer for compatibility
-    const buffer = Buffer.from(data);
-    this.handleMessage(buffer);
+    // Process the binary message
+    this.handleBinaryMessage(data);
   }
   
   /**
@@ -342,10 +343,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.debugWindow?.webContents.once('did-finish-load', () => {
       // Now it's safe to get the canvas and create the renderer
       this.debugWindow?.webContents.executeJavaScript(`
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('debugger-canvas');
         if (canvas) {
           // Return canvas for verification
-          { id: 'canvas', width: canvas.width, height: canvas.height }
+          { id: 'debugger-canvas', width: canvas.width, height: canvas.height }
         } else {
           null
         }
@@ -498,8 +499,12 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Handle binary debugger message
    */
   private handleBinaryMessage(data: Uint8Array): void {
+    // Check if this is a 416-byte debugger packet
+    if (data.length === 416) {
+      this.processDebuggerPacket(data);
+    }
     // Check if this is a 20-long initial message
-    if (data.length >= 80) { // 20 longs * 4 bytes
+    else if (data.length >= 80) { // 20 longs * 4 bytes
       const longs = new Uint32Array(data.buffer, data.byteOffset, 20);
       try {
         const message = parseInitialMessage(longs);
@@ -510,6 +515,56 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         this.logMessage(`Error parsing message: ${error}`);
       }
     }
+  }
+  
+  /**
+   * Format debugger packet for display
+   */
+  private formatDebuggerPacketDisplay(data: Uint8Array): any {
+    const cogId = data[0];
+    const cogState = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
+    const pc = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
+    const instruction = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+    
+    // Format first 16 bytes as hex
+    const statusHex = Array.from(data.slice(0, 16))
+      .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+      .join(' ');
+    
+    return {
+      title: `P2 Debugger - COG ${cogId}`,
+      pc: `$${pc.toString(16).padStart(8, '0').toUpperCase()}`,
+      state: `$${cogState.toString(16).padStart(8, '0').toUpperCase()}`,
+      instruction: `$${instruction.toString(16).padStart(8, '0').toUpperCase()}`,
+      statusHex: statusHex
+    };
+  }
+  
+  /**
+   * Process a 416-byte debugger packet
+   */
+  private processDebuggerPacket(data: Uint8Array): void {
+    // Parse the status block (first 40 bytes)
+    const cogId = data[0];
+    if (cogId !== this.cogId) {
+      this.logMessage(`Packet for wrong COG: ${cogId} (expected ${this.cogId})`);
+      return;
+    }
+    
+    // Extract key information from status block
+    const cogState = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
+    const pc = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
+    const instruction = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+    
+    // Update COG state
+    this.cogState.programCounter = pc;
+    this.cogState.isActive = true;
+    
+    // Store the packet for rendering
+    this.currentDebuggerPacket = data;
+    
+    // Trigger immediate display update
+    this.renderDebuggerDisplay();
   }
 
   /**
@@ -587,7 +642,49 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Render debugger display
    */
   private renderDebuggerDisplay(): void {
-    if (!this.renderer || !this.debugWindow) return;
+    if (!this.debugWindow) return;
+    
+    // If no renderer yet, show the packet data directly
+    if (!this.renderer) {
+      const displayData = this.currentDebuggerPacket ? 
+        this.formatDebuggerPacketDisplay(this.currentDebuggerPacket) :
+        { title: `P2 Debugger - COG ${this.cogId}`, status: 'Waiting for debug data...' };
+      
+      this.debugWindow.webContents.executeJavaScript(`
+        const canvas = document.getElementById('debugger-canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Clear canvas
+          ctx.fillStyle = '#1e1e1e';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Show debugger info
+          ctx.font = '14px monospace';
+          ctx.fillStyle = '#00ff00';
+          
+          const displayData = ${JSON.stringify(displayData)};
+          ctx.fillText(displayData.title, 10, 25);
+          
+          if (displayData.pc !== undefined) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('PC: ' + displayData.pc, 10, 50);
+            ctx.fillText('State: ' + displayData.state, 10, 70);
+            ctx.fillText('Instruction: ' + displayData.instruction, 10, 90);
+            
+            // Show some status block bytes
+            ctx.fillStyle = '#808080';
+            ctx.fillText('Status Block (first 16 bytes):', 10, 120);
+            ctx.fillText(displayData.statusHex, 10, 140);
+          } else {
+            ctx.fillStyle = '#ffff00';
+            ctx.fillText(displayData.status, 10, 50);
+          }
+        }
+      `).catch((error) => {
+        this.logMessage(`Error showing display: ${error}`);
+      });
+      return;
+    }
     
     try {
       // Get the rendered text grid
@@ -595,7 +692,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       
       // Send grid to window for display
       this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('debugger-canvas');
         const ctx = canvas.getContext('2d');
         if (ctx) {
           // Clear canvas
@@ -719,10 +816,25 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private createDebugWindow(windowDetails?: any): void {
     const width = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8 + 20;
     const height = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16 + 40;
-    const x = windowDetails?.x;
-    const y = windowDetails?.y;
     
-    this.logMessage(`Creating debugger window for COG ${this.cogId}: ${width}x${height}`);
+    let x = windowDetails?.x;
+    let y = windowDetails?.y;
+    
+    // If position is not explicitly set, use WindowPlacer for intelligent debugger positioning
+    if (x === undefined && y === undefined) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width, height },
+        strategy: PlacementStrategy.DEBUGGER,  // Use special debugger positioning strategy
+        margin: 40,  // Larger margin for debugger windows
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`debugger-cog${this.cogId}`, placementConfig);
+      x = position.x;
+      y = position.y;
+    }
+    
+    this.logMessage(`Creating debugger window for COG ${this.cogId}: ${width}x${height} at ${x},${y}`);
     
     this.debugWindow = new BrowserWindow({
       width,
@@ -735,6 +847,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         contextIsolation: false
       }
     });
+    
+    // Register with WindowPlacer for position tracking
+    const windowPlacer = WindowPlacer.getInstance();
+    windowPlacer.registerWindow(`debugger-cog${this.cogId}`, this.debugWindow);
     
     // Set up window content
     const html = this.getHTML();
