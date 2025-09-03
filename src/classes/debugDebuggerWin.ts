@@ -66,9 +66,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private dataManager: DebuggerDataManager | null = null;
   private interaction: DebuggerInteraction | null = null;
   
-  // Message queue for initial messages before window is ready
-  private initialMessageQueue: Uint8Array[] = [];
-  private isDebuggerReady: boolean = false;
+  // Deferred messages queue for when components aren't ready
+  private deferredMessages: any[] = [];
+  private componentsReady: boolean = false;
+  // No timer needed - using event-driven approach
+  
+  // Remove redundant queue - base class handles this via messageQueue
+  // private initialMessageQueue: Uint8Array[] = [];  // REMOVED: Base class handles queuing
+  // private isDebuggerReady: boolean = false;  // REMOVED: Use base class isWindowReady
 
   constructor(
     context: Context,
@@ -93,6 +98,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     
     // Initialize COG state (fresh on each window open - no persistence)
     this.cogState = this.createFreshCogState(cogId);
+    
+    // Initialize core components early (before window creation)
+    // These don't depend on the DOM/window being ready
+    this.dataManager = new DebuggerDataManager();
+    this.protocol = new DebuggerProtocol();
+    
+    // Mark components as ready since we've created everything needed
+    // for message processing (dataManager and protocol)
+    this.componentsReady = true;
+    console.log(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
     
     this.logMessage(`DebugDebuggerWindow created for COG ${cogId}`);
     
@@ -290,16 +305,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
 
   /**
    * Queue initial message before window is ready
+   * DEPRECATED: Use updateContent() instead which handles queuing automatically
    */
   public queueInitialMessage(data: Uint8Array): void {
-    if (this.isDebuggerReady) {
-      // Window is ready, process immediately
-      this.processDebuggerMessage(data);
-    } else {
-      // Queue for later processing
-      this.initialMessageQueue.push(data);
-      console.log(`[DEBUGGER] Queued initial message for COG ${this.cogId}, queue length: ${this.initialMessageQueue.length}`);
-    }
+    // Base class handles queuing via updateContent()
+    this.updateContent(data);
   }
   
   /**
@@ -317,42 +327,68 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   
   /**
    * Process queued messages
+   * DEPRECATED: Base class handles this via its own processQueuedMessages()
    */
   private processQueuedMessages(): void {
-    if (this.initialMessageQueue.length > 0) {
-      console.log(`[DEBUGGER] Processing ${this.initialMessageQueue.length} queued messages for COG ${this.cogId}`);
-      for (const message of this.initialMessageQueue) {
-        this.processDebuggerMessage(message);
-      }
-      this.initialMessageQueue = [];
-    }
+    // Base class handles this automatically when window becomes ready
+    console.log(`[DEBUGGER] processQueuedMessages called but base class handles this now`);
   }
   
   /**
    * Initialize window after creation
    */
   protected async initializeWindow(): Promise<void> {
-    // Register with WindowRouter when window is ready
+    // Core components already initialized in constructor
+    // Just register with WindowRouter
     this.registerWithRouter();
-    
-    // Initialize core components that don't need DOM
-    this.dataManager = new DebuggerDataManager();
-    this.protocol = new DebuggerProtocol();
     
     // Wait for DOM to be ready, then create canvas-dependent components
     this.debugWindow?.webContents.once('did-finish-load', () => {
-      // Now it's safe to get the canvas and create the renderer
+      console.log(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
+      console.log(`[DEBUGGER] componentsReady already = ${this.componentsReady}`);
+      console.log(`[DEBUGGER] deferred messages count = ${this.deferredMessages.length}`);
+      
+      // Process any deferred messages if there are any
+      // (components are already ready from constructor)
+      if (this.deferredMessages.length > 0) {
+        console.log(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
+        this.processDeferredMessages();
+      }
+      
+      // Now try to get the canvas and create the renderer
       this.debugWindow?.webContents.executeJavaScript(`
-        const canvas = document.getElementById('debugger-canvas');
+        const canvas = document.getElementById('canvas');
         if (canvas) {
           // Return canvas for verification
-          { id: 'debugger-canvas', width: canvas.width, height: canvas.height }
+          { id: 'canvas', width: canvas.width, height: canvas.height }
         } else {
           null
         }
       `).then((canvasInfo) => {
         if (canvasInfo) {
           this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
+          
+          // IMMEDIATE TEST RENDERING - Show that canvas works
+          this.debugWindow?.webContents.executeJavaScript(`
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              // Clear canvas with dark background
+              ctx.fillStyle = '#1e1e1e';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              
+              // Show initialization message
+              ctx.font = '16px monospace';
+              ctx.fillStyle = '#00ff00';
+              ctx.fillText('P2 Debugger - COG ${this.cogId}', 20, 30);
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText('Canvas initialized successfully!', 20, 60);
+              ctx.fillStyle = '#ffff00';  
+              ctx.fillText('Waiting for debugger data...', 20, 90);
+            }
+          `).catch((err) => {
+            console.error('[DEBUGGER] Initial rendering failed:', err);
+          });
           
           // Create a proxy canvas that will delegate to the real canvas
           // For now, we'll need to handle rendering differently
@@ -361,23 +397,28 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           // For now, skip renderer creation to avoid the error
           // TODO: Refactor DebuggerRenderer to work with Electron's remote canvas
           
+          // TODO: Create renderer proxy that works with remote canvas via IPC
+          // For now, skip renderer creation due to Electron main/renderer process separation
+          // this.renderer = new DebuggerRenderer needs HTMLCanvasElement which isn't available in main process
+          
           // Only create interaction if protocol and dataManager are initialized
           if (this.protocol && this.dataManager) {
+            // Note: Passing null for renderer temporarily until we implement IPC-based rendering
             this.interaction = new DebuggerInteraction(
-              null as any, // Temporarily pass null for renderer - TODO: implement
+              null as any, // TODO: Implement IPC-based renderer proxy
               this.protocol,
               this.dataManager,
               this.cogId
             );
+            
+            // Mark basic components as ready (renderer will be added later)
+            this.startUpdateLoop();
+            
+            // Components already marked ready above
+            console.log(`[DEBUGGER] Core components initialized and ready for COG ${this.cogId}`);
           } else {
-            console.warn('[DebuggerWin] Cannot create interaction - protocol or dataManager not initialized');
+            console.warn('[DEBUGGER] Cannot create interaction - missing required components');
           }
-          
-          this.startUpdateLoop();
-          
-          // Mark window as ready and process any queued messages
-          this.isDebuggerReady = true;
-          this.processQueuedMessages();
         } else {
           console.error(`[DEBUGGER] Canvas element not found for COG ${this.cogId}`);
         }
@@ -651,36 +692,59 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         { title: `P2 Debugger - COG ${this.cogId}`, status: 'Waiting for debug data...' };
       
       this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('debugger-canvas');
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Clear canvas
-          ctx.fillStyle = '#1e1e1e';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Show debugger info
-          ctx.font = '14px monospace';
-          ctx.fillStyle = '#00ff00';
-          
-          const displayData = ${JSON.stringify(displayData)};
-          ctx.fillText(displayData.title, 10, 25);
-          
-          if (displayData.pc !== undefined) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText('PC: ' + displayData.pc, 10, 50);
-            ctx.fillText('State: ' + displayData.state, 10, 70);
-            ctx.fillText('Instruction: ' + displayData.instruction, 10, 90);
+        (function() {
+          try {
+            const canvas = document.getElementById('canvas');
+            if (!canvas) {
+              console.error('[DEBUGGER] Canvas element not found!');
+              return 'Canvas not found';
+            }
             
-            // Show some status block bytes
-            ctx.fillStyle = '#808080';
-            ctx.fillText('Status Block (first 16 bytes):', 10, 120);
-            ctx.fillText(displayData.statusHex, 10, 140);
-          } else {
-            ctx.fillStyle = '#ffff00';
-            ctx.fillText(displayData.status, 10, 50);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              console.error('[DEBUGGER] Could not get 2D context from canvas!');
+              return 'Context not available';
+            }
+            
+            // Clear canvas
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Show debugger info
+            ctx.font = '14px monospace';
+            ctx.fillStyle = '#00ff00';
+            
+            const displayData = ${JSON.stringify(displayData)};
+            ctx.fillText(displayData.title || 'P2 Debugger', 10, 25);
+            
+            if (displayData.pc !== undefined) {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText('PC: ' + displayData.pc, 10, 50);
+              ctx.fillText('State: ' + displayData.state, 10, 70);
+              ctx.fillText('Instruction: ' + displayData.instruction, 10, 90);
+              
+              // Show some status block bytes
+              if (displayData.statusHex) {
+                ctx.fillStyle = '#808080';
+                ctx.fillText('Status Block (first 16 bytes):', 10, 120);
+                ctx.fillText(displayData.statusHex, 10, 140);
+              }
+            } else if (displayData.status) {
+              ctx.fillStyle = '#ffff00';
+              ctx.fillText(displayData.status, 10, 50);
+            }
+            
+            return 'Success';
+          } catch (error) {
+            console.error('[DEBUGGER] Error in canvas rendering:', error);
+            return 'Error: ' + error.message;
           }
+        })()
+      `).then((result) => {
+        if (result !== 'Success') {
+          this.logMessage(`Canvas render result: ${result}`);
         }
-      `).catch((error) => {
+      }).catch((error) => {
         this.logMessage(`Error showing display: ${error}`);
       });
       return;
@@ -692,7 +756,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       
       // Send grid to window for display
       this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('debugger-canvas');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         if (ctx) {
           // Clear canvas
@@ -740,7 +804,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
             font-size: 14px;
             overflow: hidden;
         }
-        #debugger-canvas {
+        #canvas {
             width: 100%;
             height: 100%;
             display: block;
@@ -759,7 +823,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     </style>
 </head>
 <body>
-    <canvas id="debugger-canvas"></canvas>
+    <canvas id="canvas"></canvas>
     <div class="status-bar">
         COG ${this.cogId} - Ready
     </div>
@@ -767,7 +831,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         const { ipcRenderer } = require('electron');
         
         // Initialize canvas
-        const canvas = document.getElementById('debugger-canvas');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         
         // Set canvas size
@@ -876,6 +940,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   public closeDebugWindow(): void {
     this.stopUpdateLoop();
     
+    // Clear deferred messages
+    this.deferredMessages = [];
+    this.componentsReady = false;
+    
     // Clean up components
     if (this.interaction) {
       this.interaction.cleanup();
@@ -909,10 +977,43 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
+   * Process deferred messages once components are ready
+   */
+  private processDeferredMessages(): void {
+    if (this.deferredMessages.length > 0) {
+      console.log(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages for COG ${this.cogId}`);
+      const messages = [...this.deferredMessages];
+      this.deferredMessages = [];
+      
+      // Process each deferred message
+      messages.forEach(message => {
+        try {
+          this.processMessageImmediate(message);
+        } catch (error) {
+          console.error(`[DEBUGGER] Error processing deferred message: ${error}`);
+        }
+      });
+    }
+  }
+  
+  /**
    * Required abstract method - update content
    * Handles both PooledMessage objects and raw data for backward compatibility
    */
   protected processMessageImmediate(data: any): void {
+    // Check if window components are initialized
+    if (!this.componentsReady || !this.dataManager || !this.protocol) {
+      console.warn(`[DEBUGGER] Window components not ready for COG ${this.cogId}, deferring message`);
+      
+      // Store the message for later processing
+      this.deferredMessages.push(data);
+      
+      // Messages will be processed when components are ready (in did-finish-load event)
+      // No timer needed - event-driven approach
+      
+      return;
+    }
+    
     let actualData: any;
     let pooledMessage: PooledMessage | null = null;
     
@@ -952,7 +1053,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Get canvas ID for this window type
    */
   protected getCanvasId(): string {
-    return 'debugger-canvas';
+    return 'canvas';
   }
 
   /**

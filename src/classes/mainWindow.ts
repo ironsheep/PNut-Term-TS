@@ -271,6 +271,14 @@ export class MainWindow {
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
         console.log(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
+      
+      // Send the packet to the window (whether new or existing)
+      // Use updateContent() which handles queuing if window not ready
+      const debuggerWindow = this.displays[windowName] as DebugDebuggerWindow;
+      if (debuggerWindow) {
+        console.log(`[DEBUGGER] Sending 416-byte packet to debugger window for COG${cogId}`);
+        debuggerWindow.updateContent(packet);
+      }
     });
     
     // Reset debugger response state on DTR/RTS reset
@@ -1795,6 +1803,7 @@ export class MainWindow {
           flex-direction: column;
           height: 100vh;
           margin: 0;
+          background-color: #FF00FF; /* MAGENTA - for debugging exposed areas */
           font-family: Consolas, sans-serif; /* Use Arial or any sans-serif font */
           font-size: 12px; /* Set a smaller font size */
         }
@@ -1806,15 +1815,18 @@ export class MainWindow {
           top: 0;
           left: 0;
           right: 0;
-          min-height: 24px;
-          background-color: #2d2d30;
-          border-bottom: 1px solid #464647;
-          z-index: 3;
-          font-size: 12px;
+          height: 28px; /* Standard menu height */
+          background-color: #f5f5f5; /* Match toolbar color */
+          border-bottom: 1px solid #ddd;
+          z-index: 9999; /* Maximum z-index to ensure on top */
+          font-size: 13px;
+          user-select: none;
+          display: block;
+          box-sizing: border-box;
         }
         .menu-container {
           display: flex;
-          background: #2d2d30;
+          background: #f5f5f5; /* Match toolbar color */
           font-size: 13px;
           user-select: none;
           width: 100%;
@@ -1822,34 +1834,34 @@ export class MainWindow {
         .menu-item {
           position: relative;
           padding: 4px 12px;
-          color: #cccccc;
+          color: #333333; /* Dark text for light background */
           cursor: pointer;
         }
         .menu-item:hover {
-          background: #094771;
+          background: #e0e0e0; /* Light gray hover */
         }
         .menu-dropdown {
           display: none;
           position: absolute;
           top: 100%;
           left: 0;
-          background: #383838;
-          border: 1px solid #464647;
+          background: #ffffff; /* White dropdown background */
+          border: 1px solid #ccc;
           min-width: 200px;
           z-index: 1000;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }
         .menu-dropdown-item {
           padding: 8px 16px;
-          color: #cccccc;
+          color: #333333; /* Dark text */
           cursor: pointer;
         }
         .menu-dropdown-item:hover {
-          background: #094771;
+          background: #e8e8e8; /* Light gray hover */
         }
         #toolbar {
           position: fixed;
-          top: 24px;
+          top: 28px; /* Below menu bar (28px) */
           left: 0;
           right: 0;
           height: 32px;
@@ -1862,7 +1874,7 @@ export class MainWindow {
         }
         #dataEntry {
           position: fixed;
-          top: 56px; /* Below menu (24px) + toolbar (32px) */
+          top: 60px; /* Below menu (28px) + toolbar (32px) */
           left: 8px;
           right: 8px;
           padding: 8px;
@@ -1879,7 +1891,7 @@ export class MainWindow {
         }
         #log-content {
           position: absolute;
-          top: 108px; /* Height of menu (24px) + toolbar (32px) + dataEntry with margins (52px) */
+          top: 112px; /* Height of menu (28px) + toolbar (32px) + dataEntry with margins (52px) */
           bottom: 41px; /* Height of #status-bar */
           left: 8px;
           right: 8px;
@@ -1983,12 +1995,83 @@ export class MainWindow {
           display: flex;
           flex-direction: column;
           margin: 0px;
+          margin-top: 26px; /* Account for fixed menu bar (24px height + 2px border) */
           padding: 0px;
         }
       </style>
     </head>
     <body>
-      <div id="menu-bar"></div>
+      <div id="menu-bar">
+        <div class="menu-container">
+          <div class="menu-item" data-menu="file">
+            <span>File</span>
+            <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="menu-new-recording">New Recording</div>
+              <div class="menu-dropdown-item" data-action="menu-open-recording">Open Recording...</div>
+              <div class="menu-dropdown-item" data-action="menu-save-recording">Save Recording As...</div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-start-recording">Start Recording <span style="float: right; color: #999;">Ctrl+R</span></div>
+              <div class="menu-dropdown-item" data-action="menu-stop-recording">Stop Recording</div>
+              <div class="menu-dropdown-item" data-action="menu-playback-recording">Playback Recording <span style="float: right; color: #999;">Ctrl+P</span></div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-settings">Settings... <span style="float: right; color: #999;">Ctrl+,</span></div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-quit">Exit <span style="float: right; color: #999;">Ctrl+Q</span></div>
+            </div>
+          </div>
+          <div class="menu-item" data-menu="edit">
+            <span>Edit</span>
+            <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="cut">Cut <span style="float: right; color: #999;">Ctrl+X</span></div>
+              <div class="menu-dropdown-item" data-action="copy">Copy <span style="float: right; color: #999;">Ctrl+C</span></div>
+              <div class="menu-dropdown-item" data-action="paste">Paste <span style="float: right; color: #999;">Ctrl+V</span></div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-find">Find... <span style="float: right; color: #999;">Ctrl+F</span></div>
+              <div class="menu-dropdown-item" data-action="menu-clear">Clear Terminal</div>
+            </div>
+          </div>
+          <div class="menu-item" data-menu="debug">
+            <span>Debug</span>
+            <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="menu-open-debugger">Open Debugger ▶
+                <div class="menu-dropdown submenu" style="display: none; position: absolute; left: 100%; top: 0;">
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog0">COG 0</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog1">COG 1</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog2">COG 2</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog3">COG 3</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog4">COG 4</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog5">COG 5</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog6">COG 6</div>
+                  <div class="menu-dropdown-item" data-action="menu-debugger-cog7">COG 7</div>
+                </div>
+              </div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-break-all">Break All</div>
+              <div class="menu-dropdown-item" data-action="menu-resume-all">Resume All <span style="float: right; color: #999;">F5</span></div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-performance-monitor">Performance Monitor</div>
+            </div>
+          </div>
+          <div class="menu-item" data-menu="window">
+            <span>Window</span>
+            <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="menu-cascade">Cascade</div>
+              <div class="menu-dropdown-item" data-action="menu-tile">Tile</div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-show-all">Show All Windows</div>
+              <div class="menu-dropdown-item" data-action="menu-hide-all">Hide All Windows</div>
+            </div>
+          </div>
+          <div class="menu-item" data-menu="help">
+            <span>Help</span>
+            <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="menu-documentation">Documentation <span style="float: right; color: #999;">F1</span></div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item" data-action="menu-about">About PNut-Term-TS</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="in-out">
         <div id="kbd-entry">
           <input type="text" id="dataEntry" placeholder="Enter text here">
@@ -2158,81 +2241,110 @@ export class MainWindow {
             logContent.classList.add('font-' + savedFont);
           }
           
-          // Initialize menu bar for standalone mode
+          // Menu initialization moved to programmatic injection after window loads
+          // This avoids data URL script execution restrictions
           const isIdeModeJS = ${this.context.runEnvironment.ideMode};
           console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
-          console.log('[MENU] Menu bar element exists:', !!document.getElementById('menu-bar'));
           
-          // FORCE MENU DISPLAY - Disable conditional behavior for debugging
-          console.log('[MENU] FORCING menu display regardless of IDE mode');
-          const menuBar = document.getElementById('menu-bar');
-          if (menuBar) {
-            console.log('[MENU] Initializing menu bar HTML...');
-              menuBar.innerHTML = \`
-                <div class="menu-container">
-                  <div class="menu-item" data-menu="file">
-                    <span>File</span>
-                    <div class="menu-dropdown">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-connect')">Connect...</div>
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-disconnect')">Disconnect</div>
-                      <hr class="menu-separator">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-quit')">Exit</div>
-                    </div>
-                  </div>
-                  <div class="menu-item" data-menu="edit">
-                    <span>Edit</span>
-                    <div class="menu-dropdown">
-                      <div class="menu-dropdown-item" onclick="document.execCommand('copy')">Copy</div>
-                      <div class="menu-dropdown-item" onclick="document.execCommand('paste')">Paste</div>
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-clear')">Clear Terminal</div>
-                    </div>
-                  </div>
-                  <div class="menu-item" data-menu="device">
-                    <span>Device</span>
-                    <div class="menu-dropdown">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('download-ram')">Download to RAM</div>
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('download-flash')">Download to FLASH</div>
-                      <hr class="menu-separator">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('toggle-dtr')">Send DTR Reset</div>
-                    </div>
-                  </div>
-                  <div class="menu-item" data-menu="view">
-                    <span>View</span>
-                    <div class="menu-dropdown">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-toggle-echo')">Echo Off</div>
-                      <hr class="menu-separator">
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-zoom-in')">Zoom In</div>
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-zoom-out')">Zoom Out</div>
-                      <div class="menu-dropdown-item" onclick="ipcRenderer.send('menu-zoom-reset')">Reset Zoom</div>
-                    </div>
-                  </div>
-                </div>
-              \`;
+          // OLD MENU INITIALIZATION - KEPT FOR REFERENCE BUT NOT USED
+          // Menu is now initialized programmatically from main process
+          /*
+          const initMenu = () => {
+            console.log('[MENU] Initializing menu event handlers...');
+            console.log('[MENU] window.ipcRenderer available:', !!window.ipcRenderer);
+            
+            const menuBar = document.getElementById('menu-bar');
+            if (menuBar) {
+              console.log('[MENU] Found menu bar element');
+              console.log('[MENU] Menu bar innerHTML length:', menuBar.innerHTML.length);
+              
+              const menuItems = document.querySelectorAll('.menu-item');
+              console.log('[MENU] Found', menuItems.length, 'menu items');
               
               // Add menu click handlers
-              document.querySelectorAll('.menu-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  const dropdown = item.querySelector('.menu-dropdown');
-                  // Close all other dropdowns
-                  document.querySelectorAll('.menu-dropdown').forEach(d => {
-                    if (d !== dropdown) d.style.display = 'none';
+              menuItems.forEach((item, index) => {
+                  console.log('[MENU] Attaching handler to menu item', index, ':', item.textContent);
+                  item.addEventListener('click', (e) => {
+                    console.log('[MENU] Menu item clicked! Index:', index, 'Text:', item.textContent);
+                    e.stopPropagation();
+                    const dropdown = item.querySelector('.menu-dropdown');
+                    // Close all other dropdowns
+                    document.querySelectorAll('.menu-dropdown').forEach(d => {
+                      if (d !== dropdown) d.style.display = 'none';
+                    });
+                    // Toggle this dropdown
+                    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
                   });
-                  // Toggle this dropdown
-                  dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
                 });
-              });
-              
-              // Close menu when clicking outside
-              document.addEventListener('click', () => {
-                document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
-              });
-              
-              console.log('[MENU] Menu bar initialized successfully');
-              console.log('[MENU] Menu HTML content length:', menuBar.innerHTML.length);
+                
+                // Add handlers for menu dropdown items
+                const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
+                console.log('[MENU] Found', dropdownItems.length, 'dropdown items');
+                
+                dropdownItems.forEach((item, index) => {
+                  const action = item.getAttribute('data-action');
+                  console.log('[MENU] Attaching handler to dropdown item', index, 'action:', action);
+                  
+                  item.addEventListener('click', (e) => {
+                    console.log('[MENU] Dropdown item clicked! Action:', action);
+                    e.stopPropagation();
+                    console.log('[MENU] Processing action:', action);
+                    
+                    // Handle the action
+                    switch(action) {
+                      case 'copy':
+                        document.execCommand('copy');
+                        break;
+                      case 'paste':
+                        document.execCommand('paste');
+                        break;
+                      default:
+                        // Send IPC message for other actions
+                        if (action && window.ipcRenderer) {
+                          console.log('[MENU] Sending IPC message:', action);
+                          window.ipcRenderer.send(action);
+                        } else if (action) {
+                          console.error('[MENU] ipcRenderer not available for action:', action);
+                        }
+                        break;
+                    }
+                    
+                    // Close dropdown after action
+                    document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
+                  });
+                });
+                
+                // Close menu when clicking outside
+                document.addEventListener('click', () => {
+                  document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
+                });
+                
+                console.log('[MENU] Menu bar initialized successfully');
+                console.log('[MENU] Menu items found:', document.querySelectorAll('.menu-item').length);
+                console.log('[MENU] Menu dropdown items found:', document.querySelectorAll('.menu-dropdown-item').length);
             } else {
               console.error('[MENU] Menu bar element not found!');
             }
+          };
+          
+          // Check if DOM is already loaded or wait for it
+          console.log('[MENU] Document ready state:', document.readyState);
+          console.log('[MENU] Menu bar HTML exists:', !!document.getElementById('menu-bar'));
+          console.log('[MENU] Menu items exist:', document.querySelectorAll('.menu-item').length);
+          
+          if (document.readyState === 'loading') {
+            console.log('[MENU] DOM still loading, waiting for DOMContentLoaded...');
+            // DOM is still loading, wait for it
+            document.addEventListener('DOMContentLoaded', () => {
+              console.log('[MENU] DOMContentLoaded event fired!');
+              // initMenu();  // Commented out - menu initialized from main process
+            });
+          } else {
+            console.log('[MENU] DOM already loaded, initializing menu immediately...');
+            // DOM is already loaded, initialize immediately
+            // initMenu();  // Commented out - menu initialized from main process
+          }
+          */
         });
       </script>
     </body>
@@ -2252,21 +2364,287 @@ export class MainWindow {
     ipcMain.removeAllListeners('toggle-dtr');
     ipcMain.removeAllListeners('toggle-rts');
     
-    // DTR Toggle Handler - Delegate to toggleDTR to avoid duplication
+    // File menu handlers
+    ipcMain.removeAllListeners('menu-new-recording');
+    ipcMain.removeAllListeners('menu-open-recording');
+    ipcMain.removeAllListeners('menu-save-recording');
+    ipcMain.removeAllListeners('menu-start-recording');
+    ipcMain.removeAllListeners('menu-stop-recording');
+    ipcMain.removeAllListeners('menu-playback-recording');
+    ipcMain.removeAllListeners('menu-settings');
+    ipcMain.removeAllListeners('menu-quit');
+    
+    // Edit menu handlers
+    ipcMain.removeAllListeners('menu-find');
+    ipcMain.removeAllListeners('menu-clear');
+    
+    // Debug menu handlers
+    ipcMain.removeAllListeners('menu-debugger-cog0');
+    ipcMain.removeAllListeners('menu-debugger-cog1');
+    ipcMain.removeAllListeners('menu-debugger-cog2');
+    ipcMain.removeAllListeners('menu-debugger-cog3');
+    ipcMain.removeAllListeners('menu-debugger-cog4');
+    ipcMain.removeAllListeners('menu-debugger-cog5');
+    ipcMain.removeAllListeners('menu-debugger-cog6');
+    ipcMain.removeAllListeners('menu-debugger-cog7');
+    ipcMain.removeAllListeners('menu-break-all');
+    ipcMain.removeAllListeners('menu-resume-all');
+    ipcMain.removeAllListeners('menu-performance-monitor');
+    
+    // Window menu handlers
+    ipcMain.removeAllListeners('menu-cascade');
+    ipcMain.removeAllListeners('menu-tile');
+    ipcMain.removeAllListeners('menu-show-all');
+    ipcMain.removeAllListeners('menu-hide-all');
+    
+    // Help menu handlers
+    ipcMain.removeAllListeners('menu-documentation');
+    ipcMain.removeAllListeners('menu-about');
+    
+    // DTR/RTS Toggle Handlers
     ipcMain.on('toggle-dtr', async () => {
-      console.log('[IPC] Received toggle-dtr request, delegating to toggleDTR()');
+      console.log('[IPC] Received toggle-dtr request');
       await this.toggleDTR();
     });
     
-    // RTS Toggle Handler - Delegate to toggleRTS to avoid duplication
     ipcMain.on('toggle-rts', async () => {
-      console.log('[IPC] Received toggle-rts request, delegating to toggleRTS()');
+      console.log('[IPC] Received toggle-rts request');
       await this.toggleRTS();
     });
     
-    console.log('[IPC] DTR/RTS handlers registered');
+    // File menu handlers
+    ipcMain.on('menu-new-recording', () => {
+      console.log('[IPC] New recording');
+      // Clear current recording if any and start fresh
+      this.windowRouter.stopRecording();
+      this.startRecording();
+    });
+    
+    ipcMain.on('menu-open-recording', async () => {
+      console.log('[IPC] Open recording');
+      await this.playRecording();
+    });
+    
+    ipcMain.on('menu-save-recording', async () => {
+      console.log('[IPC] Save recording');
+      // Stop recording first to flush buffer
+      this.windowRouter.stopRecording();
+      
+      // TODO: Access the saved recording file
+      const result = await dialog.showSaveDialog(this.mainWindow!, {
+        title: 'Save Recording As',
+        defaultPath: `recording_${getFormattedDateTime()}.jsonl`,
+        filters: [{ name: 'Recording Files', extensions: ['jsonl'] }]
+      });
+      
+      if (!result.canceled && result.filePath) {
+        // The recording is already saved by stopRecording()
+        // We would need to copy/move it to the user's chosen location
+        console.log('[RECORDING] Would save to:', result.filePath);
+      }
+    });
+    
+    ipcMain.on('menu-start-recording', () => {
+      console.log('[IPC] Start recording');
+      this.startRecording();
+    });
+    
+    ipcMain.on('menu-stop-recording', () => {
+      console.log('[IPC] Stop recording');
+      this.stopRecording();
+    });
+    
+    ipcMain.on('menu-playback-recording', async () => {
+      console.log('[IPC] Playback recording');
+      await this.playRecording();
+    });
+    
+    ipcMain.on('menu-settings', () => {
+      console.log('[IPC] Settings');
+      this.showSettingsDialog();
+    });
+    
+    ipcMain.on('menu-quit', () => {
+      console.log('[IPC] Quit');
+      app.quit();
+    });
+    
+    // Edit menu handlers
+    ipcMain.on('menu-find', () => {
+      console.log('[IPC] Find');
+      // TODO: Implement find dialog
+      this.showFindDialog();
+    });
+    
+    ipcMain.on('menu-clear', () => {
+      console.log('[IPC] Clear terminal');
+      this.clearTerminal();
+    });
+    
+    // Debug menu handlers
+    for (let i = 0; i < 8; i++) {
+      ipcMain.on(`menu-debugger-cog${i}`, () => {
+        console.log(`[IPC] Open debugger for COG ${i}`);
+        this.openDebuggerWindow(i);
+      });
+    }
+    
+    ipcMain.on('menu-break-all', () => {
+      console.log('[IPC] Break all');
+      // TODO: Implement break all COGs
+      this.breakAllCogs();
+    });
+    
+    ipcMain.on('menu-resume-all', () => {
+      console.log('[IPC] Resume all');
+      // TODO: Implement resume all COGs
+      this.resumeAllCogs();
+    });
+    
+    ipcMain.on('menu-performance-monitor', () => {
+      console.log('[IPC] Performance monitor');
+      this.showPerformanceMonitor();
+    });
+    
+    // Window menu handlers
+    ipcMain.on('menu-cascade', () => {
+      console.log('[IPC] Cascade windows');
+      this.cascadeWindows();
+    });
+    
+    ipcMain.on('menu-tile', () => {
+      console.log('[IPC] Tile windows');
+      this.tileWindows();
+    });
+    
+    ipcMain.on('menu-show-all', () => {
+      console.log('[IPC] Show all windows');
+      this.showAllWindows();
+    });
+    
+    ipcMain.on('menu-hide-all', () => {
+      console.log('[IPC] Hide all windows');
+      this.hideAllWindows();
+    });
+    
+    // Help menu handlers
+    ipcMain.on('menu-documentation', () => {
+      console.log('[IPC] Documentation');
+      electron.shell.openExternal('https://github.com/parallaxinc/PNut-Term-TS/wiki');
+    });
+    
+    ipcMain.on('menu-about', () => {
+      console.log('[IPC] About');
+      this.showAboutDialog();
+    });
+    
+    console.log('[IPC] All menu handlers registered');
   }
   
+  /**
+   * Initialize menu system programmatically after window loads
+   * This avoids the data URL script execution restrictions
+   */
+  private initializeMenu(): void {
+    if (!this.mainWindow) return;
+    
+    console.log('[MENU] Starting programmatic menu initialization...');
+    
+    // Inject menu event handlers from main process
+    this.mainWindow.webContents.executeJavaScript(`
+      (function() {
+        console.log('[MENU] Programmatic menu setup starting...');
+        
+        const menuBar = document.getElementById('menu-bar');
+        if (!menuBar) {
+          console.error('[MENU] Menu bar element not found!');
+          return;
+        }
+        
+        console.log('[MENU] Found menu bar, setting up handlers...');
+        
+        // Get all menu items
+        const menuItems = document.querySelectorAll('.menu-item');
+        console.log('[MENU] Found ' + menuItems.length + ' menu items');
+        
+        // Add click handlers to menu items
+        menuItems.forEach((item, index) => {
+          console.log('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
+          
+          item.addEventListener('click', (e) => {
+            console.log('[MENU] Menu item clicked: ' + item.textContent);
+            e.stopPropagation();
+            
+            const dropdown = item.querySelector('.menu-dropdown');
+            if (dropdown) {
+              // Close all other dropdowns
+              document.querySelectorAll('.menu-dropdown').forEach(d => {
+                if (d !== dropdown) d.style.display = 'none';
+              });
+              
+              // Toggle this dropdown
+              dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+              console.log('[MENU] Dropdown toggled to: ' + dropdown.style.display);
+            }
+          });
+        });
+        
+        // Add handlers for dropdown items
+        const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
+        console.log('[MENU] Found ' + dropdownItems.length + ' dropdown items');
+        
+        dropdownItems.forEach((item, index) => {
+          const action = item.getAttribute('data-action');
+          console.log('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
+          
+          item.addEventListener('click', (e) => {
+            console.log('[MENU] Dropdown item clicked, action: ' + action);
+            e.stopPropagation();
+            
+            // Close all dropdowns
+            document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
+            
+            // Handle the action
+            if (action) {
+              // For actions that don't need IPC, handle directly
+              if (action === 'copy') {
+                document.execCommand('copy');
+              } else if (action === 'paste') {
+                document.execCommand('paste');
+              } else {
+                // Send IPC message for other actions
+                // Use require to get ipcRenderer directly
+                try {
+                  const { ipcRenderer } = require('electron');
+                  console.log('[MENU] Sending IPC message: ' + action);
+                  ipcRenderer.send(action);
+                } catch (err) {
+                  console.error('[MENU] Failed to send IPC:', err);
+                  // Fallback to window.ipcRenderer if available
+                  if (window.ipcRenderer) {
+                    window.ipcRenderer.send(action);
+                  }
+                }
+              }
+            }
+          });
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', () => {
+          document.querySelectorAll('.menu-dropdown').forEach(d => d.style.display = 'none');
+        });
+        
+        console.log('[MENU] Menu initialization complete');
+        return 'Menu initialized';
+      })();
+    `).then((result: any) => {
+      console.log('[MENU] Menu injection result:', result);
+    }).catch((error: any) => {
+      console.error('[MENU] Failed to inject menu handlers:', error);
+    });
+  }
+
   private setupWindowHandlers(): void {
     // Inject JavaScript into the renderer process
     
@@ -2358,6 +2736,12 @@ export class MainWindow {
     // Set up toolbar button event handlers and load settings
     this.mainWindow!.webContents.once('did-finish-load', () => {
       const isIdeMode = this.context.runEnvironment.ideMode;
+      
+      // Initialize menu if in standalone mode
+      if (!isIdeMode) {
+        console.log('[MENU] Injecting menu setup after window load...');
+        this.initializeMenu();
+      }
       
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
@@ -2792,6 +3176,199 @@ export class MainWindow {
     // Old menu code - kept for reference when implementing HTML menu bar
   }
 
+  private async showConnectionDialog(): Promise<void> {
+    console.log('[MENU] Showing connection dialog');
+    
+    // Get available serial ports using UsbSerial
+    const deviceList = await UsbSerial.serialDeviceList(this.context);
+    const portList = deviceList
+      .map((device: string) => ({
+        label: device,
+        value: device
+      }));
+    
+    if (portList.length === 0) {
+      dialog.showMessageBox(this.mainWindow!, {
+        type: 'warning',
+        title: 'No Serial Ports Found',
+        message: 'No USB serial ports were detected.',
+        detail: 'Please connect a Propeller device and try again.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Create a simple HTML dialog for port selection
+    const dialogHTML = `
+      <div style="padding: 20px;">
+        <h3>Select Serial Port</h3>
+        <select id="port-select" style="width: 100%; padding: 5px; margin: 10px 0;">
+          ${portList.map((port: any) => `<option value="${port.value}">${port.label}</option>`).join('')}
+        </select>
+        <div style="margin-top: 15px;">
+          <label>
+            <input type="radio" name="control-line" value="DTR" checked> DTR (Parallax standard)
+          </label>
+          <br>
+          <label>
+            <input type="radio" name="control-line" value="RTS"> RTS
+          </label>
+        </div>
+        <div style="margin-top: 20px; text-align: right;">
+          <button onclick="window.close()">Cancel</button>
+          <button onclick="
+            const port = document.getElementById('port-select').value;
+            const controlLine = document.querySelector('input[name=control-line]:checked').value;
+            window.ipcRenderer.send('connect-port', { port, controlLine });
+            window.close();
+          " style="margin-left: 10px;">Connect</button>
+        </div>
+      </div>
+    `;
+    
+    // For now, use a simple dialog
+    const result = await dialog.showMessageBox(this.mainWindow!, {
+      type: 'question',
+      title: 'Connect to Serial Port',
+      message: 'Select a serial port to connect:',
+      detail: portList.map((p: any) => p.label).join('\n'),
+      buttons: ['Cancel', ...portList.map((p: any) => p.label)],
+      defaultId: 1
+    });
+    
+    if (result.response > 0) {
+      const selectedPort = portList[result.response - 1].value;
+      console.log('[MENU] Connecting to port:', selectedPort);
+      await this.connectSerialPort(selectedPort);
+    }
+  }
+  
+  private async connectSerialPort(deviceNode: string): Promise<void> {
+    console.log('[MENU] Connecting to serial port:', deviceNode);
+    
+    // Disconnect any existing connection first
+    if (this._serialPort) {
+      await this.disconnectSerialPort();
+    }
+    
+    // Open the serial port using existing method
+    this._deviceNode = deviceNode;
+    await this.openSerialPort(deviceNode);
+    
+    // Update UI to show connected state
+    if (this._serialPort) {
+      this.safeExecuteJS(`
+        (function() {
+          const propPlug = document.querySelector('#propPlug .status-value');
+          if (propPlug) {
+            propPlug.textContent = '${deviceNode}';
+          }
+        })();
+      `, 'update connect status');
+    }
+  }
+  
+  private async disconnectSerialPort(): Promise<void> {
+    console.log('[MENU] Disconnecting serial port');
+    
+    if (this._serialPort) {
+      try {
+        await this._serialPort.close();
+        console.log('[SERIAL] Port closed successfully');
+        
+        this._serialPort = undefined;
+        this.logMessage('Serial port disconnected');
+        
+        // Update UI to show disconnected state
+        this.safeExecuteJS(`
+          (function() {
+            const propPlug = document.querySelector('#propPlug .status-value');
+            if (propPlug) {
+              propPlug.textContent = 'Disconnected';
+            }
+          })();
+        `, 'update disconnect status');
+      } catch (error) {
+        console.error('[SERIAL] Failed to disconnect:', error);
+      }
+    } else {
+      console.log('[SERIAL] No port to disconnect');
+    }
+  }
+  
+  // Window management methods
+  private cascadeWindows(): void {
+    // TODO: Implement cascade window arrangement
+    console.log('[WINDOW] Cascade windows - not yet implemented');
+  }
+  
+  private tileWindows(): void {
+    // TODO: Implement tile window arrangement
+    console.log('[WINDOW] Tile windows - not yet implemented');
+  }
+  
+  private showAllWindows(): void {
+    // Show all debug windows
+    const windows = this.windowRouter.getActiveWindows();
+    console.log(`[WINDOW] Showing ${windows.length} windows`);
+    // TODO: Implement actual show functionality for each window
+  }
+  
+  private hideAllWindows(): void {
+    // Hide all debug windows except main
+    const windows = this.windowRouter.getActiveWindows();
+    console.log(`[WINDOW] Hiding ${windows.length} windows`);
+    // TODO: Implement actual hide functionality for each window
+  }
+  
+  // Debug methods
+  private openDebuggerWindow(cogId: number): void {
+    console.log(`[DEBUG] Opening debugger for COG ${cogId}`);
+    // TODO: Create debugger window for specified COG
+    const windowName = `p2debugger_cog${cogId}`;
+    // For now, just log the request
+    console.log(`[DEBUG] Would create window: ${windowName} for COG ${cogId}`);
+  }
+  
+  private breakAllCogs(): void {
+    console.log('[DEBUG] Breaking all COGs');
+    // TODO: Send break command to all COG debuggers
+  }
+  
+  private resumeAllCogs(): void {
+    console.log('[DEBUG] Resuming all COGs');
+    // TODO: Send resume command to all COG debuggers
+  }
+  
+  private showPerformanceMonitor(): void {
+    console.log('[PERF] Showing performance monitor');
+    // TODO: Create performance monitor window
+    const stats = this.windowRouter.getRoutingStats();
+    dialog.showMessageBox(this.mainWindow!, {
+      type: 'info',
+      title: 'Performance Monitor',
+      message: 'Message Routing Statistics',
+      detail: `Messages Routed: ${stats.messagesRouted}\n` +
+              `Recording Active: ${stats.recordingActive}\n` +
+              `Errors: ${stats.errors}\n\n` +
+              `Active Windows: ${this.windowRouter.getActiveWindows().length}`,
+      buttons: ['OK']
+    });
+  }
+  
+  private showFindDialog(): void {
+    console.log('[EDIT] Showing find dialog');
+    // TODO: Implement find dialog for terminal
+    // For now, use browser's built-in find
+    if (this.mainWindow) {
+      this.mainWindow.webContents.sendInputEvent({
+        type: 'keyDown',
+        keyCode: 'F',
+        modifiers: ['control']
+      } as any);
+    }
+  }
+  
   private clearTerminal(): void {
     this.safeExecuteJS(`
       (function() {

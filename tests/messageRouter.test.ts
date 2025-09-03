@@ -41,56 +41,56 @@ describe('MessageRouter', () => {
   describe('Destination Registration', () => {
     it('should register destinations for message types', () => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       const config = router.getRoutingConfig();
-      expect(config[MessageType.TEXT]).toHaveLength(1);
-      expect(config[MessageType.TEXT][0].name).toBe('TestDest');
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(1);
+      expect(config[MessageType.TERMINAL_OUTPUT][0].name).toBe('TestDest');
     });
 
     it('should not register duplicate destinations', () => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       const config = router.getRoutingConfig();
-      expect(config[MessageType.TEXT]).toHaveLength(1);
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(1);
     });
 
     it('should unregister destinations', () => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
-      router.unregisterDestination(MessageType.TEXT, 'TestDest');
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
+      router.unregisterDestination(MessageType.TERMINAL_OUTPUT, 'TestDest');
 
       const config = router.getRoutingConfig();
-      expect(config[MessageType.TEXT]).toHaveLength(0);
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(0);
     });
 
     it('should register multiple destinations for same type', () => {
       const dest1 = createDestination('Dest1');
       const dest2 = createDestination('Dest2');
       
-      router.registerDestination(MessageType.TEXT, dest1);
-      router.registerDestination(MessageType.TEXT, dest2);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest1);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest2);
 
       const config = router.getRoutingConfig();
-      expect(config[MessageType.TEXT]).toHaveLength(2);
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(2);
     });
   });
 
   describe('Message Routing', () => {
     it('should route messages to correct destination', (done) => {
       const textDest = createDestination('TextDest');
-      router.registerDestination(MessageType.TEXT, textDest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, textDest);
 
-      const msg = createMessage(MessageType.TEXT, 'Hello');
+      const msg = createMessage(MessageType.TERMINAL_OUTPUT, 'Hello');
       inputQueue.enqueue(msg);
 
       router.processMessages();
 
       setTimeout(() => {
         expect(messagesReceived['TextDest']).toHaveLength(1);
-        expect(messagesReceived['TextDest'][0].type).toBe(MessageType.TEXT);
+        expect(messagesReceived['TextDest'][0].type).toBe(MessageType.TERMINAL_OUTPUT);
         done();
       }, 10);
     });
@@ -99,10 +99,10 @@ describe('MessageRouter', () => {
       const dest1 = createDestination('Dest1');
       const dest2 = createDestination('Dest2');
       
-      router.registerDestination(MessageType.TEXT, dest1);
-      router.registerDestination(MessageType.TEXT, dest2);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest1);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest2);
 
-      const msg = createMessage(MessageType.TEXT, 'Test');
+      const msg = createMessage(MessageType.TERMINAL_OUTPUT, 'Test');
       inputQueue.enqueue(msg);
 
       router.processMessages();
@@ -118,10 +118,10 @@ describe('MessageRouter', () => {
       const dest1 = createDestination('Dest1');
       const dest2 = createDestination('Dest2');
       
-      router.registerDestination(MessageType.TEXT, dest1);
-      router.registerDestination(MessageType.TEXT, dest2);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest1);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest2);
 
-      const msg = createMessage(MessageType.TEXT, 'Test');
+      const msg = createMessage(MessageType.TERMINAL_OUTPUT, 'Test');
       inputQueue.enqueue(msg);
 
       router.processMessages();
@@ -145,11 +145,11 @@ describe('MessageRouter', () => {
       const initDest = createDestination('InitDest');
       const protoDest = createDestination('ProtoDest');
       
-      router.registerDestination(MessageType.TEXT, textDest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, textDest);
       router.registerDestination(MessageType.DEBUGGER_INIT, initDest);
       router.registerDestination(MessageType.DEBUGGER_PROTOCOL, protoDest);
 
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'text'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text'));
       inputQueue.enqueue(createMessage(MessageType.DEBUGGER_INIT, 'init'));
       inputQueue.enqueue(createMessage(MessageType.DEBUGGER_PROTOCOL, 'proto'));
 
@@ -167,11 +167,11 @@ describe('MessageRouter', () => {
   describe('Async Processing', () => {
     it('should process messages asynchronously', (done) => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       // Add multiple messages
       for (let i = 0; i < 10; i++) {
-        inputQueue.enqueue(createMessage(MessageType.TEXT, `Message ${i}`));
+        inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, `Message ${i}`));
       }
 
       router.processMessages();
@@ -191,7 +191,7 @@ describe('MessageRouter', () => {
       const result2 = router.processMessages();
 
       expect(result1).toBe(false); // Empty queue
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
       
       const result3 = router.processMessages();
       expect(result3).toBe(true);
@@ -202,11 +202,11 @@ describe('MessageRouter', () => {
 
     it('should process large batches', (done) => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       // Add 150 messages (more than batch size)
       for (let i = 0; i < 150; i++) {
-        inputQueue.enqueue(createMessage(MessageType.TEXT, `Msg${i}`));
+        inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, `Msg${i}`));
       }
 
       router.processMessages();
@@ -230,8 +230,8 @@ describe('MessageRouter', () => {
       const config = router.getRoutingConfig();
       
       // Text goes to DebugLogger
-      expect(config[MessageType.TEXT]).toHaveLength(1);
-      expect(config[MessageType.TEXT][0].name).toBe('DebugLogger');
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(1);
+      expect(config[MessageType.TERMINAL_OUTPUT][0].name).toBe('DebugLogger');
 
       // Init goes to both WindowCreator and DebugLogger
       expect(config[MessageType.DEBUGGER_INIT]).toHaveLength(2);
@@ -258,8 +258,8 @@ describe('MessageRouter', () => {
       const errorSpy = jest.fn();
       router.on('destinationError', errorSpy);
 
-      router.registerDestination(MessageType.TEXT, errorDest);
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, errorDest);
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
 
       router.processMessages();
 
@@ -275,7 +275,7 @@ describe('MessageRouter', () => {
       router.on('unroutableMessage', unroutableSpy);
 
       // No destinations registered
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
       router.processMessages();
 
       setTimeout(() => {
@@ -296,11 +296,11 @@ describe('MessageRouter', () => {
         }
       };
 
-      router.registerDestination(MessageType.TEXT, errorDest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, errorDest);
       
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'ok1'));
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'error'));
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'ok2'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'ok1'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'error'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'ok2'));
 
       router.processMessages();
 
@@ -314,11 +314,11 @@ describe('MessageRouter', () => {
   describe('Queue Management', () => {
     it('should wait for queue to drain', async () => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       // Add messages
       for (let i = 0; i < 5; i++) {
-        inputQueue.enqueue(createMessage(MessageType.TEXT, `Msg${i}`));
+        inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, `Msg${i}`));
       }
 
       router.processMessages();
@@ -337,11 +337,11 @@ describe('MessageRouter', () => {
         }
       };
 
-      router.registerDestination(MessageType.TEXT, slowDest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, slowDest);
       
       // Add many messages
       for (let i = 0; i < 100; i++) {
-        inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+        inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
       }
 
       router.processMessages();
@@ -354,18 +354,18 @@ describe('MessageRouter', () => {
   describe('Statistics', () => {
     it('should track routing statistics', (done) => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
       router.registerDestination(MessageType.DEBUGGER_INIT, dest);
 
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'text1'));
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'text2'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text1'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text2'));
       inputQueue.enqueue(createMessage(MessageType.DEBUGGER_INIT, 'init'));
 
       router.processMessages();
 
       setTimeout(() => {
         const stats = router.getStats();
-        expect(stats.messagesRouted[MessageType.TEXT]).toBe(2);
+        expect(stats.messagesRouted[MessageType.TERMINAL_OUTPUT]).toBe(2);
         expect(stats.messagesRouted[MessageType.DEBUGGER_INIT]).toBe(1);
         expect(stats.destinationCounts['TestDest']).toBe(3);
         expect(stats.totalMessagesRouted).toBe(3);
@@ -381,8 +381,8 @@ describe('MessageRouter', () => {
         }
       };
 
-      router.registerDestination(MessageType.TEXT, errorDest);
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, errorDest);
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
       
       router.processMessages();
 
@@ -395,15 +395,15 @@ describe('MessageRouter', () => {
 
     it('should reset statistics', (done) => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
       
-      inputQueue.enqueue(createMessage(MessageType.TEXT, 'test'));
+      inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'test'));
       router.processMessages();
 
       setTimeout(() => {
         router.resetStats();
         const stats = router.getStats();
-        expect(stats.messagesRouted[MessageType.TEXT]).toBe(0);
+        expect(stats.messagesRouted[MessageType.TERMINAL_OUTPUT]).toBe(0);
         expect(stats.destinationCounts['TestDest']).toBe(0);
         expect(stats.routingErrors).toBe(0);
         done();
@@ -417,10 +417,10 @@ describe('MessageRouter', () => {
       router.on('batchProcessed', batchSpy);
 
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       for (let i = 0; i < 5; i++) {
-        inputQueue.enqueue(createMessage(MessageType.TEXT, `Msg${i}`));
+        inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, `Msg${i}`));
       }
 
       router.processMessages();
@@ -436,9 +436,9 @@ describe('MessageRouter', () => {
       router.on('messageRouted', routedSpy);
 
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
-      const msg = createMessage(MessageType.TEXT, 'test');
+      const msg = createMessage(MessageType.TERMINAL_OUTPUT, 'test');
       inputQueue.enqueue(msg);
 
       router.processMessages();
@@ -461,22 +461,22 @@ describe('MessageRouter', () => {
       const dest1 = createDestination('Dest1');
       const dest2 = createDestination('Dest2');
       
-      router.registerDestination(MessageType.TEXT, dest1);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest1);
       router.registerDestination(MessageType.DEBUGGER_INIT, dest2);
 
       router.clearAllDestinations();
 
       const config = router.getRoutingConfig();
-      expect(config[MessageType.TEXT]).toHaveLength(0);
+      expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(0);
       expect(config[MessageType.DEBUGGER_INIT]).toHaveLength(0);
     });
 
     it('should handle message with undefined metadata', (done) => {
       const dest = createDestination('TestDest');
-      router.registerDestination(MessageType.TEXT, dest);
+      router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
 
       const msg: ExtractedMessage = {
-        type: MessageType.TEXT,
+        type: MessageType.TERMINAL_OUTPUT,
         data: new Uint8Array([1, 2, 3]),
         timestamp: Date.now(),
         metadata: undefined

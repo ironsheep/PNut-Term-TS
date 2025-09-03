@@ -207,6 +207,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.notifyLoggingStatus(true);
       console.log('[DEBUG LOGGER] Log file initialized successfully at:', this.logFilePath);
       
+      // ENHANCEMENT: Console logging for audit trail visibility
+      console.log(`[DEBUG LOGGER] Started new log: ${this.logFilePath}`);
+      
     } catch (error) {
       // Use base class logMessage to send to console, not Debug Logger window
       console.error('[DEBUG LOGGER] Failed to initialize log file:', error);

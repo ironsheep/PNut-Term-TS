@@ -130,6 +130,9 @@ export class MessageExtractor extends EventEmitter {
   private lastScanPosition: number = 0;
   private partialMessageDetected: boolean = false;
   
+  // Zero-byte filtering state (for hardware issues causing spurious COG0 debugger packets)
+  private justProcessedDebuggerPacket: boolean = false;
+  
   // Batch extraction configuration
   private readonly MAX_BATCH_SIZE = 100;  // Process up to 100 messages per batch
   private readonly MAX_BATCH_TIME_MS = 10; // Process for up to 10ms
@@ -928,12 +931,62 @@ export class MessageExtractor extends EventEmitter {
   }
 
   /**
+   * HARDWARE WORKAROUND: Filter consecutive zero bytes after debugger packets
+   * Hardware sends streams of zeros between valid traffic, causing spurious COG0 debugger packets
+   * Returns number of zero bytes filtered
+   */
+  private filterPostDebuggerZeros(): number {
+    let zerosFiltered = 0;
+    
+    // Skip consecutive zero bytes
+    while (this.buffer.hasData()) {
+      // Save position before checking next byte
+      this.buffer.savePosition();
+      
+      // Look at the next byte
+      const result = this.buffer.next();
+      if (result.status === NextStatus.DATA && result.value === 0x00) {
+        // This is a zero byte, consume it (don't restore position)
+        zerosFiltered++;
+      } else if (result.status === NextStatus.DATA) {
+        // Found non-zero byte, restore position so it can be processed normally
+        this.buffer.restorePosition();
+        // Clear the flag since we've found the end of the zero stream
+        this.justProcessedDebuggerPacket = false;
+        break;
+      } else {
+        // No more data or error, restore position
+        this.buffer.restorePosition();
+        break;
+      }
+    }
+    
+    return zerosFiltered;
+  }
+
+  /**
    * Extract next complete message using Two-Tier Pattern Matching
    * Returns null if no complete message available
    */
   private extractNextMessage(): ExtractedMessage | null {
     // Reset partial flag
     this.partialMessageDetected = false;
+
+    // *** THIS IS THE ONLY PLACE WE FILTER ZEROS FROM THE STREAM ***
+    // HARDWARE WORKAROUND: Remove consecutive zero bytes that follow debugger packets
+    // Hardware sends streams of zeros between valid traffic. We filter ONLY these specific zeros:
+    // 1. ONLY after a debugger 416-byte packet (justProcessedDebuggerPacket = true)
+    // 2. ONLY consecutive zero bytes (0x00) 
+    // 3. ONLY until first non-zero byte (then stop and resume normal processing)
+    // This prevents zero-filled "packets" from being classified as debugger data
+    if (this.justProcessedDebuggerPacket) {
+      const zerosFiltered = this.filterPostDebuggerZeros();
+      if (zerosFiltered > 0) {
+        console.log(`[MessageExtractor] Filtered ${zerosFiltered} zero bytes after debugger packet`);
+      }
+      // Note: justProcessedDebuggerPacket flag is cleared inside filterPostDebuggerZeros()
+      // when it encounters the first non-zero byte
+    }
 
     // TIER 1: Try each pattern in priority order
     for (const pattern of this.MESSAGE_PATTERNS) {
@@ -1032,6 +1085,11 @@ export class MessageExtractor extends EventEmitter {
         `[${Array.from(messageData.slice(0, Math.min(8, messageData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${messageData.length > 8 ? '...' : ''}]` : 
         '[empty]';
       console.log(`[MessageExtractor] CLASSIFIED: ${pattern.messageType} - ${messageData.length} bytes - ${preview}`);
+    }
+
+    // HARDWARE WORKAROUND: Set flag to filter zeros after debugger packets
+    if (pattern.messageType === MessageType.DEBUGGER_416BYTE) {
+      this.justProcessedDebuggerPacket = true;
     }
 
     return extractedMessage;

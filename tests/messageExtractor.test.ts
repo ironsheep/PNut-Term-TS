@@ -27,7 +27,7 @@ describe('MessageExtractor', () => {
       
       expect(outputQueue.getSize()).toBe(1);
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.TEXT);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(Buffer.from(msg.data).toString()).toBe('Hello World');
       expect(hasMore).toBe(false);
     });
@@ -39,7 +39,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.TEXT);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(Buffer.from(msg.data).toString()).toBe('Test Line');
     });
 
@@ -50,7 +50,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.TEXT);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(msg.metadata?.cogId).toBe(0);
       expect(Buffer.from(msg.data).toString()).toBe('Cog0: Debug info');
     });
@@ -62,9 +62,9 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       expect(outputQueue.getSize()).toBe(3);
-      expect(outputQueue.dequeue()!.type).toBe(MessageType.TEXT);
-      expect(outputQueue.dequeue()!.type).toBe(MessageType.TEXT);
-      expect(outputQueue.dequeue()!.type).toBe(MessageType.TEXT);
+      expect(outputQueue.dequeue()!.type).toBe(MessageType.TERMINAL_OUTPUT);
+      expect(outputQueue.dequeue()!.type).toBe(MessageType.TERMINAL_OUTPUT);
+      expect(outputQueue.dequeue()!.type).toBe(MessageType.TERMINAL_OUTPUT);
     });
 
     it('should wait for complete text line', () => {
@@ -104,7 +104,7 @@ describe('MessageExtractor', () => {
 
       expect(outputQueue.getSize()).toBe(1);
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.DEBUGGER_PROTOCOL);
+      expect(msg.type).toBe(MessageType.DB_PACKET);
       expect(msg.data.length).toBe(12); // 4 header + 8 payload
       expect(msg.data[0]).toBe(0xDB);
       expect(msg.metadata?.messageSubtype).toBe(0x01);
@@ -170,7 +170,7 @@ describe('MessageExtractor', () => {
 
       expect(outputQueue.getSize()).toBe(1);
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.DEBUGGER_INIT);
+      expect(msg.type).toBe(MessageType.DEBUGGER_416BYTE);
       expect(msg.data.length).toBe(80);
       expect(msg.metadata?.cogId).toBe(3);
     });
@@ -185,7 +185,7 @@ describe('MessageExtractor', () => {
 
       // Should not extract as debugger init
       const msg = outputQueue.dequeue();
-      expect(msg?.type).not.toBe(MessageType.DEBUGGER_INIT);
+      expect(msg?.type).not.toBe(MessageType.DEBUGGER_416BYTE);
     });
 
     it('should detect 80-byte packet followed by text', () => {
@@ -199,10 +199,10 @@ describe('MessageExtractor', () => {
 
       expect(outputQueue.getSize()).toBe(2);
       const init = outputQueue.dequeue()!;
-      expect(init.type).toBe(MessageType.DEBUGGER_INIT);
+      expect(init.type).toBe(MessageType.DEBUGGER_416BYTE);
       
       const text = outputQueue.dequeue()!;
-      expect(text.type).toBe(MessageType.TEXT);
+      expect(text.type).toBe(MessageType.TERMINAL_OUTPUT);
     });
   });
 
@@ -219,11 +219,11 @@ describe('MessageExtractor', () => {
 
       expect(outputQueue.getSize()).toBe(2);
       const binaryMsg = outputQueue.dequeue()!;
-      expect(binaryMsg.type).toBe(MessageType.BINARY_UNKNOWN);
+      expect(binaryMsg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(binaryMsg.data).toEqual(binary);
 
       const textMsg = outputQueue.dequeue()!;
-      expect(textMsg.type).toBe(MessageType.TEXT);
+      expect(textMsg.type).toBe(MessageType.TERMINAL_OUTPUT);
     });
 
     it('should limit unknown binary chunk size', () => {
@@ -237,7 +237,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.BINARY_UNKNOWN);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(msg.data.length).toBe(256); // Limited to 256
     });
 
@@ -255,11 +255,11 @@ describe('MessageExtractor', () => {
       expect(outputQueue.getSize()).toBe(2);
       
       const binary = outputQueue.dequeue()!;
-      expect(binary.type).toBe(MessageType.BINARY_UNKNOWN);
+      expect(binary.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(binary.data.length).toBe(3);
 
       const text = outputQueue.dequeue()!;
-      expect(text.type).toBe(MessageType.TEXT);
+      expect(text.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(Buffer.from(text.data).toString()).toBe('Cog0');
     });
   });
@@ -276,7 +276,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.DEBUGGER_PROTOCOL);
+      expect(msg.type).toBe(MessageType.DB_PACKET);
       expect(msg.data.length).toBe(8);
     });
 
@@ -288,7 +288,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.TEXT);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(msg.data.length).toBe(79);
     });
   });
@@ -342,8 +342,8 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const stats = extractor.getStats();
-      expect(stats.messagesExtracted[MessageType.TEXT]).toBe(2);
-      expect(stats.messagesExtracted[MessageType.DEBUGGER_PROTOCOL]).toBe(1);
+      expect(stats.messagesExtracted[MessageType.TERMINAL_OUTPUT]).toBe(2);
+      expect(stats.messagesExtracted[MessageType.DB_PACKET]).toBe(1);
     });
 
     it('should track total bytes extracted', () => {
@@ -363,7 +363,7 @@ describe('MessageExtractor', () => {
       extractor.resetStats();
 
       const stats = extractor.getStats();
-      expect(stats.messagesExtracted[MessageType.TEXT]).toBe(0);
+      expect(stats.messagesExtracted[MessageType.TERMINAL_OUTPUT]).toBe(0);
       expect(stats.totalBytesExtracted).toBe(0);
       expect(stats.partialMessageWaits).toBe(0);
     });
@@ -424,7 +424,7 @@ describe('MessageExtractor', () => {
       extractor.extractMessages();
 
       const msg = outputQueue.dequeue()!;
-      expect(msg.type).toBe(MessageType.TEXT);
+      expect(msg.type).toBe(MessageType.TERMINAL_OUTPUT);
       expect(msg.data.length).toBe(1024); // Truncated
     });
   });
