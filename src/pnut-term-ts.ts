@@ -271,7 +271,7 @@ export class DebugTerminalInTypeScript {
 
     if (!options.quiet) {
       const signOnCompiler: string =
-        "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.";
+        "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC.";
       this.context.logger.forceLogMessage(`* ${signOnCompiler}`);
       const signOnVersion: string = `Version ${this.version}, {buildDateHere}`;
       this.context.logger.forceLogMessage(`* ${signOnVersion}`);

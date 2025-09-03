@@ -537,6 +537,20 @@ export class WindowRouter extends EventEmitter {
   }
   
   /**
+   * Check if recording is active
+   */
+  public isRecordingActive(): boolean {
+    return this.isRecording;
+  }
+
+  /**
+   * Get count of messages recorded
+   */
+  public getRecordingMessageCount(): number {
+    return this.recordingMessageCount;
+  }
+
+  /**
    * Start recording debug session
    */
   public startRecording(metadata: RecordingMetadata): void {

@@ -28,6 +28,10 @@ import * as fs from 'fs';
 import path from 'path';
 import { DebugScopeWindow } from './debugScopeWin';
 import { DebugWindowBase } from './debugWindowBase';
+import { PreferencesDialog } from './preferencesDialog';
+import { PerformanceMonitor } from './performanceMonitor';
+import { NewRecordingDialog } from './newRecordingDialog';
+import { BinaryPlayer } from './binaryPlayer';
 import { DebugTermWindow } from './debugTermWin';
 import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
@@ -88,6 +92,10 @@ export class MainWindow {
   private windowRouter: WindowRouter = WindowRouter.getInstance();
   private dtrState: boolean = false;
   private rtsState: boolean = false;
+  private preferencesDialog: PreferencesDialog | null = null;
+  private performanceMonitor: PerformanceMonitor | null = null;
+  private newRecordingDialog: NewRecordingDialog | null = null;
+  private binaryPlayer: BinaryPlayer | null = null;
   private controlLineMode: 'DTR' | 'RTS' = 'DTR'; // Default to DTR (Parallax standard)
   private downloadMode: 'ram' | 'flash' = 'ram';  // Default to RAM mode
   private activeCogs: Set<number> = new Set();
@@ -2014,8 +2022,6 @@ export class MainWindow {
               <div class="menu-dropdown-item" data-action="menu-stop-recording">Stop Recording</div>
               <div class="menu-dropdown-item" data-action="menu-playback-recording">Playback Recording <span style="float: right; color: #999;">Ctrl+P</span></div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
-              <div class="menu-dropdown-item" data-action="menu-settings">Settings... <span style="float: right; color: #999;">Ctrl+,</span></div>
-              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-quit">Exit <span style="float: right; color: #999;">Ctrl+Q</span></div>
             </div>
           </div>
@@ -2028,33 +2034,15 @@ export class MainWindow {
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-find">Find... <span style="float: right; color: #999;">Ctrl+F</span></div>
               <div class="menu-dropdown-item" data-action="menu-clear">Clear Terminal</div>
-            </div>
-          </div>
-          <div class="menu-item" data-menu="debug">
-            <span>Debug</span>
-            <div class="menu-dropdown">
-              <div class="menu-dropdown-item" data-action="menu-open-debugger">Open Debugger ▶
-                <div class="menu-dropdown submenu" style="display: none; position: absolute; left: 100%; top: 0;">
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog0">COG 0</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog1">COG 1</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog2">COG 2</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog3">COG 3</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog4">COG 4</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog5">COG 5</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog6">COG 6</div>
-                  <div class="menu-dropdown-item" data-action="menu-debugger-cog7">COG 7</div>
-                </div>
-              </div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
-              <div class="menu-dropdown-item" data-action="menu-break-all">Break All</div>
-              <div class="menu-dropdown-item" data-action="menu-resume-all">Resume All <span style="float: right; color: #999;">F5</span></div>
-              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
-              <div class="menu-dropdown-item" data-action="menu-performance-monitor">Performance Monitor</div>
+              <div class="menu-dropdown-item" data-action="menu-preferences">Preferences... <span style="float: right; color: #999;">Ctrl+,</span></div>
             </div>
           </div>
           <div class="menu-item" data-menu="window">
             <span>Window</span>
             <div class="menu-dropdown">
+              <div class="menu-dropdown-item" data-action="menu-performance-monitor">Performance Monitor</div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-cascade">Cascade</div>
               <div class="menu-dropdown-item" data-action="menu-tile">Tile</div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
@@ -2098,6 +2086,25 @@ export class MainWindow {
             <option value="ibm3270-green">IBM 3270 Green</option>
             <option value="ibm3270-amber">IBM 3270 Amber</option>
           </select>
+        </div>
+        <div id="playback-controls" style="display: none; background: #252526; padding: 10px; border-bottom: 1px solid #3e3e42;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button id="playback-play" class="toolbar-button" style="width: 40px;">▶</button>
+            <button id="playback-pause" class="toolbar-button" style="width: 40px; display: none;">⏸</button>
+            <button id="playback-stop" class="toolbar-button" style="width: 40px;">⏹</button>
+            <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
+              <span id="playback-time" style="color: #969696; font-size: 12px; min-width: 100px;">00:00 / 00:00</span>
+              <div style="flex: 1; position: relative; height: 20px; background: #3e3e42; border-radius: 3px; cursor: pointer;" id="playback-progress">
+                <div id="playback-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #007acc, #0099ff); border-radius: 3px;"></div>
+                <div id="playback-handle" style="position: absolute; top: 50%; transform: translateY(-50%); left: 0%; width: 12px; height: 12px; background: white; border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.5);"></div>
+              </div>
+            </div>
+            <select id="playback-speed" class="toolbar-button" style="padding: 2px 5px;">
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+            </select>
+          </div>
         </div>
         <div id="log-content">
 </div>
@@ -2185,6 +2192,46 @@ export class MainWindow {
           if (playbackBtn) {
             playbackBtn.addEventListener('click', () => {
               ipcRenderer.send('play-recording');
+            });
+          }
+          
+          // Playback control panel handlers
+          const playBtn = document.getElementById('playback-play');
+          const pauseBtn = document.getElementById('playback-pause');
+          const stopBtn = document.getElementById('playback-stop');
+          const speedSelect = document.getElementById('playback-speed');
+          const progressBar = document.getElementById('playback-progress');
+          
+          if (playBtn) {
+            playBtn.addEventListener('click', () => {
+              ipcRenderer.send('playback-control', 'play');
+            });
+          }
+          
+          if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => {
+              ipcRenderer.send('playback-control', 'pause');
+            });
+          }
+          
+          if (stopBtn) {
+            stopBtn.addEventListener('click', () => {
+              ipcRenderer.send('playback-control', 'stop');
+            });
+          }
+          
+          if (speedSelect) {
+            speedSelect.addEventListener('change', (e) => {
+              const speed = parseFloat((e.target as HTMLSelectElement).value);
+              ipcRenderer.send('playback-control', 'speed', speed);
+            });
+          }
+          
+          if (progressBar) {
+            progressBar.addEventListener('click', (e) => {
+              const rect = progressBar.getBoundingClientRect();
+              const position = (e.clientX - rect.left) / rect.width;
+              ipcRenderer.send('playback-control', 'seek', position);
             });
           }
           
@@ -2371,27 +2418,15 @@ export class MainWindow {
     ipcMain.removeAllListeners('menu-start-recording');
     ipcMain.removeAllListeners('menu-stop-recording');
     ipcMain.removeAllListeners('menu-playback-recording');
-    ipcMain.removeAllListeners('menu-settings');
     ipcMain.removeAllListeners('menu-quit');
     
     // Edit menu handlers
     ipcMain.removeAllListeners('menu-find');
     ipcMain.removeAllListeners('menu-clear');
-    
-    // Debug menu handlers
-    ipcMain.removeAllListeners('menu-debugger-cog0');
-    ipcMain.removeAllListeners('menu-debugger-cog1');
-    ipcMain.removeAllListeners('menu-debugger-cog2');
-    ipcMain.removeAllListeners('menu-debugger-cog3');
-    ipcMain.removeAllListeners('menu-debugger-cog4');
-    ipcMain.removeAllListeners('menu-debugger-cog5');
-    ipcMain.removeAllListeners('menu-debugger-cog6');
-    ipcMain.removeAllListeners('menu-debugger-cog7');
-    ipcMain.removeAllListeners('menu-break-all');
-    ipcMain.removeAllListeners('menu-resume-all');
-    ipcMain.removeAllListeners('menu-performance-monitor');
+    ipcMain.removeAllListeners('menu-preferences');
     
     // Window menu handlers
+    ipcMain.removeAllListeners('menu-performance-monitor');
     ipcMain.removeAllListeners('menu-cascade');
     ipcMain.removeAllListeners('menu-tile');
     ipcMain.removeAllListeners('menu-show-all');
@@ -2412,12 +2447,80 @@ export class MainWindow {
       await this.toggleRTS();
     });
     
+    // Recording dialog actions
+    ipcMain.on('recording-action', (event: any, action: string, data?: string) => {
+      console.log('[IPC] Recording action:', action, data);
+      if (action === 'save-and-start') {
+        this.windowRouter.stopRecording();
+        // TODO: Save current recording
+        this.startRecording();
+      } else if (action === 'start-new') {
+        this.startRecording(data); // data contains the file path
+      }
+    });
+    
+    // Playback control handlers
+    ipcMain.on('playback-control', async (event: any, action: string, data?: any) => {
+      console.log('[IPC] Playback control:', action, data);
+      
+      if (!this.binaryPlayer) {
+        console.log('[PLAYBACK] No player instance');
+        return;
+      }
+      
+      switch (action) {
+        case 'play':
+          this.binaryPlayer.play();
+          this.showPlaybackControls();
+          this.updatePlaybackButton(true);
+          break;
+          
+        case 'pause':
+          this.binaryPlayer.pause();
+          this.updatePlaybackButton(false);
+          break;
+          
+        case 'stop':
+          this.binaryPlayer.stop();
+          this.hidePlaybackControls();
+          this.updatePlaybackButton(false);
+          break;
+          
+        case 'seek':
+          this.binaryPlayer.seek(data);
+          break;
+          
+        case 'speed':
+          this.binaryPlayer.setSpeed(data);
+          break;
+      }
+    });
+    
+    // Recording toolbar button handler  
+    ipcMain.on('toggle-recording', () => {
+      console.log('[IPC] Toggle recording from toolbar');
+      if (this.windowRouter.isRecordingActive()) {
+        this.stopRecording();
+      } else {
+        this.startRecording();
+      }
+    });
+    
+    // Playback toolbar button handler
+    ipcMain.on('play-recording', async () => {
+      console.log('[IPC] Play recording from toolbar');
+      await this.playRecording();
+    });
+    
     // File menu handlers
     ipcMain.on('menu-new-recording', () => {
       console.log('[IPC] New recording');
-      // Clear current recording if any and start fresh
-      this.windowRouter.stopRecording();
-      this.startRecording();
+      if (!this.newRecordingDialog) {
+        this.newRecordingDialog = new NewRecordingDialog(this.mainWindow);
+      }
+      const isRecording = this.windowRouter.isRecordingActive();
+      const messageCount = this.windowRouter.getRecordingMessageCount();
+      this.newRecordingDialog.show(isRecording, messageCount);
     });
     
     ipcMain.on('menu-open-recording', async () => {
@@ -2459,9 +2562,9 @@ export class MainWindow {
       await this.playRecording();
     });
     
-    ipcMain.on('menu-settings', () => {
-      console.log('[IPC] Settings');
-      this.showSettingsDialog();
+    ipcMain.on('menu-preferences', () => {
+      console.log('[IPC] Preferences');
+      this.showPreferencesDialog();
     });
     
     ipcMain.on('menu-quit', () => {
@@ -2481,32 +2584,12 @@ export class MainWindow {
       this.clearTerminal();
     });
     
-    // Debug menu handlers
-    for (let i = 0; i < 8; i++) {
-      ipcMain.on(`menu-debugger-cog${i}`, () => {
-        console.log(`[IPC] Open debugger for COG ${i}`);
-        this.openDebuggerWindow(i);
-      });
-    }
-    
-    ipcMain.on('menu-break-all', () => {
-      console.log('[IPC] Break all');
-      // TODO: Implement break all COGs
-      this.breakAllCogs();
-    });
-    
-    ipcMain.on('menu-resume-all', () => {
-      console.log('[IPC] Resume all');
-      // TODO: Implement resume all COGs
-      this.resumeAllCogs();
-    });
-    
+    // Window menu handlers
     ipcMain.on('menu-performance-monitor', () => {
       console.log('[IPC] Performance monitor');
       this.showPerformanceMonitor();
     });
     
-    // Window menu handlers
     ipcMain.on('menu-cascade', () => {
       console.log('[IPC] Cascade windows');
       this.cascadeWindows();
@@ -2706,8 +2789,8 @@ export class MainWindow {
         case 'play-recording':
           this.playRecording();
           break;
-        case 'menu-settings':
-          this.showSettingsDialog();
+        case 'menu-preferences':
+          this.showPreferencesDialog();
           break;
         case 'menu-about':
           this.showAboutDialog();
@@ -2926,7 +3009,7 @@ export class MainWindow {
           {
             label: 'Preferences...',
             accelerator: 'Cmd+,',
-            click: () => this.showSettingsDialog()
+            click: () => this.showPreferencesDialog()
           },
           { type: 'separator' },
           {
@@ -3142,7 +3225,7 @@ export class MainWindow {
           {
             label: 'Settings...',
             accelerator: 'CmdOrCtrl+,',
-            click: () => this.showSettingsDialog()
+            click: () => this.showPreferencesDialog()
           }
         ]
       },
@@ -3342,18 +3425,10 @@ export class MainWindow {
   
   private showPerformanceMonitor(): void {
     console.log('[PERF] Showing performance monitor');
-    // TODO: Create performance monitor window
-    const stats = this.windowRouter.getRoutingStats();
-    dialog.showMessageBox(this.mainWindow!, {
-      type: 'info',
-      title: 'Performance Monitor',
-      message: 'Message Routing Statistics',
-      detail: `Messages Routed: ${stats.messagesRouted}\n` +
-              `Recording Active: ${stats.recordingActive}\n` +
-              `Errors: ${stats.errors}\n\n` +
-              `Active Windows: ${this.windowRouter.getActiveWindows().length}`,
-      buttons: ['OK']
-    });
+    if (!this.performanceMonitor) {
+      this.performanceMonitor = new PerformanceMonitor(this.mainWindow);
+    }
+    this.performanceMonitor.show();
   }
   
   private showFindDialog(): void {
@@ -4096,6 +4171,31 @@ export class MainWindow {
         })();
       `, 'updatePerformanceDisplay');
 
+      // Update performance monitor if open
+      if (this.performanceMonitor) {
+        const routingStats = this.windowRouter.getRoutingStats();
+        this.performanceMonitor.updateMetrics({
+          throughput: parseFloat(throughputKbps),
+          bufferUsage: perfSnapshot.metrics.bufferUsagePercent,
+          queueDepth: totalQueueDepth,
+          status: statusSymbol,
+          bufferSize: perfSnapshot.circularBuffer.size,
+          bufferUsed: perfSnapshot.circularBuffer.used,
+          bufferAvailable: perfSnapshot.circularBuffer.size - perfSnapshot.circularBuffer.used,
+          highWaterMark: perfSnapshot.circularBuffer.highWaterMark || 0,
+          overflowEvents: perfSnapshot.circularBuffer.overflowCount,
+          totalMessages: routingStats.messagesRouted,
+          messagesPerSecond: perfSnapshot.messagesPerSecond || 0,
+          recordingActive: routingStats.recordingActive,
+          recordingSize: 0, // TODO: Get actual recording size when implemented
+          parseErrors: routingStats.errors,
+          activeWindows: this.windowRouter.getActiveWindows().map(w => ({
+            name: `${w.windowType} (${w.windowId})`,
+            queueDepth: 0 // TODO: Get queue depth per window when available
+          }))
+        });
+      }
+
     } catch (error) {
       console.error('[PERF DISPLAY] Error in updatePerformanceDisplay:', error);
     }
@@ -4730,9 +4830,9 @@ export class MainWindow {
     }
   }
 
-  private startRecording(): void {
+  private startRecording(filepath?: string): void {
     const metadata = {
-      sessionName: `session-${getFormattedDateTime()}`,
+      sessionName: filepath || `session-${getFormattedDateTime()}`,
       description: 'Debug session recording',
       startTime: Date.now(),
       serialPort: this._deviceNode,
@@ -4753,16 +4853,105 @@ export class MainWindow {
   private async playRecording(): Promise<void> {
     const result = await dialog.showOpenDialog(this.mainWindow!, {
       title: 'Select Recording to Play',
-      filters: [{ name: 'Recording Files', extensions: ['jsonl'] }],
+      filters: [{ name: 'P2 Recording Files', extensions: ['p2rec'] }],
       properties: ['openFile']
     });
     
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
+      
+      // Initialize player if needed
+      if (!this.binaryPlayer) {
+        this.binaryPlayer = new BinaryPlayer();
+        this.setupPlaybackListeners();
+      }
+      
+      // Load and start playback
+      await this.binaryPlayer.loadRecording(filePath);
+      this.showPlaybackControls();
+      this.binaryPlayer.play();
       this.updateRecordingStatus('Playing...');
-      await this.windowRouter.playRecording(filePath, 1.0);
-      this.updateRecordingStatus('Ready');
     }
+  }
+
+  private setupPlaybackListeners(): void {
+    if (!this.binaryPlayer) return;
+    
+    // Listen for playback data
+    this.binaryPlayer.on('data', (data: Buffer) => {
+      // Inject data as if received from serial port
+      this.handleSerialRx(data);
+    });
+    
+    // Listen for progress updates
+    this.binaryPlayer.on('progress', (progress) => {
+      this.updatePlaybackProgress(progress);
+    });
+    
+    // Listen for playback finished
+    this.binaryPlayer.on('finished', () => {
+      this.hidePlaybackControls();
+      this.updateRecordingStatus('Ready');
+    });
+  }
+  
+  private showPlaybackControls(): void {
+    this.safeExecuteJS(`
+      const controls = document.getElementById('playback-controls');
+      if (controls) {
+        controls.style.display = 'block';
+      }
+    `, 'showPlaybackControls');
+  }
+  
+  private hidePlaybackControls(): void {
+    this.safeExecuteJS(`
+      const controls = document.getElementById('playback-controls');
+      if (controls) {
+        controls.style.display = 'none';
+      }
+    `, 'hidePlaybackControls');
+  }
+  
+  private updatePlaybackButton(isPlaying: boolean): void {
+    this.safeExecuteJS(`
+      const playBtn = document.getElementById('playback-play');
+      const pauseBtn = document.getElementById('playback-pause');
+      if (playBtn && pauseBtn) {
+        if (${isPlaying}) {
+          playBtn.style.display = 'none';
+          pauseBtn.style.display = 'block';
+        } else {
+          playBtn.style.display = 'block';
+          pauseBtn.style.display = 'none';
+        }
+      }
+    `, 'updatePlaybackButton');
+  }
+  
+  private updatePlaybackProgress(progress: { current: number; total: number; percentage: number }): void {
+    const currentMinutes = Math.floor(progress.current / 60000);
+    const currentSeconds = Math.floor((progress.current % 60000) / 1000);
+    const totalMinutes = Math.floor(progress.total / 60000);
+    const totalSeconds = Math.floor((progress.total % 60000) / 1000);
+    
+    const timeText = `${currentMinutes.toString().padStart(2, '0')}:${currentSeconds.toString().padStart(2, '0')} / ${totalMinutes.toString().padStart(2, '0')}:${totalSeconds.toString().padStart(2, '0')}`;
+    
+    this.safeExecuteJS(`
+      const timeEl = document.getElementById('playback-time');
+      const barEl = document.getElementById('playback-bar');
+      const handleEl = document.getElementById('playback-handle');
+      
+      if (timeEl) {
+        timeEl.textContent = '${timeText}';
+      }
+      if (barEl) {
+        barEl.style.width = '${progress.percentage}%';
+      }
+      if (handleEl) {
+        handleEl.style.left = '${progress.percentage}%';
+      }
+    `, 'updatePlaybackProgress');
   }
 
   private selectBaudRate(): void {
@@ -4791,281 +4980,11 @@ export class MainWindow {
     });
   }
 
-  private showSettingsDialog(): void {
-    // Create a simple settings dialog
-    const settingsWindow = new BrowserWindow({
-      width: 600,
-      height: 500,
-      parent: this.mainWindow,
-      modal: true,
-      title: 'Settings',
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
-      }
-    });
-
-    const settingsHTML = `
-      <html>
-        <head>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              margin: 0;
-              padding: 0;
-              background: #f5f5f5;
-              height: 100vh;
-              display: flex;
-              flex-direction: column;
-            }
-            .settings-container {
-              flex: 1;
-              overflow-y: auto;
-              padding: 20px;
-              padding-bottom: 80px; /* Space for buttons */
-            }
-            h2 {
-              margin-top: 0;
-              color: #333;
-            }
-            .settings-section {
-              background: white;
-              border-radius: 8px;
-              padding: 15px;
-              margin-bottom: 15px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            .setting-row {
-              display: flex;
-              align-items: center;
-              margin-bottom: 10px;
-            }
-            .setting-row:last-child {
-              margin-bottom: 0;
-            }
-            label {
-              flex: 1;
-              color: #555;
-            }
-            select, input[type="number"], input[type="text"] {
-              width: 200px;
-              padding: 5px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-            }
-            input[type="checkbox"] {
-              margin-left: auto;
-            }
-            .button-row {
-              position: fixed;
-              bottom: 0;
-              left: 0;
-              right: 0;
-              background: white;
-              border-top: 1px solid #ddd;
-              padding: 15px 20px;
-              display: flex;
-              justify-content: flex-end;
-              box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
-            }
-            button {
-              padding: 8px 16px;
-              margin-left: 10px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              background: white;
-              cursor: pointer;
-            }
-            button:hover {
-              background: #f0f0f0;
-            }
-            button.primary {
-              background: #007AFF;
-              color: white;
-              border-color: #007AFF;
-            }
-            button.primary:hover {
-              background: #0056b3;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="settings-container">
-            <h2>Settings</h2>
-            
-            <div class="settings-section">
-            <h3>Terminal</h3>
-            <div class="setting-row">
-              <label for="terminal-mode">Terminal Mode:</label>
-              <select id="terminal-mode">
-                <option value="PST">PST (Parallax Serial Terminal)</option>
-                <option value="ANSI">ANSI (Standard escape sequences)</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <label for="theme">Color Theme:</label>
-              <select id="theme">
-                <option value="pst">PST (Cyan/Yellow)</option>
-                <option value="classic">Classic (Green/Black)</option>
-                <option value="amber">Amber Terminal</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <label for="fontsize">Font Size:</label>
-              <input type="number" id="fontsize" value="12" min="8" max="24" />
-            </div>
-            <div class="setting-row">
-              <label for="echo">Local Echo:</label>
-              <input type="checkbox" id="echo" />
-            </div>
-          </div>
-          
-          <div class="settings-section">
-            <h3>Debug Logger</h3>
-            <div class="setting-row">
-              <label for="logger-theme">Logger Theme:</label>
-              <select id="logger-theme">
-                <option value="green">Green on Black</option>
-                <option value="amber">Amber on Black</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <label for="auto-log">Auto-start Logging:</label>
-              <input type="checkbox" id="auto-log" />
-            </div>
-            <div class="setting-row">
-              <label for="log-basename">Log File Base Name:</label>
-              <input type="text" id="log-basename" value="debug_capture" />
-            </div>
-          </div>
-          
-          <div class="settings-section">
-            <h3>COG Windows</h3>
-            <div class="setting-row">
-              <label for="cog-display-mode">COG Display Mode:</label>
-              <select id="cog-display-mode">
-                <option value="show_all">Show All 8 COGs</option>
-                <option value="on_demand">Show Only Active COGs</option>
-              </select>
-            </div>
-            <div class="setting-row">
-              <label for="cog-auto-open">Auto-open on traffic:</label>
-              <input type="checkbox" id="cog-auto-open" checked />
-            </div>
-          </div>
-          
-          <div class="settings-section">
-            <h3>Serial Control</h3>
-            <div class="setting-row">
-              <label for="control-line-mode">Reset Control Line:</label>
-              <select id="control-line-mode">
-                <option value="DTR">DTR (Parallax Prop Plug)</option>
-                <option value="RTS">RTS (FTDI Clones)</option>
-              </select>
-            </div>
-            <div class="setting-row" style="font-size: 11px; color: #666; margin-left: 20px;">
-              DTR: Standard for official Parallax devices<br>
-              RTS: Required by some FTDI clones
-            </div>
-          </div>
-          
-          <div class="settings-section">
-            <h3>Window Placement</h3>
-            <div class="setting-row">
-              <label for="cascade">Cascade Windows:</label>
-              <input type="checkbox" id="cascade" />
-            </div>
-            <div class="setting-row">
-              <label for="remember-pos">Remember Window Positions:</label>
-              <input type="checkbox" id="remember-pos" />
-            </div>
-          </div>
-          </div><!-- end settings-container -->
-          
-          <div class="button-row">
-            <button onclick="window.close()">Cancel</button>
-            <button class="primary" onclick="saveAndClose()">OK</button>
-          </div>
-          
-          <script>
-            const { ipcRenderer } = require('electron');
-            
-            // Load current settings
-            window.addEventListener('DOMContentLoaded', () => {
-              // Load terminal mode
-              const terminalMode = localStorage.getItem('terminal-mode') || 'PST';
-              const modeSelect = document.getElementById('terminal-mode');
-              if (modeSelect) {
-                modeSelect.value = terminalMode;
-              }
-              
-              // Load other settings...
-              // TODO: Load theme, font size, echo, etc.
-              
-              // Load COG display mode
-              const cogMode = localStorage.getItem('cog-display-mode') || 'show_all';
-              const cogModeSelect = document.getElementById('cog-display-mode');
-              if (cogModeSelect) {
-                cogModeSelect.value = cogMode;
-              }
-              
-              const cogAutoOpen = localStorage.getItem('cog-auto-open') !== 'false';
-              const cogAutoOpenCheck = document.getElementById('cog-auto-open');
-              if (cogAutoOpenCheck) {
-                cogAutoOpenCheck.checked = cogAutoOpen;
-              }
-              
-              // Load control line mode
-              const controlLineMode = localStorage.getItem('control-line-mode') || 'DTR';
-              const controlLineSelect = document.getElementById('control-line-mode');
-              if (controlLineSelect) {
-                controlLineSelect.value = controlLineMode;
-              }
-            });
-            
-            function saveAndClose() {
-              // Save terminal mode
-              const modeSelect = document.getElementById('terminal-mode');
-              if (modeSelect) {
-                const selectedMode = modeSelect.value;
-                localStorage.setItem('terminal-mode', selectedMode);
-                // Send to main process to update terminal
-                ipcRenderer.send('set-terminal-mode', selectedMode);
-              }
-              
-              // Save COG display mode
-              const cogModeSelect = document.getElementById('cog-display-mode');
-              if (cogModeSelect) {
-                const selectedCogMode = cogModeSelect.value;
-                localStorage.setItem('cog-display-mode', selectedCogMode);
-                ipcRenderer.send('set-cog-display-mode', selectedCogMode);
-              }
-              
-              const cogAutoOpenCheck = document.getElementById('cog-auto-open');
-              if (cogAutoOpenCheck) {
-                localStorage.setItem('cog-auto-open', cogAutoOpenCheck.checked);
-              }
-              
-              // Save control line mode
-              const controlLineSelect = document.getElementById('control-line-mode');
-              if (controlLineSelect) {
-                const selectedControlLine = controlLineSelect.value;
-                localStorage.setItem('control-line-mode', selectedControlLine);
-                ipcRenderer.send('set-control-line-mode', selectedControlLine);
-              }
-              
-              // TODO: Save other settings
-              // In a future sprint, this will save to external project .json file
-              
-              window.close();
-            }
-          </script>
-        </body>
-      </html>
-    `;
-
-    settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(settingsHTML)}`);
-    settingsWindow.setMenu(null);
+  private showPreferencesDialog(): void {
+    if (!this.preferencesDialog) {
+      this.preferencesDialog = new PreferencesDialog(this.mainWindow);
+    }
+    this.preferencesDialog.show();
   }
 
   /**
