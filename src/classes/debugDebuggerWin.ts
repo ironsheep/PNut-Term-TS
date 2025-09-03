@@ -16,10 +16,22 @@ import {
   createMemoryBlock
 } from './shared/debuggerConstants';
 import { DebuggerRenderer } from './shared/debuggerRenderer';
+import { CanvasRenderer } from './shared/canvasRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
 import { DebuggerInteraction } from './shared/debuggerInteraction';
 import { MessagePool, PooledMessage } from './shared/messagePool';
+
+/**
+ * Layout region definition
+ */
+interface LayoutRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: string;
+}
 
 /**
  * DebugDebuggerWindow - Interactive debugger window for Parallax Propeller 2 COGs
@@ -62,6 +74,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   
   // Core debugger components
   private renderer: DebuggerRenderer | null = null;
+  private canvasRenderer: CanvasRenderer;
   private protocol: DebuggerProtocol | null = null;
   private dataManager: DebuggerDataManager | null = null;
   private interaction: DebuggerInteraction | null = null;
@@ -69,6 +82,15 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   // Deferred messages queue for when components aren't ready
   private deferredMessages: any[] = [];
   private componentsReady: boolean = false;
+  
+  // Rendering state management
+  private dirtyRegions: Set<string> = new Set();
+  private regions: Map<string, LayoutRegion> = new Map();
+  private tooltipText: string | null = null;
+  private tooltipX: number = 0;
+  private tooltipY: number = 0;
+  private lastRenderTime: number = 0;
+  private renderCount: number = 0;
   // No timer needed - using event-driven approach
   
   // Remove redundant queue - base class handles this via messageQueue
@@ -102,12 +124,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Initialize core components early (before window creation)
     // These don't depend on the DOM/window being ready
     this.dataManager = new DebuggerDataManager();
+    this.canvasRenderer = new CanvasRenderer();
     this.protocol = new DebuggerProtocol();
     
     // Mark components as ready since we've created everything needed
     // for message processing (dataManager and protocol)
     this.componentsReady = true;
     console.log(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
+    
+    // Initialize layout regions (based on LAYOUT_CONSTANTS)
+    this.initializeRegions();
     
     this.logMessage(`DebugDebuggerWindow created for COG ${cogId}`);
     
@@ -139,6 +165,168 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     }
     
     return state;
+  }
+
+  /**
+   * Initialize layout regions based on debugger window layout
+   */
+  private initializeRegions(): void {
+    // COG Registers (top left)
+    this.regions.set('cogRegisters', {
+      x: 1,
+      y: 1,
+      width: 60,
+      height: 18,
+      type: 'registers'
+    });
+    
+    // LUT Registers (top right of COG)
+    this.regions.set('lutRegisters', {
+      x: 63,
+      y: 1,
+      width: 60,
+      height: 18,
+      type: 'registers'
+    });
+    
+    // Flags (below COG registers)
+    this.regions.set('flags', {
+      x: 1,
+      y: 20,
+      width: 30,
+      height: 4,
+      type: 'flags'
+    });
+    
+    // Disassembly (center)
+    this.regions.set('disassembly', {
+      x: 1,
+      y: 25,
+      width: 80,
+      height: 16,
+      type: 'disassembly'
+    });
+    
+    // Stack (left side)
+    this.regions.set('stack', {
+      x: 1,
+      y: 42,
+      width: 20,
+      height: 8,
+      type: 'stack'
+    });
+    
+    // Events (right of stack)
+    this.regions.set('events', {
+      x: 22,
+      y: 42,
+      width: 20,
+      height: 8,
+      type: 'events'
+    });
+    
+    // HUB Memory (right side)
+    this.regions.set('hubMemory', {
+      x: 82,
+      y: 1,
+      width: 40,
+      height: 50,
+      type: 'memory'
+    });
+    
+    // Control buttons (bottom)
+    this.regions.set('controls', {
+      x: 1,
+      y: 70,
+      width: 122,
+      height: 6,
+      type: 'controls'
+    });
+  }
+
+  /**
+   * Convert grid coordinates to pixel coordinates
+   */
+  private gridToPixel(gridX: number, gridY: number): {x: number, y: number} {
+    return {
+      x: gridX * this.charWidth,  // charWidth = 8
+      y: gridY * this.charHeight  // charHeight = 16
+    };
+  }
+
+  /**
+   * Convert debug color to hex string
+   */
+  private colorToHex(debugColor: number): string {
+    return '#' + debugColor.toString(16).padStart(6, '0');
+  }
+
+  /**
+   * Generate JavaScript to draw text at grid position with optional background
+   */
+  private drawTextJs(text: string, gridX: number, gridY: number, 
+                     fgColor: number, bgColor?: number): string {
+    const {x, y} = this.gridToPixel(gridX, gridY);
+    const fgHex = this.colorToHex(fgColor);
+    const commands = [];
+    
+    if (bgColor !== undefined) {
+      const bgHex = this.colorToHex(bgColor);
+      commands.push(`ctx.fillStyle='${bgHex}';ctx.fillRect(${x},${y},${text.length*8},16);`);
+    }
+    
+    commands.push(`ctx.fillStyle='${fgHex}';ctx.font='14px Parallax,monospace';`);
+    commands.push(`ctx.textBaseline='top';`);
+    commands.push(`ctx.fillText('${text.replace(/'/g, "\\'")}',${x},${y});`);
+    
+    return commands.join('');
+  }
+
+  /**
+   * Generate JavaScript to draw a single character at grid position
+   */
+  private drawCharJs(char: string, gridX: number, gridY: number, 
+                     fgColor: number, bgColor?: number): string {
+    return this.drawTextJs(char, gridX, gridY, fgColor, bgColor);
+  }
+
+  /**
+   * Generate JavaScript to draw a box with box-drawing characters
+   */
+  private drawBoxJs(x: number, y: number, width: number, height: number, color: number): string {
+    const commands = [];
+    
+    // Top line
+    commands.push(this.drawCharJs('┌', x, y, color));
+    for (let i = 1; i < width - 1; i++) {
+      commands.push(this.drawCharJs('─', x + i, y, color));
+    }
+    commands.push(this.drawCharJs('┐', x + width - 1, y, color));
+    
+    // Sides
+    for (let i = 1; i < height - 1; i++) {
+      commands.push(this.drawCharJs('│', x, y + i, color));
+      commands.push(this.drawCharJs('│', x + width - 1, y + i, color));
+    }
+    
+    // Bottom line
+    commands.push(this.drawCharJs('└', x, y + height - 1, color));
+    for (let i = 1; i < width - 1; i++) {
+      commands.push(this.drawCharJs('─', x + i, y + height - 1, color));
+    }
+    commands.push(this.drawCharJs('┘', x + width - 1, y + height - 1, color));
+    
+    return commands.join('');
+  }
+
+  /**
+   * Generate JavaScript to clear a region
+   */
+  private clearRegionJs(region: {x: number, y: number, width: number, height: number}): string {
+    const {x, y} = this.gridToPixel(region.x, region.y);
+    const width = region.width * this.charWidth;
+    const height = region.height * this.charHeight;
+    return `ctx.clearRect(${x},${y},${width},${height});`;
   }
 
   /**
@@ -680,110 +868,325 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Render debugger display
+   * Render COG registers region
+   */
+  private renderCogRegisters(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('COG Registers', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw register values (simplified for now - will be expanded with real data)
+    if (this.dataManager) {
+      for (let row = 0; row < 16; row++) {
+        for (let col = 0; col < 4; col++) {
+          const regNum = row * 4 + col;
+          const x = region.x + 2 + col * 14;
+          const y = region.y + 2 + row;
+          
+          // Get register value (placeholder for now)
+          const value = 0x00000000;
+          const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
+          
+          jsCommands.push(this.drawTextJs(hexStr, x, y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+        }
+      }
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render disassembly region
+   */
+  private renderDisassembly(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('Disassembly', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw border
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Placeholder for disassembly lines
+    for (let i = 0; i < 14; i++) {
+      const y = region.y + 2 + i;
+      jsCommands.push(this.drawTextJs(`0x${(i * 4).toString(16).padStart(8, '0')}  NOP`, region.x + 2, y, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render LUT registers region
+   */
+  private renderLutRegisters(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('LUT Registers', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw register values (simplified for now)
+    if (this.dataManager) {
+      for (let row = 0; row < 16; row++) {
+        for (let col = 0; col < 4; col++) {
+          const regNum = row * 4 + col;
+          const x = region.x + 2 + col * 14;
+          const y = region.y + 2 + row;
+          
+          const value = 0x00000000;
+          const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
+          
+          jsCommands.push(this.drawTextJs(hexStr, x, y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+        }
+      }
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render flags region
+   */
+  private renderFlags(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('Flags', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw flag states
+    const flags = ['Z', 'C', 'IRQ', 'CT1', 'CT2', 'CT3'];
+    let x = region.x + 2;
+    for (const flag of flags) {
+      jsCommands.push(this.drawTextJs(flag, x, region.y + 2, 0x808080));
+      x += 4;
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render stack region
+   */
+  private renderStack(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('Stack', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw border
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    
+    // Stack entries placeholder
+    for (let i = 0; i < 6; i++) {
+      jsCommands.push(this.drawTextJs(`[${i}] 00000000`, region.x + 2, region.y + 2 + i, 0x808080));
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render events region
+   */
+  private renderEvents(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('Events', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw border
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    
+    // Event entries placeholder
+    jsCommands.push(this.drawTextJs('No events', region.x + 2, region.y + 2, 0x606060));
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render HUB memory region
+   */
+  private renderHubMemory(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw title
+    jsCommands.push(this.drawTextJs('HUB Memory', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    
+    // Draw border
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    
+    // Memory display placeholder
+    for (let row = 0; row < 16; row++) {
+      const addr = row * 16;
+      const addrStr = addr.toString(16).padStart(8, '0').toUpperCase();
+      jsCommands.push(this.drawTextJs(`${addrStr}:`, region.x + 2, region.y + 2 + row, 0x808080));
+      
+      // Hex bytes
+      for (let col = 0; col < 8; col++) {
+        const x = region.x + 12 + col * 3;
+        jsCommands.push(this.drawTextJs('00', x, region.y + 2 + row, 0x606060));
+      }
+    }
+    
+    return jsCommands;
+  }
+  
+  /**
+   * Render control buttons
+   */
+  private renderControls(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    
+    // Clear region background
+    jsCommands.push(this.clearRegionJs(region));
+    
+    // Draw buttons
+    const buttons = [
+      { label: '[F5] Run', x: 2 },
+      { label: '[F8] Step', x: 12 },
+      { label: '[F9] Break', x: 24 },
+      { label: '[F10] Reset', x: 36 },
+      { label: '[ESC] Close', x: 48 }
+    ];
+    
+    for (const button of buttons) {
+      // Draw button box
+      jsCommands.push(this.drawBoxJs(region.x + button.x, region.y + 1, 10, 3, 0x808080));
+      // Draw button label
+      jsCommands.push(this.drawTextJs(button.label, region.x + button.x + 1, region.y + 2, 0xffffff));
+    }
+    
+    return jsCommands;
+  }
+
+  /**
+   * Get render commands for a specific region
+   */
+  private getRenderCommands(regionName: string, region: LayoutRegion): string[] {
+    switch (regionName) {
+      case 'cogRegisters':
+        return this.renderCogRegisters(region);
+      case 'lutRegisters':
+        return this.renderLutRegisters(region);
+      case 'disassembly':
+        return this.renderDisassembly(region);
+      case 'flags':
+        return this.renderFlags(region);
+      case 'stack':
+        return this.renderStack(region);
+      case 'events':
+        return this.renderEvents(region);
+      case 'hubMemory':
+        return this.renderHubMemory(region);
+      case 'controls':
+        return this.renderControls(region);
+      default:
+        return [];
+    }
+  }
+  
+  /**
+   * Main render method - batches all dirty regions
+   */
+  public render(): void {
+    if (!this.debugWindow) return;
+    
+    const startTime = performance.now();
+    const allJsCommands = [];
+    
+    // Add canvas clear at the beginning
+    allJsCommands.push(`ctx.fillStyle='#1e1e1e';ctx.fillRect(0,0,canvas.width,canvas.height);`);
+    
+    // Collect commands for all dirty regions
+    for (const regionName of this.dirtyRegions) {
+      const region = this.regions.get(regionName);
+      if (region) {
+        const commands = this.getRenderCommands(regionName, region);
+        allJsCommands.push(...commands);
+      }
+    }
+    
+    // Render tooltip if visible
+    if (this.tooltipText) {
+      allJsCommands.push(this.drawTextJs(this.tooltipText, this.tooltipX, this.tooltipY, 0xffff00, 0x333333));
+    }
+    
+    // Execute all commands in single call
+    if (allJsCommands.length > 0) {
+      this.debugWindow.webContents.executeJavaScript(
+        `(function() {
+          const canvas = document.getElementById('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.textBaseline = 'top';
+          ${allJsCommands.join('')}
+        })()`
+      ).catch(error => {
+        this.logMessage(`Render error: ${error}`);
+      });
+    }
+    
+    // Clear dirty regions
+    this.dirtyRegions.clear();
+    
+    // Track performance
+    const renderTime = performance.now() - startTime;
+    this.lastRenderTime = renderTime;
+    this.renderCount++;
+    
+    if (renderTime > 50) {
+      console.warn(`Slow render: ${renderTime.toFixed(1)}ms`);
+    }
+  }
+  
+  /**
+   * Mark a region as dirty for re-rendering
+   */
+  private markDirty(regionName: string): void {
+    this.dirtyRegions.add(regionName);
+  }
+  
+  /**
+   * Mark all regions as dirty
+   */
+  private markAllDirty(): void {
+    for (const regionName of this.regions.keys()) {
+      this.dirtyRegions.add(regionName);
+    }
+  }
+
+  /**
+   * Render debugger display - now uses the batched render system
    */
   private renderDebuggerDisplay(): void {
     if (!this.debugWindow) return;
     
-    // If no renderer yet, show the packet data directly
-    if (!this.renderer) {
-      const displayData = this.currentDebuggerPacket ? 
-        this.formatDebuggerPacketDisplay(this.currentDebuggerPacket) :
-        { title: `P2 Debugger - COG ${this.cogId}`, status: 'Waiting for debug data...' };
-      
-      this.debugWindow.webContents.executeJavaScript(`
-        (function() {
-          try {
-            const canvas = document.getElementById('canvas');
-            if (!canvas) {
-              console.error('[DEBUGGER] Canvas element not found!');
-              return 'Canvas not found';
-            }
-            
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              console.error('[DEBUGGER] Could not get 2D context from canvas!');
-              return 'Context not available';
-            }
-            
-            // Clear canvas
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Show debugger info
-            ctx.font = '14px monospace';
-            ctx.fillStyle = '#00ff00';
-            
-            const displayData = ${JSON.stringify(displayData)};
-            ctx.fillText(displayData.title || 'P2 Debugger', 10, 25);
-            
-            if (displayData.pc !== undefined) {
-              ctx.fillStyle = '#ffffff';
-              ctx.fillText('PC: ' + displayData.pc, 10, 50);
-              ctx.fillText('State: ' + displayData.state, 10, 70);
-              ctx.fillText('Instruction: ' + displayData.instruction, 10, 90);
-              
-              // Show some status block bytes
-              if (displayData.statusHex) {
-                ctx.fillStyle = '#808080';
-                ctx.fillText('Status Block (first 16 bytes):', 10, 120);
-                ctx.fillText(displayData.statusHex, 10, 140);
-              }
-            } else if (displayData.status) {
-              ctx.fillStyle = '#ffff00';
-              ctx.fillText(displayData.status, 10, 50);
-            }
-            
-            return 'Success';
-          } catch (error) {
-            console.error('[DEBUGGER] Error in canvas rendering:', error);
-            return 'Error: ' + error.message;
-          }
-        })()
-      `).then((result) => {
-        if (result !== 'Success') {
-          this.logMessage(`Canvas render result: ${result}`);
-        }
-      }).catch((error) => {
-        this.logMessage(`Error showing display: ${error}`);
-      });
-      return;
-    }
+    // Mark all regions as dirty for initial render
+    this.markAllDirty();
     
-    try {
-      // Get the rendered text grid
-      const grid = this.renderer.render();
-      
-      // Send grid to window for display
-      this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Clear canvas
-          ctx.fillStyle = '#1e1e1e';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Render text grid
-          ctx.font = '14px Parallax, monospace';
-          ctx.textBaseline = 'top';
-          
-          const grid = ${JSON.stringify(grid)};
-          for (let y = 0; y < grid.length; y++) {
-            for (let x = 0; x < grid[y].length; x++) {
-              const cell = grid[y][x];
-              if (cell.char !== ' ') {
-                ctx.fillStyle = cell.fg || '#c0c0c0';
-                ctx.fillText(cell.char, x * 8, y * 16);
-              }
-            }
-          }
-        }
-      `).catch((error) => {
-        this.logMessage(`Error executing JavaScript: ${error}`);
-      });
-    } catch (error) {
-      this.logMessage(`Error rendering: ${error}`);
-    }
+    // Use the batched render system
+    this.render();
   }
 
   /**

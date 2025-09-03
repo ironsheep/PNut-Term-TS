@@ -3400,8 +3400,10 @@ export class MainWindow {
               `Electron: ${process.versions.electron}\n` +
               `Node: ${process.versions.node}\n` +
               `Chrome: ${process.versions.chrome}\n\n` +
-              `Cross-platform debug terminal for Parallax Propeller 2\n` +
-              `© 2024 Parallax Inc.`,
+              `Cross-platform debug terminal for\n` +
+              `Parallax Propeller 2 microcontroller\n\n` +
+              `© 2024 Iron Sheep Productions LLC\n` +
+              `Licensed under MIT`,
       buttons: ['OK'],
       icon: null // Will use app icon
     });
