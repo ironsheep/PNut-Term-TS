@@ -93,6 +93,51 @@ export const DEBUG_COMMANDS = {
 // ============================================================================
 
 /**
+ * Pascal Layout Constants from DebuggerUnit.pas lines 114-134
+ * These define the exact positions and sizes for all debugger window regions
+ * l=left, t=top, w=width, h=height (in character cells)
+ */
+export const PASCAL_LAYOUT_CONSTANTS = {
+  // Register maps
+  REGMAP: { l: 2, t: 1, w: 9, h: 75 },      // COG registers
+  LUTMAP: { l: 13, t: 1, w: 9, h: 75 },     // LUT registers
+  
+  // Flags and status
+  CF: { l: 24, t: 1, w: 3, h: 2 },          // C flag
+  ZF: { l: 29, t: 1, w: 3, h: 2 },          // Z flag
+  PC: { l: 34, t: 1, w: 8, h: 2 },          // Program Counter
+  SKIP: { l: 44, t: 1, w: 41, h: 2 },       // SKIP/SKIPF pattern
+  XBYTE: { l: 87, t: 1, w: 12, h: 2 },      // XBYTE indicator
+  CT: { l: 101, t: 1, w: 20, h: 2 },        // CT counter
+  
+  // Main display regions
+  DIS: { l: 24, t: 4, w: 56, h: 32 },       // Disassembly
+  WATCH: { l: 82, t: 4, w: 12, h: 32 },     // Register Watch
+  SFR: { l: 96, t: 4, w: 18, h: 32 },       // Special Function Registers
+  EVENT: { l: 116, t: 4, w: 5, h: 32 },     // Events
+  
+  // Execution and stack
+  EXEC: { l: 24, t: 35, w: 4, h: 4 },       // Execution state
+  STACK: { l: 30, t: 37, w: 77, h: 2 },     // Stack
+  
+  // Interrupts and pointers
+  INT: { l: 24, t: 40, w: 13, h: 6 },       // Interrupts (INT1/2/3)
+  PTR: { l: 39, t: 40, w: 68, h: 6 },       // Pointers (PTRA/PTRB)
+  
+  // Status and pins
+  STATUS: { l: 24, t: 47, w: 6, h: 6 },     // Status box
+  PIN: { l: 32, t: 47, w: 75, h: 6 },       // Pins (DIR/OUT/IN)
+  
+  // Smart pins and memory
+  SMART: { l: 24, t: 54, w: 97, h: 2 },     // Smart Pins
+  HUB: { l: 24, t: 57, w: 97, h: 16 },      // HUB Memory
+  HINT: { l: 29, t: 74, w: 92, h: 2 },      // Hint line
+  
+  // Button panel
+  B: { l: 109, t: 37, w: 12, h: 16 },       // Button panel container
+} as const;
+
+/**
  * Debugger window layout constants
  */
 export const LAYOUT_CONSTANTS = {
@@ -152,6 +197,35 @@ export const DEBUG_COLORS = {
   HEAT_7: 0xFFFF00,       // Yellow
   HEAT_8: 0xFF8000,       // Orange
   HEAT_9: 0xFF0000        // Red (hot)
+} as const;
+
+/**
+ * Pascal ColorScheme array from DebuggerUnit.pas lines 84-105
+ * These are the exact colors used in the original Pascal implementation
+ */
+export const PASCAL_COLOR_SCHEME = {
+  // Index names match Pascal ColorScheme array comments
+  cBackground: 0x000000,    // cBlack - background
+  cBox: 0x1F1F00,           // cYellow4 - box borders  
+  cBox2: 0x001F00,          // cGreen4 - secondary box
+  cBox3: 0x7F3F00,          // cOrange2 - tertiary box
+  cData: 0xFFFFFF,          // cWhite - data values
+  cData2: 0x007F00,         // cGreen2 - secondary data
+  cDataDim: 0x0F0F00,       // cYellow5 - dim data
+  cIndicator: 0xFF7F00,     // cOrange - indicators
+  cName: 0xFFFF00,          // cYellow - names/labels
+  cHighSame: 0x3F3F00,      // cYellow3 - highlight same
+  cLowSame: 0x0F0F00,       // cYellow5 - low intensity same
+  cHighDiff: 0xFFFF00,      // cYellow - highlight different
+  cLowDiff: 0x7F7F00,       // cYellow2 - low intensity different
+  cModeButton: 0x7F7F00,    // cYellow2 - mode button
+  cModeText: 0xFFFFFF,      // cWhite - mode text
+  cModeButtonDim: 0x3F3F00, // cYellow3 - mode button dim
+  cModeTextDim: 0x0F0F00,   // cYellow5 - mode text dim
+  cCmdButton: 0xBF5F00,     // cOrange1 - command button
+  cCmdText: 0xFFFFFF,       // cWhite - command text
+  cCmdButtonDim: 0x3F1F00,  // cOrange3 - command button dim
+  cCmdTextDim: 0x1F0F00     // cOrange4 - command text dim
 } as const;
 
 // ============================================================================

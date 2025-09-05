@@ -12,6 +12,8 @@ import {
   COGDebugState,
   LAYOUT_CONSTANTS,
   DEBUG_COLORS,
+  PASCAL_COLOR_SCHEME,
+  PASCAL_LAYOUT_CONSTANTS,
   parseInitialMessage,
   createMemoryBlock
 } from './shared/debuggerConstants';
@@ -168,79 +170,206 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Initialize layout regions based on debugger window layout
+   * Initialize layout regions using Pascal's exact layout constants
+   * Based on DebuggerUnit.pas lines 114-134
    */
   private initializeRegions(): void {
-    // COG Registers (top left)
+    // COG Registers (REGMAP)
     this.regions.set('cogRegisters', {
-      x: 1,
-      y: 1,
-      width: 60,
-      height: 18,
+      x: PASCAL_LAYOUT_CONSTANTS.REGMAP.l,
+      y: PASCAL_LAYOUT_CONSTANTS.REGMAP.t,
+      width: PASCAL_LAYOUT_CONSTANTS.REGMAP.w,
+      height: PASCAL_LAYOUT_CONSTANTS.REGMAP.h,
       type: 'registers'
     });
     
-    // LUT Registers (top right of COG)
+    // LUT Registers (LUTMAP)
     this.regions.set('lutRegisters', {
-      x: 63,
-      y: 1,
-      width: 60,
-      height: 18,
+      x: PASCAL_LAYOUT_CONSTANTS.LUTMAP.l,
+      y: PASCAL_LAYOUT_CONSTANTS.LUTMAP.t,
+      width: PASCAL_LAYOUT_CONSTANTS.LUTMAP.w,
+      height: PASCAL_LAYOUT_CONSTANTS.LUTMAP.h,
       type: 'registers'
     });
     
-    // Flags (below COG registers)
-    this.regions.set('flags', {
-      x: 1,
-      y: 20,
-      width: 30,
-      height: 4,
-      type: 'flags'
+    // C Flag
+    this.regions.set('cflag', {
+      x: PASCAL_LAYOUT_CONSTANTS.CF.l,
+      y: PASCAL_LAYOUT_CONSTANTS.CF.t,
+      width: PASCAL_LAYOUT_CONSTANTS.CF.w,
+      height: PASCAL_LAYOUT_CONSTANTS.CF.h,
+      type: 'flag'
     });
     
-    // Disassembly (center)
+    // Z Flag
+    this.regions.set('zflag', {
+      x: PASCAL_LAYOUT_CONSTANTS.ZF.l,
+      y: PASCAL_LAYOUT_CONSTANTS.ZF.t,
+      width: PASCAL_LAYOUT_CONSTANTS.ZF.w,
+      height: PASCAL_LAYOUT_CONSTANTS.ZF.h,
+      type: 'flag'
+    });
+    
+    // Program Counter
+    this.regions.set('pc', {
+      x: PASCAL_LAYOUT_CONSTANTS.PC.l,
+      y: PASCAL_LAYOUT_CONSTANTS.PC.t,
+      width: PASCAL_LAYOUT_CONSTANTS.PC.w,
+      height: PASCAL_LAYOUT_CONSTANTS.PC.h,
+      type: 'status'
+    });
+    
+    // SKIP/SKIPF Pattern
+    this.regions.set('skip', {
+      x: PASCAL_LAYOUT_CONSTANTS.SKIP.l,
+      y: PASCAL_LAYOUT_CONSTANTS.SKIP.t,
+      width: PASCAL_LAYOUT_CONSTANTS.SKIP.w,
+      height: PASCAL_LAYOUT_CONSTANTS.SKIP.h,
+      type: 'status'
+    });
+    
+    // Disassembly (DIS)
     this.regions.set('disassembly', {
-      x: 1,
-      y: 25,
-      width: 80,
-      height: 16,
+      x: PASCAL_LAYOUT_CONSTANTS.DIS.l,
+      y: PASCAL_LAYOUT_CONSTANTS.DIS.t,
+      width: PASCAL_LAYOUT_CONSTANTS.DIS.w,
+      height: PASCAL_LAYOUT_CONSTANTS.DIS.h,
       type: 'disassembly'
     });
     
-    // Stack (left side)
+    // Stack
     this.regions.set('stack', {
-      x: 1,
-      y: 42,
-      width: 20,
-      height: 8,
+      x: PASCAL_LAYOUT_CONSTANTS.STACK.l,
+      y: PASCAL_LAYOUT_CONSTANTS.STACK.t,
+      width: PASCAL_LAYOUT_CONSTANTS.STACK.w,
+      height: PASCAL_LAYOUT_CONSTANTS.STACK.h,
       type: 'stack'
     });
     
-    // Events (right of stack)
+    // Events
     this.regions.set('events', {
-      x: 22,
-      y: 42,
-      width: 20,
-      height: 8,
+      x: PASCAL_LAYOUT_CONSTANTS.EVENT.l,
+      y: PASCAL_LAYOUT_CONSTANTS.EVENT.t,
+      width: PASCAL_LAYOUT_CONSTANTS.EVENT.w,
+      height: PASCAL_LAYOUT_CONSTANTS.EVENT.h,
       type: 'events'
     });
     
-    // HUB Memory (right side)
+    // HUB Memory
     this.regions.set('hubMemory', {
-      x: 82,
-      y: 1,
-      width: 40,
-      height: 50,
+      x: PASCAL_LAYOUT_CONSTANTS.HUB.l,
+      y: PASCAL_LAYOUT_CONSTANTS.HUB.t,
+      width: PASCAL_LAYOUT_CONSTANTS.HUB.w,
+      height: PASCAL_LAYOUT_CONSTANTS.HUB.h,
       type: 'memory'
     });
     
-    // Control buttons (bottom)
+    // Button panel (controls)
     this.regions.set('controls', {
-      x: 1,
-      y: 70,
-      width: 122,
-      height: 6,
+      x: PASCAL_LAYOUT_CONSTANTS.B.l,
+      y: PASCAL_LAYOUT_CONSTANTS.B.t,
+      width: PASCAL_LAYOUT_CONSTANTS.B.w,
+      height: PASCAL_LAYOUT_CONSTANTS.B.h,
       type: 'controls'
+    });
+    
+    // XBYTE indicator
+    this.regions.set('xbyte', {
+      x: PASCAL_LAYOUT_CONSTANTS.XBYTE.l,
+      y: PASCAL_LAYOUT_CONSTANTS.XBYTE.t,
+      width: PASCAL_LAYOUT_CONSTANTS.XBYTE.w,
+      height: PASCAL_LAYOUT_CONSTANTS.XBYTE.h,
+      type: 'status'
+    });
+    
+    // CT counter
+    this.regions.set('ct', {
+      x: PASCAL_LAYOUT_CONSTANTS.CT.l,
+      y: PASCAL_LAYOUT_CONSTANTS.CT.t,
+      width: PASCAL_LAYOUT_CONSTANTS.CT.w,
+      height: PASCAL_LAYOUT_CONSTANTS.CT.h,
+      type: 'status'
+    });
+    
+    // Register Watch
+    this.regions.set('watch', {
+      x: PASCAL_LAYOUT_CONSTANTS.WATCH.l,
+      y: PASCAL_LAYOUT_CONSTANTS.WATCH.t,
+      width: PASCAL_LAYOUT_CONSTANTS.WATCH.w,
+      height: PASCAL_LAYOUT_CONSTANTS.WATCH.h,
+      type: 'watch'
+    });
+    
+    // Special Function Registers
+    this.regions.set('sfr', {
+      x: PASCAL_LAYOUT_CONSTANTS.SFR.l,
+      y: PASCAL_LAYOUT_CONSTANTS.SFR.t,
+      width: PASCAL_LAYOUT_CONSTANTS.SFR.w,
+      height: PASCAL_LAYOUT_CONSTANTS.SFR.h,
+      type: 'sfr'
+    });
+    
+    // Execution state
+    this.regions.set('exec', {
+      x: PASCAL_LAYOUT_CONSTANTS.EXEC.l,
+      y: PASCAL_LAYOUT_CONSTANTS.EXEC.t,
+      width: PASCAL_LAYOUT_CONSTANTS.EXEC.w,
+      height: PASCAL_LAYOUT_CONSTANTS.EXEC.h,
+      type: 'exec'
+    });
+    
+    // Interrupts
+    this.regions.set('interrupts', {
+      x: PASCAL_LAYOUT_CONSTANTS.INT.l,
+      y: PASCAL_LAYOUT_CONSTANTS.INT.t,
+      width: PASCAL_LAYOUT_CONSTANTS.INT.w,
+      height: PASCAL_LAYOUT_CONSTANTS.INT.h,
+      type: 'interrupts'
+    });
+    
+    // Pointers (PTRA/PTRB)
+    this.regions.set('pointers', {
+      x: PASCAL_LAYOUT_CONSTANTS.PTR.l,
+      y: PASCAL_LAYOUT_CONSTANTS.PTR.t,
+      width: PASCAL_LAYOUT_CONSTANTS.PTR.w,
+      height: PASCAL_LAYOUT_CONSTANTS.PTR.h,
+      type: 'pointers'
+    });
+    
+    // Status box
+    this.regions.set('status', {
+      x: PASCAL_LAYOUT_CONSTANTS.STATUS.l,
+      y: PASCAL_LAYOUT_CONSTANTS.STATUS.t,
+      width: PASCAL_LAYOUT_CONSTANTS.STATUS.w,
+      height: PASCAL_LAYOUT_CONSTANTS.STATUS.h,
+      type: 'status'
+    });
+    
+    // Pins (DIR/OUT/IN)
+    this.regions.set('pins', {
+      x: PASCAL_LAYOUT_CONSTANTS.PIN.l,
+      y: PASCAL_LAYOUT_CONSTANTS.PIN.t,
+      width: PASCAL_LAYOUT_CONSTANTS.PIN.w,
+      height: PASCAL_LAYOUT_CONSTANTS.PIN.h,
+      type: 'pins'
+    });
+    
+    // Smart Pins
+    this.regions.set('smartPins', {
+      x: PASCAL_LAYOUT_CONSTANTS.SMART.l,
+      y: PASCAL_LAYOUT_CONSTANTS.SMART.t,
+      width: PASCAL_LAYOUT_CONSTANTS.SMART.w,
+      height: PASCAL_LAYOUT_CONSTANTS.SMART.h,
+      type: 'smartpins'
+    });
+    
+    // Hint line
+    this.regions.set('hint', {
+      x: PASCAL_LAYOUT_CONSTANTS.HINT.l,
+      y: PASCAL_LAYOUT_CONSTANTS.HINT.t,
+      width: PASCAL_LAYOUT_CONSTANTS.HINT.w,
+      height: PASCAL_LAYOUT_CONSTANTS.HINT.h,
+      type: 'hint'
     });
   }
 
@@ -292,9 +421,29 @@ export class DebugDebuggerWindow extends DebugWindowBase {
 
   /**
    * Generate JavaScript to draw a box with box-drawing characters
+   * Based on Pascal DrawBox procedure (lines 2123-2149)
+   * @param rim - Border thickness (3 for normal boxes, 6 for buttons)
    */
-  private drawBoxJs(x: number, y: number, width: number, height: number, color: number): string {
+  private drawBoxJs(x: number, y: number, width: number, height: number, color: number, rim: number = 3): string {
     const commands = [];
+    
+    // Add drop shadow for buttons (rim = 6)
+    if (rim === 6) {
+      // Create darker shadow color
+      const shadowColor = (color >> 1) & 0x7F7F7F; // Darken by shifting bits
+      const shadowHex = this.colorToHex(shadowColor);
+      const {x: px, y: py} = this.gridToPixel(x + 1, y + 1);
+      commands.push(`ctx.fillStyle='${shadowHex}';`);
+      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 16});`);
+    }
+    
+    // Draw filled background for thicker borders
+    if (rim > 3) {
+      const bgHex = this.colorToHex(color);
+      const {x: px, y: py} = this.gridToPixel(x, y);
+      commands.push(`ctx.fillStyle='${bgHex}';`);
+      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 16});`);
+    }
     
     // Top line
     commands.push(this.drawCharJs('┌', x, y, color));
@@ -326,7 +475,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     const {x, y} = this.gridToPixel(region.x, region.y);
     const width = region.width * this.charWidth;
     const height = region.height * this.charHeight;
-    return `ctx.clearRect(${x},${y},${width},${height});`;
+    const bgHex = this.colorToHex(PASCAL_COLOR_SCHEME.cBackground);
+    return `ctx.fillStyle='${bgHex}';ctx.fillRect(${x},${y},${width},${height});`;
   }
 
   /**
@@ -771,25 +921,91 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   
   /**
    * Process a 416-byte debugger packet
+   * Packet structure:
+   * - Bytes 0-79: 20 longs containing DebuggerMsg array
+   * - Bytes 80-415: COG/LUT memory snapshots
    */
   private processDebuggerPacket(data: Uint8Array): void {
-    // Parse the status block (first 40 bytes)
-    const cogId = data[0];
-    if (cogId !== this.cogId) {
-      this.logMessage(`Packet for wrong COG: ${cogId} (expected ${this.cogId})`);
+    if (data.length !== 416) {
+      this.logMessage(`Invalid packet size: ${data.length} (expected 416)`);
       return;
     }
     
-    // Extract key information from status block
-    const cogState = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
-    const pc = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
-    const instruction = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+    // Create DataView for proper little-endian reading
+    const view = new DataView(data.buffer, data.byteOffset, data.length);
+    
+    // Parse the 20 initial longs (indices from DebuggerMessageIndex enum)
+    const debugMsg = {
+      cogNumber: view.getUint32(0, true),      // mCOGN
+      breakStatus: view.getUint32(4, true),    // mBRKS
+      stackAStart: view.getUint32(8, true),    // mSTAS
+      stackBStart: view.getUint32(12, true),   // mSTBS
+      callDepth: view.getUint32(16, true),     // mCALL
+      programCounter: view.getUint32(20, true), // mPC
+      skipPattern: view.getUint32(24, true),   // mSKIP
+      registerA: view.getUint32(28, true),     // mREGA
+      registerB: view.getUint32(32, true),     // mREGB
+      pointerA: view.getUint32(36, true),      // mPTRA
+      pointerB: view.getUint32(40, true),      // mPTRB
+      directionA: view.getUint32(44, true),    // mDIRA
+      directionB: view.getUint32(48, true),    // mDIRB
+      outputA: view.getUint32(52, true),       // mOUTA
+      outputB: view.getUint32(56, true),       // mOUTB
+      inputA: view.getUint32(60, true),        // mINA
+      inputB: view.getUint32(64, true),        // mINB
+      flags: view.getUint32(68, true),         // mFLAG
+      interruptJump: view.getUint32(72, true), // mIJMP
+      conditionCodes: view.getUint32(76, true) // mCOND
+    };
+    
+    // Check if this packet is for our COG
+    if (debugMsg.cogNumber !== this.cogId) {
+      this.logMessage(`Packet for wrong COG: ${debugMsg.cogNumber} (expected ${this.cogId})`);
+      return;
+    }
     
     // Update COG state
-    this.cogState.programCounter = pc;
+    this.cogState.programCounter = debugMsg.programCounter;
     this.cogState.isActive = true;
+    this.cogState.isBreaked = (debugMsg.breakStatus & 0x01) !== 0;
+    this.cogState.skipPattern = debugMsg.skipPattern;
+    this.cogState.callDepth = debugMsg.callDepth;
     
-    // Store the packet for rendering
+    // Store parsed data in dataManager
+    if (this.dataManager) {
+      // Store status data
+      this.dataManager.updateStatusData({
+        cogId: debugMsg.cogNumber,
+        breakStatus: debugMsg.breakStatus,
+        programCounter: debugMsg.programCounter,
+        skipPattern: debugMsg.skipPattern,
+        flags: debugMsg.flags,
+        pointerA: debugMsg.pointerA,
+        pointerB: debugMsg.pointerB,
+        directionA: debugMsg.directionA,
+        directionB: debugMsg.directionB,
+        outputA: debugMsg.outputA,
+        outputB: debugMsg.outputB,
+        inputA: debugMsg.inputA,
+        inputB: debugMsg.inputB
+      });
+      
+      // Parse and store COG registers (bytes 80-335, 64 longs)
+      for (let i = 0; i < 64; i++) {
+        const offset = 80 + i * 4;
+        const value = view.getUint32(offset, true);
+        this.dataManager.updateCogRegister(i, value);
+      }
+      
+      // Parse and store LUT registers (bytes 336-591, 64 longs)  
+      for (let i = 0; i < 64; i++) {
+        const offset = 336 + i * 4;
+        const value = view.getUint32(offset, true);
+        this.dataManager.updateLutRegister(i, value);
+      }
+    }
+    
+    // Store the packet for reference
     this.currentDebuggerPacket = data;
     
     // Trigger immediate display update
@@ -877,9 +1093,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('COG Registers', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('COG Registers', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
-    // Draw register values (simplified for now - will be expanded with real data)
+    // Draw register values from real data
     if (this.dataManager) {
       for (let row = 0; row < 16; row++) {
         for (let col = 0; col < 4; col++) {
@@ -887,11 +1103,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           const x = region.x + 2 + col * 14;
           const y = region.y + 2 + row;
           
-          // Get register value (placeholder for now)
-          const value = 0x00000000;
+          // Get actual register value from dataManager
+          const value = this.dataManager.getCogRegister(this.cogId, regNum);
           const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
           
-          jsCommands.push(this.drawTextJs(hexStr, x, y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+          jsCommands.push(this.drawTextJs(hexStr, x, y, PASCAL_COLOR_SCHEME.cData));
         }
       }
     }
@@ -909,15 +1125,15 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('Disassembly', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('Disassembly', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
     // Draw border
-    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
     
     // Placeholder for disassembly lines
     for (let i = 0; i < 14; i++) {
       const y = region.y + 2 + i;
-      jsCommands.push(this.drawTextJs(`0x${(i * 4).toString(16).padStart(8, '0')}  NOP`, region.x + 2, y, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+      jsCommands.push(this.drawTextJs(`0x${(i * 4).toString(16).padStart(8, '0')}  NOP`, region.x + 2, y, PASCAL_COLOR_SCHEME.cDataDim));
     }
     
     return jsCommands;
@@ -933,9 +1149,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('LUT Registers', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('LUT Registers', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
-    // Draw register values (simplified for now)
+    // Draw register values from real data
     if (this.dataManager) {
       for (let row = 0; row < 16; row++) {
         for (let col = 0; col < 4; col++) {
@@ -943,10 +1159,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           const x = region.x + 2 + col * 14;
           const y = region.y + 2 + row;
           
-          const value = 0x00000000;
+          // Get actual LUT register value from dataManager
+          const value = this.dataManager.getLutRegister(this.cogId, regNum);
           const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
           
-          jsCommands.push(this.drawTextJs(hexStr, x, y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+          jsCommands.push(this.drawTextJs(hexStr, x, y, PASCAL_COLOR_SCHEME.cData));
         }
       }
     }
@@ -964,13 +1181,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('Flags', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('Flags', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
     // Draw flag states
     const flags = ['Z', 'C', 'IRQ', 'CT1', 'CT2', 'CT3'];
     let x = region.x + 2;
     for (const flag of flags) {
-      jsCommands.push(this.drawTextJs(flag, x, region.y + 2, 0x808080));
+      jsCommands.push(this.drawTextJs(flag, x, region.y + 2, PASCAL_COLOR_SCHEME.cDataDim));
       x += 4;
     }
     
@@ -987,14 +1204,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('Stack', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('Stack', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
     // Draw border
-    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
     
     // Stack entries placeholder
     for (let i = 0; i < 6; i++) {
-      jsCommands.push(this.drawTextJs(`[${i}] 00000000`, region.x + 2, region.y + 2 + i, 0x808080));
+      jsCommands.push(this.drawTextJs(`[${i}] 00000000`, region.x + 2, region.y + 2 + i, PASCAL_COLOR_SCHEME.cDataDim));
     }
     
     return jsCommands;
@@ -1010,13 +1227,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('Events', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('Events', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
     // Draw border
-    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
     
     // Event entries placeholder
-    jsCommands.push(this.drawTextJs('No events', region.x + 2, region.y + 2, 0x606060));
+    jsCommands.push(this.drawTextJs('No events', region.x + 2, region.y + 2, PASCAL_COLOR_SCHEME.cDataDim));
     
     return jsCommands;
   }
@@ -1031,21 +1248,21 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     jsCommands.push(this.clearRegionJs(region));
     
     // Draw title
-    jsCommands.push(this.drawTextJs('HUB Memory', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT || 0xc0c0c0));
+    jsCommands.push(this.drawTextJs('HUB Memory', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
     
     // Draw border
-    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, DEBUG_COLORS.FG_DEFAULT || 0x808080));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
     
     // Memory display placeholder
     for (let row = 0; row < 16; row++) {
       const addr = row * 16;
       const addrStr = addr.toString(16).padStart(8, '0').toUpperCase();
-      jsCommands.push(this.drawTextJs(`${addrStr}:`, region.x + 2, region.y + 2 + row, 0x808080));
+      jsCommands.push(this.drawTextJs(`${addrStr}:`, region.x + 2, region.y + 2 + row, PASCAL_COLOR_SCHEME.cName));
       
       // Hex bytes
       for (let col = 0; col < 8; col++) {
         const x = region.x + 12 + col * 3;
-        jsCommands.push(this.drawTextJs('00', x, region.y + 2 + row, 0x606060));
+        jsCommands.push(this.drawTextJs('00', x, region.y + 2 + row, PASCAL_COLOR_SCHEME.cDataDim));
       }
     }
     
@@ -1072,11 +1289,185 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     
     for (const button of buttons) {
       // Draw button box
-      jsCommands.push(this.drawBoxJs(region.x + button.x, region.y + 1, 10, 3, 0x808080));
+      jsCommands.push(this.drawBoxJs(region.x + button.x, region.y + 1, 10, 3, PASCAL_COLOR_SCHEME.cCmdButton));
       // Draw button label
-      jsCommands.push(this.drawTextJs(button.label, region.x + button.x + 1, region.y + 2, 0xffffff));
+      jsCommands.push(this.drawTextJs(button.label, region.x + button.x + 1, region.y + 2, PASCAL_COLOR_SCHEME.cCmdText));
     }
     
+    return jsCommands;
+  }
+
+  /**
+   * Render C Flag
+   */
+  private renderCFlag(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('C', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Z Flag  
+   */
+  private renderZFlag(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('Z', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Program Counter
+   */
+  private renderPC(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('PC', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    jsCommands.push(this.drawTextJs('00000000', region.x + 1, region.y + 1, PASCAL_COLOR_SCHEME.cData));
+    return jsCommands;
+  }
+  
+  /**
+   * Render SKIP pattern
+   */
+  private renderSkip(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('SKIP', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render XBYTE indicator
+   */
+  private renderXByte(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('XBYTE', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render CT counter
+   */
+  private renderCT(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('CT', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Register Watch
+   */
+  private renderWatch(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox2));
+    jsCommands.push(this.drawTextJs('WATCH', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Special Function Registers
+   */
+  private renderSFR(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox2));
+    jsCommands.push(this.drawTextJs('SFR', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    // Add register names: IJMP3, IRET3, IJMP2, IRET2, IJMP1, IRET1, PA, PB, PTRA, PTRB, DIRA, DIRB, OUTA, OUTB, INA, INB
+    return jsCommands;
+  }
+  
+  /**
+   * Render Execution state
+   */
+  private renderExec(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox3));
+    jsCommands.push(this.drawTextJs('EXEC', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Interrupts
+   */
+  private renderInterrupts(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('INTERRUPTS', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    jsCommands.push(this.drawTextJs('INT1', region.x + 1, region.y + 2, PASCAL_COLOR_SCHEME.cDataDim));
+    jsCommands.push(this.drawTextJs('INT2', region.x + 1, region.y + 3, PASCAL_COLOR_SCHEME.cDataDim));
+    jsCommands.push(this.drawTextJs('INT3', region.x + 1, region.y + 4, PASCAL_COLOR_SCHEME.cDataDim));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Pointers (PTRA/PTRB)
+   */
+  private renderPointers(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('POINTERS', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    jsCommands.push(this.drawTextJs('PTRA: 00000000', region.x + 2, region.y + 2, PASCAL_COLOR_SCHEME.cData));
+    jsCommands.push(this.drawTextJs('PTRB: 00000000', region.x + 2, region.y + 3, PASCAL_COLOR_SCHEME.cData));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Status box
+   */
+  private renderStatus(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox3));
+    jsCommands.push(this.drawTextJs('STATUS', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Pins (DIR/OUT/IN)
+   */
+  private renderPins(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox));
+    jsCommands.push(this.drawTextJs('PINS', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    jsCommands.push(this.drawTextJs('DIR A/B', region.x + 2, region.y + 1, PASCAL_COLOR_SCHEME.cDataDim));
+    jsCommands.push(this.drawTextJs('OUT A/B', region.x + 2, region.y + 2, PASCAL_COLOR_SCHEME.cDataDim));
+    jsCommands.push(this.drawTextJs('IN  A/B', region.x + 2, region.y + 3, PASCAL_COLOR_SCHEME.cDataDim));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Smart Pins
+   */
+  private renderSmartPins(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawBoxJs(region.x, region.y, region.width, region.height, PASCAL_COLOR_SCHEME.cBox2));
+    jsCommands.push(this.drawTextJs('SMART PINS', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cName));
+    return jsCommands;
+  }
+  
+  /**
+   * Render Hint line
+   */
+  private renderHint(region: LayoutRegion): string[] {
+    const jsCommands = [];
+    jsCommands.push(this.clearRegionJs(region));
+    jsCommands.push(this.drawTextJs('Press F1 for help', region.x + 1, region.y, PASCAL_COLOR_SCHEME.cDataDim));
     return jsCommands;
   }
 
@@ -1101,6 +1492,36 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         return this.renderHubMemory(region);
       case 'controls':
         return this.renderControls(region);
+      case 'cflag':
+        return this.renderCFlag(region);
+      case 'zflag':
+        return this.renderZFlag(region);
+      case 'pc':
+        return this.renderPC(region);
+      case 'skip':
+        return this.renderSkip(region);
+      case 'xbyte':
+        return this.renderXByte(region);
+      case 'ct':
+        return this.renderCT(region);
+      case 'watch':
+        return this.renderWatch(region);
+      case 'sfr':
+        return this.renderSFR(region);
+      case 'exec':
+        return this.renderExec(region);
+      case 'interrupts':
+        return this.renderInterrupts(region);
+      case 'pointers':
+        return this.renderPointers(region);
+      case 'status':
+        return this.renderStatus(region);
+      case 'pins':
+        return this.renderPins(region);
+      case 'smartPins':
+        return this.renderSmartPins(region);
+      case 'hint':
+        return this.renderHint(region);
       default:
         return [];
     }
@@ -1201,8 +1622,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         body {
             margin: 0;
             padding: 0;
-            background-color: #${DEBUG_COLORS.BG_DEFAULT.toString(16).padStart(6, '0')};
-            color: #${DEBUG_COLORS.FG_ACTIVE.toString(16).padStart(6, '0')};
+            background-color: #${PASCAL_COLOR_SCHEME.cBackground.toString(16).padStart(6, '0')};
+            color: #${PASCAL_COLOR_SCHEME.cData.toString(16).padStart(6, '0')};
             font-family: 'Courier New', monospace;
             font-size: 14px;
             overflow: hidden;

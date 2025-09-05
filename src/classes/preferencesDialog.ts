@@ -99,16 +99,13 @@ export class PreferencesDialog {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: #1e1e1e;
-      color: #d4d4d4;
       padding: 20px;
     }
     
     h2 {
-      color: #4ec9b0;
       margin-bottom: 15px;
       font-size: 18px;
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid #ccc;
       padding-bottom: 5px;
     }
     
@@ -132,9 +129,7 @@ export class PreferencesDialog {
     select {
       flex: 1;
       max-width: 200px;
-      background: #2d2d30;
-      color: #d4d4d4;
-      border: 1px solid #3e3e42;
+      border: 1px solid #ccc;
       padding: 5px 8px;
       border-radius: 3px;
       font-size: 13px;
@@ -159,9 +154,7 @@ export class PreferencesDialog {
     }
     
     button {
-      background: #0e639c;
-      color: white;
-      border: none;
+      border: 1px solid #ccc;
       padding: 8px 20px;
       border-radius: 3px;
       cursor: pointer;
@@ -169,15 +162,25 @@ export class PreferencesDialog {
     }
     
     button:hover {
-      background: #1177bb;
+      background: #f0f0f0;
     }
     
     button.cancel {
-      background: #5a5a5a;
+      background: #f5f5f5;
     }
     
     button.cancel:hover {
-      background: #6a6a6a;
+      background: #e0e0e0;
+    }
+    
+    button:not(.cancel) {
+      background: #007acc;
+      color: white;
+      border: none;
+    }
+    
+    button:not(.cancel):hover {
+      background: #0099ff;
     }
   </style>
 </head>
@@ -243,7 +246,7 @@ export class PreferencesDialog {
     <h2>Logging</h2>
     <div class="form-group">
       <label>Log Directory:</label>
-      <input type="text" id="log-directory" value="./logs/" style="flex: 1; max-width: 200px; background: #2d2d30; color: #d4d4d4; border: 1px solid #3e3e42; padding: 5px 8px; border-radius: 3px; font-size: 13px;">
+      <input type="text" id="log-directory" value="./logs/" style="flex: 1; max-width: 200px; border: 1px solid #ccc; padding: 5px 8px; border-radius: 3px; font-size: 13px;">
     </div>
     <div class="form-group">
       <label>Auto-Save Debug Output:</label>

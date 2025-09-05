@@ -33,36 +33,87 @@ export class BinaryPlayer extends EventEmitter {
     this.totalDuration = 0;
 
     return new Promise((resolve, reject) => {
-      const fileBuffer = fs.readFileSync(filepath);
-      let offset = 0;
+      try {
+        const fileBuffer = fs.readFileSync(filepath);
+        let offset = 0;
+        
+        // Read header (64 bytes)
+        if (fileBuffer.length < 64) {
+          throw new Error('Invalid .p2rec file: header too short');
+        }
+        
+        // Verify magic bytes 'P2RC'
+        const magic = fileBuffer.subarray(0, 4).toString();
+        if (magic !== 'P2RC') {
+          throw new Error('Invalid .p2rec file: incorrect magic bytes');
+        }
+        
+        // Read version (4 bytes)
+        const version = fileBuffer.readUInt32LE(4);
+        if (version !== 1) {
+          throw new Error(`Unsupported .p2rec version: ${version}`);
+        }
+        
+        // Read start timestamp (8 bytes)
+        const startTimestamp = fileBuffer.readBigUInt64LE(8);
+        
+        // Read metadata length (4 bytes)
+        const metadataLength = fileBuffer.readUInt32LE(12);
+        
+        // Skip to metadata
+        offset = 64;
+        
+        // Read metadata JSON
+        if (offset + metadataLength > fileBuffer.length) {
+          throw new Error('Invalid .p2rec file: metadata truncated');
+        }
+        const metadataJson = fileBuffer.subarray(offset, offset + metadataLength).toString('utf-8');
+        const metadata = JSON.parse(metadataJson);
+        offset += metadataLength;
+        
+        // Read data entries
+        let cumulativeTime = 0;
+        while (offset < fileBuffer.length) {
+          // Read delta time (4 bytes, little-endian)
+          if (offset + 4 > fileBuffer.length) break;
+          
+          const deltaMs = fileBuffer.readUInt32LE(offset);
+          offset += 4;
+          
+          // Read data type (1 byte: 0=text, 1=binary)
+          if (offset + 1 > fileBuffer.length) break;
+          const dataType = fileBuffer.readUInt8(offset);
+          offset += 1;
+          
+          // Read data length (4 bytes, little-endian)
+          if (offset + 4 > fileBuffer.length) break;
+          const dataLength = fileBuffer.readUInt32LE(offset);
+          offset += 4;
+          
+          // Read data
+          if (offset + dataLength > fileBuffer.length) break;
+          const data = fileBuffer.subarray(offset, offset + dataLength);
+          offset += dataLength;
+          
+          cumulativeTime += deltaMs;
+          this.entries.push({ deltaMs: cumulativeTime, data: Buffer.from(data) });
+          this.totalDuration = cumulativeTime;
+        }
 
-      while (offset < fileBuffer.length) {
-        // Read delta time (4 bytes, little-endian)
-        if (offset + 6 > fileBuffer.length) break;
+        console.log(`[BinaryPlayer] Loaded ${this.entries.length} entries from ${path.basename(filepath)}`);
+        console.log(`[BinaryPlayer] Duration: ${this.totalDuration}ms, Metadata:`, metadata);
         
-        const deltaMs = fileBuffer.readUInt32LE(offset);
-        offset += 4;
-        
-        // Read data length (2 bytes, little-endian)
-        const dataLength = fileBuffer.readUInt16LE(offset);
-        offset += 2;
-        
-        // Read data
-        if (offset + dataLength > fileBuffer.length) break;
-        const data = fileBuffer.subarray(offset, offset + dataLength);
-        offset += dataLength;
-        
-        this.entries.push({ deltaMs, data: Buffer.from(data) });
-        this.totalDuration = Math.max(this.totalDuration, deltaMs);
+        this.emit('loaded', { 
+          entries: this.entries.length, 
+          duration: this.totalDuration,
+          filepath: this.filepath,
+          metadata
+        });
+        resolve();
+      } catch (error) {
+        console.error('[BinaryPlayer] Failed to load recording:', error);
+        reject(error);
       }
-
-      console.log(`[BinaryPlayer] Loaded ${this.entries.length} entries, duration: ${this.totalDuration}ms`);
-      this.emit('loaded', { 
-        entries: this.entries.length, 
-        duration: this.totalDuration,
-        filepath: this.filepath
-      });
-      resolve();
     });
   }
 
@@ -219,9 +270,15 @@ export class BinaryPlayer extends EventEmitter {
     const entry = this.entries[this.currentIndex];
     const currentTime = this.getCurrentTime();
     const entryTime = entry.deltaMs;
-    const delay = Math.max(0, (entryTime - currentTime) / this.playbackSpeed);
+    const targetDelay = Math.max(0, (entryTime - currentTime) / this.playbackSpeed);
 
+    // Use high-resolution timer for better accuracy
+    const startTime = process.hrtime.bigint();
+    
     this.playbackTimer = setTimeout(() => {
+      // Calculate actual delay for drift compensation
+      const actualDelay = Number(process.hrtime.bigint() - startTime) / 1000000; // Convert to ms
+      
       // Emit the data for processing
       this.emit('data', entry.data);
       
@@ -230,7 +287,16 @@ export class BinaryPlayer extends EventEmitter {
       
       // Move to next entry
       this.currentIndex++;
+      
+      // Compensate for timer drift in next scheduling
+      if (this.currentIndex < this.entries.length) {
+        const drift = actualDelay - targetDelay;
+        if (Math.abs(drift) > 5) { // Only compensate if drift > 5ms
+          this.startTime -= drift * this.playbackSpeed;
+        }
+      }
+      
       this.scheduleNextEntry();
-    }, delay);
+    }, targetDelay);
   }
 }

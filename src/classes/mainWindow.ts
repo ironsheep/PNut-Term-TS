@@ -2119,10 +2119,6 @@ export class MainWindow {
             <span class="status-label">Active COGs:</span>
             <span class="status-value" id="cogs-status">None</span>
           </div>
-          <div id="performance-display" class="status-field" title="Performance metrics: throughput | buffer usage | queue depth | status">
-            <span id="perf-indicator" style="color: #00FF00; margin-right: 3px; font-size: 16px; text-shadow: 0 0 2px #000;">⚡</span>
-            <span class="status-value" id="perf-metrics">0kb/s | Buffer: 0% | Queue: 0 | ✓</span>
-          </div>
           <div id="log-status" class="status-field">
             <span class="status-label">Logging</span>
             <span id="log-led" style="color: #FFBF00; margin-left: 5px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
@@ -2525,19 +2521,63 @@ export class MainWindow {
     
     ipcMain.on('menu-open-recording', async () => {
       console.log('[IPC] Open recording');
+      
+      // Check if recordings folder exists and has .p2rec files
+      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+      if (!fs.existsSync(recordingsDir)) {
+        dialog.showMessageBox(this.mainWindow!, {
+          type: 'info',
+          title: 'No Recordings',
+          message: 'No recordings folder found',
+          detail: 'Start a recording first to create the recordings folder.',
+          buttons: ['OK']
+        });
+        return;
+      }
+      
+      const recordingFiles = fs.readdirSync(recordingsDir)
+        .filter(f => f.endsWith('.p2rec') || f.endsWith('.jsonl'));
+      
+      if (recordingFiles.length === 0) {
+        dialog.showMessageBox(this.mainWindow!, {
+          type: 'info',
+          title: 'No Recordings',
+          message: 'No recordings found',
+          detail: 'The recordings folder is empty. Start a recording to create recording files.',
+          buttons: ['OK']
+        });
+        return;
+      }
+      
       await this.playRecording();
     });
     
     ipcMain.on('menu-save-recording', async () => {
       console.log('[IPC] Save recording');
+      
+      // Check if recording is in progress
+      if (!this.windowRouter.isRecordingActive()) {
+        dialog.showMessageBox(this.mainWindow!, {
+          type: 'info',
+          title: 'No Recording',
+          message: 'No recording in progress to save',
+          detail: 'Start a recording first before trying to save.',
+          buttons: ['OK']
+        });
+        return;
+      }
+      
       // Stop recording first to flush buffer
       this.windowRouter.stopRecording();
       
       // TODO: Access the saved recording file
       const result = await dialog.showSaveDialog(this.mainWindow!, {
         title: 'Save Recording As',
-        defaultPath: `recording_${getFormattedDateTime()}.jsonl`,
-        filters: [{ name: 'Recording Files', extensions: ['jsonl'] }]
+        defaultPath: `recording_${getFormattedDateTime()}.p2rec`,
+        filters: [
+          { name: 'Binary Recording Files', extensions: ['p2rec'] },
+          { name: 'JSON Recording Files', extensions: ['jsonl'] }
+        ]
       });
       
       if (!result.canceled && result.filePath) {
@@ -2616,10 +2656,7 @@ export class MainWindow {
       electron.shell.openExternal('https://github.com/parallaxinc/PNut-Term-TS/wiki');
     });
     
-    ipcMain.on('menu-about', () => {
-      console.log('[IPC] About');
-      this.showAboutDialog();
-    });
+    // menu-about is handled by executeCommand
     
     console.log('[IPC] All menu handlers registered');
   }
@@ -4043,26 +4080,12 @@ export class MainWindow {
   }
   
   /**
-   * Verify that performance display DOM elements exist
+   * Verify that performance monitoring can proceed (performance monitor dialog handles display)
    */
   private async verifyPerformanceElementsReady(): Promise<boolean> {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return false;
-    }
-    
-    try {
-      const result = await this.safeExecuteJS(`
-        (function() {
-          const perfMetrics = document.getElementById('perf-metrics');
-          const perfIndicator = document.getElementById('perf-indicator');
-          return !!(perfMetrics && perfIndicator);
-        })();
-      `, 'verifyPerformanceElementsReady');
-      return result === true;
-    } catch (error) {
-      console.error('[PERF DISPLAY] Error verifying elements:', error);
-      return false;
-    }
+    // Performance metrics now handled by Performance Monitor dialog
+    // Just verify window is ready
+    return !!(this.mainWindow && !this.mainWindow.isDestroyed());
   }
 
   /**
@@ -4148,28 +4171,16 @@ export class MainWindow {
         indicatorColor = '#FF0000'; // Red
       }
 
-      // Format display string
-      const metricsText = `${throughputKbps}kb/s | Buffer: ${bufferUsage}% | Queue: ${totalQueueDepth} | ${statusSymbol}`;
-
-      // Flash indicator on state change
+      // Performance metrics now only go to Performance Monitor dialog
+      // Status bar no longer displays performance metrics
+      
+      // Flash indicator on state change (for performance monitor only)
       if (newState !== this.lastPerformanceState) {
-        this.flashPerformanceIndicator();
         this.lastPerformanceState = newState;
       }
-
-      // Update the status bar using safeExecuteJS like working status updates
-      this.safeExecuteJS(`
-        (function() {
-          const perfMetrics = document.getElementById('perf-metrics');
-          const perfIndicator = document.getElementById('perf-indicator');
-          if (perfMetrics) {
-            perfMetrics.textContent = '${metricsText}';
-          }
-          if (perfIndicator) {
-            perfIndicator.style.color = '${indicatorColor}';
-          }
-        })();
-      `, 'updatePerformanceDisplay');
+      
+      // Status bar update removed - metrics now only in Performance Monitor
+      // const metricsText = `${throughputKbps}kb/s | Buffer: ${bufferUsage}% | Queue: ${totalQueueDepth} | ${statusSymbol}`;
 
       // Update performance monitor if open
       if (this.performanceMonitor) {
@@ -4201,34 +4212,7 @@ export class MainWindow {
     }
   }
 
-  /**
-   * Flash performance indicator on state change
-   */
-  private flashPerformanceIndicator(): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return;
-    }
-
-    if (this.performanceFlashTimer) {
-      clearTimeout(this.performanceFlashTimer);
-    }
-
-    // Flash effect: bright -> normal using safeExecuteJS
-    this.safeExecuteJS(`
-      (function() {
-        const perfIndicator = document.getElementById('perf-indicator');
-        if (perfIndicator) {
-          const originalColor = perfIndicator.style.color;
-          perfIndicator.style.color = '#FFFFFF';
-          perfIndicator.style.textShadow = '0 0 8px #FFFFFF';
-          setTimeout(() => {
-            perfIndicator.style.color = originalColor;
-            perfIndicator.style.textShadow = '0 0 2px #000';
-          }, 200);
-        }
-      })();
-    `, 'flashPerformanceIndicator');
-  }
+  // Flash performance indicator removed - now handled by Performance Monitor dialog
 
   // Terminal mode tracking
   private terminalMode: 'PST' | 'ANSI' = 'PST';

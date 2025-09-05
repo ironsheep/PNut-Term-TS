@@ -1068,6 +1068,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Create new log file
     this.initializeLogFile();
     
+    // Update status bar with new filename
+    this.updateStatusBar();
+    
     // Log system message
     this.logSystemMessage('DTR Reset - New session started');
   }
@@ -1088,6 +1091,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     // Create new log file
     this.initializeLogFile();
+    
+    // Update status bar with new filename
+    this.updateStatusBar();
     
     // Log system message
     this.logSystemMessage('RTS Reset - New session started');

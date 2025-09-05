@@ -49,8 +49,6 @@ export class NewRecordingDialog {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1e1e1e;
-      color: #d4d4d4;
       padding: 30px;
       display: flex;
       flex-direction: column;
@@ -58,28 +56,26 @@ export class NewRecordingDialog {
     }
     
     h2 {
-      color: #4ec9b0;
       margin-bottom: 20px;
       font-size: 18px;
     }
     
     .warning-icon {
-      color: #ffaa00;
+      color: orange;
       font-size: 24px;
       margin-right: 10px;
       vertical-align: middle;
     }
     
     .message {
-      background: #252526;
+      background: #f0f0f0;
       padding: 20px;
       border-radius: 5px;
-      border-left: 3px solid #ffaa00;
+      border-left: 3px solid orange;
       margin-bottom: 20px;
     }
     
     .message-count {
-      color: #4ec9b0;
       font-weight: bold;
       margin-top: 10px;
     }
@@ -92,9 +88,7 @@ export class NewRecordingDialog {
     }
     
     button {
-      background: #0e639c;
-      color: white;
-      border: none;
+      border: 1px solid #ccc;
       padding: 8px 20px;
       border-radius: 3px;
       cursor: pointer;
@@ -102,19 +96,21 @@ export class NewRecordingDialog {
     }
     
     button:hover {
-      background: #1177bb;
+      background: #f0f0f0;
     }
     
     button.cancel {
-      background: #5a5a5a;
+      background: #f5f5f5;
     }
     
     button.cancel:hover {
-      background: #6a6a6a;
+      background: #e0e0e0;
     }
     
     button.primary {
       background: #007acc;
+      color: white;
+      border: none;
     }
     
     button.primary:hover {
@@ -158,7 +154,7 @@ export class NewRecordingDialog {
 
   private showNewRecordingDialog(): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const recordingPath = path.join(process.cwd(), 'recordings', `recording_${timestamp}.p2rec`);
+    const recordingPath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `recording_${timestamp}.p2rec`);
     
     const window = new BrowserWindow({
       width: 400,
@@ -185,8 +181,6 @@ export class NewRecordingDialog {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1e1e1e;
-      color: #d4d4d4;
       padding: 30px;
       display: flex;
       flex-direction: column;
@@ -194,28 +188,27 @@ export class NewRecordingDialog {
     }
     
     h2 {
-      color: #4ec9b0;
       margin-bottom: 20px;
       font-size: 18px;
     }
     
     .info-icon {
-      color: #4ec9b0;
+      color: #007acc;
       font-size: 24px;
       margin-right: 10px;
       vertical-align: middle;
     }
     
     .message {
-      background: #252526;
+      background: #f0f0f0;
       padding: 20px;
       border-radius: 5px;
-      border-left: 3px solid #4ec9b0;
+      border-left: 3px solid #007acc;
       margin-bottom: 20px;
     }
     
     .file-path {
-      color: #969696;
+      color: #666;
       font-family: 'Consolas', 'Monaco', monospace;
       font-size: 12px;
       margin-top: 10px;
@@ -230,9 +223,7 @@ export class NewRecordingDialog {
     }
     
     button {
-      background: #0e639c;
-      color: white;
-      border: none;
+      border: 1px solid #ccc;
       padding: 8px 20px;
       border-radius: 3px;
       cursor: pointer;
@@ -240,19 +231,21 @@ export class NewRecordingDialog {
     }
     
     button:hover {
-      background: #1177bb;
+      background: #f0f0f0;
     }
     
     button.cancel {
-      background: #5a5a5a;
+      background: #f5f5f5;
     }
     
     button.cancel:hover {
-      background: #6a6a6a;
+      background: #e0e0e0;
     }
     
     button.primary {
       background: #007acc;
+      color: white;
+      border: none;
     }
     
     button.primary:hover {
@@ -281,12 +274,6 @@ export class NewRecordingDialog {
     }
     
     function startRecording() {
-      // Ensure recordings directory exists
-      const recordingsDir = path.join(process.cwd(), 'recordings');
-      if (!fs.existsSync(recordingsDir)) {
-        fs.mkdirSync(recordingsDir, { recursive: true });
-      }
-      
       ipcRenderer.send('recording-start-new', '${recordingPath}');
       window.close();
     }

@@ -632,4 +632,80 @@ export class DebuggerDataManager extends EventEmitter {
     this.globalState = this.createFreshGlobalState();
     this.emit('reset');
   }
+  
+  // Data Access Methods for Rendering
+  
+  /**
+   * Update status data from debugger packet
+   */
+  public updateStatusData(data: any): void {
+    // Store status data for rendering
+    this.emit('statusUpdated', data);
+  }
+  
+  /**
+   * Update a COG register value
+   */
+  public updateCogRegister(index: number, value: number): void {
+    // Store in the first COG state we find (need to improve this)
+    for (const state of this.globalState.cogStates.values()) {
+      const blockIndex = Math.floor(index / 16);
+      const blockOffset = index % 16;
+      const block = state.cogMemory.get(blockIndex);
+      if (block) {
+        block.data[blockOffset] = value;
+        block.hitCount = Math.min(block.hitCount + 1, 100);
+      }
+      break; // Just update first COG for now
+    }
+  }
+  
+  /**
+   * Update a LUT register value
+   */
+  public updateLutRegister(index: number, value: number): void {
+    // Store in the first COG state we find (need to improve this)
+    for (const state of this.globalState.cogStates.values()) {
+      const blockIndex = Math.floor(index / 16);
+      const blockOffset = index % 16;
+      const block = state.lutMemory.get(blockIndex);
+      if (block) {
+        block.data[blockOffset] = value;
+        block.hitCount = Math.min(block.hitCount + 1, 100);
+      }
+      break; // Just update first COG for now
+    }
+  }
+  
+  /**
+   * Get COG register value
+   */
+  public getCogRegister(cogId: number, index: number): number {
+    const state = this.globalState.cogStates.get(cogId);
+    if (state) {
+      const blockIndex = Math.floor(index / 16);
+      const blockOffset = index % 16;
+      const block = state.cogMemory.get(blockIndex);
+      if (block) {
+        return block.data[blockOffset];
+      }
+    }
+    return 0;
+  }
+  
+  /**
+   * Get LUT register value
+   */
+  public getLutRegister(cogId: number, index: number): number {
+    const state = this.globalState.cogStates.get(cogId);
+    if (state) {
+      const blockIndex = Math.floor(index / 16);
+      const blockOffset = index % 16;
+      const block = state.lutMemory.get(blockIndex);
+      if (block) {
+        return block.data[blockOffset];
+      }
+    }
+    return 0;
+  }
 }

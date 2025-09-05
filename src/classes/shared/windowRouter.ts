@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { RecordingCatalog, CatalogEntry } from './recordingCatalog';
 import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
 import { safeDisplayString } from '../../utils/displayUtils';
+import { BinaryRecorder } from './binaryRecorder';
 
 /**
  * Window handler callback for routing messages to debug windows
@@ -104,6 +105,8 @@ export class WindowRouter extends EventEmitter {
   private recordingMessageCount: number = 0;
   private recordingStartTime: number = 0;
   private samplingSeed: number = 0;
+  private binaryRecorder: BinaryRecorder | null = null;
+  private useBinaryFormat: boolean = true; // Default to binary format
   
   // Statistics
   private stats: RoutingStats = {
@@ -562,53 +565,89 @@ export class WindowRouter extends EventEmitter {
     
     this.logger.info('RECORDING', `Starting recording session: ${metadata.sessionName}`);
     
-    // Create recordings directory if needed
+    // Define recordings directory for both formats
     const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
-    if (!fs.existsSync(recordingsDir)) {
-      fs.mkdirSync(recordingsDir, { recursive: true });
+    
+    if (this.useBinaryFormat) {
+      // Use binary recorder for .p2rec format
+      this.binaryRecorder = new BinaryRecorder();
+      const filepath = this.binaryRecorder.startRecording(metadata);
+      
+      // Extract session ID from filepath
+      const filename = path.basename(filepath);
+      this.recordingSessionId = filename.replace('.p2rec', '');
+      
+      this.recordingMetadata = metadata;
+      this.isRecording = true;
+      this.stats.recordingActive = true;
+      this.recordingMessageCount = 0;
+      this.recordingStartTime = Date.now();
+    } else {
+      // Create recordings directory if needed
+      if (!fs.existsSync(recordingsDir)) {
+        fs.mkdirSync(recordingsDir, { recursive: true });
+      }
+      
+      // Generate session ID and filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      this.recordingSessionId = `${timestamp}-${metadata.sessionName}`;
+      const filename = `${this.recordingSessionId}.jsonl`;
+      const filepath = path.join(recordingsDir, filename);
+      
+      // Start recording
+      this.recordingMetadata = metadata;
+      this.recordingStream = fs.createWriteStream(filepath, { flags: 'w' });
+      this.isRecording = true;
+      this.stats.recordingActive = true;
+      this.recordingMessageCount = 0;
+      this.recordingStartTime = Date.now();
+      this.samplingSeed = 0;
     }
     
-    // Generate session ID and filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    this.recordingSessionId = `${timestamp}-${metadata.sessionName}`;
-    const filename = `${this.recordingSessionId}.jsonl`;
-    const filepath = path.join(recordingsDir, filename);
-    
-    // Start recording
-    this.recordingMetadata = metadata;
-    this.recordingStream = fs.createWriteStream(filepath, { flags: 'w' });
-    this.isRecording = true;
-    this.stats.recordingActive = true;
-    this.recordingMessageCount = 0;
-    this.recordingStartTime = Date.now();
-    this.samplingSeed = 0;
-    
-    // Add to catalog
-    const catalogEntry: CatalogEntry = {
-      sessionId: this.recordingSessionId,
-      filename,
-      metadata: {
-        sessionName: metadata.sessionName,
-        description: metadata.description,
-        timestamp: metadata.startTime,
-        p2Model: metadata.p2Model,
-        serialPort: metadata.serialPort,
-        baudRate: metadata.baudRate,
-        windowTypes: metadata.windowTypes,
-        testScenario: metadata.testScenario,
-        expectedResults: metadata.expectedResults,
-        tags: metadata.tags
+    if (!this.useBinaryFormat) {
+      const filename = `${this.recordingSessionId}.jsonl`;
+      const filepath = path.join(recordingsDir, filename);
+      
+      // Add to catalog
+      const catalogEntry: CatalogEntry = {
+        sessionId: this.recordingSessionId,
+        filename,
+        metadata: {
+          sessionName: metadata.sessionName,
+          description: metadata.description,
+          timestamp: metadata.startTime,
+          p2Model: metadata.p2Model,
+          serialPort: metadata.serialPort,
+          baudRate: metadata.baudRate,
+          windowTypes: metadata.windowTypes,
+          testScenario: metadata.testScenario,
+          expectedResults: metadata.expectedResults,
+          tags: metadata.tags
+        }
+      };
+      this.recordingCatalog.addRecording(catalogEntry);
+      
+      // Write metadata as first line
+      if (this.recordingStream) {
+        this.recordingStream.write(JSON.stringify({ metadata }) + '\n');
       }
-    };
-    this.recordingCatalog.addRecording(catalogEntry);
-    
-    // Write metadata as first line
-    this.recordingStream.write(JSON.stringify({ metadata }) + '\n');
-    
-    // Setup buffered write timer
-    this.recordingTimer = setInterval(() => this.flushRecordingBuffer(), this.BUFFER_TIMEOUT);
-    
-    this.emit('recordingStarted', { metadata, filepath, sessionId: this.recordingSessionId });
+      
+      // Setup buffered write timer
+      this.recordingTimer = setInterval(() => this.flushRecordingBuffer(), this.BUFFER_TIMEOUT);
+      
+      this.emit('recordingStarted', { metadata, filepath, sessionId: this.recordingSessionId });
+    }
+  }
+  
+  /**
+   * Set recording format (binary or JSON)
+   */
+  public setRecordingFormat(useBinary: boolean): void {
+    if (this.isRecording) {
+      throw new Error('Cannot change format while recording is in progress');
+    }
+    this.useBinaryFormat = useBinary;
+    this.logger.info('CONFIG', `Recording format set to ${useBinary ? 'binary (.p2rec)' : 'JSON (.jsonl)'}`);
   }
   
   /**
@@ -619,34 +658,56 @@ export class WindowRouter extends EventEmitter {
       return;
     }
     
-    // Flush remaining buffer
-    this.flushRecordingBuffer();
-    
-    // Update catalog with final stats
-    if (this.recordingSessionId) {
-      const duration = Date.now() - this.recordingStartTime;
-      const filepath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `${this.recordingSessionId}.jsonl`);
-      let fileSize = 0;
-      if (fs.existsSync(filepath)) {
-        fileSize = fs.statSync(filepath).size;
+    if (this.useBinaryFormat && this.binaryRecorder) {
+      // Stop binary recording
+      const finalMetadata = this.binaryRecorder.stopRecording();
+      
+      // Update catalog with final stats
+      if (this.recordingSessionId && finalMetadata) {
+        const filepath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `${this.recordingSessionId}.p2rec`);
+        let fileSize = 0;
+        if (fs.existsSync(filepath)) {
+          fileSize = fs.statSync(filepath).size;
+        }
+        
+        this.recordingCatalog.updateRecording(this.recordingSessionId, {
+          duration: finalMetadata.endTime! - finalMetadata.startTime,
+          messageCount: finalMetadata.messageCount || 0,
+          fileSize
+        });
       }
       
-      this.recordingCatalog.updateRecording(this.recordingSessionId, {
-        duration,
-        messageCount: this.recordingMessageCount,
-        fileSize
-      });
-    }
-    
-    // Clean up
-    if (this.recordingTimer) {
-      clearInterval(this.recordingTimer);
-      this.recordingTimer = null;
-    }
-    
-    if (this.recordingStream) {
-      this.recordingStream.end();
-      this.recordingStream = null;
+      this.binaryRecorder = null;
+    } else {
+      // Flush remaining buffer for JSON format
+      this.flushRecordingBuffer();
+      
+      // Update catalog with final stats
+      if (this.recordingSessionId) {
+        const duration = Date.now() - this.recordingStartTime;
+        const filepath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `${this.recordingSessionId}.jsonl`);
+        let fileSize = 0;
+        if (fs.existsSync(filepath)) {
+          fileSize = fs.statSync(filepath).size;
+        }
+        
+        this.recordingCatalog.updateRecording(this.recordingSessionId, {
+          duration,
+          messageCount: this.recordingMessageCount,
+          fileSize
+        });
+      }
+      
+      // Clean up
+      if (this.recordingTimer) {
+        clearInterval(this.recordingTimer);
+        this.recordingTimer = null;
+      }
+      
+      if (this.recordingStream) {
+        this.recordingStream.end();
+        this.recordingStream = null;
+      }
     }
     
     this.isRecording = false;
@@ -762,25 +823,35 @@ export class WindowRouter extends EventEmitter {
       }
     }
     
-    const recordedMessage: RecordedMessage = {
-      timestamp: Date.now(),
-      windowId,
-      windowType,
-      messageType,
-      data: messageType === 'binary' 
-        ? Buffer.from(data as Uint8Array).toString('base64')
-        : data as string,
-      size: messageType === 'binary' 
-        ? (data as Uint8Array).length 
-        : (data as string).length
-    };
-    
-    this.recordingBuffer.push(recordedMessage);
-    this.recordingMessageCount++;
-    
-    // Flush if buffer is full
-    if (this.recordingBuffer.length >= this.BUFFER_SIZE) {
-      this.flushRecordingBuffer();
+    if (this.useBinaryFormat && this.binaryRecorder) {
+      // Record to binary format
+      const buffer = messageType === 'binary' 
+        ? Buffer.from(data as Uint8Array)
+        : Buffer.from(data as string, 'utf-8');
+      this.binaryRecorder.recordMessage(buffer);
+      this.recordingMessageCount++;
+    } else {
+      // Record to JSON format
+      const recordedMessage: RecordedMessage = {
+        timestamp: Date.now(),
+        windowId,
+        windowType,
+        messageType,
+        data: messageType === 'binary' 
+          ? Buffer.from(data as Uint8Array).toString('base64')
+          : data as string,
+        size: messageType === 'binary' 
+          ? (data as Uint8Array).length 
+          : (data as string).length
+      };
+      
+      this.recordingBuffer.push(recordedMessage);
+      this.recordingMessageCount++;
+      
+      // Flush if buffer is full
+      if (this.recordingBuffer.length >= this.BUFFER_SIZE) {
+        this.flushRecordingBuffer();
+      }
     }
   }
   
