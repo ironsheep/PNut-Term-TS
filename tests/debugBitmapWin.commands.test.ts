@@ -43,13 +43,22 @@ describe('DebugBitmapWindow Command Tests', () => {
   let mockContext: jest.Mocked<Context>;
   let mockBrowserWindow: any;
 
+  // Helper to create test display spec
+  const createTestDisplaySpec = () => ({
+    displayName: 'Test Bitmap',
+    title: 'Test Bitmap',
+    position: { x: 0, y: 0 },
+    size: { width: 256, height: 256 }
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     
     // Setup mock context
     mockContext = new Context() as jest.Mocked<Context>;
     mockContext.logger = {
-      logMessage: jest.fn()
+      logMessage: jest.fn(),
+      forceLogMessage: jest.fn()
     } as any;
 
     // Setup mock BrowserWindow
@@ -64,8 +73,8 @@ describe('DebugBitmapWindow Command Tests', () => {
     };
     (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mockImplementation(() => mockBrowserWindow);
 
-    // Create window instance
-    window = new DebugBitmapWindow('Test Bitmap', 'test-id', mockContext);
+    // Create window instance with correct signature
+    window = new DebugBitmapWindow(mockContext, createTestDisplaySpec(), 'test-id');
     window['debugWindow'] = mockBrowserWindow;
     
     // Initialize bitmap with default size

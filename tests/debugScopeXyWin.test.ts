@@ -1,4 +1,4 @@
-import { DebugScopeXyWindow } from '../src/classes/debugScopeXyWin';
+import { DebugScopeXyWindow, ScopeXyDisplaySpec } from '../src/classes/debugScopeXyWin';
 import { createMockContext, createMockBrowserWindow, setupDebugWindowTest, cleanupDebugWindowTest } from './shared/mockHelpers';
 import { BrowserWindow } from 'electron';
 
@@ -31,6 +31,14 @@ describe('DebugScopeXyWindow', () => {
   let testSetup: ReturnType<typeof setupDebugWindowTest>;
   let mockContext: any;
   let window: DebugScopeXyWindow;
+  
+  // Helper to create default display spec for tests
+  const createTestDisplaySpec = (overrides?: Partial<ScopeXyDisplaySpec>): ScopeXyDisplaySpec => ({
+    displayName: 'test-scope',
+    title: 'Test Scope XY',
+    hasExplicitPosition: false, // Default to auto-placement
+    ...overrides
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -68,7 +76,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Constructor and Configuration', () => {
     it('should create window with default configuration', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       
       expect(window).toBeDefined();
@@ -81,7 +89,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should parse SIZE parameter', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SIZE', '100']);
       
       expect(BrowserWindow).toHaveBeenCalledWith(
@@ -93,7 +101,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should clamp SIZE to valid range', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       
       // Test minimum size
       window.createDebugWindow(['SCOPE_XY', 'test', 'SIZE', '10']);
@@ -104,90 +112,90 @@ describe('DebugScopeXyWindow', () => {
       mockBrowserWindowInstances = [];
       
       // Test maximum size
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SIZE', '5000']);
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse RANGE parameter', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'RANGE', '1000']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse SAMPLES parameter', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SAMPLES', '64']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse DOTSIZE parameter', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'DOTSIZE', '10']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse POLAR mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse POLAR with custom angles', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR', '360', '90']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse LOGSCALE mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'LOGSCALE']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse HIDEXY mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'HIDEXY']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse channel labels', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', "'X'", "'Y'"]);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse channel colors', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', "'X'", 'RED']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse packed data mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'LONGS_2BIT']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse packed data mode with ALT modifier', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'LONGS_2BIT', 'ALT']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
     });
 
     it('should parse packed data mode with SIGNED modifier', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'LONGS_2BIT', 'SIGNED']);
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
@@ -196,7 +204,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Data Plotting', () => {
     beforeEach(() => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       // Trigger the 'did-finish-load' event to initialize the renderer
       triggerWindowReady();
@@ -213,7 +221,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should handle multiple channel data', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', "'A'", "'B'"]);
       triggerWindowReady();
       
@@ -256,7 +264,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Persistence Modes', () => {
     it('should support infinite persistence (samples=0)', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SAMPLES', '0']);
       triggerWindowReady();
       
@@ -269,7 +277,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should support limited persistence', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SAMPLES', '10']);
       triggerWindowReady();
       
@@ -285,7 +293,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Display Modes', () => {
     it('should support cartesian mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       triggerWindowReady();
       
@@ -296,7 +304,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should support polar mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR']);
       triggerWindowReady();
       
@@ -307,7 +315,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should support log scale mode', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'LOGSCALE']);
       triggerWindowReady();
       
@@ -318,7 +326,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should support combined polar and log scale', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR', 'LOGSCALE']);
       triggerWindowReady();
       
@@ -331,7 +339,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Update Rate Control', () => {
     it('should respect RATE parameter', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'RATE', '5']);
       triggerWindowReady();
 
@@ -356,7 +364,7 @@ describe('DebugScopeXyWindow', () => {
 
   describe('Error Handling', () => {
     it('should handle invalid data gracefully', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       triggerWindowReady();
       
@@ -372,7 +380,7 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should handle window destruction gracefully', () => {
-      window = new DebugScopeXyWindow(mockContext);
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       triggerWindowReady();
       

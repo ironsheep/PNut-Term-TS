@@ -7,7 +7,7 @@
 // src/classes/mainWindow.ts
 
 // Import electron conditionally for standalone compatibility
-let app: any, BrowserWindow: any, Menu: any, MenuItem: any, dialog: any, electron: any, ipcMain: any;
+let app: any, BrowserWindow: any, Menu: any, MenuItem: any, dialog: any, electron: any, ipcMain: any, nativeTheme: any;
 try {
   const electronImport = require('electron');
   app = electronImport.app;
@@ -17,6 +17,7 @@ try {
   dialog = electronImport.dialog;
   electron = electronImport;
   ipcMain = electronImport.ipcMain;
+  nativeTheme = electronImport.nativeTheme;
 } catch (error) {
   // Running in standalone mode without Electron
   console.warn('Warning: Electron not available, running in CLI mode');
@@ -27,10 +28,12 @@ import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
 import path from 'path';
 import { DebugScopeWindow } from './debugScopeWin';
+import { DebugScopeXyWindow } from './debugScopeXyWin';
 import { DebugWindowBase } from './debugWindowBase';
 import { PreferencesDialog } from './preferencesDialog';
 import { PerformanceMonitor } from './performanceMonitor';
 import { NewRecordingDialog } from './newRecordingDialog';
+import { DocumentationViewer } from './documentationViewer';
 import { BinaryPlayer } from './binaryPlayer';
 import { DebugTermWindow } from './debugTermWin';
 import { DebugPlotWindow } from './debugPlotWin';
@@ -44,7 +47,7 @@ import { WindowRouter } from './shared/windowRouter';
 import { SerialMessageProcessor } from './shared/serialMessageProcessor';
 import { MessageType, ExtractedMessage } from './shared/messageExtractor';
 import { RouteDestination } from './shared/messageRouter';
-import { PooledMessage } from './shared/messagePool';
+import { PooledMessage, MessagePool } from './shared/messagePool';
 import { COGWindowManager, COGDisplayMode } from './shared/cogWindowManager';
 import { COGHistoryManager } from './shared/cogHistoryManager';
 import { PlacementStrategy } from '../utils/windowPlacer';
@@ -95,6 +98,7 @@ export class MainWindow {
   private preferencesDialog: PreferencesDialog | null = null;
   private performanceMonitor: PerformanceMonitor | null = null;
   private newRecordingDialog: NewRecordingDialog | null = null;
+  private documentationViewer: DocumentationViewer | null = null;
   private binaryPlayer: BinaryPlayer | null = null;
   private controlLineMode: 'DTR' | 'RTS' = 'DTR'; // Default to DTR (Parallax standard)
   private downloadMode: 'ram' | 'flash' = 'ram';  // Default to RAM mode
@@ -211,8 +215,20 @@ export class MainWindow {
       console.log(`[WINDOW CREATION] Command: ${eventData.command}`);
       console.log(`[WINDOW CREATION] Error: ${eventData.error}`);
       
-      // Handle window creation based on type
-      this.handleWindowCreationRequest(eventData.type, eventData.command);
+      // Create ExtractedMessage for two-tier system compatibility
+      const commandData = new TextEncoder().encode(eventData.command);
+      const extractedMessage: ExtractedMessage = {
+        type: MessageType.BACKTICK_WINDOW,
+        data: commandData,
+        timestamp: Date.now(),
+        confidence: 'VERY_DISTINCTIVE',
+        metadata: {
+          windowCommand: eventData.command
+        }
+      };
+      
+      // Handle window creation through two-tier system
+      this.handleWindowCommand(extractedMessage);
     });
     
     // Listen for P2 system reboot events (golden synchronization marker)
@@ -327,52 +343,267 @@ export class MainWindow {
   private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
     console.log(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
     
-    // Use type-safe handoff to debug logger - no more guessing!
-    if (this.debugLoggerWindow) {
-      console.log(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
-    } else {
-      console.log(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
-    }
-    
-    if (this.debugLoggerWindow) {
-      // Convert buffer to appropriate data type
-      let data: string[] | Uint8Array;
-      
-      if (message.type === MessageType.DEBUGGER_416BYTE) {
-        // Binary data stays as Uint8Array
-        data = message.data;
+    try {
+      // Use type-safe handoff to debug logger - no more guessing!
+      if (this.debugLoggerWindow) {
+        console.log(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
       } else {
-        // Text data converted to string array
-        const textData = new TextDecoder().decode(message.data);
-        data = textData.split(/\s+/).filter(part => part.length > 0);
+        console.log(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
       }
       
-      // Direct type-safe call - no router guessing needed
-      this.debugLoggerWindow.processTypedMessage(message.type, data);
-    } else {
-      // Fallback to router if debug logger not available
-      const routerMessage = {
-        type: 'text' as const,
-        data: this.formatMessageForDisplay(message),
-        timestamp: message.timestamp,
-        cogId: message.metadata?.cogId
-      };
-      this.windowRouter.routeMessage(routerMessage);
+      if (this.debugLoggerWindow) {
+        // Convert buffer to appropriate data type
+        let data: string[] | Uint8Array;
+        
+        if (message.type === MessageType.DEBUGGER_416BYTE) {
+          // Binary data stays as Uint8Array
+          data = message.data;
+        } else {
+          // Text data converted to string array
+          const textData = new TextDecoder().decode(message.data);
+          data = textData.split(/\s+/).filter(part => part.length > 0);
+        }
+        
+        // Direct type-safe call - no router guessing needed
+        this.debugLoggerWindow.processTypedMessage(message.type, data);
+      } else {
+        // Fallback to router if debug logger not available
+        const routerMessage = {
+          type: 'text' as const,
+          data: this.formatMessageForDisplay(message),
+          timestamp: message.timestamp,
+          cogId: message.metadata?.cogId
+        };
+        this.windowRouter.routeMessage(routerMessage);
+      }
+    } finally {
+      // CRITICAL: Release pooled message after processing
+      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
+        MessagePool.getInstance().release(message as PooledMessage);
+        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebugLogger handler`);
+      }
     }
   }
 
   /**
-   * Handle window command (backtick commands)
+   * Handle window command (backtick commands) - Two-Tier System
+   * MIGRATED: Complete functionality from handleDebugCommand for performance
    */
   private handleWindowCommand(message: ExtractedMessage | PooledMessage): void {
-    if (message.metadata?.windowCommand) {
-      console.log(`[TWO-TIER] Window command: ${message.metadata.windowCommand}`);
-      // Route to appropriate window creation logic
-      this.windowRouter.routeMessage({
-        type: 'text',
-        data: message.metadata.windowCommand,
-        timestamp: message.timestamp
+    try {
+      // Extract command data from two-tier message (stay in new system, don't convert back)
+      const data = new TextDecoder().decode(message.data);
+      const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
+      console.log(`[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
+      
+      if (lineParts.length === 0 || lineParts[0].charAt(0) !== '`') {
+        console.log(`[TWO-TIER] Invalid window command format: ${data}`);
+        return;
+      }
+      
+      const possibleName: string = lineParts[0].substring(1).toUpperCase();
+      let foundDisplay: boolean = false;
+      
+      // 1. FIRST: Check if this is for an existing window (route data to it)
+      const displayEntries = Object.entries(this.displays);
+      displayEntries.forEach(([displayName, window]) => {
+        if (displayName.toUpperCase() === possibleName) {
+          // Found existing window, route to it
+          const debugWindow = window as DebugWindowBase;
+          const cleanedParts: string[] = lineParts.map((part) => part.replace(/,/g, ''));
+          debugWindow.updateContent(cleanedParts);
+          foundDisplay = true;
+          console.log(`[TWO-TIER] Routed to existing window: ${displayName}`);
+        }
       });
+      
+      if (!foundDisplay) {
+        // 2. SECOND: Window creation - infer window type from command
+        let windowType = possibleName;
+        
+        // Check if it's already a window type or ends with a window type
+        if (possibleName === 'LOGIC' || possibleName.endsWith('LOGIC')) {
+          windowType = 'LOGIC';
+        } else if (possibleName === 'TERM' || possibleName.endsWith('TERM')) {
+          windowType = 'TERM';
+        } else if (possibleName === 'SCOPE' || possibleName.endsWith('SCOPE')) {
+          windowType = 'SCOPE';
+        } else if (possibleName === 'SCOPE_XY' || possibleName.endsWith('SCOPEXY')) {
+          windowType = 'SCOPE_XY';
+        } else if (possibleName === 'PLOT' || possibleName.endsWith('PLOT')) {
+          windowType = 'PLOT';
+        } else if (possibleName === 'BITMAP' || possibleName.endsWith('BITMAP')) {
+          windowType = 'BITMAP';
+        } else if (possibleName === 'MIDI' || possibleName.endsWith('MIDI')) {
+          windowType = 'MIDI';
+        }
+        
+        console.log(`[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`);
+        
+        // 3. THIRD: Create new window based on type
+        switch (windowType) {
+          case this.DISPLAY_SCOPE: {
+            console.log(`[TWO-TIER] Creating SCOPE window for: ${data}`);
+            const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
+            console.log(`[TWO-TIER] SCOPE parse result: isValid=${isValid}`);
+            if (isValid) {
+              const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
+              this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ SCOPE window '${scopeSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse SCOPE command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_SCOPEXY: {
+            console.log(`[TWO-TIER] Creating SCOPEXY window for: ${data}`);
+            const [isValid, scopeXySpec] = DebugScopeXyWindow.parseScopeXyDeclaration(lineParts);
+            console.log(`[TWO-TIER] SCOPEXY parse result: isValid=${isValid}`);
+            if (isValid) {
+              const scopeXyDisplay = new DebugScopeXyWindow(this.context, scopeXySpec);
+              this.hookNotifcationsAndRememberWindow(scopeXySpec.displayName, scopeXyDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ SCOPEXY window '${scopeXySpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse SCOPEXY command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_LOGIC: {
+            console.log(`[TWO-TIER] Creating LOGIC window for: ${data}`);
+            const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
+            console.log(`[TWO-TIER] LOGIC parse result: isValid=${isValid}`);
+            if (logicSpec) {
+              console.log(`[TWO-TIER] LogicSpec:`, JSON.stringify(logicSpec, null, 2));
+            }
+            
+            if (isValid) {
+              console.log(`[TWO-TIER] Creating DebugLogicWindow instance...`);
+              const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
+              this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ LOGIC window '${logicSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse LOGIC command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_TERM: {
+            console.log(`[TWO-TIER] Creating TERM window for: ${data}`);
+            const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+            console.log(`[TWO-TIER] TERM parse result: isValid=${isValid}, termSpec=`, termSpec);
+            
+            if (isValid) {
+              console.log(`[TWO-TIER] Creating DebugTermWindow with spec:`, termSpec);
+              const termDisplay = new DebugTermWindow(this.context, termSpec);
+              this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ TERM window '${termSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse TERM command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_PLOT: {
+            console.log(`[TWO-TIER] Creating PLOT window for: ${data}`);
+            const [isValid, plotSpec] = DebugPlotWindow.parsePlotDeclaration(lineParts);
+            console.log(`[TWO-TIER] PLOT parse result: isValid=${isValid}`);
+            
+            if (isValid) {
+              const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
+              this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ PLOT window '${plotSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse PLOT command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_BITMAP: {
+            console.log(`[TWO-TIER] Creating BITMAP window for: ${data}`);
+            const [isValid, bitmapSpec] = DebugBitmapWindow.parseBitmapDeclaration(lineParts);
+            console.log(`[TWO-TIER] BITMAP parse result: isValid=${isValid}`);
+            
+            if (isValid) {
+              const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
+              this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ BITMAP window '${bitmapSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse BITMAP command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          case this.DISPLAY_MIDI: {
+            console.log(`[TWO-TIER] Creating MIDI window for: ${data}`);
+            const [isValid, midiSpec] = DebugMidiWindow.parseMidiDeclaration(lineParts);
+            console.log(`[TWO-TIER] MIDI parse result: isValid=${isValid}`);
+            
+            if (isValid) {
+              const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
+              this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
+              foundDisplay = true;
+              console.log(`[TWO-TIER] ✅ MIDI window '${midiSpec.displayName}' created successfully`);
+            } else {
+              console.log(`[TWO-TIER] ❌ Failed to parse MIDI command: ${data}`);
+              if (this.context.runEnvironment.loggingEnabled) {
+                this.logMessage(`BAD DISPLAY: Received: ${data}`);
+              }
+            }
+            break;
+          }
+          
+          default:
+            console.log(`[TWO-TIER] ERROR: Unsupported window type [${windowType}] in command: ${data}`);
+            this.logMessage(`ERROR: display [${windowType}] not supported!`);
+            break;
+        }
+      }
+      
+      // 4. FOURTH: Update logging behavior if window was found/created
+      if (foundDisplay) {
+        this.immediateLog = false; // Switch from immediate to buffered logging
+      }
+      
+      // 5. FIFTH: Log unhandled commands
+      if (!foundDisplay && this.mainWindow != null) {
+        console.log(`[TWO-TIER] UNHANDLED window command: ${data}`);
+        if (this.context.runEnvironment.loggingEnabled) {
+          this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
+        }
+      }
+      
+    } finally {
+      // CRITICAL: Release pooled message after processing (preserve two-tier performance)
+      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
+        MessagePool.getInstance().release(message as PooledMessage);
+        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from WindowCreator handler`);
+      }
     }
   }
 
@@ -380,15 +611,23 @@ export class MainWindow {
    * Route to debugger window (80-byte packets)
    */
   private routeToDebuggerWindow(message: ExtractedMessage | PooledMessage): void {
-    if (message.metadata?.cogId !== undefined) {
-      console.log(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
-      // Route binary debugger data to appropriate COG debugger window
-      this.windowRouter.routeMessage({
-        type: 'binary',
-        data: message.data,
-        timestamp: message.timestamp,
-        cogId: message.metadata.cogId
-      });
+    try {
+      if (message.metadata?.cogId !== undefined) {
+        console.log(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
+        // Route binary debugger data to appropriate COG debugger window
+        this.windowRouter.routeMessage({
+          type: 'binary',
+          data: message.data,
+          timestamp: message.timestamp,
+          cogId: message.metadata.cogId
+        });
+      }
+    } finally {
+      // CRITICAL: Release pooled message after processing
+      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
+        MessagePool.getInstance().release(message as PooledMessage);
+        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebuggerWindow handler`);
+      }
     }
   }
 
@@ -665,42 +904,6 @@ export class MainWindow {
   }
   
   
-  /**
-   * Handle window creation requests from WindowRouter
-   */
-  private handleWindowCreationRequest(windowType: string, command: string): void {
-    console.log(`[WINDOW CREATION] Analyzing command: ${command}`);
-    
-    // Check if this looks like a window creation command vs data/control command
-    // Creation commands typically have: `WINDOWTYPE Name POS x y ... or similar setup directives
-    // Data commands are: `Name data... or `Name close save etc.
-    const cleanCommand = command.substring(1).trim(); // Remove backtick
-    const parts = cleanCommand.split(' ');
-    
-    // If first word after backtick matches windowType (LOGIC, TERM, etc), it's likely a creation command
-    // Otherwise it's a command for an existing window (like `MyLogic close save`)
-    const firstWord = parts[0].toUpperCase();
-    const isCreationCommand = firstWord === windowType.toUpperCase() || 
-                              (parts.length > 2 && parts.includes('POS')) ||
-                              (parts.length > 2 && parts.includes('SIZE'));
-    
-    if (!isCreationCommand) {
-      // This is a data/control command for a window that should already exist
-      console.log(`[WINDOW CREATION] Not a creation command - appears to be data/control for existing window`);
-      console.log(`[WINDOW CREATION] Command: "${command}" contains: ${parts.join(', ')}`);
-      
-      // Check if command contains 'close' anywhere (might be compound: `MyLogic save close`)
-      if (cleanCommand.toLowerCase().includes('close')) {
-        console.log(`[WINDOW CREATION] Contains 'close' - window is being closed, not created`);
-      }
-      return;
-    }
-    
-    console.log(`[WINDOW CREATION] Identified as creation command - creating ${windowType} window`);
-    // Parse the command and create the appropriate window
-    // The command should still have the backtick, so we can use existing handleDebugCommand logic
-    this.handleDebugCommand(command);
-  }
 
   public initialize() {
     this.context.logger.forceLogMessage('* initialize()');
@@ -720,6 +923,13 @@ export class MainWindow {
       app.whenReady().then(() => {
         this.logMessage('* [whenReady]');
         console.log('[STARTUP] Electron app is ready, creating window');
+        
+        // Force light mode for native dialogs and UI elements
+        if (nativeTheme) {
+          nativeTheme.themeSource = 'light';
+          console.log('[STARTUP] Native theme set to light mode');
+        }
+        
         this.createAppWindow();
       }).catch((error: any) => {
         console.error('[STARTUP] Error in app.whenReady():', error);
@@ -1235,181 +1445,12 @@ export class MainWindow {
 
 
   private DISPLAY_SCOPE: string = 'SCOPE';
+  private DISPLAY_SCOPEXY: string = 'SCOPE_XY';
   private DISPLAY_TERM: string = 'TERM';
   private DISPLAY_PLOT: string = 'PLOT';
   private DISPLAY_LOGIC: string = 'LOGIC';
   private DISPLAY_BITMAP: string = 'BITMAP';
   private DISPLAY_MIDI: string = 'MIDI';
-
-  private handleDebugCommand(data: string) {
-    //const lineParts: string[] = data.split(' ').filter(Boolean); // extra whitespace caused empty strings
-    // Split the data and remove empty values
-    const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
-    this.logMessage(`* handleDebugCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
-    const possibleName: string = lineParts[0].substring(1).toUpperCase();
-    let foundDisplay: boolean = false;
-    if (lineParts[0].charAt(0) === '`') {
-      // first, is this for one of our displays?
-      const displayEntries = Object.entries(this.displays);
-      displayEntries.forEach(([displayName, window]) => {
-        if (displayName.toUpperCase() === possibleName) {
-          // found it, route to the window handler
-          const debugWindow = window as DebugWindowBase;
-          // remove commas from the data
-          const cleanedParts: string[] = lineParts.map((part) => part.replace(/,/g, ''));
-          debugWindow.updateContent(cleanedParts); // NOTE: this will eventually show the debug window!
-          foundDisplay = true;
-        }
-      });
-      if (!foundDisplay) {
-        // 2nd, is it a window creation command?
-        // For LOGIC windows, check if the name ends with "LOGIC"
-        // This handles commands like `MyLogic which should create a LOGIC window
-        let windowType = possibleName;
-        if (possibleName.endsWith('LOGIC')) {
-          windowType = 'LOGIC';
-        } else if (possibleName.endsWith('TERM')) {
-          windowType = 'TERM';
-        } else if (possibleName.endsWith('SCOPE')) {
-          windowType = 'SCOPE';
-        }
-        
-        this.logMessage(`* handleDebugCommand() - possibleName=[${possibleName}], windowType=[${windowType}]`);
-        switch (windowType) {
-          case this.DISPLAY_SCOPE: {
-            // create new window to display scope data
-            const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
-            this.logMessage(`* handleDebugCommand() - back from parse`);
-            if (isValid) {
-              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
-              const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
-            } else {
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          case this.DISPLAY_LOGIC: {
-            console.log(`[LOGIC WINDOW CREATION] Starting LOGIC window creation for: ${data}`);
-            console.log(`[LOGIC WINDOW CREATION] LineParts: [${lineParts.join(' | ')}]`);
-            
-            // create new window to display scope data
-            const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
-            console.log(`[LOGIC WINDOW CREATION] Parse result: isValid=${isValid}`);
-            if (logicSpec) {
-              console.log(`[LOGIC WINDOW CREATION] LogicSpec:`, JSON.stringify(logicSpec, null, 2));
-            }
-            
-            this.logMessage(`* handleDebugCommand() - back from parse`);
-            if (isValid) {
-              console.log(`[LOGIC WINDOW CREATION] Creating DebugLogicWindow instance...`);
-              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
-              const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
-              console.log(`[LOGIC WINDOW CREATION] Instance created, now hooking notifications...`);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
-              console.log(`[LOGIC WINDOW CREATION] ✅ LOGIC window '${logicSpec.displayName}' should be visible now!`);
-            } else {
-              console.log(`[LOGIC WINDOW CREATION] ❌ Failed to parse LOGIC command: ${data}`);
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          case this.DISPLAY_TERM: {
-            // create new window to display term data
-            console.log(`[TERM CREATION] Processing TERM command: ${data}`);
-            console.log(`[TERM CREATION] LineParts: [${lineParts.join(' | ')}]`);
-            const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
-            console.log(`[TERM CREATION] Parse result: isValid=${isValid}, termSpec=`, termSpec);
-            this.logMessage(`* handleDebugCommand() - back from parse, isValid=${isValid}`);
-            if (isValid) {
-              // create new window from spec, recording the new window has name: termSpec.displayName so we can find it later
-              console.log(`[TERM CREATION] Creating DebugTermWindow with spec:`, termSpec);
-              const termDisplay = new DebugTermWindow(this.context, termSpec);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
-              console.log(`[TERM CREATION] ✅ Successfully created TERM window: ${termSpec.displayName}`);
-            } else {
-              console.log(`[TERM CREATION] ❌ Failed to parse TERM command: ${data}`);
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          case this.DISPLAY_PLOT: {
-            // create new window to display scope data
-            const [isValid, plotSpec] = DebugPlotWindow.parsePlotDeclaration(lineParts);
-            this.logMessage(`* handleDebugCommand() - back from parse`);
-            if (isValid) {
-              // create new window from spec, recording the new window has name: scopeSpec.displayName so we can find it later
-              const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
-            } else {
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          case this.DISPLAY_BITMAP: {
-            // create new window to display bitmap data
-            const [isValid, bitmapSpec] = DebugBitmapWindow.parseBitmapDeclaration(lineParts);
-            this.logMessage(`* handleDebugCommand() - back from parse`);
-            if (isValid) {
-              // create new window from spec, recording the new window has name: bitmapSpec.displayName so we can find it later
-              const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
-            } else {
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          case this.DISPLAY_MIDI: {
-            // Create new MIDI window using standardized pattern
-            const [isValid, midiSpec] = DebugMidiWindow.parseMidiDeclaration(lineParts);
-            if (isValid) {
-              // create new window from spec, recording the new window has name: midiSpec.displayName so we can find it later
-              const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
-              // remember active displays!
-              this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
-            } else {
-              if (this.context.runEnvironment.loggingEnabled) {
-                this.logMessage(`BAD DISPLAY: Received: ${data}`);
-              }
-            }
-            foundDisplay = true;
-            break;
-          }
-          default:
-            this.logMessage(`ERROR: display [${possibleName}] not supported!`);
-            break;
-        }
-      }
-      if (foundDisplay) {
-        this.immediateLog = false; // change from immediate log to buffered log
-      }
-      if (!foundDisplay && this.mainWindow != null) {
-        if (this.context.runEnvironment.loggingEnabled) {
-          this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
-        }
-      }
-    }
-  }
 
   private hookNotifcationsAndRememberWindow(windowName: string, windowObject: DebugWindowBase) {
     this.logMessage(`GOOD DISPLAY: Received for ${windowName}`);
@@ -1495,8 +1536,21 @@ export class MainWindow {
       if (this.context.runEnvironment.loggingEnabled) {
         this.logMessage(`* Extracting embedded command from Cog message: ${embeddedCommand}`);
       }
-      // Route the embedded command to the appropriate debug window
-      this.handleDebugCommand(embeddedCommand);
+      
+      // Create ExtractedMessage for two-tier system compatibility
+      const commandData = new TextEncoder().encode(embeddedCommand);
+      const extractedMessage: ExtractedMessage = {
+        type: MessageType.BACKTICK_WINDOW,
+        data: commandData,
+        timestamp: Date.now(),
+        confidence: 'VERY_DISTINCTIVE',
+        metadata: {
+          windowCommand: embeddedCommand
+        }
+      };
+      
+      // Route the embedded command through two-tier system
+      this.handleWindowCommand(extractedMessage);
     }
     
     // Log the Cog message receipt if logging is enabled
@@ -1811,7 +1865,7 @@ export class MainWindow {
           flex-direction: column;
           height: 100vh;
           margin: 0;
-          background-color: #FF00FF; /* MAGENTA - for debugging exposed areas */
+          /* background-color: #FF00FF; */ /* MAGENTA - for debugging exposed areas - commented out for normal operation */
           font-family: Consolas, sans-serif; /* Use Arial or any sans-serif font */
           font-size: 12px; /* Set a smaller font size */
         }
@@ -2078,14 +2132,6 @@ export class MainWindow {
           <div class="toolbar-separator"></div>
           <span id="recording-status" style="color: #666; font-size: 12px;">Ready</span>
           <div class="toolbar-separator"></div>
-          <label for="font-selector" style="margin-right: 5px; font-size: 12px;">Font:</label>
-          <select id="font-selector" class="toolbar-button" style="padding: 2px 5px;">
-            <option value="default">Default</option>
-            <option value="parallax">Parallax</option>
-            <option value="ibm3270">IBM 3270</option>
-            <option value="ibm3270-green">IBM 3270 Green</option>
-            <option value="ibm3270-amber">IBM 3270 Amber</option>
-          </select>
         </div>
         <div id="playback-controls" style="display: none; background: #252526; padding: 10px; border-bottom: 1px solid #3e3e42;">
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -2267,22 +2313,6 @@ export class MainWindow {
             });
           }
           
-          // Font selector
-          const fontSelector = document.getElementById('font-selector');
-          const logContent = document.getElementById('log-content');
-          if (fontSelector && logContent) {
-            fontSelector.addEventListener('change', (e) => {
-              logContent.className = logContent.className.replace(/font-[\w-]+/g, '').trim();
-              const selectedFont = e.target.value;
-              logContent.classList.add('font-' + selectedFont);
-              localStorage.setItem('terminal-font', selectedFont);
-            });
-            
-            // Load saved preference
-            const savedFont = localStorage.getItem('terminal-font') || 'default';
-            fontSelector.value = savedFont;
-            logContent.classList.add('font-' + savedFont);
-          }
           
           // Menu initialization moved to programmatic injection after window loads
           // This avoids data URL script execution restrictions
@@ -2523,7 +2553,7 @@ export class MainWindow {
       console.log('[IPC] Open recording');
       
       // Check if recordings folder exists and has .p2rec files
-      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings');
       if (!fs.existsSync(recordingsDir)) {
         dialog.showMessageBox(this.mainWindow!, {
           type: 'info',
@@ -2653,7 +2683,7 @@ export class MainWindow {
     // Help menu handlers
     ipcMain.on('menu-documentation', () => {
       console.log('[IPC] Documentation');
-      electron.shell.openExternal('https://github.com/parallaxinc/PNut-Term-TS/wiki');
+      this.showDocumentation();
     });
     
     // menu-about is handled by executeCommand
@@ -2918,35 +2948,6 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
       
-      // Set up font selector dropdown - defer until DOM is ready
-      this.mainWindow!.webContents.once('dom-ready', () => {
-        this.safeExecuteJS(`
-          // Font selector dropdown - DOM should be ready now
-          const fontSelector = document.getElementById('font-selector');
-          const logContent = document.getElementById('log-content');
-          if (fontSelector && logContent) {
-            console.log('[FONT SELECTOR] Elements found, setting up...');
-            fontSelector.addEventListener('change', (e) => {
-              // Remove all font classes
-              logContent.className = logContent.className.replace(/font-[\\w-]+/g, '').trim();
-              // Add the selected font class
-              const selectedFont = e.target.value;
-              logContent.classList.add('font-' + selectedFont);
-              
-              // Store preference (could be saved to settings file later)
-              localStorage.setItem('terminal-font', selectedFont);
-            });
-            
-            // Load saved preference
-            const savedFont = localStorage.getItem('terminal-font') || 'default';
-            fontSelector.value = savedFont;
-            logContent.classList.add('font-' + savedFont);
-            console.log('[FONT SELECTOR] Setup complete with font:', savedFont);
-          } else {
-            console.error('[FONT SELECTOR] Elements not found - fontSelector:', !!fontSelector, 'logContent:', !!logContent);
-          }
-        `, 'font-selector-setup');
-      });
       
       // Setup text input control for data entry
       this.hookTextInputControl('dataEntry', (event: Event) => {
@@ -3466,6 +3467,14 @@ export class MainWindow {
       this.performanceMonitor = new PerformanceMonitor(this.mainWindow);
     }
     this.performanceMonitor.show();
+  }
+
+  private showDocumentation(): void {
+    console.log('[DOC] Showing documentation viewer');
+    if (!this.documentationViewer) {
+      this.documentationViewer = new DocumentationViewer(this.mainWindow);
+    }
+    this.documentationViewer.show();
   }
   
   private showFindDialog(): void {
@@ -4114,8 +4123,9 @@ export class MainWindow {
       // Get performance snapshot from serial processor
       const stats = this.serialProcessor.getStats();
       const perfSnapshot = stats.performance;
+      const bufferStats = stats.buffer;
       
-      if (!perfSnapshot) {
+      if (!perfSnapshot || !bufferStats) {
         return;
       }
 
@@ -4190,13 +4200,13 @@ export class MainWindow {
           bufferUsage: perfSnapshot.metrics.bufferUsagePercent,
           queueDepth: totalQueueDepth,
           status: statusSymbol,
-          bufferSize: perfSnapshot.circularBuffer.size,
-          bufferUsed: perfSnapshot.circularBuffer.used,
-          bufferAvailable: perfSnapshot.circularBuffer.size - perfSnapshot.circularBuffer.used,
-          highWaterMark: perfSnapshot.circularBuffer.highWaterMark || 0,
-          overflowEvents: perfSnapshot.circularBuffer.overflowCount,
+          bufferSize: bufferStats.size,
+          bufferUsed: bufferStats.used,
+          bufferAvailable: bufferStats.available,
+          highWaterMark: bufferStats.highWaterMark || 0,
+          overflowEvents: bufferStats.overflowCount || 0,
           totalMessages: routingStats.messagesRouted,
-          messagesPerSecond: perfSnapshot.messagesPerSecond || 0,
+          messagesPerSecond: perfSnapshot.metrics.throughput.messagesPerSecond || 0,
           recordingActive: routingStats.recordingActive,
           recordingSize: 0, // TODO: Get actual recording size when implemented
           parseErrors: routingStats.errors,
@@ -4752,8 +4762,24 @@ export class MainWindow {
           this.logMessage(`Downloading ${path.basename(filePath)} to RAM...`);
           this.updateRecordingStatus(`Downloading to RAM...`);
           
+          // Get current debug baud rate from context (command line setting)
+          const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+          const downloadBaudRate = 2000000; // Fixed download baud rate
+          
+          // Switch to download baud rate if different from debug rate
+          if (debugBaudRate !== downloadBaudRate) {
+            this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
+            await this._serialPort.changeBaudRate(downloadBaudRate);
+          }
+          
           // Download to RAM (toFlash = false)
           await this.downloader.download(filePath, false);
+          
+          // Switch back to debug baud rate if it was different
+          if (debugBaudRate !== downloadBaudRate) {
+            this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
+            await this._serialPort.changeBaudRate(debugBaudRate);
+          }
           
           this.logMessage(`Successfully downloaded ${path.basename(filePath)} to RAM`);
           this.updateRecordingStatus(`Download complete`);
@@ -4766,6 +4792,14 @@ export class MainWindow {
           const errorMsg = error instanceof Error ? error.message : String(error);
           this.logMessage(`ERROR: Failed to download to RAM: ${errorMsg}`);
           this.updateRecordingStatus(`Download failed`);
+          
+          // Ensure we restore debug baud rate even on error
+          try {
+            const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+            await this._serialPort.changeBaudRate(debugBaudRate);
+          } catch (restoreError) {
+            this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
+          }
           
           dialog.showErrorBox('Download Failed', `Failed to download to RAM:\n${errorMsg}`);
         }
@@ -4790,8 +4824,24 @@ export class MainWindow {
           this.logMessage(`Downloading ${path.basename(filePath)} to Flash...`);
           this.updateRecordingStatus(`Downloading to Flash...`);
           
+          // Get current debug baud rate from context (command line setting)
+          const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+          const downloadBaudRate = 2000000; // Fixed download baud rate
+          
+          // Switch to download baud rate if different from debug rate
+          if (debugBaudRate !== downloadBaudRate) {
+            this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
+            await this._serialPort.changeBaudRate(downloadBaudRate);
+          }
+          
           // Download to Flash (toFlash = true)
           await this.downloader.download(filePath, true);
+          
+          // Switch back to debug baud rate if it was different
+          if (debugBaudRate !== downloadBaudRate) {
+            this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
+            await this._serialPort.changeBaudRate(debugBaudRate);
+          }
           
           this.logMessage(`Successfully downloaded ${path.basename(filePath)} to Flash`);
           this.updateRecordingStatus(`Flash complete`);
@@ -4805,6 +4855,14 @@ export class MainWindow {
           this.logMessage(`ERROR: Failed to download to Flash: ${errorMsg}`);
           this.updateRecordingStatus(`Flash failed`);
           
+          // Ensure we restore debug baud rate even on error
+          try {
+            const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+            await this._serialPort.changeBaudRate(debugBaudRate);
+          } catch (restoreError) {
+            this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
+          }
+          
           dialog.showErrorBox('Flash Failed', `Failed to download to Flash:\n${errorMsg}`);
         }
       } else {
@@ -4813,6 +4871,7 @@ export class MainWindow {
       }
     }
   }
+
 
   private startRecording(filepath?: string): void {
     const metadata = {
@@ -4966,9 +5025,111 @@ export class MainWindow {
 
   private showPreferencesDialog(): void {
     if (!this.preferencesDialog) {
-      this.preferencesDialog = new PreferencesDialog(this.mainWindow);
+      this.preferencesDialog = new PreferencesDialog(this.mainWindow, (settings) => {
+        this.applyPreferences(settings);
+      });
     }
     this.preferencesDialog.show();
+  }
+
+  /**
+   * Apply updated preferences to all relevant components
+   */
+  private applyPreferences(settings: any): void {
+    console.log('[PREFERENCES] Applying settings:', settings);
+    
+    // Apply debug logger scrollback setting
+    if (settings.debugLogger && this.debugLoggerWindow) {
+      console.log(`[PREFERENCES] Updating debug logger scrollback to ${settings.debugLogger.scrollbackLines} lines`);
+      this.debugLoggerWindow.updateScrollbackPreference(settings.debugLogger.scrollbackLines);
+    }
+    
+    // Apply serial port settings
+    if (settings.serialPort) {
+      // Apply control line setting (DTR vs RTS)
+      if (settings.serialPort.controlLine && settings.serialPort.controlLine !== this.controlLineMode) {
+        console.log(`[PREFERENCES] Changing control line from ${this.controlLineMode} to ${settings.serialPort.controlLine}`);
+        this.setControlLineMode(settings.serialPort.controlLine);
+      }
+      
+      // Apply default baud rate (will be used for next connection)
+      if (settings.serialPort.defaultBaud) {
+        this._serialBaud = settings.serialPort.defaultBaud;
+        console.log(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
+      }
+      
+      // Apply auto-reconnect setting
+      if (settings.serialPort.autoReconnect !== undefined) {
+        // Store for future use (implement auto-reconnect logic separately)
+        console.log(`[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`);
+      }
+    }
+    
+    // Apply terminal settings
+    if (settings.terminal) {
+      // Apply terminal mode (PST vs ANSI)
+      if (settings.terminal.mode) {
+        // Store for use when creating terminal windows
+        console.log(`[PREFERENCES] Terminal mode set to ${settings.terminal.mode}`);
+      }
+      
+      // Apply color theme
+      if (settings.terminal.colorTheme) {
+        // Update theme for future terminal windows
+        console.log(`[PREFERENCES] Terminal color theme set to ${settings.terminal.colorTheme}`);
+      }
+      
+      // Apply font settings
+      if (settings.terminal.fontSize) {
+        // Store for future terminal windows
+        console.log(`[PREFERENCES] Terminal font size set to ${settings.terminal.fontSize}`);
+      }
+      
+      if (settings.terminal.fontFamily) {
+        // Store for future terminal windows
+        console.log(`[PREFERENCES] Terminal font family set to ${settings.terminal.fontFamily}`);
+      }
+      
+      // Apply COG prefix and local echo settings
+      if (settings.terminal.showCogPrefixes !== undefined) {
+        console.log(`[PREFERENCES] COG prefixes ${settings.terminal.showCogPrefixes ? 'shown' : 'hidden'}`);
+      }
+      
+      if (settings.terminal.localEcho !== undefined) {
+        console.log(`[PREFERENCES] Local echo ${settings.terminal.localEcho ? 'enabled' : 'disabled'}`);
+      }
+    }
+    
+    // Apply logging settings
+    if (settings.logging) {
+      // Apply log directory
+      if (settings.logging.logDirectory) {
+        // Update log directory path for future logs
+        console.log(`[PREFERENCES] Log directory set to ${settings.logging.logDirectory}`);
+      }
+      
+      // Apply auto-save debug output setting
+      if (settings.logging.autoSaveDebug !== undefined) {
+        this.immediateLog = settings.logging.autoSaveDebug;
+        console.log(`[PREFERENCES] Auto-save debug output ${this.immediateLog ? 'enabled' : 'disabled'}`);
+      }
+      
+      // Apply new log on DTR reset setting
+      if (settings.logging.newLogOnDtrReset !== undefined) {
+        // Store for use in DTR reset handler
+        console.log(`[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`);
+      }
+      
+      // Apply max log size setting
+      if (settings.logging.maxLogSize) {
+        // Store for use in log rotation logic
+        console.log(`[PREFERENCES] Max log size set to ${settings.logging.maxLogSize}`);
+      }
+    }
+    
+    // Store settings for persistence
+    // Note: This should be stored differently for global vs project settings
+    // as per the planned settings restructure
   }
 
   /**

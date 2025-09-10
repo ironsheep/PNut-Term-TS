@@ -26,7 +26,7 @@ export class NewRecordingDialog {
   private showActiveRecordingDialog(): void {
     const window = new BrowserWindow({
       width: 400,
-      height: 250,
+      height: 300,
       parent: this.parent,
       modal: true,
       resizable: false,
@@ -53,6 +53,9 @@ export class NewRecordingDialog {
       display: flex;
       flex-direction: column;
       height: 100vh;
+      background-color: white;
+      color: black;
+      color-scheme: light;
     }
     
     h2 {
@@ -154,11 +157,11 @@ export class NewRecordingDialog {
 
   private showNewRecordingDialog(): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const recordingPath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `recording_${timestamp}.p2rec`);
+    const recordingPath = path.join(process.cwd(), 'tests', 'recordings', `recording_${timestamp}.p2rec`);
     
     const window = new BrowserWindow({
       width: 400,
-      height: 250,
+      height: 300,
       parent: this.parent,
       modal: true,
       resizable: false,
@@ -185,6 +188,9 @@ export class NewRecordingDialog {
       display: flex;
       flex-direction: column;
       height: 100vh;
+      background-color: white;
+      color: black;
+      color-scheme: light;
     }
     
     h2 {

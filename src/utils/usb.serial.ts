@@ -87,6 +87,19 @@ export class UsbSerial extends EventEmitter {
     UsbSerial.desiredCommsBaudRate = baudRate;
   }
 
+  /**
+   * Change baud rate of active serial port
+   */
+  public async changeBaudRate(newBaudRate: number): Promise<void> {
+    if (this._serialPort && this._serialPort.isOpen) {
+      this.logMessage(`* Changing baud rate from ${this._serialPort.baudRate} to ${newBaudRate}`);
+      await this._serialPort.update({ baudRate: newBaudRate });
+      this.logMessage(`* Baud rate changed successfully to ${newBaudRate}`);
+    } else {
+      throw new Error('Cannot change baud rate: serial port not open');
+    }
+  }
+
   static async serialDeviceList(ctx?: Context): Promise<string[]> {
     const devicesFound: string[] = [];
     const ports = await SerialPort.list();

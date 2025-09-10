@@ -993,15 +993,21 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       // Parse and store COG registers (bytes 80-335, 64 longs)
       for (let i = 0; i < 64; i++) {
         const offset = 80 + i * 4;
-        const value = view.getUint32(offset, true);
-        this.dataManager.updateCogRegister(i, value);
+        if (offset + 4 <= data.length) {
+          const value = view.getUint32(offset, true);
+          this.dataManager.updateCogRegister(i, value);
+        }
       }
       
-      // Parse and store LUT registers (bytes 336-591, 64 longs)  
-      for (let i = 0; i < 64; i++) {
+      // Parse and store LUT registers (bytes 336-415, 20 longs)
+      // Note: 416-byte packet structure limits LUT data to 20 longs, not 64
+      const lutLongCount = Math.min(64, (data.length - 336) / 4);
+      for (let i = 0; i < lutLongCount; i++) {
         const offset = 336 + i * 4;
-        const value = view.getUint32(offset, true);
-        this.dataManager.updateLutRegister(i, value);
+        if (offset + 4 <= data.length) {
+          const value = view.getUint32(offset, true);
+          this.dataManager.updateLutRegister(i, value);
+        }
       }
     }
     
@@ -1105,7 +1111,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           
           // Get actual register value from dataManager
           const value = this.dataManager.getCogRegister(this.cogId, regNum);
-          const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
+          const hexStr = (value ?? 0).toString(16).padStart(8, '0').toUpperCase();
           
           jsCommands.push(this.drawTextJs(hexStr, x, y, PASCAL_COLOR_SCHEME.cData));
         }
@@ -1161,7 +1167,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           
           // Get actual LUT register value from dataManager
           const value = this.dataManager.getLutRegister(this.cogId, regNum);
-          const hexStr = value.toString(16).padStart(8, '0').toUpperCase();
+          const hexStr = (value ?? 0).toString(16).padStart(8, '0').toUpperCase();
           
           jsCommands.push(this.drawTextJs(hexStr, x, y, PASCAL_COLOR_SCHEME.cData));
         }

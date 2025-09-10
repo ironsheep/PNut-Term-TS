@@ -46,6 +46,7 @@ export class BinaryRecorder {
   private messageCount: number = 0;
   private isRecording: boolean = false;
   private filepath: string = '';
+  private dataEntries: Buffer[] = []; // Collect data entries in memory
   
   constructor() {
     // Initialize
@@ -54,7 +55,7 @@ export class BinaryRecorder {
   /**
    * Start a new recording session
    */
-  public startRecording(metadata: RecordingMetadata): string {
+  public startRecording(metadata: RecordingMetadata, outputDir?: string): string {
     if (this.isRecording) {
       throw new Error('Recording already in progress');
     }
@@ -62,7 +63,7 @@ export class BinaryRecorder {
     // Generate filepath
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${timestamp}-${metadata.sessionName}.p2rec`;
-    const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+    const recordingsDir = outputDir || path.join(process.cwd(), 'tests', 'recordings');
     
     // Ensure directory exists
     if (!fs.existsSync(recordingsDir)) {
@@ -70,15 +71,13 @@ export class BinaryRecorder {
     }
     
     this.filepath = path.join(recordingsDir, filename);
-    this.metadata = metadata;
+    this.metadata = { ...metadata };
     this.lastTimestamp = metadata.startTime;
     this.messageCount = 0;
+    this.dataEntries = [];
     
-    // Create file stream
-    this.fileStream = fs.createWriteStream(this.filepath, { flags: 'w' });
-    
-    // Write header
-    this.writeHeader();
+    // Write initial header immediately (synchronous)
+    this.writeHeaderSync();
     
     this.isRecording = true;
     return this.filepath;
@@ -88,7 +87,7 @@ export class BinaryRecorder {
    * Record a message
    */
   public recordMessage(data: Buffer | string): void {
-    if (!this.isRecording || !this.fileStream) {
+    if (!this.isRecording) {
       return;
     }
     
@@ -100,23 +99,28 @@ export class BinaryRecorder {
     const isText = typeof data === 'string';
     const buffer = isText ? Buffer.from(data, 'utf-8') : data;
     
-    // Write entry
+    // Create entry buffer
+    const entrySize = 4 + 1 + 4 + buffer.length; // delta + type + length + data
+    const entryBuffer = Buffer.allocUnsafe(entrySize);
+    let offset = 0;
+    
     // Delta timestamp (4 bytes)
-    const deltaBuffer = Buffer.allocUnsafe(4);
-    deltaBuffer.writeUInt32LE(delta, 0);
-    this.fileStream.write(deltaBuffer);
+    entryBuffer.writeUInt32LE(delta, offset);
+    offset += 4;
     
     // Data type (1 byte)
-    this.fileStream.write(Buffer.from([isText ? 0 : 1]));
+    entryBuffer.writeUInt8(isText ? 0 : 1, offset);
+    offset += 1;
     
     // Data length (4 bytes)
-    const lengthBuffer = Buffer.allocUnsafe(4);
-    lengthBuffer.writeUInt32LE(buffer.length, 0);
-    this.fileStream.write(lengthBuffer);
+    entryBuffer.writeUInt32LE(buffer.length, offset);
+    offset += 4;
     
     // Data
-    this.fileStream.write(buffer);
+    buffer.copy(entryBuffer, offset);
     
+    // Store entry for later writing
+    this.dataEntries.push(entryBuffer);
     this.messageCount++;
   }
   
@@ -124,7 +128,7 @@ export class BinaryRecorder {
    * Stop recording
    */
   public stopRecording(): RecordingMetadata | null {
-    if (!this.isRecording || !this.fileStream || !this.metadata) {
+    if (!this.isRecording || !this.metadata) {
       return null;
     }
     
@@ -132,19 +136,87 @@ export class BinaryRecorder {
     this.metadata.endTime = Date.now();
     this.metadata.messageCount = this.messageCount;
     
-    // Close stream
-    this.fileStream.end();
-    this.fileStream = null;
     this.isRecording = false;
     
-    // Update file with final metadata
-    this.updateMetadata();
+    // Write complete file synchronously
+    this.writeCompleteFile();
     
     return this.metadata;
   }
   
   /**
-   * Write file header
+   * Write complete file with all data synchronously
+   */
+  private writeCompleteFile(): void {
+    if (!this.metadata) return;
+    
+    // Create header
+    const header = Buffer.alloc(BinaryRecorder.HEADER_SIZE);
+    let offset = 0;
+    
+    // Magic
+    BinaryRecorder.MAGIC.copy(header, offset);
+    offset += 4;
+    
+    // Version
+    header.writeUInt32LE(BinaryRecorder.VERSION, offset);
+    offset += 4;
+    
+    // Start timestamp
+    header.writeBigUInt64LE(BigInt(this.metadata.startTime), offset);
+    offset += 8;
+    
+    // Metadata length
+    const metadataJson = JSON.stringify(this.metadata);
+    const metadataBuffer = Buffer.from(metadataJson, 'utf-8');
+    header.writeUInt32LE(metadataBuffer.length, offset); // Write metadata length at correct offset
+    offset += 4;
+    
+    // Reserved (44 bytes of zeros already from alloc)
+    
+    // Combine all data
+    const dataBuffer = Buffer.concat(this.dataEntries);
+    const completeFile = Buffer.concat([header, metadataBuffer, dataBuffer]);
+    
+    // Write complete file synchronously
+    fs.writeFileSync(this.filepath, completeFile);
+  }
+
+  /**
+   * Write file header synchronously (for initial file creation)
+   */
+  private writeHeaderSync(): void {
+    if (!this.metadata) return;
+    
+    const header = Buffer.alloc(BinaryRecorder.HEADER_SIZE);
+    let offset = 0;
+    
+    // Magic
+    BinaryRecorder.MAGIC.copy(header, offset);
+    offset += 4;
+    
+    // Version
+    header.writeUInt32LE(BinaryRecorder.VERSION, offset);
+    offset += 4;
+    
+    // Start timestamp
+    header.writeBigUInt64LE(BigInt(this.metadata.startTime), offset);
+    offset += 8;
+    
+    // Metadata length (placeholder - will be updated when stopping)
+    const metadataJson = JSON.stringify(this.metadata);
+    const metadataBuffer = Buffer.from(metadataJson, 'utf-8');
+    header.writeUInt32LE(metadataBuffer.length, offset);
+    offset += 4;
+    
+    // Reserved (44 bytes of zeros already from alloc)
+    
+    // Write initial header and metadata synchronously
+    fs.writeFileSync(this.filepath, Buffer.concat([header, metadataBuffer]));
+  }
+
+  /**
+   * Write file header (legacy async method)
    */
   private writeHeader(): void {
     if (!this.fileStream || !this.metadata) return;
@@ -178,7 +250,46 @@ export class BinaryRecorder {
   }
   
   /**
-   * Update metadata in file after recording stops
+   * Update metadata in file after recording stops (simplified)
+   */
+  private updateMetadataSimple(): void {
+    if (!this.filepath || !this.metadata) return;
+    
+    try {
+      // Read existing file
+      const fileBuffer = fs.readFileSync(this.filepath);
+      
+      // Create updated metadata JSON
+      const metadataJson = JSON.stringify(this.metadata);
+      const metadataBuffer = Buffer.from(metadataJson, 'utf-8');
+      
+      // Only update if new metadata is same size or smaller (to avoid buffer issues)
+      const oldMetadataLength = fileBuffer.readUInt32LE(12);
+      if (metadataBuffer.length <= oldMetadataLength) {
+        // Update metadata length in header
+        fileBuffer.writeUInt32LE(metadataBuffer.length, 12);
+        
+        // Replace metadata in place
+        metadataBuffer.copy(fileBuffer, BinaryRecorder.HEADER_SIZE);
+        
+        // Pad with zeros if smaller
+        if (metadataBuffer.length < oldMetadataLength) {
+          const padding = Buffer.alloc(oldMetadataLength - metadataBuffer.length, 0);
+          padding.copy(fileBuffer, BinaryRecorder.HEADER_SIZE + metadataBuffer.length);
+        }
+        
+        // Write back to file
+        fs.writeFileSync(this.filepath, fileBuffer);
+      } else {
+        console.warn('[BinaryRecorder] Metadata grew too large, skipping update');
+      }
+    } catch (error) {
+      console.error('[BinaryRecorder] Failed to update metadata:', error);
+    }
+  }
+
+  /**
+   * Update metadata in file after recording stops (complex version - deprecated)
    */
   private updateMetadata(): void {
     if (!this.filepath) return;
@@ -192,10 +303,11 @@ export class BinaryRecorder {
       const metadataBuffer = Buffer.from(metadataJson, 'utf-8');
       
       // Create new buffer with updated metadata
-      const newBuffer = Buffer.alloc(
-        BinaryRecorder.HEADER_SIZE + metadataBuffer.length + 
-        (fileBuffer.length - BinaryRecorder.HEADER_SIZE - fileBuffer.readUInt32LE(12))
-      );
+      const oldMetadataLength = fileBuffer.readUInt32LE(12);
+      const dataSize = fileBuffer.length - BinaryRecorder.HEADER_SIZE - oldMetadataLength;
+      const newBufferSize = BinaryRecorder.HEADER_SIZE + metadataBuffer.length + dataSize;
+      
+      const newBuffer = Buffer.alloc(newBufferSize);
       
       // Copy header (updating metadata length)
       fileBuffer.copy(newBuffer, 0, 0, BinaryRecorder.HEADER_SIZE);
@@ -205,7 +317,6 @@ export class BinaryRecorder {
       metadataBuffer.copy(newBuffer, BinaryRecorder.HEADER_SIZE);
       
       // Copy data entries
-      const oldMetadataLength = fileBuffer.readUInt32LE(12);
       const dataStart = BinaryRecorder.HEADER_SIZE + oldMetadataLength;
       fileBuffer.copy(
         newBuffer, 

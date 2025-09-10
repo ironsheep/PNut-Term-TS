@@ -10,22 +10,47 @@ import { BrowserWindow } from 'electron';
 
 // Mock Electron
 jest.mock('electron', () => ({
-  BrowserWindow: jest.fn().mockImplementation(() => ({
-    loadURL: jest.fn(),
-    on: jest.fn(),
-    once: jest.fn(),
-    webContents: {
+  BrowserWindow: jest.fn().mockImplementation(() => {
+    const mockWindow = {
+      loadURL: jest.fn(),
       on: jest.fn(),
-      send: jest.fn(),
-      executeJavaScript: jest.fn().mockResolvedValue({ width: 984, height: 1232 })
-    },
-    isDestroyed: jest.fn().mockReturnValue(false),
-    close: jest.fn(),
-    setMenu: jest.fn(),
-    setTitle: jest.fn(),
-    setBounds: jest.fn(),
-    getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 984, height: 1232 })
-  })),
+      once: jest.fn(),
+      webContents: {
+        on: jest.fn(),
+        send: jest.fn(),
+        executeJavaScript: jest.fn().mockResolvedValue({ width: 984, height: 1232 }),
+        once: jest.fn()
+      },
+      isDestroyed: jest.fn().mockReturnValue(false),
+      close: jest.fn(),
+      setMenu: jest.fn(),
+      setTitle: jest.fn(),
+      setBounds: jest.fn(),
+      getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 984, height: 1232 }),
+      show: jest.fn()
+    };
+
+    // Auto-trigger ready-to-show and webContents events after constructor
+    // Use setImmediate to ensure the constructor is fully complete
+    setImmediate(() => {
+      const readyToShowHandler = mockWindow.once.mock.calls.find(call => call[0] === 'ready-to-show');
+      if (readyToShowHandler && readyToShowHandler[1]) {
+        console.log('Triggering ready-to-show event');
+        readyToShowHandler[1](); // Call the handler
+      }
+      
+      // Also trigger did-finish-load on webContents
+      setTimeout(() => {
+        const didFinishLoadHandler = mockWindow.webContents.once.mock.calls.find(call => call[0] === 'did-finish-load');
+        if (didFinishLoadHandler && didFinishLoadHandler[1]) {
+          console.log('Triggering did-finish-load event');
+          didFinishLoadHandler[1](); // Call the handler
+        }
+      }, 1);
+    });
+
+    return mockWindow;
+  }),
   Menu: {
     buildFromTemplate: jest.fn(),
     setApplicationMenu: jest.fn()
@@ -41,7 +66,20 @@ jest.mock('electron', () => ({
 }));
 
 // Mock WindowRouter
-jest.mock('../src/classes/shared/windowRouter');
+jest.mock('../src/classes/shared/windowRouter', () => ({
+  WindowRouter: {
+    getInstance: jest.fn().mockReturnValue({
+      registerWindow: jest.fn(),
+      unregisterWindow: jest.fn(),
+      routeTextMessage: jest.fn(),
+      routeBinaryMessage: jest.fn(),
+      registerWindowInstance: jest.fn(),
+      unregisterWindowInstance: jest.fn(),
+      clear: jest.fn()
+    }),
+    resetInstance: jest.fn()
+  }
+}));
 
 // Mock debugger components
 jest.mock('../src/classes/shared/debuggerProtocol');
@@ -75,8 +113,9 @@ describe('Multi-COG Debugger Support', () => {
       // Create 8 debugger windows for COGs 0-7
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
         windows.push(window);
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
       }
 
       expect(windows).toHaveLength(8);
@@ -97,9 +136,12 @@ describe('Multi-COG Debugger Support', () => {
       
       for (let cogId = 0; cogId < 3; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
         windows.push(window);
-        
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
+      }
+      
+      for (let cogId = 0; cogId < 3; cogId++) {
         // Capture the handler for this COG
         const registerCall = router.registerWindow.mock.calls.find(
           call => call[0] === `debugger-${cogId}`
@@ -162,6 +204,8 @@ describe('Multi-COG Debugger Support', () => {
           x: cogId * 32, // Cascade offset
           y: cogId * 32
         });
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windows.push(window);
       }
       
@@ -177,7 +221,8 @@ describe('Multi-COG Debugger Support', () => {
       // Create 2 debugger windows
       for (let cogId = 0; cogId < 2; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windows.push(window);
         
         const dataManager = (window as any).dataManager as jest.Mocked<DebuggerDataManager>;
@@ -204,8 +249,10 @@ describe('Multi-COG Debugger Support', () => {
       
       const window0 = new DebugDebuggerWindow(context, 0);
       const window1 = new DebugDebuggerWindow(context, 1);
-      await window0.initialize();
-      await window1.initialize();
+      
+      // Manually register since window events don't fire in test environment
+      (window0 as any).registerWithRouter();
+      (window1 as any).registerWithRouter();
       
       windows.push(window0, window1);
       
@@ -220,8 +267,9 @@ describe('Multi-COG Debugger Support', () => {
       const window0 = new DebugDebuggerWindow(context, 0);
       const window1 = new DebugDebuggerWindow(context, 1);
       
-      await window0.initialize();
-      await window1.initialize();
+      // Manually register since window events don't fire in test environment
+      (window0 as any).registerWithRouter();
+      (window1 as any).registerWithRouter();
       
       windows.push(window0, window1);
       
@@ -229,18 +277,23 @@ describe('Multi-COG Debugger Support', () => {
       const message0 = {
         cogNumber: 0,
         breakStatus: 0x01,
+        stackAStart: 0,
+        stackBStart: 0,
+        callDepth: 2,
         programCounter: 0x1000,
         skipPattern: 0,
-        skipPatternContinue: 0,
-        callDepth: 2,
-        interruptStatus: 0,
-        registerINA: 0,
-        registerINB: 0,
-        eventCount: 0,
-        breakCount: 0,
-        cogCRC: 0,
-        lutCRC: 0,
-        hubChecksums: new Uint32Array(124),
+        registerA: 0,
+        registerB: 0,
+        pointerA: 0,
+        pointerB: 0,
+        directionA: 0,
+        directionB: 0,
+        outputA: 0,
+        outputB: 0,
+        inputA: 0,
+        inputB: 0,
+        flags: 0,
+        interruptJump: 0,
         conditionCodes: 0
       };
       
@@ -264,7 +317,8 @@ describe('Multi-COG Debugger Support', () => {
       // Create all 8 COG windows
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windowList.push(window);
         windows.push(window);
       }
@@ -301,7 +355,8 @@ describe('Multi-COG Debugger Support', () => {
       // Create 3 windows
       for (let cogId = 0; cogId < 3; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windows.push(window);
       }
       
@@ -320,7 +375,8 @@ describe('Multi-COG Debugger Support', () => {
       // Create all 8 windows
       for (let cogId = 0; cogId < 8; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windows.push(window);
       }
       
@@ -342,7 +398,8 @@ describe('Multi-COG Debugger Support', () => {
       // Create 4 debugger windows
       for (let cogId = 0; cogId < 4; cogId++) {
         const window = new DebugDebuggerWindow(context, cogId);
-        // Window is initialized in constructor
+        // Manually register since window events don't fire in test environment
+        (window as any).registerWithRouter();
         windows.push(window);
       }
       
@@ -377,8 +434,9 @@ describe('Multi-COG Debugger Support', () => {
       const window0 = new DebugDebuggerWindow(context, 0);
       const window1 = new DebugDebuggerWindow(context, 1);
       
-      await window0.initialize();
-      await window1.initialize();
+      // Manually register since window events don't fire in test environment
+      (window0 as any).registerWithRouter();
+      (window1 as any).registerWithRouter();
       
       windows.push(window0, window1);
       

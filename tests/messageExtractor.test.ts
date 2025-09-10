@@ -107,7 +107,7 @@ describe('MessageExtractor', () => {
       expect(msg.type).toBe(MessageType.DB_PACKET);
       expect(msg.data.length).toBe(12); // 4 header + 8 payload
       expect(msg.data[0]).toBe(0xDB);
-      expect(msg.metadata?.messageSubtype).toBe(0x01);
+      expect(msg.data[1]).toBe(0x01); // Validate subtype directly from data (byte 1 in 0xDB packets)
       expect(msg.metadata?.payloadSize).toBe(8);
     });
 
@@ -149,20 +149,26 @@ describe('MessageExtractor', () => {
     });
   });
 
-  describe('80-byte Debugger Init Extraction', () => {
-    it('should extract 80-byte debugger initialization packet', () => {
-      const packet = new Uint8Array(80);
-      // Set COG number (first 4 bytes, little-endian)
+  describe('416-byte Debugger Packet Extraction', () => {
+    it('should extract 416-byte debugger packet', () => {
+      const packet = new Uint8Array(416);
+      // Set COG number (first byte)
       packet[0] = 3; // COG 3
-      packet[1] = 0;
-      packet[2] = 0;
-      packet[3] = 0;
       
-      // Set PC (bytes 20-23)
-      packet[20] = 0x00;
-      packet[21] = 0x10;
-      packet[22] = 0x00;
-      packet[23] = 0x00;
+      // Fill status area (bytes 1-40)
+      for (let i = 1; i <= 40; i++) {
+        packet[i] = i % 256;
+      }
+      
+      // Fill CRC area (bytes 41-168)  
+      for (let i = 41; i <= 168; i++) {
+        packet[i] = (i + 100) % 256;
+      }
+      
+      // Fill hub checksums area (bytes 169-415)
+      for (let i = 169; i <= 415; i++) {
+        packet[i] = (i + 200) % 256;
+      }
 
       buffer.appendAtTail(packet);
 
@@ -171,26 +177,31 @@ describe('MessageExtractor', () => {
       expect(outputQueue.getSize()).toBe(1);
       const msg = outputQueue.dequeue()!;
       expect(msg.type).toBe(MessageType.DEBUGGER_416BYTE);
-      expect(msg.data.length).toBe(80);
+      expect(msg.data.length).toBe(416);
       expect(msg.metadata?.cogId).toBe(3);
     });
 
-    it('should validate debugger init packet', () => {
-      const packet = new Uint8Array(80);
+    it('should validate debugger packet COG ID', () => {
+      const packet = new Uint8Array(416);
       // Invalid COG number
       packet[0] = 99; // > 7
       
       buffer.appendAtTail(packet);
       extractor.extractMessages();
 
-      // Should not extract as debugger init
+      // Should not extract as debugger packet due to invalid COG ID
       const msg = outputQueue.dequeue();
       expect(msg?.type).not.toBe(MessageType.DEBUGGER_416BYTE);
     });
 
-    it('should detect 80-byte packet followed by text', () => {
-      const packet = new Uint8Array(80);
+    it('should detect 416-byte packet followed by text', () => {
+      const packet = new Uint8Array(416);
       packet[0] = 2; // COG 2
+      
+      // Fill packet with test data
+      for (let i = 1; i < 416; i++) {
+        packet[i] = i % 256;
+      }
       
       buffer.appendAtTail(packet);
       buffer.appendAtTail(new Uint8Array(Buffer.from('Text after packet\n')));

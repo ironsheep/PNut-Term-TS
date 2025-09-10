@@ -478,6 +478,8 @@ export class MessageRouter extends EventEmitter {
 
     // Backtick window commands to window creator
     this.registerDestination(MessageType.BACKTICK_WINDOW, windowCreator);
+    // Also send to debug logger so user can see all backtick window messages
+    this.registerDestination(MessageType.BACKTICK_WINDOW, debugLogger);
 
     // Special cases to debug logger with warnings
     this.registerDestination(MessageType.INVALID_COG, debugLogger);

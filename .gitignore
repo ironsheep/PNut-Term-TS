@@ -172,3 +172,8 @@ src/classes/f1.txt
 /claudeSave
 WORK_STATE.md
 tasks/
+/test-results/.history
+/tests/recordings
+/tests/recordings/sessions
+/tests/recordings
+tests/recordings/catalog.json

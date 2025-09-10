@@ -42,6 +42,7 @@ export interface BitmapDisplaySpec {
   displayName: string;
   title: string;
   position?: { x: number; y: number };
+  hasExplicitPosition?: boolean; // true if POS clause was in original message
   size?: { width: number; height: number };
   dotSize?: { x: number; y: number };
   backgroundColor?: number;
@@ -569,7 +570,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
       }
     `;
 
-    this.debugWindow.webContents.executeJavaScript(clearJS);
+    this.debugWindow.webContents.executeJavaScript(clearJS).catch((error) => {
+      this.logMessage(`Failed to execute bitmap clear JavaScript: ${error}`);
+    });
   }
 
   /**
@@ -937,8 +940,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
     let windowX = this.initialPosition?.x || 0;
     let windowY = this.initialPosition?.y || 0;
     
-    // If position is at default (0,0), use WindowPlacer for intelligent positioning
-    if (windowX === 0 && windowY === 0) {
+    // If no POS clause was present, use WindowPlacer for intelligent positioning  
+    if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: windowWidth, height: windowHeight },

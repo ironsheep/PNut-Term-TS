@@ -553,6 +553,12 @@ export class CanvasRenderer {
     color: string,
     lineWidth: number = 1
   ): string {
+    // Validate parameters to prevent invalid JavaScript generation
+    if (!isFinite(startX) || !isFinite(startY) || !isFinite(endX) || !isFinite(endY) || !isFinite(lineWidth)) {
+      console.error(`Invalid drawLine parameters: startX=${startX}, startY=${startY}, endX=${endX}, endY=${endY}, lineWidth=${lineWidth}`);
+      return '// Invalid parameters - skipping draw';
+    }
+    
     return `
       const canvas = document.getElementById('${canvasId}');
       if (!canvas) return;
@@ -584,6 +590,12 @@ export class CanvasRenderer {
     align: CanvasTextAlign = 'left',
     baseline: CanvasTextBaseline = 'top'
   ): string {
+    // Validate parameters to prevent invalid JavaScript generation
+    if (!isFinite(x) || !isFinite(y)) {
+      console.error(`Invalid drawText parameters: x=${x}, y=${y}`);
+      return '// Invalid parameters - skipping text draw';
+    }
+    
     // Escape quotes in text
     const escapedText = text.replace(/'/g, "\\'")
                           .replace(/"/g, '\\"');
@@ -653,6 +665,12 @@ export class CanvasRenderer {
     lineWidth: number = 1,
     dashPattern: number[] = [5, 5]
   ): string {
+    // Validate parameters to prevent invalid JavaScript generation
+    if (!isFinite(startX) || !isFinite(startY) || !isFinite(endX) || !isFinite(endY) || !isFinite(lineWidth)) {
+      console.error(`Invalid drawDashedLine parameters: startX=${startX}, startY=${startY}, endX=${endX}, endY=${endY}, lineWidth=${lineWidth}`);
+      return '// Invalid parameters - skipping dashed line draw';
+    }
+    
     const dashPatternStr = '[' + dashPattern.join(', ') + ']';
     
     return `
@@ -1177,8 +1195,14 @@ export class CanvasRenderer {
     elementId: string,
     htmlContent: string
   ): string {
-    // Escape quotes in HTML content
-    const escapedHTML = htmlContent.replace(/'/g, "\\'");
+    // Properly escape all special characters for JavaScript string literal
+    // Remove any CR/LF characters that could break the string
+    const cleanedHTML = htmlContent.replace(/[\r\n]/g, '');
+    // Escape backslashes first, then quotes
+    const escapedHTML = cleanedHTML
+      .replace(/\\/g, '\\\\')  // Escape backslashes
+      .replace(/'/g, "\\'")    // Escape single quotes
+      .replace(/"/g, '\\"');   // Escape double quotes
     
     return `
       (function() {

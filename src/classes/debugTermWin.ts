@@ -28,6 +28,7 @@ export interface TermDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
   position: Position;
+  hasExplicitPosition: boolean; // true if POS clause was in original message
   size: TermSize;
   font: FontMetrics;
   window: WindowColor;
@@ -140,6 +141,10 @@ export class DebugTermWindow extends DebugWindowBase {
     // This ensures windows appear when created, even if closed before data arrives
     this.logMessage('Creating TERM window immediately in constructor');
     this.createDebugWindow();
+    
+    // CRITICAL: Mark window as ready to process messages
+    // Without this, all messages get queued instead of processed immediately
+    this.onWindowReady();
   }
 
   get windowTitle(): string {
@@ -174,6 +179,7 @@ export class DebugTermWindow extends DebugWindowBase {
     const textColor: DebugColor = new DebugColor('ORANGE', 15);
     console.log(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
+    displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.size = { columns: 40, rows: 20 };
     DebugWindowBase.calcMetricsForFontPtSize(12, displaySpec.font);
     displaySpec.window.background = bkgndColor.rgbString;
@@ -212,6 +218,7 @@ export class DebugTermWindow extends DebugWindowBase {
               if (x !== null && y !== null) {
                 displaySpec.position.x = x;
                 displaySpec.position.y = y;
+                displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
               } else {
                 console.log(`CL: TermDisplaySpec: Invalid position values`);
                 isValid = false;
@@ -376,12 +383,12 @@ export class DebugTermWindow extends DebugWindowBase {
 
     const windowHeight = divHeight + this.borderMargin * 2;
     const windowWidth = divWidth + this.borderMargin * 2;
-    // Check if position was explicitly set or is still at default (0,0)
+    // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
     
-    // If position is at default (0,0), use WindowPlacer for intelligent positioning
-    if (windowX === 0 && windowY === 0) {
+    // If no POS clause was present, use WindowPlacer for intelligent positioning
+    if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: windowWidth, height: windowHeight },
@@ -759,7 +766,9 @@ export class DebugTermWindow extends DebugWindowBase {
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
         this.logMessage(`  -- bgcolor=[${bgcolor}]`);
         const jsCode = this.canvasRenderer.clearCanvasWithBackground('text-area', bgcolor);
-        this.debugWindow.webContents.executeJavaScript(jsCode);
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+          this.logMessage(`Failed to execute clear terminal JavaScript: ${error}`);
+        });
       } catch (error) {
         console.error('Failed to update text:', error);
       }
@@ -810,7 +819,9 @@ export class DebugTermWindow extends DebugWindowBase {
         fgColor,
         bgcolor
       );
-      this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to execute terminal text JavaScript: ${error}`);
+      });
       
       // Advance cursor
       this.cursorPosition.x++;
@@ -859,7 +870,9 @@ export class DebugTermWindow extends DebugWindowBase {
       lineHeight,
       bgcolor
     );
-    this.debugWindow.webContents.executeJavaScript(jsCode);
+    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+      this.logMessage(`Failed to execute terminal clear line JavaScript: ${error}`);
+    });
   }
 
   /**
@@ -893,7 +906,9 @@ export class DebugTermWindow extends DebugWindowBase {
       lineHeight,
       bgcolor
     );
-    this.debugWindow.webContents.executeJavaScript(clearJsCode);
+    this.debugWindow.webContents.executeJavaScript(clearJsCode).catch((error) => {
+      this.logMessage(`Failed to execute terminal scroll JavaScript: ${error}`);
+    });
   }
 
   /**

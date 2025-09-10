@@ -27,4 +27,4 @@ if [ -f /opt/container-tools/opt/todo-mcp/bin/todo-mcp  ]; then
 fi
 
 # MCP CLI alias
-alias claude='claude --dangerously-skip-permissions --verbose --mcp-config /opt/container-tools/etc/mcp.json'
+alias myclaude='claude --dangerously-skip-permissions --verbose --mcp-config /opt/container-tools/etc/mcp.json'

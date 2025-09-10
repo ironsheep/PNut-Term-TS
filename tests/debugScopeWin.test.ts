@@ -763,11 +763,15 @@ describe('DebugScopeWindow', () => {
     });
 
     it('should handle all packed data modes', () => {
+      // Reset mock instances array
+      mockBrowserWindowInstances.length = 0;
+      
       // Reset channels from beforeEach
       debugScopeWindow['channelSpecs'] = [];
       debugScopeWindow['channelSamples'] = [];
       debugScopeWindow['isFirstNumericData'] = true;
       debugScopeWindow['debugWindow'] = null;
+      debugScopeWindow['windowCreated'] = false;
       
       // Don't use triggerWindowCreation as it interferes with first numeric data handling
       // Send numeric data directly to trigger proper initialization

@@ -23,6 +23,7 @@ describe('MessageRouter', () => {
       type,
       data: new Uint8Array(Buffer.from(data)),
       timestamp: Date.now(),
+      confidence: 'DISTINCTIVE', // Default test confidence level
       metadata: cogId !== undefined ? { cogId } : undefined
     };
   }
@@ -33,7 +34,7 @@ describe('MessageRouter', () => {
     return {
       name,
       handler: (msg) => {
-        messagesReceived[name].push(msg);
+        messagesReceived[name].push(msg as ExtractedMessage);
       }
     };
   }
@@ -146,12 +147,12 @@ describe('MessageRouter', () => {
       const protoDest = createDestination('ProtoDest');
       
       router.registerDestination(MessageType.TERMINAL_OUTPUT, textDest);
-      router.registerDestination(MessageType.DEBUGGER_INIT, initDest);
-      router.registerDestination(MessageType.DEBUGGER_PROTOCOL, protoDest);
+      router.registerDestination(MessageType.P2_SYSTEM_INIT, initDest);
+      router.registerDestination(MessageType.DEBUGGER_416BYTE, protoDest);
 
       inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text'));
-      inputQueue.enqueue(createMessage(MessageType.DEBUGGER_INIT, 'init'));
-      inputQueue.enqueue(createMessage(MessageType.DEBUGGER_PROTOCOL, 'proto'));
+      inputQueue.enqueue(createMessage(MessageType.P2_SYSTEM_INIT, 'init'));
+      inputQueue.enqueue(createMessage(MessageType.DEBUGGER_416BYTE, 'proto'));
 
       router.processMessages();
 
@@ -234,15 +235,15 @@ describe('MessageRouter', () => {
       expect(config[MessageType.TERMINAL_OUTPUT][0].name).toBe('DebugLogger');
 
       // Init goes to both WindowCreator and DebugLogger
-      expect(config[MessageType.DEBUGGER_INIT]).toHaveLength(2);
+      expect(config[MessageType.P2_SYSTEM_INIT]).toHaveLength(2);
       
       // Protocol goes to DebuggerWindow
-      expect(config[MessageType.DEBUGGER_PROTOCOL]).toHaveLength(1);
-      expect(config[MessageType.DEBUGGER_PROTOCOL][0].name).toBe('DebuggerWindow');
+      expect(config[MessageType.DEBUGGER_416BYTE]).toHaveLength(1);
+      expect(config[MessageType.DEBUGGER_416BYTE][0].name).toBe('DebuggerWindow');
 
       // Unknown binary goes to DebugLogger
-      expect(config[MessageType.BINARY_UNKNOWN]).toHaveLength(1);
-      expect(config[MessageType.BINARY_UNKNOWN][0].name).toBe('DebugLogger');
+      expect(config[MessageType.DB_PACKET]).toHaveLength(1);
+      expect(config[MessageType.DB_PACKET][0].name).toBe('DebugLogger');
     });
   });
 
@@ -292,7 +293,7 @@ describe('MessageRouter', () => {
             throw new Error('Test error');
           }
           messagesReceived['ErrorDest'] = messagesReceived['ErrorDest'] || [];
-          messagesReceived['ErrorDest'].push(msg);
+          messagesReceived['ErrorDest'].push(msg as ExtractedMessage);
         }
       };
 
@@ -355,18 +356,18 @@ describe('MessageRouter', () => {
     it('should track routing statistics', (done) => {
       const dest = createDestination('TestDest');
       router.registerDestination(MessageType.TERMINAL_OUTPUT, dest);
-      router.registerDestination(MessageType.DEBUGGER_INIT, dest);
+      router.registerDestination(MessageType.P2_SYSTEM_INIT, dest);
 
       inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text1'));
       inputQueue.enqueue(createMessage(MessageType.TERMINAL_OUTPUT, 'text2'));
-      inputQueue.enqueue(createMessage(MessageType.DEBUGGER_INIT, 'init'));
+      inputQueue.enqueue(createMessage(MessageType.P2_SYSTEM_INIT, 'init'));
 
       router.processMessages();
 
       setTimeout(() => {
         const stats = router.getStats();
         expect(stats.messagesRouted[MessageType.TERMINAL_OUTPUT]).toBe(2);
-        expect(stats.messagesRouted[MessageType.DEBUGGER_INIT]).toBe(1);
+        expect(stats.messagesRouted[MessageType.P2_SYSTEM_INIT]).toBe(1);
         expect(stats.destinationCounts['TestDest']).toBe(3);
         expect(stats.totalMessagesRouted).toBe(3);
         done();
@@ -462,13 +463,13 @@ describe('MessageRouter', () => {
       const dest2 = createDestination('Dest2');
       
       router.registerDestination(MessageType.TERMINAL_OUTPUT, dest1);
-      router.registerDestination(MessageType.DEBUGGER_INIT, dest2);
+      router.registerDestination(MessageType.P2_SYSTEM_INIT, dest2);
 
       router.clearAllDestinations();
 
       const config = router.getRoutingConfig();
       expect(config[MessageType.TERMINAL_OUTPUT]).toHaveLength(0);
-      expect(config[MessageType.DEBUGGER_INIT]).toHaveLength(0);
+      expect(config[MessageType.P2_SYSTEM_INIT]).toHaveLength(0);
     });
 
     it('should handle message with undefined metadata', (done) => {
@@ -479,6 +480,7 @@ describe('MessageRouter', () => {
         type: MessageType.TERMINAL_OUTPUT,
         data: new Uint8Array([1, 2, 3]),
         timestamp: Date.now(),
+        confidence: 'DEFAULT',
         metadata: undefined
       };
 

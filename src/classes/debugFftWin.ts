@@ -36,6 +36,7 @@ export interface FFTDisplaySpec {
   windowTitle: string; // composite or override w/TITLE
   title: string; // for BaseDisplaySpec compatibility
   position: Position;
+  hasExplicitPosition: boolean; // true if POS clause was in original message
   size: Size;
   nbrSamples: number;   // Required by BaseDisplaySpec
   samples: number;      // FFT size (4-2048, power of 2)
@@ -217,8 +218,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       this.initializePackedDataProcessor();
     }
     
-    // Initialize canvas and create window
-    this.initializeCanvas();
+    // Window creation deferred until first data arrives and all channels are known
+    // This allows proper sizing based on actual channel specifications
+    // But we mark the window as "ready" to process messages for channel specs and first data
+    this.onWindowReady();
   }
   
   /**
@@ -384,6 +387,9 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Trigger FFT processing when enough samples are collected
    */
   private triggerFFT(): void {
+    // Only process if window exists
+    if (!this.windowCreated) return;
+    
     // Process FFT for each enabled channel if we have channel configurations
     if (this.channels.length > 0) {
       this.processChannelFFTs();
@@ -538,6 +544,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       windowTitle: `FFT ${displayName}`,
       title: '',
       position: { x: 0, y: 0 },
+      hasExplicitPosition: false, // Default: use auto-placement
       size: { width: 400, height: 300 },
       nbrSamples: 512,  // Required by BaseDisplaySpec
       samples: 512,  // fft_default from Pascal
@@ -1007,6 +1014,13 @@ export class DebugFFTWindow extends DebugWindowBase {
           // Parse the data value (could be numeric or expression)
           const value = this.parseDataValue(dataExpr);
           if (value !== null) {
+            // NOW create the window with all channel specifications known
+            if (!this.windowCreated) {
+              this.initializeCanvas();
+              this.createDebugWindow();
+              this.windowCreated = true;
+            }
+            
             // Add sample to buffer for current channel
             this.addSample(value, this.currentChannel);
             
@@ -1760,8 +1774,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.displayWidth = canvasWidth - (2 * margin);
     this.displayHeight = canvasHeight - (2 * margin);
     
-    // Create the browser window with HTML content
-    this.createDebugWindow();
+    // Window creation deferred - will be called when first data arrives
   }
 
   /**
@@ -1773,8 +1786,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     let x = this.displaySpec.position.x;
     let y = this.displaySpec.position.y;
     
-    // If position is at default (0,0), use WindowPlacer for intelligent positioning
-    if (x === 0 && y === 0) {
+    // If no POS clause was present, use WindowPlacer for intelligent positioning
+    if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: this.canvasWidth, height: this.canvasHeight },
@@ -1912,6 +1925,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   private canvasHeight: number = 300;
   private displayWidth: number = 380;
   private displayHeight: number = 280;
+  private windowCreated: boolean = false; // Track if window has been created yet
   
   /**
    * Initialize input forwarding for mouse and keyboard

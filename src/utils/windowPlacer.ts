@@ -144,9 +144,14 @@ export class WindowPlacer {
    * @returns Calculated position and monitor info
    */
   public getNextPosition(windowId: string, config: PlacementConfig): WindowPosition {
+    console.log(`[WINDOW PLACER] 🎯 getNextPosition requested for: ${windowId}`);
+    console.log(`[WINDOW PLACER] 📊 Current occupied slots:`, Array.from(this.occupiedSlots));
+    console.log(`[WINDOW PLACER] 🪟 Current tracked windows:`, Array.from(this.trackedWindows.keys()));
+    
     // If window already tracked, return its current position
     const tracked = this.trackedWindows.get(windowId);
     if (tracked) {
+      console.log(`[WINDOW PLACER] ♻️  Window ${windowId} already tracked, returning existing position`);
       return {
         x: tracked.bounds.x,
         y: tracked.bounds.y,
@@ -183,13 +188,16 @@ export class WindowPlacer {
     // Find first available slot
     const availableSlot = this.findAvailableSlot(config.avoidOverlap);
     if (availableSlot) {
+      console.log(`[WINDOW PLACER] ✅ Found available slot: ${availableSlot} for window: ${windowId}`);
       const position = this.calculateSlotPosition(availableSlot, config.dimensions, config.margin);
       this.markSlotOccupied(windowId, availableSlot, position, config.dimensions);
+      console.log(`[WINDOW PLACER] 🎯 Assigned position: ${position.x},${position.y} in slot: ${availableSlot}`);
       return position;
     }
 
     // All slots full, cascade if enabled
     if (config.cascadeIfFull !== false) {
+      console.log(`[WINDOW PLACER] ⚠️  All slots full, using cascade for window: ${windowId}`);
       return this.getCascadePosition(windowId, config.dimensions, config.margin);
     }
 
@@ -268,10 +276,14 @@ export class WindowPlacer {
   public unregisterWindow(windowId: string): void {
     const tracked = this.trackedWindows.get(windowId);
     if (tracked) {
+      console.log(`[WINDOW PLACER] 🗑️  Unregistering window: ${windowId} from slot: ${tracked.slot}`);
       if (tracked.slot) {
         this.occupiedSlots.delete(tracked.slot);
+        console.log(`[WINDOW PLACER] ♻️  Freed slot: ${tracked.slot}, remaining slots:`, Array.from(this.occupiedSlots));
       }
       this.trackedWindows.delete(windowId);
+    } else {
+      console.log(`[WINDOW PLACER] ⚠️  Attempted to unregister unknown window: ${windowId}`);
     }
   }
 

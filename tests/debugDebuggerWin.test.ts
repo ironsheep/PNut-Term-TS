@@ -19,13 +19,17 @@ jest.mock('electron', () => ({
     once: jest.fn(),
     webContents: {
       on: jest.fn(),
+      once: jest.fn(),
       send: jest.fn(),
       executeJavaScript: jest.fn().mockResolvedValue({ width: 984, height: 1232 })
     },
     isDestroyed: jest.fn().mockReturnValue(false),
     close: jest.fn(),
     setMenu: jest.fn(),
-    setTitle: jest.fn()
+    setTitle: jest.fn(),
+    getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 984, height: 1232 }),
+    setBounds: jest.fn(),
+    show: jest.fn()
   })),
   Menu: {
     buildFromTemplate: jest.fn(),
@@ -61,8 +65,52 @@ jest.mock('../src/classes/shared/debuggerDataManager');
 jest.mock('../src/classes/shared/debuggerRenderer');
 jest.mock('../src/classes/shared/debuggerInteraction');
 
-// Mock debuggerConstants
+// Mock debugger constants
 jest.mock('../src/classes/shared/debuggerConstants', () => ({
+  LAYOUT_CONSTANTS: {
+    GRID_WIDTH: 123,
+    GRID_HEIGHT: 33
+  },
+  DEBUG_COLORS: {
+    BACKGROUND: '#000000',
+    FOREGROUND: '#FFFFFF'
+  },
+  PASCAL_COLOR_SCHEME: {
+    BACKGROUND: '#000000',
+    TEXT: '#FFFFFF',
+    cBackground: 0x000000,
+    cData: 0xC0C0C0,
+    cAddress: 0x8080FF,
+    cOpcode: 0xFF80FF,
+    cRegister: 0x00FFFF,
+    cActive: 0x00FF00,
+    cBreak: 0xFF0000,
+    cPC: 0xFFFF00
+  },
+  PASCAL_LAYOUT_CONSTANTS: {
+    REGMAP: { l: 0, t: 0, w: 100, h: 20 },
+    LUTMAP: { l: 0, t: 20, w: 100, h: 20 },
+    CF: { l: 100, t: 0, w: 20, h: 10 },
+    ZF: { l: 100, t: 10, w: 20, h: 10 },
+    PC: { l: 0, t: 40, w: 50, h: 10 },
+    SKIP: { l: 50, t: 40, w: 50, h: 10 },
+    DIS: { l: 0, t: 50, w: 200, h: 100 },
+    STACK: { l: 200, t: 0, w: 100, h: 50 },
+    EVENT: { l: 200, t: 50, w: 100, h: 50 },
+    HUB: { l: 0, t: 150, w: 300, h: 100 },
+    B: { l: 300, t: 0, w: 100, h: 50 },
+    XBYTE: { l: 300, t: 50, w: 50, h: 10 },
+    CT: { l: 350, t: 50, w: 50, h: 10 },
+    WATCH: { l: 300, t: 100, w: 100, h: 50 },
+    SFR: { l: 0, t: 250, w: 200, h: 50 },
+    EXEC: { l: 200, t: 250, w: 100, h: 20 },
+    INT: { l: 200, t: 270, w: 100, h: 30 },
+    PTR: { l: 300, t: 250, w: 100, h: 20 },
+    STATUS: { l: 300, t: 270, w: 100, h: 30 },
+    PIN: { l: 0, t: 300, w: 200, h: 50 },
+    SMART: { l: 200, t: 300, w: 200, h: 50 },
+    HINT: { l: 0, t: 350, w: 400, h: 20 }
+  },
   parseInitialMessage: jest.fn((longs) => ({
     cogNumber: longs[0],
     breakStatus: longs[1],
@@ -70,25 +118,9 @@ jest.mock('../src/classes/shared/debuggerConstants', () => ({
     skipPattern: longs[3] || 0,
     callDepth: longs[4] || 0
   })),
-  createMemoryBlock: jest.fn(),
-  LAYOUT_CONSTANTS: {
-    GRID_WIDTH: 123,
-    GRID_HEIGHT: 77
-  },
-  DEBUG_COLORS: {
-    BG_DEFAULT: 0x000000,   // Black
-    BG_ACTIVE: 0x002040,    // Dark blue
-    BG_BREAK: 0x400000,     // Dark red
-    BG_CHANGED: 0x404000,   // Dark yellow
-    FG_DEFAULT: 0xC0C0C0,   // Silver
-    FG_ACTIVE: 0x00FF00,    // Green
-    FG_BREAK: 0xFF0000,     // Red
-    FG_PC: 0xFFFF00,        // Yellow
-    FG_ADDRESS: 0x8080FF,   // Light blue
-    FG_OPCODE: 0xFF80FF,    // Magenta
-    FG_REGISTER: 0x00FFFF   // Cyan
-  }
+  createMemoryBlock: jest.fn()
 }));
+
 
 describe('DebugDebuggerWindow', () => {
   let window: DebugDebuggerWindow;
@@ -102,7 +134,8 @@ describe('DebugDebuggerWindow', () => {
     
     // Mock context logger to capture log messages
     context.logger = {
-      logMessage: jest.fn((msg) => console.log(msg))
+      logMessage: jest.fn((msg) => console.log(msg)),
+      forceLogMessage: jest.fn()
     } as any;
     
     // Reset WindowRouter singleton

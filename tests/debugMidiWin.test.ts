@@ -3,7 +3,7 @@
  * @description Unit tests for DebugMidiWindow class
  */
 
-import { DebugMidiWindow } from '../src/classes/debugMidiWin';
+import { DebugMidiWindow, MidiDisplaySpec } from '../src/classes/debugMidiWin';
 import { Context } from '../src/utils/context';
 import { 
   createMockContext, 
@@ -20,6 +20,19 @@ jest.mock('electron', () => ({
 describe('DebugMidiWindow', () => {
   let midiWindow: DebugMidiWindow;
   let mockContext: Context;
+  
+  // Helper to create default MIDI display spec for tests
+  const createTestMidiDisplaySpec = (overrides?: Partial<MidiDisplaySpec>): MidiDisplaySpec => ({
+    displayName: 'test-midi',
+    windowTitle: 'Test MIDI',
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 200 },
+    keySize: 20,
+    keyRange: { first: 60, last: 72 }, // One octave around middle C
+    channel: 0,
+    keyColors: { white: 0xFFFFFF, black: 0x000000 },
+    ...overrides
+  });
 
   beforeEach(() => {
     // Use shared mock setup
@@ -33,7 +46,7 @@ describe('DebugMidiWindow', () => {
       }
     });
     
-    midiWindow = new DebugMidiWindow(mockContext);
+    midiWindow = new DebugMidiWindow(mockContext, createTestMidiDisplaySpec());
   });
 
   afterEach(() => {

@@ -1,3 +1,0 @@
-{"metadata":{"sessionName":"test-all-windows","description":"Test recording all window types","startTime":1755722161683,"windowTypes":["terminal","scope","logic"]}}
-{"timestamp":1755722161684,"windowId":"scope-1","windowType":"scope","messageType":"text","data":"DEBUG SCOPE waveform data","size":25}
-{"timestamp":1755722161684,"windowId":"logic-1","windowType":"logic","messageType":"text","data":"DEBUG LOGIC channel data","size":24}

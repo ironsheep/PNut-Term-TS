@@ -25,6 +25,7 @@ export interface ScopeXyDisplaySpec {
   polar?: { twopi: number; theta: number };
   logScale?: boolean;
   hideXY?: boolean;
+  hasExplicitPosition: boolean;
 }
 
 /**
@@ -295,6 +296,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     let displaySpec: ScopeXyDisplaySpec = {} as ScopeXyDisplaySpec;
     displaySpec.displayName = '';
     displaySpec.title = 'SCOPE_XY';
+    displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     
     let errorMessage = '';
     let isValid = true;
@@ -305,8 +307,13 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     } else {
       displaySpec.displayName = lineParts[1];
       
-      // Process remaining directives (placeholder for static parsing)
-      // Full parsing happens in instance method
+      // Check for POS clause in declaration
+      for (let i = 2; i < lineParts.length - 1; i++) {
+        if (lineParts[i].toUpperCase() === 'POS') {
+          displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
+          break;
+        }
+      }
     }
 
     return [isValid, displaySpec];
@@ -342,20 +349,34 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     const windowWidth = size + 16;
     const windowHeight = size + 39;
     
-    // Use WindowPlacer for intelligent positioning
-    const windowPlacer = WindowPlacer.getInstance();
-    const placementConfig: PlacementConfig = {
-      dimensions: { width: windowWidth, height: windowHeight },
-      avoidOverlap: true
-    };
-    const position = windowPlacer.getNextPosition(`scopexy-${this.windowTitle}`, placementConfig);
+    // Determine position based on hasExplicitPosition flag
+    let windowX: number;
+    let windowY: number;
+    
+    if (!this.displaySpec.hasExplicitPosition) {
+      // Use WindowPlacer for intelligent auto-positioning
+      console.log(`[SCOPEXY] 🎯 Using WindowPlacer for auto-placement`);
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowWidth, height: windowHeight },
+        avoidOverlap: true
+      };
+      const position = windowPlacer.getNextPosition(`scopexy-${this.windowTitle}`, placementConfig);
+      windowX = position.x;
+      windowY = position.y;
+    } else {
+      // Use explicit position from POS clause
+      console.log(`[SCOPEXY] 📍 Using explicit position from POS clause: (${this.displaySpec.position?.x}, ${this.displaySpec.position?.y})`);
+      windowX = this.displaySpec.position?.x || 0;
+      windowY = this.displaySpec.position?.y || 0;
+    }
 
-    // Create browser window with calculated position
+    // Create browser window with determined position
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
-      x: position.x,
-      y: position.y,
+      x: windowX,
+      y: windowY,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -375,9 +396,16 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       this.logMessage('at ready-to-show');
       // Register with WindowRouter when window is ready
       this.registerWithRouter();
-      // Register with WindowPlacer for position tracking - check for null
+      
+      // Register with WindowPlacer only if using auto-placement
       if (this.debugWindow) {
-        windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
+        if (!this.displaySpec.hasExplicitPosition) {
+          console.log(`[SCOPEXY] 📝 Registering with WindowPlacer for position tracking`);
+          const windowPlacer = WindowPlacer.getInstance();
+          windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
+        } else {
+          console.log(`[SCOPEXY] ⚡ Skipping WindowPlacer registration - using explicit position`);
+        }
         this.debugWindow.show();
       } else {
         console.warn('[ScopeXY] Cannot register with WindowPlacer - debugWindow is null');
@@ -454,7 +482,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
           if (i + 2 < lineParts.length) {
             const left = parseInt(lineParts[++i]);
             const top = parseInt(lineParts[++i]);
-            // Position will be set when window is created
+            this.displaySpec.position = { x: left, y: top };
+            this.displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
           }
           break;
 

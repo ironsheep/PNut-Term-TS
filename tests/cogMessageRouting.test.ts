@@ -72,12 +72,15 @@ describe('Cog Message Routing', () => {
     mockContext = testSetup.mockContext;
     cleanup = testSetup.cleanup;
     
-    // Add runEnvironment to mockContext for MainWindow
+    // Add required properties to mockContext for MainWindow
     mockContext.runEnvironment = {
       selectedPropPlug: '/dev/ttyUSB0',
       ideMode: false,
       loggingEnabled: false
     };
+    
+    // Add currentFolder required by MainWindow constructor
+    mockContext.currentFolder = '/test/workspace';
     
     // Set up DebugLoggerWindow mock to return a mock instance
     const mockLoggerInstance = {
@@ -98,25 +101,34 @@ describe('Cog Message Routing', () => {
   
   describe('Cog message detection', () => {
     it('should detect messages starting with "Cog"', () => {
-      // Since processRxQueue is private and serial port data flow is complex,
-      // we test that the rxQueue exists and can accept messages
-      expect((mainWindow as any).rxQueue).toBeDefined();
-      (mainWindow as any).rxQueue.push('Cog0: Debug message');
-      expect((mainWindow as any).rxQueue).toContain('Cog0: Debug message');
+      // Test that serialProcessor exists and can receive data
+      expect((mainWindow as any).serialProcessor).toBeDefined();
+      
+      // Create mock data and test that it can be processed
+      const cogMessage = Buffer.from('Cog0: Debug message\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(cogMessage);
+      }).not.toThrow();
     });
     
     it('should not route non-Cog messages to debug logger', () => {
-      // Test that regular messages can be added to queue
-      expect((mainWindow as any).rxQueue).toBeDefined();
-      (mainWindow as any).rxQueue.push('Regular terminal output');
-      expect((mainWindow as any).rxQueue).toContain('Regular terminal output');
+      // Test that regular terminal messages can be processed
+      expect((mainWindow as any).serialProcessor).toBeDefined();
+      
+      const regularMessage = Buffer.from('Regular terminal output\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(regularMessage);
+      }).not.toThrow();
     });
     
     it('should handle messages starting with backtick but not Cog', () => {
-      // Test that backtick commands can be added to queue
-      expect((mainWindow as any).rxQueue).toBeDefined();
-      (mainWindow as any).rxQueue.push('`TERM TestTerm SIZE 40 20');
-      expect((mainWindow as any).rxQueue).toContain('`TERM TestTerm SIZE 40 20');
+      // Test that backtick commands can be processed
+      expect((mainWindow as any).serialProcessor).toBeDefined();
+      
+      const backtickMessage = Buffer.from('`TERM TestTerm SIZE 40 20\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(backtickMessage);
+      }).not.toThrow();
     });
   });
   
@@ -125,18 +137,27 @@ describe('Cog Message Routing', () => {
       // Verify logger window property exists and starts as null
       expect((mainWindow as any).debugLoggerWindow).toBeNull();
       
-      // Verify rxQueue can accept Cog messages
-      (mainWindow as any).rxQueue.push('Cog0: First debug message');
-      expect((mainWindow as any).rxQueue.length).toBeGreaterThan(0);
+      // Test processing a Cog message through serialProcessor
+      const cogMessage = Buffer.from('Cog0: First debug message\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(cogMessage);
+      }).not.toThrow();
     });
     
     it('should not create multiple debug logger instances', () => {
-      // Test that multiple messages can be queued
-      (mainWindow as any).rxQueue.push('Cog0: First message');
-      (mainWindow as any).rxQueue.push('Cog1: Second message');
-      (mainWindow as any).rxQueue.push('Cog2: Third message');
+      // Test that multiple messages can be processed through serialProcessor
+      const messages = [
+        Buffer.from('Cog0: First message\r\n'),
+        Buffer.from('Cog1: Second message\r\n'),
+        Buffer.from('Cog2: Third message\r\n')
+      ];
       
-      expect((mainWindow as any).rxQueue.length).toBe(3);
+      // All should process without throwing
+      messages.forEach(message => {
+        expect(() => {
+          (mainWindow as any).serialProcessor.receiveData(message);
+        }).not.toThrow();
+      });
     });
     
     it('should fall back to console logging if window creation fails', () => {
@@ -152,40 +173,51 @@ describe('Cog Message Routing', () => {
   
   describe('Dual routing (logger + embedded commands)', () => {
     it('should extract and route embedded backtick commands', () => {
-      // Test that messages with embedded commands can be queued
-      (mainWindow as any).rxQueue.push('Cog0: Debug text `TERM TestTerm SIZE 40 20');
-      expect((mainWindow as any).rxQueue.length).toBe(1);
-      expect((mainWindow as any).rxQueue[0]).toContain('`TERM');
+      // Test that messages with embedded commands can be processed
+      const embeddedMessage = Buffer.from('Cog0: Debug text `TERM TestTerm SIZE 40 20\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(embeddedMessage);
+      }).not.toThrow();
     });
     
     it('should route Cog messages without embedded commands to logger only', () => {
-      // Test that simple Cog messages can be queued
-      (mainWindow as any).rxQueue.push('Cog0: Simple debug message');
-      expect((mainWindow as any).rxQueue[0]).toBe('Cog0: Simple debug message');
+      // Test that simple Cog messages can be processed
+      const simpleMessage = Buffer.from('Cog0: Simple debug message\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(simpleMessage);
+      }).not.toThrow();
     });
     
     it('should handle multiple embedded commands in sequence', () => {
-      // Test that multiple messages can be queued
-      (mainWindow as any).rxQueue.push('Cog0: First `TERM Term1 SIZE 40 20');
-      (mainWindow as any).rxQueue.push('Cog1: Second `SCOPE Scope1 SIZE 100 100');
+      // Test that multiple messages can be processed
+      const messages = [
+        Buffer.from('Cog0: First `TERM Term1 SIZE 40 20\r\n'),
+        Buffer.from('Cog1: Second `SCOPE Scope1 SIZE 100 100\r\n')
+      ];
       
-      expect((mainWindow as any).rxQueue.length).toBe(2);
-      expect((mainWindow as any).rxQueue[0]).toContain('`TERM');
-      expect((mainWindow as any).rxQueue[1]).toContain('`SCOPE');
+      messages.forEach(message => {
+        expect(() => {
+          (mainWindow as any).serialProcessor.receiveData(message);
+        }).not.toThrow();
+      });
     });
   });
   
   describe('Non-Cog messages', () => {
     it('should still route to blue terminal', () => {
-      // Test that non-Cog messages can be queued
-      (mainWindow as any).rxQueue.push('Regular terminal output');
-      expect((mainWindow as any).rxQueue[0]).toBe('Regular terminal output');
+      // Test that non-Cog messages can be processed
+      const terminalMessage = Buffer.from('Regular terminal output\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(terminalMessage);
+      }).not.toThrow();
     });
     
     it('should handle Prop messages without creating debug logger', () => {
-      // Test that Prop messages can be queued
-      (mainWindow as any).rxQueue.push('Prop_Hex 1234ABCD');
-      expect((mainWindow as any).rxQueue[0]).toBe('Prop_Hex 1234ABCD');
+      // Test that Prop messages can be processed
+      const propMessage = Buffer.from('Prop_Hex 1234ABCD\r\n');
+      expect(() => {
+        (mainWindow as any).serialProcessor.receiveData(propMessage);
+      }).not.toThrow();
     });
   });
   

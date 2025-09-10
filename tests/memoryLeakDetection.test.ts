@@ -24,6 +24,96 @@ describe('Memory Leak Detection', () => {
   let baseline: MemoryBaseline;
   let context: Context;
   
+  // Helper functions to create display specs
+  const createTermDisplaySpec = (name = 'Test Terminal') => ({
+    displayName: name,
+    windowTitle: name,
+    position: { x: 100, y: 100 },
+    size: { columns: 80, rows: 24 },
+    font: { name: 'Courier', size: 12, width: 8, height: 16 },
+    window: { backgroundColor: '#000000', borderColor: '#808080' },
+    textColor: '#FFFFFF',
+    colorCombos: [
+      { fgcolor: '#FFFFFF', bgcolor: '#000000' },
+      { fgcolor: '#FF0000', bgcolor: '#000000' }
+    ],
+    delayedUpdate: false,
+    hideXY: false
+  });
+
+  const createScopeDisplaySpec = (name = 'Test Scope') => ({
+    displayName: name,
+    windowTitle: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 },
+    nbrSamples: 1000,
+    rate: 1000,
+    dotSize: 1,
+    lineSize: 1,
+    textSize: 12,
+    window: { backgroundColor: '#000000', borderColor: '#808080' },
+    isPackedData: false,
+    hideXY: false
+  });
+
+  const createLogicDisplaySpec = (name = 'Test Logic') => ({
+    displayName: name,
+    windowTitle: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 },
+    nbrSamples: 1000,
+    spacing: 1,
+    rate: 1000,
+    lineSize: 1,
+    textSize: 12,
+    font: { name: 'Courier', size: 12, width: 8, height: 16 },
+    window: { backgroundColor: '#000000', borderColor: '#808080' },
+    isPackedData: false,
+    hideXY: false,
+    channelSpecs: []
+  });
+
+  const createPlotDisplaySpec = (name = 'Test Plot') => ({
+    displayName: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 },
+    cartesian: false
+  });
+
+  const createMidiDisplaySpec = (name = 'Test MIDI') => ({
+    displayName: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 }
+  });
+
+  const createBitmapDisplaySpec = (name = 'Test Bitmap') => ({
+    displayName: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 256, height: 256 }
+  });
+
+  const createFFTDisplaySpec = (name = 'Test FFT') => ({
+    displayName: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 },
+    samples: 1024,
+    rate: 44100
+  });
+
+  const createScopeXyDisplaySpec = (name = 'Test ScopeXY') => ({
+    displayName: name,
+    title: name,
+    position: { x: 100, y: 100 },
+    size: { width: 400, height: 300 },
+    samples: 1000
+  });
+  
   beforeAll(() => {
     // Ensure we have gc available
     if (!global.gc) {
@@ -60,7 +150,7 @@ describe('Memory Leak Detection', () => {
       const iterations = 100;
       
       for (let i = 0; i < iterations; i++) {
-        const window = new DebugTermWindow(context);
+        const window = new DebugTermWindow(context, createTermDisplaySpec(`Terminal-${i}`));
         // Window is initialized in constructor
         
         // Simulate some activity
@@ -100,7 +190,7 @@ describe('Memory Leak Detection', () => {
       const iterations = 50;
       
       for (let i = 0; i < iterations; i++) {
-        const window = new DebugScopeWindow(context);
+        const window = new DebugScopeWindow(context, createScopeDisplaySpec(`Scope-${i}`));
         // Window is initialized in constructor
         
         // Simulate scope data
@@ -159,7 +249,7 @@ describe('Memory Leak Detection', () => {
   
   describe('Event Listener and Timer Cleanup', () => {
     it('should clean up event listeners on window close', async () => {
-      const window = new DebugTermWindow(context);
+      const window = new DebugTermWindow(context, createTermDisplaySpec('EventTest-Terminal'));
       const windowId = 'test-terminal';
       
       leakDetector.trackWindow(window, windowId);
@@ -242,14 +332,14 @@ describe('Memory Leak Detection', () => {
       const windows: any[] = [];
       
       // Create 8 different window types
-      windows.push(new DebugTermWindow(context));
-      windows.push(new DebugScopeWindow(context));
-      windows.push(new DebugLogicWindow(context));
-      windows.push(new DebugPlotWindow(context));
-      windows.push(new DebugMidiWindow(context));
-      windows.push(new DebugBitmapWindow(context));
-      windows.push(new DebugFFTWindow(context));
-      windows.push(new DebugScopeXyWindow(context));
+      windows.push(new DebugTermWindow(context, createTermDisplaySpec('MultiTest-Terminal')));
+      windows.push(new DebugScopeWindow(context, createScopeDisplaySpec('MultiTest-Scope')));
+      windows.push(new DebugLogicWindow(context, createLogicDisplaySpec('MultiTest-Logic')));
+      windows.push(new DebugPlotWindow(context, createPlotDisplaySpec('MultiTest-Plot')));
+      windows.push(new DebugMidiWindow(context, createMidiDisplaySpec('MultiTest-MIDI')));
+      windows.push(new DebugBitmapWindow(context, createBitmapDisplaySpec('MultiTest-Bitmap')));
+      windows.push(new DebugFFTWindow(context, createFFTDisplaySpec('MultiTest-FFT')));
+      windows.push(new DebugScopeXyWindow(context, createScopeXyDisplaySpec('MultiTest-ScopeXY')));
       
       // Initialize all windows
       for (const window of windows) {
@@ -299,7 +389,7 @@ describe('Memory Leak Detection', () => {
       
       // Rapidly create and destroy windows
       for (let i = 0; i < 50; i++) {
-        const window = new DebugTermWindow(context);
+        const window = new DebugTermWindow(context, createTermDisplaySpec(`StressTerminal-${i}`));
         // Window is initialized in constructor
         window.updateContent('Rapid test ' + i);
         window.closeDebugWindow();
@@ -423,8 +513,8 @@ describe('Memory Leak Detection', () => {
       
       // Terminal window baseline
       baseline.capture();
-      const terminal = new DebugTermWindow(context);
-      await terminal.initialize();
+      const terminal = new DebugTermWindow(context, createTermDisplaySpec('Baseline-Terminal'));
+      // Windows initialize automatically via constructor
       let diff = baseline.compare();
       if (diff) {
         baselines.set('terminal', diff.heapUsedDiff / 1024 / 1024);
@@ -434,8 +524,8 @@ describe('Memory Leak Detection', () => {
       
       // Scope window baseline
       baseline.capture();
-      const scope = new DebugScopeWindow(context);
-      await scope.initialize();
+      const scope = new DebugScopeWindow(context, createScopeDisplaySpec('Baseline-Scope'));
+      // Windows initialize automatically via constructor
       diff = baseline.compare();
       if (diff) {
         baselines.set('scope', diff.heapUsedDiff / 1024 / 1024);
@@ -445,8 +535,8 @@ describe('Memory Leak Detection', () => {
       
       // Logic window baseline
       baseline.capture();
-      const logic = new DebugLogicWindow(context);
-      await logic.initialize();
+      const logic = new DebugLogicWindow(context, createLogicDisplaySpec('Baseline-Logic'));
+      // Windows initialize automatically via constructor
       diff = baseline.compare();
       if (diff) {
         baselines.set('logic', diff.heapUsedDiff / 1024 / 1024);

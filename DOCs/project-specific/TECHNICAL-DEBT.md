@@ -126,6 +126,41 @@ Run `grep -r "FIXME" src/` to find FIXME items in the codebase.
 - **TODO**: JSDoc comments for utility classes and shared components
 - **TODO**: API documentation for public interfaces in shared classes
 
+## Window Construction Pattern Issues
+
+### Debug Window Creation Consistency
+**Priority: Medium - Post-release cleanup**
+**Added: 2025-09-09**
+
+Some debug windows have incorrect construction patterns that need standardization:
+
+#### ✅ **Correctly Using Deferred Construction**
+- **Scope** - Fixed to wait for channel specifications before creating window
+- **FFT** - Needs investigation - likely should use deferred pattern
+
+#### ✅ **Correctly Using Immediate Construction**  
+- **Logic** - Creates window in constructor (has channel specs upfront)
+- **Term** - Creates window in constructor
+- **Logger** - Creates window in constructor
+
+#### ⚠️ **Construction Pattern Issues**
+- **Plot** - Currently using deferred construction but shouldn't need it
+  - Problem: Uses `isFirstDisplayData` flag to defer window creation
+  - Solution: Should create window immediately in constructor
+  - Impact: Windows don't appear until first data arrives
+
+- **Bitmap** - Unclear when window gets created
+  - Problem: Has conditional creation but trigger point unclear
+  - Investigation needed: Find where `if (!this.debugWindow)` check occurs
+
+- **MIDI** - Has `createDebugWindow()` method but may not call it
+  - Problem: May not create window in constructor
+  - Investigation needed: Verify constructor calls `createDebugWindow()`
+
+#### **Design Principle**
+- **Immediate Construction**: Use when all sizing/layout info is available at creation time
+- **Deferred Construction**: Use only when window must wait for additional specifications (like channel configs)
+
 ## Specific Technical Debt Items
 
 ### TECH-DEBT-001: Main Window needs ANSI escape sequence support

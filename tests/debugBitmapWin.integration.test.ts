@@ -44,6 +44,14 @@ describe('DebugBitmapWindow Integration Tests', () => {
   let mockContext: jest.Mocked<Context>;
   let mockBrowserWindow: any;
 
+  // Helper to create test display spec
+  const createTestDisplaySpec = () => ({
+    displayName: 'Test Bitmap',
+    title: 'Test Bitmap',
+    position: { x: 0, y: 0 },
+    size: { width: 100, height: 100 }
+  });
+
   // Helper to ensure window is initialized with size
   const initializeWindow = (width: number = 100, height: number = 100) => {
     window.updateContent([String(width), String(height)]);
@@ -57,7 +65,8 @@ describe('DebugBitmapWindow Integration Tests', () => {
     // Setup mock context
     mockContext = new Context() as jest.Mocked<Context>;
     mockContext.logger = {
-      logMessage: jest.fn()
+      logMessage: jest.fn(),
+      forceLogMessage: jest.fn()
     } as any;
 
     // Setup mock BrowserWindow
@@ -72,8 +81,8 @@ describe('DebugBitmapWindow Integration Tests', () => {
     };
     (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mockImplementation(() => mockBrowserWindow);
 
-    // Create window instance
-    window = new DebugBitmapWindow('Test Bitmap', 'test-id', mockContext);
+    // Create window instance with correct signature
+    window = new DebugBitmapWindow(mockContext, createTestDisplaySpec(), 'test-id');
     
     // Use defineProperty to properly set the debugWindow
     Object.defineProperty(window, 'debugWindow', {

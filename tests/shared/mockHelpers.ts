@@ -352,6 +352,7 @@ export function createMockLogger() {
     error: jest.fn(),
     debug: jest.fn(),
     logMessage: jest.fn(),
+    forceLogMessage: jest.fn(), // Missing method that debug windows use
     setLogLevel: jest.fn(),
     getLogLevel: jest.fn().mockReturnValue('info'),
     enableFileLogging: jest.fn(),

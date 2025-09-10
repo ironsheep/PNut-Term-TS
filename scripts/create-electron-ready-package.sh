@@ -280,21 +280,36 @@ if [ ! -f "$SCRIPT_DIR/.has-been-setup" ] || [ ! -f "$ELECTRON_EXEC" ]; then
 fi
 
 echo "🚀 Launching PNut-Term-TS..."
+
+# Create logs directory if it doesn't exist
+LOGS_DIR="$SCRIPT_DIR/test-logs"
+mkdir -p "$LOGS_DIR"
+
+# Create timestamped log file
+TIMESTAMP=$(date +"%Y-%m-%dT%H-%M-%S")
+LOG_FILE="$LOGS_DIR/launch-$TIMESTAMP.log"
+
+echo "📝 Logging output to: $LOG_FILE"
 echo ""
 echo "========================================="
 echo "Debug output will appear below:"
 echo "========================================="
 
 # Run without exec to capture exit code
-"$ELECTRON_EXEC" "$APP_DIR" "$@"
-EXIT_CODE=$?
+# Tee output to both console and log file
+"$ELECTRON_EXEC" "$APP_DIR" "$@" 2>&1 | tee -a "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
 
 echo "========================================="
 if [ $EXIT_CODE -eq 0 ]; then
     echo "✅ App exited normally"
 else
     echo "❌ App exited with error code: $EXIT_CODE"
-    echo ""
+fi
+echo ""
+echo "📝 Log saved to: $LOG_FILE"
+echo ""
+if [ $EXIT_CODE -ne 0 ]; then
     echo "Press Enter to close this window..."
     read -r
 fi
@@ -324,6 +339,17 @@ echo "Available devices:"
 ls /dev/tty.usb* 2>/dev/null || echo "   No USB serial devices found"
 echo ""
 
+# Create logs directory if it doesn't exist
+LOGS_DIR="$SCRIPT_DIR/test-logs"
+mkdir -p "$LOGS_DIR"
+
+# Create timestamped log file
+TIMESTAMP=$(date +"%Y-%m-%dT%H-%M-%S")
+LOG_FILE="$LOGS_DIR/test-run-$TIMESTAMP.log"
+
+echo "📝 Logging output to: $LOG_FILE"
+echo ""
+
 # Try to find a P2 device
 P2_DEVICE=$(ls /dev/tty.usbserial-* 2>/dev/null | head -1)
 
@@ -339,8 +365,9 @@ if [ -n "$P2_DEVICE" ]; then
     echo "========================================="
     
     # Run without exec so we can capture exit code and keep terminal open
-    "$ELECTRON_EXEC" "$APP_DIR" -p "$DEVICE_NAME" --verbose
-    EXIT_CODE=$?
+    # Tee output to both console and log file
+    "$ELECTRON_EXEC" "$APP_DIR" -p "$DEVICE_NAME" --verbose 2>&1 | tee -a "$LOG_FILE"
+    EXIT_CODE=${PIPESTATUS[0]}
     
     echo "========================================="
     if [ $EXIT_CODE -eq 0 ]; then
@@ -355,6 +382,8 @@ if [ -n "$P2_DEVICE" ]; then
         echo "  139 = Segmentation fault"
     fi
     echo "========================================="
+    echo ""
+    echo "📝 Test log saved to: $LOG_FILE"
     echo ""
     echo "Press Enter to close this window..."
     read -r

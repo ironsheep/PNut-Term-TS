@@ -85,9 +85,11 @@
     "@jimp/types": "^1.6.0",
     "@serialport/bindings-cpp": "^13.0.0",
     "@serialport/stream": "^13.0.0",
+    "@types/markdown-it": "^14.1.2",
     "commander": "^13.1.0",
     "install": "^0.13.0",
     "jimp": "^1.6.0",
+    "markdown-it": "^14.1.0",
     "npm": "^11.0.0",
     "pixi.js": "^8.6.6",
     "serialport": "^13.0.0"

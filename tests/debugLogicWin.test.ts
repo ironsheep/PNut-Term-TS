@@ -145,25 +145,18 @@ describe('DebugLogicWindow', () => {
   });
 
   describe('Window Creation', () => {
-    it('should create debug window on first numeric data', () => {
-      // Should not have window initially
-      expect(debugLogicWindow['debugWindow']).toBeNull();
-      
-      // Send numeric data to trigger window creation
-      triggerWindowCreation(debugLogicWindow, 'LOGIC');
-      
-      // Should have created window
-      expect(mockBrowserWindowInstances.length).toBe(1);
+    it('should create debug window immediately in constructor', () => {
+      // Logic window should create window immediately since it has channel specs upfront
       expect(debugLogicWindow['debugWindow']).toBeDefined();
+      expect(mockBrowserWindowInstances.length).toBe(1);
     });
 
-    it('should not create window on non-numeric data', () => {
-      // Send non-numeric command
+    it('should handle commands after window creation', () => {
+      // Send commands - window already exists
       debugLogicWindow.updateContent(['LOGIC', 'CLEAR']);
       
-      // Should not have created window
-      expect(mockBrowserWindowInstances.length).toBe(0);
-      expect(debugLogicWindow['debugWindow']).toBeNull();
+      // Window should still exist
+      expect(debugLogicWindow['debugWindow']).toBeDefined();
     });
   });
 

@@ -1062,10 +1062,19 @@ export class MessageExtractor extends EventEmitter {
     // All messages go to logger + one other destination
     const consumerCount = 2;  // Logger + destination window
     
+    // Strip EOL characters from COG and BACKTICK messages only
+    // These are ASCII text messages where CR/LF are just terminators
+    // Binary messages must remain untouched
+    let cleanedData: Uint8Array = messageData;
+    if (pattern.messageType === MessageType.COG_MESSAGE || 
+        pattern.messageType === MessageType.BACKTICK_WINDOW) {
+      cleanedData = this.stripEOLCharacters(messageData) as Uint8Array;
+    }
+    
     // Create extracted message with Two-Tier metadata and reference counting
     const extractedMessage: ExtractedMessage = {
       type: pattern.messageType,
-      data: messageData,
+      data: cleanedData,
       timestamp: Date.now(),
       confidence: pattern.confidence,
       // Reference counting initialization
@@ -1249,6 +1258,31 @@ export class MessageExtractor extends EventEmitter {
   /**
    * LEGACY: Consume bytes until terminator or limit
    */
+  /**
+   * Strip all forms of EOL characters from the end of a message
+   * Handles CR, LF, CRLF, and LFCR
+   * Only used for ASCII text messages (COG and BACKTICK)
+   */
+  private stripEOLCharacters(data: Uint8Array): Uint8Array {
+    let endIndex = data.length;
+    
+    // Work backwards, removing any combination of CR (0x0D) and LF (0x0A)
+    while (endIndex > 0) {
+      const lastByte = data[endIndex - 1];
+      if (lastByte === 0x0D || lastByte === 0x0A) {
+        endIndex--;
+      } else {
+        break;
+      }
+    }
+    
+    // Return the data without EOL characters
+    if (endIndex === data.length) {
+      return data; // No EOL found, return original
+    }
+    return data.slice(0, endIndex);
+  }
+  
   private consumeToTerminator(terminator: number, maxBytes: number): Uint8Array | null {
     const bytes: number[] = [];
     

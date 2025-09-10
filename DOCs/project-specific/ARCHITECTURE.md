@@ -1645,3 +1645,75 @@ With the Two-Tier Pattern Matching architecture complete, the next phase involve
 4. **Community Feedback**: Integrate improvements based on real-world P2 development usage
 
 This completes the foundational architecture work, establishing PNut-Term-TS as a robust, cross-platform replacement for the Windows-only PST while maintaining full compatibility with existing P2 development workflows.
+
+## Debug Window Routing Architecture
+
+### Window Creation and Naming Convention
+
+The debug window system uses a two-phase approach: window creation and data routing. This architecture supports multiple windows of the same type with unique user-defined names.
+
+#### Window Creation Phase
+
+Debug windows are created using backtick commands with the following format:
+```
+`<WINDOW_TYPE> <USER_NAME> [parameters...]
+```
+
+Examples:
+- `` `TERM MyTerminal SIZE 80 24`` - Creates a terminal window named "MyTerminal"
+- `` `LOGIC MyLogic SAMPLES 32 'Low' 3 'Mid' 2 'High'`` - Creates a logic analyzer named "MyLogic"
+- `` `SCOPE MyScope RANGE 0 100 SIZE 200`` - Creates a scope window named "MyScope"
+
+**Key Points:**
+1. The **WINDOW_TYPE** must be one of: TERM, LOGIC, SCOPE, SCOPE_XY, PLOT, BITMAP, MIDI
+2. The **USER_NAME** is arbitrary and defined by the user - this becomes the window's unique identifier
+3. Multiple windows of the same type are supported with different names (e.g., "MyScope1", "MyScope2")
+4. The window is stored internally using the USER_NAME as the key
+
+#### Data Routing Phase
+
+After creation, subsequent data is routed to windows using only the user-defined name:
+```
+`<USER_NAME> [data...]
+```
+
+Examples:
+- `` `MyTerminal Hello World`` - Sends "Hello World" to the terminal named "MyTerminal"
+- `` `MyLogic 15`` - Sends sample value 15 to the logic analyzer named "MyLogic"
+- `` `MyScope 50 60 70`` - Sends data points to the scope named "MyScope"
+
+**Routing Algorithm:**
+1. Extract the first word after the backtick (the potential window name)
+2. Check if this matches any existing window's user-defined name (case-insensitive)
+3. If found, route the entire command to that window's `updateContent()` method
+4. If not found, attempt to create a new window (checking if it's a valid window type command)
+
+### Implementation Details
+
+The routing is handled in `mainWindow.ts` in the `handleWindowCommand()` method:
+
+1. **Window Storage**: Windows are stored in `this.displays` map with the user name as the key
+2. **Case-Insensitive Matching**: Window names are compared using uppercase conversion for flexibility
+3. **Type Inference**: When a command doesn't match an existing window, the system checks if it's a window creation command by examining if the first word is a valid window type
+
+### Multiple Window Support
+
+This architecture specifically supports multiple windows of the same type:
+
+```
+`TERM Terminal1 SIZE 40 20
+`TERM Terminal2 SIZE 80 24
+`TERM Terminal3 SIZE 60 30
+
+`Terminal1 System A Output
+`Terminal2 System B Output  
+`Terminal3 Debug Messages
+```
+
+Each terminal window maintains its own state, buffer, and display properties while sharing the same underlying implementation class.
+
+### Error Handling
+
+- **Duplicate Names**: Attempting to create a window with an existing name will be ignored
+- **Invalid Routes**: Data sent to non-existent windows will be logged as unhandled
+- **Type Mismatches**: Windows validate incoming data formats and log errors for incompatible data

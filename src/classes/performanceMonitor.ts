@@ -126,25 +126,26 @@ export class PerformanceMonitor {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-      background: #1e1e1e;
-      color: #d4d4d4;
+      background: #ffffff;
+      color: #333333;
       padding: 20px;
       font-size: 13px;
     }
     
     h2 {
-      color: #4ec9b0;
+      color: #0066cc;
       margin-bottom: 15px;
       font-size: 16px;
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid #dddddd;
       padding-bottom: 5px;
     }
     
     .section {
       margin-bottom: 25px;
-      background: #252526;
+      background: #f8f8f8;
       padding: 15px;
       border-radius: 5px;
+      border: 1px solid #e0e0e0;
     }
     
     .metric-row {
@@ -155,12 +156,12 @@ export class PerformanceMonitor {
     }
     
     .metric-label {
-      color: #969696;
+      color: #666666;
     }
     
     .metric-value {
       font-family: 'Consolas', 'Monaco', monospace;
-      color: #4ec9b0;
+      color: #0066cc;
       font-weight: bold;
     }
     
@@ -175,15 +176,16 @@ export class PerformanceMonitor {
     
     .progress-bar {
       height: 20px;
-      background: #3e3e42;
+      background: #e0e0e0;
       border-radius: 3px;
       overflow: hidden;
       position: relative;
+      border: 1px solid #cccccc;
     }
     
     .progress-fill {
       height: 100%;
-      background: linear-gradient(90deg, #0e639c, #1177bb);
+      background: linear-gradient(90deg, #0066cc, #0080ff);
       transition: width 0.1s ease;
     }
     
@@ -199,10 +201,11 @@ export class PerformanceMonitor {
     
     .sparkline {
       height: 40px;
-      background: #3e3e42;
+      background: #f0f0f0;
       border-radius: 3px;
       position: relative;
       overflow: hidden;
+      border: 1px solid #cccccc;
     }
     
     .sparkline-canvas {
@@ -213,10 +216,11 @@ export class PerformanceMonitor {
     .window-list {
       max-height: 150px;
       overflow-y: auto;
-      background: #1e1e1e;
+      background: #ffffff;
       padding: 10px;
       border-radius: 3px;
       margin-top: 10px;
+      border: 1px solid #cccccc;
     }
     
     .window-item {
@@ -224,14 +228,15 @@ export class PerformanceMonitor {
       justify-content: space-between;
       margin-bottom: 5px;
       padding: 3px 5px;
-      background: #2d2d30;
+      background: #f8f8f8;
       border-radius: 2px;
+      border: 1px solid #e0e0e0;
     }
     
     button {
-      background: #0e639c;
+      background: #0066cc;
       color: white;
-      border: none;
+      border: 1px solid #0050a0;
       padding: 6px 15px;
       border-radius: 3px;
       cursor: pointer;
@@ -240,7 +245,8 @@ export class PerformanceMonitor {
     }
     
     button:hover {
-      background: #1177bb;
+      background: #0080ff;
+      border-color: #0066cc;
     }
     
     .controls {
@@ -436,7 +442,7 @@ export class PerformanceMonitor {
       }
       
       // Draw throughput line
-      ctx.strokeStyle = '#4ec9b0';
+      ctx.strokeStyle = '#0066cc';
       ctx.lineWidth = 2;
       ctx.beginPath();
       

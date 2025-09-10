@@ -37,6 +37,7 @@ export interface PlotDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
   position: Position;
+  hasExplicitPosition: boolean; // true if POS clause was in original message
   size: Size;
   dotSize: Size;
   window: WindowColor;
@@ -264,6 +265,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     const textColor: DebugColor = new DebugColor('CYAN');
     console.log(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
+    displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.size = { width: 256, height: 256 };
     displaySpec.dotSize = { width: 1, height: 1 };
     displaySpec.window.background = bkgndColor.rgbString;
@@ -372,8 +374,8 @@ export class DebugPlotWindow extends DebugWindowBase {
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
     
-    // If position is at default (0,0), use WindowPlacer for intelligent positioning
-    if (windowX === 0 && windowY === 0) {
+    // If no POS clause was present, use WindowPlacer for intelligent positioning
+    if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: windowWidth, height: windowHeight },

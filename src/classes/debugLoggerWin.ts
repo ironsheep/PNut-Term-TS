@@ -373,12 +373,14 @@ export class DebugLoggerWindow extends DebugWindowBase {
   <style>
     body {
       margin: 0;
-      padding: 42px 10px 32px 10px; /* Top space for menu bar, bottom for status bar */
+      padding: 0;
       background-color: ${this.theme.backgroundColor};
       color: ${this.theme.foregroundColor};
       font-family: 'Courier New', monospace;
       font-size: 12px;
-      overflow: hidden; /* CRITICAL: Prevent scrollbars */
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     #menu-bar {
       position: fixed;
@@ -432,8 +434,14 @@ export class DebugLoggerWindow extends DebugWindowBase {
       color: #000000;
     }
     #output {
+      flex: 1;
+      overflow-y: auto;
+      scroll-behavior: smooth;
       white-space: pre-wrap;
       word-wrap: break-word;
+      padding: 10px;
+      margin-top: 42px; /* Space for fixed menu bar */
+      margin-bottom: 32px; /* Space for status bar */
     }
     #output > div {
       display: flex;
@@ -497,10 +505,65 @@ export class DebugLoggerWindow extends DebugWindowBase {
       <span class="status-label">Size:</span>
       <span class="status-value" id="log-size">0 KB</span>
     </div>
+    <div class="status-field">
+      <span id="mode-indicator">🔴 Live</span>
+      <button id="return-to-live" style="display: none; margin-left: 5px; padding: 2px 8px; font-size: 11px;">↓ Follow Live Data</button>
+    </div>
   </div>
   <script>
     const { ipcRenderer } = require('electron');
     const output = document.getElementById('output');
+    const modeIndicator = document.getElementById('mode-indicator');
+    const returnToLiveButton = document.getElementById('return-to-live');
+    
+    // Hybrid scrolling state
+    let autoScroll = true;          // Start in live mode
+    let scrollThreshold = 50;       // Pixels from bottom = "live mode"
+    let maxScrollbackLines = 1000;  // User configurable from preferences
+    let maxDOMLines = 1500;         // DOM performance limit
+    let isInitialLoad = true;       // Track initial load to prevent race condition
+    
+    // Helper functions
+    function updateModeIndicator(mode) {
+      if (mode === 'live') {
+        modeIndicator.textContent = '🔴 Live';
+        returnToLiveButton.style.display = 'none';
+      } else {
+        modeIndicator.textContent = '📜 History';
+        returnToLiveButton.style.display = 'inline-block';
+      }
+    }
+    
+    function scrollToBottom() {
+      output.scrollTop = output.scrollHeight;
+    }
+    
+    function isNearBottom() {
+      return (output.scrollTop + output.clientHeight) >= (output.scrollHeight - scrollThreshold);
+    }
+    
+    // Simple scroll behavior - if user scrolls up, pause auto-scroll
+    // If they scroll back to bottom, resume
+    output.addEventListener('scroll', function() {
+      const nearBottom = isNearBottom();
+      
+      if (nearBottom && !autoScroll) {
+        // User scrolled back to bottom - resume auto-scroll
+        autoScroll = true;
+        updateModeIndicator('live');
+      } else if (!nearBottom && autoScroll) {
+        // User scrolled up - pause auto-scroll
+        autoScroll = false;
+        updateModeIndicator('history');
+      }
+    });
+    
+    // Return to Live button handler
+    returnToLiveButton.addEventListener('click', function() {
+      autoScroll = true;
+      updateModeIndicator('live');
+      scrollToBottom();
+    });
     
     ipcRenderer.on('append-message', (event, data) => {
       const line = document.createElement('div');
@@ -521,11 +584,12 @@ export class DebugLoggerWindow extends DebugWindowBase {
       
       output.appendChild(line);
       
-      // Auto-scroll to bottom
-      output.scrollTop = output.scrollHeight;
+      // Always scroll to bottom after adding content
+      // Simple approach - just stay at bottom
+      scrollToBottom();
       
-      // Limit number of lines
-      while (output.children.length > ${this.maxLines}) {
+      // Manage DOM size for performance
+      while (output.children.length > maxDOMLines) {
         output.removeChild(output.firstChild);
       }
     });
@@ -556,17 +620,29 @@ export class DebugLoggerWindow extends DebugWindowBase {
       
       output.appendChild(fragment);
       
-      // Auto-scroll to bottom
-      output.scrollTop = output.scrollHeight;
+      // Always scroll to bottom after adding content
+      // Simple approach - just stay at bottom
+      scrollToBottom();
       
-      // Limit displayed lines for performance
-      while (output.children.length > ${this.maxLines}) {
+      // Manage DOM size for performance
+      while (output.children.length > maxDOMLines) {
         output.removeChild(output.firstChild);
       }
     });
     
     ipcRenderer.on('clear-output', () => {
       output.innerHTML = '';
+      // Reset to live mode on session reset
+      autoScroll = true;
+      isInitialLoad = true;  // Reset initial load flag
+      updateModeIndicator('live');
+    });
+    
+    
+    // Handle scrollback preference updates
+    ipcRenderer.on('set-scrollback-lines', (event, lines) => {
+      maxScrollbackLines = Math.min(Math.max(lines, 100), 10000); // Clamp to 100-10000 range
+      console.log('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
     });
     
     ipcRenderer.on('set-theme', (event, theme) => {
@@ -793,17 +869,17 @@ export class DebugLoggerWindow extends DebugWindowBase {
         if (actualData instanceof Uint8Array) {
           if (this.isASCIIData(actualData)) {
             const textData = new TextDecoder().decode(actualData);
-            this.appendMessage(`[${messageType}] ${textData}`, 'generic-message');
-            this.writeToLog(`[${messageType}] ${textData}`);
+            this.appendMessage(textData, 'generic-message');
+            this.writeToLog(textData);
           } else {
             const hexData = this.formatBinaryAsHexFallback(actualData);
-            this.appendMessage(`[${messageType}] ${hexData}`, 'binary-message');
-            this.writeToLog(`[${messageType}] ${hexData}`);
+            this.appendMessage(hexData, 'binary-message');
+            this.writeToLog(hexData);
           }
         } else {
           const displayData = Array.isArray(actualData) ? actualData.join(' ') : String(actualData);
-          this.appendMessage(`[${messageType}] ${displayData}`, 'generic-message');
-          this.writeToLog(`[${messageType}] ${displayData}`);
+          this.appendMessage(displayData, 'generic-message');
+          this.writeToLog(displayData);
         }
     }
     
@@ -1561,5 +1637,14 @@ export class DebugLoggerWindow extends DebugWindowBase {
   public clearWarningHistory(): void {
     this.warningHistory = [];
     this.warningRateLimiter.clear();
+  }
+
+  /**
+   * Update scrollback preference
+   */
+  public updateScrollbackPreference(lines: number): void {
+    if (this.debugWindow) {
+      this.debugWindow.webContents.send('set-scrollback-lines', lines);
+    }
   }
 }

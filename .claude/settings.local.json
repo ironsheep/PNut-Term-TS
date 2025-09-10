@@ -20,7 +20,13 @@
       "Bash(git commit:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run test:sequential:*)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "Bash(./scripts/create-electron-ready-package.sh:*)",
+      "Bash(npx jest:*)",
+      "mcp__todo-mcp__todo_complete",
+      "mcp__todo-mcp__context_resume",
+      "mcp__todo-mcp__todo_list",
+      "mcp__todo-mcp__context_set"
     ],
     "deny": []
   }

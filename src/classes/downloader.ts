@@ -74,23 +74,8 @@ export class Downloader {
           this.logMessage(errMsg);
           //downloaderTerminal.sendText(`# ERROR: ${errMsg}`);
         }
-        if (this.serialPort) {
-          try {
-            await this.serialPort.close(); // we're done with this port
-          } catch (error) {
-            noDownloadError = false;
-            if (error instanceof Error) {
-              errMsg = `Dnld: close Error thrown: ${error.toString()}`;
-            } else {
-              // Handle the case where error is not an Error object
-              errMsg = `Dnld: close Non-error thrown: ${JSON.stringify(error)}`;
-            } // Re-throw the error if you want to fail
-          }
-          if (errMsg.length > 0) {
-            this.logMessage(errMsg);
-            //downloaderTerminal.sendText(`# ERROR: ${errMsg}`);
-          }
-        }
+        // NOTE: Don't close serial port - MainWindow manages it and needs it for debug operations
+        // The port will be reused for debug communications after download completes
       }
     }
   }

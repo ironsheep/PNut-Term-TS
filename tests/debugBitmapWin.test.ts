@@ -43,6 +43,15 @@ describe('DebugBitmapWindow', () => {
   let window: DebugBitmapWindow;
   let mockContext: jest.Mocked<Context>;
   let mockBrowserWindow: any;
+  
+  // Helper to create test display spec
+  const createTestDisplaySpec = (): any => ({
+    displayName: 'Test Bitmap',
+    windowTitle: 'Test Bitmap', 
+    position: { x: 0, y: 0 },
+    size: { width: 256, height: 256 },
+    colorMode: 1
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,7 +59,8 @@ describe('DebugBitmapWindow', () => {
     // Setup mock context
     mockContext = new Context() as jest.Mocked<Context>;
     mockContext.logger = {
-      logMessage: jest.fn()
+      logMessage: jest.fn(),
+      forceLogMessage: jest.fn()
     } as any;
 
     // Setup mock BrowserWindow
@@ -66,7 +76,7 @@ describe('DebugBitmapWindow', () => {
     (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mockImplementation(() => mockBrowserWindow);
 
     // Create window instance
-    window = new DebugBitmapWindow('Test Bitmap', 'test-id', mockContext);
+    window = new DebugBitmapWindow(mockContext, createTestDisplaySpec(), 'test-id');
   });
 
   describe('parseBitmapDeclaration', () => {
@@ -424,7 +434,7 @@ describe('DebugBitmapWindow', () => {
 
     it('should log error when plotting pixels before size is defined', () => {
       // Create a new window and try to plot without setting size
-      const newWindow = new DebugBitmapWindow('Test', 'test', mockContext);
+      const newWindow = new DebugBitmapWindow(mockContext, createTestDisplaySpec(), 'test');
       const logSpy = jest.spyOn(newWindow as any, 'logMessage');
       newWindow['debugWindow'] = mockBrowserWindow;
       // Use a command that won't be interpreted as width
@@ -435,7 +445,7 @@ describe('DebugBitmapWindow', () => {
 
     it('should log error when saving before initialization', () => {
       // Create a new window and try to save without initialization
-      const newWindow = new DebugBitmapWindow('Test', 'test', mockContext);
+      const newWindow = new DebugBitmapWindow(mockContext, createTestDisplaySpec(), 'test');
       const logSpy = jest.spyOn(newWindow as any, 'logMessage');
       newWindow['debugWindow'] = mockBrowserWindow;
       newWindow['saveBitmap']('test.bmp', false);
