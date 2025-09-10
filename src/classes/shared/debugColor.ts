@@ -29,20 +29,20 @@ export class DebugColor {
     BLACK: '#000000',   // Color 0
     WHITE: '#ffffff',   // Color 1
     ORANGE: '#ff7f00',  // Color 2 (was #FFA500 in parser)
-    BLUE: '#0000ff',    // Color 3
-    GREEN: '#00ff00',   // Color 4 (was #008000)
-    CYAN: '#00ffff',    // Color 5
-    RED: '#ff0000',     // Color 6
-    MAGENTA: '#ff00ff', // Color 7
-    YELLOW: '#ffff00',  // Color 8
-    GRAY: '#808080',    // Color 9
+    BLUE: '#7F7FFF',    // Color 3 (Pascal: $7F7FFF - Light Blue)
+    GREEN: '#00ff00',   // Color 4 (Pascal: $00FF00 - Lime)
+    CYAN: '#00ffff',    // Color 5 (Pascal: $00FFFF - Cyan)
+    RED: '#ff0000',     // Color 6 (Pascal: $FF0000 - Red)
+    MAGENTA: '#ff00ff', // Color 7 (Pascal: $FF00FF - Magenta)
+    YELLOW: '#ffff00',  // Color 8 (Pascal: $FFFF00 - Yellow)
+    GRAY: '#404040',    // Color 9 (Pascal: $404040 - Dark Gray)
     // Alternative spellings and legacy colors
-    GREY: '#808080',    // Alternative spelling
-    OLIVE: '#7F7F00',   // Legacy
-    LIME: '#00FF00',    // Legacy (same as GREEN)
-    BLUE2: '#0000FF',   // Legacy (same as BLUE)
-    GRAY2: '#808080',   // Legacy (same as GRAY)
-    GRAY3: '#D0D0D0'    // Legacy
+    GREY: '#404040',    // Alternative spelling (matches GRAY)
+    OLIVE: '#7F7F00',   // Legacy (Pascal: $7F7F00)
+    LIME: '#00FF00',    // Legacy (Pascal: $00FF00 - same as GREEN)
+    BLUE2: '#7F7FFF',   // Legacy (matches corrected BLUE)
+    GRAY2: '#808080',   // Legacy (Pascal: $808080 - Medium Gray)
+    GRAY3: '#D0D0D0'    // Legacy (Pascal: $D0D0D0 - Light Gray)
   };
 
   constructor(colorName: string, brightness: number = DebugColor.defaultBrightness) {

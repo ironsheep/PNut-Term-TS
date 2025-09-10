@@ -36,6 +36,7 @@ export interface LogicDisplaySpec {
   windowTitle: string; // composite or override w/TITLE
   title: string; // for BaseDisplaySpec compatibility
   position: Position;
+  hasExplicitPosition: boolean; // true if POS clause was in original message
   size: Size;
   nbrSamples: number;
   spacing: number;
@@ -169,6 +170,8 @@ export class DebugLogicWindow extends DebugWindowBase {
   private canvasMargin: number = 10; // 10 pixels from to (no left,) right, top, and bottom of canvas (NOT NEEDED)
   private labelWidth: number = 0; // width of label canvas
   private labelHeight: number = 0; // height of label canvas
+  private contentWidth: number = 0; // calculated content area width for setContentSize
+  private contentHeight: number = 0; // calculated content area height for setContentSize
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
   private triggerProcessor: LogicTriggerProcessor;
   private packedMode: PackedDataMode = {} as PackedDataMode;
@@ -214,6 +217,9 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.calculateAutoTriggerAndScale();
     this.createDebugWindow();
     this.initChannelSamples();
+    
+    // CRITICAL: Mark window as ready to process messages
+    this.onWindowReady();
   }
 
   public static colorNameFmChanNumber(chanNumber: number): string {
@@ -259,6 +265,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     const gridColor: DebugColor = new DebugColor('GRAY3', 4);
     console.log(`CL: at parseLogicDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
+    displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.nbrSamples = 32;
     displaySpec.spacing = 8;
     displaySpec.rate = 1;
@@ -418,6 +425,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 if (index < lineParts.length - 2) {
                   displaySpec.position.x = Number(lineParts[++index]);
                   displaySpec.position.y = Number(lineParts[++index]);
+                  displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
                 } else {
                   console.log(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
                   isValid = false;
@@ -502,7 +510,10 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage(`at createDebugWindow() LOGIC with NO channels!`);
     }
 
-    const canvasHeight: number = this.displaySpec.font.lineHeight;
+    // Labels need full text height for readability, traces use enhanced calculation
+    const labelHeight: number = this.displaySpec.font.lineHeight; // Full text height for labels  
+    const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
+    const channelSpacing: number = 0; // No spacing - channels butt together
 
     let labelMaxChars: number = 0;
     let activeBitChannels: number = 0;
@@ -552,31 +563,48 @@ export class DebugLogicWindow extends DebugWindowBase {
     const labelDivs: string[] = [];
     const dataCanvases: string[] = [];
 
-    const labelCanvasWidth: number = this.contentInset + labelMaxChars * (this.displaySpec.font.charWidth - 2);
+    const labelCanvasWidth: number = this.contentInset + labelMaxChars * (this.displaySpec.font.charWidth - 2) - 4; // Reduce by 4px to move labels left
     const dataCanvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing + this.contentInset; // contentInset' for the Xoffset into window for canvas
 
-    const channelGroupHeight: number = canvasHeight * activeBitChannels;
+    // Calculate total height: match Pascal exactly - each channel gets full ChrHeight
+    const channelHeight: number = this.displaySpec.font.charHeight; // Pascal: ChrHeight per channel
+    const channelGroupHeight: number = channelHeight * activeBitChannels;
     const channelGroupWidth: number = labelCanvasWidth + dataCanvasWidth;
 
     // pass to other users
-    this.labelHeight = canvasHeight;
+    this.labelHeight = labelHeight;
     this.labelWidth = labelCanvasWidth;
 
-    for (let index = 0; index < activeBitChannels; index++) {
-      const idNbr: number = activeBitChannels - index - 1;
-      labelDivs.push(`<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${canvasHeight}"></div>`);
+    // Create channels in reverse order so bottom channel (highest index) displays at top
+    for (let index = activeBitChannels - 1; index >= 0; index--) {
+      const idNbr: number = index;
+      labelDivs.push(`<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${channelHeight}">Label ${idNbr}</div>`);
       dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
     }
 
-    // set height so NO scroller by default
-    const windowHeight = channelGroupHeight + 2 + this.canvasMargin * 2; // 2 is fudge to remove scroller;
-    const windowWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1; // 1 = no left margin!
-    // Check if position was explicitly set or is still at default (0,0)
+    // set height so NO scroller by default - account for container padding (Pascal margins) + window chrome
+    const containerPadding = this.displaySpec.font.charHeight * 2; // top + bottom padding (Pascal MarginTop + MarginBottom)
+    const contentHeight = channelGroupHeight + containerPadding; // Pascal: MarginTop + vHeight + MarginBottom
+    const windowHeight = contentHeight + 40; // +40 for title bar (matching Scope window)
+    const windowWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1 + 20; // +20 for window borders (matching Scope window)
+    
+    this.logMessage(`DEBUG: Created ${labelDivs.length} labels and ${dataCanvases.length} canvases for ${activeBitChannels} channels`);
+    this.logMessage(`DEBUG: Window dimensions - Width: ${windowWidth}, Height: ${windowHeight}`);
+    this.logMessage(`DEBUG: Font metrics - charHeight: ${this.displaySpec.font.charHeight}, lineHeight: ${this.displaySpec.font.lineHeight}`);
+    this.logMessage(`DEBUG: Channel calculations - labelHeight: ${labelHeight}, channelHeight: ${channelHeight}, canvasHeight: ${canvasHeight}`);
+    this.logMessage(`DEBUG: Pascal equivalent: vHeight = ${activeBitChannels} * charHeight(${this.displaySpec.font.charHeight}) = ${activeBitChannels * this.displaySpec.font.charHeight}`);
+    this.logMessage(`DEBUG: TypeScript channelGroupHeight: ${channelGroupHeight}, containerPadding: ${containerPadding}, contentHeight: ${contentHeight}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: charHeight=${this.displaySpec.font.charHeight}, activeBitChannels=${activeBitChannels}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: channelGroupHeight = ${activeBitChannels} * ${this.displaySpec.font.charHeight} = ${channelGroupHeight}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: containerPadding = 2 * ${this.displaySpec.font.charHeight} = ${containerPadding}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: contentHeight = ${channelGroupHeight} + ${containerPadding} = ${contentHeight}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: windowHeight = ${contentHeight} + 40 (title bar) = ${windowHeight}`);
+    // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
     
-    // If position is at default (0,0), use WindowPlacer for intelligent positioning
-    if (windowX === 0 && windowY === 0) {
+    // If no POS clause was present, use WindowPlacer for intelligent positioning
+    if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: windowWidth, height: windowHeight },
@@ -604,6 +632,10 @@ export class DebugLogicWindow extends DebugWindowBase {
         contextIsolation: false
       }
     });
+
+    // Store content dimensions for later use in ready-to-show handler
+    this.contentWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1;
+    this.contentHeight = contentHeight;
 
     // Register window with WindowPlacer for position tracking
     if (this.debugWindow) {
@@ -640,6 +672,16 @@ export class DebugLogicWindow extends DebugWindowBase {
             this.logMessage(`Failed to remove menu: ${error}`);
           }
         }
+        // Set content size to ensure the content area matches our Pascal calculations exactly
+        if (this.contentWidth > 0 && this.contentHeight > 0) {
+          this.debugWindow.setContentSize(this.contentWidth, this.contentHeight);
+          this.logMessage(`DEBUG: Set content size to Pascal dimensions: ${this.contentWidth}x${this.contentHeight}`);
+        }
+        
+        // Check actual content dimensions after adjustment
+        const contentSize = this.debugWindow.getContentSize();
+        const windowSize = this.debugWindow.getSize();
+        this.logMessage(`DEBUG: FINAL SIZES - Window: ${windowSize[0]}x${windowSize[1]}, Content: ${contentSize[0]}x${contentSize[1]}`);
         this.debugWindow.show();
       }
     });
@@ -688,10 +730,10 @@ export class DebugLogicWindow extends DebugWindowBase {
             justify-content: flex-end; /* Horizontally right-aligns the text */
             align-items: center; /* Vertically center the text */
             //background-color:rgba(188, 208, 208, 0.9);
-            height: ${canvasHeight}px;
-            // padding: top right bottom left;
-            padding: 0px 2px 0px 0px;
-            margin: 0px;
+            height: ${channelHeight}px; /* Use tight channel height */
+            // padding: top right bottom left - position text to align with trace center
+            padding: ${Math.floor((channelHeight - canvasHeight) / 2)}px 2px ${Math.ceil((channelHeight - canvasHeight) / 2)}px 0px;
+            margin: 0px; /* No margins - channels butt together */
           }
           #labels > div > p {
             // padding: top right bottom left;
@@ -714,7 +756,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             flex-direction: row; /* Arrange children in a row */
             flex-grow: 0;
             padding: top right bottom left;
-            padding: ${this.canvasMargin}px ${this.canvasMargin}px ${this.canvasMargin}px 0px;
+            padding: ${this.displaySpec.font.charHeight}px ${this.canvasMargin}px ${this.displaySpec.font.charHeight}px 0px;
           }
           #label-2 {
             //background-color:rgb(231, 151, 240);
@@ -725,7 +767,10 @@ export class DebugLogicWindow extends DebugWindowBase {
           canvas {
             //background-color:rgb(240, 194, 151);
             //background-color: ${this.displaySpec.window.background};
-            margin: 0;
+            margin: 0px; /* No margins - channels butt together */
+            /* Center canvas vertically within the channel height, with tighter spacing */
+            margin-top: ${Math.floor((channelHeight - canvasHeight) / 2) + 1}px;
+            margin-bottom: ${Math.ceil((channelHeight - canvasHeight) / 2) - 1}px;
           }
           #trigger-status {
             position: absolute;
@@ -752,7 +797,8 @@ export class DebugLogicWindow extends DebugWindowBase {
             height: ${channelGroupHeight}px;
             pointer-events: none;
             display: none; /* Hidden by default */
-            top: ${this.canvasMargin}px;
+            top: ${this.displaySpec.font.charHeight}px; /* Position within data area */
+            left: -10px; /* Start hidden off-screen */
             box-shadow: 0 0 4px rgba(255, 0, 0, 0.6); /* Add glow effect */
             z-index: 10; /* Ensure it's above canvas elements */
           }
@@ -813,7 +859,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     </html>
   `;
 
-    this.logMessage(`at createDebugWindow() LOGIC with htmlContent: ${htmlContent}`);
+    this.logMessage(`at createDebugWindow() LOGIC`);
 
     try {
       this.debugWindow.setMenu(null);
@@ -868,7 +914,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             statusEl.style.display = 'block';
           }
         })();
-      `);
+      `).catch((error) => {
+        this.logMessage(`Failed to update trigger status: ${error}`);
+      });
     } else if (this.debugWindow) {
       // Hide trigger status when trigger is disabled
       this.debugWindow.webContents.executeJavaScript(`
@@ -878,7 +926,9 @@ export class DebugLogicWindow extends DebugWindowBase {
           if (statusEl) statusEl.style.display = 'none';
           if (posEl) posEl.style.display = 'none';
         })();
-      `);
+      `).catch((error) => {
+        this.logMessage(`Failed to hide trigger status: ${error}`);
+      });
     }
   }
   
@@ -904,7 +954,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             }, 1000);
           }
         })();
-      `);
+      `).catch((error) => {
+        this.logMessage(`Failed to update trigger position: ${error}`);
+      });
     }
   }
 
@@ -1240,7 +1292,7 @@ export class DebugLogicWindow extends DebugWindowBase {
         );
       }
       const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
-      const canvasHeight: number = this.displaySpec.font.lineHeight;
+      const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
       const drawWidth: number = canvasWidth;
       const drawHeight: number = canvasHeight - this.channelVInset * 2;
 
@@ -1334,15 +1386,6 @@ export class DebugLogicWindow extends DebugWindowBase {
       //   `);
       
       try {
-        let jsCode = '';
-        
-        // Handle scrolling if needed
-        if (didScroll) {
-          const scrollSpeed = this.displaySpec.lineSize + spacing;
-          jsCode += this.canvasRenderer.scrollCanvas(canvasName, scrollSpeed, canvasWidth, canvasHeight, drawXOffset, drawYOffset);
-        }
-        
-        // Draw the logic signal lines
         // Check if this is the trigger sample for highlighting
         const isTriggerSample = this.triggerFired && 
                                 this.triggerSampleIndex >= 0 && 
@@ -1353,30 +1396,76 @@ export class DebugLogicWindow extends DebugWindowBase {
         const lineColor = isTriggerSample ? '#FF0000' : channelColor; // Red for trigger
         const lineWidth = isTriggerSample ? this.displaySpec.lineSize + 1 : this.displaySpec.lineSize;
         
-        // Draw horizontal line from previous position
-        jsCode += this.canvasRenderer.drawLine(
-          canvasName, 
-          prevXOffset + spacing - 1, 
-          prevYOffset, 
-          currXOffset, 
-          currYOffset, 
-          lineColor, 
-          lineWidth
-        );
+        // Generate single comprehensive JavaScript block like the original
+        let jsCode = `
+          const canvas = document.getElementById('${canvasName}');
+          if (!canvas) return;
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          
+          const lineColor = '${lineColor}';
+          const lineWidth = ${lineWidth};
+          const spacing = ${spacing};
+          const canvWidth = ${canvasWidth};
+          const canvHeight = ${canvasHeight};
+          const canvXOffset = ${drawXOffset};
+          const canvYOffset = ${drawYOffset};
+          
+          // Handle scrolling if needed
+          ${didScroll ? `
+          const scrollSpeed = lineWidth + spacing;
+          const offScreenCanvas = document.createElement('canvas');
+          offScreenCanvas.width = canvWidth - scrollSpeed;
+          offScreenCanvas.height = canvHeight;
+          const offScreenCtx = offScreenCanvas.getContext('2d');
+          
+          if (offScreenCtx) {
+            offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
+            ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
+            ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
+          }
+          ` : ''}
+          
+          // Set line style and draw the logic signal as one continuous path
+          ctx.strokeStyle = lineColor;
+          ctx.lineWidth = lineWidth;
+          ctx.setLineDash([]);
+          ctx.lineCap = 'round'; // Round line caps for better connection
+          ctx.lineJoin = 'round'; // Round line joins for smoother corners
+          ctx.beginPath();
+          ctx.moveTo(${prevXOffset + spacing - 0.5}, ${prevYOffset});
+          ctx.lineTo(${currXOffset}, ${currYOffset});
+          ctx.lineTo(${currXOffset + spacing + 0.5}, ${currYOffset}); // Overlap by 0.5 pixels
+          ctx.stroke();
+        `;
         
-        // Draw horizontal line at current position
-        jsCode += this.canvasRenderer.drawLine(
-          canvasName,
-          currXOffset,
-          currYOffset,
-          currXOffset + spacing - 1,
-          currYOffset,
-          lineColor,
-          lineWidth
-        );
+        // DEBUG: Log the generated JavaScript before executing
+        this.logMessage(`DEBUG: Generated JavaScript (${jsCode.length} chars): ${jsCode.substring(0, 200)}${jsCode.length > 200 ? '...' : ''}`);
         
-        // Execute all the JavaScript at once
-        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`);
+        // DEBUG: Check if window and canvas elements exist before executing
+        this.debugWindow.webContents.executeJavaScript(`
+          (function() {
+            const canvas = document.getElementById('${canvasName}');
+            console.log('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
+            if (canvas) {
+              console.log('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
+            }
+            return canvas ? true : false;
+          })();
+        `).then((canvasExists) => {
+          this.logMessage(`DEBUG: Canvas ${canvasName} exists: ${canvasExists}`);
+          
+          // Now execute the actual drawing JavaScript
+          if (this.debugWindow) {
+            this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+              this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
+              this.logMessage(`FAILED JavaScript was: ${jsCode}`);
+            });
+          }
+        }).catch((error) => {
+          this.logMessage(`Failed to check canvas existence: ${error}`);
+        });
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }
@@ -1392,7 +1481,9 @@ export class DebugLogicWindow extends DebugWindowBase {
       try {
         const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
         const jsCode = this.canvasRenderer.updateElementHTML(divId, labelSpan);
-        this.debugWindow.webContents.executeJavaScript(jsCode);
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+          this.logMessage(`Failed to execute label update JavaScript: ${error}`);
+        });
       } catch (error) {
         console.error(`Failed to update ${divId}: ${error}`);
       }
@@ -1535,7 +1626,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             });
           }
         })();
-      `);
+      `).catch((error) => {
+        this.logMessage(`Failed to enable mouse input tracking: ${error}`);
+      });
     }
   }
 }
