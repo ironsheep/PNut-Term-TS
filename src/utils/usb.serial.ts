@@ -305,6 +305,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async handleSerialOpen() {
+    console.log(`[USB] handleSerialOpen() - startup reset`);
     //this.logMessage(`* handleSerialOpen() open...`);
     //const myString: string = "Hello, World! 0123456789";
     //const myBuffer: Buffer = Buffer.from(myString, "utf8");
@@ -353,6 +354,7 @@ export class UsbSerial extends EventEmitter {
 
   public async setDTR(value: boolean): Promise<void> {
     // Set the DTR line state
+    console.log(`[USB] PUBLIC setDTR(${value})`);
     if (!this._serialPort || !this._serialPort.isOpen) {
       throw new Error('Serial port is not open');
     }
@@ -361,6 +363,7 @@ export class UsbSerial extends EventEmitter {
 
   public async setRTS(value: boolean): Promise<void> {
     // Set the RTS line state
+    console.log(`[USB] PUBLIC setRTS(${value})`);
     if (!this._serialPort || !this._serialPort.isOpen) {
       throw new Error('Serial port is not open');
     }
@@ -369,20 +372,24 @@ export class UsbSerial extends EventEmitter {
 
   private async toggleDTR(): Promise<void> {
     // toggle the propPlug DTR line
+    console.log(`[USB] PRIVATE toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
     await this.setDtr(true);
     await waitSec(1);
     await this.setDtr(false);
+    console.log(`[USB] PRIVATE toggleDTR() EXIT`);
   }
 
   private async toggleRTS(): Promise<void> {
     // toggle the propPlug RTS line
+    console.log(`[USB] PRIVATE toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
     await waitSec(1);
     await this.setRts(true);
     await waitSec(1);
     await this.setRts(false);
+    console.log(`[USB] PRIVATE toggleRTS() EXIT`);
   }
 
   private startReadListener() {
@@ -553,6 +560,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async setDtr(value: boolean): Promise<void> {
+    console.log(`[USB] INTERNAL setDtr(${value})`);
     return new Promise((resolve, reject) => {
       this._serialPort.set({ dtr: value }, (err) => {
         if (err) {
@@ -568,6 +576,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async setRts(value: boolean): Promise<void> {
+    console.log(`[USB] INTERNAL setRts(${value})`);
     return new Promise((resolve, reject) => {
       this._serialPort.set({ rts: value }, (err) => {
         if (err) {

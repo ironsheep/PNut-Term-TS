@@ -4632,6 +4632,7 @@ export class MainWindow {
     this.toggleDTRCallCount++;
     const previousState = this.dtrState;
     const newState = !this.dtrState;
+    console.log(`[MAIN] toggleDTR() ENTER - Call #${this.toggleDTRCallCount}, ${previousState} -> ${newState}`);
     this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START (Call #${this.toggleDTRCallCount}) ======`);
     this.logMessage(`[DTR TOGGLE] Previous state: ${previousState}`);
     this.logMessage(`[DTR TOGGLE] New state will be: ${newState}`);
@@ -4684,6 +4685,7 @@ export class MainWindow {
       this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
     }
     this.logMessage(`[DTR TOGGLE] Final DTR state: ${this.dtrState ? 'ON' : 'OFF'}`);
+    console.log(`[MAIN] toggleDTR() EXIT - state is now ${this.dtrState}`);
     this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE END ======`);
   }
 
