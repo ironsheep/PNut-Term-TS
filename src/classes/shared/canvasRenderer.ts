@@ -373,6 +373,7 @@ export class CanvasRenderer {
    */
   plotPixelLegacy(canvasId: string, x: number, y: number, color: string): string {
     return `
+      (function() {
       const canvas = document.getElementById('${canvasId}');
       if (!canvas) return;
       
@@ -601,19 +602,21 @@ export class CanvasRenderer {
                           .replace(/"/g, '\\"');
     
     return `
-      const canvas = document.getElementById('${canvasId}');
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      ctx.save();
-      ctx.fillStyle = '${color}';
-      ctx.font = '${fontSize} ${font}';
-      ctx.textAlign = '${align}';
-      ctx.textBaseline = '${baseline}';
-      ctx.fillText('${escapedText}', ${x}, ${y});
-      ctx.restore();
+      (function() {
+        const canvas = document.getElementById('${canvasId}');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.save();
+        ctx.fillStyle = '${color}';
+        ctx.font = '${fontSize} ${font}';
+        ctx.textAlign = '${align}';
+        ctx.textBaseline = '${baseline}';
+        ctx.fillText('${escapedText}', ${x}, ${y});
+        ctx.restore();
+      })();
     `;
   }
   

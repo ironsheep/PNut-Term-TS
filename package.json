@@ -42,7 +42,7 @@
     "start": "node dist/pnut-term-ts.min.js",
     "postbuild": "shx chmod +x dist/pnut-term-ts.min.js dist/pnut-term-ts.js",
     "makeprebuild": "shx mkdir -p ./prebuilds && shx cp -r ./node_modules/@serialport/bindings-cpp/prebuilds/* ./prebuilds/",
-    "makefonts": "shx mkdir -p ./fonts && shx cp -r ./src/fonts/* ./fonts/",
+    "makefonts": "shx mkdir -p ./fonts && shx cp -r ./src/assets/fonts/* ./fonts/",
     "dist": "npm run packageLnx && npm run send2pi",
     "undist": "npm run getpirun && npm run getpilogic && npm run getbmps",
     "prebuild": "npm run clean && npm run makeprebuild && npm run makefonts",

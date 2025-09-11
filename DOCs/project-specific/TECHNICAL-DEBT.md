@@ -199,4 +199,64 @@ Some debug windows have incorrect construction patterns that need standardizatio
 - **Impact**: Current implementation works correctly for production use but may not meet academic/scientific DSP expectations
 - **Status**: Documented, needs discussion with Chip Gracey (Pascal author)
 - **Files**: `src/classes/shared/fftProcessor.ts`, `src/classes/shared/windowFunctions.ts`, `tests/fftAccuracyVerification.test.ts`, `src/classes/debugFftWin.ts` (lines 865-868)
-- **Pascal References**: `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` lines 1552-1712 (FFT implementation), lines 4170-4243 (PrepareFFT/PerformFFT)
+- **Pascal References**: `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas` lines 1552-1712 (FFT implementation), lines 4170-4243 (PrepareFFT/PerformFFT)## Technical Debt Item
+
+### CRITICAL: Font Loading Broken - Cannot Ship Until Fixed
+**Date Added**: 2025-09-10
+**Priority**: CRITICAL - BLOCKER
+**Category**: Core Functionality
+
+**Current State**:
+- Custom fonts (Parallax.ttf and 3270-Regular.ttf) cannot be loaded in the application
+- Loading HTML as data: URL prevents file:// font URLs from working (browser security)
+- Embedding fonts as base64 makes HTML too large (2.2MB), causing ERR_INVALID_URL
+- Application runs with fallback fonts only
+
+**Problem Details**:
+1. **Security Restriction**: data: URLs cannot load file:// resources
+2. **Size Limitation**: Base64-encoded fonts make HTML exceed Electron's URL length limit
+3. **Catch-22**: Can't use file:// URLs (security) and can't use base64 (size)
+
+**Impact**:
+- **CANNOT SHIP**: Missing core visual identity of the application
+- Parallax font is essential for P2 branding consistency
+- IBM 3270 font needed for terminal emulation authenticity
+- User experience severely degraded without proper fonts
+
+**Potential Solutions to Investigate**:
+1. Load HTML from file:// URL instead of data: URL
+2. Use protocol.registerFileProtocol to serve fonts
+3. Implement local web server to serve assets
+4. Use Electron's custom protocol handler
+5. Load HTML with loadFile() instead of loadURL()
+
+**Required for Release**: YES - This must be fixed before any public release
+
+---
+
+### Bridge Menu Logging to Main Process
+**Date Added**: 2025-09-10
+**Priority**: Low
+**Category**: Logging/Debugging
+
+**Current State**: 
+- Menu operations log to renderer console with [MENU] prefix
+- Makes renderer console noisy with routine operational logs
+- Harder to spot actual renderer issues that need attention
+
+**Desired State**:
+- Menu operation logs should be forwarded to main process console via IPC
+- Renderer console should only contain actual errors, warnings, or issues that need attention
+- Cleaner separation of concerns between UI events and application logic
+
+**Implementation Notes**:
+- Add IPC channel for forwarding logs (e.g., 'forward-log')
+- Intercept console.log calls in renderer menu code
+- Forward [MENU] tagged logs to main process
+- Main process receives and logs with appropriate context
+
+**Benefits**:
+- Cleaner renderer console for debugging actual issues
+- All operational logs in one place (main console)
+- Easier to identify real problems vs routine operations
+

@@ -1751,58 +1751,53 @@ export class MainWindow {
     const isIdeMode = this.context.runEnvironment.ideMode;
     const mode = this.controlLineMode;
     
-    // Build the script using string replacement for the mode value
-    // Wrap in IIFE to avoid variable redeclaration errors
-    const updateScript = `
-      (function() {
-        const toolbar = document.getElementById('toolbar');
-        if (toolbar) {
-          // Find the reset button (may be DTR or RTS from previous state)
-          let resetButton = document.getElementById('reset-toggle');
-          
-          // If old-style buttons exist, update their IDs for compatibility
-          if (!resetButton) {
-            const dtrButton = document.getElementById('dtr-toggle');
-            const rtsButton = document.getElementById('rts-toggle');
-            if (dtrButton) {
-              dtrButton.id = 'reset-toggle';
-              resetButton = dtrButton;
-            } else if (rtsButton) {
-              rtsButton.id = 'reset-toggle';
-              resetButton = rtsButton;
-            }
-          }
-          
-          // Update button text and data attribute
-          if (resetButton) {
-            resetButton.textContent = '__MODE__';
-            resetButton.dataset.line = '__MODE__';
-          }
-          
-          // Find checkbox and update its data attribute
-          let resetCheckbox = document.getElementById('reset-checkbox');
-          
-          // If old-style checkboxes exist, update their IDs
-          if (!resetCheckbox) {
-            const dtrCheckbox = document.getElementById('dtr-checkbox');
-            const rtsCheckbox = document.getElementById('rts-checkbox');
-            if (dtrCheckbox) {
-              dtrCheckbox.id = 'reset-checkbox';
-              resetCheckbox = dtrCheckbox;
-            } else if (rtsCheckbox) {
-              rtsCheckbox.id = 'reset-checkbox';
-              resetCheckbox = rtsCheckbox;
-            }
-          }
-          
-          if (resetCheckbox) {
-            resetCheckbox.dataset.line = '__MODE__';
+    // Update the button text without destroying it  
+    this.safeExecuteJS(`
+      const toolbar = document.getElementById('toolbar');
+      if (toolbar) {
+        // Find the reset button (may be DTR or RTS from previous state)
+        let resetButton = document.getElementById('reset-toggle');
+        
+        // If old-style buttons exist, update their IDs for compatibility
+        if (!resetButton) {
+          const dtrButton = document.getElementById('dtr-toggle');
+          const rtsButton = document.getElementById('rts-toggle');
+          if (dtrButton) {
+            dtrButton.id = 'reset-toggle';
+            resetButton = dtrButton;
+          } else if (rtsButton) {
+            rtsButton.id = 'reset-toggle';
+            resetButton = rtsButton;
           }
         }
-      })();
-    `.replace(/__MODE__/g, mode);
-    
-    this.safeExecuteJS(updateScript, 'update control line UI');
+        
+        // Update button text and data attribute
+        if (resetButton) {
+          resetButton.textContent = '${mode}';
+          resetButton.dataset.line = '${mode}';
+        }
+        
+        // Find checkbox and update its data attribute
+        let resetCheckbox = document.getElementById('reset-checkbox');
+        
+        // If old-style checkboxes exist, update their IDs
+        if (!resetCheckbox) {
+          const dtrCheckbox = document.getElementById('dtr-checkbox');
+          const rtsCheckbox = document.getElementById('rts-checkbox');
+          if (dtrCheckbox) {
+            dtrCheckbox.id = 'reset-checkbox';
+            resetCheckbox = dtrCheckbox;
+          } else if (rtsCheckbox) {
+            rtsCheckbox.id = 'reset-checkbox';
+            resetCheckbox = rtsCheckbox;
+          }
+        }
+        
+        if (resetCheckbox) {
+          resetCheckbox.dataset.line = '${mode}';
+        }
+      }
+    `, 'update control line UI');
     
     // Update checkbox state
     this.updateControlLineCheckboxState();
@@ -1811,14 +1806,11 @@ export class MainWindow {
   private updateControlLineCheckboxState(): void {
     // Update checkbox state based on active control line
     const state = this.controlLineMode === 'RTS' ? this.rtsState : this.dtrState;
-    // Wrap in IIFE to avoid variable redeclaration errors
     this.safeExecuteJS(`
-      (function() {
-        const resetCheckbox = document.getElementById('reset-checkbox');
-        if (resetCheckbox) {
-          resetCheckbox.checked = ${state};
-        }
-      })();
+      const resetCheckbox = document.getElementById('reset-checkbox');
+      if (resetCheckbox) {
+        resetCheckbox.checked = ${state};
+      }
     `, 'update-checkbox-state');
   }
 
@@ -2312,21 +2304,17 @@ export class MainWindow {
           
           if (resetToggle) {
             console.log('[RESET] Found reset button, attaching handler');
-            let clickCount = 0;
-            resetToggle.addEventListener('click', (event) => {
-              clickCount++;
+            resetToggle.addEventListener('click', () => {
               // Check which line is active from the button's data attribute
               const line = resetToggle.dataset.line || resetToggle.textContent;
-              console.log('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
-              console.log('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
-              console.log('[RESET] Event timestamp: ' + event.timeStamp);
+              console.log('[RESET] Button clicked for line:', line);
               
               if (line === 'RTS') {
-                console.log('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
+                console.log('[RESET] Sending toggle-rts IPC');
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                console.log('[RESET] Sending toggle-dtr IPC (click #' + clickCount + ')');
+                console.log('[RESET] Sending toggle-dtr IPC');
                 ipcRenderer.send('toggle-dtr');
               }
             });
@@ -2343,30 +2331,28 @@ export class MainWindow {
           
           if (resetCheckbox) {
             console.log('[RESET] Found reset checkbox, attaching handler');
-            let checkboxClickCount = 0;
-            // Use 'click' event instead of 'change' - click only fires for user interaction
-            resetCheckbox.addEventListener('click', (e) => {
-              checkboxClickCount++;
-              console.log('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
-              
-              // Don't prevent default - let the checkbox toggle visually for immediate feedback
-              // The IPC response will correct it if the operation fails
+            resetCheckbox.addEventListener('change', (e) => {
+              // Skip if this is a programmatic update from IPC
+              if (resetCheckbox.dataset.updating) {
+                console.log('[RESET] Skipping handler - programmatic update in progress');
+                return;
+              }
               
               // Check which line is active from the checkbox's data attribute
               const line = resetCheckbox.dataset.line || 
                            (document.getElementById('reset-toggle') || resetToggle)?.textContent;
-              console.log('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
+              console.log('[RESET] Checkbox changed for line:', line);
               
               if (line === 'RTS') {
-                console.log('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
+                console.log('[RESET] Sending toggle-rts IPC');
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                console.log('[RESET] Sending toggle-dtr IPC from checkbox click #' + checkboxClickCount);
+                console.log('[RESET] Sending toggle-dtr IPC');
                 ipcRenderer.send('toggle-dtr');
               }
             });
-            console.log('[RESET] Reset checkbox click handler attached successfully');
+            console.log('[RESET] Reset checkbox handler attached successfully');
           } else {
             console.log('[RESET] Reset checkbox not found in DOM');
           }
@@ -2432,9 +2418,11 @@ export class MainWindow {
             console.log('[IPC] Received DTR state update:', state);
             const checkbox = document.getElementById('reset-checkbox');
             if (checkbox && checkbox.dataset.line === 'DTR') {
-              // Simply update the checkbox - no flags needed since we use click event
+              // Use dataset flag to prevent loops instead of modifying handlers
+              checkbox.dataset.updating = 'true';
               checkbox.checked = state;
-              console.log('[DTR] Checkbox display updated to:', state);
+              delete checkbox.dataset.updating;
+              console.log('[DTR] Checkbox updated to:', state);
             }
           });
           
@@ -2443,9 +2431,11 @@ export class MainWindow {
             console.log('[IPC] Received RTS state update:', state);
             const checkbox = document.getElementById('reset-checkbox');
             if (checkbox && checkbox.dataset.line === 'RTS') {
-              // Simply update the checkbox - no flags needed since we use click event
+              // Use dataset flag to prevent loops instead of modifying handlers
+              checkbox.dataset.updating = 'true';
               checkbox.checked = state;
-              console.log('[RTS] Checkbox display updated to:', state);
+              delete checkbox.dataset.updating;
+              console.log('[RTS] Checkbox updated to:', state);
             }
           });
           
@@ -2520,13 +2510,9 @@ export class MainWindow {
     ipcMain.removeAllListeners('menu-about');
     
     // DTR/RTS Toggle Handlers
-    let dtrToggleCount = 0;
     ipcMain.on('toggle-dtr', async () => {
-      dtrToggleCount++;
-      console.log(`[IPC] Received toggle-dtr request #${dtrToggleCount}`);
-      console.log(`[IPC] Current DTR state before toggle: ${this.dtrState}`);
+      console.log('[IPC] Received toggle-dtr request');
       await this.toggleDTR();
-      console.log(`[IPC] DTR state after toggle: ${this.dtrState}`);
     });
     
     ipcMain.on('toggle-rts', async () => {
@@ -4631,18 +4617,13 @@ export class MainWindow {
 
   private async toggleDTR(): Promise<void> {
     // DTR Toggle: State Management (press-on/press-off, NOT auto-toggle)
-    const previousState = this.dtrState;
     const newState = !this.dtrState;
-    this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START ======`);
-    this.logMessage(`[DTR TOGGLE] Previous state: ${previousState}`);
-    this.logMessage(`[DTR TOGGLE] New state will be: ${newState}`);
-    this.logMessage(`[DTR TOGGLE] Stack trace: ${new Error().stack?.split('\n').slice(1, 4).join(' -> ')}`);
+    this.logMessage(`[DTR TOGGLE] Setting DTR to: ${newState} (was ${this.dtrState})`);
     
     if (this._serialPort) {
       try {
-        this.logMessage(`[DTR TOGGLE] Calling setDTR(${newState}) on serial port...`);
         await this._serialPort.setDTR(newState);
-        this.logMessage(`[DTR TOGGLE] Hardware DTR line successfully set to: ${newState}`);
+        this.logMessage(`[DTR TOGGLE] DTR line set to: ${newState}`);
         
         // Only update state after successful hardware change
         this.dtrState = newState;
@@ -4681,11 +4662,9 @@ export class MainWindow {
     
     // Update checkbox via webContents send (IPC)
     if (this.mainWindow?.webContents) {
-      this.logMessage(`[DTR TOGGLE] Sending IPC update-dtr-state with value: ${this.dtrState}`);
       this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
     }
-    this.logMessage(`[DTR TOGGLE] Final DTR state: ${this.dtrState ? 'ON' : 'OFF'}`);
-    this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE END ======`);
+    this.logMessage(`[DTR TOGGLE] State changed to ${this.dtrState ? 'ON' : 'OFF'}`);
   }
 
   private async toggleRTS(): Promise<void> {

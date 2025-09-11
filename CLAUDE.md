@@ -2,16 +2,12 @@
 
 Essential guidance for Claude Code in PNut-Term-TS repository.
 
-## 🎯 CRITICAL: SESSION START PROTOCOL (EXECUTE IMMEDIATELY)
+## 🎯 SESSION START PROTOCOL
 
-**MANDATORY ON SESSION START/RESUME:**
-
+**MANDATORY ON SESSION START:**
 ```bash
-mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
-# Provides: current tasks, context state, next recommendations - everything needed
+mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ```
-
-**ALWAYS execute this command FIRST before any other work.**
 
 ### 🏔️ SESSION MINDSET - TECHNICAL CLIMBING
 **Before ANY work**: Remember we follow **Technical Climbing Methodology**
@@ -21,55 +17,17 @@ mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
 - **Never fall below protection** (don't break working functionality)
 - **Document immediately** when something works or fails
 
-## 📚 WORK TYPE GUIDANCE - READ FIRST
+## 📚 WORK TYPE QUICK REFERENCE
 
-### Starting New Work - Document Dispatch System
+| Work Type | Primary Docs | Key Focus |
+|-----------|-------------|-----------|
+| 🐛 **Debug/Fix** | `CODE-REPAIR-METHODOLOGY.md`, `TEST-DRIVEN-DEBUGGING.md` | Surgical fixes, test-first |
+| 🔧 **Feature** | `TECHNICAL-CLIMBING.md`, `SYSTEMATIC-CHANGE-PROCESS.md` | Build on protection, impact analysis |
+| 🧪 **Testing** | `TESTING-STANDARDS.md`, `tests/README-TESTING-STANDARDS.md` | Byte-perfect validation |
+| 🏗️ **Architecture** | `ARCHITECTURE.md`, `SHARED-COMPONENT-REQUIREMENTS.md` | Preserve working systems |
+| 📝 **Documentation** | `REPOSITORY-ORGANIZATION.md` | Current state first |
 
-**Before ANY work**, identify work type and read required guidance:
-
-### 🏔️ **UNIVERSAL FOUNDATION - READ FIRST FOR ALL WORK TYPES**
-**MANDATORY**: `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Core philosophy for making progress while placing protection
-
-### 🐛 **DEBUGGING/BUG FIXING**
-Required Reading Order:
-1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: protection through tests + documentation
-2. `DOCs/pure-process/CODE-REPAIR-METHODOLOGY.md` - What NOT to do, surgical fixes only
-3. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Tests are truth, systematic debugging  
-4. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Component analysis, dependency planning
-5. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - How to test in this codebase
-
-### 🔧 **FEATURE DEVELOPMENT**
-Required Reading Order:
-1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: building on working protection
-2. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Test-first development
-3. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Change impact planning
-4. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - Testing patterns
-5. `DOCs/project-specific/ARCHITECTURE.md` - System understanding
-
-### 🧪 **TEST CREATION/FIXING**
-Required Reading Order:
-1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: tests as protection
-2. `DOCs/project-specific/TESTING-STANDARDS.md` - Byte-perfect validation requirements
-3. `tests/README-TESTING-STANDARDS.md` - Test patterns and templates
-4. `DOCs/project-specific/TESTING-FRAMEWORK-INTEGRATION.md` - Component testing patterns
-5. `DOCs/pure-process/TEST-DRIVEN-DEBUGGING-METHODOLOGY.md` - Testing discipline
-
-### 🏗️ **ARCHITECTURE CHANGES**
-Required Reading Order:
-1. 🏔️ `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md` - Foundation: preserve working systems
-2. `DOCs/pure-process/CODE-REPAIR-METHODOLOGY.md` - Preserve working systems
-3. `DOCs/project-specific/ARCHITECTURE.md` - Current system understanding
-4. `DOCs/pure-process/SHARED-COMPONENT-REQUIREMENTS.md` - Component boundaries
-5. `DOCs/project-specific/SYSTEMATIC-CHANGE-PROCESS.md` - Change impact analysis
-
-### 📝 **DOCUMENTATION WORK**
-Required Reading Order:
-1. `DOCs/REPOSITORY-ORGANIZATION.md` - File organization
-2. `DOCs/project-specific/ARCHITECTURE.md` - System overview
-3. Current documentation being updated
-4. Related process documentation
-
-**Process**: Read required docs → Understand current state → Plan approach → Get approval → Execute
+**Foundation for ALL work**: `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md`
 
 ### 🔄 **LIVING DOCUMENTATION SYSTEM**
 - **Process breakdowns** → Upgrade documentation immediately  
@@ -83,15 +41,6 @@ Required Reading Order:
 - **Standard**: Defined features, tests → normal execution
 - **Simple**: Typos, configs → quick mode
 
-## 🎯 CRITICAL: SESSION START PROTOCOL (EXECUTE IMMEDIATELY)
-
-**MANDATORY ON SESSION START/RESUME:**
-```bash
-mcp__todo-mcp__context_resume    # Primary recovery command - WHERE WAS I?
-# Provides: current tasks, context state, next recommendations
-```
-
-**ALWAYS execute this command FIRST before any other work.**
 
 ## Todo MCP Mastery Operations
 
@@ -288,13 +237,92 @@ npm test -s                     # Silent mode
 2. Document: completed/in-progress/next
 3. Resume: todo list + read state file
 
+## 🗺️ PROJECT QUICK NAVIGATION
+
+### Core Structure
+```
+src/
+├── pnut-term-ts.ts          # Entry point
+├── classes/
+│   ├── mainWindow.ts        # Main application window
+│   ├── debugWindowBase.ts   # Base class for all debug windows
+│   ├── debug*.ts            # Debug window implementations (12 types)
+│   │   ├── debugBitmapWin.ts     # Bitmap visualization
+│   │   ├── debugCOGWindow.ts     # COG state display
+│   │   ├── debugDebuggerWin.ts   # Debugger interface
+│   │   ├── debugFftWin.ts        # FFT spectrum analysis
+│   │   ├── debugLoggerWin.ts     # Message logging
+│   │   ├── debugLogicWin.ts      # Logic analyzer
+│   │   ├── debugMidiWin.ts       # MIDI interface
+│   │   ├── debugPlotWin.ts       # Data plotting
+│   │   ├── debugScopeWin.ts      # Oscilloscope
+│   │   ├── debugScopeXyWin.ts    # XY scope display
+│   │   └── debugTermWin.ts       # Terminal interface
+│   ├── shared/              # Shared components (52 files!)
+│   │   ├── debuggerProtocol.ts   # Protocol handling
+│   │   ├── debuggerDataManager.ts # Data management
+│   │   ├── windowRouter.ts       # Window message routing
+│   │   ├── serialReceiver.ts     # Serial data reception
+│   │   ├── dtrResetManager.ts    # DTR/RTS control
+│   │   ├── canvasRenderer.ts     # Canvas rendering utils
+│   │   ├── fftProcessor.ts       # FFT calculations
+│   │   ├── cogHistoryManager.ts  # COG state tracking
+│   │   └── ... (44 more shared utilities)
+│   ├── binaryPlayer.ts      # Binary playback system
+│   ├── logger.ts            # Logging infrastructure
+│   ├── performanceMonitor.ts # Performance tracking
+│   └── preferencesDialog.ts # Settings management
+├── utils/
+│   ├── htmlUtils.ts         # HTML generation helpers
+│   └── timerUtils.ts        # Timing utilities
+├── assets/fonts/            # Parallax.ttf (custom font)
+└── electron/
+    └── electron.js          # Electron main process
+```
+
+### Test Structure
+```
+tests/
+├── *.test.ts                     # Test files (flat structure)
+│   ├── serialReceiver.test.ts
+│   ├── messageClassificationRouting.test.ts
+│   ├── streamingTest.test.ts
+│   ├── routerLoggingPerformance.test.ts
+│   ├── scopeXyRenderer.test.ts
+│   ├── debuggerRenderer.test.ts
+│   ├── displaySpecParser.test.ts
+│   └── ... (more test files)
+└── README-TESTING-STANDARDS.md  # Test patterns/templates
+```
+
+### Key Commands
+```bash
+# Build & Test
+npm run build                              # Build TypeScript
+scripts/claude/run_tests_sequentially.sh  # Safe test execution (NOT npm test)
+npm test -- specific.test.ts              # Single test OK
+
+# Package (macOS only)
+./scripts/create-electron-ready-package.sh
+
+# Development
+npm run dev                               # Watch mode
+```
+
+### Quick Access Patterns
+- **Debug windows**: `src/classes/debug*.ts` (12 window types)
+- **Shared utilities**: `src/classes/shared/*.ts` (52 components!)
+- **Window routing**: `src/classes/shared/windowRouter.ts`
+- **Serial handling**: `src/classes/shared/serialReceiver.ts`
+- **Protocol layer**: `src/classes/shared/debuggerProtocol.ts`
+- **Data management**: `src/classes/shared/debuggerDataManager.ts`
+- **Tests**: `tests/*.test.ts`
+
 ## Project
 
 **PNut-Term-TS**: Cross-platform debug terminal for Parallax Propeller2, Electron/TypeScript
 
-**Build**: `npm run build` → `npm test` → `dist/pnut-term-ts.min.js`
-
-**Architecture**: `src/pnut-term-ts.ts` → `MainWindow` → Debug windows extend `DebugWindowBase`
+**Architecture Flow**: `pnut-term-ts.ts` → `MainWindow` → `DebugWindowBase` → Individual debug windows
 
 ## References
 

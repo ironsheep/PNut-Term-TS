@@ -1643,46 +1643,41 @@ export class DebugScopeWindow extends DebugWindowBase {
         const canvasMarginValue = this.canvasMargin;
         
         // Generate clean JavaScript code for dashed line and text without fragile string replacement
+        // Use IIFE to avoid variable redeclaration errors
         const jsCode = `
-          const canvas = document.getElementById('${canvasName}');
-          if (!canvas) return;
-          
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          
-          // Measure text width
-          ctx.font = '9px Arial';
-          const textMetrics = ctx.measureText('${escapedValueText}');
-          const textWidth = textMetrics.width;
-          const canWidth = canvas.width - (2 * ${canvasMarginValue});
-          
-          // Draw the dashed line after the text
-          ctx.save();
-          ctx.strokeStyle = '${gridColor}';
-          ctx.lineWidth = ${horizLineWidth};
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset});
-          ctx.lineTo(canWidth, ${lineYOffset});
-          ctx.stroke();
-          ctx.restore();
-          
-          // Draw the text
-          ctx.font = '9px Arial';
-          ctx.fillStyle = '${textColor}';
-          ctx.fillText('${escapedValueText}', ${textXOffset}, ${textYOffset});
-        }
+          (function() {
+            const canvas = document.getElementById('${canvasName}');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            // Measure text width
+            ctx.font = '9px Arial';
+            const textMetrics = ctx.measureText('${escapedValueText}');
+            const textWidth = textMetrics.width;
+            const canWidth = canvas.width - (2 * ${canvasMarginValue});
+            
+            // Draw the dashed line after the text
+            ctx.save();
+            ctx.strokeStyle = '${gridColor}';
+            ctx.lineWidth = ${horizLineWidth};
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(textWidth + 8 + ${lineXOffset}, ${lineYOffset});
+            ctx.lineTo(canWidth, ${lineYOffset});
+            ctx.stroke();
+            ctx.restore();
+            
+            // Draw the text
+            ctx.font = '9px Arial';
+            ctx.fillStyle = '${textColor}';
+            ctx.fillText('${escapedValueText}', ${textXOffset}, ${textYOffset});
+          })();
         `;
         
         this.logMessage(`DEBUG: Generated jsCode for drawHorizontalLineAndValue: ${jsCode.substring(0, 300)}...`);
-        this.debugWindow.webContents.executeJavaScript(`(function() { 
-          try {
-            ${jsCode}
-          } catch (e) {
-            console.error('Scope legend JS error:', e.message, e.stack);
-            return 'ERROR: ' + e.message;
-          }
-        })();`).catch((error) => {
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
           this.logMessage(`Failed to execute line & text JavaScript: ${error}`);
         });
       } catch (error) {
