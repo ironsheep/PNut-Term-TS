@@ -1757,20 +1757,12 @@ export class MainWindow {
       (function() {
         const toolbar = document.getElementById('toolbar');
         if (toolbar) {
-          // Find the reset button (may be DTR or RTS from previous state)
+          // Find the reset button - it should ALWAYS have the same ID
           let resetButton = document.getElementById('reset-toggle');
           
-          // If old-style buttons exist, update their IDs for compatibility
+          // Fallback for legacy IDs (but don't change them)
           if (!resetButton) {
-            const dtrButton = document.getElementById('dtr-toggle');
-            const rtsButton = document.getElementById('rts-toggle');
-            if (dtrButton) {
-              dtrButton.id = 'reset-toggle';
-              resetButton = dtrButton;
-            } else if (rtsButton) {
-              rtsButton.id = 'reset-toggle';
-              resetButton = rtsButton;
-            }
+            resetButton = document.getElementById('dtr-toggle') || document.getElementById('rts-toggle');
           }
           
           // Update button text and data attribute
@@ -1780,22 +1772,16 @@ export class MainWindow {
           }
           
           // Find checkbox and update its data attribute
+          // The checkbox should ALWAYS have the same ID - don't rename it!
           let resetCheckbox = document.getElementById('reset-checkbox');
           
-          // If old-style checkboxes exist, update their IDs
+          // Fallback for legacy IDs (but don't change them)
           if (!resetCheckbox) {
-            const dtrCheckbox = document.getElementById('dtr-checkbox');
-            const rtsCheckbox = document.getElementById('rts-checkbox');
-            if (dtrCheckbox) {
-              dtrCheckbox.id = 'reset-checkbox';
-              resetCheckbox = dtrCheckbox;
-            } else if (rtsCheckbox) {
-              rtsCheckbox.id = 'reset-checkbox';
-              resetCheckbox = rtsCheckbox;
-            }
+            resetCheckbox = document.getElementById('dtr-checkbox') || document.getElementById('rts-checkbox');
           }
           
           if (resetCheckbox) {
+            // Only update the data attribute to indicate which line is active
             resetCheckbox.dataset.line = '__MODE__';
           }
         }
@@ -2310,8 +2296,10 @@ export class MainWindow {
             resetToggle = document.getElementById('dtr-toggle') || document.getElementById('rts-toggle');
           }
           
-          if (resetToggle) {
+          if (resetToggle && !resetToggle.dataset.handlerAttached) {
             console.log('[RESET] Found reset button, attaching handler');
+            // Mark that we've attached the handler to prevent duplicates
+            resetToggle.dataset.handlerAttached = 'true';
             let clickCount = 0;
             resetToggle.addEventListener('click', (event) => {
               clickCount++;
@@ -2331,6 +2319,8 @@ export class MainWindow {
               }
             });
             console.log('[RESET] Reset button handler attached successfully');
+          } else if (resetToggle) {
+            console.log('[RESET] Reset button handler already attached, skipping');
           } else {
             console.log('[RESET] Reset button not found in DOM');
           }
@@ -2341,16 +2331,20 @@ export class MainWindow {
             resetCheckbox = document.getElementById('dtr-checkbox') || document.getElementById('rts-checkbox');
           }
           
-          if (resetCheckbox) {
+          if (resetCheckbox && !resetCheckbox.dataset.handlerAttached) {
             console.log('[RESET] Found reset checkbox, attaching handler');
+            // Mark that we've attached the handler to prevent duplicates
+            resetCheckbox.dataset.handlerAttached = 'true';
             let checkboxClickCount = 0;
             // Use 'click' event instead of 'change' - click only fires for user interaction
             resetCheckbox.addEventListener('click', (e) => {
               checkboxClickCount++;
               console.log('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
+              console.log('[RESET] Current checkbox state before click: ' + e.target.checked);
               
-              // Don't prevent default - let the checkbox toggle visually for immediate feedback
-              // The IPC response will correct it if the operation fails
+              // IMPORTANT: Prevent default to avoid double-toggle
+              // The checkbox will be updated by the IPC response only
+              e.preventDefault();
               
               // Check which line is active from the checkbox's data attribute
               const line = resetCheckbox.dataset.line || 
@@ -2367,6 +2361,8 @@ export class MainWindow {
               }
             });
             console.log('[RESET] Reset checkbox click handler attached successfully');
+          } else if (resetCheckbox) {
+            console.log('[RESET] Reset checkbox handler already attached, skipping');
           } else {
             console.log('[RESET] Reset checkbox not found in DOM');
           }
@@ -4629,11 +4625,14 @@ export class MainWindow {
     }
   }
 
+  private toggleDTRCallCount = 0;
+  
   private async toggleDTR(): Promise<void> {
     // DTR Toggle: State Management (press-on/press-off, NOT auto-toggle)
+    this.toggleDTRCallCount++;
     const previousState = this.dtrState;
     const newState = !this.dtrState;
-    this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START ======`);
+    this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START (Call #${this.toggleDTRCallCount}) ======`);
     this.logMessage(`[DTR TOGGLE] Previous state: ${previousState}`);
     this.logMessage(`[DTR TOGGLE] New state will be: ${newState}`);
     this.logMessage(`[DTR TOGGLE] Stack trace: ${new Error().stack?.split('\n').slice(1, 4).join(' -> ')}`);
