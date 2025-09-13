@@ -4827,7 +4827,7 @@ export class MainWindow {
     
     const result = await dialog.showOpenDialog(this.mainWindow!, {
       title: 'Select Binary File to Download to RAM',
-      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin'] }],
+      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
       properties: ['openFile']
     });
     
@@ -4889,7 +4889,7 @@ export class MainWindow {
   private async downloadToFlash(): Promise<void> {
     const result = await dialog.showOpenDialog(this.mainWindow!, {
       title: 'Select Binary File to Download to Flash',
-      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin'] }],
+      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
       properties: ['openFile']
     });
     

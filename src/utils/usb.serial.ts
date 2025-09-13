@@ -26,6 +26,7 @@ export class UsbSerial extends EventEmitter {
   private _rtsValue: boolean = false;
   private _downloadChecksumGood = false;
   private _downloadResponse: string = '';
+  private _checksumVerified: boolean = false;
   private checkedForP2: boolean = false;
 
   constructor(ctx: Context, deviceNode: string) {
@@ -138,6 +139,14 @@ export class UsbSerial extends EventEmitter {
     return this._serialPort.isOpen;
   }
 
+  public getChecksumStatus(): { verified: boolean; valid: boolean; response: string } {
+    return {
+      verified: this._checksumVerified,
+      valid: this._downloadChecksumGood,
+      response: this._downloadResponse
+    };
+  }
+
   public getIdStringOrError(): [string, string] {
     return [this._p2DeviceId, this._latestError];
   }
@@ -191,32 +200,33 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async downloadNoCheck(uint8Bytes: Uint8Array) {
-    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
+    const requestStartDownload: string = 'Prop_Txt ~';
     const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
     if (this.usbConnected && uint8Bytes.length > 0) {
       const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
       await this.write(`${requestStartDownload}\r`);
       //await this.write(dataBase64);
-      // Break this up into 128 char lines with > sync chars starting each
+      // Break this up into lines with > sync chars starting each
       const LINE_LENGTH: number = 1024;
       // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
-      const lineCount: number = dataBase64.length + LINE_LENGTH - 1 / LINE_LENGTH;
-      const lastLineLength: number = dataBase64.length % LINE_LENGTH;
+      const lineCount: number = Math.ceil(dataBase64.length / LINE_LENGTH);
+      const lastLineLength: number = dataBase64.length % LINE_LENGTH || LINE_LENGTH;
       for (let index = 0; index < lineCount; index++) {
         const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
         const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
         await this.write('>' + singleLine);
       }
-      await this.write(' ~\r');
+      await this.write('~\r');
     }
   }
 
-  public async download(uint8Bytes: Uint8Array, needsP2CheckumVerify: boolean): Promise<void> {
+  public async download(uint8Bytes: Uint8Array, needsP2ChecksumVerify: boolean): Promise<void> {
     // reset our status indicators
     this._downloadChecksumGood = false;
     this._downloadResponse = '';
+    this._checksumVerified = false;
     //
-    const requestStartDownload: string = '> Prop_Txt 0 0 0 0';
+    const requestStartDownload: string = 'Prop_Txt ~';
     const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
     this.logMessage(`* download() - port open (${this._serialPort.isOpen})`);
     // wait for port to be open...
@@ -230,12 +240,12 @@ export class UsbSerial extends EventEmitter {
         // NOTE: Base64 encoding in typescript works by taking 3 bytes of data and encoding it as 4 printable
         //  characters.If the total number of bytes is not a multiple of 3, the output is padded with one or
         //  two = characters to make the length a multiple of 4.
-        const dataBase64: string = Buffer.from(uint8Bytes).toString('base64').replace(/=+$/, '');
-        // Break this up into 128 char lines with > sync chars starting each
+        const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
+        // Break this up into lines with > sync chars starting each
         const LINE_LENGTH: number = 512;
         // silicon doc says: It's a good idea to start each Base64 data line with a ">" character, to keep the baud rate tightly calibrated.
         const lineCount: number = Math.ceil(dataBase64.length / LINE_LENGTH); // Corrected lineCount calculation
-        const lastLineLength: number = dataBase64.length % LINE_LENGTH;
+        const lastLineLength: number = dataBase64.length % LINE_LENGTH || LINE_LENGTH;
         // log what we are sending (or first part of it)
         this.dumpBytes(uint8Bytes, 0, 99, 'download-source');
         const dumpBytes = dataBase64.length < 100 ? dataBase64 : `${dataBase64.substring(0, 99)}...`;
@@ -248,22 +258,38 @@ export class UsbSerial extends EventEmitter {
           const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
           await this.write('>' + singleLine);
         }
-        // PNut doesn't send a leading space or a trailing CR/LF
-        if (needsP2CheckumVerify) {
-          const READ_RETRY_COUNT: number = 100;
-          this.stopReadListener();
-          this.write('?'); // removed AWAIT to allow read to happen earlier
-          let readValue: string = '';
-          let retryCount = READ_RETRY_COUNT;
-          while (null === (readValue = this._serialPort.read(1)) && --retryCount > 0) {
-            await waitMSec(1);
+        // Send terminator and optionally verify checksum
+        await this.write('~\r');
+        
+        if (needsP2ChecksumVerify) {
+          // After sending terminator, P2 will validate checksum and respond
+          // '.' means checksum good and program started
+          // '?' means checksum bad
+          this.logMessage(`* Waiting for P2 checksum verification...`);
+          
+          // Give P2 time to validate and respond
+          await waitMSec(100);
+          
+          // Check if we got a response in our detection buffer
+          let response = '?'; // Default to error
+          if (this._p2DetectionBuffer.includes('.')) {
+            response = '.';
+            this._downloadChecksumGood = true;
+            this._checksumVerified = true;
+            this.logMessage(`* P2 checksum verification: PASSED ('.' received)`);
+          } else if (this._p2DetectionBuffer.includes('?')) {
+            response = '?';
+            this._downloadChecksumGood = false;
+            this._checksumVerified = true;
+            this.logMessage(`* P2 checksum verification: FAILED ('?' received)`);
+          } else {
+            this._checksumVerified = false;
+            this.logMessage(`* P2 checksum verification: NO RESPONSE (buffer: '${this._p2DetectionBuffer}')`);
           }
-          //const response = await this._serialPort.read(1);
-          //const statusMsg: string = this._downloadChecksumGood ? 'Checksum OK' : 'Checksum BAD';
-          this.startReadListener();
-          this.logMessage(`* download(RAM) end w/[${readValue}]`);
-        } else {
-          await this.write('~');
+          
+          this._downloadResponse = response;
+          // Clear detection buffer after checking
+          this._p2DetectionBuffer = '';
         }
       }
     } catch (error) {
@@ -334,12 +360,15 @@ export class UsbSerial extends EventEmitter {
     
     // Process complete lines
     for (const line of lines) {
-      if (line.startsWith('Prop_Ver ') && line.length === 10) {
+      if (line.startsWith('Prop_Ver ')) {
         this.logMessage(`  -- P2 DETECTED [${line}]`);
-        const idLetter = line.charAt(9);
+        // Extract version code after "Prop_Ver " - could be 1 or 2 chars (e.g., "A" or "Au")
+        const versionCode = line.substring(9).trim();
+        // Use first character for version identification
+        const idLetter = versionCode.charAt(0);
         this._p2DeviceId = this.descriptionForVerLetter(idLetter);
         this._p2loadLimit = this.limitForVerLetter(idLetter);
-        this.logMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit}`);
+        this.logMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`);
         // Clear buffer after successful detection
         this._p2DetectionBuffer = '';
         break;
@@ -374,9 +403,8 @@ export class UsbSerial extends EventEmitter {
     // toggle the propPlug DTR line
     console.log(`[USB] PRIVATE toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
-    await waitSec(1);
     await this.setDtr(true);
-    await waitSec(1);
+    await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setDtr(false);
     console.log(`[USB] PRIVATE toggleDTR() EXIT`);
   }
@@ -385,9 +413,8 @@ export class UsbSerial extends EventEmitter {
     // toggle the propPlug RTS line
     console.log(`[USB] PRIVATE toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
-    await waitSec(1);
     await this.setRts(true);
-    await waitSec(1);
+    await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setRts(false);
     console.log(`[USB] PRIVATE toggleRTS() EXIT`);
   }
@@ -404,18 +431,18 @@ export class UsbSerial extends EventEmitter {
 
   private async requestP2IDString(): Promise<void> {
     // request P2 ID-String
-    const requestPropType: string = '> Prop_Chk 0 0 0 0';
+    const requestPropType: string = 'Prop_Chk';
     this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
-    await waitSec(1);
+    await waitMSec(100);  // Brief delay for stabilization
     
     // Use RTS instead of DTR if RTS override is enabled
     if (this.context.runEnvironment.rtsOverride) {
       await this.setRts(true);
-      await waitSec(1);
+      await waitMSec(10);  // 10ms pulse per spec
       await this.setRts(false);
     } else {
       await this.setDtr(true);
-      await waitSec(1);
+      await waitMSec(10);  // 10ms pulse per spec
       await this.setDtr(false);
     }
     //this.logMessage(`  -- plug reset!`);
@@ -431,7 +458,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async requestPropellerVersion(): Promise<boolean> {
-    const requestPropType: string = '> Prop_Chk 0 0 0 0';
+    const requestPropType: string = 'Prop_Chk';
     const didCheck = this.checkedForP2 == false;
     if (this.checkedForP2 == false) {
       this.logMessage(`* requestPropellerVersion() - port open (${this._serialPort.isOpen})`);
@@ -613,8 +640,10 @@ export class UsbSerial extends EventEmitter {
 
   private descriptionForVerLetter(idLetter: string): string {
     let desiredInterp: string = '?unknown-propversion?';
+    // Note: Spec indicates "Au" for revision A silicon (production)
+    // We use the first letter for version identification
     if (idLetter === 'A') {
-      desiredInterp = 'FPGA - 8 cogs, 512KB hub, 48 smart pins 63..56, 39..0, 80MHz';
+      desiredInterp = 'P2X8C4M64P Rev A - 8 cogs, 512KB hub, 64 smart pins (production silicon)';
     } else if (idLetter === 'B') {
       desiredInterp = 'FPGA - 4 cogs, 256KB hub, 12 smart pins 63..60/7..0, 80MHz';
     } else if (idLetter === 'C') {

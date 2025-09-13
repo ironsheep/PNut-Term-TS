@@ -167,6 +167,17 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.idString = Date.now().toString();
     this.scopeXyCanvasId = `scope-xy-canvas-${this.idString}`;
     this.windowTitle = 'SCOPE_XY';
+    
+    // CRITICAL FIX: Create window immediately, don't wait for first message
+    // This ensures windows appear when created, matching Logic/Scope/Term pattern
+    this.logMessage('Creating SCOPE_XY window immediately in constructor');
+    
+    // Initialize with default parameters if not provided
+    const defaultLineParts = ['SCOPE_XY', displaySpec.displayName || 'ScopeXY'];
+    this.createDebugWindow(defaultLineParts);
+    
+    // CRITICAL: Mark window as ready to process messages
+    this.onWindowReady();
   }
 
   /**
@@ -209,21 +220,23 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         }
       });
       
-      // Inject mouse tracking JavaScript
-      const trackingScript = `
-        document.addEventListener('mousemove', (e) => {
-          const canvas = document.getElementById('${this.scopeXyCanvasId}');
-          if (canvas) {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
-          }
+      // Wait for window to load before injecting JavaScript
+      this.debugWindow.webContents.once('did-finish-load', () => {
+        const trackingScript = `
+          document.addEventListener('mousemove', (e) => {
+            const canvas = document.getElementById('${this.scopeXyCanvasId}');
+            if (canvas) {
+              const rect = canvas.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
+            }
+          });
+        `;
+        
+        this.debugWindow!.webContents.executeJavaScript(trackingScript).catch(err => {
+          console.error('Failed to inject mouse tracking:', err);
         });
-      `;
-      
-      this.debugWindow.webContents.executeJavaScript(trackingScript).catch(err => {
-        console.error('Failed to inject mouse tracking:', err);
       });
     }
   }
@@ -334,6 +347,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.windowContent = `
       <html>
         <head>
+          <meta charset="UTF-8"></meta>
+          <title>${this.windowTitle}</title>
           <style>
             body { margin: 0; padding: 0; background: black; overflow: hidden; }
             canvas { display: block; image-rendering: auto; }
@@ -383,13 +398,27 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       fullscreenable: false,
       title: this.windowTitle,
       webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
+        nodeIntegration: true,
+        contextIsolation: false
       }
     });
 
-    // Load content
-    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this.windowContent)}`);
+    // Load content - Debug the HTML being loaded
+    console.log(`[SCOPEXY] Loading HTML content (${this.windowContent.length} chars):`, this.windowContent.substring(0, 200));
+    
+    // Add error handling for loadURL
+    this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(this.windowContent)}`).catch(error => {
+      console.error(`[SCOPEXY] loadURL failed:`, error);
+    });
+    
+    // Debug: Add webContents error handlers  
+    this.debugWindow.webContents.on('did-fail-load', (event: any, errorCode: number, errorDescription: string, validatedURL: string) => {
+      console.error(`[SCOPEXY] did-fail-load: code=${errorCode}, desc="${errorDescription}", url="${validatedURL}"`);
+    });
+    
+    this.debugWindow.webContents.on('render-process-gone', (event: any, details: any) => {
+      console.error(`[SCOPEXY] render process gone:`, details);
+    });
 
     // Pattern A: Use ready-to-show event like working prototype windows
     this.debugWindow.once('ready-to-show', () => {
@@ -413,10 +442,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     });
     
     // Initialize renderer after content loads
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
+      this.logMessage('at did-finish-load');
+      
       // Initialize renderer after canvas is ready
       this.initializeRenderer();
       this.render();
+      
+      // CRITICAL: Mark window as ready to process messages
+      this.onWindowReady();
     });
 
     // Handle window close
@@ -432,18 +466,35 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Create the renderer
     this.renderer = new ScopeXyRenderer();
     
-    // Draw initial grid if not in polar mode
-    if (!this.polar && this.debugWindow && !this.debugWindow.isDestroyed()) {
-      const gridScript = this.renderer.drawCircularGrid(
+    // Always initialize canvas with basic setup to ensure renderer context works
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      // Simple canvas initialization - no complex chaining
+      const clearScript = this.renderer.clear(
         this.scopeXyCanvasId,
-        this.radius,
-        this.radius,
-        this.radius,
-        8
+        this.radius * 2,
+        this.radius * 2,
+        this.backgroundColor
       );
-      this.debugWindow.webContents.executeJavaScript(gridScript).catch(err => {
-        console.error('Grid render error:', err);
+      
+      // Execute basic clear to establish canvas context
+      this.debugWindow.webContents.executeJavaScript(clearScript).catch(err => {
+        console.error('Canvas clear error:', err);
       });
+      
+      // For non-polar mode, also draw grid (but don't chain promises)
+      if (!this.polar) {
+        const gridScript = this.renderer.drawCircularGrid(
+          this.scopeXyCanvasId,
+          this.radius,  // centerX (canvas center)
+          this.radius,  // centerY (canvas center)
+          this.radius,  // grid radius
+          8             // divisions
+        );
+        
+        this.debugWindow.webContents.executeJavaScript(gridScript).catch(err => {
+          console.error('Grid render error:', err);
+        });
+      }
     }
   }
 
@@ -461,6 +512,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
    * Update content with new data
    */
   protected processMessageImmediate(lineParts: string[]): void {
+    // Window is now created in constructor, so just process the message
     const unparsedCommand = lineParts.join(' ');
     this.handleData(unparsedCommand);
   }
@@ -793,10 +845,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       // Draw grid
       const gridScript = this.renderer.drawCircularGrid(
         this.scopeXyCanvasId,
-        this.radius,
-        this.radius,
-        this.radius,
-        8
+        this.radius,  // centerX (canvas center)
+        this.radius,  // centerY (canvas center) 
+        this.radius,  // grid radius
+        8             // divisions
       );
       
       return this.debugWindow.webContents.executeJavaScript(gridScript);

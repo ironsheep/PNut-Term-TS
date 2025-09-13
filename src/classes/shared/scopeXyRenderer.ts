@@ -129,21 +129,19 @@ export class ScopeXyRenderer {
     const colorStr = `#${color.toString(16).padStart(6, '0')}`;
     
     // Generate JavaScript code
-    return `
-      const canvas = document.getElementById('${canvasId}');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.save();
-          ctx.globalAlpha = ${opacity / 255};
-          ctx.fillStyle = '${colorStr}';
-          ctx.beginPath();
-          ctx.arc(${x}, ${y}, ${radius}, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-      }
-    `;
+    return `const canvas = document.getElementById('${canvasId}');
+if (canvas) {
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.save();
+    ctx.globalAlpha = ${opacity / 255};
+    ctx.fillStyle = '${colorStr}';
+    ctx.beginPath();
+    ctx.arc(${x}, ${y}, ${radius}, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}`;
   }
 
   /**
@@ -166,54 +164,52 @@ export class ScopeXyRenderer {
   ): string {
     const colorStr = `#${this.gridColor.toString(16).padStart(6, '0')}`;
     
-    return `
-      const canvas = document.getElementById('${canvasId}');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.save();
-          ctx.strokeStyle = '${colorStr}';
-          ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.3;
-          
-          // Draw concentric circles
-          const circleCount = 4;
-          for (let i = 1; i <= circleCount; i++) {
-            const r = (${radius} / circleCount) * i;
-            ctx.beginPath();
-            ctx.arc(${centerX}, ${centerY}, r, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          
-          // Draw radial lines
-          for (let i = 0; i < ${divisions}; i++) {
-            const angle = (i / ${divisions}) * Math.PI * 2;
-            const x = ${centerX} + Math.cos(angle) * ${radius};
-            const y = ${centerY} + Math.sin(angle) * ${radius};
-            
-            ctx.beginPath();
-            ctx.moveTo(${centerX}, ${centerY});
-            ctx.lineTo(x, y);
-            ctx.stroke();
-          }
-          
-          // Draw center crosshair
-          ctx.globalAlpha = 0.5;
-          
-          ctx.beginPath();
-          ctx.moveTo(${centerX - radius}, ${centerY});
-          ctx.lineTo(${centerX + radius}, ${centerY});
-          ctx.stroke();
-          
-          ctx.beginPath();
-          ctx.moveTo(${centerX}, ${centerY - radius});
-          ctx.lineTo(${centerX}, ${centerY + radius});
-          ctx.stroke();
-          
-          ctx.restore();
-        }
-      }
-    `;
+    return `const canvas = document.getElementById('${canvasId}');
+if (canvas) {
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.save();
+    ctx.strokeStyle = '${colorStr}';
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.3;
+    
+    // Draw concentric circles
+    const circleCount = 4;
+    for (let i = 1; i <= circleCount; i++) {
+      const r = (${radius} / circleCount) * i;
+      ctx.beginPath();
+      ctx.arc(${centerX}, ${centerY}, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Draw radial lines
+    for (let i = 0; i < ${divisions}; i++) {
+      const angle = (i / ${divisions}) * Math.PI * 2;
+      const x = ${centerX} + Math.cos(angle) * ${radius};
+      const y = ${centerY} + Math.sin(angle) * ${radius};
+      
+      ctx.beginPath();
+      ctx.moveTo(${centerX}, ${centerY});
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    
+    // Draw center crosshair
+    ctx.globalAlpha = 0.5;
+    
+    ctx.beginPath();
+    ctx.moveTo(${centerX - radius}, ${centerY});
+    ctx.lineTo(${centerX + radius}, ${centerY});
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(${centerX}, ${centerY - radius});
+    ctx.lineTo(${centerX}, ${centerY + radius});
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+}`;
   }
 
   /**
@@ -228,15 +224,13 @@ export class ScopeXyRenderer {
   public clear(canvasId: string, width: number, height: number, backgroundColor: number): string {
     const colorStr = `#${backgroundColor.toString(16).padStart(6, '0')}`;
     
-    return `
-      const canvas = document.getElementById('${canvasId}');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '${colorStr}';
-          ctx.fillRect(0, 0, ${width}, ${height});
-        }
-      }
-    `;
+    return `const canvas = document.getElementById('${canvasId}');
+if (canvas) {
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '${colorStr}';
+    ctx.fillRect(0, 0, ${width}, ${height});
+  }
+}`;
   }
 }

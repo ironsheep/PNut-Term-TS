@@ -7,6 +7,17 @@
 // src/classes/objectImage.ts
 const SUPPRESS_LOG_MSG: boolean = true;
 
+// Known signatures for binary component detection
+const SIGNATURES = {
+  // First 16 bytes of Spin2_debugger.obj (v43)
+  DEBUGGER_V43: new Uint8Array([0x50, 0xf8, 0x08, 0xfc, 0x51, 0x04, 0x08, 0xfc,
+                                0x41, 0xa2, 0x60, 0xfd, 0x51, 0x6a, 0x10, 0xfc]),
+  
+  // Flash loader signature - first 8 bytes should be sufficient to identify
+  // The flash loader starts with specific COG initialization code
+  FLASH_LOADER: new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]) // Will be replaced with actual signature
+};
+
 export class ObjectImage {
   private isLogging: boolean = false;
   private _id: string;
@@ -189,6 +200,66 @@ export class ObjectImage {
       checkSum -= this.readLong(offset);
     }
     return checkSum;
+  }
+
+  /**
+   * Detects if the binary image contains a debugger
+   * @returns true if debugger signature is found
+   */
+  public hasDebugger(): boolean {
+    // Check at the beginning of the image for debugger signature
+    if (this._objOffset >= SIGNATURES.DEBUGGER_V43.length) {
+      const headerBytes = this._objImage.subarray(0, SIGNATURES.DEBUGGER_V43.length);
+      return this.arraysEqual(headerBytes, SIGNATURES.DEBUGGER_V43);
+    }
+    return false;
+  }
+
+  /**
+   * Detects if the binary image already contains a flash loader
+   * Flash loader is typically at the beginning of a .binf file
+   * @returns true if flash loader signature is found
+   */
+  public hasFlashLoader(): boolean {
+    // Flash loader detection - check first 1KB for flash loader pattern
+    // The actual flash loader has specific patterns we can check for
+    // For now, check if first long is 0 (typical flash loader start)
+    // and if there's a jump instruction pattern within first 16 bytes
+    if (this._objOffset >= 16) {
+      // Check for typical flash loader pattern:
+      // - First long is often 0 (checksum placeholder)
+      // - Followed by specific COG instructions
+      const firstLong = this.readLong(0);
+      const secondLong = this.readLong(4);
+      const thirdLong = this.readLong(8);
+      
+      // Flash loader typically starts with checksum placeholder (0) 
+      // and has specific instruction patterns
+      // This is a simplified check - can be made more robust
+      if (firstLong === 0 && secondLong !== 0) {
+        // Additional check: look for typical flash loader size (1KB)
+        // and application data starting at offset 0x400
+        if (this._objOffset > 0x400) {
+          // Check if there's a 'Prop' signature at 0x400 (application start)
+          const appSignature = this.readLong(0x400);
+          if (appSignature === 0x706f7250) { // 'Prop'
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Compares two Uint8Array objects for equality
+   */
+  private arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
   }
 
   public calculateChecksum(fromOffset: number, toOffset: number): number {

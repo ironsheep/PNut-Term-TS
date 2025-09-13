@@ -22,29 +22,37 @@ export class Downloader {
     let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
     const failedToLoad: boolean = loadUint8ArrayFailed(binaryImage) ? true : false;
     if (failedToLoad == false) {
-      //this.logMessage(`  -- load image = (${binaryImage.length}) bytes`);
+      // Create ObjectImage to analyze the binary
+      const imageAnalyzer = new ObjectImage('analyzer');
+      imageAnalyzer.adopt(binaryImage);
+      
+      // Check if binary already has flash loader
+      const hasFlashLoader = imageAnalyzer.hasFlashLoader();
+      // Check if binary has debugger (indicates debug mode compilation)
+      const hasDebugger = imageAnalyzer.hasDebugger();
+      
+      const fileExt = binaryFilespec.toLowerCase().endsWith('.binf') ? '.binf' : '.bin';
+      this.logMessage(`  -- Loading ${fileExt} file: hasDebugger=${hasDebugger}, hasFlashLoader=${hasFlashLoader}`);
+      
       let target: string = 'RAM';
-      const writeToFlash: boolean = toFlash;
-      const needsP2ChecksumVerify: boolean = false;
-      if (writeToFlash) {
+      let actuallyWriteToFlash: boolean = toFlash;
+      let needsP2ChecksumVerify: boolean = false;
+      
+      // If flash loader already present, don't add another one
+      if (hasFlashLoader && toFlash) {
+        this.logMessage(`  -- Flash loader already present in binary, using regular download`);
+        actuallyWriteToFlash = false;
+        target = 'FLASH (pre-loaded)';
+      }
+      
+      if (actuallyWriteToFlash) {
         target = 'FLASH';
-        binaryImage = await this.insertP2FlashLoader(binaryImage);
-        this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes`);
-        //writeBinaryFile(binaryImage, `${binaryFilespec}fext`);
-        /*
-        } else {
-        // not flashing append a checksum then ask P2 for verification
-        //
-        // don't enable verify until we get it working
+        binaryImage = await this.insertP2FlashLoader(binaryImage, hasDebugger);
+        this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes, debug=${hasDebugger}`);
+      } else {
+        // For RAM downloads, enable checksum verification
         needsP2ChecksumVerify = true;
-        const tmpImage = new ObjectImage('temp-image');
-        tmpImage.adopt(binaryImage);
-        tmpImage.padToLong();
-        //const imageSum = 0xdeadf00d; //  TESTING
-        const imageSum = tmpImage.loadRamChecksum();
-        tmpImage.appendLong(imageSum);
-        binaryImage = tmpImage.rawUint8Array.subarray(0, tmpImage.offset);
-        //*/
+        this.logMessage(`  -- ${target} download with checksum verification enabled`);
       }
       //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
       // write to USB PropPlug
@@ -53,9 +61,19 @@ export class Downloader {
       let noDownloadError: boolean = true;
       try {
         if (await this.serialPort.deviceIsPropellerV2()) {
-          await this.serialPort.download(binaryImage, needsP2ChecksumVerify);
-          //downloaderTerminal.sendText(`# DONE`);
-          //await usbPort.changeBaudRate(115200);
+          const downloadResult = await this.serialPort.download(binaryImage, needsP2ChecksumVerify);
+          // Check if checksum verification was requested and handle result
+          if (needsP2ChecksumVerify) {
+            const checksumStatus = this.serialPort.getChecksumStatus();
+            if (checksumStatus.verified) {
+              this.logMessage(`  -- Checksum verification: ${checksumStatus.valid ? 'PASSED' : 'FAILED'}`);
+              if (!checksumStatus.valid) {
+                throw new Error('P2 checksum verification failed - program may be corrupted');
+              }
+            } else {
+              this.logMessage(`  -- Checksum verification: No response from P2`);
+            }
+          }
         } else {
           //downloaderTerminal.sendText(`# ERROR: No Propller v2 found`);
           noDownloadError = false;
@@ -80,7 +98,7 @@ export class Downloader {
     }
   }
 
-  public async insertP2FlashLoader(binaryImage: Uint8Array): Promise<Uint8Array> {
+  public async insertP2FlashLoader(binaryImage: Uint8Array, enableDebug: boolean = false): Promise<Uint8Array> {
     // PNut insert_flash_loader:
     const objImage = new ObjectImage('bin-w/loader');
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -113,17 +131,17 @@ export class Downloader {
     this.logMessage(`  -- load flash loader`);
     objImage.rawUint8Array.set(flashLoaderBin, 0);
     objImage.setOffsetTo(flashLoaderLength + binaryImage.length);
-    /*
-    const isDebugMode: boolean = toolchainConfiguration.debugEnabled;
-    if (isDebugMode) {
-      // debug is on
+    // Set debug mode based on whether debugger was detected in the binary
+    if (enableDebug) {
+      // debug is on - set the debug pin in the flash loader
       const debugInstru = objImage.readLong(_debugnop_);
       objImage.replaceLong(debugInstru | debugPinTx, _debugnop_);
+      this.logMessage(`  -- Flash loader debug enabled with TX pin ${debugPinTx}`);
     } else {
       // debug is off
       objImage.replaceLong(_NOP_INSTRU_, _debugnop_);
+      this.logMessage(`  -- Flash loader debug disabled`);
     }
-    */
     // compute negative sum of all data
     const checkSum: number = objImage.flasherChecksum();
     // insert checksum into loader
