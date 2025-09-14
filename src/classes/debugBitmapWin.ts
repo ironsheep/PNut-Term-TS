@@ -933,8 +933,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Calculate window size based on bitmap and dotsize
     const canvasWidth = this.state.width * this.state.dotSizeX;
     const canvasHeight = this.state.height * this.state.dotSizeY;
-    const windowWidth = canvasWidth + 20; // Add some padding
-    const windowHeight = canvasHeight + 40; // Add title bar height
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(canvasWidth, canvasHeight);
+    const windowWidth = windowDimensions.width;
+    const windowHeight = windowDimensions.height;
     
     // Check if position was explicitly set or use WindowPlacer
     let windowX = this.initialPosition?.x || 0;

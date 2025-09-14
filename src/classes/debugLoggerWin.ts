@@ -243,8 +243,12 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Assuming 10px per character width, 18px per line height
     const charWidth = 10;
     const lineHeight = 18;
-    const windowWidth = (80 * charWidth) + 20;  // 80 chars + padding
-    const windowHeight = (24 * lineHeight) + 50; // 24 lines + status bar
+    // Use base class method for consistent chrome adjustments
+    const contentWidth = (80 * charWidth) + 20;  // 80 chars + padding
+    const contentHeight = (24 * lineHeight) + 10; // 24 lines + small padding
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const windowWidth = windowDimensions.width;
+    const windowHeight = windowDimensions.height;
     
     // Use WindowPlacer for intelligent positioning
     // For now, let's use a simpler approach to ensure it appears

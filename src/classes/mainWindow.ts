@@ -966,27 +966,35 @@ export class MainWindow {
     // Use file:// URLs directly - base64 makes the HTML too large
     const resourcesPath = process.resourcesPath;
     let fontPath: string;
-    
+
     if (resourcesPath) {
-      // Packaged app: fonts are in Resources/app/fonts
-      fontPath = path.join(resourcesPath, 'app', 'fonts', 'Parallax.ttf');
+      // Packaged app: fonts are directly in Resources/fonts (NOT Resources/app/fonts)
+      fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
     } else {
-      // Development: fonts are in src/assets/fonts  
-      fontPath = path.join(__dirname, '../../../', 'src', 'assets', 'fonts', 'Parallax.ttf');
+      // Development: fonts are in the fonts directory
+      fontPath = path.join(__dirname, '../../fonts', 'Parallax.ttf');
     }
-    
+
     // Check if file exists
     const fs = require('fs');
     if (!fs.existsSync(fontPath)) {
       console.error('[FONT] Parallax font not found at:', fontPath);
-      // Try the built fonts folder as fallback
-      const builtFontPath = path.join(__dirname, '../../../', 'fonts', 'Parallax.ttf');
-      if (fs.existsSync(builtFontPath)) {
-        fontPath = builtFontPath;
-        console.log('[FONT] Using built font path:', fontPath);
+      // Try alternate paths
+      const alternatePaths = [
+        path.join(resourcesPath || __dirname, 'app', 'fonts', 'Parallax.ttf'),
+        path.join(__dirname, '../../../fonts', 'Parallax.ttf'),
+        path.join(__dirname, '../../../src/assets/fonts', 'Parallax.ttf')
+      ];
+
+      for (const altPath of alternatePaths) {
+        if (fs.existsSync(altPath)) {
+          fontPath = altPath;
+          console.log('[FONT] Found font at alternate path:', fontPath);
+          break;
+        }
       }
     }
-    
+
     const fileUrl = `file://${fontPath.replace(/\\/g, '/')}`;
     console.log('[FONT] Using Parallax font URL:', fileUrl);
     return fileUrl;
@@ -996,24 +1004,32 @@ export class MainWindow {
     // Use file:// URLs directly - base64 makes the HTML too large
     const resourcesPath = process.resourcesPath;
     let fontPath: string;
-    
+
     if (resourcesPath) {
-      // Packaged app: fonts are in Resources/app/fonts
-      fontPath = path.join(resourcesPath, 'app', 'fonts', '3270-Regular.ttf');
+      // Packaged app: fonts are directly in Resources/fonts (NOT Resources/app/fonts)
+      fontPath = path.join(resourcesPath, 'fonts', '3270-Regular.ttf');
     } else {
-      // Development: fonts are in src/assets/fonts
-      fontPath = path.join(__dirname, '../../../', 'src', 'assets', 'fonts', '3270-Regular.ttf');
+      // Development: fonts are in the fonts directory
+      fontPath = path.join(__dirname, '../../fonts', '3270-Regular.ttf');
     }
-    
+
     // Check if file exists
     const fs = require('fs');
     if (!fs.existsSync(fontPath)) {
       console.error('[FONT] IBM 3270 font not found at:', fontPath);
-      // Try the built fonts folder as fallback
-      const builtFontPath = path.join(__dirname, '../../../', 'fonts', '3270-Regular.ttf');
-      if (fs.existsSync(builtFontPath)) {
-        fontPath = builtFontPath;
-        console.log('[FONT] Using built font path:', fontPath);
+      // Try alternate paths
+      const alternatePaths = [
+        path.join(resourcesPath || __dirname, 'app', 'fonts', '3270-Regular.ttf'),
+        path.join(__dirname, '../../../fonts', '3270-Regular.ttf'),
+        path.join(__dirname, '../../../src/assets/fonts', '3270-Regular.ttf')
+      ];
+
+      for (const altPath of alternatePaths) {
+        if (fs.existsSync(altPath)) {
+          fontPath = altPath;
+          console.log('[FONT] Found font at alternate path:', fontPath);
+          break;
+        }
       }
     }
     
@@ -1683,11 +1699,35 @@ export class MainWindow {
     const htmlContent = isIdeMode ? this.createIDEModeHTML() : this.createStandardHTML();
 
     console.log('[WINDOW] Loading HTML content, length:', htmlContent.length);
-    
-    this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`).catch((error: any) => {
-      console.error('[WINDOW] Failed to load HTML:', error);
-      console.error('[WINDOW] HTML content preview (first 500 chars):', htmlContent.substring(0, 500));
-    });
+
+    // Write HTML to temp file to allow file:// font URLs to work
+    const fs = require('fs');
+    const os = require('os');
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `pnut-main-${Date.now()}.html`);
+
+    try {
+      fs.writeFileSync(tempFile, htmlContent);
+      console.log('[WINDOW] Wrote HTML to temp file:', tempFile);
+
+      // Load the temp file instead of using data URL
+      this.mainWindow.loadFile(tempFile).catch((error: any) => {
+        console.error('[WINDOW] Failed to load HTML file:', error);
+        console.error('[WINDOW] HTML content preview (first 500 chars):', htmlContent.substring(0, 500));
+      });
+
+      // Clean up temp file after a delay
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(tempFile);
+          console.log('[WINDOW] Cleaned up temp file:', tempFile);
+        } catch (err) {
+          // File might already be gone, that's ok
+        }
+      }, 5000);
+    } catch (error) {
+      console.error('[WINDOW] Failed to write temp file:', error);
+    }
 
     // Add error handler for window crashes
     this.mainWindow.webContents.on('did-fail-load', (event: any, errorCode: any, errorDescription: any) => {

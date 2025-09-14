@@ -360,10 +360,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       </html>
     `;
 
-    // Calculate window dimensions
-    // Add chrome overhead: +20 for window borders, +40 for title bar (matching Logic/Scope windows)
-    const windowWidth = size + 20;
-    const windowHeight = size + 40;
+    // Calculate window dimensions using base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(size, size);
+    const windowWidth = windowDimensions.width;
+    const windowHeight = windowDimensions.height;
     
     // Determine position based on hasExplicitPosition flag
     let windowX: number;

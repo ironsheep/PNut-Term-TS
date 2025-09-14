@@ -401,8 +401,13 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // set height so no scroller by default - use calculated size based on actual content
     const channelLabelHeight = 13; // 13 pixels for channel labels 10pt + gap below
-    const windowHeight = windowCanvasHeight + channelLabelHeight + this.contentInset * 2 + 40; // +40 for title bar
-    const windowWidth = this.displaySpec.nbrSamples * 2 + this.contentInset * 2 + 20; // +20 for window borders
+    const contentHeight = windowCanvasHeight + channelLabelHeight + this.contentInset * 2;
+    const contentWidth = this.displaySpec.nbrSamples * 2 + this.contentInset * 2;
+
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const windowHeight = windowDimensions.height;
+    const windowWidth = windowDimensions.width;
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;

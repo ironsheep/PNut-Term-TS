@@ -1,5 +1,15 @@
 /** @format */
 
+/**
+ * Debug Terminal Window Implementation
+ *
+ * Pascal source reference:
+ * /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
+ *
+ * This TypeScript implementation is derived from the Pascal TERM window
+ * implementation and should maintain functional parity with the original.
+ */
+
 // this is our common logging mechanism
 //  TODO: make it context/runtime option aware
 
@@ -119,13 +129,14 @@ export interface TermDisplaySpec {
 export class DebugTermWindow extends DebugWindowBase {
   private displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
   private isFirstDisplayData: boolean = true;
-  private contentInset: number = 6; // 6 pixels from left and right of window
+  private contentInset: number = 0; // No inset since canvas fills the window
   private borderMargin: number = 10; // 10 pixels all around
   // current terminal state
   private deferredCommands: string[] = [];
   private cursorPosition: Position = { x: 0, y: 0 };
   private selectedCombo: number = 0;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
+  private offscreenCanvasInitialized: boolean = false;
 
   constructor(ctx: Context, displaySpec: TermDisplaySpec, windowId?: string) {
     // Use the user-provided display name as the window ID for proper routing
@@ -135,7 +146,8 @@ export class DebugTermWindow extends DebugWindowBase {
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
     // adjust our contentInset for font size
-    this.contentInset = this.displaySpec.font.charWidth / 2;
+    // Keep contentInset at 0 for full canvas usage
+    // this.contentInset = this.displaySpec.font.charWidth / 2;
     
     // CRITICAL FIX: Create window immediately, don't wait for data
     // This ensures windows appear when created, even if closed before data arrives
@@ -153,6 +165,34 @@ export class DebugTermWindow extends DebugWindowBase {
       desiredValue = this.displaySpec.windowTitle;
     }
     return desiredValue;
+  }
+
+  /**
+   * Calculate font metrics specifically for terminal windows
+   * Pascal sets Font.Size = TEXTSIZE and measures the actual rendered character
+   */
+  private static calcTerminalFontMetrics(fontSize: number, metrics: FontMetrics): void {
+    // In Pascal: Font.Size := vTextSize (in points)
+    // Then measures actual TextHeight('X') and TextWidth('X')
+    // At 96 DPI, point to pixel conversion is: pixels = points * 96/72
+
+    // TEXTSIZE is the font size in points (matching Pascal)
+    metrics.textSizePts = fontSize;
+
+    // Convert points to pixels at 96 DPI (standard screen DPI)
+    // TextHeight('X') doesn't include descenders, but we need room for them
+    // Add about 25% more height for descender space
+    metrics.charHeight = Math.round(fontSize * 96 / 72 * 1.25);
+
+    // Monospace width is typically 60% of the base height (not including descender extra)
+    // This approximates Pascal's TextWidth('X')
+    metrics.charWidth = Math.round((fontSize * 96 / 72) * 0.6);
+
+    // Line height equals character height for terminal (includes descender space)
+    metrics.lineHeight = metrics.charHeight;
+
+    // Baseline is typically 80% down from top of character cell
+    metrics.baseline = Math.round(metrics.charHeight * 0.8);
   }
 
   static parseTermDeclaration(lineParts: string[]): [boolean, TermDisplaySpec] {
@@ -187,8 +227,18 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.textColor = textColor.rgbString;
     displaySpec.delayedUpdate = false;
     displaySpec.hideXY = false;
-    // by default we have combo #0 defined
-    displaySpec.colorCombos.push({ fgcolor: displaySpec.textColor, bgcolor: displaySpec.window.background });
+
+    // Initialize default color combos to match Pascal DefaultTermColors
+    // Pascal: (clOrange, clBlack, clBlack, clOrange, clLime, clBlack, clBlack, clLime)
+    // Use full brightness (15) for colors to match Pascal's full color values
+    const orangeColor = new DebugColor('ORANGE', 15).rgbString;
+    const blackColor = new DebugColor('BLACK', 15).rgbString;
+    const limeColor = new DebugColor('LIME', 15).rgbString;
+
+    displaySpec.colorCombos.push({ fgcolor: orangeColor, bgcolor: blackColor }); // Combo 0
+    displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: orangeColor }); // Combo 1
+    displaySpec.colorCombos.push({ fgcolor: limeColor, bgcolor: blackColor });   // Combo 2
+    displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: limeColor });   // Combo 3
 
     // now parse overrides to defaults
     console.log(`CL: at overrides TermDisplaySpec: ${lineParts}`);
@@ -248,9 +298,11 @@ export class DebugTermWindow extends DebugWindowBase {
           case 'TEXTSIZE':
             // ensure we have one more value
             if (index < lineParts.length - 1) {
-              const sizeInPts = Spin2NumericParser.parseCount(lineParts[++index]);
-              if (sizeInPts !== null && sizeInPts >= 6 && sizeInPts <= 200) {
-                DebugWindowBase.calcMetricsForFontPtSize(sizeInPts, displaySpec.font);
+              const textSize = Spin2NumericParser.parseCount(lineParts[++index]);
+              if (textSize !== null && textSize >= 6 && textSize <= 200) {
+                // For TERM windows, TEXTSIZE represents the full row height
+                // This is different from other windows which use standard font metrics
+                DebugTermWindow.calcTerminalFontMetrics(textSize, displaySpec.font);
               } else {
                 console.log(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);
                 isValid = false;
@@ -261,15 +313,20 @@ export class DebugTermWindow extends DebugWindowBase {
             }
             break;
           case 'BACKCOLOR':
-            // ensure we have one more value
+            // BACKCOLOR sets the window background color (matches Pascal's KeyColor(vBackColor))
+            // Note: This is deprecated in favor of COLOR parameter
             if (index < lineParts.length - 1) {
               const colorName: string = lineParts[++index];
               let colorBrightness: number = 8;
               if (index < lineParts.length - 1) {
                 colorBrightness = Number(lineParts[++index]);
               }
-              const textColor = new DebugColor(colorName, colorBrightness);
-              displaySpec.textColor = textColor.rgbString;
+              const backColor = new DebugColor(colorName, colorBrightness);
+              displaySpec.window.background = backColor.rgbString;
+              // Also update the default color combo's background
+              if (displaySpec.colorCombos.length > 0) {
+                displaySpec.colorCombos[0].bgcolor = backColor.rgbString;
+              }
             } else {
               console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
@@ -292,11 +349,14 @@ export class DebugTermWindow extends DebugWindowBase {
                 // have both fg and bg colors, make a color combo
                 const channelColor: ColorCombo = { fgcolor: fgColor, bgcolor: bgColor };
                 if (colorComboIdx == 0) {
-                  // remove our default color combo
+                  // Clear all default color combos when first COLOR is specified
                   displaySpec.colorCombos = [];
                 }
                 displaySpec.colorCombos.push(channelColor);
                 colorComboIdx++;
+                // Reset for next pair
+                fgColor = undefined;
+                bgColor = undefined;
               } else if (!haveName) {
                 // color name
                 const newColorName = element.toUpperCase();
@@ -371,18 +431,27 @@ export class DebugTermWindow extends DebugWindowBase {
     //  window width should be (#samples * 2) + (2 * 2); // 2 is for the 2 borders
     //  window height should be (max-min+1) + (2 * chanInset); // chanInset is for space above channel and below channel
 
-    // set height so no scroller by default
+    // TEXTSIZE represents the full row height including spacing
+    // Use lineHeight which equals TEXTSIZE for proper window sizing
     const canvasHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
-    // for mono-spaced font width 1/2 ht in pts
+    // for mono-spaced font width based on character width
     const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
     this.logMessage(
       `  -- TERM canvas size=(${canvasWidth}x${canvasHeight}) char=(${this.displaySpec.font.charWidth}x${this.displaySpec.font.charHeight}) ln=(${this.displaySpec.font.lineHeight})`
     );
-    const divHeight = canvasHeight + 4; // 4 is fudge number
-    const divWidth = canvasWidth + 4; // 4 is fudge number
+    // Calculate the margin size (half character width) to match Pascal
+    const marginSize = Math.floor(this.displaySpec.font.charWidth / 2);
 
-    const windowHeight = divHeight + this.borderMargin * 2;
-    const windowWidth = divWidth + this.borderMargin * 2;
+    // Add margins to canvas dimensions for total content size
+    const divHeight = canvasHeight + (marginSize * 2);
+    const divWidth = canvasWidth + (marginSize * 2);
+
+    // Calculate window dimensions with chrome adjustments using base class method
+    const contentHeight = divHeight;
+    const contentWidth = divWidth;
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const windowHeight = windowDimensions.height;
+    const windowWidth = windowDimensions.width;
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
@@ -423,6 +492,34 @@ export class DebugTermWindow extends DebugWindowBase {
       windowPlacer.registerWindow(`term-${this.displaySpec.displayName}`, this.debugWindow);
     }
     
+    // Measure actual font metrics after window is created
+    this.debugWindow.webContents.once('dom-ready', () => {
+      // Measure the actual 'X' height in the Parallax font
+      const measureCode = `
+        (function() {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          ctx.font = '${this.displaySpec.font.textSizePts}pt Parallax, monospace';
+
+          // Measure 'X' which has no descenders
+          const metrics = ctx.measureText('X');
+          const width = metrics.width;
+
+          // Get font metrics if available
+          const actualHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
+          const capHeight = metrics.fontBoundingBoxAscent;
+
+          console.log('[FONT METRICS] Font size: ${this.displaySpec.font.textSizePts}pt');
+          console.log('[FONT METRICS] Measured X width:', width);
+          console.log('[FONT METRICS] Actual height:', actualHeight);
+          console.log('[FONT METRICS] Cap height:', capHeight);
+          console.log('[FONT METRICS] Our calculated charHeight: ${this.displaySpec.font.charHeight}');
+          console.log('[FONT METRICS] Our calculated charWidth: ${this.displaySpec.font.charWidth}');
+        })();
+      `;
+      this.debugWindow?.webContents.executeJavaScript(measureCode);
+    });
+
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Term window will show...');
@@ -468,32 +565,31 @@ export class DebugTermWindow extends DebugWindowBase {
             src: url('${this.getParallaxFontUrl()}') format('truetype');
           }
           body {
-            display: flex;
-            flex-direction: column;
             margin: 0;
             padding: 0;
             font-family: 'Parallax', sans-serif;
             font-size: ${this.displaySpec.font.textSizePts}pt;
-            //background-color: ${this.displaySpec.window.background};
-            background-color: rgb(140, 52, 130);
+            background-color: ${this.displaySpec.window.background};
             color: ${this.displaySpec.textColor};
-            overflow: hidden; /* CRITICAL: Prevent scrollbars */
+            overflow: hidden;
+            width: 100%;
+            height: 100vh;
           }
           #terminal-data {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            flex-grow: 0;
-            flex-shrink: 0;
-            padding: 10px;
-            //background-color:rgb(55, 170, 136);
+            display: block;
+            margin: 0;
+            padding: ${marginSize}px;
             background-color: ${this.displaySpec.window.background};
-            width: ${divWidth}px; /* Set a fixed width */
-            height: ${divHeight}px; /* Set a fixed height */
+            width: 100%;
+            height: 100%;
+            position: relative;
+            box-sizing: border-box;
           }
           canvas {
             // background-color:rgb(9, 201, 28);
             background-color: ${this.displaySpec.window.background};
+            /* Canvas positioned at top-left of its container with padding */
+            display: block;
             margin: 0;
           }
         </style>
@@ -510,7 +606,29 @@ export class DebugTermWindow extends DebugWindowBase {
 
     try {
       this.debugWindow.setMenu(null);
-      this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
+
+      // Write HTML to temp file to allow file:// font URLs to work
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const tempDir = os.tmpdir();
+      const tempFile = path.join(tempDir, `pnut-term-${this.windowId}-${Date.now()}.html`);
+
+      fs.writeFileSync(tempFile, htmlContent);
+      this.logMessage(`Wrote HTML to temp file: ${tempFile}`);
+
+      // Load the temp file instead of using data URL
+      this.debugWindow.loadFile(tempFile);
+
+      // Clean up temp file after a delay
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(tempFile);
+          this.logMessage(`Cleaned up temp file: ${tempFile}`);
+        } catch (err) {
+          // File might already be gone, that's ok
+        }
+      }, 5000);
     } catch (error) {
       this.logMessage(`Failed to load URL: ${error}`);
     }
@@ -518,6 +636,8 @@ export class DebugTermWindow extends DebugWindowBase {
     // now hook load complete event so we can label and paint the grid/min/max, etc.
     this.debugWindow.webContents.on('did-finish-load', () => {
       this.logMessage('at did-finish-load');
+      // Initialize offscreen canvas for double buffering (matches Pascal's Bitmap[0])
+      this.initializeOffscreenCanvas(canvasWidth, canvasHeight);
     });
   }
 
@@ -607,8 +727,9 @@ export class DebugTermWindow extends DebugWindowBase {
           this.updateTermDisplay(`${action}`);
         }
       } else if (lineParts[index].toUpperCase() == 'UPDATE') {
-        // update window with latest content
-        this.pushDisplayListToTerm();
+        // update window with latest content - copy offscreen to visible
+        // This matches Pascal's UPDATE command which does BitmapToCanvas(0)
+        this.updateVisibleCanvas();
       } else if (lineParts[index].toUpperCase() == 'CLEAR') {
         // clear window
         this.clearTerm();
@@ -649,107 +770,170 @@ export class DebugTermWindow extends DebugWindowBase {
   }
 
   private updateTermDisplay(text: string): void {
-    // add action to our display list
+    // Process display command immediately (drawing happens to offscreen buffer)
+    // Visibility depends on update mode (matches Pascal's approach)
     //this.logMessage(`* updateTermDisplay(${text})`);
-    this.deferredCommands.push(text);
+
     // Window already created in constructor, just mark that we have data
     if (this.isFirstDisplayData) {
       this.isFirstDisplayData = false;
     }
-    // if not deferred update the act on display list now
-    if (this.displaySpec.delayedUpdate == false) {
-      // act on display list now
-      this.pushDisplayListToTerm();
+
+    // Process the command immediately (it will draw to offscreen buffer)
+    this.processDisplayCommand(text);
+  }
+
+  /**
+   * Copy offscreen canvas to visible canvas
+   * Matches Pascal's BitmapToCanvas(0)
+   */
+  private updateVisibleCanvas(): void {
+    if (!this.debugWindow) return;
+
+    const jsCode = `
+      (function() {
+        if (window.offscreenCanvas && window.visibleCtx) {
+          // Copy entire offscreen canvas to visible canvas
+          window.visibleCtx.drawImage(window.offscreenCanvas, 0, 0);
+          console.log('[TERM] Updated visible canvas from offscreen buffer');
+        }
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+      this.logMessage(`Failed to update visible canvas: ${error}`);
+    });
+  }
+
+  private processDisplayCommand(displayString: string): void {
+    // Process a single display command
+    this.logMessage(`* UPD-INFO displayString: [${displayString}]`);
+    // these will be numbers (actions) or strings (display)
+    // NOTE: 32-255 will arrive as single char strings 'char'
+    if (displayString.charAt(0) == "'") {
+      this.writeStringToTerm(displayString.substring(1, displayString.length - 1));
+    } else {
+      // this is a numeric action
+      //cursor pos cases are 2, 3 and will arrive as '2 n' or '3 n'
+      const numbers: string[] = displayString.split(' ');
+      const action: number = parseInt(numbers[0], 10);
+      switch (action) {
+        case 0:
+          // clear terminal display and home cursor
+          this.clearTerm();
+          break;
+        case 1:
+          // home cursor
+          this.cursorPosition = { x: 0, y: 0 };
+          break;
+        case 2:
+          // set column to next character value
+          if (numbers.length > 1) {
+            const column = Spin2NumericParser.parsePixel(numbers[1]);
+            if (column !== null) {
+              this.cursorPosition.x = Math.min(column, this.displaySpec.size.columns - 1);
+            } else {
+              this.logMessage(`* UPD-ERROR  invalid column value for action 2: ${numbers[1]}`);
+            }
+          } else {
+            this.logMessage(`* UPD-ERROR  missing column value for action 2`);
+          }
+          break;
+        case 3:
+          // set row to next character value
+          if (numbers.length > 1) {
+            const row = Spin2NumericParser.parsePixel(numbers[1]);
+            if (row !== null) {
+              this.cursorPosition.y = Math.min(row, this.displaySpec.size.rows - 1);
+            } else {
+              this.logMessage(`* UPD-ERROR  invalid row value for action 3: ${numbers[1]}`);
+            }
+          } else {
+            this.logMessage(`* UPD-ERROR  missing row value for action 3`);
+          }
+          break;
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+          // select color combo #0-3
+          this.selectedCombo = action - 4;
+          break;
+        case 8:
+          // backspace - matches Pascal implementation
+          if (this.cursorPosition.x !== 0 || this.cursorPosition.y !== 0) {
+            this.cursorPosition.x--;
+            if (this.cursorPosition.x < 0) {
+              // Wrap to end of previous line
+              this.cursorPosition.x = this.displaySpec.size.columns - 1;
+              this.cursorPosition.y--;
+            }
+          }
+          break;
+        case 9:
+          // move to next tab column (tabwidth 8)
+          // move cursor to next tabstop
+          const spacesToTab = 8 - (this.cursorPosition.x % 8);
+          for (let i = 0; i < spacesToTab; i++) {
+            // Use writeCharToTerm to handle wrapping properly like Pascal's TERM_Chr
+            this.writeCharToTerm(' ');
+          }
+          break;
+        case 10:
+        case 13:
+          // Handle newline - matches Pascal TERM_Chr(Chr(13))
+          this.handleNewline();
+          break;
+        default:
+          this.logMessage(`* UPD-ERROR  unknown action: ${action}`);
+          break;
+      }
     }
   }
 
-  private pushDisplayListToTerm() {
-    if (this.deferredCommands.length > 0) {
-      // act on display list now
-      this.deferredCommands.forEach((displayString) => {
-        this.logMessage(`* UPD-INFO displayString: [${displayString}]`);
-        // these will be numbers (actions) or strings (display)
-        // NOTE: 32-255 will arrive as single char strings 'char'
-        if (displayString.charAt(0) == "'") {
-          this.writeStringToTerm(displayString.substring(1, displayString.length - 1));
-        } else {
-          // this is a numeric action
-          //cursor pos cases are 2, 3 and will arrive as '2 n' or '3 n'
-          const numbers: string[] = displayString.split(' ');
-          const action: number = parseInt(numbers[0], 10);
-          switch (action) {
-            case 0:
-              // clear terminal display and home cursor
-              this.clearTerm();
-              break;
-            case 1:
-              // home cursor
-              this.cursorPosition = { x: 0, y: 0 };
-              break;
-            case 2:
-              // set column to next character value
-              if (numbers.length > 1) {
-                const column = Spin2NumericParser.parsePixel(numbers[1]);
-                if (column !== null) {
-                  this.cursorPosition.x = Math.min(column, this.displaySpec.size.columns - 1);
-                } else {
-                  this.logMessage(`* UPD-ERROR  invalid column value for action 2: ${numbers[1]}`);
-                }
-              } else {
-                this.logMessage(`* UPD-ERROR  missing column value for action 2`);
-              }
-              break;
-            case 3:
-              // set row to next character value
-              if (numbers.length > 1) {
-                const row = Spin2NumericParser.parsePixel(numbers[1]);
-                if (row !== null) {
-                  this.cursorPosition.y = Math.min(row, this.displaySpec.size.rows - 1);
-                } else {
-                  this.logMessage(`* UPD-ERROR  invalid row value for action 3: ${numbers[1]}`);
-                }
-              } else {
-                this.logMessage(`* UPD-ERROR  missing row value for action 3`);
-              }
-              break;
-            case 4:
-            case 5:
-            case 6:
-            case 7:
-              // select color combo #0-3
-              this.selectedCombo = action - 4;
-              break;
-            case 8:
-              // backspace
-              if (this.cursorPosition.x > 0) {
-                this.cursorPosition.x--;
-              }
-              break;
-            case 9:
-              // move to next tab column (tabwidth 8)
-              // move cursor to next tabstop
-              const spacesToTab = 8 - (this.cursorPosition.x % 8);
-              for (let i = 0; i < spacesToTab; i++) {
-                // Use writeCharToTerm to handle wrapping properly like Pascal's TERM_Chr
-                this.writeCharToTerm(' ');
-              }
-              break;
-            case 10:
-            case 13:
-              // reset cursor to start of next line
-              this.cursorPosition.x = 0;
-              if (this.cursorPosition.y < this.displaySpec.size.rows - 1) {
-                this.cursorPosition.y += 1;
-              }
-              break;
-            default:
-              this.logMessage(`* UPD-ERROR  unknown action: ${action}`);
-              break;
-          }
+  /**
+   * Initialize offscreen canvas for double buffering
+   * Matches Pascal's Bitmap[0] (hidden buffer)
+   */
+  private initializeOffscreenCanvas(width: number, height: number): void {
+    if (!this.debugWindow) return;
+
+    const jsCode = `
+      (function() {
+        // Create offscreen canvas for double buffering
+        window.offscreenCanvas = document.createElement('canvas');
+        window.offscreenCanvas.width = ${width};
+        window.offscreenCanvas.height = ${height};
+        window.offscreenCtx = window.offscreenCanvas.getContext('2d');
+
+        // Get reference to visible canvas
+        window.visibleCanvas = document.getElementById('text-area');
+        window.visibleCtx = window.visibleCanvas ? window.visibleCanvas.getContext('2d') : null;
+
+        // Clear both canvases with background color
+        const bgColor = '${this.displaySpec.colorCombos[0].bgcolor}';
+        if (window.offscreenCtx) {
+          window.offscreenCtx.fillStyle = bgColor;
+          window.offscreenCtx.fillRect(0, 0, ${width}, ${height});
         }
+        if (window.visibleCtx) {
+          window.visibleCtx.fillStyle = bgColor;
+          window.visibleCtx.fillRect(0, 0, ${width}, ${height});
+        }
+
+        console.log('[TERM] Offscreen canvas initialized for double buffering');
+        return 'Offscreen canvas ready';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(result => {
+        this.logMessage(`Offscreen canvas initialization: ${result}`);
+        this.offscreenCanvasInitialized = true;
+      })
+      .catch(error => {
+        this.logMessage(`Failed to initialize offscreen canvas: ${error}`);
       });
-      this.deferredCommands = []; // all done, empty the list
-    }
   }
 
   private clearTerm(): void {
@@ -759,18 +943,50 @@ export class DebugTermWindow extends DebugWindowBase {
     this.cursorPosition = { x: 0, y: 0 };
   }
 
+  /**
+   * Handle newline/carriage return - matches Pascal TERM_Chr(Chr(13))
+   */
+  private handleNewline(): void {
+    this.cursorPosition.x = 0;
+    if (this.cursorPosition.y < this.displaySpec.size.rows - 1) {
+      // Not at bottom - just move to next row
+      this.cursorPosition.y += 1;
+    } else {
+      // At bottom - scroll content up and stay on last row
+      this.scrollUp();
+      // cursorPosition.y stays at last row
+    }
+  }
+
   private clearTextArea(): void {
     if (this.debugWindow) {
       this.logMessage(`at clearTextArea()`);
       try {
         const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
         this.logMessage(`  -- bgcolor=[${bgcolor}]`);
-        const jsCode = this.canvasRenderer.clearCanvasWithBackground('text-area', bgcolor);
+
+        // Clear offscreen canvas (Bitmap[0] in Pascal)
+        const jsCode = `
+          (function() {
+            // Clear offscreen canvas
+            if (window.offscreenCtx) {
+              window.offscreenCtx.fillStyle = '${bgcolor}';
+              window.offscreenCtx.fillRect(0, 0, window.offscreenCanvas.width, window.offscreenCanvas.height);
+
+              // In immediate mode (not delayed update), also update visible canvas
+              if (!${this.displaySpec.delayedUpdate}) {
+                window.visibleCtx.fillStyle = '${bgcolor}';
+                window.visibleCtx.fillRect(0, 0, window.visibleCanvas.width, window.visibleCanvas.height);
+              }
+            }
+          })()
+        `;
+
         this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
           this.logMessage(`Failed to execute clear terminal JavaScript: ${error}`);
         });
       } catch (error) {
-        console.error('Failed to update text:', error);
+        console.error('Failed to clear text area:', error);
       }
     }
   }
@@ -789,54 +1005,78 @@ export class DebugTermWindow extends DebugWindowBase {
 
   /**
    * Write a single character to the terminal at the current cursor position
+   * Matches Pascal's TERM_Chr procedure behavior
    */
   private writeCharToTerm(char: string): void {
     if (!this.debugWindow) return;
-    
+
+    // Handle carriage return
+    if (char === '\r' || char === '\n') {
+      this.handleNewline();
+      return;
+    }
+
+    // Check for line wrap BEFORE writing (matches Pascal: "if vCol = vCols then TERM_Chr(Chr(13));")
+    if (this.cursorPosition.x >= this.displaySpec.size.columns) {
+      this.handleNewline();
+    }
+
     try {
       const textHeight: number = this.displaySpec.font.charHeight;
       const textSizePts: number = this.displaySpec.font.textSizePts;
-      const lineHeight: number = this.displaySpec.font.lineHeight;
+      const charHeight: number = this.displaySpec.font.charHeight;
       const charWidth: number = this.displaySpec.font.charWidth;
-      const textYOffset: number = this.cursorPosition.y * lineHeight + this.contentInset;
-      const textXOffset: number = this.cursorPosition.x * charWidth + this.contentInset;
-      const vertLineInset: number = (lineHeight - textHeight) / 2;
-      const textYbaseline: number = textYOffset + vertLineInset + this.displaySpec.font.baseline;
+      // Use lineHeight for row spacing to match Pascal
+      const textYOffset: number = this.cursorPosition.y * this.displaySpec.font.lineHeight;
+      const textXOffset: number = this.cursorPosition.x * charWidth;
+      // Fonts have internal padding - adjust to get 2/3 space above, 1/3 below
+      // The actual glyph is typically 70% of the font's height
+      // Push down by about 20% of charHeight to center better
+      const verticalAdjust: number = Math.round(this.displaySpec.font.charHeight * 0.2);
+      const textYbaseline: number = textYOffset + verticalAdjust;
       const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
       const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
       const fontSpec: string = `normal ${textSizePts}pt Consolas, monospace`;
       
-      // Use the canvas renderer for character drawing
-      const jsCode = this.canvasRenderer.drawCharacter(
-        'text-area',
-        char,
-        textXOffset,
-        textYOffset,
-        charWidth,
-        lineHeight,
-        this.displaySpec.font.baseline + vertLineInset,
-        fontSpec,
-        fgColor,
-        bgcolor
-      );
+      // Draw to offscreen canvas (Pascal's Bitmap[0])
+      // Then conditionally copy to visible canvas based on update mode
+      const jsCode = `
+        (function() {
+          if (!window.offscreenCtx) return;
+
+          // Draw background rectangle on offscreen canvas
+          window.offscreenCtx.fillStyle = '${bgcolor}';
+          window.offscreenCtx.fillRect(${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight});
+
+          // Draw character on offscreen canvas
+          window.offscreenCtx.fillStyle = '${fgColor}';
+          window.offscreenCtx.font = '${fontSpec}';
+          window.offscreenCtx.textBaseline = 'top';
+          window.offscreenCtx.fillText('${char}', ${textXOffset}, ${textYbaseline});
+
+          // In immediate mode (not delayed update), copy rectangle to visible canvas
+          // This matches Pascal's: if not vUpdate then copy Bitmap[0] rectangle to Canvas
+          if (!${this.displaySpec.delayedUpdate} && window.visibleCtx) {
+            // Copy just the character rectangle from offscreen to visible
+            window.visibleCtx.drawImage(
+              window.offscreenCanvas,
+              ${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight},
+              ${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight}
+            );
+          }
+        })()
+      `;
+
       this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
         this.logMessage(`Failed to execute terminal text JavaScript: ${error}`);
       });
       
       // Advance cursor
       this.cursorPosition.x++;
-      
-      // Handle line wrap
-      if (this.cursorPosition.x >= this.displaySpec.size.columns) {
-        this.cursorPosition.x = 0;
-        this.cursorPosition.y++;
-        
-        // Handle scroll if at bottom
-        if (this.cursorPosition.y >= this.displaySpec.size.rows) {
-          this.scrollUp();
-          this.cursorPosition.y = this.displaySpec.size.rows - 1;
-        }
-      }
+
+      // Note: Line wrap is handled at the START of next character write,
+      // matching Pascal's "if vCol = vCols then TERM_Chr(Chr(13));"
+      // This happens in writeCharToTerm when we check the column position
     } catch (error) {
       console.error('Failed to write character:', error);
     }
@@ -856,9 +1096,9 @@ export class DebugTermWindow extends DebugWindowBase {
     if (!this.debugWindow) return;
     
     const charWidth = this.displaySpec.font.charWidth;
-    const lineHeight = this.displaySpec.font.lineHeight;
+    const charHeight = this.displaySpec.font.charHeight;
     const startX = this.cursorPosition.x * charWidth + this.contentInset;
-    const y = this.cursorPosition.y * lineHeight + this.contentInset;
+    const y = this.cursorPosition.y * this.displaySpec.font.lineHeight + this.contentInset;
     const width = (this.displaySpec.size.columns - this.cursorPosition.x) * charWidth;
     const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
     
@@ -867,7 +1107,7 @@ export class DebugTermWindow extends DebugWindowBase {
       startX,
       y,
       width,
-      lineHeight,
+      charHeight,
       bgcolor
     );
     this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
@@ -877,36 +1117,51 @@ export class DebugTermWindow extends DebugWindowBase {
 
   /**
    * Scroll terminal content up by one line
+   * Works with offscreen canvas for double buffering
    */
   private scrollUp(): void {
     if (!this.debugWindow) return;
-    
+
+    const charHeight = this.displaySpec.font.charHeight;
     const lineHeight = this.displaySpec.font.lineHeight;
     const canvasWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
     const canvasHeight = this.displaySpec.size.rows * lineHeight;
     const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-    
-    // Use canvas renderer to scroll
-    this.debugWindow.webContents.executeJavaScript(
-      this.canvasRenderer.scrollBitmap(
-        'text-area',
-        0,
-        -lineHeight,
-        canvasWidth + 2 * this.contentInset,
-        canvasHeight + 2 * this.contentInset
-      )
-    );
-    
-    // Clear the bottom line after scrolling
-    const clearJsCode = this.canvasRenderer.clearCharacterCell(
-      'text-area',
-      this.contentInset,
-      (this.displaySpec.size.rows - 1) * lineHeight + this.contentInset,
-      canvasWidth,
-      lineHeight,
-      bgcolor
-    );
-    this.debugWindow.webContents.executeJavaScript(clearJsCode).catch((error) => {
+
+    // Scroll the offscreen canvas up by one line
+    const jsCode = `
+      (function() {
+        if (!window.offscreenCtx || !window.offscreenCanvas) return;
+
+        const charHeight = ${charHeight};
+        const canvasWidth = ${canvasWidth};
+        const canvasHeight = ${canvasHeight};
+        const bgcolor = '${bgcolor}';
+
+        // Save the content that will remain visible (all but top line)
+        const imageData = window.offscreenCtx.getImageData(
+          0, charHeight, canvasWidth, canvasHeight - charHeight
+        );
+
+        // Put it back one line higher
+        window.offscreenCtx.putImageData(imageData, 0, 0);
+
+        // Clear the last line
+        window.offscreenCtx.fillStyle = bgcolor;
+        window.offscreenCtx.fillRect(
+          0, canvasHeight - charHeight, canvasWidth, charHeight
+        );
+
+        // If not in delayed update mode, copy to visible immediately
+        if (!${this.displaySpec.delayedUpdate}) {
+          if (window.visibleCtx) {
+            window.visibleCtx.drawImage(window.offscreenCanvas, 0, 0);
+          }
+        }
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
       this.logMessage(`Failed to execute terminal scroll JavaScript: ${error}`);
     });
   }
@@ -923,7 +1178,7 @@ export class DebugTermWindow extends DebugWindowBase {
     
     // Check if mouse is within the terminal area
     const terminalWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
-    const terminalHeight = this.displaySpec.size.rows * this.displaySpec.font.lineHeight;
+    const terminalHeight = this.displaySpec.size.rows * this.displaySpec.font.charHeight;
     
     if (x >= marginLeft && x < marginLeft + terminalWidth && 
         y >= marginTop && y < marginTop + terminalHeight) {
@@ -933,7 +1188,7 @@ export class DebugTermWindow extends DebugWindowBase {
       
       // Convert to column and row
       const column = Math.floor(relX / this.displaySpec.font.charWidth);
-      const row = Math.floor(relY / this.displaySpec.font.lineHeight);
+      const row = Math.floor(relY / this.displaySpec.font.charHeight);
       
       return { 
         x: Math.max(0, Math.min(column, this.displaySpec.size.columns - 1)),

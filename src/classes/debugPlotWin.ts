@@ -368,8 +368,12 @@ export class DebugPlotWindow extends DebugWindowBase {
     const divHeight = canvasHeight + 4; // +20 for title bar (30 leaves black at bottom), 20 leaves black at bottom
     const divWidth = canvasWidth + 4; // contentInset' for the Xoffset into window for canvas, 20 is extra pad
 
-    const windowHeight = canvasHeight + 4 + 4; // +4 add enough to not create vert. scroller
-    const windowWidth = canvasWidth + this.contentInset * 2 + 4 + 4; // contentInset' for the Xoffset into window for canvas, +4 add enough to not create horiz. scroller
+    // Use base class method for consistent chrome adjustments
+    const contentHeight = canvasHeight + 8; // +8 to prevent scrollbars
+    const contentWidth = canvasWidth + this.contentInset * 2 + 8; // +8 to prevent scrollbars
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const windowHeight = windowDimensions.height;
+    const windowWidth = windowDimensions.width;
     // Check if position was explicitly set or is still at default (0,0)
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;

@@ -1798,10 +1798,13 @@ export class DebugFFTWindow extends DebugWindowBase {
       y = position.y;
     }
     
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(this.canvasWidth, this.canvasHeight);
+
     // Create browser window
     this.debugWindow = new BrowserWindow({
-      width: this.canvasWidth,
-      height: this.canvasHeight,
+      width: windowDimensions.width,
+      height: windowDimensions.height,
       x,
       y,
       webPreferences: {

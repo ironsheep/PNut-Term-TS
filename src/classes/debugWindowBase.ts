@@ -551,6 +551,29 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   // ----------------------------------------------------------------------
+  // Window dimension helpers for Chrome adjustments
+
+  /**
+   * Calculate window dimensions with adjustments for window chrome (title bar, borders)
+   * All debug windows should use this to ensure consistent sizing across the application
+   *
+   * @param contentWidth - The width of the actual content area
+   * @param contentHeight - The height of the actual content area
+   * @returns Object with adjusted width and height including chrome
+   */
+  protected calculateWindowDimensions(contentWidth: number, contentHeight: number): { width: number; height: number } {
+    // Standard chrome adjustments based on platform
+    // These values match what the Logic window uses and ensures consistency
+    const TITLE_BAR_HEIGHT = 40;  // Height of the window title bar
+    const WINDOW_BORDER_WIDTH = 20;  // Additional width for window borders
+
+    return {
+      width: contentWidth + WINDOW_BORDER_WIDTH,
+      height: contentHeight + TITLE_BAR_HEIGHT
+    };
+  }
+
+  // ----------------------------------------------------------------------
   // inherited by derived classes
 
   protected fontWeightName(style: TextStyle): string {
@@ -893,9 +916,39 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   protected getParallaxFontUrl(): string {
-    // In packaged app, use process.resourcesPath, in dev use relative path
-    const resourcesPath = process.resourcesPath || path.join(__dirname, '../../../');
-    const fontPath = path.join(resourcesPath, 'fonts', 'Parallax.ttf');
+    // In packaged app, fonts are directly in Resources/fonts, not Resources/app/fonts
+    let fontPath: string;
+
+    if (process.resourcesPath) {
+      // In packaged app - fonts are in Resources/fonts
+      fontPath = path.join(process.resourcesPath, 'fonts', 'Parallax.ttf');
+    } else {
+      // In development - relative to the dist directory
+      fontPath = path.join(__dirname, '../../fonts', 'Parallax.ttf');
+    }
+
+    // Log for debugging
+    this.logMessageBase(`[FONT] Parallax font path: ${fontPath}`);
+
+    // Convert to file URL with forward slashes for cross-platform compatibility
+    return `file://${fontPath.replace(/\\/g, '/')}`;
+  }
+
+  protected getIBM3270FontUrl(): string {
+    // In packaged app, fonts are directly in Resources/fonts, not Resources/app/fonts
+    let fontPath: string;
+
+    if (process.resourcesPath) {
+      // In packaged app - fonts are in Resources/fonts
+      fontPath = path.join(process.resourcesPath, 'fonts', '3270-Regular.ttf');
+    } else {
+      // In development - relative to the dist directory
+      fontPath = path.join(__dirname, '../../fonts', '3270-Regular.ttf');
+    }
+
+    // Log for debugging
+    this.logMessageBase(`[FONT] IBM 3270 font path: ${fontPath}`);
+
     // Convert to file URL with forward slashes for cross-platform compatibility
     return `file://${fontPath.replace(/\\/g, '/')}`;
   }

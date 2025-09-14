@@ -210,10 +210,13 @@ export class DebugMidiWindow extends DebugWindowBase {
     x = position.x;
     y = position.y;
     
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(this.vWidth, this.vHeight);
+
     // Create browser window
     this.midiWindow = new BrowserWindow({
-      width: this.vWidth,
-      height: this.vHeight,
+      width: windowDimensions.width,
+      height: windowDimensions.height,
       x,
       y,
       title: this._windowTitle,

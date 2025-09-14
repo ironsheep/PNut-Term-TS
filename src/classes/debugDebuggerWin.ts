@@ -1708,8 +1708,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Create the Electron BrowserWindow
    */
   private createDebugWindow(windowDetails?: any): void {
-    const width = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8 + 20;
-    const height = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16 + 40;
+    // Calculate content dimensions
+    const contentWidth = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8;
+    const contentHeight = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16;
+
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const width = windowDimensions.width;
+    const height = windowDimensions.height;
     
     let x = windowDetails?.x;
     let y = windowDetails?.y;

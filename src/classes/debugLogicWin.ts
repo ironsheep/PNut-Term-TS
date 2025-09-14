@@ -585,8 +585,12 @@ export class DebugLogicWindow extends DebugWindowBase {
     // set height so NO scroller by default - account for container padding (Pascal margins) + window chrome
     const containerPadding = this.displaySpec.font.charHeight * 2; // top + bottom padding (Pascal MarginTop + MarginBottom)
     const contentHeight = channelGroupHeight + containerPadding; // Pascal: MarginTop + vHeight + MarginBottom
-    const windowHeight = contentHeight + 40; // +40 for title bar (matching Scope window)
-    const windowWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1 + 20; // +20 for window borders (matching Scope window)
+    const contentWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1;
+
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    const windowHeight = windowDimensions.height;
+    const windowWidth = windowDimensions.width;
     
     this.logMessage(`DEBUG: Created ${labelDivs.length} labels and ${dataCanvases.length} canvases for ${activeBitChannels} channels`);
     this.logMessage(`DEBUG: Window dimensions - Width: ${windowWidth}, Height: ${windowHeight}`);

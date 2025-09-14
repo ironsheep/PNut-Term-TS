@@ -465,20 +465,19 @@ export class CanvasRenderer {
       
       // Clear the main canvas
       ctx.clearRect(0, 0, ${canvasWidth}, ${canvasHeight});
-      
+
       // Calculate source and destination rectangles for scrolling
-      const scrollX = ${scrollX};
-      const scrollY = ${scrollY};
-      
+      // Note: scrollX and scrollY are the amounts to scroll
+
       // Source rectangle (what part of the image to copy)
-      let sx = Math.max(0, -scrollX);
-      let sy = Math.max(0, -scrollY);
-      let sw = ${canvasWidth} - Math.abs(scrollX);
-      let sh = ${canvasHeight} - Math.abs(scrollY);
-      
+      let sx = Math.max(0, -${scrollX});
+      let sy = Math.max(0, -${scrollY});
+      let sw = ${canvasWidth} - Math.abs(${scrollX});
+      let sh = ${canvasHeight} - Math.abs(${scrollY});
+
       // Destination rectangle (where to draw it)
-      let dx = Math.max(0, scrollX);
-      let dy = Math.max(0, scrollY);
+      let dx = Math.max(0, ${scrollX});
+      let dy = Math.max(0, ${scrollY});
       
       // Draw the scrolled content
       if (sw > 0 && sh > 0) {

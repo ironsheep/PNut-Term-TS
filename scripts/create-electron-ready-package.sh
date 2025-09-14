@@ -21,7 +21,8 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 echo "📋 Step 2: Copying application files..."
 # Copy all necessary files to Resources/app
 cp -r dist "$APP_DIR/Contents/Resources/app/"
-cp -r fonts "$APP_DIR/Contents/Resources/app/"
+# IMPORTANT: Fonts go directly into Resources/fonts, NOT Resources/app/fonts
+cp -r fonts "$APP_DIR/Contents/Resources/"
 cp -r prebuilds "$APP_DIR/Contents/Resources/app/"
 cp -r node_modules "$APP_DIR/Contents/Resources/app/"
 cp package.json "$APP_DIR/Contents/Resources/app/"
