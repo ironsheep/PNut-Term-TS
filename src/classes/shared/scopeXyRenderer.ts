@@ -267,8 +267,8 @@ export class ScopeXyRenderer {
         x = margin;
       } else {
         // Odd channel pairs (2,3 and 6,7): Right side
-        // Measure text to right-align - use smaller multiplier for single char names
-        x = canvasSize - margin - (name.length * textSize * 0.4); // Better for single chars like 'B'
+        // Very close to edge - just the margin
+        x = canvasSize - margin * 2; // Just double the margin from edge
       }
 
       // Vertical position

@@ -994,54 +994,41 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     this.logMessage(`render: Starting render, canvas='${this.scopeXyCanvasId}', size=${this.radius * 2}, forceClear=${forceClear}`);
 
-    // Differential rendering: Only redraw background when forced or first time
-    const shouldRedrawBackground = forceClear || !this.backgroundDrawn;
+    // Always clear and redraw everything for now - simpler and works
+    const clearPromise = this.debugWindow.webContents.executeJavaScript(this.renderer.clear(
+      this.scopeXyCanvasId,
+      this.radius * 2,
+      this.radius * 2,
+      this.backgroundColor
+    ));
 
-    // For persistence with fading, we must clear and redraw dots each frame
-    // But we can keep the grid/legends as a persistent background layer
-    const shouldClearDots = this.samples > 0;
-
-    // Phase 1: Handle background (grid + legends) if needed
-    const backgroundPromise = shouldRedrawBackground ?
-      this.debugWindow.webContents.executeJavaScript(this.renderer.clear(
-        this.scopeXyCanvasId,
-        this.radius * 2,
-        this.radius * 2,
-        this.backgroundColor
-      )) :
-      Promise.resolve('Background already drawn');
-
-    backgroundPromise
+    clearPromise
       .then((result) => {
-        this.logMessage(`render: Background result: ${result}`);
+        this.logMessage(`render: Clear result: ${result}`);
         if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
           this.logMessage('render: Aborting - window or renderer not available');
           return;
         }
 
-        // Draw grid only if we're redrawing background
-        if (shouldRedrawBackground) {
-          const gridScript = this.renderer.drawCircularGrid(
-            this.scopeXyCanvasId,
-            this.radius,  // centerX (canvas center)
-            this.radius,  // centerY (canvas center)
-            this.radius,  // grid radius
-            8             // divisions
-          );
+        // Always draw grid to ensure it's visible
+        const gridScript = this.renderer.drawCircularGrid(
+          this.scopeXyCanvasId,
+          this.radius,  // centerX (canvas center)
+          this.radius,  // centerY (canvas center)
+          this.radius,  // grid radius
+          8             // divisions
+        );
 
-          this.logMessage(`render: Drawing grid (${gridScript.length} chars)`);
-          return this.debugWindow.webContents.executeJavaScript(gridScript);
-        } else {
-          return Promise.resolve('Grid already drawn');
-        }
+        this.logMessage(`render: Drawing grid (${gridScript.length} chars)`);
+        return this.debugWindow.webContents.executeJavaScript(gridScript);
     }).then((gridResult) => {
       this.logMessage(`render: Grid result: ${gridResult}`);
       if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
         return;
       }
 
-      // Draw legends only if we're redrawing background
-      if (shouldRedrawBackground && !this.hideXY && this.channels.length > 0) {
+      // Always draw legends to ensure they're visible
+      if (!this.hideXY && this.channels.length > 0) {
         const legendScript = this.renderer.drawLegends(
           this.scopeXyCanvasId,
           this.channels,
@@ -1050,36 +1037,17 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         );
         return this.debugWindow.webContents.executeJavaScript(legendScript);
       }
-      return Promise.resolve('Legends already drawn');
+      return Promise.resolve('No legends to draw');
     }).then((legendResult) => {
       this.logMessage(`render: Legend result: ${legendResult}`);
       if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
         return;
       }
 
-      // Save the background (grid + legends) after drawing it
-      if (shouldRedrawBackground) {
-        this.backgroundDrawn = true;
-        return this.debugWindow.webContents.executeJavaScript(
-          this.renderer.saveBackground(this.scopeXyCanvasId)
-        );
-      }
-      return Promise.resolve('Background already saved');
-    }).then((saveResult) => {
-      this.logMessage(`render: Save background result: ${saveResult}`);
-      if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
-        return;
-      }
-
-      // For persistence mode, restore background to clear old dots
-      if (shouldClearDots && this.backgroundDrawn) {
-        return this.debugWindow.webContents.executeJavaScript(
-          this.renderer.restoreBackground(this.scopeXyCanvasId)
-        );
-      }
-      return Promise.resolve('No restore needed');
-    }).then((restoreResult) => {
-      this.logMessage(`render: Restore result: ${restoreResult}`);
+      // Skip save/restore for now - just redraw everything
+      return Promise.resolve('Skipping save/restore');
+    }).then((result) => {
+      this.logMessage(`render: Continue to dots`);
       if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
         return;
       }
@@ -1165,17 +1133,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
       // Build optimized plot commands - one save/restore per group
       // Sort groups by opacity (oldest/faintest first) for consistent layering
+      // Snake model provides stable opacity, no need for filtering
       const sortedGroups = Array.from(dotGroups.values())
-        .filter(g => g.opacity > 15)  // Skip very faint dots that cause flicker
         .sort((a, b) => a.opacity - b.opacity);
 
       const plotCommands: string[] = [];
       for (const group of sortedGroups) {
-        // Ensure minimum opacity for visibility
-        const alpha = Math.max(0.06, group.opacity / 255);
         plotCommands.push(`
           ctx.save();
-          ctx.globalAlpha = ${alpha};
+          ctx.globalAlpha = ${group.opacity / 255};
           ctx.fillStyle = '${group.color}';
           ${group.points.map(p => `
             ctx.beginPath();

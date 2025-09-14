@@ -1,18 +1,20 @@
 /**
  * PersistenceManager - Manages circular buffer for sample persistence in SCOPE_XY display
- * 
+ *
  * Implements a 2048-sample circular buffer with opacity-based fading for visual persistence.
- * Matches Pascal implementation using power-of-2 mask for efficient wraparound.
+ * Snake/Queue Model: Tracks sample age for stable opacity (no flicker on new samples).
  */
 export class PersistenceManager {
   // Pascal: XY_Sets = DataSets = 1 shl DataSetsExp = 2048
   private static readonly BUFFER_SIZE = 2048;
   private static readonly PTR_MASK = PersistenceManager.BUFFER_SIZE - 1;
 
-  private sampleBuffer: number[][] = [];
+  // Sample with timestamp for age-based opacity
+  private sampleBuffer: Array<{ data: number[], frameNumber: number }> = [];
   private samplePtr: number = 0;
   private samplePop: number = 0; // Number of valid samples in buffer
   private persistence: number = 256; // Number of samples to keep (0 = infinite)
+  private currentFrame: number = 0; // Global frame counter for age tracking
 
   constructor() {
     this.clear();
@@ -36,13 +38,19 @@ export class PersistenceManager {
    * @param channelData Array of channel data (X,Y pairs)
    */
   public addSample(channelData: number[]): void {
-    // Store sample at current pointer position
-    this.sampleBuffer[this.samplePtr] = [...channelData];
-    
+    // Increment frame counter for age tracking
+    this.currentFrame++;
+
+    // Store sample with timestamp at current pointer position
+    this.sampleBuffer[this.samplePtr] = {
+      data: [...channelData],
+      frameNumber: this.currentFrame
+    };
+
     // Advance pointer with wraparound using mask
     // Pascal: SamplePtr := (SamplePtr + 1) and XY_PtrMask;
     this.samplePtr = (this.samplePtr + 1) & PersistenceManager.PTR_MASK;
-    
+
     // Update population count
     // Pascal: if SamplePop < vSamples then Inc(SamplePop);
     if (this.persistence > 0) {
@@ -59,46 +67,50 @@ export class PersistenceManager {
 
   /**
    * Get all samples with calculated opacity for rendering
-   * Newer samples have higher opacity, older samples fade out
-   * 
+   * Snake Model: Opacity based on age (frame number), not position
+   *
    * @returns Array of samples with opacity values
    */
   public getSamplesWithOpacity(): Array<{ data: number[]; opacity: number }> {
     const result: Array<{ data: number[]; opacity: number }> = [];
-    
+
     if (this.persistence === 0) {
       // Infinite persistence - all samples at full opacity
       for (let i = 0; i < this.samplePop; i++) {
         const ptr = (this.samplePtr - i - 1) & PersistenceManager.PTR_MASK;
-        if (this.sampleBuffer[ptr]) {
+        const sample = this.sampleBuffer[ptr];
+        if (sample && sample.data) {
           result.push({
-            data: this.sampleBuffer[ptr],
+            data: sample.data,
             opacity: 255
           });
         }
       }
     } else {
-      // Fading persistence - calculate opacity gradient
-      // Pascal: opa := 255 - (k * 255 div vSamples);
-      // Quantize opacity to reduce flickering in dim areas
-      const opacityLevels = 16; // Quantize to 16 levels instead of 256
-      const opacityStep = 255 / opacityLevels;
-
+      // Fading persistence - calculate opacity based on AGE not position
+      // This is the key change for the snake model!
       for (let i = 0; i < this.samplePop; i++) {
         const ptr = (this.samplePtr - i - 1) & PersistenceManager.PTR_MASK;
-        if (this.sampleBuffer[ptr]) {
-          // Calculate raw opacity
-          const rawOpacity = 255 - Math.floor((i * 255) / this.persistence);
-          // Quantize to nearest step to reduce variation
-          const quantizedOpacity = Math.round(rawOpacity / opacityStep) * opacityStep;
+        const sample = this.sampleBuffer[ptr];
+        if (sample && sample.data) {
+          // Calculate age in frames
+          const age = this.currentFrame - sample.frameNumber;
+
+          // Skip samples that are too old
+          if (age >= this.persistence) continue;
+
+          // Calculate opacity based on age (newer = brighter)
+          // No quantization for smooth gradient
+          const opacity = 255 - Math.floor((age * 255) / this.persistence);
+
           result.push({
-            data: this.sampleBuffer[ptr],
-            opacity: Math.max(opacityStep, Math.min(255, quantizedOpacity))
+            data: sample.data,
+            opacity: Math.max(1, Math.min(255, opacity))
           });
         }
       }
     }
-    
+
     return result;
   }
 
@@ -109,6 +121,7 @@ export class PersistenceManager {
     this.sampleBuffer = new Array(PersistenceManager.BUFFER_SIZE);
     this.samplePtr = 0;
     this.samplePop = 0;
+    this.currentFrame = 0; // Reset frame counter
   }
 
   /**

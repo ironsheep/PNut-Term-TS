@@ -13,7 +13,7 @@ All implemented debug windows need to be audited against their Pascal reference 
 - ✅ Terminal (`debugTermWin.ts` vs `DebugDisplayUnit.pas`)
 - ✅ Logic (`debugLogicWin.ts` vs `DebugDisplayUnit.pas`)  
 - ✅ Scope (`debugScopeWin.ts` vs `DebugDisplayUnit.pas`)
-- ✅ Scope XY (`debugScopeXyWin.ts` vs `DebugDisplayUnit.pas`)
+- ⚠️ Scope XY (`debugScopeXyWin.ts` vs `DebugDisplayUnit.pas`) - **Missing concentric rings in grid display**
 - ✅ Plot (`debugPlotWin.ts` vs `DebugDisplayUnit.pas`)
 - ✅ Bitmap (`debugBitmapWin.ts` vs `DebugDisplayUnit.pas`) 
 - ✅ MIDI (`debugMidiWin.ts` vs `DebugDisplayUnit.pas`)
@@ -30,6 +30,21 @@ All implemented debug windows need to be audited against their Pascal reference 
 - [ ] Performance characteristics
 
 **Estimated effort:** 2-3 hours per window × 8 windows = 16-24 hours
+
+### SCOPE_XY Specific Issues
+**Priority: Medium - Visual parity issue**
+
+The SCOPE_XY window has the following known issues:
+1. **Missing concentric rings**: The circular grid should display 4 concentric rings but they're not appearing. The drawing code exists and appears correct, but rings don't render. Crosshairs work fine.
+2. **Blue legend positioning**: The 'B' channel legend positioning has been problematic - needs final adjustment to match Pascal positioning exactly.
+3. **Minor flickering**: While greatly reduced with the snake/queue model, some flickering remains in the dot rendering.
+
+**Root cause analysis needed for:**
+- Why concentric rings don't render despite correct drawing code
+- Potential canvas state or rendering order issues
+- Possible interference from save/restore background optimization attempts
+
+**Estimated effort:** 2-4 hours to diagnose and fix
 
 ## Missing Test Coverage
 
