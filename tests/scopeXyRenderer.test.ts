@@ -7,6 +7,68 @@ describe('ScopeXyRenderer', () => {
     renderer = new ScopeXyRenderer();
   });
 
+  describe('JavaScript Syntax Validation', () => {
+    it('should generate syntactically valid JavaScript for drawCircularGrid', () => {
+      const script = renderer.drawCircularGrid('test-canvas', 128, 128, 128, 8);
+
+      // Check for common issues
+      expect(script).not.toContain('undefined');
+      expect(script).not.toContain('NaN');
+
+      // Check that it's wrapped in an IIFE and returns a value
+      expect(script).toContain("(() => {");
+      expect(script).toContain("})()");
+      expect(script).toContain("return 'Grid drawn successfully'");
+      expect(script).toContain("return 'Canvas not found'");
+
+      // Validate JavaScript syntax by creating a function
+      let isValid = true;
+      let syntaxError = '';
+      try {
+        // This will throw if there's a syntax error
+        new Function(script);
+      } catch (error: any) {
+        isValid = false;
+        syntaxError = error.message;
+        console.error('Grid script syntax error:', syntaxError);
+        console.error('Script preview:', script.substring(0, 500));
+      }
+
+      expect(isValid).toBe(true);
+      if (!isValid) {
+        fail(`JavaScript syntax error in drawCircularGrid: ${syntaxError}`);
+      }
+    });
+
+    it('should generate syntactically valid JavaScript for clear', () => {
+      const script = renderer.clear('test-canvas', 256, 256, 0x000000);
+
+      let isValid = true;
+      try {
+        new Function(script);
+      } catch (error: any) {
+        isValid = false;
+        console.error('Clear script error:', error.message);
+      }
+
+      expect(isValid).toBe(true);
+    });
+
+    it('should generate syntactically valid JavaScript for plotPoint', () => {
+      const script = renderer.plotPoint('test-canvas', 100, 100, 0xFF0000, 255, 4);
+
+      let isValid = true;
+      try {
+        new Function(script);
+      } catch (error: any) {
+        isValid = false;
+        console.error('Plot script error:', error.message);
+      }
+
+      expect(isValid).toBe(true);
+    });
+  });
+
   describe('Constructor and Initialization', () => {
     it('should initialize with default grid color', () => {
       // Default grid color is 0x404040 (gray)
@@ -201,12 +263,12 @@ describe('ScopeXyRenderer', () => {
 
     it('should draw center crosshair', () => {
       const script = renderer.drawCircularGrid('test-canvas', 100, 100, 50);
-      
+
       expect(script).toContain('ctx.globalAlpha = 0.5');
-      expect(script).toContain('ctx.moveTo(50, 100)');
-      expect(script).toContain('ctx.lineTo(150, 100)');
-      expect(script).toContain('ctx.moveTo(100, 50)');
-      expect(script).toContain('ctx.lineTo(100, 150)');
+      expect(script).toContain('ctx.moveTo(100 - 50, 100)');
+      expect(script).toContain('ctx.lineTo(100 + 50, 100)');
+      expect(script).toContain('ctx.moveTo(100, 100 - 50)');
+      expect(script).toContain('ctx.lineTo(100, 100 + 50)');
     });
 
     it('should use custom grid color', () => {

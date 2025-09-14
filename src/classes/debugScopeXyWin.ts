@@ -26,6 +26,7 @@ export interface ScopeXyDisplaySpec {
   logScale?: boolean;
   hideXY?: boolean;
   hasExplicitPosition: boolean;
+  fullConfiguration?: string[]; // Store the full configuration message
 }
 
 /**
@@ -134,7 +135,6 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   // Channels
   private channels: Array<{ name: string; color: number }> = [];
   private channelIndex: number = 0;
-  private currentChannel: number = 0;
   private dataBuffer: number[] = [];
 
   // Rate control
@@ -172,12 +172,11 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // This ensures windows appear when created, matching Logic/Scope/Term pattern
     this.logMessage('Creating SCOPE_XY window immediately in constructor');
     
-    // Initialize with default parameters if not provided
-    const defaultLineParts = ['SCOPE_XY', displaySpec.displayName || 'ScopeXY'];
-    this.createDebugWindow(defaultLineParts);
+    // Use the full configuration if available, otherwise use defaults
+    const configLineParts = displaySpec.fullConfiguration || ['SCOPE_XY', displaySpec.displayName || 'ScopeXY'];
+    this.createDebugWindow(configLineParts);
     
-    // CRITICAL: Mark window as ready to process messages
-    this.onWindowReady();
+    // NOTE: onWindowReady() is called in did-finish-load after renderer is initialized
   }
 
   /**
@@ -310,6 +309,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     displaySpec.displayName = '';
     displaySpec.title = 'SCOPE_XY';
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
+    displaySpec.fullConfiguration = lineParts; // SAVE THE FULL CONFIGURATION!
     
     let errorMessage = '';
     let isValid = true;
@@ -361,8 +361,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     `;
 
     // Calculate window dimensions
-    const windowWidth = size + 16;
-    const windowHeight = size + 39;
+    // Add chrome overhead: +20 for window borders, +40 for title bar (matching Logic/Scope windows)
+    const windowWidth = size + 20;
+    const windowHeight = size + 40;
     
     // Determine position based on hasExplicitPosition flag
     let windowX: number;
@@ -444,12 +445,43 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Initialize renderer after content loads
     this.debugWindow.webContents.once('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      
+
+      // First, verify canvas exists
+      const canvasCheckScript = `
+        const canvas = document.getElementById('${this.scopeXyCanvasId}');
+        JSON.stringify({
+          canvasExists: !!canvas,
+          canvasId: canvas ? canvas.id : 'none',
+          canvasWidth: canvas ? canvas.width : 0,
+          canvasHeight: canvas ? canvas.height : 0,
+          bodyBgColor: document.body.style.backgroundColor,
+          documentReady: document.readyState
+        });
+      `;
+
+      this.debugWindow?.webContents.executeJavaScript(canvasCheckScript)
+        .then((result: string) => {
+          this.logMessage(`Canvas check result: ${result}`);
+          const info = JSON.parse(result);
+          if (!info.canvasExists) {
+            console.error('[SCOPEXY] CRITICAL: Canvas element not found!');
+            this.logMessage('ERROR: Canvas element not found in DOM');
+          }
+        })
+        .catch(err => {
+          console.error('[SCOPEXY] Canvas check error:', err);
+          this.logMessage(`Canvas check error: ${err}`);
+        });
+
       // Initialize renderer after canvas is ready
       this.initializeRenderer();
-      this.render();
-      
+
+      // Do initial render to show grid with clear
+      this.logMessage('did-finish-load: Calling initial render()');
+      this.render(true); // Force clear on initial render
+
       // CRITICAL: Mark window as ready to process messages
+      this.logMessage('did-finish-load: Calling onWindowReady()');
       this.onWindowReady();
     });
 
@@ -465,6 +497,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private initializeRenderer(): void {
     // Create the renderer
     this.renderer = new ScopeXyRenderer();
+    this.logMessage(`initializeRenderer: Created renderer, radius=${this.radius}, polar=${this.polar}`);
     
     // Always initialize canvas with basic setup to ensure renderer context works
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
@@ -475,26 +508,104 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         this.radius * 2,
         this.backgroundColor
       );
-      
+
+      this.logMessage(`initializeRenderer: Executing clear script for canvas '${this.scopeXyCanvasId}'`);
+
+      // Wrap in try-catch to get actual error
+      const wrappedClearScript = `
+        try {
+          ${clearScript}
+        } catch(e) {
+          console.error('Actual JavaScript error in clear:', e.toString(), e.stack);
+          throw e;
+        }
+      `;
+
       // Execute basic clear to establish canvas context
-      this.debugWindow.webContents.executeJavaScript(clearScript).catch(err => {
-        console.error('Canvas clear error:', err);
-      });
-      
-      // For non-polar mode, also draw grid (but don't chain promises)
-      if (!this.polar) {
-        const gridScript = this.renderer.drawCircularGrid(
-          this.scopeXyCanvasId,
-          this.radius,  // centerX (canvas center)
-          this.radius,  // centerY (canvas center)
-          this.radius,  // grid radius
-          8             // divisions
-        );
-        
-        this.debugWindow.webContents.executeJavaScript(gridScript).catch(err => {
-          console.error('Grid render error:', err);
+      this.debugWindow.webContents.executeJavaScript(wrappedClearScript)
+        .then((result) => {
+          this.logMessage(`initializeRenderer: Clear succeeded, result: ${result}`);
+
+          // Add a visible test rectangle to verify canvas is working
+          const testScript = `
+            const canvas = document.getElementById('${this.scopeXyCanvasId}');
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = 'red';
+                ctx.fillRect(10, 10, 50, 50);
+                'Test rectangle drawn';
+              } else {
+                'No context';
+              }
+            } else {
+              'No canvas';
+            }
+          `;
+          return this.debugWindow?.webContents.executeJavaScript(testScript);
+        })
+        .then((testResult) => {
+          this.logMessage(`initializeRenderer: Test rectangle result: ${testResult}`);
+        })
+        .catch(err => {
+          console.error('Canvas clear error:', err);
+          console.error('Error details:', {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause,
+            code: err.code,
+            fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+          });
+          this.logMessage(`initializeRenderer: Clear failed: ${err}`);
         });
+      
+      // Draw initial grid for both polar and cartesian modes
+      const gridScript = this.renderer.drawCircularGrid(
+        this.scopeXyCanvasId,
+        this.radius,  // centerX (canvas center)
+        this.radius,  // centerY (canvas center)
+        this.radius,  // grid radius
+        8             // divisions
+      );
+
+      this.logMessage(`initializeRenderer: Drawing initial grid`);
+
+      // Debug: Log the actual script being executed
+      console.log('[SCOPEXY] Grid script to execute:', gridScript.substring(0, 200));
+
+      // Check for common issues
+      if (gridScript.includes('undefined') || gridScript.includes('NaN')) {
+        console.error('[SCOPEXY] Grid script contains undefined or NaN values!');
+        this.logMessage('ERROR: Grid script has invalid values');
       }
+
+      this.debugWindow.webContents.executeJavaScript(gridScript)
+        .then(() => {
+          this.logMessage('initializeRenderer: Grid draw succeeded');
+        })
+        .catch(err => {
+          console.error('Grid render error:', err);
+          console.error('Grid error details:', {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause,
+            code: err.code,
+            fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+          });
+          this.logMessage(`initializeRenderer: Grid draw failed: ${err}`);
+
+          // Try a simpler test to see if ANY JavaScript works
+          const testScript = `console.log('Test from ScopeXY'); 'test-success';`;
+          this.debugWindow?.webContents.executeJavaScript(testScript)
+            .then(result => {
+              this.logMessage(`Simple test script result: ${result}`);
+            })
+            .catch(testErr => {
+              this.logMessage(`Even simple test failed: ${testErr}`);
+            });
+        });
     }
   }
 
@@ -514,6 +625,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   protected processMessageImmediate(lineParts: string[]): void {
     // Window is now created in constructor, so just process the message
     const unparsedCommand = lineParts.join(' ');
+    this.logMessage(`processMessageImmediate: Processing [${unparsedCommand}]`);
     this.handleData(unparsedCommand);
   }
 
@@ -521,7 +633,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Start from index 2 to skip command and display name
     let i = 2;
     while (i < lineParts.length) {
-      const element = lineParts[i].toUpperCase();
+      const originalElement = lineParts[i];
+      const element = originalElement.toUpperCase();
 
       switch (element) {
         case 'TITLE':
@@ -584,16 +697,25 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
         case 'COLOR':
           if (i + 1 < lineParts.length) {
-            const bgColor = this.colorTranslator.translateColor(
-              parseInt(lineParts[++i]) || 0
-            );
-            this.backgroundColor = bgColor;
-            if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-              const gridColor = this.colorTranslator.translateColor(
+            const nextElement = lineParts[i + 1];
+            // Only parse as color if it's not a quoted string
+            if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
+              const bgColor = this.colorTranslator.translateColor(
                 parseInt(lineParts[++i]) || 0
               );
-              if (this.renderer) {
-                this.renderer.setGridColor(gridColor);
+              this.backgroundColor = bgColor;
+              // Check for optional grid color
+              if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
+                const gridElement = lineParts[i + 1];
+                // Only parse as grid color if it's not a quoted string
+                if (!gridElement.startsWith("'") && !gridElement.startsWith('"')) {
+                  const gridColor = this.colorTranslator.translateColor(
+                    parseInt(lineParts[++i]) || 0
+                  );
+                  if (this.renderer) {
+                    this.renderer.setGridColor(gridColor);
+                  }
+                }
               }
             }
           }
@@ -602,9 +724,18 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         case 'POLAR':
           this.polar = true;
           if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-            this.twopi = parseInt(lineParts[++i]) || 0x100000000;
-            if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-              this.theta = parseInt(lineParts[++i]) || 0;
+            const nextElement = lineParts[i + 1];
+            // Only parse as twopi if it's not a quoted string
+            if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
+              this.twopi = parseInt(lineParts[++i]) || 0x100000000;
+              // Check for theta parameter
+              if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
+                const nextNextElement = lineParts[i + 1];
+                // Only parse as theta if it's not a quoted string
+                if (!nextNextElement.startsWith("'") && !nextNextElement.startsWith('"')) {
+                  this.theta = parseInt(lineParts[++i]) || 0;
+                }
+              }
             }
           }
           break;
@@ -646,18 +777,39 @@ export class DebugScopeXyWindow extends DebugWindowBase {
           break;
 
         default:
-          // Check if it's a channel definition (string)
-          if (element.startsWith("'") || element.startsWith('"')) {
-            const channelName = this.parseString(element);
+          // Check if it's a channel definition (string) - use ORIGINAL element for quote check!
+          if (originalElement.startsWith("'") || originalElement.startsWith('"')) {
+            const channelName = this.parseString(originalElement);
             let color = this.defaultColors[this.channels.length % 8];
-            
+            this.logMessage(`  Found channel '${channelName}', default color: 0x${color.toString(16)}`);
+
             // Check for optional color
             if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-              color = this.colorTranslator.translateColor(parseInt(lineParts[++i]) || 0);
+              const nextElement = lineParts[i + 1];
+              // Only consume next element if it's a number (color value)
+              if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
+                const colorValue = parseInt(nextElement);
+                if (!isNaN(colorValue)) {
+                  const translatedColor = this.colorTranslator.translateColor(colorValue);
+                  // IMPORTANT: If translation fails to black (and black wasn't intended),
+                  // use BRIGHT MAGENTA as error color - it's obvious something went wrong
+                  if (translatedColor === 0x000000 && colorValue !== 0) {
+                    color = 0xFF00FF;  // Bright magenta - ERROR COLOR
+                    this.logMessage(`    ERROR: Color translation failed for ${colorValue}, using ERROR COLOR (magenta)`);
+                  } else {
+                    color = translatedColor;
+                    this.logMessage(`    Custom color specified: ${colorValue} -> 0x${color.toString(16)}`);
+                  }
+                  i++;
+                }
+              }
             }
-            
+
             this.channels.push({ name: channelName, color });
             this.channelIndex++;
+            this.logMessage(`  Added channel ${this.channelIndex-1}: '${channelName}' with color 0x${color.toString(16)}`);
+          } else {
+            this.logMessage(`  Skipping non-channel element: ${originalElement}`);
           }
           break;
       }
@@ -666,8 +818,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // If no channels defined, create one default channel
     if (this.channels.length === 0) {
+      this.logMessage('No channels defined in configuration, adding default channel');
       this.channels.push({ name: '', color: this.defaultColors[0] });
       this.channelIndex = 1;
+    }
+
+    // Log final configuration
+    this.logMessage(`Configuration complete: ${this.channelIndex} channels, rate=${this.rate}, samples=${this.samples}, polar=${this.polar}, scale=${this.radius}/${this.range}`);
+    for (let i = 0; i < this.channels.length; i++) {
+      this.logMessage(`  Channel ${i}: name='${this.channels[i].name}', color=0x${this.channels[i].color.toString(16).padStart(6, '0')}`);
     }
   }
 
@@ -712,6 +871,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
   protected handleData(data: string): void {
     const elements = data.trim().split(/\s+/);
+    this.logMessage(`handleData: Processing ${elements.length} elements: ${data.substring(0, 50)}...`);
     
     for (const element of elements) {
       const upperElement = element.toUpperCase();
@@ -720,9 +880,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       if (upperElement === 'CLEAR') {
         this.persistenceManager.clear();
         this.dataBuffer = [];
-        this.currentChannel = 0;
         this.rateCounter = 0;
-        this.render();
+        this.render(true); // Force clear on CLEAR command
         continue;
       }
 
@@ -778,101 +937,144 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       const value = parseInt(element);
       if (!isNaN(value)) {
         // Unpack if using packed data mode
-        const unpacked = this.packedDataMode ? 
+        const unpacked = this.packedDataMode ?
           PackedDataProcessor.unpackSamples(value, this.packedDataMode) : [value];
-        
+
         for (const v of unpacked) {
           this.dataBuffer.push(v);
-          
-          // Check if we have a complete X,Y pair for current channel
-          if (this.dataBuffer.length === 2) {
-            const x = this.dataBuffer[0];
-            const y = this.dataBuffer[1];
-            this.dataBuffer = [];
-            
-            // Add to current channel's data
-            const channelData = new Array(this.channelIndex * 2).fill(0);
-            channelData[this.currentChannel * 2] = x;
-            channelData[this.currentChannel * 2 + 1] = y;
-            
-            // Move to next channel
-            this.currentChannel = (this.currentChannel + 1) % this.channelIndex;
-            
-            // If we've filled all channels, process the sample
-            if (this.currentChannel === 0) {
-              this.rateCounter++;
-              
-              if (this.samples === 0) {
-                // Infinite persistence - plot immediately
-                // Note: We'll accumulate and render based on rate
-                if (this.rateCounter >= this.rate) {
-                  this.render();
-                  this.rateCounter = 0;
-                }
-              } else {
-                // Fading persistence - add to buffer
-                this.persistenceManager.addSample(channelData);
-                if (this.rateCounter >= this.rate) {
-                  this.render();
-                  this.rateCounter = 0;
-                }
-              }
-            }
-          }
         }
       }
     }
-  }
 
-  private render(): void {
-    if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+    // Process complete samples from the buffer
+    // IMPORTANT: Only process if we have channels defined
+    if (this.channelIndex === 0) {
+      this.logMessage(`WARNING: No channels defined (channelIndex=0), cannot process data`);
       return;
     }
 
-    // Clear canvas
-    const clearScript = this.renderer.clear(
-      this.scopeXyCanvasId,
-      this.radius * 2,
-      this.radius * 2,
-      this.backgroundColor
-    );
-    
-    this.debugWindow.webContents.executeJavaScript(clearScript).then(() => {
-      if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
-        return;
+    const samplesNeeded = this.channelIndex * 2; // X,Y for each channel
+    this.logMessage(`handleData: buffer has ${this.dataBuffer.length} values, need ${samplesNeeded} per sample (${this.channelIndex} channels)`);
+
+    // Collect all samples first to avoid multiple renders per message
+    const collectedSamples: number[][] = [];
+    while (this.dataBuffer.length >= samplesNeeded) {
+      // Extract data for all channels
+      const channelData = this.dataBuffer.splice(0, samplesNeeded);
+      collectedSamples.push(channelData);
+      this.persistenceManager.addSample(channelData);
+
+      // Increment rate counter for each sample (matching Pascal behavior)
+      this.rateCounter++;
+    }
+
+    if (collectedSamples.length > 0) {
+      this.logMessage(`Collected ${collectedSamples.length} samples (each with ${samplesNeeded} values), rateCounter=${this.rateCounter}/${this.rate}`);
+
+      // Render once if we've hit the rate threshold
+      if (this.rateCounter >= this.rate) {
+        this.logMessage(`Triggering render with ${collectedSamples.length} new samples`);
+        this.render();
+        this.rateCounter = 0; // Reset to 0 (matching Pascal RateCycle)
       }
-      
-      // Draw grid
-      const gridScript = this.renderer.drawCircularGrid(
+    } else if (this.dataBuffer.length > 0) {
+      this.logMessage(`Incomplete sample in buffer: ${this.dataBuffer.length} values (need ${samplesNeeded})`);
+    }
+  }
+
+  private render(forceClear: boolean = false): void {
+    if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+      this.logMessage(`render: Skipping - window:${!!this.debugWindow}, destroyed:${this.debugWindow?.isDestroyed()}, renderer:${!!this.renderer}`);
+      return;
+    }
+
+    this.logMessage(`render: Starting render, canvas='${this.scopeXyCanvasId}', size=${this.radius * 2}, forceClear=${forceClear}`);
+
+    // For persistence with fading, we must clear and redraw everything each frame
+    // Otherwise old dots stay at their original opacity forever
+    // Only skip clear if we have infinite persistence (samples === 0)
+    const shouldClear = forceClear || this.samples > 0;
+
+    const clearPromise = shouldClear ?
+      this.debugWindow.webContents.executeJavaScript(this.renderer.clear(
         this.scopeXyCanvasId,
-        this.radius,  // centerX (canvas center)
-        this.radius,  // centerY (canvas center) 
-        this.radius,  // grid radius
-        8             // divisions
-      );
-      
-      return this.debugWindow.webContents.executeJavaScript(gridScript);
-    }).then(() => {
+        this.radius * 2,
+        this.radius * 2,
+        this.backgroundColor
+      )) :
+      Promise.resolve('Skipped clear - infinite persistence');
+
+    clearPromise
+      .then((clearResult) => {
+        this.logMessage(`render: Clear result: ${clearResult}`);
+        if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+          this.logMessage('render: Aborting - window or renderer not available');
+          return;
+        }
+
+        // Draw grid if we cleared (need to redraw grid after clear)
+        if (shouldClear) {
+          const gridScript = this.renderer.drawCircularGrid(
+            this.scopeXyCanvasId,
+            this.radius,  // centerX (canvas center)
+            this.radius,  // centerY (canvas center)
+            this.radius,  // grid radius
+            8             // divisions
+          );
+
+          this.logMessage(`render: Executing grid script (${gridScript.length} chars)`);
+          return this.debugWindow.webContents.executeJavaScript(gridScript);
+        } else {
+          return Promise.resolve('Grid not redrawn - no clear');
+        }
+    }).then((gridResult) => {
+      this.logMessage(`render: Grid result: ${gridResult}`);
       if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
         return;
       }
-      
+
+      // Draw legends if we cleared (need to redraw after clear)
+      if (shouldClear && !this.hideXY && this.channels.length > 0) {
+        const legendScript = this.renderer.drawLegends(
+          this.scopeXyCanvasId,
+          this.channels,
+          this.textSize,
+          this.radius * 2  // Canvas size
+        );
+        return this.debugWindow.webContents.executeJavaScript(legendScript);
+      }
+      return Promise.resolve('Legends not drawn');
+    }).then((legendResult) => {
+      this.logMessage(`render: Legend result: ${legendResult}`);
+      if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+        return;
+      }
+
       // Get samples with opacity
       const samples = this.persistenceManager.getSamplesWithOpacity();
-      
-      // Plot each sample
-      const plotScripts: string[] = [];
+      const totalInBuffer = this.persistenceManager.getSampleCount();
+      this.logMessage(`render: Got ${samples.length} samples to plot (${totalInBuffer} total in buffer, persistence=${this.samples})`);
+
+      // Debug: Check opacity values for first and last samples
+      if (samples.length > 0) {
+        this.logMessage(`  First sample opacity: ${samples[0].opacity}, Last sample opacity: ${samples[samples.length-1].opacity}`);
+      }
+
+      // Build a single script to plot all points
+      const plotCommands: string[] = [];
+      let plotCount = 0;
+
       for (const sample of samples) {
         // Process each channel in the sample
         for (let ch = 0; ch < this.channelIndex; ch++) {
           const x = sample.data[ch * 2];
           const y = sample.data[ch * 2 + 1];
-          
+
           if (x === undefined || y === undefined) continue;
-          
+
           // Transform coordinates based on mode
           let screenCoords: { x: number; y: number };
-          
+
           if (this.polar) {
             screenCoords = this.renderer.transformPolar(
               x,
@@ -892,36 +1094,61 @@ export class DebugScopeXyWindow extends DebugWindowBase {
               this.range
             );
           }
-          
+
           // Convert to screen coordinates (center at radius, radius)
           const screenX = this.radius + screenCoords.x;
           const screenY = this.radius - screenCoords.y; // Y is inverted
-          
+
           // Get channel color
           const color = this.channels[ch]?.color || this.defaultColors[ch % 8];
-          
-          // Generate plot script
-          const plotScript = this.renderer.plotPoint(
-            this.scopeXyCanvasId,
-            screenX,
-            screenY,
-            color,
-            sample.opacity,
-            this.dotSize
-          );
-          
-          plotScripts.push(plotScript);
+          const colorStr = '#' + color.toString(16).padStart(6, '0');
+
+          // Debug first few points per channel
+          if (plotCount < 9) {  // Show first 3 points for each of 3 channels
+            this.logMessage(`  Plot ${plotCount}: ch=${ch}/'${this.channels[ch]?.name}', raw=(${x},${y}), transformed=(${screenCoords.x.toFixed(1)},${screenCoords.y.toFixed(1)}), screen=(${screenX.toFixed(1)},${screenY.toFixed(1)}), color=${colorStr}`);
+          }
+
+          // Add plot commands (no wrapper, just the drawing code)
+          plotCommands.push(`
+            ctx.save();
+            ctx.globalAlpha = ${sample.opacity / 255};
+            ctx.fillStyle = '${colorStr}';
+            ctx.beginPath();
+            ctx.arc(${screenX}, ${screenY}, ${this.dotSize / 2}, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          `);
+          plotCount++;
         }
       }
-      
-      // Execute all plot scripts as a batch
-      if (plotScripts.length > 0) {
-        const combinedScript = plotScripts.join('\n');
+
+      // Execute all plots in a single script
+      this.logMessage(`render: Plotting ${plotCount} points`);
+      if (plotCommands.length > 0) {
+        const combinedScript = `(() => {
+          const canvas = document.getElementById('${this.scopeXyCanvasId}');
+          if (!canvas) return 'No canvas';
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return 'No context';
+
+          ${plotCommands.join('\n')}
+
+          return 'Plotted ${plotCount} points';
+        })()`;
+
         return this.debugWindow.webContents.executeJavaScript(combinedScript);
       }
       return Promise.resolve(); // Return resolved promise when no scripts to execute
     }).catch(err => {
       console.error('Render error:', err);
+      console.error('Render error details:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+        cause: err.cause,
+        code: err.code,
+        fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+      });
     });
   }
 }

@@ -63,14 +63,20 @@ describe('DebugScopeXyWindow', () => {
 
   // Helper function to trigger window ready event
   const triggerWindowReady = () => {
-    const mockWindow = mockBrowserWindowInstances[0];
+    // Get the last created window (in case of multiple creates)
+    const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
     if (mockWindow && mockWindow.webContents.on) {
       // Find and call the 'did-finish-load' callback
       const calls = mockWindow.webContents.on.mock.calls;
       const didFinishLoadCall = calls.find((call: any[]) => call[0] === 'did-finish-load');
       if (didFinishLoadCall && didFinishLoadCall[1]) {
+        console.log('Triggering did-finish-load event');
         didFinishLoadCall[1]();
+      } else {
+        console.log('No did-finish-load handler found');
       }
+    } else {
+      console.log('No mock window found');
     }
   };
 
@@ -224,12 +230,125 @@ describe('DebugScopeXyWindow', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', "'A'", "'B'"]);
       triggerWindowReady();
-      
+
       // Need to provide data for both channels before render
       window.updateContent(['10', '20', '30', '40']);
-      
+
       const mockWindow = mockBrowserWindowInstances[0];
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should render static content on window creation', () => {
+      // Use the exact creation message from the logs:
+      // `SCOPE_XY MyXY RANGE 500 POLAR 360 'G' 'R' 'B'
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['`SCOPE_XY', 'MyXY', 'RANGE', '500', 'POLAR', '360', "'G'", "'R'", "'B'"]
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+
+      // Simulate did-finish-load to initialize renderer
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Manually call the initialization that would happen on did-finish-load
+      (window as any).initializeRenderer();
+      (window as any).render();
+      (window as any).onWindowReady();
+
+      // Check that static content was rendered
+      const executeCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+
+      console.log('Initial render calls:', executeCalls.length);
+      console.log('Window polar mode:', (window as any).polar);
+      console.log('Window radius:', (window as any).radius);
+
+      // Analyze what was rendered
+      let hasClear = false;
+      let hasGrid = false;
+
+      executeCalls.forEach((call: any[], index: number) => {
+        const script = call[0] || '';
+        console.log(`Call ${index} script preview: ${script.substring(0, 150)}...`);
+
+        if (script.includes('fillRect')) {
+          hasClear = true;
+          console.log(`  -> Clear canvas detected`);
+        }
+        if (script.includes('arc(') && script.includes('stroke()')) {
+          hasGrid = true;
+          console.log(`  -> Grid drawing detected`);
+        }
+      });
+
+      // Window should at minimum clear the canvas and draw a grid
+      expect(hasClear).toBe(true);
+      expect(hasGrid).toBe(true);
+      expect(executeCalls.length).toBeGreaterThanOrEqual(2); // At least clear + grid
+    });
+
+    it('should accumulate all channels before rendering - 3 channel test', () => {
+      // Create with full configuration in the display spec
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'POLAR', '360', "'G'", "'R'", "'B'"]
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      // Don't call createDebugWindow - constructor already did it!
+
+      // Check how many windows created
+      console.log('Mock windows created:', mockBrowserWindowInstances.length);
+
+      // Manually trigger window ready since the mock doesn't fire events
+      // Instead of triggerWindowReady, directly call onWindowReady
+      (window as any).onWindowReady();
+
+      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Clear mock to track only data-related calls
+      mockWindow.webContents.executeJavaScript.mockClear();
+
+      // Check if window is ready
+      console.log('Window ready state after onWindowReady:', (window as any).isWindowReady);
+
+      // Add spy to track handleData calls
+      const handleDataSpy = jest.spyOn(window as any, 'handleData');
+      const processMessageSpy = jest.spyOn(window as any, 'processMessageImmediate');
+
+      // Send data for 3 channels (6 values = 3 x,y pairs)
+      // This simulates the actual data: MyXY 0 0 0 120 0 240
+      window.updateContent(['test', '0', '0', '0', '120', '0', '240']);
+
+      console.log('processMessageImmediate called:', processMessageSpy.mock.calls.length, 'times');
+      console.log('handleData called:', handleDataSpy.mock.calls.length, 'times');
+      if (handleDataSpy.mock.calls.length > 0) {
+        console.log('handleData arguments:', handleDataSpy.mock.calls[0]);
+      }
+
+      // Count how many times render was called (look for plot operations)
+      const executeCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const renderCalls = executeCalls.filter(
+        (call: any[]) => call[0] && call[0].includes('arc(') // Plot operations contain arc
+      );
+
+      // With 3 channels, we should render ONCE after all 3 pairs are received
+      // NOT 3 times (once per pair)
+      console.log('Execute calls:', executeCalls.length);
+      console.log('Render calls with arc:', renderCalls.length);
+
+      // Log the actual calls for debugging
+      console.log('All executeJavaScript calls:');
+      executeCalls.forEach((call: any[], index: number) => {
+        const script = call[0] || '';
+        console.log(`Call ${index}: ${script.substring(0, 100)}...`);
+        if (script.includes('fillRect')) {
+          console.log(`  -> Clear canvas`);
+        } else if (script.includes('arc(') && script.includes('stroke()')) {
+          console.log(`  -> Draw grid`);
+        } else if (script.includes('arc(') && script.includes('fill()')) {
+          console.log(`  -> Plot point`);
+        }
+      });
+
+      // We expect exactly 1 complete render cycle after all channel data is received
+      expect(renderCalls.length).toBeLessThanOrEqual(1);
     });
 
     it('should handle CLEAR command', () => {

@@ -129,19 +129,26 @@ export class ScopeXyRenderer {
     const colorStr = `#${color.toString(16).padStart(6, '0')}`;
     
     // Generate JavaScript code
-    return `const canvas = document.getElementById('${canvasId}');
-if (canvas) {
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.save();
-    ctx.globalAlpha = ${opacity / 255};
-    ctx.fillStyle = '${colorStr}';
-    ctx.beginPath();
-    ctx.arc(${x}, ${y}, ${radius}, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    return `(() => {
+  const canvas = document.getElementById('${canvasId}');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.save();
+      ctx.globalAlpha = ${opacity / 255};
+      ctx.fillStyle = '${colorStr}';
+      ctx.beginPath();
+      ctx.arc(${x}, ${y}, ${radius}, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return 'Point plotted';
+    } else {
+      return 'No canvas context';
+    }
+  } else {
+    return 'Canvas not found';
   }
-}`;
+})()`;
   }
 
   /**
@@ -164,52 +171,140 @@ if (canvas) {
   ): string {
     const colorStr = `#${this.gridColor.toString(16).padStart(6, '0')}`;
     
-    return `const canvas = document.getElementById('${canvasId}');
-if (canvas) {
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.save();
-    ctx.strokeStyle = '${colorStr}';
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.3;
-    
-    // Draw concentric circles
-    const circleCount = 4;
-    for (let i = 1; i <= circleCount; i++) {
-      const r = (${radius} / circleCount) * i;
+    return `(() => {
+  const canvas = document.getElementById('${canvasId}');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.save();
+      ctx.strokeStyle = '${colorStr}';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.3;
+
+      // Draw concentric circles
+      const circleCount = 4;
+      for (let i = 1; i <= circleCount; i++) {
+        const r = (${radius} / circleCount) * i;
+        ctx.beginPath();
+        ctx.arc(${centerX}, ${centerY}, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Draw radial lines
+      for (let i = 0; i < ${divisions}; i++) {
+        const angle = (i / ${divisions}) * Math.PI * 2;
+        const x = ${centerX} + Math.cos(angle) * ${radius};
+        const y = ${centerY} + Math.sin(angle) * ${radius};
+
+        ctx.beginPath();
+        ctx.moveTo(${centerX}, ${centerY});
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+
+      // Draw center crosshair
+      ctx.globalAlpha = 0.5;
+
       ctx.beginPath();
-      ctx.arc(${centerX}, ${centerY}, r, 0, Math.PI * 2);
+      ctx.moveTo(${centerX} - ${radius}, ${centerY});
+      ctx.lineTo(${centerX} + ${radius}, ${centerY});
       ctx.stroke();
-    }
-    
-    // Draw radial lines
-    for (let i = 0; i < ${divisions}; i++) {
-      const angle = (i / ${divisions}) * Math.PI * 2;
-      const x = ${centerX} + Math.cos(angle) * ${radius};
-      const y = ${centerY} + Math.sin(angle) * ${radius};
-      
+
       ctx.beginPath();
-      ctx.moveTo(${centerX}, ${centerY});
-      ctx.lineTo(x, y);
+      ctx.moveTo(${centerX}, ${centerY} - ${radius});
+      ctx.lineTo(${centerX}, ${centerY} + ${radius});
       ctx.stroke();
+
+      ctx.restore();
+      return 'Grid drawn successfully';
+    } else {
+      return 'No canvas context';
     }
-    
-    // Draw center crosshair
-    ctx.globalAlpha = 0.5;
-    
-    ctx.beginPath();
-    ctx.moveTo(${centerX - radius}, ${centerY});
-    ctx.lineTo(${centerX + radius}, ${centerY});
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(${centerX}, ${centerY - radius});
-    ctx.lineTo(${centerX}, ${centerY + radius});
-    ctx.stroke();
-    
-    ctx.restore();
+  } else {
+    return 'Canvas not found';
   }
-}`;
+})()`;
+  }
+
+  /**
+   * Generate JavaScript code to draw channel legends
+   *
+   * @param canvasId Canvas element ID
+   * @param channels Array of channel definitions with names and colors
+   * @param textSize Font size in pixels
+   * @returns JavaScript code string to execute in browser context
+   */
+  public drawLegends(
+    canvasId: string,
+    channels: Array<{ name: string; color: number }>,
+    textSize: number = 10,
+    canvasSize: number = 256
+  ): string {
+    if (channels.length === 0) return '(() => "No channels")()';
+
+    const legendCommands: string[] = [];
+    const margin = 10;
+    const lineHeight = textSize + 4;
+
+    for (let i = 0; i < channels.length && i < 8; i++) {
+      if (!channels[i].name) continue; // Skip empty names
+
+      const colorStr = `#${channels[i].color.toString(16).padStart(6, '0')}`;
+      const name = channels[i].name;
+
+      // Calculate position based on Pascal logic:
+      // Channels 0,1,2,3: Top area
+      // Channels 4,5,6,7: Bottom area
+      // Even channels (0,2,4,6): Left side
+      // Odd channels (1,3,5,7): Right side
+
+      let x: number;
+      let y: number;
+
+      // Horizontal position
+      if ((i & 2) === 0) {
+        // Even channel pairs (0,1 and 4,5): Left side
+        x = margin;
+      } else {
+        // Odd channel pairs (2,3 and 6,7): Right side
+        // Measure text to right-align - use larger multiplier for safety
+        x = canvasSize - margin - (name.length * textSize * 0.8); // Safer width approximation
+      }
+
+      // Vertical position
+      if (i < 4) {
+        // Top area
+        y = margin + lineHeight;
+      } else {
+        // Bottom area
+        y = canvasSize - margin - lineHeight * 2;
+      }
+
+      // Add offset for odd-numbered channels (second line)
+      if ((i & 1) !== 0) {
+        y += lineHeight;
+      }
+
+      legendCommands.push(`
+        // Channel ${i}: ${name}
+        ctx.fillStyle = '${colorStr}';
+        ctx.font = 'bold italic ${textSize}px monospace';
+        ctx.fillText('${name}', ${x}, ${y});
+      `);
+    }
+
+    return `(() => {
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return 'No canvas';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 'No context';
+
+      ctx.save();
+      ${legendCommands.join('\n')}
+      ctx.restore();
+
+      return 'Legends drawn';
+    })()`;
   }
 
   /**
@@ -223,14 +318,27 @@ if (canvas) {
    */
   public clear(canvasId: string, width: number, height: number, backgroundColor: number): string {
     const colorStr = `#${backgroundColor.toString(16).padStart(6, '0')}`;
-    
-    return `const canvas = document.getElementById('${canvasId}');
-if (canvas) {
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '${colorStr}';
-    ctx.fillRect(0, 0, ${width}, ${height});
+
+    return `(() => {
+  const canvas = document.getElementById('${canvasId}');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.save();
+      ctx.fillStyle = '${colorStr}';
+      ctx.fillRect(0, 0, ${width}, ${height});
+      ctx.restore();
+      // Reset context to defaults for next operations
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#000000';
+      ctx.fillStyle = '#000000';
+      return 'Canvas cleared';
+    } else {
+      return 'No canvas context';
+    }
+  } else {
+    return 'Canvas not found';
   }
-}`;
+})()`;
   }
 }
