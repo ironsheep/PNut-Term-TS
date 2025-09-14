@@ -267,8 +267,8 @@ export class ScopeXyRenderer {
         x = margin;
       } else {
         // Odd channel pairs (2,3 and 6,7): Right side
-        // Measure text to right-align - use larger multiplier for safety
-        x = canvasSize - margin - (name.length * textSize * 0.8); // Safer width approximation
+        // Measure text to right-align - use smaller multiplier for single char names
+        x = canvasSize - margin - (name.length * textSize * 0.4); // Better for single chars like 'B'
       }
 
       // Vertical position
@@ -308,8 +308,53 @@ export class ScopeXyRenderer {
   }
 
   /**
-   * Generate JavaScript code to clear the rendering area
-   * 
+   * Generate JavaScript code to save current canvas to background
+   * This preserves grid/legends for restoration
+   *
+   * @param canvasId Canvas element ID
+   * @returns JavaScript code string to execute in browser context
+   */
+  public saveBackground(canvasId: string): string {
+    return `(() => {
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return 'No canvas';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 'No context';
+
+      // Store the current canvas as background image data
+      window.scopeXyBackground = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      return 'Background saved';
+    })()`;
+  }
+
+  /**
+   * Generate JavaScript code to restore saved background
+   * This quickly restores grid/legends without redrawing
+   *
+   * @param canvasId Canvas element ID
+   * @returns JavaScript code string to execute in browser context
+   */
+  public restoreBackground(canvasId: string): string {
+    return `(() => {
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return 'No canvas';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 'No context';
+
+      // Restore the saved background if available
+      if (window.scopeXyBackground) {
+        ctx.putImageData(window.scopeXyBackground, 0, 0);
+        return 'Background restored';
+      }
+
+      return 'No background to restore';
+    })()`;
+  }
+
+  /**
+   * Generate JavaScript code to clear the entire rendering area
+   *
    * @param canvasId Canvas element ID
    * @param width Canvas width
    * @param height Canvas height

@@ -80,13 +80,20 @@ export class PersistenceManager {
     } else {
       // Fading persistence - calculate opacity gradient
       // Pascal: opa := 255 - (k * 255 div vSamples);
+      // Quantize opacity to reduce flickering in dim areas
+      const opacityLevels = 16; // Quantize to 16 levels instead of 256
+      const opacityStep = 255 / opacityLevels;
+
       for (let i = 0; i < this.samplePop; i++) {
         const ptr = (this.samplePtr - i - 1) & PersistenceManager.PTR_MASK;
         if (this.sampleBuffer[ptr]) {
-          const opacity = 255 - Math.floor((i * 255) / this.persistence);
+          // Calculate raw opacity
+          const rawOpacity = 255 - Math.floor((i * 255) / this.persistence);
+          // Quantize to nearest step to reduce variation
+          const quantizedOpacity = Math.round(rawOpacity / opacityStep) * opacityStep;
           result.push({
             data: this.sampleBuffer[ptr],
-            opacity: Math.max(0, opacity)
+            opacity: Math.max(opacityStep, Math.min(255, quantizedOpacity))
           });
         }
       }

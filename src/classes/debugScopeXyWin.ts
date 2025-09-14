@@ -881,6 +881,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         this.persistenceManager.clear();
         this.dataBuffer = [];
         this.rateCounter = 0;
+        this.backgroundDrawn = false; // Reset background flag
         this.render(true); // Force clear on CLEAR command
         continue;
       }
@@ -982,6 +983,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     }
   }
 
+  // Track if we need to redraw the static background (grid + legends)
+  private backgroundDrawn: boolean = false;
+
   private render(forceClear: boolean = false): void {
     if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
       this.logMessage(`render: Skipping - window:${!!this.debugWindow}, destroyed:${this.debugWindow?.isDestroyed()}, renderer:${!!this.renderer}`);
@@ -990,30 +994,33 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     this.logMessage(`render: Starting render, canvas='${this.scopeXyCanvasId}', size=${this.radius * 2}, forceClear=${forceClear}`);
 
-    // For persistence with fading, we must clear and redraw everything each frame
-    // Otherwise old dots stay at their original opacity forever
-    // Only skip clear if we have infinite persistence (samples === 0)
-    const shouldClear = forceClear || this.samples > 0;
+    // Differential rendering: Only redraw background when forced or first time
+    const shouldRedrawBackground = forceClear || !this.backgroundDrawn;
 
-    const clearPromise = shouldClear ?
+    // For persistence with fading, we must clear and redraw dots each frame
+    // But we can keep the grid/legends as a persistent background layer
+    const shouldClearDots = this.samples > 0;
+
+    // Phase 1: Handle background (grid + legends) if needed
+    const backgroundPromise = shouldRedrawBackground ?
       this.debugWindow.webContents.executeJavaScript(this.renderer.clear(
         this.scopeXyCanvasId,
         this.radius * 2,
         this.radius * 2,
         this.backgroundColor
       )) :
-      Promise.resolve('Skipped clear - infinite persistence');
+      Promise.resolve('Background already drawn');
 
-    clearPromise
-      .then((clearResult) => {
-        this.logMessage(`render: Clear result: ${clearResult}`);
+    backgroundPromise
+      .then((result) => {
+        this.logMessage(`render: Background result: ${result}`);
         if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
           this.logMessage('render: Aborting - window or renderer not available');
           return;
         }
 
-        // Draw grid if we cleared (need to redraw grid after clear)
-        if (shouldClear) {
+        // Draw grid only if we're redrawing background
+        if (shouldRedrawBackground) {
           const gridScript = this.renderer.drawCircularGrid(
             this.scopeXyCanvasId,
             this.radius,  // centerX (canvas center)
@@ -1022,10 +1029,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             8             // divisions
           );
 
-          this.logMessage(`render: Executing grid script (${gridScript.length} chars)`);
+          this.logMessage(`render: Drawing grid (${gridScript.length} chars)`);
           return this.debugWindow.webContents.executeJavaScript(gridScript);
         } else {
-          return Promise.resolve('Grid not redrawn - no clear');
+          return Promise.resolve('Grid already drawn');
         }
     }).then((gridResult) => {
       this.logMessage(`render: Grid result: ${gridResult}`);
@@ -1033,8 +1040,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         return;
       }
 
-      // Draw legends if we cleared (need to redraw after clear)
-      if (shouldClear && !this.hideXY && this.channels.length > 0) {
+      // Draw legends only if we're redrawing background
+      if (shouldRedrawBackground && !this.hideXY && this.channels.length > 0) {
         const legendScript = this.renderer.drawLegends(
           this.scopeXyCanvasId,
           this.channels,
@@ -1043,9 +1050,36 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         );
         return this.debugWindow.webContents.executeJavaScript(legendScript);
       }
-      return Promise.resolve('Legends not drawn');
+      return Promise.resolve('Legends already drawn');
     }).then((legendResult) => {
       this.logMessage(`render: Legend result: ${legendResult}`);
+      if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+        return;
+      }
+
+      // Save the background (grid + legends) after drawing it
+      if (shouldRedrawBackground) {
+        this.backgroundDrawn = true;
+        return this.debugWindow.webContents.executeJavaScript(
+          this.renderer.saveBackground(this.scopeXyCanvasId)
+        );
+      }
+      return Promise.resolve('Background already saved');
+    }).then((saveResult) => {
+      this.logMessage(`render: Save background result: ${saveResult}`);
+      if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
+        return;
+      }
+
+      // For persistence mode, restore background to clear old dots
+      if (shouldClearDots && this.backgroundDrawn) {
+        return this.debugWindow.webContents.executeJavaScript(
+          this.renderer.restoreBackground(this.scopeXyCanvasId)
+        );
+      }
+      return Promise.resolve('No restore needed');
+    }).then((restoreResult) => {
+      this.logMessage(`render: Restore result: ${restoreResult}`);
       if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.renderer) {
         return;
       }
@@ -1060,8 +1094,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         this.logMessage(`  First sample opacity: ${samples[0].opacity}, Last sample opacity: ${samples[samples.length-1].opacity}`);
       }
 
-      // Build a single script to plot all points
-      const plotCommands: string[] = [];
+      // Build optimized drawing commands grouped by color and opacity
+      // This reduces state changes and improves performance
+      interface DotGroup {
+        color: string;
+        opacity: number;
+        points: Array<{x: number, y: number}>;
+      }
+
+      const dotGroups = new Map<string, DotGroup>();
       let plotCount = 0;
 
       for (const sample of samples) {
@@ -1108,18 +1149,41 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             this.logMessage(`  Plot ${plotCount}: ch=${ch}/'${this.channels[ch]?.name}', raw=(${x},${y}), transformed=(${screenCoords.x.toFixed(1)},${screenCoords.y.toFixed(1)}), screen=(${screenX.toFixed(1)},${screenY.toFixed(1)}), color=${colorStr}`);
           }
 
-          // Add plot commands (no wrapper, just the drawing code)
-          plotCommands.push(`
-            ctx.save();
-            ctx.globalAlpha = ${sample.opacity / 255};
-            ctx.fillStyle = '${colorStr}';
-            ctx.beginPath();
-            ctx.arc(${screenX}, ${screenY}, ${this.dotSize / 2}, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          `);
+          // Group dots by color and opacity to minimize state changes
+          const groupKey = `${colorStr}_${sample.opacity}`;
+          if (!dotGroups.has(groupKey)) {
+            dotGroups.set(groupKey, {
+              color: colorStr,
+              opacity: sample.opacity,
+              points: []
+            });
+          }
+          dotGroups.get(groupKey)!.points.push({x: screenX, y: screenY});
           plotCount++;
         }
+      }
+
+      // Build optimized plot commands - one save/restore per group
+      // Sort groups by opacity (oldest/faintest first) for consistent layering
+      const sortedGroups = Array.from(dotGroups.values())
+        .filter(g => g.opacity > 15)  // Skip very faint dots that cause flicker
+        .sort((a, b) => a.opacity - b.opacity);
+
+      const plotCommands: string[] = [];
+      for (const group of sortedGroups) {
+        // Ensure minimum opacity for visibility
+        const alpha = Math.max(0.06, group.opacity / 255);
+        plotCommands.push(`
+          ctx.save();
+          ctx.globalAlpha = ${alpha};
+          ctx.fillStyle = '${group.color}';
+          ${group.points.map(p => `
+            ctx.beginPath();
+            ctx.arc(${p.x}, ${p.y}, ${this.dotSize / 2}, 0, Math.PI * 2);
+            ctx.fill();
+          `).join('')}
+          ctx.restore();
+        `);
       }
 
       // Execute all plots in a single script
