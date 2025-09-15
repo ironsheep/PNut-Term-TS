@@ -423,6 +423,16 @@ export class DebugScopeWindow extends DebugWindowBase {
       windowX = position.x;
       windowY = position.y;
       this.logMessage(`  -- SCOPE using auto-placement: ${windowX},${windowY}`);
+
+      // Log to debug logger with reproducible command format
+      try {
+        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) SCOPE '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
     }
     
     this.logMessage(

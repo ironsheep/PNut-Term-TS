@@ -618,6 +618,16 @@ export class DebugLogicWindow extends DebugWindowBase {
       windowX = position.x;
       windowY = position.y;
       this.logMessage(`  -- LOGIC using auto-placement: ${windowX},${windowY}`);
+
+      // Log to debug logger with reproducible command format
+      try {
+        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) LOGIC '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
     }
     
     this.logMessage(
@@ -641,16 +651,39 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.contentWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1;
     this.contentHeight = contentHeight;
 
+    // HYPOTHESIS 4 DEBUGGING: Registration Side Effects
+    const beforeBounds = this.debugWindow.getBounds();
+    console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`);
+
     // Register window with WindowPlacer for position tracking
     if (this.debugWindow) {
       const windowPlacer = WindowPlacer.getInstance();
+      console.log(`[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`);
       windowPlacer.registerWindow(`logic-${this.displaySpec.displayName}`, this.debugWindow);
+
+      // Check for position changes after registration
+      setTimeout(() => {
+        const afterBounds = this.debugWindow!.getBounds();
+        console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`);
+        if (beforeBounds.x !== afterBounds.x || beforeBounds.y !== afterBounds.y) {
+          console.log(`[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${afterBounds.x - beforeBounds.x} Δy:${afterBounds.y - beforeBounds.y}`);
+        } else {
+          console.log(`[DEBUG_WIN_LOGIC] ✅ HYPOTHESIS 4: Position stable during registration`);
+        }
+      }, 100);
     }
     
-    // hook window events before being shown
+    // HYPOTHESIS 6 DEBUGGING: Content Loading Interference
     this.debugWindow.on('ready-to-show', () => {
+      const readyBounds = this.debugWindow!.getBounds();
+      console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: READY-TO-SHOW: (${readyBounds.x}, ${readyBounds.y})`);
       this.logMessage('* Logic window will show...');
       this.debugWindow?.show();
+    });
+
+    this.debugWindow.webContents.on('did-finish-load', () => {
+      const loadedBounds = this.debugWindow!.getBounds();
+      console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`);
     });
 
     this.debugWindow.on('show', () => {

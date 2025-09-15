@@ -1796,6 +1796,16 @@ export class DebugFFTWindow extends DebugWindowBase {
       const position = windowPlacer.getNextPosition(`fft-${this.displaySpec.displayName}`, placementConfig);
       x = position.x;
       y = position.y;
+
+      // Log to debug logger with reproducible command format
+      try {
+        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.canvasWidth}x${this.canvasHeight} Mon:${monitorId}) FFT '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${this.canvasWidth} ${this.canvasHeight}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
     }
     
     // Use base class method for consistent chrome adjustments

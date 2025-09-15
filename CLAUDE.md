@@ -41,6 +41,12 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 - **Standard**: Defined features, tests → normal execution
 - **Simple**: Typos, configs → quick mode
 
+## 📊 Test Results Location
+**Test logs and external results**: `test-results/external-results/`
+- **Console logs**: `console-*.log` (renderer/browser console output)
+- **Main logs**: `test-run-*.log` (main process logs with window placement data)
+- **Window placement logs**: Search for `[WINDOW PLACER]` patterns in main logs
+
 
 ## Todo MCP Mastery Operations
 

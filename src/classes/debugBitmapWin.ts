@@ -952,6 +952,16 @@ export class DebugBitmapWindow extends DebugWindowBase {
       const position = windowPlacer.getNextPosition(`bitmap-${this.idString}`, placementConfig);
       windowX = position.x;
       windowY = position.y;
+
+      // Log to debug logger with reproducible command format
+      try {
+        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
     }
     
     // Create the browser window

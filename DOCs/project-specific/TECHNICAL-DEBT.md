@@ -275,3 +275,101 @@ Some debug windows have incorrect construction patterns that need standardizatio
 - All operational logs in one place (main console)
 - Easier to identify real problems vs routine operations
 
+---
+
+## Missing Interactive Features from Pascal Reference
+
+### CRITICAL: Mouse Hover Coordinate Display System Missing
+**Date Added**: 2025-09-15
+**Priority**: HIGH - Core User Experience Feature
+**Category**: User Interface Parity
+
+**Current State**:
+- TypeScript debug windows have no mouse interaction capabilities
+- Users cannot see coordinates when hovering over visual data
+- Missing essential debugging/analysis functionality that Pascal provides
+
+**Pascal Reference Implementation**:
+All visual debug windows in Pascal implement sophisticated mouse hover coordinate displays via `FormMouseMove` handlers:
+
+#### **Visual Debug Windows Coordinate Flyouts**:
+
+1. **Logic Analyzer Window** (`debugLogicWin.ts`)
+   - **Missing**: Time unit and sample position coordinates
+   - **Pascal Shows**: `"<time_units>,<sample_position>"` (e.g., "-5,12")
+   - **Implementation**: Custom cursor with cross-hair + text overlay
+
+2. **Scope Window** (`debugScopeWin.ts`)
+   - **Missing**: X,Y pixel coordinates within scope area
+   - **Pascal Shows**: `"<x_pixel>,<y_pixel>"` (e.g., "150,200")
+   - **Implementation**: Real-time coordinate tracking
+
+3. **Scope XY Window** (`debugScopeXyWin.ts`)
+   - **Missing**: Scaled X,Y coordinates (cartesian or polar)
+   - **Pascal Shows**:
+     - Cartesian: `"<scaled_x>,<scaled_y>"` with log/linear scaling
+     - Polar: `"<radius>,<angle>*"` (asterisk indicates polar mode)
+   - **Examples**: `"1024,-512"` or `"2048,$12345678*"`
+
+4. **FFT Window** (`debugFftWin.ts`)
+   - **Missing**: Frequency bin and amplitude coordinates
+   - **Pascal Shows**: `"<freq_bin>,<amplitude_level>"` (e.g., "128,45")
+   - **Implementation**: Real-time frequency analysis feedback
+
+5. **Plot Window** (`debugPlotWin.ts`)
+   - **Missing**: Plot grid coordinates accounting for direction
+   - **Pascal Shows**: `"<grid_x>,<grid_y>"` divided by dot size (e.g., "25,40")
+   - **Implementation**: Grid-aware coordinate system
+
+6. **Terminal Window** (`debugTermWin.ts`)
+   - **Missing**: Character column and row position
+   - **Pascal Shows**: `"<column>,<row>"` (e.g., "12,3")
+   - **Implementation**: Character-based coordinate system
+
+7. **Bitmap Window** (`debugBitmapWin.ts`)
+   - **Missing**: Pixel coordinates
+   - **Pascal Shows**: `"<pixel_x>,<pixel_y>"` divided by dot size (e.g., "320,240")
+   - **Implementation**: Pixel-level precision tracking
+
+8. **MIDI Window** (`debugMidiWin.ts`)
+   - **Missing**: Pixel coordinates (same as bitmap)
+   - **Pascal Shows**: `"<pixel_x>,<pixel_y>"`
+   - **Implementation**: Coordinate display for MIDI visualization
+
+#### **COG/Debugger Window Tooltip System**:
+
+9. **COG Window** (`debugCOGWindow.ts` - when implemented)
+   - **Missing**: Extensive context-aware tooltip system
+   - **Pascal Has**: 40+ different tooltips including:
+     - Register maps: `"Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange"`
+     - Program counter: `"Program Counter | Click to lock disassembly to PC"`
+     - Stack data: `"Stack Registers (top..bottom) | Click to lock disassembly and HUB address to <address>"`
+     - Pin registers: `"Pin Registers | P<n> | <pin_state_info>"`
+     - Event flags: `"Event Flags | L-Click to break on <event> event | R-Click to toggle"`
+     - Interactive instructions with keyboard shortcuts
+
+#### **Technical Implementation Requirements**:
+
+**Custom Cursor System**:
+- Cross-hair overlay at mouse position
+- Dynamic text box showing coordinates
+- Intelligent positioning (quadrant-based to avoid screen edges)
+- Color-coded display matching window theme
+- 50ms refresh rate for real-time updates
+
+**Canvas Mouse Event Handling**:
+- `onMouseMove` handlers for all visual debug windows
+- Coordinate transformation based on window type and scaling
+- Context-aware formatting (time units, pixels, grid positions, etc.)
+- Integration with existing canvas rendering system
+
+**Impact**:
+- **Major user experience gap** - users expect these features from Pascal version
+- **Debugging capability loss** - cannot see precise coordinates for analysis
+- **Professional appearance** - missing polish and functionality
+- **Feature parity issue** - TypeScript version appears incomplete
+
+**Implementation Estimate**: 2-3 hours per window × 8 windows = 16-24 hours
+
+**Required for Release**: HIGH PRIORITY - Essential for user experience parity
+

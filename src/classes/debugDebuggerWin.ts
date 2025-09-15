@@ -1732,6 +1732,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       const position = windowPlacer.getNextPosition(`debugger-cog${this.cogId}`, placementConfig);
       x = position.x;
       y = position.y;
+
+      // Log to debug logger with reproducible command format
+      try {
+        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${width}x${height} Mon:${monitorId}) DEBUGGER 'COG${this.cogId}' POS ${x} ${y} SIZE ${width} ${height}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
     }
     
     this.logMessage(`Creating debugger window for COG ${this.cogId}: ${width}x${height} at ${x},${y}`);

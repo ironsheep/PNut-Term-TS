@@ -209,6 +209,16 @@ export class DebugMidiWindow extends DebugWindowBase {
     const position = windowPlacer.getNextPosition(`midi-${this.windowId}`, placementConfig);
     x = position.x;
     y = position.y;
+
+    // Log to debug logger with reproducible command format
+    try {
+      const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
+      const debugLogger = DebugLoggerWindow.getInstance(this.context);
+      const monitorId = position.monitor ? position.monitor.id : '1';
+      debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.vWidth}x${this.vHeight} Mon:${monitorId}) MIDI '${this.windowId}' POS ${x} ${y} SIZE ${this.vWidth} ${this.vHeight}`);
+    } catch (error) {
+      console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+    }
     
     // Use base class method for consistent chrome adjustments
     const windowDimensions = this.calculateWindowDimensions(this.vWidth, this.vHeight);

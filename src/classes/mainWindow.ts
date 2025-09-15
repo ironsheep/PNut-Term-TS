@@ -929,7 +929,10 @@ export class MainWindow {
           nativeTheme.themeSource = 'light';
           console.log('[STARTUP] Native theme set to light mode');
         }
-        
+
+        // Query and log complete display system configuration
+        this.logDisplaySystemConfiguration();
+
         this.createAppWindow();
       }).catch((error: any) => {
         console.error('[STARTUP] Error in app.whenReady():', error);
@@ -3505,7 +3508,227 @@ export class MainWindow {
       console.log('[SERIAL] No port to disconnect');
     }
   }
-  
+
+  /**
+   * Log complete display system configuration for debugging window placement
+   */
+  private logDisplaySystemConfiguration(): void {
+    try {
+      const { screen } = require('electron');
+
+      console.log('[DISPLAY SYSTEM] ========================================');
+      console.log('[DISPLAY SYSTEM] 🖥️  COMPLETE MONITOR CONFIGURATION');
+      console.log('[DISPLAY SYSTEM] ========================================');
+
+      // Get all displays
+      const displays = screen.getAllDisplays();
+      const primaryDisplay = screen.getPrimaryDisplay();
+
+      console.log(`[DISPLAY SYSTEM] 📊 Total Monitors: ${displays.length}`);
+      console.log(`[DISPLAY SYSTEM] 🎯 Primary Monitor ID: ${primaryDisplay.id}`);
+
+      // Log each display in detail
+      displays.forEach((display: any, index: number) => {
+        const isPrimary = display.id === primaryDisplay.id;
+        console.log(`[DISPLAY SYSTEM] 📺 Monitor ${index + 1}${isPrimary ? ' (PRIMARY)' : ''}: ID=${display.id}`);
+        console.log(`[DISPLAY SYSTEM]    📐 Size: ${display.size.width}x${display.size.height}`);
+        console.log(`[DISPLAY SYSTEM]    🧮 Scale: ${display.scaleFactor}x`);
+        console.log(`[DISPLAY SYSTEM]    📍 Position: (${display.bounds.x}, ${display.bounds.y})`);
+        console.log(`[DISPLAY SYSTEM]    📏 Bounds: ${display.bounds.x},${display.bounds.y} → ${display.bounds.x + display.bounds.width},${display.bounds.y + display.bounds.height}`);
+        console.log(`[DISPLAY SYSTEM]    💼 Work Area: ${display.workArea.x},${display.workArea.y} → ${display.workArea.x + display.workArea.width},${display.workArea.y + display.workArea.height}`);
+        console.log(`[DISPLAY SYSTEM]    🎚️  Work Size: ${display.workArea.width}x${display.workArea.height}`);
+        if (display.internal !== undefined) {
+          console.log(`[DISPLAY SYSTEM]    💻 Internal: ${display.internal}`);
+        }
+      });
+
+      // Calculate total desktop area
+      const totalBounds = {
+        left: Math.min(...displays.map((d: any) => d.bounds.x)),
+        top: Math.min(...displays.map((d: any) => d.bounds.y)),
+        right: Math.max(...displays.map((d: any) => d.bounds.x + d.bounds.width)),
+        bottom: Math.max(...displays.map((d: any) => d.bounds.y + d.bounds.height))
+      };
+
+      console.log(`[DISPLAY SYSTEM] 🌐 Total Desktop Area:`);
+      console.log(`[DISPLAY SYSTEM]    📏 Bounds: (${totalBounds.left},${totalBounds.top}) → (${totalBounds.right},${totalBounds.bottom})`);
+      console.log(`[DISPLAY SYSTEM]    📐 Size: ${totalBounds.right - totalBounds.left}x${totalBounds.bottom - totalBounds.top}`);
+
+      // Show where the cursor currently is
+      const cursorPoint = screen.getCursorScreenPoint();
+      const displayAtCursor = screen.getDisplayNearestPoint(cursorPoint);
+      console.log(`[DISPLAY SYSTEM] 🖱️  Cursor: (${cursorPoint.x}, ${cursorPoint.y}) on Monitor ID=${displayAtCursor.id}`);
+
+      console.log('[DISPLAY SYSTEM] ========================================');
+
+      // Create grid test windows with delay for main window repositioning
+      // console.log(`[GRID TEST] 🕐 Starting 3-second delay - MOVE MAIN WINDOW NOW if desired...`);
+      // setTimeout(() => {
+      //   this.createGridTestWindows();
+      // }, 3000); // Wait 3 seconds - time to move main window
+
+    } catch (error) {
+      console.error('[DISPLAY SYSTEM] ❌ Failed to query display configuration:', error);
+    }
+  }
+
+  /**
+   * Create 4 small test windows in the corners of each monitor to verify coordinate mapping
+   */
+  private createGridTestWindows(): void {
+    try {
+      const { screen, BrowserWindow } = require('electron');
+
+      // STEP 1: Query main window's current monitor (after potential user repositioning)
+      const mainWindowBounds = this.mainWindow?.getBounds();
+      if (!mainWindowBounds) {
+        console.error('[GRID TEST] ❌ Cannot get main window bounds');
+        return;
+      }
+
+      const currentDisplay = screen.getDisplayMatching(mainWindowBounds);
+      const workArea = currentDisplay.workArea;
+
+      console.log('[GRID TEST] 🎯 Creating grid test windows...');
+      console.log(`[GRID TEST] 📺 Main window on Monitor ID=${currentDisplay.id}`);
+      console.log(`[GRID TEST]    Main bounds: (${mainWindowBounds.x}, ${mainWindowBounds.y}) ${mainWindowBounds.width}x${mainWindowBounds.height}`);
+      console.log(`[GRID TEST]    Monitor bounds: (${currentDisplay.bounds.x}, ${currentDisplay.bounds.y}) ${currentDisplay.bounds.width}x${currentDisplay.bounds.height}`);
+      console.log(`[GRID TEST]    Work area: (${workArea.x}, ${workArea.y}) ${workArea.width}x${workArea.height}`);
+
+      // STEP 2: Calculate adaptive grid size for this monitor (same logic as WindowPlacer)
+      const displayArea = workArea.width * workArea.height;
+      let COLS: number, ROWS: number;
+
+      if (displayArea > 3000000) {
+        COLS = 5; ROWS = 4;
+      } else if (displayArea > 1000000) {
+        COLS = 5; ROWS = 3;
+      } else if (displayArea > 500000) {
+        COLS = 3; ROWS = 3;
+      } else {
+        COLS = 3; ROWS = 2;
+      }
+
+      // Aspect ratio adjustments
+      const aspectRatio = workArea.width / workArea.height;
+      if (aspectRatio > 2.0) COLS = Math.min(COLS + 2, 7);
+      if (aspectRatio < 1.0) ROWS = Math.min(ROWS + 1, 5);
+      if (COLS % 2 === 0) COLS += 1; // Prefer odd columns
+
+      console.log(`[GRID TEST] 📐 Calculated grid: ${COLS}x${ROWS} (${COLS * ROWS} total slots)`);
+      console.log(`[GRID TEST]    Display area: ${displayArea} pixels, aspect: ${aspectRatio.toFixed(2)}`);
+
+      // STEP 3: Calculate grid cell dimensions
+      const m = 20; // margin
+      const colWidth = Math.round((workArea.width - (m * 2)) / COLS);
+      const rowHeight = Math.round((workArea.height - (m * 2)) / ROWS);
+
+      console.log(`[GRID TEST] 📏 Cell size: ${colWidth}x${rowHeight} with ${m}px margins`);
+
+      // STEP 4: Define test pattern - top row + edges + center column
+      const testSlots = [];
+
+      // Top row (all columns)
+      for (let col = 0; col < COLS; col++) {
+        testSlots.push({ row: 0, col, type: 'top-row' });
+      }
+
+      // Middle and bottom rows - edges + center column only
+      const centerCol = Math.floor(COLS / 2);
+      for (let row = 1; row < ROWS; row++) {
+        testSlots.push({ row, col: 0, type: 'left-edge' });           // Left edge
+        testSlots.push({ row, col: centerCol, type: 'center-col' });  // Center column
+        testSlots.push({ row, col: COLS - 1, type: 'right-edge' });  // Right edge
+      }
+
+      console.log(`[GRID TEST] 🎨 Test pattern: ${testSlots.length} windows (top-row + edges + center-column)`);
+      console.log(`[GRID TEST]    Center column: ${centerCol} (0-indexed)`);
+
+      // STEP 5: Create test windows
+      const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43', '#10ac84', '#ee5a52', '#0984e3', '#a29bfe', '#fd79a8'];
+
+      testSlots.forEach((slot, index) => {
+        const slotNumber = slot.row * COLS + slot.col + 1;
+        const color = colors[index % colors.length];
+
+        // Calculate position using same logic as WindowPlacer
+        const x = workArea.x + m + (slot.col * colWidth);
+        const y = workArea.y + m + (slot.row * rowHeight);
+
+        const label = `SLOT-${slotNumber.toString().padStart(2, '0')} (R${slot.row}C${slot.col})`;
+
+        console.log(`[GRID TEST] 🎯 ${label}: Creating at (${x}, ${y}) - ${slot.type}`);
+
+        const testWindow = new BrowserWindow({
+          width: 280,
+          height: 120,
+          x,
+          y,
+          title: `Grid Test - ${label}`,
+          alwaysOnTop: true,
+          frame: true,
+          resizable: false,
+          show: false,
+          webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+          }
+        });
+
+        // Create content with diagnostic info
+        const html = `<html>
+          <head><style>
+            body { margin:0; padding:15px; background:${color}; color:white; font-family:monospace; font-size:12px; text-align:center; }
+            .label { font-size:14px; font-weight:bold; margin-bottom:8px; }
+            .coords { font-size:10px; color:#ddd; margin-top:8px; }
+          </style></head>
+          <body>
+            <div class="label">${label}</div>
+            <div>Monitor ID: ${currentDisplay.id}</div>
+            <div>Type: ${slot.type}</div>
+            <div class="coords">Target: (${x}, ${y})</div>
+          </body>
+        </html>`;
+
+        // Load content and show window
+        testWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+          .then(() => {
+            console.log(`[GRID TEST] ✅ ${label}: Content loaded`);
+          })
+          .catch((error: any) => {
+            console.error(`[GRID TEST] ❌ ${label}: Content load failed:`, error);
+          });
+
+        // DIAGNOSTIC LOGGING: Compare intended vs actual position
+        testWindow.once('ready-to-show', () => {
+          const actualBounds = testWindow.getBounds();
+          const moved = (actualBounds.x !== x || actualBounds.y !== y);
+          const moveDistance = moved ? Math.sqrt(Math.pow(actualBounds.x - x, 2) + Math.pow(actualBounds.y - y, 2)) : 0;
+
+          console.log(`[GRID TEST] 📍 ${label}:`);
+          console.log(`[GRID TEST]    INTENDED: (${x}, ${y})`);
+          console.log(`[GRID TEST]    ACTUAL:   (${actualBounds.x}, ${actualBounds.y})`);
+          console.log(`[GRID TEST]    STATUS:   ${moved ? `❌ MOVED ${moveDistance.toFixed(0)}px` : '✅ CORRECT'}`);
+
+          testWindow.show();
+        });
+
+        // Auto-close after 60 seconds
+        setTimeout(() => {
+          if (!testWindow.isDestroyed()) {
+            testWindow.close();
+          }
+        }, 60000);
+      });
+
+      console.log(`[GRID TEST] ⏰ ${testSlots.length} test windows created - will auto-close in 60 seconds`);
+      console.log(`[GRID TEST] 🔍 Watch logs for INTENDED vs ACTUAL position comparison`);
+
+    } catch (error) {
+      console.error('[GRID TEST] ❌ Failed to create grid test windows:', error);
+    }
+  }
+
   // Window management methods
   private cascadeWindows(): void {
     // TODO: Implement cascade window arrangement
