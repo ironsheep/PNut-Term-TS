@@ -691,14 +691,115 @@ Log files location:
 
 ## Advanced Topics
 
-### Custom Window Layouts
+### Window Placement & Layouts
 
-Save and restore window arrangements:
+#### Automatic Window Placement (User Guide)
 
-1. Arrange windows as desired
-2. **Window → Save Layout**
-3. Name your layout
-4. **Window → Load Layout** to restore
+PNut-Term automatically arranges debug windows using an intelligent placement system that creates visually balanced layouts. Windows appear in a predictable pattern that grows outward from the screen center:
+
+**Window Appearance Order:**
+1. **First window** → Top center
+2. **Second & third** → Left and right of center
+3. **Fourth window** → Middle center (one row down)
+4. **Additional windows** → Fill remaining positions in balanced pattern
+
+**Key Benefits:**
+- **Center-balanced layouts** maintain visual harmony
+- **No manual positioning** required - works automatically
+- **Collision avoidance** prevents windows from overlapping
+- **Multi-monitor support** adapts to your display setup
+
+**Common Window Arrangements:**
+- **1-3 windows**: Horizontal line across top
+- **4-6 windows**: Balanced rectangle pattern
+- **7+ windows**: Expands to screen edges maintaining symmetry
+
+To manually arrange windows:
+1. Drag windows to desired positions
+2. **Window → Save Layout** to preserve arrangement
+3. **Window → Load Layout** to restore saved arrangement
+
+#### Debug Window Types & Placement
+
+**Standard Debug Windows (8 types):**
+- **LOGIC** - Logic analyzer display
+- **TERM** - Terminal text output
+- **SCOPE** - Oscilloscope waveforms
+- **SCOPE_XY** - XY coordinate plotting
+- **PLOT** - Data plotting with dots
+- **BITMAP** - Pixel graphics display
+- **MIDI** - MIDI data visualization
+- **FFT** - Frequency spectrum analysis
+
+**Special Debugger Windows:**
+- **Single-step debugger**: Appears in dedicated slots using larger window sizes
+- **COG debuggers**: Each P2 COG gets its own debugger window when accessed
+- **Side-by-side mode**: Multiple debugger windows arrange horizontally
+- **Cascaded mode**: Debugger windows stack with offset positioning
+
+#### Advanced Placement Control (Administrator Guide)
+
+**Half-Moon Descending Algorithm:**
+
+The placement system uses a sophisticated "Half-Moon Descending Algorithm" that creates center-balanced arrangements:
+
+**Technical Details:**
+- **Grid-based placement**: Monitor divided into 3×3, 5×3, or 5×4 grid depending on resolution
+- **Adaptive sizing**: Grid automatically adjusts to monitor dimensions
+  - 1440p+ monitors: 5×3 grid (15 positions)
+  - 1080p+ monitors: 3×3 grid (9 positions)
+  - 4K+ monitors: 5×4 grid (20 positions)
+- **Balance principle**: Maintains symmetry around center column
+- **Phase expansion**: Starts narrow, expands wider as more windows added
+
+**Placement Sequence (5×3 Grid Example):**
+1. **R0_C2** - Top center (balance: 0L,1C,0R)
+2. **R0_C1, R0_C3** - Top left/right-center (balanced: 1L,1C,1R)
+3. **R1_C2** - Middle center (balanced: 1L,2C,1R)
+4. **R1_C1, R1_C3** - Middle left/right-center (balanced: 2L,2C,2R)
+5. **R0_C0, R0_C4** - Top far edges (balanced: 3L,2C,3R)
+6. **R1_C0, R1_C4** - Middle far edges (balanced: 4L,2C,4R)
+
+**Reserved Positions:**
+- **Bottom center**: Reserved for main application window
+- **Bottom right**: Reserved for debug logger window
+- **Collision zones**: Large windows automatically block adjacent cells
+
+**Multi-Monitor Behavior:**
+- **Primary monitor**: Preferred for window placement
+- **Secondary monitors**: Used when primary monitor full
+- **Monitor detection**: Automatically adapts to display configuration changes
+- **Coordinate handling**: Smart positioning prevents windows appearing off-screen
+
+**Debugger Window Placement:**
+
+**Single P2 Debugger:**
+- Uses **DEBUGGER strategy** with larger dedicated area
+- Positions in **upper-left quadrant** to avoid interference with data windows
+- **Minimum 800×600 size** for comprehensive register/memory display
+
+**Multiple COG Debuggers:**
+- **Side-by-side arrangement**: Horizontal layout for comparing COG states
+- **Cascaded positioning**: Staggered windows when screen space limited
+- **Automatic sizing**: Each debugger window sized based on available space
+- **COG-specific placement**: COG0 takes priority position, others arrange around it
+
+**Collision Detection & Oversized Windows:**
+- **Width overflow**: Large windows mark adjacent horizontal cells as occupied
+- **Height overflow**: Tall windows mark cells below as occupied
+- **Safety margins**: 20px minimum spacing maintained between all windows
+- **Boundary handling**: Oversized windows repositioned to fit available space
+
+**Troubleshooting Placement Issues:**
+- **Windows appearing wrong location**: Check monitor configuration in system settings
+- **Overlapping windows**: Restart application to reset placement tracking
+- **Missing windows**: Check if windows moved off-screen (Window → Show All)
+- **Small monitors**: Some window types may cascade when grid space insufficient
+
+**Configuration Options:**
+- Placement behavior controlled via **preferences** (if available)
+- **Debug logging**: Enable detailed placement logging for troubleshooting
+- **Manual override**: Drag windows to preferred positions and save layout
 
 ### Scripting
 
