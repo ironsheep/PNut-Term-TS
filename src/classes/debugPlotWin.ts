@@ -166,8 +166,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private coordinateMode: eCoordModes = eCoordModes.CM_CARTESIAN; // default to cartesian mode
   private lineSize: number = 1;
   private precise: number = 8; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. [0, 8] used as shift value
-  private currFgColor: string = '#00FFFF'; // #RRGGBB string
-  private currTextColor: string = '#00FFFF'; // #RRGGBB string
+  private currFgColor: string = '#00FFFF'; // #RRGGBB string - Pascal: DefaultPlotColor = clCyan
+  private currTextColor: string = '#FFFFFF'; // #RRGGBB string - Pascal: DefaultTextColor = clWhite
 
   private shouldWriteToCanvas: boolean = true;
   
@@ -188,6 +188,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   private opacity: number = 255; // 0-255
   private textAngle: number = 0; // degrees
   private colorMode: ColorMode = ColorMode.RGB24;
+  private updateMode: boolean = false; // True = buffered mode (wait for UPDATE), False = live mode (immediate display)
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
     super(ctx, windowId, 'plot');
@@ -195,6 +196,8 @@ export class DebugPlotWindow extends DebugWindowBase {
     DebugColor.setDefaultBrightness(15); // set default brightness to max
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
+    this.updateMode = displaySpec.delayedUpdate || false; // Set update mode from display spec
+    this.logMessage(`DebugPlotWin: updateMode = ${this.updateMode} (${this.updateMode ? 'buffered' : 'live'} drawing)`);
     // calculate canvasOffet for origin
     this.canvasOffset = { x: displaySpec.size.width / 2, y: displaySpec.size.height / 2 };
     // start with default font size
@@ -209,6 +212,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
     this.layerManager = new LayerManager();
     this.spriteManager = new SpriteManager();
+
+    // CRITICAL FIX: Create window immediately in constructor
+    // This ensures windows appear when created, matching Scope XY pattern
+    this.logMessage('Creating PLOT window immediately in constructor');
+    this.createDebugWindow();
   }
   
   /**
@@ -259,10 +267,10 @@ export class DebugPlotWindow extends DebugWindowBase {
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
-    // set defaults
-    const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    const textColor: DebugColor = new DebugColor('CYAN');
+    // set defaults (use brightness 15 for full color to match Pascal defaults)
+    const bkgndColor: DebugColor = new DebugColor('BLACK', 15); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
+    const gridColor: DebugColor = new DebugColor('GRAY', 4); // Dim gray for grid
+    const textColor: DebugColor = new DebugColor('WHITE', 15); // Pascal: DefaultTextColor = clWhite (full brightness)
     console.log(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -425,36 +433,34 @@ export class DebugPlotWindow extends DebugWindowBase {
     }
     
     // hook window events before being shown
-    this.debugWindow.on('ready-to-show', () => {
-      this.logMessage('* Plot window will show...');
-      this.debugWindow?.show();
-    });
-
-    this.debugWindow.on('show', () => {
-      this.logMessage('* Plot window shown');
-    });
-
-    this.debugWindow.on('page-title-updated', () => {
-      this.logMessage('* Plot window title updated');
-    });
-
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
+
       // Register with WindowRouter when window is ready
       this.registerWithRouter();
+
+      // Remove menu for linux/windows
       if (this.debugWindow) {
-        // The following only works for linux/windows
         if (process.platform !== 'darwin') {
           try {
-            //this.debugWindow.setMenu(null); // NO menu for this window  || NO WORKEE!
-            this.debugWindow.removeMenu(); // Alternative to setMenu(null) with less side effects
-            //this.debugWindow.setMenuBarVisibility(false); // Alternative to setMenu(null) with less side effects || NO WORKEE!
+            this.debugWindow.removeMenu();
           } catch (error) {
             this.logMessage(`Failed to remove menu: ${error}`);
           }
         }
+
+        // Show the window
         this.debugWindow.show();
+        this.logMessage('* Plot window shown');
       }
+    });
+
+    this.debugWindow.on('show', () => {
+      this.logMessage('* Plot window show event');
+    });
+
+    this.debugWindow.on('page-title-updated', () => {
+      this.logMessage('* Plot window title updated');
     });
 
     // and load this window .html content
@@ -469,29 +475,27 @@ export class DebugPlotWindow extends DebugWindowBase {
             src: url('${this.getParallaxFontUrl()}') format('truetype');
           }
           body {
-            display: flex;
-            flex-direction: column;
             margin: 0;
             padding: 0;
-            font-family: 'Parallax', sans-serif; // was Consolas
-            //background-color: ${this.displaySpec.window.background};
-            background-color: rgb(140, 52, 130);
+            font-family: 'Parallax', sans-serif;
+            background-color: ${this.displaySpec.window.background};
+            overflow: hidden;
+            width: 100%;
+            height: 100vh;
           }
           #plot-data {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            flex-grow: 0;
-            flex-shrink: 0;
-            padding: 2px;
-            /* background-color: rgb(55, 63, 170); // ${this.displaySpec.window.background}; */
+            display: block;
+            margin: 0;
+            padding: 0;
             background-color: ${this.displaySpec.window.background};
-            width: ${divWidth}px; /* Set a fixed width */
-            height: ${divHeight}px; /* Set a fixed height */
+            width: 100%;
+            height: 100%;
+            position: relative;
+            box-sizing: border-box;
           }
           canvas {
-            // background-color:rgb(9, 201, 28);
             background-color: ${this.displaySpec.window.background};
+            display: block;
             margin: 0;
           }
         </style>
@@ -507,7 +511,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.logMessage(`at createDebugWindow() PLOT with htmlContent: ${htmlContent}`);
 
     try {
-      this.debugWindow.setMenu(null);
       this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
     } catch (error) {
       this.logMessage(`Failed to load URL: ${error}`);
@@ -515,77 +518,133 @@ export class DebugPlotWindow extends DebugWindowBase {
     // Menu.setApplicationMenu(null); // DOESNT WORK!
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      this.setupDoubleBuffering();
+
+      // Initialize the canvas for drawing
+      this.initializeCanvas();
     });
   }
   
-  private setupDoubleBuffering(): void {
+  private initializeCanvas(): void {
     if (!this.debugWindow) return;
-    
-    // Create working canvas for double buffering
-    this.workingCanvas = new OffscreenCanvas(
-      this.displaySpec.size.width,
-      this.displaySpec.size.height
-    );
-    this.workingCtx = this.workingCanvas.getContext('2d') || undefined;
-    
-    if (this.workingCtx) {
-      // Initialize working canvas
-      this.canvasRenderer.setupCanvas(this.workingCtx);
-      
-      // Clear to background color
-      const bgColor = this.displaySpec.window.background;
-      this.canvasRenderer.clearCanvas(this.workingCtx);
-      this.canvasRenderer.fillRect(
-        this.workingCtx,
-        0, 0,
-        this.displaySpec.size.width,
-        this.displaySpec.size.height,
-        bgColor
-      );
-    }
+
+    const width = this.displaySpec.size.width;
+    const height = this.displaySpec.size.height;
+    const bgColor = this.displaySpec.window.background;
+
+    const jsCode = `
+      (function() {
+        // Get the canvas element
+        window.plotCanvas = document.getElementById('plot-area');
+        if (!window.plotCanvas) {
+          console.error('[PLOT] Canvas element not found');
+          return 'Canvas not found';
+        }
+
+        window.plotCtx = window.plotCanvas.getContext('2d');
+        if (!window.plotCtx) {
+          console.error('[PLOT] Could not get 2D context');
+          return 'Context not available';
+        }
+
+        // Clear canvas with background color
+        window.plotCtx.fillStyle = '${bgColor}';
+        window.plotCtx.fillRect(0, 0, ${width}, ${height});
+
+        // Create offscreen canvas for double buffering
+        window.offscreenCanvas = document.createElement('canvas');
+        window.offscreenCanvas.width = ${width};
+        window.offscreenCanvas.height = ${height};
+
+        // plotCtx is the working context (offscreen)
+        window.plotCtx = window.offscreenCanvas.getContext('2d');
+        window.displayCtx = window.plotCanvas.getContext('2d');
+
+        // Function to flip buffer (copy offscreen to display)
+        window.flipBuffer = function() {
+          if (window.displayCtx && window.offscreenCanvas) {
+            window.displayCtx.clearRect(0, 0, ${width}, ${height});
+            window.displayCtx.drawImage(window.offscreenCanvas, 0, 0);
+          }
+        };
+
+        // Clear offscreen canvas with background color
+        window.plotCtx.fillStyle = '${bgColor}';
+        window.plotCtx.fillRect(0, 0, ${width}, ${height});
+
+        console.log('[PLOT] Canvas initialized with double buffering');
+        return 'Canvas ready with double buffering';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(result => {
+        this.logMessage(`Canvas initialization: ${result}`);
+        this.shouldWriteToCanvas = true;
+      })
+      .catch(error => {
+        this.logMessage(`Failed to initialize canvas: ${error}`);
+        this.shouldWriteToCanvas = false;
+      });
+  }
+
+  private setupDoubleBuffering(): void {
+    // Double buffering is now handled in initializeCanvas
+    // This method is kept for compatibility but doesn't do anything
   }
   
   private performUpdate(): void {
-    if (!this.workingCanvas || !this.debugWindow) return;
-    
-    this.logMessage('at performUpdate() - copying working canvas to display');
-    
-    // Convert OffscreenCanvas to blob and then to data URL
-    this.workingCanvas.convertToBlob().then(blob => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        
-        // Update the display canvas with the working canvas content
-        this.debugWindow?.webContents.executeJavaScript(`
-          (function() {
-            const canvas = document.getElementById('plot-area');
-            if (canvas && canvas instanceof HTMLCanvasElement) {
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                const img = new Image();
-                img.onload = function() {
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  ctx.drawImage(img, 0, 0);
-                };
-                img.src = '${dataUrl}';
-              }
-            }
-          })();
-        `);
-      };
-      reader.readAsDataURL(blob);
-    });
+    if (!this.debugWindow) return;
+
+    this.logMessage('at performUpdate() - flipping buffer to display');
+
+    // Execute buffer flip in renderer
+    const jsCode = `
+      (function() {
+        if (window.flipBuffer) {
+          window.flipBuffer();
+          return 'Buffer flipped';
+        }
+        return 'Flip function not ready';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .catch(error => {
+        this.logMessage(`Failed to flip buffer: ${error}`);
+      });
   }
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() PLOT`);
-    // Stop input forwarding
-    this.inputForwarder.stopPolling();
-    // let our base class do the work
+
+    // Clean up Plot-specific resources that base class doesn't know about
+    // Clear any pending deferred commands (UPDATE mode specific)
+    this.deferredCommands = [];
+
+    // Disable canvas writing to prevent any pending operations
+    this.shouldWriteToCanvas = false;
+
+    // Clear any canvas contexts in the renderer (synchronous execution)
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      try {
+        // Clear the canvas contexts to stop any pending drawing operations
+        const clearCode = `
+          if (window.plotCtx) window.plotCtx = null;
+          if (window.displayCtx) window.displayCtx = null;
+          if (window.offscreenCanvas) window.offscreenCanvas = null;
+          if (window.plotCanvas) window.plotCanvas = null;
+          'Cleared canvas contexts';
+        `;
+        // Use executeJavaScriptSync if available, otherwise just try to clear
+        this.debugWindow.webContents.executeJavaScript(clearCode);
+      } catch (error) {
+        this.logMessage(`  -- Error clearing canvas: ${error}`);
+      }
+    }
+
+    // Now let the base class do its cleanup
     this.debugWindow = null;
   }
 
@@ -719,24 +778,33 @@ export class DebugPlotWindow extends DebugWindowBase {
         let size: number = 10;
         let style: string = '00000001';
         let angle: number = 0;
+
+        // Check if we have any parameters after TEXT
         if (index < lineParts.length - 1) {
-          const sizeStr = lineParts[++index];
-          const sizeParsed = Spin2NumericParser.parseCoordinate(sizeStr);
-          size = sizeParsed ?? 10;
-          if (sizeParsed === null) {
-            this.logParsingWarning(unparsedCommand, 'TEXT size', sizeStr, 10);
-          }
-          
-          if (index < lineParts.length - 1) {
-            if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-              style = this.formatAs8BitBinary(lineParts[++index]);
-              if (index < lineParts.length - 1) {
-                if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-                  const angleStr = lineParts[++index];
-                  const angleParsed = Spin2NumericParser.parseCoordinate(angleStr);
-                  angle = angleParsed ?? 0;
-                  if (angleParsed === null) {
-                    this.logParsingWarning(unparsedCommand, 'TEXT angle', angleStr, 0);
+          // Peek at next part - if it starts with quote, no parameters
+          if (!lineParts[index + 1].startsWith("'")) {
+            // We have at least size parameter
+            const sizeStr = lineParts[++index];
+            const sizeParsed = Spin2NumericParser.parseCoordinate(sizeStr);
+            size = sizeParsed ?? 10;
+            if (sizeParsed === null) {
+              this.logParsingWarning(unparsedCommand, 'TEXT size', sizeStr, 10);
+            }
+
+            // Check for style parameter - must be numeric and not start with quote
+            if (index < lineParts.length - 1 && !lineParts[index + 1].startsWith("'")) {
+              if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                style = this.formatAs8BitBinary(lineParts[++index]);
+
+                // Check for angle parameter - must be numeric and not start with quote
+                if (index < lineParts.length - 1 && !lineParts[index + 1].startsWith("'")) {
+                  if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+                    const angleStr = lineParts[++index];
+                    const angleParsed = Spin2NumericParser.parseCoordinate(angleStr);
+                    angle = angleParsed ?? 0;
+                    if (angleParsed === null) {
+                      this.logParsingWarning(unparsedCommand, 'TEXT angle', angleStr, 0);
+                    }
                   }
                 }
               }
@@ -744,7 +812,11 @@ export class DebugPlotWindow extends DebugWindowBase {
           }
         }
         this.updatePlotDisplay(`FONT ${size} ${style} ${angle}`);
-        // now the text
+        // now the text - check if we still have more parts
+        if (index >= lineParts.length - 1) {
+          this.logMessage(`ERROR: Debug command parsing error:\n${unparsedCommand}\nMissing text string for TEXT command`);
+          return;
+        }
         const currLinePart = lineParts[++index];
         if (currLinePart.charAt(0) == "'") {
           // display string at cursor position with current colors
@@ -1173,11 +1245,26 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.logMessage(`  -- Closing window!`);
         this.closeDebugWindow();
       } else if (lineParts[index].toUpperCase() == 'SAVE') {
-        // FIXME: UNDONE we need to wait for prior UPDATE to complete!
+        // Handle SAVE command - supports both "save filename" and "save window filename"
         if (index + 1 < lineParts.length) {
-          // FIXME: this does not handle spaces in the filename
-          const saveFileName = this.removeStringQuotes(lineParts[++index]);
-          // save the window to a file (as BMP)
+          let saveFileName: string;
+          index++; // Move to next token
+
+          // Check if next token is WINDOW (for "save window filename" format)
+          if (lineParts[index].toUpperCase() == 'WINDOW') {
+            // Save window format - get filename from next token
+            if (index + 1 < lineParts.length) {
+              saveFileName = this.removeStringQuotes(lineParts[++index]);
+            } else {
+              this.logMessage(`at updateContent() missing fileName after WINDOW in [${lineParts.join(' ')}]`);
+              continue;
+            }
+          } else {
+            // Direct save format - current token is the filename
+            saveFileName = this.removeStringQuotes(lineParts[index]);
+          }
+
+          // Save the window to a file (as BMP)
           await this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
@@ -1410,18 +1497,23 @@ export class DebugPlotWindow extends DebugWindowBase {
         // set color
         const colorName: string = lineParts[index];
         let colorBrightness: number = 15; // default 15 for plot?
-        if (index < lineParts.length - 1) {
-          if (DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
-            colorBrightness = Number(lineParts[++index]);
-          }
+
+        // First, always check for brightness value if the next item is numeric
+        if (index < lineParts.length - 1 && DebugPlotWindow.nextPartIsNumeric(lineParts, index)) {
+          // Consume the brightness value
+          colorBrightness = Number(lineParts[++index]);
         }
-        this.logMessage(`* UPD-INFO index(${index}) is [${lineParts[index]}]`);
+
+        // Now check if TEXT follows the color (and possible brightness)
+        let nextIsText = false;
+        if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() == 'TEXT') {
+          nextIsText = true;
+        }
+
+        this.logMessage(`* UPD-INFO color=${colorName} brightness=${colorBrightness} nextIsText=${nextIsText}`);
         const namedColor = new DebugColor(colorName, colorBrightness);
         // look ahead to see if next directive is TEXT
-        let isTextColor: boolean = false;
-        if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() == 'TEXT') {
-          isTextColor = true;
-        }
+        let isTextColor: boolean = nextIsText;
         // emit the directive we need
         if (isTextColor) {
           this.updatePlotDisplay(`TEXTCOLOR ${namedColor.rgbString}`);
@@ -1590,178 +1682,268 @@ export class DebugPlotWindow extends DebugWindowBase {
   // ----------------- Canvas Drawing Routines -----------------
   //
   private clearPlotCanvas(): void {
-    if (this.workingCtx) {
-      this.logMessage(`at clearPlot()`);
-      const bgcolor: string = this.displaySpec.window.background;
-      this.logMessage(`  -- bgcolor=[${bgcolor}]`);
-      
-      // Clear the working canvas
-      this.canvasRenderer.clearCanvas(this.workingCtx);
-      this.canvasRenderer.fillRect(
-        this.workingCtx,
-        0, 0,
-        this.displaySpec.size.width,
-        this.displaySpec.size.height,
-        bgcolor
-      );
-    }
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    this.logMessage(`at clearPlot()`);
+    const bgcolor: string = this.displaySpec.window.background;
+    this.logMessage(`  -- bgcolor=[${bgcolor}]`);
+
+    // Execute clearing in the renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) {
+          console.error('[PLOT] Context not ready for clear');
+          return 'Context not ready';
+        }
+
+        // Clear the canvas
+        window.plotCtx.clearRect(0, 0, ${this.displaySpec.size.width}, ${this.displaySpec.size.height});
+
+        // Fill with background color
+        window.plotCtx.fillStyle = '${bgcolor}';
+        window.plotCtx.fillRect(0, 0, ${this.displaySpec.size.width}, ${this.displaySpec.size.height});
+
+        return 'Canvas cleared';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately after clear
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to clear canvas: ${error}`);
+      });
   }
 
   private drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
-    if (this.workingCtx) {
-      this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
-      const fgColor: string = this.currFgColor;
-      if (this.coordinateMode == eCoordModes.CM_POLAR) {
-        [x, y] = this.polarToCartesian(x, y);
-      }
-      const [plotFmCoordX, plotFmCoordY] = this.getCursorXY();
-      const [plotToCoordX, plotToCoordY] = this.getXY(x, y);
-      this.logMessage(
-        `  -- fm(${plotFmCoordX},${plotFmCoordY}) - to(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`
-      );
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
-      // Save current state
-      const savedAlpha = this.workingCtx.globalAlpha;
-      
-      // Set opacity
-      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
-      
-      // Draw the line
-      this.canvasRenderer.drawLineCtx(
-        this.workingCtx,
-        plotFmCoordX,
-        plotFmCoordY,
-        plotToCoordX,
-        plotToCoordY,
-        fgColor,
-        lineSize
-      );
-      
-      // Restore alpha
-      this.workingCtx.globalAlpha = savedAlpha;
+    this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
+    const fgColor: string = this.currFgColor;
+    if (this.coordinateMode == eCoordModes.CM_POLAR) {
+      [x, y] = this.polarToCartesian(x, y);
     }
+    const [plotFmCoordX, plotFmCoordY] = this.getCursorXY();
+    const [plotToCoordX, plotToCoordY] = this.getXY(x, y);
+    this.logMessage(
+      `  -- fm(${plotFmCoordX},${plotFmCoordY}) - to(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`
+    );
+
+    // Execute drawing in the renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) {
+          console.error('[PLOT] Context not ready for line drawing');
+          return 'Context not ready';
+        }
+
+        // Save current state
+        const savedAlpha = window.plotCtx.globalAlpha;
+
+        // Set opacity
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        // Set line style
+        window.plotCtx.strokeStyle = '${fgColor}';
+        window.plotCtx.lineWidth = ${lineSize};
+        window.plotCtx.lineCap = 'round';
+        window.plotCtx.lineJoin = 'round';
+
+        // Draw the line
+        window.plotCtx.beginPath();
+        window.plotCtx.moveTo(${plotFmCoordX}, ${plotFmCoordY});
+        window.plotCtx.lineTo(${plotToCoordX}, ${plotToCoordY});
+        window.plotCtx.stroke();
+
+        // Restore alpha
+        window.plotCtx.globalAlpha = savedAlpha;
+
+        return 'Line drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // Update cursor position after successful draw
+        this.cursorPosition = { x, y };
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw line: ${error}`);
+      });
   }
 
   private drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
-    if (this.workingCtx) {
-      const fgColor: string = this.currFgColor;
-      const [plotCoordX, plotCoordY] = this.getCursorXY();
-      const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
-      const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
-      this.logMessage(
-        `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${plotCoordX},${plotCoordY})`
-      );
-      this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
-      // Save current state
-      const savedAlpha = this.workingCtx.globalAlpha;
-      
-      // Set opacity
-      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
-      
-      // Draw the circle
-      this.canvasRenderer.drawCircleCtx(
-        this.workingCtx,
-        plotCoordX,
-        plotCoordY,
-        diameter / 2,
-        fgColor,
-        lineSize === 0, // filled if lineSize is 0
-        lineSize
-      );
-      
-      // Restore alpha
-      this.workingCtx.globalAlpha = savedAlpha;
-    }
+    const fgColor: string = this.currFgColor;
+    const [plotCoordX, plotCoordY] = this.getCursorXY();
+    const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
+    const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
+    this.logMessage(
+      `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${plotCoordX},${plotCoordY})`
+    );
+    this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
+
+    // Execute drawing in the renderer
+    const filled = lineSize === 0;
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) {
+          console.error('[PLOT] Context not ready for circle drawing');
+          return 'Context not ready';
+        }
+
+        // Save current state
+        const savedAlpha = window.plotCtx.globalAlpha;
+
+        // Set opacity
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        // Draw circle
+        window.plotCtx.beginPath();
+        window.plotCtx.arc(${plotCoordX}, ${plotCoordY}, ${diameter / 2}, 0, 2 * Math.PI);
+
+        if (${filled}) {
+          window.plotCtx.fillStyle = '${fgColor}';
+          window.plotCtx.fill();
+        } else {
+          window.plotCtx.strokeStyle = '${fgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.stroke();
+        }
+
+        // Restore alpha
+        window.plotCtx.globalAlpha = savedAlpha;
+
+        return 'Circle drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw circle: ${error}`);
+      });
   }
 
   private writeStringToPlot(text: string): void {
-    if (this.workingCtx) {
-      this.logMessage(`at writeStringToPlot('${text}')`);
-      const textHeight: number = this.font.charHeight;
-      const lineHeight: number = this.font.lineHeight;
-      const fontSize: number = this.font.textSizePts;
-      const [textXOffset, textYOffset] = this.getCursorXY();
-      const vertLineInset: number = (lineHeight - textHeight) / 2; // 1/2 gap above and below text
-      const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
-      // now let's apply alignment effects
-      // let's start with horizontal alignment
-      const alignHCenter = this.textStyle.horizAlign == eHorizJustification.HJ_CENTER;
-      const alignHRight = this.textStyle.horizAlign == eHorizJustification.HJ_RIGHT;
-      let adjYBaseline: number = textYbaseline;
-      switch (this.textStyle.vertAlign) {
-        case eVertJustification.VJ_TOP:
-          //adjYBaseline = textYOffset + this.font.baseline;
-          adjYBaseline -= vertLineInset + this.font.baseline;
-          break;
-        case eVertJustification.VJ_BOTTOM:
-          //adjYBaseline = textYOffset + lineHeight - vertLineInset;
-          //adjYBaseline = textYbaseline;
-          break;
-        case eVertJustification.VJ_MIDDLE:
-          //adjYBaseline = textYOffset + vertLineInset + this.font.baseline - 5; // off by 5 pix?
-          adjYBaseline -= (vertLineInset + this.font.baseline) / 2 + 2; // off by 2?
-          break;
-      }
-      const alignHString: string = alignHCenter ? 'Hctr' : alignHRight ? 'Hrt' : 'Hlt';
-      const alignVString: string =
-        this.textStyle.vertAlign == eVertJustification.VJ_TOP
-          ? 'Vtop'
-          : this.textStyle.vertAlign == eVertJustification.VJ_MIDDLE
-          ? 'Vmid'
-          : 'Vbot';
-      const textColor: string = this.currTextColor;
-      const fontWeight: string = this.fontWeightName(this.textStyle);
-      const fontStyle: string = this.textStyle.italic ? 'italic ' : '';
-      // FIXME: UNDONE add underline support
-      this.logMessage(
-        `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
-      );
+    if (!this.debugWindow) return;
 
-      // Calculate text position with alignment
-      let xPos = textXOffset;
-      const fontFullSpec = `${fontStyle}${fontWeight} ${this.font.textSizePts}pt Consolas, sans-serif`;
-      
-      if (alignHCenter || alignHRight) {
-        // We need to measure text width for alignment
-        this.workingCtx.save();
-        this.workingCtx.font = fontFullSpec;
-        const textWidth = this.workingCtx.measureText(text).width;
-        if (alignHCenter) {
-          xPos -= textWidth / 2;
-        } else if (alignHRight) {
-          xPos -= textWidth;
-        }
-        this.workingCtx.restore();
-      }
-
-      // Check if we need rotated text
-      if (this.textAngle !== 0) {
-        this.canvasRenderer.drawRotatedText(
-          this.workingCtx,
-          text,
-          xPos,
-          adjYBaseline,
-          this.textAngle,
-          textColor,
-          fontSize + 'pt',
-          'Consolas, sans-serif'
-        );
-      } else {
-        // Regular text drawing
-        this.canvasRenderer.drawTextCtx(
-          this.workingCtx,
-          text,
-          xPos,
-          adjYBaseline,
-          textColor,
-          fontSize + 'pt',
-          'Consolas, sans-serif',
-          'left',
-          'alphabetic'
-        );
-      }
+    this.logMessage(`at writeStringToPlot('${text}')`);
+    const textHeight: number = this.font.charHeight;
+    const lineHeight: number = this.font.lineHeight;
+    const fontSize: number = this.font.textSizePts;
+    const [textXOffset, textYOffset] = this.getCursorXY();
+    const vertLineInset: number = (lineHeight - textHeight) / 2; // 1/2 gap above and below text
+    const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
+    // now let's apply alignment effects
+    // let's start with horizontal alignment
+    const alignHCenter = this.textStyle.horizAlign == eHorizJustification.HJ_CENTER;
+    const alignHRight = this.textStyle.horizAlign == eHorizJustification.HJ_RIGHT;
+    let adjYBaseline: number = textYbaseline;
+    switch (this.textStyle.vertAlign) {
+      case eVertJustification.VJ_TOP:
+        //adjYBaseline = textYOffset + this.font.baseline;
+        adjYBaseline -= vertLineInset + this.font.baseline;
+        break;
+      case eVertJustification.VJ_BOTTOM:
+        //adjYBaseline = textYOffset + lineHeight - vertLineInset;
+        //adjYBaseline = textYbaseline;
+        break;
+      case eVertJustification.VJ_MIDDLE:
+        //adjYBaseline = textYOffset + vertLineInset + this.font.baseline - 5; // off by 5 pix?
+        adjYBaseline -= (vertLineInset + this.font.baseline) / 2 + 2; // off by 2?
+        break;
     }
+    const alignHString: string = alignHCenter ? 'Hctr' : alignHRight ? 'Hrt' : 'Hlt';
+    const alignVString: string =
+      this.textStyle.vertAlign == eVertJustification.VJ_TOP
+        ? 'Vtop'
+        : this.textStyle.vertAlign == eVertJustification.VJ_MIDDLE
+        ? 'Vmid'
+        : 'Vbot';
+    const textColor: string = this.currTextColor;
+    const fontWeight: string = this.fontWeightName(this.textStyle);
+    const fontStyle: string = this.textStyle.italic ? 'italic ' : '';
+    // FIXME: UNDONE add underline support
+    this.logMessage(
+      `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
+    );
+
+    // Calculate text position with alignment
+    const fontFullSpec = `${fontStyle}${fontWeight} ${this.font.textSizePts}pt Parallax, monospace`;
+    this.logMessage(`  -- Font spec being applied: [${fontFullSpec}] for text size ${this.font.textSizePts}pt`);
+
+    // Execute text drawing in renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        const text = ${JSON.stringify(text)};
+        const fontSpec = '${fontFullSpec}';
+        let xPos = ${textXOffset};
+        const yPos = ${adjYBaseline};
+        const textColor = '${textColor}';
+        const textAngle = ${this.textAngle};
+        const alignHCenter = ${alignHCenter};
+        const alignHRight = ${alignHRight};
+
+        console.log('[PLOT] Drawing text with font:', fontSpec);
+        window.plotCtx.save();
+        window.plotCtx.font = fontSpec;
+
+        // Calculate alignment if needed
+        if (alignHCenter || alignHRight) {
+          const textWidth = window.plotCtx.measureText(text).width;
+          if (alignHCenter) {
+            xPos -= textWidth / 2;
+          } else if (alignHRight) {
+            xPos -= textWidth;
+          }
+        }
+
+        // Handle rotation if needed
+        if (textAngle !== 0) {
+          window.plotCtx.translate(xPos, yPos);
+          window.plotCtx.rotate((textAngle * Math.PI) / 180);
+          window.plotCtx.fillStyle = textColor;
+          window.plotCtx.fillText(text, 0, 0);
+        } else {
+          // Regular text drawing
+          window.plotCtx.fillStyle = textColor;
+          window.plotCtx.textAlign = 'left';
+          window.plotCtx.textBaseline = 'alphabetic';
+          window.plotCtx.fillText(text, xPos, yPos);
+        }
+
+        window.plotCtx.restore();
+        return 'Text drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw text: ${error}`);
+      });
   }
 
   // -----------------------------------------------------------
@@ -1807,99 +1989,156 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
   
   private drawDotToPlot(dotSize: number, opacity: number): void {
-    if (this.workingCtx) {
-      const [plotCoordX, plotCoordY] = this.getCursorXY();
-      const fgColor = this.currFgColor;
-      
-      this.logMessage(`at drawDotToPlot(${dotSize}, ${opacity}) @(${plotCoordX},${plotCoordY})`);
-      
-      // Save current state
-      const savedAlpha = this.workingCtx.globalAlpha;
-      
-      // Set opacity
-      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
-      
-      // Draw dot as a scaled pixel or small circle
-      if (dotSize <= 1) {
-        this.canvasRenderer.plotPixelCtx(this.workingCtx, plotCoordX, plotCoordY, fgColor);
-      } else {
-        this.canvasRenderer.drawCircleCtx(
-          this.workingCtx,
-          plotCoordX,
-          plotCoordY,
-          dotSize / 2,
-          fgColor,
-          true, // filled
-          0
-        );
-      }
-      
-      // Restore alpha
-      this.workingCtx.globalAlpha = savedAlpha;
-    }
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    const [plotCoordX, plotCoordY] = this.getCursorXY();
+    const fgColor = this.currFgColor;
+
+    this.logMessage(`at drawDotToPlot(${dotSize}, ${opacity}) @(${plotCoordX},${plotCoordY})`);
+
+    // Execute drawing in the renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) {
+          console.error('[PLOT] Context not ready for dot drawing');
+          return 'Context not ready';
+        }
+
+        // Save current state
+        const savedAlpha = window.plotCtx.globalAlpha;
+
+        // Set opacity
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        // Draw dot as a filled circle or single pixel
+        window.plotCtx.fillStyle = '${fgColor}';
+
+        if (${dotSize} <= 1) {
+          // Single pixel
+          window.plotCtx.fillRect(${plotCoordX}, ${plotCoordY}, 1, 1);
+        } else {
+          // Draw as filled circle
+          window.plotCtx.beginPath();
+          window.plotCtx.arc(${plotCoordX}, ${plotCoordY}, ${dotSize / 2}, 0, 2 * Math.PI);
+          window.plotCtx.fill();
+        }
+
+        // Restore alpha
+        window.plotCtx.globalAlpha = savedAlpha;
+
+        return 'Dot drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw dot: ${error}`);
+      });
   }
   
   private drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): void {
-    if (this.workingCtx) {
-      const [plotCoordX, plotCoordY] = this.getCursorXY();
-      const fgColor = this.currFgColor;
-      
-      this.logMessage(`at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
-      
-      // Save current state
-      const savedAlpha = this.workingCtx.globalAlpha;
-      
-      // Set opacity
-      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
-      
-      // Calculate rectangle bounds (centered on cursor)
-      const x1 = plotCoordX - width / 2;
-      const y1 = plotCoordY - height / 2;
-      const x2 = plotCoordX + width / 2;
-      const y2 = plotCoordY + height / 2;
-      
-      // Draw rectangle (filled if lineSize is 0)
-      this.canvasRenderer.drawRect(
-        this.workingCtx,
-        x1, y1, x2, y2,
-        lineSize === 0, // filled if lineSize is 0
-        fgColor,
-        lineSize
-      );
-      
-      // Restore alpha
-      this.workingCtx.globalAlpha = savedAlpha;
-    }
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    const [plotCoordX, plotCoordY] = this.getCursorXY();
+    const fgColor = this.currFgColor;
+
+    this.logMessage(`at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+
+    // Calculate rectangle bounds (centered on cursor)
+    const x1 = plotCoordX - width / 2;
+    const y1 = plotCoordY - height / 2;
+    const x2 = plotCoordX + width / 2;
+    const y2 = plotCoordY + height / 2;
+
+    // Execute box drawing in renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        if (${lineSize} === 0) {
+          // Filled rectangle
+          window.plotCtx.fillStyle = '${fgColor}';
+          window.plotCtx.fillRect(${x1}, ${y1}, ${width}, ${height});
+        } else {
+          // Outlined rectangle
+          window.plotCtx.strokeStyle = '${fgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.strokeRect(${x1}, ${y1}, ${width}, ${height});
+        }
+
+        window.plotCtx.globalAlpha = 1.0;
+        return 'Box drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw box: ${error}`);
+      });
   }
   
   private drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): void {
-    if (this.workingCtx) {
-      const [plotCoordX, plotCoordY] = this.getCursorXY();
-      const fgColor = this.currFgColor;
-      
-      this.logMessage(`at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
-      
-      // Save current state
-      const savedAlpha = this.workingCtx.globalAlpha;
-      
-      // Set opacity
-      this.canvasRenderer.setOpacity(this.workingCtx, opacity);
-      
-      // Draw oval (filled if lineSize is 0)
-      this.canvasRenderer.drawOval(
-        this.workingCtx,
-        plotCoordX,
-        plotCoordY,
-        width / 2,  // rx
-        height / 2, // ry
-        lineSize === 0, // filled if lineSize is 0
-        fgColor,
-        lineSize
-      );
-      
-      // Restore alpha
-      this.workingCtx.globalAlpha = savedAlpha;
-    }
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    const [plotCoordX, plotCoordY] = this.getCursorXY();
+    const fgColor = this.currFgColor;
+
+    this.logMessage(`at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+
+    const rx = width / 2;
+    const ry = height / 2;
+
+    // Execute oval drawing in renderer
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.save();
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        window.plotCtx.beginPath();
+        window.plotCtx.ellipse(${plotCoordX}, ${plotCoordY}, ${rx}, ${ry}, 0, 0, 2 * Math.PI);
+
+        if (${lineSize} === 0) {
+          // Filled oval
+          window.plotCtx.fillStyle = '${fgColor}';
+          window.plotCtx.fill();
+        } else {
+          // Outlined oval
+          window.plotCtx.strokeStyle = '${fgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.stroke();
+        }
+
+        window.plotCtx.restore();
+        return 'Oval drawn';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(() => {
+        // In live mode (not updateMode), flip buffer immediately
+        if (!this.updateMode) {
+          this.performUpdate();
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to draw oval: ${error}`);
+      });
   }
 
   private polarToCartesianNew(length: number, angle: number): [number, number] {

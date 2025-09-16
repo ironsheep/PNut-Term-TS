@@ -580,16 +580,16 @@ export abstract class DebugWindowBase extends EventEmitter {
     let weightName: string = 'normal';
     switch (style.weight) {
       case eTextWeight.TW_LIGHT:
-        weightName = 'light';
+        weightName = '300';  // CSS light weight
         break;
       case eTextWeight.TW_NORMAL:
-        weightName = 'normal';
+        weightName = 'normal';  // or '400'
         break;
       case eTextWeight.TW_BOLD:
-        weightName = 'bold';
+        weightName = 'bold';  // or '700'
         break;
       case eTextWeight.TW_HEAVY:
-        weightName = 'heavy';
+        weightName = '900';  // CSS heavy/black weight
         break;
     }
     return weightName;

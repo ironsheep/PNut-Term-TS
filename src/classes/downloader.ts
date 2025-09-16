@@ -18,7 +18,7 @@ export class Downloader {
     this.serialPort = serialPort;
   }
 
-  public async download(binaryFilespec: string, toFlash: boolean): Promise<void> {
+  public async download(binaryFilespec: string, toFlash: boolean): Promise<boolean> {
     let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
     const failedToLoad: boolean = loadUint8ArrayFailed(binaryImage) ? true : false;
     if (failedToLoad == false) {
@@ -49,11 +49,12 @@ export class Downloader {
         target = 'FLASH';
         binaryImage = await this.insertP2FlashLoader(binaryImage, hasDebugger);
         this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes, debug=${hasDebugger}`);
-      } else {
-        // For RAM downloads, enable checksum verification
-        needsP2ChecksumVerify = true;
-        this.logMessage(`  -- ${target} download with checksum verification enabled`);
       }
+
+      // Enable checksum verification for both RAM and FLASH downloads
+      // The P2 bootloader validates the complete image checksum before execution
+      needsP2ChecksumVerify = true;
+      this.logMessage(`  -- ${target} download with checksum verification enabled`);
       //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
       // write to USB PropPlug
       let usbPort: UsbSerial;
@@ -95,7 +96,9 @@ export class Downloader {
         // NOTE: Don't close serial port - MainWindow manages it and needs it for debug operations
         // The port will be reused for debug communications after download completes
       }
+      return noDownloadError;
     }
+    return false; // Failed to load file
   }
 
   public async insertP2FlashLoader(binaryImage: Uint8Array, enableDebug: boolean = false): Promise<Uint8Array> {

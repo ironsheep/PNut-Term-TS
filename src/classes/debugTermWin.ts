@@ -653,7 +653,14 @@ export class DebugTermWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() TERM`);
-    // let our base class do the work
+    try {
+      if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+        this.debugWindow.close();
+        this.logMessage(`  -- Window closed`);
+      }
+    } catch (error) {
+      this.logMessage(`  -- Error closing window: ${error}`);
+    }
     this.debugWindow = null;
   }
 

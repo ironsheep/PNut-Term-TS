@@ -159,10 +159,18 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private initializeLogFile(): void {
     try {
-      // Create logs directory using context startup directory
-      const logsDir = path.join(this.context.currentFolder, 'logs');
-      console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
-      ensureDirExists(logsDir);
+      // Save logs to logs subfolder in current working directory
+      // Use context.currentFolder which preserves the launch directory
+      // TODO: Get logs folder name from preferences when available
+      const logsSubfolder = 'logs'; // Default logs folder
+      const logsDir = path.join(this.context.currentFolder, logsSubfolder);
+
+      // Create logs directory if it doesn't exist
+      if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+      }
+
+      console.log('[DEBUG LOGGER] Saving logs to directory:', logsDir);
       
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
@@ -1165,18 +1173,42 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile.end();
       this.logFile = null; // Clear reference after ending
     }
-    
+
     // Clear the display (must be after logFile.end() to avoid write-after-end)
     this.clearOutput();
-    
+
     // Create new log file
     this.initializeLogFile();
-    
+
     // Update status bar with new filename
     this.updateStatusBar();
-    
+
     // Log system message
     this.logSystemMessage('RTS Reset - New session started');
+  }
+
+  /**
+   * Handle download start - close current log and start new one for download session
+   */
+  public handleDownloadStart(): void {
+    // Close current log file
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      this.logFile.write(`\n=== Download Started at ${new Date().toISOString()} ===\n`);
+      this.logFile.end();
+      this.logFile = null; // Clear reference after ending
+    }
+
+    // Clear the display (must be after logFile.end() to avoid write-after-end)
+    this.clearOutput();
+
+    // Create new log file
+    this.initializeLogFile();
+
+    // Update status bar with new filename
+    this.updateStatusBar();
+
+    // Log system message
+    this.logSystemMessage('Download Session Started');
   }
 
   /**

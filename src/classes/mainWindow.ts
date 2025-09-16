@@ -2642,7 +2642,7 @@ export class MainWindow {
     ipcMain.on('menu-new-recording', () => {
       console.log('[IPC] New recording');
       if (!this.newRecordingDialog) {
-        this.newRecordingDialog = new NewRecordingDialog(this.mainWindow);
+        this.newRecordingDialog = new NewRecordingDialog(this.mainWindow, this.context);
       }
       const isRecording = this.windowRouter.isRecordingActive();
       const messageCount = this.windowRouter.getRecordingMessageCount();
@@ -2652,8 +2652,10 @@ export class MainWindow {
     ipcMain.on('menu-open-recording', async () => {
       console.log('[IPC] Open recording');
       
-      // Check if recordings folder exists and has .p2rec files
-      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings');
+      // Check recordings subfolder for .p2rec files
+      // TODO: Get recordings folder name from preferences when available
+      const recordingsSubfolder = 'recordings'; // Default recordings folder
+      const recordingsDir = path.join(this.context.currentFolder, recordingsSubfolder);
       if (!fs.existsSync(recordingsDir)) {
         dialog.showMessageBox(this.mainWindow!, {
           type: 'info',
@@ -5079,17 +5081,21 @@ export class MainWindow {
 
   private async downloadFile(): Promise<void> {
     // Use the current download mode to determine where to download
-    if (this.downloadMode === 'ram') {
-      await this.downloadToRAM();
-    } else {
-      await this.downloadToFlash();
-    }
+    await this.performDownload(this.downloadMode === 'flash');
   }
 
   private async downloadToRAM(): Promise<void> {
-    
+    await this.performDownload(false);
+  }
+
+  private async downloadToFlash(): Promise<void> {
+    await this.performDownload(true);
+  }
+
+  private async performDownload(toFlash: boolean): Promise<void> {
+    const target = toFlash ? 'Flash' : 'RAM';
     const result = await dialog.showOpenDialog(this.mainWindow!, {
-      title: 'Select Binary File to Download to RAM',
+      title: `Select Binary File to Download to ${target}`,
       filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
       properties: ['openFile']
     });
@@ -5098,8 +5104,8 @@ export class MainWindow {
       const filePath = result.filePaths[0];
       if (this._serialPort && this.downloader) {
         try {
-          this.logMessage(`Downloading ${path.basename(filePath)} to RAM...`);
-          this.updateRecordingStatus(`Downloading to RAM...`);
+          this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
+          this.updateRecordingStatus(`Downloading to ${target}...`);
           
           // Get current debug baud rate from context (command line setting)
           const debugBaudRate = this.context.runEnvironment.debugBaudrate;
@@ -5111,27 +5117,66 @@ export class MainWindow {
             await this._serialPort.changeBaudRate(downloadBaudRate);
           }
           
-          // Download to RAM (toFlash = false)
-          await this.downloader.download(filePath, false);
-          
+          // Rotate log before download
+          if (this.debugLoggerWindow) {
+            // Close current log and start new one for download session
+            this.debugLoggerWindow.handleDownloadStart();
+            // Log download metadata
+            const fileStats = fs.statSync(filePath);
+            const downloadInfo = `[DOWNLOAD TO ${target.toUpperCase()}] File: ${path.basename(filePath)} | Size: ${fileStats.size} bytes | Modified: ${fileStats.mtime.toISOString()}`;
+            this.debugLoggerWindow.logSystemMessage(downloadInfo);
+          }
+
+          // Download to target (RAM or Flash)
+          const downloadSuccess = await this.downloader.download(filePath, toFlash);
+
           // Switch back to debug baud rate if it was different
           if (debugBaudRate !== downloadBaudRate) {
             this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
             await this._serialPort.changeBaudRate(debugBaudRate);
           }
-          
-          this.logMessage(`Successfully downloaded ${path.basename(filePath)} to RAM`);
-          this.updateRecordingStatus(`Download complete`);
-          
-          // Brief status display then clear
-          setTimeout(() => {
-            this.updateRecordingStatus('Ready');
-          }, 2000);
+
+          if (downloadSuccess) {
+            // Log download success to debug logger window
+            if (this.debugLoggerWindow) {
+              const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
+              this.debugLoggerWindow.logSystemMessage(successMsg);
+            }
+
+            this.logMessage(`Successfully downloaded ${path.basename(filePath)} to ${target}`);
+            this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} complete`);
+
+            // Brief status display then clear
+            setTimeout(() => {
+              this.updateRecordingStatus('Ready');
+            }, 2000);
+          } else {
+            // Download failed but didn't throw exception
+            const errorMsg = 'Download failed - check device connection and try again';
+
+            // Log download failure to debug logger window
+            if (this.debugLoggerWindow) {
+              const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}`;
+              this.debugLoggerWindow.logSystemMessage(failureMsg);
+            }
+
+            this.logMessage(`ERROR: Failed to download to ${target}`);
+            this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} failed`);
+
+            dialog.showErrorBox('Download Failed', `Failed to download to ${target}:\n${errorMsg}`);
+          }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
-          this.logMessage(`ERROR: Failed to download to RAM: ${errorMsg}`);
-          this.updateRecordingStatus(`Download failed`);
-          
+
+          // Log download failure to debug logger window
+          if (this.debugLoggerWindow) {
+            const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
+            this.debugLoggerWindow.logSystemMessage(failureMsg);
+          }
+
+          this.logMessage(`ERROR: Failed to download to ${target}: ${errorMsg}`);
+          this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} failed`);
+
           // Ensure we restore debug baud rate even on error
           try {
             const debugBaudRate = this.context.runEnvironment.debugBaudrate;
@@ -5139,8 +5184,8 @@ export class MainWindow {
           } catch (restoreError) {
             this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
           }
-          
-          dialog.showErrorBox('Download Failed', `Failed to download to RAM:\n${errorMsg}`);
+
+          dialog.showErrorBox('Download Failed', `Failed to download to ${target}:\n${errorMsg}`);
         }
       } else {
         this.logMessage(`ERROR: Serial port or downloader not initialized`);
@@ -5149,67 +5194,6 @@ export class MainWindow {
     }
   }
 
-  private async downloadToFlash(): Promise<void> {
-    const result = await dialog.showOpenDialog(this.mainWindow!, {
-      title: 'Select Binary File to Download to Flash',
-      filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
-      properties: ['openFile']
-    });
-    
-    if (!result.canceled && result.filePaths.length > 0) {
-      const filePath = result.filePaths[0];
-      if (this._serialPort && this.downloader) {
-        try {
-          this.logMessage(`Downloading ${path.basename(filePath)} to Flash...`);
-          this.updateRecordingStatus(`Downloading to Flash...`);
-          
-          // Get current debug baud rate from context (command line setting)
-          const debugBaudRate = this.context.runEnvironment.debugBaudrate;
-          const downloadBaudRate = 2000000; // Fixed download baud rate
-          
-          // Switch to download baud rate if different from debug rate
-          if (debugBaudRate !== downloadBaudRate) {
-            this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
-            await this._serialPort.changeBaudRate(downloadBaudRate);
-          }
-          
-          // Download to Flash (toFlash = true)
-          await this.downloader.download(filePath, true);
-          
-          // Switch back to debug baud rate if it was different
-          if (debugBaudRate !== downloadBaudRate) {
-            this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
-            await this._serialPort.changeBaudRate(debugBaudRate);
-          }
-          
-          this.logMessage(`Successfully downloaded ${path.basename(filePath)} to Flash`);
-          this.updateRecordingStatus(`Flash complete`);
-          
-          // Brief status display then clear
-          setTimeout(() => {
-            this.updateRecordingStatus('Ready');
-          }, 2000);
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          this.logMessage(`ERROR: Failed to download to Flash: ${errorMsg}`);
-          this.updateRecordingStatus(`Flash failed`);
-          
-          // Ensure we restore debug baud rate even on error
-          try {
-            const debugBaudRate = this.context.runEnvironment.debugBaudrate;
-            await this._serialPort.changeBaudRate(debugBaudRate);
-          } catch (restoreError) {
-            this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
-          }
-          
-          dialog.showErrorBox('Flash Failed', `Failed to download to Flash:\n${errorMsg}`);
-        }
-      } else {
-        this.logMessage(`ERROR: Serial port or downloader not initialized`);
-        dialog.showErrorBox('Not Connected', 'Please connect to a Propeller 2 device first.');
-      }
-    }
-  }
 
 
   private startRecording(filepath?: string): void {

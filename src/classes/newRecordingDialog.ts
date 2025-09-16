@@ -2,14 +2,18 @@ import { BrowserWindow, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
+import { Context } from '../utils/context';
+
 export class NewRecordingDialog {
   private parent: BrowserWindow;
+  private context: Context;
   private recordingActive: boolean = false;
   private currentRecordingPath: string = '';
   private messageCount: number = 0;
 
-  constructor(parent: BrowserWindow) {
+  constructor(parent: BrowserWindow, context: Context) {
     this.parent = parent;
+    this.context = context;
   }
 
   public show(isRecordingActive: boolean, messageCount: number = 0): void {
@@ -157,7 +161,18 @@ export class NewRecordingDialog {
 
   private showNewRecordingDialog(): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const recordingPath = path.join(process.cwd(), 'tests', 'recordings', `recording_${timestamp}.p2rec`);
+    // Save recordings to recordings subfolder in current working directory
+    // Use context.currentFolder which preserves the launch directory
+    // TODO: Get recordings folder name from preferences when available
+    const recordingsSubfolder = 'recordings'; // Default recordings folder
+    const recordingsDir = path.join(this.context.currentFolder, recordingsSubfolder);
+
+    // Create recordings directory if it doesn't exist
+    if (!fs.existsSync(recordingsDir)) {
+      fs.mkdirSync(recordingsDir, { recursive: true });
+    }
+
+    const recordingPath = path.join(recordingsDir, `recording_${timestamp}.p2rec`);
     
     const window = new BrowserWindow({
       width: 400,

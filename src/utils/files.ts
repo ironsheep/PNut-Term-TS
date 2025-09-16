@@ -42,7 +42,12 @@ export function localFSpecForFilename(
     fileTypeNoDot = fileSuffix.substring(1);
   }
   const fileName: string = `${basename}.${fileTypeNoDot}`;
-  return path.join(ctx.currentFolder, fileName);
+
+  // Use context.currentFolder which is set correctly at startup
+  // This preserves the launch directory even in Electron apps
+  const workingDir = ctx.currentFolder;
+  console.log(`[FILES] Using working directory: ${workingDir} (from context.currentFolder)`);
+  return path.join(workingDir, fileName);
 }
 
 /**
