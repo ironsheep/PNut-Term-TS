@@ -8,10 +8,10 @@
  * ## Integer Formats (32-bit resolution)
  * 
  * 1. **Hexadecimal**: `$` prefix followed by hex digits (0-9, A-F, a-f) with optional underscores
- *    - Examples: `$FF`, `$1234_ABCD`, `$00FF_00FF`
+ *    - Examples: `$FF`, `$1234_ABCD`, `$00FF_00FF`, `-$100`
  *    - Valid digits: 0-9, A-F, a-f (case-insensitive)
  *    - Underscores allowed for readability
- *    - No negative support (always interpreted as unsigned)
+ *    - Supports negative values with `-$` prefix
  * 
  * 2. **Decimal**: Optional minus sign followed by decimal digits with optional underscores
  *    - Examples: `123`, `-456`, `1_000_000`, `-2_147_483_648`
@@ -90,17 +90,26 @@ export class Spin2NumericParser {
   }
 
   /**
-   * Parse hexadecimal format: $FF, $00FF00
-   * Case-insensitive, no negative support
+   * Parse hexadecimal format: $FF, $00FF00, -$100
+   * Case-insensitive, supports negative values
    */
   private static parseHex(value: string): number | null {
     const cleaned = this.removeUnderscores(value);
-    
-    if (!cleaned.startsWith('$')) {
+
+    let isNegative = false;
+    let hexString = cleaned;
+
+    // Check for negative hex
+    if (cleaned.startsWith('-$')) {
+      isNegative = true;
+      hexString = cleaned.substring(1); // Remove the negative sign
+    }
+
+    if (!hexString.startsWith('$')) {
       return null;
     }
 
-    const hexPart = cleaned.substring(1);
+    const hexPart = hexString.substring(1);
     if (!/^[0-9A-Fa-f]+$/.test(hexPart)) {
       this.logError('Invalid hexadecimal format', value);
       return null;
@@ -112,13 +121,20 @@ export class Spin2NumericParser {
       return null;
     }
 
-    // Check for overflow (treat as unsigned 32-bit)
-    if (parsed > this.UINT32_MAX) {
-      this.logError('Hexadecimal value exceeds 32-bit range', value);
-      return this.UINT32_MAX;
+    // Apply negative sign if present
+    const result = isNegative ? -parsed : parsed;
+
+    // Check for overflow/underflow
+    if (result > this.INT32_MAX) {
+      this.logError('Hexadecimal value exceeds INT32_MAX', value);
+      return this.INT32_MAX;
+    }
+    if (result < this.INT32_MIN) {
+      this.logError('Hexadecimal value below INT32_MIN', value);
+      return this.INT32_MIN;
     }
 
-    return parsed;
+    return result;
   }
 
   /**
@@ -216,19 +232,24 @@ export class Spin2NumericParser {
   }
 
   /**
-   * Parse floating point format: 1.5, -2.3e4, 5e-6
-   * Supports scientific notation
+   * Parse floating point format: 1.5, -2.3e4, 5e-6, 42.
+   * Supports scientific notation and trailing decimal points
    */
   private static parseScientific(value: string): number | null {
     const cleaned = this.removeUnderscores(value);
-    
+
     // Check if it looks like a float (has decimal point or e/E)
     if (!cleaned.includes('.') && !cleaned.toLowerCase().includes('e')) {
       return null;
     }
 
-    // Validate float format
-    if (!/^-?\d*\.?\d+([eE][+-]?\d+)?$/.test(cleaned)) {
+    // Validate float format - allow digits after decimal to be optional
+    if (!/^-?\d*\.?\d*([eE][+-]?\d+)?$/.test(cleaned)) {
+      return null;
+    }
+
+    // Additional check: must have at least one digit somewhere
+    if (!/\d/.test(cleaned)) {
       return null;
     }
 
@@ -259,9 +280,10 @@ export class Spin2NumericParser {
     const cleaned = this.removeUnderscores(trimmed);
 
     // Check format prefixes first
-    if (cleaned.startsWith('$')) {
-      // Must have at least one hex digit after $
-      if (cleaned.length > 1 && /^[0-9A-Fa-f]+$/.test(cleaned.substring(1))) {
+    if (cleaned.startsWith('$') || cleaned.startsWith('-$')) {
+      // Handle both $FF and -$FF
+      const hexPart = cleaned.startsWith('-$') ? cleaned.substring(2) : cleaned.substring(1);
+      if (hexPart.length > 0 && /^[0-9A-Fa-f]+$/.test(hexPart)) {
         return 'hex';
       }
     } else if (cleaned.startsWith('%%')) {
@@ -275,8 +297,8 @@ export class Spin2NumericParser {
         return 'binary';
       }
     } else if (cleaned.includes('.') || cleaned.toLowerCase().includes('e')) {
-      // Check if it's a valid float format
-      if (/^-?\d*\.?\d+([eE][+-]?\d+)?$/.test(cleaned)) {
+      // Check if it's a valid float format - updated regex to match parseScientific
+      if (/^-?\d*\.?\d*([eE][+-]?\d+)?$/.test(cleaned) && /\d/.test(cleaned)) {
         return 'float';
       }
     } else if (/^-?\d+$/.test(cleaned)) {
