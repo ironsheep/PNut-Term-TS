@@ -74,7 +74,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
   private sessionStartTime: number = performance.now();
   private lastMessageTime: number = 0;
   private lastFullTimestamp: string = '';
-  
+
+  // Message buffering for race condition protection
+  private pendingLogMessages: string[] = [];
+  private logFileReady: boolean = false;
+
   // Performance warning tracking
   private performanceMonitor: PerformanceMonitor | null = null;
   private warningHistory: PerformanceWarning[] = [];
@@ -159,18 +163,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private initializeLogFile(): void {
     try {
-      // Save logs to logs subfolder in current working directory
-      // Use context.currentFolder which preserves the launch directory
-      // TODO: Get logs folder name from preferences when available
-      const logsSubfolder = 'logs'; // Default logs folder
-      const logsDir = path.join(this.context.currentFolder, logsSubfolder);
-
-      // Create logs directory if it doesn't exist
-      if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir, { recursive: true });
-      }
-
-      console.log('[DEBUG LOGGER] Saving logs to directory:', logsDir);
+      // Create logs directory using context startup directory
+      const logsDir = path.join(this.context.currentFolder, 'logs');
+      console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
+      ensureDirExists(logsDir);
       
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
@@ -185,7 +181,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       // Wait for the stream to be ready before writing
       this.logFile.once('open', (fd) => {
         console.log('[DEBUG LOGGER] Write stream opened with fd:', fd);
-        
+
         // Write header and force flush to ensure file is created
         this.logFile!.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
         this.logFile!.write(`Program: ${basename}\n`);
@@ -194,7 +190,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
             console.error('[DEBUG LOGGER] Failed to write header:', err);
           } else {
             console.log('[DEBUG LOGGER] Log file header written and flushed');
-            
+
             // Now we can safely sync since fd is available
             try {
               fs.fsyncSync(fd);
@@ -202,6 +198,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
             } catch (syncErr) {
               console.error('[DEBUG LOGGER] Failed to sync log file:', syncErr);
             }
+
+            // CRITICAL FIX: Mark log file as ready and flush any pending messages
+            this.logFileReady = true;
+            this.flushPendingMessages();
           }
         });
       });
@@ -829,7 +829,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
           this.writeToLog(formatted);
         }
         break;
-        
+
       case MessageType.COG_MESSAGE:
       case MessageType.P2_SYSTEM_INIT:
         // Text data - display as readable text (should go to main console)
@@ -1034,31 +1034,62 @@ export class DebugLoggerWindow extends DebugWindowBase {
 
   /**
    * Write message to log file (buffered for performance)
+   * RACE CONDITION FIX: Buffer messages if log file isn't ready yet
    */
   private writeToLog(message: string): void {
-    if (this.logFile) {
-      const timestamp = new Date().toISOString();
-      this.writeBuffer.push(`[${timestamp}] ${message}\n`);
-      
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}\n`;
+
+    if (this.logFileReady && this.logFile) {
+      // Log file is ready - write normally
+      this.writeBuffer.push(logEntry);
+
       // Log first few writes to confirm it's working
       if (this.writeBuffer.length <= 3) {
         console.log('[DEBUG LOGGER] Added to write buffer:', message.substring(0, 50));
       }
-      
+
       // Schedule write if not already scheduled
       if (!this.writeTimer) {
         this.writeTimer = setTimeout(() => this.flushWriteBuffer(), this.WRITE_INTERVAL_MS);
       }
-      
+
       // Force flush if buffer is getting large (4KB) or if this is the first write
       if (this.writeBuffer.join('').length > 4096 || this.writeBuffer.length === 1) {
         this.flushWriteBuffer();
       }
     } else {
-      console.warn('[DEBUG LOGGER] writeToLog called but logFile is null');
+      // Log file not ready yet - buffer the message for later
+      this.pendingLogMessages.push(logEntry);
+      console.log(`[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+
+      // Limit buffer size to prevent memory issues
+      if (this.pendingLogMessages.length > 1000) {
+        console.warn('[DEBUG LOGGER] ⚠️ Pending message buffer full, dropping oldest messages');
+        this.pendingLogMessages.splice(0, 100); // Remove oldest 100 messages
+      }
     }
   }
   
+  /**
+   * Flush pending messages that were buffered during log file initialization
+   * RACE CONDITION FIX: Called once log file is ready
+   */
+  private flushPendingMessages(): void {
+    if (this.pendingLogMessages.length > 0) {
+      console.log(`[DEBUG LOGGER] 🚀 Flushing ${this.pendingLogMessages.length} pending messages to log file`);
+
+      // Add all pending messages to the write buffer
+      this.writeBuffer.push(...this.pendingLogMessages);
+
+      // Clear the pending buffer
+      this.pendingLogMessages = [];
+
+      // Force immediate flush of the write buffer
+      this.flushWriteBuffer();
+    }
+  }
+
   /**
    * Flush write buffer to disk
    */
@@ -1067,11 +1098,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
       clearTimeout(this.writeTimer);
       this.writeTimer = null;
     }
-    
+
     if (this.writeBuffer.length > 0 && this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       const data = this.writeBuffer.join('');
       this.writeBuffer = [];
-      
+
       // Async write with error handling
       this.logFile.write(data, (err) => {
         if (err) {
@@ -1149,16 +1180,20 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile.end();
       this.logFile = null; // Clear reference after ending
     }
-    
+
+    // Reset log file state for new session
+    this.logFileReady = false;
+    this.pendingLogMessages = []; // Clear any pending messages
+
     // Clear the display (must be after logFile.end() to avoid write-after-end)
     this.clearOutput();
-    
+
     // Create new log file
     this.initializeLogFile();
-    
+
     // Update status bar with new filename
     this.updateStatusBar();
-    
+
     // Log system message
     this.logSystemMessage('DTR Reset - New session started');
   }
@@ -1173,6 +1208,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile.end();
       this.logFile = null; // Clear reference after ending
     }
+
+    // Reset log file state for new session
+    this.logFileReady = false;
+    this.pendingLogMessages = []; // Clear any pending messages
 
     // Clear the display (must be after logFile.end() to avoid write-after-end)
     this.clearOutput();
@@ -1197,6 +1236,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile.end();
       this.logFile = null; // Clear reference after ending
     }
+
+    // Reset log file state for new session
+    this.logFileReady = false;
+    this.pendingLogMessages = []; // Clear any pending messages
 
     // Clear the display (must be after logFile.end() to avoid write-after-end)
     this.clearOutput();

@@ -243,6 +243,19 @@ npm test -s                     # Silent mode
 2. Document: completed/in-progress/next
 3. Resume: todo list + read state file
 
+## 📚 Documentation Locations
+
+### User & Admin Guides
+- **User Guide**: `DOCs/USER-GUIDE.md` and `DOCs/project-specific/USER-GUIDE.md`
+- **Admin/Technical**: `DOCs/project-specific/ADMIN-GUIDE-SERIAL-IMPLEMENTATION.md`
+- **Window Status**: Track implementation status in window sprint documents
+
+### Pascal Source Reference
+- **Location**: `/pascal-source/P2_PNut_Public/` (mounted at root)
+- **Main File**: `DebugDisplayUnit.pas` (all windows except debugger)
+- **Version**: Currently syncing to v51a
+- **Debugger File**: Different file (TBD when implementing debugger)
+
 ## 🗺️ PROJECT QUICK NAVIGATION
 
 ### Core Structure
