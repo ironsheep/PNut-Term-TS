@@ -9,6 +9,7 @@ import { RecordingCatalog, CatalogEntry } from './recordingCatalog';
 import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
 import { safeDisplayString } from '../../utils/displayUtils';
 import { BinaryRecorder } from './binaryRecorder';
+import { Context } from '../../utils/context';
 
 /**
  * Window handler callback for routing messages to debug windows
@@ -87,7 +88,8 @@ export interface RoutingStats {
  */
 export class WindowRouter extends EventEmitter {
   private static instance: WindowRouter | null = null;
-  
+  private context: Context | null = null;
+
   // Window management
   private windows: Map<string, { type: string; handler: WindowHandler; stats: WindowInfo }> = new Map();
   
@@ -146,11 +148,23 @@ export class WindowRouter extends EventEmitter {
   /**
    * Get singleton instance of WindowRouter
    */
-  public static getInstance(): WindowRouter {
+  public static getInstance(context?: Context): WindowRouter {
     if (!WindowRouter.instance) {
       WindowRouter.instance = new WindowRouter();
     }
+    // Set context if provided and not already set
+    if (context && !WindowRouter.instance.context) {
+      WindowRouter.instance.setContext(context);
+    }
     return WindowRouter.instance;
+  }
+
+  /**
+   * Set the context for the router (should be called early in application startup)
+   */
+  public setContext(context: Context): void {
+    this.context = context;
+    console.log('[ROUTER] Context set for directory-based recording paths');
   }
   
   /**
@@ -565,8 +579,10 @@ export class WindowRouter extends EventEmitter {
     
     this.logger.info('RECORDING', `Starting recording session: ${metadata.sessionName}`);
     
-    // Define recordings directory for both formats
-    const recordingsDir = path.join(process.cwd(), 'tests', 'recordings', 'sessions');
+    // Use context-based recordings directory for both formats
+    const recordingsDir = this.context
+      ? path.join(this.context.getRecordingsDirectory(), 'sessions')
+      : path.join(process.cwd(), 'recordings', 'sessions'); // Fallback if context not set
     
     if (this.useBinaryFormat) {
       // Use binary recorder for .p2rec format

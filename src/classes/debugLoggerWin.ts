@@ -163,8 +163,8 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private initializeLogFile(): void {
     try {
-      // Create logs directory using context startup directory
-      const logsDir = path.join(this.context.currentFolder, 'logs');
+      // Use context-based log directory with user preferences
+      const logsDir = this.context.getLogDirectory();
       console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
       

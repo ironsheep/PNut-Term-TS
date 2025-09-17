@@ -88,11 +88,8 @@ export class MainWindow {
   private _serialBaud: number = DEFAULT_SERIAL_BAUD;
   private mainWindow: any = null;
   private mainWindowOpen: boolean = false;
-  private logFilenameBase: string = 'myapp';
-  private loggingToFile: boolean = false;
   private waitingForINIT: boolean = true;
-  private logFileSpec: string = '';
-  private windowRouter: WindowRouter = WindowRouter.getInstance();
+  private windowRouter: WindowRouter;
   private dtrState: boolean = false;
   private rtsState: boolean = false;
   private preferencesDialog: PreferencesDialog | null = null;
@@ -147,6 +144,9 @@ export class MainWindow {
   constructor(ctx: Context) {
     this.context = ctx;
     this._deviceNode = this.context.runEnvironment.selectedPropPlug;
+
+    // Initialize WindowRouter with context for proper directory handling
+    this.windowRouter = WindowRouter.getInstance(this.context);
     if (this.context.runEnvironment.loggingEnabled) {
       this.context.logger.forceLogMessage('MainWindow started.');
     }
@@ -186,9 +186,6 @@ export class MainWindow {
     // Initialize device settings using context startup directory
     this.settingsFilePath = path.join(this.context.currentFolder, 'pnut-term-settings.json');
     this.loadGlobalSettings();
-    
-    const currFileTime: string = getFormattedDateTime();
-    this.logFilenameBase = `myApp-${currFileTime}.log`;
 
     /*
     let filesFound: string[] = listFiles("./");
@@ -2652,10 +2649,8 @@ export class MainWindow {
     ipcMain.on('menu-open-recording', async () => {
       console.log('[IPC] Open recording');
       
-      // Check recordings subfolder for .p2rec files
-      // TODO: Get recordings folder name from preferences when available
-      const recordingsSubfolder = 'recordings'; // Default recordings folder
-      const recordingsDir = path.join(this.context.currentFolder, recordingsSubfolder);
+      // Use context-based recordings directory with user preferences
+      const recordingsDir = this.context.getRecordingsDirectory();
       if (!fs.existsSync(recordingsDir)) {
         dialog.showMessageBox(this.mainWindow!, {
           type: 'info',
@@ -3051,17 +3046,9 @@ export class MainWindow {
         this.openSerialPort(this._deviceNode);
       }
       
-      // Setup logging configuration
-      let logDisplayName: string = this.context.runEnvironment.logFilename;
-      if (logDisplayName.length == 0) {
-        logDisplayName = '{none}';
-        this.loggingToFile = false;
-        // Initialize log LED to OFF state
-        this.updateLoggingStatus(false);
-      } else {
-        this.enableLogging(logDisplayName);
-      }
-      
+      // Initialize log LED to OFF state (logging now handled by DebugLogger)
+      this.updateLoggingStatus(false);
+
       // Update status bar with device info
       if (this._deviceNode.length > 0) {
         this.updateStatusBarField('propPlug', this._deviceNode);
@@ -3266,37 +3253,7 @@ export class MainWindow {
           }
         ]
       },
-      {
-        label: 'File',
-        submenu: [
-          {
-            label: '&Log to file...',
-            click: () => {
-              dialog
-                .showSaveDialog(this.mainWindow!, {
-                  title: 'Save Log',
-                  defaultPath: `./Logs/${this.logFilenameBase}`,
-                  filters: [{ name: 'Text Files', extensions: ['txt'] }]
-                })
-                .then((result: any) => {
-                  if (!result.canceled && result.filePath) {
-                    const logFilename: string = this.enableLogging(result.filePath);
-                    // Log name field removed from status bar per user request
-                    this.safeExecuteJS('document.getElementById("log-content").innerText', 'get-log-content')
-                      .then((fileContent: string | undefined) => {
-                        if (fileContent !== undefined) {
-                          fs.writeFileSync(this.logFileSpec!, fileContent);
-                        }
-                      });
-                  }
-                })
-                .catch((error: Error) => {
-                  console.error('Failed to show save dialog:', error);
-                });
-            }
-          }
-        ]
-      },
+      // File menu removed - logging now handled by DebugLogger
       {
         label: 'Edit',
         submenu: [
@@ -3980,24 +3937,6 @@ export class MainWindow {
     this.knownClosedBy = true;
   }
 
-  private enableLogging(logFilename: string): string {
-    let filename: string = '';
-    if (logFilename.length == 0) {
-      this.loggingToFile = false;
-    } else {
-      this.loggingToFile = true;
-      filename = path.basename(logFilename);
-      const logFolder = path.join(this.context.currentFolder, 'Logs');
-      ensureDirExists(logFolder);
-      this.logFileSpec = path.join(logFolder, filename);
-    }
-    
-    // Update log LED using the dedicated function
-    this.updateLoggingStatus(this.loggingToFile, filename);
-    
-    return filename;
-  }
-
   private getRuntimeVersions() {
     // Get invocation parameters
     const args = process.argv.slice(2); // Skip 'node' and script path
@@ -4124,10 +4063,7 @@ export class MainWindow {
       }, this.FLUSH_INERVAL_MS);
     }
 
-    // If logging to file, append to output file
-    if (this.loggingToFile) {
-      this.appendToFile(this.logFileSpec, `${message}\n`);
-    }
+    // Logging now handled by DebugLogger
   }
 
   private flushLogBuffer() {
@@ -4161,10 +4097,7 @@ export class MainWindow {
       })();
     `, 'append log message');
     
-    // and if logging, append to output file
-    if (this.loggingToFile) {
-      this.appendToFile(this.logFileSpec, `${message}\n`);
-    }
+    // Logging now handled by DebugLogger
   }
 
   private PEND_MESSAGE_COUNT: number = 100;
@@ -4176,10 +4109,7 @@ export class MainWindow {
         this.flushLogBuffer();
       }
     }
-    // and if logging, append to output file
-    if (this.loggingToFile) {
-      this.appendToFile(this.logFileSpec, `${message}\n`);
-    }
+    // Logging now handled by DebugLogger
   }
 
   private logBuffer: string[] = [];
@@ -5360,6 +5290,9 @@ export class MainWindow {
    */
   private applyPreferences(settings: any): void {
     console.log('[PREFERENCES] Applying settings:', settings);
+
+    // Update context with new preferences
+    this.context.updatePreferences(settings);
     
     // Apply debug logger scrollback setting
     if (settings.debugLogger && this.debugLoggerWindow) {

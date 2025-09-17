@@ -164,7 +164,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   private canvasOffset: Position = { x: 0, y: 0 };
 
   private polarConfig: PolarSpec = { twopi: 0x100000000, offset: 0 };
-  private cartesianConfig: CartesianSpec = { ydir: false, xdir: false };
+  private cartesianConfig: CartesianSpec = { ydir: true, xdir: false };
   private coordinateMode: eCoordModes = eCoordModes.CM_CARTESIAN; // default to cartesian mode
   private lineSize: number = 1;
   private precise: number = 8; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. [0, 8] used as shift value

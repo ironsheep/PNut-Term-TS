@@ -84,8 +84,24 @@ export class DebugTerminalInTypeScript {
     });
 
     // Capture startup directory BEFORE Electron initialization
-    // This ensures we get the directory where user launched the command
-    const startupDirectory = process.cwd();
+    // For packaged Electron apps, __dirname points to .../app/dist
+    // We need to go up to the directory containing the .app bundle
+    let startupDirectory = process.cwd();
+    console.log(`[STARTUP] process.cwd() = ${startupDirectory}`);
+    console.log(`[STARTUP] __dirname = ${__dirname}`);
+
+    // If running from packaged app, calculate proper working directory
+    if (__dirname.includes('PNut-Term-TS.app')) {
+      // Strip PNut-Term-TS.app and everything after to get bundle parent directory
+      const appIndex = __dirname.indexOf('PNut-Term-TS.app');
+      startupDirectory = __dirname.substring(0, appIndex);
+      console.log(`[STARTUP] Detected packaged app, using directory: ${startupDirectory}`);
+    } else {
+      // Default to __dirname if not packaged
+      startupDirectory = __dirname;
+      console.log(`[STARTUP] Using __dirname as working directory: ${startupDirectory}`);
+    }
+
     this.context = new Context(startupDirectory);
     
     // Set startup directory for all logging systems
@@ -168,7 +184,6 @@ export class DebugTerminalInTypeScript {
       .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
       .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
-      .option('-l, --log <basename>', 'Specify .log file basename')
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
@@ -183,8 +198,7 @@ export class DebugTerminalInTypeScript {
       `$-
       Examples:
          $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
-         $ pnut-term-ts -l myApp -p P9cektn7                     # run and log to myApp-YYMMDD-HHmm.log
-         $ pnut-term-ts -l topFile -p P9cektn7 -r myTopfile.bin  # download myTopfile.bin to RAM, run with logging to topFile-YYMMDD-HHmm.log
+         $ pnut-term-ts -r myTopfile.bin -p P9cektn7             # download myTopfile.bin to RAM and run
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
          $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
 
@@ -203,6 +217,19 @@ export class DebugTerminalInTypeScript {
 
     // condition our logger
     this.context.logger.setProgramName(this.program.name());
+
+    // Add custom version action to include startup directory
+    this.program.action(() => {
+      // This won't be called for version, but we need it for the default command
+    });
+
+    // Override version command to include startup directory
+    const originalArgs = process.argv;
+    if (originalArgs.includes('-V') || originalArgs.includes('--version')) {
+      console.log(`v${this.version}`);
+      console.log(`Startup Directory: ${this.context.currentFolder}`);
+      process.exit(0);
+    }
 
     // Combine process.argv with the modified this.argsArray
     const testArgsInterp = this.argsArray.length === 0 ? '[]' : this.argsArray.join(', ');
@@ -424,13 +451,6 @@ export class DebugTerminalInTypeScript {
     if (this.context.runEnvironment.verbose) {
       const fontPath = path.join(__dirname, '..', 'fonts');
       this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
-    }
-
-    if (options.log) {
-      // generate log file basename
-      const dateTimeStr: string = getFormattedDateTime();
-      this.context.runEnvironment.logFilename = `${options.log}-${dateTimeStr}.log`;
-      this.context.logger.verboseMsg(` * logging to [${this.context.runEnvironment.logFilename}]`);
     }
 
     // Check if we're in a standalone environment without Electron

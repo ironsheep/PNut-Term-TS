@@ -50,6 +50,35 @@ export function localFSpecForFilename(
   return path.join(workingDir, fileName);
 }
 
+// return path to screenshot folder with basename appended
+export function screenshotFSpecForFilename(
+  ctx: Context,
+  filename: string,
+  fileType: string | undefined = undefined
+): string {
+  // get file type if any
+  const fileSuffix = path.extname(filename);
+  const basename: string = path.basename(filename).replace(fileSuffix, ''); // remove any path info
+  let fileTypeNoDot: string = fileType !== undefined ? fileType : '';
+  // remove dot if present
+  if (fileTypeNoDot.startsWith('.')) {
+    fileTypeNoDot = fileTypeNoDot.substring(1);
+  }
+  if (fileTypeNoDot.length == 0 && fileSuffix.length > 0) {
+    fileTypeNoDot = fileSuffix.substring(1);
+  }
+  const fileName: string = `${basename}.${fileTypeNoDot}`;
+
+  // Use context.getScreenshotDirectory() for dedicated screenshot folder
+  const screenshotDir = ctx.getScreenshotDirectory();
+  console.log(`[FILES] Using screenshot directory: ${screenshotDir} (from context.getScreenshotDirectory())`);
+
+  // Ensure screenshot directory exists
+  ensureDirExists(screenshotDir);
+
+  return path.join(screenshotDir, fileName);
+}
+
 /**
  * filters interferring characters from URI form of fileSpec returning just a fileSpec
  * @export

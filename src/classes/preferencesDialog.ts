@@ -25,6 +25,9 @@ export class PreferencesDialog {
       newLogOnDtrReset: true,
       maxLogSize: 'unlimited'
     },
+    recordings: {
+      recordingsDirectory: './recordings/'
+    },
     debugLogger: {
       scrollbackLines: 1000
     }
@@ -318,7 +321,15 @@ export class PreferencesDialog {
       </select>
     </div>
   </div>
-  
+
+  <div class="section">
+    <h2>Recordings</h2>
+    <div class="form-group">
+      <label>Recordings Directory:</label>
+      <input type="text" id="recordings-directory" value="./recordings/" style="flex: 1; max-width: 200px; border: 1px solid #ccc; padding: 5px 8px; border-radius: 3px; font-size: 13px;">
+    </div>
+  </div>
+
   <div class="section">
     <h2>Debug Logger</h2>
     <div class="form-group">
@@ -366,7 +377,10 @@ export class PreferencesDialog {
       document.getElementById('auto-save-debug').checked = settings.logging.autoSaveDebug;
       document.getElementById('new-log-dtr').checked = settings.logging.newLogOnDtrReset;
       document.getElementById('max-log-size').value = settings.logging.maxLogSize;
-      
+
+      // Recordings settings
+      document.getElementById('recordings-directory').value = settings.recordings.recordingsDirectory;
+
       // Debug Logger settings
       document.getElementById('scrollback-lines').value = settings.debugLogger.scrollbackLines;
     }
@@ -391,6 +405,9 @@ export class PreferencesDialog {
           autoSaveDebug: document.getElementById('auto-save-debug').checked,
           newLogOnDtrReset: document.getElementById('new-log-dtr').checked,
           maxLogSize: document.getElementById('max-log-size').value
+        },
+        recordings: {
+          recordingsDirectory: document.getElementById('recordings-directory').value
         },
         debugLogger: {
           scrollbackLines: parseInt(document.getElementById('scrollback-lines').value)

@@ -434,6 +434,17 @@ export class PlotWindowIntegrator {
       return;
     }
 
+    // Handle SAVE action
+    if (params.action === 'SAVE') {
+      // Save window to bitmap file using the same method as other debug windows
+      if (params.filename) {
+        this.plotWindow.saveWindowToBMPFilename(params.filename);
+      } else {
+        console.error('[PLOT] SAVE action missing filename parameter');
+      }
+      return;
+    }
+
     if (params.title && this.plotWindow.debugWindow) {
       this.plotWindow.debugWindow.setTitle(params.title);
     }

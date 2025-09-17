@@ -3,6 +3,7 @@
 // src/classes/shared/recordingManager.ts
 
 import { WindowRouter } from './windowRouter';
+import { Context } from '../../utils/context';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -66,8 +67,9 @@ export class RecordingManager {
   private readonly HIGH_FREQ_THRESHOLD = 1000; // messages per second
   private readonly recordingsPath: string;
 
-  constructor(private router: WindowRouter) {
-    this.recordingsPath = path.join(__dirname, '../../../tests/recordings');
+  constructor(private router: WindowRouter, private context: Context) {
+    // Use context-based recordings directory with user preferences
+    this.recordingsPath = this.context.getRecordingsDirectory();
     this.ensureDirectoryStructure();
     this.loadScenarios();
     this.setupAutomaticTriggers();

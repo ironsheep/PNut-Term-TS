@@ -12,7 +12,8 @@ import {
   CommandResult,
   CommandHandler,
   CommandContext,
-  CanvasOperation
+  CanvasOperation,
+  PlotTokenType
 } from './plotCommandInterfaces';
 import { PlotTokenizer } from './plotTokenizer';
 import { PlotCommandRegistry, CommandDefinition } from './plotCommandRegistry';
@@ -214,6 +215,17 @@ export class PlotCommandParser implements IPlotCommandParser {
       description: 'Close the window',
       examples: ['CLOSE'],
       handler: this.handleCloseCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'SAVE',
+      parameters: [
+        { name: 'target', type: 'string', required: false, defaultValue: 'window' },
+        { name: 'filename', type: 'string', required: true }
+      ],
+      description: 'Save window or display to bitmap file',
+      examples: ['SAVE "plot.bmp"', 'SAVE WINDOW "myplot.bmp"'],
+      handler: this.handleSaveCommand.bind(this)
     });
 
     // Input commands
@@ -1233,6 +1245,64 @@ export class PlotCommandParser implements IPlotCommandParser {
 
     result.canvasOperations = [this.convertToCanvasOperation(operation)];
     console.log(`[PLOT] CLOSE parsed`);
+
+    return result;
+  }
+
+  private handleSaveCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    const tokens = context.tokens;
+
+    // SAVE command can be:
+    // 1. SAVE "filename"
+    // 2. SAVE WINDOW "filename"
+
+    let filename: string;
+    let target = 'window'; // default
+
+    if (tokens.length === 1) {
+      // SAVE "filename"
+      if (tokens[0].type === PlotTokenType.STRING) {
+        filename = tokens[0].value;
+      } else {
+        this.logError(`[PLOT PARSE ERROR] SAVE command requires a quoted filename: ${context.originalCommand}`);
+        result.success = false;
+        result.errors.push('SAVE command requires a quoted filename');
+        return result;
+      }
+    } else if (tokens.length === 2) {
+      // SAVE WINDOW "filename"
+      if (tokens[0].value.toUpperCase() === 'WINDOW' && tokens[1].type === PlotTokenType.STRING) {
+        target = 'window';
+        filename = tokens[1].value;
+      } else {
+        this.logError(`[PLOT PARSE ERROR] Invalid SAVE command syntax: ${context.originalCommand}`);
+        result.success = false;
+        result.errors.push('Invalid SAVE command syntax. Use: SAVE "filename" or SAVE WINDOW "filename"');
+        return result;
+      }
+    } else {
+      this.logError(`[PLOT PARSE ERROR] Invalid SAVE command parameters: ${context.originalCommand}`);
+      result.success = false;
+      result.errors.push('Invalid SAVE command parameters');
+      return result;
+    }
+
+    // SAVE is handled immediately by the window, not through canvas operations
+    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+      CanvasOperationType.CONFIGURE_WINDOW,
+      { action: 'SAVE', target: target, filename: filename },
+      false // SAVE is immediate
+    );
+
+    result.canvasOperations = [this.convertToCanvasOperation(operation)];
+    console.log(`[PLOT] SAVE ${target} "${filename}" parsed`);
 
     return result;
   }

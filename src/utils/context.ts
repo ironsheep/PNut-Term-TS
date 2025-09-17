@@ -32,6 +32,37 @@ export interface RuntimeEnvironment {
   verbose: boolean;
   quiet: boolean;
 }
+export interface UserPreferences {
+  logging: {
+    logDirectory: string;
+    autoSaveDebug: boolean;
+    newLogOnDtrReset: boolean;
+    maxLogSize: string;
+  };
+  recordings: {
+    recordingsDirectory: string;
+  };
+  screenshots: {
+    screenshotDirectory: string;
+  };
+  terminal: {
+    mode: string;
+    colorTheme: string;
+    fontSize: number;
+    fontFamily: string;
+    showCogPrefixes: boolean;
+    localEcho: boolean;
+  };
+  serialPort: {
+    controlLine: string;
+    defaultBaud: number;
+    autoReconnect: boolean;
+  };
+  debugLogger: {
+    scrollbackLines: number;
+  };
+}
+
 export class Context {
   public libraryFolder: string;
   public extensionFolder: string;
@@ -39,6 +70,7 @@ export class Context {
   public logger: Logger;
   public runEnvironment: RuntimeEnvironment;
   public actions: Actions;
+  public preferences: UserPreferences;
 
   constructor(startupDirectory?: string) {
     this.runEnvironment = {
@@ -64,6 +96,38 @@ export class Context {
       binDirspec: ''
     };
 
+    // Initialize default preferences
+    this.preferences = {
+      logging: {
+        logDirectory: './logs/',
+        autoSaveDebug: true,
+        newLogOnDtrReset: true,
+        maxLogSize: 'unlimited'
+      },
+      recordings: {
+        recordingsDirectory: './recordings/'
+      },
+      screenshots: {
+        screenshotDirectory: './screenshots/'
+      },
+      terminal: {
+        mode: 'PST',
+        colorTheme: 'green-on-black',
+        fontSize: 14,
+        fontFamily: 'default',
+        showCogPrefixes: true,
+        localEcho: false
+      },
+      serialPort: {
+        controlLine: 'DTR',
+        defaultBaud: 115200,
+        autoReconnect: true
+      },
+      debugLogger: {
+        scrollbackLines: 1000
+      }
+    };
+
     let possiblePath = path.join(__dirname, '../lib');
     if (!fs.existsSync(possiblePath)) {
       possiblePath = path.join(__dirname, 'lib');
@@ -78,5 +142,34 @@ export class Context {
     this.currentFolder = startupDirectory || process.cwd();
     this.logger = new Logger();
     this.logger.setContext(this);
+  }
+
+  /**
+   * Update user preferences and notify components
+   */
+  public updatePreferences(newPreferences: UserPreferences): void {
+    this.preferences = { ...this.preferences, ...newPreferences };
+    console.log('[CONTEXT] Preferences updated:', this.preferences);
+  }
+
+  /**
+   * Get the absolute path for the log directory based on current context and preferences
+   */
+  public getLogDirectory(): string {
+    return path.join(this.currentFolder, this.preferences.logging.logDirectory);
+  }
+
+  /**
+   * Get the absolute path for the recordings directory based on current context and preferences
+   */
+  public getRecordingsDirectory(): string {
+    return path.join(this.currentFolder, this.preferences.recordings.recordingsDirectory);
+  }
+
+  /**
+   * Get the absolute path for the screenshot directory based on current context and preferences
+   */
+  public getScreenshotDirectory(): string {
+    return path.join(this.currentFolder, this.preferences.screenshots.screenshotDirectory);
   }
 }

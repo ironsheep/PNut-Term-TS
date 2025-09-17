@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import EventEmitter from 'events';
 import { Context } from '../utils/context';
-import { localFSpecForFilename } from '../utils/files';
+import { localFSpecForFilename, screenshotFSpecForFilename } from '../utils/files';
 import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
@@ -891,7 +891,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
       try {
-        const outputFSpec = localFSpecForFilename(this.context, filename, '.bmp');
+        const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
         this.logMessageBase(`- BMP image [${outputFSpec}] saved successfully`);
       } catch (error) {
