@@ -354,7 +354,7 @@ export class MainWindow {
       if (this.debugLoggerWindow) {
         // Convert buffer to appropriate data type
         let data: string[] | Uint8Array;
-        
+
         if (message.type === MessageType.DEBUGGER_416BYTE) {
           // Binary data stays as Uint8Array
           data = message.data;
@@ -363,7 +363,7 @@ export class MainWindow {
           const textData = new TextDecoder().decode(message.data);
           data = textData.split(/\s+/).filter(part => part.length > 0);
         }
-        
+
         // Direct type-safe call - no router guessing needed
         this.debugLoggerWindow.processTypedMessage(message.type, data);
       } else {

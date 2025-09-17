@@ -177,3 +177,4 @@ tasks/
 /tests/recordings/sessions
 /tests/recordings
 tests/recordings/catalog.json
+/temp-debug-scripts
