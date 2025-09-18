@@ -238,4 +238,16 @@ export class SpriteManager {
       height: sprite.height
     };
   }
+
+  /**
+   * Get sprite definition
+   * @param id Sprite ID (0-255)
+   * @returns Sprite definition or null if not defined
+   */
+  getSprite(id: number): SpriteDefinition | null {
+    if (id < 0 || id >= SpriteManager.MAX_SPRITES) {
+      return null;
+    }
+    return this.sprites[id];
+  }
 }

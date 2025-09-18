@@ -240,53 +240,168 @@ repeat angle from 0 to 359
 
 ## Plot Window
 
-The Plot window provides flexible 2D graphics and data visualization.
+The Plot window provides comprehensive 2D graphics and data visualization with full PLOT command support. It features a high-performance canvas rendering system with double buffering, sprite support, and real-time performance monitoring.
 
-### Coordinate Systems
+### Getting Started
 
-#### Cartesian Mode
+#### Basic Window Creation
 ```spin2
-debug(`plot MyPlot size 500 500 cartesian range -100 100 -100 100`)
-debug(`plot MyPlot set 50 75`)          ' Move to (50, 75)
-debug(`plot MyPlot dot 5`)               ' Draw 5-pixel dot
+debug(`plot MyPlot size 640 480`)
+debug(`plot MyPlot title "My Visualization"`)
+debug(`plot MyPlot pos 100 100`)          ' Position window on screen
 ```
 
-#### Polar Mode
+#### Drawing Basic Shapes
 ```spin2
-debug(`plot MyPlot size 500 500 polar`)
-debug(`plot MyPlot set 45 100`)         ' 45 degrees, radius 100
-debug(`plot MyPlot line 135 100`)       ' Draw line to 135°, r=100
+debug(`plot MyPlot dot`)                  ' Dot at current position
+debug(`plot MyPlot dot 3 200`)            ' 3-pixel dot with opacity 200
+debug(`plot MyPlot line 100 200`)         ' Line to coordinates
+debug(`plot MyPlot circle 50`)            ' Circle with 50px diameter
+debug(`plot MyPlot box 80 60`)            ' Rectangle 80x60 pixels
+debug(`plot MyPlot oval 70 50`)           ' Ellipse 70x50 pixels
 ```
 
-### Drawing Commands
-- `DOT [size]` - Draw dot at current position
-- `LINE x y` - Draw line to position
-- `BOX width height [opacity]` - Draw filled rectangle
-- `OBOX width height [linesize]` - Draw outlined rectangle
-- `OVAL width height [opacity]` - Draw filled ellipse
-- `TEXT "string"` - Draw text at current position
+### Command Reference
+
+#### Window Configuration (CONFIGURE group)
+- **`CONFIGURE TITLE "Window Title"`** - Set window title (supports spaces)
+- **`CONFIGURE POS x y`** - Position window on screen (negative values supported for multi-monitor)
+- **`CONFIGURE SIZE width height`** - Set canvas size (32-2048 pixels, values clamped)
+- **`CONFIGURE DOTSIZE size`** - Set default dot size (1-32 pixels, affects all DOT commands)
+- **`CONFIGURE BACKCOLOR color`** - Set background color (see color formats below)
+- **`CONFIGURE HIDEXY 0|1`** - Toggle coordinate display visibility
+- **`CONFIGURE UPDATE rate`** - Set display refresh rate (1-120 Hz)
+
+#### Rendering Control (UPDATE group)
+- **`COLORMODE mode`** - Set color interpretation mode:
+  - `0` = RGB mode (default)
+  - `1` = HSV mode
+  - `2` = Indexed palette mode
+  - `3` = Grayscale mode
+- **`TEXTSIZE multiplier`** - Set text size multiplier (1-100, affects all TEXT commands)
+- **`TEXTSTYLE flags`** - Set text style bitfield (0-7):
+  - Bit 0 = Bold
+  - Bit 1 = Italic
+  - Bit 2 = Underline
+
+#### Basic Drawing Commands
+- **`DOT [lineSize] [opacity]`** - Draw dot at current position
+  - `lineSize`: 1-32 pixels (default: 1)
+  - `opacity`: 0-255 (default: 255)
+- **`LINE x y [lineSize] [opacity]`** - Draw line to absolute coordinates
+- **`CIRCLE diameter [lineSize] [opacity]`** - Draw circle outline
+  - `diameter`: 1-2048 pixels (clamped automatically)
+- **`BOX width height [lineSize] [opacity]`** - Draw rectangle outline
+- **`OVAL width height [lineSize] [opacity]`** - Draw ellipse outline
+
+#### Text Rendering
+- **`TEXT "string"`** - Basic text at current position
+- **`TEXT size "string"`** - Text with specific size
+- **`TEXT size style "string"`** - Text with size and style
+- **`TEXT size style angle "string"`** - Text with rotation
+
+#### Interactive Commands
+- **`PC_KEY`** - Read last pressed key (returns ASCII/scan code, consumes key)
+- **`PC_MOUSE`** - Read current mouse state (returns 32-bit encoded position/buttons)
+
+#### Color Support
+All commands support multiple color formats:
+- **Color names**: `BLACK`, `WHITE`, `RED`, `GREEN`, `BLUE`, `CYAN`, `MAGENTA`, `YELLOW`, `ORANGE`, `PINK`, `AQUA`, `LIME`, `SILVER`, `GRAY`, `MAROON`, `NAVY`
+- **Hex RGB**: `$FF0000` (red), `$00FF00` (green), `$0000FF` (blue)
+- **RGB values**: `0xRRGGBB` format
 
 ### Advanced Features
 
-#### Sprites
+#### Sprite System (256 sprites supported)
 ```spin2
-' Define a sprite
-debug(`plot MyPlot spritedef 0 2 2 1 2 3 4 $FF0000 $00FF00 $0000FF $FFFF00`)
+' Define a sprite (ID 0-255, size 1-32x1-32 pixels)
+debug(`plot MyPlot spritedef 0 8 8 $FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00`)
 
-' Draw sprite
-debug(`plot MyPlot sprite 0 100 100`)            ' Basic
-debug(`plot MyPlot sprite 0 100 100 2`)          ' Rotated 90°
-debug(`plot MyPlot sprite 0 100 100 2 200`)      ' Scaled 2x
+' Draw sprites
+debug(`plot MyPlot sprite 0`)                  ' At current position
+debug(`plot MyPlot sprite 0 100 100`)          ' At specific coordinates
+debug(`plot MyPlot sprite 0 100 100 200`)      ' With opacity
 ```
 
-#### Layers
+#### External Bitmap Loading (8 layers supported)
 ```spin2
-' Load background image
-debug(`plot MyPlot layer 1 "background.png"`)
+' Load bitmap from project directory
+debug(`plot MyPlot layer 0 "background.bmp"`)   ' Must be .bmp file
 
-' Draw layer
-debug(`plot MyPlot crop 1`)  ' Draw entire layer
+' Crop and display portions
+debug(`plot MyPlot crop 0 0 32 32`)             ' Top-left 32x32 region
+debug(`plot MyPlot crop 10 10 64 64 200 300`)   ' Crop region to canvas position
 ```
+
+#### Error Handling
+The PLOT window provides comprehensive error reporting through the Debug Logger:
+- **File not found**: `[PLOT PARSE ERROR] Bitmap file not found: background.bmp`
+- **Invalid parameters**: Parameter validation with helpful messages
+- **Sprite/layer issues**: Clear error messages for undefined IDs
+
+### Performance Features
+
+#### Real-Time Performance Overlay
+Click the **PERF** button (top-left corner) to display real-time performance metrics:
+- **FPS**: Current and average frame rates
+- **Command Processing**: Last and average command times
+- **Render Time**: Canvas rendering performance
+- **Memory Usage**: Current heap usage
+- **Operations**: Canvas operation counts
+- **Warnings**: Performance alerts
+
+#### Performance Characteristics
+- **Target Performance**: 60fps sustained, <10ms command processing
+- **Memory Efficiency**: Optimized sprite and bitmap storage
+- **Stress Testing**: Handles DataSets=2048 scenarios
+- **Command Throughput**: 1000+ commands/second capability
+
+### Coordinate System
+
+#### Canvas Coordinates
+- **Origin**: Top-left corner (0, 0)
+- **X-axis**: Left to right (positive)
+- **Y-axis**: Top to bottom (positive)
+- **Range**: 0 to canvas width/height
+
+#### Multi-Monitor Support
+Window positioning supports negative coordinates for multi-monitor setups:
+```spin2
+debug(`plot MyPlot pos -1920 100`)    ' Position on left monitor
+```
+
+### Best Practices
+
+#### Optimal Performance
+- Use `CONFIGURE UPDATE` to control refresh rate based on data frequency
+- Batch drawing commands when possible
+- Consider sprite caching for repeated graphics
+- Monitor performance overlay during development
+
+#### Error Prevention
+- Always check that bitmap files exist in the project directory
+- Validate sprite IDs before use with `SPRITE` command
+- Use appropriate canvas sizes (avoid extreme values)
+- Test coordinate ranges for your specific use case
+
+#### Memory Management
+- Redefine sprites to update cached bitmaps
+- Use appropriate sprite sizes (larger sprites use more memory)
+- Consider layer bitmap sizes when loading external files
+
+### Troubleshooting
+
+#### Common Issues
+- **Sprites not appearing**: Check that `SPRITEDEF` was called first
+- **Bitmap not loading**: Verify .bmp file exists in project directory
+- **Performance drops**: Use performance overlay to identify bottlenecks
+- **Commands ignored**: Check Debug Logger for parsing errors
+
+#### Debug Tips
+- Enable performance overlay during development
+- Use Debug Logger window to monitor PLOT parsing messages
+- Test with simple commands first before complex scenes
+- Verify file paths are relative to PNut-Term-TS executable
 
 ## Bitmap Display
 

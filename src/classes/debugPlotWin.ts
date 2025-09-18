@@ -18,6 +18,10 @@ import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 import { PlotCommandParser } from './shared/plotCommandParser';
 import { PlotWindowIntegrator, PlotCanvasOperation } from './shared/plotParserIntegration';
+import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
+
+// Compile-time flag for performance monitoring
+const ENABLE_PERFORMANCE_MONITORING = false;
 
 import {
   DebugWindowBase,
@@ -199,6 +203,14 @@ export class DebugPlotWindow extends DebugWindowBase {
   private plotCommandParser: PlotCommandParser;
   private plotWindowIntegrator: PlotWindowIntegrator;
 
+  // Performance monitoring
+  private performanceMonitor?: PlotPerformanceMonitor;
+
+  // PC_KEY and PC_MOUSE input state
+  private lastPressedKey: number = 0; // ASCII/scan code of last key press
+  private keyBuffer: number[] = []; // Buffer for key presses (if we want to queue multiple)
+  private currentMouseState: number = 0; // 32-bit encoded mouse state
+
   constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
     super(ctx, windowId, 'plot');
     this.windowLogPrefix = 'pltW';
@@ -225,6 +237,16 @@ export class DebugPlotWindow extends DebugWindowBase {
     // Initialize new parser system
     this.plotCommandParser = new PlotCommandParser(this.context);
     this.plotWindowIntegrator = new PlotWindowIntegrator(this);
+
+    // Initialize performance monitoring (if enabled)
+    if (ENABLE_PERFORMANCE_MONITORING) {
+      this.performanceMonitor = new PlotPerformanceMonitor({
+        targetFPS: 60,
+        maxCommandTime: 10,
+        maxRenderTime: 16,
+        memoryWarningThreshold: 100 * 1024 * 1024
+      });
+    }
 
     // CRITICAL FIX: Create window immediately in constructor
     // This ensures windows appear when created, matching Scope XY pattern
@@ -501,11 +523,44 @@ export class DebugPlotWindow extends DebugWindowBase {
             display: block;
             margin: 0;
           }
+          ${ENABLE_PERFORMANCE_MONITORING ? `
+          #performance-overlay {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            padding: 8px;
+            border-radius: 4px;
+            z-index: 1000;
+            pointer-events: none;
+            white-space: pre-line;
+            min-width: 120px;
+            display: none;
+          }
+          #performance-toggle {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            cursor: pointer;
+            z-index: 1001;
+          }
+          ` : ''}
         </style>
       </head>
       <body>
         <div id="plot-data">
           <canvas id="plot-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
+          ${ENABLE_PERFORMANCE_MONITORING ? '<button id="performance-toggle" onclick="togglePerformanceOverlay()">PERF</button>' : ''}
+          ${ENABLE_PERFORMANCE_MONITORING ? '<div id="performance-overlay"></div>' : ''}
         </div>
       </body>
     </html>
@@ -551,10 +606,6 @@ export class DebugPlotWindow extends DebugWindowBase {
           return 'Context not available';
         }
 
-        // Clear canvas with background color
-        window.plotCtx.fillStyle = '${bgColor}';
-        window.plotCtx.fillRect(0, 0, ${width}, ${height});
-
         // Create offscreen canvas for double buffering
         window.offscreenCanvas = document.createElement('canvas');
         window.offscreenCanvas.width = ${width};
@@ -583,6 +634,9 @@ export class DebugPlotWindow extends DebugWindowBase {
         window.currentFgColor = '${this.currFgColor}';
         window.currentTextColor = '${this.currTextColor}';
 
+        // Immediately flip the offscreen canvas to display to prevent blinking
+        window.flipBuffer();
+
         console.log('[PLOT] Canvas initialized with double buffering and default colors');
         return 'Canvas ready with double buffering';
       })()
@@ -592,10 +646,236 @@ export class DebugPlotWindow extends DebugWindowBase {
       .then(result => {
         this.logMessage(`Canvas initialization: ${result}`);
         this.shouldWriteToCanvas = true;
+        // Set up input event listeners after canvas is ready
+        this.setupInputEventListeners();
+        // Initialize performance overlay (if enabled)
+        if (ENABLE_PERFORMANCE_MONITORING) {
+          this.initializePerformanceOverlay();
+        }
       })
       .catch(error => {
         this.logMessage(`Failed to initialize canvas: ${error}`);
         this.shouldWriteToCanvas = false;
+      });
+  }
+
+  private initializePerformanceOverlay(): void {
+    if (!ENABLE_PERFORMANCE_MONITORING || !this.debugWindow) return;
+
+    const overlayCode = `
+      (function() {
+        // Performance overlay toggle functionality
+        window.performanceOverlayVisible = false;
+
+        window.togglePerformanceOverlay = function() {
+          const overlay = document.getElementById('performance-overlay');
+          const toggle = document.getElementById('performance-toggle');
+
+          window.performanceOverlayVisible = !window.performanceOverlayVisible;
+
+          if (window.performanceOverlayVisible) {
+            overlay.style.display = 'block';
+            toggle.textContent = 'HIDE';
+            toggle.style.backgroundColor = 'rgba(0, 128, 0, 0.6)';
+          } else {
+            overlay.style.display = 'none';
+            toggle.textContent = 'PERF';
+            toggle.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+          }
+        };
+
+        window.updatePerformanceOverlay = function(metricsData) {
+          if (!window.performanceOverlayVisible) return;
+
+          const overlay = document.getElementById('performance-overlay');
+          if (overlay && metricsData) {
+            overlay.innerHTML = metricsData;
+          }
+        };
+
+        return 'Performance overlay initialized';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(overlayCode)
+      .then(result => {
+        this.logMessage(`Performance overlay: ${result}`);
+        // Start periodic performance updates
+        this.startPerformanceUpdates();
+      })
+      .catch(error => {
+        this.logMessage(`Failed to initialize performance overlay: ${error}`);
+      });
+  }
+
+  private performanceUpdateInterval?: NodeJS.Timeout;
+
+  private startPerformanceUpdates(): void {
+    // Update performance metrics every 500ms
+    this.performanceUpdateInterval = setInterval(() => {
+      this.updatePerformanceDisplay();
+    }, 500);
+  }
+
+  private updatePerformanceDisplay(): void {
+    if (!ENABLE_PERFORMANCE_MONITORING || !this.debugWindow || !this.performanceMonitor) return;
+
+    const metrics = this.performanceMonitor.getMetrics();
+    const warnings = this.performanceMonitor.getWarnings();
+
+    const displayText = `FPS: ${metrics.currentFPS.toFixed(1)} (avg: ${metrics.averageFPS.toFixed(1)})
+Cmd: ${metrics.commandProcessingTime.toFixed(1)}ms (avg: ${metrics.averageCommandTime.toFixed(1)}ms)
+Render: ${metrics.renderTime.toFixed(1)}ms (avg: ${metrics.averageRenderTime.toFixed(1)}ms)
+Mem: ${(metrics.memoryUsage.heapUsed / 1024 / 1024).toFixed(1)}MB
+Ops: ${metrics.canvasOperations}
+Sprites: ${metrics.spriteOperations}
+${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
+
+    const jsCode = `
+      (function() {
+        if (window.updatePerformanceOverlay) {
+          window.updatePerformanceOverlay(\`${displayText.replace(/`/g, '\\`')}\`);
+          return 'Updated';
+        }
+        return 'Not ready';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .catch(error => {
+        // Silently ignore errors during performance updates to avoid spam
+      });
+  }
+
+  private setupInputEventListeners(): void {
+    if (!this.debugWindow) return;
+
+    const inputHandlerCode = `
+      (function() {
+        // Initialize input state
+        window.lastPressedKey = 0;
+        window.currentMouseState = 0;
+
+        // Add keydown event listener to capture key presses
+        document.addEventListener('keydown', function(event) {
+          // Convert key to ASCII/scan code
+          let keyCode = 0;
+
+          if (event.key.length === 1) {
+            // Regular character - use ASCII code
+            keyCode = event.key.charCodeAt(0);
+          } else {
+            // Special keys - map to scan codes (simplified mapping)
+            switch (event.key) {
+              case 'Enter': keyCode = 13; break;
+              case 'Escape': keyCode = 27; break;
+              case 'Backspace': keyCode = 8; break;
+              case 'Tab': keyCode = 9; break;
+              case 'ArrowUp': keyCode = 38; break;
+              case 'ArrowDown': keyCode = 40; break;
+              case 'ArrowLeft': keyCode = 37; break;
+              case 'ArrowRight': keyCode = 39; break;
+              case 'Delete': keyCode = 46; break;
+              case 'Home': keyCode = 36; break;
+              case 'End': keyCode = 35; break;
+              case 'PageUp': keyCode = 33; break;
+              case 'PageDown': keyCode = 34; break;
+              default: keyCode = 0; // Unknown key
+            }
+          }
+
+          if (keyCode > 0) {
+            window.lastPressedKey = keyCode;
+            console.log('[PLOT INPUT] Key pressed:', event.key, 'Code:', keyCode);
+          }
+        });
+
+        // Add mouse event listeners to track mouse state
+        const canvas = document.getElementById('plot-area');
+        if (canvas) {
+          let mouseButtons = 0;
+          let mouseX = 0;
+          let mouseY = 0;
+          let mouseOverCanvas = false;
+
+          // Mouse move handler
+          canvas.addEventListener('mousemove', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = Math.floor(event.clientX - rect.left);
+            mouseY = Math.floor(event.clientY - rect.top);
+            updateMouseState();
+          });
+
+          // Mouse enter/leave handlers
+          canvas.addEventListener('mouseenter', function() {
+            mouseOverCanvas = true;
+            updateMouseState();
+          });
+
+          canvas.addEventListener('mouseleave', function() {
+            mouseOverCanvas = false;
+            updateMouseState();
+          });
+
+          // Mouse button handlers
+          canvas.addEventListener('mousedown', function(event) {
+            // Set button bits: bit 24=left, bit 25=middle, bit 26=right
+            if (event.button === 0) mouseButtons |= (1 << 24); // Left
+            if (event.button === 1) mouseButtons |= (1 << 25); // Middle
+            if (event.button === 2) mouseButtons |= (1 << 26); // Right
+            updateMouseState();
+          });
+
+          canvas.addEventListener('mouseup', function(event) {
+            // Clear button bits
+            if (event.button === 0) mouseButtons &= ~(1 << 24); // Left
+            if (event.button === 1) mouseButtons &= ~(1 << 25); // Middle
+            if (event.button === 2) mouseButtons &= ~(1 << 26); // Right
+            updateMouseState();
+          });
+
+          // Prevent context menu on right click
+          canvas.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+          });
+
+          function updateMouseState() {
+            // Encode 32-bit mouse state:
+            // Bits 0-11: X position (0-4095)
+            // Bits 12-23: Y position (0-4095)
+            // Bits 24-26: Button states (left/middle/right)
+            // Bit 31: Mouse over canvas flag
+            let state = 0;
+
+            // X position (bits 0-11)
+            state |= (mouseX & 0xFFF);
+
+            // Y position (bits 12-23)
+            state |= ((mouseY & 0xFFF) << 12);
+
+            // Button states (bits 24-26) - already set by mouse handlers
+            state |= mouseButtons;
+
+            // Mouse over canvas flag (bit 31)
+            if (mouseOverCanvas) {
+              state |= (1 << 31);
+            }
+
+            window.currentMouseState = state;
+          }
+        }
+
+        console.log('[PLOT INPUT] Event listeners setup complete');
+        return 'Input handlers ready';
+      })()
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(inputHandlerCode)
+      .then(result => {
+        this.logMessage(`Input event listeners setup: ${result}`);
+      })
+      .catch(error => {
+        this.logMessage(`Failed to setup input event listeners: ${error}`);
       });
   }
 
@@ -604,15 +884,25 @@ export class DebugPlotWindow extends DebugWindowBase {
     // This method is kept for compatibility but doesn't do anything
   }
   
-  private performUpdate(): void {
+  private async performUpdate(): Promise<void> {
     if (!this.debugWindow) return;
 
+    // Start frame monitoring for rendering operations (if enabled)
+    if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+      this.performanceMonitor.frameStart();
+    }
+
     this.logMessage('at performUpdate() - executing queued operations and flipping buffer');
+
+    // Start render timing (if enabled)
+    if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+      this.performanceMonitor.renderStart();
+    }
 
     // Execute all pending operations sequentially BEFORE buffer flip
     if (this.pendingOperations.length > 0) {
       this.logMessage(`EXEC DEBUG: Executing ${this.pendingOperations.length} queued operations sequentially`);
-      const operationResults = this.plotWindowIntegrator.executeBatch(this.pendingOperations);
+      const operationResults = await this.plotWindowIntegrator.executeBatch(this.pendingOperations);
       this.logMessage(`EXEC DEBUG: executeBatch returned ${operationResults.length} results`);
 
       // Log any operation failures
@@ -645,6 +935,11 @@ export class DebugPlotWindow extends DebugWindowBase {
       .catch(error => {
         this.logMessage(`Failed to flip buffer: ${error}`);
       });
+
+    // End render timing (if enabled)
+    if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+      this.performanceMonitor.renderEnd();
+    }
   }
 
   public closeDebugWindow(): void {
@@ -656,6 +951,12 @@ export class DebugPlotWindow extends DebugWindowBase {
 
     // Disable canvas writing to prevent any pending operations
     this.shouldWriteToCanvas = false;
+
+    // Stop performance monitoring updates (if enabled)
+    if (ENABLE_PERFORMANCE_MONITORING && this.performanceUpdateInterval) {
+      clearInterval(this.performanceUpdateInterval);
+      this.performanceUpdateInterval = undefined;
+    }
 
     // Don't try to clear canvas - just close the window
     // The canvas clearing was causing the window to appear cleared but not close
@@ -677,11 +978,19 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.logMessage(`---- PLOT parsing: ${commandString}`);
 
     try {
+      // Start performance monitoring (if enabled)
+      if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+        this.performanceMonitor.commandStart();
+      }
+
       // Parse commands using new deterministic parser
       const parsedCommands = this.plotCommandParser.parse(commandString);
 
       if (parsedCommands.length === 0) {
         this.logMessage(`No commands found in: ${commandString}`);
+        if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+          this.performanceMonitor.commandEnd();
+        }
         return;
       }
 
@@ -707,6 +1016,14 @@ export class DebugPlotWindow extends DebugWindowBase {
           for (const warning of result.warnings) {
             this.logMessage(`WARNING: ${warning}`);
           }
+        }
+
+        // Track canvas operations for performance monitoring (if enabled)
+        if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor && result.canvasOperations.length > 0) {
+          const monitor = this.performanceMonitor;
+          result.canvasOperations.forEach(op => {
+            monitor.recordCanvasOperation(op.type);
+          });
         }
 
         // Handle canvas operations based on command type
@@ -754,8 +1071,17 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       }
 
+      // End performance monitoring (if enabled)
+      if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+        this.performanceMonitor.commandEnd();
+      }
+
     } catch (error) {
       this.logMessage(`PARSER ERROR: Failed to process command '${commandString}': ${error}`);
+      // End performance monitoring even in error case (if enabled)
+      if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
+        this.performanceMonitor.commandEnd();
+      }
     }
   }
 

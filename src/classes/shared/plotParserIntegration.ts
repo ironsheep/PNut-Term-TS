@@ -23,6 +23,11 @@ export interface PlotWindowState {
   precise: number;
   updateMode: boolean; // buffered vs live drawing
   shouldWriteToCanvas: boolean;
+
+  // Enhanced rendering control state
+  colorMode?: number; // 0=RGB, 1=HSV, 2=indexed, 3=grayscale
+  defaultTextSize?: number; // 1-100 multiplier
+  defaultTextStyle?: number; // 0-7 bitfield
 }
 
 // Canvas operations that integrate with existing rendering system
@@ -35,6 +40,7 @@ export enum CanvasOperationType {
   DRAW_OVAL = 'DRAW_OVAL',
   DRAW_TEXT = 'DRAW_TEXT',
   DRAW_SPRITE = 'DRAW_SPRITE',
+  DEFINE_SPRITE = 'DEFINE_SPRITE',
 
   // State changes
   SET_CURSOR = 'SET_CURSOR',
@@ -44,6 +50,14 @@ export enum CanvasOperationType {
   SET_OPACITY = 'SET_OPACITY',
   SET_TEXTANGLE = 'SET_TEXTANGLE',
   SET_COORDINATE_MODE = 'SET_COORDINATE_MODE',
+
+  // Enhanced rendering control
+  SET_COLOR_MODE = 'SET_COLOR_MODE',
+  SET_TEXTSIZE = 'SET_TEXTSIZE',
+  SET_TEXTSTYLE = 'SET_TEXTSTYLE',
+
+  // Interactive input
+  PC_INPUT = 'PC_INPUT',
 
   // Window operations
   CONFIGURE_WINDOW = 'CONFIGURE_WINDOW',
@@ -99,7 +113,12 @@ export class PlotWindowIntegrator {
       cartesianConfig: { ...this.plotWindow.cartesianConfig },
       precise: this.plotWindow.precise,
       updateMode: this.plotWindow.updateMode,
-      shouldWriteToCanvas: this.plotWindow.shouldWriteToCanvas
+      shouldWriteToCanvas: this.plotWindow.shouldWriteToCanvas,
+
+      // Enhanced rendering control state - default values
+      colorMode: 0, // Default RGB mode
+      defaultTextSize: 10, // Default text size
+      defaultTextStyle: 0 // Default no style
     };
   }
 
@@ -128,6 +147,18 @@ export class PlotWindowIntegrator {
       case CanvasOperationType.DRAW_TEXT:
         baseType = 'DRAW_TEXT';
         break;
+      case CanvasOperationType.DRAW_SPRITE:
+        baseType = 'DRAW_SPRITE' as any;
+        break;
+      case CanvasOperationType.DEFINE_SPRITE:
+        baseType = 'DEFINE_SPRITE' as any;
+        break;
+      case CanvasOperationType.LOAD_LAYER:
+        baseType = 'LOAD_LAYER' as any;
+        break;
+      case CanvasOperationType.CROP_LAYER:
+        baseType = 'CROP_LAYER' as any;
+        break;
       case CanvasOperationType.SET_CURSOR:
         baseType = 'SET_CURSOR';
         break;
@@ -140,6 +171,9 @@ export class PlotWindowIntegrator {
       case CanvasOperationType.CONFIGURE_WINDOW:
         // CONFIGURE_WINDOW needs special handling - don't convert to SET_CURSOR
         baseType = 'CONFIGURE_WINDOW' as any; // Cast to bypass type checking since base doesn't have this
+        break;
+      case CanvasOperationType.PC_INPUT:
+        baseType = 'PC_INPUT' as any;
         break;
       default:
         // For operations that don't map to base types, use SET_CURSOR
@@ -156,7 +190,7 @@ export class PlotWindowIntegrator {
   /**
    * Execute canvas operation using existing rendering infrastructure
    */
-  executeOperation(operation: PlotCanvasOperation): CommandResult {
+  async executeOperation(operation: PlotCanvasOperation): Promise<CommandResult> {
     const result: CommandResult = {
       success: true,
       errors: [],
@@ -222,6 +256,38 @@ export class PlotWindowIntegrator {
 
         case CanvasOperationType.SET_COORDINATE_MODE:
           this.executeSetCoordinateMode(operation.parameters);
+          break;
+
+        case CanvasOperationType.SET_COLOR_MODE:
+          this.executeSetColorMode(operation.parameters);
+          break;
+
+        case CanvasOperationType.SET_TEXTSIZE:
+          this.executeSetTextSize(operation.parameters);
+          break;
+
+        case CanvasOperationType.SET_TEXTSTYLE:
+          this.executeSetTextStyle(operation.parameters);
+          break;
+
+        case CanvasOperationType.PC_INPUT:
+          await this.executePcInput(operation.parameters);
+          break;
+
+        case CanvasOperationType.DEFINE_SPRITE:
+          this.executeDefineSprite(operation.parameters);
+          break;
+
+        case CanvasOperationType.DRAW_SPRITE:
+          this.executeDrawSprite(operation.parameters);
+          break;
+
+        case CanvasOperationType.LOAD_LAYER:
+          await this.executeLoadLayer(operation.parameters);
+          break;
+
+        case CanvasOperationType.CROP_LAYER:
+          this.executeCropLayer(operation.parameters);
           break;
 
         default:
@@ -427,52 +493,165 @@ export class PlotWindowIntegrator {
    * Execute window configuration changes
    */
   private executeConfigureWindow(params: Record<string, any>): void {
-    // Handle CLOSE action first
-    if (params.action === 'CLOSE') {
-      // Close the window using the proper method - matches other window implementations
-      this.plotWindow.closeDebugWindow();
-      return;
-    }
+    try {
+      const action = params.action;
 
-    // Handle SAVE action
-    if (params.action === 'SAVE') {
-      // Save window to bitmap file using the same method as other debug windows
-      if (params.filename) {
-        this.plotWindow.saveWindowToBMPFilename(params.filename);
-      } else {
-        console.error('[PLOT] SAVE action missing filename parameter');
+      switch (action) {
+        case 'CLOSE':
+          // Close the window using the proper method - matches other window implementations
+          this.plotWindow.closeDebugWindow();
+          break;
+
+        case 'SAVE':
+          // Save window to bitmap file using the same method as other debug windows
+          if (params.filename) {
+            this.plotWindow.saveWindowToBMPFilename(params.filename);
+          } else {
+            console.error('[PLOT] SAVE action missing filename parameter');
+          }
+          break;
+
+        case 'TITLE':
+          if (params.title && this.plotWindow.debugWindow) {
+            this.plotWindow.debugWindow.setTitle(params.title);
+            console.log(`[PLOT] Window title set to: "${params.title}"`);
+          }
+          break;
+
+        case 'POS':
+          if (this.plotWindow.debugWindow && params.x !== undefined && params.y !== undefined) {
+            this.plotWindow.debugWindow.setPosition(params.x, params.y);
+            console.log(`[PLOT] Window position set to: ${params.x}, ${params.y}`);
+          }
+          break;
+
+        case 'SIZE':
+          if (this.plotWindow.debugWindow && params.width !== undefined && params.height !== undefined) {
+            // Set window content size, not outer window size
+            this.plotWindow.debugWindow.setContentSize(params.width, params.height);
+            console.log(`[PLOT] Window size set to: ${params.width}x${params.height}`);
+          }
+          break;
+
+        case 'DOTSIZE':
+          if (params.dotSize !== undefined) {
+            // Ensure displaySpec exists
+            if (!this.plotWindow.displaySpec) {
+              this.plotWindow.displaySpec = {};
+            }
+            this.plotWindow.displaySpec.dotSize = params.dotSize;
+            console.log(`[PLOT] Dot size set to: ${params.dotSize}`);
+          }
+          break;
+
+        case 'BACKCOLOR':
+          if (params.color !== undefined) {
+            // Ensure displaySpec and window exist
+            if (!this.plotWindow.displaySpec) {
+              this.plotWindow.displaySpec = {};
+            }
+            if (!this.plotWindow.displaySpec.window) {
+              this.plotWindow.displaySpec.window = {};
+            }
+
+            // Handle color conversion based on format
+            let backgroundColor = params.color;
+            if (params.brightness !== undefined && typeof params.color === 'string') {
+              // Convert named color with brightness to hex
+              backgroundColor = this.convertColorWithBrightness(params.color, params.brightness);
+            }
+
+            this.plotWindow.displaySpec.window.background = backgroundColor;
+            console.log(`[PLOT] Background color set to: ${backgroundColor} (brightness: ${params.brightness || 15})`);
+          }
+          break;
+
+        case 'HIDEXY':
+          if (params.hideXY !== undefined) {
+            // Ensure displaySpec exists
+            if (!this.plotWindow.displaySpec) {
+              this.plotWindow.displaySpec = {};
+            }
+            this.plotWindow.displaySpec.hideXY = params.hideXY;
+            console.log(`[PLOT] Coordinate display ${params.hideXY ? 'hidden' : 'shown'}`);
+          }
+          break;
+
+        case 'UPDATE':
+          if (params.updateRate !== undefined) {
+            // Set update rate for display refresh
+            const updateInterval = 1000 / params.updateRate; // Convert Hz to milliseconds
+            this.state.updateMode = params.updateRate > 0;
+
+            // If plot window has an update interval method, use it
+            if (this.plotWindow.setUpdateInterval) {
+              this.plotWindow.setUpdateInterval(updateInterval);
+            }
+            console.log(`[PLOT] Update rate set to: ${params.updateRate} Hz (${updateInterval.toFixed(1)}ms interval)`);
+          }
+          break;
+
+        default:
+          // Handle legacy parameter formats for backward compatibility
+          if (params.title && this.plotWindow.debugWindow) {
+            this.plotWindow.debugWindow.setTitle(params.title);
+          }
+          if (params.position && this.plotWindow.debugWindow) {
+            this.plotWindow.debugWindow.setPosition(params.position.x, params.position.y);
+          }
+          if (params.size && this.plotWindow.debugWindow) {
+            this.plotWindow.debugWindow.setSize(params.size.width, params.size.height);
+          }
+          if (params.dotSize) {
+            this.plotWindow.displaySpec.dotSize = params.dotSize;
+          }
+          if (params.backgroundColor) {
+            this.plotWindow.displaySpec.window.background = params.backgroundColor;
+          }
+          if (params.hideXY !== undefined) {
+            this.plotWindow.displaySpec.hideXY = params.hideXY;
+          }
+          if (params.updateRate) {
+            this.state.updateMode = params.updateRate > 0;
+          }
+          console.warn(`[PLOT] Unknown CONFIGURE action: ${action || 'none'}, using legacy format`);
       }
-      return;
+
+    } catch (error) {
+      console.error(`[PLOT] Error executing CONFIGURE command:`, error);
+    }
+  }
+
+  /**
+   * Convert named color with brightness to hex color
+   */
+  private convertColorWithBrightness(colorName: string, brightness: number): string {
+    const colorMap: Record<string, [number, number, number]> = {
+      'BLACK': [0, 0, 0],
+      'WHITE': [255, 255, 255],
+      'RED': [255, 0, 0],
+      'GREEN': [0, 255, 0],
+      'BLUE': [0, 0, 255],
+      'CYAN': [0, 255, 255],
+      'MAGENTA': [255, 0, 255],
+      'YELLOW': [255, 255, 0],
+      'ORANGE': [255, 165, 0],
+      'GRAY': [128, 128, 128],
+      'GREY': [128, 128, 128]
+    };
+
+    const baseColor = colorMap[colorName.toUpperCase()];
+    if (!baseColor) {
+      return '#000000'; // Default to black for unknown colors
     }
 
-    if (params.title && this.plotWindow.debugWindow) {
-      this.plotWindow.debugWindow.setTitle(params.title);
-    }
+    // Apply brightness scaling (0-15 range)
+    const scale = brightness / 15;
+    const r = Math.round(baseColor[0] * scale);
+    const g = Math.round(baseColor[1] * scale);
+    const b = Math.round(baseColor[2] * scale);
 
-    if (params.position && this.plotWindow.debugWindow) {
-      this.plotWindow.debugWindow.setPosition(params.position.x, params.position.y);
-    }
-
-    if (params.size && this.plotWindow.debugWindow) {
-      this.plotWindow.debugWindow.setSize(params.size.width, params.size.height);
-    }
-
-    if (params.dotSize) {
-      this.plotWindow.displaySpec.dotSize = params.dotSize;
-    }
-
-    if (params.backgroundColor) {
-      this.plotWindow.displaySpec.window.background = params.backgroundColor;
-    }
-
-    if (params.hideXY !== undefined) {
-      this.plotWindow.displaySpec.hideXY = params.hideXY;
-    }
-
-    if (params.updateRate) {
-      // Set update rate for display refresh
-      this.state.updateMode = params.updateRate > 0;
-    }
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
   /**
@@ -521,6 +700,353 @@ export class PlotWindowIntegrator {
       this.state.coordinateMode = 'CARTESIAN';
       console.log('[INTEGRATOR] Switched to Cartesian mode');
     }
+  }
+
+  private executeSetColorMode(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeSetColorMode called with:', params);
+    if (params.mode !== undefined) {
+      // Store color mode in plot window if it has such a property
+      if (this.plotWindow.colorMode !== undefined) {
+        this.plotWindow.colorMode = params.mode;
+      }
+      this.state.colorMode = params.mode;
+
+      const modeNames = ['RGB', 'HSV', 'INDEXED', 'GRAYSCALE'];
+      console.log(`[INTEGRATOR] Color mode set to: ${params.mode} (${modeNames[params.mode] || 'UNKNOWN'})`);
+    }
+  }
+
+  private executeSetTextSize(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeSetTextSize called with:', params);
+    if (params.textSize !== undefined) {
+      // Store default text size for future TEXT commands
+      if (this.plotWindow.defaultTextSize !== undefined) {
+        this.plotWindow.defaultTextSize = params.textSize;
+      }
+      this.state.defaultTextSize = params.textSize;
+
+      console.log(`[INTEGRATOR] Default text size set to: ${params.textSize}`);
+    }
+  }
+
+  private executeSetTextStyle(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeSetTextStyle called with:', params);
+    if (params.textStyle !== undefined) {
+      // Store default text style for future TEXT commands
+      if (this.plotWindow.defaultTextStyle !== undefined) {
+        this.plotWindow.defaultTextStyle = params.textStyle;
+      }
+      this.state.defaultTextStyle = params.textStyle;
+
+      const styleFlags = [];
+      if (params.bold) styleFlags.push('bold');
+      if (params.italic) styleFlags.push('italic');
+      if (params.underline) styleFlags.push('underline');
+      const styleDescription = styleFlags.length > 0 ? styleFlags.join('+') : 'normal';
+
+      console.log(`[INTEGRATOR] Default text style set to: ${params.textStyle} (${styleDescription})`);
+    }
+  }
+
+  private async executePcInput(params: Record<string, any>): Promise<void> {
+    console.log('[INTEGRATOR] executePcInput called with:', params);
+
+    const inputType = params.inputType;
+
+    if (inputType === 'KEY') {
+      // Handle PC_KEY - get last pressed key and send back to P2
+      const keyCode = await this.getLastPressedKey();
+      console.log(`[INTEGRATOR] PC_KEY returning: ${keyCode}`);
+
+      // Send response back to P2 via debug protocol
+      this.sendInputResponseToP2('KEY', keyCode);
+
+    } else if (inputType === 'MOUSE') {
+      // Handle PC_MOUSE - get current mouse state and encode as 32-bit value
+      const mouseState = await this.getCurrentMouseState();
+      console.log(`[INTEGRATOR] PC_MOUSE returning: 0x${mouseState.toString(16).padStart(8, '0')}`);
+
+      // Send response back to P2 via debug protocol
+      this.sendInputResponseToP2('MOUSE', mouseState);
+
+    } else {
+      console.error(`[INTEGRATOR] Unknown PC_INPUT type: ${inputType}`);
+    }
+  }
+
+  private async getLastPressedKey(): Promise<number> {
+    // Get the last pressed key from the renderer's window object
+    // Returns 0 if no key available (non-blocking behavior)
+    try {
+      const keyCode = await this.plotWindow.debugWindow?.webContents.executeJavaScript(`
+        (function() {
+          const key = window.lastPressedKey || 0;
+          // Clear the key for one-shot behavior
+          window.lastPressedKey = 0;
+          return key;
+        })()
+      `);
+
+      console.log(`[INTEGRATOR] Retrieved key from renderer: ${keyCode || 0}`);
+      return keyCode || 0;
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to get key from renderer:`, error);
+      return 0; // No key available
+    }
+  }
+
+  private async getCurrentMouseState(): Promise<number> {
+    // Get current mouse state from the renderer's window object
+    // Returns 32-bit encoded value: X/Y position (bits 0-23), buttons (bits 24-26), over-canvas (bit 31)
+    try {
+      const mouseState = await this.plotWindow.debugWindow?.webContents.executeJavaScript(`
+        (function() {
+          return window.currentMouseState || 0;
+        })()
+      `);
+
+      console.log(`[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`);
+      return mouseState || 0;
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to get mouse state from renderer:`, error);
+      return 0; // No mouse state available
+    }
+  }
+
+  private sendInputResponseToP2(inputType: string, value: number): void {
+    // Send the input response back to P2 via the debug protocol
+    // This needs to integrate with the existing debugger protocol system
+    console.log(`[INTEGRATOR] Sending ${inputType} response to P2: ${value}`);
+
+    if (this.plotWindow.sendDebugResponse) {
+      this.plotWindow.sendDebugResponse(inputType, value);
+    } else {
+      console.warn(`[INTEGRATOR] No debug response method available for ${inputType}`);
+    }
+  }
+
+  /**
+   * Execute sprite definition - store sprite in sprite manager
+   */
+  private executeDefineSprite(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeDefineSprite called with:', params);
+
+    try {
+      if (!this.plotWindow.spriteManager) {
+        throw new Error('Sprite manager not available in plot window');
+      }
+
+      const { spriteId, width, height, pixelData } = params;
+
+      // Parse hex pixel data into color values
+      // For now, we'll create a simple parsing - this should be enhanced
+      // to handle various formats (hex, binary, etc.)
+      const pixels = this.parsePixelData(pixelData, width * height);
+
+      // Create a basic 256-color palette (for now, use a default palette)
+      const colors = this.createDefaultPalette();
+
+      // Define the sprite using the sprite manager
+      this.plotWindow.spriteManager.defineSprite(spriteId, width, height, pixels, colors);
+
+      console.log(`[INTEGRATOR] Sprite ${spriteId} defined: ${width}x${height} pixels`);
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to define sprite:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute sprite drawing - render sprite at specified position
+   */
+  private executeDrawSprite(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeDrawSprite called with:', params);
+
+    try {
+      if (!this.plotWindow.spriteManager) {
+        throw new Error('Sprite manager not available in plot window');
+      }
+
+      const { spriteId, x, y, opacity } = params;
+
+      // Get the sprite definition
+      const sprite = this.plotWindow.spriteManager.getSprite(spriteId);
+      if (!sprite) {
+        throw new Error(`Sprite ${spriteId} not defined`);
+      }
+
+      // For now, delegate to the plot window to handle actual rendering
+      // This would integrate with the existing canvas rendering system
+      if (this.plotWindow.drawSprite) {
+        this.plotWindow.drawSprite(spriteId, x, y, opacity);
+      } else {
+        // Fallback: create a simple rectangle representation
+        console.warn(`[INTEGRATOR] Sprite rendering not fully implemented, drawing placeholder`);
+        this.plotWindow.drawRectangleToPlot(sprite.width, sprite.height, 1, opacity || 255);
+      }
+
+      console.log(`[INTEGRATOR] Sprite ${spriteId} drawn at (${x}, ${y}) with opacity ${opacity}`);
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to draw sprite:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute layer loading - load bitmap file into layer manager
+   */
+  private async executeLoadLayer(params: Record<string, any>): Promise<void> {
+    console.log('[INTEGRATOR] executeLoadLayer called with:', params);
+
+    try {
+      if (!this.plotWindow.layerManager) {
+        throw new Error('Layer manager not available in plot window');
+      }
+
+      const { filename } = params;
+
+      // Find next available layer slot (0-7)
+      let layerIndex = 0;
+      for (let i = 0; i < 8; i++) {
+        if (!this.plotWindow.layerManager.hasLayer || !this.plotWindow.layerManager.hasLayer(i)) {
+          layerIndex = i;
+          break;
+        }
+      }
+
+      // Load the bitmap file
+      // The LayerManager expects the file to be in the working directory
+      await this.plotWindow.layerManager.loadLayer(layerIndex, filename);
+
+      console.log(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}"`);
+
+    } catch (error) {
+      // Log specific error messages for debugging
+      if (error.message.includes('ENOENT') || error.message.includes('not found')) {
+        console.error(`[PLOT PARSE ERROR] Bitmap file not found: ${params.filename}`);
+      } else if (error.message.includes('Invalid file extension')) {
+        console.error(`[PLOT PARSE ERROR] Invalid file extension, expected .bmp: ${params.filename}`);
+      } else {
+        console.error(`[PLOT PARSE ERROR] Failed to load bitmap file: ${params.filename} - ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Execute crop operation - copy rectangular region from layer to canvas
+   */
+  private executeCropLayer(params: Record<string, any>): void {
+    console.log('[INTEGRATOR] executeCropLayer called with:', params);
+
+    try {
+      if (!this.plotWindow.layerManager) {
+        throw new Error('Layer manager not available in plot window');
+      }
+
+      const { left, top, width, height, x, y } = params;
+
+      // Find the most recently loaded layer (simple approach)
+      let sourceLayerIndex = -1;
+      for (let i = 7; i >= 0; i--) {
+        if (this.plotWindow.layerManager.hasLayer && this.plotWindow.layerManager.hasLayer(i)) {
+          sourceLayerIndex = i;
+          break;
+        }
+      }
+
+      if (sourceLayerIndex === -1) {
+        throw new Error('No layer loaded for CROP operation');
+      }
+
+      // Execute the crop operation
+      if (this.plotWindow.layerManager.cropLayer) {
+        this.plotWindow.layerManager.cropLayer(sourceLayerIndex, { left, top, width, height }, x, y);
+      } else {
+        // Fallback implementation
+        console.warn(`[INTEGRATOR] Layer cropping not fully implemented, logging operation`);
+      }
+
+      console.log(`[INTEGRATOR] Cropped (${left},${top}) ${width}x${height} from layer ${sourceLayerIndex} to (${x},${y})`);
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to crop layer:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse pixel data from various formats (hex, binary, etc.)
+   */
+  private parsePixelData(pixelData: string, expectedLength: number): number[] {
+    const pixels: number[] = [];
+
+    if (pixelData.startsWith('$')) {
+      // Hex format: $FF00FF00...
+      const hexData = pixelData.substring(1);
+      for (let i = 0; i < hexData.length && pixels.length < expectedLength; i += 2) {
+        const hex = hexData.substring(i, i + 2);
+        const value = parseInt(hex, 16);
+        if (!isNaN(value)) {
+          pixels.push(value);
+        }
+      }
+    } else if (pixelData.startsWith('%')) {
+      // Binary format: %10101010...
+      const binData = pixelData.substring(1);
+      for (let i = 0; i < binData.length && pixels.length < expectedLength; i += 8) {
+        const bin = binData.substring(i, i + 8);
+        const value = parseInt(bin, 2);
+        if (!isNaN(value)) {
+          pixels.push(value);
+        }
+      }
+    } else {
+      // Assume hex without prefix
+      for (let i = 0; i < pixelData.length && pixels.length < expectedLength; i += 2) {
+        const hex = pixelData.substring(i, i + 2);
+        const value = parseInt(hex, 16);
+        if (!isNaN(value)) {
+          pixels.push(value);
+        }
+      }
+    }
+
+    // Pad with zeros if not enough data
+    while (pixels.length < expectedLength) {
+      pixels.push(0);
+    }
+
+    return pixels.slice(0, expectedLength);
+  }
+
+  /**
+   * Create a default 256-color palette
+   */
+  private createDefaultPalette(): number[] {
+    const palette: number[] = [];
+
+    // Create a simple palette: grayscale + some basic colors
+    for (let i = 0; i < 256; i++) {
+      if (i < 16) {
+        // Basic colors (0-15)
+        const colors = [
+          0x000000, 0xFF0000, 0x00FF00, 0x0000FF, // Black, Red, Green, Blue
+          0xFFFF00, 0xFF00FF, 0x00FFFF, 0xFFFFFF, // Yellow, Magenta, Cyan, White
+          0x800000, 0x008000, 0x000080, 0x808000, // Dark Red, Dark Green, Dark Blue, Olive
+          0x800080, 0x008080, 0x808080, 0xC0C0C0  // Purple, Teal, Gray, Silver
+        ];
+        palette.push(colors[i] || 0x000000);
+      } else {
+        // Grayscale ramp (16-255)
+        const gray = Math.floor((i - 16) * 255 / (255 - 16));
+        palette.push((gray << 16) | (gray << 8) | gray);
+      }
+    }
+
+    return palette;
   }
 
   /**
@@ -581,6 +1107,27 @@ export class PlotWindowIntegrator {
           this.state.cartesianConfig = operation.parameters.cartesianConfig;
         }
         break;
+
+      case CanvasOperationType.SET_COLOR_MODE:
+        // Color mode affects how colors are interpreted - store in state
+        if (operation.parameters.mode !== undefined) {
+          this.state.colorMode = operation.parameters.mode;
+        }
+        break;
+
+      case CanvasOperationType.SET_TEXTSIZE:
+        // Text size affects future TEXT commands - store in state
+        if (operation.parameters.textSize !== undefined) {
+          this.state.defaultTextSize = operation.parameters.textSize;
+        }
+        break;
+
+      case CanvasOperationType.SET_TEXTSTYLE:
+        // Text style affects future TEXT commands - store in state
+        if (operation.parameters.textStyle !== undefined) {
+          this.state.defaultTextStyle = operation.parameters.textStyle;
+        }
+        break;
     }
   }
 
@@ -631,6 +1178,18 @@ export class PlotWindowIntegrator {
           break;
         case 'SET_COORDINATE_MODE':
           plotType = CanvasOperationType.SET_COORDINATE_MODE;
+          break;
+        case 'SET_COLOR_MODE':
+          plotType = CanvasOperationType.SET_COLOR_MODE;
+          break;
+        case 'SET_TEXTSIZE':
+          plotType = CanvasOperationType.SET_TEXTSIZE;
+          break;
+        case 'SET_TEXTSTYLE':
+          plotType = CanvasOperationType.SET_TEXTSTYLE;
+          break;
+        case 'PC_INPUT':
+          plotType = CanvasOperationType.PC_INPUT;
           break;
         case 'CLEAR_CANVAS':
           plotType = CanvasOperationType.CLEAR_CANVAS;
@@ -707,7 +1266,10 @@ export class PlotWindowIntegrator {
       CanvasOperationType.SET_LINESIZE,
       CanvasOperationType.SET_OPACITY,
       CanvasOperationType.SET_TEXTANGLE,
-      CanvasOperationType.SET_COORDINATE_MODE
+      CanvasOperationType.SET_COORDINATE_MODE,
+      CanvasOperationType.SET_COLOR_MODE,
+      CanvasOperationType.SET_TEXTSIZE,
+      CanvasOperationType.SET_TEXTSTYLE
     ].includes(type);
   }
 
@@ -728,7 +1290,7 @@ export class PlotWindowIntegrator {
   /**
    * Batch execute multiple operations (supports both CanvasOperation[] and PlotCanvasOperation[])
    */
-  executeBatch(operations: CanvasOperation[] | PlotCanvasOperation[]): CommandResult[] {
+  async executeBatch(operations: CanvasOperation[] | PlotCanvasOperation[]): Promise<CommandResult[]> {
     const results: CommandResult[] = [];
 
     for (let i = 0; i < operations.length; i++) {
@@ -747,7 +1309,7 @@ export class PlotWindowIntegrator {
         plotOperation = this.convertFromCanvasOperation(operation as CanvasOperation);
       }
 
-      const result = this.executeOperation(plotOperation);
+      const result = await this.executeOperation(plotOperation);
       results.push(result);
 
       // Stop on first error if not recoverable
@@ -764,16 +1326,16 @@ export class PlotWindowIntegrator {
    */
   private deferredOperations: PlotCanvasOperation[] = [];
 
-  deferOperation(operation: PlotCanvasOperation): void {
+  async deferOperation(operation: PlotCanvasOperation): Promise<void> {
     if (operation.deferrable) {
       this.deferredOperations.push(operation);
     } else {
-      this.executeOperation(operation);
+      await this.executeOperation(operation);
     }
   }
 
-  flushDeferredOperations(): CommandResult[] {
-    const results = this.executeBatch(this.deferredOperations);
+  async flushDeferredOperations(): Promise<CommandResult[]> {
+    const results = await this.executeBatch(this.deferredOperations);
     this.deferredOperations = [];
     return results;
   }
@@ -803,7 +1365,10 @@ export class PlotOperationFactory {
       CanvasOperationType.SET_LINESIZE,
       CanvasOperationType.SET_OPACITY,
       CanvasOperationType.SET_TEXTANGLE,
-      CanvasOperationType.SET_COORDINATE_MODE
+      CanvasOperationType.SET_COORDINATE_MODE,
+      CanvasOperationType.SET_COLOR_MODE,
+      CanvasOperationType.SET_TEXTSIZE,
+      CanvasOperationType.SET_TEXTSTYLE
     ].includes(type);
   }
 

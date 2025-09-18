@@ -269,6 +269,119 @@ export class PlotCommandParser implements IPlotCommandParser {
         handler: this.handleColorNameCommand.bind(this)
       });
     }
+
+    // CONFIGURE commands for window appearance and positioning
+    this.registerCommand({
+      name: 'CONFIGURE',
+      parameters: [
+        { name: 'option', type: 'string', required: true },
+        { name: 'value', type: 'string', required: false }
+      ],
+      description: 'Configure window properties (TITLE, POS, SIZE, DOTSIZE, BACKCOLOR, HIDEXY, UPDATE)',
+      examples: ['CONFIGURE TITLE "My Plot"', 'CONFIGURE POS 100 200', 'CONFIGURE SIZE 800 600'],
+      handler: this.handleConfigureCommand.bind(this)
+    });
+
+    // Enhanced rendering control commands
+    this.registerCommand({
+      name: 'COLORMODE',
+      parameters: [
+        { name: 'mode', type: 'number', required: true, range: { min: 0, max: 3 } }
+      ],
+      description: 'Set color interpretation mode (0=RGB, 1=HSV, 2=indexed palette, 3=grayscale)',
+      examples: ['COLORMODE 0', 'COLORMODE 1'],
+      handler: this.handleColorModeCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'TEXTSIZE',
+      parameters: [
+        { name: 'multiplier', type: 'number', required: true, range: { min: 1, max: 100 } }
+      ],
+      description: 'Set text size multiplier for all future TEXT commands',
+      examples: ['TEXTSIZE 12', 'TEXTSIZE 24'],
+      handler: this.handleTextSizeCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'TEXTSTYLE',
+      parameters: [
+        { name: 'style', type: 'number', required: true, range: { min: 0, max: 7 } }
+      ],
+      description: 'Set text style bitfield (bit 0=bold, bit 1=italic, bit 2=underline)',
+      examples: ['TEXTSTYLE 0', 'TEXTSTYLE 3', 'TEXTSTYLE 7'],
+      handler: this.handleTextStyleCommand.bind(this)
+    });
+
+    // Interactive input commands
+    this.registerCommand({
+      name: 'PC_KEY',
+      parameters: [],
+      description: 'Capture last pressed key and return ASCII/scan code (non-blocking)',
+      examples: ['PC_KEY'],
+      handler: this.handlePcKeyCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'PC_MOUSE',
+      parameters: [],
+      description: 'Capture current mouse state and return 32-bit encoded value',
+      examples: ['PC_MOUSE'],
+      handler: this.handlePcMouseCommand.bind(this)
+    });
+
+    // Sprite and layer commands
+    this.registerCommand({
+      name: 'SPRITEDEF',
+      parameters: [
+        { name: 'id', type: 'number', required: true, range: { min: 0, max: 255 } },
+        { name: 'width', type: 'number', required: true, range: { min: 1, max: 32 } },
+        { name: 'height', type: 'number', required: true, range: { min: 1, max: 32 } },
+        { name: 'pixelData', type: 'string', required: true }
+      ],
+      description: 'Define a sprite with pixel data and store in sprite cache (ID 0-255, size 1-32x1-32)',
+      examples: ['SPRITEDEF 0 8 8 $FF00FF00...', 'SPRITEDEF 42 16 16 %10101010...'],
+      handler: this.handleSpriteDefCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'SPRITE',
+      parameters: [
+        { name: 'id', type: 'number', required: true, range: { min: 0, max: 255 } },
+        { name: 'x', type: 'coordinate', required: false, defaultValue: 0 },
+        { name: 'y', type: 'coordinate', required: false, defaultValue: 0 },
+        { name: 'opacity', type: 'count', required: false, defaultValue: 255, range: { min: 0, max: 255 } }
+      ],
+      description: 'Render a previously defined sprite at specified coordinates',
+      examples: ['SPRITE 0', 'SPRITE 42 100 200', 'SPRITE 5 -50 75 128'],
+      handler: this.handleSpriteCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'LAYER',
+      parameters: [
+        { name: 'layerIndex', type: 'number', required: true, range: { min: 0, max: 7 } },
+        { name: 'filename', type: 'string', required: true }
+      ],
+      description: 'Load external bitmap file (.bmp) from working directory into specified layer (0-7) for CROP operations',
+      examples: ['LAYER 0 "background.bmp"', 'LAYER 3 "texture.bmp"'],
+      handler: this.handleLayerCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'CROP',
+      parameters: [
+        { name: 'left', type: 'number', required: true },
+        { name: 'top', type: 'number', required: true },
+        { name: 'width', type: 'number', required: true },
+        { name: 'height', type: 'number', required: true },
+        { name: 'x', type: 'coordinate', required: false, defaultValue: 0 },
+        { name: 'y', type: 'coordinate', required: false, defaultValue: 0 }
+      ],
+      description: 'Copy rectangular region from loaded layer bitmap to canvas at specified position',
+      examples: ['CROP 0 0 64 64', 'CROP 10 20 50 30 100 150'],
+      handler: this.handleCropCommand.bind(this)
+    });
   }
 
   /**
@@ -346,14 +459,32 @@ export class PlotCommandParser implements IPlotCommandParser {
   /**
    * Check if tokens represent a compound command
    * In PLOT, ANY sequence of multiple commands on one line is compound
+   * Special handling for CONFIGURE commands to avoid conflicts with subcommands
    */
   private isCompoundCommand(tokens: any[]): boolean {
     // Count how many registered commands are in this token sequence
     let commandCount = 0;
+    let inConfigureCommand = false;
 
-    for (const token of tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+
       if (token.type === 'COMMAND' && this.registry.hasCommand(token.value)) {
-        commandCount++;
+        const commandName = token.value.toUpperCase();
+
+        // Check if this is a CONFIGURE command
+        if (commandName === 'CONFIGURE') {
+          inConfigureCommand = true;
+          commandCount++;
+        } else if (inConfigureCommand && this.isConfigureSubcommand(commandName)) {
+          // Skip counting subcommands of CONFIGURE as separate commands
+          continue;
+        } else {
+          // Regular command
+          commandCount++;
+          inConfigureCommand = false;
+        }
+
         if (commandCount > 1) {
           // More than one command means this is a compound command
           return true;
@@ -362,6 +493,17 @@ export class PlotCommandParser implements IPlotCommandParser {
     }
 
     return false;
+  }
+
+  /**
+   * Check if a command name is a valid CONFIGURE subcommand
+   */
+  private isConfigureSubcommand(commandName: string): boolean {
+    const configureSubcommands = ['TITLE', 'POS', 'SIZE', 'DOTSIZE', 'BACKCOLOR', 'HIDEXY', 'UPDATE'];
+    const colorNames = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'CYAN', 'MAGENTA', 'YELLOW', 'ORANGE', 'GRAY', 'GREY'];
+
+    const upperCommand = commandName.toUpperCase();
+    return configureSubcommands.includes(upperCommand) || colorNames.includes(upperCommand);
   }
 
   /**
@@ -603,8 +745,19 @@ export class PlotCommandParser implements IPlotCommandParser {
       if (token.type === 'COMMAND') {
         const isRegisteredCommand = this.registry.hasCommand(token.value);
         if (isRegisteredCommand) {
-          // Stop here - this is the start of the next command
-          break;
+          // For CONFIGURE commands, allow certain subcommands as parameters
+          if (commandName.toUpperCase() === 'CONFIGURE' && this.isConfigureSubcommand(token.value)) {
+            // Treat CONFIGURE subcommands as string parameters
+            parameters.push({
+              type: 'STRING',
+              value: token.value,
+              originalText: token.originalText,
+              position: token.position
+            });
+          } else {
+            // Stop here - this is the start of the next command
+            break;
+          }
         } else {
           // Treat unregistered command as a string parameter
           parameters.push({
@@ -1307,45 +1460,6 @@ export class PlotCommandParser implements IPlotCommandParser {
     return result;
   }
 
-  private handlePcKeyCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.ENABLE_KEYBOARD,
-      {},
-      false // PC_KEY is immediate
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] PC_KEY parsed`);
-
-    return result;
-  }
-
-  private handlePcMouseCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.ENABLE_MOUSE,
-      {},
-      false // PC_MOUSE is immediate
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] PC_MOUSE parsed`);
-
-    return result;
-  }
 
   private handleColorCommand(context: CommandContext): CommandResult {
     const result: CommandResult = {
@@ -1440,6 +1554,984 @@ export class PlotCommandParser implements IPlotCommandParser {
       result.success = false;
       result.errors.push(`Color command failed: ${error}`);
       this.logError(`[PLOT PARSE ERROR] Color command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('CONFIGURE command requires an option parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing option parameter for CONFIGURE command: ${context.originalCommand}`);
+        return result;
+      }
+
+      const option = tokens[0].value.toUpperCase();
+
+      switch (option) {
+        case 'TITLE':
+          return this.handleConfigureTitle(context, tokens.slice(1));
+        case 'POS':
+          return this.handleConfigurePos(context, tokens.slice(1));
+        case 'SIZE':
+          return this.handleConfigureSize(context, tokens.slice(1));
+        case 'DOTSIZE':
+          return this.handleConfigureDotSize(context, tokens.slice(1));
+        case 'BACKCOLOR':
+          return this.handleConfigureBackColor(context, tokens.slice(1));
+        case 'HIDEXY':
+          return this.handleConfigureHideXY(context, tokens.slice(1));
+        case 'UPDATE':
+          return this.handleConfigureUpdate(context, tokens.slice(1));
+        default:
+          result.success = false;
+          result.errors.push(`Unknown CONFIGURE option: ${option}`);
+          this.logError(`[PLOT PARSE ERROR] Unknown CONFIGURE option '${option}': ${context.originalCommand}`);
+          return result;
+      }
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureTitle(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      let title = '';
+
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('CONFIGURE TITLE requires a title text');
+        this.logError(`[PLOT PARSE ERROR] Missing title text for CONFIGURE TITLE: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Handle quoted string (single token)
+      if (tokens.length === 1 && tokens[0].type === 'STRING') {
+        title = tokens[0].value;
+      } else {
+        // Handle unquoted multi-word title - concatenate all tokens with spaces
+        title = tokens.map(token => token.value).join(' ');
+      }
+
+      // Validate title length (reasonable limit)
+      if (title.length > 200) {
+        result.warnings.push(`Title truncated to 200 characters`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE TITLE', title, title.substring(0, 200));
+        title = title.substring(0, 200);
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'TITLE', title: title },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE TITLE parsed: "${title}"`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE TITLE failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE TITLE execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigurePos(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      if (tokens.length < 2) {
+        result.success = false;
+        result.errors.push('CONFIGURE POS requires x and y coordinates');
+        this.logError(`[PLOT PARSE ERROR] Missing coordinates for CONFIGURE POS: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse X coordinate (supports negative values for multi-monitor)
+      const xValue = Spin2NumericParser.parseCoordinate(tokens[0].value);
+      if (xValue === null) {
+        result.warnings.push(`Invalid x coordinate '${tokens[0].value}', using 0`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE POS x', tokens[0].value, 0);
+      }
+
+      // Parse Y coordinate (supports negative values for multi-monitor)
+      const yValue = Spin2NumericParser.parseCoordinate(tokens[1].value);
+      if (yValue === null) {
+        result.warnings.push(`Invalid y coordinate '${tokens[1].value}', using 0`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE POS y', tokens[1].value, 0);
+      }
+
+      const x = xValue ?? 0;
+      const y = yValue ?? 0;
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'POS', x: x, y: y },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE POS parsed: x=${x}, y=${y}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE POS failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE POS execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureSize(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      if (tokens.length < 2) {
+        result.success = false;
+        result.errors.push('CONFIGURE SIZE requires width and height');
+        this.logError(`[PLOT PARSE ERROR] Missing dimensions for CONFIGURE SIZE: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse width with clamping to 32-2048 range
+      let width = 800; // default
+      const widthValue = Spin2NumericParser.parseCount(tokens[0].value);
+      if (widthValue !== null) {
+        width = Math.max(32, Math.min(2048, widthValue));
+        if (widthValue !== width) {
+          result.warnings.push(`Width ${widthValue} clamped to ${width} (range: 32-2048)`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE SIZE width', tokens[0].value, width);
+        }
+      } else {
+        result.warnings.push(`Invalid width '${tokens[0].value}', using default: ${width}`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE SIZE width', tokens[0].value, width);
+      }
+
+      // Parse height with clamping to 32-2048 range
+      let height = 600; // default
+      const heightValue = Spin2NumericParser.parseCount(tokens[1].value);
+      if (heightValue !== null) {
+        height = Math.max(32, Math.min(2048, heightValue));
+        if (heightValue !== height) {
+          result.warnings.push(`Height ${heightValue} clamped to ${height} (range: 32-2048)`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE SIZE height', tokens[1].value, height);
+        }
+      } else {
+        result.warnings.push(`Invalid height '${tokens[1].value}', using default: ${height}`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE SIZE height', tokens[1].value, height);
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'SIZE', width: width, height: height },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE SIZE parsed: width=${width}, height=${height}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE SIZE failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE SIZE execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureDotSize(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('CONFIGURE DOTSIZE requires size parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing size for CONFIGURE DOTSIZE: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse dotsize with clamping to 1-32 range
+      let dotSize = 1; // default
+      const dotSizeValue = Spin2NumericParser.parseCount(tokens[0].value);
+      if (dotSizeValue !== null) {
+        dotSize = Math.max(1, Math.min(32, dotSizeValue));
+        if (dotSizeValue !== dotSize) {
+          result.warnings.push(`Dot size ${dotSizeValue} clamped to ${dotSize} (range: 1-32)`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE DOTSIZE', tokens[0].value, dotSize);
+        }
+      } else {
+        result.warnings.push(`Invalid dot size '${tokens[0].value}', using default: ${dotSize}`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE DOTSIZE', tokens[0].value, dotSize);
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'DOTSIZE', dotSize: dotSize },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE DOTSIZE parsed: dotSize=${dotSize}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE DOTSIZE failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE DOTSIZE execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureBackColor(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('CONFIGURE BACKCOLOR requires color parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing color for CONFIGURE BACKCOLOR: ${context.originalCommand}`);
+        return result;
+      }
+
+      let color = 'BLACK'; // default
+      let brightness = 15; // default full brightness
+
+      // Parse color - can be color name with optional brightness or hex value
+      const colorValue = tokens[0].value.toUpperCase();
+
+      // Check if it's a hex color
+      if (colorValue.startsWith('$') || colorValue.toLowerCase().startsWith('0x')) {
+        const parsedColor = Spin2NumericParser.parseColor(tokens[0].value);
+        if (parsedColor !== null) {
+          color = `#${parsedColor.toString(16).padStart(6, '0')}`;
+        } else {
+          result.warnings.push(`Invalid hex color '${tokens[0].value}', using default: BLACK`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE BACKCOLOR color', tokens[0].value, 'BLACK');
+        }
+      } else {
+        // Color name
+        const validColors = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'CYAN', 'MAGENTA', 'YELLOW', 'ORANGE', 'GRAY', 'GREY'];
+        if (validColors.includes(colorValue)) {
+          color = colorValue;
+
+          // Parse optional brightness parameter
+          if (tokens.length > 1) {
+            const brightnessValue = Spin2NumericParser.parseCount(tokens[1].value);
+            if (brightnessValue !== null && brightnessValue >= 0 && brightnessValue <= 15) {
+              brightness = brightnessValue;
+            } else {
+              result.warnings.push(`Invalid brightness '${tokens[1].value}', using default: ${brightness}`);
+              this.logParameterWarning(context.originalCommand, 'CONFIGURE BACKCOLOR brightness', tokens[1].value, brightness);
+            }
+          }
+        } else {
+          result.warnings.push(`Invalid color name '${colorValue}', using default: BLACK`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE BACKCOLOR color', tokens[0].value, 'BLACK');
+        }
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'BACKCOLOR', color: color, brightness: brightness },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE BACKCOLOR parsed: color=${color}, brightness=${brightness}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE BACKCOLOR failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE BACKCOLOR execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureHideXY(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // HIDEXY is a toggle - no parameters needed, but can accept 0/1 for explicit control
+      let hideXY = true; // default is to hide coordinates
+
+      if (tokens.length > 0) {
+        const value = Spin2NumericParser.parseCount(tokens[0].value);
+        if (value !== null) {
+          hideXY = value !== 0; // 0 = show, non-zero = hide
+        } else {
+          result.warnings.push(`Invalid HIDEXY value '${tokens[0].value}', using default: hide`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE HIDEXY', tokens[0].value, 1);
+        }
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'HIDEXY', hideXY: hideXY },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE HIDEXY parsed: hideXY=${hideXY}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE HIDEXY failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE HIDEXY execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleConfigureUpdate(context: CommandContext, tokens: any[]): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('CONFIGURE UPDATE requires rate parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing rate for CONFIGURE UPDATE: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse update rate with clamping to 1-120 Hz range
+      let updateRate = 60; // default
+      const rateValue = Spin2NumericParser.parseCount(tokens[0].value);
+      if (rateValue !== null) {
+        updateRate = Math.max(1, Math.min(120, rateValue));
+        if (rateValue !== updateRate) {
+          result.warnings.push(`Update rate ${rateValue} clamped to ${updateRate} (range: 1-120 Hz)`);
+          this.logParameterWarning(context.originalCommand, 'CONFIGURE UPDATE rate', tokens[0].value, updateRate);
+        }
+      } else {
+        result.warnings.push(`Invalid update rate '${tokens[0].value}', using default: ${updateRate}`);
+        this.logParameterWarning(context.originalCommand, 'CONFIGURE UPDATE rate', tokens[0].value, updateRate);
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CONFIGURE_WINDOW,
+        { action: 'UPDATE', updateRate: updateRate },
+        false // CONFIGURE is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CONFIGURE UPDATE parsed: updateRate=${updateRate}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CONFIGURE UPDATE failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CONFIGURE UPDATE execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleColorModeCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('COLORMODE command requires mode parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing mode parameter for COLORMODE command: ${context.originalCommand}`);
+        return result;
+      }
+
+      const modeValue = Spin2NumericParser.parseCount(tokens[0].value);
+      let mode = 0; // default RGB
+
+      if (modeValue !== null && modeValue >= 0 && modeValue <= 3) {
+        mode = modeValue;
+      } else {
+        result.warnings.push(`Invalid color mode '${tokens[0].value}', using default: RGB (0)`);
+        this.logParameterWarning(context.originalCommand, 'COLORMODE mode', tokens[0].value, 0);
+      }
+
+      // Map mode number to string for canvas operation
+      const modeNames = ['RGB', 'HSV', 'INDEXED', 'GRAYSCALE'];
+      const modeName = modeNames[mode];
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.SET_COLOR_MODE,
+        { mode: mode, modeName: modeName },
+        true // COLORMODE should be deferrable with drawing operations
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] COLORMODE parsed: mode=${mode} (${modeName})`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`COLORMODE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] COLORMODE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleTextSizeCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('TEXTSIZE command requires multiplier parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing multiplier parameter for TEXTSIZE command: ${context.originalCommand}`);
+        return result;
+      }
+
+      const sizeValue = Spin2NumericParser.parseCount(tokens[0].value);
+      let textSize = 10; // default
+
+      if (sizeValue !== null) {
+        textSize = Math.max(1, Math.min(100, sizeValue));
+        if (sizeValue !== textSize) {
+          result.warnings.push(`Text size ${sizeValue} clamped to ${textSize} (range: 1-100)`);
+          this.logParameterWarning(context.originalCommand, 'TEXTSIZE multiplier', tokens[0].value, textSize);
+        }
+      } else {
+        result.warnings.push(`Invalid text size '${tokens[0].value}', using default: ${textSize}`);
+        this.logParameterWarning(context.originalCommand, 'TEXTSIZE multiplier', tokens[0].value, textSize);
+      }
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.SET_TEXTSIZE,
+        { textSize: textSize },
+        true // TEXTSIZE should be deferrable with drawing operations
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] TEXTSIZE parsed: textSize=${textSize}`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`TEXTSIZE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] TEXTSIZE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleTextStyleCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length === 0) {
+        result.success = false;
+        result.errors.push('TEXTSTYLE command requires style parameter');
+        this.logError(`[PLOT PARSE ERROR] Missing style parameter for TEXTSTYLE command: ${context.originalCommand}`);
+        return result;
+      }
+
+      const styleValue = Spin2NumericParser.parseCount(tokens[0].value);
+      let textStyle = 0; // default no style
+
+      if (styleValue !== null) {
+        textStyle = Math.max(0, Math.min(7, styleValue));
+        if (styleValue !== textStyle) {
+          result.warnings.push(`Text style ${styleValue} clamped to ${textStyle} (range: 0-7)`);
+          this.logParameterWarning(context.originalCommand, 'TEXTSTYLE style', tokens[0].value, textStyle);
+        }
+      } else {
+        result.warnings.push(`Invalid text style '${tokens[0].value}', using default: ${textStyle}`);
+        this.logParameterWarning(context.originalCommand, 'TEXTSTYLE style', tokens[0].value, textStyle);
+      }
+
+      // Decode bitfield for logging
+      const styleFlags = [];
+      if (textStyle & 1) styleFlags.push('bold');
+      if (textStyle & 2) styleFlags.push('italic');
+      if (textStyle & 4) styleFlags.push('underline');
+      const styleDescription = styleFlags.length > 0 ? styleFlags.join('+') : 'normal';
+
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.SET_TEXTSTYLE,
+        {
+          textStyle: textStyle,
+          bold: !!(textStyle & 1),
+          italic: !!(textStyle & 2),
+          underline: !!(textStyle & 4)
+        },
+        true // TEXTSTYLE should be deferrable with drawing operations
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] TEXTSTYLE parsed: style=${textStyle} (${styleDescription})`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`TEXTSTYLE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] TEXTSTYLE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handlePcKeyCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // PC_KEY is an interactive command that requests key input from the window
+      // This creates a special operation that will be handled by the integration layer
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.PC_INPUT || ('PC_INPUT' as any),
+        { inputType: 'KEY' },
+        false // PC_KEY is immediate, not deferrable
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] PC_KEY parsed - requesting key input`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`PC_KEY command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] PC_KEY command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handlePcMouseCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // PC_MOUSE is an interactive command that requests mouse state from the window
+      // This creates a special operation that will be handled by the integration layer
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.PC_INPUT || ('PC_INPUT' as any),
+        { inputType: 'MOUSE' },
+        false // PC_MOUSE is immediate, not deferrable
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] PC_MOUSE parsed - requesting mouse state`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`PC_MOUSE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] PC_MOUSE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleSpriteDefCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length < 4) {
+        result.success = false;
+        result.errors.push('SPRITEDEF command requires sprite ID, width, height, and pixel data');
+        this.logError(`[PLOT PARSE ERROR] Missing parameters for SPRITEDEF command: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse sprite ID (0-255)
+      const idValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
+      if (idValue === null || idValue < 0 || idValue > 255) {
+        result.success = false;
+        result.errors.push(`Invalid sprite ID: ${tokens[0].value}. Must be 0-255`);
+        this.logError(`[PLOT PARSE ERROR] Invalid sprite ID for SPRITEDEF: ${tokens[0].value}`);
+        return result;
+      }
+
+      // Parse width (1-32)
+      const widthValue = Spin2NumericParser.parseInteger(tokens[1].value, false);
+      if (widthValue === null || widthValue < 1 || widthValue > 32) {
+        result.success = false;
+        result.errors.push(`Invalid sprite width: ${tokens[1].value}. Must be 1-32`);
+        this.logError(`[PLOT PARSE ERROR] Invalid sprite width for SPRITEDEF: ${tokens[1].value}`);
+        return result;
+      }
+
+      // Parse height (1-32)
+      const heightValue = Spin2NumericParser.parseInteger(tokens[2].value, false);
+      if (heightValue === null || heightValue < 1 || heightValue > 32) {
+        result.success = false;
+        result.errors.push(`Invalid sprite height: ${tokens[2].value}. Must be 1-32`);
+        this.logError(`[PLOT PARSE ERROR] Invalid sprite height for SPRITEDEF: ${tokens[2].value}`);
+        return result;
+      }
+
+      // Parse pixel data (hex string)
+      const pixelData = tokens[3].value;
+      if (!pixelData || pixelData.length === 0) {
+        result.success = false;
+        result.errors.push('SPRITEDEF command requires pixel data');
+        this.logError(`[PLOT PARSE ERROR] Missing pixel data for SPRITEDEF: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Create SPRITEDEF operation
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.DEFINE_SPRITE || ('DEFINE_SPRITE' as any),
+        {
+          spriteId: idValue,
+          width: widthValue,
+          height: heightValue,
+          pixelData: pixelData
+        },
+        false // SPRITEDEF is immediate
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] SPRITEDEF ${idValue} ${widthValue}x${heightValue} parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`SPRITEDEF command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] SPRITEDEF command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleSpriteCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length < 1) {
+        result.success = false;
+        result.errors.push('SPRITE command requires sprite ID');
+        this.logError(`[PLOT PARSE ERROR] Missing sprite ID for SPRITE command: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse sprite ID (0-255)
+      const idValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
+      if (idValue === null || idValue < 0 || idValue > 255) {
+        result.success = false;
+        result.errors.push(`Invalid sprite ID: ${tokens[0].value}. Must be 0-255`);
+        this.logError(`[PLOT PARSE ERROR] Invalid sprite ID for SPRITE: ${tokens[0].value}`);
+        return result;
+      }
+
+      // Parse optional X coordinate
+      let x = 0;
+      if (tokens.length > 1) {
+        const xValue = Spin2NumericParser.parseCoordinate(tokens[1].value);
+        if (xValue === null) {
+          result.warnings.push(`Invalid x coordinate '${tokens[1].value}', using 0`);
+          this.logParameterWarning(context.originalCommand, 'SPRITE x', tokens[1].value, 0);
+        } else {
+          x = xValue;
+        }
+      }
+
+      // Parse optional Y coordinate
+      let y = 0;
+      if (tokens.length > 2) {
+        const yValue = Spin2NumericParser.parseCoordinate(tokens[2].value);
+        if (yValue === null) {
+          result.warnings.push(`Invalid y coordinate '${tokens[2].value}', using 0`);
+          this.logParameterWarning(context.originalCommand, 'SPRITE y', tokens[2].value, 0);
+        } else {
+          y = yValue;
+        }
+      }
+
+      // Parse optional opacity
+      let opacity = 255;
+      if (tokens.length > 3) {
+        const opacityValue = Spin2NumericParser.parseInteger(tokens[3].value, false);
+        if (opacityValue === null || opacityValue < 0 || opacityValue > 255) {
+          result.warnings.push(`Invalid opacity '${tokens[3].value}', using default: ${opacity}`);
+          this.logParameterWarning(context.originalCommand, 'SPRITE opacity', tokens[3].value, opacity);
+        } else {
+          opacity = opacityValue;
+        }
+      }
+
+      // Create SPRITE operation
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.DRAW_SPRITE,
+        {
+          spriteId: idValue,
+          x: x,
+          y: y,
+          opacity: opacity
+        },
+        true // SPRITE is deferrable
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] SPRITE ${idValue} at (${x}, ${y}) opacity=${opacity} parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`SPRITE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] SPRITE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleLayerCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length < 2) {
+        result.success = false;
+        result.errors.push('LAYER command requires layer index and filename parameters');
+        this.logError(`[PLOT PARSE ERROR] Missing parameters for LAYER command: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse layer index (0-7)
+      const layerIndexValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
+      if (layerIndexValue === null || layerIndexValue < 0 || layerIndexValue > 7) {
+        result.success = false;
+        result.errors.push(`Invalid layer index: ${tokens[0].value}. Must be 0-7`);
+        this.logError(`[PLOT PARSE ERROR] Invalid layer index for LAYER: ${tokens[0].value}`);
+        return result;
+      }
+
+      const filename = tokens[1].value;
+      if (!filename || filename.length === 0) {
+        result.success = false;
+        result.errors.push('LAYER command requires non-empty filename');
+        this.logError(`[PLOT PARSE ERROR] Empty filename for LAYER command: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Validate file extension (should be .bmp)
+      if (!filename.toLowerCase().endsWith('.bmp')) {
+        result.success = false;
+        result.errors.push(`Invalid file extension for LAYER: ${filename}. Only .bmp extension is supported`);
+        this.logError(`[PLOT PARSE ERROR] Invalid file extension for LAYER: ${filename}`);
+        return result;
+      }
+
+      // Create LAYER operation
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.LOAD_LAYER,
+        {
+          layerIndex: layerIndexValue,
+          filename: filename
+        },
+        false // LAYER is immediate (needs to load before use)
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] LAYER ${layerIndexValue} "${filename}" parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`LAYER command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] LAYER command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handleCropCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      const tokens = context.tokens;
+
+      if (tokens.length < 4) {
+        result.success = false;
+        result.errors.push('CROP command requires left, top, width, and height parameters');
+        this.logError(`[PLOT PARSE ERROR] Missing parameters for CROP command: ${context.originalCommand}`);
+        return result;
+      }
+
+      // Parse left coordinate
+      const leftValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
+      if (leftValue === null || leftValue < 0) {
+        result.success = false;
+        result.errors.push(`Invalid left coordinate: ${tokens[0].value}. Must be >= 0`);
+        this.logError(`[PLOT PARSE ERROR] Invalid left coordinate for CROP: ${tokens[0].value}`);
+        return result;
+      }
+
+      // Parse top coordinate
+      const topValue = Spin2NumericParser.parseInteger(tokens[1].value, false);
+      if (topValue === null || topValue < 0) {
+        result.success = false;
+        result.errors.push(`Invalid top coordinate: ${tokens[1].value}. Must be >= 0`);
+        this.logError(`[PLOT PARSE ERROR] Invalid top coordinate for CROP: ${tokens[1].value}`);
+        return result;
+      }
+
+      // Parse width
+      const widthValue = Spin2NumericParser.parseInteger(tokens[2].value, false);
+      if (widthValue === null || widthValue <= 0) {
+        result.success = false;
+        result.errors.push(`Invalid width: ${tokens[2].value}. Must be > 0`);
+        this.logError(`[PLOT PARSE ERROR] Invalid width for CROP: ${tokens[2].value}`);
+        return result;
+      }
+
+      // Parse height
+      const heightValue = Spin2NumericParser.parseInteger(tokens[3].value, false);
+      if (heightValue === null || heightValue <= 0) {
+        result.success = false;
+        result.errors.push(`Invalid height: ${tokens[3].value}. Must be > 0`);
+        this.logError(`[PLOT PARSE ERROR] Invalid height for CROP: ${tokens[3].value}`);
+        return result;
+      }
+
+      // Parse optional destination X coordinate
+      let x = 0;
+      if (tokens.length > 4) {
+        const xValue = Spin2NumericParser.parseCoordinate(tokens[4].value);
+        if (xValue === null) {
+          result.warnings.push(`Invalid x coordinate '${tokens[4].value}', using 0`);
+          this.logParameterWarning(context.originalCommand, 'CROP x', tokens[4].value, 0);
+        } else {
+          x = xValue;
+        }
+      }
+
+      // Parse optional destination Y coordinate
+      let y = 0;
+      if (tokens.length > 5) {
+        const yValue = Spin2NumericParser.parseCoordinate(tokens[5].value);
+        if (yValue === null) {
+          result.warnings.push(`Invalid y coordinate '${tokens[5].value}', using 0`);
+          this.logParameterWarning(context.originalCommand, 'CROP y', tokens[5].value, 0);
+        } else {
+          y = yValue;
+        }
+      }
+
+      // Create CROP operation
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.CROP_LAYER,
+        {
+          sourceRect: {
+            left: leftValue,
+            top: topValue,
+            width: widthValue,
+            height: heightValue
+          },
+          destX: x,
+          destY: y
+        },
+        true // CROP is deferrable
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] CROP (${leftValue},${topValue}) ${widthValue}x${heightValue} to (${x},${y}) parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CROP command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CROP command execution failed: ${error}`);
     }
 
     return result;

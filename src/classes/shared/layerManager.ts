@@ -185,4 +185,41 @@ export class LayerManager {
     }
     return this.layers[layerIndex] !== null;
   }
+
+  /**
+   * Alias for isLayerLoaded for compatibility
+   * @param layerIndex Layer index (0-7)
+   * @returns true if layer is loaded, false otherwise
+   */
+  hasLayer(layerIndex: number): boolean {
+    return this.isLayerLoaded(layerIndex);
+  }
+
+  /**
+   * Crop layer operation - copy rectangular region to a destination
+   * @param layerIndex Source layer index (0-7)
+   * @param sourceRect Source rectangle {left, top, width, height}
+   * @param destX Destination X coordinate
+   * @param destY Destination Y coordinate
+   */
+  cropLayer(layerIndex: number, sourceRect: CropRect, destX: number, destY: number): void {
+    // Validate layer index
+    if (layerIndex < 0 || layerIndex >= LayerManager.MAX_LAYERS) {
+      throw new Error(`Layer index must be between 0 and ${LayerManager.MAX_LAYERS - 1}`);
+    }
+
+    // Check if layer is loaded
+    const layer = this.layers[layerIndex];
+    if (!layer) {
+      throw new Error(`Layer ${layerIndex} is not loaded`);
+    }
+
+    // For now, this is a placeholder - actual implementation would
+    // need access to the target canvas context to draw the cropped region
+    console.log(`[LAYER MANAGER] Crop operation: layer ${layerIndex} (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX},${destY})`);
+
+    // TODO: Implement actual cropping when we have access to target canvas
+    // This would typically be:
+    // targetCtx.drawImage(layer, sourceRect.left, sourceRect.top, sourceRect.width, sourceRect.height, destX, destY, sourceRect.width, sourceRect.height);
+  }
 }

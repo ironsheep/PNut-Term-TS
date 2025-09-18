@@ -39,7 +39,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
   });
 
   describe('Compound Command Canvas Operations', () => {
-    it('should send SET, COLOR, and TEXT operations for compound command', () => {
+    it('should send SET, COLOR, and TEXT operations for compound command', async () => {
       console.log('\nTest: SET + CYAN + TEXT compound');
       const command = 'set 330 270 cyan 3 text 30 3 "Hub RAM Interface"';
 
@@ -51,10 +51,10 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       const ops = results[0].canvasOperations;
       console.log(`  Operations count: ${ops.length}`);
 
-      const integratorResults = integrator.executeBatch(ops);
+      const integratorResults = await await integrator.executeBatch(ops);
 
       // Check all operations succeeded
-      integratorResults.forEach(r => expect(r.success).toBe(true));
+      integratorResults.forEach((r: any) => expect(r.success).toBe(true));
 
       // Verify the canvas operations sent
       expect(capturedOperations).toContain('SET 330 270');
@@ -65,7 +65,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       console.log('  Captured operations:', capturedOperations);
     });
 
-    it('should send COLOR operations for color commands', () => {
+    it('should send COLOR operations for color commands', async () => {
       console.log('\nTest: Simple CYAN command');
       const command = 'cyan 5';
 
@@ -77,7 +77,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       console.log('  Operation type:', ops[0].type);
       console.log('  Operation params:', ops[0].parameters);
 
-      const integratorResults = integrator.executeBatch(ops);
+      const integratorResults = await integrator.executeBatch(ops);
 
       expect(integratorResults[0].success).toBe(true);
       expect(capturedOperations).toContain('CYAN 5');
@@ -85,7 +85,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       console.log('  Captured operations:', capturedOperations);
     });
 
-    it('should handle grey line compound correctly', () => {
+    it('should handle grey line compound correctly', async () => {
       console.log('\nTest: GREY + SET + LINE compound');
       const command = 'grey 12 set 103 8 line 190 8 20';
 
@@ -95,9 +95,9 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
 
       console.log(`  Operations count: ${ops.length}`);
 
-      const integratorResults = integrator.executeBatch(ops);
+      const integratorResults = await integrator.executeBatch(ops);
 
-      integratorResults.forEach(r => expect(r.success).toBe(true));
+      integratorResults.forEach((r: any) => expect(r.success).toBe(true));
 
       expect(capturedOperations).toContain('GREY 12');
       expect(capturedOperations).toContain('SET 103 8');
@@ -106,7 +106,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       console.log('  Captured operations:', capturedOperations);
     });
 
-    it('should handle text-only commands', () => {
+    it('should handle text-only commands', async () => {
       console.log('\nTest: TEXT-only command');
       const command = 'text 20 1 "Hello World"';
 
@@ -118,7 +118,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       console.log('  Operation type:', ops[0].type);
       console.log('  Operation params:', ops[0].parameters);
 
-      const integratorResults = integrator.executeBatch(ops);
+      const integratorResults = await integrator.executeBatch(ops);
 
       expect(integratorResults[0].success).toBe(true);
       expect(capturedOperations).toContain('FONT 20 00000001 0');
@@ -129,7 +129,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
   });
 
   describe('Operation Types', () => {
-    it('should correctly identify operation types', () => {
+    it('should correctly identify operation types', async () => {
       const command = 'set 100 200 cyan 5 text 15 1 "Test"';
       const parsed = parser.parse(command);
       const results = parser.executeCommands(parsed);
@@ -148,7 +148,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
   });
 
   describe('Close Command', () => {
-    it('should handle CLOSE command', () => {
+    it('should handle CLOSE command', async () => {
       console.log('\nTest: CLOSE command');
       const command = 'close';
 
@@ -156,7 +156,7 @@ describe('PlotWindowIntegrator - Integration Tests', () => {
       const results = parser.executeCommands(parsed);
       const ops = results[0].canvasOperations;
 
-      const integratorResults = integrator.executeBatch(ops);
+      const integratorResults = await integrator.executeBatch(ops);
 
       expect(mockPlotWindow.debugWindow.close).toHaveBeenCalled();
       console.log('  Window close called:', mockPlotWindow.debugWindow.close.mock.calls.length, 'times');
