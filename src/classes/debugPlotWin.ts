@@ -445,6 +445,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       height: windowHeight,
       x: windowX,
       y: windowY,
+      show: false,  // Start hidden to prevent flashing
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
@@ -554,11 +555,25 @@ export class DebugPlotWindow extends DebugWindowBase {
             z-index: 1001;
           }
           ` : ''}
+          #coordinate-display {
+            position: absolute;
+            padding: 8px;
+            background: ${this.displaySpec.window.background};
+            color: ${this.displaySpec.window.grid};
+            border: 1px solid ${this.displaySpec.window.grid};
+            font-family: 'Parallax', 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 999;
+            white-space: nowrap;
+          }
         </style>
       </head>
       <body>
         <div id="plot-data">
           <canvas id="plot-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
+          <div id="coordinate-display"></div>
           ${ENABLE_PERFORMANCE_MONITORING ? '<button id="performance-toggle" onclick="togglePerformanceOverlay()">PERF</button>' : ''}
           ${ENABLE_PERFORMANCE_MONITORING ? '<div id="performance-overlay"></div>' : ''}
         </div>
@@ -606,6 +621,11 @@ export class DebugPlotWindow extends DebugWindowBase {
           return 'Context not available';
         }
 
+        // Fill the display canvas with background color immediately to prevent flash
+        window.displayCtx = window.plotCanvas.getContext('2d');
+        window.displayCtx.fillStyle = '${bgColor}';
+        window.displayCtx.fillRect(0, 0, ${width}, ${height});
+
         // Create offscreen canvas for double buffering
         window.offscreenCanvas = document.createElement('canvas');
         window.offscreenCanvas.width = ${width};
@@ -613,12 +633,11 @@ export class DebugPlotWindow extends DebugWindowBase {
 
         // plotCtx is the working context (offscreen)
         window.plotCtx = window.offscreenCanvas.getContext('2d');
-        window.displayCtx = window.plotCanvas.getContext('2d');
 
         // Function to flip buffer (copy offscreen to display)
         window.flipBuffer = function() {
           if (window.displayCtx && window.offscreenCanvas) {
-            window.displayCtx.clearRect(0, 0, ${width}, ${height});
+            // No need to clear - drawImage will overwrite completely
             window.displayCtx.drawImage(window.offscreenCanvas, 0, 0);
           }
         };
@@ -634,8 +653,8 @@ export class DebugPlotWindow extends DebugWindowBase {
         window.currentFgColor = '${this.currFgColor}';
         window.currentTextColor = '${this.currTextColor}';
 
-        // Immediately flip the offscreen canvas to display to prevent blinking
-        window.flipBuffer();
+        // Don't flip immediately - display canvas already has background color
+        // This prevents a potential flash during initialization
 
         console.log('[PLOT] Canvas initialized with double buffering and default colors');
         return 'Canvas ready with double buffering';
@@ -798,11 +817,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           let mouseY = 0;
           let mouseOverCanvas = false;
 
-          // Mouse move handler
+          // Mouse move handler with coordinate display
           canvas.addEventListener('mousemove', function(event) {
             const rect = canvas.getBoundingClientRect();
             mouseX = Math.floor(event.clientX - rect.left);
             mouseY = Math.floor(event.clientY - rect.top);
+
+            // Update coordinate display if not hidden
+            if (!${this.displaySpec.hideXY}) {
+              updateCoordinateDisplay(mouseX, mouseY);
+            }
+
             updateMouseState();
           });
 
@@ -814,6 +839,13 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
           canvas.addEventListener('mouseleave', function() {
             mouseOverCanvas = false;
+
+            // Hide coordinate display when mouse leaves canvas
+            const display = document.getElementById('coordinate-display');
+            if (display) {
+              display.style.display = 'none';
+            }
+
             updateMouseState();
           });
 
@@ -838,6 +870,69 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           canvas.addEventListener('contextmenu', function(event) {
             event.preventDefault();
           });
+
+          // Function to update coordinate display
+          function updateCoordinateDisplay(x, y) {
+            const display = document.getElementById('coordinate-display');
+            if (!display) return;
+
+            const canvasWidth = ${this.displaySpec.size.width};
+            const canvasHeight = ${this.displaySpec.size.height};
+
+            // Calculate logical coordinates based on axis direction
+            // Pascal: if vDirX then TextX := (ClientWidth - X) else TextX := X;
+            //         if vDirY then TextY := Y else TextY := (ClientHeight - Y);
+            let coordX = ${this.cartesianConfig.xdir} ? (canvasWidth - x) : x;
+            let coordY = ${this.cartesianConfig.ydir} ? y : (canvasHeight - y);
+
+            // Divide by dot size to get logical coordinates
+            // Pascal: Str := IntToStr(TextX div vDotSize) + ',' + IntToStr(TextY div vDotSizeY);
+            coordX = Math.floor(coordX / ${this.displaySpec.dotSize.width});
+            coordY = Math.floor(coordY / ${this.displaySpec.dotSize.height});
+
+            // Update display text
+            display.textContent = coordX + ',' + coordY;
+
+            // Calculate display size for proper positioning
+            const displayRect = display.getBoundingClientRect();
+            const textWidth = displayRect.width;
+            const textHeight = displayRect.height;
+
+            // Position flyout based on quadrant (matching Pascal's exact offsets)
+            const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
+
+            // Pascal uses specific offsets: cursor at (9,9) or (w-9,h-9)
+            let displayX, displayY;
+
+            switch(quadrant) {
+              case 0: // Mouse in top-left → show at cursor + offset
+                displayX = x + 9;
+                displayY = y + 9;
+                break;
+              case 1: // Mouse in top-right → show to left of cursor
+                displayX = x - textWidth - 9;
+                displayY = y + 9;
+                break;
+              case 2: // Mouse in bottom-left → show above cursor
+                displayX = x + 9;
+                displayY = y - textHeight - 9;
+                break;
+              case 3: // Mouse in bottom-right → show above-left of cursor
+                displayX = x - textWidth - 9;
+                displayY = y - textHeight - 9;
+                break;
+            }
+
+            // Ensure display stays within canvas bounds
+            displayX = Math.max(0, Math.min(canvasWidth - textWidth, displayX));
+            displayY = Math.max(0, Math.min(canvasHeight - textHeight, displayY));
+
+            display.style.left = displayX + 'px';
+            display.style.top = displayY + 'px';
+            display.style.right = 'auto';
+            display.style.bottom = 'auto';
+            display.style.display = 'block';
+          }
 
           function updateMouseState() {
             // Encode 32-bit mouse state:
@@ -920,7 +1015,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
     // No more deferredCommands processing - integrator now calls drawing methods directly
 
-    // Execute buffer flip in renderer
+    // Execute buffer flip in renderer and WAIT for it to complete
     const jsCode = `
       (function() {
         if (window.flipBuffer) {
@@ -931,10 +1026,13 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .catch(error => {
-        this.logMessage(`Failed to flip buffer: ${error}`);
-      });
+    // Use await to ensure buffer flip completes before continuing
+    try {
+      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.logMessage(`Buffer flip result: ${result}`);
+    } catch (error) {
+      this.logMessage(`Failed to flip buffer: ${error}`);
+    }
 
     // End render timing (if enabled)
     if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
@@ -1098,9 +1196,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     textStyle.angle = angle;
   }
 
-  public clearPlot(): void {
+  public async clearPlot(): Promise<void> {
     // erase the  display area
-    this.clearPlotCanvas();
+    await this.clearPlotCanvas();
     // home the cursorPosition
     this.cursorPosition = { x: 0, y: 0 };
   }
@@ -1108,7 +1206,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   // -----------------------------------------------------------
   // ----------------- Canvas Drawing Routines -----------------
   //
-  private clearPlotCanvas(): void {
+  private async clearPlotCanvas(): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     this.logMessage(`at clearPlot()`);
@@ -1123,10 +1221,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           return 'Context not ready';
         }
 
-        // Clear the canvas
-        window.plotCtx.clearRect(0, 0, ${this.displaySpec.size.width}, ${this.displaySpec.size.height});
-
-        // Fill with background color
+        // Fill with background color (no need to clear first - fillRect overwrites)
         window.plotCtx.fillStyle = '${bgcolor}';
         window.plotCtx.fillRect(0, 0, ${this.displaySpec.size.width}, ${this.displaySpec.size.height});
 
@@ -1134,19 +1229,19 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // In live mode (not updateMode), flip buffer immediately after clear
-        if (!this.updateMode) {
-          this.performUpdate();
-        }
-      })
-      .catch(error => {
-        this.logMessage(`Failed to clear canvas: ${error}`);
-      });
+    try {
+      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.logMessage(`Clear result: ${result}`);
+      // In live mode (not updateMode), flip buffer immediately after clear
+      if (!this.updateMode) {
+        await this.performUpdate();
+      }
+    } catch (error) {
+      this.logMessage(`Failed to clear canvas: ${error}`);
+    }
   }
 
-  public drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): void {
+  public async drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
@@ -1193,18 +1288,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Update cursor position after successful draw
-        this.cursorPosition = { x, y };
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw line: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Update cursor position after successful draw
+      this.cursorPosition = { x, y };
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw line: ${error}`);
+    }
   }
 
-  public drawCircleToPlot(diameter: number, lineSize: number, opacity: number): void {
+  public async drawCircleToPlot(diameter: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const fgColor: string = this.currFgColor;
@@ -1251,16 +1345,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw circle: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw circle: ${error}`);
+    }
   }
 
-  public writeStringToPlot(text: string): void {
+  public async writeStringToPlot(text: string): Promise<void> {
     if (!this.debugWindow) return;
 
     this.logMessage(`at writeStringToPlot('${text}')`);
@@ -1356,13 +1449,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw text: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw text: ${error}`);
+    }
   }
 
   // -----------------------------------------------------------
@@ -1416,7 +1508,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     return colorModes.includes(command.toUpperCase());
   }
   
-  private drawDotToPlot(dotSize: number, opacity: number): void {
+  private async drawDotToPlot(dotSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const [plotCoordX, plotCoordY] = this.getCursorXY();
@@ -1458,16 +1550,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw dot: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw dot: ${error}`);
+    }
   }
   
-  private drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): void {
+  private async drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const [plotCoordX, plotCoordY] = this.getCursorXY();
@@ -1504,16 +1595,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw box: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw box: ${error}`);
+    }
   }
   
-  private drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): void {
+  private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const [plotCoordX, plotCoordY] = this.getCursorXY();
@@ -1551,13 +1641,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(() => {
-        // Buffer updates are handled in performUpdate() now
-      })
-      .catch(error => {
-        this.logMessage(`Failed to draw oval: ${error}`);
-      });
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      // Buffer updates are handled in performUpdate() now
+    } catch (error) {
+      this.logMessage(`Failed to draw oval: ${error}`);
+    }
   }
 
   private polarToCartesianNew(length: number, angle: number): [number, number] {

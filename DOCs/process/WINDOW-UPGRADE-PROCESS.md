@@ -11,6 +11,7 @@ Compare TypeScript implementation against Pascal source:
 - List all commands/features in TypeScript version
 - Identify missing functionality
 - Document behavioral differences
+- **Mouse hover behavior**: Check coordinate display format and flyout positioning
 
 ### 1.2 Architecture Analysis
 Examine current implementation for structural issues:
@@ -24,6 +25,7 @@ Look for established patterns in working windows:
 - How do robust windows parse commands?
 - How do windows emit errors to debug logger?
 - What shared components are available?
+- How do windows implement mouse hover coordinate display?
 
 ## Phase 2: Planning with Behavior Specifications
 
@@ -118,7 +120,28 @@ Store key findings in MCP context:
 - DO include all resources and references
 - DO specify expected outcomes, not methods
 
-## Example Behavior Specification
+## Example Behavior Specifications
+
+### Good Example: Mouse Hover Coordinate Display
+
+**Expected Behavior**:
+- Coordinate display appears as flyout/overlay at mouse position
+- Format varies by window type (check Pascal's FormMouseMove)
+- Flyout positioning avoids obscuring data (quadrant-based)
+- Only displays when mouse within display area bounds
+- Updates in real-time without lag
+- Can be hidden with HIDEXY directive
+
+**Test Cases**:
+- Mouse at (100, 50) → Flyout shows "100,50" (format varies by window)
+- Mouse near top-right corner → Flyout appears bottom-left of cursor
+- Mouse outside display area → No flyout shown
+- HIDEXY set → No flyout regardless of mouse position
+
+**Pascal Reference**:
+- DebugDisplayUnit.pas lines 647-746 (FormMouseMove procedure)
+- Each window type has specific coordinate calculation
+- Custom cursor with text overlay implementation
 
 ### Good Example: CONFIGURE SIZE Command
 
@@ -173,3 +196,4 @@ The upgrade process succeeds when:
 - Implementer can work without ambiguity
 - No Pascal code consultation needed during implementation
 - Error cases are as detailed as success cases
+- Mouse hover coordinate display matches Pascal format and positioning

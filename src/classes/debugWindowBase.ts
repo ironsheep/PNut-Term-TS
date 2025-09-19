@@ -179,13 +179,121 @@ export abstract class DebugWindowBase extends EventEmitter {
   // Abstract methods that must be overridden by derived classes
   //abstract createDebugWindow(): void;
   abstract closeDebugWindow(): void;
-  
+
   /**
    * Process message content immediately. Must be implemented by derived classes.
    * This is called either immediately (if window is ready) or when queued messages are processed.
    */
   protected abstract processMessageImmediate(lineParts: string[] | any): void;
-  
+
+  /**
+   * Clear the display. Override in derived classes that support clearing.
+   * Called when CLEAR command is received.
+   * Default implementation logs warning as this indicates a routing error for windows that don't support CLEAR.
+   */
+  protected clearDisplayContent(): void {
+    // Default: This should never be called for windows that don't support CLEAR
+    // If it is called, it's likely a routing error
+    this.logMessageBase(`WARNING: CLEAR command received by ${this.constructor.name} which doesn't support it - possible routing error`);
+  }
+
+  /**
+   * Force an update of the display. Override in derived classes that support updates.
+   * Called when UPDATE command is received (when in deferred update mode).
+   * Default implementation logs warning as this indicates a routing error for windows that don't support UPDATE.
+   */
+  protected forceDisplayUpdate(): void {
+    // Default: This should never be called for windows that don't support UPDATE
+    // If it is called, it's likely a routing error
+    this.logMessageBase(`WARNING: UPDATE command received by ${this.constructor.name} which doesn't support it - possible routing error`);
+  }
+
+
+  /**
+   * Handle common commands that all windows should support.
+   * Returns true if command was handled, false otherwise.
+   *
+   * IMPORTANT: Only windows with Pascal equivalents should call this method!
+   * Windows without Pascal equivalents (LOGGER, COG, DEBUGGER) handle their
+   * own specialized processing and should NOT use common commands.
+   *
+   * Common commands (from Pascal):
+   * - CLEAR: Clear the display
+   * - CLOSE: Close the window
+   * - UPDATE: Force display update (when in deferred update mode)
+   * - SAVE {WINDOW} 'filename': Save bitmap to file
+   * - PC_KEY: Enable keyboard input forwarding
+   * - PC_MOUSE: Enable mouse input forwarding
+   */
+  protected async handleCommonCommand(commandParts: string[]): Promise<boolean> {
+    if (!commandParts || commandParts.length === 0) {
+      return false;
+    }
+
+    const command = commandParts[0].toUpperCase();
+
+    switch (command) {
+      case 'CLEAR':
+        this.logMessageBase('Executing CLEAR command');
+        this.clearDisplayContent();
+        return true;
+
+      case 'CLOSE':
+        this.logMessageBase('Executing CLOSE command');
+        // Setting debugWindow to null triggers the full close sequence
+        this.debugWindow = null;
+        return true;
+
+      case 'UPDATE':
+        this.logMessageBase('Executing UPDATE command');
+        this.forceDisplayUpdate();
+        return true;
+
+      case 'SAVE':
+        // Handle SAVE {WINDOW} 'filename'
+        let saveIndex = 1;
+        let saveWindow = false;
+
+        // Check for optional WINDOW modifier
+        if (commandParts.length > saveIndex &&
+            commandParts[saveIndex].toUpperCase() === 'WINDOW') {
+          saveWindow = true;
+          saveIndex++;
+        }
+
+        // Get filename (remove quotes if present)
+        if (commandParts.length > saveIndex) {
+          let filename = commandParts[saveIndex];
+          // Remove surrounding quotes if present
+          if ((filename.startsWith("'") && filename.endsWith("'")) ||
+              (filename.startsWith('"') && filename.endsWith('"'))) {
+            filename = filename.slice(1, -1);
+          }
+
+          this.logMessageBase(`Executing SAVE command: ${filename} (window: ${saveWindow})`);
+
+          // Use existing base class method
+          await this.saveWindowToBMPFilename(filename);
+          return true;
+        }
+        this.logMessageBase('SAVE command missing filename');
+        return false;
+
+      case 'PC_KEY':
+        this.logMessageBase('Executing PC_KEY command');
+        this.enableKeyboardInput();
+        return true;
+
+      case 'PC_MOUSE':
+        this.logMessageBase('Executing PC_MOUSE command');
+        this.enableMouseInput();
+        return true;
+
+      default:
+        return false;
+    }
+  }
+
   /**
    * Public method for updating content. Handles queuing if window not ready.
    * Derived classes should NOT override this - override processMessageImmediate instead.

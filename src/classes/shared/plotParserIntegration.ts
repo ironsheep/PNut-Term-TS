@@ -206,27 +206,27 @@ export class PlotWindowIntegrator {
     try {
       switch (operation.type) {
         case CanvasOperationType.DRAW_DOT:
-          this.executeDraw('DOT', operation.parameters);
+          await this.executeDraw('DOT', operation.parameters);
           break;
 
         case CanvasOperationType.DRAW_LINE:
-          this.executeDraw('LINE', operation.parameters);
+          await this.executeDraw('LINE', operation.parameters);
           break;
 
         case CanvasOperationType.DRAW_CIRCLE:
-          this.executeDraw('CIRCLE', operation.parameters);
+          await this.executeDraw('CIRCLE', operation.parameters);
           break;
 
         case CanvasOperationType.DRAW_BOX:
-          this.executeDraw('BOX', operation.parameters);
+          await this.executeDraw('BOX', operation.parameters);
           break;
 
         case CanvasOperationType.DRAW_OVAL:
-          this.executeDraw('OVAL', operation.parameters);
+          await this.executeDraw('OVAL', operation.parameters);
           break;
 
         case CanvasOperationType.DRAW_TEXT:
-          this.executeDrawText(operation.parameters);
+          await this.executeDrawText(operation.parameters);
           break;
 
         case CanvasOperationType.SET_CURSOR:
@@ -243,7 +243,7 @@ export class PlotWindowIntegrator {
           break;
 
         case CanvasOperationType.CLEAR_CANVAS:
-          this.executeClearCanvas();
+          await this.executeClearCanvas();
           break;
 
         case CanvasOperationType.UPDATE_DISPLAY:
@@ -321,16 +321,16 @@ export class PlotWindowIntegrator {
   /**
    * Execute drawing operation directly on canvas
    */
-  private executeDraw(command: string, params: Record<string, any>): void {
+  private async executeDraw(command: string, params: Record<string, any>): Promise<void> {
     switch (command) {
       case 'DOT':
         // DOT is drawn as a small filled circle
         const dotSize = this.plotWindow.displaySpec?.dotSize || 1;
-        this.plotWindow.drawCircleToPlot(dotSize, 0, params.opacity ?? 255);
+        await this.plotWindow.drawCircleToPlot(dotSize, 0, params.opacity ?? 255);
         break;
 
       case 'LINE':
-        this.plotWindow.drawLineToPlot(
+        await this.plotWindow.drawLineToPlot(
           params.x ?? 0,
           params.y ?? 0,
           params.lineSize ?? 1,
@@ -346,7 +346,7 @@ export class PlotWindowIntegrator {
           opacity: params.opacity ?? 255,
           originalLineSize: params.lineSize
         });
-        this.plotWindow.drawCircleToPlot(
+        await this.plotWindow.drawCircleToPlot(
           params.diameter || 10,
           params.lineSize ?? 0,  // Use ?? to preserve 0 for filled circles
           params.opacity ?? 255
@@ -367,7 +367,7 @@ export class PlotWindowIntegrator {
   /**
    * Execute text drawing with font setup
    */
-  private executeDrawText(params: Record<string, any>): void {
+  private async executeDrawText(params: Record<string, any>): Promise<void> {
     // Only apply pending color if the last operation was SET_COLOR
     // This matches Pascal behavior: color immediately before TEXT sets text color
     if (this.lastOperationType === CanvasOperationType.SET_COLOR && this.lastSetColor) {
@@ -396,7 +396,7 @@ export class PlotWindowIntegrator {
 
     // Draw the text
     if (params.text) {
-      this.plotWindow.writeStringToPlot(params.text);
+      await this.plotWindow.writeStringToPlot(params.text);
     }
   }
 
@@ -657,8 +657,8 @@ export class PlotWindowIntegrator {
   /**
    * Execute canvas clear
    */
-  private executeClearCanvas(): void {
-    this.plotWindow.clearPlot();
+  private async executeClearCanvas(): Promise<void> {
+    await this.plotWindow.clearPlot();
   }
 
   /**

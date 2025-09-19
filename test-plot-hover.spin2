@@ -1,0 +1,79 @@
+'' Test PLOT window hover coordinate display
+'' This tests the new mouse hover functionality showing coordinates
+
+CON _clkfreq = 100_000_000
+
+PUB go() | i
+
+ ' Test 1: Basic PLOT window with default settings
+ debug(`PLOT MyPlot SIZE 400 300 COLOR BLACK CYAN)
+
+ ' Draw a grid to help verify coordinates
+ repeat i from 0 to 400 step 50
+   debug(`MyPlot LINE `(i) 0 `(i) 300)
+
+ repeat i from 0 to 300 step 50
+   debug(`MyPlot LINE 0 `(i) 400 `(i))
+
+ ' Draw some reference dots at known positions
+ debug(`MyPlot DOT 100 100 DOTSIZE 5 RED 15)  ' Should show 100,100 on hover
+ debug(`MyPlot DOT 200 150 DOTSIZE 5 GREEN 15) ' Should show 200,150 on hover
+ debug(`MyPlot DOT 300 200 DOTSIZE 5 BLUE 15)  ' Should show 300,200 on hover
+
+ ' Add text labels
+ debug(`MyPlot TEXT 90 90 '(100,100)')
+ debug(`MyPlot TEXT 190 140 '(200,150)')
+ debug(`MyPlot TEXT 290 190 '(300,200)')
+
+ repeat
+   waitms(100)
+
+'' Test 2: With DOTSIZE scaling
+PUB test_dotsize() | i
+
+ debug(`PLOT ScaledPlot SIZE 400 300 DOTSIZE 2 2 COLOR BLACK YELLOW)
+
+ ' With DOTSIZE 2,2 coordinates should be halved
+ ' Pixel (100,100) should show as (50,50)
+
+ repeat i from 0 to 200 step 25
+   debug(`ScaledPlot LINE `(i*2) 0 `(i*2) 300)
+
+ repeat i from 0 to 150 step 25
+   debug(`ScaledPlot LINE 0 `(i*2) 400 `(i*2))
+
+ debug(`ScaledPlot DOT 50 50 DOTSIZE 5 RED 15)   ' Pixel 100,100 → coord 50,50
+ debug(`ScaledPlot DOT 100 75 DOTSIZE 5 GREEN 15) ' Pixel 200,150 → coord 100,75
+
+ repeat
+   waitms(100)
+
+'' Test 3: With inverted axes
+PUB test_inverted() | i
+
+ debug(`PLOT InvertedPlot SIZE 400 300 CARTESIAN 1 1 COLOR BLACK WHITE)
+
+ ' With both axes inverted:
+ ' X: right-to-left (400-x)
+ ' Y: bottom-to-top (already inverted in canvas)
+
+ debug(`InvertedPlot DOT 100 100 DOTSIZE 5 RED 15)
+ debug(`InvertedPlot DOT 200 150 DOTSIZE 5 GREEN 15)
+
+ debug(`InvertedPlot TEXT 90 90 'Check hover')
+
+ repeat
+   waitms(100)
+
+'' Test 4: With HIDEXY
+PUB test_hidexy() | i
+
+ debug(`PLOT NoCoords SIZE 400 300 HIDEXY COLOR BLACK GRAY)
+
+ ' Should NOT show any coordinate display on hover
+
+ debug(`NoCoords DOT 200 150 DOTSIZE 10 CYAN 15)
+ debug(`NoCoords TEXT 180 130 'No coords on hover')
+
+ repeat
+   waitms(100)
