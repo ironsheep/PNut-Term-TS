@@ -1095,15 +1095,33 @@ export class MainWindow {
     }
     if (this._serialPort !== undefined) {
       this.logMessage(`* openSerialPort() - IS OPEN`);
+
+      // Initialize DTR/RTS to known de-asserted state (HIGH) for hardware sync
+      // This ensures our state variables match the actual hardware state
+      try {
+        await this._serialPort.setDTR(false);  // false = HIGH/de-asserted
+        await this._serialPort.setRTS(false);  // false = HIGH/de-asserted
+
+        // Keep our state variables in sync with what we just set
+        this.dtrState = false;
+        this.rtsState = false;
+
+        this.logMessage(`* openSerialPort() - DTR/RTS initialized to de-asserted (HIGH)`);
+        this.logMessage(`* openSerialPort() - DTR state: ${this.dtrState}, RTS state: ${this.rtsState}`);
+      } catch (error) {
+        this.logMessage(`* openSerialPort() - WARNING: Failed to initialize DTR/RTS: ${error}`);
+        // Continue anyway - not critical for basic operation
+      }
+
       this._serialPort.on('data', (data) => this.handleSerialRx(data));
       this.updateConnectionStatus(true);
       // Removed startup text - connection status now shown in status bar
-      
+
       // Load device-specific control line preference
       this.controlLineMode = this.getDeviceControlLine();
       this.updateControlLineUI();
       this.logMessage(`🔧 Control line mode set to ${this.controlLineMode} for this device`);
-      
+
       // Initialize downloader with serial port
       if (!this.downloader && this._serialPort) {
         this.downloader = new Downloader(this.context, this._serialPort);
@@ -4835,32 +4853,41 @@ export class MainWindow {
     
     if (this._serialPort) {
       try {
-        this.logMessage(`[DTR TOGGLE] Calling setDTR(${newState}) on serial port...`);
-        await this._serialPort.setDTR(newState);
-        this.logMessage(`[DTR TOGGLE] Hardware DTR line successfully set to: ${newState}`);
-        
-        // Only update state after successful hardware change
-        this.dtrState = newState;
-        
-        // Trigger reset when DTR is asserted (going high)
-        if (this.dtrState) {
-          this.logMessage(`[DTR TOGGLE] DTR asserted - triggering reset`);
+        // With Prop Plug hardware, ANY DTR transition triggers a 17µs reset pulse
+        // So we only touch the hardware when going from ON to OFF (de-asserting)
+
+        if (newState) {
+          // Press ON: Just track state internally, DON'T touch hardware
+          this.logMessage(`[DTR TOGGLE] DTR ON (tracked internally, no hardware change)`);
+          this.dtrState = newState;
+        } else {
+          // Press OFF: Actually toggle DTR to trigger the hardware reset pulse
+          this.logMessage(`[DTR TOGGLE] DTR OFF - triggering hardware reset pulse`);
+
+          // Toggle DTR to trigger Prop Plug's 17µs reset pulse
+          await this._serialPort.setDTR(true);
+          await this._serialPort.setDTR(false);
+          this.logMessage(`[DTR TOGGLE] Hardware reset pulse triggered`);
+
+          // Update state
+          this.dtrState = newState;
+
+          // Handle the reset in our system
+          this.logMessage(`[DTR RESET] Device reset via DTR toggle`);
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.handleDTRReset();
           }
           // Signal parser that DTR reset occurred
           this.serialProcessor.onDTRReset();
-          
-          // Save DTR preference for this device when successfully used
+
+          // Save DTR preference for this device
           this.saveDeviceControlLine('DTR');
-          
+
           // Update control line mode and UI if needed
           if (this.controlLineMode !== 'DTR') {
             this.controlLineMode = 'DTR';
             this.updateControlLineUI();
           }
-        } else {
-          this.logMessage(`[DTR TOGGLE] DTR de-asserted`);
         }
         
       } catch (error) {
@@ -4885,45 +4912,67 @@ export class MainWindow {
   }
 
   private async toggleRTS(): Promise<void> {
-    // State management: press-on/press-off (NOT auto-toggle)
+    // RTS Toggle: State Management (press-on/press-off, NOT auto-toggle)
+    // Same behavior as DTR: Press ON only tracks state, Press OFF triggers hardware pulse
+    const previousState = this.rtsState;
     const newState = !this.rtsState;
+
+    this.logMessage(`[RTS TOGGLE] ====== RTS TOGGLE START ======`);
+    this.logMessage(`[RTS TOGGLE] Previous state: ${previousState}`);
+    this.logMessage(`[RTS TOGGLE] New state will be: ${newState}`);
+
     if (this._serialPort) {
       try {
-        await this._serialPort.setRTS(newState);
-        this.logMessage(`[RTS] Hardware control set to ${newState ? 'ON' : 'OFF'}`);
-        
-        // Only update state after successful hardware change
-        this.rtsState = newState;
-        
-        // If RTS goes high, reset the Debug Logger
-        if (this.rtsState) {
-          this.logMessage(`[RTS RESET] Device reset via RTS - clearing log and synchronizing parser`);
+        if (newState) {
+          // Press ON: Just track state internally, DON'T touch hardware
+          // This avoids triggering the Prop Plug's automatic reset pulse
+          this.logMessage(`[RTS TOGGLE] RTS ON (tracked internally, no hardware change)`);
+          this.rtsState = newState;
+        } else {
+          // Press OFF: Actually toggle RTS to trigger the hardware reset pulse
+          // The Prop Plug will generate a ~17µs reset pulse automatically
+          this.logMessage(`[RTS TOGGLE] RTS OFF - Triggering hardware reset pulse`);
+
+          // Toggle RTS to trigger the Prop Plug's built-in reset pulse
+          await this._serialPort.setRTS(true);
+          await this._serialPort.setRTS(false);
+
+          this.logMessage(`[RTS RESET] Device reset via RTS pulse - clearing log and synchronizing parser`);
+
+          // Handle the reset in our system
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.handleRTSReset();
           }
           // Sync parser on RTS reset (using RTS-specific method)
           this.serialProcessor.onRTSReset();
-          
+
           // Save RTS preference for this device when successfully used
           this.saveDeviceControlLine('RTS');
-          
+
           // Update control line mode and UI if needed
           if (this.controlLineMode !== 'RTS') {
             this.controlLineMode = 'RTS';
             this.updateControlLineUI();
           }
+
+          // Update state after successful hardware operation
+          this.rtsState = newState;
         }
+
+        this.logMessage(`[RTS TOGGLE] Final state: ${this.rtsState}`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logMessage(`ERROR: Failed to set RTS: ${errorMsg}`);
         // Don't change state on error
       }
     }
+
     // Update checkbox via webContents send (IPC)
     if (this.mainWindow?.webContents) {
       this.mainWindow.webContents.send('update-rts-state', this.rtsState);
     }
-    this.logMessage(`[RTS TOGGLE] State changed to ${this.rtsState ? 'ON' : 'OFF'}`);
+
+    this.logMessage(`[RTS TOGGLE] ====== RTS TOGGLE END ======`);
   }
 
   // Removed duplicate currentDownloadMode - using downloadMode from line 68
@@ -5024,7 +5073,15 @@ export class MainWindow {
 
   private async performDownload(toFlash: boolean): Promise<void> {
     const target = toFlash ? 'Flash' : 'RAM';
-    const result = await dialog.showOpenDialog(this.mainWindow!, {
+
+    // Add null check and log for debugging
+    if (!this.mainWindow) {
+      console.error('[DOWNLOAD] Main window is null/undefined!');
+      this.logMessage('ERROR: Cannot open download dialog - main window not available');
+      return;
+    }
+
+    const result = await dialog.showOpenDialog(this.mainWindow, {
       title: `Select Binary File to Download to ${target}`,
       filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
       properties: ['openFile']
@@ -5068,9 +5125,13 @@ export class MainWindow {
 
           if (downloadSuccess) {
             // Log download success to debug logger window
+            const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
+            console.log(`[DOWNLOAD] ${successMsg}`);
+
             if (this.debugLoggerWindow) {
-              const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
               this.debugLoggerWindow.logSystemMessage(successMsg);
+            } else {
+              console.warn('[DOWNLOAD] Debug logger window not available for success message');
             }
 
             this.logMessage(`Successfully downloaded ${path.basename(filePath)} to ${target}`);
@@ -5082,26 +5143,41 @@ export class MainWindow {
             }, 2000);
           } else {
             // Download failed but didn't throw exception
-            const errorMsg = 'Download failed - check device connection and try again';
+            const errorMsg = 'No Propeller v2 device found - check device connection and try again';
 
-            // Log download failure to debug logger window
+            // Log download failure to debug logger window WITH REASON
+            const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
+            console.log(`[DOWNLOAD] ${failureMsg}`);
+
             if (this.debugLoggerWindow) {
-              const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}`;
               this.debugLoggerWindow.logSystemMessage(failureMsg);
+            } else {
+              console.warn('[DOWNLOAD] Debug logger window not available for failure message');
             }
 
-            this.logMessage(`ERROR: Failed to download to ${target}`);
+            this.logMessage(`ERROR: Failed to download to ${target}: ${errorMsg}`);
             this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} failed`);
 
-            dialog.showErrorBox('Download Failed', `Failed to download to ${target}:\n${errorMsg}`);
+            // Use non-blocking dialog to avoid interrupting serial data processing
+            dialog.showMessageBox(this.mainWindow!, {
+              type: 'error',
+              title: 'Download Failed',
+              message: `Failed to download to ${target}`,
+              detail: errorMsg,
+              buttons: ['OK']
+            });
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
 
           // Log download failure to debug logger window
+          const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
+          console.log(`[DOWNLOAD] ${failureMsg}`);
+
           if (this.debugLoggerWindow) {
-            const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
             this.debugLoggerWindow.logSystemMessage(failureMsg);
+          } else {
+            console.warn('[DOWNLOAD] Debug logger window not available for error message');
           }
 
           this.logMessage(`ERROR: Failed to download to ${target}: ${errorMsg}`);
@@ -5115,11 +5191,24 @@ export class MainWindow {
             this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
           }
 
-          dialog.showErrorBox('Download Failed', `Failed to download to ${target}:\n${errorMsg}`);
+          // Use non-blocking dialog to avoid interrupting serial data processing
+          dialog.showMessageBox(this.mainWindow!, {
+            type: 'error',
+            title: 'Download Failed',
+            message: `Failed to download to ${target}`,
+            detail: errorMsg,
+            buttons: ['OK']
+          });
         }
       } else {
         this.logMessage(`ERROR: Serial port or downloader not initialized`);
-        dialog.showErrorBox('Not Connected', 'Please connect to a Propeller 2 device first.');
+        // Use non-blocking dialog to avoid interrupting serial data processing
+        dialog.showMessageBox(this.mainWindow!, {
+          type: 'error',
+          title: 'Not Connected',
+          message: 'Please connect to a Propeller 2 device first.',
+          buttons: ['OK']
+        });
       }
     }
   }
@@ -5147,7 +5236,14 @@ export class MainWindow {
   }
 
   private async playRecording(): Promise<void> {
-    const result = await dialog.showOpenDialog(this.mainWindow!, {
+    // Add null check
+    if (!this.mainWindow) {
+      console.error('[PLAYBACK] Main window is null/undefined!');
+      this.logMessage('ERROR: Cannot open playback dialog - main window not available');
+      return;
+    }
+
+    const result = await dialog.showOpenDialog(this.mainWindow, {
       title: 'Select Recording to Play',
       filters: [{ name: 'P2 Recording Files', extensions: ['p2rec'] }],
       properties: ['openFile']
@@ -5491,9 +5587,14 @@ export class MainWindow {
   }
 
   private updateRecordingStatus(status: string): void {
+    // Escape status string to prevent injection issues with quotes and special characters
+    const escapedStatus = status.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    // Wrap in IIFE to avoid variable redeclaration errors when called multiple times
     this.safeExecuteJS(`
-      const statusEl = document.getElementById('recording-status');
-      if (statusEl) statusEl.textContent = '${status}';
+      (function() {
+        const statusEl = document.getElementById('recording-status');
+        if (statusEl) statusEl.textContent = '${escapedStatus}';
+      })();
     `, 'updateRecordingStatus');
   }
 
