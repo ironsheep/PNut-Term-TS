@@ -192,58 +192,9 @@ export class PlotCommandParser implements IPlotCommandParser {
       handler: this.handleOpacityCommand.bind(this)
     });
 
-    // Window commands
-    this.registerCommand({
-      name: 'CLEAR',
-      parameters: [],
-      description: 'Clear the display',
-      examples: ['CLEAR'],
-      handler: this.handleClearCommand.bind(this)
-    });
+    // Window commands - REMOVED: CLEAR, UPDATE, CLOSE, SAVE now handled by base class handleCommonCommand()
 
-    this.registerCommand({
-      name: 'UPDATE',
-      parameters: [],
-      description: 'Update display (flush buffer)',
-      examples: ['UPDATE'],
-      handler: this.handleUpdateCommand.bind(this)
-    });
-
-    this.registerCommand({
-      name: 'CLOSE',
-      parameters: [],
-      description: 'Close the window',
-      examples: ['CLOSE'],
-      handler: this.handleCloseCommand.bind(this)
-    });
-
-    this.registerCommand({
-      name: 'SAVE',
-      parameters: [
-        { name: 'target', type: 'string', required: false, defaultValue: 'window' },
-        { name: 'filename', type: 'string', required: true }
-      ],
-      description: 'Save window or display to bitmap file',
-      examples: ['SAVE "plot.bmp"', 'SAVE WINDOW "myplot.bmp"'],
-      handler: this.handleSaveCommand.bind(this)
-    });
-
-    // Input commands
-    this.registerCommand({
-      name: 'PC_KEY',
-      parameters: [],
-      description: 'Enable keyboard input forwarding',
-      examples: ['PC_KEY'],
-      handler: this.handlePcKeyCommand.bind(this)
-    });
-
-    this.registerCommand({
-      name: 'PC_MOUSE',
-      parameters: [],
-      description: 'Enable mouse input forwarding',
-      examples: ['PC_MOUSE'],
-      handler: this.handlePcMouseCommand.bind(this)
-    });
+    // Input commands - REMOVED: PC_KEY and PC_MOUSE now handled by base class handleCommonCommand()
 
     // Color commands (will be expanded in next phase)
     this.registerCommand({
@@ -313,22 +264,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       handler: this.handleTextStyleCommand.bind(this)
     });
 
-    // Interactive input commands
-    this.registerCommand({
-      name: 'PC_KEY',
-      parameters: [],
-      description: 'Capture last pressed key and return ASCII/scan code (non-blocking)',
-      examples: ['PC_KEY'],
-      handler: this.handlePcKeyCommand.bind(this)
-    });
-
-    this.registerCommand({
-      name: 'PC_MOUSE',
-      parameters: [],
-      description: 'Capture current mouse state and return 32-bit encoded value',
-      examples: ['PC_MOUSE'],
-      handler: this.handlePcMouseCommand.bind(this)
-    });
+    // Interactive input commands - REMOVED: PC_KEY and PC_MOUSE duplicates, now handled by base class
 
     // Sprite and layer commands
     this.registerCommand({
@@ -336,11 +272,11 @@ export class PlotCommandParser implements IPlotCommandParser {
       parameters: [
         { name: 'id', type: 'number', required: true, range: { min: 0, max: 255 } },
         { name: 'width', type: 'number', required: true, range: { min: 1, max: 32 } },
-        { name: 'height', type: 'number', required: true, range: { min: 1, max: 32 } },
-        { name: 'pixelData', type: 'string', required: true }
+        { name: 'height', type: 'number', required: true, range: { min: 1, max: 32 } }
+        // Note: pixels and colors are variable-length arrays parsed manually in handler
       ],
-      description: 'Define a sprite with pixel data and store in sprite cache (ID 0-255, size 1-32x1-32)',
-      examples: ['SPRITEDEF 0 8 8 $FF00FF00...', 'SPRITEDEF 42 16 16 %10101010...'],
+      description: 'Define a sprite with pixel indices and color palette (Pascal format: SPRITEDEF id xsize ysize pixels... colors...)',
+      examples: ['SPRITEDEF 0 2 2 0 1 0 1 $FF0000 $00FF00', 'SPRITEDEF 1 4 4 0 1 2 3 ... $000000 $FFFFFF ...'],
       handler: this.handleSpriteDefCommand.bind(this)
     });
 
@@ -348,39 +284,64 @@ export class PlotCommandParser implements IPlotCommandParser {
       name: 'SPRITE',
       parameters: [
         { name: 'id', type: 'number', required: true, range: { min: 0, max: 255 } },
-        { name: 'x', type: 'coordinate', required: false, defaultValue: 0 },
-        { name: 'y', type: 'coordinate', required: false, defaultValue: 0 },
+        { name: 'orientation', type: 'number', required: false, defaultValue: 0, range: { min: 0, max: 359 } },
+        { name: 'scale', type: 'number', required: false, defaultValue: 1.0 },
         { name: 'opacity', type: 'count', required: false, defaultValue: 255, range: { min: 0, max: 255 } }
       ],
-      description: 'Render a previously defined sprite at specified coordinates',
-      examples: ['SPRITE 0', 'SPRITE 42 100 200', 'SPRITE 5 -50 75 128'],
+      description: 'Render a previously defined sprite with transformation support (Pascal format: SPRITE id {orientation {scale {opacity}}})',
+      examples: ['SPRITE 0', 'SPRITE 42 90', 'SPRITE 5 180 2.0', 'SPRITE 1 45 0.5 128'],
       handler: this.handleSpriteCommand.bind(this)
     });
 
     this.registerCommand({
       name: 'LAYER',
       parameters: [
-        { name: 'layerIndex', type: 'number', required: true, range: { min: 0, max: 7 } },
+        { name: 'layerIndex', type: 'number', required: true, range: { min: 1, max: 16 } },
         { name: 'filename', type: 'string', required: true }
       ],
-      description: 'Load external bitmap file (.bmp) from working directory into specified layer (0-7) for CROP operations',
-      examples: ['LAYER 0 "background.bmp"', 'LAYER 3 "texture.bmp"'],
+      description: 'Load external bitmap file (.bmp) from working directory into specified layer (1-16) for CROP operations (Pascal format: LAYER layer \'filename.bmp\')',
+      examples: ['LAYER 1 "background.bmp"', 'LAYER 3 "texture.bmp"'],
       handler: this.handleLayerCommand.bind(this)
     });
 
     this.registerCommand({
       name: 'CROP',
       parameters: [
-        { name: 'left', type: 'number', required: true },
-        { name: 'top', type: 'number', required: true },
-        { name: 'width', type: 'number', required: true },
-        { name: 'height', type: 'number', required: true },
-        { name: 'x', type: 'coordinate', required: false, defaultValue: 0 },
-        { name: 'y', type: 'coordinate', required: false, defaultValue: 0 }
+        { name: 'layerIndex', type: 'number', required: true, range: { min: 1, max: 16 } }
+        // Note: Additional parameters vary by mode (explicit vs AUTO) and are parsed manually
       ],
-      description: 'Copy rectangular region from loaded layer bitmap to canvas at specified position',
-      examples: ['CROP 0 0 64 64', 'CROP 10 20 50 30 100 150'],
+      description: 'Copy rectangular region from loaded layer bitmap to canvas (Pascal formats: CROP layer {left top width height {x y}} or CROP layer AUTO x y)',
+      examples: ['CROP 1 0 0 64 64', 'CROP 2 10 20 50 30 100 150', 'CROP 3 AUTO 50 75'],
       handler: this.handleCropCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'LUT',
+      parameters: [
+        { name: 'index', type: 'number', required: true, range: { min: 0, max: 255 } },
+        { name: 'color', type: 'color', required: true }
+      ],
+      description: 'Set single palette entry for indexed color mode (Pascal: LUT index color)',
+      examples: ['LUT 0 $FF0000', 'LUT 1 RED', 'LUT 15 0x00FF00'],
+      handler: this.handleLutCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'LUTCOLORS',
+      parameters: [
+        // Parameters are variable length and parsed manually
+      ],
+      description: 'Load multiple RGB24 color values into consecutive palette entries (Pascal: LUTCOLORS color1 color2 ... colorN)',
+      examples: ['LUTCOLORS $FF0000 $00FF00 $0000FF', 'LUTCOLORS RED GREEN BLUE'],
+      handler: this.handleLutColorsCommand.bind(this)
+    });
+
+    this.registerCommand({
+      name: 'PRECISE',
+      parameters: [],
+      description: 'Toggle coordinate precision mode between standard (0) and high precision (8) for 256ths of pixel accuracy (Pascal: vPrecise := vPrecise xor 8)',
+      examples: ['PRECISE'],
+      handler: this.handlePreciseCommand.bind(this)
     });
   }
 
@@ -423,15 +384,22 @@ export class PlotCommandParser implements IPlotCommandParser {
       const workingTokens = tokens.slice(0, -1);
 
       // Check if this is a compound command by looking for patterns
-      if (this.isCompoundCommand(workingTokens)) {
+      const isCompound = this.isCompoundCommand(workingTokens);
+      console.log(`[PARSER] isCompoundCommand returned: ${isCompound}`);
+
+      if (isCompound) {
         // Parse as compound command - all operations combined
+        console.log(`[PARSER] Parsing as compound command`);
         const compoundCommand = this.parseCompoundCommand(workingTokens, message);
         commands.push(compoundCommand);
       } else {
         // Parse as separate commands
+        console.log(`[PARSER] Parsing as separate commands`);
         let currentIndex = 0;
         while (currentIndex < workingTokens.length) {
+          console.log(`[PARSER] Parsing command at index ${currentIndex}`);
           const commandResult = this.parseCommand(workingTokens, currentIndex, message);
+          console.log(`[PARSER] parseCommand returned:`, commandResult.command.command);
           commands.push(commandResult.command);
           currentIndex = commandResult.nextIndex;
         }
@@ -466,11 +434,20 @@ export class PlotCommandParser implements IPlotCommandParser {
     let commandCount = 0;
     let inConfigureCommand = false;
 
+
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
 
       if (token.type === 'COMMAND' && this.registry.hasCommand(token.value)) {
         const commandName = token.value.toUpperCase();
+
+        // Skip color names that are incorrectly tokenized as commands
+        const colorNames = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'YELLOW',
+                           'CYAN', 'MAGENTA', 'ORANGE', 'PURPLE', 'PINK', 'BROWN',
+                           'GRAY', 'GREY'];
+        if (colorNames.includes(commandName)) {
+          continue; // Skip color names
+        }
 
         // Check if this is a CONFIGURE command
         if (commandName === 'CONFIGURE') {
@@ -731,7 +708,6 @@ export class PlotCommandParser implements IPlotCommandParser {
     // Extract parameters
     const parameters = [];
     let currentIndex = startIndex + 1;
-
     // Skip delimiter tokens
     while (currentIndex < tokens.length && tokens[currentIndex].type === 'DELIMITER') {
       currentIndex++;
@@ -985,9 +961,15 @@ export class PlotCommandParser implements IPlotCommandParser {
       const x = xValue ?? 0;
       const y = yValue ?? 0;
 
-      // Parse optional lineSize parameter
+      // Parse optional parameters
+      // Pascal format: LINE x y {linesize {opacity}}
+      // LINE x y lineSize - 3 params: third is lineSize
+      // LINE x y lineSize opacity - 4 params: third is lineSize, fourth is opacity
       let lineSize = 1;
-      if (tokens.length > 2 && tokens[2].type === 'NUMBER') {
+      let opacity = 255;
+
+      if (tokens.length === 3 && tokens[2].type === 'NUMBER') {
+        // Three parameters: LINE x y lineSize
         const lineSizeValue = Spin2NumericParser.parseCount(tokens[2].value);
         if (lineSizeValue !== null && lineSizeValue >= 1 && lineSizeValue <= 32) {
           lineSize = lineSizeValue;
@@ -995,17 +977,26 @@ export class PlotCommandParser implements IPlotCommandParser {
           result.warnings.push(`Invalid line size '${tokens[2].value}', using default: ${lineSize}`);
           this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, lineSize);
         }
-      }
+      } else if (tokens.length >= 4) {
+        // Four or more parameters: LINE x y lineSize opacity
+        if (tokens[2].type === 'NUMBER') {
+          const lineSizeValue = Spin2NumericParser.parseCount(tokens[2].value);
+          if (lineSizeValue !== null && lineSizeValue >= 1 && lineSizeValue <= 32) {
+            lineSize = lineSizeValue;
+          } else {
+            result.warnings.push(`Invalid line size '${tokens[2].value}', using default: ${lineSize}`);
+            this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, lineSize);
+          }
+        }
 
-      // Parse optional opacity parameter
-      let opacity = 255;
-      if (tokens.length > 3 && tokens[3].type === 'NUMBER') {
-        const opacityValue = Spin2NumericParser.parseCount(tokens[3].value);
-        if (opacityValue !== null && opacityValue >= 0 && opacityValue <= 255) {
-          opacity = opacityValue;
-        } else {
-          result.warnings.push(`Invalid opacity '${tokens[3].value}', using default: ${opacity}`);
-          this.logParameterWarning(context.originalCommand, 'LINE opacity', tokens[3].value, opacity);
+        if (tokens[3].type === 'NUMBER') {
+          const opacityValue = Spin2NumericParser.parseCount(tokens[3].value);
+          if (opacityValue !== null && opacityValue >= 0 && opacityValue <= 255) {
+            opacity = opacityValue;
+          } else {
+            result.warnings.push(`Invalid opacity '${tokens[3].value}', using default: ${opacity}`);
+            this.logParameterWarning(context.originalCommand, 'LINE opacity', tokens[3].value, opacity);
+          }
         }
       }
 
@@ -1082,7 +1073,32 @@ export class PlotCommandParser implements IPlotCommandParser {
           this.logParameterWarning(context.originalCommand, `${commandName} ${paramName}`, tokens[tokenIndex].value, 1);
           params[paramName] = 1;
         } else {
-          params[paramName] = value;
+          // Apply range clamping based on parameter type
+          if (paramName === 'diameter') {
+            // Clamp diameter to 1-2048 range
+            if (value < 1) {
+              params[paramName] = 1;
+              result.warnings.push(`Diameter clamped from ${value} to 1`);
+            } else if (value > 2048) {
+              params[paramName] = 2048;
+              result.warnings.push(`Diameter clamped from ${value} to 2048`);
+            } else {
+              params[paramName] = value;
+            }
+          } else if (paramName === 'width' || paramName === 'height') {
+            // Clamp width/height to reasonable range (1-4096)
+            if (value < 1) {
+              params[paramName] = 1;
+              result.warnings.push(`${paramName} clamped from ${value} to 1`);
+            } else if (value > 4096) {
+              params[paramName] = 4096;
+              result.warnings.push(`${paramName} clamped from ${value} to 4096`);
+            } else {
+              params[paramName] = value;
+            }
+          } else {
+            params[paramName] = value;
+          }
         }
         tokenIndex++;
       }
@@ -1091,8 +1107,33 @@ export class PlotCommandParser implements IPlotCommandParser {
       let lineSize = commandName === 'DOT' ? 1 : 0; // DOT defaults to 1, others to 0 (filled)
       if (tokenIndex < tokens.length && tokens[tokenIndex].type === 'NUMBER') {
         const lineSizeValue = Spin2NumericParser.parseCount(tokens[tokenIndex].value);
-        if (lineSizeValue !== null && lineSizeValue >= 0 && lineSizeValue <= 32) {
-          lineSize = lineSizeValue;
+        if (lineSizeValue !== null) {
+          // Clamp lineSize to valid range
+          if (commandName === 'DOT') {
+            // DOT: must be 1-32 (cannot be filled/0)
+            if (lineSizeValue < 1) {
+              lineSize = 1;
+              result.warnings.push(`Line size clamped from ${lineSizeValue} to 1`);
+            } else if (lineSizeValue > 32) {
+              lineSize = 32;
+              result.warnings.push(`Line size clamped from ${lineSizeValue} to 32`);
+            } else {
+              lineSize = lineSizeValue;
+            }
+          } else {
+            // Other shapes: 0 (filled) or 1-32 (outline)
+            if (lineSizeValue < 0) {
+              lineSize = 1; // Negative values clamp to 1
+              result.warnings.push(`Line size clamped from ${lineSizeValue} to 1`);
+            } else if (lineSizeValue === 0) {
+              lineSize = 0; // Filled is valid for non-DOT shapes
+            } else if (lineSizeValue > 32) {
+              lineSize = 32;
+              result.warnings.push(`Line size clamped from ${lineSizeValue} to 32`);
+            } else {
+              lineSize = lineSizeValue;
+            }
+          }
         } else {
           result.warnings.push(`Invalid line size '${tokens[tokenIndex].value}', using default: ${lineSize}`);
           this.logParameterWarning(context.originalCommand, `${commandName} linesize`, tokens[tokenIndex].value, lineSize);
@@ -1340,125 +1381,8 @@ export class PlotCommandParser implements IPlotCommandParser {
     return result;
   }
 
-  private handleClearCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.CLEAR_CANVAS,
-      {},
-      true // CLEAR is deferrable
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] CLEAR parsed`);
-
-    return result;
-  }
-
-  private handleUpdateCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.UPDATE_DISPLAY,
-      {},
-      false // UPDATE is immediate
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] UPDATE parsed`);
-
-    return result;
-  }
-
-  private handleCloseCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    // CLOSE is handled immediately by the window, not through canvas operations
-    // This matches the existing implementation behavior
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.CONFIGURE_WINDOW,
-      { action: 'CLOSE' },
-      false // CLOSE is immediate
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] CLOSE parsed`);
-
-    return result;
-  }
-
-  private handleSaveCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    const tokens = context.tokens;
-
-    // SAVE command can be:
-    // 1. SAVE "filename"
-    // 2. SAVE WINDOW "filename"
-
-    let filename: string;
-    let target = 'window'; // default
-
-    if (tokens.length === 1) {
-      // SAVE "filename"
-      if (tokens[0].type === PlotTokenType.STRING) {
-        filename = tokens[0].value;
-      } else {
-        this.logError(`[PLOT PARSE ERROR] SAVE command requires a quoted filename: ${context.originalCommand}`);
-        result.success = false;
-        result.errors.push('SAVE command requires a quoted filename');
-        return result;
-      }
-    } else if (tokens.length === 2) {
-      // SAVE WINDOW "filename"
-      if (tokens[0].value.toUpperCase() === 'WINDOW' && tokens[1].type === PlotTokenType.STRING) {
-        target = 'window';
-        filename = tokens[1].value;
-      } else {
-        this.logError(`[PLOT PARSE ERROR] Invalid SAVE command syntax: ${context.originalCommand}`);
-        result.success = false;
-        result.errors.push('Invalid SAVE command syntax. Use: SAVE "filename" or SAVE WINDOW "filename"');
-        return result;
-      }
-    } else {
-      this.logError(`[PLOT PARSE ERROR] Invalid SAVE command parameters: ${context.originalCommand}`);
-      result.success = false;
-      result.errors.push('Invalid SAVE command parameters');
-      return result;
-    }
-
-    // SAVE is handled immediately by the window, not through canvas operations
-    const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-      CanvasOperationType.CONFIGURE_WINDOW,
-      { action: 'SAVE', target: target, filename: filename },
-      false // SAVE is immediate
-    );
-
-    result.canvasOperations = [this.convertToCanvasOperation(operation)];
-    console.log(`[PLOT] SAVE ${target} "${filename}" parsed`);
-
-    return result;
-  }
+  // REMOVED: handleClearCommand, handleUpdateCommand, handleCloseCommand, handleSaveCommand
+  // These commands are now handled by the base class handleCommonCommand() method
 
 
   private handleColorCommand(context: CommandContext): CommandResult {
@@ -2143,63 +2067,9 @@ export class PlotCommandParser implements IPlotCommandParser {
     return result;
   }
 
-  private handlePcKeyCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    try {
-      // PC_KEY is an interactive command that requests key input from the window
-      // This creates a special operation that will be handled by the integration layer
-      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-        CanvasOperationType.PC_INPUT || ('PC_INPUT' as any),
-        { inputType: 'KEY' },
-        false // PC_KEY is immediate, not deferrable
-      );
-
-      result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] PC_KEY parsed - requesting key input`);
-
-    } catch (error) {
-      result.success = false;
-      result.errors.push(`PC_KEY command failed: ${error}`);
-      this.logError(`[PLOT PARSE ERROR] PC_KEY command execution failed: ${error}`);
-    }
-
-    return result;
-  }
-
-  private handlePcMouseCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    try {
-      // PC_MOUSE is an interactive command that requests mouse state from the window
-      // This creates a special operation that will be handled by the integration layer
-      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-        CanvasOperationType.PC_INPUT || ('PC_INPUT' as any),
-        { inputType: 'MOUSE' },
-        false // PC_MOUSE is immediate, not deferrable
-      );
-
-      result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] PC_MOUSE parsed - requesting mouse state`);
-
-    } catch (error) {
-      result.success = false;
-      result.errors.push(`PC_MOUSE command failed: ${error}`);
-      this.logError(`[PLOT PARSE ERROR] PC_MOUSE command execution failed: ${error}`);
-    }
-
-    return result;
-  }
+  // REMOVED: handlePcKeyCommand and handlePcMouseCommand
+  // These commands are now handled by the base class handleCommonCommand() method
+  // which properly implements TLong transmission to P2
 
   private handleSpriteDefCommand(context: CommandContext): CommandResult {
     const result: CommandResult = {
@@ -2212,9 +2082,11 @@ export class PlotCommandParser implements IPlotCommandParser {
     try {
       const tokens = context.tokens;
 
-      if (tokens.length < 4) {
+      // Pascal format: SPRITEDEF id xsize ysize pixels... colors...
+      // Minimum: id + xsize + ysize + (xsize*ysize pixels) + 256 colors
+      if (tokens.length < 3) {
         result.success = false;
-        result.errors.push('SPRITEDEF command requires sprite ID, width, height, and pixel data');
+        result.errors.push('SPRITEDEF command requires at least sprite ID, width, and height');
         this.logError(`[PLOT PARSE ERROR] Missing parameters for SPRITEDEF command: ${context.originalCommand}`);
         return result;
       }
@@ -2246,29 +2118,67 @@ export class PlotCommandParser implements IPlotCommandParser {
         return result;
       }
 
-      // Parse pixel data (hex string)
-      const pixelData = tokens[3].value;
-      if (!pixelData || pixelData.length === 0) {
+      const expectedPixels = widthValue * heightValue;
+      const minimumTokens = 3 + expectedPixels; // id + width + height + pixels
+
+      if (tokens.length < minimumTokens) {
         result.success = false;
-        result.errors.push('SPRITEDEF command requires pixel data');
-        this.logError(`[PLOT PARSE ERROR] Missing pixel data for SPRITEDEF: ${context.originalCommand}`);
+        result.errors.push(`SPRITEDEF requires ${expectedPixels} pixel values for ${widthValue}x${heightValue} sprite, found ${tokens.length - 3}`);
+        this.logError(`[PLOT PARSE ERROR] Insufficient pixel data for SPRITEDEF: ${context.originalCommand}`);
         return result;
       }
 
-      // Create SPRITEDEF operation
+      // Parse pixel indices (xsize * ysize values)
+      const pixels: number[] = [];
+      for (let i = 0; i < expectedPixels; i++) {
+        const tokenIndex = 3 + i;
+        const pixelValue = Spin2NumericParser.parseInteger(tokens[tokenIndex].value, false);
+        if (pixelValue === null || pixelValue < 0 || pixelValue > 255) {
+          result.success = false;
+          result.errors.push(`Invalid pixel index at position ${i}: ${tokens[tokenIndex].value}. Must be 0-255`);
+          this.logError(`[PLOT PARSE ERROR] Invalid pixel index for SPRITEDEF: ${tokens[tokenIndex].value}`);
+          return result;
+        }
+        pixels.push(pixelValue);
+      }
+
+      // Parse color palette (remaining tokens up to 256 colors)
+      const colors: number[] = [];
+      const colorTokenStart = 3 + expectedPixels;
+      const maxColors = Math.min(256, tokens.length - colorTokenStart);
+
+      for (let i = 0; i < maxColors; i++) {
+        const tokenIndex = colorTokenStart + i;
+        const colorValue = Spin2NumericParser.parseInteger(tokens[tokenIndex].value, true); // Allow hex colors
+        if (colorValue === null) {
+          result.success = false;
+          result.errors.push(`Invalid color value at position ${i}: ${tokens[tokenIndex].value}`);
+          this.logError(`[PLOT PARSE ERROR] Invalid color value for SPRITEDEF: ${tokens[tokenIndex].value}`);
+          return result;
+        }
+        colors.push(colorValue & 0xFFFFFF); // Ensure 24-bit RGB
+      }
+
+      // Fill remaining colors with black if fewer than 256 provided
+      while (colors.length < 256) {
+        colors.push(0x000000);
+      }
+
+      // Create SPRITEDEF operation with Pascal-compatible data
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         CanvasOperationType.DEFINE_SPRITE || ('DEFINE_SPRITE' as any),
         {
           spriteId: idValue,
           width: widthValue,
           height: heightValue,
-          pixelData: pixelData
+          pixels: pixels,
+          colors: colors
         },
         false // SPRITEDEF is immediate
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] SPRITEDEF ${idValue} ${widthValue}x${heightValue} parsed`);
+      console.log(`[PLOT] SPRITEDEF ${idValue} ${widthValue}x${heightValue} parsed: ${pixels.length} pixels, ${maxColors} colors`);
 
     } catch (error) {
       result.success = false;
@@ -2306,31 +2216,31 @@ export class PlotCommandParser implements IPlotCommandParser {
         return result;
       }
 
-      // Parse optional X coordinate
-      let x = 0;
+      // Parse optional orientation (0-359 degrees)
+      let orientation = 0;
       if (tokens.length > 1) {
-        const xValue = Spin2NumericParser.parseCoordinate(tokens[1].value);
-        if (xValue === null) {
-          result.warnings.push(`Invalid x coordinate '${tokens[1].value}', using 0`);
-          this.logParameterWarning(context.originalCommand, 'SPRITE x', tokens[1].value, 0);
+        const orientationValue = Spin2NumericParser.parseInteger(tokens[1].value, false);
+        if (orientationValue === null || orientationValue < 0 || orientationValue > 359) {
+          result.warnings.push(`Invalid orientation '${tokens[1].value}', using default: ${orientation}`);
+          this.logParameterWarning(context.originalCommand, 'SPRITE orientation', tokens[1].value, orientation);
         } else {
-          x = xValue;
+          orientation = orientationValue;
         }
       }
 
-      // Parse optional Y coordinate
-      let y = 0;
+      // Parse optional scale (0.1-10.0 multiplier)
+      let scale = 1.0;
       if (tokens.length > 2) {
-        const yValue = Spin2NumericParser.parseCoordinate(tokens[2].value);
-        if (yValue === null) {
-          result.warnings.push(`Invalid y coordinate '${tokens[2].value}', using 0`);
-          this.logParameterWarning(context.originalCommand, 'SPRITE y', tokens[2].value, 0);
+        const scaleValue = Spin2NumericParser.parseFloat(tokens[2].value);
+        if (scaleValue === null || scaleValue < 0.1 || scaleValue > 10.0) {
+          result.warnings.push(`Invalid scale '${tokens[2].value}', using default: ${scale}`);
+          this.logParameterWarning(context.originalCommand, 'SPRITE scale', tokens[2].value, scale);
         } else {
-          y = yValue;
+          scale = scaleValue;
         }
       }
 
-      // Parse optional opacity
+      // Parse optional opacity (0-255 alpha value)
       let opacity = 255;
       if (tokens.length > 3) {
         const opacityValue = Spin2NumericParser.parseInteger(tokens[3].value, false);
@@ -2342,20 +2252,20 @@ export class PlotCommandParser implements IPlotCommandParser {
         }
       }
 
-      // Create SPRITE operation
+      // Create SPRITE operation with Pascal format parameters
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         CanvasOperationType.DRAW_SPRITE,
         {
           spriteId: idValue,
-          x: x,
-          y: y,
+          orientation: orientation,
+          scale: scale,
           opacity: opacity
         },
         true // SPRITE is deferrable
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] SPRITE ${idValue} at (${x}, ${y}) opacity=${opacity} parsed`);
+      console.log(`[PLOT] SPRITE ${idValue} orientation=${orientation}° scale=${scale} opacity=${opacity} parsed`);
 
     } catch (error) {
       result.success = false;
@@ -2384,11 +2294,11 @@ export class PlotCommandParser implements IPlotCommandParser {
         return result;
       }
 
-      // Parse layer index (0-7)
+      // Parse layer index (1-16 per Pascal specification)
       const layerIndexValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
-      if (layerIndexValue === null || layerIndexValue < 0 || layerIndexValue > 7) {
+      if (layerIndexValue === null || layerIndexValue < 1 || layerIndexValue > 16) {
         result.success = false;
-        result.errors.push(`Invalid layer index: ${tokens[0].value}. Must be 0-7`);
+        result.errors.push(`Invalid layer index: ${tokens[0].value}. Must be 1-16`);
         this.logError(`[PLOT PARSE ERROR] Invalid layer index for LAYER: ${tokens[0].value}`);
         return result;
       }
@@ -2442,96 +2352,300 @@ export class PlotCommandParser implements IPlotCommandParser {
     try {
       const tokens = context.tokens;
 
-      if (tokens.length < 4) {
+      if (tokens.length < 2) {
         result.success = false;
-        result.errors.push('CROP command requires left, top, width, and height parameters');
+        result.errors.push('CROP command requires layer index and coordinates');
         this.logError(`[PLOT PARSE ERROR] Missing parameters for CROP command: ${context.originalCommand}`);
         return result;
       }
 
-      // Parse left coordinate
-      const leftValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
-      if (leftValue === null || leftValue < 0) {
+      // Parse layer index (1-16 per Pascal specification)
+      const layerValue = Spin2NumericParser.parseInteger(tokens[0].value, false);
+      if (layerValue === null || layerValue < 1 || layerValue > 16) {
         result.success = false;
-        result.errors.push(`Invalid left coordinate: ${tokens[0].value}. Must be >= 0`);
-        this.logError(`[PLOT PARSE ERROR] Invalid left coordinate for CROP: ${tokens[0].value}`);
+        result.errors.push(`Invalid layer index: ${tokens[0].value}. Must be 1-16`);
+        this.logError(`[PLOT PARSE ERROR] Invalid layer index for CROP: ${tokens[0].value}`);
         return result;
       }
 
-      // Parse top coordinate
-      const topValue = Spin2NumericParser.parseInteger(tokens[1].value, false);
-      if (topValue === null || topValue < 0) {
-        result.success = false;
-        result.errors.push(`Invalid top coordinate: ${tokens[1].value}. Must be >= 0`);
-        this.logError(`[PLOT PARSE ERROR] Invalid top coordinate for CROP: ${tokens[1].value}`);
-        return result;
-      }
+      // Check for AUTO mode: CROP layer AUTO x y
+      if (tokens.length >= 4 && tokens[1].value.toUpperCase() === 'AUTO') {
+        // Parse AUTO positioning mode
+        const autoX = Spin2NumericParser.parseCoordinate(tokens[2].value);
+        const autoY = Spin2NumericParser.parseCoordinate(tokens[3].value);
 
-      // Parse width
-      const widthValue = Spin2NumericParser.parseInteger(tokens[2].value, false);
-      if (widthValue === null || widthValue <= 0) {
-        result.success = false;
-        result.errors.push(`Invalid width: ${tokens[2].value}. Must be > 0`);
-        this.logError(`[PLOT PARSE ERROR] Invalid width for CROP: ${tokens[2].value}`);
-        return result;
-      }
-
-      // Parse height
-      const heightValue = Spin2NumericParser.parseInteger(tokens[3].value, false);
-      if (heightValue === null || heightValue <= 0) {
-        result.success = false;
-        result.errors.push(`Invalid height: ${tokens[3].value}. Must be > 0`);
-        this.logError(`[PLOT PARSE ERROR] Invalid height for CROP: ${tokens[3].value}`);
-        return result;
-      }
-
-      // Parse optional destination X coordinate
-      let x = 0;
-      if (tokens.length > 4) {
-        const xValue = Spin2NumericParser.parseCoordinate(tokens[4].value);
-        if (xValue === null) {
-          result.warnings.push(`Invalid x coordinate '${tokens[4].value}', using 0`);
-          this.logParameterWarning(context.originalCommand, 'CROP x', tokens[4].value, 0);
-        } else {
-          x = xValue;
+        if (autoX === null || autoY === null) {
+          result.success = false;
+          result.errors.push('CROP AUTO mode requires valid x and y coordinates');
+          this.logError(`[PLOT PARSE ERROR] Invalid AUTO coordinates for CROP: ${context.originalCommand}`);
+          return result;
         }
-      }
 
-      // Parse optional destination Y coordinate
-      let y = 0;
-      if (tokens.length > 5) {
-        const yValue = Spin2NumericParser.parseCoordinate(tokens[5].value);
-        if (yValue === null) {
-          result.warnings.push(`Invalid y coordinate '${tokens[5].value}', using 0`);
-          this.logParameterWarning(context.originalCommand, 'CROP y', tokens[5].value, 0);
-        } else {
-          y = yValue;
+        // Create AUTO CROP operation
+        const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+          CanvasOperationType.CROP_LAYER,
+          {
+            layerIndex: layerValue,
+            mode: 'AUTO',
+            destX: autoX,
+            destY: autoY
+          },
+          true // CROP is deferrable
+        );
+
+        result.canvasOperations = [this.convertToCanvasOperation(operation)];
+        console.log(`[PLOT] CROP ${layerValue} AUTO ${autoX} ${autoY} parsed`);
+
+      } else {
+        // Parse explicit coordinate mode: CROP layer {left top width height {x y}}
+        if (tokens.length < 5) {
+          result.success = false;
+          result.errors.push('CROP explicit mode requires layer, left, top, width, height parameters');
+          this.logError(`[PLOT PARSE ERROR] Missing parameters for explicit CROP: ${context.originalCommand}`);
+          return result;
         }
-      }
 
-      // Create CROP operation
-      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-        CanvasOperationType.CROP_LAYER,
-        {
-          sourceRect: {
+        // Parse left coordinate
+        const leftValue = Spin2NumericParser.parseInteger(tokens[1].value, false);
+        if (leftValue === null || leftValue < 0) {
+          result.success = false;
+          result.errors.push(`Invalid left coordinate: ${tokens[1].value}. Must be >= 0`);
+          this.logError(`[PLOT PARSE ERROR] Invalid left coordinate for CROP: ${tokens[1].value}`);
+          return result;
+        }
+
+        // Parse top coordinate
+        const topValue = Spin2NumericParser.parseInteger(tokens[2].value, false);
+        if (topValue === null || topValue < 0) {
+          result.success = false;
+          result.errors.push(`Invalid top coordinate: ${tokens[2].value}. Must be >= 0`);
+          this.logError(`[PLOT PARSE ERROR] Invalid top coordinate for CROP: ${tokens[2].value}`);
+          return result;
+        }
+
+        // Parse width
+        const widthValue = Spin2NumericParser.parseInteger(tokens[3].value, false);
+        if (widthValue === null || widthValue <= 0) {
+          result.success = false;
+          result.errors.push(`Invalid width: ${tokens[3].value}. Must be > 0`);
+          this.logError(`[PLOT PARSE ERROR] Invalid width for CROP: ${tokens[3].value}`);
+          return result;
+        }
+
+        // Parse height
+        const heightValue = Spin2NumericParser.parseInteger(tokens[4].value, false);
+        if (heightValue === null || heightValue <= 0) {
+          result.success = false;
+          result.errors.push(`Invalid height: ${tokens[4].value}. Must be > 0`);
+          this.logError(`[PLOT PARSE ERROR] Invalid height for CROP: ${tokens[4].value}`);
+          return result;
+        }
+
+        // Parse optional destination X coordinate
+        let destX = 0;
+        if (tokens.length > 5) {
+          const xValue = Spin2NumericParser.parseCoordinate(tokens[5].value);
+          if (xValue === null) {
+            result.warnings.push(`Invalid x coordinate '${tokens[5].value}', using 0`);
+            this.logParameterWarning(context.originalCommand, 'CROP x', tokens[5].value, 0);
+          } else {
+            destX = xValue;
+          }
+        }
+
+        // Parse optional destination Y coordinate
+        let destY = 0;
+        if (tokens.length > 6) {
+          const yValue = Spin2NumericParser.parseCoordinate(tokens[6].value);
+          if (yValue === null) {
+            result.warnings.push(`Invalid y coordinate '${tokens[6].value}', using 0`);
+            this.logParameterWarning(context.originalCommand, 'CROP y', tokens[6].value, 0);
+          } else {
+            destY = yValue;
+          }
+        }
+
+        // Create explicit CROP operation
+        const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+          CanvasOperationType.CROP_LAYER,
+          {
+            layerIndex: layerValue,
+            mode: 'EXPLICIT',
             left: leftValue,
             top: topValue,
             width: widthValue,
-            height: heightValue
+            height: heightValue,
+            destX: destX,
+            destY: destY
           },
-          destX: x,
-          destY: y
-        },
-        true // CROP is deferrable
-      );
+          true // CROP is deferrable
+        );
 
-      result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CROP (${leftValue},${topValue}) ${widthValue}x${heightValue} to (${x},${y}) parsed`);
+        result.canvasOperations = [this.convertToCanvasOperation(operation)];
+        console.log(`[PLOT] CROP ${layerValue} ${leftValue} ${topValue} ${widthValue} ${heightValue} ${destX} ${destY} parsed`);
+      }
 
     } catch (error) {
       result.success = false;
       result.errors.push(`CROP command failed: ${error}`);
       this.logError(`[PLOT PARSE ERROR] CROP command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  private handlePreciseCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // PRECISE command has no parameters - it's just a toggle
+      // Create PRECISE operation for the integrator to handle
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        CanvasOperationType.SET_PRECISION || ('SET_PRECISION' as any),
+        {
+          toggle: true  // Indicates this is a precision toggle operation
+        },
+        false // PRECISE is immediate (affects subsequent commands)
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] PRECISE precision toggle parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`PRECISE command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] PRECISE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Handle LUT command - sets single palette entry for indexed color mode
+   * Pascal: LUT index color
+   */
+  private handleLutCommand(context: CommandContext): CommandResult {
+    console.log(`[LUT HANDLER] handleLutCommand called with context:`, context);
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      console.log(`[LUT HANDLER] tokens.length = ${context.tokens.length}, tokens:`, context.tokens.map(t => `'${t.value}'(${t.type})`));
+      // Validate parameters (expect index and color)
+      if (!context.tokens || context.tokens.length < 2) {
+        throw new Error('LUT command requires index and color parameters');
+      }
+
+      // Parse palette index (first parameter)
+      const indexToken = context.tokens[0];
+      const index = Spin2NumericParser.parseInteger(indexToken.value);
+      if (index === null || index < 0 || index > 255) {
+        throw new Error(`Invalid palette index: ${indexToken.value}. Must be 0-255`);
+      }
+
+      // Parse color value (second parameter)
+      const colorToken = context.tokens[1];
+      const colorValue = Spin2NumericParser.parseColor(colorToken.value);
+      if (colorValue === null) {
+        throw new Error(`Invalid color value: ${colorToken.value}`);
+      }
+
+      // Create LUT operation for the integrator to handle
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        'LUT_SET' as any,
+        {
+          index: index,
+          color: colorValue
+        },
+        false // LUT is immediate (affects subsequent drawing commands)
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] LUT palette[${index}] = 0x${colorValue.toString(16).padStart(6, '0')} parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`LUT command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] LUT command execution failed: ${error}. Command: ${context.originalCommand}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Handle LUTCOLORS command - loads multiple RGB24 color values into consecutive palette entries
+   * Pascal: LUTCOLORS color1 color2 ... colorN
+   */
+  private handleLutColorsCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // Validate parameters - need at least one color
+      if (!context.tokens || context.tokens.length < 1) {
+        throw new Error('LUTCOLORS command requires at least one color parameter');
+      }
+
+      const colors: number[] = [];
+      const errors: string[] = [];
+
+      // Parse all color values - tokens are just the parameters, not including command
+      for (let i = 0; i < context.tokens.length; i++) {
+        const colorToken = context.tokens[i];
+        const colorValue = Spin2NumericParser.parseColor(colorToken.value);
+
+        if (colorValue !== null) {
+          colors.push(colorValue);
+        } else {
+          errors.push(`Invalid color at position ${i}: ${colorToken.value}`);
+        }
+      }
+
+      // Check if we have any valid colors
+      if (colors.length === 0) {
+        throw new Error('No valid colors found in LUTCOLORS command');
+      }
+
+      // Warn about invalid colors but continue with valid ones
+      if (errors.length > 0) {
+        result.warnings.push(`Some colors were invalid and skipped: ${errors.join(', ')}`);
+      }
+
+      // Limit to 256 colors maximum
+      if (colors.length > 256) {
+        result.warnings.push(`Too many colors (${colors.length}), limiting to first 256`);
+        colors.splice(256);
+      }
+
+      // Create LUTCOLORS operation for the integrator to handle
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        'LUT_COLORS' as any,
+        {
+          colors: colors
+        },
+        false // LUTCOLORS is immediate (affects subsequent drawing commands)
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      console.log(`[PLOT] LUTCOLORS ${colors.length} colors loaded to palette`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`LUTCOLORS command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] LUTCOLORS command execution failed: ${error}. Command: ${context.originalCommand}`);
     }
 
     return result;

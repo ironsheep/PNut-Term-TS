@@ -406,8 +406,33 @@ export class Spin2NumericParser {
   /**
    * Parse color value (integer only, 0-0xFFFFFF range)
    * Used for RGB color values
+   * Also handles named colors (RED, GREEN, BLUE, etc.)
    */
   public static parseColor(value: string): number | null {
+    // First check for named colors
+    const upperValue = value.toUpperCase();
+    const namedColors: { [key: string]: number } = {
+      'BLACK': 0x000000,
+      'WHITE': 0xFFFFFF,
+      'RED': 0xFF0000,
+      'GREEN': 0x00FF00,
+      'BLUE': 0x0000FF,
+      'YELLOW': 0xFFFF00,
+      'CYAN': 0x00FFFF,
+      'MAGENTA': 0xFF00FF,
+      'ORANGE': 0xFF8000,
+      'PURPLE': 0x8000FF,
+      'PINK': 0xFF80FF,
+      'BROWN': 0x804000,
+      'GRAY': 0x808080,
+      'GREY': 0x808080
+    };
+
+    if (namedColors.hasOwnProperty(upperValue)) {
+      return namedColors[upperValue];
+    }
+
+    // Otherwise parse as numeric value
     const result = this.parseInteger(value, false);
     if (result === null) {
       return null;

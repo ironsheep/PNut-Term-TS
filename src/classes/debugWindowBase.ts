@@ -17,6 +17,7 @@ import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
 import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRouter';
 import { MessageQueue, BatchedMessageQueue } from './shared/messageQueue';
+import { TLongTransmission } from './shared/tLongTransmission';
 
 // src/classes/debugWindowBase.ts
 
@@ -161,6 +162,21 @@ export abstract class DebugWindowBase extends EventEmitter {
   private messageQueue: MessageQueue<any>;
   private isWindowReady: boolean = false;
 
+  // Per-window input state variables for PC_KEY and PC_MOUSE commands
+  // These match Pascal's per-window state management
+  protected vKeyPress: number = 0;         // Stores last keypress value for PC_KEY
+  protected vMouseX: number = -1;          // Mouse X coordinate (-1 = out of bounds)
+  protected vMouseY: number = -1;          // Mouse Y coordinate (-1 = out of bounds)
+  protected vMouseButtons: {               // Mouse button states
+    left: boolean;
+    middle: boolean;
+    right: boolean;
+  } = { left: false, middle: false, right: false };
+  protected vMouseWheel: number = 0;       // Mouse wheel delta (cleared after transmission)
+
+  // TLong transmission utility for P2 communication
+  protected tLongTransmitter: TLongTransmission;
+
   constructor(ctx: Context, windowId: string, windowType: string) {
     super();
     this.context = ctx;
@@ -168,6 +184,9 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.windowRouter = WindowRouter.getInstance();
     this.windowId = windowId;
     this.windowType = windowType;
+
+    // Initialize TLong transmission utility
+    this.tLongTransmitter = new TLongTransmission(ctx);
     
     // Initialize startup message queue 
     // Will transition to BatchedMessageQueue when window is ready
@@ -206,6 +225,29 @@ export abstract class DebugWindowBase extends EventEmitter {
     // Default: This should never be called for windows that don't support UPDATE
     // If it is called, it's likely a routing error
     this.logMessageBase(`WARNING: UPDATE command received by ${this.constructor.name} which doesn't support it - possible routing error`);
+  }
+
+  /**
+   * Reset per-window input state variables.
+   * Called on DTR/RTS reset to clear any pending input state matching Pascal behavior.
+   * Pascal clears vKeyPress and mouse state when communication is reset.
+   */
+  protected resetInputState(): void {
+    this.vKeyPress = 0;
+    this.vMouseX = -1;
+    this.vMouseY = -1;
+    this.vMouseButtons = { left: false, middle: false, right: false };
+    this.vMouseWheel = 0;
+    this.logMessageBase('Input state reset (keypress and mouse state cleared)');
+  }
+
+  /**
+   * Set the serial data transmission callback for TLong communication.
+   * This should be called by derived classes or the main window to enable P2 communication.
+   */
+  public setSerialTransmissionCallback(callback: (data: string) => void): void {
+    this.tLongTransmitter.setSendCallback(callback);
+    this.logMessageBase('TLong serial transmission callback configured');
   }
 
 
@@ -250,30 +292,90 @@ export abstract class DebugWindowBase extends EventEmitter {
         return true;
 
       case 'SAVE':
-        // Handle SAVE {WINDOW} 'filename'
+        // Handle three Pascal SAVE formats:
+        // 1. SAVE 'filename' - save canvas content
+        // 2. SAVE WINDOW 'filename' - save desktop window area
+        // 3. SAVE l t w h 'filename' - save desktop coordinates
+
         let saveIndex = 1;
         let saveWindow = false;
+        let coordinateMode = false;
+        let left = 0, top = 0, width = 0, height = 0;
 
-        // Check for optional WINDOW modifier
+        // Check for WINDOW modifier
         if (commandParts.length > saveIndex &&
             commandParts[saveIndex].toUpperCase() === 'WINDOW') {
           saveWindow = true;
           saveIndex++;
         }
-
-        // Get filename (remove quotes if present)
-        if (commandParts.length > saveIndex) {
-          let filename = commandParts[saveIndex];
-          // Remove surrounding quotes if present
-          if ((filename.startsWith("'") && filename.endsWith("'")) ||
-              (filename.startsWith('"') && filename.endsWith('"'))) {
-            filename = filename.slice(1, -1);
+        // Check for coordinate mode (4 numeric parameters before filename)
+        else if (commandParts.length >= 6) {
+          // Try to parse 4 coordinate values
+          const coords = [];
+          let coordIndex = saveIndex;
+          for (let i = 0; i < 4; i++) {
+            if (coordIndex < commandParts.length) {
+              const num = parseInt(commandParts[coordIndex], 10);
+              if (!isNaN(num)) {
+                coords.push(num);
+                coordIndex++;
+              } else {
+                break;
+              }
+            }
           }
 
-          this.logMessageBase(`Executing SAVE command: ${filename} (window: ${saveWindow})`);
+          if (coords.length === 4) {
+            coordinateMode = true;
+            [left, top, width, height] = coords;
+            saveIndex = coordIndex;
+          }
+        }
 
-          // Use existing base class method
-          await this.saveWindowToBMPFilename(filename);
+        // Get filename (remove quotes if present, handle multi-word filenames)
+        if (commandParts.length > saveIndex) {
+          let filename = '';
+
+          // Check if filename starts with a quote
+          const firstPart = commandParts[saveIndex];
+          if (firstPart.startsWith("'") || firstPart.startsWith('"')) {
+            // Handle quoted filename (may span multiple tokens)
+            const quoteChar = firstPart[0];
+            let parts = [firstPart];
+            let endIndex = saveIndex;
+
+            // If first part doesn't end with matching quote, collect more parts
+            if (!firstPart.endsWith(quoteChar) || firstPart.length === 1) {
+              for (let i = saveIndex + 1; i < commandParts.length; i++) {
+                parts.push(commandParts[i]);
+                if (commandParts[i].endsWith(quoteChar)) {
+                  endIndex = i;
+                  break;
+                }
+              }
+            }
+
+            // Join parts and remove quotes
+            filename = parts.join(' ');
+            if ((filename.startsWith("'") && filename.endsWith("'")) ||
+                (filename.startsWith('"') && filename.endsWith('"'))) {
+              filename = filename.slice(1, -1);
+            }
+          } else {
+            // Unquoted filename - just use the single token
+            filename = commandParts[saveIndex];
+          }
+
+          if (coordinateMode) {
+            this.logMessageBase(`Executing SAVE coordinates: ${left},${top},${width},${height} -> ${filename}`);
+            await this.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
+          } else if (saveWindow) {
+            this.logMessageBase(`Executing SAVE WINDOW: ${filename}`);
+            await this.saveDesktopWindowToBMPFilename(filename);
+          } else {
+            this.logMessageBase(`Executing SAVE canvas: ${filename}`);
+            await this.saveWindowToBMPFilename(filename);
+          }
           return true;
         }
         this.logMessageBase('SAVE command missing filename');
@@ -281,12 +383,54 @@ export abstract class DebugWindowBase extends EventEmitter {
 
       case 'PC_KEY':
         this.logMessageBase('Executing PC_KEY command');
+        // Enable keyboard input forwarding (for capturing future keypresses)
         this.enableKeyboardInput();
+        // Return current keypress value and clear it (one-shot consumption)
+        try {
+          this.tLongTransmitter.transmitKeyPress(this.vKeyPress);
+          this.logMessageBase(`PC_KEY transmitted keypress: ${this.vKeyPress}`);
+          this.vKeyPress = 0; // Clear after transmission (Pascal behavior)
+        } catch (error) {
+          this.logMessageBase(`PC_KEY transmission error: ${error}`);
+        }
         return true;
 
       case 'PC_MOUSE':
         this.logMessageBase('Executing PC_MOUSE command');
+        // Enable mouse input forwarding (for capturing future mouse events)
         this.enableMouseInput();
+        // Return current mouse state and pixel color
+        try {
+          // Check if mouse is within valid bounds
+          if (this.vMouseX >= 0 && this.vMouseY >= 0) {
+            // Encode mouse position and button state
+            const positionValue = this.tLongTransmitter.encodeMouseData(
+              this.vMouseX,
+              this.vMouseY,
+              this.vMouseButtons.left,
+              this.vMouseButtons.middle,
+              this.vMouseButtons.right,
+              this.vMouseWheel
+            );
+
+            // Get pixel color at mouse position (derived classes can override getPixelColorAt)
+            const colorValue = this.getPixelColorAt(this.vMouseX, this.vMouseY);
+
+            // Transmit position and color
+            this.tLongTransmitter.transmitMouseData(positionValue, colorValue);
+            this.logMessageBase(`PC_MOUSE transmitted: pos=(${this.vMouseX},${this.vMouseY}) buttons=${JSON.stringify(this.vMouseButtons)} wheel=${this.vMouseWheel} color=0x${colorValue.toString(16)}`);
+
+            // Clear wheel delta after transmission (Pascal behavior)
+            this.vMouseWheel = 0;
+          } else {
+            // Mouse out of bounds - send Pascal's out-of-bounds values
+            const outOfBounds = this.tLongTransmitter.createOutOfBoundsMouseData();
+            this.tLongTransmitter.transmitMouseData(outOfBounds.position, outOfBounds.color);
+            this.logMessageBase('PC_MOUSE transmitted out-of-bounds data');
+          }
+        } catch (error) {
+          this.logMessageBase(`PC_MOUSE transmission error: ${error}`);
+        }
         return true;
 
       default:
@@ -994,19 +1138,349 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
     if (this._debugWindow) {
-      this.logMessage(`  -- writing BMP to [${filename}]`);
+      this.logMessage(`  -- writing canvas BMP to [${filename}]`);
       this.saveInProgress = true;
       const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
       try {
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
-        this.logMessageBase(`- BMP image [${outputFSpec}] saved successfully`);
+        this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
       } catch (error) {
-        console.error('Win: ERROR: saving BMP image:', error);
+        console.error('Win: ERROR: saving canvas BMP image:', error);
       }
       this.saveInProgress = false;
     }
+  }
+
+  /**
+   * Save desktop window capture to BMP file matching Pascal's SAVE WINDOW behavior.
+   * Captures the entire window including chrome from the desktop at the window's screen position.
+   */
+  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
+    if (this._debugWindow) {
+      this.logMessage(`  -- writing desktop window BMP to [${filename}]`);
+      this.saveInProgress = true;
+
+      try {
+        // For now, just use canvas capture to avoid screen recording permissions
+        // TODO: Implement proper desktop capture when permission handling is sorted
+        this.logMessageBase('Using canvas capture for SAVE WINDOW command');
+        const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+        const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+        const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+        fs.writeFileSync(outputFSpec, bmpBuffer);
+        this.logMessageBase(`- Window BMP image [${outputFSpec}] saved successfully`);
+        this.saveInProgress = false;
+        return;
+
+        // Original desktop capture code (disabled for now)
+        /*
+        // Get window bounds on desktop
+        const bounds = this._debugWindow.getBounds();
+
+        // Use Electron's desktopCapturer to capture the actual desktop content
+        // This matches Pascal's behavior which captures the window area from the desktop
+        const { desktopCapturer } = require('electron');
+
+        // Get all available desktop sources (screens)
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: bounds.width, height: bounds.height }
+        });
+
+        if (sources.length === 0) {
+          throw new Error('No desktop sources available for capture');
+        }
+
+        // Use the primary screen source
+        const primarySource = sources[0];
+
+        // Create a minimal capture window to use desktopCapturer
+        const captureWindow = new BrowserWindow({
+          width: bounds.width,
+          height: bounds.height,
+          show: false,
+          webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+          }
+        });
+
+        // Load a minimal HTML page that will capture the desktop
+        const captureHtml = `
+          <html>
+            <body>
+              <script>
+                const { desktopCapturer } = require('electron');
+
+                async function captureDesktop() {
+                  try {
+                    const sources = await desktopCapturer.getSources({
+                      types: ['screen'],
+                      thumbnailSize: { width: ${bounds.width * 2}, height: ${bounds.height * 2} }
+                    });
+
+                    if (sources.length > 0) {
+                      // Get the thumbnail image which contains the desktop screenshot
+                      const canvas = document.createElement('canvas');
+                      const ctx = canvas.getContext('2d');
+
+                      // Create image from thumbnail
+                      const img = new Image();
+                      img.onload = function() {
+                        canvas.width = ${bounds.width};
+                        canvas.height = ${bounds.height};
+
+                        // Calculate the region to extract based on window position
+                        const scaleX = img.width / sources[0].display.bounds.width;
+                        const scaleY = img.height / sources[0].display.bounds.height;
+
+                        const sourceX = ${bounds.x} * scaleX;
+                        const sourceY = ${bounds.y} * scaleY;
+                        const sourceWidth = ${bounds.width} * scaleX;
+                        const sourceHeight = ${bounds.height} * scaleY;
+
+                        // Draw the window region from the desktop capture
+                        ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, ${bounds.width}, ${bounds.height});
+
+                        // Convert to data URL and send back to main process
+                        const dataUrl = canvas.toDataURL('image/png');
+                        window.captureResult = dataUrl;
+                      };
+                      img.src = sources[0].thumbnail.toDataURL();
+                    }
+                  } catch (error) {
+                    window.captureError = error.message;
+                  }
+                }
+
+                captureDesktop();
+              </script>
+            </body>
+          </html>
+        `;
+
+        await captureWindow.loadURL(`data:text/html,${encodeURIComponent(captureHtml)}`);
+
+        // Wait for capture to complete
+        let result = null;
+        let retries = 20; // 2 seconds max wait
+        while (retries > 0 && !result) {
+          try {
+            result = await captureWindow.webContents.executeJavaScript('window.captureResult');
+            if (!result) {
+              const error = await captureWindow.webContents.executeJavaScript('window.captureError');
+              if (error) {
+                throw new Error(error);
+              }
+            }
+          } catch (error) {
+            // Continue waiting
+          }
+
+          if (!result) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries--;
+          }
+        }
+
+        captureWindow.destroy();
+
+        if (result) {
+          // Convert data URL to buffer
+          const base64Data = result.replace(/^data:image\/png;base64,/, '');
+          const pngBuffer = Buffer.from(base64Data, 'base64');
+          const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+
+          const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+          fs.writeFileSync(outputFSpec, bmpBuffer);
+          this.logMessageBase(`- Desktop window BMP image [${outputFSpec}] saved successfully`);
+        } else {
+          throw new Error('Desktop capture timed out or failed');
+        }
+        */
+
+      } catch (error) {
+        this.logMessageBase(`ERROR: Save window failed: ${error}`);
+      }
+
+      this.saveInProgress = false;
+    }
+  }
+
+  /**
+   * Save specific desktop coordinates to BMP file matching Pascal's SAVE l t w h 'filename' behavior.
+   * Captures a rectangular region from the desktop at the specified screen coordinates.
+   */
+  protected async saveDesktopCoordinatesToBMPFilename(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    filename: string
+  ): Promise<void> {
+    this.logMessage(`  -- writing desktop coordinates BMP to [${filename}] at (${left},${top}) size ${width}x${height}`);
+    this.saveInProgress = true;
+
+    try {
+      // For now, just save the canvas as we can't capture desktop without permissions
+      // TODO: Implement proper desktop region capture when permission handling is sorted
+      this.logMessageBase('Using canvas capture for SAVE coordinates command (desktop capture requires permissions)');
+
+      if (this._debugWindow) {
+        const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+        const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+        const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+        fs.writeFileSync(outputFSpec, bmpBuffer);
+        this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
+      } else {
+        this.logMessageBase('ERROR: Window not available for capture');
+      }
+
+      /* Original implementation - disabled to avoid permissions
+      // Validate coordinates
+      if (width <= 0 || height <= 0) {
+        throw new Error(`Invalid dimensions: ${width}x${height}`);
+      }
+
+      // Create a temporary window for desktop capture at the specified coordinates
+      const { screen } = require('electron');
+      const primaryDisplay = screen.getPrimaryDisplay();
+
+      // Clamp coordinates to screen bounds
+      const screenWidth = primaryDisplay.size.width;
+      const screenHeight = primaryDisplay.size.height;
+      const clampedLeft = Math.max(0, Math.min(left, screenWidth - 1));
+      const clampedTop = Math.max(0, Math.min(top, screenHeight - 1));
+      const clampedWidth = Math.min(width, screenWidth - clampedLeft);
+      const clampedHeight = Math.min(height, screenHeight - clampedTop);
+
+      this.logMessageBase(`Clamped coordinates: (${clampedLeft},${clampedTop}) size ${clampedWidth}x${clampedHeight}`);
+
+      // Use Electron's desktopCapturer to capture the actual desktop content
+      const { desktopCapturer } = require('electron');
+
+      // Get all available desktop sources (screens)
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: clampedWidth * 2, height: clampedHeight * 2 }
+      });
+
+      if (sources.length === 0) {
+        throw new Error('No desktop sources available for capture');
+      }
+
+      // Create a minimal capture window to use desktopCapturer
+      const captureWindow = new BrowserWindow({
+        width: clampedWidth,
+        height: clampedHeight,
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      });
+
+      // Load a minimal HTML page that will capture the desktop region
+      const captureHtml = `
+        <html>
+          <body>
+            <script>
+              const { desktopCapturer } = require('electron');
+
+              async function captureDesktopRegion() {
+                try {
+                  const sources = await desktopCapturer.getSources({
+                    types: ['screen'],
+                    thumbnailSize: { width: ${clampedWidth * 2}, height: ${clampedHeight * 2} }
+                  });
+
+                  if (sources.length > 0) {
+                    // Get the thumbnail image which contains the desktop screenshot
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // Create image from thumbnail
+                    const img = new Image();
+                    img.onload = function() {
+                      canvas.width = ${clampedWidth};
+                      canvas.height = ${clampedHeight};
+
+                      // Calculate the region to extract based on coordinates
+                      const scaleX = img.width / sources[0].display.bounds.width;
+                      const scaleY = img.height / sources[0].display.bounds.height;
+
+                      const sourceX = ${clampedLeft} * scaleX;
+                      const sourceY = ${clampedTop} * scaleY;
+                      const sourceWidth = ${clampedWidth} * scaleX;
+                      const sourceHeight = ${clampedHeight} * scaleY;
+
+                      // Draw the specified region from the desktop capture
+                      ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, ${clampedWidth}, ${clampedHeight});
+
+                      // Convert to data URL and send back to main process
+                      const dataUrl = canvas.toDataURL('image/png');
+                      window.captureResult = dataUrl;
+                    };
+                    img.src = sources[0].thumbnail.toDataURL();
+                  }
+                } catch (error) {
+                  window.captureError = error.message;
+                }
+              }
+
+              captureDesktopRegion();
+            </script>
+          </body>
+        </html>
+      `;
+
+      await captureWindow.loadURL(`data:text/html,${encodeURIComponent(captureHtml)}`);
+
+      // Wait for capture to complete
+      let result = null;
+      let retries = 20; // 2 seconds max wait
+      while (retries > 0 && !result) {
+        try {
+          result = await captureWindow.webContents.executeJavaScript('window.captureResult');
+          if (!result) {
+            const error = await captureWindow.webContents.executeJavaScript('window.captureError');
+            if (error) {
+              throw new Error(error);
+            }
+          }
+        } catch (error) {
+          // Continue waiting
+        }
+
+        if (!result) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          retries--;
+        }
+      }
+
+      captureWindow.destroy();
+
+      if (!result) {
+        throw new Error('Desktop coordinate capture timed out or failed');
+      }
+
+      // Convert data URL to buffer
+      const base64Data = result.replace(/^data:image\/png;base64,/, '');
+      const pngBuffer = Buffer.from(base64Data, 'base64');
+      const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+
+      const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+      fs.writeFileSync(outputFSpec, bmpBuffer);
+      this.logMessageBase(`- Desktop coordinates BMP image [${outputFSpec}] saved successfully`);
+      */
+
+    } catch (error) {
+      this.logMessageBase(`ERROR: Save coordinates failed: ${error}`);
+    }
+
+    this.saveInProgress = false;
   }
 
   protected removeStringQuotes(quotedString: string): string {
@@ -1191,10 +1665,20 @@ export abstract class DebugWindowBase extends EventEmitter {
         
         // Transform coordinates based on window type
         const transformed = this.transformMouseCoordinates(x, y);
-        
+
+        // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
+        this.vMouseX = transformed.x;
+        this.vMouseY = transformed.y;
+        this.vMouseButtons = {
+          left: buttons.left || false,
+          middle: buttons.middle || false,
+          right: buttons.right || false
+        };
+        // Note: vMouseWheel is updated by wheel event handler
+
         // Get pixel color at position
         const pixelGetter = this.getPixelColorGetter();
-        
+
         // Queue the mouse event
         this.inputForwarder.queueMouseEvent(
           transformed.x,
@@ -1204,7 +1688,11 @@ export abstract class DebugWindowBase extends EventEmitter {
           pixelGetter
         );
       } else if (channel === 'key-event') {
-        const [key] = args;
+        const [key, keyCode] = args;
+        // Store keypress for PC_KEY command (Pascal behavior: stores last keypress)
+        this.vKeyPress = keyCode || 0;
+        this.logMessageBase(`Key captured: '${key}' (code: ${keyCode}) stored in vKeyPress`);
+        // Also forward to input forwarder for other uses
         this.inputForwarder.queueKeyEvent(key);
       }
     });
@@ -1232,6 +1720,17 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected getPixelColorGetter(): ((x: number, y: number) => number) | undefined {
     // Default implementation - no pixel color sampling
     return undefined;
+  }
+
+  /**
+   * Get pixel color at specific coordinates.
+   * Override in derived classes to provide actual pixel color sampling.
+   * Default implementation returns 0 (black).
+   */
+  protected getPixelColorAt(x: number, y: number): number {
+    // Default implementation - return black
+    // Derived classes should override this to provide actual pixel color sampling
+    return 0x000000;
   }
 
   // ----------------------------------------------------------------------

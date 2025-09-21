@@ -17,10 +17,15 @@ export interface CropRect {
 export class LayerManager {
   private layers: (OffscreenCanvas | null)[];
   private static readonly MAX_LAYERS = 8;
+  private memoryUsage: number = 0; // Track memory usage in bytes
+  private maxMemoryUsage: number = 0; // Track peak memory usage
+  private layerCreationCount: number = 0; // Track total layers created for leak detection
+  private layerMetadata: Array<{ filename: string; loadTime: Date; size: number } | null> = [];
 
   constructor() {
     // Initialize array with null values for 8 layers
     this.layers = new Array(LayerManager.MAX_LAYERS).fill(null);
+    this.layerMetadata = new Array(LayerManager.MAX_LAYERS).fill(null);
   }
 
   /**
@@ -65,13 +70,28 @@ export class LayerManager {
       // Draw image to canvas
       ctx.drawImage(imageBitmap, 0, 0);
 
-      // Clear any existing layer
+      // Clear any existing layer with proper memory tracking
       if (this.layers[index]) {
-        this.layers[index] = null; // Let GC clean up the old canvas
+        this.releaseLayer(index);
       }
+
+      // Calculate memory usage for new layer
+      const layerMemory = this.calculateLayerMemory(imageBitmap.width, imageBitmap.height);
 
       // Store the new layer
       this.layers[index] = canvas;
+
+      // Update memory tracking and metadata
+      this.memoryUsage += layerMemory;
+      this.maxMemoryUsage = Math.max(this.maxMemoryUsage, this.memoryUsage);
+      this.layerCreationCount++;
+      this.layerMetadata[index] = {
+        filename: filepath,
+        loadTime: new Date(),
+        size: layerMemory
+      };
+
+      console.log(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${imageBitmap.width}x${imageBitmap.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('ENOENT')) {
@@ -158,20 +178,61 @@ export class LayerManager {
   }
 
   /**
-   * Clear a specific layer
+   * Clear a specific layer with proper memory cleanup
    * @param layerIndex Layer index (0-7)
    */
   clearLayer(layerIndex: number): void {
     if (layerIndex >= 0 && layerIndex < LayerManager.MAX_LAYERS) {
-      this.layers[layerIndex] = null;
+      this.releaseLayer(layerIndex);
     }
   }
 
   /**
-   * Clear all layers
+   * Clear all layers with proper memory cleanup
    */
   clearAllLayers(): void {
-    this.layers.fill(null);
+    // Release all layers to update memory tracking
+    for (let i = 0; i < LayerManager.MAX_LAYERS; i++) {
+      if (this.layers[i] !== null) {
+        this.releaseLayer(i);
+      }
+    }
+    console.log(`[LAYER MANAGER] All layers cleared, memory usage reset to 0`);
+  }
+
+  /**
+   * Release a layer and update memory tracking
+   * @param layerIndex Layer index (0-7)
+   */
+  private releaseLayer(layerIndex: number): void {
+    const layer = this.layers[layerIndex];
+    const metadata = this.layerMetadata[layerIndex];
+
+    if (layer !== null && metadata !== null) {
+      // Update memory tracking
+      this.memoryUsage -= metadata.size;
+      this.memoryUsage = Math.max(0, this.memoryUsage); // Ensure non-negative
+
+      // Clear the layer and metadata
+      this.layers[layerIndex] = null;
+      this.layerMetadata[layerIndex] = null;
+
+      console.log(`[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`);
+    }
+  }
+
+  /**
+   * Calculate memory usage for a layer
+   * @param width Layer width
+   * @param height Layer height
+   * @returns Memory usage in bytes
+   */
+  private calculateLayerMemory(width: number, height: number): number {
+    // Estimate memory usage:
+    // - OffscreenCanvas overhead: ~200 bytes
+    // - RGBA pixel data: width * height * 4 bytes
+    // - Additional canvas context overhead: ~100 bytes
+    return 300 + (width * height * 4);
   }
 
   /**
@@ -221,5 +282,86 @@ export class LayerManager {
     // TODO: Implement actual cropping when we have access to target canvas
     // This would typically be:
     // targetCtx.drawImage(layer, sourceRect.left, sourceRect.top, sourceRect.width, sourceRect.height, destX, destY, sourceRect.width, sourceRect.height);
+  }
+
+  /**
+   * Get current memory usage statistics
+   * @returns Memory usage information
+   */
+  getMemoryStats(): {
+    currentUsage: number;
+    maxUsage: number;
+    layerCount: number;
+    totalCreated: number;
+    averageLayerSize: number;
+    layersInfo: Array<{ index: number; filename: string; size: number; loadTime: Date } | null>;
+  } {
+    const layerCount = this.layers.filter(layer => layer !== null).length;
+    const averageLayerSize = layerCount > 0 ? this.memoryUsage / layerCount : 0;
+
+    const layersInfo = this.layerMetadata.map((metadata, index) => {
+      if (metadata && this.layers[index]) {
+        return {
+          index,
+          filename: metadata.filename,
+          size: metadata.size,
+          loadTime: metadata.loadTime
+        };
+      }
+      return null;
+    });
+
+    return {
+      currentUsage: this.memoryUsage,
+      maxUsage: this.maxMemoryUsage,
+      layerCount: layerCount,
+      totalCreated: this.layerCreationCount,
+      averageLayerSize: Math.round(averageLayerSize),
+      layersInfo: layersInfo
+    };
+  }
+
+  /**
+   * Check for potential memory leaks
+   * @returns Warning message if potential leak detected, null otherwise
+   */
+  checkMemoryHealth(): string | null {
+    const stats = this.getMemoryStats();
+
+    // Check for excessive memory usage (over 100MB)
+    if (stats.currentUsage > 100 * 1024 * 1024) {
+      return `High memory usage: ${Math.round(stats.currentUsage / 1024 / 1024)}MB. Consider clearing unused layers.`;
+    }
+
+    // Check for very large average layer size
+    if (stats.averageLayerSize > 20 * 1024 * 1024) { // 20MB per layer
+      return `Large average layer size: ${Math.round(stats.averageLayerSize / 1024 / 1024)}MB. Consider using smaller bitmap files.`;
+    }
+
+    // Check for very old layers (over 1 hour)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oldLayers = stats.layersInfo.filter(info =>
+      info && info.loadTime < oneHourAgo
+    );
+
+    if (oldLayers.length > 0) {
+      return `${oldLayers.length} layer(s) loaded over 1 hour ago. Consider clearing if no longer needed.`;
+    }
+
+    return null;
+  }
+
+  /**
+   * Force garbage collection hint and cleanup
+   * Note: Actual garbage collection is handled by JavaScript engine
+   */
+  suggestGarbageCollection(): void {
+    console.log(`[LAYER MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
+
+    // Log memory health check
+    const healthWarning = this.checkMemoryHealth();
+    if (healthWarning) {
+      console.warn(`[LAYER MANAGER] Memory warning: ${healthWarning}`);
+    }
   }
 }

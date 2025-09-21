@@ -1054,8 +1054,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
         this.writeTimer = setTimeout(() => this.flushWriteBuffer(), this.WRITE_INTERVAL_MS);
       }
 
-      // Force flush if buffer is getting large (4KB) or if this is the first write
-      if (this.writeBuffer.join('').length > 4096 || this.writeBuffer.length === 1) {
+      // Force flush only if buffer is getting large (4KB)
+      // Removed the "|| this.writeBuffer.length === 1" condition that was causing every message to flush immediately
+      if (this.writeBuffer.join('').length > 4096) {
         this.flushWriteBuffer();
       }
     } else {

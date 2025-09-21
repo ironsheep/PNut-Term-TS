@@ -107,8 +107,8 @@ export interface CartesianSpec {
  * - `UPDATE` - Force display update (when UPDATE directive is used)
  * - `SAVE {WINDOW} 'filename'` - Save bitmap of display or entire window
  * - `CLOSE` - Close the window
- * - `PC_KEY` - Enable keyboard input forwarding to P2
- * - `PC_MOUSE` - Enable mouse input forwarding to P2
+ * - `PC_KEY` - Capture keyboard input and transmit to P2 (handled by base class)
+ * - `PC_MOUSE` - Capture mouse input and transmit to P2 (handled by base class)
  * - `DOT x y` - Draw dot at coordinates, `LINE x1 y1 x2 y2` - Draw line
  * - `BOX x y w h` - Draw rectangle, `OVAL x y w h` - Draw ellipse
  * - `ARC x y r start end` - Draw arc, `TEXT x y 'string'` - Draw text
@@ -179,7 +179,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private pendingOperations: PlotCanvasOperation[] = [];
 
   private shouldWriteToCanvas: boolean = true;
-  
+  private canvasInitialized: boolean = false;
+
   // Double buffering support
   private workingCanvas?: OffscreenCanvas;
   private workingCtx?: OffscreenCanvasRenderingContext2D;
@@ -206,10 +207,11 @@ export class DebugPlotWindow extends DebugWindowBase {
   // Performance monitoring
   private performanceMonitor?: PlotPerformanceMonitor;
 
-  // PC_KEY and PC_MOUSE input state
-  private lastPressedKey: number = 0; // ASCII/scan code of last key press
-  private keyBuffer: number[] = []; // Buffer for key presses (if we want to queue multiple)
-  private currentMouseState: number = 0; // 32-bit encoded mouse state
+  // PLOT-specific input state (legacy - now handled by base class)
+  // These are kept for compatibility but base class vKeyPress and mouse state variables are used
+  private lastPressedKey: number = 0; // Legacy - use base class vKeyPress instead
+  private keyBuffer: number[] = []; // Legacy - not used with base class implementation
+  private currentMouseState: number = 0; // Legacy - use base class mouse state variables instead
 
   constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
     super(ctx, windowId, 'plot');
@@ -270,6 +272,22 @@ export class DebugPlotWindow extends DebugWindowBase {
       desiredValue = this.displaySpec.windowTitle;
     }
     return desiredValue;
+  }
+
+  /**
+   * Get the LUT manager for palette operations
+   * Used by integrator and tests to access color palette management
+   */
+  getLutManager(): LUTManager {
+    return this.lutManager;
+  }
+
+  /**
+   * Get the color translator for color format conversions
+   * Used by integrator and tests to access color translation functionality
+   */
+  getColorTranslator(): ColorTranslator {
+    return this.colorTranslator;
   }
 
   static parsePlotDeclaration(lineParts: string[]): [boolean, PlotDisplaySpec] {
@@ -367,9 +385,11 @@ export class DebugPlotWindow extends DebugWindowBase {
             break;
           case 'UPDATE':
             displaySpec.delayedUpdate = true;
+            console.log('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
             break;
           case 'HIDEXY':
-            displaySpec.delayedUpdate = true;
+            displaySpec.hideXY = true;
+            console.log('CL: PlotDisplaySpec: HIDEXY enabled');
             break;
 
           default:
@@ -605,6 +625,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     const width = this.displaySpec.size.width;
     const height = this.displaySpec.size.height;
     const bgColor = this.displaySpec.window.background;
+    const useBuffering = this.updateMode; // Use buffering if in update mode
 
     const jsCode = `
       (function() {
@@ -615,34 +636,52 @@ export class DebugPlotWindow extends DebugWindowBase {
           return 'Canvas not found';
         }
 
-        window.plotCtx = window.plotCanvas.getContext('2d');
-        if (!window.plotCtx) {
+        window.displayCtx = window.plotCanvas.getContext('2d');
+        if (!window.displayCtx) {
           console.error('[PLOT] Could not get 2D context');
           return 'Context not available';
         }
 
-        // Fill the display canvas with background color immediately to prevent flash
-        window.displayCtx = window.plotCanvas.getContext('2d');
+        // Fill the display canvas with background color immediately
         window.displayCtx.fillStyle = '${bgColor}';
         window.displayCtx.fillRect(0, 0, ${width}, ${height});
 
-        // Create offscreen canvas for double buffering
-        window.offscreenCanvas = document.createElement('canvas');
-        window.offscreenCanvas.width = ${width};
-        window.offscreenCanvas.height = ${height};
+        // Setup based on update mode
+        const useBuffering = ${useBuffering};
 
-        // plotCtx is the working context (offscreen)
-        window.plotCtx = window.offscreenCanvas.getContext('2d');
+        if (useBuffering) {
+          // Create offscreen canvas for double buffering
+          window.offscreenCanvas = document.createElement('canvas');
+          window.offscreenCanvas.width = ${width};
+          window.offscreenCanvas.height = ${height};
+
+          // plotCtx points to offscreen buffer
+          window.plotCtx = window.offscreenCanvas.getContext('2d');
+          console.log('[PLOT] UPDATE mode: Drawing to offscreen buffer');
+        } else {
+          // plotCtx points directly to visible canvas
+          window.plotCtx = window.displayCtx;
+          console.log('[PLOT] LIVE mode: Drawing directly to visible canvas');
+        }
 
         // Function to flip buffer (copy offscreen to display)
         window.flipBuffer = function() {
-          if (window.displayCtx && window.offscreenCanvas) {
-            // No need to clear - drawImage will overwrite completely
+          if (useBuffering && window.displayCtx && window.offscreenCanvas) {
+            // Copy offscreen to display
             window.displayCtx.drawImage(window.offscreenCanvas, 0, 0);
+
+            // DO NOT clear the buffer here!
+            // The buffer should only be cleared by explicit CLEAR commands
+            // Clearing here causes flashing because the next frame starts empty
+
+            console.log('[PLOT] Buffer flipped');
+          } else if (!useBuffering) {
+            // In live mode, no flip needed
+            console.log('[PLOT] Live mode - no buffer flip needed');
           }
         };
 
-        // Clear offscreen canvas with background color
+        // Clear the working canvas with background color
         window.plotCtx.fillStyle = '${bgColor}';
         window.plotCtx.fillRect(0, 0, ${width}, ${height});
 
@@ -665,6 +704,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       .then(result => {
         this.logMessage(`Canvas initialization: ${result}`);
         this.shouldWriteToCanvas = true;
+        this.canvasInitialized = true;
         // Set up input event listeners after canvas is ready
         this.setupInputEventListeners();
         // Initialize performance overlay (if enabled)
@@ -1056,6 +1096,39 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       this.performanceUpdateInterval = undefined;
     }
 
+    // **MEMORY LEAK PREVENTION**: Clean up sprite and layer resources
+    try {
+      if (this.spriteManager) {
+        const spriteStats = this.spriteManager.getMemoryStats();
+        this.logMessage(`Cleaning up ${spriteStats.spriteCount} sprites (${Math.round(spriteStats.currentUsage / 1024)}KB)`);
+        this.spriteManager.clearAllSprites();
+      }
+
+      if (this.layerManager) {
+        const layerStats = this.layerManager.getMemoryStats();
+        this.logMessage(`Cleaning up ${layerStats.layerCount} layers (${Math.round(layerStats.currentUsage / 1024)}KB)`);
+        this.layerManager.clearAllLayers();
+      }
+
+      // Clear any deferred operations to prevent memory leaks
+      if (this.plotWindowIntegrator) {
+        this.plotWindowIntegrator.clearDeferredOperations();
+      }
+
+      // Suggest garbage collection after cleanup
+      if (this.spriteManager) {
+        this.spriteManager.suggestGarbageCollection();
+      }
+      if (this.layerManager) {
+        this.layerManager.suggestGarbageCollection();
+      }
+
+      this.logMessage('PLOT window memory cleanup completed');
+    } catch (cleanupError) {
+      console.error('Error during PLOT window cleanup:', cleanupError);
+      this.logMessage(`Warning: Cleanup error - ${cleanupError}`);
+    }
+
     // Don't try to clear canvas - just close the window
     // The canvas clearing was causing the window to appear cleared but not close
 
@@ -1064,15 +1137,184 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     this.debugWindow = null;
   }
 
+  /**
+   * Override to handle CLEAR command - clears the plot display
+   */
+  protected clearDisplayContent(): void {
+    // Safety check: ensure window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      this.logMessage('WARNING: Cannot clear - window not available');
+      return;
+    }
+
+    // Safety check: ensure webContents exists and is not destroyed
+    if (!this.debugWindow.webContents || this.debugWindow.webContents.isDestroyed()) {
+      this.logMessage('WARNING: Cannot clear - webContents not available');
+      return;
+    }
+
+    // Safety check: ensure canvas is initialized
+    if (!this.canvasInitialized) {
+      this.logMessage('WARNING: Cannot clear - canvas not yet initialized');
+      return;
+    }
+
+    this.logMessage(`Clearing PLOT display (updateMode: ${this.updateMode})`);
+
+    // Clear the layers first (synchronous operation)
+    if (this.layerManager) {
+      this.layerManager.clearAllLayers();
+    }
+
+    // CRITICAL: Clear the correct buffer based on update mode
+    // In buffered mode (updateMode=true), clear the offscreen buffer only
+    // The display will update on next flip
+    // In live mode (updateMode=false), clear the visible canvas
+    const jsCode = `
+      (() => {
+        try {
+          const isBuffered = ${this.updateMode};
+
+          if (isBuffered) {
+            // In buffered mode, only clear the offscreen buffer
+            // The display will show the cleared buffer after next UPDATE
+            if (window.plotCtx) {
+              window.plotCtx.fillStyle = window.backgroundColor || '${this.displaySpec.window.background}';
+              window.plotCtx.fillRect(0, 0, window.plotCtx.canvas.width, window.plotCtx.canvas.height);
+            }
+
+            return 'cleared offscreen buffer';
+          } else {
+            // In live mode, clear the visible canvas
+            const ctx = window.plotCtx; // Points to visible canvas in live mode
+            if (!ctx) {
+              return 'no context';
+            }
+
+            ctx.fillStyle = window.backgroundColor || '${this.displaySpec.window.background}';
+            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+            return 'cleared';
+          }
+        } catch (e) {
+          return 'error: ' + e.message;
+        }
+      })()
+    `;
+
+    // Execute asynchronously but don't wait (fire and forget)
+    // This prevents blocking the message processing loop
+    this.debugWindow.webContents.executeJavaScript(jsCode)
+      .then(result => {
+        if (result !== 'cleared') {
+          this.logMessage(`Clear result: ${result}`);
+        }
+      })
+      .catch(error => {
+        this.logMessage(`Failed to clear plot: ${error}`);
+      });
+
+    // Reset cursor position after clear
+    this.cursorPosition = { x: 0, y: 0 };
+  }
+
+  /**
+   * Override to handle UPDATE command - forces display update in buffered mode
+   */
+  protected forceDisplayUpdate(): void {
+    // Safety check: ensure window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      this.logMessage('WARNING: Cannot update - window not available');
+      return;
+    }
+
+    // Safety check: ensure webContents exists and is not destroyed
+    if (!this.debugWindow.webContents || this.debugWindow.webContents.isDestroyed()) {
+      this.logMessage('WARNING: Cannot update - webContents not available');
+      return;
+    }
+
+    // Safety check: ensure canvas is initialized
+    if (!this.canvasInitialized) {
+      this.logMessage('WARNING: Cannot update - canvas not yet initialized');
+      return;
+    }
+
+    this.logMessage('Forcing PLOT display update');
+
+    // Perform the update regardless of buffering mode
+    // performUpdate is async, but we don't wait for it to complete
+    // to avoid blocking the message processing loop
+    this.performUpdate().catch(error => {
+      this.logMessage(`Failed to force update: ${error}`);
+    });
+  }
+
   protected processMessageImmediate(lineParts: string[]): void {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // For LUT commands, we need synchronous execution to match Pascal behavior
+    const commandParts = lineParts.slice(1); // Remove display name prefix
+    const commandString = commandParts.join(' ');
+
+    // Check if this is a LUT command that needs synchronous processing
+    const firstToken = commandParts[0]?.toUpperCase();
+    // Also check if any part contains LUTCOLORS (could be in compound)
+    const hasLutColors = commandString.toUpperCase().includes('LUTCOLORS');
+    if (firstToken === 'LUT' || firstToken === 'LUTCOLORS' || hasLutColors) {
+      // Process LUT commands synchronously
+      this.processLutCommandSync(commandString);
+    } else {
+      // Handle other commands asynchronously
+      this.processMessageAsync(lineParts);
+    }
+  }
+
+  private processLutCommandSync(commandString: string): void {
+    try {
+      // Parse the LUT command
+      const parsedCommands = this.plotCommandParser.parse(commandString);
+      if (parsedCommands.length === 0) {
+        return;
+      }
+
+      // Execute parsed LUT commands synchronously
+      const results = this.plotCommandParser.executeCommands(parsedCommands);
+
+      // Process results and execute operations synchronously
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const command = parsedCommands[i];
+
+        if (result.success && result.canvasOperations.length > 0) {
+          // Execute LUT operations immediately and synchronously
+          const plotOperations = result.canvasOperations.map(op => ({
+            ...op,
+            type: op.type as any,
+            affectsState: true,
+            requiresUpdate: false,
+            deferrable: false
+          } as PlotCanvasOperation));
+
+          // Execute synchronously
+          for (const operation of plotOperations) {
+            this.plotWindowIntegrator.executeOperationSync(operation);
+          }
+        }
+      }
+    } catch (error) {
+      this.logMessage(`Error processing LUT command: ${error}`);
+    }
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
-    // Build command string from line parts, excluding the display name prefix
-    const commandString = lineParts.slice(1).join(' ');
+    // First, let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    const commandParts = lineParts.slice(1); // Remove display name prefix
+    if (await this.handleCommonCommand(commandParts)) {
+      this.logMessage(`Base class handled common command: ${commandParts[0]}`);
+      return; // Base class handled it
+    }
 
+    // Build command string for PLOT-specific parsing
+    const commandString = commandParts.join(' ');
     this.logMessage(`---- PLOT parsing: ${commandString}`);
 
     try {
@@ -1093,12 +1335,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       }
 
       // Execute parsed commands
+      console.log(`[PLOT DEBUG] Calling plotCommandParser.executeCommands()`);
       const results = this.plotCommandParser.executeCommands(parsedCommands);
+      console.log(`[PLOT DEBUG] executeCommands returned ${results.length} results`);
 
       // Process results and execute canvas operations
+      console.log(`[PLOT DEBUG] Processing ${results.length} results from executeCommands`);
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         const command = parsedCommands[i];
+        console.log(`[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
 
         // DEBUG: Log execution flow
         this.logMessage(`EXEC DEBUG: Command ${i + 1}: ${command.command} -> success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
@@ -1124,10 +1370,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           });
         }
 
+        // Debug command results
+        this.logMessage(`RESULT DEBUG: Command '${command.command}' - success: ${result.success}, ops: ${result.canvasOperations?.length || 0}`);
+
         // Handle canvas operations based on command type
         if (result.success && result.canvasOperations.length > 0) {
-          // Check if this is an immediate command (UPDATE or CLOSE)
-          const isImmediateCommand = command.command === 'UPDATE' || command.command === 'CLOSE';
+          this.logMessage(`CMD DEBUG: Processing command '${command.command}' with ${result.canvasOperations.length} operations`);
+          // Check if this is an immediate command (UPDATE, CLOSE, LUT, LUTCOLORS)
+          // LUT commands are immediate like in Pascal - they modify state immediately
+          const isImmediateCommand = command.command === 'UPDATE' || command.command === 'CLOSE' ||
+                                     command.command === 'LUT' || command.command === 'LUTCOLORS';
 
           if (isImmediateCommand) {
             this.logMessage(`IMMEDIATE DEBUG: Executing immediate command ${command.command}`);
@@ -1144,6 +1396,25 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               }
               // Then close the window
               this.closeDebugWindow();
+            }
+            // For LUT commands, execute immediately like Pascal
+            else if (command.command === 'LUT' || command.command === 'LUTCOLORS') {
+              this.logMessage(`LUT DEBUG: Executing LUT command immediately with ${result.canvasOperations.length} operations`);
+              // Execute LUT operations immediately through the integrator
+              const plotOperations = result.canvasOperations.map(op => ({
+                ...op,
+                type: op.type as any,
+                affectsState: true,  // LUT affects state
+                requiresUpdate: false, // LUT doesn't need display update
+                deferrable: false    // LUT is immediate
+              } as PlotCanvasOperation));
+
+              // Execute synchronously for immediate effect - LUT must be immediate like Pascal
+              // Use sync execution to ensure palette is updated before next command
+              for (const operation of plotOperations) {
+                this.plotWindowIntegrator.executeOperationSync(operation);
+              }
+              this.logMessage(`LUT DEBUG: LUT command execution completed synchronously`);
             }
           } else {
             // Regular commands get queued
@@ -1266,8 +1537,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         // Save current state
         const savedAlpha = window.plotCtx.globalAlpha;
 
-        // Set opacity
-        window.plotCtx.globalAlpha = ${opacity / 255};
+        // Set opacity with gamma correction to match Pascal implementation
+        // Pascal uses gamma-corrected blending with power 2.0
+        // This makes low opacity values more visible
+        const linearOpacity = ${opacity} / 255;
+        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2); // Apply gamma correction
+        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
 
         // Set line style
         window.plotCtx.strokeStyle = '${fgColor}';
@@ -1322,8 +1597,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         // Save current state
         const savedAlpha = window.plotCtx.globalAlpha;
 
-        // Set opacity
-        window.plotCtx.globalAlpha = ${opacity / 255};
+        // Set opacity with gamma correction to match Pascal implementation
+        // Pascal uses gamma-corrected blending with power 2.0
+        // This makes low opacity values more visible
+        const linearOpacity = ${opacity} / 255;
+        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2); // Apply gamma correction
+        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
 
         // Draw circle
         window.plotCtx.beginPath();
@@ -1461,12 +1740,13 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   //  ----------------- Utility Routines -----------------------
   //
   private getCursorXY(): [number, number] {
-    // calculate x,y based on Curor Position, CartesianSpec scale inversions, screen size, and ORIGIN
-    // used by OBOX, BOX, OVAL, CIRCLE, TEXT, and SPRITE
+    // Convert cursor logical coordinates to screen coordinates
+    // The cursor stores logical coordinates from SET command
+    // We need to apply origin and axis transformations for screen positioning
     return this.getXY(this.cursorPosition.x, this.cursorPosition.y);
   }
 
-  private getXY(x: number, y: number): [number, number] {
+  public getXY(x: number, y: number): [number, number] {
     // calculate x,y based on Cursor Position, Cartesian scale inversions, screen size, and ORIGIN
     // Canvas coordinates: (0,0) is top-left, Y increases downward
     let newX: number;
@@ -1527,8 +1807,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         // Save current state
         const savedAlpha = window.plotCtx.globalAlpha;
 
-        // Set opacity
-        window.plotCtx.globalAlpha = ${opacity / 255};
+        // Set opacity with gamma correction to match Pascal implementation
+        // Pascal uses gamma-corrected blending with power 2.0
+        // This makes low opacity values more visible
+        const linearOpacity = ${opacity} / 255;
+        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2); // Apply gamma correction
+        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
 
         // Draw dot as a filled circle or single pixel
         window.plotCtx.fillStyle = '${fgColor}';
@@ -1577,7 +1861,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       (function() {
         if (!window.plotCtx) return 'Context not ready';
 
-        window.plotCtx.globalAlpha = ${opacity / 255};
+        // Apply gamma correction to opacity
+        const linearOpacity = ${opacity} / 255;
+        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2);
+        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
 
         if (${lineSize} === 0) {
           // Filled rectangle
@@ -1620,7 +1907,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         if (!window.plotCtx) return 'Context not ready';
 
         window.plotCtx.save();
-        window.plotCtx.globalAlpha = ${opacity / 255};
+        // Apply gamma correction to opacity
+        const linearOpacity = ${opacity} / 255;
+        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2);
+        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
 
         window.plotCtx.beginPath();
         window.plotCtx.ellipse(${plotCoordX}, ${plotCoordY}, ${rx}, ${ry}, 0, 0, 2 * Math.PI);
@@ -1663,7 +1953,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     };
   }
 
-  private polarToCartesian(length: number, angle: number): [number, number] {
+  public polarToCartesian(length: number, angle: number): [number, number] {
     // convert polar to cartesian
     // Chips:
     //   Tf := (Int64(theta_y) + Int64(vTheta)) / vTwoPi * Pi * 2;

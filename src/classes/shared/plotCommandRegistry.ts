@@ -36,8 +36,10 @@ export class PlotCommandRegistry {
    * Register a command with its definition
    */
   registerCommand(definition: CommandDefinition): void {
+    const upperName = definition.name.toUpperCase();
+
     // Register main command
-    this.commands.set(definition.name.toUpperCase(), definition);
+    this.commands.set(upperName, definition);
 
     // Register aliases
     if (definition.aliases) {

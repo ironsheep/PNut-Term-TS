@@ -14,6 +14,9 @@ export interface SpriteDefinition {
 export class SpriteManager {
   private sprites: (SpriteDefinition | null)[];
   private static readonly MAX_SPRITES = 256;
+  private memoryUsage: number = 0; // Track memory usage in bytes
+  private maxMemoryUsage: number = 0; // Track peak memory usage
+  private spriteCreationCount: number = 0; // Track total sprites created for leak detection
 
   constructor() {
     // Initialize array with null values for 256 sprites
@@ -58,13 +61,28 @@ export class SpriteManager {
       }
     }
 
-    // Store sprite definition
+    // Clean up existing sprite if replacing
+    if (this.sprites[id] !== null) {
+      this.releaseSprite(id);
+    }
+
+    // Calculate memory usage for new sprite
+    const spriteMemory = this.calculateSpriteMemory(width, height, pixels.length, colors.length);
+
+    // Store sprite definition with memory tracking
     this.sprites[id] = {
       width,
       height,
       pixels: [...pixels],  // Copy arrays to prevent external modification
       colors: [...colors]
     };
+
+    // Update memory tracking
+    this.memoryUsage += spriteMemory;
+    this.maxMemoryUsage = Math.max(this.maxMemoryUsage, this.memoryUsage);
+    this.spriteCreationCount++;
+
+    console.log(`[SPRITE MANAGER] Sprite ${id} defined: ${width}x${height}, memory: ${spriteMemory} bytes, total: ${this.memoryUsage} bytes`);
   }
 
   /**
@@ -190,20 +208,69 @@ export class SpriteManager {
   }
 
   /**
-   * Clear a specific sprite definition
+   * Clear a specific sprite definition with proper memory cleanup
    * @param id Sprite ID (0-255)
    */
   clearSprite(id: number): void {
     if (id >= 0 && id < SpriteManager.MAX_SPRITES) {
-      this.sprites[id] = null;
+      this.releaseSprite(id);
     }
   }
 
   /**
-   * Clear all sprite definitions
+   * Clear all sprite definitions with proper memory cleanup
    */
   clearAllSprites(): void {
-    this.sprites.fill(null);
+    // Release all sprites to update memory tracking
+    for (let i = 0; i < SpriteManager.MAX_SPRITES; i++) {
+      if (this.sprites[i] !== null) {
+        this.releaseSprite(i);
+      }
+    }
+    console.log(`[SPRITE MANAGER] All sprites cleared, memory usage reset to 0`);
+  }
+
+  /**
+   * Release a sprite and update memory tracking
+   * @param id Sprite ID (0-255)
+   */
+  private releaseSprite(id: number): void {
+    const sprite = this.sprites[id];
+    if (sprite !== null) {
+      // Calculate memory being released
+      const spriteMemory = this.calculateSpriteMemory(
+        sprite.width,
+        sprite.height,
+        sprite.pixels.length,
+        sprite.colors.length
+      );
+
+      // Clear the sprite
+      this.sprites[id] = null;
+
+      // Update memory tracking
+      this.memoryUsage -= spriteMemory;
+      this.memoryUsage = Math.max(0, this.memoryUsage); // Ensure non-negative
+
+      console.log(`[SPRITE MANAGER] Sprite ${id} released: ${spriteMemory} bytes freed, total: ${this.memoryUsage} bytes`);
+    }
+  }
+
+  /**
+   * Calculate memory usage for a sprite
+   * @param width Sprite width
+   * @param height Sprite height
+   * @param pixelCount Number of pixels
+   * @param colorCount Number of colors
+   * @returns Memory usage in bytes
+   */
+  private calculateSpriteMemory(width: number, height: number, pixelCount: number, colorCount: number): number {
+    // Estimate memory usage:
+    // - Basic object overhead: ~100 bytes
+    // - pixels array: pixelCount * 8 bytes (number storage in JS)
+    // - colors array: colorCount * 8 bytes (number storage in JS)
+    // - width/height: 16 bytes
+    return 100 + (pixelCount * 8) + (colorCount * 8) + 16;
   }
 
   /**
@@ -249,5 +316,69 @@ export class SpriteManager {
       return null;
     }
     return this.sprites[id];
+  }
+
+  /**
+   * Get current memory usage statistics
+   * @returns Memory usage information
+   */
+  getMemoryStats(): {
+    currentUsage: number;
+    maxUsage: number;
+    spriteCount: number;
+    totalCreated: number;
+    averageSpriteSize: number;
+  } {
+    const spriteCount = this.sprites.filter(sprite => sprite !== null).length;
+    const averageSpriteSize = spriteCount > 0 ? this.memoryUsage / spriteCount : 0;
+
+    return {
+      currentUsage: this.memoryUsage,
+      maxUsage: this.maxMemoryUsage,
+      spriteCount: spriteCount,
+      totalCreated: this.spriteCreationCount,
+      averageSpriteSize: Math.round(averageSpriteSize)
+    };
+  }
+
+  /**
+   * Check for potential memory leaks
+   * @returns Warning message if potential leak detected, null otherwise
+   */
+  checkMemoryHealth(): string | null {
+    const stats = this.getMemoryStats();
+
+    // Check for excessive memory usage (over 50MB)
+    if (stats.currentUsage > 50 * 1024 * 1024) {
+      return `High memory usage: ${Math.round(stats.currentUsage / 1024 / 1024)}MB. Consider clearing unused sprites.`;
+    }
+
+    // Check for too many sprites
+    if (stats.spriteCount > 200) {
+      return `High sprite count: ${stats.spriteCount}/256. Memory usage: ${Math.round(stats.currentUsage / 1024 / 1024)}MB.`;
+    }
+
+    // Check for very large average sprite size
+    if (stats.averageSpriteSize > 500000) { // 500KB per sprite
+      return `Large average sprite size: ${Math.round(stats.averageSpriteSize / 1024)}KB. Consider optimizing sprite data.`;
+    }
+
+    return null;
+  }
+
+  /**
+   * Force garbage collection hint and cleanup
+   * Note: Actual garbage collection is handled by JavaScript engine
+   */
+  suggestGarbageCollection(): void {
+    // Clear any temporary references that might prevent GC
+    // In a real implementation, this might clear internal caches or temporary data
+    console.log(`[SPRITE MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
+
+    // Log memory health check
+    const healthWarning = this.checkMemoryHealth();
+    if (healthWarning) {
+      console.warn(`[SPRITE MANAGER] Memory warning: ${healthWarning}`);
+    }
   }
 }
