@@ -419,19 +419,88 @@ Send command to multiple chips, verify all respond
 - [ ] Multi-chip masking (if required)
 - [ ] Compatible with standard terminal software
 
-## 13. Reference Implementation
+## 13. Actual Testing Results with PNut v51
 
-### 13.1 ROM Source Code Location
+### 13.1 Logic Analyzer Findings (2025-09-21)
+Comprehensive testing with PNut v51 on Windows using logic analyzer reveals actual protocol implementation:
+
+#### 13.1.1 Critical Protocol Discoveries
+**MAJOR FINDING**: Commands use SPACE terminator, not CR as documented!
+
+1. **Command Termination**:
+   - **Expected**: Commands terminated with CR (0x0D)
+   - **Actual**: Commands terminated with SPACE (0x20)
+   - Example: `> Prop_Chk 0 0 0 0 ` (note trailing space)
+
+2. **Timing Requirements**:
+   - DTR hardware reset pulse: 17µs
+   - Wait after reset: 17ms (NOT within 15ms window)
+   - Gap between commands: 12-16ms
+   - P2 response time: 12-12.6µs
+
+#### 13.1.2 FLASH Download Sequence (Observed)
+```
+1. DTR Reset (17µs pulse)
+2. Wait 17ms
+3. Send: "> Prop_Chk 0 0 0 0 " (space terminator)
+4. P2 responds in 12µs with check results
+5. Wait 16ms
+6. Send: "> Prop_Txt 0 0 0 0 " (space terminator)
+7. Send encoded binary data
+8. Send "~" terminator
+9. P2 responds 268.7ms later with "COG0 INIT..." (debug builds only)
+```
+
+#### 13.1.3 RAM Download Sequence (Observed)
+```
+1. DTR Reset
+2. Wait 17ms
+3. Send: "> Prop_Chk 0 0 0 0 " (space terminator)
+4. P2 responds in 12.6µs: 0x0D,0x0A,"Prop_Ver G",0x0D,0x0A
+5. Wait 12ms
+6. Send: "> Prop_Txt 0 0 0 0 " (space terminator)
+7. Send encoded binary data
+8. Send "~" terminator
+9. Code executes (output depends on debug compilation)
+```
+
+#### 13.1.4 Response Behavior Matrix
+| Download Type | Debug Compiled | Response |
+|--------------|---------------|-----------|
+| RAM | Yes | Debug serial output |
+| RAM | No | Silent |
+| FLASH | Yes | "COG0 INIT..." at ~268ms |
+| FLASH | No | Silent |
+
+**Note**: "COG0 INIT" is NOT a bootloader message - it's debug output from debug-compiled FLASH images.
+
+#### 13.1.5 Command Format Corrections
+| Documentation Says | PNut Actually Sends |
+|-------------------|---------------------|
+| `Prop_Chk<CR>` | `> Prop_Chk 0 0 0 0 ` |
+| `Prop_Txt ~<CR>` | `> Prop_Txt 0 0 0 0 ` |
+| Command at <15ms | Command at 17ms |
+| CR terminator | Space terminator |
+
+#### 13.1.6 Auto-baud Prefix
+All commands include `>` prefix for auto-baud detection:
+- The `>` character (0x3E) enables baud rate detection
+- Must be first character of command
+- Followed by space before actual command
+
+## 14. Reference Implementation
+
+### 14.1 ROM Source Code Location
 The actual Boot ROM source code can be found in the P2 knowledge base at:
 - `engineering/ingestion/sources/rom-booter/` - ROM boot loader listings
 - Analysis shows complete implementation details
 
-### 13.2 Test Tools
+### 14.2 Test Tools
 - **loadp2**: Official Parallax command-line utility  
 - **PropellerIDE**: Graphical development environment
 - **Custom test scripts**: Python/C implementations for automated testing
 
-### 13.3 Additional Documentation
+### 14.3 Additional Documentation
 - P2 Silicon Documentation v35: Complete protocol specification
 - P2 Datasheet: Hardware requirements and pin assignments
 - Boot ROM Analysis: Implementation details and optimization notes

@@ -184,27 +184,88 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async deviceIsPropellerV2(): Promise<boolean> {
-    const didCheck = await this.requestPropellerVersion(); // initiate request
-    let foundPropellerStatus: boolean = this.foundP2;
-    if (didCheck) {
-      await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
-      const [deviceString, deviceErrorString] = this.getIdStringOrError();
-      if (deviceErrorString.length > 0) {
-        this.logMessage(`* deviceIsPropeller() ERROR: ${deviceErrorString}`);
-      } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
-        foundPropellerStatus = true;
-      }
+    // For downloads: ALWAYS reset and check P2 (don't use checkedForP2 flag)
+    const didCheck = await this.requestPropellerVersionForDownload(); // Always reset for download
+    let foundPropellerStatus: boolean = false;
+
+    // Wait for response after reset
+    await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+    const [deviceString, deviceErrorString] = this.getIdStringOrError();
+    if (deviceErrorString.length > 0) {
+      this.logMessage(`* deviceIsPropeller() ERROR: ${deviceErrorString}`);
+    } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
+      foundPropellerStatus = true;
     }
+
     this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus})`);
     return foundPropellerStatus;
   }
 
+  /**
+   * Request P2 version for download - ALWAYS performs reset sequence
+   * This is separate from initial connection check and always executes
+   */
+  private async requestPropellerVersionForDownload(): Promise<boolean> {
+    const requestPropType: string = 'Prop_Chk';
+
+    this.logMessage(`* requestPropellerVersionForDownload() - ALWAYS resetting for download`);
+    this.logMessage(`* requestPropellerVersionForDownload() - port open (${this._serialPort.isOpen})`);
+
+    try {
+      await this.waitForPortOpen();
+      // continue with ID effort...
+      await waitMSec(250);
+
+      // Use RTS instead of DTR if RTS override is enabled
+      if (this.context.runEnvironment.rtsOverride) {
+        this.logMessage(`* requestPropellerVersionForDownload() - Using RTS reset`);
+        // FTDI workaround: Toggle twice for proper pulse
+        await this.setRts(false);  // Ensure we start HIGH
+        await waitMSec(5);          // Let it settle
+        await this.setRts(true);    // Pull LOW (assert)
+        await waitMSec(10);         // Hold for 10ms
+        await this.setRts(false);   // Return HIGH (de-assert)
+      } else {
+        this.logMessage(`* requestPropellerVersionForDownload() - Using DTR reset`);
+        // The Prop Plug hardware generates a 17µs reset pulse automatically when DTR toggles
+        // We just need to trigger it and time our Prop_Chk correctly
+
+        // Toggle DTR to trigger the Prop Plug's built-in 17µs reset pulse
+        await this.setDtr(true);    // This triggers the hardware's 17µs reset pulse
+        await this.setDtr(false);   // Return DTR to idle state
+
+        this.logMessage(`* requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`);
+      }
+
+      // Fm Silicon Doc:
+      //   Unless preempted by a program in a SPI memory chip with a pull-up resistor on P60 (SPI_CK), the
+      //     serial loader becomes active within 15ms of reset being released.
+      //
+      //   If nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
+      //
+      // The 17µs pulse is enough to reset the P2, now wait for bootloader to be ready
+      // PNut v51 sends Prop_Chk at 17ms after reset (not within 15ms window as documented)
+      await waitMSec(17); // Match PNut v51 timing: 17ms after reset
+
+      this.logMessage(`* requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`);
+      // Use space terminator as observed in PNut v51, not CR
+      await this.write(`> ${requestPropType} 0 0 0 0 `);
+      // drain() now called inside write() for guaranteed delivery
+      return true;
+    } catch (error) {
+      this.logMessage(`* requestPropellerVersionForDownload() ERROR: ${JSON.stringify(error, null, 2)}`);
+      return false;
+    }
+  }
+
   public async downloadNoCheck(uint8Bytes: Uint8Array) {
-    const requestStartDownload: string = 'Prop_Txt ~';
+    // PNut v51 format: 'Prop_Txt 0 0 0 0' with space terminator
+    const requestStartDownload: string = 'Prop_Txt 0 0 0 0';
     const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
     if (this.usbConnected && uint8Bytes.length > 0) {
       const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
-      await this.write(`${requestStartDownload}\r`);
+      // Use space terminator as observed in PNut v51, not CR
+      await this.write(`> ${requestStartDownload} `);  // > triggers P2 autobaud
       //await this.write(dataBase64);
       // Break this up into lines with > sync chars starting each
       const LINE_LENGTH: number = 1024;
@@ -216,7 +277,8 @@ export class UsbSerial extends EventEmitter {
         const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
         await this.write('>' + singleLine);
       }
-      await this.write('~\r');
+      // Send terminator - just ~ character as seen in PNut v51
+      await this.write('~');  // Terminator only, no > or CR needed
     }
   }
 
@@ -226,13 +288,18 @@ export class UsbSerial extends EventEmitter {
     this._downloadResponse = '';
     this._checksumVerified = false;
     //
-    const requestStartDownload: string = 'Prop_Txt ~';
+    // PNut v51 format: 'Prop_Txt 0 0 0 0' with space terminator
+    const requestStartDownload: string = 'Prop_Txt 0 0 0 0';
     const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
     this.logMessage(`* download() - port open (${this._serialPort.isOpen})`);
     // wait for port to be open...
     try {
       const didOpen = await this.waitForPortOpen();
       this.logMessage(`* download() port opened = (${didOpen}) `);
+
+      // PNut v51 waits 12-16ms between Prop_Chk response and Prop_Txt command
+      this.logMessage(`* download() - waiting 15ms before sending Prop_Txt (matching PNut v51 timing)`);
+      await waitMSec(15); // Use 15ms (middle of 12-16ms range observed)
 
       // Continue with download...
       if (this.usbConnected && uint8Bytes.length > 0) {
@@ -252,14 +319,15 @@ export class UsbSerial extends EventEmitter {
         this.logMessage(`* download() SENDING [${dumpBytes}](${dataBase64.length})`);
 
         // * Now do the download
-        await this.write(`${requestStartDownload}\r`);
+        // Use space terminator as observed in PNut v51, not CR
+        await this.write(`> ${requestStartDownload} `);  // > triggers P2 autobaud
         for (let index = 0; index < lineCount; index++) {
           const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
           const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
           await this.write('>' + singleLine);
         }
-        // Send terminator and optionally verify checksum
-        await this.write('~\r');
+        // Send terminator - just ~ character as seen in PNut v51
+        await this.write('~');  // Terminator only, no > or CR needed
         
         if (needsP2ChecksumVerify) {
           // After sending terminator, P2 will validate checksum and respond
@@ -449,7 +517,7 @@ export class UsbSerial extends EventEmitter {
     // NO wait yields a 1.5 mSec delay on my mac Studio
     // NOTE: if nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
     await waitMSec(15);
-    await this.write(`${requestPropType}\r`);
+    await this.write(`> ${requestPropType} 0 0 0 0\r`);  // > triggers P2 autobaud with zeros
     // drain() now called inside write() for guaranteed delivery
     /*return new Promise((resolve, reject) => {
       //this.logMessage(`* requestP2IDString() - EXIT`);
@@ -486,7 +554,7 @@ export class UsbSerial extends EventEmitter {
         //
         // NO wait yields a 102 mSec delay on my mac Studio
         await waitMSec(15); // at least a  15 mSec delay, yields a 230mSec delay when 2nd wait above is 100 mSec
-        await this.write(`${requestPropType}\r`);
+        await this.write(`> ${requestPropType}\r`);  // > triggers P2 autobaud
         // drain() now called inside write() for guaranteed delivery
       } catch (error) {
         this.logMessage(`* requestPropellerVersion() ERROR: ${JSON.stringify(error, null, 2)}`);
@@ -596,7 +664,13 @@ export class UsbSerial extends EventEmitter {
         } else {
           this._dtrValue = value;
           this.logMessage(`DTR: ${value}`);
-          resolve();
+          // Force a drain to ensure the command is sent
+          this._serialPort.drain((drainErr) => {
+            if (drainErr) {
+              console.log(`[USB] DTR drain error: ${drainErr}`);
+            }
+            resolve();
+          });
         }
       });
     });

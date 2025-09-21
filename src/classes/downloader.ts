@@ -51,10 +51,10 @@ export class Downloader {
         this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes, debug=${hasDebugger}`);
       }
 
-      // Enable checksum verification for both RAM and FLASH downloads
-      // The P2 bootloader validates the complete image checksum before execution
-      needsP2ChecksumVerify = true;
-      this.logMessage(`  -- ${target} download with checksum verification enabled`);
+      // Disable checksum verification temporarily to match PNut v51 behavior
+      // Will re-enable after basic download is working
+      needsP2ChecksumVerify = false;
+      this.logMessage(`  -- ${target} download without checksum verification (matching PNut v51)`);
       //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
       // write to USB PropPlug
       let usbPort: UsbSerial;
@@ -77,6 +77,7 @@ export class Downloader {
           }
         } else {
           //downloaderTerminal.sendText(`# ERROR: No Propller v2 found`);
+          errMsg = 'No Propeller v2 device found - check connection and try again';
           noDownloadError = false;
         }
         //this.testDownloadFile(usbPort);
