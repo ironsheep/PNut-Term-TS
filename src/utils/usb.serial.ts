@@ -184,20 +184,36 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async deviceIsPropellerV2(): Promise<boolean> {
-    // For downloads: ALWAYS reset and check P2 (don't use checkedForP2 flag)
+    this.logMessage(`* deviceIsPropellerV2() ENTER - current _p2DeviceId: '${this._p2DeviceId}'`);
+
+    // For downloads: ALWAYS reset and check P2
     const didCheck = await this.requestPropellerVersionForDownload(); // Always reset for download
     let foundPropellerStatus: boolean = false;
 
     // Wait for response after reset
     await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+
+    // Check detection buffer directly for debugging
+    this.logMessage(`* deviceIsPropellerV2() - detection buffer before processing: '${this._p2DetectionBuffer}'`);
+
+    // Process any P2 response in the existing buffer
+    // The buffer already has data from the serial port handler
+    if (this._p2DetectionBuffer.length > 0) {
+      // Convert buffer string back to Buffer for processing
+      const bufferData = Buffer.from(this._p2DetectionBuffer, 'utf8');
+      this.checkForP2Response(bufferData);
+    }
+
     const [deviceString, deviceErrorString] = this.getIdStringOrError();
+    this.logMessage(`* deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`);
+
     if (deviceErrorString.length > 0) {
       this.logMessage(`* deviceIsPropeller() ERROR: ${deviceErrorString}`);
     } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
       foundPropellerStatus = true;
     }
 
-    this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus})`);
+    this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`);
     return foundPropellerStatus;
   }
 
@@ -319,6 +335,8 @@ export class UsbSerial extends EventEmitter {
         this.logMessage(`* download() SENDING [${dumpBytes}](${dataBase64.length})`);
 
         // * Now do the download
+        // Log which command format we're using
+        this.logMessage(`* download() - Using command: > ${requestStartDownload} (${needsP2ChecksumVerify ? 'with response expected' : 'silent mode'})`);
         // Use space terminator as observed in PNut v51, not CR
         await this.write(`> ${requestStartDownload} `);  // > triggers P2 autobaud
         for (let index = 0; index < lineCount; index++) {
@@ -326,38 +344,62 @@ export class UsbSerial extends EventEmitter {
           const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
           await this.write('>' + singleLine);
         }
-        // Send terminator - just ~ character as seen in PNut v51
-        await this.write('~');  // Terminator only, no > or CR needed
-        
+        // Send terminator:
+        // '~' = Execute immediately (silent, no response)
+        // '?' = Validate checksum and respond ('.' = valid, '!' = invalid)
+        const terminator = needsP2ChecksumVerify ? '?' : '~';
+        this.logMessage(`* download() - Sending terminator: '${terminator}' (${needsP2ChecksumVerify ? 'checksum validation mode' : 'immediate execution'})`);
+        await this.write(terminator);  // Terminator only, no > or CR needed
+
         if (needsP2ChecksumVerify) {
-          // After sending terminator, P2 will validate checksum and respond
-          // '.' means checksum good and program started
-          // '?' means checksum bad
-          this.logMessage(`* Waiting for P2 checksum verification...`);
-          
-          // Give P2 time to validate and respond
-          await waitMSec(100);
-          
-          // Check if we got a response in our detection buffer
-          let response = '?'; // Default to error
-          if (this._p2DetectionBuffer.includes('.')) {
-            response = '.';
-            this._downloadChecksumGood = true;
-            this._checksumVerified = true;
-            this.logMessage(`* P2 checksum verification: PASSED ('.' received)`);
-          } else if (this._p2DetectionBuffer.includes('?')) {
-            response = '?';
-            this._downloadChecksumGood = false;
-            this._checksumVerified = true;
-            this.logMessage(`* P2 checksum verification: FAILED ('?' received)`);
-          } else {
-            this._checksumVerified = false;
-            this.logMessage(`* P2 checksum verification: NO RESPONSE (buffer: '${this._p2DetectionBuffer}')`);
-          }
-          
-          this._downloadResponse = response;
-          // Clear detection buffer after checking
+          // After sending '?' terminator, P2 WILL respond with:
+          // '.' = checksum valid, program started
+          // '!' = checksum invalid
+          this.logMessage(`* Waiting for P2 checksum verification response (. or !)...`);
+
+          // Wait for the actual response character
+          // P2 will ALWAYS respond, so we wait for the character with a safety timeout
+          const startTime = Date.now();
+          const timeout = 1000; // 1 second safety timeout - should NEVER be hit unless protocol is out of sync
+
+          // Clear buffer before waiting for response
           this._p2DetectionBuffer = '';
+
+          // Wait for response character
+          while (true) {
+            // Check for response characters
+            if (this._p2DetectionBuffer.includes('.') || this._p2DetectionBuffer.includes('!')) {
+              const responseTime = Date.now() - startTime;
+
+              if (this._p2DetectionBuffer.includes('.')) {
+                this._downloadChecksumGood = true;
+                this._checksumVerified = true;
+                this.logMessage(`* P2 checksum verification: SUCCESS - '.' received after ${responseTime}ms`);
+                this.logMessage(`* Download completed successfully with verified checksum`);
+              } else if (this._p2DetectionBuffer.includes('!')) {
+                this._downloadChecksumGood = false;
+                this._checksumVerified = true;
+                this.logMessage(`* P2 checksum verification: FAILED - '!' received after ${responseTime}ms`);
+                this.logMessage(`* Download failed - checksum invalid, binary may be corrupted`);
+              }
+              break;
+            }
+
+            // Safety timeout check - this should NEVER happen
+            if (Date.now() - startTime > timeout) {
+              this._checksumVerified = false;
+              this.logMessage(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms`);
+              this.logMessage(`* Buffer contents: '${this._p2DetectionBuffer}'`);
+              this.logMessage(`* Protocol out of sync - P2 ALWAYS responds to '?' with '.' or '!'`);
+              this.logMessage(`* Something is seriously wrong with the serial communication`);
+              break;
+            }
+
+            // Small yield to let data arrive
+            await waitMSec(1);
+          }
+
+          this._downloadResponse = this._downloadChecksumGood ? '.' : '!';
         }
       }
     } catch (error) {

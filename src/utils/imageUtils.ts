@@ -118,7 +118,8 @@ export class ObjectImage {
     desiredValue = this._objImage[offset];
     desiredValue |= this._objImage[offset + 1] << 8;
     //}
-    return desiredValue;
+    // Ensure we return an unsigned 16-bit value
+    return desiredValue & 0xFFFF;
   }
 
   public readLong(offset: number): number {
@@ -128,7 +129,8 @@ export class ObjectImage {
     desiredValue = this.readWord(offset);
     desiredValue |= this.readWord(offset + 2) << 16;
     //}
-    return desiredValue;
+    // Ensure we return an unsigned 32-bit value
+    return desiredValue >>> 0;
   }
 
   public readLongNext(): number {
@@ -191,6 +193,59 @@ export class ObjectImage {
       checkSum -= this.readLong(offset);
     }
     return checkSum;
+  }
+
+  /**
+   * Validate the checksum of a P2 binary image
+   * Returns true if checksum is valid, false otherwise
+   * Also returns diagnostic information
+   */
+  public validateP2Checksum(): { valid: boolean; calculatedSum: number; storedSum: number; details: string } {
+    // P2 binary format:
+    // 0x00: 'Prop' signature (0x706F7250)
+    // 0x04: Checksum (negative sum of all longs including signature)
+    // 0x08+: Program data
+
+    // Read the signature
+    const signature = this.readLong(0x00);
+    if (signature !== 0x706F7250) {
+      return {
+        valid: false,
+        calculatedSum: 0,
+        storedSum: 0,
+        details: `Invalid signature: 0x${signature.toString(16).padStart(8, '0')} (expected 0x706F7250 'Prop')`
+      };
+    }
+
+    // Read the stored checksum at offset 0x04
+    const storedChecksum = this.readLong(0x04);
+
+    // Calculate what the checksum should be
+    // Sum all 32-bit longs in the image (including signature and checksum)
+    let calculatedSum = 0;
+    for (let offset = 0; offset < this.offset; offset += 4) {
+      calculatedSum += this.readLong(offset);
+    }
+
+    // The sum of all longs (including the checksum) should be 0
+    const isValid = calculatedSum === 0;
+
+    // Also calculate what the checksum at 0x04 should be
+    let expectedChecksum = 0;
+    for (let offset = 0; offset < this.offset; offset += 4) {
+      if (offset !== 0x04) {  // Skip the checksum field itself
+        expectedChecksum -= this.readLong(offset);
+      }
+    }
+
+    return {
+      valid: isValid,
+      calculatedSum: calculatedSum,
+      storedSum: storedChecksum,
+      details: isValid ?
+        'Checksum valid - sum of all longs = 0' :
+        `Checksum INVALID - sum = 0x${calculatedSum.toString(16).padStart(8, '0')}, stored = 0x${storedChecksum.toString(16).padStart(8, '0')}, expected = 0x${expectedChecksum.toString(16).padStart(8, '0')}`
+    };
   }
 
   public flasherChecksum(): number {

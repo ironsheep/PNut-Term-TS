@@ -93,9 +93,15 @@ States:
 ### 4.1 Prop_Chk - Communication Verification
 **Purpose**: Verify communication link and identify chip version
 
-**Syntax**: `Prop_Chk<CR>`
+**Syntax**: `Prop_Chk <INAmask> <INAdata> <INBmask> <INBdata><CR>`
 
-**Response**: `Prop_Ver Au<CR>` 
+**Parameters** (all in hex, optional - use 0 0 0 0 for single chip):
+- **INAmask**: Mask for P31-P0 (INA register)
+- **INAdata**: Expected data for P31-P0
+- **INBmask**: Mask for P63-P32 (INB register)
+- **INBdata**: Expected data for P63-P32
+
+**Response**: `Prop_Ver Au<CR>`
 - "Au" indicates revision A silicon (current production)
 - Future silicon revisions will return different codes
 
@@ -107,12 +113,18 @@ Prop_Ver Au
 >
 ```
 
-### 4.2 Prop_Clk - Clock Configuration  
+### 4.2 Prop_Clk - Clock Configuration
 **Purpose**: Configure system clock before code loading
 
-**Syntax**: `Prop_Clk P1 P2 P3<CR>`
+**Syntax**: `Prop_Clk <INAmask> <INAdata> <INBmask> <INBdata><CR>`
 
-**Parameters**:
+**Parameters** (all in hex, optional - use 0 0 0 0 for single chip):
+- **INAmask**: Mask for P31-P0 (INA register)
+- **INAdata**: Expected data for P31-P0
+- **INBmask**: Mask for P63-P32 (INB register)
+- **INBdata**: Expected data for P63-P32
+
+**Clock Configuration Parameters** (following the INA/INB parameters):
 - **P1**: Clock source selection
   - `0` = RCFAST (internal ~20MHz RC oscillator)
   - `1` = RCSLOW (internal ~20KHz RC oscillator)  
@@ -138,12 +150,20 @@ Prop_Ver Au
 - Final system frequency: Maximum 250MHz (P2 limit)
 - PLL factors must result in valid VCO frequency range
 
-### 4.3 Prop_Hex - Intel Hex Data Loading
-**Purpose**: Load binary data in Intel HEX format
+### 4.3 Prop_Hex - Hex Data Loading
+**Purpose**: Load binary data in hex format (raw hex bytes or Intel HEX format)
 
-**Syntax**: `Prop_Hex<CR>`
+**Syntax**: `Prop_Hex <INAmask> <INAdata> <INBmask> <INBdata><CR>`
 
-**Data Format**: Standard Intel HEX records
+**Parameters** (all in hex, optional - use 0 0 0 0 for single chip):
+- **INAmask**: Mask for P31-P0 (INA register)
+- **INAdata**: Expected data for P31-P0
+- **INBmask**: Mask for P63-P32 (INB register)
+- **INBdata**: Expected data for P63-P32
+
+**Data Format**:
+1. **Raw hex bytes** followed by terminator
+2. **Standard Intel HEX records**
 ```
 Format: :LLAAAATTDD...DD CC
 ├── LL: Byte count (hex)
@@ -157,7 +177,31 @@ Format: :LLAAAATTDD...DD CC
 - `00`: Data record (load data to specified address)
 - `01`: End of file record (terminate loading)
 
-**Example Session**:
+**Example Sessions**:
+
+*Raw Hex Without Checksum*:
+```
+> Prop_Hex 0 0 0 0
+FB F7 23 F6 FD FB 23 F6 25 26 80 FF 1F 80 66 FD F0 FF 9F FD
+~
+(program executes without validation)
+```
+
+*Raw Hex With Embedded Checksum*:
+```
+Program bytes: FB F7 23 F6 FD FB 23 F6 25 26 80 FF 1F 80 66 FD F0 FF 9F FD
+Sum of longs: 0xE6CE9A2C
+Checksum: 0x706F7250 - 0xE6CE9A2C = 0x89A0D824
+Append bytes: 24 D8 A0 89
+
+> Prop_Hex 0 0 0 0
+FB F7 23 F6 FD FB 23 F6 25 26 80 FF 1F 80 66 FD F0 FF 9F FD 24 D8 A0 89
+?
+.
+(checksum validated, program executes)
+```
+
+*Intel HEX Format*:
 ```
 > Prop_Hex
 :10000000214601360121470136007EFE09D21940
@@ -167,18 +211,39 @@ Format: :LLAAAATTDD...DD CC
 (program executes)
 ```
 
-**Checksum Validation**: Each record's checksum is verified. Invalid checksums return '?' and abort loading.
+**Notes**:
+- Start each hex line with ">" for baud rate calibration
+- Use `~` terminator for immediate execution (no validation)
+- Use `?` terminator when embedded checksum is present
+- Raw hex bytes must be space-separated
+
+**Checksum Validation**:
+- Intel HEX: Each record's checksum is verified
+- Raw hex with `?`: Sum of all longs must equal 0x706F7250
+
+**Invalid Character Handling**: Any non-hex character received when hex digits are expected causes the loader to abort and wait for a new command.
 
 ### 4.4 Prop_Txt - Base64 Data Loading
 **Purpose**: Load binary data in Base64 format (more efficient than hex)
 
-**Syntax**: `Prop_Txt ~<CR>`
+**Syntax**: `Prop_Txt <INAmask> <INAdata> <INBmask> <INBdata><SPACE>` or `Prop_Txt <INAmask> <INAdata> <INBmask> <INBdata>~`
+
+**Parameters** (all in hex, optional - use 0 0 0 0 for single chip):
+- **INAmask**: Mask for P31-P0 (INA register)
+- **INAdata**: Expected data for P31-P0
+- **INBmask**: Mask for P63-P32 (INB register)
+- **INBdata**: Expected data for P63-P32
 
 **Data Format**: RFC 4648 standard Base64 encoding
 - **Alphabet**: `A-Z`, `a-z`, `0-9`, `+`, `/`
 - **Padding**: `=` character as needed
-- **Terminator**: `~` character ends data stream
 - **Whitespace**: Ignored (spaces, tabs, CR, LF allowed)
+
+**Critical: Terminator Controls Response Mode**:
+- **`~` terminator**: Execute immediately (silent mode, no response)
+- **`?` terminator**: Validate checksum and send response:
+  - Returns `.` if checksum is valid → then executes
+  - Returns `!` if checksum is invalid → waits for new command
 
 **Efficiency**: ~75% vs ~44% for Intel Hex
 
@@ -195,6 +260,7 @@ UHJvcAQAAAAAAAIAAABQAf//QAH//0AB//8=
 - Data is loaded starting at hub address $00000
 - Invalid Base64 characters return '?' and abort loading
 - Terminator '~' must be present to complete loading
+- Any unexpected character during data reception causes immediate abort
 
 ## 5. Data Loading and Execution
 
@@ -214,18 +280,28 @@ $0000C      Program code starts here...
 Before execution, the ROM verifies program integrity:
 
 **Checksum Algorithm**:
-1. Sum all 32-bit longs from $00000 to end of program
-2. Result must equal zero (negative checksum at $00004)
-3. If checksum fails, return '?' and remain in boot loader
+1. Sum all 32-bit longs from $00000 to end of program (little-endian)
+2. When using `?` terminator, the sum must equal exactly `0x706F7250` ('Prop')
+3. If checksum fails, return '!' and remain in boot loader
 
-**Validation Sequence**:
-```assembly
-; Pseudo-code for ROM checksum validation
-checksum = 0
-for address = $00000 to program_end step 4
-    checksum += read_long(address)
-if checksum != 0 then error
+**Embedded Checksum Calculation**:
+To create a valid checksum for any data:
+1. Calculate sum of all existing longs in your data
+2. Compute: `checksum = 0x706F7250 - sum_of_data`
+3. Append or embed this checksum (long-aligned) anywhere in the data
+
+**Example**:
 ```
+If your data sums to 0xE6CE9A2C:
+Checksum = 0x706F7250 - 0xE6CE9A2C = 0x89A0D824
+Append as little-endian bytes: 24 D8 A0 89
+```
+
+**Important Notes**:
+- The checksum can be placed ANYWHERE in the data (not just at offset 0x04)
+- It must be long-aligned (at an offset divisible by 4)
+- Files with 'Prop' at offset 0x00 typically have checksum at 0x04
+- Raw PASM files need checksum appended to work with `?` validation
 
 ### 5.3 Program Execution
 After successful checksum validation:
@@ -268,6 +344,7 @@ When no masking is configured, all chips in system respond simultaneously, allow
 - **Return to prompt**: All errors return to "> " prompt state
 - **No state corruption**: Errors don't affect subsequent commands
 - **Reset recovery**: Hardware reset restarts entire boot sequence
+- **Character validation**: If any character is received that doesn't match expectations (e.g., an "x" when hex digits are expected), the loader aborts the current command and waits for a new command
 
 ### 7.3 Error Prevention
 - **Echo characters**: ROM echoes received characters for verification
