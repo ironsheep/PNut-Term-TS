@@ -76,51 +76,63 @@ export class Downloader {
         this.logMessage(`  -- Stored checksum: 0x${checksumResult.storedSum.toString(16).padStart(8, '0')}`);
       }
 
-      // ALWAYS append checksum and validate - author's choice!
-      // All files need checksum appended to make sum = 'Prop' (0x706F7250)
-      needsP2ChecksumVerify = true;
-      this.logMessage(`  -- ${target} download with checksum validation`);
-
-      // Pad to long boundary
-      const originalLength = binaryImage.length;
-      if (binaryImage.length % 4 !== 0) {
-        const padBytes = 4 - (binaryImage.length % 4);
-        const paddedImage = new Uint8Array(binaryImage.length + padBytes);
-        paddedImage.set(binaryImage);
-        // Padding bytes are already 0 by default
-        binaryImage = paddedImage;
-        this.logMessage(`  -- Padded with ${padBytes} zero bytes (${originalLength} -> ${binaryImage.length})`);
+      // For now, skip checksum validation for FLASH downloads
+      // The flash loader has its own internal checksum
+      // TODO: Investigate proper checksum handling for flash downloads
+      if (actuallyWriteToFlash) {
+        needsP2ChecksumVerify = false;
+        this.logMessage(`  -- ${target} download WITHOUT checksum validation (flash loader handles integrity)`);
+      } else {
+        // RAM downloads always use checksum validation - author's choice!
+        needsP2ChecksumVerify = true;
+        this.logMessage(`  -- ${target} download with checksum validation`);
       }
 
-      // Calculate sum of all longs
-      let sum = 0;
-      for (let i = 0; i < binaryImage.length; i += 4) {
-        const long = binaryImage[i] |
-                    (binaryImage[i+1] << 8) |
-                    (binaryImage[i+2] << 16) |
-                    (binaryImage[i+3] << 24);
-        sum = (sum + long) >>> 0;
+      // Only append checksum for RAM downloads
+      if (needsP2ChecksumVerify) {
+        // Pad to long boundary
+        const originalLength = binaryImage.length;
+        if (binaryImage.length % 4 !== 0) {
+          const padBytes = 4 - (binaryImage.length % 4);
+          const paddedImage = new Uint8Array(binaryImage.length + padBytes);
+          paddedImage.set(binaryImage);
+          // Padding bytes are already 0 by default
+          binaryImage = paddedImage;
+          this.logMessage(`  -- Padded with ${padBytes} zero bytes (${originalLength} -> ${binaryImage.length})`);
+        }
+
+        // Calculate sum of all longs
+        let sum = 0;
+        for (let i = 0; i < binaryImage.length; i += 4) {
+          const long = binaryImage[i] |
+                      (binaryImage[i+1] << 8) |
+                      (binaryImage[i+2] << 16) |
+                      (binaryImage[i+3] << 24);
+          sum = (sum + long) >>> 0;
+        }
+
+        // Calculate checksum that makes sum = 'Prop' (0x706F7250)
+        const targetSum = 0x706F7250; // This is the magic value for P2 checksum validation
+        const checksum = (targetSum - sum) >>> 0;
+
+        // Append checksum as little-endian bytes
+        const checksumBytes = new Uint8Array(4);
+        checksumBytes[0] = checksum & 0xFF;
+        checksumBytes[1] = (checksum >> 8) & 0xFF;
+        checksumBytes[2] = (checksum >> 16) & 0xFF;
+        checksumBytes[3] = (checksum >> 24) & 0xFF;
+
+        const finalImage = new Uint8Array(binaryImage.length + 4);
+        finalImage.set(binaryImage);
+        finalImage.set(checksumBytes, binaryImage.length);
+        binaryImage = finalImage;
+
+        this.logMessage(`  -- Binary sum before checksum: 0x${sum.toString(16).padStart(8, '0')}`);
+        this.logMessage(`  -- Appended checksum: 0x${checksum.toString(16).padStart(8, '0')} (bytes: ${Array.from(checksumBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')})`);
+        this.logMessage(`  -- Final size with checksum: ${binaryImage.length} bytes`);
+      } else {
+        this.logMessage(`  -- Final size (no checksum): ${binaryImage.length} bytes`);
       }
-
-      // Calculate checksum that makes sum = 'Prop' (0x706F7250)
-      const targetSum = 0x706F7250; // This is the magic value for P2 checksum validation
-      const checksum = (targetSum - sum) >>> 0;
-
-      // Append checksum as little-endian bytes
-      const checksumBytes = new Uint8Array(4);
-      checksumBytes[0] = checksum & 0xFF;
-      checksumBytes[1] = (checksum >> 8) & 0xFF;
-      checksumBytes[2] = (checksum >> 16) & 0xFF;
-      checksumBytes[3] = (checksum >> 24) & 0xFF;
-
-      const finalImage = new Uint8Array(binaryImage.length + 4);
-      finalImage.set(binaryImage);
-      finalImage.set(checksumBytes, binaryImage.length);
-      binaryImage = finalImage;
-
-      this.logMessage(`  -- Binary sum before checksum: 0x${sum.toString(16).padStart(8, '0')}`);
-      this.logMessage(`  -- Appended checksum: 0x${checksum.toString(16).padStart(8, '0')} (bytes: ${Array.from(checksumBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')})`);
-      this.logMessage(`  -- Final size with checksum: ${binaryImage.length} bytes`);
       //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
       // write to USB PropPlug
       let usbPort: UsbSerial;
@@ -195,6 +207,8 @@ export class Downloader {
     while (objImage.offset & 0b11) {
       objImage.append(0);
     }
+    // Remember the padded size
+    const paddedBinaryLength = objImage.offset;
     const _checksum_ = 0x04;
     const _debugnop_ = 0x08;
     const _NOP_INSTRU_ = 0;
@@ -206,7 +220,8 @@ export class Downloader {
     // install flash loader
     this.logMessage(`  -- load flash loader`);
     objImage.rawUint8Array.set(flashLoaderBin, 0);
-    objImage.setOffsetTo(flashLoaderLength + binaryImage.length);
+    // Use the padded length, not the original length!
+    objImage.setOffsetTo(flashLoaderLength + paddedBinaryLength);
     // Set debug mode based on whether debugger was detected in the binary
     if (enableDebug) {
       // debug is on - set the debug pin in the flash loader
