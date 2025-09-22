@@ -47,8 +47,10 @@ export class Downloader {
       
       if (actuallyWriteToFlash) {
         target = 'FLASH';
+        const originalSize = binaryImage.length;
         binaryImage = await this.insertP2FlashLoader(binaryImage, hasDebugger);
-        this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes, debug=${hasDebugger}`);
+        this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes (original: ${originalSize} bytes), debug=${hasDebugger}`);
+        this.logMessage(`  -- Composite aligned? ${binaryImage.length % 4 === 0 ? 'YES' : `NO (mod 4 = ${binaryImage.length % 4})`}`);
       }
 
       // Validate checksum locally before sending
@@ -76,19 +78,17 @@ export class Downloader {
         this.logMessage(`  -- Stored checksum: 0x${checksumResult.storedSum.toString(16).padStart(8, '0')}`);
       }
 
-      // For now, skip checksum validation for FLASH downloads
-      // The flash loader has its own internal checksum
-      // TODO: Investigate proper checksum handling for flash downloads
+      // For flash downloads, skip P2 checksum validation - it interferes with flashing
+      // RAM downloads use P2 checksum validation
       if (actuallyWriteToFlash) {
         needsP2ChecksumVerify = false;
-        this.logMessage(`  -- ${target} download WITHOUT checksum validation (flash loader handles integrity)`);
+        this.logMessage(`  -- ${target} download WITHOUT P2 checksum (flash loader handles integrity)`);
       } else {
-        // RAM downloads always use checksum validation - author's choice!
         needsP2ChecksumVerify = true;
         this.logMessage(`  -- ${target} download with checksum validation`);
       }
 
-      // Only append checksum for RAM downloads
+      // Append checksum for P2 validation (RAM downloads only)
       if (needsP2ChecksumVerify) {
         // Pad to long boundary
         const originalLength = binaryImage.length;
@@ -99,6 +99,8 @@ export class Downloader {
           // Padding bytes are already 0 by default
           binaryImage = paddedImage;
           this.logMessage(`  -- Padded with ${padBytes} zero bytes (${originalLength} -> ${binaryImage.length})`);
+        } else {
+          this.logMessage(`  -- No padding needed, already aligned (${originalLength} bytes)`);
         }
 
         // Calculate sum of all longs
@@ -129,9 +131,9 @@ export class Downloader {
 
         this.logMessage(`  -- Binary sum before checksum: 0x${sum.toString(16).padStart(8, '0')}`);
         this.logMessage(`  -- Appended checksum: 0x${checksum.toString(16).padStart(8, '0')} (bytes: ${Array.from(checksumBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')})`);
-        this.logMessage(`  -- Final size with checksum: ${binaryImage.length} bytes`);
+        this.logMessage(`  -- Final size with P2 checksum: ${binaryImage.length} bytes`);
       } else {
-        this.logMessage(`  -- Final size (no checksum): ${binaryImage.length} bytes`);
+        this.logMessage(`  -- Final size (no P2 checksum, flash loader handles integrity): ${binaryImage.length} bytes`);
       }
       //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
       // write to USB PropPlug

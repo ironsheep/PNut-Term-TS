@@ -5115,7 +5115,7 @@ export class MainWindow {
           }
 
           // Download to target (RAM or Flash)
-          const downloadSuccess = await this.downloader.download(filePath, toFlash);
+          const downloadResult = await this.downloader.download(filePath, toFlash);
 
           // Switch back to debug baud rate if it was different
           if (debugBaudRate !== downloadBaudRate) {
@@ -5123,7 +5123,7 @@ export class MainWindow {
             await this._serialPort.changeBaudRate(debugBaudRate);
           }
 
-          if (downloadSuccess) {
+          if (downloadResult.success) {
             // Log download success to debug logger window
             const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
             console.log(`[DOWNLOAD] ${successMsg}`);
@@ -5142,10 +5142,10 @@ export class MainWindow {
               this.updateRecordingStatus('Ready');
             }, 2000);
           } else {
-            // Download failed but didn't throw exception
-            const errorMsg = 'No Propeller v2 device found - check device connection and try again';
+            // Download failed - use the actual error message from downloader
+            const errorMsg = downloadResult.errorMessage || 'Unknown error occurred during download';
 
-            // Log download failure to debug logger window WITH REASON
+            // Log download failure to debug logger window WITH ACTUAL REASON
             const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
             console.log(`[DOWNLOAD] ${failureMsg}`);
 

@@ -167,6 +167,85 @@ Both trigger:
 **Cause**: String conversion of binary data
 **Fix**: Keep data as Buffer throughout pipeline
 
+## PLOT Window Technical Implementation
+
+### Architecture Overview
+The PLOT window represents the most sophisticated debug window in PNut-Term-TS, serving as the first window to fully utilize the new DebugWindowBase class architecture. It implements a comprehensive 2D graphics system with Pascal compatibility.
+
+### Key Components
+
+#### 1. Parser System (`plotCommandParser.ts`)
+- **Command Registry**: Extensible command pattern with 30+ registered commands
+- **Token Processing**: Deterministic parsing with type-aware tokenization
+- **Compound Commands**: Support for multi-operation command sequences
+- **Error Handling**: Comprehensive error reporting with debug logger integration
+
+#### 2. Integration Layer (`plotParserIntegration.ts`)
+- **State Management**: Maintains window state separate from parser
+- **Canvas Operations**: Bridges parser commands to canvas rendering
+- **Coordinate Transformation**: Handles Cartesian/Polar conversions
+- **Precision Handling**: Manages high-precision mode (1/256 pixel)
+
+#### 3. Rendering Pipeline (`debugPlotWin.ts`)
+- **Double Buffering**: Flicker-free animation with UPDATE mode
+- **Gamma Correction**: Matches Pascal's gamma-corrected alpha blending
+- **Canvas Management**: WebGL-accelerated 2D context
+- **Mouse Tracking**: Real-time coordinate display with intelligent positioning
+
+### Technical Innovations
+
+#### Gamma-Corrected Opacity
+```javascript
+// Pascal-compatible gamma correction
+const linearOpacity = opacity / 255;
+const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2);
+window.plotCtx.globalAlpha = gammaCorrectedOpacity;
+```
+This ensures low opacity values (e.g., 20/255) remain visible on light backgrounds.
+
+#### Coordinate Systems
+- **Cartesian**: Configurable axis directions (4 orientations)
+- **Polar**: Radius/angle with configurable scale and offset
+- **Precision Mode**: 256x sub-pixel accuracy for smooth curves
+
+#### Memory Management
+- **Layer System**: 16 independent bitmap layers with lazy loading
+- **Sprite Caching**: Efficient sprite definition storage
+- **Canvas Recycling**: Reuses offscreen canvases for performance
+
+### Base Class Integration
+The PLOT window pioneered the migration to DebugWindowBase:
+- **Common Commands**: CLEAR, UPDATE, HIDEXY handled by base
+- **Message Queueing**: Deferred execution until canvas ready
+- **Lifecycle Management**: Proper cleanup on window close
+- **Error Propagation**: Unified error handling through base class
+
+### Performance Optimizations
+- **Batch Operations**: Groups canvas operations for efficiency
+- **Deferred Rendering**: UPDATE mode batches until explicit flip
+- **Canvas State Caching**: Minimizes context switches
+- **Type-Specific Parsers**: Optimized numeric parsing for Spin2
+
+### Pascal Compatibility
+Complete implementation of Pascal DebugDisplayUnit.pas functionality:
+- All drawing primitives (DOT, LINE, CIRCLE, BOX, OVAL, TEXT)
+- Color system with brightness levels
+- Sprite transformations (rotation, scaling)
+- Layer management with BMP loading
+- LUT color palette support
+
+### Testing Infrastructure
+Comprehensive test coverage with specialized test suites:
+- `plotPascalHarness.test.ts`: Pascal compatibility validation
+- `plotLayerSystem.test.ts`: Layer management tests
+- `plotSpriteSystem.test.ts`: Sprite transformation tests
+- `plotMemoryManagement.test.ts`: Memory leak prevention
+
+### Known Limitations
+1. **PRECISE Command**: Not yet implemented (toggles 256x precision)
+2. **File Loading**: Layer BMP loading needs filesystem integration
+3. **Interactive Input**: PC_KEY/PC_MOUSE need P2 response path
+
 ## Future Enhancements
 
 ### Planned
