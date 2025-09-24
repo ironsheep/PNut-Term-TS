@@ -73,6 +73,7 @@ jest.mock('../src/classes/shared/windowRouter', () => ({
   WindowRouter: {
     getInstance: jest.fn().mockReturnValue({
       registerWindow: jest.fn(),
+      registerWindowInstance: jest.fn(),
       unregisterWindow: jest.fn(),
       routeMessage: jest.fn()
     })
@@ -82,8 +83,17 @@ jest.mock('../src/classes/shared/windowRouter', () => ({
 // Create a concrete implementation for testing
 class TestDebugWindow extends DebugWindowBase {
   public processedMessages: string[][] = [];
-  
+
   constructor(ctx: Context, windowId: string = 'test-window', windowType: string = 'test') {
+    // Set up the mock WindowRouter before calling super
+    const mockRouter = {
+      registerWindow: jest.fn(),
+      registerWindowInstance: jest.fn(),
+      unregisterWindow: jest.fn(),
+      routeMessage: jest.fn()
+    };
+    (WindowRouter.getInstance as jest.Mock).mockReturnValue(mockRouter);
+
     super(ctx, windowId, windowType);
     this.windowLogPrefix = 'TestWin';
   }
@@ -92,9 +102,89 @@ class TestDebugWindow extends DebugWindowBase {
     // Test implementation
   }
 
+  protected clearDisplayContent(): void {
+    // Override base class warning behavior for testing
+    const window = this['debugWindow'];
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('debug-clear', undefined);
+    }
+  }
+
+  protected forceDisplayUpdate(): void {
+    // Override base class warning behavior for testing
+    const window = this['debugWindow'];
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('debug-update', undefined);
+    }
+  }
+
+  protected handleHideXY(): void {
+    const window = this['debugWindow'];
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('debug-hidexy', undefined);
+    }
+  }
+
+  protected handleShowXY(): void {
+    const window = this['debugWindow'];
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('debug-showxy', undefined);
+    }
+  }
+
   protected processMessageImmediate(lineParts: string[]): void {
     // Track processed messages for testing
     this.processedMessages.push(lineParts);
+
+    // For testing, handle commands synchronously (simplified)
+    if (lineParts.length > 0) {
+      const command = lineParts[0].toUpperCase();
+      const window = this['debugWindow'];
+
+      switch (command) {
+        case 'CLEAR':
+          this.clearDisplayContent();
+          break;
+        case 'UPDATE':
+          this.forceDisplayUpdate();
+          break;
+        case 'CLOSE':
+          if (window) {
+            window.close();
+          }
+          break;
+        case 'HIDEXY':
+          this.handleHideXY();
+          break;
+        case 'SHOWXY':
+          this.handleShowXY();
+          break;
+        case 'SIZE':
+          if (lineParts.length >= 3 && window) {
+            const width = parseInt(lineParts[1], 10);
+            const height = parseInt(lineParts[2], 10);
+            if (!isNaN(width) && !isNaN(height)) {
+              window.setSize(width, height);
+            }
+          }
+          break;
+        case 'POS':
+          if (lineParts.length >= 3 && window) {
+            const x = parseInt(lineParts[1], 10);
+            const y = parseInt(lineParts[2], 10);
+            if (!isNaN(x) && !isNaN(y)) {
+              window.setPosition(x, y);
+            }
+          }
+          break;
+        case 'TITLE':
+          if (lineParts.length > 1 && window) {
+            const title = lineParts.slice(1).join(' ');
+            window.webContents.send('debug-title', title);
+          }
+          break;
+      }
+    }
   }
 
   protected getCanvasId(): string {
@@ -108,11 +198,12 @@ describe('DebugWindowBase', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockContext = {
       logMessage: jest.fn(),
       logger: {
-        logMessage: jest.fn()
+        logMessage: jest.fn(),
+        forceLogMessage: jest.fn()
       },
       runtime: {
         verbose: false
@@ -339,24 +430,24 @@ describe('DebugWindowBase', () => {
     it('should handle window assignment', () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
-      
-      expect(testWindow['_debugWindow']).toBe(mockWindow);
-      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: - New TestDebugWindow window');
+
+      expect(testWindow['debugWindow']).toBe(mockWindow);
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith('Base: - New TestDebugWindow window');
     });
 
     it('should handle window destruction', () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
-      
+
       // Mock event listener registration
       const closeSpy = jest.fn();
       const closedSpy = jest.fn();
       testWindow.on('close', closeSpy);
       testWindow.on('closed', closedSpy);
-      
+
       testWindow['debugWindow'] = null;
-      
-      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: - Closing TestDebugWindow window');
+
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith('Base: - Closing TestDebugWindow window');
       expect(mockWindow.close).toHaveBeenCalled();
     });
   });
@@ -397,7 +488,7 @@ describe('DebugWindowBase', () => {
   describe('Window Capture', () => {
     it('should save window to BMP file', async () => {
       const mockWindow = new BrowserWindow();
-      testWindow['_debugWindow'] = mockWindow;
+      testWindow['debugWindow'] = mockWindow;
       
       // Setup fs mocks
       (fs.existsSync as jest.Mock).mockReturnValue(true);
@@ -409,7 +500,7 @@ describe('DebugWindowBase', () => {
     });
 
     it('should handle save errors gracefully', async () => {
-      testWindow['_debugWindow'] = null;
+      testWindow['debugWindow'] = null;
       
       // Should not throw when no window
       await expect(testWindow['saveWindowToBMPFilename']('test.bmp')).resolves.not.toThrow();
@@ -462,7 +553,7 @@ describe('DebugWindowBase', () => {
 
     it('should enable mouse input', () => {
       const mockWindow = new BrowserWindow();
-      testWindow['_debugWindow'] = mockWindow;
+      testWindow['debugWindow'] = mockWindow;
       
       // Create a mock DOM environment
       const mockContainer = {
@@ -496,21 +587,144 @@ describe('DebugWindowBase', () => {
   describe('Logging', () => {
     it('should log messages with prefix', () => {
       testWindow['logMessage']('test message');
-      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('TestWin: test message');
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith('TestWin: test message');
 
       testWindow['logMessage']('another message', 'CUSTOM');
-      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('CUSTOM: another message');
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith('CUSTOM: another message');
     });
 
     it('should log base messages', () => {
       testWindow['logMessageBase']('base message');
-      expect((mockContext as any).logger.logMessage).toHaveBeenCalledWith('Base: base message');
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith('Base: base message');
+    });
+  });
+
+  describe('Common Command Handling', () => {
+    it('should handle CLEAR command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Process CLEAR command
+      testWindow.updateContent(['CLEAR']);
+
+      // Should send clear message to renderer
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-clear', undefined);
+    });
+
+    it('should handle UPDATE command for double buffering', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // First UPDATE enables buffering mode
+      testWindow.updateContent(['UPDATE']);
+
+      // Send some messages
+      testWindow.updateContent(['some', 'data']);
+
+      // Second UPDATE flips the buffer
+      testWindow.updateContent(['UPDATE']);
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-update', undefined);
+    });
+
+    it('should handle HIDEXY command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      testWindow.updateContent(['HIDEXY']);
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-hidexy', undefined);
+    });
+
+    it('should handle SHOWXY command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      testWindow.updateContent(['SHOWXY']);
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-showxy', undefined);
+    });
+
+    it('should handle SIZE command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Mock setSize
+      mockWindow.setSize = jest.fn();
+
+      testWindow.updateContent(['SIZE', '800', '600']);
+
+      expect(mockWindow.setSize).toHaveBeenCalledWith(800, 600);
+    });
+
+    it('should handle POS command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Mock setPosition
+      mockWindow.setPosition = jest.fn();
+
+      testWindow.updateContent(['POS', '100', '200']);
+
+      expect(mockWindow.setPosition).toHaveBeenCalledWith(100, 200);
+    });
+
+    it('should handle TITLE command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      testWindow.updateContent(['TITLE', 'Test', 'Window', 'Title']);
+
+      // Title should be joined with spaces
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-title', 'Test Window Title');
+    });
+
+    it('should handle CLOSE command', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      mockWindow.close = jest.fn();
+
+      testWindow.updateContent(['CLOSE']);
+
+      expect(mockWindow.close).toHaveBeenCalled();
+    });
+
+    it('should handle compound commands (PLOT pattern)', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      mockWindow.setSize = jest.fn();
+      mockWindow.setPosition = jest.fn();
+
+      // Simulate compound command like PLOT uses
+      testWindow.updateContent(['CLEAR']);
+      testWindow.updateContent(['SIZE', '640', '480']);
+      testWindow.updateContent(['POS', '50', '50']);
+      testWindow.updateContent(['TITLE', 'Compound', 'Test']);
+      testWindow.updateContent(['UPDATE']);
+
+      // Verify all commands were processed
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-clear', undefined);
+      expect(mockWindow.setSize).toHaveBeenCalledWith(640, 480);
+      expect(mockWindow.setPosition).toHaveBeenCalledWith(50, 50);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-title', 'Compound Test');
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-update', undefined);
     });
   });
 
   describe('Message Queuing', () => {
     let queueTestWindow: TestDebugWindow;
-    
+
     beforeEach(() => {
       // Create a fresh instance for queue tests
       queueTestWindow = new TestDebugWindow(mockContext, 'queue-test', 'QUEUE');
@@ -639,6 +853,217 @@ describe('DebugWindowBase', () => {
       
       // Should have original values, not modified ones
       expect(queueTestWindow.processedMessages[0]).toEqual(['mutable', 'array']);
+    });
+  });
+
+  describe('Error Handling', () => {
+    let consoleErrorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    });
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle invalid SIZE parameters gracefully', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      mockWindow.setSize = jest.fn();
+
+      // Invalid size parameters
+      testWindow.updateContent(['SIZE', 'invalid', 'params']);
+
+      // Should not crash, setSize should not be called
+      expect(mockWindow.setSize).not.toHaveBeenCalled();
+    });
+
+    it('should handle invalid POS parameters gracefully', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      mockWindow.setPosition = jest.fn();
+
+      // Invalid position parameters
+      testWindow.updateContent(['POS', 'not', 'numbers']);
+
+      // Should not crash, setPosition should not be called
+      expect(mockWindow.setPosition).not.toHaveBeenCalled();
+    });
+
+    it('should handle commands when window is destroyed', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Mock window as destroyed
+      (mockWindow.isDestroyed as jest.Mock).mockReturnValue(true);
+
+      // Try to send command
+      testWindow.updateContent(['CLEAR']);
+
+      // Should not throw error
+      expect(() => testWindow.updateContent(['UPDATE'])).not.toThrow();
+    });
+
+    it('should handle webContents.send failures', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Mock send to throw error
+      (mockWindow.webContents.send as jest.Mock).mockImplementation(() => {
+        throw new Error('Send failed');
+      });
+
+      // Should not crash
+      expect(() => testWindow.updateContent(['CLEAR'])).not.toThrow();
+    });
+  });
+
+  describe('Performance and Memory Management', () => {
+    it('should handle rapid command sequences', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      const startTime = Date.now();
+
+      // Send many commands rapidly
+      for (let i = 0; i < 1000; i++) {
+        testWindow.updateContent(['CLEAR']);
+        testWindow.updateContent(['UPDATE']);
+      }
+
+      const endTime = Date.now();
+
+      // Should complete quickly (< 100ms)
+      expect(endTime - startTime).toBeLessThan(100);
+
+      // All commands should be sent
+      expect(mockWindow.webContents.send).toHaveBeenCalledTimes(2000);
+    });
+
+    it('should not leak memory with repeated queue operations', () => {
+      // Queue and process many times
+      for (let i = 0; i < 100; i++) {
+        const tempWindow = new TestDebugWindow(mockContext, `temp-${i}`, 'TEMP');
+
+        // Queue messages
+        for (let j = 0; j < 10; j++) {
+          tempWindow.updateContent(['message', `${j}`]);
+        }
+
+        // Process queue
+        tempWindow['onWindowReady']();
+
+        // Queue should be empty after processing
+        expect(tempWindow['messageQueue']).toBeUndefined();
+      }
+    });
+  });
+
+  describe('PLOT Window Integration Pattern', () => {
+    it('should support PLOT-style initialization sequence', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+
+      mockWindow.setSize = jest.fn();
+      mockWindow.setPosition = jest.fn();
+
+      // PLOT window initialization pattern
+      testWindow['onWindowReady']();
+
+      // Configure window
+      testWindow.updateContent(['SIZE', '600', '650']);
+      testWindow.updateContent(['TITLE', 'PLOT', 'Test']);
+      testWindow.updateContent(['UPDATE']); // Enable double buffering
+
+      // Drawing commands would go here
+      testWindow.updateContent(['CLEAR']);
+      // ... more drawing ...
+      testWindow.updateContent(['UPDATE']); // Flip buffer
+
+      // Verify initialization sequence
+      expect(mockWindow.setSize).toHaveBeenCalledWith(600, 650);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-title', 'PLOT Test');
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-clear', undefined);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-update', undefined);
+    });
+
+    it('should handle PLOT coordinate visibility commands', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Hide coordinates
+      testWindow.updateContent(['HIDEXY']);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-hidexy', undefined);
+
+      // Show coordinates
+      testWindow.updateContent(['SHOWXY']);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-showxy', undefined);
+    });
+
+    it('should support deferred command execution pattern', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+
+      // Queue commands before window ready
+      testWindow.updateContent(['CLEAR']);
+      testWindow.updateContent(['SIZE', '800', '600']);
+      testWindow.updateContent(['UPDATE']);
+
+      // Verify nothing sent yet
+      expect(mockWindow.webContents.send).not.toHaveBeenCalled();
+
+      // Window becomes ready
+      mockWindow.setSize = jest.fn();
+      testWindow['onWindowReady']();
+
+      // All commands should be processed
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-clear', undefined);
+      expect(mockWindow.setSize).toHaveBeenCalledWith(800, 600);
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-update', undefined);
+    });
+  });
+
+  describe('Window State Management', () => {
+    it('should track window ready state', () => {
+      expect(testWindow['isWindowReady']).toBe(false);
+
+      testWindow['onWindowReady']();
+
+      expect(testWindow['isWindowReady']).toBe(true);
+    });
+
+    it('should handle window close properly', () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['onWindowReady']();
+
+      // Close window
+      testWindow['debugWindow'] = null;
+
+      expect(mockWindow.close).toHaveBeenCalled();
+      expect(testWindow['isWindowReady']).toBe(false);
+    });
+
+    it('should unregister from router on close', () => {
+      const mockRouter = {
+        registerWindow: jest.fn(),
+        unregisterWindow: jest.fn()
+      };
+      (WindowRouter.getInstance as jest.Mock).mockReturnValue(mockRouter);
+
+      testWindow['registerWithRouter']();
+      testWindow['debugWindow'] = null;
+
+      expect(mockRouter.unregisterWindow).toHaveBeenCalled();
     });
   });
 });

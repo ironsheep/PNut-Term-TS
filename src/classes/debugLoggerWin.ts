@@ -1046,7 +1046,8 @@ export class DebugLoggerWindow extends DebugWindowBase {
 
       // Log first few writes to confirm it's working
       if (this.writeBuffer.length <= 3) {
-        console.log('[DEBUG LOGGER] Added to write buffer:', message.substring(0, 50));
+        const truncated = message.length > 80 ? message.substring(0, 80) + '...' : message;
+        console.log('[DEBUG LOGGER] Added to write buffer:', truncated);
       }
 
       // Schedule write if not already scheduled

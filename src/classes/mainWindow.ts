@@ -8,19 +8,21 @@
 
 // Import electron conditionally for standalone compatibility
 let app: any, BrowserWindow: any, Menu: any, MenuItem: any, dialog: any, electron: any, ipcMain: any, nativeTheme: any;
-try {
-  const electronImport = require('electron');
-  app = electronImport.app;
-  BrowserWindow = electronImport.BrowserWindow;
-  Menu = electronImport.Menu;
-  MenuItem = electronImport.MenuItem;
-  dialog = electronImport.dialog;
-  electron = electronImport;
-  ipcMain = electronImport.ipcMain;
-  nativeTheme = electronImport.nativeTheme;
-} catch (error) {
-  // Running in standalone mode without Electron
-  console.warn('Warning: Electron not available, running in CLI mode');
+// Only load Electron if we're actually in an Electron environment
+if (process.versions && process.versions.electron) {
+  try {
+    const electronImport = eval("require('electron')");
+    app = electronImport.app;
+    BrowserWindow = electronImport.BrowserWindow;
+    Menu = electronImport.Menu;
+    MenuItem = electronImport.MenuItem;
+    dialog = electronImport.dialog;
+    electron = electronImport;
+    ipcMain = electronImport.ipcMain;
+    nativeTheme = electronImport.nativeTheme;
+  } catch (error) {
+    console.warn('Failed to load Electron in mainWindow.ts:', error);
+  }
 }
 import { Context } from '../utils/context';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
