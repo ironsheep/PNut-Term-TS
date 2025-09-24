@@ -1,6 +1,6 @@
 {
   "name": "pnut-term-ts",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "A recreation of Chips' Debug listener but multiplatform combined with PST and downloader",
   "keywords": [
     "cli",
@@ -17,7 +17,7 @@
     "url": "https://github.com/ironsheep/PNut-Term-TS/issues"
   },
   "license": "MIT",
-  "main": "dist/pnut-term-ts.js",
+  "main": "dist/pnut-term-ts.min.js",
   "bin": {
     "pnut-term-ts": "./dist/pnut-term-ts.min.js"
   },
@@ -48,9 +48,14 @@
     "prebuild": "npm run clean && npm run makeprebuild && npm run makefonts",
     "buildnew": "tsc && npm run build:esbuild && npm run minify && node build.js",
     "build": "tsc && npm run build:esbuild && node scripts/insertBuildDate.js && npm run minify",
-    "packageLnx": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
-    "packageMac": "npm run build && DEBUG=electron-builder electron-builder build --mac --config electron.builder.json",
-    "packageWin": "npm run build && electron-builder build --win --config electron.builder.json",
+    "build:production": "./scripts/build-production.sh",
+    "packageLnx:old": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
+    "packageMac:old": "npm run build && DEBUG=electron-builder electron-builder build --mac --config electron.builder.json",
+    "packageMac": "npm run build:production && ./scripts/create-electron-ready-package.sh",
+    "packageWin:old": "npm run build && electron-builder build --win --config electron.builder.json",
+    "packageWin": "npm run build:production && ./scripts/create-windows-package.sh",
+    "packageLinux": "npm run build:production && ./scripts/create-linux-package.sh",
+    "packageAll": "npm run packageWin && npm run packageLinux && npm run packageMac",
     "packageStandaloneMacOS": "npm run build && ./scripts/create-standalone-package.sh",
     "signStandaloneMacOS": "./scripts/sign-standalone-macos.sh",
     "packageSignedMacOS": "npm run packageStandaloneMacOS && npm run signStandaloneMacOS",
@@ -69,7 +74,7 @@
     "@types/electron": "^1.6.12",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.2",
-    "electron": "^33.2.1",
+    "electron": "^33.3.1",
     "electron-builder": "^25.1.8",
     "electron-notarize": "^1.2.2",
     "esbuild": "^0.24.2",

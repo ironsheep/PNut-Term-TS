@@ -1,15 +1,19 @@
 #!/bin/bash
 set -e
 
-echo "🎯 Creating Electron-Ready Package for macOS"
-echo "==========================================="
+echo "🎯 Creating Complete macOS Packages with Electron"
+echo "================================================="
+
+# Configuration
+ELECTRON_VERSION="33.2.1"
+ARCHITECTURES=("darwin-x64" "darwin-arm64")
 
 # Set up cache directory for Electron frameworks
 CACHE_DIR="tasks/electron-cache"
 mkdir -p "$CACHE_DIR"
 
 # Create package directory
-PACKAGE_DIR="release/electron-ready-macos"
+PACKAGE_DIR="release/macos-complete"
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR"
 
@@ -19,79 +23,18 @@ mkdir -p "$APP_DIR/Contents/Resources/app"
 mkdir -p "$APP_DIR/Contents/MacOS"
 
 echo "📋 Step 2: Copying application files..."
-# Create dist directory and copy the bundled files
-mkdir -p "$APP_DIR/Contents/Resources/app/dist"
-cp dist/pnut-term-ts.min.js "$APP_DIR/Contents/Resources/app/dist/"
-cp dist/electron-main.js "$APP_DIR/Contents/Resources/app/dist/"
-echo "   ✅ Copied bundled application files (CLI and Electron entry points)"
-
+# Copy all necessary files to Resources/app
+cp -r dist "$APP_DIR/Contents/Resources/app/"
 # Copy ext directory with flash_loader.obj and other external files
 if [ -d "src/ext" ]; then
     mkdir -p "$APP_DIR/Contents/Resources/app/dist/ext"
     cp -r src/ext/* "$APP_DIR/Contents/Resources/app/dist/ext/"
     echo "   ✅ Copied external files (flash_loader.obj, etc.)"
 fi
-
-# Copy app icon if it exists
-if [ -f "assets/icon.icns" ]; then
-    cp assets/icon.icns "$APP_DIR/Contents/Resources/"
-    echo "   ✅ Copied app icon"
-fi
-
 # IMPORTANT: Fonts go directly into Resources/fonts, NOT Resources/app/fonts
 cp -r fonts "$APP_DIR/Contents/Resources/"
 cp -r prebuilds "$APP_DIR/Contents/Resources/app/"
-
-# Only copy essential native node_modules (that can't be bundled)
-echo "   📦 Copying native dependencies..."
-mkdir -p "$APP_DIR/Contents/Resources/app/node_modules"
-
-# SerialPort native bindings - copy JavaScript files only, not native bindings
-if [ -d "node_modules/@serialport" ]; then
-    mkdir -p "$APP_DIR/Contents/Resources/app/node_modules/@serialport"
-    # Copy everything except the build folder (which contains Linux binaries)
-    for dir in node_modules/@serialport/*; do
-        basename_dir=$(basename "$dir")
-        if [ "$basename_dir" != "bindings-cpp" ]; then
-            cp -r "$dir" "$APP_DIR/Contents/Resources/app/node_modules/@serialport/"
-        else
-            # For bindings-cpp, copy everything except the build folder
-            mkdir -p "$APP_DIR/Contents/Resources/app/node_modules/@serialport/bindings-cpp"
-            cp -r node_modules/@serialport/bindings-cpp/dist "$APP_DIR/Contents/Resources/app/node_modules/@serialport/bindings-cpp/"
-            cp -r node_modules/@serialport/bindings-cpp/package.json "$APP_DIR/Contents/Resources/app/node_modules/@serialport/bindings-cpp/"
-            # Create the build/Release directory and copy the macOS universal binary
-            mkdir -p "$APP_DIR/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release"
-            cp prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node \
-               "$APP_DIR/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node"
-        fi
-    done
-    echo "   ✅ Copied SerialPort bindings with macOS universal binary"
-fi
-
-# USB native bindings
-if [ -d "node_modules/usb" ]; then
-    cp -r node_modules/usb "$APP_DIR/Contents/Resources/app/node_modules/"
-    echo "   ✅ Copied USB bindings"
-fi
-
-# node-gyp-build for loading native modules
-if [ -d "node_modules/node-gyp-build" ]; then
-    cp -r node_modules/node-gyp-build "$APP_DIR/Contents/Resources/app/node_modules/"
-fi
-
-# debug module (required by @serialport/bindings-cpp)
-if [ -d "node_modules/debug" ]; then
-    cp -r node_modules/debug "$APP_DIR/Contents/Resources/app/node_modules/"
-    echo "   ✅ Copied debug module"
-fi
-
-# ms module (required by debug)
-if [ -d "node_modules/ms" ]; then
-    cp -r node_modules/ms "$APP_DIR/Contents/Resources/app/node_modules/"
-    echo "   ✅ Copied ms module"
-fi
-
-# Copy package.json (required for Electron to find main entry point)
+cp -r node_modules "$APP_DIR/Contents/Resources/app/"
 cp package.json "$APP_DIR/Contents/Resources/app/"
 
 echo "🚀 Step 2a: Creating command-line launcher..."
@@ -101,11 +44,10 @@ mkdir -p "$APP_DIR/Contents/Resources/bin"
 # Create launcher script in the bin directory
 cat > "$APP_DIR/Contents/Resources/bin/pnut-term-ts" << 'LAUNCHER_EOF'
 #!/bin/bash
-# pnut-term-ts launcher script - updated for new architecture
+# pnut-term-ts launcher script
 # Get the app bundle root (go up from Resources/bin to get to Contents)
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# Run the CLI entry point - it will spawn Electron if GUI is needed
-# The CLI validates parameters then launches electron-main.js if needed
+# Run the CLI directly with Node - it will launch Electron when needed
 exec node "$DIR/Resources/app/dist/pnut-term-ts.min.js" "$@"
 LAUNCHER_EOF
 
@@ -127,8 +69,6 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
     <string>PNut Term TS</string>
     <key>CFBundleDisplayName</key>
     <string>PNut Term TS</string>
-    <key>CFBundleIconFile</key>
-    <string>icon.icns</string>
     <key>CFBundleVersion</key>
     <string>0.1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -150,7 +90,7 @@ cat > "$APP_DIR/Contents/Resources/app/package.json" << 'PACKAGE_EOF'
 {
   "name": "pnut-term-ts",
   "version": "0.1.0",
-  "main": "dist/electron-main.js",
+  "main": "dist/pnut-term-ts.min.js",
   "description": "Propeller 2 Debug Terminal",
   "author": "Iron Sheep Productions, LLC",
   "license": "MIT"

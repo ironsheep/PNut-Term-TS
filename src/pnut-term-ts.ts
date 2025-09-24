@@ -7,20 +7,12 @@
 import { Command, CommanderError, type OptionValues } from 'commander';
 import { Context } from './utils/context';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { UsbSerial } from './utils/usb.serial';
-import { MainWindow } from './classes/mainWindow';
-// Import electron conditionally to avoid startup issues
-let app: any, crashReporter: any;
-try {
-  const electron = require('electron');
-  app = electron.app;
-  crashReporter = electron.crashReporter;
-} catch (error) {
-  // Electron not available or not in proper context
-  console.warn('Warning: Electron not available, running in CLI mode');
-}
 import { getFormattedDateTime } from './utils/files';
+import * as fs from 'fs';
+// No Electron imports - this is pure Node.js CLI
+// Electron UI will be launched via electron-main.ts if needed
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -133,24 +125,8 @@ export class DebugTerminalInTypeScript {
       [44304:1221/152545.314705:FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
       Trace/BPT trap: 5
       */
-      // FIXME: errors above on MacOS, need to disable GPU acceleration, and sandbox (what about windows?, linux?)
-      if (crashReporter && crashReporter.start) {
-        crashReporter.start({ uploadToServer: false });
-      }
-      if (app && app.getPath) {
-        console.error('PNut-Term-TS: Storing dumps inside: ', app.getPath('crashDumps'));
-      }
-      // macOS this is problematic, disable hardware acceleration
-      //if (!app.getGPUFeatureStatus().gpu_compositing.includes("enabled")) {
-      if (app && app.disableHardwareAcceleration) {
-        app.disableHardwareAcceleration();
-      }
-      //}
-
-      // Disable network service sandbox
-      if (app && app.commandLine && app.commandLine.appendSwitch) {
-        app.commandLine.appendSwitch('no-sandbox');
-      }
+      // Electron-specific initialization has been moved to electron-main.ts
+      // This file is now a pure Node.js CLI
     }
   }
 
@@ -453,64 +429,28 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
     }
 
-    // Check if we're in a standalone environment without Electron
-    const hasElectron = (() => {
-      try {
-        const electron = require('electron');
-        console.log('[STARTUP] Electron detected, version:', electron.app?.getVersion?.() || 'unknown');
-        return true;
-      } catch (error) {
-        console.log('[STARTUP] Electron not available:', error);
-        return false;
-      }
-    })();
-    
-    const startMainWindow: boolean = !showingHelp && !showingNodeList && !this.shouldAbort && hasElectron;
-    console.log(`[STARTUP] Decision: hasElectron=${hasElectron}, startMainWindow=${startMainWindow}`);
-    
-    if (!hasElectron && !showingHelp && !showingNodeList && !this.shouldAbort) {
-      console.log('📟 CLI Mode: Running without GUI (Electron not available)');
-      console.log('💡 For full GUI experience, run the Electron version');
-      return Promise.resolve(0);
-    }
-    
+    // All validation is complete - determine if we need to launch Electron UI
+    const needsElectronUI: boolean = !showingHelp && !showingNodeList && !this.shouldAbort;
+
     this.context.logger.debugMsg(
-      `* showingHelp=(${showingHelp}), shouldAbort=(${this.shouldAbort}), startMainWindow=(${startMainWindow}), hasElectron=(${hasElectron})`
+      `* showingHelp=(${showingHelp}), shouldAbort=(${this.shouldAbort}), needsElectronUI=(${needsElectronUI})`
     );
 
-    let theTerminal: MainWindow | undefined = undefined;
-    if (startMainWindow) {
+    if (needsElectronUI) {
+      // Check if we have a PropPlug selected
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
-        this.context.logger.verboseMsg(`* Loading terminal attached to [${propPlug}]`);
+        this.context.logger.verboseMsg(`* Will launch Electron UI attached to [${propPlug}]`);
       }
 
-      try {
-        theTerminal = new MainWindow(this.context);
-      } catch (error) {
-        this.context.logger.errorMsg(`* new MainWindow() Exception: ${error}`);
-        // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
-        return Promise.resolve(-1);
+      // All parameters are validated and stored in context
+      // Now launch Electron with the validated parameters
+      if (!this.context.runEnvironment.quiet) {
+        console.log('🚀 Launching Electron UI with validated parameters...');
       }
 
-      try {
-        await theTerminal.initialize();
-      } catch (error) {
-        this.context.logger.errorMsg(`* theTerminal.initialize() Exception: ${error}`);
-        // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
-        return Promise.resolve(-1);
-      }
-    }
-
-    if (theTerminal !== undefined) {
-      // Wait for the terminal to be done
-      while (theTerminal.isDone() == false) {
-        await new Promise((resolve) => setTimeout(resolve, 10000)); // 10,000 mSec = 10 seconds
-      }
-      this.context.logger.progressMsg('Terminal says done!');
-
-      // and release the serial port
-      theTerminal.close();
+      const exitCode = await this.launchElectron();
+      return Promise.resolve(exitCode);
     }
 
     if ((!options.quiet && !showingHelp) || (showingHelp && options.verbose)) {
@@ -520,7 +460,8 @@ export class DebugTerminalInTypeScript {
         this.context.logger.progressMsg('Done');
       }
     }
-    app.exit(0);
+    // Use process.exit for both Electron and Node.js environments
+    process.exit(0);
     return Promise.resolve(0);
   }
 
@@ -545,6 +486,146 @@ export class DebugTerminalInTypeScript {
     } else {
       return `PNut-Term-TS: ${str}`;
     }
+  }
+
+  private async launchElectron(): Promise<number> {
+    const electronPath = this.findElectronExecutable();
+    if (!electronPath) {
+      console.error('❌ Electron executable not found. Please ensure Electron is installed.');
+      console.error('💡 Try running: npm install electron');
+      return 1;
+    }
+
+    // Find the electron-main.js file
+    const electronMainPath = path.join(__dirname, 'electron-main.js');
+    if (!fs.existsSync(electronMainPath)) {
+      console.error(`❌ Electron main file not found at: ${electronMainPath}`);
+      return 1;
+    }
+
+    // Write the validated context to a temporary JSON file
+    const tmpDir = require('os').tmpdir();
+    const contextFile = path.join(tmpDir, `pnut-term-context-${process.pid}.json`);
+
+    // Create a serializable version of the context
+    // Map our internal names to RuntimeEnvironment names
+    const contextData = {
+      runEnvironment: {
+        selectedPropPlug: this.context.runEnvironment.selectedPropPlug,
+        debugBaudrate: this.context.runEnvironment.debugBaudrate,
+        developerModeEnabled: this.context.runEnvironment.developerModeEnabled,
+        verbose: this.context.runEnvironment.verbose,
+        ideMode: this.context.runEnvironment.ideMode,
+        rtsOverride: this.context.runEnvironment.rtsOverride,
+        quiet: this.context.runEnvironment.quiet,
+        serialPortDevices: this.context.runEnvironment.serialPortDevices,
+        // These are passed separately as they're not in RuntimeEnvironment
+        ramFileSpec: this.context.actions.writeRAM ? this.context.actions.binFilename : '',
+        flashFileSpec: this.context.actions.writeFlash ? this.context.actions.binFilename : ''
+      }
+    };
+
+    try {
+      fs.writeFileSync(contextFile, JSON.stringify(contextData, null, 2));
+      this.context.logger.debugMsg(`Wrote context to: ${contextFile}`);
+    } catch (error) {
+      console.error('❌ Failed to write context file:', error);
+      return 1;
+    }
+
+    // Pass the context file path to Electron
+    const electronArgs = [electronMainPath, '--context', contextFile];
+
+    this.context.logger.debugMsg(`Launching Electron with context file: ${contextFile}`);
+
+    // Spawn Electron as a child process
+    return new Promise((resolve) => {
+      const electronProcess = spawn(electronPath, electronArgs, {
+        stdio: 'inherit', // Pass through stdin/stdout/stderr
+        detached: false
+      });
+
+      electronProcess.on('close', (code) => {
+        // Clean up the context file
+        try {
+          fs.unlinkSync(contextFile);
+          this.context.logger.debugMsg(`Cleaned up context file: ${contextFile}`);
+        } catch {}
+
+        this.context.logger.debugMsg(`Electron process exited with code: ${code}`);
+        resolve(code || 0);
+      });
+
+      electronProcess.on('error', (error) => {
+        console.error('❌ Failed to launch Electron:', error);
+        // Clean up the context file
+        try {
+          fs.unlinkSync(contextFile);
+        } catch {}
+        resolve(1);
+      });
+    });
+  }
+
+  private findElectronExecutable(): string | null {
+    // Debug output
+    console.log(`[ELECTRON FINDER] Looking for Electron executable...`);
+    console.log(`[ELECTRON FINDER] __dirname = ${__dirname}`);
+
+    // Build list of possible paths
+    const possiblePaths: string[] = [];
+
+    // If we detected an app bundle, use that path first
+    if (__dirname.includes('PNut-Term-TS.app')) {
+      const appIndex = __dirname.indexOf('PNut-Term-TS.app');
+      const appBundlePath = __dirname.substring(0, appIndex + 'PNut-Term-TS.app'.length);
+      // Look for the standard Electron executable (not renamed)
+      possiblePaths.push(
+        path.join(appBundlePath, 'Contents', 'MacOS', 'Electron'),      // Standard Electron name
+        path.join(appBundlePath, 'Contents', 'MacOS', 'electron')       // Lowercase variant
+      );
+      console.log(`[ELECTRON FINDER] Detected app bundle at: ${appBundlePath}`);
+    }
+
+    // Add other possible locations
+    possiblePaths.push(
+      // macOS app bundle (when packaged) - relative path
+      // From dist directory, go up to Resources/app/dist/../../../../MacOS/Electron
+      path.join(__dirname, '..', '..', '..', '..', 'MacOS', 'Electron'),
+      // Another macOS location if running from different path
+      '/Applications/PNut-Term-TS.app/Contents/MacOS/Electron',
+      // Local node_modules
+      path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
+      path.join(__dirname, '..', '..', 'node_modules', '.bin', 'electron'),
+      // Global installation
+      '/usr/local/bin/electron',
+      '/usr/bin/electron',
+      // Windows
+      path.join(process.env.APPDATA || '', 'npm', 'electron.cmd'),
+      // Windows packaged
+      path.join(__dirname, '..', 'electron.exe'),
+      // Linux packaged
+      path.join(__dirname, '..', 'electron')
+    );
+
+    for (const electronPath of possiblePaths) {
+      console.log(`[ELECTRON FINDER] Checking: ${electronPath}`);
+      if (fs.existsSync(electronPath)) {
+        console.log(`[ELECTRON FINDER] ✅ Found at: ${electronPath}`);
+        return electronPath;
+      }
+    }
+
+    // Try using 'which' command on Unix-like systems
+    try {
+      const { execSync } = require('child_process');
+      const result = execSync('which electron', { encoding: 'utf-8' }).trim();
+      if (result && fs.existsSync(result)) {
+        return result;
+      }
+    } catch {}
+
+    return null;
   }
 
   private async runCommand(command: string): Promise<{ cmd: string; value: string | null; error: string | null }> {
