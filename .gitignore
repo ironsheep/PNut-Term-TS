@@ -178,3 +178,6 @@ tasks/
 /tests/recordings
 tests/recordings/catalog.json
 /temp-debug-scripts
+/extracted-icons/app-icon-set
+/extracted-icons
+/EXEs

@@ -3,7 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const outfileName = '../dist/pnut-term-ts.js';
+// Use minified file if it exists, otherwise use regular
+const minFilePath = path.join(__dirname, '../dist/pnut-term-ts.min.js');
+const regularFilePath = path.join(__dirname, '../dist/pnut-term-ts.js');
+const outfileName = fs.existsSync(minFilePath) ? '../dist/pnut-term-ts.min.js' : '../dist/pnut-term-ts.js';
 
 const filePath = path.join(__dirname, outfileName); // Update this path to your compiled JavaScript file
 const buildDate = new Date();

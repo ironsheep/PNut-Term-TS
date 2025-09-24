@@ -67,6 +67,75 @@ The following classes currently have no test files:
 - **debugInputConstants** (`src/classes/shared/debugInputConstants.ts`) - PC_KEY/PC_MOUSE constants
 - **debugStatements** (`src/classes/shared/debugStatements.ts`) - Debug command definitions
 
+## Timing and State Management Issues
+
+### Window Display After Failed Download
+**Priority: Medium - Investigate when time permits**
+**Date Identified: 2025-01-21**
+
+**Issue:** When a download to P2 fails, the device automatically boots after 142ms and starts running its existing program (hardware test). The resulting debug window displays with incorrect positions - all elements are in the wrong places.
+
+**Symptoms:**
+- Download fails with "No Propeller v2 device found"
+- P2 boots normally after 142ms timeout
+- Hardware test runs and sends debug data
+- Debug window opens but all display positions are wrong
+
+**Likely Causes:**
+- Timing issue between failed download state and window initialization
+- Parser/window may not be properly synchronized after download failure
+- State machine might be in an intermediate state when P2 starts sending data
+- Baud rate might still be at download speed (2MHz) instead of debug speed
+
+**Investigation Needed:**
+- Check if parser is properly reset after download failure
+- Verify baud rate is restored to debug speed after failed download
+- Investigate window initialization timing relative to data arrival
+- Check if there's a race condition between download cleanup and debug data processing
+
+**Notes:**
+- This is not critical since normal operation works fine
+- Only occurs in the specific failure case of download fail → immediate P2 boot
+- May be related to the narrow 142ms window between reset and normal boot
+
+## Architecture Issues
+
+### Serial Processing Thread Architecture
+**Priority: Medium - Performance and reliability improvement**
+**Date Identified: 2025-01-21**
+
+**Current State:** Serial data processing runs in the main Electron process, not in a separate thread as might be expected.
+
+**Issues:**
+- Serial processing can be blocked by UI operations (modal dialogs, heavy rendering)
+- UI events can interrupt real-time serial data handling
+- No isolation between serial I/O and electron main process
+- Potential for data loss during blocking operations
+
+**Impact:**
+- Modal dialogs (like error messages) block serial data processing
+- Can lead to buffer overflows and lost messages
+- Debug windows may receive incomplete initialization data
+- Timing-sensitive operations become unreliable
+
+**Recommended Solution:**
+- Move serial port handling to a Node.js Worker Thread
+- Implement message passing between worker and main process
+- Buffer data in worker during UI blocking events
+- Consider using SharedArrayBuffer for high-performance data transfer
+
+**Benefits of Worker Thread:**
+- True parallel processing of serial data
+- Immunity from UI blocking
+- Better real-time performance
+- More reliable data capture
+
+**Implementation Considerations:**
+- Worker threads can't directly access Electron APIs
+- Need robust message passing protocol
+- Must handle worker crashes gracefully
+- May need to restructure data flow architecture
+
 ## Code Quality Issues
 
 ### Window Classes Review
