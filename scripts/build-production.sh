@@ -24,9 +24,11 @@ if [ -d "src/assets/fonts" ]; then
     cp -r ./src/assets/fonts/* ./fonts/ 2>/dev/null || true
 fi
 
-# Build the single production bundle WITHOUT minification first
-echo "📦 Building production bundle..."
-# Create non-minified version first for date insertion (no shebang yet)
+# Build BOTH bundles - CLI and Electron entry points
+echo "📦 Building production bundles..."
+
+# Build the CLI bundle WITHOUT minification first
+echo "   Building CLI bundle..."
 node -e "
 const esbuild = require('esbuild');
 esbuild.build({
@@ -37,7 +39,22 @@ esbuild.build({
   target: 'node18',
   external: ['electron', '@serialport/bindings-cpp', 'usb'],
   minify: false  // Don't minify yet
-}).then(() => console.log('   ✅ Bundle created'));
+}).then(() => console.log('   ✅ CLI bundle created'));
+"
+
+# Build the Electron main process bundle
+echo "   Building Electron main bundle..."
+node -e "
+const esbuild = require('esbuild');
+esbuild.build({
+  entryPoints: ['src/electron-main.ts'],
+  bundle: true,
+  outfile: 'dist/electron-main.js',
+  platform: 'node',
+  target: 'node18',
+  external: ['electron', '@serialport/bindings-cpp', 'usb'],
+  minify: true
+}).then(() => console.log('   ✅ Electron bundle created'));
 "
 
 # Insert build date into non-minified version
@@ -54,9 +71,7 @@ console.log('   ✅ Date inserted');
 echo "🗜️  Minifying bundle..."
 npx terser dist/pnut-term-ts.temp.js -c -m -o dist/pnut-term-ts.min.js
 
-# Add shebang to minified file
-echo "📝 Adding shebang..."
-echo '#!/usr/bin/env node' | cat - dist/pnut-term-ts.min.js > dist/temp && mv dist/temp dist/pnut-term-ts.min.js
+# Note: Shebang is already included from source file (src/pnut-term-ts.ts)
 
 # Clean up temp file
 rm -f dist/pnut-term-ts.temp.js
@@ -64,12 +79,13 @@ rm -f dist/pnut-term-ts.temp.js
 # Make executable
 chmod +x dist/pnut-term-ts.min.js
 
-# Check size
-SIZE=$(du -h dist/pnut-term-ts.min.js | cut -f1)
+# Check sizes
+CLI_SIZE=$(du -h dist/pnut-term-ts.min.js | cut -f1)
+ELECTRON_SIZE=$(du -h dist/electron-main.js | cut -f1)
 echo ""
 echo "✅ Production build complete!"
-echo "   Bundle size: $SIZE"
-echo "   Location: dist/pnut-term-ts.min.js"
+echo "   CLI bundle: $CLI_SIZE (dist/pnut-term-ts.min.js)"
+echo "   Electron bundle: $ELECTRON_SIZE (dist/electron-main.js)"
 echo ""
 
 # Verify it works

@@ -2843,7 +2843,7 @@ export class MainWindow {
           // this.logConsoleMessage('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
           
           item.addEventListener('click', (e) => {
-            this.logConsoleMessage('[MENU] Menu item clicked: ' + item.textContent);
+            // console.log('[MENU] Menu item clicked: ' + item.textContent);
             e.stopPropagation();
             
             const dropdown = item.querySelector('.menu-dropdown');
@@ -2857,7 +2857,7 @@ export class MainWindow {
               
               // Toggle this dropdown using CSS class
               dropdown.classList.toggle('open');
-              this.logConsoleMessage('[MENU] Dropdown toggled, open:', dropdown.classList.contains('open'));
+              // console.log('[MENU] Dropdown toggled, open:', dropdown.classList.contains('open'));
             }
           });
         });
@@ -2871,7 +2871,7 @@ export class MainWindow {
           // this.logConsoleMessage('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
           
           item.addEventListener('click', (e) => {
-            this.logConsoleMessage('[MENU] Dropdown item clicked, action: ' + action);
+            // console.log('[MENU] Dropdown item clicked, action: ' + action);
             e.stopPropagation();
             
             // Close all dropdowns using CSS class
@@ -2889,7 +2889,7 @@ export class MainWindow {
                 // Use require to get ipcRenderer directly
                 try {
                   const { ipcRenderer } = require('electron');
-                  this.logConsoleMessage('[MENU] Sending IPC message: ' + action);
+                  // console.log('[MENU] Sending IPC message: ' + action);
                   ipcRenderer.send(action);
                 } catch (err) {
                   console.error('[MENU] Failed to send IPC:', err);
