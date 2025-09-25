@@ -442,3 +442,44 @@ All visual debug windows in Pascal implement sophisticated mouse hover coordinat
 
 **Required for Release**: HIGH PRIORITY - Essential for user experience parity
 
+---
+
+### Console Error Output in Production
+**Date Added**: 2025-09-25
+**Priority**: Medium - Post-First-Release
+**Category**: User Experience / Error Handling
+
+**Current State**:
+- `console.error()` and `console.warn()` calls throughout the codebase output to terminal
+- When users launch the GUI app from terminal, errors appear in that terminal while they interact with windows
+- Mixing of `this.logConsoleMessage()` (dev diagnostics) and `console.error()` (always outputs)
+- Creates confusing, disconnected experience where errors appear far from where problems occur
+
+**Impact**:
+- **Confusing UX**: Users don't know to look back at terminal for errors
+- **Unprofessional**: Makes app feel like development build
+- **Easy to miss**: Users may close/minimize terminal after launching
+- **Disconnected**: Error appears in terminal while user is interacting with GUI
+
+**Proper Solution**:
+1. Implement in-app error handling system
+2. Route errors to appropriate UI elements:
+   - Status bar messages for non-critical errors
+   - Modal dialogs for critical errors
+   - In-window notification areas
+   - Log files accessible from within the app
+3. No console output for a GUI application in production
+4. `this.logConsoleMessage()` should be completely disabled for production builds
+
+**Files Affected**:
+- All `src/classes/debug*.ts` files
+- `src/classes/mainWindow.ts`
+- Any file with `console.error()` or `console.warn()` calls
+
+**Implementation Notes**:
+- Don't refactor before first release - ship first, refactor later
+- This is acceptable technical debt for early testing
+- Early testers can help identify which errors actually matter
+
+**Required for Release**: NO - Acceptable for early testing release
+

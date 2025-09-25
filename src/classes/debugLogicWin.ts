@@ -1487,9 +1487,9 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             const canvas = document.getElementById('${canvasName}');
-            this.logConsoleMessage('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
+            // console.log('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
             if (canvas) {
-              this.logConsoleMessage('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
+              // console.log('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
             }
             return canvas ? true : false;
           })();
