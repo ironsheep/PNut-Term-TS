@@ -2313,7 +2313,7 @@ export class MainWindow {
         try {
           const electron = require('electron');
           ipcRenderer = electron.ipcRenderer;
-          this.logConsoleMessage('[MENU] ipcRenderer loaded:', !!ipcRenderer);
+          // console.log('[MENU] ipcRenderer loaded:', !!ipcRenderer);
         } catch (e) {
           console.error('[MENU] Failed to load ipcRenderer:', e);
           // Will be injected from main process if this fails
@@ -2321,7 +2321,7 @@ export class MainWindow {
         
         // Function to initialize all handlers
         function initializeHandlers() {
-          this.logConsoleMessage('[INIT] Initializing all button handlers...');
+          // console.log('[INIT] Initializing all button handlers...');
           
           if (!ipcRenderer) {
             console.error('[INIT] ipcRenderer not available, cannot attach handlers');
@@ -2329,7 +2329,7 @@ export class MainWindow {
           }
           
           // DEBUG: Check what buttons exist in the DOM
-          this.logConsoleMessage('[DEBUG] Checking for control line buttons...');
+          // console.log('[DEBUG] Checking for control line buttons...');
           
           // RAM/FLASH buttons
           const ramBtn = document.getElementById('download-ram');
@@ -2361,7 +2361,7 @@ export class MainWindow {
           }
           
           if (resetToggle && !resetToggle.dataset.handlerAttached) {
-            this.logConsoleMessage('[RESET] Found reset button, attaching handler');
+            // console.log('[RESET] Found reset button, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
             resetToggle.dataset.handlerAttached = 'true';
             let clickCount = 0;
@@ -2369,24 +2369,24 @@ export class MainWindow {
               clickCount++;
               // Check which line is active from the button's data attribute
               const line = resetToggle.dataset.line || resetToggle.textContent;
-              this.logConsoleMessage('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
-              this.logConsoleMessage('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
-              this.logConsoleMessage('[RESET] Event timestamp: ' + event.timeStamp);
+              // console.log('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
+              // console.log('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
+              // console.log('[RESET] Event timestamp: ' + event.timeStamp);
               
               if (line === 'RTS') {
-                this.logConsoleMessage('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
+                // console.log('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                this.logConsoleMessage('[RESET] Sending toggle-dtr IPC (click #' + clickCount + ')');
+                // console.log('[RESET] Sending toggle-dtr IPC (click #' + clickCount + ')');
                 ipcRenderer.send('toggle-dtr');
               }
             });
-            this.logConsoleMessage('[RESET] Reset button handler attached successfully');
+            // console.log('[RESET] Reset button handler attached successfully');
           } else if (resetToggle) {
-            this.logConsoleMessage('[RESET] Reset button handler already attached, skipping');
+            // console.log('[RESET] Reset button handler already attached, skipping');
           } else {
-            this.logConsoleMessage('[RESET] Reset button not found in DOM');
+            // console.log('[RESET] Reset button not found in DOM');
           }
           
           // Unified reset checkbox handler
@@ -2396,15 +2396,15 @@ export class MainWindow {
           }
           
           if (resetCheckbox && !resetCheckbox.dataset.handlerAttached) {
-            this.logConsoleMessage('[RESET] Found reset checkbox, attaching handler');
+            // console.log('[RESET] Found reset checkbox, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
             resetCheckbox.dataset.handlerAttached = 'true';
             let checkboxClickCount = 0;
             // Use 'click' event instead of 'change' - click only fires for user interaction
             resetCheckbox.addEventListener('click', (e) => {
               checkboxClickCount++;
-              this.logConsoleMessage('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
-              this.logConsoleMessage('[RESET] Current checkbox state before click: ' + e.target.checked);
+              // console.log('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
+              // console.log('[RESET] Current checkbox state before click: ' + e.target.checked);
               
               // IMPORTANT: Prevent default to avoid double-toggle
               // The checkbox will be updated by the IPC response only
@@ -2413,22 +2413,22 @@ export class MainWindow {
               // Check which line is active from the checkbox's data attribute
               const line = resetCheckbox.dataset.line || 
                            (document.getElementById('reset-toggle') || resetToggle)?.textContent;
-              this.logConsoleMessage('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
+              // console.log('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
               
               if (line === 'RTS') {
-                this.logConsoleMessage('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
+                // console.log('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                this.logConsoleMessage('[RESET] Sending toggle-dtr IPC from checkbox click #' + checkboxClickCount);
+                // console.log('[RESET] Sending toggle-dtr IPC from checkbox click #' + checkboxClickCount);
                 ipcRenderer.send('toggle-dtr');
               }
             });
-            this.logConsoleMessage('[RESET] Reset checkbox click handler attached successfully');
+            // console.log('[RESET] Reset checkbox click handler attached successfully');
           } else if (resetCheckbox) {
-            this.logConsoleMessage('[RESET] Reset checkbox handler already attached, skipping');
+            // console.log('[RESET] Reset checkbox handler already attached, skipping');
           } else {
-            this.logConsoleMessage('[RESET] Reset checkbox not found in DOM');
+            // console.log('[RESET] Reset checkbox not found in DOM');
           }
           
           // Note: Legacy DTR/RTS specific handlers removed - unified reset handlers above handle both modes
@@ -2489,12 +2489,12 @@ export class MainWindow {
           
           // Listen for DTR state updates from main process
           ipcRenderer.on('update-dtr-state', (event, state) => {
-            this.logConsoleMessage('[IPC] Received DTR state update:', state);
+            // console.log('[IPC] Received DTR state update:', state);
             const checkbox = document.getElementById('reset-checkbox');
             if (checkbox && checkbox.dataset.line === 'DTR') {
               // Simply update the checkbox - no flags needed since we use click event
               checkbox.checked = state;
-              this.logConsoleMessage('[DTR] Checkbox display updated to:', state);
+              // console.log('[DTR] Checkbox display updated to:', state);
             }
           });
           
