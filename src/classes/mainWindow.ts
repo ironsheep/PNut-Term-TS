@@ -2307,7 +2307,7 @@ export class MainWindow {
         </div>
       </div>
       <script>
-        this.logConsoleMessage('[MENU] Script execution started');
+        // this.logConsoleMessage('[MENU] Script execution started');
         // IPC Setup - runs directly in renderer with node integration
         let ipcRenderer;
         try {
@@ -2500,12 +2500,12 @@ export class MainWindow {
           
           // Listen for RTS state updates from main process
           ipcRenderer.on('update-rts-state', (event, state) => {
-            console.log('[IPC] Received RTS state update:', state);
+            // console.log('[IPC] Received RTS state update:', state);
             const checkbox = document.getElementById('reset-checkbox');
             if (checkbox && checkbox.dataset.line === 'RTS') {
               // Simply update the checkbox - no flags needed since we use click event
               checkbox.checked = state;
-              console.log('[RTS] Checkbox display updated to:', state);
+              // console.log('[RTS] Checkbox display updated to:', state);
             }
           });
           
@@ -2521,19 +2521,19 @@ export class MainWindow {
           // Menu initialization moved to programmatic injection after window loads
           // This avoids data URL script execution restrictions
           const isIdeModeJS = ${this.context.runEnvironment.ideMode};
-          console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
+          // console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
           
           // REMOVED: Old menu initialization code that relied on window.ipcRenderer
           // Menu is now handled via Electron's native menu system
         }
         
         // Check if DOM is already loaded or wait for it
-        console.log('[INIT] Document readyState:', document.readyState);
+        // console.log('[INIT] Document readyState:', document.readyState);
         if (document.readyState === 'loading') {
-          console.log('[INIT] Waiting for DOMContentLoaded...');
+          // console.log('[INIT] Waiting for DOMContentLoaded...');
           document.addEventListener('DOMContentLoaded', initializeHandlers);
         } else {
-          console.log('[INIT] DOM already ready, initializing immediately...');
+          // console.log('[INIT] DOM already ready, initializing immediately...');
           initializeHandlers();
         }
       </script>
@@ -2824,7 +2824,7 @@ export class MainWindow {
     // Inject menu event handlers from main process
     this.mainWindow.webContents.executeJavaScript(`
       (function() {
-        this.logConsoleMessage('[MENU] Programmatic menu setup starting...');
+        // this.logConsoleMessage('[MENU] Programmatic menu setup starting...');
         
         const menuBar = document.getElementById('menu-bar');
         if (!menuBar) {
@@ -2832,15 +2832,15 @@ export class MainWindow {
           return;
         }
         
-        this.logConsoleMessage('[MENU] Found menu bar, setting up handlers...');
+        // this.logConsoleMessage('[MENU] Found menu bar, setting up handlers...');
         
         // Get all menu items
         const menuItems = document.querySelectorAll('.menu-item');
-        this.logConsoleMessage('[MENU] Found ' + menuItems.length + ' menu items');
+        // this.logConsoleMessage('[MENU] Found ' + menuItems.length + ' menu items');
         
         // Add click handlers to menu items using CSS classes for state
         menuItems.forEach((item, index) => {
-          this.logConsoleMessage('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
+          // this.logConsoleMessage('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
           
           item.addEventListener('click', (e) => {
             this.logConsoleMessage('[MENU] Menu item clicked: ' + item.textContent);
@@ -2864,11 +2864,11 @@ export class MainWindow {
         
         // Add handlers for dropdown items
         const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
-        this.logConsoleMessage('[MENU] Found ' + dropdownItems.length + ' dropdown items');
+        // this.logConsoleMessage('[MENU] Found ' + dropdownItems.length + ' dropdown items');
         
         dropdownItems.forEach((item, index) => {
           const action = item.getAttribute('data-action');
-          this.logConsoleMessage('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
+          // this.logConsoleMessage('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
           
           item.addEventListener('click', (e) => {
             this.logConsoleMessage('[MENU] Dropdown item clicked, action: ' + action);
@@ -2909,7 +2909,7 @@ export class MainWindow {
           }
         });
         
-        this.logConsoleMessage('[MENU] Menu initialization complete');
+        // this.logConsoleMessage('[MENU] Menu initialization complete');
         return 'Menu initialized';
       })();
     `).then((result: any) => {
@@ -4996,8 +4996,8 @@ export class MainWindow {
         const flashBtn = document.getElementById('download-flash');
         
         // Debug logging
-        this.logConsoleMessage('Updating download mode to: ${mode}');
-        this.logConsoleMessage('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
+        // this.logConsoleMessage('Updating download mode to: ${mode}');
+        // this.logConsoleMessage('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
         
         // Update LED indicators with performance optimization - only update if different
         if (ramLed) {
