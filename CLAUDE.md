@@ -218,21 +218,18 @@ npm test -s                     # Silent mode
 
 ## Build/Package
 
-### Production Packaging (Preferred)
+### Production Packaging (ONLY use these!)
 - **All platforms**: `npm run packageAll` (builds all 6 architecture packages)
-- **Windows only**: `npm run packageWin` (x64 + arm64 ZIP files)
-- **Linux only**: `npm run packageLinux` (x64 + arm64 TAR.GZ files)
-- **macOS only**: `npm run packageMac` (x64 + arm64 TAR.GZ + DMG files)
+- **Windows only**: `npm run packageWin` or `./scripts/create-windows-package.sh`
+- **Linux only**: `npm run packageLinux` or `./scripts/create-linux-package.sh`
+- **macOS only**: `npm run packageMac` or `./scripts/create-macos-packages.sh`
 
-### Individual Build Scripts
-- **Windows**: `./scripts/create-windows-package.sh`
-- **Linux**: `./scripts/create-linux-package.sh`
-- **macOS**: `./scripts/create-macos-complete-package.sh`
+**IMPORTANT**: These are the ONLY three build scripts to use:
+1. `scripts/create-windows-package.sh` - Windows x64/arm64
+2. `scripts/create-linux-package.sh` - Linux x64/arm64
+3. `scripts/create-macos-packages.sh` - macOS x64/arm64
 
-### Deprecated/Testing
-- **DON'T USE**: `./scripts/create-electron-ready-package.sh` (development/testing only)
-
-See `PACKAGING.md` for detailed packaging information.
+All other build scripts have been archived. See `PACKAGING.md` for details.
 
 ## Workflow
 

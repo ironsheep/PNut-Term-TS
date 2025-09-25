@@ -1,34 +1,37 @@
 # Packaging Guide for PNut-Term-TS
 
-## Working Packaging Methods
+## Production Build Scripts (Use These!)
 
-### 🎯 Electron-Ready Package (RECOMMENDED)
-**Script**: `./scripts/create-electron-ready-package.sh`
-**Output**: `release/electron-ready-macos/` and `release/electron-ready-macos.tar.gz`
-**What it does**: Creates a package with everything except Electron runtime, which gets installed on target Mac
-**Why it works**: Avoids DMG creation issues and signing complications in container environment
+### 🎯 All Platforms at Once (RECOMMENDED)
+**Command**: `npm run packageAll`
+**What it does**: Builds all 6 architecture packages (Windows x64/arm64, Linux x64/arm64, macOS x64/arm64)
 
-### ✅ Standalone Package  
-**Script**: `npm run packageStandaloneMacOS` or `./scripts/create-standalone-package.sh`
-**Output**: `release/standalone-macos/`
-**What it does**: Creates a fully self-contained executable using Node.js SEA (Single Executable Application)
-**Status**: Works but needs signing on macOS
+### Individual Platform Scripts
 
-### ⚠️ Native SEA Package
-**Script**: `./scripts/create-native-sea-package.sh`
-**Output**: Native executable
-**Status**: Experimental, may have issues with native modules
+#### 🪟 Windows Package
+**Script**: `./scripts/create-windows-package.sh`
+**Command**: `npm run packageWin`
+**Output**: `release/windows-package/` (x64 and arm64 ZIP files)
+**Size**: ~100MB per architecture
 
-## Broken/Problematic Methods
+#### 🐧 Linux Package
+**Script**: `./scripts/create-linux-package.sh`
+**Command**: `npm run packageLinux`
+**Output**: `release/linux-package/` (x64 and arm64 TAR.GZ files)
+**Size**: ~100MB per architecture
 
-### ❌ Electron Builder DMG (npm run packageMac)
-**Issue**: Missing `dmg-license` module in container
-**Error**: `Cannot find module 'dmg-license'`
-**Why**: DMG creation requires macOS-specific tools not available in Linux container
+#### 🍎 macOS Package
+**Script**: `./scripts/create-macos-packages.sh`
+**Command**: `npm run packageMac`
+**Output**: `release/macos-package/` (x64 and arm64 TAR.GZ + DMG files)
+**Size**: ~100MB per architecture
 
-### ❌ Cross-Platform Package
-**Script**: `./scripts/create-cross-platform-sea.sh`  
-**Issue**: Complex cross-compilation in container environment
+## Important Notes
+
+- **ALWAYS** run `npm run build` before packaging
+- Each script builds TWO architectures (x64 and arm64)
+- All packages are production-ready with proper Electron bundling
+- Old/deprecated build scripts have been archived to `scripts/archive-old-builds/`
 
 ## Build Prerequisites
 

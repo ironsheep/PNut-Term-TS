@@ -38,7 +38,7 @@
     "help": "npm run build && dist/pnut-term-ts.min.js --help",
     "minify": "terser dist/pnut-term-ts.js -c -m -o dist/pnut-term-ts.min.js",
     "clean": "shx rm -rf ./dist ./prebuilds ./fonts",
-    "clean:all": "shx rm -rf ./dist ./release ./prebuilds ./fonts",
+    "clean:all": "shx rm -rf ./dist ./prebuilds ./fonts && shx rm -rf ./release/windows-package ./release/linux-package ./release/macos-complete && shx mkdir -p ./release/macos-package",
     "start": "node dist/pnut-term-ts.min.js",
     "postbuild": "shx chmod +x dist/pnut-term-ts.min.js dist/pnut-term-ts.js",
     "makeprebuild": "shx mkdir -p ./prebuilds && shx cp -r ./node_modules/@serialport/bindings-cpp/prebuilds/* ./prebuilds/",
