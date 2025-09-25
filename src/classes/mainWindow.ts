@@ -4325,7 +4325,7 @@ export class MainWindow {
       const cogsStatus = document.getElementById('cogs-status');
       if (cogsStatus) {
         cogsStatus.textContent = '${displayText}';
-        this.logConsoleMessage('[COG STATUS] Updated Active COGs display: ${displayText}');
+        // console.log('[COG STATUS] Updated Active COGs display: ${displayText}');
       } else {
         console.warn('[COG STATUS] cogs-status element not found in DOM');
       }
