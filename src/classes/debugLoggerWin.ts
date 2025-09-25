@@ -657,7 +657,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Handle scrollback preference updates
     ipcRenderer.on('set-scrollback-lines', (event, lines) => {
       maxScrollbackLines = Math.min(Math.max(lines, 100), 10000); // Clamp to 100-10000 range
-      this.logConsoleMessage('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
+      // console.log('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
     });
     
     ipcRenderer.on('set-theme', (event, theme) => {
