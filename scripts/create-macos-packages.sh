@@ -229,6 +229,13 @@ README_EOF
 
     echo "   ✅ Package created: $PKG_NAME"
     echo "   📊 Size: $(du -sh "$PKG_DIR" | cut -f1)"
+
+    # Create tar.gz archive (like Linux script does)
+    echo "   📦 Creating tar.gz archive..."
+    cd "$PACKAGE_DIR"
+    tar czf "${PKG_NAME}.tar.gz" "${PKG_NAME}/"
+    echo "   ✅ Archive created: ${PKG_NAME}.tar.gz ($(du -h "${PKG_NAME}.tar.gz" | cut -f1))"
+    cd - > /dev/null
     echo ""
 }
 
@@ -243,7 +250,10 @@ echo ""
 echo "📦 Packages created in: $PACKAGE_DIR/"
 echo ""
 echo "Package sizes:"
-du -sh "$PACKAGE_DIR"/pnut-term-ts-macos-*/PNut-Term-TS.app
+echo "  Apps:"
+du -sh "$PACKAGE_DIR"/pnut-term-ts-macos-*/PNut-Term-TS.app 2>/dev/null | sed 's/^/    /'
+echo "  Archives:"
+ls -lah "$PACKAGE_DIR"/*.tar.gz 2>/dev/null | awk '{print "    " $5 " " $9}'
 echo ""
 echo "🎯 Next steps:"
 echo "   1. Test the apps"
