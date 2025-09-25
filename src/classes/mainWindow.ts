@@ -2307,7 +2307,7 @@ export class MainWindow {
         </div>
       </div>
       <script>
-        // this.logConsoleMessage('[MENU] Script execution started');
+        // console.log('[MENU] Script execution started');
         // IPC Setup - runs directly in renderer with node integration
         let ipcRenderer;
         try {
@@ -2824,7 +2824,7 @@ export class MainWindow {
     // Inject menu event handlers from main process
     this.mainWindow.webContents.executeJavaScript(`
       (function() {
-        // this.logConsoleMessage('[MENU] Programmatic menu setup starting...');
+        // console.log('[MENU] Programmatic menu setup starting...');
         
         const menuBar = document.getElementById('menu-bar');
         if (!menuBar) {
@@ -2832,15 +2832,15 @@ export class MainWindow {
           return;
         }
         
-        // this.logConsoleMessage('[MENU] Found menu bar, setting up handlers...');
+        // console.log('[MENU] Found menu bar, setting up handlers...');
         
         // Get all menu items
         const menuItems = document.querySelectorAll('.menu-item');
-        // this.logConsoleMessage('[MENU] Found ' + menuItems.length + ' menu items');
+        // console.log('[MENU] Found ' + menuItems.length + ' menu items');
         
         // Add click handlers to menu items using CSS classes for state
         menuItems.forEach((item, index) => {
-          // this.logConsoleMessage('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
+          // console.log('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
           
           item.addEventListener('click', (e) => {
             // console.log('[MENU] Menu item clicked: ' + item.textContent);
@@ -2864,11 +2864,11 @@ export class MainWindow {
         
         // Add handlers for dropdown items
         const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
-        // this.logConsoleMessage('[MENU] Found ' + dropdownItems.length + ' dropdown items');
+        // console.log('[MENU] Found ' + dropdownItems.length + ' dropdown items');
         
         dropdownItems.forEach((item, index) => {
           const action = item.getAttribute('data-action');
-          // this.logConsoleMessage('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
+          // console.log('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
           
           item.addEventListener('click', (e) => {
             // console.log('[MENU] Dropdown item clicked, action: ' + action);
@@ -2909,7 +2909,7 @@ export class MainWindow {
           }
         });
         
-        // this.logConsoleMessage('[MENU] Menu initialization complete');
+        // console.log('[MENU] Menu initialization complete');
         return 'Menu initialized';
       })();
     `).then((result: any) => {
@@ -3026,7 +3026,7 @@ export class MainWindow {
       // REMOVED: injectAllButtonHandlers() was overwriting good handlers with broken ones
       // All button handlers are now properly attached in DOMContentLoaded event
       // The executeJavaScript injection cannot access require('electron') since Electron v5.0.0
-      // this.logConsoleMessage('[BUTTON] Skipping button injection - handlers attached in DOMContentLoaded');
+      // console.log('[BUTTON] Skipping button injection - handlers attached in DOMContentLoaded');
       
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
@@ -3545,7 +3545,7 @@ export class MainWindow {
       this.logConsoleMessage('[DISPLAY SYSTEM] ========================================');
 
       // Create grid test windows with delay for main window repositioning
-      // this.logConsoleMessage(`[GRID TEST] 🕐 Starting 3-second delay - MOVE MAIN WINDOW NOW if desired...`);
+      // console.log(`[GRID TEST] 🕐 Starting 3-second delay - MOVE MAIN WINDOW NOW if desired...`);
       // setTimeout(() => {
       //   this.createGridTestWindows();
       // }, 3000); // Wait 3 seconds - time to move main window
@@ -4509,7 +4509,7 @@ export class MainWindow {
       (function() {
         const mode = '${currentMode}';
         const controlLine = '${currentControlLine}';
-        this.logConsoleMessage('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
+        console.log('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
         return { mode, controlLine };
       })();
     `, 'load terminal mode').then((result) => {
@@ -4996,8 +4996,8 @@ export class MainWindow {
         const flashBtn = document.getElementById('download-flash');
         
         // Debug logging
-        // this.logConsoleMessage('Updating download mode to: ${mode}');
-        // this.logConsoleMessage('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
+        // console.log('Updating download mode to: ${mode}');
+        // console.log('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
         
         // Update LED indicators with performance optimization - only update if different
         if (ramLed) {
