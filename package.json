@@ -51,7 +51,7 @@
     "build:production": "./scripts/build-production.sh",
     "packageLnx:old": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
     "packageMac:old": "npm run build && DEBUG=electron-builder electron-builder build --mac --config electron.builder.json",
-    "packageMac": "npm run build:production && ./scripts/create-electron-ready-package.sh",
+    "packageMac": "npm run build:production && ./scripts/create-macos-complete-package.sh",
     "packageWin:old": "npm run build && electron-builder build --win --config electron.builder.json",
     "packageWin": "npm run build:production && ./scripts/create-windows-package.sh",
     "packageLinux": "npm run build:production && ./scripts/create-linux-package.sh",

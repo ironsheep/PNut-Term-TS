@@ -218,9 +218,21 @@ npm test -s                     # Silent mode
 
 ## Build/Package
 
-- **USE**: `./scripts/create-electron-ready-package.sh` (macOS)
-- **DON'T**: `npm run packageMac` (broken - missing dmg-license)
-- See `PACKAGING.md`
+### Production Packaging (Preferred)
+- **All platforms**: `npm run packageAll` (builds all 6 architecture packages)
+- **Windows only**: `npm run packageWin` (x64 + arm64 ZIP files)
+- **Linux only**: `npm run packageLinux` (x64 + arm64 TAR.GZ files)
+- **macOS only**: `npm run packageMac` (x64 + arm64 TAR.GZ + DMG files)
+
+### Individual Build Scripts
+- **Windows**: `./scripts/create-windows-package.sh`
+- **Linux**: `./scripts/create-linux-package.sh`
+- **macOS**: `./scripts/create-macos-complete-package.sh`
+
+### Deprecated/Testing
+- **DON'T USE**: `./scripts/create-electron-ready-package.sh` (development/testing only)
+
+See `PACKAGING.md` for detailed packaging information.
 
 ## Workflow
 
