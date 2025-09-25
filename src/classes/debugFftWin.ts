@@ -27,6 +27,9 @@ import {
   WindowColor
 } from './debugWindowBase';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * FFT Display Specification Interface
  * Defines the configuration for the FFT window display

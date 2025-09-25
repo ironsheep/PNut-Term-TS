@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // this is our common logging mechanism
 //  TODO: make it context/runtime option aware
 
@@ -10,6 +12,19 @@ import { Spin2NumericParser } from './spin2NumericParser';
 
 // Name-to-RGB hex lookup
 export class DebugColor {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private _colorValue: number;
   private _colorHexValue: string;
   private _dimmedColorValue: number;

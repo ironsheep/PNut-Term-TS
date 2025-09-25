@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/serialMessageProcessor.ts
 
 import { EventEmitter } from 'events';
@@ -46,6 +48,19 @@ export interface ProcessorStats {
 }
 
 export class SerialMessageProcessor extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   // Core components
   private buffer: CircularBuffer;
   private receiver: SerialReceiver;
@@ -136,7 +151,7 @@ export class SerialMessageProcessor extends EventEmitter {
     
     // CRITICAL: Forward debugger packet event for P2 response
     this.router.on('debuggerPacketReceived', (packet: Uint8Array) => {
-      console.log('[Processor] Forwarding debuggerPacketReceived event');
+      this.logConsoleMessage('[Processor] Forwarding debuggerPacketReceived event');
       this.emit('debuggerPacketReceived', packet);
     });
 
@@ -147,7 +162,7 @@ export class SerialMessageProcessor extends EventEmitter {
 
     // Handle DTR/RTS reset events
     this.dtrResetManager.on('resetDetected', (event) => {
-      console.log(`[Processor] ${event.type} reset detected`);
+      this.logConsoleMessage(`[Processor] ${event.type} reset detected`);
       this.emit('resetDetected', event);
       // Also emit specific event for reset type
       if (event.type === 'DTR') {
@@ -158,7 +173,7 @@ export class SerialMessageProcessor extends EventEmitter {
     });
 
     this.dtrResetManager.on('rotateLog', (event) => {
-      console.log(`[Processor] Log rotation requested for ${event.type} reset`);
+      this.logConsoleMessage(`[Processor] Log rotation requested for ${event.type} reset`);
       this.emit('rotateLog', event);
     });
 
@@ -169,7 +184,7 @@ export class SerialMessageProcessor extends EventEmitter {
     
     // Handle performance threshold alerts
     this.performanceMonitor.on('threshold', (alert) => {
-      console.warn('[Processor] Performance threshold exceeded:', alert);
+      this.logConsoleMessage('[Processor] Performance threshold exceeded:', alert);
       this.emit('performanceAlert', alert);
     });
   }
@@ -188,7 +203,7 @@ export class SerialMessageProcessor extends EventEmitter {
     // Start performance snapshots
     this.performanceMonitor.startSnapshots(5000);
     
-    console.log('[Processor] Started serial message processing');
+    this.logConsoleMessage('[Processor] Started serial message processing');
     this.emit('started');
   }
 
@@ -208,7 +223,7 @@ export class SerialMessageProcessor extends EventEmitter {
     // Stop performance snapshots
     this.performanceMonitor.stopSnapshots();
 
-    console.log('[Processor] Stopped serial message processing');
+    this.logConsoleMessage('[Processor] Stopped serial message processing');
     this.emit('stopped');
   }
 
@@ -217,10 +232,10 @@ export class SerialMessageProcessor extends EventEmitter {
    * This is the entry point for all serial data
    */
   public receiveData(data: Buffer): void {
-    console.log(`[TWO-TIER] 🔄 SerialMessageProcessor.receiveData(): ${data.length} bytes, running: ${this.isRunning}`);
+    this.logConsoleMessage(`[TWO-TIER] 🔄 SerialMessageProcessor.receiveData(): ${data.length} bytes, running: ${this.isRunning}`);
     
     if (!this.isRunning) {
-      console.warn('[Processor] Received data while not running, ignoring');
+      this.logConsoleMessage('[Processor] Received data while not running, ignoring');
       return;
     }
 

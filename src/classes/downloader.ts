@@ -9,6 +9,9 @@ import { getFlashLoaderBin, loadFileAsUint8Array, loadUint8ArrayFailed } from '.
 import { ObjectImage } from '../utils/imageUtils';
 import { UsbSerial } from '../utils/usb.serial';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class Downloader {
   private context: Context;
   private serialPort: UsbSerial;
@@ -268,6 +271,24 @@ export class Downloader {
     // Also send to logger if enabled
     if (this.context.runEnvironment.loggingEnabled) {
       this.context.logger.forceLogMessage('Dnldr: ' + message);
+    }
+  }
+
+  /**
+   * Controlled console logging for static methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  /**
+   * Controlled console logging for instance methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
     }
   }
 }

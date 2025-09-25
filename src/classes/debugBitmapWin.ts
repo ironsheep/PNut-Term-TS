@@ -16,6 +16,9 @@ import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindow
 import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * Bitmap window state
  */
@@ -158,7 +161,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     //   COLOR <bgnd-color> [default: black]
     //   HIDEXY [default: not hidden]
     
-    console.log(`CL: at parseBitmapDeclaration()`);
+    DebugBitmapWindow.logConsoleMessageStatic(`CL: at parseBitmapDeclaration()`);
     let displaySpec: BitmapDisplaySpec = {} as BitmapDisplaySpec;
     displaySpec.displayName = '';
     displaySpec.title = 'Bitmap';
@@ -264,7 +267,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     }
     
     if (!isValid) {
-      console.log(`ERROR: parseBitmapDeclaration() - ${errorMessage}`);
+      DebugBitmapWindow.logConsoleMessageStatic(`ERROR: parseBitmapDeclaration() - ${errorMessage}`);
     }
     
     return [isValid, displaySpec];

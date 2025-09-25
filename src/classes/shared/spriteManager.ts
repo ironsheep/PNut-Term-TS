@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 'use strict';
 
 // src/classes/shared/spriteManager.ts
@@ -12,6 +14,19 @@ export interface SpriteDefinition {
 }
 
 export class SpriteManager {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private sprites: (SpriteDefinition | null)[];
   private static readonly MAX_SPRITES = 256;
   private memoryUsage: number = 0; // Track memory usage in bytes
@@ -82,7 +97,7 @@ export class SpriteManager {
     this.maxMemoryUsage = Math.max(this.maxMemoryUsage, this.memoryUsage);
     this.spriteCreationCount++;
 
-    console.log(`[SPRITE MANAGER] Sprite ${id} defined: ${width}x${height}, memory: ${spriteMemory} bytes, total: ${this.memoryUsage} bytes`);
+    this.logConsoleMessage(`[SPRITE MANAGER] Sprite ${id} defined: ${width}x${height}, memory: ${spriteMemory} bytes, total: ${this.memoryUsage} bytes`);
   }
 
   /**
@@ -227,7 +242,7 @@ export class SpriteManager {
         this.releaseSprite(i);
       }
     }
-    console.log(`[SPRITE MANAGER] All sprites cleared, memory usage reset to 0`);
+    this.logConsoleMessage(`[SPRITE MANAGER] All sprites cleared, memory usage reset to 0`);
   }
 
   /**
@@ -252,7 +267,7 @@ export class SpriteManager {
       this.memoryUsage -= spriteMemory;
       this.memoryUsage = Math.max(0, this.memoryUsage); // Ensure non-negative
 
-      console.log(`[SPRITE MANAGER] Sprite ${id} released: ${spriteMemory} bytes freed, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(`[SPRITE MANAGER] Sprite ${id} released: ${spriteMemory} bytes freed, total: ${this.memoryUsage} bytes`);
     }
   }
 
@@ -373,12 +388,12 @@ export class SpriteManager {
   suggestGarbageCollection(): void {
     // Clear any temporary references that might prevent GC
     // In a real implementation, this might clear internal caches or temporary data
-    console.log(`[SPRITE MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
+    this.logConsoleMessage(`[SPRITE MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
 
     // Log memory health check
     const healthWarning = this.checkMemoryHealth();
     if (healthWarning) {
-      console.warn(`[SPRITE MANAGER] Memory warning: ${healthWarning}`);
+      this.logConsoleMessage(`[SPRITE MANAGER] Memory warning: ${healthWarning}`);
     }
   }
 }

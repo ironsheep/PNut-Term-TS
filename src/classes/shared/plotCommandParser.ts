@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * PlotCommandParser - Main parser implementation for PLOT commands
  * Eliminates all lookahead parsing using deterministic tokenization and command registry
@@ -22,6 +24,18 @@ import { Spin2NumericParser } from './spin2NumericParser';
 import { CanvasOperationType, PlotCanvasOperation, PlotOperationFactory } from './plotParserIntegration';
 
 export class PlotCommandParser implements IPlotCommandParser {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
   private tokenizer: PlotTokenizer;
   private registry: PlotCommandRegistry;
   private errorHandler: PlotErrorHandler;
@@ -385,21 +399,21 @@ export class PlotCommandParser implements IPlotCommandParser {
 
       // Check if this is a compound command by looking for patterns
       const isCompound = this.isCompoundCommand(workingTokens);
-      console.log(`[PARSER] isCompoundCommand returned: ${isCompound}`);
+      this.logConsoleMessage(`[PARSER] isCompoundCommand returned: ${isCompound}`);
 
       if (isCompound) {
         // Parse as compound command - all operations combined
-        console.log(`[PARSER] Parsing as compound command`);
+        this.logConsoleMessage(`[PARSER] Parsing as compound command`);
         const compoundCommand = this.parseCompoundCommand(workingTokens, message);
         commands.push(compoundCommand);
       } else {
         // Parse as separate commands
-        console.log(`[PARSER] Parsing as separate commands`);
+        this.logConsoleMessage(`[PARSER] Parsing as separate commands`);
         let currentIndex = 0;
         while (currentIndex < workingTokens.length) {
-          console.log(`[PARSER] Parsing command at index ${currentIndex}`);
+          this.logConsoleMessage(`[PARSER] Parsing command at index ${currentIndex}`);
           const commandResult = this.parseCommand(workingTokens, currentIndex, message);
-          console.log(`[PARSER] parseCommand returned:`, commandResult.command.command);
+          this.logConsoleMessage(`[PARSER] parseCommand returned:`, commandResult.command.command);
           commands.push(commandResult.command);
           currentIndex = commandResult.nextIndex;
         }
@@ -531,7 +545,7 @@ export class PlotCommandParser implements IPlotCommandParser {
           });
 
           // Debug log to console, not debug logger
-          console.log(`[COMPOUND] Sub-command: ${commandName} with ${params.length} params: ${params.map(p => p.value).join(', ')}`);
+          this.logConsoleMessage(`[COMPOUND] Sub-command: ${commandName} with ${params.length} params: ${params.map(p => p.value).join(', ')}`);
         } else {
           errors.push(`Unknown command in compound: ${commandName}`);
           currentIndex++;
@@ -821,7 +835,7 @@ export class PlotCommandParser implements IPlotCommandParser {
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
 
-      console.log(`[PLOT] SET parsed: x=${x}, y=${y}`);
+      this.logConsoleMessage(`[PLOT] SET parsed: x=${x}, y=${y}`);
 
     } catch (error) {
       result.success = false;
@@ -915,7 +929,7 @@ export class PlotCommandParser implements IPlotCommandParser {
         this.convertToCanvasOperation(textOperation)
       ];
 
-      console.log(`[PLOT] TEXT parsed: size=${size}, style=${styleString}, angle=${angle}, text='${text}'`);
+      this.logConsoleMessage(`[PLOT] TEXT parsed: size=${size}, style=${styleString}, angle=${angle}, text='${text}'`);
 
     } catch (error) {
       result.success = false;
@@ -1009,7 +1023,7 @@ export class PlotCommandParser implements IPlotCommandParser {
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
 
-      console.log(`[PLOT] LINE parsed: x=${x}, y=${y}, lineSize=${lineSize}, opacity=${opacity}`);
+      this.logConsoleMessage(`[PLOT] LINE parsed: x=${x}, y=${y}, lineSize=${lineSize}, opacity=${opacity}`);
 
     } catch (error) {
       result.success = false;
@@ -1163,7 +1177,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
 
       const paramStr = requiredParams.map(p => `${p}=${params[p]}`).join(', ');
-      console.log(`[PLOT] ${commandName} parsed: ${paramStr}, lineSize=${lineSize}, opacity=${opacity}`);
+      this.logConsoleMessage(`[PLOT] ${commandName} parsed: ${paramStr}, lineSize=${lineSize}, opacity=${opacity}`);
 
     } catch (error) {
       result.success = false;
@@ -1216,7 +1230,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] ORIGIN parsed: x=${x}, y=${y}`);
+      this.logConsoleMessage(`[PLOT] ORIGIN parsed: x=${x}, y=${y}`);
 
     } catch (error) {
       result.success = false;
@@ -1278,7 +1292,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] POLAR parsed: twopi=${twopi}, offset=${offset}`);
+      this.logConsoleMessage(`[PLOT] POLAR parsed: twopi=${twopi}, offset=${offset}`);
 
     } catch (error) {
       result.success = false;
@@ -1324,7 +1338,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] LINESIZE parsed: size=${size}`);
+      this.logConsoleMessage(`[PLOT] LINESIZE parsed: size=${size}`);
 
     } catch (error) {
       result.success = false;
@@ -1370,7 +1384,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] OPACITY parsed: level=${level}`);
+      this.logConsoleMessage(`[PLOT] OPACITY parsed: level=${level}`);
 
     } catch (error) {
       result.success = false;
@@ -1418,7 +1432,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] COLOR parsed: ${colorValue}`);
+      this.logConsoleMessage(`[PLOT] COLOR parsed: ${colorValue}`);
 
     } catch (error) {
       result.success = false;
@@ -1469,10 +1483,10 @@ export class PlotCommandParser implements IPlotCommandParser {
         { color: colorName, brightness: brightness },
         true // Color should be deferrable to batch with drawing operations
       );
-      console.log('[PARSER] Created color operation:', operation.type, '=', CanvasOperationType.SET_COLOR, 'params:', operation.parameters);
+      this.logConsoleMessage('[PARSER] Created color operation:', operation.type, '=', CanvasOperationType.SET_COLOR, 'params:', operation.parameters);
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] ${colorName} parsed: brightness=${brightness}`);
+      this.logConsoleMessage(`[PLOT] ${colorName} parsed: brightness=${brightness}`);
 
     } catch (error) {
       result.success = false;
@@ -1574,7 +1588,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE TITLE parsed: "${title}"`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE TITLE parsed: "${title}"`);
 
     } catch (error) {
       result.success = false;
@@ -1625,7 +1639,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE POS parsed: x=${x}, y=${y}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE POS parsed: x=${x}, y=${y}`);
 
     } catch (error) {
       result.success = false;
@@ -1687,7 +1701,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE SIZE parsed: width=${width}, height=${height}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE SIZE parsed: width=${width}, height=${height}`);
 
     } catch (error) {
       result.success = false;
@@ -1735,7 +1749,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE DOTSIZE parsed: dotSize=${dotSize}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE DOTSIZE parsed: dotSize=${dotSize}`);
 
     } catch (error) {
       result.success = false;
@@ -1806,7 +1820,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE BACKCOLOR parsed: color=${color}, brightness=${brightness}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE BACKCOLOR parsed: color=${color}, brightness=${brightness}`);
 
     } catch (error) {
       result.success = false;
@@ -1846,7 +1860,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE HIDEXY parsed: hideXY=${hideXY}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE HIDEXY parsed: hideXY=${hideXY}`);
 
     } catch (error) {
       result.success = false;
@@ -1894,7 +1908,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] CONFIGURE UPDATE parsed: updateRate=${updateRate}`);
+      this.logConsoleMessage(`[PLOT] CONFIGURE UPDATE parsed: updateRate=${updateRate}`);
 
     } catch (error) {
       result.success = false;
@@ -1944,7 +1958,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] COLORMODE parsed: mode=${mode} (${modeName})`);
+      this.logConsoleMessage(`[PLOT] COLORMODE parsed: mode=${mode} (${modeName})`);
 
     } catch (error) {
       result.success = false;
@@ -1994,7 +2008,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] TEXTSIZE parsed: textSize=${textSize}`);
+      this.logConsoleMessage(`[PLOT] TEXTSIZE parsed: textSize=${textSize}`);
 
     } catch (error) {
       result.success = false;
@@ -2056,7 +2070,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] TEXTSTYLE parsed: style=${textStyle} (${styleDescription})`);
+      this.logConsoleMessage(`[PLOT] TEXTSTYLE parsed: style=${textStyle} (${styleDescription})`);
 
     } catch (error) {
       result.success = false;
@@ -2178,7 +2192,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] SPRITEDEF ${idValue} ${widthValue}x${heightValue} parsed: ${pixels.length} pixels, ${maxColors} colors`);
+      this.logConsoleMessage(`[PLOT] SPRITEDEF ${idValue} ${widthValue}x${heightValue} parsed: ${pixels.length} pixels, ${maxColors} colors`);
 
     } catch (error) {
       result.success = false;
@@ -2265,7 +2279,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] SPRITE ${idValue} orientation=${orientation}° scale=${scale} opacity=${opacity} parsed`);
+      this.logConsoleMessage(`[PLOT] SPRITE ${idValue} orientation=${orientation}° scale=${scale} opacity=${opacity} parsed`);
 
     } catch (error) {
       result.success = false;
@@ -2330,7 +2344,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] LAYER ${layerIndexValue} "${filename}" parsed`);
+      this.logConsoleMessage(`[PLOT] LAYER ${layerIndexValue} "${filename}" parsed`);
 
     } catch (error) {
       result.success = false;
@@ -2394,7 +2408,7 @@ export class PlotCommandParser implements IPlotCommandParser {
         );
 
         result.canvasOperations = [this.convertToCanvasOperation(operation)];
-        console.log(`[PLOT] CROP ${layerValue} AUTO ${autoX} ${autoY} parsed`);
+        this.logConsoleMessage(`[PLOT] CROP ${layerValue} AUTO ${autoX} ${autoY} parsed`);
 
       } else {
         // Parse explicit coordinate mode: CROP layer {left top width height {x y}}
@@ -2482,7 +2496,7 @@ export class PlotCommandParser implements IPlotCommandParser {
         );
 
         result.canvasOperations = [this.convertToCanvasOperation(operation)];
-        console.log(`[PLOT] CROP ${layerValue} ${leftValue} ${topValue} ${widthValue} ${heightValue} ${destX} ${destY} parsed`);
+        this.logConsoleMessage(`[PLOT] CROP ${layerValue} ${leftValue} ${topValue} ${widthValue} ${heightValue} ${destX} ${destY} parsed`);
       }
 
     } catch (error) {
@@ -2514,7 +2528,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] PRECISE precision toggle parsed`);
+      this.logConsoleMessage(`[PLOT] PRECISE precision toggle parsed`);
 
     } catch (error) {
       result.success = false;
@@ -2530,7 +2544,7 @@ export class PlotCommandParser implements IPlotCommandParser {
    * Pascal: LUT index color
    */
   private handleLutCommand(context: CommandContext): CommandResult {
-    console.log(`[LUT HANDLER] handleLutCommand called with context:`, context);
+    this.logConsoleMessage(`[LUT HANDLER] handleLutCommand called with context:`, context);
     const result: CommandResult = {
       success: true,
       errors: [],
@@ -2539,7 +2553,7 @@ export class PlotCommandParser implements IPlotCommandParser {
     };
 
     try {
-      console.log(`[LUT HANDLER] tokens.length = ${context.tokens.length}, tokens:`, context.tokens.map(t => `'${t.value}'(${t.type})`));
+      this.logConsoleMessage(`[LUT HANDLER] tokens.length = ${context.tokens.length}, tokens:`, context.tokens.map(t => `'${t.value}'(${t.type})`));
       // Validate parameters (expect index and color)
       if (!context.tokens || context.tokens.length < 2) {
         throw new Error('LUT command requires index and color parameters');
@@ -2570,7 +2584,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] LUT palette[${index}] = 0x${colorValue.toString(16).padStart(6, '0')} parsed`);
+      this.logConsoleMessage(`[PLOT] LUT palette[${index}] = 0x${colorValue.toString(16).padStart(6, '0')} parsed`);
 
     } catch (error) {
       result.success = false;
@@ -2640,7 +2654,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      console.log(`[PLOT] LUTCOLORS ${colors.length} colors loaded to palette`);
+      this.logConsoleMessage(`[PLOT] LUTCOLORS ${colors.length} colors loaded to palette`);
 
     } catch (error) {
       result.success = false;
@@ -2688,7 +2702,7 @@ export class PlotCommandParser implements IPlotCommandParser {
         console.error('Failed to log to debug logger:', error);
       }
     }
-    console.log(message);
+    this.logConsoleMessage(message);
   }
 
   /**
@@ -2697,7 +2711,7 @@ export class PlotCommandParser implements IPlotCommandParser {
   private convertToCanvasOperation(plotOp: PlotCanvasOperation): any {
     // Return the PlotCanvasOperation as-is since it has all the needed info
     // The integrator knows how to handle PlotCanvasOperation directly
-    console.log('[PARSER] convertToCanvasOperation returning:', plotOp.type, plotOp.parameters);
+    this.logConsoleMessage('[PARSER] convertToCanvasOperation returning:', plotOp.type, plotOp.parameters);
     return plotOp;
   }
 }

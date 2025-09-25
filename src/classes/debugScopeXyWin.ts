@@ -10,6 +10,9 @@ import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * Scope XY display specification
  */
@@ -371,7 +374,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     
     if (!this.displaySpec.hasExplicitPosition) {
       // Use WindowPlacer for intelligent auto-positioning
-      console.log(`[SCOPEXY] 🎯 Using WindowPlacer for auto-placement`);
+      this.logConsoleMessage(`[SCOPEXY] 🎯 Using WindowPlacer for auto-placement`);
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
         dimensions: { width: windowWidth, height: windowHeight },
@@ -392,7 +395,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       }
     } else {
       // Use explicit position from POS clause
-      console.log(`[SCOPEXY] 📍 Using explicit position from POS clause: (${this.displaySpec.position?.x}, ${this.displaySpec.position?.y})`);
+      this.logConsoleMessage(`[SCOPEXY] 📍 Using explicit position from POS clause: (${this.displaySpec.position?.x}, ${this.displaySpec.position?.y})`);
       windowX = this.displaySpec.position?.x || 0;
       windowY = this.displaySpec.position?.y || 0;
     }
@@ -415,7 +418,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     });
 
     // Load content - Debug the HTML being loaded
-    console.log(`[SCOPEXY] Loading HTML content (${this.windowContent.length} chars):`, this.windowContent.substring(0, 200));
+    this.logConsoleMessage(`[SCOPEXY] Loading HTML content (${this.windowContent.length} chars):`, this.windowContent.substring(0, 200));
     
     // Add error handling for loadURL
     this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(this.windowContent)}`).catch(error => {
@@ -440,11 +443,11 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       // Register with WindowPlacer only if using auto-placement
       if (this.debugWindow) {
         if (!this.displaySpec.hasExplicitPosition) {
-          console.log(`[SCOPEXY] 📝 Registering with WindowPlacer for position tracking`);
+          this.logConsoleMessage(`[SCOPEXY] 📝 Registering with WindowPlacer for position tracking`);
           const windowPlacer = WindowPlacer.getInstance();
           windowPlacer.registerWindow(`scopexy-${this.windowTitle}`, this.debugWindow);
         } else {
-          console.log(`[SCOPEXY] ⚡ Skipping WindowPlacer registration - using explicit position`);
+          this.logConsoleMessage(`[SCOPEXY] ⚡ Skipping WindowPlacer registration - using explicit position`);
         }
         this.debugWindow.show();
       } else {
@@ -582,7 +585,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       this.logMessage(`initializeRenderer: Drawing initial grid`);
 
       // Debug: Log the actual script being executed
-      console.log('[SCOPEXY] Grid script to execute:', gridScript.substring(0, 200));
+      this.logConsoleMessage('[SCOPEXY] Grid script to execute:', gridScript.substring(0, 200));
 
       // Check for common issues
       if (gridScript.includes('undefined') || gridScript.includes('NaN')) {

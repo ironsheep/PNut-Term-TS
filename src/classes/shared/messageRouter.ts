@@ -2,6 +2,8 @@
 
 // src/classes/shared/messageRouter.ts
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 import { EventEmitter } from 'events';
 import { DynamicQueue } from './dynamicQueue';
 import { ExtractedMessage, MessageType } from './messageExtractor';
@@ -88,6 +90,18 @@ export interface RouterStats {
  */
 
 export class MessageRouter extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
   private inputQueue: DynamicQueue<ExtractedMessage>;
   private routingConfig: RoutingConfig;
   private processingPending: boolean = false;
@@ -163,7 +177,7 @@ export class MessageRouter extends EventEmitter {
       
       // Reduce registration logging noise in production
     if (process.env.NODE_ENV === 'development' || process.env.DEBUG_ROUTING) {
-      console.log(`[MessageRouter] Registered ${destination.name} for ${messageType} messages`);
+      this.logConsoleMessage(`[MessageRouter] Registered ${destination.name} for ${messageType} messages`);
     }
     }
   }
@@ -175,7 +189,7 @@ export class MessageRouter extends EventEmitter {
     const index = this.routingConfig[messageType].findIndex(d => d.name === destinationName);
     if (index >= 0) {
       this.routingConfig[messageType].splice(index, 1);
-      console.log(`[MessageRouter] Unregistered ${destinationName} from ${messageType} messages`);
+      this.logConsoleMessage(`[MessageRouter] Unregistered ${destinationName} from ${messageType} messages`);
     }
   }
 
@@ -252,7 +266,7 @@ export class MessageRouter extends EventEmitter {
     if (currentCategory !== targetCategory || 
         Math.abs(this.currentTimerInterval - targetInterval) > 2) {
       this.currentTimerInterval = targetInterval;
-      console.log(`[MessageRouter] Adaptive timer: ${targetInterval}ms (velocity: ${this.messageVelocity} msg/s, processing: ${this.lastProcessingTime}ms)`);
+      this.logConsoleMessage(`[MessageRouter] Adaptive timer: ${targetInterval}ms (velocity: ${this.messageVelocity} msg/s, processing: ${this.lastProcessingTime}ms)`);
     }
   }
   
@@ -337,11 +351,11 @@ export class MessageRouter extends EventEmitter {
    * Route a single message to its destinations using reference counting
    */
   private routeMessage(message: ExtractedMessage): void {
-    console.log(`[TWO-TIER] 🎯 Routing message: ${message.type}, ${message.data.length} bytes`);
+    this.logConsoleMessage(`[TWO-TIER] 🎯 Routing message: ${message.type}, ${message.data.length} bytes`);
     
     const destinations = this.routingConfig[message.type];
     
-    console.log(`[TWO-TIER] 🎯 Found ${destinations?.length || 0} destinations for ${message.type}`);
+    this.logConsoleMessage(`[TWO-TIER] 🎯 Found ${destinations?.length || 0} destinations for ${message.type}`);
     
     if (!destinations || destinations.length === 0) {
       console.warn(`[MessageRouter] No destinations for ${message.type} message`);
@@ -354,7 +368,7 @@ export class MessageRouter extends EventEmitter {
     
     // CRITICAL: Emit event for debugger packets that require response
     if (message.type === 'DEBUGGER_416BYTE' && message.data instanceof Uint8Array) {
-      console.log('[MessageRouter] Emitting debuggerPacketReceived event for P2 response');
+      this.logConsoleMessage('[MessageRouter] Emitting debuggerPacketReceived event for P2 response');
       this.emit('debuggerPacketReceived', message.data);
     }
     
@@ -370,7 +384,7 @@ export class MessageRouter extends EventEmitter {
     const totalConsumers = destinations.length;
     this.totalConsumerCount += totalConsumers;
     
-    console.log(`[MessageRouter] Creating pooled message for ${totalConsumers} consumers`);
+    this.logConsoleMessage(`[MessageRouter] Creating pooled message for ${totalConsumers} consumers`);
     
     // Acquire pooled message with correct consumer count
     const pooledMessage = this.messagePool.acquire(message.data, message.type, totalConsumers);
@@ -391,7 +405,7 @@ export class MessageRouter extends EventEmitter {
     this.pooledMessagesRouted++;
     this.copyOperationsAvoided += (totalConsumers - 1); // We avoided N-1 copy operations
     
-    console.log(`[MessageRouter] Pooled message #${pooledMessage.poolId} created with ${pooledMessage.consumerCount} consumers`);
+    this.logConsoleMessage(`[MessageRouter] Pooled message #${pooledMessage.poolId} created with ${pooledMessage.consumerCount} consumers`);
 
     // Route reference to each destination - NO COPYING
     for (const destination of destinations) {
@@ -413,7 +427,7 @@ export class MessageRouter extends EventEmitter {
         // If routing failed, we need to release this consumer's reference
         try {
           this.messagePool.release(pooledMessage);
-          console.log(`[MessageRouter] Released failed consumer reference for ${destination.name}`);
+          this.logConsoleMessage(`[MessageRouter] Released failed consumer reference for ${destination.name}`);
         } catch (releaseError) {
           console.error(`[MessageRouter] Error releasing failed consumer reference:`, releaseError);
         }
@@ -545,7 +559,7 @@ export class MessageRouter extends EventEmitter {
    */
   public configureAdaptiveTimer(fast: number = 2, normal: number = 5, idle: number = 20): void {
     this.timerIntervals = { fast, normal, idle };
-    console.log(`[MessageRouter] Adaptive timer configured: fast=${fast}ms, normal=${normal}ms, idle=${idle}ms`);
+    this.logConsoleMessage(`[MessageRouter] Adaptive timer configured: fast=${fast}ms, normal=${normal}ms, idle=${idle}ms`);
   }
   
   /**
@@ -574,7 +588,7 @@ export class MessageRouter extends EventEmitter {
       this.processingTimer = null;
     }
     this.processingPending = false;
-    console.log('[MessageRouter] Adaptive timer stopped');
+    this.logConsoleMessage('[MessageRouter] Adaptive timer stopped');
   }
 
   /**
@@ -629,6 +643,6 @@ export class MessageRouter extends EventEmitter {
     for (const messageType in this.routingConfig) {
       this.routingConfig[messageType as MessageType] = [];
     }
-    console.log('[MessageRouter] All destinations cleared');
+    this.logConsoleMessage('[MessageRouter] All destinations cleared');
   }
 }

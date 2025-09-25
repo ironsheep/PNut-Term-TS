@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * Integration Design for PLOT Parser with Existing Systems
  * Defines how new parser connects to canvas rendering, state management, and window controls
@@ -107,6 +109,19 @@ export interface PlotCanvasOperation {
 
 // Integration adapter for existing DebugPlotWindow
 export class PlotWindowIntegrator {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private plotWindow: any; // DebugPlotWindow instance
   private state: PlotWindowState;
   // Track the last operation type to determine color application
@@ -246,7 +261,7 @@ export class PlotWindowIntegrator {
 
     // Debug logging to trace color operations
     if (operation.parameters?.color) {
-      console.log(`[INTEGRATOR] Processing operation with color: type=${operation.type}, params=`, operation.parameters);
+      this.logConsoleMessage(`[INTEGRATOR] Processing operation with color: type=${operation.type}, params=`, operation.parameters);
     }
 
     try {
@@ -280,7 +295,7 @@ export class PlotWindowIntegrator {
           break;
 
         case CanvasOperationType.SET_COLOR:
-          console.log('[INTEGRATOR] Executing SET_COLOR with params:', operation.parameters);
+          this.logConsoleMessage('[INTEGRATOR] Executing SET_COLOR with params:', operation.parameters);
           this.executeSetColor(operation.parameters);
           break;
 
@@ -350,7 +365,7 @@ export class PlotWindowIntegrator {
 
         default:
           // Log what's happening with operations that fall through
-          console.log('[INTEGRATOR] Operation fell through to default:', operation.type, operation.parameters);
+          this.logConsoleMessage('[INTEGRATOR] Operation fell through to default:', operation.type, operation.parameters);
           result.success = false;
           result.errors.push(`Unsupported operation type: ${operation.type}`);
       }
@@ -413,7 +428,7 @@ export class PlotWindowIntegrator {
         const diameter = params.diameter || 10;
         const circleLineSize = params.lineSize !== undefined ? params.lineSize : 0;
 
-        console.log('[INTEGRATOR] Drawing CIRCLE with params:', {
+        this.logConsoleMessage('[INTEGRATOR] Drawing CIRCLE with params:', {
           diameter: diameter,
           lineSize: circleLineSize,
           opacity: params.opacity ?? 255,
@@ -432,11 +447,11 @@ export class PlotWindowIntegrator {
       case 'BOX':
       case 'OVAL':
         // TODO: Implement box and oval drawing with precision support
-        console.log(`[INTEGRATOR] ${command} not yet implemented with params:`, params);
+        this.logConsoleMessage(`[INTEGRATOR] ${command} not yet implemented with params:`, params);
         break;
 
       default:
-        console.log(`[INTEGRATOR] Unknown draw command: ${command}`);
+        this.logConsoleMessage(`[INTEGRATOR] Unknown draw command: ${command}`);
     }
   }
 
@@ -447,7 +462,7 @@ export class PlotWindowIntegrator {
     // Only apply pending color if the last operation was SET_COLOR
     // This matches Pascal behavior: color immediately before TEXT sets text color
     if (this.lastOperationType === CanvasOperationType.SET_COLOR && this.lastSetColor) {
-      console.log('[INTEGRATOR] Applying color to text (color was previous op):', this.lastSetColor);
+      this.logConsoleMessage('[INTEGRATOR] Applying color to text (color was previous op):', this.lastSetColor);
       this.plotWindow.currTextColor = this.lastSetColor;
       this.state.currentTextColor = this.lastSetColor;
     }
@@ -480,8 +495,8 @@ export class PlotWindowIntegrator {
    * Execute cursor position change
    */
   private executeSetCursor(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetCursor called with:', params);
-    console.log('[INTEGRATOR] Current state:', {
+    this.logConsoleMessage('[INTEGRATOR] executeSetCursor called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] Current state:', {
       coordinateMode: this.state.coordinateMode,
       precise: this.state.precise,
       origin: this.plotWindow.origin,
@@ -495,7 +510,7 @@ export class PlotWindowIntegrator {
       // IMPORTANT: SET command does NOT use precision multiplier!
       // Precision mode only affects drawing operations (LINE, DOT, etc.)
       // SET always uses absolute coordinates regardless of precision mode
-      console.log(`[INTEGRATOR] Raw SET params: x=${x}, y=${y} (no precision applied to SET)`);
+      this.logConsoleMessage(`[INTEGRATOR] Raw SET params: x=${x}, y=${y} (no precision applied to SET)`);
 
       // Check if we're in polar mode
       if (this.state.coordinateMode === 'POLAR') {
@@ -504,16 +519,16 @@ export class PlotWindowIntegrator {
         const radius = x;  // No precision multiplier for SET
         const angle = y;   // No precision multiplier for SET
 
-        console.log(`[INTEGRATOR] Polar mode - radius=${radius}, angle=${angle}`);
+        this.logConsoleMessage(`[INTEGRATOR] Polar mode - radius=${radius}, angle=${angle}`);
 
         // Convert polar to cartesian - this gives us logical coordinates
         [x, y] = this.plotWindow.polarToCartesian(radius, angle);
 
-        console.log(`[INTEGRATOR] After polarToCartesian: x=${x}, y=${y}`);
+        this.logConsoleMessage(`[INTEGRATOR] After polarToCartesian: x=${x}, y=${y}`);
       } else {
         // In cartesian mode, SET uses coordinates directly
         // No precision multiplier for SET command
-        console.log(`[INTEGRATOR] Cartesian mode - x=${x}, y=${y}`);
+        this.logConsoleMessage(`[INTEGRATOR] Cartesian mode - x=${x}, y=${y}`);
       }
 
       // Set cursor position directly to the logical coordinates
@@ -523,11 +538,11 @@ export class PlotWindowIntegrator {
       this.plotWindow.cursorPosition.y = y;
       this.state.cursorPosition = { x, y };
 
-      console.log('[INTEGRATOR] Final cursor position:', this.plotWindow.cursorPosition);
+      this.logConsoleMessage('[INTEGRATOR] Final cursor position:', this.plotWindow.cursorPosition);
 
       // Also log what the screen coordinates would be
       const screenCoords = this.plotWindow.getCursorXY();
-      console.log('[INTEGRATOR] Screen coordinates would be:', screenCoords);
+      this.logConsoleMessage('[INTEGRATOR] Screen coordinates would be:', screenCoords);
     }
   }
 
@@ -546,11 +561,11 @@ export class PlotWindowIntegrator {
    * Execute color change
    */
   private executeSetColor(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetColor called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetColor called with:', params);
     if (params.color) {
       // Convert color name with brightness to hex value
       const colorHex = this.colorNameToHex(params.color, params.brightness);
-      console.log(`[INTEGRATOR] Setting color to ${colorHex}`);
+      this.logConsoleMessage(`[INTEGRATOR] Setting color to ${colorHex}`);
 
       // Set shape/drawing color
       this.plotWindow.currFgColor = colorHex;
@@ -617,14 +632,14 @@ export class PlotWindowIntegrator {
         case 'TITLE':
           if (params.title && this.plotWindow.debugWindow) {
             this.plotWindow.debugWindow.setTitle(params.title);
-            console.log(`[PLOT] Window title set to: "${params.title}"`);
+            this.logConsoleMessage(`[PLOT] Window title set to: "${params.title}"`);
           }
           break;
 
         case 'POS':
           if (this.plotWindow.debugWindow && params.x !== undefined && params.y !== undefined) {
             this.plotWindow.debugWindow.setPosition(params.x, params.y);
-            console.log(`[PLOT] Window position set to: ${params.x}, ${params.y}`);
+            this.logConsoleMessage(`[PLOT] Window position set to: ${params.x}, ${params.y}`);
           }
           break;
 
@@ -632,7 +647,7 @@ export class PlotWindowIntegrator {
           if (this.plotWindow.debugWindow && params.width !== undefined && params.height !== undefined) {
             // Set window content size, not outer window size
             this.plotWindow.debugWindow.setContentSize(params.width, params.height);
-            console.log(`[PLOT] Window size set to: ${params.width}x${params.height}`);
+            this.logConsoleMessage(`[PLOT] Window size set to: ${params.width}x${params.height}`);
           }
           break;
 
@@ -643,7 +658,7 @@ export class PlotWindowIntegrator {
               this.plotWindow.displaySpec = {};
             }
             this.plotWindow.displaySpec.dotSize = params.dotSize;
-            console.log(`[PLOT] Dot size set to: ${params.dotSize}`);
+            this.logConsoleMessage(`[PLOT] Dot size set to: ${params.dotSize}`);
           }
           break;
 
@@ -665,7 +680,7 @@ export class PlotWindowIntegrator {
             }
 
             this.plotWindow.displaySpec.window.background = backgroundColor;
-            console.log(`[PLOT] Background color set to: ${backgroundColor} (brightness: ${params.brightness || 15})`);
+            this.logConsoleMessage(`[PLOT] Background color set to: ${backgroundColor} (brightness: ${params.brightness || 15})`);
           }
           break;
 
@@ -676,7 +691,7 @@ export class PlotWindowIntegrator {
               this.plotWindow.displaySpec = {};
             }
             this.plotWindow.displaySpec.hideXY = params.hideXY;
-            console.log(`[PLOT] Coordinate display ${params.hideXY ? 'hidden' : 'shown'}`);
+            this.logConsoleMessage(`[PLOT] Coordinate display ${params.hideXY ? 'hidden' : 'shown'}`);
           }
           break;
 
@@ -690,7 +705,7 @@ export class PlotWindowIntegrator {
             if (this.plotWindow.setUpdateInterval) {
               this.plotWindow.setUpdateInterval(updateInterval);
             }
-            console.log(`[PLOT] Update rate set to: ${params.updateRate} Hz (${updateInterval.toFixed(1)}ms interval)`);
+            this.logConsoleMessage(`[PLOT] Update rate set to: ${params.updateRate} Hz (${updateInterval.toFixed(1)}ms interval)`);
           }
           break;
 
@@ -775,12 +790,12 @@ export class PlotWindowIntegrator {
    * Execute origin position change
    */
   private executeSetOrigin(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetOrigin called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetOrigin called with:', params);
     if (params.x !== undefined && params.y !== undefined) {
       // Update plot window's origin directly
       this.plotWindow.origin = { x: params.x, y: params.y };
       this.state.origin = { x: params.x, y: params.y };
-      console.log('[INTEGRATOR] Origin set to:', this.plotWindow.origin);
+      this.logConsoleMessage('[INTEGRATOR] Origin set to:', this.plotWindow.origin);
     }
   }
 
@@ -788,7 +803,7 @@ export class PlotWindowIntegrator {
    * Execute coordinate mode change (Cartesian/Polar)
    */
   private executeSetCoordinateMode(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetCoordinateMode called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetCoordinateMode called with:', params);
     if (params.mode === 'POLAR' && params.polarConfig) {
       // Set polar configuration AND switch to polar mode
       this.plotWindow.polarConfig = params.polarConfig;
@@ -796,17 +811,17 @@ export class PlotWindowIntegrator {
       // Switch to polar coordinate mode
       this.plotWindow.coordinateMode = 1; // eCoordModes.CM_POLAR
       this.state.coordinateMode = 'POLAR';
-      console.log('[INTEGRATOR] Switched to POLAR mode with config:', params.polarConfig);
+      this.logConsoleMessage('[INTEGRATOR] Switched to POLAR mode with config:', params.polarConfig);
     } else if (params.mode === 'CARTESIAN') {
       // Explicitly switch to Cartesian mode
       this.plotWindow.coordinateMode = 2; // eCoordModes.CM_CARTESIAN
       this.state.coordinateMode = 'CARTESIAN';
-      console.log('[INTEGRATOR] Switched to Cartesian mode');
+      this.logConsoleMessage('[INTEGRATOR] Switched to Cartesian mode');
     }
   }
 
   private executeSetColorMode(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetColorMode called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetColorMode called with:', params);
     if (params.mode !== undefined) {
       // Store color mode in plot window if it has such a property
       if (this.plotWindow.colorMode !== undefined) {
@@ -815,12 +830,12 @@ export class PlotWindowIntegrator {
       this.state.colorMode = params.mode;
 
       const modeNames = ['RGB', 'HSV', 'INDEXED', 'GRAYSCALE'];
-      console.log(`[INTEGRATOR] Color mode set to: ${params.mode} (${modeNames[params.mode] || 'UNKNOWN'})`);
+      this.logConsoleMessage(`[INTEGRATOR] Color mode set to: ${params.mode} (${modeNames[params.mode] || 'UNKNOWN'})`);
     }
   }
 
   private executeSetTextSize(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetTextSize called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetTextSize called with:', params);
     if (params.textSize !== undefined) {
       // Store default text size for future TEXT commands
       if (this.plotWindow.defaultTextSize !== undefined) {
@@ -828,12 +843,12 @@ export class PlotWindowIntegrator {
       }
       this.state.defaultTextSize = params.textSize;
 
-      console.log(`[INTEGRATOR] Default text size set to: ${params.textSize}`);
+      this.logConsoleMessage(`[INTEGRATOR] Default text size set to: ${params.textSize}`);
     }
   }
 
   private executeSetTextStyle(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetTextStyle called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetTextStyle called with:', params);
     if (params.textStyle !== undefined) {
       // Store default text style for future TEXT commands
       if (this.plotWindow.defaultTextStyle !== undefined) {
@@ -847,12 +862,12 @@ export class PlotWindowIntegrator {
       if (params.underline) styleFlags.push('underline');
       const styleDescription = styleFlags.length > 0 ? styleFlags.join('+') : 'normal';
 
-      console.log(`[INTEGRATOR] Default text style set to: ${params.textStyle} (${styleDescription})`);
+      this.logConsoleMessage(`[INTEGRATOR] Default text style set to: ${params.textStyle} (${styleDescription})`);
     }
   }
 
   private executeSetPrecision(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeSetPrecision called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeSetPrecision called with:', params);
 
     // Implement Pascal's PRECISE behavior: vPrecise := vPrecise xor 8
     // Toggle between 0 (standard) and 8 (high precision)
@@ -864,18 +879,18 @@ export class PlotWindowIntegrator {
     this.state.precise = newPrecise;
 
     const precisionMode = newPrecise === 8 ? 'high precision (256ths of pixel)' : 'standard pixel coordinates';
-    console.log(`[INTEGRATOR] Precision toggled: ${currentPrecise} -> ${newPrecise} (${precisionMode})`);
+    this.logConsoleMessage(`[INTEGRATOR] Precision toggled: ${currentPrecise} -> ${newPrecise} (${precisionMode})`);
   }
 
   private async executePcInput(params: Record<string, any>): Promise<void> {
-    console.log('[INTEGRATOR] executePcInput called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executePcInput called with:', params);
 
     const inputType = params.inputType;
 
     if (inputType === 'KEY') {
       // Handle PC_KEY - get last pressed key and send back to P2
       const keyCode = await this.getLastPressedKey();
-      console.log(`[INTEGRATOR] PC_KEY returning: ${keyCode}`);
+      this.logConsoleMessage(`[INTEGRATOR] PC_KEY returning: ${keyCode}`);
 
       // Send response back to P2 via debug protocol
       this.sendInputResponseToP2('KEY', keyCode);
@@ -883,7 +898,7 @@ export class PlotWindowIntegrator {
     } else if (inputType === 'MOUSE') {
       // Handle PC_MOUSE - get current mouse state and encode as 32-bit value
       const mouseState = await this.getCurrentMouseState();
-      console.log(`[INTEGRATOR] PC_MOUSE returning: 0x${mouseState.toString(16).padStart(8, '0')}`);
+      this.logConsoleMessage(`[INTEGRATOR] PC_MOUSE returning: 0x${mouseState.toString(16).padStart(8, '0')}`);
 
       // Send response back to P2 via debug protocol
       this.sendInputResponseToP2('MOUSE', mouseState);
@@ -906,7 +921,7 @@ export class PlotWindowIntegrator {
         })()
       `);
 
-      console.log(`[INTEGRATOR] Retrieved key from renderer: ${keyCode || 0}`);
+      this.logConsoleMessage(`[INTEGRATOR] Retrieved key from renderer: ${keyCode || 0}`);
       return keyCode || 0;
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to get key from renderer:`, error);
@@ -924,7 +939,7 @@ export class PlotWindowIntegrator {
         })()
       `);
 
-      console.log(`[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`);
+      this.logConsoleMessage(`[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`);
       return mouseState || 0;
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to get mouse state from renderer:`, error);
@@ -935,7 +950,7 @@ export class PlotWindowIntegrator {
   private sendInputResponseToP2(inputType: string, value: number): void {
     // Send the input response back to P2 via the debug protocol
     // This needs to integrate with the existing debugger protocol system
-    console.log(`[INTEGRATOR] Sending ${inputType} response to P2: ${value}`);
+    this.logConsoleMessage(`[INTEGRATOR] Sending ${inputType} response to P2: ${value}`);
 
     if (this.plotWindow.sendDebugResponse) {
       this.plotWindow.sendDebugResponse(inputType, value);
@@ -948,7 +963,7 @@ export class PlotWindowIntegrator {
    * Execute sprite definition - store sprite in sprite manager
    */
   private executeDefineSprite(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeDefineSprite called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeDefineSprite called with:', params);
 
     try {
       if (!this.plotWindow.spriteManager) {
@@ -1020,7 +1035,7 @@ export class PlotWindowIntegrator {
         throw new Error(`Memory allocation failed for sprite definition: ${memError}`);
       }
 
-      console.log(`[INTEGRATOR] Sprite ${spriteId} defined: ${width}x${height} pixels, ${pixels.length} pixel indices, ${colors.length} palette colors`);
+      this.logConsoleMessage(`[INTEGRATOR] Sprite ${spriteId} defined: ${width}x${height} pixels, ${pixels.length} pixel indices, ${colors.length} palette colors`);
 
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to define sprite:`, error);
@@ -1034,7 +1049,7 @@ export class PlotWindowIntegrator {
    * Execute sprite drawing - render sprite at current position with transformations
    */
   private executeDrawSprite(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeDrawSprite called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeDrawSprite called with:', params);
 
     try {
       if (!this.plotWindow.spriteManager) {
@@ -1064,7 +1079,7 @@ export class PlotWindowIntegrator {
       // Render sprite with transformations at current position
       this.renderTransformedSprite(sprite, currentX, currentY, transformMatrix, opacity);
 
-      console.log(`[INTEGRATOR] Sprite ${spriteId} rendered at current position (${currentX}, ${currentY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`);
+      this.logConsoleMessage(`[INTEGRATOR] Sprite ${spriteId} rendered at current position (${currentX}, ${currentY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`);
 
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to draw sprite:`, error);
@@ -1215,7 +1230,7 @@ export class PlotWindowIntegrator {
    * Execute layer loading - load bitmap file into layer manager
    */
   private async executeLoadLayer(params: Record<string, any>): Promise<void> {
-    console.log('[INTEGRATOR] executeLoadLayer called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeLoadLayer called with:', params);
 
     try {
       if (!this.plotWindow.layerManager) {
@@ -1279,7 +1294,7 @@ export class PlotWindowIntegrator {
           throw new Error(`Memory allocation failed for layer: ${memError}`);
         }
 
-        console.log(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${bitmapData.width}x${bitmapData.height})`);
+        this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${bitmapData.width}x${bitmapData.height})`);
 
       } catch (loadError) {
         // Enhanced error classification and logging
@@ -1337,7 +1352,7 @@ export class PlotWindowIntegrator {
       // Parse BMP header and pixel data
       const bitmapData = this.parseBMPData(fileData, filename);
 
-      console.log(`[INTEGRATOR] BMP file loaded: ${filename} (${bitmapData.width}x${bitmapData.height})`);
+      this.logConsoleMessage(`[INTEGRATOR] BMP file loaded: ${filename} (${bitmapData.width}x${bitmapData.height})`);
 
       return bitmapData;
 
@@ -1432,7 +1447,7 @@ export class PlotWindowIntegrator {
    * Execute crop operation - copy rectangular region from layer to canvas
    */
   private executeCropLayer(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeCropLayer called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeCropLayer called with:', params);
 
     try {
       if (!this.plotWindow.layerManager) {
@@ -1492,7 +1507,7 @@ export class PlotWindowIntegrator {
 
     this.copyLayerToCanvas(layerData, sourceRect, destX, destY);
 
-    console.log(`[INTEGRATOR] CROP AUTO: copied entire layer (${sourceRect.width}x${sourceRect.height}) to (${destX}, ${destY})`);
+    this.logConsoleMessage(`[INTEGRATOR] CROP AUTO: copied entire layer (${sourceRect.width}x${sourceRect.height}) to (${destX}, ${destY})`);
   }
 
   /**
@@ -1512,7 +1527,7 @@ export class PlotWindowIntegrator {
     const sourceRect = { left, top, width, height };
     this.copyLayerToCanvas(layerData, sourceRect, destX, destY);
 
-    console.log(`[INTEGRATOR] CROP EXPLICIT: copied (${left},${top}) ${width}x${height} to (${destX}, ${destY})`);
+    this.logConsoleMessage(`[INTEGRATOR] CROP EXPLICIT: copied (${left},${top}) ${width}x${height} to (${destX}, ${destY})`);
   }
 
   /**
@@ -1587,7 +1602,7 @@ export class PlotWindowIntegrator {
    * Execute LUT_SET operation - sets single palette entry for indexed color mode
    */
   private executeLutSet(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeLutSet called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeLutSet called with:', params);
 
     try {
       const lutManager = this.plotWindow.getLutManager();
@@ -1615,7 +1630,7 @@ export class PlotWindowIntegrator {
         colorTranslator.setLutPalette(lutManager.getPalette());
       }
 
-      console.log(`[INTEGRATOR] LUT palette[${index}] set to 0x${color.toString(16).padStart(6, '0')}`);
+      this.logConsoleMessage(`[INTEGRATOR] LUT palette[${index}] set to 0x${color.toString(16).padStart(6, '0')}`);
 
     } catch (error) {
       console.error('[INTEGRATOR] Error during LUT_SET operation:', error);
@@ -1627,7 +1642,7 @@ export class PlotWindowIntegrator {
    * Execute LUT_COLORS operation - loads multiple RGB24 color values into consecutive palette entries
    */
   private executeLutColors(params: Record<string, any>): void {
-    console.log('[INTEGRATOR] executeLutColors called with:', params);
+    this.logConsoleMessage('[INTEGRATOR] executeLutColors called with:', params);
 
     try {
       const lutManager = this.plotWindow.getLutManager();
@@ -1655,7 +1670,7 @@ export class PlotWindowIntegrator {
         colorTranslator.setLutPalette(lutManager.getPalette());
       }
 
-      console.log(`[INTEGRATOR] LUTCOLORS loaded ${loadedCount} colors into palette`);
+      this.logConsoleMessage(`[INTEGRATOR] LUTCOLORS loaded ${loadedCount} colors into palette`);
 
     } catch (error) {
       console.error('[INTEGRATOR] Error during LUT_COLORS operation:', error);
@@ -1748,7 +1763,7 @@ export class PlotWindowIntegrator {
         if (operation.parameters.toggle) {
           // The actual toggle logic is handled in executeSetPrecision
           // This just acknowledges that precision state was updated
-          console.log('[INTEGRATOR] Precision state updated in internal state');
+          this.logConsoleMessage('[INTEGRATOR] Precision state updated in internal state');
         }
         break;
     }
@@ -1925,7 +1940,7 @@ export class PlotWindowIntegrator {
       let plotOperation: PlotCanvasOperation;
 
       // Debug logging for operations
-      console.log('[INTEGRATOR BATCH] Processing operation:', operation.type, (operation as any).parameters);
+      this.logConsoleMessage('[INTEGRATOR BATCH] Processing operation:', operation.type, (operation as any).parameters);
 
       if ('affectsState' in operation) {
         // Already a PlotCanvasOperation
@@ -1973,7 +1988,7 @@ export class PlotWindowIntegrator {
     const operationCount = this.deferredOperations.length;
     this.deferredOperations = [];
     if (operationCount > 0) {
-      console.log(`[INTEGRATOR] Cleared ${operationCount} deferred operations during cleanup`);
+      this.logConsoleMessage(`[INTEGRATOR] Cleared ${operationCount} deferred operations during cleanup`);
     }
   }
 
@@ -1986,7 +2001,7 @@ export class PlotWindowIntegrator {
       // Clear any partially created sprite data
       if (this.plotWindow && this.plotWindow.spriteManager && this.plotWindow.spriteManager.isSpriteDefine(spriteId)) {
         this.plotWindow.spriteManager.clearSprite(spriteId);
-        console.log(`[INTEGRATOR] Cleaned up failed sprite operation for sprite ${spriteId}`);
+        this.logConsoleMessage(`[INTEGRATOR] Cleaned up failed sprite operation for sprite ${spriteId}`);
       }
     } catch (cleanupError) {
       console.warn(`[INTEGRATOR] Error during sprite cleanup: ${cleanupError}`);
@@ -2005,7 +2020,7 @@ export class PlotWindowIntegrator {
         const internalLayerIndex = layerIndex - 1;
         if (this.plotWindow.layerManager.isLayerLoaded(internalLayerIndex)) {
           this.plotWindow.layerManager.clearLayer(internalLayerIndex);
-          console.log(`[INTEGRATOR] Cleaned up failed layer operation for layer ${layerIndex} ("${filename}")`);
+          this.logConsoleMessage(`[INTEGRATOR] Cleaned up failed layer operation for layer ${layerIndex} ("${filename}")`);
         }
       }
     } catch (cleanupError) {
@@ -2043,7 +2058,7 @@ export class PlotWindowIntegrator {
         }
       }
 
-      console.log('[INTEGRATOR] Emergency cleanup completed');
+      this.logConsoleMessage('[INTEGRATOR] Emergency cleanup completed');
     } catch (emergencyError) {
       console.error('[INTEGRATOR] Emergency cleanup failed:', emergencyError);
     }

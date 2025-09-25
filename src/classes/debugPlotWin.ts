@@ -23,6 +23,9 @@ import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
 // Compile-time flag for performance monitoring
 const ENABLE_PERFORMANCE_MONITORING = false;
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 import {
   DebugWindowBase,
   eHorizJustification,
@@ -302,7 +305,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     //   BACKCOLOR <bgnd-color> [default: BLACK]
     //   UPDATE
     //   HIDEXY
-    console.log(`CL: at parsePlotDeclaration()`);
+    DebugPlotWindow.logConsoleMessageStatic(`CL: at parsePlotDeclaration()`);
     let displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
     displaySpec.lutColors = [] as LutColor[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
@@ -312,7 +315,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     const bkgndColor: DebugColor = new DebugColor('BLACK', 15); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
     const gridColor: DebugColor = new DebugColor('GRAY', 4); // Dim gray for grid
     const textColor: DebugColor = new DebugColor('WHITE', 15); // Pascal: DefaultTextColor = clWhite (full brightness)
-    console.log(`CL: at parsePlotDeclaration() with colors...`);
+    DebugPlotWindow.logConsoleMessageStatic(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.size = { width: 256, height: 256 };
@@ -325,7 +328,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     //displaySpec.lutColors.push({ fgcolor: displaySpec.textColor, bgcolor: displaySpec.window.background });
 
     // now parse overrides to defaults
-    console.log(`CL: at overrides PlotDisplaySpec: ${lineParts}`);
+    DebugPlotWindow.logConsoleMessageStatic(`CL: at overrides PlotDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
@@ -340,7 +343,7 @@ export class DebugPlotWindow extends DebugWindowBase {
               displaySpec.windowTitle = lineParts[++index];
             } else {
               // console.log() as we are in class static method, not derived class...
-              console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -350,7 +353,7 @@ export class DebugPlotWindow extends DebugWindowBase {
               displaySpec.position.x = Number(lineParts[++index]);
               displaySpec.position.y = Number(lineParts[++index]);
             } else {
-              console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -360,7 +363,7 @@ export class DebugPlotWindow extends DebugWindowBase {
               displaySpec.size.width = Number(lineParts[++index]);
               displaySpec.size.height = Number(lineParts[++index]);
             } else {
-              console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -379,21 +382,21 @@ export class DebugPlotWindow extends DebugWindowBase {
               const textColor = new DebugColor(colorName, colorBrightness);
               displaySpec.window.background = textColor.rgbString;
             } else {
-              console.log(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
           case 'UPDATE':
             displaySpec.delayedUpdate = true;
-            console.log('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
+            DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
             break;
           case 'HIDEXY':
             displaySpec.hideXY = true;
-            console.log('CL: PlotDisplaySpec: HIDEXY enabled');
+            DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: HIDEXY enabled');
             break;
 
           default:
-            console.log(`CL: PlotDisplaySpec: Unknown directive: ${element}`);
+            DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Unknown directive: ${element}`);
             break;
         }
         if (!isValid) {
@@ -401,7 +404,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`CL: at end of parsePlotDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugPlotWindow.logConsoleMessageStatic(`CL: at end of parsePlotDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
@@ -1335,16 +1338,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       }
 
       // Execute parsed commands
-      console.log(`[PLOT DEBUG] Calling plotCommandParser.executeCommands()`);
+      this.logConsoleMessage(`[PLOT DEBUG] Calling plotCommandParser.executeCommands()`);
       const results = this.plotCommandParser.executeCommands(parsedCommands);
-      console.log(`[PLOT DEBUG] executeCommands returned ${results.length} results`);
+      this.logConsoleMessage(`[PLOT DEBUG] executeCommands returned ${results.length} results`);
 
       // Process results and execute canvas operations
-      console.log(`[PLOT DEBUG] Processing ${results.length} results from executeCommands`);
+      this.logConsoleMessage(`[PLOT DEBUG] Processing ${results.length} results from executeCommands`);
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         const command = parsedCommands[i];
-        console.log(`[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
+        this.logConsoleMessage(`[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
 
         // DEBUG: Log execution flow
         this.logMessage(`EXEC DEBUG: Command ${i + 1}: ${command.command} -> success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
@@ -2014,4 +2017,5 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   protected getCanvasId(): string {
     return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
+
 }

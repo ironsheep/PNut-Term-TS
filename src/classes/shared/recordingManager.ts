@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/recordingManager.ts
 
 import { WindowRouter } from './windowRouter';
@@ -57,6 +59,19 @@ interface ScenarioMetadata {
  * Manages automated recording triggers and scenario execution
  */
 export class RecordingManager {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private triggers: Map<string, RecordingTrigger> = new Map();
   private scenarios: Map<string, Scenario> = new Map();
   private activeRecording: string | null = null;
@@ -305,13 +320,13 @@ export class RecordingManager {
    */
   public startScenarioRecording(scenarioId: string, context: any): void {
     if (this.activeRecording) {
-      console.log('Recording already in progress:', this.activeRecording);
+      this.logConsoleMessage('Recording already in progress:', this.activeRecording);
       return;
     }
 
     const scenario = this.scenarios.get(scenarioId);
     if (!scenario) {
-      console.error('Unknown scenario:', scenarioId);
+      this.logConsoleMessage('Unknown scenario:', scenarioId);
       return;
     }
 
@@ -327,7 +342,7 @@ export class RecordingManager {
       tags: [scenario.category, 'automatic']
     });
 
-    console.log(`Started recording: ${sessionName}`);
+    this.logConsoleMessage(`Started recording: ${sessionName}`);
 
     // Auto-stop after expected duration
     setTimeout(() => {
@@ -358,7 +373,7 @@ export class RecordingManager {
       tags: [scenario.category, 'automatic-sampled', 'sampled']
     });
 
-    console.log(`Started sampled recording: ${sessionName}`);
+    this.logConsoleMessage(`Started sampled recording: ${sessionName}`);
 
     // Auto-stop
     setTimeout(() => {
@@ -380,7 +395,7 @@ export class RecordingManager {
     this.router.stopRecording();
     this.activeRecording = null;
 
-    console.log(`Stopped recording: ${sessionName} (duration: ${duration}ms)`);
+    this.logConsoleMessage(`Stopped recording: ${sessionName} (duration: ${duration}ms)`);
 
     // Update catalog
     this.updateCatalog(scenarioId, sessionName, duration);
@@ -407,7 +422,7 @@ export class RecordingManager {
       try {
         catalog = JSON.parse(content);
       } catch (e) {
-        console.error('Failed to parse catalog:', e);
+        this.logConsoleMessage('Failed to parse catalog:', e);
       }
     }
     
@@ -457,13 +472,13 @@ export class RecordingManager {
   public async runScenarioTest(scenarioId: string): Promise<boolean> {
     const scenario = this.scenarios.get(scenarioId);
     if (!scenario) {
-      console.error('Unknown scenario:', scenarioId);
+      this.logConsoleMessage('Unknown scenario:', scenarioId);
       return false;
     }
 
     const catalogPath = path.join(this.recordingsPath, 'catalog.json');
     if (!fs.existsSync(catalogPath)) {
-      console.error('No catalog found');
+      this.logConsoleMessage('No catalog found');
       return false;
     }
 
@@ -471,7 +486,7 @@ export class RecordingManager {
     const scenarioEntry = catalog.scenarios.find((s: any) => s.id === scenarioId);
     
     if (!scenarioEntry || scenarioEntry.recordings.length === 0) {
-      console.error('No recordings found for scenario:', scenarioId);
+      this.logConsoleMessage('No recordings found for scenario:', scenarioId);
       return false;
     }
 
@@ -480,24 +495,24 @@ export class RecordingManager {
     const recordingPath = path.join(this.recordingsPath, latestRecording.file);
 
     if (!fs.existsSync(recordingPath)) {
-      console.error('Recording file not found:', recordingPath);
+      this.logConsoleMessage('Recording file not found:', recordingPath);
       return false;
     }
 
     // Playback in headless mode
-    console.log(`Playing back: ${latestRecording.sessionId}`);
+    this.logConsoleMessage(`Playing back: ${latestRecording.sessionId}`);
     let success = false;
     try {
       await this.router.playRecording(recordingPath, 10.0, true);
       success = true;
     } catch (error) {
-      console.error('Playback error:', error);
+      this.logConsoleMessage('Playback error:', error);
       success = false;
     }
 
     if (scenario.validators) {
       // TODO: Implement validation logic
-      console.log('Running validators...');
+      this.logConsoleMessage('Running validators...');
     }
 
     return success;

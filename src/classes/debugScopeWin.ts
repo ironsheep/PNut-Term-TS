@@ -25,6 +25,9 @@ import {
   WindowColor
 } from './debugWindowBase';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export interface ScopeDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE

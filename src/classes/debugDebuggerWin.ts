@@ -24,6 +24,9 @@ import { DebuggerDataManager } from './shared/debuggerDataManager';
 import { DebuggerInteraction } from './shared/debuggerInteraction';
 import { MessagePool, PooledMessage } from './shared/messagePool';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * Layout region definition
  */
@@ -132,7 +135,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Mark components as ready since we've created everything needed
     // for message processing (dataManager and protocol)
     this.componentsReady = true;
-    console.log(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
+    this.logConsoleMessage(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
     
     // Initialize layout regions (based on LAYOUT_CONSTANTS)
     this.initializeRegions();
@@ -655,7 +658,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   private processDebuggerMessage(data: Uint8Array): void {
     if (!this.dataManager) {
-      console.log(`[DEBUGGER] Data manager not ready for COG ${this.cogId}, message will be lost`);
+      this.logConsoleMessage(`[DEBUGGER] Data manager not ready for COG ${this.cogId}, message will be lost`);
       return;
     }
     
@@ -669,7 +672,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   private processQueuedMessages(): void {
     // Base class handles this automatically when window becomes ready
-    console.log(`[DEBUGGER] processQueuedMessages called but base class handles this now`);
+    this.logConsoleMessage(`[DEBUGGER] processQueuedMessages called but base class handles this now`);
   }
   
   /**
@@ -682,14 +685,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     
     // Wait for DOM to be ready, then create canvas-dependent components
     this.debugWindow?.webContents.once('did-finish-load', () => {
-      console.log(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
-      console.log(`[DEBUGGER] componentsReady already = ${this.componentsReady}`);
-      console.log(`[DEBUGGER] deferred messages count = ${this.deferredMessages.length}`);
+      this.logConsoleMessage(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
+      this.logConsoleMessage(`[DEBUGGER] componentsReady already = ${this.componentsReady}`);
+      this.logConsoleMessage(`[DEBUGGER] deferred messages count = ${this.deferredMessages.length}`);
       
       // Process any deferred messages if there are any
       // (components are already ready from constructor)
       if (this.deferredMessages.length > 0) {
-        console.log(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
+        this.logConsoleMessage(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
         this.processDeferredMessages();
       }
       
@@ -753,7 +756,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
             this.startUpdateLoop();
             
             // Components already marked ready above
-            console.log(`[DEBUGGER] Core components initialized and ready for COG ${this.cogId}`);
+            this.logConsoleMessage(`[DEBUGGER] Core components initialized and ready for COG ${this.cogId}`);
           } else {
             console.warn('[DEBUGGER] Cannot create interaction - missing required components');
           }
@@ -847,7 +850,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         break;
       case 'DEBUG':
         // Debug mode not implemented
-        console.log('Debug toggle');
+        this.logConsoleMessage('Debug toggle');
         break;
       case 'INIT':
         this.protocol.sendStall(this.cogId);
@@ -1827,7 +1830,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   private processDeferredMessages(): void {
     if (this.deferredMessages.length > 0) {
-      console.log(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages for COG ${this.cogId}`);
+      this.logConsoleMessage(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages for COG ${this.cogId}`);
       const messages = [...this.deferredMessages];
       this.deferredMessages = [];
       
@@ -1867,7 +1870,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
       pooledMessage = data as PooledMessage;
       actualData = pooledMessage.data;
-      console.log(`[DEBUGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+      this.logConsoleMessage(`[DEBUGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
     } else {
       actualData = data;
     }
@@ -1884,9 +1887,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           const messagePool = MessagePool.getInstance();
           const wasLastConsumer = messagePool.release(pooledMessage);
           if (wasLastConsumer) {
-            console.log(`[DEBUGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+            this.logConsoleMessage(`[DEBUGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
           } else {
-            console.log(`[DEBUGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+            this.logConsoleMessage(`[DEBUGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
           }
         } catch (releaseError) {
           console.error(`[DEBUGGER] Error releasing pooled message: ${releaseError}`);

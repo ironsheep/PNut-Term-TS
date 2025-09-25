@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/messageExtractor.ts
 
 import { EventEmitter } from 'events';
@@ -125,6 +127,19 @@ export interface ExtractedMessage {
  */
 
 export class MessageExtractor extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private buffer: CircularBuffer;
   private outputQueue: DynamicQueue<ExtractedMessage>;
   private lastScanPosition: number = 0;
@@ -854,7 +869,7 @@ export class MessageExtractor extends EventEmitter {
       // Log batch performance in development
       if (process.env.NODE_ENV === 'development' && messages.length > 10) {
         const avgTime = (batchTime / messages.length * 1000).toFixed(0);
-        console.log(`[MessageExtractor] Batch: ${messages.length} messages in ${batchTime.toFixed(2)}ms (${avgTime}μs/msg)`);
+        this.logConsoleMessage(`[MessageExtractor] Batch: ${messages.length} messages in ${batchTime.toFixed(2)}ms (${avgTime}μs/msg)`);
       }
     }
 
@@ -923,7 +938,7 @@ export class MessageExtractor extends EventEmitter {
       
       // Log batch performance in development
       if (process.env.NODE_ENV === 'development' && messagesExtracted > 10) {
-        console.log(`[MessageExtractor] Batch: ${messagesExtracted} messages in ${batchTime.toFixed(2)}ms (${(batchTime / messagesExtracted * 1000).toFixed(0)}μs/msg)`);
+        this.logConsoleMessage(`[MessageExtractor] Batch: ${messagesExtracted} messages in ${batchTime.toFixed(2)}ms (${(batchTime / messagesExtracted * 1000).toFixed(0)}μs/msg)`);
       }
     }
 
@@ -982,7 +997,7 @@ export class MessageExtractor extends EventEmitter {
     if (this.justProcessedDebuggerPacket) {
       const zerosFiltered = this.filterPostDebuggerZeros();
       if (zerosFiltered > 0) {
-        console.log(`[MessageExtractor] Filtered ${zerosFiltered} zero bytes after debugger packet`);
+        this.logConsoleMessage(`[MessageExtractor] Filtered ${zerosFiltered} zero bytes after debugger packet`);
       }
       // Note: justProcessedDebuggerPacket flag is cleared inside filterPostDebuggerZeros()
       // when it encounters the first non-zero byte
@@ -1093,7 +1108,7 @@ export class MessageExtractor extends EventEmitter {
       const preview = messageData.length > 0 ? 
         `[${Array.from(messageData.slice(0, Math.min(8, messageData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${messageData.length > 8 ? '...' : ''}]` : 
         '[empty]';
-      console.log(`[MessageExtractor] CLASSIFIED: ${pattern.messageType} - ${messageData.length} bytes - ${preview}`);
+      this.logConsoleMessage(`[MessageExtractor] CLASSIFIED: ${pattern.messageType} - ${messageData.length} bytes - ${preview}`);
     }
 
     // HARDWARE WORKAROUND: Set flag to filter zeros after debugger packets
@@ -1122,7 +1137,7 @@ export class MessageExtractor extends EventEmitter {
           const preview = invalidData.length > 0 ? 
             `[${Array.from(invalidData.slice(0, Math.min(8, invalidData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${invalidData.length > 8 ? '...' : ''}]` : 
             '[empty]';
-          console.log(`[MessageExtractor] CLASSIFIED: INVALID_COG - ${invalidData.length} bytes - ${preview}`);
+          this.logConsoleMessage(`[MessageExtractor] CLASSIFIED: INVALID_COG - ${invalidData.length} bytes - ${preview}`);
         }
 
         return {
@@ -1166,7 +1181,7 @@ export class MessageExtractor extends EventEmitter {
       const preview = terminalData.length > 0 ? 
         `[${Array.from(terminalData.slice(0, Math.min(8, terminalData.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}${terminalData.length > 8 ? '...' : ''}]` : 
         '[empty]';
-      console.log(`[MessageExtractor] CLASSIFIED: TERMINAL_OUTPUT (fallback) - ${terminalData.length} bytes - ${preview}`);
+      this.logConsoleMessage(`[MessageExtractor] CLASSIFIED: TERMINAL_OUTPUT (fallback) - ${terminalData.length} bytes - ${preview}`);
     }
 
     return {

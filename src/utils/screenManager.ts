@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/utils/screenManager.ts
 
 import { screen, Display, Rectangle, BrowserWindow } from 'electron';
@@ -64,6 +66,19 @@ export interface ScreenRealEstate {
  * - Fallback to single-monitor when multi-monitor unavailable
  */
 export class ScreenManager {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private static instance: ScreenManager | null = null;
   private monitors: Map<string, MonitorInfo> = new Map();
   private primaryMonitorId: string | null = null;
@@ -95,25 +110,25 @@ export class ScreenManager {
       
       // Set up event listeners for monitor changes
       screen.on('display-added', () => {
-        console.log('Monitor added - refreshing display configuration');
+        this.logConsoleMessage('Monitor added - refreshing display configuration');
         this.refreshMonitors();
       });
       
       screen.on('display-removed', () => {
-        console.log('Monitor removed - refreshing display configuration');
+        this.logConsoleMessage('Monitor removed - refreshing display configuration');
         this.refreshMonitors();
       });
       
       screen.on('display-metrics-changed', (event, display, changedMetrics) => {
         if (changedMetrics.includes('bounds') || changedMetrics.includes('workArea')) {
-          console.log(`Monitor ${display.id} metrics changed - refreshing`);
+          this.logConsoleMessage(`Monitor ${display.id} metrics changed - refreshing`);
           this.refreshMonitors();
         }
       });
       
       this.initialized = true;
     } catch (error) {
-      console.error('Failed to initialize ScreenManager:', error);
+      this.logConsoleMessage('Failed to initialize ScreenManager:', error);
       // Fall back to basic single-monitor support
       this.setupSingleMonitorFallback();
     }
@@ -147,7 +162,7 @@ export class ScreenManager {
         }
       });
     } catch (error) {
-      console.error('Failed to refresh monitors:', error);
+      this.logConsoleMessage('Failed to refresh monitors:', error);
       this.setupSingleMonitorFallback();
     }
   }
@@ -173,7 +188,7 @@ export class ScreenManager {
       this.primaryMonitorId = 'primary';
     } catch (error) {
       // Ultimate fallback - assume 1920x1080 screen
-      console.error('Failed to get primary display, using defaults:', error);
+      this.logConsoleMessage('Failed to get primary display, using defaults:', error);
       const defaultMonitor: MonitorInfo = {
         id: 'default',
         display: null as any,
@@ -236,7 +251,7 @@ export class ScreenManager {
         return this.monitors.get(monitorId)!;
       }
     } catch (error) {
-      console.error('Failed to get monitor at point:', error);
+      this.logConsoleMessage('Failed to get monitor at point:', error);
     }
     
     // Fallback to primary
@@ -255,7 +270,7 @@ export class ScreenManager {
       };
       return this.getMonitorAtPoint(center.x, center.y);
     } catch (error) {
-      console.error('Failed to get monitor for window:', error);
+      this.logConsoleMessage('Failed to get monitor for window:', error);
       return this.getPrimaryMonitor();
     }
   }

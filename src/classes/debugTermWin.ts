@@ -26,6 +26,9 @@ import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './deb
 import { waitMSec } from '../utils/timerUtils';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export interface TermSize {
   columns: number;
   rows: number;
@@ -206,7 +209,7 @@ export class DebugTermWindow extends DebugWindowBase {
     //   BACKCOLOR <color> [default: black]
     //   UPDATE [default: automatic update]
     //   HIDEXY [default: not hidden]
-    console.log(`CL: at parseTermDeclaration()`);
+    DebugTermWindow.logConsoleMessageStatic(`CL: at parseTermDeclaration()`);
     let displaySpec: TermDisplaySpec = {} as TermDisplaySpec;
     displaySpec.colorCombos = [] as ColorCombo[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
@@ -217,7 +220,7 @@ export class DebugTermWindow extends DebugWindowBase {
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
     const textColor: DebugColor = new DebugColor('ORANGE', 15);
-    console.log(`CL: at parseTermDeclaration() with colors...`);
+    DebugTermWindow.logConsoleMessageStatic(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.size = { columns: 40, rows: 20 };
@@ -241,7 +244,7 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: limeColor });   // Combo 3
 
     // now parse overrides to defaults
-    console.log(`CL: at overrides TermDisplaySpec: ${lineParts}`);
+    DebugTermWindow.logConsoleMessageStatic(`CL: at overrides TermDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
@@ -256,7 +259,7 @@ export class DebugTermWindow extends DebugWindowBase {
               displaySpec.windowTitle = lineParts[++index];
             } else {
               // console.log() as we are in class static method, not derived class...
-              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -270,11 +273,11 @@ export class DebugTermWindow extends DebugWindowBase {
                 displaySpec.position.y = y;
                 displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
               } else {
-                console.log(`CL: TermDisplaySpec: Invalid position values`);
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid position values`);
                 isValid = false;
               }
             } else {
-              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -287,11 +290,11 @@ export class DebugTermWindow extends DebugWindowBase {
                 displaySpec.size.columns = Math.min(columns, 256);
                 displaySpec.size.rows = Math.min(rows, 256);
               } else {
-                console.log(`CL: TermDisplaySpec: Invalid size values (must be 1-256)`);
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid size values (must be 1-256)`);
                 isValid = false;
               }
             } else {
-              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -304,11 +307,11 @@ export class DebugTermWindow extends DebugWindowBase {
                 // This is different from other windows which use standard font metrics
                 DebugTermWindow.calcTerminalFontMetrics(textSize, displaySpec.font);
               } else {
-                console.log(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);
                 isValid = false;
               }
             } else {
-              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -328,7 +331,7 @@ export class DebugTermWindow extends DebugWindowBase {
                 displaySpec.colorCombos[0].bgcolor = backColor.rgbString;
               }
             } else {
-              console.log(`CL: TermDisplaySpec: Missing parameter for ${element}`);
+              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
               isValid = false;
             }
             break;
@@ -392,7 +395,7 @@ export class DebugTermWindow extends DebugWindowBase {
                     fgColor = new DebugColor(fgColorName).rgbString;
                     fgColorName = undefined;
                   } else {
-                    console.log(`CL: TermDisplaySpec: Missing fgColorName for ${element}`);
+                    DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing fgColorName for ${element}`);
                   }
                   const newColorName = element.toUpperCase();
                   bgColorName = newColorName;
@@ -411,7 +414,7 @@ export class DebugTermWindow extends DebugWindowBase {
             break;
 
           default:
-            console.log(`CL: TermDisplaySpec: Unknown directive: ${element}`);
+            DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Unknown directive: ${element}`);
             break;
         }
         if (!isValid) {
@@ -419,7 +422,7 @@ export class DebugTermWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugTermWindow.logConsoleMessageStatic(`CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 

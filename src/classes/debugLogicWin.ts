@@ -31,6 +31,9 @@ import {
 } from './debugWindowBase';
 import { v8_0_0 } from 'pixi.js';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export interface LogicDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
@@ -252,7 +255,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     //   HIDEXY
     // where color is: rgb24 value, else BLACK / WHITE or ORANGE / BLUE / GREEN / CYAN / RED / MAGENTA / YELLOW / GRAY followed by an optional 0..15 for brightness (default 8)
 
-    console.log(`CL: at parseLogicDeclaration()`);
+    DebugLogicWindow.logConsoleMessageStatic(`CL: at parseLogicDeclaration()`);
     let displaySpec: LogicDisplaySpec = {} as LogicDisplaySpec;
     displaySpec.channelSpecs = []; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
@@ -263,7 +266,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY3', 4);
-    console.log(`CL: at parseLogicDeclaration() with colors...`);
+    DebugLogicWindow.logConsoleMessageStatic(`CL: at parseLogicDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.nbrSamples = 32;
@@ -286,7 +289,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     displaySpec.topLogicChannel = displaySpec.logicChannels - 1;
 
     // now parse overrides to defaults
-    console.log(`CL: at overrides LogicDisplaySpec: ${lineParts}`);
+    DebugLogicWindow.logConsoleMessageStatic(`CL: at overrides LogicDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
       isValid = true; // invert default value
@@ -316,11 +319,11 @@ export class DebugLogicWindow extends DebugWindowBase {
           } else {
             // this will be a multi-part string
             const stringParts: string[] = [currLinePart.substring(1)];
-            console.log(`CL:  -- currLinePart=[${currLinePart}]`);
+            DebugLogicWindow.logConsoleMessageStatic(`CL:  -- currLinePart=[${currLinePart}]`);
             while (index < lineParts.length - 1) {
               index++;
               const nextLinePart = lineParts[index];
-              console.log(`CL:  -- nextLinePart=[${nextLinePart}]`);
+              DebugLogicWindow.logConsoleMessageStatic(`CL:  -- nextLinePart=[${nextLinePart}]`);
               if (nextLinePart.includes("'")) {
                 // last part of string
                 stringParts.push(nextLinePart.substring(0, nextLinePart.length - 1));
@@ -346,7 +349,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 // if color is a number, then it is a rgb24 value
                 // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
                 const [isValidRgb24, colorHexRgb24] = this.getValidRgb24(colorOrColorName);
-                console.log(
+                DebugLogicWindow.logConsoleMessageStatic(
                   `CL: LogicDisplaySpec - colorOrColorName: [${colorOrColorName}], isValidRgb24=(${isValidRgb24})`
                 );
                 if (isValidRgb24) {
@@ -374,9 +377,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             //console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
             displaySpec.channelSpecs.push(newChannelSpec);
           } else {
-            console.log(`CL: LogicDisplaySpec: missing closing quote for Channel name [${lineParts.join(' ')}]`);
+            DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: missing closing quote for Channel name [${lineParts.join(' ')}]`);
           }
-          console.log(`CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`);
+          DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`);
         } else {
           // Try to parse common keywords first
           const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
@@ -403,7 +406,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   }
                   index = colorIndex - 1; // Adjust for loop increment
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Invalid COLOR specification`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Invalid COLOR specification`);
                   isValid = false;
                 }
                 break;
@@ -416,7 +419,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   displaySpec.windowTitle = lineParts[++index];
                 } else {
                   // console.log() as we are in class static method, not derived class...
-                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
                   isValid = false;
                 }
                 break;
@@ -427,7 +430,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   displaySpec.position.y = Number(lineParts[++index]);
                   displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
                   isValid = false;
                 }
                 break;
@@ -436,7 +439,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 if (index < lineParts.length - 1) {
                   displaySpec.nbrSamples = Number(lineParts[++index]);
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
                   isValid = false;
                 }
                 break;
@@ -448,11 +451,11 @@ export class DebugLogicWindow extends DebugWindowBase {
                   displaySpec.spacing = Number(lineParts[++index]); // FIX: was incorrectly assigning to nbrSamples
                   // Validate spacing range
                   if (displaySpec.spacing < 1 || displaySpec.spacing > 32) {
-                    console.log(`CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`);
+                    DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`);
                     displaySpec.spacing = Math.max(1, Math.min(32, displaySpec.spacing));
                   }
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
                   isValid = false;
                 }
                 break;
@@ -464,7 +467,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 if (index < lineParts.length - 1) {
                   displaySpec.lineSize = Number(lineParts[++index]);
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
                   isValid = false;
                 }
                 break;
@@ -474,7 +477,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   displaySpec.textSize = Number(lineParts[++index]);
                   DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
                 } else {
-                  console.log(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
                   isValid = false;
                 }
               */
@@ -486,7 +489,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 break;
 
               default:
-                console.log(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
+                DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
                 isValid = false;
                 break;
             }
@@ -497,7 +500,7 @@ export class DebugLogicWindow extends DebugWindowBase {
         }
       }
     }
-    console.log(`CL: at end of parseLogicDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugLogicWindow.logConsoleMessageStatic(`CL: at end of parseLogicDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
   }
 
@@ -653,22 +656,22 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // HYPOTHESIS 4 DEBUGGING: Registration Side Effects
     const beforeBounds = this.debugWindow.getBounds();
-    console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`);
+    this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`);
 
     // Register window with WindowPlacer for position tracking
     if (this.debugWindow) {
       const windowPlacer = WindowPlacer.getInstance();
-      console.log(`[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`);
+      this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`);
       windowPlacer.registerWindow(`logic-${this.displaySpec.displayName}`, this.debugWindow);
 
       // Check for position changes after registration
       setTimeout(() => {
         const afterBounds = this.debugWindow!.getBounds();
-        console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`);
+        this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`);
         if (beforeBounds.x !== afterBounds.x || beforeBounds.y !== afterBounds.y) {
-          console.log(`[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${afterBounds.x - beforeBounds.x} Δy:${afterBounds.y - beforeBounds.y}`);
+          this.logConsoleMessage(`[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${afterBounds.x - beforeBounds.x} Δy:${afterBounds.y - beforeBounds.y}`);
         } else {
-          console.log(`[DEBUG_WIN_LOGIC] ✅ HYPOTHESIS 4: Position stable during registration`);
+          this.logConsoleMessage(`[DEBUG_WIN_LOGIC] ✅ HYPOTHESIS 4: Position stable during registration`);
         }
       }, 100);
     }
@@ -676,14 +679,14 @@ export class DebugLogicWindow extends DebugWindowBase {
     // HYPOTHESIS 6 DEBUGGING: Content Loading Interference
     this.debugWindow.on('ready-to-show', () => {
       const readyBounds = this.debugWindow!.getBounds();
-      console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: READY-TO-SHOW: (${readyBounds.x}, ${readyBounds.y})`);
+      this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: READY-TO-SHOW: (${readyBounds.x}, ${readyBounds.y})`);
       this.logMessage('* Logic window will show...');
       this.debugWindow?.show();
     });
 
     this.debugWindow.webContents.on('did-finish-load', () => {
       const loadedBounds = this.debugWindow!.getBounds();
-      console.log(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`);
+      this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`);
     });
 
     this.debugWindow.on('show', () => {
@@ -1484,9 +1487,9 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.debugWindow.webContents.executeJavaScript(`
           (function() {
             const canvas = document.getElementById('${canvasName}');
-            console.log('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
+            this.logConsoleMessage('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
             if (canvas) {
-              console.log('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
+              this.logConsoleMessage('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
             }
             return canvas ? true : false;
           })();

@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/performanceWatchdog.ts
 
 import { EventEmitter } from 'events';
@@ -94,6 +96,19 @@ export interface WatchdogConfig {
  * - Calculate sustainable vs burst capacity
  */
 export class PerformanceWatchdog extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private static instance: PerformanceWatchdog;
   
   private config: WatchdogConfig = {
@@ -170,7 +185,7 @@ export class PerformanceWatchdog extends EventEmitter {
       this.updateMetrics();
     }, this.config.updateIntervalMs);
     
-    console.log('[PerformanceWatchdog] Started monitoring');
+    this.logConsoleMessage('[PerformanceWatchdog] Started monitoring');
   }
   
   /**
@@ -182,7 +197,7 @@ export class PerformanceWatchdog extends EventEmitter {
       this.updateTimer = undefined;
     }
     
-    console.log('[PerformanceWatchdog] Stopped monitoring');
+    this.logConsoleMessage('[PerformanceWatchdog] Stopped monitoring');
   }
   
   /**
@@ -339,7 +354,7 @@ export class PerformanceWatchdog extends EventEmitter {
     this.emit('alert', alert);
     this.lastAlertTime.set(newLevel, now);
     
-    console.log(`[PerformanceWatchdog] ${message}`);
+    this.logConsoleMessage(`[PerformanceWatchdog] ${message}`);
   }
   
   /**
@@ -522,6 +537,6 @@ export class PerformanceWatchdog extends EventEmitter {
     this.binaryFloodCount = 0;
     this.lastAlertTime.clear();
     
-    console.log('[PerformanceWatchdog] Reset complete');
+    this.logConsoleMessage('[PerformanceWatchdog] Reset complete');
   }
 }

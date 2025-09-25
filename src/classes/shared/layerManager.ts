@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 'use strict';
 
 // src/classes/shared/layerManager.ts
@@ -15,6 +17,19 @@ export interface CropRect {
 }
 
 export class LayerManager {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private layers: (OffscreenCanvas | null)[];
   private static readonly MAX_LAYERS = 8;
   private memoryUsage: number = 0; // Track memory usage in bytes
@@ -91,7 +106,7 @@ export class LayerManager {
         size: layerMemory
       };
 
-      console.log(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${imageBitmap.width}x${imageBitmap.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${imageBitmap.width}x${imageBitmap.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('ENOENT')) {
@@ -197,7 +212,7 @@ export class LayerManager {
         this.releaseLayer(i);
       }
     }
-    console.log(`[LAYER MANAGER] All layers cleared, memory usage reset to 0`);
+    this.logConsoleMessage(`[LAYER MANAGER] All layers cleared, memory usage reset to 0`);
   }
 
   /**
@@ -217,7 +232,7 @@ export class LayerManager {
       this.layers[layerIndex] = null;
       this.layerMetadata[layerIndex] = null;
 
-      console.log(`[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(`[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`);
     }
   }
 
@@ -277,7 +292,7 @@ export class LayerManager {
 
     // For now, this is a placeholder - actual implementation would
     // need access to the target canvas context to draw the cropped region
-    console.log(`[LAYER MANAGER] Crop operation: layer ${layerIndex} (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX},${destY})`);
+    this.logConsoleMessage(`[LAYER MANAGER] Crop operation: layer ${layerIndex} (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX},${destY})`);
 
     // TODO: Implement actual cropping when we have access to target canvas
     // This would typically be:
@@ -356,12 +371,12 @@ export class LayerManager {
    * Note: Actual garbage collection is handled by JavaScript engine
    */
   suggestGarbageCollection(): void {
-    console.log(`[LAYER MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
+    this.logConsoleMessage(`[LAYER MANAGER] Garbage collection suggested. Current memory: ${this.memoryUsage} bytes`);
 
     // Log memory health check
     const healthWarning = this.checkMemoryHealth();
     if (healthWarning) {
-      console.warn(`[LAYER MANAGER] Memory warning: ${healthWarning}`);
+      this.logConsoleMessage(`[LAYER MANAGER] Memory warning: ${healthWarning}`);
     }
   }
 }

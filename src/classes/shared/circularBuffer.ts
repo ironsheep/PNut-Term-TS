@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/circularBuffer.ts
 
 import { EventEmitter } from 'events';
@@ -76,6 +78,19 @@ export interface NextResult {
 }
 
 export class CircularBuffer extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private readonly bufferSize: number;
   private readonly buffer: Uint8Array;
   private head: number = 0;  // Read position
@@ -112,7 +127,7 @@ export class CircularBuffer extends EventEmitter {
     this.bufferSize = this.calculateOptimalBufferSize(this.config);
     this.buffer = new Uint8Array(this.bufferSize);
     
-    console.log(`[CircularBuffer] Initialized with ${this.bufferSize} bytes (${(this.bufferSize/1024).toFixed(1)}KB)`);
+    this.logConsoleMessage(`[CircularBuffer] Initialized with ${this.bufferSize} bytes (${(this.bufferSize/1024).toFixed(1)}KB)`);
   }
   
   /**
@@ -125,16 +140,16 @@ export class CircularBuffer extends EventEmitter {
     if (config.baudRate && config.bufferTimeMs) {
       // Formula: (baudRate / 8) * (bufferTimeMs / 1000) = bytes needed for the time period
       const recommendedSize = Math.ceil((config.baudRate / 8) * (config.bufferTimeMs / 1000));
-      console.log(`[CircularBuffer] Baud rate ${config.baudRate}, recommended size: ${recommendedSize} bytes`);
+      this.logConsoleMessage(`[CircularBuffer] Baud rate ${config.baudRate}, recommended size: ${recommendedSize} bytes`);
       optimalSize = recommendedSize;
     }
     
     // Apply size constraints
     if (optimalSize < config.minSize) {
-      console.log(`[CircularBuffer] Size ${optimalSize} below minimum, using ${config.minSize}`);
+      this.logConsoleMessage(`[CircularBuffer] Size ${optimalSize} below minimum, using ${config.minSize}`);
       optimalSize = config.minSize;
     } else if (optimalSize > config.maxSize) {
-      console.log(`[CircularBuffer] Size ${optimalSize} above maximum, using ${config.maxSize}`);
+      this.logConsoleMessage(`[CircularBuffer] Size ${optimalSize} above maximum, using ${config.maxSize}`);
       optimalSize = config.maxSize;
     }
     
@@ -195,7 +210,7 @@ export class CircularBuffer extends EventEmitter {
    */
   public setWarningThreshold(threshold: number): void {
     this.warningThreshold = Math.max(0.1, Math.min(0.95, threshold));
-    console.log(`[CircularBuffer] Warning threshold set to ${(this.warningThreshold * 100).toFixed(1)}%`);
+    this.logConsoleMessage(`[CircularBuffer] Warning threshold set to ${(this.warningThreshold * 100).toFixed(1)}%`);
   }
   
   /**
@@ -251,7 +266,7 @@ export class CircularBuffer extends EventEmitter {
         stats: stats
       });
       
-      console.error(`[CircularBuffer] OVERFLOW: Attempted to write ${dataLength} bytes, only ${available} available (${stats.usagePercent}% full)`);
+      this.logConsoleMessage(`[CircularBuffer] OVERFLOW: Attempted to write ${dataLength} bytes, only ${available} available (${stats.usagePercent}% full)`);
       return false;
     }
 
@@ -285,7 +300,7 @@ export class CircularBuffer extends EventEmitter {
           stats: stats
         });
         
-        console.warn(`[CircularBuffer] WARNING: Buffer usage ${stats.usagePercent}% exceeds ${(this.warningThreshold * 100)}% threshold`);
+        this.logConsoleMessage(`[CircularBuffer] WARNING: Buffer usage ${stats.usagePercent}% exceeds ${(this.warningThreshold * 100)}% threshold`);
       }
     }
     

@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * MessagePool - Pre-allocated message object pool for zero-allocation operation
  * 
@@ -45,6 +47,19 @@ export interface PooledMessage {
 }
 
 export class MessagePool {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private static readonly INITIAL_SIZE = 100;
   private static readonly GROWTH_SIZE = 50;
   private static readonly MAX_SIZE = 1000;
@@ -96,7 +111,7 @@ export class MessagePool {
       this.freeList.push(message);
     }
     
-    console.log(`[MessagePool] Initialized with ${MessagePool.INITIAL_SIZE} pre-allocated messages`);
+    this.logConsoleMessage(`[MessagePool] Initialized with ${MessagePool.INITIAL_SIZE} pre-allocated messages`);
   }
   
   /**
@@ -122,7 +137,7 @@ export class MessagePool {
    */
   private grow(): void {
     if (this.pool.length >= MessagePool.MAX_SIZE) {
-      console.warn('[MessagePool] Cannot grow beyond maximum size of', MessagePool.MAX_SIZE);
+      this.logConsoleMessage('[MessagePool] Cannot grow beyond maximum size of', MessagePool.MAX_SIZE);
       return;
     }
     
@@ -135,7 +150,7 @@ export class MessagePool {
     }
     
     this.growthEvents++;
-    console.log(`[MessagePool] Grew pool by ${growthSize} to ${this.pool.length} total messages (growth #${this.growthEvents})`);
+    this.logConsoleMessage(`[MessagePool] Grew pool by ${growthSize} to ${this.pool.length} total messages (growth #${this.growthEvents})`);
   }
   
   /**
@@ -156,7 +171,7 @@ export class MessagePool {
       
       if (!message) {
         // Still no message available (at max size)
-        console.error('[MessagePool] Pool exhausted at maximum size');
+        this.logConsoleMessage('[MessagePool] Pool exhausted at maximum size');
         return null;
       }
     } else {
@@ -192,12 +207,12 @@ export class MessagePool {
   public release(message: PooledMessage): boolean {
     // Validate the message
     if (!message || !message.inUse) {
-      console.error('[MessagePool] Attempt to release invalid message');
+      this.logConsoleMessage('[MessagePool] Attempt to release invalid message');
       return false;
     }
     
     if (message.disposed) {
-      console.error(`[MessagePool] Double-release detected for message ${message.poolId}`);
+      this.logConsoleMessage(`[MessagePool] Double-release detected for message ${message.poolId}`);
       return false;
     }
     
@@ -220,7 +235,7 @@ export class MessagePool {
       
       if (holdTime > this.slowReleaseThresholdMs) {
         this.slowReleaseCount++;
-        console.warn(`[MessagePool] Slow message release detected: Message #${message.poolId} held for ${holdTime.toFixed(1)}ms (threshold: ${this.slowReleaseThresholdMs}ms)`);
+        this.logConsoleMessage(`[MessagePool] Slow message release detected: Message #${message.poolId} held for ${holdTime.toFixed(1)}ms (threshold: ${this.slowReleaseThresholdMs}ms)`);
         
         // Track recent slow messages (keep last 10)
         this.recentSlowMessages.push({
@@ -313,7 +328,7 @@ export class MessagePool {
     this.currentInUse = 0;
     this.peakInUse = 0;
     
-    console.log('[MessagePool] Reset complete');
+    this.logConsoleMessage('[MessagePool] Reset complete');
   }
   
   /**
@@ -322,7 +337,7 @@ export class MessagePool {
    */
   public setSlowReleaseThreshold(thresholdMs: number): void {
     this.slowReleaseThresholdMs = Math.max(1, thresholdMs);
-    console.log(`[MessagePool] Slow release threshold set to ${this.slowReleaseThresholdMs}ms`);
+    this.logConsoleMessage(`[MessagePool] Slow release threshold set to ${this.slowReleaseThresholdMs}ms`);
   }
   
   /**
@@ -354,7 +369,7 @@ export class MessagePool {
     const inUseValid = this.currentInUse === inUseCount;
     
     if (!freeListValid || !inUseValid) {
-      console.error('[MessagePool] Validation failed:', {
+      this.logConsoleMessage('[MessagePool] Validation failed:', {
         freeListLength: this.freeList.length,
         actualFreeCount: freeCount,
         currentInUse: this.currentInUse,

@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/dynamicQueue.ts
 
 import { PerformanceMonitor } from './performanceMonitor';
@@ -32,6 +34,19 @@ export interface QueueStats {
 }
 
 export class DynamicQueue<T> {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private items: T[] = [];
   private head: number = 0;
   private tail: number = 0;
@@ -169,7 +184,7 @@ export class DynamicQueue<T> {
     this.tail = this.size;
     this.resizeCount++;
 
-    console.log(`[DynamicQueue] Resized from ${this.capacity / 2} to ${this.capacity} (resize #${this.resizeCount})`);
+    this.logConsoleMessage(`[DynamicQueue] Resized from ${this.capacity / 2} to ${this.capacity} (resize #${this.resizeCount})`);
 
     return true;
   }

@@ -19,6 +19,9 @@ import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRoute
 import { MessageQueue, BatchedMessageQueue } from './shared/messageQueue';
 import { TLongTransmission } from './shared/tLongTransmission';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/debugWindowBase.ts
 
 /**
@@ -759,7 +762,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     }
     // return numeric value of string
     const value: number = Number(styleStr);
-    console.log(`Win: str=[${styleStr}] -> value=(${value})`);
+    DebugWindowBase.logConsoleMessageStatic(`Win: str=[${styleStr}] -> value=(${value})`);
     return value;
   }
 
@@ -797,9 +800,9 @@ export abstract class DebugWindowBase extends EventEmitter {
           break;
       }
     } else {
-      console.log(`Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+      DebugWindowBase.logConsoleMessageStatic(`Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`);
     }
-    console.log(`Win: str=[${styleStr}] -> textStyle: ${JSON.stringify(textStyle)}`);
+    DebugWindowBase.logConsoleMessageStatic(`Win: str=[${styleStr}] -> textStyle: ${JSON.stringify(textStyle)}`);
   }
 
   // ----------------------------------------------------------------------
@@ -1774,6 +1777,24 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Debug window lifecycle messages are system diagnostics, should go to console
       const prefixStr = prefix.length > 0 ? prefix : this.windowLogPrefix;
       this.context.logger.forceLogMessage(`${prefixStr}: ${message}`);
+    }
+  }
+
+  /**
+   * Controlled console logging for static methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  protected static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  /**
+   * Controlled console logging for instance methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  protected logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
     }
   }
 }

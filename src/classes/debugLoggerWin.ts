@@ -13,6 +13,9 @@ import { MessageType } from './shared/messageExtractor';
 import { MessagePool, PooledMessage } from './shared/messagePool';
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export interface DebugLoggerTheme {
   name: string;
   foregroundColor: string;
@@ -113,18 +116,18 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     // CRITICAL: Register with router IMMEDIATELY so we don't lose messages
     // The Debug Logger is special - it needs to capture ALL messages from the start
-    console.log('[DEBUG LOGGER] Registering with WindowRouter immediately...');
+    this.logConsoleMessage('[DEBUG LOGGER] Registering with WindowRouter immediately...');
     try {
       this.registerWithRouter();
-      console.log('[DEBUG LOGGER] Successfully registered with WindowRouter (immediate)');
+      this.logConsoleMessage('[DEBUG LOGGER] Successfully registered with WindowRouter (immediate)');
     } catch (error) {
       console.error('[DEBUG LOGGER] Failed to register immediately:', error);
       // Try again after a short delay
       setTimeout(() => {
-        console.log('[DEBUG LOGGER] Retry registration after 100ms...');
+        this.logConsoleMessage('[DEBUG LOGGER] Retry registration after 100ms...');
         try {
           this.registerWithRouter();
-          console.log('[DEBUG LOGGER] Successfully registered with WindowRouter (retry)');
+          this.logConsoleMessage('[DEBUG LOGGER] Successfully registered with WindowRouter (retry)');
         } catch (err) {
           console.error('[DEBUG LOGGER] Failed to register on retry:', err);
         }
@@ -165,22 +168,22 @@ export class DebugLoggerWindow extends DebugWindowBase {
     try {
       // Use context-based log directory with user preferences
       const logsDir = this.context.getLogDirectory();
-      console.log('[DEBUG LOGGER] Creating logs directory at:', logsDir);
+      this.logConsoleMessage('[DEBUG LOGGER] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
       
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
       const basename = 'debug';
       this.logFilePath = path.join(logsDir, `${basename}_${timestamp}.log`); // Remove duplicate "_debug"
-      console.log('[DEBUG LOGGER] Log file path:', this.logFilePath);
+      this.logConsoleMessage('[DEBUG LOGGER] Log file path:', this.logFilePath);
       
       // Create write stream
       this.logFile = fs.createWriteStream(this.logFilePath, { flags: 'a' });
-      console.log('[DEBUG LOGGER] Write stream created successfully');
+      this.logConsoleMessage('[DEBUG LOGGER] Write stream created successfully');
       
       // Wait for the stream to be ready before writing
       this.logFile.once('open', (fd) => {
-        console.log('[DEBUG LOGGER] Write stream opened with fd:', fd);
+        this.logConsoleMessage('[DEBUG LOGGER] Write stream opened with fd:', fd);
 
         // Write header and force flush to ensure file is created
         this.logFile!.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
@@ -189,12 +192,12 @@ export class DebugLoggerWindow extends DebugWindowBase {
           if (err) {
             console.error('[DEBUG LOGGER] Failed to write header:', err);
           } else {
-            console.log('[DEBUG LOGGER] Log file header written and flushed');
+            this.logConsoleMessage('[DEBUG LOGGER] Log file header written and flushed');
 
             // Now we can safely sync since fd is available
             try {
               fs.fsyncSync(fd);
-              console.log('[DEBUG LOGGER] Log file synced to disk');
+              this.logConsoleMessage('[DEBUG LOGGER] Log file synced to disk');
             } catch (syncErr) {
               console.error('[DEBUG LOGGER] Failed to sync log file:', syncErr);
             }
@@ -213,10 +216,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
       
       // Notify MainWindow that logging started
       this.notifyLoggingStatus(true);
-      console.log('[DEBUG LOGGER] Log file initialized successfully at:', this.logFilePath);
+      this.logConsoleMessage('[DEBUG LOGGER] Log file initialized successfully at:', this.logFilePath);
       
       // ENHANCEMENT: Console logging for audit trail visibility
-      console.log(`[DEBUG LOGGER] Started new log: ${this.logFilePath}`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Started new log: ${this.logFilePath}`);
       
     } catch (error) {
       // Use base class logMessage to send to console, not Debug Logger window
@@ -271,7 +274,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       y: height - windowHeight - margin
     };
     
-    console.log(`[DEBUG LOGGER] Positioning at bottom-right: ${position.x}, ${position.y}`);
+    this.logConsoleMessage(`[DEBUG LOGGER] Positioning at bottom-right: ${position.x}, ${position.y}`);
     
     const window = new BrowserWindow({
       width: windowWidth,
@@ -297,25 +300,25 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     // Set up IPC handlers for menu buttons
     ipcMain.on('show-all-cogs', () => {
-      console.log('[DEBUG LOGGER] Show All COGs button clicked');
+      this.logConsoleMessage('[DEBUG LOGGER] Show All COGs button clicked');
       // Emit event that MainWindow can listen to
       this.emit('show-all-cogs-requested');
     });
     
     ipcMain.on('export-cog-logs', () => {
-      console.log('[DEBUG LOGGER] Export Active COG Logs button clicked');
+      this.logConsoleMessage('[DEBUG LOGGER] Export Active COG Logs button clicked');
       // TODO: Implement COG log export functionality
       // This will use COGLogExporter to save all active COG logs
       this.emit('export-cog-logs-requested');
     });
     
     // Use did-finish-load instead of ready-to-show (more reliable with data URLs)
-    console.log('[DEBUG LOGGER] Setting up did-finish-load event handler...');
+    this.logConsoleMessage('[DEBUG LOGGER] Setting up did-finish-load event handler...');
     window.webContents.once('did-finish-load', () => {
-      console.log('[DEBUG LOGGER] Window did-finish-load event fired!');
+      this.logConsoleMessage('[DEBUG LOGGER] Window did-finish-load event fired!');
       window.show();
       window.focus(); // Also focus the window
-      console.log('[DEBUG LOGGER] Window shown and focused');
+      this.logConsoleMessage('[DEBUG LOGGER] Window shown and focused');
       // Window is now ready for content
       this.logMessage('Debug Logger window ready');
       
@@ -325,12 +328,12 @@ export class DebugLoggerWindow extends DebugWindowBase {
       const activeWindows = router.getActiveWindows();
       const loggerWindow = activeWindows.find(w => w.windowType === 'logger');
       if (loggerWindow) {
-        console.log('[DEBUG LOGGER] Verified still registered:', loggerWindow.windowId);
+        this.logConsoleMessage('[DEBUG LOGGER] Verified still registered:', loggerWindow.windowId);
       } else {
         console.error('[DEBUG LOGGER] ❌ Registration was lost! Re-registering...');
         try {
           this.registerWithRouter();
-          console.log('[DEBUG LOGGER] Re-registered successfully');
+          this.logConsoleMessage('[DEBUG LOGGER] Re-registered successfully');
         } catch (error) {
           console.error('[DEBUG LOGGER] ❌ Re-registration failed:', error);
         }
@@ -339,7 +342,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     
     // Handle window close event
     window.on('close', () => {
-      console.log('[DEBUG LOGGER] Window being closed by user');
+      this.logConsoleMessage('[DEBUG LOGGER] Window being closed by user');
       // Don't call closeDebugWindow here - it would cause infinite recursion
       // Just clean up resources directly
       
@@ -654,7 +657,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Handle scrollback preference updates
     ipcRenderer.on('set-scrollback-lines', (event, lines) => {
       maxScrollbackLines = Math.min(Math.max(lines, 100), 10000); // Clamp to 100-10000 range
-      console.log('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
+      this.logConsoleMessage('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
     });
     
     ipcRenderer.on('set-theme', (event, theme) => {
@@ -680,7 +683,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Handles both PooledMessage objects and raw data for backward compatibility
    */
   protected processMessageImmediate(lineParts: string[] | any): void {
-    console.log('[DEBUG LOGGER] processMessageImmediate called with:', lineParts);
+    this.logConsoleMessage('[DEBUG LOGGER] processMessageImmediate called with:', lineParts);
     
     let actualData: string[] | any;
     let pooledMessage: PooledMessage | null = null;
@@ -689,7 +692,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     if (lineParts && typeof lineParts === 'object' && 'poolId' in lineParts && 'consumerCount' in lineParts) {
       pooledMessage = lineParts as PooledMessage;
       actualData = pooledMessage.data;
-      console.log(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
     } else {
       actualData = lineParts;
     }
@@ -706,9 +709,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
           const messagePool = MessagePool.getInstance();
           const wasLastConsumer = messagePool.release(pooledMessage);
           if (wasLastConsumer) {
-            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
           } else {
-            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
           }
         } catch (releaseError) {
           console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
@@ -721,11 +724,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Internal synchronous message processing (extracted for proper release timing)
    */
   private processMessageImmediateSync(actualData: string[] | any): void {
-    console.log('[DEBUG LOGGER] processMessageImmediateSync called with:', actualData);
+    this.logConsoleMessage('[DEBUG LOGGER] processMessageImmediateSync called with:', actualData);
     
     // Handle binary data (debugger protocol)
     if (actualData instanceof Uint8Array) {
-      console.log('[DEBUG LOGGER] Processing binary debugger message:', actualData.length, 'bytes');
+      this.logConsoleMessage('[DEBUG LOGGER] Processing binary debugger message:', actualData.length, 'bytes');
       const hexFormatted = this.formatBinaryAsHex(actualData);
       this.appendMessage(hexFormatted, 'binary-message');
       this.writeToLog(hexFormatted);
@@ -733,7 +736,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     // Handle string array (standard Cog messages)
     else if (Array.isArray(actualData)) {
       const message = actualData.join(' ');
-      console.log('[DEBUG LOGGER] Processing array message:', message);
+      this.logConsoleMessage('[DEBUG LOGGER] Processing array message:', message);
       
       // Check if this is a formatted debugger message
       if (message.includes('=== Initial Debugger Message') || 
@@ -749,7 +752,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     } 
     // Handle raw string
     else if (typeof actualData === 'string') {
-      console.log('[DEBUG LOGGER] Processing string message:', actualData);
+      this.logConsoleMessage('[DEBUG LOGGER] Processing string message:', actualData);
       
       // Check if this is a formatted debugger message
       if (actualData.includes('=== Initial Debugger Message') || 
@@ -770,7 +773,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Handles both PooledMessage objects and raw data for backward compatibility
    */
   public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array | PooledMessage): void {
-    console.log(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
+    this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
     
     let actualData: string[] | Uint8Array;
     let pooledMessage: PooledMessage | null = null;
@@ -779,7 +782,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
       pooledMessage = data as PooledMessage;
       actualData = pooledMessage.data as string[] | Uint8Array;
-      console.log(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
     } else {
       actualData = data as string[] | Uint8Array;
     }
@@ -796,9 +799,9 @@ export class DebugLoggerWindow extends DebugWindowBase {
           const messagePool = MessagePool.getInstance();
           const wasLastConsumer = messagePool.release(pooledMessage);
           if (wasLastConsumer) {
-            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
           } else {
-            console.log(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
           }
         } catch (releaseError) {
           console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
@@ -1020,10 +1023,10 @@ export class DebugLoggerWindow extends DebugWindowBase {
         };
       });
       
-      console.log(`[DEBUG LOGGER] Sending batch of ${messages.length} messages to window`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Sending batch of ${messages.length} messages to window`);
       this.debugWindow.webContents.send('append-messages-batch', messages);
     } else {
-      console.log('[DEBUG LOGGER] Window not available for batch processing');
+      this.logConsoleMessage('[DEBUG LOGGER] Window not available for batch processing');
     }
     
     // If more messages pending, schedule next batch
@@ -1047,7 +1050,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       // Log first few writes to confirm it's working
       if (this.writeBuffer.length <= 3) {
         const truncated = message.length > 80 ? message.substring(0, 80) + '...' : message;
-        console.log('[DEBUG LOGGER] Added to write buffer:', truncated);
+        this.logConsoleMessage('[DEBUG LOGGER] Added to write buffer:', truncated);
       }
 
       // Schedule write if not already scheduled
@@ -1063,7 +1066,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     } else {
       // Log file not ready yet - buffer the message for later
       this.pendingLogMessages.push(logEntry);
-      console.log(`[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+      this.logConsoleMessage(`[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
 
       // Limit buffer size to prevent memory issues
       if (this.pendingLogMessages.length > 1000) {
@@ -1079,7 +1082,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    */
   private flushPendingMessages(): void {
     if (this.pendingLogMessages.length > 0) {
-      console.log(`[DEBUG LOGGER] 🚀 Flushing ${this.pendingLogMessages.length} pending messages to log file`);
+      this.logConsoleMessage(`[DEBUG LOGGER] 🚀 Flushing ${this.pendingLogMessages.length} pending messages to log file`);
 
       // Add all pending messages to the write buffer
       this.writeBuffer.push(...this.pendingLogMessages);
@@ -1111,7 +1114,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
           console.error('[DEBUG LOGGER] Failed to write to log file:', err);
           // Could implement disk full handling here
         } else {
-          console.log(`[DEBUG LOGGER] Flushed ${data.length} bytes to log file`);
+          this.logConsoleMessage(`[DEBUG LOGGER] Flushed ${data.length} bytes to log file`);
         }
       });
     } else if (this.writeBuffer.length > 0) {
@@ -1260,7 +1263,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Close the window and cleanup
    */
   public closeDebugWindow(): void {
-    console.log('[DEBUG LOGGER] Closing window and terminating log...');
+    this.logConsoleMessage('[DEBUG LOGGER] Closing window and terminating log...');
     
     // Flush any pending messages
     if (this.batchTimer) {
@@ -1279,7 +1282,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.logFile.write(`\n=== Debug Logger Session Ended at ${new Date().toISOString()} ===\n`);
       this.logFile.end();
       this.logFile = null;
-      console.log('[DEBUG LOGGER] Log file closed');
+      this.logConsoleMessage('[DEBUG LOGGER] Log file closed');
     }
     
     // Clear singleton instance
@@ -1291,7 +1294,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       this.debugWindow = null;
     }
     
-    console.log('[DEBUG LOGGER] Window closed and log terminated');
+    this.logConsoleMessage('[DEBUG LOGGER] Window closed and log terminated');
   }
 
   /**

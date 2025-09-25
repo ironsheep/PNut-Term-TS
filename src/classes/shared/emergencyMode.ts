@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/emergencyMode.ts
 
 import { EventEmitter } from 'events';
@@ -68,6 +70,19 @@ export interface EmergencyModeChange {
  * - Log all mode transitions
  */
 export class EmergencyModeSystem extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private static instance: EmergencyModeSystem;
   
   private watchdog: PerformanceWatchdog;
@@ -170,7 +185,7 @@ export class EmergencyModeSystem extends EventEmitter {
           fs.mkdirSync(this.config.diskStoragePath, { recursive: true });
         }
       } catch (error) {
-        console.error('[EmergencyMode] Failed to create disk storage path:', error);
+        this.logConsoleMessage('[EmergencyMode] Failed to create disk storage path:', error);
       }
     }
   }
@@ -274,7 +289,7 @@ export class EmergencyModeSystem extends EventEmitter {
     // Emit change event
     this.emit('modeChange', change);
     
-    console.log(`[EmergencyMode] Changed from ${previousLevel} to ${level}: ${reason}`);
+    this.logConsoleMessage(`[EmergencyMode] Changed from ${previousLevel} to ${level}: ${reason}`);
     
     // Start/stop recovery checking
     if (level !== EmergencyLevel.NORMAL && this.config.autoRecoveryEnabled) {
@@ -329,7 +344,7 @@ export class EmergencyModeSystem extends EventEmitter {
       this.rawCaptureStream = fs.createWriteStream(this.rawCaptureFile);
       this.capturedBytes = 0;
       
-      console.log(`[EmergencyMode] Started raw capture to ${this.rawCaptureFile}`);
+      this.logConsoleMessage(`[EmergencyMode] Started raw capture to ${this.rawCaptureFile}`);
       
       // Write header
       const header = Buffer.from(JSON.stringify({
@@ -340,7 +355,7 @@ export class EmergencyModeSystem extends EventEmitter {
       
       this.rawCaptureStream.write(header);
     } catch (error) {
-      console.error('[EmergencyMode] Failed to start raw capture:', error);
+      this.logConsoleMessage('[EmergencyMode] Failed to start raw capture:', error);
     }
   }
   
@@ -350,7 +365,7 @@ export class EmergencyModeSystem extends EventEmitter {
   private stopRawCapture(): void {
     if (this.rawCaptureStream) {
       this.rawCaptureStream.end();
-      console.log(`[EmergencyMode] Stopped raw capture. Captured ${this.capturedBytes} bytes to ${this.rawCaptureFile}`);
+      this.logConsoleMessage(`[EmergencyMode] Stopped raw capture. Captured ${this.capturedBytes} bytes to ${this.rawCaptureFile}`);
       
       this.rawCaptureStream = undefined;
       this.rawCaptureFile = undefined;
@@ -437,7 +452,7 @@ export class EmergencyModeSystem extends EventEmitter {
    */
   public setManualMode(level: EmergencyLevel | null): void {
     if (!this.config.manualOverride) {
-      console.warn('[EmergencyMode] Manual override not enabled');
+      this.logConsoleMessage('[EmergencyMode] Manual override not enabled');
       return;
     }
     
@@ -447,7 +462,7 @@ export class EmergencyModeSystem extends EventEmitter {
       this.requestLevelChange(level, 'manual', 'Manual override');
     } else {
       // Return to automatic mode
-      console.log('[EmergencyMode] Manual mode disabled, returning to automatic');
+      this.logConsoleMessage('[EmergencyMode] Manual mode disabled, returning to automatic');
     }
   }
   
@@ -528,6 +543,6 @@ export class EmergencyModeSystem extends EventEmitter {
       this.hysteresisTimer = undefined;
     }
     
-    console.log('[EmergencyMode] System reset');
+    this.logConsoleMessage('[EmergencyMode] System reset');
   }
 }

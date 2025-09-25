@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // Common runtime context shares by classes in Pnut-TS.
 
 // src/utils/context.ts
@@ -64,6 +66,19 @@ export interface UserPreferences {
 }
 
 export class Context {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   public libraryFolder: string;
   public extensionFolder: string;
   public currentFolder: string;
@@ -149,7 +164,7 @@ export class Context {
    */
   public updatePreferences(newPreferences: UserPreferences): void {
     this.preferences = { ...this.preferences, ...newPreferences };
-    console.log('[CONTEXT] Preferences updated:', this.preferences);
+    this.logConsoleMessage('[CONTEXT] Preferences updated:', this.preferences);
   }
 
   /**

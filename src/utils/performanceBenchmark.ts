@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/utils/performanceBenchmark.ts
 
 import { performance } from 'perf_hooks';
@@ -41,6 +43,19 @@ export interface BenchmarkConfig {
  * Performance benchmarking utility for P2 Debug Terminal
  */
 export class PerformanceBenchmark {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private results: BenchmarkResult[] = [];
   private readonly defaultConfig: BenchmarkConfig = {
     warmupIterations: 100,
@@ -62,7 +77,7 @@ export class PerformanceBenchmark {
 
     // Warmup
     if (cfg.verbose) {
-      console.log(`Warming up ${name}...`);
+      this.logConsoleMessage(`Warming up ${name}...`);
     }
     for (let i = 0; i < cfg.warmupIterations!; i++) {
       await fn();
@@ -70,7 +85,7 @@ export class PerformanceBenchmark {
 
     // Run benchmark
     if (cfg.verbose) {
-      console.log(`Benchmarking ${name}...`);
+      this.logConsoleMessage(`Benchmarking ${name}...`);
     }
     const startTime = performance.now();
     
@@ -82,7 +97,7 @@ export class PerformanceBenchmark {
       
       // Check timeout
       if (performance.now() - startTime > cfg.timeout!) {
-        console.warn(`Benchmark ${name} timed out after ${i} iterations`);
+        this.logConsoleMessage(`Benchmark ${name} timed out after ${i} iterations`);
         break;
       }
     }
@@ -142,18 +157,18 @@ export class PerformanceBenchmark {
    * Print benchmark result to console
    */
   private printResult(result: BenchmarkResult): void {
-    console.log(`\n${result.name}:`);
-    console.log(`  Iterations: ${result.iterations}`);
-    console.log(`  Average: ${result.averageTime.toFixed(3)}ms`);
-    console.log(`  Min: ${result.minTime.toFixed(3)}ms`);
-    console.log(`  Max: ${result.maxTime.toFixed(3)}ms`);
-    console.log(`  StdDev: ${result.standardDeviation.toFixed(3)}ms`);
-    console.log(`  Throughput: ${result.throughput?.toFixed(0)} ops/sec`);
-    console.log(`  Percentiles:`);
-    console.log(`    P50: ${result.percentiles.p50.toFixed(3)}ms`);
-    console.log(`    P90: ${result.percentiles.p90.toFixed(3)}ms`);
-    console.log(`    P95: ${result.percentiles.p95.toFixed(3)}ms`);
-    console.log(`    P99: ${result.percentiles.p99.toFixed(3)}ms`);
+    this.logConsoleMessage(`\n${result.name}:`);
+    this.logConsoleMessage(`  Iterations: ${result.iterations}`);
+    this.logConsoleMessage(`  Average: ${result.averageTime.toFixed(3)}ms`);
+    this.logConsoleMessage(`  Min: ${result.minTime.toFixed(3)}ms`);
+    this.logConsoleMessage(`  Max: ${result.maxTime.toFixed(3)}ms`);
+    this.logConsoleMessage(`  StdDev: ${result.standardDeviation.toFixed(3)}ms`);
+    this.logConsoleMessage(`  Throughput: ${result.throughput?.toFixed(0)} ops/sec`);
+    this.logConsoleMessage(`  Percentiles:`);
+    this.logConsoleMessage(`    P50: ${result.percentiles.p50.toFixed(3)}ms`);
+    this.logConsoleMessage(`    P90: ${result.percentiles.p90.toFixed(3)}ms`);
+    this.logConsoleMessage(`    P95: ${result.percentiles.p95.toFixed(3)}ms`);
+    this.logConsoleMessage(`    P99: ${result.percentiles.p99.toFixed(3)}ms`);
   }
 
   /**
@@ -195,6 +210,19 @@ export class PerformanceBenchmark {
  * WindowRouter-specific benchmarks
  */
 export class WindowRouterBenchmark {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private benchmark: PerformanceBenchmark;
   private router: WindowRouter;
 
@@ -230,7 +258,7 @@ export class WindowRouterBenchmark {
 
     // Verify <1ms requirement
     if (result.averageTime >= 1.0) {
-      console.warn(`⚠️ Routing latency ${result.averageTime.toFixed(3)}ms exceeds 1ms requirement!`);
+      this.logConsoleMessage(`⚠️ Routing latency ${result.averageTime.toFixed(3)}ms exceeds 1ms requirement!`);
     }
 
     return result;
@@ -300,7 +328,7 @@ export class WindowRouterBenchmark {
   public async runAll(): Promise<BenchmarkResult[]> {
     const results: BenchmarkResult[] = [];
     
-    console.log('Running WindowRouter benchmarks...\n');
+    this.logConsoleMessage('Running WindowRouter benchmarks...\n');
     
     results.push(await this.benchmarkRouting());
     results.push(await this.benchmarkThroughput());
@@ -314,6 +342,19 @@ export class WindowRouterBenchmark {
  * Rendering performance benchmarks
  */
 export class RenderingBenchmark {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private benchmark: PerformanceBenchmark;
 
   constructor() {
@@ -359,7 +400,7 @@ export class RenderingBenchmark {
 
     // Check 30 FPS requirement (33ms per frame)
     if (result.averageTime > 33) {
-      console.warn(`⚠️ Rendering time ${result.averageTime.toFixed(3)}ms may impact 30 FPS target!`);
+      this.logConsoleMessage(`⚠️ Rendering time ${result.averageTime.toFixed(3)}ms may impact 30 FPS target!`);
     }
 
     // Cleanup methods not implemented
@@ -390,7 +431,7 @@ export class RenderingBenchmark {
 
     // Should be much faster than full render
     if (result.averageTime > 5) {
-      console.warn(`⚠️ Dirty rect optimization not effective: ${result.averageTime.toFixed(3)}ms`);
+      this.logConsoleMessage(`⚠️ Dirty rect optimization not effective: ${result.averageTime.toFixed(3)}ms`);
     }
 
     // Cleanup methods not implemented
@@ -406,7 +447,7 @@ export class RenderingBenchmark {
   public async runAll(): Promise<BenchmarkResult[]> {
     const results: BenchmarkResult[] = [];
     
-    console.log('Running rendering benchmarks...\n');
+    this.logConsoleMessage('Running rendering benchmarks...\n');
     
     results.push(await this.benchmarkDebuggerRendering());
     results.push(await this.benchmarkDirtyRectangles());
@@ -419,6 +460,19 @@ export class RenderingBenchmark {
  * Memory performance benchmarks
  */
 export class MemoryBenchmark {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private benchmark: PerformanceBenchmark;
 
   constructor() {
@@ -475,7 +529,7 @@ export class MemoryBenchmark {
   public async runAll(): Promise<BenchmarkResult[]> {
     const results: BenchmarkResult[] = [];
     
-    console.log('Running memory benchmarks...\n');
+    this.logConsoleMessage('Running memory benchmarks...\n');
     
     results.push(await this.benchmarkMemoryAllocation());
     results.push(await this.benchmarkGarbageCollection());
@@ -488,6 +542,19 @@ export class MemoryBenchmark {
  * Main benchmark runner
  */
 export class BenchmarkRunner {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private routerBench: WindowRouterBenchmark;
   private renderBench: RenderingBenchmark;
   private memoryBench: MemoryBenchmark;
@@ -505,9 +572,9 @@ export class BenchmarkRunner {
     const startTime = performance.now();
     const results: BenchmarkResult[] = [];
 
-    console.log('='.repeat(60));
-    console.log('P2 Debug Terminal Performance Benchmarks');
-    console.log('='.repeat(60));
+    this.logConsoleMessage('='.repeat(60));
+    this.logConsoleMessage('P2 Debug Terminal Performance Benchmarks');
+    this.logConsoleMessage('='.repeat(60));
 
     // Run all benchmark suites
     results.push(...await this.routerBench.runAll());
@@ -517,24 +584,24 @@ export class BenchmarkRunner {
     const totalTime = performance.now() - startTime;
 
     // Generate summary
-    console.log('\n' + '='.repeat(60));
-    console.log('SUMMARY');
-    console.log('='.repeat(60));
-    console.log(`Total benchmark time: ${(totalTime / 1000).toFixed(2)}s`);
-    console.log(`Total benchmarks run: ${results.length}`);
+    this.logConsoleMessage('\n' + '='.repeat(60));
+    this.logConsoleMessage('SUMMARY');
+    this.logConsoleMessage('='.repeat(60));
+    this.logConsoleMessage(`Total benchmark time: ${(totalTime / 1000).toFixed(2)}s`);
+    this.logConsoleMessage(`Total benchmarks run: ${results.length}`);
 
     // Check critical requirements
     const routingResult = results.find(r => r.name.includes('Message Routing'));
     const renderingResult = results.find(r => r.name.includes('Grid Rendering'));
 
-    console.log('\nCritical Requirements:');
+    this.logConsoleMessage('\nCritical Requirements:');
     if (routingResult) {
       const pass = routingResult.averageTime < 1.0;
-      console.log(`  ✓ Routing < 1ms: ${pass ? 'PASS' : 'FAIL'} (${routingResult.averageTime.toFixed(3)}ms)`);
+      this.logConsoleMessage(`  ✓ Routing < 1ms: ${pass ? 'PASS' : 'FAIL'} (${routingResult.averageTime.toFixed(3)}ms)`);
     }
     if (renderingResult) {
       const pass = renderingResult.averageTime < 33;
-      console.log(`  ✓ Rendering < 33ms (30 FPS): ${pass ? 'PASS' : 'FAIL'} (${renderingResult.averageTime.toFixed(3)}ms)`);
+      this.logConsoleMessage(`  ✓ Rendering < 33ms (30 FPS): ${pass ? 'PASS' : 'FAIL'} (${renderingResult.averageTime.toFixed(3)}ms)`);
     }
 
     // Generate detailed report

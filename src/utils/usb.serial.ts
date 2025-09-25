@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 'use strict';
 
 import { SerialPort } from 'serialport';
@@ -10,6 +13,19 @@ import { EventEmitter } from 'events';
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
 export class UsbSerial extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   static desiredCommsBaudRate: number = DEFAULT_DOWNLOAD_BAUD;
 
   private context: Context;
@@ -441,7 +457,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async handleSerialOpen() {
-    console.log(`[USB] handleSerialOpen() - startup reset`);
+    this.logConsoleMessage(`[USB] handleSerialOpen() - startup reset`);
     //this.logMessage(`* handleSerialOpen() open...`);
     //const myString: string = "Hello, World! 0123456789";
     //const myBuffer: Buffer = Buffer.from(myString, "utf8");
@@ -493,7 +509,7 @@ export class UsbSerial extends EventEmitter {
 
   public async setDTR(value: boolean): Promise<void> {
     // Set the DTR line state
-    console.log(`[USB] PUBLIC setDTR(${value})`);
+    this.logConsoleMessage(`[USB] PUBLIC setDTR(${value})`);
     if (!this._serialPort || !this._serialPort.isOpen) {
       throw new Error('Serial port is not open');
     }
@@ -502,7 +518,7 @@ export class UsbSerial extends EventEmitter {
 
   public async setRTS(value: boolean): Promise<void> {
     // Set the RTS line state
-    console.log(`[USB] PUBLIC setRTS(${value})`);
+    this.logConsoleMessage(`[USB] PUBLIC setRTS(${value})`);
     if (!this._serialPort || !this._serialPort.isOpen) {
       throw new Error('Serial port is not open');
     }
@@ -511,22 +527,22 @@ export class UsbSerial extends EventEmitter {
 
   private async toggleDTR(): Promise<void> {
     // toggle the propPlug DTR line
-    console.log(`[USB] PRIVATE toggleDTR() ENTER - pulse sequence`);
+    this.logConsoleMessage(`[USB] PRIVATE toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
     await this.setDtr(true);
     await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setDtr(false);
-    console.log(`[USB] PRIVATE toggleDTR() EXIT`);
+    this.logConsoleMessage(`[USB] PRIVATE toggleDTR() EXIT`);
   }
 
   private async toggleRTS(): Promise<void> {
     // toggle the propPlug RTS line
-    console.log(`[USB] PRIVATE toggleRTS() ENTER - pulse sequence`);
+    this.logConsoleMessage(`[USB] PRIVATE toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
     await this.setRts(true);
     await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setRts(false);
-    console.log(`[USB] PRIVATE toggleRTS() EXIT`);
+    this.logConsoleMessage(`[USB] PRIVATE toggleRTS() EXIT`);
   }
 
   private startReadListener() {
@@ -697,7 +713,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async setDtr(value: boolean): Promise<void> {
-    console.log(`[USB] INTERNAL setDtr(${value})`);
+    this.logConsoleMessage(`[USB] INTERNAL setDtr(${value})`);
     return new Promise((resolve, reject) => {
       this._serialPort.set({ dtr: value }, (err) => {
         if (err) {
@@ -709,7 +725,7 @@ export class UsbSerial extends EventEmitter {
           // Force a drain to ensure the command is sent
           this._serialPort.drain((drainErr) => {
             if (drainErr) {
-              console.log(`[USB] DTR drain error: ${drainErr}`);
+              this.logConsoleMessage(`[USB] DTR drain error: ${drainErr}`);
             }
             resolve();
           });
@@ -719,7 +735,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async setRts(value: boolean): Promise<void> {
-    console.log(`[USB] INTERNAL setRts(${value})`);
+    this.logConsoleMessage(`[USB] INTERNAL setRts(${value})`);
     return new Promise((resolve, reject) => {
       this._serialPort.set({ rts: value }, (err) => {
         if (err) {

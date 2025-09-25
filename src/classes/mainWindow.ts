@@ -83,6 +83,10 @@ export interface GlobalSettings {
 }
 
 const DEFAULT_SERIAL_BAUD = 2000000;
+
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class MainWindow {
   private context: Context;
   private _deviceNode: string = '';
@@ -167,9 +171,9 @@ export class MainWindow {
     this.cogLogExporter = new COGLogExporter();
     
     // Set up Two-Tier Pattern Matching event handlers
-    console.log('[TWO-TIER] 🔧 Setting up SerialProcessor event handlers...');
+    this.logConsoleMessage('[TWO-TIER] 🔧 Setting up SerialProcessor event handlers...');
     this.setupSerialProcessorEvents();
-    console.log('[TWO-TIER] ✅ SerialProcessor event handlers setup complete');
+    this.logConsoleMessage('[TWO-TIER] ✅ SerialProcessor event handlers setup complete');
     
     // Set up COG window creator
     this.cogWindowManager.setWindowCreator((cogId: number) => {
@@ -178,7 +182,7 @@ export class MainWindow {
     
     // Listen for active COG changes to update status bar
     this.cogWindowManager.on('activeCOGsChanged', (data: { cogId: number; activeCOGs: number[]; displayText: string }) => {
-      console.log(`[COG STATUS] COG ${data.cogId} became active, now active: ${data.displayText}`);
+      this.logConsoleMessage(`[COG STATUS] COG ${data.cogId} became active, now active: ${data.displayText}`);
       this.updateActiveCogs(data.activeCOGs);
     });
     
@@ -205,14 +209,14 @@ export class MainWindow {
    * Setup event listeners for WindowRouter events
    */
   private setupWindowRouterEventListeners(): void {
-    console.log(`[WINDOW CREATION] 🎧 Setting up WindowRouter event listeners`);
+    this.logConsoleMessage(`[WINDOW CREATION] 🎧 Setting up WindowRouter event listeners`);
     
     // Listen for windowNeeded events when WindowRouter can't route to existing window
     this.windowRouter.on('windowNeeded', (eventData: { type: string; command: string; error: string }) => {
-      console.log(`[WINDOW CREATION] 📨 Received windowNeeded event!`);
-      console.log(`[WINDOW CREATION] WindowRouter needs window of type: ${eventData.type}`);
-      console.log(`[WINDOW CREATION] Command: ${eventData.command}`);
-      console.log(`[WINDOW CREATION] Error: ${eventData.error}`);
+      this.logConsoleMessage(`[WINDOW CREATION] 📨 Received windowNeeded event!`);
+      this.logConsoleMessage(`[WINDOW CREATION] WindowRouter needs window of type: ${eventData.type}`);
+      this.logConsoleMessage(`[WINDOW CREATION] Command: ${eventData.command}`);
+      this.logConsoleMessage(`[WINDOW CREATION] Error: ${eventData.error}`);
       
       // Create ExtractedMessage for two-tier system compatibility
       const commandData = new TextEncoder().encode(eventData.command);
@@ -232,15 +236,15 @@ export class MainWindow {
     
     // Listen for P2 system reboot events (golden synchronization marker)
     this.windowRouter.on('p2SystemReboot', (eventData: { message: string; timestamp: number }) => {
-      console.log(`[P2 SYNC] 🎯 P2 SYSTEM REBOOT DETECTED!`);
-      console.log(`[P2 SYNC] Message: ${eventData.message}`);
-      console.log(`[P2 SYNC] Timestamp: ${new Date(eventData.timestamp).toISOString()}`);
+      this.logConsoleMessage(`[P2 SYNC] 🎯 P2 SYSTEM REBOOT DETECTED!`);
+      this.logConsoleMessage(`[P2 SYNC] Message: ${eventData.message}`);
+      this.logConsoleMessage(`[P2 SYNC] Timestamp: ${new Date(eventData.timestamp).toISOString()}`);
       
       // Trigger complete synchronization reset
       this.handleP2SystemReboot(eventData);
     });
     
-    console.log(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
+    this.logConsoleMessage(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
   }
   
   /**
@@ -282,56 +286,56 @@ export class MainWindow {
     // Listen for debugger packets to create/update debugger windows
     this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
       const cogId = packet[0];
-      console.log(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
+      this.logConsoleMessage(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
       
       // Create debugger window directly like other debug windows (scope, plot, etc.)
       const windowName = `debugger-${cogId}`;
       
       // Check if window already exists
       if (!this.displays[windowName]) {
-        console.log(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
+        this.logConsoleMessage(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
         const debuggerDisplay = new DebugDebuggerWindow(this.context, cogId);
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
-        console.log(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
+        this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
       
       // Send the packet to the window (whether new or existing)
       // Use updateContent() which handles queuing if window not ready
       const debuggerWindow = this.displays[windowName] as DebugDebuggerWindow;
       if (debuggerWindow) {
-        console.log(`[DEBUGGER] Sending 416-byte packet to debugger window for COG${cogId}`);
+        this.logConsoleMessage(`[DEBUGGER] Sending 416-byte packet to debugger window for COG${cogId}`);
         debuggerWindow.updateContent(packet);
       }
     });
     
     // Reset debugger response state on DTR/RTS reset
     this.serialProcessor.on('dtrReset', () => {
-      console.log('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
+      this.logConsoleMessage('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
       debuggerResponse.reset();
     });
     
     this.serialProcessor.on('rtsReset', () => {
-      console.log('[DEBUGGER RESPONSE] RTS reset detected, clearing response state');
+      this.logConsoleMessage('[DEBUGGER RESPONSE] RTS reset detected, clearing response state');
       debuggerResponse.reset();
     });
 
     // Start the processor
-    console.log('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
+    this.logConsoleMessage('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
     this.serialProcessor.start();
-    console.log('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
+    this.logConsoleMessage('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
     
     // Performance monitoring will be started after DOM is ready (in did-finish-load handler)
 
     // Handle processor events
     this.serialProcessor.on('resetDetected', (event: any) => {
-      console.log(`[TWO-TIER] ${event.type} reset detected`);
+      this.logConsoleMessage(`[TWO-TIER] ${event.type} reset detected`);
     });
 
     this.serialProcessor.on('syncStatusChanged', (status: any) => {
       if (status.synchronized) {
-        console.log(`[TWO-TIER] ✅ Synchronized via ${status.source}`);
+        this.logConsoleMessage(`[TWO-TIER] ✅ Synchronized via ${status.source}`);
       } else {
-        console.log(`[TWO-TIER] ⚠️ Lost synchronization`);
+        this.logConsoleMessage(`[TWO-TIER] ⚠️ Lost synchronization`);
       }
     });
   }
@@ -340,14 +344,14 @@ export class MainWindow {
    * Route message to Debug Logger (Terminal FIRST principle)
    */
   private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
-    console.log(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
+    this.logConsoleMessage(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
     
     try {
       // Use type-safe handoff to debug logger - no more guessing!
       if (this.debugLoggerWindow) {
-        console.log(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
+        this.logConsoleMessage(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
       } else {
-        console.log(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
+        this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
       }
       
       if (this.debugLoggerWindow) {
@@ -379,7 +383,7 @@ export class MainWindow {
       // CRITICAL: Release pooled message after processing
       if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
         MessagePool.getInstance().release(message as PooledMessage);
-        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebugLogger handler`);
+        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebugLogger handler`);
       }
     }
   }
@@ -393,10 +397,10 @@ export class MainWindow {
       // Extract command data from two-tier message (stay in new system, don't convert back)
       const data = new TextDecoder().decode(message.data);
       const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
-      console.log(`[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
+      this.logConsoleMessage(`[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
       
       if (lineParts.length === 0 || lineParts[0].charAt(0) !== '`') {
-        console.log(`[TWO-TIER] Invalid window command format: ${data}`);
+        this.logConsoleMessage(`[TWO-TIER] Invalid window command format: ${data}`);
         return;
       }
       
@@ -412,7 +416,7 @@ export class MainWindow {
           const cleanedParts: string[] = lineParts.map((part) => part.replace(/,/g, ''));
           debugWindow.updateContent(cleanedParts);
           foundDisplay = true;
-          console.log(`[TWO-TIER] Routed to existing window: ${displayName}`);
+          this.logConsoleMessage(`[TWO-TIER] Routed to existing window: ${displayName}`);
         }
       });
       
@@ -437,21 +441,21 @@ export class MainWindow {
           windowType = 'MIDI';
         }
         
-        console.log(`[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`);
+        this.logConsoleMessage(`[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`);
         
         // 3. THIRD: Create new window based on type
         switch (windowType) {
           case this.DISPLAY_SCOPE: {
-            console.log(`[TWO-TIER] Creating SCOPE window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating SCOPE window for: ${data}`);
             const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
-            console.log(`[TWO-TIER] SCOPE parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] SCOPE parse result: isValid=${isValid}`);
             if (isValid) {
               const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
               this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ SCOPE window '${scopeSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ SCOPE window '${scopeSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse SCOPE command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse SCOPE command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -460,16 +464,16 @@ export class MainWindow {
           }
           
           case this.DISPLAY_SCOPEXY: {
-            console.log(`[TWO-TIER] Creating SCOPEXY window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating SCOPEXY window for: ${data}`);
             const [isValid, scopeXySpec] = DebugScopeXyWindow.parseScopeXyDeclaration(lineParts);
-            console.log(`[TWO-TIER] SCOPEXY parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] SCOPEXY parse result: isValid=${isValid}`);
             if (isValid) {
               const scopeXyDisplay = new DebugScopeXyWindow(this.context, scopeXySpec);
               this.hookNotifcationsAndRememberWindow(scopeXySpec.displayName, scopeXyDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ SCOPEXY window '${scopeXySpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ SCOPEXY window '${scopeXySpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse SCOPEXY command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse SCOPEXY command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -478,21 +482,21 @@ export class MainWindow {
           }
           
           case this.DISPLAY_LOGIC: {
-            console.log(`[TWO-TIER] Creating LOGIC window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating LOGIC window for: ${data}`);
             const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
-            console.log(`[TWO-TIER] LOGIC parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] LOGIC parse result: isValid=${isValid}`);
             if (logicSpec) {
-              console.log(`[TWO-TIER] LogicSpec:`, JSON.stringify(logicSpec, null, 2));
+              this.logConsoleMessage(`[TWO-TIER] LogicSpec:`, JSON.stringify(logicSpec, null, 2));
             }
             
             if (isValid) {
-              console.log(`[TWO-TIER] Creating DebugLogicWindow instance...`);
+              this.logConsoleMessage(`[TWO-TIER] Creating DebugLogicWindow instance...`);
               const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
               this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ LOGIC window '${logicSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ LOGIC window '${logicSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse LOGIC command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse LOGIC command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -501,18 +505,18 @@ export class MainWindow {
           }
           
           case this.DISPLAY_TERM: {
-            console.log(`[TWO-TIER] Creating TERM window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating TERM window for: ${data}`);
             const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
-            console.log(`[TWO-TIER] TERM parse result: isValid=${isValid}, termSpec=`, termSpec);
+            this.logConsoleMessage(`[TWO-TIER] TERM parse result: isValid=${isValid}, termSpec=`, termSpec);
             
             if (isValid) {
-              console.log(`[TWO-TIER] Creating DebugTermWindow with spec:`, termSpec);
+              this.logConsoleMessage(`[TWO-TIER] Creating DebugTermWindow with spec:`, termSpec);
               const termDisplay = new DebugTermWindow(this.context, termSpec);
               this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ TERM window '${termSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ TERM window '${termSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse TERM command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse TERM command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -521,17 +525,17 @@ export class MainWindow {
           }
           
           case this.DISPLAY_PLOT: {
-            console.log(`[TWO-TIER] Creating PLOT window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating PLOT window for: ${data}`);
             const [isValid, plotSpec] = DebugPlotWindow.parsePlotDeclaration(lineParts);
-            console.log(`[TWO-TIER] PLOT parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] PLOT parse result: isValid=${isValid}`);
             
             if (isValid) {
               const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
               this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ PLOT window '${plotSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ PLOT window '${plotSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse PLOT command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse PLOT command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -540,17 +544,17 @@ export class MainWindow {
           }
           
           case this.DISPLAY_BITMAP: {
-            console.log(`[TWO-TIER] Creating BITMAP window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating BITMAP window for: ${data}`);
             const [isValid, bitmapSpec] = DebugBitmapWindow.parseBitmapDeclaration(lineParts);
-            console.log(`[TWO-TIER] BITMAP parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] BITMAP parse result: isValid=${isValid}`);
             
             if (isValid) {
               const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
               this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ BITMAP window '${bitmapSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ BITMAP window '${bitmapSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse BITMAP command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse BITMAP command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -559,17 +563,17 @@ export class MainWindow {
           }
           
           case this.DISPLAY_MIDI: {
-            console.log(`[TWO-TIER] Creating MIDI window for: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] Creating MIDI window for: ${data}`);
             const [isValid, midiSpec] = DebugMidiWindow.parseMidiDeclaration(lineParts);
-            console.log(`[TWO-TIER] MIDI parse result: isValid=${isValid}`);
+            this.logConsoleMessage(`[TWO-TIER] MIDI parse result: isValid=${isValid}`);
             
             if (isValid) {
               const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
               this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
               foundDisplay = true;
-              console.log(`[TWO-TIER] ✅ MIDI window '${midiSpec.displayName}' created successfully`);
+              this.logConsoleMessage(`[TWO-TIER] ✅ MIDI window '${midiSpec.displayName}' created successfully`);
             } else {
-              console.log(`[TWO-TIER] ❌ Failed to parse MIDI command: ${data}`);
+              this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse MIDI command: ${data}`);
               if (this.context.runEnvironment.loggingEnabled) {
                 this.logMessage(`BAD DISPLAY: Received: ${data}`);
               }
@@ -578,7 +582,7 @@ export class MainWindow {
           }
           
           default:
-            console.log(`[TWO-TIER] ERROR: Unsupported window type [${windowType}] in command: ${data}`);
+            this.logConsoleMessage(`[TWO-TIER] ERROR: Unsupported window type [${windowType}] in command: ${data}`);
             this.logMessage(`ERROR: display [${windowType}] not supported!`);
             break;
         }
@@ -591,7 +595,7 @@ export class MainWindow {
       
       // 5. FIFTH: Log unhandled commands
       if (!foundDisplay && this.mainWindow != null) {
-        console.log(`[TWO-TIER] UNHANDLED window command: ${data}`);
+        this.logConsoleMessage(`[TWO-TIER] UNHANDLED window command: ${data}`);
         if (this.context.runEnvironment.loggingEnabled) {
           this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
@@ -601,7 +605,7 @@ export class MainWindow {
       // CRITICAL: Release pooled message after processing (preserve two-tier performance)
       if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
         MessagePool.getInstance().release(message as PooledMessage);
-        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from WindowCreator handler`);
+        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from WindowCreator handler`);
       }
     }
   }
@@ -612,7 +616,7 @@ export class MainWindow {
   private routeToDebuggerWindow(message: ExtractedMessage | PooledMessage): void {
     try {
       if (message.metadata?.cogId !== undefined) {
-        console.log(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
+        this.logConsoleMessage(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
         // Route binary debugger data to appropriate COG debugger window
         this.windowRouter.routeMessage({
           type: 'binary',
@@ -625,7 +629,7 @@ export class MainWindow {
       // CRITICAL: Release pooled message after processing
       if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
         MessagePool.getInstance().release(message as PooledMessage);
-        console.log(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebuggerWindow handler`);
+        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebuggerWindow handler`);
       }
     }
   }
@@ -649,7 +653,7 @@ export class MainWindow {
           if (cogId >= 0 && cogId <= 7) {
             // Notify COG window manager about this COG activity
             this.cogWindowManager.onCOGTraffic(cogId, message);
-            console.log(`[COG TRACKING] COG${cogId} message detected, updating display`);
+            this.logConsoleMessage(`[COG TRACKING] COG${cogId} message detected, updating display`);
           }
         }
         break;
@@ -715,7 +719,7 @@ export class MainWindow {
    * Create a COG splitter window
    */
   private createCOGWindow(cogId: number): any {
-    console.log(`[COG WINDOW] Creating COG ${cogId} window`);
+    this.logConsoleMessage(`[COG WINDOW] Creating COG ${cogId} window`);
     
     // Generate window ID for tracking
     const windowId = `COG-${cogId}`;
@@ -744,7 +748,7 @@ export class MainWindow {
     
     // Listen for close event
     cogWindow.on('cog-window-closed', (closedCogId: number) => {
-      console.log(`[COG WINDOW] COG ${closedCogId} window closed`);
+      this.logConsoleMessage(`[COG WINDOW] COG ${closedCogId} window closed`);
       this.cogWindowManager.onWindowClosed(closedCogId);
       delete this.displays[`COG-${closedCogId}`];
       this.windowRouter.unregisterWindow(`COG${closedCogId}`);
@@ -769,7 +773,7 @@ export class MainWindow {
    * Handle Show All COGs button click from Debug Logger window
    */
   public handleShowAllCOGs(): void {
-    console.log('[COG MANAGER] Show All COGs requested');
+    this.logConsoleMessage('[COG MANAGER] Show All COGs requested');
     this.cogWindowManager.showAllCOGs();
   }
   
@@ -777,7 +781,7 @@ export class MainWindow {
    * Handle COG export request
    */
   private handleCOGExportRequest(cogId: number): void {
-    console.log(`[COG EXPORT] Export requested for COG ${cogId}`);
+    this.logConsoleMessage(`[COG EXPORT] Export requested for COG ${cogId}`);
     
     // Get the COG window
     const windowKey = `COG-${cogId}`;
@@ -786,7 +790,7 @@ export class MainWindow {
     if (cogWindow) {
       const messages = cogWindow.exportMessages();
       // TODO: Save to file or send to COGLogExporter
-      console.log(`[COG EXPORT] Exported ${messages.length} characters from COG ${cogId}`);
+      this.logConsoleMessage(`[COG EXPORT] Exported ${messages.length} characters from COG ${cogId}`);
     }
   }
   
@@ -906,27 +910,27 @@ export class MainWindow {
 
   public initialize() {
     this.context.logger.forceLogMessage('* initialize()');
-    console.log('[STARTUP] MainWindow.initialize() called');
+    this.logConsoleMessage('[STARTUP] MainWindow.initialize() called');
     // app.on('ready', this.createAppWindow);
     // CRITICAL FIX: Don't open serial port until DOM is ready!
     // Store the device node to open later
     if (this._deviceNode.length > 0) {
       this.logMessage(`* Device specified: ${this._deviceNode} - will connect after window loads`);
-      console.log(`[STARTUP] Device specified: ${this._deviceNode}`);
+      this.logConsoleMessage(`[STARTUP] Device specified: ${this._deviceNode}`);
     } else {
       this.logMessage('* No device specified - will check available devices when window loads');
-      console.log('[STARTUP] No device specified');
+      this.logConsoleMessage('[STARTUP] No device specified');
     }
     if (app && app.whenReady) {
-      console.log('[STARTUP] Electron app object found, calling whenReady()');
+      this.logConsoleMessage('[STARTUP] Electron app object found, calling whenReady()');
       app.whenReady().then(() => {
         this.logMessage('* [whenReady]');
-        console.log('[STARTUP] Electron app is ready, creating window');
+        this.logConsoleMessage('[STARTUP] Electron app is ready, creating window');
         
         // Force light mode for native dialogs and UI elements
         if (nativeTheme) {
           nativeTheme.themeSource = 'light';
-          console.log('[STARTUP] Native theme set to light mode');
+          this.logConsoleMessage('[STARTUP] Native theme set to light mode');
         }
 
         // Query and log complete display system configuration
@@ -938,14 +942,14 @@ export class MainWindow {
       });
     } else {
       // Running in CLI mode without Electron
-      console.log('[STARTUP] Running in CLI mode - no GUI windows available (app object not found)');
+      this.logConsoleMessage('[STARTUP] Running in CLI mode - no GUI windows available (app object not found)');
     }
 
     if (app) {
       app.on('window-all-closed', () => {
         // Quit the app when all windows are closed, even on macOS
         // This makes the app behave like a single-window application
-        console.log('[STARTUP] All windows closed, quitting app');
+        this.logConsoleMessage('[STARTUP] All windows closed, quitting app');
         app.quit();
         this.mainWindowOpen = false;
       });
@@ -991,14 +995,14 @@ export class MainWindow {
       for (const altPath of alternatePaths) {
         if (fs.existsSync(altPath)) {
           fontPath = altPath;
-          console.log('[FONT] Found font at alternate path:', fontPath);
+          this.logConsoleMessage('[FONT] Found font at alternate path:', fontPath);
           break;
         }
       }
     }
 
     const fileUrl = `file://${fontPath.replace(/\\/g, '/')}`;
-    console.log('[FONT] Using Parallax font URL:', fileUrl);
+    this.logConsoleMessage('[FONT] Using Parallax font URL:', fileUrl);
     return fileUrl;
   }
 
@@ -1029,14 +1033,14 @@ export class MainWindow {
       for (const altPath of alternatePaths) {
         if (fs.existsSync(altPath)) {
           fontPath = altPath;
-          console.log('[FONT] Found font at alternate path:', fontPath);
+          this.logConsoleMessage('[FONT] Found font at alternate path:', fontPath);
           break;
         }
       }
     }
     
     const fileUrl = `file://${fontPath.replace(/\\/g, '/')}`;
-    console.log('[FONT] Using IBM 3270 font URL:', fileUrl);
+    this.logConsoleMessage('[FONT] Using IBM 3270 font URL:', fileUrl);
     return fileUrl;
   }
 
@@ -1152,7 +1156,7 @@ export class MainWindow {
     const safetyMargin = timeoutMs * 0.5;
     const finalTimeout = Math.max(timeoutMs + safetyMargin, 10); // Minimum 10ms
     
-    console.log(`[SYNC TIMEOUT] Baud: ${baudRate}, Line: ${this.MAX_LINE_CHARS} chars, Timeout: ${finalTimeout.toFixed(1)}ms`);
+    this.logConsoleMessage(`[SYNC TIMEOUT] Baud: ${baudRate}, Line: ${this.MAX_LINE_CHARS} chars, Timeout: ${finalTimeout.toFixed(1)}ms`);
     return finalTimeout;
   }
 
@@ -1171,7 +1175,7 @@ export class MainWindow {
       // Add microsecond timestamp using process.hrtime
       const hrtime = process.hrtime();
       const microseconds = Math.floor(hrtime[0] * 1000000 + hrtime[1] / 1000);
-      console.log(`[SERIAL RX ${microseconds}µs] Received ${data.length} bytes`);
+      this.logConsoleMessage(`[SERIAL RX ${microseconds}µs] Received ${data.length} bytes`);
       
       // Log hex and ASCII for debugging - same format as debug logger
       const hexLines: string[] = [];
@@ -1201,8 +1205,8 @@ export class MainWindow {
         hexLines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
       }
       
-      console.log('[SERIAL RX HEX/ASCII]:');
-      hexLines.forEach(line => console.log(line));
+      this.logConsoleMessage('[SERIAL RX HEX/ASCII]:');
+      hexLines.forEach(line => this.logConsoleMessage(line));
       
       // Two-Tier Pattern Matching: Process serial data through new architecture
       this.serialProcessor.receiveData(data);
@@ -1210,13 +1214,13 @@ export class MainWindow {
     }
     
     if (typeof data === 'string') {
-      console.log(`[SERIAL RX] Text data: ${data.length} chars: "${data}"`);
+      this.logConsoleMessage(`[SERIAL RX] Text data: ${data.length} chars: "${data}"`);
       
       // GROUND ZERO RECOVERY: Check for Cog-prefixed messages first (backward compatibility)
       if (data.startsWith('Cog')) {
-        console.log(`[DEBUG] Potential COG message found: "${data}", length: ${data.length}, char[3]: "${data[3]}", char[4]: "${data[4]}"`);
+        this.logConsoleMessage(`[DEBUG] Potential COG message found: "${data}", length: ${data.length}, char[3]: "${data[3]}", char[4]: "${data[4]}"`);
         if (data.length > 4 && data[4] === ' ') {
-          console.log(`[COG DETECTION] Found Cog message: ${data}`);
+          this.logConsoleMessage(`[COG DETECTION] Found Cog message: ${data}`);
           this.handleCogMessage(data);
           return; // Don't process through new architecture for backward compatibility
         }
@@ -1253,20 +1257,20 @@ export class MainWindow {
    */
   private createDebugLoggerWindow(): void {
     if (this.debugLoggerWindow) {
-      console.log('[DEBUG LOGGER] Debug Logger already exists, skipping creation');
+      this.logConsoleMessage('[DEBUG LOGGER] Debug Logger already exists, skipping creation');
       return;
     }
     
-    console.log('[DEBUG LOGGER] Creating debug logger window for auto-logging...');
+    this.logConsoleMessage('[DEBUG LOGGER] Creating debug logger window for auto-logging...');
     try {
       this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
-      console.log('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
+      this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
       this.displays['DebugLogger'] = this.debugLoggerWindow;
       
       // Set up event listeners
       this.debugLoggerWindow.on('close', () => {
         this.logMessage('Debug Logger Window closed');
-        console.log('[DEBUG LOGGER] Window closed by user');
+        this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
         delete this.displays['DebugLogger'];
         this.debugLoggerWindow = null;
         this.updateLoggingStatus(false);
@@ -1285,14 +1289,14 @@ export class MainWindow {
       });
       
       this.debugLoggerWindow.on('export-cog-logs-requested', () => {
-        console.log('[MAIN] Export COG logs requested');
+        this.logConsoleMessage('[MAIN] Export COG logs requested');
       });
       
       // Connect performance monitor for warnings
       const components = this.serialProcessor.getComponents();
       if (components.performanceMonitor) {
         this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
-        console.log('[DEBUG LOGGER] Connected to performance monitor for warnings');
+        this.logConsoleMessage('[DEBUG LOGGER] Connected to performance monitor for warnings');
       }
       
       if (this.context.runEnvironment.loggingEnabled) {
@@ -1310,19 +1314,19 @@ export class MainWindow {
    * Triggered by "Cog0 INIT $0000_0000 $0000_0000 load" message
    */
   private handleP2SystemReboot(eventData: { message: string; timestamp: number }): void {
-    console.log(`[P2 SYNC] 🔄 Starting complete P2 synchronization reset...`);
+    this.logConsoleMessage(`[P2 SYNC] 🔄 Starting complete P2 synchronization reset...`);
     
     // 1. Clear all sync buffers and parser state
-    console.log(`[P2 SYNC] 🧹 Clearing sync buffers and parser state`);
+    this.logConsoleMessage(`[P2 SYNC] 🧹 Clearing sync buffers and parser state`);
     this.syncBuffer = ''; // Clear the message synchronization buffer
     
     // 2. Reset debugger parser state  
-    console.log(`[P2 SYNC] 🔄 Resetting debugger parser state`);
+    this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting debugger parser state`);
     this.serialProcessor.onDTRReset(); // Trigger Two-Tier reset
     
     // 3. Clear and restart the Debug Logger session
     if (this.debugLoggerWindow) {
-      console.log(`[P2 SYNC] 📝 Restarting Debug Logger session`);
+      this.logConsoleMessage(`[P2 SYNC] 📝 Restarting Debug Logger session`);
       try {
         // Signal DTR reset to create new log file boundary
         this.debugLoggerWindow.handleDTRReset();
@@ -1335,14 +1339,14 @@ export class MainWindow {
     }
     
     // 4. Reset COG window tracking (all COGs start fresh after reboot)
-    console.log(`[P2 SYNC] 🎯 Resetting COG window tracking`);
+    this.logConsoleMessage(`[P2 SYNC] 🎯 Resetting COG window tracking`);
     // Note: Don't close existing COG windows - user may want to see previous session data
     // Just reset their internal state for new session
     Object.keys(this.displays).forEach(key => {
       if (key.startsWith('COG-')) {
         const cogWindow = this.displays[key] as DebugCOGWindow;
         if (cogWindow && typeof cogWindow.clear === 'function') {
-          console.log(`[P2 SYNC] 🔄 Resetting ${key} window state`);
+          this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting ${key} window state`);
           // Clear the window but keep it open for comparison
         }
       }
@@ -1357,7 +1361,7 @@ export class MainWindow {
     
     // P2 system messages go to debug logger, not main terminal
     
-    console.log(`[P2 SYNC] ✅ Complete P2 synchronization reset finished - perfect sync achieved`);
+    this.logConsoleMessage(`[P2 SYNC] ✅ Complete P2 synchronization reset finished - perfect sync achieved`);
   }
 
   /**
@@ -1405,7 +1409,7 @@ export class MainWindow {
       completeContent = this.syncBuffer.substring(0, lastSyncPoint);
       incompleteFragment = this.syncBuffer.substring(lastSyncPoint);
       
-      console.log(`[SYNC] Found ${syncPoints.length} sync points, splitting at position ${lastSyncPoint}`);
+      this.logConsoleMessage(`[SYNC] Found ${syncPoints.length} sync points, splitting at position ${lastSyncPoint}`);
     } else {
       // No sync patterns found - use simple line ending detection
       const lines = this.syncBuffer.split(/\r?\n/);
@@ -1442,10 +1446,10 @@ export class MainWindow {
       for (const line of lines) {
         if (line.length > 0) { // Skip empty lines
           if (this.isAsciiPrintable(line)) {
-            console.log(`[SYNC] ✅ Forwarding line: "${line.substring(0, 50)}${line.length > 50 ? '...' : ''}"`);
+            this.logConsoleMessage(`[SYNC] ✅ Forwarding line: "${line.substring(0, 50)}${line.length > 50 ? '...' : ''}"`);
             results.push(line);
           } else {
-            console.log(`[SYNC] ⚠️ Non-ASCII line, dumping as hex:`);
+            this.logConsoleMessage(`[SYNC] ⚠️ Non-ASCII line, dumping as hex:`);
             this.dumpHexData(line);
             results.push(line); // Forward anyway for debugging
           }
@@ -1455,11 +1459,11 @@ export class MainWindow {
     
     // Handle incomplete fragment
     if (incompleteFragment.length > 0) {
-      console.log(`[SYNC] 🔄 Buffering incomplete fragment (${incompleteFragment.length} chars): "${incompleteFragment}"`);
+      this.logConsoleMessage(`[SYNC] 🔄 Buffering incomplete fragment (${incompleteFragment.length} chars): "${incompleteFragment}"`);
       this.syncBuffer = incompleteFragment;
       this.lastSyncTime = Date.now(); // Start timer for fragment
     } else {
-      console.log(`[SYNC] 🟢 No incomplete fragment - buffer cleared`);
+      this.logConsoleMessage(`[SYNC] 🟢 No incomplete fragment - buffer cleared`);
       this.syncBuffer = '';
     }
     
@@ -1470,12 +1474,12 @@ export class MainWindow {
       
       if (timeSinceLastSync > dynamicTimeout) {
         // Timeout reached - process incomplete fragment
-        console.log(`[SYNC] ⏱️ Timeout (${dynamicTimeout.toFixed(1)}ms) - processing incomplete fragment: "${this.syncBuffer}"`);
+        this.logConsoleMessage(`[SYNC] ⏱️ Timeout (${dynamicTimeout.toFixed(1)}ms) - processing incomplete fragment: "${this.syncBuffer}"`);
         
         if (this.isAsciiPrintable(this.syncBuffer)) {
           results.push(this.syncBuffer);
         } else {
-          console.log(`[SYNC] ⚠️ Non-ASCII fragment, dumping as hex:`);
+          this.logConsoleMessage(`[SYNC] ⚠️ Non-ASCII fragment, dumping as hex:`);
           this.dumpHexData(this.syncBuffer);
         }
         
@@ -1518,7 +1522,7 @@ export class MainWindow {
     for (let i = 0; i < bytes.length; i += bytesPerLine) {
       const hexLine = bytes.slice(i, i + bytesPerLine).join(' ').padEnd(bytesPerLine * 3 - 1, ' ');
       const asciiLine = ascii.slice(i, i + bytesPerLine).join('');
-      console.log(`[SYNC] ${i.toString(16).padStart(4, '0')}: ${hexLine} | ${asciiLine}`);
+      this.logConsoleMessage(`[SYNC] ${i.toString(16).padStart(4, '0')}: ${hexLine} | ${asciiLine}`);
     }
   }
 
@@ -1565,7 +1569,7 @@ export class MainWindow {
   private handleCogMessage(data: string): void {
     // Auto-create debug logger window on first Cog or INIT message
     if (!this.debugLoggerWindow) {
-      console.log('[DEBUG LOGGER] Creating debug logger window...');
+      this.logConsoleMessage('[DEBUG LOGGER] Creating debug logger window...');
       try {
         this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
@@ -1574,7 +1578,7 @@ export class MainWindow {
         // Set up cleanup handler
         this.debugLoggerWindow.on('close', () => {
           this.logMessage('Debug Logger Window closed');
-          console.log('[DEBUG LOGGER] Window closed by user');
+          this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
           delete this.displays['DebugLogger'];
           this.debugLoggerWindow = null;
         });
@@ -1591,7 +1595,7 @@ export class MainWindow {
       } catch (error) {
         // Fall back to console logging if window creation fails
         console.error('Failed to create Debug Logger Window:', error);
-        console.log(`[COG] ${data}`);
+        this.logConsoleMessage(`[COG] ${data}`);
         return;
       }
     }
@@ -1599,13 +1603,13 @@ export class MainWindow {
     // Route FULL message to debug logger (don't strip prefix)
     // Window will decide what to display
     if (this.debugLoggerWindow) {
-      console.log(`[DEBUG LOGGER] Sending message: ${data}`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Sending message: ${data}`);
       // updateContent expects array format
       this.debugLoggerWindow.updateContent([data]);
     } else {
       // Fallback to console if logger window is unavailable
       console.error('[DEBUG LOGGER] Window not available, falling back to console');
-      console.log(`[DEBUG OUTPUT] ${data}`);
+      this.logConsoleMessage(`[DEBUG OUTPUT] ${data}`);
     }
     
     // Check for embedded backtick commands within the Cog message
@@ -1644,13 +1648,13 @@ export class MainWindow {
   //
   private async CalcWindowCoords(): Promise<void> {
     const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize;
-    console.log(`work area size: ${width} x ${height}`);
+    this.logConsoleMessage(`work area size: ${width} x ${height}`);
 
     // Use default font metrics for initial window sizing
     // Actual metrics will be measured after window loads
     const charWidth = 12; // Default character width
     const charHeight = 18; // Default character height
-    console.log(`     char size (default): ${charWidth} x ${charHeight}`);
+    this.logConsoleMessage(`     char size (default): ${charWidth} x ${charHeight}`);
 
     // Calculate the required dimensions for 24 lines by 80 characters
     const minWidth = 80 * charWidth; // Minimum width for 80 characters
@@ -1675,13 +1679,13 @@ export class MainWindow {
     this.mainWindowGeometry.xOffset = Math.round((width - this.mainWindowGeometry.width) / 2);  // Center horizontally
     this.mainWindowGeometry.yOffset = Math.round(height - this.mainWindowGeometry.height - 50);  // Bottom with 50px margin
 
-    console.log(
+    this.logConsoleMessage(
       `window geom: ${this.mainWindowGeometry.width}x${this.mainWindowGeometry.height} @${this.mainWindowGeometry.xOffset},${this.mainWindowGeometry.yOffset}`
     );
   }
 
   private async createAppWindow() {
-    console.log('[STARTUP] createAppWindow() called');
+    this.logConsoleMessage('[STARTUP] createAppWindow() called');
     this.context.logger.forceLogMessage(`* create App Window()`);
     this.mainWindowOpen = true;
 
@@ -1692,7 +1696,7 @@ export class MainWindow {
       // Use default coords
     }
 
-    console.log('[WINDOW] Creating BrowserWindow with geometry:', this.mainWindowGeometry);
+    this.logConsoleMessage('[WINDOW] Creating BrowserWindow with geometry:', this.mainWindowGeometry);
     
     this.mainWindow = new BrowserWindow({
       width: this.mainWindowGeometry.width,
@@ -1705,7 +1709,7 @@ export class MainWindow {
       }
     });
     
-    console.log('[WINDOW] BrowserWindow created successfully');
+    this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');
 
     const dataEntryBGColor: string = this.termColors.xmitBGColor;
     const dataEntryFGColor: string = this.termColors.xmitFGColor;
@@ -1718,7 +1722,7 @@ export class MainWindow {
     // and load the main window .html of the app
     const htmlContent = isIdeMode ? this.createIDEModeHTML() : this.createStandardHTML();
 
-    console.log('[WINDOW] Loading HTML content, length:', htmlContent.length);
+    this.logConsoleMessage('[WINDOW] Loading HTML content, length:', htmlContent.length);
 
     // Write HTML to temp file to allow file:// font URLs to work
     const fs = require('fs');
@@ -1728,7 +1732,7 @@ export class MainWindow {
 
     try {
       fs.writeFileSync(tempFile, htmlContent);
-      console.log('[WINDOW] Wrote HTML to temp file:', tempFile);
+      this.logConsoleMessage('[WINDOW] Wrote HTML to temp file:', tempFile);
 
       // Load the temp file instead of using data URL
       this.mainWindow.loadFile(tempFile).catch((error: any) => {
@@ -1740,7 +1744,7 @@ export class MainWindow {
       setTimeout(() => {
         try {
           fs.unlinkSync(tempFile);
-          console.log('[WINDOW] Cleaned up temp file:', tempFile);
+          this.logConsoleMessage('[WINDOW] Cleaned up temp file:', tempFile);
         } catch (err) {
           // File might already be gone, that's ok
         }
@@ -1759,17 +1763,17 @@ export class MainWindow {
     });
 
     // Only set up menu in standard mode
-    console.log(`[MENU SETUP] IDE Mode: ${isIdeMode}, Setting up menu: ${!isIdeMode}`);
+    this.logConsoleMessage(`[MENU SETUP] IDE Mode: ${isIdeMode}, Setting up menu: ${!isIdeMode}`);
     // Set up the system menu (macOS only, prevents "Electron" from showing)
     this.setupApplicationMenu();
     
     if (!isIdeMode) {
-      console.log('[MENU SETUP] Standalone Mode - HTML menu bar will be used');
+      this.logConsoleMessage('[MENU SETUP] Standalone Mode - HTML menu bar will be used');
       // Standard mode: HTML menu bar in the window
       // No native menu bar in window on any platform
       this.mainWindow.setMenuBarVisibility(false);
     } else {
-      console.log('[MENU SETUP] IDE Mode - No menus');
+      this.logConsoleMessage('[MENU SETUP] IDE Mode - No menus');
       // IDE mode: No menus at all
       this.mainWindow.setMenuBarVisibility(false);
     }
@@ -2303,13 +2307,13 @@ export class MainWindow {
         </div>
       </div>
       <script>
-        console.log('[MENU] Script execution started');
+        this.logConsoleMessage('[MENU] Script execution started');
         // IPC Setup - runs directly in renderer with node integration
         let ipcRenderer;
         try {
           const electron = require('electron');
           ipcRenderer = electron.ipcRenderer;
-          console.log('[MENU] ipcRenderer loaded:', !!ipcRenderer);
+          this.logConsoleMessage('[MENU] ipcRenderer loaded:', !!ipcRenderer);
         } catch (e) {
           console.error('[MENU] Failed to load ipcRenderer:', e);
           // Will be injected from main process if this fails
@@ -2317,7 +2321,7 @@ export class MainWindow {
         
         // Function to initialize all handlers
         function initializeHandlers() {
-          console.log('[INIT] Initializing all button handlers...');
+          this.logConsoleMessage('[INIT] Initializing all button handlers...');
           
           if (!ipcRenderer) {
             console.error('[INIT] ipcRenderer not available, cannot attach handlers');
@@ -2325,7 +2329,7 @@ export class MainWindow {
           }
           
           // DEBUG: Check what buttons exist in the DOM
-          console.log('[DEBUG] Checking for control line buttons...');
+          this.logConsoleMessage('[DEBUG] Checking for control line buttons...');
           
           // RAM/FLASH buttons
           const ramBtn = document.getElementById('download-ram');
@@ -2357,7 +2361,7 @@ export class MainWindow {
           }
           
           if (resetToggle && !resetToggle.dataset.handlerAttached) {
-            console.log('[RESET] Found reset button, attaching handler');
+            this.logConsoleMessage('[RESET] Found reset button, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
             resetToggle.dataset.handlerAttached = 'true';
             let clickCount = 0;
@@ -2365,24 +2369,24 @@ export class MainWindow {
               clickCount++;
               // Check which line is active from the button's data attribute
               const line = resetToggle.dataset.line || resetToggle.textContent;
-              console.log('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
-              console.log('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
-              console.log('[RESET] Event timestamp: ' + event.timeStamp);
+              this.logConsoleMessage('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
+              this.logConsoleMessage('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
+              this.logConsoleMessage('[RESET] Event timestamp: ' + event.timeStamp);
               
               if (line === 'RTS') {
-                console.log('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
+                this.logConsoleMessage('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                console.log('[RESET] Sending toggle-dtr IPC (click #' + clickCount + ')');
+                this.logConsoleMessage('[RESET] Sending toggle-dtr IPC (click #' + clickCount + ')');
                 ipcRenderer.send('toggle-dtr');
               }
             });
-            console.log('[RESET] Reset button handler attached successfully');
+            this.logConsoleMessage('[RESET] Reset button handler attached successfully');
           } else if (resetToggle) {
-            console.log('[RESET] Reset button handler already attached, skipping');
+            this.logConsoleMessage('[RESET] Reset button handler already attached, skipping');
           } else {
-            console.log('[RESET] Reset button not found in DOM');
+            this.logConsoleMessage('[RESET] Reset button not found in DOM');
           }
           
           // Unified reset checkbox handler
@@ -2392,15 +2396,15 @@ export class MainWindow {
           }
           
           if (resetCheckbox && !resetCheckbox.dataset.handlerAttached) {
-            console.log('[RESET] Found reset checkbox, attaching handler');
+            this.logConsoleMessage('[RESET] Found reset checkbox, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
             resetCheckbox.dataset.handlerAttached = 'true';
             let checkboxClickCount = 0;
             // Use 'click' event instead of 'change' - click only fires for user interaction
             resetCheckbox.addEventListener('click', (e) => {
               checkboxClickCount++;
-              console.log('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
-              console.log('[RESET] Current checkbox state before click: ' + e.target.checked);
+              this.logConsoleMessage('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
+              this.logConsoleMessage('[RESET] Current checkbox state before click: ' + e.target.checked);
               
               // IMPORTANT: Prevent default to avoid double-toggle
               // The checkbox will be updated by the IPC response only
@@ -2409,22 +2413,22 @@ export class MainWindow {
               // Check which line is active from the checkbox's data attribute
               const line = resetCheckbox.dataset.line || 
                            (document.getElementById('reset-toggle') || resetToggle)?.textContent;
-              console.log('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
+              this.logConsoleMessage('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
               
               if (line === 'RTS') {
-                console.log('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
+                this.logConsoleMessage('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
                 ipcRenderer.send('toggle-rts');
               } else {
                 // Default to DTR
-                console.log('[RESET] Sending toggle-dtr IPC from checkbox click #' + checkboxClickCount);
+                this.logConsoleMessage('[RESET] Sending toggle-dtr IPC from checkbox click #' + checkboxClickCount);
                 ipcRenderer.send('toggle-dtr');
               }
             });
-            console.log('[RESET] Reset checkbox click handler attached successfully');
+            this.logConsoleMessage('[RESET] Reset checkbox click handler attached successfully');
           } else if (resetCheckbox) {
-            console.log('[RESET] Reset checkbox handler already attached, skipping');
+            this.logConsoleMessage('[RESET] Reset checkbox handler already attached, skipping');
           } else {
-            console.log('[RESET] Reset checkbox not found in DOM');
+            this.logConsoleMessage('[RESET] Reset checkbox not found in DOM');
           }
           
           // Note: Legacy DTR/RTS specific handlers removed - unified reset handlers above handle both modes
@@ -2485,12 +2489,12 @@ export class MainWindow {
           
           // Listen for DTR state updates from main process
           ipcRenderer.on('update-dtr-state', (event, state) => {
-            console.log('[IPC] Received DTR state update:', state);
+            this.logConsoleMessage('[IPC] Received DTR state update:', state);
             const checkbox = document.getElementById('reset-checkbox');
             if (checkbox && checkbox.dataset.line === 'DTR') {
               // Simply update the checkbox - no flags needed since we use click event
               checkbox.checked = state;
-              console.log('[DTR] Checkbox display updated to:', state);
+              this.logConsoleMessage('[DTR] Checkbox display updated to:', state);
             }
           });
           
@@ -2579,20 +2583,20 @@ export class MainWindow {
     let dtrToggleCount = 0;
     ipcMain.on('toggle-dtr', async () => {
       dtrToggleCount++;
-      console.log(`[IPC] Received toggle-dtr request #${dtrToggleCount}`);
-      console.log(`[IPC] Current DTR state before toggle: ${this.dtrState}`);
+      this.logConsoleMessage(`[IPC] Received toggle-dtr request #${dtrToggleCount}`);
+      this.logConsoleMessage(`[IPC] Current DTR state before toggle: ${this.dtrState}`);
       await this.toggleDTR();
-      console.log(`[IPC] DTR state after toggle: ${this.dtrState}`);
+      this.logConsoleMessage(`[IPC] DTR state after toggle: ${this.dtrState}`);
     });
     
     ipcMain.on('toggle-rts', async () => {
-      console.log('[IPC] Received toggle-rts request');
+      this.logConsoleMessage('[IPC] Received toggle-rts request');
       await this.toggleRTS();
     });
     
     // Recording dialog actions
     ipcMain.on('recording-action', (event: any, action: string, data?: string) => {
-      console.log('[IPC] Recording action:', action, data);
+      this.logConsoleMessage('[IPC] Recording action:', action, data);
       if (action === 'save-and-start') {
         this.windowRouter.stopRecording();
         // TODO: Save current recording
@@ -2604,10 +2608,10 @@ export class MainWindow {
     
     // Playback control handlers
     ipcMain.on('playback-control', async (event: any, action: string, data?: any) => {
-      console.log('[IPC] Playback control:', action, data);
+      this.logConsoleMessage('[IPC] Playback control:', action, data);
       
       if (!this.binaryPlayer) {
-        console.log('[PLAYBACK] No player instance');
+        this.logConsoleMessage('[PLAYBACK] No player instance');
         return;
       }
       
@@ -2641,7 +2645,7 @@ export class MainWindow {
     
     // Recording toolbar button handler  
     ipcMain.on('toggle-recording', () => {
-      console.log('[IPC] Toggle recording from toolbar');
+      this.logConsoleMessage('[IPC] Toggle recording from toolbar');
       if (this.windowRouter.isRecordingActive()) {
         this.stopRecording();
       } else {
@@ -2651,13 +2655,13 @@ export class MainWindow {
     
     // Playback toolbar button handler
     ipcMain.on('play-recording', async () => {
-      console.log('[IPC] Play recording from toolbar');
+      this.logConsoleMessage('[IPC] Play recording from toolbar');
       await this.playRecording();
     });
     
     // File menu handlers
     ipcMain.on('menu-new-recording', () => {
-      console.log('[IPC] New recording');
+      this.logConsoleMessage('[IPC] New recording');
       if (!this.newRecordingDialog) {
         this.newRecordingDialog = new NewRecordingDialog(this.mainWindow, this.context);
       }
@@ -2667,7 +2671,7 @@ export class MainWindow {
     });
     
     ipcMain.on('menu-open-recording', async () => {
-      console.log('[IPC] Open recording');
+      this.logConsoleMessage('[IPC] Open recording');
       
       // Use context-based recordings directory with user preferences
       const recordingsDir = this.context.getRecordingsDirectory();
@@ -2700,7 +2704,7 @@ export class MainWindow {
     });
     
     ipcMain.on('menu-save-recording', async () => {
-      console.log('[IPC] Save recording');
+      this.logConsoleMessage('[IPC] Save recording');
       
       // Check if recording is in progress
       if (!this.windowRouter.isRecordingActive()) {
@@ -2730,82 +2734,82 @@ export class MainWindow {
       if (!result.canceled && result.filePath) {
         // The recording is already saved by stopRecording()
         // We would need to copy/move it to the user's chosen location
-        console.log('[RECORDING] Would save to:', result.filePath);
+        this.logConsoleMessage('[RECORDING] Would save to:', result.filePath);
       }
     });
     
     ipcMain.on('menu-start-recording', () => {
-      console.log('[IPC] Start recording');
+      this.logConsoleMessage('[IPC] Start recording');
       this.startRecording();
     });
     
     ipcMain.on('menu-stop-recording', () => {
-      console.log('[IPC] Stop recording');
+      this.logConsoleMessage('[IPC] Stop recording');
       this.stopRecording();
     });
     
     ipcMain.on('menu-playback-recording', async () => {
-      console.log('[IPC] Playback recording');
+      this.logConsoleMessage('[IPC] Playback recording');
       await this.playRecording();
     });
     
     ipcMain.on('menu-preferences', () => {
-      console.log('[IPC] Preferences');
+      this.logConsoleMessage('[IPC] Preferences');
       this.showPreferencesDialog();
     });
     
     ipcMain.on('menu-quit', () => {
-      console.log('[IPC] Quit');
+      this.logConsoleMessage('[IPC] Quit');
       app.quit();
     });
     
     // Edit menu handlers
     ipcMain.on('menu-find', () => {
-      console.log('[IPC] Find');
+      this.logConsoleMessage('[IPC] Find');
       // TODO: Implement find dialog
       this.showFindDialog();
     });
     
     ipcMain.on('menu-clear', () => {
-      console.log('[IPC] Clear terminal');
+      this.logConsoleMessage('[IPC] Clear terminal');
       this.clearTerminal();
     });
     
     // Window menu handlers
     ipcMain.on('menu-performance-monitor', () => {
-      console.log('[IPC] Performance monitor');
+      this.logConsoleMessage('[IPC] Performance monitor');
       this.showPerformanceMonitor();
     });
     
     ipcMain.on('menu-cascade', () => {
-      console.log('[IPC] Cascade windows');
+      this.logConsoleMessage('[IPC] Cascade windows');
       this.cascadeWindows();
     });
     
     ipcMain.on('menu-tile', () => {
-      console.log('[IPC] Tile windows');
+      this.logConsoleMessage('[IPC] Tile windows');
       this.tileWindows();
     });
     
     ipcMain.on('menu-show-all', () => {
-      console.log('[IPC] Show all windows');
+      this.logConsoleMessage('[IPC] Show all windows');
       this.showAllWindows();
     });
     
     ipcMain.on('menu-hide-all', () => {
-      console.log('[IPC] Hide all windows');
+      this.logConsoleMessage('[IPC] Hide all windows');
       this.hideAllWindows();
     });
     
     // Help menu handlers
     ipcMain.on('menu-documentation', () => {
-      console.log('[IPC] Documentation');
+      this.logConsoleMessage('[IPC] Documentation');
       this.showDocumentation();
     });
     
     // menu-about is handled by executeCommand
     
-    console.log('[IPC] All menu handlers registered');
+    this.logConsoleMessage('[IPC] All menu handlers registered');
   }
   
   /**
@@ -2815,12 +2819,12 @@ export class MainWindow {
   private initializeMenu(): void {
     if (!this.mainWindow) return;
     
-    console.log('[MENU] Starting programmatic menu initialization...');
+    this.logConsoleMessage('[MENU] Starting programmatic menu initialization...');
     
     // Inject menu event handlers from main process
     this.mainWindow.webContents.executeJavaScript(`
       (function() {
-        console.log('[MENU] Programmatic menu setup starting...');
+        this.logConsoleMessage('[MENU] Programmatic menu setup starting...');
         
         const menuBar = document.getElementById('menu-bar');
         if (!menuBar) {
@@ -2828,18 +2832,18 @@ export class MainWindow {
           return;
         }
         
-        console.log('[MENU] Found menu bar, setting up handlers...');
+        this.logConsoleMessage('[MENU] Found menu bar, setting up handlers...');
         
         // Get all menu items
         const menuItems = document.querySelectorAll('.menu-item');
-        console.log('[MENU] Found ' + menuItems.length + ' menu items');
+        this.logConsoleMessage('[MENU] Found ' + menuItems.length + ' menu items');
         
         // Add click handlers to menu items using CSS classes for state
         menuItems.forEach((item, index) => {
-          console.log('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
+          this.logConsoleMessage('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
           
           item.addEventListener('click', (e) => {
-            console.log('[MENU] Menu item clicked: ' + item.textContent);
+            this.logConsoleMessage('[MENU] Menu item clicked: ' + item.textContent);
             e.stopPropagation();
             
             const dropdown = item.querySelector('.menu-dropdown');
@@ -2853,21 +2857,21 @@ export class MainWindow {
               
               // Toggle this dropdown using CSS class
               dropdown.classList.toggle('open');
-              console.log('[MENU] Dropdown toggled, open:', dropdown.classList.contains('open'));
+              this.logConsoleMessage('[MENU] Dropdown toggled, open:', dropdown.classList.contains('open'));
             }
           });
         });
         
         // Add handlers for dropdown items
         const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
-        console.log('[MENU] Found ' + dropdownItems.length + ' dropdown items');
+        this.logConsoleMessage('[MENU] Found ' + dropdownItems.length + ' dropdown items');
         
         dropdownItems.forEach((item, index) => {
           const action = item.getAttribute('data-action');
-          console.log('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
+          this.logConsoleMessage('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
           
           item.addEventListener('click', (e) => {
-            console.log('[MENU] Dropdown item clicked, action: ' + action);
+            this.logConsoleMessage('[MENU] Dropdown item clicked, action: ' + action);
             e.stopPropagation();
             
             // Close all dropdowns using CSS class
@@ -2885,7 +2889,7 @@ export class MainWindow {
                 // Use require to get ipcRenderer directly
                 try {
                   const { ipcRenderer } = require('electron');
-                  console.log('[MENU] Sending IPC message: ' + action);
+                  this.logConsoleMessage('[MENU] Sending IPC message: ' + action);
                   ipcRenderer.send(action);
                 } catch (err) {
                   console.error('[MENU] Failed to send IPC:', err);
@@ -2905,11 +2909,11 @@ export class MainWindow {
           }
         });
         
-        console.log('[MENU] Menu initialization complete');
+        this.logConsoleMessage('[MENU] Menu initialization complete');
         return 'Menu initialized';
       })();
     `).then((result: any) => {
-      console.log('[MENU] Menu injection result:', result);
+      this.logConsoleMessage('[MENU] Menu injection result:', result);
     }).catch((error: any) => {
       console.error('[MENU] Failed to inject menu handlers:', error);
     });
@@ -3009,20 +3013,20 @@ export class MainWindow {
       
       // Open DevTools for debugging (TEMPORARY - remove when fixed)
       if (!isIdeMode) {
-        console.log('[DEBUG] Opening DevTools for debugging...');
+        this.logConsoleMessage('[DEBUG] Opening DevTools for debugging...');
         this.mainWindow!.webContents.openDevTools();
       }
       
       // Initialize menu if in standalone mode
       if (!isIdeMode) {
-        console.log('[MENU] Injecting menu setup after window load...');
+        this.logConsoleMessage('[MENU] Injecting menu setup after window load...');
         this.initializeMenu();
       }
       
       // REMOVED: injectAllButtonHandlers() was overwriting good handlers with broken ones
       // All button handlers are now properly attached in DOMContentLoaded event
       // The executeJavaScript injection cannot access require('electron') since Electron v5.0.0
-      // console.log('[BUTTON] Skipping button injection - handlers attached in DOMContentLoaded');
+      // this.logConsoleMessage('[BUTTON] Skipping button injection - handlers attached in DOMContentLoaded');
       
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
@@ -3042,7 +3046,7 @@ export class MainWindow {
       
       // Start performance monitoring now that DOM is ready
       this.startPerformanceMonitoring();
-      console.log('[PERF DISPLAY] Performance monitoring started after DOM ready');
+      this.logConsoleMessage('[PERF DISPLAY] Performance monitoring started after DOM ready');
       
       // Initialize activity LEDs to OFF state
       this.safeExecuteJS(`
@@ -3078,7 +3082,7 @@ export class MainWindow {
       // Setup text input control for data entry
       this.hookTextInputControl('dataEntry', (event: Event) => {
         const inputElement = event.target as HTMLInputElement;
-        console.log(`Input value: [${inputElement.value}]`);
+        this.logConsoleMessage(`Input value: [${inputElement.value}]`);
         if (event instanceof KeyboardEvent && event.key === 'Enter') {
           this.sendSerialData(inputElement.value);
           inputElement.value = '';
@@ -3138,7 +3142,7 @@ export class MainWindow {
   }
 
   private createApplicationMenu(): void {
-    console.log('[MENU SETUP] Starting createApplicationMenu()');
+    this.logConsoleMessage('[MENU SETUP] Starting createApplicationMenu()');
     
     if (!Menu) {
       console.error('[MENU SETUP] ERROR: Menu is not available from Electron!');
@@ -3153,7 +3157,7 @@ export class MainWindow {
     
     // Windows/Linux: No system menu, will use HTML menu bar
     Menu.setApplicationMenu(null);
-    console.log('[MENU SETUP] No system menu for Windows/Linux - using HTML menu bar');
+    this.logConsoleMessage('[MENU SETUP] No system menu for Windows/Linux - using HTML menu bar');
   }
   
   private createMacSystemMenu(): void {
@@ -3226,7 +3230,7 @@ export class MainWindow {
     
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
-    console.log('[MENU SETUP] ✅ macOS system menu set');
+    this.logConsoleMessage('[MENU SETUP] ✅ macOS system menu set');
   }
   
   private createOldApplicationMenu(): void {
@@ -3266,7 +3270,7 @@ export class MainWindow {
             label: '&Quit',
             accelerator: 'CmdOrCtrl+Q',
             click: () => {
-              console.log('MENU: Application is quitting...');
+              this.logConsoleMessage('MENU: Application is quitting...');
               this.knownClosedBy = true;
               app.quit();
             }
@@ -3394,7 +3398,7 @@ export class MainWindow {
   }
 
   private async showConnectionDialog(): Promise<void> {
-    console.log('[MENU] Showing connection dialog');
+    this.logConsoleMessage('[MENU] Showing connection dialog');
     
     // Get available serial ports using UsbSerial
     const deviceList = await UsbSerial.serialDeviceList(this.context);
@@ -3430,13 +3434,13 @@ export class MainWindow {
     
     if (result.response > 0) {
       const selectedPort = portList[result.response - 1].value;
-      console.log('[MENU] Connecting to port:', selectedPort);
+      this.logConsoleMessage('[MENU] Connecting to port:', selectedPort);
       await this.connectSerialPort(selectedPort);
     }
   }
   
   private async connectSerialPort(deviceNode: string): Promise<void> {
-    console.log('[MENU] Connecting to serial port:', deviceNode);
+    this.logConsoleMessage('[MENU] Connecting to serial port:', deviceNode);
     
     // Disconnect any existing connection first
     if (this._serialPort) {
@@ -3461,12 +3465,12 @@ export class MainWindow {
   }
   
   private async disconnectSerialPort(): Promise<void> {
-    console.log('[MENU] Disconnecting serial port');
+    this.logConsoleMessage('[MENU] Disconnecting serial port');
     
     if (this._serialPort) {
       try {
         await this._serialPort.close();
-        console.log('[SERIAL] Port closed successfully');
+        this.logConsoleMessage('[SERIAL] Port closed successfully');
         
         this._serialPort = undefined;
         this.logMessage('Serial port disconnected');
@@ -3484,7 +3488,7 @@ export class MainWindow {
         console.error('[SERIAL] Failed to disconnect:', error);
       }
     } else {
-      console.log('[SERIAL] No port to disconnect');
+      this.logConsoleMessage('[SERIAL] No port to disconnect');
     }
   }
 
@@ -3495,29 +3499,29 @@ export class MainWindow {
     try {
       const { screen } = require('electron');
 
-      console.log('[DISPLAY SYSTEM] ========================================');
-      console.log('[DISPLAY SYSTEM] 🖥️  COMPLETE MONITOR CONFIGURATION');
-      console.log('[DISPLAY SYSTEM] ========================================');
+      this.logConsoleMessage('[DISPLAY SYSTEM] ========================================');
+      this.logConsoleMessage('[DISPLAY SYSTEM] 🖥️  COMPLETE MONITOR CONFIGURATION');
+      this.logConsoleMessage('[DISPLAY SYSTEM] ========================================');
 
       // Get all displays
       const displays = screen.getAllDisplays();
       const primaryDisplay = screen.getPrimaryDisplay();
 
-      console.log(`[DISPLAY SYSTEM] 📊 Total Monitors: ${displays.length}`);
-      console.log(`[DISPLAY SYSTEM] 🎯 Primary Monitor ID: ${primaryDisplay.id}`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM] 📊 Total Monitors: ${displays.length}`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM] 🎯 Primary Monitor ID: ${primaryDisplay.id}`);
 
       // Log each display in detail
       displays.forEach((display: any, index: number) => {
         const isPrimary = display.id === primaryDisplay.id;
-        console.log(`[DISPLAY SYSTEM] 📺 Monitor ${index + 1}${isPrimary ? ' (PRIMARY)' : ''}: ID=${display.id}`);
-        console.log(`[DISPLAY SYSTEM]    📐 Size: ${display.size.width}x${display.size.height}`);
-        console.log(`[DISPLAY SYSTEM]    🧮 Scale: ${display.scaleFactor}x`);
-        console.log(`[DISPLAY SYSTEM]    📍 Position: (${display.bounds.x}, ${display.bounds.y})`);
-        console.log(`[DISPLAY SYSTEM]    📏 Bounds: ${display.bounds.x},${display.bounds.y} → ${display.bounds.x + display.bounds.width},${display.bounds.y + display.bounds.height}`);
-        console.log(`[DISPLAY SYSTEM]    💼 Work Area: ${display.workArea.x},${display.workArea.y} → ${display.workArea.x + display.workArea.width},${display.workArea.y + display.workArea.height}`);
-        console.log(`[DISPLAY SYSTEM]    🎚️  Work Size: ${display.workArea.width}x${display.workArea.height}`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM] 📺 Monitor ${index + 1}${isPrimary ? ' (PRIMARY)' : ''}: ID=${display.id}`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    📐 Size: ${display.size.width}x${display.size.height}`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    🧮 Scale: ${display.scaleFactor}x`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    📍 Position: (${display.bounds.x}, ${display.bounds.y})`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    📏 Bounds: ${display.bounds.x},${display.bounds.y} → ${display.bounds.x + display.bounds.width},${display.bounds.y + display.bounds.height}`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    💼 Work Area: ${display.workArea.x},${display.workArea.y} → ${display.workArea.x + display.workArea.width},${display.workArea.y + display.workArea.height}`);
+        this.logConsoleMessage(`[DISPLAY SYSTEM]    🎚️  Work Size: ${display.workArea.width}x${display.workArea.height}`);
         if (display.internal !== undefined) {
-          console.log(`[DISPLAY SYSTEM]    💻 Internal: ${display.internal}`);
+          this.logConsoleMessage(`[DISPLAY SYSTEM]    💻 Internal: ${display.internal}`);
         }
       });
 
@@ -3529,19 +3533,19 @@ export class MainWindow {
         bottom: Math.max(...displays.map((d: any) => d.bounds.y + d.bounds.height))
       };
 
-      console.log(`[DISPLAY SYSTEM] 🌐 Total Desktop Area:`);
-      console.log(`[DISPLAY SYSTEM]    📏 Bounds: (${totalBounds.left},${totalBounds.top}) → (${totalBounds.right},${totalBounds.bottom})`);
-      console.log(`[DISPLAY SYSTEM]    📐 Size: ${totalBounds.right - totalBounds.left}x${totalBounds.bottom - totalBounds.top}`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM] 🌐 Total Desktop Area:`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM]    📏 Bounds: (${totalBounds.left},${totalBounds.top}) → (${totalBounds.right},${totalBounds.bottom})`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM]    📐 Size: ${totalBounds.right - totalBounds.left}x${totalBounds.bottom - totalBounds.top}`);
 
       // Show where the cursor currently is
       const cursorPoint = screen.getCursorScreenPoint();
       const displayAtCursor = screen.getDisplayNearestPoint(cursorPoint);
-      console.log(`[DISPLAY SYSTEM] 🖱️  Cursor: (${cursorPoint.x}, ${cursorPoint.y}) on Monitor ID=${displayAtCursor.id}`);
+      this.logConsoleMessage(`[DISPLAY SYSTEM] 🖱️  Cursor: (${cursorPoint.x}, ${cursorPoint.y}) on Monitor ID=${displayAtCursor.id}`);
 
-      console.log('[DISPLAY SYSTEM] ========================================');
+      this.logConsoleMessage('[DISPLAY SYSTEM] ========================================');
 
       // Create grid test windows with delay for main window repositioning
-      // console.log(`[GRID TEST] 🕐 Starting 3-second delay - MOVE MAIN WINDOW NOW if desired...`);
+      // this.logConsoleMessage(`[GRID TEST] 🕐 Starting 3-second delay - MOVE MAIN WINDOW NOW if desired...`);
       // setTimeout(() => {
       //   this.createGridTestWindows();
       // }, 3000); // Wait 3 seconds - time to move main window
@@ -3568,11 +3572,11 @@ export class MainWindow {
       const currentDisplay = screen.getDisplayMatching(mainWindowBounds);
       const workArea = currentDisplay.workArea;
 
-      console.log('[GRID TEST] 🎯 Creating grid test windows...');
-      console.log(`[GRID TEST] 📺 Main window on Monitor ID=${currentDisplay.id}`);
-      console.log(`[GRID TEST]    Main bounds: (${mainWindowBounds.x}, ${mainWindowBounds.y}) ${mainWindowBounds.width}x${mainWindowBounds.height}`);
-      console.log(`[GRID TEST]    Monitor bounds: (${currentDisplay.bounds.x}, ${currentDisplay.bounds.y}) ${currentDisplay.bounds.width}x${currentDisplay.bounds.height}`);
-      console.log(`[GRID TEST]    Work area: (${workArea.x}, ${workArea.y}) ${workArea.width}x${workArea.height}`);
+      this.logConsoleMessage('[GRID TEST] 🎯 Creating grid test windows...');
+      this.logConsoleMessage(`[GRID TEST] 📺 Main window on Monitor ID=${currentDisplay.id}`);
+      this.logConsoleMessage(`[GRID TEST]    Main bounds: (${mainWindowBounds.x}, ${mainWindowBounds.y}) ${mainWindowBounds.width}x${mainWindowBounds.height}`);
+      this.logConsoleMessage(`[GRID TEST]    Monitor bounds: (${currentDisplay.bounds.x}, ${currentDisplay.bounds.y}) ${currentDisplay.bounds.width}x${currentDisplay.bounds.height}`);
+      this.logConsoleMessage(`[GRID TEST]    Work area: (${workArea.x}, ${workArea.y}) ${workArea.width}x${workArea.height}`);
 
       // STEP 2: Calculate adaptive grid size for this monitor (same logic as WindowPlacer)
       const displayArea = workArea.width * workArea.height;
@@ -3594,15 +3598,15 @@ export class MainWindow {
       if (aspectRatio < 1.0) ROWS = Math.min(ROWS + 1, 5);
       if (COLS % 2 === 0) COLS += 1; // Prefer odd columns
 
-      console.log(`[GRID TEST] 📐 Calculated grid: ${COLS}x${ROWS} (${COLS * ROWS} total slots)`);
-      console.log(`[GRID TEST]    Display area: ${displayArea} pixels, aspect: ${aspectRatio.toFixed(2)}`);
+      this.logConsoleMessage(`[GRID TEST] 📐 Calculated grid: ${COLS}x${ROWS} (${COLS * ROWS} total slots)`);
+      this.logConsoleMessage(`[GRID TEST]    Display area: ${displayArea} pixels, aspect: ${aspectRatio.toFixed(2)}`);
 
       // STEP 3: Calculate grid cell dimensions
       const m = 20; // margin
       const colWidth = Math.round((workArea.width - (m * 2)) / COLS);
       const rowHeight = Math.round((workArea.height - (m * 2)) / ROWS);
 
-      console.log(`[GRID TEST] 📏 Cell size: ${colWidth}x${rowHeight} with ${m}px margins`);
+      this.logConsoleMessage(`[GRID TEST] 📏 Cell size: ${colWidth}x${rowHeight} with ${m}px margins`);
 
       // STEP 4: Define test pattern - top row + edges + center column
       const testSlots = [];
@@ -3620,8 +3624,8 @@ export class MainWindow {
         testSlots.push({ row, col: COLS - 1, type: 'right-edge' });  // Right edge
       }
 
-      console.log(`[GRID TEST] 🎨 Test pattern: ${testSlots.length} windows (top-row + edges + center-column)`);
-      console.log(`[GRID TEST]    Center column: ${centerCol} (0-indexed)`);
+      this.logConsoleMessage(`[GRID TEST] 🎨 Test pattern: ${testSlots.length} windows (top-row + edges + center-column)`);
+      this.logConsoleMessage(`[GRID TEST]    Center column: ${centerCol} (0-indexed)`);
 
       // STEP 5: Create test windows
       const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43', '#10ac84', '#ee5a52', '#0984e3', '#a29bfe', '#fd79a8'];
@@ -3636,7 +3640,7 @@ export class MainWindow {
 
         const label = `SLOT-${slotNumber.toString().padStart(2, '0')} (R${slot.row}C${slot.col})`;
 
-        console.log(`[GRID TEST] 🎯 ${label}: Creating at (${x}, ${y}) - ${slot.type}`);
+        this.logConsoleMessage(`[GRID TEST] 🎯 ${label}: Creating at (${x}, ${y}) - ${slot.type}`);
 
         const testWindow = new BrowserWindow({
           width: 280,
@@ -3672,7 +3676,7 @@ export class MainWindow {
         // Load content and show window
         testWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
           .then(() => {
-            console.log(`[GRID TEST] ✅ ${label}: Content loaded`);
+            this.logConsoleMessage(`[GRID TEST] ✅ ${label}: Content loaded`);
           })
           .catch((error: any) => {
             console.error(`[GRID TEST] ❌ ${label}: Content load failed:`, error);
@@ -3684,10 +3688,10 @@ export class MainWindow {
           const moved = (actualBounds.x !== x || actualBounds.y !== y);
           const moveDistance = moved ? Math.sqrt(Math.pow(actualBounds.x - x, 2) + Math.pow(actualBounds.y - y, 2)) : 0;
 
-          console.log(`[GRID TEST] 📍 ${label}:`);
-          console.log(`[GRID TEST]    INTENDED: (${x}, ${y})`);
-          console.log(`[GRID TEST]    ACTUAL:   (${actualBounds.x}, ${actualBounds.y})`);
-          console.log(`[GRID TEST]    STATUS:   ${moved ? `❌ MOVED ${moveDistance.toFixed(0)}px` : '✅ CORRECT'}`);
+          this.logConsoleMessage(`[GRID TEST] 📍 ${label}:`);
+          this.logConsoleMessage(`[GRID TEST]    INTENDED: (${x}, ${y})`);
+          this.logConsoleMessage(`[GRID TEST]    ACTUAL:   (${actualBounds.x}, ${actualBounds.y})`);
+          this.logConsoleMessage(`[GRID TEST]    STATUS:   ${moved ? `❌ MOVED ${moveDistance.toFixed(0)}px` : '✅ CORRECT'}`);
 
           testWindow.show();
         });
@@ -3700,8 +3704,8 @@ export class MainWindow {
         }, 60000);
       });
 
-      console.log(`[GRID TEST] ⏰ ${testSlots.length} test windows created - will auto-close in 60 seconds`);
-      console.log(`[GRID TEST] 🔍 Watch logs for INTENDED vs ACTUAL position comparison`);
+      this.logConsoleMessage(`[GRID TEST] ⏰ ${testSlots.length} test windows created - will auto-close in 60 seconds`);
+      this.logConsoleMessage(`[GRID TEST] 🔍 Watch logs for INTENDED vs ACTUAL position comparison`);
 
     } catch (error) {
       console.error('[GRID TEST] ❌ Failed to create grid test windows:', error);
@@ -3711,49 +3715,49 @@ export class MainWindow {
   // Window management methods
   private cascadeWindows(): void {
     // TODO: Implement cascade window arrangement
-    console.log('[WINDOW] Cascade windows - not yet implemented');
+    this.logConsoleMessage('[WINDOW] Cascade windows - not yet implemented');
   }
   
   private tileWindows(): void {
     // TODO: Implement tile window arrangement
-    console.log('[WINDOW] Tile windows - not yet implemented');
+    this.logConsoleMessage('[WINDOW] Tile windows - not yet implemented');
   }
   
   private showAllWindows(): void {
     // Show all debug windows
     const windows = this.windowRouter.getActiveWindows();
-    console.log(`[WINDOW] Showing ${windows.length} windows`);
+    this.logConsoleMessage(`[WINDOW] Showing ${windows.length} windows`);
     // TODO: Implement actual show functionality for each window
   }
   
   private hideAllWindows(): void {
     // Hide all debug windows except main
     const windows = this.windowRouter.getActiveWindows();
-    console.log(`[WINDOW] Hiding ${windows.length} windows`);
+    this.logConsoleMessage(`[WINDOW] Hiding ${windows.length} windows`);
     // TODO: Implement actual hide functionality for each window
   }
   
   // Debug methods
   private openDebuggerWindow(cogId: number): void {
-    console.log(`[DEBUG] Opening debugger for COG ${cogId}`);
+    this.logConsoleMessage(`[DEBUG] Opening debugger for COG ${cogId}`);
     // TODO: Create debugger window for specified COG
     const windowName = `p2debugger_cog${cogId}`;
     // For now, just log the request
-    console.log(`[DEBUG] Would create window: ${windowName} for COG ${cogId}`);
+    this.logConsoleMessage(`[DEBUG] Would create window: ${windowName} for COG ${cogId}`);
   }
   
   private breakAllCogs(): void {
-    console.log('[DEBUG] Breaking all COGs');
+    this.logConsoleMessage('[DEBUG] Breaking all COGs');
     // TODO: Send break command to all COG debuggers
   }
   
   private resumeAllCogs(): void {
-    console.log('[DEBUG] Resuming all COGs');
+    this.logConsoleMessage('[DEBUG] Resuming all COGs');
     // TODO: Send resume command to all COG debuggers
   }
   
   private showPerformanceMonitor(): void {
-    console.log('[PERF] Showing performance monitor');
+    this.logConsoleMessage('[PERF] Showing performance monitor');
     if (!this.performanceMonitor) {
       this.performanceMonitor = new PerformanceMonitor(this.mainWindow);
     }
@@ -3761,7 +3765,7 @@ export class MainWindow {
   }
 
   private showDocumentation(): void {
-    console.log('[DOC] Showing documentation viewer');
+    this.logConsoleMessage('[DOC] Showing documentation viewer');
     if (!this.documentationViewer) {
       this.documentationViewer = new DocumentationViewer(this.mainWindow);
     }
@@ -3769,7 +3773,7 @@ export class MainWindow {
   }
   
   private showFindDialog(): void {
-    console.log('[EDIT] Showing find dialog');
+    this.logConsoleMessage('[EDIT] Showing find dialog');
     // TODO: Implement find dialog for terminal
     // For now, use browser's built-in find
     if (this.mainWindow) {
@@ -3797,7 +3801,7 @@ export class MainWindow {
   private saveLogFile(): void {
     const { dialog, fs } = require('electron');
     // TODO: Implement save log file dialog
-    console.log('Save log file - to be implemented');
+    this.logConsoleMessage('Save log file - to be implemented');
   }
   
   private showAboutDialog(): void {
@@ -3907,12 +3911,12 @@ export class MainWindow {
         this.closeAllDebugWindows();
         
         // Show closing message and wait 2 seconds before actually closing
-        console.log('============================================');
-        console.log('Closing application - waiting for logs to flush...');
-        console.log('============================================');
+        this.logConsoleMessage('============================================');
+        this.logConsoleMessage('Closing application - waiting for logs to flush...');
+        this.logConsoleMessage('============================================');
         
         setTimeout(() => {
-          console.log('✅ COMPLETE - Application closed');
+          this.logConsoleMessage('✅ COMPLETE - Application closed');
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.destroy();
           }
@@ -4035,7 +4039,7 @@ export class MainWindow {
   private async measureAndStoreFontMetrics(): Promise<void> {
     try {
       const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
-      console.log(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
+      this.logConsoleMessage(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
       
       // Store for future use - could be used for dynamic window sizing
       // For now, just log the actual measurements
@@ -4321,7 +4325,7 @@ export class MainWindow {
       const cogsStatus = document.getElementById('cogs-status');
       if (cogsStatus) {
         cogsStatus.textContent = '${displayText}';
-        console.log('[COG STATUS] Updated Active COGs display: ${displayText}');
+        this.logConsoleMessage('[COG STATUS] Updated Active COGs display: ${displayText}');
       } else {
         console.warn('[COG STATUS] cogs-status element not found in DOM');
       }
@@ -4344,7 +4348,7 @@ export class MainWindow {
         this.performanceUpdateTimer = setInterval(() => {
           this.updatePerformanceDisplay();
         }, this.PERFORMANCE_UPDATE_INTERVAL);
-        console.log('[PERF DISPLAY] Performance monitoring timer started');
+        this.logConsoleMessage('[PERF DISPLAY] Performance monitoring timer started');
       } else {
         console.warn('[PERF DISPLAY] Performance elements not ready, retrying in 500ms...');
         setTimeout(() => this.startPerformanceMonitoring(), 500);
@@ -4505,7 +4509,7 @@ export class MainWindow {
       (function() {
         const mode = '${currentMode}';
         const controlLine = '${currentControlLine}';
-        console.log('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
+        this.logConsoleMessage('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
         return { mode, controlLine };
       })();
     `, 'load terminal mode').then((result) => {
@@ -4847,7 +4851,7 @@ export class MainWindow {
     this.toggleDTRCallCount++;
     const previousState = this.dtrState;
     const newState = !this.dtrState;
-    console.log(`[MAIN] toggleDTR() ENTER - Call #${this.toggleDTRCallCount}, ${previousState} -> ${newState}`);
+    this.logConsoleMessage(`[MAIN] toggleDTR() ENTER - Call #${this.toggleDTRCallCount}, ${previousState} -> ${newState}`);
     this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START (Call #${this.toggleDTRCallCount}) ======`);
     this.logMessage(`[DTR TOGGLE] Previous state: ${previousState}`);
     this.logMessage(`[DTR TOGGLE] New state will be: ${newState}`);
@@ -4909,7 +4913,7 @@ export class MainWindow {
       this.mainWindow.webContents.send('update-dtr-state', this.dtrState);
     }
     this.logMessage(`[DTR TOGGLE] Final DTR state: ${this.dtrState ? 'ON' : 'OFF'}`);
-    console.log(`[MAIN] toggleDTR() EXIT - state is now ${this.dtrState}`);
+    this.logConsoleMessage(`[MAIN] toggleDTR() EXIT - state is now ${this.dtrState}`);
     this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE END ======`);
   }
 
@@ -4992,8 +4996,8 @@ export class MainWindow {
         const flashBtn = document.getElementById('download-flash');
         
         // Debug logging
-        console.log('Updating download mode to: ${mode}');
-        console.log('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
+        this.logConsoleMessage('Updating download mode to: ${mode}');
+        this.logConsoleMessage('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
         
         // Update LED indicators with performance optimization - only update if different
         if (ramLed) {
@@ -5128,7 +5132,7 @@ export class MainWindow {
           if (downloadResult.success) {
             // Log download success to debug logger window
             const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
-            console.log(`[DOWNLOAD] ${successMsg}`);
+            this.logConsoleMessage(`[DOWNLOAD] ${successMsg}`);
 
             if (this.debugLoggerWindow) {
               this.debugLoggerWindow.logSystemMessage(successMsg);
@@ -5149,7 +5153,7 @@ export class MainWindow {
 
             // Log download failure to debug logger window WITH ACTUAL REASON
             const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
-            console.log(`[DOWNLOAD] ${failureMsg}`);
+            this.logConsoleMessage(`[DOWNLOAD] ${failureMsg}`);
 
             if (this.debugLoggerWindow) {
               this.debugLoggerWindow.logSystemMessage(failureMsg);
@@ -5174,7 +5178,7 @@ export class MainWindow {
 
           // Log download failure to debug logger window
           const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
-          console.log(`[DOWNLOAD] ${failureMsg}`);
+          this.logConsoleMessage(`[DOWNLOAD] ${failureMsg}`);
 
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.logSystemMessage(failureMsg);
@@ -5387,14 +5391,14 @@ export class MainWindow {
    * Apply updated preferences to all relevant components
    */
   private applyPreferences(settings: any): void {
-    console.log('[PREFERENCES] Applying settings:', settings);
+    this.logConsoleMessage('[PREFERENCES] Applying settings:', settings);
 
     // Update context with new preferences
     this.context.updatePreferences(settings);
     
     // Apply debug logger scrollback setting
     if (settings.debugLogger && this.debugLoggerWindow) {
-      console.log(`[PREFERENCES] Updating debug logger scrollback to ${settings.debugLogger.scrollbackLines} lines`);
+      this.logConsoleMessage(`[PREFERENCES] Updating debug logger scrollback to ${settings.debugLogger.scrollbackLines} lines`);
       this.debugLoggerWindow.updateScrollbackPreference(settings.debugLogger.scrollbackLines);
     }
     
@@ -5402,20 +5406,20 @@ export class MainWindow {
     if (settings.serialPort) {
       // Apply control line setting (DTR vs RTS)
       if (settings.serialPort.controlLine && settings.serialPort.controlLine !== this.controlLineMode) {
-        console.log(`[PREFERENCES] Changing control line from ${this.controlLineMode} to ${settings.serialPort.controlLine}`);
+        this.logConsoleMessage(`[PREFERENCES] Changing control line from ${this.controlLineMode} to ${settings.serialPort.controlLine}`);
         this.setControlLineMode(settings.serialPort.controlLine);
       }
       
       // Apply default baud rate (will be used for next connection)
       if (settings.serialPort.defaultBaud) {
         this._serialBaud = settings.serialPort.defaultBaud;
-        console.log(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
+        this.logConsoleMessage(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
       }
       
       // Apply auto-reconnect setting
       if (settings.serialPort.autoReconnect !== undefined) {
         // Store for future use (implement auto-reconnect logic separately)
-        console.log(`[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(`[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`);
       }
     }
     
@@ -5424,33 +5428,33 @@ export class MainWindow {
       // Apply terminal mode (PST vs ANSI)
       if (settings.terminal.mode) {
         // Store for use when creating terminal windows
-        console.log(`[PREFERENCES] Terminal mode set to ${settings.terminal.mode}`);
+        this.logConsoleMessage(`[PREFERENCES] Terminal mode set to ${settings.terminal.mode}`);
       }
       
       // Apply color theme
       if (settings.terminal.colorTheme) {
         // Update theme for future terminal windows
-        console.log(`[PREFERENCES] Terminal color theme set to ${settings.terminal.colorTheme}`);
+        this.logConsoleMessage(`[PREFERENCES] Terminal color theme set to ${settings.terminal.colorTheme}`);
       }
       
       // Apply font settings
       if (settings.terminal.fontSize) {
         // Store for future terminal windows
-        console.log(`[PREFERENCES] Terminal font size set to ${settings.terminal.fontSize}`);
+        this.logConsoleMessage(`[PREFERENCES] Terminal font size set to ${settings.terminal.fontSize}`);
       }
       
       if (settings.terminal.fontFamily) {
         // Store for future terminal windows
-        console.log(`[PREFERENCES] Terminal font family set to ${settings.terminal.fontFamily}`);
+        this.logConsoleMessage(`[PREFERENCES] Terminal font family set to ${settings.terminal.fontFamily}`);
       }
       
       // Apply COG prefix and local echo settings
       if (settings.terminal.showCogPrefixes !== undefined) {
-        console.log(`[PREFERENCES] COG prefixes ${settings.terminal.showCogPrefixes ? 'shown' : 'hidden'}`);
+        this.logConsoleMessage(`[PREFERENCES] COG prefixes ${settings.terminal.showCogPrefixes ? 'shown' : 'hidden'}`);
       }
       
       if (settings.terminal.localEcho !== undefined) {
-        console.log(`[PREFERENCES] Local echo ${settings.terminal.localEcho ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(`[PREFERENCES] Local echo ${settings.terminal.localEcho ? 'enabled' : 'disabled'}`);
       }
     }
     
@@ -5459,25 +5463,25 @@ export class MainWindow {
       // Apply log directory
       if (settings.logging.logDirectory) {
         // Update log directory path for future logs
-        console.log(`[PREFERENCES] Log directory set to ${settings.logging.logDirectory}`);
+        this.logConsoleMessage(`[PREFERENCES] Log directory set to ${settings.logging.logDirectory}`);
       }
       
       // Apply auto-save debug output setting
       if (settings.logging.autoSaveDebug !== undefined) {
         this.immediateLog = settings.logging.autoSaveDebug;
-        console.log(`[PREFERENCES] Auto-save debug output ${this.immediateLog ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(`[PREFERENCES] Auto-save debug output ${this.immediateLog ? 'enabled' : 'disabled'}`);
       }
       
       // Apply new log on DTR reset setting
       if (settings.logging.newLogOnDtrReset !== undefined) {
         // Store for use in DTR reset handler
-        console.log(`[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(`[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`);
       }
       
       // Apply max log size setting
       if (settings.logging.maxLogSize) {
         // Store for use in log rotation logic
-        console.log(`[PREFERENCES] Max log size set to ${settings.logging.maxLogSize}`);
+        this.logConsoleMessage(`[PREFERENCES] Max log size set to ${settings.logging.maxLogSize}`);
       }
     }
     
@@ -5714,5 +5718,23 @@ export class MainWindow {
         }
       })();
     `, 'updateLoggingStatus');
+  }
+
+  /**
+   * Controlled console logging for static methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  /**
+   * Controlled console logging for instance methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
   }
 }

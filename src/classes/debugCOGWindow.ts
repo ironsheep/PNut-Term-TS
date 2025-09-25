@@ -7,6 +7,9 @@ import { Context } from '../utils/context';
 import { PlacementStrategy } from '../utils/windowPlacer';
 import { MessagePool, PooledMessage } from './shared/messagePool';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * @class DebugCOGWindow
  * @extends DebugWindowBase
@@ -414,12 +417,12 @@ export class DebugCOGWindow extends DebugWindowBase {
         
       case 'THEME':
         // COG windows use automatic theme switching, not manual
-        console.log(`COG ${this.cogId}: Theme is automatically managed based on traffic`);
+        this.logConsoleMessage(`COG ${this.cogId}: Theme is automatically managed based on traffic`);
         break;
         
       default:
         // Most commands not applicable to COG windows
-        console.log(`COG ${this.cogId}: Command '${commandName}' not supported for COG windows`);
+        this.logConsoleMessage(`COG ${this.cogId}: Command '${commandName}' not supported for COG windows`);
     }
   }
 
@@ -465,7 +468,7 @@ export class DebugCOGWindow extends DebugWindowBase {
     if (lineParts && typeof lineParts === 'object' && 'poolId' in lineParts && 'consumerCount' in lineParts) {
       pooledMessage = lineParts as PooledMessage;
       actualData = pooledMessage.data;
-      console.log(`[COG ${this.cogId}] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
+      this.logConsoleMessage(`[COG ${this.cogId}] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
     } else {
       actualData = lineParts;
     }
@@ -487,9 +490,9 @@ export class DebugCOGWindow extends DebugWindowBase {
           const messagePool = MessagePool.getInstance();
           const wasLastConsumer = messagePool.release(pooledMessage);
           if (wasLastConsumer) {
-            console.log(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId} (last consumer)`);
+            this.logConsoleMessage(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId} (last consumer)`);
           } else {
-            console.log(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
+            this.logConsoleMessage(`[COG ${this.cogId}] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
           }
         } catch (releaseError) {
           console.error(`[COG ${this.cogId}] Error releasing pooled message: ${releaseError}`);

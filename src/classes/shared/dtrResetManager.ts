@@ -2,6 +2,8 @@
 
 // src/classes/shared/dtrResetManager.ts
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 import { EventEmitter } from 'events';
 import { MessageRouter } from './messageRouter';
 import { DynamicQueue } from './dynamicQueue';
@@ -30,6 +32,18 @@ export interface ResetEvent {
  */
 
 export class DTRResetManager extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
   private router: MessageRouter;
   private resetPending: boolean = false;
   private currentResetEvent: ResetEvent | null = null;
@@ -116,7 +130,7 @@ export class DTRResetManager extends EventEmitter {
     this.isSynchronized = true;
     this.syncSource = type;
 
-    console.log(`[DTRResetManager] ${type} reset detected, sequence ${resetEvent.sequenceNumber}`);
+    this.logConsoleMessage(`[DTRResetManager] ${type} reset detected, sequence ${resetEvent.sequenceNumber}`);
 
     // Emit reset event for other components
     this.emit('resetDetected', resetEvent);
@@ -130,14 +144,14 @@ export class DTRResetManager extends EventEmitter {
     // Clear reset pending
     this.resetPending = false;
 
-    console.log(`[DTRResetManager] ${type} reset complete, log rotated`);
+    this.logConsoleMessage(`[DTRResetManager] ${type} reset complete, log rotated`);
   }
 
   /**
    * Wait for all queues to drain
    */
   private async drainQueues(): Promise<void> {
-    console.log('[DTRResetManager] Waiting for queues to drain...');
+    this.logConsoleMessage('[DTRResetManager] Waiting for queues to drain...');
 
     // Wait for router queue to empty
     const routerDrained = await this.router.waitForQueueDrain(5000);
@@ -150,7 +164,7 @@ export class DTRResetManager extends EventEmitter {
     // Additional drain time for any pending async operations
     await this.delay(50);
 
-    console.log('[DTRResetManager] All queues drained');
+    this.logConsoleMessage('[DTRResetManager] All queues drained');
   }
 
   /**
@@ -274,7 +288,7 @@ export class DTRResetManager extends EventEmitter {
       this.boundaryMarkers.delete(key);
     }
 
-    console.log(`[DTRResetManager] Pruned ${toDelete.length} old boundary markers`);
+    this.logConsoleMessage(`[DTRResetManager] Pruned ${toDelete.length} old boundary markers`);
   }
 
   /**

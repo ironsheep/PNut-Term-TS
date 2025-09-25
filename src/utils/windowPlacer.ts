@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/utils/windowPlacer.ts
 
 import { BrowserWindow } from 'electron';
@@ -188,6 +190,19 @@ interface TrackedWindow {
  * placement behavior across the application.
  */
 export class WindowPlacer {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private static instance: WindowPlacer | null = null;
   private screenManager: ScreenManager;
   private trackedWindows: Map<string, TrackedWindow> = new Map();
@@ -231,14 +246,14 @@ export class WindowPlacer {
    * @returns Calculated position and monitor info
    */
   public getNextPosition(windowId: string, config: PlacementConfig): WindowPosition {
-    console.log(`[WINDOW PLACER] 🎯 getNextPosition requested for: ${windowId}`);
-    console.log(`[WINDOW PLACER] 📊 Current occupied slots:`, Array.from(this.occupiedSlots));
-    console.log(`[WINDOW PLACER] 🪟 Current tracked windows:`, Array.from(this.trackedWindows.keys()));
+    this.logConsoleMessage(`[WINDOW PLACER] 🎯 getNextPosition requested for: ${windowId}`);
+    this.logConsoleMessage(`[WINDOW PLACER] 📊 Current occupied slots:`, Array.from(this.occupiedSlots));
+    this.logConsoleMessage(`[WINDOW PLACER] 🪟 Current tracked windows:`, Array.from(this.trackedWindows.keys()));
     
     // If window already tracked, return its current position
     const tracked = this.trackedWindows.get(windowId);
     if (tracked) {
-      console.log(`[WINDOW PLACER] ♻️  Window ${windowId} already tracked, returning existing position`);
+      this.logConsoleMessage(`[WINDOW PLACER] ♻️  Window ${windowId} already tracked, returning existing position`);
       return {
         x: tracked.bounds.x,
         y: tracked.bounds.y,
@@ -279,17 +294,17 @@ export class WindowPlacer {
     // Find first available slot
     const availableSlot = this.findAvailableSlot(config.avoidOverlap);
     if (availableSlot) {
-      console.log(`[WINDOW PLACER] ✅ Found available slot: ${availableSlot} for window: ${windowId}`);
+      this.logConsoleMessage(`[WINDOW PLACER] ✅ Found available slot: ${availableSlot} for window: ${windowId}`);
       const position = this.calculateSlotPosition(availableSlot, config.dimensions, config.margin);
       const correctedPosition = this.applyMacOSWorkaround(position, config.dimensions, windowId);
       this.markSlotOccupied(windowId, availableSlot, correctedPosition, config.dimensions);
-      console.log(`[WINDOW PLACER] 🎯 Assigned position: ${correctedPosition.x},${correctedPosition.y} in slot: ${availableSlot}`);
+      this.logConsoleMessage(`[WINDOW PLACER] 🎯 Assigned position: ${correctedPosition.x},${correctedPosition.y} in slot: ${availableSlot}`);
       return correctedPosition;
     }
 
     // All slots full, cascade if enabled
     if (config.cascadeIfFull !== false) {
-      console.log(`[WINDOW PLACER] ⚠️  All slots full, using cascade for window: ${windowId}`);
+      this.logConsoleMessage(`[WINDOW PLACER] ⚠️  All slots full, using cascade for window: ${windowId}`);
       const cascadePosition = this.getCascadePosition(windowId, config.dimensions, config.margin);
       return this.applyMacOSWorkaround(cascadePosition, config.dimensions, windowId);
     }
@@ -305,8 +320,8 @@ export class WindowPlacer {
    */
   public registerWindow(windowId: string, window: BrowserWindow, expectedPosition?: WindowPosition): void {
     const bounds = window.getBounds();
-    console.log(`[WINDOW PLACER] 📋 registerWindow called for: ${windowId}`);
-    console.log(`[WINDOW PLACER] 📏 ACTUAL window bounds from getBounds(): ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`);
+    this.logConsoleMessage(`[WINDOW PLACER] 📋 registerWindow called for: ${windowId}`);
+    this.logConsoleMessage(`[WINDOW PLACER] 📏 ACTUAL window bounds from getBounds(): ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`);
 
     // Apply macOS position validation if expected position provided
     if (expectedPosition) {
@@ -315,7 +330,7 @@ export class WindowPlacer {
 
     const monitor = this.screenManager.getMonitorAtPoint(bounds.x, bounds.y);
     const slot = this.detectSlotFromPosition(bounds);
-    console.log(`[WINDOW PLACER] 🎯 ACTUAL detected slot: ${slot} (vs calculated slot)`);
+    this.logConsoleMessage(`[WINDOW PLACER] 🎯 ACTUAL detected slot: ${slot} (vs calculated slot)`);
     
     this.trackedWindows.set(windowId, {
       id: windowId,
@@ -355,7 +370,7 @@ export class WindowPlacer {
       
       // Detect monitor change
       if (oldMonitorId !== newMonitor.id) {
-        console.log(`Window ${windowId} moved from monitor ${oldMonitorId} to ${newMonitor.id}`);
+        this.logConsoleMessage(`Window ${windowId} moved from monitor ${oldMonitorId} to ${newMonitor.id}`);
         // Could emit an event here for other components to react
       }
       
@@ -379,14 +394,14 @@ export class WindowPlacer {
   public unregisterWindow(windowId: string): void {
     const tracked = this.trackedWindows.get(windowId);
     if (tracked) {
-      console.log(`[WINDOW PLACER] 🗑️  Unregistering window: ${windowId} from slot: ${tracked.slot}`);
+      this.logConsoleMessage(`[WINDOW PLACER] 🗑️  Unregistering window: ${windowId} from slot: ${tracked.slot}`);
       if (tracked.slot) {
         this.occupiedSlots.delete(tracked.slot);
-        console.log(`[WINDOW PLACER] ♻️  Freed slot: ${tracked.slot}, remaining slots:`, Array.from(this.occupiedSlots));
+        this.logConsoleMessage(`[WINDOW PLACER] ♻️  Freed slot: ${tracked.slot}, remaining slots:`, Array.from(this.occupiedSlots));
       }
       this.trackedWindows.delete(windowId);
     } else {
-      console.log(`[WINDOW PLACER] ⚠️  Attempted to unregister unknown window: ${windowId}`);
+      this.logConsoleMessage(`[WINDOW PLACER] ⚠️  Attempted to unregister unknown window: ${windowId}`);
     }
   }
 
@@ -436,7 +451,7 @@ export class WindowPlacer {
       return position; // No workaround needed for positive coordinates
     }
 
-    console.log(`[WINDOW PLACER] 🍎 macOS workaround: ${windowId} has negative coords (${position.x}, ${position.y})`);
+    this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS workaround: ${windowId} has negative coords (${position.x}, ${position.y})`);
 
     // Strategy 1: Use monitor-relative positioning instead of absolute coordinates
     const targetMonitor = position.monitor;
@@ -460,7 +475,7 @@ export class WindowPlacer {
       monitor: targetMonitor
     };
 
-    console.log(`[WINDOW PLACER] 🍎 macOS correction: ${windowId} moved from (${position.x}, ${position.y}) to (${correctedPosition.x}, ${correctedPosition.y})`);
+    this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS correction: ${windowId} moved from (${position.x}, ${position.y}) to (${correctedPosition.x}, ${correctedPosition.y})`);
 
     return correctedPosition;
   }
@@ -493,18 +508,18 @@ export class WindowPlacer {
       const yDiff = Math.abs(actualBounds.y - expectedPosition.y);
 
       if (xDiff > tolerance || yDiff > tolerance) {
-        console.log(`[WINDOW PLACER] 🍎 macOS position drift detected for ${windowId}:`);
-        console.log(`[WINDOW PLACER] 🍎   Expected: (${expectedPosition.x}, ${expectedPosition.y})`);
-        console.log(`[WINDOW PLACER] 🍎   Actual: (${actualBounds.x}, ${actualBounds.y})`);
-        console.log(`[WINDOW PLACER] 🍎   Drift: (${xDiff}, ${yDiff})`);
+        this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS position drift detected for ${windowId}:`);
+        this.logConsoleMessage(`[WINDOW PLACER] 🍎   Expected: (${expectedPosition.x}, ${expectedPosition.y})`);
+        this.logConsoleMessage(`[WINDOW PLACER] 🍎   Actual: (${actualBounds.x}, ${actualBounds.y})`);
+        this.logConsoleMessage(`[WINDOW PLACER] 🍎   Drift: (${xDiff}, ${yDiff})`);
 
         // Strategy 2: Try to move window back to intended position
         // Note: This may not work if macOS keeps overriding, but worth trying
         try {
           window.setPosition(expectedPosition.x, expectedPosition.y);
-          console.log(`[WINDOW PLACER] 🍎 Attempted position correction for ${windowId}`);
+          this.logConsoleMessage(`[WINDOW PLACER] 🍎 Attempted position correction for ${windowId}`);
         } catch (error) {
-          console.warn(`[WINDOW PLACER] 🍎 Position correction failed for ${windowId}:`, error);
+          this.logConsoleMessage(`[WINDOW PLACER] 🍎 Position correction failed for ${windowId}:`, error);
         }
       }
     }, 100); // Short delay to allow macOS to do its thing first
@@ -523,18 +538,18 @@ export class WindowPlacer {
     const primaryMonitor = this.screenManager.getPrimaryMonitor();
 
     // HYPOTHESIS 2 DEBUGGING: Monitor ID vs Array Index
-    console.log(`[WINDOW_PLACER] 🔍 HYPOTHESIS 2: Monitor Selection Analysis`);
-    console.log(`[WINDOW_PLACER] 🔍 AVAILABLE MONITORS: [${monitors.map((m, i) => `Index:${i} ID:${m.id}`).join(', ')}]`);
-    console.log(`[WINDOW_PLACER] 🔍 PRIMARY MONITOR: ID:${primaryMonitor.id}`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🔍 HYPOTHESIS 2: Monitor Selection Analysis`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🔍 AVAILABLE MONITORS: [${monitors.map((m, i) => `Index:${i} ID:${m.id}`).join(', ')}]`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🔍 PRIMARY MONITOR: ID:${primaryMonitor.id}`);
 
     if (!this.isMacOS) {
-      console.log(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (non-macOS)`);
+      this.logConsoleMessage(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (non-macOS)`);
       return this.screenManager.getPrimaryMonitor(); // Use normal logic on other platforms
     }
 
     // If primary monitor has positive coordinates, use it
     if (primaryMonitor.bounds.x >= 0 && primaryMonitor.bounds.y >= 0) {
-      console.log(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (positive coords)`);
+      this.logConsoleMessage(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (positive coords)`);
       return primaryMonitor;
     }
 
@@ -542,14 +557,14 @@ export class WindowPlacer {
     const positiveMonitor = monitors.find(m => m.bounds.x >= 0 && m.bounds.y >= 0);
 
     if (positiveMonitor) {
-      console.log(`[WINDOW PLACER] 🍎 macOS optimization: Using monitor ${positiveMonitor.id} with positive coords instead of primary`);
-      console.log(`[WINDOW_PLACER] 🔍 SELECTED: Monitor ID:${positiveMonitor.id} (macOS positive coords)`);
+      this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS optimization: Using monitor ${positiveMonitor.id} with positive coords instead of primary`);
+      this.logConsoleMessage(`[WINDOW_PLACER] 🔍 SELECTED: Monitor ID:${positiveMonitor.id} (macOS positive coords)`);
       return positiveMonitor;
     }
 
     // If all monitors have negative coordinates, use primary (least problematic)
-    console.log(`[WINDOW PLACER] 🍎 macOS warning: All monitors have negative coordinates, using primary`);
-    console.log(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (fallback)`);
+    this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS warning: All monitors have negative coordinates, using primary`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🔍 SELECTED: Primary monitor ID:${primaryMonitor.id} (fallback)`);
     return primaryMonitor;
   }
 
@@ -563,7 +578,7 @@ export class WindowPlacer {
   ): WindowPosition {
     const m = margin ?? this.defaultMargin;
     const monitor = this.selectOptimalMonitor(); // Use smart monitor selection
-    console.log(`[WINDOW PLACER] 🖥️  Using monitor: ID=${monitor.id} (${monitor.workArea.width}x${monitor.workArea.height} at ${monitor.workArea.x},${monitor.workArea.y})`);
+    this.logConsoleMessage(`[WINDOW PLACER] 🖥️  Using monitor: ID=${monitor.id} (${monitor.workArea.width}x${monitor.workArea.height} at ${monitor.workArea.x},${monitor.workArea.y})`);
     const workArea = monitor.workArea;
 
     // Calculate grid dimensions using shared logic
@@ -626,13 +641,13 @@ export class WindowPlacer {
     const finalY = Math.round(Math.max(workArea.y + m, Math.min(y, workArea.y + workArea.height - dimensions.height - m)));
 
     // HYPOTHESIS 1 DEBUGGING: Grid Math Calculations
-    console.log(`[WINDOW_PLACER] 🧮 HYPOTHESIS 1: Grid Math Analysis`);
-    console.log(`[WINDOW_PLACER] 🧮 SLOT: ${slot} -> grid(${col},${row}) on ${COLS}x${ROWS} grid`);
-    console.log(`[WINDOW_PLACER] 🧮 WORK_AREA: ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height}`);
-    console.log(`[WINDOW_PLACER] 🧮 CELL_SIZE: ${colWidth}x${rowHeight} (margin:${m})`);
-    console.log(`[WINDOW_PLACER] 🧮 RAW_CALC: x=${x}, y=${y}`);
-    console.log(`[WINDOW_PLACER] 🧮 FINAL_POS: (${finalX}, ${finalY}) on Monitor ID:${monitor.id}`);
-    console.log(`[WINDOW_PLACER] 🧮 WINDOW_SIZE: ${dimensions.width}x${dimensions.height}`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 HYPOTHESIS 1: Grid Math Analysis`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 SLOT: ${slot} -> grid(${col},${row}) on ${COLS}x${ROWS} grid`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 WORK_AREA: ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height}`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 CELL_SIZE: ${colWidth}x${rowHeight} (margin:${m})`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 RAW_CALC: x=${x}, y=${y}`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 FINAL_POS: (${finalX}, ${finalY}) on Monitor ID:${monitor.id}`);
+    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 WINDOW_SIZE: ${dimensions.width}x${dimensions.height}`);
 
     return { x: finalX, y: finalY, monitor };
   }
@@ -879,7 +894,7 @@ export class WindowPlacer {
     // Check for width overflow (marks cells left and right)
     const widthOverflow = dimensions.width > (colWidth - safetyMargin);
     if (widthOverflow) {
-      console.log(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.width}px) overflows column width (${colWidth}px)`);
+      this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.width}px) overflows column width (${colWidth}px)`);
 
       // Calculate how many additional columns are needed
       const additionalWidth = dimensions.width - colWidth;
@@ -895,7 +910,7 @@ export class WindowPlacer {
           const leftSlot = this.rowColToSlot(row, leftCol);
           if (leftSlot) {
             this.occupiedSlots.add(leftSlot);
-            console.log(`[WINDOW PLACER] 🔍 COLLISION: Marking left slot ${leftSlot} as occupied`);
+            this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Marking left slot ${leftSlot} as occupied`);
           }
         }
       }
@@ -906,7 +921,7 @@ export class WindowPlacer {
           const rightSlot = this.rowColToSlot(row, rightCol);
           if (rightSlot) {
             this.occupiedSlots.add(rightSlot);
-            console.log(`[WINDOW PLACER] 🔍 COLLISION: Marking right slot ${rightSlot} as occupied`);
+            this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Marking right slot ${rightSlot} as occupied`);
           }
         }
       }
@@ -915,7 +930,7 @@ export class WindowPlacer {
     // Check for height overflow (marks cells below only)
     const heightOverflow = dimensions.height > (rowHeight - safetyMargin);
     if (heightOverflow) {
-      console.log(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.height}px) overflows row height (${rowHeight}px)`);
+      this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.height}px) overflows row height (${rowHeight}px)`);
 
       // Calculate how many additional rows are needed
       const additionalHeight = dimensions.height - rowHeight;
@@ -928,7 +943,7 @@ export class WindowPlacer {
           const belowSlot = this.rowColToSlot(belowRow, col);
           if (belowSlot) {
             this.occupiedSlots.add(belowSlot);
-            console.log(`[WINDOW PLACER] 🔍 COLLISION: Marking below slot ${belowSlot} as occupied`);
+            this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Marking below slot ${belowSlot} as occupied`);
           }
         }
       }

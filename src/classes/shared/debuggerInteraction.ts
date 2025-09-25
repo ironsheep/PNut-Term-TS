@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/debuggerInteraction.ts
 
 import { DebuggerRenderer } from './debuggerRenderer';
@@ -58,6 +60,19 @@ export interface HitTestResult {
  * Manages mouse and keyboard interaction for the debugger window
  */
 export class DebuggerInteraction {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   private renderer: DebuggerRenderer;
   private protocol: DebuggerProtocol;
   private dataManager: DebuggerDataManager;
@@ -151,7 +166,7 @@ export class DebuggerInteraction {
         break;
       case 'debug':
         // Debug mode toggle not implemented in protocol
-        console.log('Debug mode toggle');
+        this.logConsoleMessage('Debug mode toggle');
         break;
       case 'init':
         // Init command not implemented in protocol
@@ -627,7 +642,7 @@ export class DebuggerInteraction {
         break;
       case 'debug':
         // Debug mode toggle not implemented in protocol
-        console.log('Debug mode toggle');
+        this.logConsoleMessage('Debug mode toggle');
         break;
       case 'init':
         // Init command not implemented in protocol
@@ -635,17 +650,17 @@ export class DebuggerInteraction {
         break;
       case 'event':
         // Event command not implemented
-        console.log('Event command');
+        this.logConsoleMessage('Event command');
         break;
       case 'int1':
       case 'int2':
       case 'int3':
         // Interrupt command not implemented
-        console.log('Interrupt', command);
+        this.logConsoleMessage('Interrupt', command);
         break;
       case 'main':
         // Main command not implemented
-        console.log('Main command');
+        this.logConsoleMessage('Main command');
         break;
     }
   }
@@ -671,12 +686,12 @@ export class DebuggerInteraction {
   
   private editMemory(address: number): void {
     // Show edit dialog for memory
-    console.log(`Edit memory at ${address.toString(16)}`);
+    this.logConsoleMessage(`Edit memory at ${address.toString(16)}`);
   }
-  
+
   private editRegister(register: string): void {
     // Show edit dialog for register
-    console.log(`Edit register ${register}`);
+    this.logConsoleMessage(`Edit register ${register}`);
   }
   
   // Breakpoint methods
@@ -710,7 +725,7 @@ export class DebuggerInteraction {
   
   private togglePin(pin: number): void {
     // Toggle pin state
-    console.log(`Toggle pin ${pin}`);
+    this.logConsoleMessage(`Toggle pin ${pin}`);
     this.renderer.markRegionDirty('pins');
   }
   
@@ -718,22 +733,22 @@ export class DebuggerInteraction {
   
   private showContextMenu(hit: HitTestResult): void {
     // Show context menu at hit location
-    console.log('Show context menu for', hit);
+    this.logConsoleMessage('Show context menu for', hit);
   }
   
   private showAddressDialog(): void {
     // Show dialog to jump to address
-    console.log('Show address dialog');
+    this.logConsoleMessage('Show address dialog');
   }
   
   private showHelp(): void {
     // Show help dialog with keyboard shortcuts
-    console.log('Show help');
+    this.logConsoleMessage('Show help');
   }
   
   private requestClose(): void {
     // Request window close
-    console.log('Request close');
+    this.logConsoleMessage('Request close');
   }
   
   /**

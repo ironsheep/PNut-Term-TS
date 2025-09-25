@@ -2,6 +2,8 @@
 
 // src/classes/shared/windowRouter.ts
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter } from 'events';
@@ -87,6 +89,18 @@ export interface RoutingStats {
  * Singleton pattern ensures single routing point
  */
 export class WindowRouter extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
   private static instance: WindowRouter | null = null;
   private context: Context | null = null;
 
@@ -164,7 +178,7 @@ export class WindowRouter extends EventEmitter {
    */
   public setContext(context: Context): void {
     this.context = context;
-    console.log('[ROUTER] Context set for directory-based recording paths');
+    this.logConsoleMessage('[ROUTER] Context set for directory-based recording paths');
   }
   
   /**
@@ -358,7 +372,7 @@ export class WindowRouter extends EventEmitter {
       let loggerWindowFound = false;
       for (const [windowId, window] of this.windows) {
         if (window.type === 'logger') {  // DebugLoggerWindow registers as 'logger' type
-          console.log(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
+          this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
           window.handler(text);
           window.stats.messagesReceived++;
           handled = true;
@@ -395,7 +409,7 @@ export class WindowRouter extends EventEmitter {
         // Check for the golden synchronization marker
         if (text.includes('$0000_0000 $0000_0000 load')) {
           this.logger.info('ROUTE', '🎯 P2 SYSTEM REBOOT detected - golden sync marker found');
-          console.log(`[P2 SYNC] 🎯 SYSTEM REBOOT: ${text}`);
+          this.logConsoleMessage(`[P2 SYNC] 🎯 SYSTEM REBOOT: ${text}`);
           // Emit special event for complete synchronization reset
           this.emit('p2SystemReboot', { message: text, timestamp: Date.now() });
         } else {
@@ -459,10 +473,10 @@ export class WindowRouter extends EventEmitter {
     // Backtick commands have format: `WINDOWTYPE command data...
     // Example: `TERM MyTerm SIZE 80 25
     
-    console.log(`[ROUTER DEBUG] routeBacktickCommand called with: "${command}"`);
+    this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command}"`);
     
     if (!command.startsWith('`')) {
-      console.log(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command}"`);
       this.logger.warn('ROUTE', `Invalid backtick command: ${command}`);
       return;
     }
@@ -470,7 +484,7 @@ export class WindowRouter extends EventEmitter {
     // CRITICAL: Never create COG-0 windows from backtick commands
     // COG0 is the system COG and should never have a debug window
     if (command.includes('COG-0') || command.includes('COG0')) {
-      console.log(`[ROUTER DEBUG] ⚠️ Ignoring COG-0 backtick command (system COG): "${command}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ⚠️ Ignoring COG-0 backtick command (system COG): "${command}"`);
       this.logger.info('ROUTE', 'Ignoring COG-0 backtick command (system COG)');
       return;
     }
@@ -479,10 +493,10 @@ export class WindowRouter extends EventEmitter {
     const cleanCommand = command.substring(1).trim();
     const parts = cleanCommand.split(' ');
     
-    console.log(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
+    this.logConsoleMessage(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
     
     if (parts.length < 1) {
-      console.log(`[ROUTER DEBUG] ❌ Empty backtick command`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ❌ Empty backtick command`);
       this.logger.warn('ROUTE', `Empty backtick command`);
       return;
     }
@@ -493,25 +507,25 @@ export class WindowRouter extends EventEmitter {
     
     // CRITICAL: Never create COG-0 windows
     if (windowName === 'COG-0' || windowName === 'COG0') {
-      console.log(`[ROUTER DEBUG] ⚠️ Blocking COG-0 window creation (system COG)`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ⚠️ Blocking COG-0 window creation (system COG)`);
       this.logger.info('ROUTE', 'Blocked COG-0 window creation attempt');
       return;
     }
     
-    console.log(`[ROUTER DEBUG] Looking for window: "${windowName}"${isCloseCommand ? ' (CLOSE command)' : ''}`);
-    console.log(`[ROUTER DEBUG] Registered windows: [${Array.from(this.windows.keys()).join(', ')}]`);
+    this.logConsoleMessage(`[ROUTER DEBUG] Looking for window: "${windowName}"${isCloseCommand ? ' (CLOSE command)' : ''}`);
+    this.logConsoleMessage(`[ROUTER DEBUG] Registered windows: [${Array.from(this.windows.keys()).join(', ')}]`);
     
     if (isCloseCommand) {
       // Handle CLOSE command - find and close the window
-      console.log(`[ROUTER DEBUG] Processing CLOSE command for window: "${windowName}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] Processing CLOSE command for window: "${windowName}"`);
       const window = this.windows.get(windowName);
       if (window) {
-        console.log(`[ROUTER DEBUG] ✅ Found window "${windowName}" - sending close command`);
+        this.logConsoleMessage(`[ROUTER DEBUG] ✅ Found window "${windowName}" - sending close command`);
         window.handler(command); // Let the window handle its own close
         // Window will unregister itself when it closes
         return;
       } else {
-        console.log(`[ROUTER DEBUG] ❌ Window "${windowName}" not found for CLOSE command`);
+        this.logConsoleMessage(`[ROUTER DEBUG] ❌ Window "${windowName}" not found for CLOSE command`);
         return; // Don't emit windowNeeded for CLOSE commands
       }
     }
@@ -520,7 +534,7 @@ export class WindowRouter extends EventEmitter {
     let routed = false;
     const window = this.windows.get(windowName);
     if (window) {
-      console.log(`[ROUTER DEBUG] ✅ Found window by name: "${windowName}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ✅ Found window by name: "${windowName}"`);
       // Send the full command including backtick for window to parse
       window.handler(command);
       window.stats.messagesReceived++;
@@ -536,7 +550,7 @@ export class WindowRouter extends EventEmitter {
       const safeWindowName = safeDisplayString(windowName);
       const safeCommand = safeDisplayString(command);
       const errorMsg = `ERROR: Unknown window '${safeWindowName}' - cannot route command: ${safeCommand}`;
-      console.log(`[ROUTER DEBUG] 🚨 No window found for "${safeWindowName}" - emitting windowNeeded event`);
+      this.logConsoleMessage(`[ROUTER DEBUG] 🚨 No window found for "${safeWindowName}" - emitting windowNeeded event`);
       this.logger.error('ROUTE', errorMsg);
       
       // Send error to terminal window for user visibility
@@ -546,10 +560,10 @@ export class WindowRouter extends EventEmitter {
       }
       
       // Emit event in case someone wants to handle missing windows
-      console.log(`[ROUTER DEBUG] 📡 Emitting windowNeeded event: type="${windowName}", command="${command}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] 📡 Emitting windowNeeded event: type="${windowName}", command="${command}"`);
       this.emit('windowNeeded', { type: windowName, command: command, error: errorMsg });
     } else {
-      console.log(`[ROUTER DEBUG] ✅ Successfully routed command to existing window`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ✅ Successfully routed command to existing window`);
     }
   }
   

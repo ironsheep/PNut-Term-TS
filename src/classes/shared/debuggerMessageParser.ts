@@ -1,5 +1,7 @@
 /** @format */
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 // src/classes/shared/debuggerMessageParser.ts
 
 import { EventEmitter } from 'events';
@@ -54,6 +56,19 @@ export interface ParsedMessage {
  * - Window creation triggers on initial debugger message
  */
 export class DebuggerMessageParser extends EventEmitter {
+  // Console logging control
+  private static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
   // Circular buffer implementation - fixed 4K, never reallocated
   private readonly bufferSize: number = 4096;
   private buffer: Uint8Array = new Uint8Array(this.bufferSize);
@@ -112,7 +127,7 @@ export class DebuggerMessageParser extends EventEmitter {
     const availableBytes = this.getAvailableBytes();
     const usedBytes = this.getUsedBytes();
     
-    console.log(`[PARSER] processData: received ${data.length} bytes, used=${usedBytes}, available=${availableBytes}`);
+    this.logConsoleMessage(`[PARSER] processData: received ${data.length} bytes, used=${usedBytes}, available=${availableBytes}`);
     
     // Log incoming data in hex/ASCII format (first 64 bytes)
     const hexLines: string[] = [];
@@ -136,7 +151,7 @@ export class DebuggerMessageParser extends EventEmitter {
       const offsetHex = offset.toString(16).padStart(4, '0');
       hexLines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
     }
-    console.log('[PARSER INCOMING DATA]:');
+    this.logConsoleMessage('[PARSER INCOMING DATA]:');
     hexLines.forEach(line => console.log(line));
     
     // Check if we have space for new data
@@ -155,7 +170,7 @@ export class DebuggerMessageParser extends EventEmitter {
       this.tail = (this.tail + 1) % this.bufferSize;
     }
     
-    console.log(`[PARSER] Circular buffer: head=${this.head}, tail=${this.tail}, used=${this.getUsedBytes()}`);
+    this.logConsoleMessage(`[PARSER] Circular buffer: head=${this.head}, tail=${this.tail}, used=${this.getUsedBytes()}`);
 
     // Parse messages from buffer
     this.parseBuffer();
@@ -212,7 +227,7 @@ export class DebuggerMessageParser extends EventEmitter {
       count = usedBytes;
     }
     this.head = (this.head + count) % this.bufferSize;
-    console.log(`[PARSER] Consumed ${count} bytes, new head=${this.head}`);
+    this.logConsoleMessage(`[PARSER] Consumed ${count} bytes, new head=${this.head}`);
   }
 
   /**
@@ -234,7 +249,7 @@ export class DebuggerMessageParser extends EventEmitter {
         const eolPos = this.findEOL(currentData, 0);
         if (eolPos === -1) {
           // No EOL yet, wait for more data
-          console.log(`[PARSE] Text detected but no EOL yet, waiting for more data`);
+          this.logConsoleMessage(`[PARSE] Text detected but no EOL yet, waiting for more data`);
           break;
         }
         
@@ -258,7 +273,7 @@ export class DebuggerMessageParser extends EventEmitter {
         const payloadSize = (header >> 16) & 0xFFFF;  // Bytes 3-4 are payload size
         const totalSize = 4 + payloadSize;
 
-        console.log(`[PARSE] Found 0xDB packet: type=0x${messageType.toString(16)}, payload=${payloadSize}, total=${totalSize}`);
+        this.logConsoleMessage(`[PARSE] Found 0xDB packet: type=0x${messageType.toString(16)}, payload=${payloadSize}, total=${totalSize}`);
 
         // Validate payload size is reasonable (max 4KB typical)
         if (payloadSize <= 4096) {
@@ -278,11 +293,11 @@ export class DebuggerMessageParser extends EventEmitter {
             }
           } else {
             // Wait for complete message
-            console.log(`[PARSE] 0xDB packet incomplete, need ${totalSize} bytes, have ${usedBytes}`);
+            this.logConsoleMessage(`[PARSE] 0xDB packet incomplete, need ${totalSize} bytes, have ${usedBytes}`);
             break;
           }
         } else {
-          console.log(`[PARSE] Invalid 0xDB packet payload size: ${payloadSize}`);
+          this.logConsoleMessage(`[PARSE] Invalid 0xDB packet payload size: ${payloadSize}`);
           // Skip this byte and try again
           this.consumeBytes(1);
           continue;
@@ -301,7 +316,7 @@ export class DebuggerMessageParser extends EventEmitter {
           if (usedBytes > 80) {
             // Look at position 80 (first byte after the 80-byte packet)
             if (this.looksLikeP2Text(currentData, 80)) {
-              console.log(`[PARSE] Found text at position 80 - treating first 80 bytes as debugger packet`);
+              this.logConsoleMessage(`[PARSE] Found text at position 80 - treating first 80 bytes as debugger packet`);
               
               // Validate and emit the 80-byte packet
               if (this.isValidInitialMessage(currentData)) {
@@ -320,7 +335,7 @@ export class DebuggerMessageParser extends EventEmitter {
             }
           } else if (usedBytes === 80) {
             // Exactly 80 bytes at end of buffer - might be debugger packet
-            console.log(`[PARSE] Exactly 80 bytes at end, checking if valid debugger packet`);
+            this.logConsoleMessage(`[PARSE] Exactly 80 bytes at end, checking if valid debugger packet`);
             if (this.isValidInitialMessage(currentData)) {
               const message = this.peekBytes(0, 80);
               if (message) {
@@ -341,7 +356,7 @@ export class DebuggerMessageParser extends EventEmitter {
         // Fallback: no clear pattern found
         // If we have a lot of data, process conservatively
         if (usedBytes >= 256) {
-          console.log(`[PARSE] No clear pattern in ${usedBytes} bytes - processing as unknown binary`);
+          this.logConsoleMessage(`[PARSE] No clear pattern in ${usedBytes} bytes - processing as unknown binary`);
           const chunk = this.peekBytes(0, 256);
           if (chunk) {
             this.emitUnknownBinaryMessage(chunk);
@@ -350,7 +365,7 @@ export class DebuggerMessageParser extends EventEmitter {
           continue;
         } else {
           // Not enough data, wait for more
-          console.log(`[PARSE] Not text, not 0xDB, only ${usedBytes} bytes, waiting for more`);
+          this.logConsoleMessage(`[PARSE] Not text, not 0xDB, only ${usedBytes} bytes, waiting for more`);
           break;
         }
       }
@@ -389,18 +404,18 @@ export class DebuggerMessageParser extends EventEmitter {
     const ptrBValid = ptrB <= 0x7FFFF;
 
     // Log all validation checks with pass/fail status
-    console.log(`[DEBUGGER VALIDATION] === Checking 80-byte packet ===`);
-    console.log(`[DEBUGGER VALIDATION] COG Number: ${cogNum} (≤7) - ${cogValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] PC: 0x${pc.toString(16)} (≤0x80000) - ${pcValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] Stack A: 0x${stackA.toString(16)} (≤0x7FFFF) - ${stackAValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] Stack B: 0x${stackB.toString(16)} (≤0x7FFFF) - ${stackBValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] Call Depth: ${callDepth} (≤32) - ${callDepthValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] Ptr A: 0x${ptrA.toString(16)} (≤0x7FFFF) - ${ptrAValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] Ptr B: 0x${ptrB.toString(16)} (≤0x7FFFF) - ${ptrBValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] === Checking 80-byte packet ===`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] COG Number: ${cogNum} (≤7) - ${cogValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] PC: 0x${pc.toString(16)} (≤0x80000) - ${pcValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] Stack A: 0x${stackA.toString(16)} (≤0x7FFFF) - ${stackAValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] Stack B: 0x${stackB.toString(16)} (≤0x7FFFF) - ${stackBValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] Call Depth: ${callDepth} (≤32) - ${callDepthValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] Ptr A: 0x${ptrA.toString(16)} (≤0x7FFFF) - ${ptrAValid ? 'PASS' : 'FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] Ptr B: 0x${ptrB.toString(16)} (≤0x7FFFF) - ${ptrBValid ? 'PASS' : 'FAIL'}`);
 
     // For now, ALWAYS ACCEPT to see what's happening - but log validation results
-    console.log(`[DEBUGGER VALIDATION] ACCEPTED FOR ANALYSIS - Validation: ${cogValid && pcValid && callDepthValid ? 'Would PASS' : 'Would FAIL'}`);
-    console.log(`[DEBUGGER VALIDATION] =======================================`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] ACCEPTED FOR ANALYSIS - Validation: ${cogValid && pcValid && callDepthValid ? 'Would PASS' : 'Would FAIL'}`);
+    this.logConsoleMessage(`[DEBUGGER VALIDATION] =======================================`);
 
     // Always return true for now to gather data
     return true;
@@ -677,10 +692,10 @@ export class DebuggerMessageParser extends EventEmitter {
           result.textPreview = new TextDecoder('utf-8', { fatal: false })
             .decode(textBytes).replace(/[\\r\\n]/g, '\\\\n').substring(0, 50);
           
-          console.log(`[BOUNDARY DEBUG] ${eolType} at ${i}, text starts at ${textStart}, binary=${result.binaryLength}, text="${result.textPreview}"`);
+          this.logConsoleMessage(`[BOUNDARY DEBUG] ${eolType} at ${i}, text starts at ${textStart}, binary=${result.binaryLength}, text="${result.textPreview}"`);
           return result;
         } else {
-          console.log(`[BOUNDARY DEBUG] ${eolType} at ${i} but no valid ASCII text start - continuing search`);
+          this.logConsoleMessage(`[BOUNDARY DEBUG] ${eolType} at ${i} but no valid ASCII text start - continuing search`);
         }
         
         // Skip the right number of characters when moving forward
