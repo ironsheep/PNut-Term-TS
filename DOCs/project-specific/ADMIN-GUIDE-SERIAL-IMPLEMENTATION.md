@@ -273,6 +273,163 @@ Comprehensive test coverage with specialized test suites:
 - **Memory**: 50MB base + 10MB/window
 - **Disk (recording)**: 1MB/minute at 2 Mbps
 
+## External Control Interface
+
+### Background Operation and Automation
+
+The application supports external control via Unix signals, enabling automation scenarios where PNut-Term-TS runs in the background while being controlled by external processes (shell scripts, CI/CD systems, or AI assistants like Claude).
+
+### Signal Handlers
+
+**Implementation Location:** `src/electron-main.ts` and `src/classes/mainWindow.ts`
+
+#### Available Signals
+
+1. **SIGUSR1 - Hardware Reset**
+   - Triggers a DTR or RTS pulse (based on configuration)
+   - Pulse duration: 100ms low, then high
+   - Notifies all debug windows about the reset
+   - Logs the reset event
+
+2. **SIGTERM - Graceful Shutdown**
+   - Stops any active recording
+   - Closes all debug windows
+   - Closes serial port connection
+   - Saves window positions
+   - Exits cleanly
+
+3. **SIGINT - Interrupt (Ctrl+C)**
+   - Same behavior as SIGTERM
+   - Allows clean exit when running in foreground
+
+### Usage Examples
+
+#### Basic Background Operation
+```bash
+# Start PNut-Term-TS in background
+./pnut-term-ts --port /dev/ttyUSB0 --baud 2000000 &
+PID=$!
+
+# Store PID for later use
+echo $PID > pnut-term.pid
+
+# Reset the hardware
+kill -USR1 $PID
+
+# When done, graceful shutdown
+kill -TERM $PID
+```
+
+#### Automated Testing Script
+```bash
+#!/bin/bash
+# Automated P2 testing with PNut-Term-TS
+
+# Start terminal in background
+./pnut-term-ts --port /dev/ttyUSB0 &
+PID=$!
+
+# Wait for startup
+sleep 2
+
+# Download test program
+./pnut-term-ts --port /dev/ttyUSB0 -r test_program.binary
+
+# Reset to start fresh
+kill -USR1 $PID
+
+# Let test run
+sleep 10
+
+# Collect logs (if implemented)
+# ... log collection ...
+
+# Clean shutdown
+kill -TERM $PID
+wait $PID
+```
+
+#### AI Assistant Integration
+```bash
+# Claude/AI assistant controlling hardware testing
+# The AI can issue these commands to control the hardware:
+
+# Start monitoring
+./pnut-term-ts --port /dev/ttyUSB0 2>&1 | tee debug.log &
+PID=$!
+
+# AI analyzes output in debug.log
+# When anomaly detected, reset hardware:
+kill -USR1 $PID
+
+# Continue monitoring...
+# When analysis complete:
+kill -TERM $PID
+```
+
+### Implementation Details
+
+#### Signal Handler Registration (electron-main.ts)
+```typescript
+process.on('SIGUSR1', () => {
+    const mainWindow = (global as any).mainWindowInstance;
+    if (mainWindow) {
+        mainWindow.resetHardware();
+    }
+});
+
+process.on('SIGTERM', () => {
+    const mainWindow = (global as any).mainWindowInstance;
+    if (mainWindow) {
+        mainWindow.gracefulShutdown();
+    }
+    setTimeout(() => app.quit(), 1000);
+});
+```
+
+#### Hardware Reset Method (mainWindow.ts)
+```typescript
+public async resetHardware(): Promise<void> {
+    const useRTS = this.context.runEnvironment.rtsOverride;
+    if (this._serialPort) {
+        if (useRTS) {
+            await this._serialPort.setRTS(false);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await this._serialPort.setRTS(true);
+        } else {
+            await this._serialPort.setDTR(false);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await this._serialPort.setDTR(true);
+        }
+    }
+}
+```
+
+### Platform Compatibility
+
+- **Linux**: Full support for all signals
+- **macOS**: Full support for all signals
+- **Windows**: Limited to SIGTERM and SIGINT only
+- **Docker/Containers**: Full support, useful for CI/CD
+
+### Security Considerations
+
+- Signals can only be sent by:
+  - The same user that started the process
+  - Root/administrator
+- PID must be known to send signals
+- No network exposure (localhost only)
+
+### Future Enhancements
+
+A command file interface (`.pnut-term-ts.command`) is planned for future releases, which would provide:
+- Unlimited commands beyond signal limitations
+- Parameter passing with commands
+- Cross-platform compatibility
+- Command queuing capabilities
+
+See `TECHNICAL-DEBT.md` for full specification.
+
 ## References
 
 - P2 Silicon Documentation: Parallax Inc.

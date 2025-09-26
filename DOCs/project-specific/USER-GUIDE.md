@@ -1015,6 +1015,69 @@ pnut-term --replay=session.jsonl --speed=2
 pnut-term --export=csv --input=recording.jsonl
 ```
 
+## Automation and External Control
+
+### Background Operation
+PNut-Term-TS can run in the background and be controlled externally, useful for automated testing, CI/CD pipelines, or integration with other tools.
+
+#### Starting in Background
+```bash
+# Start terminal monitoring in background
+./pnut-term-ts --port /dev/ttyUSB0 &
+PID=$!
+
+# Capture output to file
+./pnut-term-ts --port /dev/ttyUSB0 2>&1 | tee session.log &
+```
+
+#### External Control Signals
+Control the running instance using Unix signals:
+
+```bash
+# Reset the connected hardware (DTR/RTS pulse)
+kill -USR1 $PID
+
+# Graceful shutdown (saves state, closes cleanly)
+kill -TERM $PID
+
+# Also works with Ctrl+C in foreground
+# (handled gracefully with SIGINT)
+```
+
+#### Automation Example
+```bash
+#!/bin/bash
+# Automated test script
+
+# Start terminal
+./pnut-term-ts --port /dev/ttyUSB0 &
+PID=$!
+
+# Download and run test
+./pnut-term-ts --port /dev/ttyUSB0 -r test.binary
+
+# Reset hardware
+kill -USR1 $PID
+
+# Monitor for 30 seconds
+sleep 30
+
+# Clean shutdown
+kill -TERM $PID
+```
+
+#### Use Cases
+- **Continuous Integration**: Automated hardware testing
+- **Remote Development**: Control from SSH sessions
+- **AI Assistants**: External tools can control hardware
+- **Batch Processing**: Script multiple test scenarios
+- **Monitoring**: Long-running data collection
+
+**Note**: Signal support varies by platform:
+- Linux/macOS: Full support
+- Windows: Limited to SIGTERM/SIGINT
+- Docker: Full support
+
 ## Conclusion
 
 The P2 Debug Terminal provides powerful visualization and debugging capabilities for Propeller 2 development. Whether you're debugging protocols with the logic analyzer, visualizing sensor data with the oscilloscope, or stepping through code with the interactive debugger, the tool adapts to your debugging needs.
