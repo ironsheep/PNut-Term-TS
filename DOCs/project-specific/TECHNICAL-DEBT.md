@@ -483,3 +483,67 @@ All visual debug windows in Pascal implement sophisticated mouse hover coordinat
 
 **Required for Release**: NO - Acceptable for early testing release
 
+## External Control Interface
+
+### Signal Handlers (Implemented)
+**Priority: Low - Already implemented**
+
+The application now supports Unix signal-based control for background operation:
+
+**Implemented signals:**
+- `SIGUSR1` - Reset hardware via DTR/RTS pulse
+- `SIGTERM` - Graceful shutdown (closes windows, saves state, disconnects)
+- `SIGINT` - Graceful shutdown (same as SIGTERM, handles Ctrl+C)
+
+**Usage example:**
+```bash
+# Start pnut-term in background
+./pnut-term-ts --port /dev/ttyUSB0 &
+PID=$!
+
+# Reset the hardware
+kill -USR1 $PID
+
+# Graceful shutdown
+kill -TERM $PID
+```
+
+### Command File Interface (Future Enhancement)
+**Priority: Low - Nice to have for advanced automation**
+
+A more flexible command interface could be implemented using a command file that the application monitors for changes.
+
+**Proposed implementation:**
+- Monitor `.pnut-term-ts.command` file in the working directory (where command was run)
+- Commands written to this file would be executed by the running instance
+- File would be cleared after command execution
+
+**Example commands:**
+```bash
+# Write command to file
+echo "RESET" > .pnut-term-ts.command
+echo "DOWNLOAD /path/to/file.binary" > .pnut-term-ts.command
+echo "SET_BAUD 115200" > .pnut-term-ts.command
+echo "SEND_DATA Hello World\r\n" > .pnut-term-ts.command
+echo "SAVE_LOG /path/to/output.log" > .pnut-term-ts.command
+echo "SHUTDOWN" > .pnut-term-ts.command
+```
+
+**Benefits over signals:**
+- Unlimited commands (not limited to ~5 signals)
+- Can pass parameters with commands
+- Works cross-platform (including Windows)
+- Can queue multiple commands
+- Easier to debug (can see command file contents)
+
+**Implementation considerations:**
+- Use file watcher (fs.watch or chokidar)
+- Parse commands safely (validate all inputs)
+- Handle race conditions (multiple writes)
+- Clear file after processing
+- Log all commands for audit trail
+
+**Estimated effort:** 4-6 hours to implement basic command file interface
+
+**Required for Release**: NO - Current signal handlers sufficient for basic automation
+

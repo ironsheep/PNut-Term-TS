@@ -95,6 +95,43 @@ if (!gotTheLock) {
         }
     });
 
+    // Signal handlers for external control when running in background
+    // SIGUSR1 - Reset hardware via DTR/RTS
+    process.on('SIGUSR1', () => {
+        logger.logMessage('[SIGNAL] Received SIGUSR1 - Resetting hardware via DTR/RTS');
+        const mainWindow = (global as any).mainWindowInstance;
+        if (mainWindow) {
+            mainWindow.resetHardware();
+        } else {
+            logger.errorMsg('[SIGNAL] Cannot reset - MainWindow not available');
+        }
+    });
+
+    // SIGTERM - Graceful shutdown
+    process.on('SIGTERM', () => {
+        logger.logMessage('[SIGNAL] Received SIGTERM - Initiating graceful shutdown');
+        const mainWindow = (global as any).mainWindowInstance;
+        if (mainWindow) {
+            mainWindow.gracefulShutdown();
+        }
+        // Give time for cleanup, then quit
+        setTimeout(() => {
+            app.quit();
+        }, 1000);
+    });
+
+    // SIGINT - Handle Ctrl+C gracefully
+    process.on('SIGINT', () => {
+        logger.logMessage('[SIGNAL] Received SIGINT - Initiating graceful shutdown');
+        const mainWindow = (global as any).mainWindowInstance;
+        if (mainWindow) {
+            mainWindow.gracefulShutdown();
+        }
+        setTimeout(() => {
+            app.quit();
+        }, 1000);
+    });
+
     // Create main window when Electron is ready
     app.whenReady().then(() => {
         createMainWindow();

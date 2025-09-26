@@ -6039,4 +6039,104 @@ export class MainWindow {
     }
   }
 
+  /**
+   * Reset the connected hardware by toggling DTR or RTS
+   * Called by external signal handler (SIGUSR1)
+   */
+  public async resetHardware(): Promise<void> {
+    this.logMessage('[SIGNAL] Hardware reset requested via signal');
+
+    // Check which control line is configured
+    const useRTS = this.context.runEnvironment.rtsOverride;
+
+    if (this._serialPort) {
+      try {
+        if (useRTS) {
+          this.logMessage('[SIGNAL] Resetting hardware via RTS pulse');
+          // Pulse RTS low for 100ms to trigger reset
+          await this._serialPort.setRTS(false);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await this._serialPort.setRTS(true);
+          this.logMessage('[SIGNAL] RTS reset pulse completed');
+
+          // Notify debug windows about the reset
+          if (this.debugLoggerWindow) {
+            this.debugLoggerWindow.handleRTSReset();
+          }
+        } else {
+          this.logMessage('[SIGNAL] Resetting hardware via DTR pulse');
+          // Pulse DTR low for 100ms to trigger reset
+          await this._serialPort.setDTR(false);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await this._serialPort.setDTR(true);
+          this.logMessage('[SIGNAL] DTR reset pulse completed');
+
+          // Notify debug windows about the reset
+          if (this.debugLoggerWindow) {
+            this.debugLoggerWindow.handleDTRReset();
+          }
+        }
+
+        // Notify all COG windows about the reset
+        for (let cogId = 0; cogId < 8; cogId++) {
+          const windowKey = `COG-${cogId}`;
+          const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+          if (cogWindow) {
+            if (useRTS) {
+              cogWindow.handleDownload(); // Use download handler for RTS
+            } else {
+              cogWindow.handleDTRReset();
+            }
+          }
+        }
+
+      } catch (error) {
+        this.logMessage(`[SIGNAL] Failed to reset hardware: ${error}`);
+      }
+    } else {
+      this.logMessage('[SIGNAL] No serial port connected - cannot reset hardware');
+    }
+  }
+
+  /**
+   * Perform graceful shutdown
+   * Called by external signal handler (SIGTERM/SIGINT)
+   */
+  public gracefulShutdown(): void {
+    this.logMessage('[SIGNAL] Graceful shutdown initiated');
+
+    try {
+      // Stop recording if active
+      if (this.windowRouter) {
+        this.logMessage('[SIGNAL] Stopping active recording if in progress');
+        this.windowRouter.stopRecording();
+      }
+
+      // Close all debug windows
+      this.logMessage('[SIGNAL] Closing all debug windows');
+      for (const key in this.displays) {
+        const display = this.displays[key];
+        if (display && typeof display.closeDebugWindow === 'function') {
+          display.closeDebugWindow();
+        }
+      }
+
+      // Close serial port
+      if (this._serialPort) {
+        this.logMessage('[SIGNAL] Closing serial port');
+        this._serialPort.close();
+      }
+
+      // Close main window
+      if (this.mainWindow) {
+        this.logMessage('[SIGNAL] Closing main window');
+        this.mainWindow.close();
+      }
+
+      this.logMessage('[SIGNAL] Graceful shutdown complete');
+    } catch (error) {
+      this.logMessage(`[SIGNAL] Error during shutdown: ${error}`);
+    }
+  }
+
 }
