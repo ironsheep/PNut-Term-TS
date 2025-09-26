@@ -96,7 +96,7 @@ export class DebugTerminalInTypeScript {
     }
 
     this.context = new Context(this.startupDirectory);
-    
+
     // Set startup directory for all logging systems
     const { RouterLogger } = require('./classes/shared/routerLogger');
     RouterLogger.setStartupDirectory(this.startupDirectory);
@@ -159,7 +159,10 @@ export class DebugTerminalInTypeScript {
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
       .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
-      .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)')
+      .option(
+        '-p, --plug <dvcNode>',
+        'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)'
+      )
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
@@ -282,27 +285,11 @@ export class DebugTerminalInTypeScript {
     }
 
     if (!options.quiet) {
-      const signOnCompiler: string =
-        "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC.";
+      const signOnCompiler: string = "Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC.";
       this.context.logger.forceLogMessage(`* ${signOnCompiler}`);
       const signOnVersion: string = `Version ${this.version}, {buildDateHere}`;
       this.context.logger.forceLogMessage(`* ${signOnVersion}`);
       this.context.logger.forceLogMessage(''); // blank line...
-    }
-
-    if ((!showingHelp && !options.quiet) || (showingHelp && options.verbose)) {
-      let commandLine: string = `pnut-term-ts ${combinedArgs.slice(1).join(' ')}`;
-      this.context.logger.forceLogMessage(`* ${commandLine}`);
-      this.context.logger.forceLogMessage(
-        `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
-          this.inContainer
-        }]`
-      );
-      console.log('- -------------------------------- -');
-      console.log('arguments: %o', this.program.args);
-      console.log('combArguments: %o', combinedArgs);
-      console.log('options: %o', this.program.opts());
-      console.log('- -------------------------------- -');
     }
 
     if (options.verbose) {
@@ -311,6 +298,23 @@ export class DebugTerminalInTypeScript {
 
     if (options.debug) {
       this.context.logger.enabledDebug();
+    }
+
+    if ((!showingHelp && !options.quiet) || (showingHelp && options.verbose)) {
+      let commandLine: string = `pnut-term-ts ${combinedArgs.slice(1).join(' ')}`;
+      this.context.logger.debugMsg(`* ${commandLine}`);
+      this.context.logger.debugMsg(
+        `** process.argv=[${process.argv.join(', ')}], this.argsArray=[${testArgsInterp}] inContainer=[${
+          this.inContainer
+        }]`
+      );
+      if (options.debug) {
+        console.log('- -------------------------------- -');
+        console.log('arguments: %o', this.program.args);
+        console.log('combArguments: %o', combinedArgs);
+        console.log('options: %o', this.program.opts());
+        console.log('- -------------------------------- -');
+      }
     }
 
     if (this.context.runEnvironment.developerModeEnabled) {
@@ -433,19 +437,17 @@ export class DebugTerminalInTypeScript {
     this.context.runEnvironment.consoleMode = options.consoleMode || false;
 
     // Report startup directory info when verbose
-    if (this.context.runEnvironment.verbose) {
-      console.log(`[STARTUP] process.cwd() = ${this.initialCwd}`);
-      console.log(`[STARTUP] __dirname = ${this.initialDirname}`);
-      if (__dirname.includes('PNut-Term-TS.app')) {
-        console.log(`[STARTUP] Detected packaged app, using directory: ${this.startupDirectory}`);
-      } else {
-        console.log(`[STARTUP] Using __dirname as working directory: ${this.startupDirectory}`);
-      }
-
-      // Report font folder location when verbose
-      const fontPath = path.join(__dirname, '..', 'fonts');
-      this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
+    this.context.logger.verboseMsg(`[STARTUP] process.cwd() = ${this.initialCwd}`);
+    this.context.logger.verboseMsg(`[STARTUP] __dirname = ${this.initialDirname}`);
+    if (__dirname.includes('PNut-Term-TS.app')) {
+      this.context.logger.verboseMsg(`[STARTUP] Detected packaged app, using directory: ${this.startupDirectory}`);
+    } else {
+      this.context.logger.verboseMsg(`[STARTUP] Using __dirname as working directory: ${this.startupDirectory}`);
     }
+
+    // Report font folder location when verbose
+    const fontPath = path.join(__dirname, '..', 'fonts');
+    this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
 
     // All validation is complete - determine if we need to launch Electron UI
     const needsElectronUI: boolean = !showingHelp && !showingNodeList && !this.shouldAbort;
@@ -458,14 +460,12 @@ export class DebugTerminalInTypeScript {
       // Check if we have a PropPlug selected
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
-        this.context.logger.verboseMsg(`* Will launch Electron UI attached to [${propPlug}]`);
+        this.context.logger.debugMsg(`* Will launch Electron UI attached to [${propPlug}]`);
       }
 
       // All parameters are validated and stored in context
       // Now launch Electron with the validated parameters
-      if (!this.context.runEnvironment.quiet) {
-        console.log('🚀 Launching Electron UI with validated parameters...');
-      }
+      this.context.logger.debugMsg('🚀 Launching Electron UI with validated parameters...');
 
       const exitCode = await this.launchElectron();
       return Promise.resolve(exitCode);
@@ -509,8 +509,7 @@ export class DebugTerminalInTypeScript {
   private async launchElectron(): Promise<number> {
     const electronPath = this.findElectronExecutable();
     if (!electronPath) {
-      console.error('❌ Electron executable not found. Please ensure Electron is installed.');
-      console.error('💡 Try running: npm install electron');
+      console.error('❌ Built-in Electron executable not found!!!');
       return 1;
     }
 
@@ -587,8 +586,8 @@ export class DebugTerminalInTypeScript {
 
   private findElectronExecutable(): string | null {
     // Debug output
-    console.log(`[ELECTRON FINDER] Looking for Electron executable...`);
-    console.log(`[ELECTRON FINDER] __dirname = ${__dirname}`);
+    this.context.logger.debugMsg(`[ELECTRON FINDER] Looking for Electron executable...`);
+    this.context.logger.debugMsg(`[ELECTRON FINDER] __dirname = ${__dirname}`);
 
     // Build list of possible paths
     const possiblePaths: string[] = [];
@@ -599,10 +598,10 @@ export class DebugTerminalInTypeScript {
       const appBundlePath = __dirname.substring(0, appIndex + 'PNut-Term-TS.app'.length);
       // Look for the standard Electron executable (not renamed)
       possiblePaths.push(
-        path.join(appBundlePath, 'Contents', 'MacOS', 'Electron'),      // Standard Electron name
-        path.join(appBundlePath, 'Contents', 'MacOS', 'electron')       // Lowercase variant
+        path.join(appBundlePath, 'Contents', 'MacOS', 'Electron'), // Standard Electron name
+        path.join(appBundlePath, 'Contents', 'MacOS', 'electron') // Lowercase variant
       );
-      console.log(`[ELECTRON FINDER] Detected app bundle at: ${appBundlePath}`);
+      this.context.logger.debugMsg(`[ELECTRON FINDER] Detected app bundle at: ${appBundlePath}`);
     }
 
     // Add other possible locations
@@ -627,9 +626,9 @@ export class DebugTerminalInTypeScript {
     );
 
     for (const electronPath of possiblePaths) {
-      console.log(`[ELECTRON FINDER] Checking: ${electronPath}`);
+      this.context.logger.debugMsg(`[ELECTRON FINDER] Checking: ${electronPath}`);
       if (fs.existsSync(electronPath)) {
-        console.log(`[ELECTRON FINDER] ✅ Found at: ${electronPath}`);
+        this.context.logger.debugMsg(`[ELECTRON FINDER] ✅ Found at: ${electronPath}`);
         return electronPath;
       }
     }
