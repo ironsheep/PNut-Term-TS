@@ -58,6 +58,10 @@ electronContext.logger = logger;
 const ramFileSpec = config.ramFileSpec;
 const flashFileSpec = config.flashFileSpec;
 
+// Suppress DevTools Autofill errors that don't apply to Electron
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
+app.commandLine.appendSwitch('disable-blink-features', 'Autofill');
+
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -117,10 +121,24 @@ async function createMainWindow() {
         // If we have a download file, initiate download
         if (ramFileSpec) {
             logger.logMessage(`Downloading to RAM: ${ramFileSpec}`);
-            // TODO: Initiate download via mainWindow
+            // Wait a moment for the window to be fully ready, then download
+            setTimeout(async () => {
+                try {
+                    await mainWindow.downloadFileFromPath(ramFileSpec, false);
+                } catch (error) {
+                    logger.errorMsg(`Failed to download to RAM: ${error}`);
+                }
+            }, 2000);
         } else if (flashFileSpec) {
             logger.logMessage(`Downloading to FLASH: ${flashFileSpec}`);
-            // TODO: Initiate download via mainWindow
+            // Wait a moment for the window to be fully ready, then download
+            setTimeout(async () => {
+                try {
+                    await mainWindow.downloadFileFromPath(flashFileSpec, true);
+                } catch (error) {
+                    logger.errorMsg(`Failed to download to FLASH: ${error}`);
+                }
+            }, 2000);
         }
 
     } catch (error) {

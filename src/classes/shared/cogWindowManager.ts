@@ -10,7 +10,8 @@ import { BrowserWindow } from 'electron';
  */
 export enum COGDisplayMode {
   SHOW_ALL = 'show_all',      // Show all 8 windows, mark inactive ones
-  ON_DEMAND = 'on_demand'     // Only show windows with traffic
+  ON_DEMAND = 'on_demand',    // Only show windows with traffic
+  OFF = 'off'                 // No COG windows shown
 }
 
 /**

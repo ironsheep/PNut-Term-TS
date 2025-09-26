@@ -60,6 +60,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
   private static instance: DebugLoggerWindow | null = null;
   private logFile: fs.WriteStream | null = null;
   private logFilePath: string | null = null;
+  private cogsAreShowing: boolean = false;
   private theme: DebugLoggerTheme;
   private maxLines: number = 10000;
   private lineBuffer: string[] = [];
@@ -299,10 +300,16 @@ export class DebugLoggerWindow extends DebugWindowBase {
     window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     
     // Set up IPC handlers for menu buttons
-    ipcMain.on('show-all-cogs', () => {
-      this.logConsoleMessage('[DEBUG LOGGER] Show All COGs button clicked');
-      // Emit event that MainWindow can listen to
-      this.emit('show-all-cogs-requested');
+    ipcMain.on('toggle-all-cogs', () => {
+      if (this.cogsAreShowing) {
+        this.logConsoleMessage('[DEBUG LOGGER] Hide All COGs button clicked');
+        this.emit('hide-all-cogs-requested');
+        this.cogsAreShowing = false;
+      } else {
+        this.logConsoleMessage('[DEBUG LOGGER] Show All COGs button clicked');
+        this.emit('show-all-cogs-requested');
+        this.cogsAreShowing = true;
+      }
     });
     
     ipcMain.on('export-cog-logs', () => {
@@ -666,8 +673,19 @@ export class DebugLoggerWindow extends DebugWindowBase {
     });
     
     // Add button handlers
-    document.getElementById('btn-show-all-cogs').addEventListener('click', () => {
-      ipcRenderer.send('show-all-cogs');
+    const cogButton = document.getElementById('btn-show-all-cogs');
+    let cogsShowing = false;
+
+    cogButton.addEventListener('click', () => {
+      cogsShowing = !cogsShowing;
+      cogButton.textContent = cogsShowing ? 'Hide All 8 COGs' : 'Show All 8 COGs';
+      ipcRenderer.send('toggle-all-cogs');
+    });
+
+    // Listen for COG state updates from main process
+    ipcRenderer.on('cogs-state-changed', (event, showing) => {
+      cogsShowing = showing;
+      cogButton.textContent = cogsShowing ? 'Hide All 8 COGs' : 'Show All 8 COGs';
     });
     
     document.getElementById('btn-export-cog-logs').addEventListener('click', () => {
@@ -1156,6 +1174,18 @@ export class DebugLoggerWindow extends DebugWindowBase {
     this.theme = DebugLoggerWindow.THEMES[themeName] || DebugLoggerWindow.THEMES.green;
     if (this.debugWindow) {
       this.debugWindow.webContents.send('set-theme', this.theme);
+    }
+  }
+
+  /**
+   * Update COGs showing state (for button sync)
+   */
+  public updateCOGsState(showing: boolean): void {
+    this.cogsAreShowing = showing;
+
+    // Update the button in the renderer
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+      this.debugWindow.webContents.send('cogs-state-changed', showing);
     }
   }
 

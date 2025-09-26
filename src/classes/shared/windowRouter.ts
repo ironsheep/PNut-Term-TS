@@ -377,13 +377,30 @@ export class WindowRouter extends EventEmitter {
           window.stats.messagesReceived++;
           handled = true;
           loggerWindowFound = true;
-          
+
           if (this.isRecording) {
             this.recordMessage(windowId, window.type, 'text', text);
           }
         }
       }
-      
+
+      // Check if this is a COG-specific message and route to COG window
+      const cogId = this.extractCOGId(text);
+      if (cogId !== null && cogId >= 0 && cogId <= 7) {
+        const cogWindowId = `COG${cogId}`;
+        const cogWindow = this.windows.get(cogWindowId);
+        if (cogWindow && cogWindow.handler) {
+          this.logConsoleMessage(`[ROUTER->COG${cogId}] Routing message to COG ${cogId} window`);
+          cogWindow.handler(text);
+          cogWindow.stats.messagesReceived++;
+          handled = true;
+
+          if (this.isRecording) {
+            this.recordMessage(cogWindowId, cogWindow.type, 'text', text);
+          }
+        }
+      }
+
       // Defensive error logging: warn if no logger window found
       if (!loggerWindowFound) {
         this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive Cog message: "${text.substring(0, 50)}..."`);
@@ -892,14 +909,40 @@ export class WindowRouter extends EventEmitter {
     if (this.recordingBuffer.length === 0 || !this.recordingStream) {
       return;
     }
-    
+
     // Write all buffered messages
     for (const message of this.recordingBuffer) {
       this.recordingStream.write(JSON.stringify(message) + '\n');
     }
-    
+
     // Clear buffer
     this.recordingBuffer = [];
+  }
+
+  /**
+   * Extract COG ID from message text
+   * Looks for patterns like "Cog 0:", "COG1:", "[COG 2]", "<3>", etc.
+   */
+  private extractCOGId(message: string): number | null {
+    // Common COG prefix patterns
+    const patterns = [
+      /^Cog\s*(\d+)[:\s]/i,      // "Cog 0:", "COG 1 "
+      /^\[COG\s*(\d+)\]/i,        // "[COG 0]"
+      /^COG(\d+)[:\s]/i,          // "COG0:", "COG1 "
+      /^<(\d+)>/,                 // "<0>" shorthand
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match) {
+        const cogId = parseInt(match[1], 10);
+        if (cogId >= 0 && cogId <= 7) {
+          return cogId;
+        }
+      }
+    }
+
+    return null;
   }
   
   /**

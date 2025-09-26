@@ -78,7 +78,7 @@ export interface DeviceSettings {
 export interface GlobalSettings {
   defaultControlLine?: 'DTR' | 'RTS';
   deviceSettings?: { [deviceId: string]: DeviceSettings };
-  devices?: any[];  // For compatibility with initialization
+  devices?: any[]; // For compatibility with initialization
   selectedDeviceIndex?: number;
 }
 
@@ -104,7 +104,7 @@ export class MainWindow {
   private documentationViewer: DocumentationViewer | null = null;
   private binaryPlayer: BinaryPlayer | null = null;
   private controlLineMode: 'DTR' | 'RTS' = 'DTR'; // Default to DTR (Parallax standard)
-  private downloadMode: 'ram' | 'flash' = 'ram';  // Default to RAM mode
+  private downloadMode: 'ram' | 'flash' = 'ram'; // Default to RAM mode
   private activeCogs: Set<number> = new Set();
   private downloader: Downloader | undefined;
   private echoOffEnabled: boolean = false;
@@ -130,17 +130,17 @@ export class MainWindow {
     xmitFGColor: '#000000', // black
     rcvFGColor: '#000000' // black
   };
-  
+
   // Debugger message parsing and COG window management
   private serialProcessor: SerialMessageProcessor;
   private cogWindowManager: COGWindowManager;
   private cogHistoryManager: COGHistoryManager;
   private cogLogExporter: COGLogExporter;
-  
+
   // Device settings storage
   private globalSettings: GlobalSettings;
   private settingsFilePath: string;
-  
+
   // Performance monitoring for status bar
   private performanceUpdateTimer: NodeJS.Timeout | null = null;
   private readonly PERFORMANCE_UPDATE_INTERVAL = 100; // 10fps maximum
@@ -156,39 +156,42 @@ export class MainWindow {
     if (this.context.runEnvironment.loggingEnabled) {
       this.context.logger.forceLogMessage('MainWindow started.');
     }
-    
+
     // Initialize default settings immediately to prevent null reference crashes
     this.globalSettings = {
       devices: [],
       selectedDeviceIndex: 0
     };
-    this.settingsFilePath = '';  // Will be set properly in loadSettings()
-    
+    this.settingsFilePath = ''; // Will be set properly in loadSettings()
+
     // Initialize Two-Tier Pattern Matching serial processor and COG managers
     this.serialProcessor = new SerialMessageProcessor(true); // Enable performance logging
     this.cogWindowManager = new COGWindowManager();
     this.cogHistoryManager = new COGHistoryManager();
     this.cogLogExporter = new COGLogExporter();
-    
+
     // Set up Two-Tier Pattern Matching event handlers
     this.logConsoleMessage('[TWO-TIER] 🔧 Setting up SerialProcessor event handlers...');
     this.setupSerialProcessorEvents();
     this.logConsoleMessage('[TWO-TIER] ✅ SerialProcessor event handlers setup complete');
-    
+
     // Set up COG window creator
     this.cogWindowManager.setWindowCreator((cogId: number) => {
       return this.createCOGWindow(cogId);
     });
-    
+
     // Listen for active COG changes to update status bar
-    this.cogWindowManager.on('activeCOGsChanged', (data: { cogId: number; activeCOGs: number[]; displayText: string }) => {
-      this.logConsoleMessage(`[COG STATUS] COG ${data.cogId} became active, now active: ${data.displayText}`);
-      this.updateActiveCogs(data.activeCOGs);
-    });
-    
+    this.cogWindowManager.on(
+      'activeCOGsChanged',
+      (data: { cogId: number; activeCOGs: number[]; displayText: string }) => {
+        this.logConsoleMessage(`[COG STATUS] COG ${data.cogId} became active, now active: ${data.displayText}`);
+        this.updateActiveCogs(data.activeCOGs);
+      }
+    );
+
     // Listen for WindowRouter events
     this.setupWindowRouterEventListeners();
-    
+
     // Initialize device settings using context startup directory
     this.settingsFilePath = path.join(this.context.currentFolder, 'pnut-term-settings.json');
     this.loadGlobalSettings();
@@ -206,18 +209,27 @@ export class MainWindow {
   }
 
   /**
+   * Controlled console logging for instance methods - only outputs when ENABLE_CONSOLE_LOG is true
+   */
+  private logConsoleMessage(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
+
+  /**
    * Setup event listeners for WindowRouter events
    */
   private setupWindowRouterEventListeners(): void {
     this.logConsoleMessage(`[WINDOW CREATION] 🎧 Setting up WindowRouter event listeners`);
-    
+
     // Listen for windowNeeded events when WindowRouter can't route to existing window
     this.windowRouter.on('windowNeeded', (eventData: { type: string; command: string; error: string }) => {
       this.logConsoleMessage(`[WINDOW CREATION] 📨 Received windowNeeded event!`);
       this.logConsoleMessage(`[WINDOW CREATION] WindowRouter needs window of type: ${eventData.type}`);
       this.logConsoleMessage(`[WINDOW CREATION] Command: ${eventData.command}`);
       this.logConsoleMessage(`[WINDOW CREATION] Error: ${eventData.error}`);
-      
+
       // Create ExtractedMessage for two-tier system compatibility
       const commandData = new TextEncoder().encode(eventData.command);
       const extractedMessage: ExtractedMessage = {
@@ -229,24 +241,24 @@ export class MainWindow {
           windowCommand: eventData.command
         }
       };
-      
+
       // Handle window creation through two-tier system
       this.handleWindowCommand(extractedMessage);
     });
-    
+
     // Listen for P2 system reboot events (golden synchronization marker)
     this.windowRouter.on('p2SystemReboot', (eventData: { message: string; timestamp: number }) => {
       this.logConsoleMessage(`[P2 SYNC] 🎯 P2 SYSTEM REBOOT DETECTED!`);
       this.logConsoleMessage(`[P2 SYNC] Message: ${eventData.message}`);
       this.logConsoleMessage(`[P2 SYNC] Timestamp: ${new Date(eventData.timestamp).toISOString()}`);
-      
+
       // Trigger complete synchronization reset
       this.handleP2SystemReboot(eventData);
     });
-    
+
     this.logConsoleMessage(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
   }
-  
+
   /**
    * Setup event handlers for debugger message parser
    */
@@ -263,7 +275,7 @@ export class MainWindow {
     };
 
     const windowCreatorDestination: RouteDestination = {
-      name: 'WindowCreator', 
+      name: 'WindowCreator',
       handler: (message: ExtractedMessage | PooledMessage) => {
         this.handleWindowCommand(message);
       }
@@ -279,18 +291,18 @@ export class MainWindow {
     // Apply standard P2 routing configuration
     this.serialProcessor.applyStandardRouting(
       debugLoggerDestination,
-      windowCreatorDestination, 
+      windowCreatorDestination,
       debuggerWindowDestination
     );
-    
+
     // Listen for debugger packets to create/update debugger windows
     this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
       const cogId = packet[0];
       this.logConsoleMessage(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
-      
+
       // Create debugger window directly like other debug windows (scope, plot, etc.)
       const windowName = `debugger-${cogId}`;
-      
+
       // Check if window already exists
       if (!this.displays[windowName]) {
         this.logConsoleMessage(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
@@ -298,7 +310,7 @@ export class MainWindow {
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
-      
+
       // Send the packet to the window (whether new or existing)
       // Use updateContent() which handles queuing if window not ready
       const debuggerWindow = this.displays[windowName] as DebugDebuggerWindow;
@@ -307,13 +319,13 @@ export class MainWindow {
         debuggerWindow.updateContent(packet);
       }
     });
-    
+
     // Reset debugger response state on DTR/RTS reset
     this.serialProcessor.on('dtrReset', () => {
       this.logConsoleMessage('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
       debuggerResponse.reset();
     });
-    
+
     this.serialProcessor.on('rtsReset', () => {
       this.logConsoleMessage('[DEBUGGER RESPONSE] RTS reset detected, clearing response state');
       debuggerResponse.reset();
@@ -323,7 +335,7 @@ export class MainWindow {
     this.logConsoleMessage('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
     this.serialProcessor.start();
     this.logConsoleMessage('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
-    
+
     // Performance monitoring will be started after DOM is ready (in did-finish-load handler)
 
     // Handle processor events
@@ -344,8 +356,10 @@ export class MainWindow {
    * Route message to Debug Logger (Terminal FIRST principle)
    */
   private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
-    this.logConsoleMessage(`[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`);
-    
+    this.logConsoleMessage(
+      `[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`
+    );
+
     try {
       // Use type-safe handoff to debug logger - no more guessing!
       if (this.debugLoggerWindow) {
@@ -353,7 +367,7 @@ export class MainWindow {
       } else {
         this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
       }
-      
+
       if (this.debugLoggerWindow) {
         // Convert buffer to appropriate data type
         let data: string[] | Uint8Array;
@@ -364,7 +378,7 @@ export class MainWindow {
         } else {
           // Text data converted to string array
           const textData = new TextDecoder().decode(message.data);
-          data = textData.split(/\s+/).filter(part => part.length > 0);
+          data = textData.split(/\s+/).filter((part) => part.length > 0);
         }
 
         // Direct type-safe call - no router guessing needed
@@ -397,16 +411,18 @@ export class MainWindow {
       // Extract command data from two-tier message (stay in new system, don't convert back)
       const data = new TextDecoder().decode(message.data);
       const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
-      this.logConsoleMessage(`[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`);
-      
+      this.logConsoleMessage(
+        `[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
+      );
+
       if (lineParts.length === 0 || lineParts[0].charAt(0) !== '`') {
         this.logConsoleMessage(`[TWO-TIER] Invalid window command format: ${data}`);
         return;
       }
-      
+
       const possibleName: string = lineParts[0].substring(1).toUpperCase();
       let foundDisplay: boolean = false;
-      
+
       // 1. FIRST: Check if this is for an existing window (route data to it)
       const displayEntries = Object.entries(this.displays);
       displayEntries.forEach(([displayName, window]) => {
@@ -419,11 +435,11 @@ export class MainWindow {
           this.logConsoleMessage(`[TWO-TIER] Routed to existing window: ${displayName}`);
         }
       });
-      
+
       if (!foundDisplay) {
         // 2. SECOND: Window creation - infer window type from command
         let windowType = possibleName;
-        
+
         // Check if it's already a window type or ends with a window type
         if (possibleName === 'LOGIC' || possibleName.endsWith('LOGIC')) {
           windowType = 'LOGIC';
@@ -440,9 +456,11 @@ export class MainWindow {
         } else if (possibleName === 'MIDI' || possibleName.endsWith('MIDI')) {
           windowType = 'MIDI';
         }
-        
-        this.logConsoleMessage(`[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`);
-        
+
+        this.logConsoleMessage(
+          `[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`
+        );
+
         // 3. THIRD: Create new window based on type
         switch (windowType) {
           case this.DISPLAY_SCOPE: {
@@ -462,7 +480,7 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_SCOPEXY: {
             this.logConsoleMessage(`[TWO-TIER] Creating SCOPEXY window for: ${data}`);
             const [isValid, scopeXySpec] = DebugScopeXyWindow.parseScopeXyDeclaration(lineParts);
@@ -480,7 +498,7 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_LOGIC: {
             this.logConsoleMessage(`[TWO-TIER] Creating LOGIC window for: ${data}`);
             const [isValid, logicSpec] = DebugLogicWindow.parseLogicDeclaration(lineParts);
@@ -488,7 +506,7 @@ export class MainWindow {
             if (logicSpec) {
               this.logConsoleMessage(`[TWO-TIER] LogicSpec:`, JSON.stringify(logicSpec, null, 2));
             }
-            
+
             if (isValid) {
               this.logConsoleMessage(`[TWO-TIER] Creating DebugLogicWindow instance...`);
               const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
@@ -503,12 +521,12 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_TERM: {
             this.logConsoleMessage(`[TWO-TIER] Creating TERM window for: ${data}`);
             const [isValid, termSpec] = DebugTermWindow.parseTermDeclaration(lineParts);
             this.logConsoleMessage(`[TWO-TIER] TERM parse result: isValid=${isValid}, termSpec=`, termSpec);
-            
+
             if (isValid) {
               this.logConsoleMessage(`[TWO-TIER] Creating DebugTermWindow with spec:`, termSpec);
               const termDisplay = new DebugTermWindow(this.context, termSpec);
@@ -523,12 +541,12 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_PLOT: {
             this.logConsoleMessage(`[TWO-TIER] Creating PLOT window for: ${data}`);
             const [isValid, plotSpec] = DebugPlotWindow.parsePlotDeclaration(lineParts);
             this.logConsoleMessage(`[TWO-TIER] PLOT parse result: isValid=${isValid}`);
-            
+
             if (isValid) {
               const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
               this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
@@ -542,12 +560,12 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_BITMAP: {
             this.logConsoleMessage(`[TWO-TIER] Creating BITMAP window for: ${data}`);
             const [isValid, bitmapSpec] = DebugBitmapWindow.parseBitmapDeclaration(lineParts);
             this.logConsoleMessage(`[TWO-TIER] BITMAP parse result: isValid=${isValid}`);
-            
+
             if (isValid) {
               const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
               this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
@@ -561,12 +579,12 @@ export class MainWindow {
             }
             break;
           }
-          
+
           case this.DISPLAY_MIDI: {
             this.logConsoleMessage(`[TWO-TIER] Creating MIDI window for: ${data}`);
             const [isValid, midiSpec] = DebugMidiWindow.parseMidiDeclaration(lineParts);
             this.logConsoleMessage(`[TWO-TIER] MIDI parse result: isValid=${isValid}`);
-            
+
             if (isValid) {
               const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
               this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
@@ -580,19 +598,19 @@ export class MainWindow {
             }
             break;
           }
-          
+
           default:
             this.logConsoleMessage(`[TWO-TIER] ERROR: Unsupported window type [${windowType}] in command: ${data}`);
             this.logMessage(`ERROR: display [${windowType}] not supported!`);
             break;
         }
       }
-      
+
       // 4. FOURTH: Update logging behavior if window was found/created
       if (foundDisplay) {
         this.immediateLog = false; // Switch from immediate to buffered logging
       }
-      
+
       // 5. FIFTH: Log unhandled commands
       if (!foundDisplay && this.mainWindow != null) {
         this.logConsoleMessage(`[TWO-TIER] UNHANDLED window command: ${data}`);
@@ -600,7 +618,6 @@ export class MainWindow {
           this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
       }
-      
     } finally {
       // CRITICAL: Release pooled message after processing (preserve two-tier performance)
       if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
@@ -639,7 +656,7 @@ export class MainWindow {
    */
   private formatMessageForDisplay(message: ExtractedMessage | PooledMessage): string {
     let displayText = '';
-    
+
     switch (message.type) {
       case MessageType.TERMINAL_OUTPUT:
         displayText = new TextDecoder().decode(message.data);
@@ -664,10 +681,14 @@ export class MainWindow {
         displayText = this.formatHexDump(message.data, 'DB_PACKET');
         break;
       case MessageType.INVALID_COG:
-        displayText = `[INVALID COG] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(message.data)}`;
+        displayText = `[INVALID COG] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(
+          message.data
+        )}`;
         break;
       case MessageType.INCOMPLETE_DEBUG:
-        displayText = `[INCOMPLETE] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(message.data)}`;
+        displayText = `[INCOMPLETE] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(
+          message.data
+        )}`;
         break;
       case MessageType.DEBUGGER_416BYTE:
         // Handle 416-byte debugger packets
@@ -678,7 +699,7 @@ export class MainWindow {
       default:
         displayText = this.formatHexDump(message.data, message.type);
     }
-    
+
     return displayText;
   }
 
@@ -688,10 +709,10 @@ export class MainWindow {
   private formatHexDump(data: Uint8Array, label: string): string {
     const lines: string[] = [`[${label}] ${data.length} bytes:`];
     const bytesPerLine = 16;
-    
+
     for (let offset = 0; offset < data.length; offset += bytesPerLine) {
       const lineBytes = data.slice(offset, Math.min(offset + bytesPerLine, data.length));
-      
+
       let hexPart = '';
       for (let i = 0; i < bytesPerLine; i++) {
         if (i < lineBytes.length) {
@@ -701,100 +722,148 @@ export class MainWindow {
         }
         if (i === 7) hexPart += ' ';
       }
-      
+
       let asciiPart = '';
       for (let i = 0; i < lineBytes.length; i++) {
-        const byte = lineBytes[i] & 0x7F;
-        asciiPart += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
+        const byte = lineBytes[i] & 0x7f;
+        asciiPart += byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.';
       }
-      
+
       const offsetHex = offset.toString(16).padStart(4, '0');
       lines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
     }
-    
+
     return lines.join('\n');
   }
-  
+
   /**
    * Create a COG splitter window
    */
   private createCOGWindow(cogId: number): any {
     this.logConsoleMessage(`[COG WINDOW] Creating COG ${cogId} window`);
-    
+
     // Generate window ID for tracking
     const windowId = `COG-${cogId}`;
-    
-    // Create COG window using the proper class
+
+    // Create COG window using the refactored class
     const cogWindow = new DebugCOGWindow(cogId, {
-      mainWindow: this,
       context: this.context,
-      placementStrategy: PlacementStrategy.COG_GRID,
       windowId: windowId
     });
-    
+
     // Register with WindowRouter for message routing
     this.windowRouter.registerWindow(`COG${cogId}`, `COG${cogId}`, (message) => {
       if (typeof message === 'string') {
-        cogWindow.processCOGMessage(message);
+        cogWindow.processMessage(message);
       }
     });
-    
+
     // Track in displays
     this.displays[windowId] = cogWindow;
-    
+
     // Update UI with active COGs when window opens
     const activeCogs = this.cogWindowManager.getActiveCOGs();
     this.updateActiveCogs(activeCogs);
-    
+
     // Listen for close event
-    cogWindow.on('cog-window-closed', (closedCogId: number) => {
+    cogWindow.on('closed', (closedCogId: number) => {
       this.logConsoleMessage(`[COG WINDOW] COG ${closedCogId} window closed`);
       this.cogWindowManager.onWindowClosed(closedCogId);
       delete this.displays[`COG-${closedCogId}`];
       this.windowRouter.unregisterWindow(`COG${closedCogId}`);
-      
+
       // Update UI with active COGs
       const activeCogs = this.cogWindowManager.getActiveCOGs();
       this.updateActiveCogs(activeCogs);
+
+      // Check if all COG windows are closed and update Debug Logger button
+      let anyCOGsOpen = false;
+      for (let i = 0; i < 8; i++) {
+        if (this.displays[`COG-${i}`]) {
+          anyCOGsOpen = true;
+          break;
+        }
+      }
+
+      // Update Debug Logger button state if all COGs are closed
+      if (!anyCOGsOpen && this.debugLoggerWindow) {
+        this.debugLoggerWindow.updateCOGsState(false);
+      }
     });
-    
-    // Listen for export request
-    cogWindow.on('request-export', (exportCogId: number) => {
-      this.handleCOGExportRequest(exportCogId);
-    });
-    
+
     // Get the actual Electron BrowserWindow
     const electronWindow = cogWindow.getWindow();
-    
+
     return electronWindow;
   }
-  
+
   /**
    * Handle Show All COGs button click from Debug Logger window
    */
   public handleShowAllCOGs(): void {
     this.logConsoleMessage('[COG MANAGER] Show All COGs requested');
+    // Temporarily switch to SHOW_ALL mode to display all COGs
+    this.cogWindowManager.setMode(COGDisplayMode.SHOW_ALL);
     this.cogWindowManager.showAllCOGs();
+
+    // Update Debug Logger button state
+    if (this.debugLoggerWindow) {
+      this.debugLoggerWindow.updateCOGsState(true);
+    }
   }
-  
+
+  /**
+   * Handle Hide All COGs button click from Debug Logger window
+   */
+  public handleHideAllCOGs(): void {
+    this.logConsoleMessage('[COG MANAGER] Hide All COGs requested');
+
+    // Close all COG windows
+    for (let cogId = 0; cogId < 8; cogId++) {
+      const windowKey = `COG-${cogId}`;
+      const cogWindow = this.displays[windowKey];
+
+      if (cogWindow && cogWindow instanceof DebugCOGWindow) {
+        cogWindow.close();
+        delete this.displays[windowKey];
+        // Don't manually unregister - the window will unregister itself when closed
+        // this.windowRouter.unregisterWindow(`COG${cogId}`);
+      }
+    }
+
+    // Reset COG manager to clear all state
+    this.cogWindowManager.reset();
+
+    // Set mode to OFF since all windows are closed
+    this.cogWindowManager.setMode(COGDisplayMode.OFF);
+
+    // Update Debug Logger button state
+    if (this.debugLoggerWindow) {
+      this.debugLoggerWindow.updateCOGsState(false);
+    }
+
+    // Update UI with active COGs (should be none)
+    const activeCogs = this.cogWindowManager.getActiveCOGs();
+    this.updateActiveCogs(activeCogs);
+  }
+
   /**
    * Handle COG export request
    */
   private handleCOGExportRequest(cogId: number): void {
     this.logConsoleMessage(`[COG EXPORT] Export requested for COG ${cogId}`);
-    
+
     // Get the COG window
     const windowKey = `COG-${cogId}`;
-    const cogWindow = this.displays[windowKey] as DebugCOGWindow;
-    
+    const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+
     if (cogWindow) {
-      const messages = cogWindow.exportMessages();
-      // TODO: Save to file or send to COGLogExporter
-      this.logConsoleMessage(`[COG EXPORT] Exported ${messages.length} characters from COG ${cogId}`);
+      // Export is now handled internally by the COG window
+      // It will show a save dialog and handle the file writing
+      this.logConsoleMessage(`[COG EXPORT] COG ${cogId} handling export internally`);
     }
   }
-  
-  
+
   /**
    * Route binary data to debug logger with type information
    */
@@ -804,12 +873,12 @@ export class MainWindow {
       try {
         this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
         this.displays['DebugLogger'] = this.debugLoggerWindow;
-        
+
         this.debugLoggerWindow.on('close', () => {
           delete this.displays['DebugLogger'];
           this.debugLoggerWindow = null;
         });
-        
+
         // Connect performance monitor for warnings
         const components = this.serialProcessor.getComponents();
         if (components.performanceMonitor) {
@@ -820,7 +889,7 @@ export class MainWindow {
         return;
       }
     }
-    
+
     // Send binary data to logger with type flag
     if (this.debugLoggerWindow) {
       // Format based on type
@@ -835,7 +904,7 @@ export class MainWindow {
       this.debugLoggerWindow.logSerialMessage(formattedMessage);
     }
   }
-  
+
   /**
    * Format debugger binary packets (80-byte format)
    */
@@ -848,65 +917,63 @@ export class MainWindow {
     }
     const prefix = cogId >= 0 && cogId <= 7 ? `Cog ${cogId} ` : '';
     const indent = ' '.repeat(prefix.length);
-    
+
     for (let offset = 0; offset < data.length; offset += 32) {
       const lineBytes = Math.min(32, data.length - offset);
       const hexOffset = `0x${offset.toString(16).padStart(2, '0').toUpperCase()}:`;
       const linePrefix = offset === 0 ? prefix : indent;
       let hexLine = `${linePrefix}${hexOffset} `;
-      
+
       for (let i = 0; i < lineBytes; i++) {
         const byte = data[offset + i];
         hexLine += `$${byte.toString(16).padStart(2, '0').toUpperCase()}`;
-        
+
         if ((i + 1) % 16 === 0 && i < lineBytes - 1) {
           hexLine += '  '; // Double space at 16-byte boundary
         } else if ((i + 1) % 8 === 0 && i < lineBytes - 1) {
-          hexLine += '  '; // Double space at 8-byte boundary  
+          hexLine += '  '; // Double space at 8-byte boundary
         } else if (i < lineBytes - 1) {
-          hexLine += ' ';  // Single space between bytes
+          hexLine += ' '; // Single space between bytes
         }
       }
       lines.push(hexLine);
     }
     return lines.join('\n');
   }
-  
+
   /**
    * Format raw P2 binary data (16-byte/line with ASCII)
    */
   private formatRawBinary(data: Uint8Array): string {
     const lines: string[] = [];
     lines.push(`[P2 Binary Data - ${data.length} bytes]`);
-    
+
     for (let offset = 0; offset < data.length; offset += 16) {
       const lineBytes = Math.min(16, data.length - offset);
       let hexPart = `${offset.toString(16).padStart(4, '0')}: `;
       let asciiPart = '';
-      
+
       // Hex columns
       for (let i = 0; i < 16; i++) {
         if (i < lineBytes) {
           const byte = data[offset + i];
           hexPart += `$${byte.toString(16).padStart(2, '0').toUpperCase()} `;
           // ASCII representation
-          asciiPart += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+          asciiPart += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
         } else {
           hexPart += '    '; // Placeholder for missing bytes
         }
-        
+
         // Add double space between 8-byte groups
         if (i === 7) {
           hexPart += ' ';
         }
       }
-      
+
       lines.push(hexPart + '  ' + asciiPart);
     }
     return lines.join('\n');
   }
-  
-  
 
   public initialize() {
     this.context.logger.forceLogMessage('* initialize()');
@@ -923,23 +990,26 @@ export class MainWindow {
     }
     if (app && app.whenReady) {
       this.logConsoleMessage('[STARTUP] Electron app object found, calling whenReady()');
-      app.whenReady().then(() => {
-        this.logMessage('* [whenReady]');
-        this.logConsoleMessage('[STARTUP] Electron app is ready, creating window');
-        
-        // Force light mode for native dialogs and UI elements
-        if (nativeTheme) {
-          nativeTheme.themeSource = 'light';
-          this.logConsoleMessage('[STARTUP] Native theme set to light mode');
-        }
+      app
+        .whenReady()
+        .then(() => {
+          this.logMessage('* [whenReady]');
+          this.logConsoleMessage('[STARTUP] Electron app is ready, creating window');
 
-        // Query and log complete display system configuration
-        this.logDisplaySystemConfiguration();
+          // Force light mode for native dialogs and UI elements
+          if (nativeTheme) {
+            nativeTheme.themeSource = 'light';
+            this.logConsoleMessage('[STARTUP] Native theme set to light mode');
+          }
 
-        this.createAppWindow();
-      }).catch((error: any) => {
-        console.error('[STARTUP] Error in app.whenReady():', error);
-      });
+          // Query and log complete display system configuration
+          this.logDisplaySystemConfiguration();
+
+          this.createAppWindow();
+        })
+        .catch((error: any) => {
+          console.error('[STARTUP] Error in app.whenReady():', error);
+        });
     } else {
       // Running in CLI mode without Electron
       this.logConsoleMessage('[STARTUP] Running in CLI mode - no GUI windows available (app object not found)');
@@ -1038,7 +1108,7 @@ export class MainWindow {
         }
       }
     }
-    
+
     const fileUrl = `file://${fontPath.replace(/\\/g, '/')}`;
     this.logConsoleMessage('[FONT] Using IBM 3270 font URL:', fileUrl);
     return fileUrl;
@@ -1060,13 +1130,13 @@ export class MainWindow {
   public sendSerialData(data: string): void {
     if (this._serialPort !== undefined) {
       this._serialPort.write(data);
-      
+
       // Store transmitted characters for echo filtering
       if (this.echoOffEnabled) {
         this.recentTransmitBuffer = data.split('');
         this.transmitTimestamp = Date.now();
       }
-      
+
       // TX activity indicator - blink every 50 chars or first char
       this.txCharCounter += data.length;
       if (this.txCharCounter >= 50 || !this.txActivityTimer) {
@@ -1105,8 +1175,8 @@ export class MainWindow {
       // Initialize DTR/RTS to known de-asserted state (HIGH) for hardware sync
       // This ensures our state variables match the actual hardware state
       try {
-        await this._serialPort.setDTR(false);  // false = HIGH/de-asserted
-        await this._serialPort.setRTS(false);  // false = HIGH/de-asserted
+        await this._serialPort.setDTR(false); // false = HIGH/de-asserted
+        await this._serialPort.setRTS(false); // false = HIGH/de-asserted
 
         // Keep our state variables in sync with what we just set
         this.dtrState = false;
@@ -1141,7 +1211,7 @@ export class MainWindow {
   private lastSyncTime: number = 0;
   private readonly MAX_LINE_CHARS = 80; // Typical max line length
   private readonly DEFAULT_BAUD_RATE = 115200; // Default P2 baud rate
-  
+
   /**
    * Calculate timeout based on baud rate - time to transmit MAX_LINE_CHARS
    */
@@ -1151,18 +1221,20 @@ export class MainWindow {
     const bitsPerChar = 10; // Start bit + 8 data bits + stop bit
     const totalBits = this.MAX_LINE_CHARS * bitsPerChar;
     const timeoutMs = (totalBits / baudRate) * 1000;
-    
+
     // Add 50% safety margin for processing delays
     const safetyMargin = timeoutMs * 0.5;
     const finalTimeout = Math.max(timeoutMs + safetyMargin, 10); // Minimum 10ms
-    
-    this.logConsoleMessage(`[SYNC TIMEOUT] Baud: ${baudRate}, Line: ${this.MAX_LINE_CHARS} chars, Timeout: ${finalTimeout.toFixed(1)}ms`);
+
+    this.logConsoleMessage(
+      `[SYNC TIMEOUT] Baud: ${baudRate}, Line: ${this.MAX_LINE_CHARS} chars, Timeout: ${finalTimeout.toFixed(1)}ms`
+    );
     return finalTimeout;
   }
 
   private handleSerialRx(data: Buffer | string) {
     // Handle received data - can be Buffer (raw bytes) or string (from parser)
-    
+
     // RX activity indicator - blink for ALL received data (binary or text)
     const dataLength = Buffer.isBuffer(data) ? data.length : data.length;
     this.rxCharCounter += dataLength;
@@ -1170,19 +1242,19 @@ export class MainWindow {
       this.blinkActivityLED('rx');
       this.rxCharCounter = 0;
     }
-    
+
     if (Buffer.isBuffer(data)) {
       // Add microsecond timestamp using process.hrtime
       const hrtime = process.hrtime();
       const microseconds = Math.floor(hrtime[0] * 1000000 + hrtime[1] / 1000);
       this.logConsoleMessage(`[SERIAL RX ${microseconds}µs] Received ${data.length} bytes`);
-      
+
       // Log hex and ASCII for debugging - same format as debug logger
       const hexLines: string[] = [];
       const bytesPerLine = 16;
       for (let offset = 0; offset < data.length; offset += bytesPerLine) {
         const lineBytes = data.slice(offset, Math.min(offset + bytesPerLine, data.length));
-        
+
         // Build hex part
         let hexPart = '';
         for (let i = 0; i < bytesPerLine; i++) {
@@ -1193,47 +1265,48 @@ export class MainWindow {
           }
           if (i === 7) hexPart += ' '; // Extra space in middle
         }
-        
+
         // Build ASCII part
         let asciiPart = '';
         for (let i = 0; i < lineBytes.length; i++) {
-          const byte = lineBytes[i] & 0x7F; // Mask with 0x7F to clean up binary data display
-          asciiPart += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
+          const byte = lineBytes[i] & 0x7f; // Mask with 0x7F to clean up binary data display
+          asciiPart += byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.';
         }
-        
+
         const offsetHex = offset.toString(16).padStart(4, '0');
         hexLines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
       }
-      
+
       this.logConsoleMessage('[SERIAL RX HEX/ASCII]:');
-      hexLines.forEach(line => this.logConsoleMessage(line));
-      
+      hexLines.forEach((line) => this.logConsoleMessage(line));
+
       // Two-Tier Pattern Matching: Process serial data through new architecture
       this.serialProcessor.receiveData(data);
       return;
     }
-    
+
     if (typeof data === 'string') {
       this.logConsoleMessage(`[SERIAL RX] Text data: ${data.length} chars: "${data}"`);
-      
+
       // GROUND ZERO RECOVERY: Check for Cog-prefixed messages first (backward compatibility)
       if (data.startsWith('Cog')) {
-        this.logConsoleMessage(`[DEBUG] Potential COG message found: "${data}", length: ${data.length}, char[3]: "${data[3]}", char[4]: "${data[4]}"`);
+        this.logConsoleMessage(
+          `[DEBUG] Potential COG message found: "${data}", length: ${data.length}, char[3]: "${data[3]}", char[4]: "${data[4]}"`
+        );
         if (data.length > 4 && data[4] === ' ') {
           this.logConsoleMessage(`[COG DETECTION] Found Cog message: ${data}`);
           this.handleCogMessage(data);
           return; // Don't process through new architecture for backward compatibility
         }
       }
-      
+
       // Convert string to Buffer and process through Two-Tier Pattern Matching
       const buffer = Buffer.from(data);
       this.serialProcessor.receiveData(buffer);
       return;
     }
   }
-  
-  
+
   /**
    * Log binary data to debug logger with appropriate formatting
    */
@@ -1251,7 +1324,7 @@ export class MainWindow {
       this.debugLoggerWindow.logSerialMessage(formattedMessage);
     }
   }
-  
+
   /**
    * Create Debug Logger Window immediately on startup for auto-logging
    */
@@ -1260,13 +1333,13 @@ export class MainWindow {
       this.logConsoleMessage('[DEBUG LOGGER] Debug Logger already exists, skipping creation');
       return;
     }
-    
+
     this.logConsoleMessage('[DEBUG LOGGER] Creating debug logger window for auto-logging...');
     try {
       this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
       this.displays['DebugLogger'] = this.debugLoggerWindow;
-      
+
       // Set up event listeners
       this.debugLoggerWindow.on('close', () => {
         this.logMessage('Debug Logger Window closed');
@@ -1279,30 +1352,35 @@ export class MainWindow {
       this.debugLoggerWindow.on('loggingStatusChanged', (status: any) => {
         this.updateLoggingStatus(status.isLogging, status.filename);
         if (this.context.runEnvironment.loggingEnabled) {
-          this.logMessage(`Debug Logger logging status: ${status.isLogging ? 'STARTED' : 'STOPPED'} ${status.filename || ''}`);
+          this.logMessage(
+            `Debug Logger logging status: ${status.isLogging ? 'STARTED' : 'STOPPED'} ${status.filename || ''}`
+          );
         }
       });
-      
+
       // Listen for COG-related events
       this.debugLoggerWindow.on('show-all-cogs-requested', () => {
         this.handleShowAllCOGs();
       });
-      
+
+      this.debugLoggerWindow.on('hide-all-cogs-requested', () => {
+        this.handleHideAllCOGs();
+      });
+
       this.debugLoggerWindow.on('export-cog-logs-requested', () => {
         this.logConsoleMessage('[MAIN] Export COG logs requested');
       });
-      
+
       // Connect performance monitor for warnings
       const components = this.serialProcessor.getComponents();
       if (components.performanceMonitor) {
         this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
         this.logConsoleMessage('[DEBUG LOGGER] Connected to performance monitor for warnings');
       }
-      
+
       if (this.context.runEnvironment.loggingEnabled) {
         this.logMessage('Auto-created Debug Logger Window - logging started immediately');
       }
-      
     } catch (error) {
       console.error('[DEBUG LOGGER] Failed to create Debug Logger Window:', error);
       this.logMessage(`ERROR: Failed to create Debug Logger Window: ${error}`);
@@ -1315,58 +1393,56 @@ export class MainWindow {
    */
   private handleP2SystemReboot(eventData: { message: string; timestamp: number }): void {
     this.logConsoleMessage(`[P2 SYNC] 🔄 Starting complete P2 synchronization reset...`);
-    
+
     // 1. Clear all sync buffers and parser state
     this.logConsoleMessage(`[P2 SYNC] 🧹 Clearing sync buffers and parser state`);
     this.syncBuffer = ''; // Clear the message synchronization buffer
-    
-    // 2. Reset debugger parser state  
+
+    // 2. Reset debugger parser state
     this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting debugger parser state`);
     this.serialProcessor.onDTRReset(); // Trigger Two-Tier reset
-    
+
     // 3. Clear and restart the Debug Logger session
     if (this.debugLoggerWindow) {
       this.logConsoleMessage(`[P2 SYNC] 📝 Restarting Debug Logger session`);
       try {
         // Signal DTR reset to create new log file boundary
         this.debugLoggerWindow.handleDTRReset();
-        
+
         // Signal DTR reset to create new log file boundary (no reboot marker in log)
-        
       } catch (error) {
         console.error(`[P2 SYNC] Error restarting Debug Logger:`, error);
       }
     }
-    
+
     // 4. Reset COG window tracking (all COGs start fresh after reboot)
     this.logConsoleMessage(`[P2 SYNC] 🎯 Resetting COG window tracking`);
     // Note: Don't close existing COG windows - user may want to see previous session data
     // Just reset their internal state for new session
-    Object.keys(this.displays).forEach(key => {
-      if (key.startsWith('COG-')) {
-        const cogWindow = this.displays[key] as DebugCOGWindow;
-        if (cogWindow && typeof cogWindow.clear === 'function') {
-          this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting ${key} window state`);
-          // Clear the window but keep it open for comparison
-        }
+    for (let cogId = 0; cogId < 8; cogId++) {
+      const windowKey = `COG-${cogId}`;
+      const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+      if (cogWindow && cogWindow.isOpen()) {
+        this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting ${windowKey} window state`);
+        cogWindow.handleDTRReset();
       }
-    });
-    
+    }
+
     // 5. Update main window status
     if (this.context.runEnvironment.loggingEnabled) {
       this.logMessage(`🎯 P2 SYSTEM REBOOT DETECTED - Complete synchronization reset performed`);
       this.logMessage(`   Golden marker: ${eventData.message}`);
       this.logMessage(`   All parsers and buffers reset - perfect sync achieved`);
     }
-    
+
     // P2 system messages go to debug logger, not main terminal
-    
+
     this.logConsoleMessage(`[P2 SYNC] ✅ Complete P2 synchronization reset finished - perfect sync achieved`);
   }
 
   /**
    * Apply ASCII + CogN synchronization strategy to handle partial backtick commands
-   * 
+   *
    * Strategy:
    * 1. Add new data to buffer
    * 2. Look for P2 debug message boundaries: "\nCogN " or "\n`"
@@ -1374,46 +1450,46 @@ export class MainWindow {
    * 4. Keep only incomplete fragment in buffer
    * 5. Start baud-rate-aware timer for incomplete fragment
    * 6. On timeout, process incomplete fragment
-   * 
+   *
    * Goal: Use P2-specific sync patterns to identify complete messages
    */
   private applySyncStrategy(data: string): string[] {
     const results: string[] = [];
-    
+
     // Add new data to sync buffer
     this.syncBuffer += data;
-    
-    // Look for P2 debug message sync patterns with flexible EOL: 
+
+    // Look for P2 debug message sync patterns with flexible EOL:
     // - Single EOL followed by "CogN " or backtick
     // EOL can be any of these 4 variants:
     //   \r    (CR - classic Mac)
-    //   \n    (LF - Unix/Linux) 
+    //   \n    (LF - Unix/Linux)
     //   \r\n  (CRLF - Windows)
     //   \n\r  (LFCR - the backwards one that should be forgotten!)
     // Note: EOL is max 2 chars, never repeating. Double EOLs = blank lines (content)
     const syncPattern = /(\r\n|\n\r|\r|\n)(?:Cog\d\s|`)/g;
-    
+
     // Find all sync pattern positions
     const syncPoints: number[] = [];
     let match;
     while ((match = syncPattern.exec(this.syncBuffer)) !== null) {
       syncPoints.push(match.index);
     }
-    
+
     let completeContent = '';
     let incompleteFragment = '';
-    
+
     if (syncPoints.length > 0) {
       // We have at least one sync point - everything before the last sync is complete
       const lastSyncPoint = syncPoints[syncPoints.length - 1];
       completeContent = this.syncBuffer.substring(0, lastSyncPoint);
       incompleteFragment = this.syncBuffer.substring(lastSyncPoint);
-      
+
       this.logConsoleMessage(`[SYNC] Found ${syncPoints.length} sync points, splitting at position ${lastSyncPoint}`);
     } else {
       // No sync patterns found - use simple line ending detection
       const lines = this.syncBuffer.split(/\r?\n/);
-      
+
       // Process all lines except the last one (which might be incomplete)
       for (let i = 0; i < lines.length - 1; i++) {
         if (completeContent.length > 0) {
@@ -1421,11 +1497,11 @@ export class MainWindow {
         }
         completeContent += lines[i];
       }
-      
+
       // The last line is incomplete if buffer doesn't end with line ending
       const lastLine = lines[lines.length - 1];
       const endsWithLineEnding = this.syncBuffer.match(/\r?\n$/);
-      
+
       if (endsWithLineEnding && lastLine.length > 0) {
         if (completeContent.length > 0) {
           completeContent += '\r\n';
@@ -1436,17 +1512,20 @@ export class MainWindow {
         incompleteFragment = lastLine;
       }
     }
-    
+
     // Forward all complete content immediately, split by lines
     if (completeContent.length > 0) {
       // Split complete content into individual lines for proper routing
       // This ensures each Cog message and backtick command is processed separately
       const lines = completeContent.split(/\r\n|\n\r|\r|\n/);
-      
+
       for (const line of lines) {
-        if (line.length > 0) { // Skip empty lines
+        if (line.length > 0) {
+          // Skip empty lines
           if (this.isAsciiPrintable(line)) {
-            this.logConsoleMessage(`[SYNC] ✅ Forwarding line: "${line.substring(0, 50)}${line.length > 50 ? '...' : ''}"`);
+            this.logConsoleMessage(
+              `[SYNC] ✅ Forwarding line: "${line.substring(0, 50)}${line.length > 50 ? '...' : ''}"`
+            );
             results.push(line);
           } else {
             this.logConsoleMessage(`[SYNC] ⚠️ Non-ASCII line, dumping as hex:`);
@@ -1456,40 +1535,44 @@ export class MainWindow {
         }
       }
     }
-    
+
     // Handle incomplete fragment
     if (incompleteFragment.length > 0) {
-      this.logConsoleMessage(`[SYNC] 🔄 Buffering incomplete fragment (${incompleteFragment.length} chars): "${incompleteFragment}"`);
+      this.logConsoleMessage(
+        `[SYNC] 🔄 Buffering incomplete fragment (${incompleteFragment.length} chars): "${incompleteFragment}"`
+      );
       this.syncBuffer = incompleteFragment;
       this.lastSyncTime = Date.now(); // Start timer for fragment
     } else {
       this.logConsoleMessage(`[SYNC] 🟢 No incomplete fragment - buffer cleared`);
       this.syncBuffer = '';
     }
-    
+
     // Check for timeout on buffered fragment
     if (this.syncBuffer.length > 0) {
       const dynamicTimeout = this.calculateSyncTimeout();
       const timeSinceLastSync = Date.now() - this.lastSyncTime;
-      
+
       if (timeSinceLastSync > dynamicTimeout) {
         // Timeout reached - process incomplete fragment
-        this.logConsoleMessage(`[SYNC] ⏱️ Timeout (${dynamicTimeout.toFixed(1)}ms) - processing incomplete fragment: "${this.syncBuffer}"`);
-        
+        this.logConsoleMessage(
+          `[SYNC] ⏱️ Timeout (${dynamicTimeout.toFixed(1)}ms) - processing incomplete fragment: "${this.syncBuffer}"`
+        );
+
         if (this.isAsciiPrintable(this.syncBuffer)) {
           results.push(this.syncBuffer);
         } else {
           this.logConsoleMessage(`[SYNC] ⚠️ Non-ASCII fragment, dumping as hex:`);
           this.dumpHexData(this.syncBuffer);
         }
-        
+
         this.syncBuffer = '';
       }
     }
-    
+
     return results;
   }
-  
+
   /**
    * Check if string contains only printable ASCII characters
    */
@@ -1503,30 +1586,31 @@ export class MainWindow {
     }
     return true;
   }
-  
+
   /**
    * Dump non-ASCII data in hex + ASCII format for debugging
    */
   private dumpHexData(data: string): void {
     const bytes = [];
     const ascii = [];
-    
+
     for (let i = 0; i < data.length; i++) {
       const code = data.charCodeAt(i);
       bytes.push(code.toString(16).padStart(2, '0'));
       ascii.push(code >= 32 && code <= 126 ? data.charAt(i) : '.');
     }
-    
+
     // Format as hex dump: address | hex bytes | ASCII
     const bytesPerLine = 16;
     for (let i = 0; i < bytes.length; i += bytesPerLine) {
-      const hexLine = bytes.slice(i, i + bytesPerLine).join(' ').padEnd(bytesPerLine * 3 - 1, ' ');
+      const hexLine = bytes
+        .slice(i, i + bytesPerLine)
+        .join(' ')
+        .padEnd(bytesPerLine * 3 - 1, ' ');
       const asciiLine = ascii.slice(i, i + bytesPerLine).join('');
       this.logConsoleMessage(`[SYNC] ${i.toString(16).padStart(4, '0')}: ${hexLine} | ${asciiLine}`);
     }
   }
-
-
 
   private DISPLAY_SCOPE: string = 'SCOPE';
   private DISPLAY_SCOPEXY: string = 'SCOPE_XY';
@@ -1574,7 +1658,7 @@ export class MainWindow {
         this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
         this.displays['DebugLogger'] = this.debugLoggerWindow;
-        
+
         // Set up cleanup handler
         this.debugLoggerWindow.on('close', () => {
           this.logMessage('Debug Logger Window closed');
@@ -1582,13 +1666,13 @@ export class MainWindow {
           delete this.displays['DebugLogger'];
           this.debugLoggerWindow = null;
         });
-        
+
         // Connect performance monitor for warnings
         const components = this.serialProcessor.getComponents();
         if (components.performanceMonitor) {
           this.debugLoggerWindow.setPerformanceMonitor(components.performanceMonitor);
         }
-        
+
         if (this.context.runEnvironment.loggingEnabled) {
           this.logMessage('Auto-created Debug Logger Window for Cog messages');
         }
@@ -1599,7 +1683,7 @@ export class MainWindow {
         return;
       }
     }
-    
+
     // Route FULL message to debug logger (don't strip prefix)
     // Window will decide what to display
     if (this.debugLoggerWindow) {
@@ -1611,7 +1695,7 @@ export class MainWindow {
       console.error('[DEBUG LOGGER] Window not available, falling back to console');
       this.logConsoleMessage(`[DEBUG OUTPUT] ${data}`);
     }
-    
+
     // Check for embedded backtick commands within the Cog message
     // Format: "Cog0: Some text `TERM TestTerm SIZE 40 20"
     const backtickIndex = data.indexOf('`');
@@ -1620,7 +1704,7 @@ export class MainWindow {
       if (this.context.runEnvironment.loggingEnabled) {
         this.logMessage(`* Extracting embedded command from Cog message: ${embeddedCommand}`);
       }
-      
+
       // Create ExtractedMessage for two-tier system compatibility
       const commandData = new TextEncoder().encode(embeddedCommand);
       const extractedMessage: ExtractedMessage = {
@@ -1632,11 +1716,11 @@ export class MainWindow {
           windowCommand: embeddedCommand
         }
       };
-      
+
       // Route the embedded command through two-tier system
       this.handleWindowCommand(extractedMessage);
     }
-    
+
     // Log the Cog message receipt if logging is enabled
     if (this.context.runEnvironment.loggingEnabled) {
       this.logMessage(`* Received Cog message: ${data}`);
@@ -1676,8 +1760,8 @@ export class MainWindow {
     this.mainWindowGeometry.width = Math.max(minWidth, targetScreenWidth);
     this.mainWindowGeometry.height = Math.max(minHeight, targetScreenHeight);
     // position window bottom-center
-    this.mainWindowGeometry.xOffset = Math.round((width - this.mainWindowGeometry.width) / 2);  // Center horizontally
-    this.mainWindowGeometry.yOffset = Math.round(height - this.mainWindowGeometry.height - 50);  // Bottom with 50px margin
+    this.mainWindowGeometry.xOffset = Math.round((width - this.mainWindowGeometry.width) / 2); // Center horizontally
+    this.mainWindowGeometry.yOffset = Math.round(height - this.mainWindowGeometry.height - 50); // Bottom with 50px margin
 
     this.logConsoleMessage(
       `window geom: ${this.mainWindowGeometry.width}x${this.mainWindowGeometry.height} @${this.mainWindowGeometry.xOffset},${this.mainWindowGeometry.yOffset}`
@@ -1697,7 +1781,7 @@ export class MainWindow {
     }
 
     this.logConsoleMessage('[WINDOW] Creating BrowserWindow with geometry:', this.mainWindowGeometry);
-    
+
     this.mainWindow = new BrowserWindow({
       width: this.mainWindowGeometry.width,
       height: this.mainWindowGeometry.height,
@@ -1708,7 +1792,7 @@ export class MainWindow {
         contextIsolation: false
       }
     });
-    
+
     this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');
 
     const dataEntryBGColor: string = this.termColors.xmitBGColor;
@@ -1766,7 +1850,7 @@ export class MainWindow {
     this.logConsoleMessage(`[MENU SETUP] IDE Mode: ${isIdeMode}, Setting up menu: ${!isIdeMode}`);
     // Set up the system menu (macOS only, prevents "Electron" from showing)
     this.setupApplicationMenu();
-    
+
     if (!isIdeMode) {
       this.logConsoleMessage('[MENU SETUP] Standalone Mode - HTML menu bar will be used');
       // Standard mode: HTML menu bar in the window
@@ -1787,12 +1871,12 @@ export class MainWindow {
   private setControlLineMode(mode: 'DTR' | 'RTS'): void {
     const previousMode = this.controlLineMode;
     this.controlLineMode = mode;
-    
+
     this.logMessage(`Control line mode changed from ${previousMode} to ${mode}`);
-    
+
     // Update the toolbar to show the correct control
     this.updateControlLineUI();
-    
+
     // If switching modes, ensure both are off to avoid conflicts
     if (previousMode !== mode) {
       this.dtrState = false;
@@ -1809,12 +1893,12 @@ export class MainWindow {
    */
   // REMOVED: attachControlLineHandlers method - IPC doesn't work in injected JavaScript
   // All button handlers are now attached in the initial HTML DOMContentLoaded event
-  
+
   private updateControlLineUI(): void {
     // FIXED: Only update button text and data attribute, don't destroy elements
     const isIdeMode = this.context.runEnvironment.ideMode;
     const mode = this.controlLineMode;
-    
+
     // Build the script using string replacement for the mode value
     // Wrap in IIFE to avoid variable redeclaration errors
     const updateScript = `
@@ -1823,27 +1907,27 @@ export class MainWindow {
         if (toolbar) {
           // Find the reset button - it should ALWAYS have the same ID
           let resetButton = document.getElementById('reset-toggle');
-          
+
           // Fallback for legacy IDs (but don't change them)
           if (!resetButton) {
             resetButton = document.getElementById('dtr-toggle') || document.getElementById('rts-toggle');
           }
-          
+
           // Update button text and data attribute
           if (resetButton) {
             resetButton.textContent = '__MODE__';
             resetButton.dataset.line = '__MODE__';
           }
-          
+
           // Find checkbox and update its data attribute
           // The checkbox should ALWAYS have the same ID - don't rename it!
           let resetCheckbox = document.getElementById('reset-checkbox');
-          
+
           // Fallback for legacy IDs (but don't change them)
           if (!resetCheckbox) {
             resetCheckbox = document.getElementById('dtr-checkbox') || document.getElementById('rts-checkbox');
           }
-          
+
           if (resetCheckbox) {
             // Only update the data attribute to indicate which line is active
             resetCheckbox.dataset.line = '__MODE__';
@@ -1851,25 +1935,28 @@ export class MainWindow {
         }
       })();
     `.replace(/__MODE__/g, mode);
-    
+
     this.safeExecuteJS(updateScript, 'update control line UI');
-    
+
     // Update checkbox state
     this.updateControlLineCheckboxState();
   }
-  
+
   private updateControlLineCheckboxState(): void {
     // Update checkbox state based on active control line
     const state = this.controlLineMode === 'RTS' ? this.rtsState : this.dtrState;
     // Wrap in IIFE to avoid variable redeclaration errors
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         const resetCheckbox = document.getElementById('reset-checkbox');
         if (resetCheckbox) {
           resetCheckbox.checked = ${state};
         }
       })();
-    `, 'update-checkbox-state');
+    `,
+      'update-checkbox-state'
+    );
   }
 
   /**
@@ -1888,7 +1975,7 @@ export class MainWindow {
   private createIDEModeHTML(): string {
     const logContentBGColor: string = this.termColors.rcvBGColor;
     const logContentFGColor: string = this.termColors.rcvFGColor;
-    
+
     // Minimal UI for IDE mode - just log content
     return `<!DOCTYPE html>
   <html>
@@ -2318,19 +2405,19 @@ export class MainWindow {
           console.error('[MENU] Failed to load ipcRenderer:', e);
           // Will be injected from main process if this fails
         }
-        
+
         // Function to initialize all handlers
         function initializeHandlers() {
           // console.log('[INIT] Initializing all button handlers...');
-          
+
           if (!ipcRenderer) {
             console.error('[INIT] ipcRenderer not available, cannot attach handlers');
             return;
           }
-          
+
           // DEBUG: Check what buttons exist in the DOM
           // console.log('[DEBUG] Checking for control line buttons...');
-          
+
           // RAM/FLASH buttons
           const ramBtn = document.getElementById('download-ram');
           if (ramBtn) {
@@ -2344,7 +2431,7 @@ export class MainWindow {
               ipcRenderer.send('download-flash');
             });
           }
-          
+
           // Download file button
           const downloadBtn = document.getElementById('download-file');
           if (downloadBtn) {
@@ -2352,14 +2439,14 @@ export class MainWindow {
               ipcRenderer.send('download-file');
             });
           }
-          
+
           // Unified reset button handler - works for both DTR and RTS
           // Try both possible IDs since we're transitioning from old to new
           let resetToggle = document.getElementById('reset-toggle');
           if (!resetToggle) {
             resetToggle = document.getElementById('dtr-toggle') || document.getElementById('rts-toggle');
           }
-          
+
           if (resetToggle && !resetToggle.dataset.handlerAttached) {
             // console.log('[RESET] Found reset button, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
@@ -2372,7 +2459,7 @@ export class MainWindow {
               // console.log('[RESET] Button CLICK #' + clickCount + ' for line: ' + line);
               // console.log('[RESET] Event type: ' + event.type + ', isTrusted: ' + event.isTrusted);
               // console.log('[RESET] Event timestamp: ' + event.timeStamp);
-              
+
               if (line === 'RTS') {
                 // console.log('[RESET] Sending toggle-rts IPC (click #' + clickCount + ')');
                 ipcRenderer.send('toggle-rts');
@@ -2388,13 +2475,13 @@ export class MainWindow {
           } else {
             // console.log('[RESET] Reset button not found in DOM');
           }
-          
+
           // Unified reset checkbox handler
           let resetCheckbox = document.getElementById('reset-checkbox');
           if (!resetCheckbox) {
             resetCheckbox = document.getElementById('dtr-checkbox') || document.getElementById('rts-checkbox');
           }
-          
+
           if (resetCheckbox && !resetCheckbox.dataset.handlerAttached) {
             // console.log('[RESET] Found reset checkbox, attaching handler');
             // Mark that we've attached the handler to prevent duplicates
@@ -2405,16 +2492,16 @@ export class MainWindow {
               checkboxClickCount++;
               // console.log('[RESET] Checkbox CLICKED by user #' + checkboxClickCount);
               // console.log('[RESET] Current checkbox state before click: ' + e.target.checked);
-              
+
               // IMPORTANT: Prevent default to avoid double-toggle
               // The checkbox will be updated by the IPC response only
               e.preventDefault();
-              
+
               // Check which line is active from the checkbox's data attribute
-              const line = resetCheckbox.dataset.line || 
+              const line = resetCheckbox.dataset.line ||
                            (document.getElementById('reset-toggle') || resetToggle)?.textContent;
               // console.log('[RESET] User clicked checkbox for line: ' + line + ', sending IPC...');
-              
+
               if (line === 'RTS') {
                 // console.log('[RESET] Sending toggle-rts IPC from checkbox click #' + checkboxClickCount);
                 ipcRenderer.send('toggle-rts');
@@ -2430,9 +2517,9 @@ export class MainWindow {
           } else {
             // console.log('[RESET] Reset checkbox not found in DOM');
           }
-          
+
           // Note: Legacy DTR/RTS specific handlers removed - unified reset handlers above handle both modes
-          
+
           // Recording buttons
           const recordBtn = document.getElementById('record-btn');
           if (recordBtn) {
@@ -2446,39 +2533,39 @@ export class MainWindow {
               ipcRenderer.send('play-recording');
             });
           }
-          
+
           // Playback control panel handlers
           const playBtn = document.getElementById('playback-play');
           const pauseBtn = document.getElementById('playback-pause');
           const stopBtn = document.getElementById('playback-stop');
           const speedSelect = document.getElementById('playback-speed');
           const progressBar = document.getElementById('playback-progress');
-          
+
           if (playBtn) {
             playBtn.addEventListener('click', () => {
               ipcRenderer.send('playback-control', 'play');
             });
           }
-          
+
           if (pauseBtn) {
             pauseBtn.addEventListener('click', () => {
               ipcRenderer.send('playback-control', 'pause');
             });
           }
-          
+
           if (stopBtn) {
             stopBtn.addEventListener('click', () => {
               ipcRenderer.send('playback-control', 'stop');
             });
           }
-          
+
           if (speedSelect) {
             speedSelect.addEventListener('change', (e) => {
               const speed = parseFloat(e.target.value);
               ipcRenderer.send('playback-control', 'speed', speed);
             });
           }
-          
+
           if (progressBar) {
             progressBar.addEventListener('click', (e) => {
               const rect = progressBar.getBoundingClientRect();
@@ -2486,7 +2573,7 @@ export class MainWindow {
               ipcRenderer.send('playback-control', 'seek', position);
             });
           }
-          
+
           // Listen for DTR state updates from main process
           ipcRenderer.on('update-dtr-state', (event, state) => {
             // console.log('[IPC] Received DTR state update:', state);
@@ -2497,7 +2584,7 @@ export class MainWindow {
               // console.log('[DTR] Checkbox display updated to:', state);
             }
           });
-          
+
           // Listen for RTS state updates from main process
           ipcRenderer.on('update-rts-state', (event, state) => {
             // console.log('[IPC] Received RTS state update:', state);
@@ -2508,7 +2595,7 @@ export class MainWindow {
               // console.log('[RTS] Checkbox display updated to:', state);
             }
           });
-          
+
           // Echo checkbox
           const echoCheckbox = document.getElementById('echo-checkbox');
           if (echoCheckbox) {
@@ -2516,17 +2603,17 @@ export class MainWindow {
               ipcRenderer.send('toggle-echo', e.target.checked);
             });
           }
-          
-          
+
+
           // Menu initialization moved to programmatic injection after window loads
           // This avoids data URL script execution restrictions
           const isIdeModeJS = ${this.context.runEnvironment.ideMode};
           // console.log('[MENU] IDE Mode in renderer:', isIdeModeJS);
-          
+
           // REMOVED: Old menu initialization code that relied on window.ipcRenderer
           // Menu is now handled via Electron's native menu system
         }
-        
+
         // Check if DOM is already loaded or wait for it
         // console.log('[INIT] Document readyState:', document.readyState);
         if (document.readyState === 'loading') {
@@ -2553,7 +2640,7 @@ export class MainWindow {
     // Remove any existing handlers to avoid duplicates
     ipcMain.removeAllListeners('toggle-dtr');
     ipcMain.removeAllListeners('toggle-rts');
-    
+
     // File menu handlers
     ipcMain.removeAllListeners('menu-new-recording');
     ipcMain.removeAllListeners('menu-open-recording');
@@ -2562,23 +2649,23 @@ export class MainWindow {
     ipcMain.removeAllListeners('menu-stop-recording');
     ipcMain.removeAllListeners('menu-playback-recording');
     ipcMain.removeAllListeners('menu-quit');
-    
+
     // Edit menu handlers
     ipcMain.removeAllListeners('menu-find');
     ipcMain.removeAllListeners('menu-clear');
     ipcMain.removeAllListeners('menu-preferences');
-    
+
     // Window menu handlers
     ipcMain.removeAllListeners('menu-performance-monitor');
     ipcMain.removeAllListeners('menu-cascade');
     ipcMain.removeAllListeners('menu-tile');
     ipcMain.removeAllListeners('menu-show-all');
     ipcMain.removeAllListeners('menu-hide-all');
-    
+
     // Help menu handlers
     ipcMain.removeAllListeners('menu-documentation');
     ipcMain.removeAllListeners('menu-about');
-    
+
     // DTR/RTS Toggle Handlers
     let dtrToggleCount = 0;
     ipcMain.on('toggle-dtr', async () => {
@@ -2588,12 +2675,12 @@ export class MainWindow {
       await this.toggleDTR();
       this.logConsoleMessage(`[IPC] DTR state after toggle: ${this.dtrState}`);
     });
-    
+
     ipcMain.on('toggle-rts', async () => {
       this.logConsoleMessage('[IPC] Received toggle-rts request');
       await this.toggleRTS();
     });
-    
+
     // Recording dialog actions
     ipcMain.on('recording-action', (event: any, action: string, data?: string) => {
       this.logConsoleMessage('[IPC] Recording action:', action, data);
@@ -2605,45 +2692,45 @@ export class MainWindow {
         this.startRecording(data); // data contains the file path
       }
     });
-    
+
     // Playback control handlers
     ipcMain.on('playback-control', async (event: any, action: string, data?: any) => {
       this.logConsoleMessage('[IPC] Playback control:', action, data);
-      
+
       if (!this.binaryPlayer) {
         this.logConsoleMessage('[PLAYBACK] No player instance');
         return;
       }
-      
+
       switch (action) {
         case 'play':
           this.binaryPlayer.play();
           this.showPlaybackControls();
           this.updatePlaybackButton(true);
           break;
-          
+
         case 'pause':
           this.binaryPlayer.pause();
           this.updatePlaybackButton(false);
           break;
-          
+
         case 'stop':
           this.binaryPlayer.stop();
           this.hidePlaybackControls();
           this.updatePlaybackButton(false);
           break;
-          
+
         case 'seek':
           this.binaryPlayer.seek(data);
           break;
-          
+
         case 'speed':
           this.binaryPlayer.setSpeed(data);
           break;
       }
     });
-    
-    // Recording toolbar button handler  
+
+    // Recording toolbar button handler
     ipcMain.on('toggle-recording', () => {
       this.logConsoleMessage('[IPC] Toggle recording from toolbar');
       if (this.windowRouter.isRecordingActive()) {
@@ -2652,13 +2739,13 @@ export class MainWindow {
         this.startRecording();
       }
     });
-    
+
     // Playback toolbar button handler
     ipcMain.on('play-recording', async () => {
       this.logConsoleMessage('[IPC] Play recording from toolbar');
       await this.playRecording();
     });
-    
+
     // File menu handlers
     ipcMain.on('menu-new-recording', () => {
       this.logConsoleMessage('[IPC] New recording');
@@ -2669,10 +2756,10 @@ export class MainWindow {
       const messageCount = this.windowRouter.getRecordingMessageCount();
       this.newRecordingDialog.show(isRecording, messageCount);
     });
-    
+
     ipcMain.on('menu-open-recording', async () => {
       this.logConsoleMessage('[IPC] Open recording');
-      
+
       // Use context-based recordings directory with user preferences
       const recordingsDir = this.context.getRecordingsDirectory();
       if (!fs.existsSync(recordingsDir)) {
@@ -2685,10 +2772,9 @@ export class MainWindow {
         });
         return;
       }
-      
-      const recordingFiles = fs.readdirSync(recordingsDir)
-        .filter(f => f.endsWith('.p2rec') || f.endsWith('.jsonl'));
-      
+
+      const recordingFiles = fs.readdirSync(recordingsDir).filter((f) => f.endsWith('.p2rec') || f.endsWith('.jsonl'));
+
       if (recordingFiles.length === 0) {
         dialog.showMessageBox(this.mainWindow!, {
           type: 'info',
@@ -2699,13 +2785,13 @@ export class MainWindow {
         });
         return;
       }
-      
+
       await this.playRecording();
     });
-    
+
     ipcMain.on('menu-save-recording', async () => {
       this.logConsoleMessage('[IPC] Save recording');
-      
+
       // Check if recording is in progress
       if (!this.windowRouter.isRecordingActive()) {
         dialog.showMessageBox(this.mainWindow!, {
@@ -2717,10 +2803,10 @@ export class MainWindow {
         });
         return;
       }
-      
+
       // Stop recording first to flush buffer
       this.windowRouter.stopRecording();
-      
+
       // TODO: Access the saved recording file
       const result = await dialog.showSaveDialog(this.mainWindow!, {
         title: 'Save Recording As',
@@ -2730,122 +2816,124 @@ export class MainWindow {
           { name: 'JSON Recording Files', extensions: ['jsonl'] }
         ]
       });
-      
+
       if (!result.canceled && result.filePath) {
         // The recording is already saved by stopRecording()
         // We would need to copy/move it to the user's chosen location
         this.logConsoleMessage('[RECORDING] Would save to:', result.filePath);
       }
     });
-    
+
     ipcMain.on('menu-start-recording', () => {
       this.logConsoleMessage('[IPC] Start recording');
       this.startRecording();
     });
-    
+
     ipcMain.on('menu-stop-recording', () => {
       this.logConsoleMessage('[IPC] Stop recording');
       this.stopRecording();
     });
-    
+
     ipcMain.on('menu-playback-recording', async () => {
       this.logConsoleMessage('[IPC] Playback recording');
       await this.playRecording();
     });
-    
+
     ipcMain.on('menu-preferences', () => {
       this.logConsoleMessage('[IPC] Preferences');
       this.showPreferencesDialog();
     });
-    
+
     ipcMain.on('menu-quit', () => {
       this.logConsoleMessage('[IPC] Quit');
       app.quit();
     });
-    
+
     // Edit menu handlers
     ipcMain.on('menu-find', () => {
       this.logConsoleMessage('[IPC] Find');
       // TODO: Implement find dialog
       this.showFindDialog();
     });
-    
+
     ipcMain.on('menu-clear', () => {
       this.logConsoleMessage('[IPC] Clear terminal');
       this.clearTerminal();
     });
-    
+
     // Window menu handlers
     ipcMain.on('menu-performance-monitor', () => {
       this.logConsoleMessage('[IPC] Performance monitor');
       this.showPerformanceMonitor();
     });
-    
+
     ipcMain.on('menu-cascade', () => {
       this.logConsoleMessage('[IPC] Cascade windows');
       this.cascadeWindows();
     });
-    
+
     ipcMain.on('menu-tile', () => {
       this.logConsoleMessage('[IPC] Tile windows');
       this.tileWindows();
     });
-    
+
     ipcMain.on('menu-show-all', () => {
       this.logConsoleMessage('[IPC] Show all windows');
       this.showAllWindows();
     });
-    
+
     ipcMain.on('menu-hide-all', () => {
       this.logConsoleMessage('[IPC] Hide all windows');
       this.hideAllWindows();
     });
-    
+
     // Help menu handlers
     ipcMain.on('menu-documentation', () => {
       this.logConsoleMessage('[IPC] Documentation');
       this.showDocumentation();
     });
-    
+
     // menu-about is handled by executeCommand
-    
+
     this.logConsoleMessage('[IPC] All menu handlers registered');
   }
-  
+
   /**
    * Initialize menu system programmatically after window loads
    * This avoids the data URL script execution restrictions
    */
   private initializeMenu(): void {
     if (!this.mainWindow) return;
-    
+
     this.logConsoleMessage('[MENU] Starting programmatic menu initialization...');
-    
+
     // Inject menu event handlers from main process
-    this.mainWindow.webContents.executeJavaScript(`
+    this.mainWindow.webContents
+      .executeJavaScript(
+        `
       (function() {
         // console.log('[MENU] Programmatic menu setup starting...');
-        
+
         const menuBar = document.getElementById('menu-bar');
         if (!menuBar) {
           console.error('[MENU] Menu bar element not found!');
           return;
         }
-        
+
         // console.log('[MENU] Found menu bar, setting up handlers...');
-        
+
         // Get all menu items
         const menuItems = document.querySelectorAll('.menu-item');
         // console.log('[MENU] Found ' + menuItems.length + ' menu items');
-        
+
         // Add click handlers to menu items using CSS classes for state
         menuItems.forEach((item, index) => {
           // console.log('[MENU] Attaching handler to menu item ' + index + ': ' + item.textContent);
-          
+
           item.addEventListener('click', (e) => {
             // console.log('[MENU] Menu item clicked: ' + item.textContent);
             e.stopPropagation();
-            
+
             const dropdown = item.querySelector('.menu-dropdown');
             if (dropdown) {
               // Close all other dropdowns using CSS class
@@ -2854,29 +2942,29 @@ export class MainWindow {
                   d.classList.remove('open');
                 }
               });
-              
+
               // Toggle this dropdown using CSS class
               dropdown.classList.toggle('open');
               // console.log('[MENU] Dropdown toggled, open:', dropdown.classList.contains('open'));
             }
           });
         });
-        
+
         // Add handlers for dropdown items
         const dropdownItems = document.querySelectorAll('.menu-dropdown-item');
         // console.log('[MENU] Found ' + dropdownItems.length + ' dropdown items');
-        
+
         dropdownItems.forEach((item, index) => {
           const action = item.getAttribute('data-action');
           // console.log('[MENU] Attaching handler to dropdown item ' + index + ', action: ' + action);
-          
+
           item.addEventListener('click', (e) => {
             // console.log('[MENU] Dropdown item clicked, action: ' + action);
             e.stopPropagation();
-            
+
             // Close all dropdowns using CSS class
             document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
-            
+
             // Handle the action
             if (action) {
               // For actions that don't need IPC, handle directly
@@ -2900,7 +2988,7 @@ export class MainWindow {
             }
           });
         });
-        
+
         // Close menu when clicking outside - fixed with event parameter
         document.addEventListener('click', (e) => {
           // Only close if click was outside menu system
@@ -2908,20 +2996,23 @@ export class MainWindow {
             document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
           }
         });
-        
+
         // console.log('[MENU] Menu initialization complete');
         return 'Menu initialized';
       })();
-    `).then((result: any) => {
-      this.logConsoleMessage('[MENU] Menu injection result:', result);
-    }).catch((error: any) => {
-      console.error('[MENU] Failed to inject menu handlers:', error);
-    });
+    `
+      )
+      .then((result: any) => {
+        this.logConsoleMessage('[MENU] Menu injection result:', result);
+      })
+      .catch((error: any) => {
+        console.error('[MENU] Failed to inject menu handlers:', error);
+      });
   }
 
   private setupWindowHandlers(): void {
     // Inject JavaScript into the renderer process
-    
+
     // Set up IPC handlers for toolbar events (both IDE and standard modes)
     this.mainWindow!.webContents.on('ipc-message', (event: any, channel: any, ...args: any[]) => {
       switch (channel) {
@@ -2930,7 +3021,8 @@ export class MainWindow {
           this.terminalMode = mode;
           this.logMessage(`Terminal mode set to ${mode}`);
           // Clear terminal when switching modes
-          this.safeExecuteJS(`
+          this.safeExecuteJS(
+            `
             (function() {
               const terminal = document.getElementById('log-content');
               if (terminal) {
@@ -2939,7 +3031,9 @@ export class MainWindow {
                 terminal.dataset.cursorY = '0';
               }
             })();
-          `, 'clear terminal on mode switch');
+          `,
+            'clear terminal on mode switch'
+          );
           break;
         case 'set-cog-display-mode':
           const cogMode = args[0] as 'show_all' | 'on_demand';
@@ -3003,53 +3097,54 @@ export class MainWindow {
           break;
       }
     });
-    
+
     // Set up IPC handlers for DTR/RTS control
     this.setupIPCHandlers();
-    
+
     // Set up toolbar button event handlers and load settings
     this.mainWindow!.webContents.once('did-finish-load', () => {
       const isIdeMode = this.context.runEnvironment.ideMode;
-      
+
       // Open DevTools for debugging (TEMPORARY - remove when fixed)
       if (!isIdeMode) {
         this.logConsoleMessage('[DEBUG] Opening DevTools for debugging...');
         this.mainWindow!.webContents.openDevTools();
       }
-      
+
       // Initialize menu if in standalone mode
       if (!isIdeMode) {
         this.logConsoleMessage('[MENU] Injecting menu setup after window load...');
         this.initializeMenu();
       }
-      
+
       // REMOVED: injectAllButtonHandlers() was overwriting good handlers with broken ones
       // All button handlers are now properly attached in DOMContentLoaded event
       // The executeJavaScript injection cannot access require('electron') since Electron v5.0.0
       // console.log('[BUTTON] Skipping button injection - handlers attached in DOMContentLoaded');
-      
+
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
       this.createDebugLoggerWindow();
-      
+
       // Load terminal mode setting after window is ready
       this.loadTerminalMode();
-      
+
       // Measure actual font metrics now that window is ready
       this.measureAndStoreFontMetrics();
-      
+
       // Initialize download mode LEDs after DOM is ready
       this.updateDownloadMode(this.downloadMode);
-      
+
       // DTR/RTS button handlers are now attached in the initial HTML DOMContentLoaded handler
       // where ipcRenderer is available from require('electron')
-      
+
       // Start performance monitoring now that DOM is ready
       this.startPerformanceMonitoring();
       this.logConsoleMessage('[PERF DISPLAY] Performance monitoring started after DOM ready');
-      
+
       // Initialize activity LEDs to OFF state
-      this.safeExecuteJS(`
+      this.safeExecuteJS(
+        `
         const txLed = document.getElementById('tx-led');
         const rxLed = document.getElementById('rx-led');
         if (txLed) {
@@ -3062,14 +3157,16 @@ export class MainWindow {
           rxLed.style.fontSize = '20px';
           txLed.style.textShadow = '0 0 2px #000';
         }
-      `, 'initialize-activity-leds');
-      
+      `,
+        'initialize-activity-leds'
+      );
+
       // Initialize serial connection after DOM is ready
       if (this._deviceNode.length > 0 && !this._serialPort) {
         this.logMessage(`* Opening serial port after DOM ready: ${this._deviceNode}`);
         this.openSerialPort(this._deviceNode);
       }
-      
+
       // Initialize log LED to OFF state (logging now handled by DebugLogger)
       this.updateLoggingStatus(false);
 
@@ -3077,8 +3174,7 @@ export class MainWindow {
       if (this._deviceNode.length > 0) {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
-      
-      
+
       // Setup text input control for data entry
       this.hookTextInputControl('dataEntry', (event: Event) => {
         const inputElement = event.target as HTMLInputElement;
@@ -3088,7 +3184,7 @@ export class MainWindow {
           inputElement.value = '';
         }
       });
-      
+
       // Check serial port status after window loads - delayed to let async operations complete
       setTimeout(async () => {
         if (this._serialPort === undefined) {
@@ -3101,7 +3197,7 @@ export class MainWindow {
             try {
               const { UsbSerial } = require('../utils/usb.serial');
               const availableDevices = await UsbSerial.serialDeviceList();
-              
+
               if (availableDevices.length === 0) {
                 this.appendLog(`⚠️ No PropPlug devices found`);
                 this.appendLog(`   • Connect your PropPlug device via USB`);
@@ -3143,23 +3239,23 @@ export class MainWindow {
 
   private createApplicationMenu(): void {
     this.logConsoleMessage('[MENU SETUP] Starting createApplicationMenu()');
-    
+
     if (!Menu) {
       console.error('[MENU SETUP] ERROR: Menu is not available from Electron!');
       return;
     }
-    
+
     // macOS only gets the system menu
     if (process.platform === 'darwin') {
       this.createMacSystemMenu();
       return;
     }
-    
+
     // Windows/Linux: No system menu, will use HTML menu bar
     Menu.setApplicationMenu(null);
     this.logConsoleMessage('[MENU SETUP] No system menu for Windows/Linux - using HTML menu bar');
   }
-  
+
   private createMacSystemMenu(): void {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
@@ -3218,21 +3314,15 @@ export class MainWindow {
       // Standard Window menu for Mac
       {
         label: 'Window',
-        submenu: [
-          { role: 'minimize' },
-          { role: 'close' },
-          { role: 'zoom' },
-          { type: 'separator' },
-          { role: 'front' }
-        ]
+        submenu: [{ role: 'minimize' }, { role: 'close' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
       }
     ];
-    
+
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
     this.logConsoleMessage('[MENU SETUP] ✅ macOS system menu set');
   }
-  
+
   private createOldApplicationMenu(): void {
     // Keeping old menu code for reference - will be replaced by HTML menu bar
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
@@ -3250,17 +3340,18 @@ export class MainWindow {
               const argsDisplay = args.length > 0 ? args.join(' ') : '(none)';
               const isIdeMode = this.context.runEnvironment.ideMode;
               const modeDisplay = isIdeMode ? 'IDE Mode (no menus)' : 'Standalone Mode';
-              
+
               dialog.showMessageBox(this.mainWindow!, {
                 type: 'info',
                 title: 'About PNut Term TS',
                 message: 'PNut Term TS\nVersion 1.0.0\n\nby Iron Sheep Productions, LLC',
-                detail: `Runtime Versions:\n` +
-                       `Node.js: ${nodeVersion}\n` +
-                       `Chromium: ${chromiumVersion}\n` +
-                       `Electron: ${electronVersion}\n\n` +
-                       `Mode: ${modeDisplay}\n` +
-                       `Invocation: ${argsDisplay}`,
+                detail:
+                  `Runtime Versions:\n` +
+                  `Node.js: ${nodeVersion}\n` +
+                  `Chromium: ${chromiumVersion}\n` +
+                  `Electron: ${electronVersion}\n\n` +
+                  `Mode: ${modeDisplay}\n` +
+                  `Invocation: ${argsDisplay}`,
                 buttons: ['OK']
               });
             }
@@ -3393,21 +3484,20 @@ export class MainWindow {
         ]
       }
     ];
-    
+
     // Old menu code - kept for reference when implementing HTML menu bar
   }
 
   private async showConnectionDialog(): Promise<void> {
     this.logConsoleMessage('[MENU] Showing connection dialog');
-    
+
     // Get available serial ports using UsbSerial
     const deviceList = await UsbSerial.serialDeviceList(this.context);
-    const portList = deviceList
-      .map((device: string) => ({
-        label: device,
-        value: device
-      }));
-    
+    const portList = deviceList.map((device: string) => ({
+      label: device,
+      value: device
+    }));
+
     if (portList.length === 0) {
       dialog.showMessageBox(this.mainWindow!, {
         type: 'warning',
@@ -3418,10 +3508,10 @@ export class MainWindow {
       });
       return;
     }
-    
+
     // UNUSED: HTML dialog code removed - using Electron dialog instead
     // If we need HTML dialogs in future, handlers must be in initial HTML script
-    
+
     // Use Electron's built-in dialog
     const result = await dialog.showMessageBox(this.mainWindow!, {
       type: 'question',
@@ -3431,59 +3521,65 @@ export class MainWindow {
       buttons: ['Cancel', ...portList.map((p: any) => p.label)],
       defaultId: 1
     });
-    
+
     if (result.response > 0) {
       const selectedPort = portList[result.response - 1].value;
       this.logConsoleMessage('[MENU] Connecting to port:', selectedPort);
       await this.connectSerialPort(selectedPort);
     }
   }
-  
+
   private async connectSerialPort(deviceNode: string): Promise<void> {
     this.logConsoleMessage('[MENU] Connecting to serial port:', deviceNode);
-    
+
     // Disconnect any existing connection first
     if (this._serialPort) {
       await this.disconnectSerialPort();
     }
-    
+
     // Open the serial port using existing method
     this._deviceNode = deviceNode;
     await this.openSerialPort(deviceNode);
-    
+
     // Update UI to show connected state
     if (this._serialPort) {
-      this.safeExecuteJS(`
+      this.safeExecuteJS(
+        `
         (function() {
           const propPlug = document.querySelector('#propPlug .status-value');
           if (propPlug) {
             propPlug.textContent = '${deviceNode}';
           }
         })();
-      `, 'update connect status');
+      `,
+        'update connect status'
+      );
     }
   }
-  
+
   private async disconnectSerialPort(): Promise<void> {
     this.logConsoleMessage('[MENU] Disconnecting serial port');
-    
+
     if (this._serialPort) {
       try {
         await this._serialPort.close();
         this.logConsoleMessage('[SERIAL] Port closed successfully');
-        
+
         this._serialPort = undefined;
         this.logMessage('Serial port disconnected');
-        
+
         // Update UI to show disconnected state
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const propPlug = document.querySelector('#propPlug .status-value');
             if (propPlug) {
               propPlug.textContent = 'Disconnected';
             }
           })();
-        `, 'update disconnect status');
+        `,
+          'update disconnect status'
+        );
       } catch (error) {
         console.error('[SERIAL] Failed to disconnect:', error);
       }
@@ -3513,13 +3609,25 @@ export class MainWindow {
       // Log each display in detail
       displays.forEach((display: any, index: number) => {
         const isPrimary = display.id === primaryDisplay.id;
-        this.logConsoleMessage(`[DISPLAY SYSTEM] 📺 Monitor ${index + 1}${isPrimary ? ' (PRIMARY)' : ''}: ID=${display.id}`);
+        this.logConsoleMessage(
+          `[DISPLAY SYSTEM] 📺 Monitor ${index + 1}${isPrimary ? ' (PRIMARY)' : ''}: ID=${display.id}`
+        );
         this.logConsoleMessage(`[DISPLAY SYSTEM]    📐 Size: ${display.size.width}x${display.size.height}`);
         this.logConsoleMessage(`[DISPLAY SYSTEM]    🧮 Scale: ${display.scaleFactor}x`);
         this.logConsoleMessage(`[DISPLAY SYSTEM]    📍 Position: (${display.bounds.x}, ${display.bounds.y})`);
-        this.logConsoleMessage(`[DISPLAY SYSTEM]    📏 Bounds: ${display.bounds.x},${display.bounds.y} → ${display.bounds.x + display.bounds.width},${display.bounds.y + display.bounds.height}`);
-        this.logConsoleMessage(`[DISPLAY SYSTEM]    💼 Work Area: ${display.workArea.x},${display.workArea.y} → ${display.workArea.x + display.workArea.width},${display.workArea.y + display.workArea.height}`);
-        this.logConsoleMessage(`[DISPLAY SYSTEM]    🎚️  Work Size: ${display.workArea.width}x${display.workArea.height}`);
+        this.logConsoleMessage(
+          `[DISPLAY SYSTEM]    📏 Bounds: ${display.bounds.x},${display.bounds.y} → ${
+            display.bounds.x + display.bounds.width
+          },${display.bounds.y + display.bounds.height}`
+        );
+        this.logConsoleMessage(
+          `[DISPLAY SYSTEM]    💼 Work Area: ${display.workArea.x},${display.workArea.y} → ${
+            display.workArea.x + display.workArea.width
+          },${display.workArea.y + display.workArea.height}`
+        );
+        this.logConsoleMessage(
+          `[DISPLAY SYSTEM]    🎚️  Work Size: ${display.workArea.width}x${display.workArea.height}`
+        );
         if (display.internal !== undefined) {
           this.logConsoleMessage(`[DISPLAY SYSTEM]    💻 Internal: ${display.internal}`);
         }
@@ -3534,13 +3642,19 @@ export class MainWindow {
       };
 
       this.logConsoleMessage(`[DISPLAY SYSTEM] 🌐 Total Desktop Area:`);
-      this.logConsoleMessage(`[DISPLAY SYSTEM]    📏 Bounds: (${totalBounds.left},${totalBounds.top}) → (${totalBounds.right},${totalBounds.bottom})`);
-      this.logConsoleMessage(`[DISPLAY SYSTEM]    📐 Size: ${totalBounds.right - totalBounds.left}x${totalBounds.bottom - totalBounds.top}`);
+      this.logConsoleMessage(
+        `[DISPLAY SYSTEM]    📏 Bounds: (${totalBounds.left},${totalBounds.top}) → (${totalBounds.right},${totalBounds.bottom})`
+      );
+      this.logConsoleMessage(
+        `[DISPLAY SYSTEM]    📐 Size: ${totalBounds.right - totalBounds.left}x${totalBounds.bottom - totalBounds.top}`
+      );
 
       // Show where the cursor currently is
       const cursorPoint = screen.getCursorScreenPoint();
       const displayAtCursor = screen.getDisplayNearestPoint(cursorPoint);
-      this.logConsoleMessage(`[DISPLAY SYSTEM] 🖱️  Cursor: (${cursorPoint.x}, ${cursorPoint.y}) on Monitor ID=${displayAtCursor.id}`);
+      this.logConsoleMessage(
+        `[DISPLAY SYSTEM] 🖱️  Cursor: (${cursorPoint.x}, ${cursorPoint.y}) on Monitor ID=${displayAtCursor.id}`
+      );
 
       this.logConsoleMessage('[DISPLAY SYSTEM] ========================================');
 
@@ -3549,7 +3663,6 @@ export class MainWindow {
       // setTimeout(() => {
       //   this.createGridTestWindows();
       // }, 3000); // Wait 3 seconds - time to move main window
-
     } catch (error) {
       console.error('[DISPLAY SYSTEM] ❌ Failed to query display configuration:', error);
     }
@@ -3574,22 +3687,32 @@ export class MainWindow {
 
       this.logConsoleMessage('[GRID TEST] 🎯 Creating grid test windows...');
       this.logConsoleMessage(`[GRID TEST] 📺 Main window on Monitor ID=${currentDisplay.id}`);
-      this.logConsoleMessage(`[GRID TEST]    Main bounds: (${mainWindowBounds.x}, ${mainWindowBounds.y}) ${mainWindowBounds.width}x${mainWindowBounds.height}`);
-      this.logConsoleMessage(`[GRID TEST]    Monitor bounds: (${currentDisplay.bounds.x}, ${currentDisplay.bounds.y}) ${currentDisplay.bounds.width}x${currentDisplay.bounds.height}`);
-      this.logConsoleMessage(`[GRID TEST]    Work area: (${workArea.x}, ${workArea.y}) ${workArea.width}x${workArea.height}`);
+      this.logConsoleMessage(
+        `[GRID TEST]    Main bounds: (${mainWindowBounds.x}, ${mainWindowBounds.y}) ${mainWindowBounds.width}x${mainWindowBounds.height}`
+      );
+      this.logConsoleMessage(
+        `[GRID TEST]    Monitor bounds: (${currentDisplay.bounds.x}, ${currentDisplay.bounds.y}) ${currentDisplay.bounds.width}x${currentDisplay.bounds.height}`
+      );
+      this.logConsoleMessage(
+        `[GRID TEST]    Work area: (${workArea.x}, ${workArea.y}) ${workArea.width}x${workArea.height}`
+      );
 
       // STEP 2: Calculate adaptive grid size for this monitor (same logic as WindowPlacer)
       const displayArea = workArea.width * workArea.height;
       let COLS: number, ROWS: number;
 
       if (displayArea > 3000000) {
-        COLS = 5; ROWS = 4;
+        COLS = 5;
+        ROWS = 4;
       } else if (displayArea > 1000000) {
-        COLS = 5; ROWS = 3;
+        COLS = 5;
+        ROWS = 3;
       } else if (displayArea > 500000) {
-        COLS = 3; ROWS = 3;
+        COLS = 3;
+        ROWS = 3;
       } else {
-        COLS = 3; ROWS = 2;
+        COLS = 3;
+        ROWS = 2;
       }
 
       // Aspect ratio adjustments
@@ -3603,8 +3726,8 @@ export class MainWindow {
 
       // STEP 3: Calculate grid cell dimensions
       const m = 20; // margin
-      const colWidth = Math.round((workArea.width - (m * 2)) / COLS);
-      const rowHeight = Math.round((workArea.height - (m * 2)) / ROWS);
+      const colWidth = Math.round((workArea.width - m * 2) / COLS);
+      const rowHeight = Math.round((workArea.height - m * 2) / ROWS);
 
       this.logConsoleMessage(`[GRID TEST] 📏 Cell size: ${colWidth}x${rowHeight} with ${m}px margins`);
 
@@ -3619,24 +3742,42 @@ export class MainWindow {
       // Middle and bottom rows - edges + center column only
       const centerCol = Math.floor(COLS / 2);
       for (let row = 1; row < ROWS; row++) {
-        testSlots.push({ row, col: 0, type: 'left-edge' });           // Left edge
-        testSlots.push({ row, col: centerCol, type: 'center-col' });  // Center column
-        testSlots.push({ row, col: COLS - 1, type: 'right-edge' });  // Right edge
+        testSlots.push({ row, col: 0, type: 'left-edge' }); // Left edge
+        testSlots.push({ row, col: centerCol, type: 'center-col' }); // Center column
+        testSlots.push({ row, col: COLS - 1, type: 'right-edge' }); // Right edge
       }
 
-      this.logConsoleMessage(`[GRID TEST] 🎨 Test pattern: ${testSlots.length} windows (top-row + edges + center-column)`);
+      this.logConsoleMessage(
+        `[GRID TEST] 🎨 Test pattern: ${testSlots.length} windows (top-row + edges + center-column)`
+      );
       this.logConsoleMessage(`[GRID TEST]    Center column: ${centerCol} (0-indexed)`);
 
       // STEP 5: Create test windows
-      const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43', '#10ac84', '#ee5a52', '#0984e3', '#a29bfe', '#fd79a8'];
+      const colors = [
+        '#ff6b6b',
+        '#4ecdc4',
+        '#45b7d1',
+        '#96ceb4',
+        '#feca57',
+        '#ff9ff3',
+        '#54a0ff',
+        '#5f27cd',
+        '#00d2d3',
+        '#ff9f43',
+        '#10ac84',
+        '#ee5a52',
+        '#0984e3',
+        '#a29bfe',
+        '#fd79a8'
+      ];
 
       testSlots.forEach((slot, index) => {
         const slotNumber = slot.row * COLS + slot.col + 1;
         const color = colors[index % colors.length];
 
         // Calculate position using same logic as WindowPlacer
-        const x = workArea.x + m + (slot.col * colWidth);
-        const y = workArea.y + m + (slot.row * rowHeight);
+        const x = workArea.x + m + slot.col * colWidth;
+        const y = workArea.y + m + slot.row * rowHeight;
 
         const label = `SLOT-${slotNumber.toString().padStart(2, '0')} (R${slot.row}C${slot.col})`;
 
@@ -3674,7 +3815,8 @@ export class MainWindow {
         </html>`;
 
         // Load content and show window
-        testWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+        testWindow
+          .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
           .then(() => {
             this.logConsoleMessage(`[GRID TEST] ✅ ${label}: Content loaded`);
           })
@@ -3685,13 +3827,15 @@ export class MainWindow {
         // DIAGNOSTIC LOGGING: Compare intended vs actual position
         testWindow.once('ready-to-show', () => {
           const actualBounds = testWindow.getBounds();
-          const moved = (actualBounds.x !== x || actualBounds.y !== y);
+          const moved = actualBounds.x !== x || actualBounds.y !== y;
           const moveDistance = moved ? Math.sqrt(Math.pow(actualBounds.x - x, 2) + Math.pow(actualBounds.y - y, 2)) : 0;
 
           this.logConsoleMessage(`[GRID TEST] 📍 ${label}:`);
           this.logConsoleMessage(`[GRID TEST]    INTENDED: (${x}, ${y})`);
           this.logConsoleMessage(`[GRID TEST]    ACTUAL:   (${actualBounds.x}, ${actualBounds.y})`);
-          this.logConsoleMessage(`[GRID TEST]    STATUS:   ${moved ? `❌ MOVED ${moveDistance.toFixed(0)}px` : '✅ CORRECT'}`);
+          this.logConsoleMessage(
+            `[GRID TEST]    STATUS:   ${moved ? `❌ MOVED ${moveDistance.toFixed(0)}px` : '✅ CORRECT'}`
+          );
 
           testWindow.show();
         });
@@ -3706,7 +3850,6 @@ export class MainWindow {
 
       this.logConsoleMessage(`[GRID TEST] ⏰ ${testSlots.length} test windows created - will auto-close in 60 seconds`);
       this.logConsoleMessage(`[GRID TEST] 🔍 Watch logs for INTENDED vs ACTUAL position comparison`);
-
     } catch (error) {
       console.error('[GRID TEST] ❌ Failed to create grid test windows:', error);
     }
@@ -3717,26 +3860,26 @@ export class MainWindow {
     // TODO: Implement cascade window arrangement
     this.logConsoleMessage('[WINDOW] Cascade windows - not yet implemented');
   }
-  
+
   private tileWindows(): void {
     // TODO: Implement tile window arrangement
     this.logConsoleMessage('[WINDOW] Tile windows - not yet implemented');
   }
-  
+
   private showAllWindows(): void {
     // Show all debug windows
     const windows = this.windowRouter.getActiveWindows();
     this.logConsoleMessage(`[WINDOW] Showing ${windows.length} windows`);
     // TODO: Implement actual show functionality for each window
   }
-  
+
   private hideAllWindows(): void {
     // Hide all debug windows except main
     const windows = this.windowRouter.getActiveWindows();
     this.logConsoleMessage(`[WINDOW] Hiding ${windows.length} windows`);
     // TODO: Implement actual hide functionality for each window
   }
-  
+
   // Debug methods
   private openDebuggerWindow(cogId: number): void {
     this.logConsoleMessage(`[DEBUG] Opening debugger for COG ${cogId}`);
@@ -3745,17 +3888,17 @@ export class MainWindow {
     // For now, just log the request
     this.logConsoleMessage(`[DEBUG] Would create window: ${windowName} for COG ${cogId}`);
   }
-  
+
   private breakAllCogs(): void {
     this.logConsoleMessage('[DEBUG] Breaking all COGs');
     // TODO: Send break command to all COG debuggers
   }
-  
+
   private resumeAllCogs(): void {
     this.logConsoleMessage('[DEBUG] Resuming all COGs');
     // TODO: Send resume command to all COG debuggers
   }
-  
+
   private showPerformanceMonitor(): void {
     this.logConsoleMessage('[PERF] Showing performance monitor');
     if (!this.performanceMonitor) {
@@ -3771,7 +3914,7 @@ export class MainWindow {
     }
     this.documentationViewer.show();
   }
-  
+
   private showFindDialog(): void {
     this.logConsoleMessage('[EDIT] Showing find dialog');
     // TODO: Implement find dialog for terminal
@@ -3784,9 +3927,10 @@ export class MainWindow {
       } as any);
     }
   }
-  
+
   private clearTerminal(): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         const terminal = document.getElementById('log-content');
         if (terminal) {
@@ -3795,60 +3939,68 @@ export class MainWindow {
           terminal.dataset.cursorY = '0';
         }
       })();
-    `, 'clear terminal');
+    `,
+      'clear terminal'
+    );
   }
-  
+
   private saveLogFile(): void {
     const { dialog, fs } = require('electron');
     // TODO: Implement save log file dialog
     this.logConsoleMessage('Save log file - to be implemented');
   }
-  
+
   private showAboutDialog(): void {
     const { dialog } = require('electron');
     const packageJson = require('../../package.json');
-    
+
     dialog.showMessageBox(this.mainWindow!, {
       type: 'info',
       title: 'About PNut-Term-TS',
       message: 'PNut-Term-TS',
-      detail: `Version: ${packageJson.version}\n` +
-              `Electron: ${process.versions.electron}\n` +
-              `Node: ${process.versions.node}\n` +
-              `Chrome: ${process.versions.chrome}\n\n` +
-              `Cross-platform debug terminal for\n` +
-              `Parallax Propeller 2 microcontroller\n\n` +
-              `© 2024 Iron Sheep Productions LLC\n` +
-              `Licensed under MIT`,
+      detail:
+        `Version: ${packageJson.version}\n` +
+        `Electron: ${process.versions.electron}\n` +
+        `Node: ${process.versions.node}\n` +
+        `Chrome: ${process.versions.chrome}\n\n` +
+        `Cross-platform debug terminal for\n` +
+        `Parallax Propeller 2 microcontroller\n\n` +
+        `© 2024 Iron Sheep Productions LLC\n` +
+        `Licensed under MIT`,
       buttons: ['OK'],
       icon: null // Will use app icon
     });
   }
-  
-  
+
   private async checkForUpdates(): Promise<void> {
     const { dialog, shell } = require('electron');
     const https = require('https');
     const packageJson = require('../../package.json');
     const currentVersion = packageJson.version;
-    
+
     try {
       // Check GitHub releases API using https module
       const data = await new Promise<string>((resolve, reject) => {
-        https.get('https://api.github.com/repos/parallaxinc/PNut-Term-TS/releases/latest', {
-          headers: {
-            'User-Agent': 'PNut-Term-TS'
-          }
-        }, (res: any) => {
-          let data = '';
-          res.on('data', (chunk: any) => data += chunk);
-          res.on('end', () => resolve(data));
-        }).on('error', reject);
+        https
+          .get(
+            'https://api.github.com/repos/parallaxinc/PNut-Term-TS/releases/latest',
+            {
+              headers: {
+                'User-Agent': 'PNut-Term-TS'
+              }
+            },
+            (res: any) => {
+              let data = '';
+              res.on('data', (chunk: any) => (data += chunk));
+              res.on('end', () => resolve(data));
+            }
+          )
+          .on('error', reject);
       });
-      
+
       const latestRelease = JSON.parse(data);
       const latestVersion = latestRelease.tag_name.replace(/^v/, '');
-      
+
       // Simple version comparison (you might want to use semver for proper comparison)
       if (latestVersion > currentVersion) {
         const result = await dialog.showMessageBox(this.mainWindow!, {
@@ -3859,7 +4011,7 @@ export class MainWindow {
           buttons: ['Download', 'Later'],
           defaultId: 0
         });
-        
+
         if (result.response === 0) {
           shell.openExternal(latestRelease.html_url);
         }
@@ -3882,7 +4034,7 @@ export class MainWindow {
       });
     }
   }
-  
+
   private setupApplicationMenu(): void {
     // This method is called from createAppWindow() and sets up the menu
     try {
@@ -3891,7 +4043,7 @@ export class MainWindow {
       console.error('[MENU SETUP] ERROR in setupApplicationMenu:', error);
       // Don't crash the app if menu setup fails
     }
-    
+
     this.updateStatus(); // set initial values
 
     // REMOVED: Duplicate did-finish-load handler eliminated to fix race condition
@@ -3901,20 +4053,20 @@ export class MainWindow {
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...[close]');
       }
-      
+
       // Only delay in console mode
       if (this.context.runEnvironment.consoleMode) {
         // Prevent immediate close to allow reading console messages
         event.preventDefault();
-        
+
         // Close all debug windows first
         this.closeAllDebugWindows();
-        
+
         // Show closing message and wait 2 seconds before actually closing
         this.logConsoleMessage('============================================');
         this.logConsoleMessage('Closing application - waiting for logs to flush...');
         this.logConsoleMessage('============================================');
-        
+
         setTimeout(() => {
           this.logConsoleMessage('✅ COMPLETE - Application closed');
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -3942,7 +4094,7 @@ export class MainWindow {
   private closeAllDebugWindows(): void {
     // Stop performance monitoring
     this.stopPerformanceMonitoring();
-    
+
     // step usb receiver
     this.mainWindow?.removeAllListeners();
     // flush one last time in case there are any left
@@ -3967,8 +4119,9 @@ export class MainWindow {
     const argsDisplay = args.length > 0 ? args.join(' ') : 'None';
     const isIdeMode = this.context.runEnvironment.ideMode;
     const modeDisplay = isIdeMode ? 'IDE Mode (no menus)' : 'Standalone Mode';
-    
-    this.safeExecuteJS(`
+
+    this.safeExecuteJS(
+      `
       const replaceText = (selector, text) => {
         const element = document.getElementById(selector);
         if (element) element.innerText = text;
@@ -3978,11 +4131,13 @@ export class MainWindow {
       for (const type of ['chrome', 'node', 'electron']) {
         replaceText(\`\${type}-version\`, process.versions[type]);
       }
-      
+
       // Update invocation parameters and mode
       replaceText('invocation-params', '${argsDisplay.replace(/'/g, "\\'")}');
       replaceText('app-mode', '${modeDisplay}');
-    `, 'update runtime versions and params');
+    `,
+      'update runtime versions and params'
+    );
   }
 
   private updateStatusBarField(fieldId: string, value: string) {
@@ -4007,7 +4162,8 @@ export class MainWindow {
     let charWidth = defaultCharWidth;
     let charHeight = defaultCharHeight;
     if (this.mainWindow) {
-      const metrics = await this.safeExecuteJS(`
+      const metrics = await this.safeExecuteJS(
+        `
         (function() {
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
@@ -4022,8 +4178,10 @@ export class MainWindow {
 
           return { charWidth, charHeight };
         })();
-      `, 'getFontMetrics');
-      
+      `,
+        'getFontMetrics'
+      );
+
       if (metrics) {
         // Override defaults with measured values
         charWidth = metrics.charWidth;
@@ -4040,7 +4198,7 @@ export class MainWindow {
     try {
       const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
       this.logConsoleMessage(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
-      
+
       // Store for future use - could be used for dynamic window sizing
       // For now, just log the actual measurements
       // TODO: Could implement window resize if metrics differ significantly from defaults
@@ -4055,7 +4213,8 @@ export class MainWindow {
       const callbackString = callback.toString();
 
       // Inject JavaScript into the renderer process to attach the callback
-      this.safeExecuteJS(`
+      this.safeExecuteJS(
+        `
         (function() {
           const inputElement = document.getElementById('${inputId}');
           if (inputElement) {
@@ -4064,7 +4223,9 @@ export class MainWindow {
             console.error('Input element with id "${inputId}" not found.');
           }
         })();
-      `, `hookInputControl-${inputId}`);
+      `,
+        `hookInputControl-${inputId}`
+      );
     }
   }
 
@@ -4111,7 +4272,8 @@ export class MainWindow {
   */
 
   private appendLogOld(message: string) {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         const logContent = document.getElementById('log-content');
         const p = document.createElement('p');
@@ -4119,8 +4281,10 @@ export class MainWindow {
         logContent.appendChild(p);
         logContent.scrollTop = logContent.scrollHeight;
       })();
-    `, 'append log message');
-    
+    `,
+      'append log message'
+    );
+
     // Logging now handled by DebugLogger
   }
 
@@ -4276,7 +4440,8 @@ export class MainWindow {
   private emitStrings(buffer: string[]) {
     if (buffer.length > 0) {
       const messages = JSON.stringify(buffer);
-      this.safeExecuteJS(`
+      this.safeExecuteJS(
+        `
         (function() {
           const logContent = document.getElementById('log-content');
           const messagesArray = ${messages};  // Parse the JSON string to get the array
@@ -4287,7 +4452,9 @@ export class MainWindow {
           });
           logContent.scrollTop = logContent.scrollHeight;
         })();
-      `, 'emit strings to log');
+      `,
+        'emit strings to log'
+      );
     }
   }
 
@@ -4317,21 +4484,27 @@ export class MainWindow {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       return;
     }
-    
+
     const displayText = activeCogs.length > 0 ? activeCogs.join(',') : 'None';
-    
+
     // Update the status bar UI
-    this.mainWindow.webContents.executeJavaScript(`
-      const cogsStatus = document.getElementById('cogs-status');
-      if (cogsStatus) {
-        cogsStatus.textContent = '${displayText}';
-        // console.log('[COG STATUS] Updated Active COGs display: ${displayText}');
-      } else {
-        console.warn('[COG STATUS] cogs-status element not found in DOM');
-      }
-    `).catch((error: any) => {
-      console.error('[COG STATUS] Error updating Active COGs display:', error);
-    });
+    this.mainWindow.webContents
+      .executeJavaScript(
+        `
+      (function() {
+        const cogsStatus = document.getElementById('cogs-status');
+        if (cogsStatus) {
+          cogsStatus.textContent = '${displayText}';
+          // console.log('[COG STATUS] Updated Active COGs display: ${displayText}');
+        } else {
+          console.warn('[COG STATUS] cogs-status element not found in DOM');
+        }
+      })();
+    `
+      )
+      .catch((error: any) => {
+        console.error('[COG STATUS] Error updating Active COGs display:', error);
+      });
   }
 
   /**
@@ -4343,7 +4516,7 @@ export class MainWindow {
     }
 
     // Verify DOM elements exist before starting monitoring
-    this.verifyPerformanceElementsReady().then(ready => {
+    this.verifyPerformanceElementsReady().then((ready) => {
       if (ready) {
         this.performanceUpdateTimer = setInterval(() => {
           this.updatePerformanceDisplay();
@@ -4355,7 +4528,7 @@ export class MainWindow {
       }
     });
   }
-  
+
   /**
    * Verify that performance monitoring can proceed (performance monitor dialog handles display)
    */
@@ -4392,7 +4565,7 @@ export class MainWindow {
       const stats = this.serialProcessor.getStats();
       const perfSnapshot = stats.performance;
       const bufferStats = stats.buffer;
-      
+
       if (!perfSnapshot || !bufferStats) {
         return;
       }
@@ -4400,7 +4573,7 @@ export class MainWindow {
       // Calculate metrics
       const throughputKbps = (perfSnapshot.metrics.throughput.bytesPerSecond / 1024).toFixed(1);
       const bufferUsage = perfSnapshot.metrics.bufferUsagePercent.toFixed(0);
-      
+
       // Get queue depths (sum of all queues)
       let totalQueueDepth = 0;
       for (const [name, queueStats] of Object.entries(perfSnapshot.metrics.queues)) {
@@ -4451,12 +4624,12 @@ export class MainWindow {
 
       // Performance metrics now only go to Performance Monitor dialog
       // Status bar no longer displays performance metrics
-      
+
       // Flash indicator on state change (for performance monitor only)
       if (newState !== this.lastPerformanceState) {
         this.lastPerformanceState = newState;
       }
-      
+
       // Status bar update removed - metrics now only in Performance Monitor
       // const metricsText = `${throughputKbps}kb/s | Buffer: ${bufferUsage}% | Queue: ${totalQueueDepth} | ${statusSymbol}`;
 
@@ -4478,13 +4651,12 @@ export class MainWindow {
           recordingActive: routingStats.recordingActive,
           recordingSize: 0, // TODO: Get actual recording size when implemented
           parseErrors: routingStats.errors,
-          activeWindows: this.windowRouter.getActiveWindows().map(w => ({
+          activeWindows: this.windowRouter.getActiveWindows().map((w) => ({
             name: `${w.windowType} (${w.windowId})`,
             queueDepth: 0 // TODO: Get queue depth per window when available
           }))
         });
       }
-
     } catch (error) {
       console.error('[PERF DISPLAY] Error in updatePerformanceDisplay:', error);
     }
@@ -4498,58 +4670,64 @@ export class MainWindow {
   private cursorY: number = 0;
   private terminalWidth: number = 80;
   private terminalHeight: number = 25;
-  
+
   private loadTerminalMode(): void {
     // Pass the current terminal mode values directly from the main process
     // No need for localStorage since we already have these values
     const currentMode = this.terminalMode || 'PST';
     const currentControlLine = this.controlLineMode || 'DTR';
-    
-    this.safeExecuteJS(`
+
+    this.safeExecuteJS(
+      `
       (function() {
         const mode = '${currentMode}';
         const controlLine = '${currentControlLine}';
-        console.log('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
+        // console.log('[TERMINAL MODE] Using terminal mode values from main process:', { mode, controlLine });
         return { mode, controlLine };
       })();
-    `, 'load terminal mode').then((result) => {
-      if (result && typeof result === 'object') {
-        this.terminalMode = result.mode as 'PST' | 'ANSI';
-        this.controlLineMode = result.controlLine as 'DTR' | 'RTS';
-        this.logMessage(`Terminal mode loaded: ${this.terminalMode}`);
-        this.logMessage(`Control line mode: ${this.controlLineMode}`);
-        
-        // Update UI to show correct control line
-        if (this.controlLineMode !== 'DTR') {
-          this.updateControlLineUI();
+    `,
+      'load terminal mode'
+    )
+      .then((result) => {
+        if (result && typeof result === 'object') {
+          this.terminalMode = result.mode as 'PST' | 'ANSI';
+          this.controlLineMode = result.controlLine as 'DTR' | 'RTS';
+          this.logMessage(`Terminal mode loaded: ${this.terminalMode}`);
+          this.logMessage(`Control line mode: ${this.controlLineMode}`);
+
+          // Update UI to show correct control line
+          if (this.controlLineMode !== 'DTR') {
+            this.updateControlLineUI();
+          }
+        } else {
+          // Fallback if script execution failed completely
+          console.warn('[TERMINAL MODE] Script execution failed, using fallback defaults');
+          this.terminalMode = 'PST';
+          this.controlLineMode = 'DTR';
+          this.logMessage(`Terminal mode set to fallback defaults: ${this.terminalMode}, ${this.controlLineMode}`);
         }
-      } else {
-        // Fallback if script execution failed completely
-        console.warn('[TERMINAL MODE] Script execution failed, using fallback defaults');
+      })
+      .catch((error) => {
+        console.error('[TERMINAL MODE] safeExecuteJS failed:', error);
+        // Ultimate fallback
         this.terminalMode = 'PST';
         this.controlLineMode = 'DTR';
-        this.logMessage(`Terminal mode set to fallback defaults: ${this.terminalMode}, ${this.controlLineMode}`);
-      }
-    }).catch((error) => {
-      console.error('[TERMINAL MODE] safeExecuteJS failed:', error);
-      // Ultimate fallback
-      this.terminalMode = 'PST';
-      this.controlLineMode = 'DTR';
-      this.logMessage(`Terminal mode set to ultimate fallback: ${this.terminalMode}, ${this.controlLineMode}`);
-    });
+        this.logMessage(`Terminal mode set to ultimate fallback: ${this.terminalMode}, ${this.controlLineMode}`);
+      });
   }
-  
+
   // Execute PST control commands
   private executePSTCommand(command: string, arg1?: number, arg2?: number): void {
     if (this.terminalMode !== 'PST') {
       return; // Only execute PST commands in PST mode
     }
-    
+
     switch (command) {
       case 'home':
         this.cursorX = 0;
         this.cursorY = 0;
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const terminal = document.getElementById('log-content');
             if (terminal) {
@@ -4563,14 +4741,17 @@ export class MainWindow {
               }
             }
           })();
-        `, 'PST home command');
+        `,
+          'PST home command'
+        );
         break;
-        
+
       case 'position':
         if (arg1 !== undefined && arg2 !== undefined) {
           this.cursorX = Math.min(arg1, this.terminalWidth - 1);
           this.cursorY = Math.min(arg2, this.terminalHeight - 1);
-          this.safeExecuteJS(`
+          this.safeExecuteJS(
+            `
             (function() {
               const terminal = document.getElementById('log-content');
               if (terminal) {
@@ -4586,12 +4767,15 @@ export class MainWindow {
                 }
               }
             })();
-          `, 'PST position command');
+          `,
+            'PST position command'
+          );
         }
         break;
-        
+
       case 'clearScreen':
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const terminal = document.getElementById('log-content');
             if (terminal) {
@@ -4600,13 +4784,16 @@ export class MainWindow {
               terminal.dataset.cursorY = '0';
             }
           })();
-        `, 'PST clear screen');
+        `,
+          'PST clear screen'
+        );
         this.cursorX = 0;
         this.cursorY = 0;
         break;
-        
+
       case 'clearEOL':
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const terminal = document.getElementById('log-content');
             if (terminal) {
@@ -4619,11 +4806,14 @@ export class MainWindow {
               }
             }
           })();
-        `, 'PST clear to EOL');
+        `,
+          'PST clear to EOL'
+        );
         break;
-        
+
       case 'clearBelow':
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const terminal = document.getElementById('log-content');
             if (terminal) {
@@ -4634,41 +4824,44 @@ export class MainWindow {
               }
             }
           })();
-        `, 'PST clear below');
+        `,
+          'PST clear below'
+        );
         break;
-        
+
       case 'left':
         if (this.cursorX > 0) {
           this.cursorX--;
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'right':
         if (this.cursorX < this.terminalWidth - 1) {
           this.cursorX++;
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'up':
         if (this.cursorY > 0) {
           this.cursorY--;
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'down':
         if (this.cursorY < this.terminalHeight - 1) {
           this.cursorY++;
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'backspace':
         if (this.cursorX > 0) {
           this.cursorX--;
-          this.safeExecuteJS(`
+          this.safeExecuteJS(
+            `
             (function() {
               const terminal = document.getElementById('log-content');
               if (terminal) {
@@ -4682,22 +4875,25 @@ export class MainWindow {
                 terminal.dataset.cursorX = '${this.cursorX}';
               }
             })();
-          `, 'PST backspace');
+          `,
+            'PST backspace'
+          );
         }
         break;
-        
+
       case 'tab':
         // Move to next tab stop (every 8 characters)
         this.cursorX = Math.min(Math.floor((this.cursorX + 8) / 8) * 8, this.terminalWidth - 1);
         this.updateCursorPosition();
         break;
-        
+
       case 'linefeed':
         this.cursorY++;
         if (this.cursorY >= this.terminalHeight) {
           this.cursorY = this.terminalHeight - 1;
           // Scroll the terminal
-          this.safeExecuteJS(`
+          this.safeExecuteJS(
+            `
             (function() {
               const terminal = document.getElementById('log-content');
               if (terminal) {
@@ -4709,45 +4905,51 @@ export class MainWindow {
                 terminal.appendChild(newLine);
               }
             })();
-          `, 'PST linefeed scroll');
+          `,
+            'PST linefeed scroll'
+          );
         }
         this.updateCursorPosition();
         break;
-        
+
       case 'newline':
         this.cursorX = 0;
         this.executePSTCommand('linefeed');
         break;
-        
+
       case 'positionX':
         if (arg1 !== undefined) {
           this.cursorX = Math.min(arg1, this.terminalWidth - 1);
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'positionY':
         if (arg1 !== undefined) {
           this.cursorY = Math.min(arg1, this.terminalHeight - 1);
           this.updateCursorPosition();
         }
         break;
-        
+
       case 'bell':
         // Play a beep sound or visual bell
-        this.safeExecuteJS(`
+        this.safeExecuteJS(
+          `
           (function() {
             const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjGH0fPTgjMGHm7A7+OZURE');
             audio.play();
           })();
-        `, 'PST bell');
+        `,
+          'PST bell'
+        );
         break;
     }
   }
-  
+
   // Update cursor position in the terminal
   private updateCursorPosition(): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         const terminal = document.getElementById('log-content');
         if (terminal) {
@@ -4762,7 +4964,9 @@ export class MainWindow {
           }
         }
       })();
-    `, 'update cursor position');
+    `,
+      'update cursor position'
+    );
   }
 
   // Helper to safely execute JavaScript in renderer
@@ -4788,15 +4992,15 @@ export class MainWindow {
     if (this.controlLineMode === 'DTR') {
       this.updateCheckbox('reset-checkbox', this.dtrState);
     }
-    
+
     if (this._serialPort) {
       try {
         await this._serialPort.setDTR(this.dtrState);
         this.logMessage(`[DTR] Hardware control set to ${this.dtrState ? 'ON' : 'OFF'}`);
-        
+
         // NOTE: Reset handling moved to toggleDTR() to avoid duplication
         // This method is for direct state setting without reset logic
-        
+
         if (!this.dtrState) {
           // DTR OFF - maintain logging continuity, just log the state change
           this.logMessage(`[DTR] Control line released - continuing normal operation`);
@@ -4819,15 +5023,15 @@ export class MainWindow {
     if (this.controlLineMode === 'RTS') {
       this.updateCheckbox('reset-checkbox', this.rtsState);
     }
-    
+
     if (this._serialPort) {
       try {
         await this._serialPort.setRTS(this.rtsState);
         this.logMessage(`[RTS] Hardware control set to ${this.rtsState ? 'ON' : 'OFF'}`);
-        
+
         // NOTE: Reset handling moved to toggleRTS() to avoid duplication
         // This method is for direct state setting without reset logic
-        
+
         if (!this.rtsState) {
           // RTS OFF - maintain logging continuity, just log the state change
           this.logMessage(`[RTS] Control line released - continuing normal operation`);
@@ -4845,18 +5049,20 @@ export class MainWindow {
   }
 
   private toggleDTRCallCount = 0;
-  
+
   private async toggleDTR(): Promise<void> {
     // DTR Toggle: State Management (press-on/press-off, NOT auto-toggle)
     this.toggleDTRCallCount++;
     const previousState = this.dtrState;
     const newState = !this.dtrState;
-    this.logConsoleMessage(`[MAIN] toggleDTR() ENTER - Call #${this.toggleDTRCallCount}, ${previousState} -> ${newState}`);
+    this.logConsoleMessage(
+      `[MAIN] toggleDTR() ENTER - Call #${this.toggleDTRCallCount}, ${previousState} -> ${newState}`
+    );
     this.logMessage(`[DTR TOGGLE] ====== DTR TOGGLE START (Call #${this.toggleDTRCallCount}) ======`);
     this.logMessage(`[DTR TOGGLE] Previous state: ${previousState}`);
     this.logMessage(`[DTR TOGGLE] New state will be: ${newState}`);
     this.logMessage(`[DTR TOGGLE] Stack trace: ${new Error().stack?.split('\n').slice(1, 4).join(' -> ')}`);
-    
+
     if (this._serialPort) {
       try {
         // With Prop Plug hardware, ANY DTR transition triggers a 17µs reset pulse
@@ -4883,6 +5089,16 @@ export class MainWindow {
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.handleDTRReset();
           }
+
+          // Broadcast DTR reset to all active COG windows
+          for (let cogId = 0; cogId < 8; cogId++) {
+            const windowKey = `COG-${cogId}`;
+            const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+            if (cogWindow && cogWindow.isOpen()) {
+              cogWindow.handleDTRReset();
+            }
+          }
+
           // Signal parser that DTR reset occurred
           this.serialProcessor.onDTRReset();
 
@@ -4895,7 +5111,6 @@ export class MainWindow {
             this.updateControlLineUI();
           }
         }
-        
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logMessage(`ERROR: Failed to set DTR: ${errorMsg}`);
@@ -4906,7 +5121,7 @@ export class MainWindow {
       // Still update state when no port connected (for UI consistency)
       this.dtrState = newState;
     }
-    
+
     // Update checkbox via webContents send (IPC)
     if (this.mainWindow?.webContents) {
       this.logMessage(`[DTR TOGGLE] Sending IPC update-dtr-state with value: ${this.dtrState}`);
@@ -4949,6 +5164,16 @@ export class MainWindow {
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.handleRTSReset();
           }
+
+          // Broadcast RTS reset to all active COG windows (same as DTR)
+          for (let cogId = 0; cogId < 8; cogId++) {
+            const windowKey = `COG-${cogId}`;
+            const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+            if (cogWindow && cogWindow.isOpen()) {
+              cogWindow.handleDTRReset(); // Same handler for both DTR and RTS
+            }
+          }
+
           // Sync parser on RTS reset (using RTS-specific method)
           this.serialProcessor.onRTSReset();
 
@@ -4982,23 +5207,24 @@ export class MainWindow {
   }
 
   // Removed duplicate currentDownloadMode - using downloadMode from line 68
-  
+
   private updateDownloadMode(mode: 'ram' | 'flash'): void {
     const ramColor = mode === 'ram' ? '#00FF00' : '#808080';
     const flashColor = mode === 'flash' ? '#00FF00' : '#808080';
-    
+
     // CRITICAL FIX: Use setTimeout to ensure DOM is ready and properly update LEDs
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       setTimeout(() => {
         const ramLed = document.getElementById('ram-led');
         const flashLed = document.getElementById('flash-led');
         const ramBtn = document.getElementById('download-ram');
         const flashBtn = document.getElementById('download-flash');
-        
+
         // Debug logging
         // console.log('Updating download mode to: ${mode}');
         // console.log('RAM LED found:', !!ramLed, 'Flash LED found:', !!flashLed);
-        
+
         // Update LED indicators with performance optimization - only update if different
         if (ramLed) {
           if (ramLed.textContent !== '●') {
@@ -5016,7 +5242,7 @@ export class MainWindow {
         } else {
           console.error('RAM LED element not found!');
         }
-        
+
         if (flashLed) {
           if (flashLed.textContent !== '●') {
             flashLed.textContent = '●';
@@ -5033,7 +5259,7 @@ export class MainWindow {
         } else {
           console.error('Flash LED element not found!');
         }
-        
+
         // Update button states with performance optimization - only update if different
         if (ramBtn) {
           const shouldBeActive = '${mode}' === 'ram';
@@ -5054,7 +5280,9 @@ export class MainWindow {
           }
         }
       }, 0);
-    `, 'download mode update');
+    `,
+      'download mode update'
+    );
   }
 
   private setDownloadMode(mode: 'ram' | 'flash'): void {
@@ -5062,6 +5290,11 @@ export class MainWindow {
     this.downloadMode = mode;
     this.updateDownloadMode(mode);
     this.logMessage(`Download mode set to ${mode.toUpperCase()}`);
+  }
+
+  public async downloadFileFromPath(filePath: string, toFlash: boolean): Promise<void> {
+    // Public method for command-line initiated downloads
+    await this.performDownloadFromPath(filePath, toFlash);
   }
 
   private async downloadFile(): Promise<void> {
@@ -5075,6 +5308,19 @@ export class MainWindow {
 
   private async downloadToFlash(): Promise<void> {
     await this.performDownload(true);
+  }
+
+  private async performDownloadFromPath(filePath: string, toFlash: boolean): Promise<void> {
+    const target = toFlash ? 'Flash' : 'RAM';
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      this.logMessage(`ERROR: File not found: ${filePath}`);
+      return;
+    }
+
+    // Perform the actual download
+    await this.executeDownload(filePath, toFlash, target);
   }
 
   private async performDownload(toFlash: boolean): Promise<void> {
@@ -5092,44 +5338,51 @@ export class MainWindow {
       filters: [{ name: 'Binary Files', extensions: ['binary', 'bin', 'binf'] }],
       properties: ['openFile']
     });
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
-      if (this._serialPort && this.downloader) {
-        try {
-          this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
-          this.updateRecordingStatus(`Downloading to ${target}...`);
-          
-          // Get current debug baud rate from context (command line setting)
-          const debugBaudRate = this.context.runEnvironment.debugBaudrate;
-          const downloadBaudRate = 2000000; // Fixed download baud rate
-          
-          // Switch to download baud rate if different from debug rate
-          if (debugBaudRate !== downloadBaudRate) {
-            this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
-            await this._serialPort.changeBaudRate(downloadBaudRate);
-          }
-          
-          // Rotate log before download
-          if (this.debugLoggerWindow) {
-            // Close current log and start new one for download session
-            this.debugLoggerWindow.handleDownloadStart();
-            // Log download metadata
-            const fileStats = fs.statSync(filePath);
-            const downloadInfo = `[DOWNLOAD TO ${target.toUpperCase()}] File: ${path.basename(filePath)} | Size: ${fileStats.size} bytes | Modified: ${fileStats.mtime.toISOString()}`;
-            this.debugLoggerWindow.logSystemMessage(downloadInfo);
-          }
+      await this.executeDownload(filePath, toFlash, target);
+    }
+  }
 
-          // Download to target (RAM or Flash)
-          const downloadResult = await this.downloader.download(filePath, toFlash);
+  private async executeDownload(filePath: string, toFlash: boolean, target: string): Promise<void> {
+    if (this._serialPort && this.downloader) {
+      try {
+        this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
+        this.updateRecordingStatus(`Downloading to ${target}...`);
 
-          // Switch back to debug baud rate if it was different
-          if (debugBaudRate !== downloadBaudRate) {
-            this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
-            await this._serialPort.changeBaudRate(debugBaudRate);
-          }
+        // Get current debug baud rate from context (command line setting)
+        const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+        const downloadBaudRate = 2000000; // Fixed download baud rate
 
-          if (downloadResult.success) {
+        // Switch to download baud rate if different from debug rate
+        if (debugBaudRate !== downloadBaudRate) {
+          this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
+          await this._serialPort.changeBaudRate(downloadBaudRate);
+        }
+
+        // Rotate log before download
+        if (this.debugLoggerWindow) {
+          // Close current log and start new one for download session
+          this.debugLoggerWindow.handleDownloadStart();
+          // Log download metadata
+          const fileStats = fs.statSync(filePath);
+          const downloadInfo = `[DOWNLOAD TO ${target.toUpperCase()}] File: ${path.basename(filePath)} | Size: ${
+            fileStats.size
+          } bytes | Modified: ${fileStats.mtime.toISOString()}`;
+          this.debugLoggerWindow.logSystemMessage(downloadInfo);
+        }
+
+        // Download to target (RAM or Flash)
+        const downloadResult = await this.downloader.download(filePath, toFlash);
+
+        // Switch back to debug baud rate if it was different
+        if (debugBaudRate !== downloadBaudRate) {
+          this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
+          await this._serialPort.changeBaudRate(debugBaudRate);
+        }
+
+        if (downloadResult.success) {
             // Log download success to debug logger window
             const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
             this.logConsoleMessage(`[DOWNLOAD] ${successMsg}`);
@@ -5138,6 +5391,15 @@ export class MainWindow {
               this.debugLoggerWindow.logSystemMessage(successMsg);
             } else {
               console.warn('[DOWNLOAD] Debug logger window not available for success message');
+            }
+
+            // Notify all COG windows about the download
+            for (let cogId = 0; cogId < 8; cogId++) {
+              const windowKey = `COG-${cogId}`;
+              const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+              if (cogWindow && cogWindow.isOpen()) {
+                cogWindow.handleDownload();
+              }
             }
 
             this.logMessage(`Successfully downloaded ${path.basename(filePath)} to ${target}`);
@@ -5152,7 +5414,9 @@ export class MainWindow {
             const errorMsg = downloadResult.errorMessage || 'Unknown error occurred during download';
 
             // Log download failure to debug logger window WITH ACTUAL REASON
-            const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
+            const failureMsg = `[DOWNLOAD FAILED] ${path.basename(
+              filePath
+            )} failed to download to ${target}: ${errorMsg}`;
             this.logConsoleMessage(`[DOWNLOAD] ${failureMsg}`);
 
             if (this.debugLoggerWindow) {
@@ -5177,7 +5441,9 @@ export class MainWindow {
           const errorMsg = error instanceof Error ? error.message : String(error);
 
           // Log download failure to debug logger window
-          const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;
+          const failureMsg = `[DOWNLOAD FAILED] ${path.basename(
+            filePath
+          )} failed to download to ${target}: ${errorMsg}`;
           this.logConsoleMessage(`[DOWNLOAD] ${failureMsg}`);
 
           if (this.debugLoggerWindow) {
@@ -5217,9 +5483,6 @@ export class MainWindow {
         });
       }
     }
-  }
-
-
 
   private startRecording(filepath?: string): void {
     const metadata = {
@@ -5229,7 +5492,7 @@ export class MainWindow {
       serialPort: this._deviceNode,
       baudRate: this._serialBaud
     };
-    
+
     this.windowRouter.startRecording(metadata);
     this.updateRecordingStatus('Recording...');
     this.updateToolbarButton('record-btn', '⏹ Stop');
@@ -5254,16 +5517,16 @@ export class MainWindow {
       filters: [{ name: 'P2 Recording Files', extensions: ['p2rec'] }],
       properties: ['openFile']
     });
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
-      
+
       // Initialize player if needed
       if (!this.binaryPlayer) {
         this.binaryPlayer = new BinaryPlayer();
         this.setupPlaybackListeners();
       }
-      
+
       // Load and start playback
       await this.binaryPlayer.loadRecording(filePath);
       this.showPlaybackControls();
@@ -5274,45 +5537,52 @@ export class MainWindow {
 
   private setupPlaybackListeners(): void {
     if (!this.binaryPlayer) return;
-    
+
     // Listen for playback data
     this.binaryPlayer.on('data', (data: Buffer) => {
       // Inject data as if received from serial port
       this.handleSerialRx(data);
     });
-    
+
     // Listen for progress updates
     this.binaryPlayer.on('progress', (progress) => {
       this.updatePlaybackProgress(progress);
     });
-    
+
     // Listen for playback finished
     this.binaryPlayer.on('finished', () => {
       this.hidePlaybackControls();
       this.updateRecordingStatus('Ready');
     });
   }
-  
+
   private showPlaybackControls(): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const controls = document.getElementById('playback-controls');
       if (controls) {
         controls.style.display = 'block';
       }
-    `, 'showPlaybackControls');
+    `,
+      'showPlaybackControls'
+    );
   }
-  
+
   private hidePlaybackControls(): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const controls = document.getElementById('playback-controls');
       if (controls) {
         controls.style.display = 'none';
       }
-    `, 'hidePlaybackControls');
+    `,
+      'hidePlaybackControls'
+    );
   }
-  
+
   private updatePlaybackButton(isPlaying: boolean): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const playBtn = document.getElementById('playback-play');
       const pauseBtn = document.getElementById('playback-pause');
       if (playBtn && pauseBtn) {
@@ -5324,22 +5594,27 @@ export class MainWindow {
           pauseBtn.style.display = 'none';
         }
       }
-    `, 'updatePlaybackButton');
+    `,
+      'updatePlaybackButton'
+    );
   }
-  
+
   private updatePlaybackProgress(progress: { current: number; total: number; percentage: number }): void {
     const currentMinutes = Math.floor(progress.current / 60000);
     const currentSeconds = Math.floor((progress.current % 60000) / 1000);
     const totalMinutes = Math.floor(progress.total / 60000);
     const totalSeconds = Math.floor((progress.total % 60000) / 1000);
-    
-    const timeText = `${currentMinutes.toString().padStart(2, '0')}:${currentSeconds.toString().padStart(2, '0')} / ${totalMinutes.toString().padStart(2, '0')}:${totalSeconds.toString().padStart(2, '0')}`;
-    
-    this.safeExecuteJS(`
+
+    const timeText = `${currentMinutes.toString().padStart(2, '0')}:${currentSeconds
+      .toString()
+      .padStart(2, '0')} / ${totalMinutes.toString().padStart(2, '0')}:${totalSeconds.toString().padStart(2, '0')}`;
+
+    this.safeExecuteJS(
+      `
       const timeEl = document.getElementById('playback-time');
       const barEl = document.getElementById('playback-bar');
       const handleEl = document.getElementById('playback-handle');
-      
+
       if (timeEl) {
         timeEl.textContent = '${timeText}';
       }
@@ -5349,23 +5624,27 @@ export class MainWindow {
       if (handleEl) {
         handleEl.style.left = '${progress.percentage}%';
       }
-    `, 'updatePlaybackProgress');
+    `,
+      'updatePlaybackProgress'
+    );
   }
 
   private selectBaudRate(): void {
     const baudRates = ['115200', '230400', '460800', '921600', '2000000'];
-    dialog.showMessageBox(this.mainWindow!, {
-      type: 'question',
-      buttons: baudRates,
-      title: 'Select Baud Rate',
-      message: 'Choose baud rate:'
-    }).then((response: any) => {
-      this._serialBaud = parseInt(baudRates[response.response]);
-      if (this._serialPort) {
-        UsbSerial.setCommBaudRate(this._serialBaud);
-      }
-      this.logMessage(`Baud rate set to ${this._serialBaud}`);
-    });
+    dialog
+      .showMessageBox(this.mainWindow!, {
+        type: 'question',
+        buttons: baudRates,
+        title: 'Select Baud Rate',
+        message: 'Choose baud rate:'
+      })
+      .then((response: any) => {
+        this._serialBaud = parseInt(baudRates[response.response]);
+        if (this._serialPort) {
+          UsbSerial.setCommBaudRate(this._serialBaud);
+        }
+        this.logMessage(`Baud rate set to ${this._serialBaud}`);
+      });
   }
 
   private showDebugCommandReference(): void {
@@ -5373,7 +5652,8 @@ export class MainWindow {
       type: 'info',
       title: 'Debug Command Reference',
       message: 'Debug Command Reference',
-      detail: 'DEBUG TERM - Open terminal window\nDEBUG SCOPE - Open scope window\nDEBUG LOGIC - Open logic analyzer\nDEBUG PLOT - Open plot window\nDEBUG BITMAP - Open bitmap display\nDEBUG MIDI - Open MIDI display\nDEBUG FFT - Open FFT analyzer',
+      detail:
+        'DEBUG TERM - Open terminal window\nDEBUG SCOPE - Open scope window\nDEBUG LOGIC - Open logic analyzer\nDEBUG PLOT - Open plot window\nDEBUG BITMAP - Open bitmap display\nDEBUG MIDI - Open MIDI display\nDEBUG FFT - Open FFT analyzer',
       buttons: ['OK']
     });
   }
@@ -5395,34 +5675,40 @@ export class MainWindow {
 
     // Update context with new preferences
     this.context.updatePreferences(settings);
-    
+
     // Apply debug logger scrollback setting
     if (settings.debugLogger && this.debugLoggerWindow) {
-      this.logConsoleMessage(`[PREFERENCES] Updating debug logger scrollback to ${settings.debugLogger.scrollbackLines} lines`);
+      this.logConsoleMessage(
+        `[PREFERENCES] Updating debug logger scrollback to ${settings.debugLogger.scrollbackLines} lines`
+      );
       this.debugLoggerWindow.updateScrollbackPreference(settings.debugLogger.scrollbackLines);
     }
-    
+
     // Apply serial port settings
     if (settings.serialPort) {
       // Apply control line setting (DTR vs RTS)
       if (settings.serialPort.controlLine && settings.serialPort.controlLine !== this.controlLineMode) {
-        this.logConsoleMessage(`[PREFERENCES] Changing control line from ${this.controlLineMode} to ${settings.serialPort.controlLine}`);
+        this.logConsoleMessage(
+          `[PREFERENCES] Changing control line from ${this.controlLineMode} to ${settings.serialPort.controlLine}`
+        );
         this.setControlLineMode(settings.serialPort.controlLine);
       }
-      
+
       // Apply default baud rate (will be used for next connection)
       if (settings.serialPort.defaultBaud) {
         this._serialBaud = settings.serialPort.defaultBaud;
         this.logConsoleMessage(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
       }
-      
+
       // Apply auto-reconnect setting
       if (settings.serialPort.autoReconnect !== undefined) {
         // Store for future use (implement auto-reconnect logic separately)
-        this.logConsoleMessage(`[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(
+          `[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`
+        );
       }
     }
-    
+
     // Apply terminal settings
     if (settings.terminal) {
       // Apply terminal mode (PST vs ANSI)
@@ -5430,34 +5716,34 @@ export class MainWindow {
         // Store for use when creating terminal windows
         this.logConsoleMessage(`[PREFERENCES] Terminal mode set to ${settings.terminal.mode}`);
       }
-      
+
       // Apply color theme
       if (settings.terminal.colorTheme) {
         // Update theme for future terminal windows
         this.logConsoleMessage(`[PREFERENCES] Terminal color theme set to ${settings.terminal.colorTheme}`);
       }
-      
+
       // Apply font settings
       if (settings.terminal.fontSize) {
         // Store for future terminal windows
         this.logConsoleMessage(`[PREFERENCES] Terminal font size set to ${settings.terminal.fontSize}`);
       }
-      
+
       if (settings.terminal.fontFamily) {
         // Store for future terminal windows
         this.logConsoleMessage(`[PREFERENCES] Terminal font family set to ${settings.terminal.fontFamily}`);
       }
-      
+
       // Apply COG prefix and local echo settings
       if (settings.terminal.showCogPrefixes !== undefined) {
         this.logConsoleMessage(`[PREFERENCES] COG prefixes ${settings.terminal.showCogPrefixes ? 'shown' : 'hidden'}`);
       }
-      
+
       if (settings.terminal.localEcho !== undefined) {
         this.logConsoleMessage(`[PREFERENCES] Local echo ${settings.terminal.localEcho ? 'enabled' : 'disabled'}`);
       }
     }
-    
+
     // Apply logging settings
     if (settings.logging) {
       // Apply log directory
@@ -5465,26 +5751,28 @@ export class MainWindow {
         // Update log directory path for future logs
         this.logConsoleMessage(`[PREFERENCES] Log directory set to ${settings.logging.logDirectory}`);
       }
-      
+
       // Apply auto-save debug output setting
       if (settings.logging.autoSaveDebug !== undefined) {
         this.immediateLog = settings.logging.autoSaveDebug;
         this.logConsoleMessage(`[PREFERENCES] Auto-save debug output ${this.immediateLog ? 'enabled' : 'disabled'}`);
       }
-      
+
       // Apply new log on DTR reset setting
       if (settings.logging.newLogOnDtrReset !== undefined) {
         // Store for use in DTR reset handler
-        this.logConsoleMessage(`[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`);
+        this.logConsoleMessage(
+          `[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`
+        );
       }
-      
+
       // Apply max log size setting
       if (settings.logging.maxLogSize) {
         // Store for use in log rotation logic
         this.logConsoleMessage(`[PREFERENCES] Max log size set to ${settings.logging.maxLogSize}`);
       }
     }
-    
+
     // Store settings for persistence
     // Note: This should be stored differently for global vs project settings
     // as per the planned settings restructure
@@ -5543,7 +5831,7 @@ export class MainWindow {
         return `p2:${deviceInfo}`;
       }
     }
-    
+
     // Fallback to device path (less reliable but works)
     return `path:${this._deviceNode}`;
   }
@@ -5554,12 +5842,12 @@ export class MainWindow {
   private getDeviceControlLine(): 'DTR' | 'RTS' {
     const deviceId = this.getCurrentDeviceId();
     const deviceSettings = this.globalSettings.deviceSettings?.[deviceId];
-    
+
     if (deviceSettings) {
       this.logMessage(`📋 Using saved ${deviceSettings.controlLine} for device ${deviceId}`);
       return deviceSettings.controlLine;
     }
-    
+
     const defaultLine = this.globalSettings.defaultControlLine || 'DTR';
     this.logMessage(`📋 Using default ${defaultLine} for new device ${deviceId}`);
     return defaultLine;
@@ -5570,43 +5858,50 @@ export class MainWindow {
    */
   private saveDeviceControlLine(controlLine: 'DTR' | 'RTS'): void {
     const deviceId = this.getCurrentDeviceId();
-    
+
     // Ensure deviceSettings object exists
     if (!this.globalSettings.deviceSettings) {
       this.globalSettings.deviceSettings = {};
     }
-    
+
     this.globalSettings.deviceSettings[deviceId] = {
       controlLine,
       lastUsed: Date.now()
     };
-    
+
     this.saveGlobalSettings();
     this.logMessage(`💾 Saved ${controlLine} preference for device ${deviceId}`);
   }
 
   private updateToolbarButton(id: string, text: string): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const btn = document.getElementById('${id}');
       if (btn) btn.textContent = '${text}';
-    `, `updateToolbarButton-${id}`);
+    `,
+      `updateToolbarButton-${id}`
+    );
   }
 
   private updateRecordingStatus(status: string): void {
     // Escape status string to prevent injection issues with quotes and special characters
     const escapedStatus = status.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
     // Wrap in IIFE to avoid variable redeclaration errors when called multiple times
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         const statusEl = document.getElementById('recording-status');
         if (statusEl) statusEl.textContent = '${escapedStatus}';
       })();
-    `, 'updateRecordingStatus');
+    `,
+      'updateRecordingStatus'
+    );
   }
 
   private updateConnectionStatus(connected: boolean): void {
-    const color = connected ? '#00FF00' : '#FFBF00';  // Green when connected, Yellow when not
-    this.safeExecuteJS(`
+    const color = connected ? '#00FF00' : '#FFBF00'; // Green when connected, Yellow when not
+    this.safeExecuteJS(
+      `
       // Update connection LED indicator (GREEN when connected, YELLOW when disconnected)
       const connLed = document.getElementById('conn-led');
       if (connLed) {
@@ -5614,18 +5909,22 @@ export class MainWindow {
         connLed.style.color = '${color}';
         connLed.style.fontSize = '20px';  // Make it bigger
       }
-    `, 'updateConnectionStatus');
+    `,
+      'updateConnectionStatus'
+    );
   }
 
   private updateCheckbox(id: string, checked: boolean): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const checkbox = document.getElementById('${id}');
       if (checkbox) {
         checkbox.checked = ${checked};
       }
-    `, `updateCheckbox-${id}`);
+    `,
+      `updateCheckbox-${id}`
+    );
   }
-
 
   private toggleEchoOff(): void {
     this.echoOffEnabled = !this.echoOffEnabled;
@@ -5637,22 +5936,25 @@ export class MainWindow {
   }
 
   private updateEchoCheckbox(checked: boolean): void {
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       const checkbox = document.getElementById('echo-checkbox');
       if (checkbox) checkbox.checked = ${checked};
-    `, 'updateEchoCheckbox');
+    `,
+      'updateEchoCheckbox'
+    );
   }
 
   private blinkActivityLED(type: 'tx' | 'rx'): void {
     const ledId = type === 'tx' ? 'tx-led' : 'rx-led';
-    const color = type === 'tx' ? '#0080FF' : '#FF0000';  // Blue for TX, Red for RX
+    const color = type === 'tx' ? '#0080FF' : '#FF0000'; // Blue for TX, Red for RX
     const timer = type === 'tx' ? this.txActivityTimer : this.rxActivityTimer;
-    
+
     // Clear existing timer
     if (timer) {
       clearTimeout(timer);
     }
-    
+
     // Turn LED on - ensure DOM is ready with timeout
     const script = `
       setTimeout(() => {
@@ -5667,10 +5969,11 @@ export class MainWindow {
       }, 10);
     `;
     this.safeExecuteJS(script, `${type}LED-on`);
-    
+
     // Turn LED off after 150ms
     const newTimer = setTimeout(() => {
-      this.safeExecuteJS(`
+      this.safeExecuteJS(
+        `
         setTimeout(() => {
           const led = document.getElementById('${ledId}');
           if (led) {
@@ -5679,23 +5982,27 @@ export class MainWindow {
             led.style.textShadow = '0 0 2px #000';
           }
         }, 10);
-      `, `${type}LED-off`).then(() => {
-        // Only clear timer after successful LED update
-        if (type === 'tx') {
-          this.txActivityTimer = null;
-        } else {
-          this.rxActivityTimer = null;
-        }
-      }).catch(() => {
-        // If LED update fails, still clear timer to prevent memory leaks
-        if (type === 'tx') {
-          this.txActivityTimer = null;
-        } else {
-          this.rxActivityTimer = null;
-        }
-      });
+      `,
+        `${type}LED-off`
+      )
+        .then(() => {
+          // Only clear timer after successful LED update
+          if (type === 'tx') {
+            this.txActivityTimer = null;
+          } else {
+            this.rxActivityTimer = null;
+          }
+        })
+        .catch(() => {
+          // If LED update fails, still clear timer to prevent memory leaks
+          if (type === 'tx') {
+            this.txActivityTimer = null;
+          } else {
+            this.rxActivityTimer = null;
+          }
+        });
     }, 150);
-    
+
     if (type === 'tx') {
       this.txActivityTimer = newTimer;
     } else {
@@ -5706,7 +6013,8 @@ export class MainWindow {
   private updateLoggingStatus(isLogging: boolean, filename?: string, lineCount?: number): void {
     const symbol = isLogging ? '●' : '○';
     const color = isLogging ? '#00FF00' : '#333';
-    this.safeExecuteJS(`
+    this.safeExecuteJS(
+      `
       (function() {
         // Update log LED indicator
         const logLed = document.getElementById('log-led');
@@ -5717,7 +6025,9 @@ export class MainWindow {
           console.warn('[LOG LED] Element not found in DOM');
         }
       })();
-    `, 'updateLoggingStatus');
+    `,
+      'updateLoggingStatus'
+    );
   }
 
   /**
@@ -5729,12 +6039,4 @@ export class MainWindow {
     }
   }
 
-  /**
-   * Controlled console logging for instance methods - only outputs when ENABLE_CONSOLE_LOG is true
-   */
-  private logConsoleMessage(...args: any[]): void {
-    if (ENABLE_CONSOLE_LOG) {
-      console.log(...args);
-    }
-  }
 }

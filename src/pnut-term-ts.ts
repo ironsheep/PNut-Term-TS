@@ -41,7 +41,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.1.0';
+  private version: string = '0.5.0';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -153,12 +153,12 @@ export class DebugTerminalInTypeScript {
       .name('pnut-term-ts')
       .version(`v${this.version}`, '-V, --version', 'Output the version number')
       //.version(`v${this.version}`)
-      .usage('[optons]')
+      .usage('[options]')
       .description(`PNut Terminal TS - v${this.version}`)
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
       .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
-      .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode>')
+      .option('-p, --plug <dvcNode>', 'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)')
       .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
@@ -173,15 +173,23 @@ export class DebugTerminalInTypeScript {
       'afterAll',
       `$-
       Examples:
+         $ pnut-term-ts                                          # auto-detects and uses USB serial device (if only one connected)
          $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
+         $ pnut-term-ts -r myTopfile.bin                         # download to RAM (auto-detects single USB device)
          $ pnut-term-ts -r myTopfile.bin -p P9cektn7             # download myTopfile.bin to RAM and run
+         $ pnut-term-ts --ide                                    # IDE mode (auto-detects single USB device)
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
          $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
+
+      Device Selection:
+         When only one USB serial device is connected, it will be automatically selected.
+         Use -p option to specify a device when multiple are connected.
+         Use -n option to list all available USB serial devices.
 
       Device Control:
          DTR (Data Terminal Ready): Used by Parallax PropPlug devices
          RTS (Request To Send): Used by some non-Parallax devices
-         
+
          In standalone mode: Use DTR/RTS toggle buttons in the toolbar
          In IDE mode: VSCode SPIN2 extension controls DTR/RTS via --rts flag
          `
