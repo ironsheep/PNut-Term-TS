@@ -142,7 +142,7 @@ export class DebugCOGWindow extends DebugWindowBase {
     const windowWidth = defaultWidth;
     const windowHeight = defaultHeight;
 
-    this.debugWindow = new BrowserWindow({
+    const window = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
       x: position.x,
@@ -162,25 +162,28 @@ export class DebugCOGWindow extends DebugWindowBase {
 
     // Load HTML content
     const html = this.generateHTML();
-    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
     // Show when ready
-    this.debugWindow.once('ready-to-show', () => {
-      if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-        this.debugWindow.show();
+    window.once('ready-to-show', () => {
+      if (!window.isDestroyed()) {
+        window.show();
         this.logCOGMessage(`COG ${this.cogId} window opened`);
       }
     });
 
     // Handle window close
-    this.debugWindow.on('closed', () => {
+    window.on('closed', () => {
       this.onWindowClosed();
     });
 
     // Register window with WindowPlacer for position tracking
-    windowPlacer.registerWindow(windowId, this.debugWindow);
+    windowPlacer.registerWindow(windowId, window);
 
-    return this.debugWindow;
+    // Set the window in the base class
+    this.debugWindow = window;
+
+    return window;
   }
 
   /**
