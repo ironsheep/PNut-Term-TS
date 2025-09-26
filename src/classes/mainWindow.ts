@@ -2640,6 +2640,7 @@ export class MainWindow {
     // Remove any existing handlers to avoid duplicates
     ipcMain.removeAllListeners('toggle-dtr');
     ipcMain.removeAllListeners('toggle-rts');
+    ipcMain.removeAllListeners('send-serial-data');
 
     // File menu handlers
     ipcMain.removeAllListeners('menu-new-recording');
@@ -2679,6 +2680,18 @@ export class MainWindow {
     ipcMain.on('toggle-rts', async () => {
       this.logConsoleMessage('[IPC] Received toggle-rts request');
       await this.toggleRTS();
+    });
+
+    // Terminal input handler - send data to P2
+    ipcMain.on('send-serial-data', (event: any, data: string) => {
+      this.logConsoleMessage(`[TERMINAL INPUT] Sending to P2: ${JSON.stringify(data)}`);
+      this.sendSerialData(data);
+
+      // Log to debug logger if it exists
+      if (this.debugLoggerWindow) {
+        const displayData = data.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+        this.debugLoggerWindow.logSystemMessage(`[TX] ${displayData}`);
+      }
     });
 
     // Recording dialog actions
@@ -3176,14 +3189,7 @@ export class MainWindow {
       }
 
       // Setup text input control for data entry
-      this.hookTextInputControl('dataEntry', (event: Event) => {
-        const inputElement = event.target as HTMLInputElement;
-        this.logConsoleMessage(`Input value: [${inputElement.value}]`);
-        if (event instanceof KeyboardEvent && event.key === 'Enter') {
-          this.sendSerialData(inputElement.value);
-          inputElement.value = '';
-        }
-      });
+      this.hookTextInputControl('dataEntry');
 
       // Check serial port status after window loads - delayed to let async operations complete
       setTimeout(async () => {
@@ -4207,18 +4213,41 @@ export class MainWindow {
     }
   }
 
-  private hookTextInputControl(inputId: string, callback: (event: Event) => void): void {
+  private hookTextInputControl(inputId: string): void {
     if (this.mainWindow) {
-      // Convert the callback function to a string
-      const callbackString = callback.toString();
-
-      // Inject JavaScript into the renderer process to attach the callback
+      // Inject JavaScript into the renderer process to handle keyboard input
       this.safeExecuteJS(
         `
         (function() {
           const inputElement = document.getElementById('${inputId}');
           if (inputElement) {
-            inputElement.addEventListener('input', ${callbackString});
+            // Handle keydown event for immediate character transmission
+            inputElement.addEventListener('keydown', function(event) {
+              if (event.key === 'Enter') {
+                // Send the current input value plus carriage return
+                const data = inputElement.value + '\\r';
+                if (window.electronAPI && window.electronAPI.sendSerialData) {
+                  window.electronAPI.sendSerialData(data);
+                  console.log('[TERMINAL] Sent to P2:', JSON.stringify(data));
+                } else if (window.ipcRenderer) {
+                  window.ipcRenderer.send('send-serial-data', data);
+                  console.log('[TERMINAL] Sent to P2:', JSON.stringify(data));
+                }
+                // Clear the input field after sending
+                inputElement.value = '';
+                event.preventDefault();
+              }
+            });
+
+            // Focus the input element when clicked or when window is active
+            inputElement.addEventListener('click', function() {
+              inputElement.focus();
+            });
+
+            // Auto-focus on page load
+            inputElement.focus();
+
+            console.log('[TERMINAL] Input control hooked for element: ${inputId}');
           } else {
             console.error('Input element with id "${inputId}" not found.');
           }
