@@ -190,10 +190,21 @@ export class DebugCOGWindow extends DebugWindowBase {
    * Set up IPC handlers for this COG window
    */
   private setupIPCHandlers(): void {
+    // Remove any existing handler first (in case of re-creation)
+    this.cleanupIPCHandlers();
+
     // Export handler for this specific COG
     ipcMain.handle(`export-cog-${this.cogId}`, async () => {
       return await this.exportLog();
     });
+  }
+
+  /**
+   * Clean up IPC handlers
+   */
+  private cleanupIPCHandlers(): void {
+    // Remove the export handler for this COG
+    ipcMain.removeHandler(`export-cog-${this.cogId}`);
   }
 
   /**
@@ -771,6 +782,9 @@ export class DebugCOGWindow extends DebugWindowBase {
       clearTimeout(this.writeTimer);
       this.writeTimer = null;
     }
+
+    // Clean up IPC handlers
+    this.cleanupIPCHandlers();
 
     // Unregister from router BEFORE emitting close event
     this.unregisterFromRouter();
