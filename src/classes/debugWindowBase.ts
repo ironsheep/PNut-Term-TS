@@ -480,19 +480,19 @@ export abstract class DebugWindowBase extends EventEmitter {
   // Setter for debugWindow property
   protected set debugWindow(window: BrowserWindow | null) {
     if (window != null) {
-      this.logMessageBase(`- New ${this.constructor.name} window`);
+      this.logMessageBase(`- New ${this.windowType} window: ${this.windowId}`);
       this._debugWindow = window;
 
       // Add OTHER event listeners as needed
     } else {
       // Prevent recursive close handling
       if (this.isClosing) {
-        this.logMessageBase(`- Already closing ${this.constructor.name} window, preventing recursion`);
+        this.logMessageBase(`- Already closing ${this.windowType} window: ${this.windowId}, preventing recursion`);
         return;
       }
       this.isClosing = true;
-      
-      this.logMessageBase(`- Closing ${this.constructor.name} window`);
+
+      this.logMessageBase(`- Closing ${this.windowType} window: ${this.windowId}`);
       // Reset window ready state and clear any pending messages
       this.isWindowReady = false;
       
@@ -512,11 +512,11 @@ export abstract class DebugWindowBase extends EventEmitter {
       }
       // Remove event listeners and close the window
       if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {
-        this.logMessageBase(`- ${this.constructor.name} window closing...`);
+        this.logMessageBase(`- ${this.windowType} window closing: ${this.windowId}...`);
         this.emit('close'); // forward the event
         this._debugWindow.removeAllListeners();
         this._debugWindow.close();
-        this.logMessageBase(`- ${this.constructor.name} window closed`);
+        this.logMessageBase(`- ${this.windowType} window closed: ${this.windowId}`);
         this.emit('closed'); // forward the event
       }
       this._debugWindow = null;
