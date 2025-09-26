@@ -47,6 +47,9 @@ export class DebugTerminalInTypeScript {
   private shouldAbort: boolean = false;
   private inContainer: boolean = false;
   private requiresFilename: boolean = false;
+  private initialCwd: string = '';
+  private initialDirname: string = '';
+  private startupDirectory: string = '';
 
   constructor(argsOverride?: string[]) {
     //console.log(`PNut-Term-TS: argsOverride=[${argsOverride}]`);
@@ -78,27 +81,25 @@ export class DebugTerminalInTypeScript {
     // Capture startup directory BEFORE Electron initialization
     // For packaged Electron apps, __dirname points to .../app/dist
     // We need to go up to the directory containing the .app bundle
-    let startupDirectory = process.cwd();
-    console.log(`[STARTUP] process.cwd() = ${startupDirectory}`);
-    console.log(`[STARTUP] __dirname = ${__dirname}`);
+    this.startupDirectory = process.cwd();
+    this.initialCwd = this.startupDirectory;
+    this.initialDirname = __dirname;
 
     // If running from packaged app, calculate proper working directory
     if (__dirname.includes('PNut-Term-TS.app')) {
       // Strip PNut-Term-TS.app and everything after to get bundle parent directory
       const appIndex = __dirname.indexOf('PNut-Term-TS.app');
-      startupDirectory = __dirname.substring(0, appIndex);
-      console.log(`[STARTUP] Detected packaged app, using directory: ${startupDirectory}`);
+      this.startupDirectory = __dirname.substring(0, appIndex);
     } else {
       // Default to __dirname if not packaged
-      startupDirectory = __dirname;
-      console.log(`[STARTUP] Using __dirname as working directory: ${startupDirectory}`);
+      this.startupDirectory = __dirname;
     }
 
-    this.context = new Context(startupDirectory);
+    this.context = new Context(this.startupDirectory);
     
     // Set startup directory for all logging systems
     const { RouterLogger } = require('./classes/shared/routerLogger');
-    RouterLogger.setStartupDirectory(startupDirectory);
+    RouterLogger.setStartupDirectory(this.startupDirectory);
 
     if (!this.inContainer) {
       // --------------------------------------------------
@@ -431,8 +432,17 @@ export class DebugTerminalInTypeScript {
     this.context.runEnvironment.quiet = options.quiet || false;
     this.context.runEnvironment.consoleMode = options.consoleMode || false;
 
-    // Report font folder location when verbose
+    // Report startup directory info when verbose
     if (this.context.runEnvironment.verbose) {
+      console.log(`[STARTUP] process.cwd() = ${this.initialCwd}`);
+      console.log(`[STARTUP] __dirname = ${this.initialDirname}`);
+      if (__dirname.includes('PNut-Term-TS.app')) {
+        console.log(`[STARTUP] Detected packaged app, using directory: ${this.startupDirectory}`);
+      } else {
+        console.log(`[STARTUP] Using __dirname as working directory: ${this.startupDirectory}`);
+      }
+
+      // Report font folder location when verbose
       const fontPath = path.join(__dirname, '..', 'fonts');
       this.context.logger.verboseMsg(`* fonts located at [${fontPath}]`);
     }
