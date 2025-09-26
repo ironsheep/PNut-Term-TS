@@ -1,16 +1,19 @@
-# PNut-Term-TS
+<div align="center">
+  <img src="assets/pnut-term-icon.png" alt="PNut-Term-TS Logo" width="128" height="128">
 
-A recreation of Chips' Debug listener but multiplatform
+  # PNut-Term-TS
 
-![Project Maintenance][maintenance-shield]
+  **A Cross-Platform Debug Terminal for Parallax Propeller 2**
 
-[![License][license-shield]](LICENSE)
+  *Originally Chip's Debug listener, now available on all platforms*
 
-![NodeJS][node-badge]
+  ![Project Maintenance][maintenance-shield]
+  [![License][license-shield]](LICENSE)
+  ![NodeJS][node-badge]
 
-[![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
-
-[![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
+  [![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
+  [![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
+</div>
 
 ## PNut-Term-TS cross platform debug terminal
 
