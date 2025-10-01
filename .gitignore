@@ -1,3 +1,7 @@
+# User-specific settings files
+test-external/pnut-term-settings.json
+pnut-term-settings.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
