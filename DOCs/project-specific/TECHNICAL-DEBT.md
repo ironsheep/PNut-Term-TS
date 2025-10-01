@@ -46,6 +46,41 @@ The SCOPE_XY window has the following known issues:
 
 **Estimated effort:** 2-4 hours to diagnose and fix
 
+## Configuration and Logging Issues
+
+### loggingEnabled Flag - Dead Code
+**Priority: Medium - Cleanup needed**
+**Date Added: 2025-01-10**
+
+The `this.context.runEnvironment.loggingEnabled` flag is checked extensively throughout the codebase but is NEVER set to true in production code:
+
+**Current situation:**
+- Defaults to `false` in `/src/utils/context.ts`
+- Only set to `true` in test files
+- Checked in 35+ places across multiple files:
+  - `src/classes/mainWindow.ts` (17 occurrences)
+  - `src/utils/usb.serial.ts` (2 occurrences)
+  - `src/classes/downloader.ts` (1 occurrence)
+  - `src/classes/logger.ts` (was blocking all non-error output - now fixed)
+
+**Impact:**
+- All code wrapped in `if (this.context.runEnvironment.loggingEnabled)` checks is effectively dead code
+- Was preventing the logger from outputting anything except errors (fixed)
+- Potentially hiding useful debugging/logging functionality
+
+**Action needed:**
+1. Determine the original intent of this flag
+2. Either:
+   - Remove all `loggingEnabled` checks if the feature is not needed
+   - Implement a proper way to enable it (command-line flag, config file, etc.)
+   - Repurpose it for a different logging control mechanism
+3. Review what functionality is currently hidden behind these checks
+4. Consider if `logToFile` should be the actual control for file logging
+
+**Note:** The `logToConsole` flag is separate and controls `console.log()` debug statements per file, not the main logging system.
+
+**Estimated effort:** 4-6 hours to audit all uses and implement proper solution
+
 ## Missing Test Coverage
 
 The following classes currently have no test files:

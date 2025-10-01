@@ -125,15 +125,54 @@ export class UsbSerial extends EventEmitter {
 
   static async serialDeviceList(ctx?: Context): Promise<string[]> {
     const devicesFound: string[] = [];
-    const ports = await SerialPort.list();
-    ports.forEach((port) => {
-      const tmpSerialNumber: string | undefined = port.serialNumber;
-      const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
-      const deviceNode: string = port.path;
-      if (port.vendorId == '0403' && port.productId == '6015') {
-        devicesFound.push(`${deviceNode},${serialNumber}`);
+    try {
+      const ports = await SerialPort.list();
+
+      // Always log to context if provided
+      if (ctx) {
+        ctx.logger.debugMsg(`* SerialPort.list() returned ${ports.length} total serial port(s)`);
       }
-    });
+      UsbSerial.logConsoleMessageStatic(`[USB] Found ${ports.length} total serial ports`);
+
+      ports.forEach((port) => {
+        const tmpSerialNumber: string | undefined = port.serialNumber;
+        const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
+        const deviceNode: string = port.path;
+
+        // Log all ports for debugging
+        UsbSerial.logConsoleMessageStatic(`[USB] Port: ${deviceNode}, VID:${port.vendorId}, PID:${port.productId}, SN:${serialNumber}`);
+
+        if (ctx) {
+          ctx.logger.debugMsg(`*   Port: ${deviceNode}, VID:${port.vendorId || 'none'}, PID:${port.productId || 'none'}, SN:${serialNumber}`);
+        }
+
+        if (port.vendorId == '0403' && port.productId == '6015') {
+          devicesFound.push(`${deviceNode},${serialNumber}`);
+          if (ctx) {
+            ctx.logger.verboseMsg(`*   ✓ PropPlug device found: ${deviceNode} (SN: ${serialNumber})`);
+          }
+        }
+      });
+
+      if (devicesFound.length === 0 && ports.length > 0) {
+        if (ctx) {
+          ctx.logger.debugMsg(`* No Parallax PropPlug devices (0403:6015) found among ${ports.length} serial port(s)`);
+          ctx.logger.verboseMsg(`* Hint: Looking specifically for VID:0403 PID:6015 (Parallax PropPlug)`);
+        }
+      }
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      if (ctx) {
+        ctx.logger.errorMsg(`* Failed to list USB devices: ${errorMsg}`);
+        if (errorMsg.includes('permission') || errorMsg.includes('access') || errorMsg.includes('EACCES')) {
+          ctx.logger.errorMsg(`* Try running with sudo or check USB device permissions`);
+        } else if (errorMsg.includes('ENOENT')) {
+          ctx.logger.errorMsg(`* System tools for USB enumeration may be missing`);
+        }
+      }
+      // Re-throw to let caller handle
+      throw error;
+    }
     return devicesFound;
   }
 

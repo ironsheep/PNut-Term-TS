@@ -430,9 +430,9 @@ export class MainWindow {
           // Binary data stays as Uint8Array
           data = message.data;
         } else {
-          // Text data converted to string - NO SPLITTING to preserve original formatting
+          // Text data converted to string array for compatibility
           const textData = new TextDecoder().decode(message.data);
-          data = textData;  // Pass as plain string, debug logger handles both string[] and string
+          data = [textData];  // Wrap in array as processTypedMessage expects string[]
         }
 
         // Direct type-safe call - no router guessing needed

@@ -9,7 +9,6 @@ import { Context } from './utils/context';
 import path from 'path';
 import { exec, spawn } from 'child_process';
 import { UsbSerial } from './utils/usb.serial';
-import { getFormattedDateTime } from './utils/files';
 import * as fs from 'fs';
 // No Electron imports - this is pure Node.js CLI
 // Electron UI will be launched via electron-main.ts if needed
@@ -323,6 +322,10 @@ export class DebugTerminalInTypeScript {
 
     const showingNodeList: boolean = options.dvcnodes;
 
+    if (showingNodeList) {
+      this.context.logger.debugMsg('* Device node listing requested (-n/--dvcnodes)');
+    }
+
     if (options.flash && options.ram) {
       this.context.logger.errorMsg('Please use only one of FLASH or RAM options!');
       this.shouldAbort = true;
@@ -342,7 +345,8 @@ export class DebugTerminalInTypeScript {
       this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to RAM`);
     }
 
-    if (this.shouldAbort == false) {
+    // Show verbose environment info (always show for verbose mode, regardless of shouldAbort)
+    if ((options.verbose || options.debug) && !options.quiet) {
       this.context.logger.verboseMsg(''); // blank line
       let enclosingFolder: string = '';
       let removePrefix: string = '';
@@ -358,53 +362,54 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(`ext dir [~${this.context.extensionFolder.replace(removePrefix, '')}]`);
       this.context.logger.verboseMsg(`lib dir [~${this.context.libraryFolder.replace(removePrefix, '')}]`);
       this.context.logger.verboseMsg(''); // blank line
-      /*
-      this.runCommand('node -v').then((result) => {
-        if (result.error) {
-          this.context.logger.errorMsg(`${result.error}`);
-        } else {
-          this.context.logger.verboseMsg(`Node version: ${result.value}`);
-          this.context.logger.verboseMsg(''); // blank line
-        }
-      });
-      */
+
+      // Show startup directories
+      this.context.logger.verboseMsg(`[STARTUP] process.cwd() = ${this.initialCwd}`);
+      this.context.logger.verboseMsg(`[STARTUP] __dirname = ${this.initialDirname}`);
+      if (__dirname.includes('PNut-Term-TS.app')) {
+        this.context.logger.verboseMsg(`[STARTUP] Detected packaged app, using directory: ${this.startupDirectory}`);
+      } else {
+        this.context.logger.verboseMsg(`[STARTUP] Using __dirname as working directory: ${this.startupDirectory}`);
+      }
+
       const result = await this.runCommand('node -v');
       if (result.value !== null) {
         this.context.logger.verboseMsg(`Node version: ${result.value} (external)`);
       } else {
         // fake this for now...
         this.context.logger.verboseMsg(`Node version: v18.5.0 (built-in)`);
-        /*
-        const nodePath = process.execPath;
-        this.context.logger.verboseMsg(`nodePath: [${nodePath}]`);
-        result = await this.runCommand(`${nodePath} -v`);
-        if (result.value !== null) {
-          this.context.logger.verboseMsg(`Node version: ${result.value}`);
-        } else {
-          this.context.logger.verboseMsg(`CMD [${result.cmd}] FAIL: [${result.error}]`);
-        }
-        */
       }
       this.context.logger.verboseMsg(''); // blank line
     }
 
     if (!showingHelp) {
+      this.context.logger.debugMsg('* Enumerating USB serial devices...');
       try {
         await this.loadUsbPortsFound();
+        this.context.logger.debugMsg(`* Enumeration complete: ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s) found`);
       } catch (error) {
         this.context.logger.errorMsg(`* loadUsbPortsFound() Exception: ${error}`);
-        this.shouldAbort = true;
+        this.context.logger.debugMsg('* USB enumeration failed - check permissions or device drivers');
+        // Don't abort if just listing nodes - show the error but continue
+        if (!showingNodeList) {
+          this.shouldAbort = true;
+        }
       }
     }
 
     if (showingNodeList) {
-      for (let index = 0; index < this.context.runEnvironment.serialPortDevices.length; index++) {
-        const dvcNode = this.context.runEnvironment.serialPortDevices[index];
-        this.context.logger.progressMsg(` USB #${index + 1} [${dvcNode}]`);
-      }
-      if (this.context.runEnvironment.serialPortDevices.length == 0) {
+      this.context.logger.verboseMsg('* Listing USB PropPlug devices (VID:0403 PID:6015)...');
+
+      if (this.context.runEnvironment.serialPortDevices.length > 0) {
+        for (let index = 0; index < this.context.runEnvironment.serialPortDevices.length; index++) {
+          const dvcNode = this.context.runEnvironment.serialPortDevices[index];
+          this.context.logger.progressMsg(` USB #${index + 1} [${dvcNode}]`);
+        }
+      } else {
         // no ports found
-        this.context.logger.progressMsg(` USB  - no Serial Ports Found!`);
+        this.context.logger.progressMsg(` USB  - no PropPlug Serial Devices Found!`);
+        this.context.logger.verboseMsg('* Note: Only Parallax PropPlug devices (0403:6015) are detected');
+        this.context.logger.verboseMsg('* Check: Device connected, drivers installed, USB permissions');
       }
     }
 
@@ -435,15 +440,6 @@ export class DebugTerminalInTypeScript {
     this.context.runEnvironment.verbose = options.verbose || false;
     this.context.runEnvironment.quiet = options.quiet || false;
     this.context.runEnvironment.consoleMode = options.consoleMode || false;
-
-    // Report startup directory info when verbose
-    this.context.logger.verboseMsg(`[STARTUP] process.cwd() = ${this.initialCwd}`);
-    this.context.logger.verboseMsg(`[STARTUP] __dirname = ${this.initialDirname}`);
-    if (__dirname.includes('PNut-Term-TS.app')) {
-      this.context.logger.verboseMsg(`[STARTUP] Detected packaged app, using directory: ${this.startupDirectory}`);
-    } else {
-      this.context.logger.verboseMsg(`[STARTUP] Using __dirname as working directory: ${this.startupDirectory}`);
-    }
 
     // Report font folder location when verbose
     const fontPath = path.join(__dirname, '..', 'fonts');
@@ -480,16 +476,34 @@ export class DebugTerminalInTypeScript {
     }
     // Use process.exit for both Electron and Node.js environments
     process.exit(0);
-    return Promise.resolve(0);
   }
 
   private async loadUsbPortsFound(): Promise<void> {
-    const deviceNodes: string[] = await UsbSerial.serialDeviceList();
-    this.context.runEnvironment.serialPortDevices = [];
-    for (let index = 0; index < deviceNodes.length; index++) {
-      const element: string = deviceNodes[index];
-      const lineParts: string[] = element.split(',');
-      this.context.runEnvironment.serialPortDevices.push(lineParts[0]);
+    this.context.logger.verboseMsg('* Calling UsbSerial.serialDeviceList()...');
+    try {
+      const deviceNodes: string[] = await UsbSerial.serialDeviceList(this.context);
+      this.context.runEnvironment.serialPortDevices = [];
+
+      this.context.logger.verboseMsg(`* Raw device list returned ${deviceNodes.length} item(s)`);
+
+      for (let index = 0; index < deviceNodes.length; index++) {
+        const element: string = deviceNodes[index];
+        const lineParts: string[] = element.split(',');
+        this.context.runEnvironment.serialPortDevices.push(lineParts[0]);
+        this.context.logger.debugMsg(`*   Device ${index + 1}: ${lineParts[0]} (SN: ${lineParts[1] || 'unknown'})`);
+      }
+
+      if (this.context.runEnvironment.serialPortDevices.length === 0) {
+        this.context.logger.debugMsg('* No PropPlug devices found during enumeration');
+      } else {
+        this.context.logger.debugMsg(`* Successfully enumerated ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s)`);
+      }
+    } catch (error: any) {
+      // Re-throw to let caller handle with better context
+      const errorMsg = error?.message || String(error);
+      this.context.logger.debugMsg(`* USB enumeration error details: ${errorMsg}`);
+      this.context.runEnvironment.serialPortDevices = [];
+      throw error;  // Re-throw so caller knows enumeration failed
     }
   }
 

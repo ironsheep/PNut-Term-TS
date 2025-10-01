@@ -23,15 +23,17 @@ export class Logger {
   }
 
   private shouldLog(level: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE'): boolean {
-    if (!this.context || !this.context.runEnvironment.loggingEnabled) {
-      return level === 'ERROR'; // Always log errors
+    // If no context, allow all logging
+    if (!this.context) {
+      return true;
     }
-    
+
+    // Check log level to determine if message should be output
     const levels = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
     const configuredLevel = this.context.runEnvironment.loggingLevel;
     const configuredIndex = levels.indexOf(configuredLevel);
     const requestedIndex = levels.indexOf(level);
-    
+
     return requestedIndex <= configuredIndex;
   }
 
@@ -121,12 +123,13 @@ export class Logger {
    * @memberof Logger
    */
   public logMessage(message: string) {
-    // Only log if context is not set, or if logging is enabled
-    if (!this.context || this.context.runEnvironment.loggingEnabled) {
-      if (!this.context || this.context.runEnvironment.logToConsole) {
-        process.stdout.write(`${message}\r\n`);
-      }
-      // TODO: Add file logging support when logToFile is true
+    // Always log to stdout - this is the main logging output
+    // (logToConsole is for console.log debugging, not this)
+    process.stdout.write(`${message}\r\n`);
+
+    // TODO: Add file logging support when logToFile is true
+    if (this.context && this.context.runEnvironment.logToFile) {
+      // File logging implementation goes here
     }
   }
   /**
