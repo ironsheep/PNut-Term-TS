@@ -684,7 +684,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.debugWindow?.show();
     });
 
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
       const loadedBounds = this.debugWindow!.getBounds();
       this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`);
     });
@@ -909,7 +909,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
       this.logMessage('at did-finish-load');
       // let's populate labels
       this.loadLables();

@@ -924,12 +924,15 @@ export class WindowRouter extends EventEmitter {
    * Looks for patterns like "Cog 0:", "COG1:", "[COG 2]", "<3>", etc.
    */
   private extractCOGId(message: string): number | null {
-    // Common COG prefix patterns
+    // Debug logging to see what messages we're trying to extract COG IDs from
+    console.log(`[ROUTER] Extracting COG ID from: "${message}"`);
+
+    // COG prefix patterns - EXACT format: "CogN " (no space between Cog and number)
     const patterns = [
-      /^Cog\s*(\d+)[:\s]/i,      // "Cog 0:", "COG 1 "
-      /^\[COG\s*(\d+)\]/i,        // "[COG 0]"
-      /^COG(\d+)[:\s]/i,          // "COG0:", "COG1 "
-      /^<(\d+)>/,                 // "<0>" shorthand
+      /^Cog(\d+)\s/i,            // "Cog0 ", "Cog1 " - EXACT required format
+      /^COG(\d+)\s/i,            // "COG0 ", "COG1 " - uppercase variant
+      /^\[COG(\d+)\]/i,          // "[COG0]" - bracketed variant
+      /^<(\d+)>/,                // "<0>" - shorthand variant
     ];
 
     for (const pattern of patterns) {
@@ -937,11 +940,13 @@ export class WindowRouter extends EventEmitter {
       if (match) {
         const cogId = parseInt(match[1], 10);
         if (cogId >= 0 && cogId <= 7) {
+          console.log(`[ROUTER] Found COG ID ${cogId} using pattern: ${pattern}`);
           return cogId;
         }
       }
     }
 
+    console.log(`[ROUTER] No COG ID found in message: "${message}"`);
     return null;
   }
   

@@ -647,7 +647,7 @@ export class DebugTermWindow extends DebugWindowBase {
     }
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
       this.logMessage('at did-finish-load');
       // Initialize offscreen canvas for double buffering (matches Pascal's Bitmap[0])
       this.initializeOffscreenCanvas(canvasWidth, canvasHeight);

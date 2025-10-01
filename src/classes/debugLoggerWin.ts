@@ -304,11 +304,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
       if (this.cogsAreShowing) {
         this.logConsoleMessage('[DEBUG LOGGER] Hide All COGs button clicked');
         this.emit('hide-all-cogs-requested');
-        this.cogsAreShowing = false;
+        // DON'T update state here - let handleHideAllCOGs() do it via updateCOGsState()
       } else {
         this.logConsoleMessage('[DEBUG LOGGER] Show All COGs button clicked');
         this.emit('show-all-cogs-requested');
-        this.cogsAreShowing = true;
+        // DON'T update state here - let handleShowAllCOGs() do it via updateCOGsState()
       }
     });
     

@@ -44,6 +44,9 @@ export class UsbSerial extends EventEmitter {
   private _downloadResponse: string = '';
   private _checksumVerified: boolean = false;
   private checkedForP2: boolean = false;
+  private _isDownloading: boolean = false;  // Track download state
+  private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
+  private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -68,11 +71,14 @@ export class UsbSerial extends EventEmitter {
     // Handle ALL data through raw handler - no parser interference!
     // Parser was corrupting binary data and destroying performance
     this._serialPort.on('data', (data: Buffer) => {
-      // Emit raw data immediately for MainWindow (preserves binary integrity)
-      this.emit('data', data);
-      
-      // Also check for P2 detection strings in the raw data
-      this.checkForP2Response(data);
+      // Check for P2 detection strings first
+      const wasConsumed = this.checkForP2Response(data);
+
+      // Only emit data to MainWindow if it wasn't consumed by P2 detection
+      // This prevents Propeller ID responses from being forwarded during downloads
+      if (!wasConsumed) {
+        this.emit('data', data);
+      }
     });
 
     // now open the port
@@ -167,6 +173,10 @@ export class UsbSerial extends EventEmitter {
     return [this._p2DeviceId, this._latestError];
   }
 
+  public isDownloading(): boolean {
+    return this._isDownloading;
+  }
+
   public async close(): Promise<void> {
     // (alternate suggested by perplexity search)
     // release the usb port
@@ -230,6 +240,10 @@ export class UsbSerial extends EventEmitter {
     }
 
     this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`);
+
+    // Clear flag after processing P2 response - resume normal data forwarding
+    this._expectingP2Response = false;
+
     return foundPropellerStatus;
   }
 
@@ -242,6 +256,9 @@ export class UsbSerial extends EventEmitter {
 
     this.logMessage(`* requestPropellerVersionForDownload() - ALWAYS resetting for download`);
     this.logMessage(`* requestPropellerVersionForDownload() - port open (${this._serialPort.isOpen})`);
+
+    // Set flag to consume P2 ID responses (don't forward to mainWindow during download)
+    this._expectingP2Response = true;
 
     try {
       await this.waitForPortOpen();
@@ -291,6 +308,9 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async downloadNoCheck(uint8Bytes: Uint8Array) {
+    // Set download flag to prevent data routing
+    this._isDownloading = true;
+
     // PNut v51 format: 'Prop_Txt 0 0 0 0' with space terminator
     const requestStartDownload: string = 'Prop_Txt 0 0 0 0';
     const byteCount: number = uint8Bytes.length < this._p2loadLimit ? uint8Bytes.length : this._p2loadLimit;
@@ -312,9 +332,16 @@ export class UsbSerial extends EventEmitter {
       // Send terminator - just ~ character as seen in PNut v51
       await this.write('~');  // Terminator only, no > or CR needed
     }
+
+    // Clear download flag when done
+    this._isDownloading = false;
+    this.logMessage(`* downloadNoCheck() - Download complete, isolation mode disabled`);
   }
 
   public async download(uint8Bytes: Uint8Array, needsP2ChecksumVerify: boolean): Promise<void> {
+    // Set download flag to prevent data routing
+    this._isDownloading = true;
+
     // reset our status indicators
     this._downloadChecksumGood = false;
     this._downloadResponse = '';
@@ -381,6 +408,9 @@ export class UsbSerial extends EventEmitter {
           // Clear buffer before waiting for response
           this._p2DetectionBuffer = '';
 
+          // Set flag to consume checksum responses (don't forward to mainWindow)
+          this._expectingChecksumResponse = true;
+
           // Wait for response character
           while (true) {
             // Check for response characters
@@ -398,6 +428,9 @@ export class UsbSerial extends EventEmitter {
                 this.logMessage(`* P2 checksum verification: FAILED - '!' received after ${responseTime}ms`);
                 this.logMessage(`* Download failed - checksum invalid, binary may be corrupted`);
               }
+
+              // Clear flag after processing checksum response
+              this._expectingChecksumResponse = false;
               break;
             }
 
@@ -408,6 +441,9 @@ export class UsbSerial extends EventEmitter {
               this.logMessage(`* Buffer contents: '${this._p2DetectionBuffer}'`);
               this.logMessage(`* Protocol out of sync - P2 ALWAYS responds to '?' with '.' or '!'`);
               this.logMessage(`* Something is seriously wrong with the serial communication`);
+
+              // Clear flag on timeout too
+              this._expectingChecksumResponse = false;
               break;
             }
 
@@ -420,6 +456,10 @@ export class UsbSerial extends EventEmitter {
       }
     } catch (error) {
       this.logMessage(`* download() ERROR: ${JSON.stringify(error, null, 2)}`);
+    } finally {
+      // ALWAYS clear download flag when done
+      this._isDownloading = false;
+      this.logMessage(`* download() - Download complete, isolation mode disabled`);
     }
   }
 
@@ -473,18 +513,32 @@ export class UsbSerial extends EventEmitter {
   }
 
   // Check raw data for P2 version response (no parser needed!)
-  private checkForP2Response(data: Buffer): void {
+  // Returns true if data was consumed (P2 response during download), false if data should be forwarded
+  private checkForP2Response(data: Buffer): boolean {
     // Convert to string for P2 detection only
     const text = data.toString('utf8', 0, data.length);
     this._p2DetectionBuffer += text;
-    
+
     // Look for complete lines
     const lines = this._p2DetectionBuffer.split(/\r?\n/);
-    
+
     // Keep incomplete line in buffer
     this._p2DetectionBuffer = lines.pop() || '';
-    
-    // Process complete lines
+
+    // Track if we consumed any P2 responses that shouldn't be forwarded
+    let consumedP2Response = false;
+
+    // Check for checksum verification responses (. or !) first
+    // These should be single-character responses, not just any text containing these characters
+    if (this._expectingChecksumResponse) {
+      const trimmedText = text.trim();
+      if (trimmedText === '.' || trimmedText === '!') {
+        this.logMessage(`  -- Consuming checksum response during download operation: '${trimmedText}'`);
+        consumedP2Response = true;
+      }
+    }
+
+    // Process complete lines for Prop_Ver responses
     for (const line of lines) {
       if (line.startsWith('Prop_Ver ')) {
         this.logMessage(`  -- P2 DETECTED [${line}]`);
@@ -495,16 +549,25 @@ export class UsbSerial extends EventEmitter {
         this._p2DeviceId = this.descriptionForVerLetter(idLetter);
         this._p2loadLimit = this.limitForVerLetter(idLetter);
         this.logMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`);
+
+        // If we're expecting this response during download, consume it (don't forward to mainWindow)
+        if (this._expectingP2Response) {
+          this.logMessage(`  -- Consuming P2 ID response during download operation`);
+          consumedP2Response = true;
+        }
+
         // Clear buffer after successful detection
         this._p2DetectionBuffer = '';
         break;
       }
     }
-    
+
     // Prevent buffer from growing too large
     if (this._p2DetectionBuffer.length > 1000) {
       this._p2DetectionBuffer = this._p2DetectionBuffer.slice(-100);
     }
+
+    return consumedP2Response;
   }
 
   public async setDTR(value: boolean): Promise<void> {

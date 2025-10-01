@@ -667,9 +667,9 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.on('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', () => {
       this.logMessage('at did-finish-load');
-      
+
       // Mark window as ready to process queued messages
       this.onWindowReady();
       

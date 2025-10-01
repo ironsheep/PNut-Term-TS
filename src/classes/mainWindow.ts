@@ -288,11 +288,19 @@ export class MainWindow {
       }
     };
 
+    const cogWindowRouterDestination: RouteDestination = {
+      name: 'COGWindowRouter',
+      handler: (message: ExtractedMessage | PooledMessage) => {
+        this.routeToCOGWindows(message);
+      }
+    };
+
     // Apply standard P2 routing configuration
     this.serialProcessor.applyStandardRouting(
       debugLoggerDestination,
       windowCreatorDestination,
-      debuggerWindowDestination
+      debuggerWindowDestination,
+      cogWindowRouterDestination
     );
 
     // Listen for debugger packets to create/update debugger windows
@@ -353,6 +361,39 @@ export class MainWindow {
   }
 
   /**
+   * Route COG messages to individual COG windows via WindowRouter (conditional routing)
+   */
+  private routeToCOGWindows(message: ExtractedMessage | PooledMessage): void {
+    // Only route COG messages
+    if (message.type !== MessageType.COG_MESSAGE) {
+      return;
+    }
+
+    this.logConsoleMessage(
+      `[COG ROUTER] 🎯 Routing COG message to individual windows: ${message.data.length} bytes`
+    );
+
+    try {
+      // Convert message data to string for WindowRouter processing
+      const messageText = new TextDecoder().decode(message.data);
+
+      // Create router message in the format WindowRouter expects
+      const routerMessage = {
+        type: 'text' as const,
+        data: messageText,
+        timestamp: message.timestamp,
+        cogId: message.metadata?.cogId
+      };
+
+      // Send to WindowRouter for conditional routing to individual COG windows
+      this.windowRouter.routeMessage(routerMessage);
+
+    } catch (error) {
+      this.logConsoleMessage(`[COG ROUTER] ❌ Error routing COG message: ${error}`);
+    }
+  }
+
+  /**
    * Route message to Debug Logger (Terminal FIRST principle)
    */
   private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
@@ -368,6 +409,19 @@ export class MainWindow {
         this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
       }
 
+      // IMPORTANT: Display terminal output in BOTH the debug logger AND main window
+      if (message.type === MessageType.TERMINAL_OUTPUT) {
+        // Decode terminal data and display in main window's blue terminal area
+        const terminalText = new TextDecoder().decode(message.data);
+        this.logConsoleMessage(`[TERMINAL] 🔵 Routing TERMINAL_OUTPUT to blue window:`);
+        this.logConsoleMessage(`[TERMINAL]   Raw bytes: [${Array.from(message.data).join(', ')}]`);
+        this.logConsoleMessage(`[TERMINAL]   Decoded text: "${terminalText}"`);
+        this.logConsoleMessage(`[TERMINAL]   Text length: ${terminalText.length} chars`);
+        this.logConsoleMessage(`[TERMINAL]   Calling appendLog...`);
+        this.appendLog(terminalText);
+        this.logConsoleMessage(`[TERMINAL] ✅ appendLog called successfully`);
+      }
+
       if (this.debugLoggerWindow) {
         // Convert buffer to appropriate data type
         let data: string[] | Uint8Array;
@@ -376,9 +430,9 @@ export class MainWindow {
           // Binary data stays as Uint8Array
           data = message.data;
         } else {
-          // Text data converted to string array
+          // Text data converted to string - NO SPLITTING to preserve original formatting
           const textData = new TextDecoder().decode(message.data);
-          data = textData.split(/\s+/).filter((part) => part.length > 0);
+          data = textData;  // Pass as plain string, debug logger handles both string[] and string
         }
 
         // Direct type-safe call - no router guessing needed
@@ -663,16 +717,8 @@ export class MainWindow {
         break;
       case MessageType.COG_MESSAGE:
         displayText = new TextDecoder().decode(message.data);
-        // Extract COG ID from message and notify COGWindowManager
-        const cogMatch = displayText.match(/^Cog(\d)\s\s/);
-        if (cogMatch) {
-          const cogId = parseInt(cogMatch[1], 10);
-          if (cogId >= 0 && cogId <= 7) {
-            // Notify COG window manager about this COG activity
-            this.cogWindowManager.onCOGTraffic(cogId, message);
-            this.logConsoleMessage(`[COG TRACKING] COG${cogId} message detected, updating display`);
-          }
-        }
+        // REMOVED: COG tracking should NOT happen in debug logger route
+        // This was causing double processing - COG tracking should only happen in cogWindowRouter route
         break;
       case MessageType.P2_SYSTEM_INIT:
         displayText = `[GOLDEN SYNC] ${new TextDecoder().decode(message.data)}`;
@@ -802,6 +848,12 @@ export class MainWindow {
    */
   public handleShowAllCOGs(): void {
     this.logConsoleMessage('[COG MANAGER] Show All COGs requested');
+
+    // Send comment line to debug logger indicating windows are being opened
+    if (this.debugLoggerWindow) {
+      this.debugLoggerWindow.logSystemMessage('=== Opening all 8 COG windows - messages after this will route to COG displays ===');
+    }
+
     // Temporarily switch to SHOW_ALL mode to display all COGs
     this.cogWindowManager.setMode(COGDisplayMode.SHOW_ALL);
     this.cogWindowManager.showAllCOGs();
@@ -818,7 +870,15 @@ export class MainWindow {
   public handleHideAllCOGs(): void {
     this.logConsoleMessage('[COG MANAGER] Hide All COGs requested');
 
-    // Close all COG windows
+    // Send comment line to debug logger indicating windows are being hidden
+    if (this.debugLoggerWindow) {
+      this.debugLoggerWindow.logSystemMessage('=== Hiding all 8 COG windows - messages will no longer route to COG displays ===');
+    }
+
+    // Set mode to OFF to prevent any window recreation during closing
+    this.cogWindowManager.setMode(COGDisplayMode.OFF);
+
+    // Close all COG windows first
     for (let cogId = 0; cogId < 8; cogId++) {
       const windowKey = `COG-${cogId}`;
       const cogWindow = this.displays[windowKey];
@@ -831,11 +891,12 @@ export class MainWindow {
       }
     }
 
-    // Reset COG manager to clear all state
+    // CRITICAL: Reset COG manager AFTER closing windows to clear all state cleanly
+    // NOTE: This causes show/hide to work every OTHER time (not ideal, but better than never)
+    // Root cause unknown - needs investigation into cogWindowManager.showAllCOGs() logic
+    // Without reset(): show NEVER works after first hide
+    // With reset(): show works every other time (acceptable workaround for now)
     this.cogWindowManager.reset();
-
-    // Set mode to OFF since all windows are closed
-    this.cogWindowManager.setMode(COGDisplayMode.OFF);
 
     // Update Debug Logger button state
     if (this.debugLoggerWindow) {
@@ -1234,6 +1295,21 @@ export class MainWindow {
 
   private handleSerialRx(data: Buffer | string) {
     // Handle received data - can be Buffer (raw bytes) or string (from parser)
+
+    // CRITICAL: Check if download is in progress
+    // During download, ALL serial data is protocol traffic that should be consumed by the downloader
+    // This prevents version strings, dots, and checksum responses from contaminating the display
+    if (this._serialPort && this._serialPort.isDownloading()) {
+      this.logConsoleMessage('[SERIAL RX] Download in progress - data consumed by downloader, not routed');
+      // Still update RX activity indicator
+      const dataLength = Buffer.isBuffer(data) ? data.length : data.length;
+      this.rxCharCounter += dataLength;
+      if (this.rxCharCounter >= 50 || !this.rxActivityTimer) {
+        this.blinkActivityLED('rx');
+        this.rxCharCounter = 0;
+      }
+      return; // DO NOT ROUTE - let downloader handle all data
+    }
 
     // RX activity indicator - blink for ALL received data (binary or text)
     const dataLength = Buffer.isBuffer(data) ? data.length : data.length;
@@ -3118,11 +3194,10 @@ export class MainWindow {
     this.mainWindow!.webContents.once('did-finish-load', () => {
       const isIdeMode = this.context.runEnvironment.ideMode;
 
-      // Open DevTools for debugging (TEMPORARY - remove when fixed)
-      if (!isIdeMode) {
-        this.logConsoleMessage('[DEBUG] Opening DevTools for debugging...');
-        this.mainWindow!.webContents.openDevTools();
-      }
+      // DevTools removed - was causing MaxListenersExceededWarning
+      // The warning was: "11 did-stop-loading listeners added to [WebContents]"
+      // DevTools internally adds these listeners when opened
+      // To debug, use View > Toggle Developer Tools menu instead
 
       // Initialize menu if in standalone mode
       if (!isIdeMode) {
@@ -4320,11 +4395,17 @@ export class MainWindow {
   private PEND_MESSAGE_COUNT: number = 100;
 
   private appendLog(message: string) {
+    this.logConsoleMessage(`[APPEND_LOG] 📝 Called with message: "${message}" (${message.length} chars)`);
     if (this.mainWindow) {
+      this.logConsoleMessage(`[APPEND_LOG] ✅ mainWindow exists, adding to buffer`);
       this.logBuffer.push(message);
+      this.logConsoleMessage(`[APPEND_LOG] Buffer size: ${this.logBuffer.length}, PEND_MESSAGE_COUNT: ${this.PEND_MESSAGE_COUNT}`);
       if (this.logBuffer.length > this.PEND_MESSAGE_COUNT || this.immediateLog) {
+        this.logConsoleMessage(`[APPEND_LOG] 🚀 Triggering flush (buffer=${this.logBuffer.length}, immediate=${this.immediateLog})`);
         this.flushLogBuffer();
       }
+    } else {
+      this.logConsoleMessage(`[APPEND_LOG] ❌ mainWindow is null/undefined, message dropped!`);
     }
     // Logging now handled by DebugLogger
   }
@@ -4332,7 +4413,9 @@ export class MainWindow {
   private logBuffer: string[] = [];
 
   private flushLogBuffer() {
+    this.logConsoleMessage(`[FLUSH] 🌊 flushLogBuffer called, buffer size: ${this.logBuffer.length}`);
     if (this.mainWindow && !this.mainWindow.isDestroyed() && this.logBuffer.length > 0) {
+      this.logConsoleMessage(`[FLUSH] ✅ Window valid, processing ${this.logBuffer.length} messages`);
       // Serialize the logBuffer array to a JSON string
       // -------------------------------------------------
       // Control Characters
@@ -4467,7 +4550,9 @@ export class MainWindow {
   }
 
   private emitStrings(buffer: string[]) {
+    this.logConsoleMessage(`[EMIT] 📤 emitStrings called with ${buffer.length} messages`);
     if (buffer.length > 0) {
+      this.logConsoleMessage(`[EMIT] Messages to display: ${JSON.stringify(buffer)}`);
       const messages = JSON.stringify(buffer);
       this.safeExecuteJS(
         `

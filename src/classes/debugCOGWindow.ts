@@ -93,6 +93,9 @@ export class DebugCOGWindow extends DebugWindowBase {
 
     this.cogId = cogId;
 
+    // Log COG window creation
+    console.log(`[COG${cogId}] COG window created and initializing`);
+
     // Start with dormant theme
     this.theme = DebugCOGWindow.THEMES.dormant;
 
@@ -522,6 +525,9 @@ export class DebugCOGWindow extends DebugWindowBase {
    * Process incoming message for this COG
    */
   public processMessage(message: string, timestamp?: string): void {
+    // Log message arrival for debugging
+    console.log(`[COG${this.cogId}] Received message: "${message}"`);
+
     // Add to history buffer
     this.historyBuffer.push(message);
     if (this.historyBuffer.length > this.maxLines) {

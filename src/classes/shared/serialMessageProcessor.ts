@@ -269,9 +269,10 @@ export class SerialMessageProcessor extends EventEmitter {
   public applyStandardRouting(
     debugLogger: RouteDestination,
     windowCreator: RouteDestination,
-    debuggerWindow?: RouteDestination
+    debuggerWindow?: RouteDestination,
+    cogWindowRouter?: RouteDestination
   ): void {
-    this.router.applyStandardRouting(debugLogger, windowCreator, debuggerWindow);
+    this.router.applyStandardRouting(debugLogger, windowCreator, debuggerWindow, cogWindowRouter);
   }
 
   /**

@@ -111,15 +111,16 @@ export class COGHistoryManager extends EventEmitter {
 
   /**
    * Extract COG ID from message
-   * Looks for patterns like "Cog 0:", "COG1:", "[COG 2]", etc.
+   * Looks for patterns like "Cog0 ", "COG1 ", "[COG2]", etc.
+   * EXACT format: "CogN " (no space between Cog and number)
    */
   private extractCOGId(message: string): number | null {
-    // Common COG prefix patterns
+    // COG prefix patterns - EXACT format: "CogN " (no space between Cog and number)
     const patterns = [
-      /^Cog\s*(\d+)[:\s]/i,      // "Cog 0:", "COG 1 "
-      /^\[COG\s*(\d+)\]/i,        // "[COG 0]"
-      /^COG(\d+)[:\s]/i,          // "COG0:", "COG1 "
-      /^<(\d+)>/,                 // "<0>" shorthand
+      /^Cog(\d+)\s/i,            // "Cog0 ", "Cog1 " - EXACT required format
+      /^COG(\d+)\s/i,            // "COG0 ", "COG1 " - uppercase variant
+      /^\[COG(\d+)\]/i,          // "[COG0]" - bracketed variant
+      /^<(\d+)>/,                // "<0>" - shorthand variant
     ];
     
     for (const pattern of patterns) {

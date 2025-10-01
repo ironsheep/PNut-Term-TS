@@ -8,11 +8,15 @@
   *Originally Chip's Debug listener, now available on all platforms*
 
   ![Project Maintenance][maintenance-shield]
+  
   [![License][license-shield]](LICENSE)
+  
   ![NodeJS][node-badge]
 
   [![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
+  
   [![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
+  
 </div>
 
 ## PNut-Term-TS cross platform debug terminal

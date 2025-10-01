@@ -547,3 +547,192 @@ echo "SHUTDOWN" > .pnut-term-ts.command
 
 **Required for Release**: NO - Current signal handlers sufficient for basic automation
 
+---
+
+## Message Routing Architecture Issues
+
+### Router Architecture Refactoring
+**Date Added**: 2025-10-01
+**Priority**: Medium - Post-First-Release Refactor
+**Category**: Architecture / Code Quality
+
+**Current State**:
+- Three routing layers with overlapping responsibilities:
+  1. **MessageRouter** - Protocol-level type-based routing
+  2. **cogWindowRouter** - Format adapter (ExtractedMessage → SerialMessage)
+  3. **WindowRouter** - Content-aware routing + window lifecycle + recording
+
+**Problems**:
+1. **Redundant routing decisions** - Both MessageRouter and WindowRouter independently route to debug logger
+2. **Format conversion overhead** - cogWindowRouter is just 28 lines of adapter code
+3. **Mixed responsibilities** - WindowRouter does routing + window management + recording + performance monitoring
+4. **Content parsing duplication** - WindowRouter re-parses COG IDs that MessageExtractor already extracted
+
+**Desired State**:
+- **MessageRouter** owns ALL routing decisions (protocol-level)
+- **WindowRouter** becomes pure infrastructure:
+  - Window registry (lifecycle management)
+  - Recording/playback system
+  - Performance monitoring
+  - NO routing decisions, NO content parsing, NO hardcoded logging policy
+- **Eliminate cogWindowRouter** - MessageRouter outputs correct format directly
+
+**Implementation Plan**:
+1. Extract window registry from WindowRouter into separate WindowRegistry service
+2. Extract recording system into separate RecordingManager service
+3. Move all routing decisions to MessageRouter
+4. Remove WindowRouter's hardcoded "always log" policy
+5. Eliminate cogWindowRouter adapter
+
+**Estimated Effort**: 16-24 hours for full refactoring
+
+**Required for Release**: NO - Current system works, refactor for maintainability
+
+---
+
+### Message Splitting Corruption
+**Date Added**: 2025-10-01
+**Priority**: HIGH - Immediate Fix Required
+**Category**: Data Integrity Bug
+
+**Current State**:
+- `mainWindow.ts:434-435` splits COG messages on whitespace then rejoins
+- Destroys original formatting (P2 protocol uses two spaces after COG ID)
+- Debug logger receives corrupted messages with incorrect spacing
+
+**Code Location**:
+```typescript
+const textData = new TextDecoder().decode(message.data);
+data = textData.split(/\s+/).filter((part) => part.length > 0);  // ← BREAKS FORMATTING
+```
+
+**Impact**:
+- P2 protocol specifies two spaces after COG ID: `"Cog0  message"`
+- Split/join collapses to one space: `"Cog0 message"`
+- Message integrity compromised in debug logger
+
+**Fix**:
+```typescript
+const textData = new TextDecoder().decode(message.data);
+data = textData;  // Pass as plain string - NO SPLITTING
+```
+
+**Why Safe**:
+- Debug logger already handles plain strings (`debugLoggerWin.ts:861-864`)
+- Only affects MessageRouter Path A (direct to debug logger)
+- WindowRouter path unchanged
+- No other code depends on split behavior
+
+**Required for Release**: YES - Data integrity issue
+
+---
+
+### Duplicate COG Message Routing to Debug Logger
+**Date Added**: 2025-10-01
+**Priority**: HIGH - Immediate Fix Required
+**Category**: Logic Bug / User Experience
+
+**Current State**:
+- COG messages appear TWICE in debug logger with different formatting
+- Path A: MessageRouter line 479 → debugLogger (with split/join corruption)
+- Path B: MessageRouter line 483 → cogWindowRouter → WindowRouter lines 371-385 → debugLogger (correct formatting)
+
+**Root Cause**:
+- **MessageRouter** explicitly routes COG_MESSAGE to debugLogger (`messageRouter.ts:479`)
+- **WindowRouter** has hardcoded policy: "Always route to DebugLogger" (`windowRouter.ts:371-385`)
+- Both routers independently decide to send to debug logger
+
+**Impact**:
+- Users see each COG message twice in debug logger
+- One copy has corrupted spacing, one copy is correct
+- Confusing user experience
+- Wastes logging resources
+
+**Surgical Fix** (safest approach):
+Remove MessageRouter's direct debugLogger registration for COG_MESSAGE:
+
+```typescript
+// messageRouter.ts:479 - REMOVE THIS LINE
+// this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
+
+// Keep cogWindowRouter route - WindowRouter will handle debug logger
+if (cogWindowRouter) {
+  this.registerDestination(MessageType.COG_MESSAGE, cogWindowRouter);
+}
+```
+
+**Why This Fix Is Safe**:
+- COG messages still reach debug logger via: MessageRouter → cogWindowRouter → WindowRouter → debugLogger
+- WindowRouter's hardcoded policy ensures debug logger gets them
+- Only removes ONE of the two duplicate paths
+- All other message types unchanged (BACKTICK_WINDOW, TERMINAL_OUTPUT, etc.)
+- Individual COG windows still work correctly
+
+**Risk Assessment**:
+- ✅ Debug logger will still receive COG messages (via WindowRouter)
+- ✅ Individual COG windows (COG0-COG7) still work
+- ✅ No impact on other message types
+- ⚠️ Relies on WindowRouter's "always log" policy staying in place (but we're not removing that now)
+
+**Required for Release**: YES - User-visible bug
+
+---
+
+### COG Window Show/Hide State Machine Bug
+**Date Added**: 2025-10-01
+**Priority**: HIGH - Immediate Fix Required
+**Category**: State Management Bug
+
+**Current State**:
+- Show/hide toggle follows pattern: works, fails, works, fails, works
+- First show: ✅ All 8 COG windows appear
+- First hide: ✅ All windows close
+- Second show: ❌ Only COG windows with traffic appear
+- Second hide: ✅ Windows close
+- Third show: ✅ All 8 windows appear again
+
+**Root Cause**:
+- `handleHideAllCOGs()` calls `cogWindowManager.reset()` at line 896
+- `reset()` reinitializes ALL state including mode
+- Mode defaults back to `ON_DEMAND` instead of preserving `SHOW_ALL`
+- Next show operation uses wrong mode
+
+**Code Flow**:
+```typescript
+// mainWindow.ts:870-906
+public handleHideAllCOGs(): void {
+  this.cogWindowManager.setMode(COGDisplayMode.OFF);  // Set to OFF
+  // ... close windows ...
+  this.cogWindowManager.reset();  // ← BUG: Resets mode to ON_DEMAND
+}
+```
+
+**Surgical Fix**:
+Don't call `reset()` - mode should persist across hide operations:
+
+```typescript
+public handleHideAllCOGs(): void {
+  this.cogWindowManager.setMode(COGDisplayMode.OFF);
+  // ... close windows ...
+  // this.cogWindowManager.reset();  // REMOVE - preserve mode state
+}
+```
+
+**Why Safe**:
+- Mode stays in whatever state it was (SHOW_ALL or ON_DEMAND)
+- Windows are still closed properly
+- Just preserves mode across show/hide cycles
+- No other state needs resetting during hide
+
+**Alternative** (if reset is needed for other reasons):
+Extract mode preservation or add parameter to reset():
+```typescript
+const currentMode = this.cogWindowManager.getMode();
+this.cogWindowManager.reset();
+this.cogWindowManager.setMode(currentMode);  // Restore mode
+```
+
+**Required for Release**: YES - User-visible functional bug
+
+**UPDATE 2025-10-01**: Fix attempted but made worse - removing `reset()` causes show to NEVER work after first hide (previously worked every other time). Root cause still unknown. `reset()` was masking a deeper issue with show/hide state machine or window creation logic. Needs investigation into `cogWindowManager.showAllCOGs()` logic and COGDisplayMode state transitions.
+

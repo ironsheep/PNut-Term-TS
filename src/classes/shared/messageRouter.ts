@@ -469,13 +469,21 @@ export class MessageRouter extends EventEmitter {
   public applyStandardRouting(
     debugLogger: RouteDestination,
     windowCreator: RouteDestination,
-    debuggerWindow?: RouteDestination
+    debuggerWindow?: RouteDestination,
+    cogWindowRouter?: RouteDestination
   ): void {
     // Terminal FIRST principle - default route
     this.registerDestination(MessageType.TERMINAL_OUTPUT, debugLogger);
 
-    // COG messages to debug logger
-    this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
+    // COG messages to debug logger - REMOVED to fix duplicate routing
+    // WindowRouter has hardcoded policy to route all messages to debug logger (windowRouter.ts:371-385)
+    // So we only need to route to cogWindowRouter, which will handle debug logger routing
+    // this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
+
+    // COG messages to individual COG windows (conditional - only if COG windows exist)
+    if (cogWindowRouter) {
+      this.registerDestination(MessageType.COG_MESSAGE, cogWindowRouter);
+    }
 
     // P2 System Init to debug logger with golden sync
     this.registerDestination(MessageType.P2_SYSTEM_INIT, debugLogger);
