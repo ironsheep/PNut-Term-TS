@@ -605,11 +605,25 @@ export class DebugTermWindow extends DebugWindowBase {
             display: block;
             margin: 0;
           }
+          #coordinate-display {
+            position: absolute;
+            padding: 8px;
+            background: ${this.displaySpec.window.background};
+            color: ${this.displaySpec.window.grid};
+            border: 1px solid ${this.displaySpec.window.grid};
+            font-family: 'Parallax', 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 999;
+            white-space: nowrap;
+          }
         </style>
       </head>
       <body>
         <div id="terminal-data">
           <canvas id="text-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
+          <div id="coordinate-display"></div>
         </div>
       </body>
     </html>
@@ -651,6 +665,117 @@ export class DebugTermWindow extends DebugWindowBase {
       this.logMessage('at did-finish-load');
       // Initialize offscreen canvas for double buffering (matches Pascal's Bitmap[0])
       this.initializeOffscreenCanvas(canvasWidth, canvasHeight);
+
+      // Add mouse coordinate tracking for character position display
+      const mouseTrackingCode = `
+        (function() {
+          const canvas = document.getElementById('text-area');
+          const display = document.getElementById('coordinate-display');
+
+          if (!canvas || !display) {
+            console.error('[TERM] Missing canvas or display element');
+            return;
+          }
+
+          let mouseOverCanvas = false;
+
+          // Mouse move handler - update coordinates
+          canvas.addEventListener('mousemove', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = Math.floor(event.clientX - rect.left);
+            const mouseY = Math.floor(event.clientY - rect.top);
+
+            if (!${this.displaySpec.hideXY}) {
+              updateCoordinateDisplay(mouseX, mouseY);
+            }
+          });
+
+          // Mouse enter handler
+          canvas.addEventListener('mouseenter', function() {
+            mouseOverCanvas = true;
+          });
+
+          // Mouse leave handler - hide display
+          canvas.addEventListener('mouseleave', function() {
+            mouseOverCanvas = false;
+            display.style.display = 'none';
+          });
+
+          // Function to update coordinate display
+          function updateCoordinateDisplay(x, y) {
+            const marginLeft = ${Math.floor(this.displaySpec.font.charWidth / 2)};
+            const marginTop = ${Math.floor(this.displaySpec.font.charWidth / 2)};
+            const charWidth = ${this.displaySpec.font.charWidth};
+            const charHeight = ${this.displaySpec.font.charHeight};
+            const columns = ${this.displaySpec.size.columns};
+            const rows = ${this.displaySpec.size.rows};
+
+            // Check if mouse is within character area (matches Pascal logic)
+            if (x >= marginLeft && x < marginLeft + charWidth * columns &&
+                y >= marginTop && y < marginTop + charHeight * rows) {
+
+              // Calculate character coordinates (matches Pascal div operation)
+              const col = Math.floor((x - marginLeft) / charWidth);
+              const row = Math.floor((y - marginTop) / charHeight);
+
+              // Update display text
+              display.textContent = col + ',' + row;
+              display.style.display = 'block';
+
+              // Position based on quadrant to avoid obscuring text
+              const canvasWidth = charWidth * columns;
+              const canvasHeight = charHeight * rows;
+              const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
+
+              // Get display dimensions for positioning
+              const displayRect = display.getBoundingClientRect();
+              const textWidth = displayRect.width;
+              const textHeight = displayRect.height;
+
+              // Calculate flyout position (matching Pascal's cursor positioning)
+              let displayX, displayY;
+              const offset = 12; // pixels from mouse position
+
+              switch(quadrant) {
+                case 0: // Top-left - show bottom-right of mouse
+                  displayX = x + offset;
+                  displayY = y + offset;
+                  break;
+                case 1: // Top-right - show bottom-left of mouse
+                  displayX = x - textWidth - offset;
+                  displayY = y + offset;
+                  break;
+                case 2: // Bottom-left - show top-right of mouse
+                  displayX = x + offset;
+                  displayY = y - textHeight - offset;
+                  break;
+                case 3: // Bottom-right - show top-left of mouse
+                  displayX = x - textWidth - offset;
+                  displayY = y - textHeight - offset;
+                  break;
+              }
+
+              display.style.left = displayX + 'px';
+              display.style.top = displayY + 'px';
+            } else {
+              // Mouse outside character area - hide display
+              display.style.display = 'none';
+            }
+          }
+
+          console.log('[TERM] Mouse coordinate tracking initialized');
+        })();
+      `;
+
+      if (this.debugWindow) {
+        this.debugWindow.webContents.executeJavaScript(mouseTrackingCode)
+          .then(() => {
+            this.logMessage('Mouse coordinate tracking enabled');
+          })
+          .catch(error => {
+            this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
+          });
+      }
     });
   }
 
@@ -699,6 +824,16 @@ export class DebugTermWindow extends DebugWindowBase {
     // Preserve original command for error logging (required by base class)
     const unparsedCommand = lineParts.join(' ');
     //this.logMessage(`at updateContent(${unparsedCommand})`);
+
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Remove display name prefix (index 0) and pass remaining parts to base class
+    const commandParts = lineParts.slice(1);
+    if (await this.handleCommonCommand(commandParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
+
+    // Continue with TERM-specific processing (control codes, strings)
     // ON first numeric data, create the window! then do update
     for (let index = 1; index < lineParts.length; index++) {
       const currLinePart = lineParts[index];
@@ -746,47 +881,27 @@ export class DebugTermWindow extends DebugWindowBase {
           // all other actions
           this.updateTermDisplay(`${action}`);
         }
-      } else if (lineParts[index].toUpperCase() == 'UPDATE') {
-        // update window with latest content - copy offscreen to visible
-        // This matches Pascal's UPDATE command which does BitmapToCanvas(0)
-        this.updateVisibleCanvas();
-      } else if (lineParts[index].toUpperCase() == 'CLEAR') {
-        // clear window
-        this.clearTerm();
-      } else if (lineParts[index].toUpperCase() == 'CLOSE') {
-        // close the window
-        this.closeDebugWindow();
-      } else if (lineParts[index].toUpperCase() == 'SAVE') {
-        // save the window to a file
-        let saveWindow = false;
-        let fileNameIndex = index + 1;
-        
-        // Check for optional WINDOW parameter
-        if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'WINDOW') {
-          saveWindow = true;
-          fileNameIndex = index + 2;
-        }
-        
-        if (fileNameIndex < lineParts.length) {
-          const saveFileName = this.removeStringQuotes(lineParts[fileNameIndex]);
-          // save the window to a file (as BMP)
-          await this.saveWindowToBMPFilename(saveFileName);
-          index = fileNameIndex; // Update index to skip processed parameters
-        } else {
-          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
-        }
-      } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
-        // Enable keyboard input forwarding
-        this.enableKeyboardInput();
-        break; // PC_KEY must be last command
-      } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
-        // Enable mouse input forwarding
-        this.enableMouseInput();
-        break; // PC_MOUSE must be last command
       } else {
+        // Unknown directive - base class didn't handle it, and it's not a TERM-specific code
         this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]}\nCommand: ${unparsedCommand}`);
       }
     }
+  }
+
+  /**
+   * Override base class method for CLEAR command
+   * Called by base class handleCommonCommand() when CLEAR is received
+   */
+  protected clearDisplayContent(): void {
+    this.clearTerm();
+  }
+
+  /**
+   * Override base class method for UPDATE command
+   * Called by base class handleCommonCommand() when UPDATE is received
+   */
+  protected forceDisplayUpdate(): void {
+    this.updateVisibleCanvas();
   }
 
   private updateTermDisplay(text: string): void {

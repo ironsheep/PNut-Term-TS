@@ -75,15 +75,16 @@ describe('DebugTermWindow', () => {
       displayName: 'Test',
       windowTitle: 'Test Terminal',
       position: { x: 100, y: 100 },
+      hasExplicitPosition: false,
       size: { columns: 80, rows: 25 },
-      font: { 
-        charWidth: 8, 
+      font: {
+        charWidth: 8,
         charHeight: 16,
         lineHeight: 20,
         baseline: 12,
         textSizePts: 14
       },
-      window: { 
+      window: {
         background: '#000000',
         grid: '#808080'
       },
@@ -420,6 +421,84 @@ describe('DebugTermWindow', () => {
       
       // Cursor should be limited to screen bounds
       expect(debugTermWindow['cursorPosition'].y).toBeLessThanOrEqual(mockDisplaySpec.size.rows - 1);
+    });
+  });
+
+  describe('Base class delegation (Task 1)', () => {
+    beforeEach(() => {
+      // Trigger window creation with a printable character
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+      // Force immediate update mode
+      debugTermWindow['displaySpec'].delayedUpdate = false;
+    });
+
+    it('should delegate CLEAR command to base class', () => {
+      const clearSpy = jest.spyOn(debugTermWindow as any, 'clearDisplayContent');
+      debugTermWindow['cursorPosition'] = { x: 10, y: 5 };
+
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'CLEAR']);
+
+      // clearDisplayContent should have been called via base class delegation
+      expect(clearSpy).toHaveBeenCalled();
+      expect(debugTermWindow['cursorPosition']).toEqual({ x: 0, y: 0 });
+
+      clearSpy.mockRestore();
+    });
+
+    it('should delegate UPDATE command to base class', () => {
+      const updateSpy = jest.spyOn(debugTermWindow as any, 'forceDisplayUpdate');
+
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+
+      // forceDisplayUpdate should have been called via base class delegation
+      expect(updateSpy).toHaveBeenCalled();
+
+      updateSpy.mockRestore();
+    });
+
+    it('should delegate CLOSE command to base class', () => {
+      const mockWindow = mockBrowserWindowInstances[0];
+
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'CLOSE']);
+
+      // Window close should have been called via base class delegation
+      expect(mockWindow.close).toHaveBeenCalled();
+    });
+
+    it('should delegate PC_KEY command to base class', () => {
+      const inputForwarder = debugTermWindow['inputForwarder'];
+      const pollingSpy = jest.spyOn(inputForwarder, 'startPolling');
+
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'PC_KEY']);
+
+      // Input forwarding should be enabled via base class delegation
+      expect(pollingSpy).toHaveBeenCalled();
+
+      pollingSpy.mockRestore();
+    });
+
+    it('should delegate PC_MOUSE command to base class', () => {
+      const inputForwarder = debugTermWindow['inputForwarder'];
+      const pollingSpy = jest.spyOn(inputForwarder, 'startPolling');
+
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, 'PC_MOUSE']);
+
+      // Input forwarding should be enabled via base class delegation
+      expect(pollingSpy).toHaveBeenCalled();
+
+      pollingSpy.mockRestore();
+    });
+
+    it('should delegate SAVE command to base class', async () => {
+      const mockNativeImage = {
+        toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
+      };
+      mockBrowserWindowInstances[0].webContents.capturePage = jest.fn().mockResolvedValue(mockNativeImage);
+
+      await debugTermWindow.updateContent([mockDisplaySpec.displayName, 'SAVE', "'test.bmp'"]);
+
+      // SAVE command should be handled via base class delegation
+      expect(mockBrowserWindowInstances[0].webContents.capturePage).toHaveBeenCalled();
     });
   });
 
@@ -916,6 +995,186 @@ describe('DebugTermWindow', () => {
       
       // Position should not change for unhandled control chars
       expect(debugTermWindow['cursorPosition']).toEqual(originalPos);
+    });
+  });
+
+  describe('Mouse coordinate display (Task 2)', () => {
+    it('should include coordinate-display div in HTML template', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      // The window should have been created
+      expect(mockBrowserWindowInstances.length).toBeGreaterThan(0);
+    });
+
+    it('should inject mouse coordinate tracking JavaScript on did-finish-load', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      expect(didFinishLoadCallback).toBeDefined();
+
+      // Execute the callback
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Should have called executeJavaScript with mouse tracking code
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const hasMouseTrackingCode = executeJavaScriptCalls.some((call: any) =>
+        call[0].includes('coordinate-display') &&
+        call[0].includes('mousemove') &&
+        call[0].includes('updateCoordinateDisplay')
+      );
+
+      expect(hasMouseTrackingCode).toBe(true);
+    });
+
+    it('should respect HIDEXY directive in mouse tracking code', () => {
+      // Create a window with HIDEXY set
+      const hideXYSpec = { ...mockDisplaySpec, hideXY: true };
+      const hideXYWindow = new DebugTermWindow(mockContext, hideXYSpec);
+      hideXYWindow.updateContent([hideXYSpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Check that hideXY is passed to the JavaScript code
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const mouseTrackingCall = executeJavaScriptCalls.find((call: any) =>
+        call[0].includes('coordinate-display')
+      );
+
+      expect(mouseTrackingCall).toBeDefined();
+      expect(mouseTrackingCall[0]).toContain('!true'); // hideXY is true, so !hideXY is false
+
+      // Cleanup
+      hideXYWindow.closeDebugWindow();
+    });
+
+    it('should include quadrant-based positioning logic in mouse tracking', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Check for quadrant positioning logic
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const mouseTrackingCall = executeJavaScriptCalls.find((call: any) =>
+        call[0].includes('coordinate-display')
+      );
+
+      expect(mouseTrackingCall).toBeDefined();
+      expect(mouseTrackingCall[0]).toContain('quadrant');
+      expect(mouseTrackingCall[0]).toContain('case 0'); // Top-left
+      expect(mouseTrackingCall[0]).toContain('case 1'); // Top-right
+      expect(mouseTrackingCall[0]).toContain('case 2'); // Bottom-left
+      expect(mouseTrackingCall[0]).toContain('case 3'); // Bottom-right
+    });
+
+    it('should calculate character coordinates matching Pascal logic', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Check for coordinate calculation logic
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const mouseTrackingCall = executeJavaScriptCalls.find((call: any) =>
+        call[0].includes('coordinate-display')
+      );
+
+      expect(mouseTrackingCall).toBeDefined();
+      // Should calculate col and row using Math.floor((x - marginLeft) / charWidth)
+      expect(mouseTrackingCall[0]).toContain('Math.floor((x - marginLeft) / charWidth)');
+      expect(mouseTrackingCall[0]).toContain('Math.floor((y - marginTop) / charHeight)');
+      // Should display as "col,row" format
+      expect(mouseTrackingCall[0]).toContain("col + ',' + row");
+    });
+
+    it('should hide display when mouse leaves canvas', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Check for mouseleave handler
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const mouseTrackingCall = executeJavaScriptCalls.find((call: any) =>
+        call[0].includes('coordinate-display')
+      );
+
+      expect(mouseTrackingCall).toBeDefined();
+      expect(mouseTrackingCall[0]).toContain('mouseleave');
+      expect(mouseTrackingCall[0]).toContain("display.style.display = 'none'");
+    });
+
+    it('should use correct margin values matching Pascal implementation', () => {
+      // Trigger window creation
+      debugTermWindow.updateContent([mockDisplaySpec.displayName, '32']);
+
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+
+      // Get the did-finish-load callback
+      const didFinishLoadCallback = mockWindow.webContents.once.mock.calls.find(
+        (call: any) => call[0] === 'did-finish-load'
+      )?.[1];
+
+      if (didFinishLoadCallback) {
+        didFinishLoadCallback();
+      }
+
+      // Check that margins are calculated as charWidth/2
+      const executeJavaScriptCalls = mockWindow.webContents.executeJavaScript.mock.calls;
+      const mouseTrackingCall = executeJavaScriptCalls.find((call: any) =>
+        call[0].includes('coordinate-display')
+      );
+
+      expect(mouseTrackingCall).toBeDefined();
+      const expectedMargin = Math.floor(mockDisplaySpec.font.charWidth / 2);
+      expect(mouseTrackingCall[0]).toContain(`marginLeft = ${expectedMargin}`);
+      expect(mouseTrackingCall[0]).toContain(`marginTop = ${expectedMargin}`);
     });
   });
 });

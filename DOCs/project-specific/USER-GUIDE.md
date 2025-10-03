@@ -127,36 +127,320 @@ debug(`bitmap MyBitmap size 320 240 lut8`)            ' Bitmap display
 
 ## Terminal Window
 
-The Terminal window displays text output from your P2 program.
+The Terminal (TERM) window displays text output from your P2 program in a monospace character grid. It's perfect for status messages, debugging output, logging data, and creating simple text-based interfaces.
 
-### Creating a Terminal
+### Getting Started
+
+#### Creating a Basic Terminal
 ```spin2
-debug(`term MyTerm size 80 25 textsize 14 title "Status Monitor"`)
+' Simple terminal with defaults (40 columns × 20 rows)
+debug(`term MyTerminal`)
+
+' Custom size terminal
+debug(`term MyTerminal size 80 24`)
+
+' Full configuration
+debug(`term MyTerminal size 80 24 textsize 14 title "Debug Output"`)
+```
+
+#### Your First Output
+```spin2
+PUB main()
+  ' Create terminal
+  debug(`term MyTerminal size 80 24`)
+
+  ' Display a message
+  debug(`MyTerminal 'Hello, World!' 13)
+```
+
+### Configuration Options
+
+When creating a terminal, you can customize its appearance and behavior:
+
+**Window Setup:**
+- `TITLE 'text'` - Set the window title (e.g., `TITLE "Sensor Monitor"`)
+- `POS x y` - Position window on screen (default: auto-placement)
+- `SIZE columns rows` - Terminal dimensions (1-256, default: 40×20)
+
+**Text Appearance:**
+- `TEXTSIZE points` - Font size in points (6-200, default: 12)
+  - Larger values = bigger text
+  - Smaller monitors: try 10-12
+  - Larger monitors: try 14-18
+
+**Colors:**
+- `COLOR fg bg` - Set up to 4 color combinations
+  - First pair is default (combo 0)
+  - Add more pairs for combos 1-3
+  - Example: `COLOR WHITE BLACK RED YELLOW LIME BLACK`
+
+**Display Mode:**
+- `UPDATE` - Enable smooth animation mode (see Advanced Features)
+- `HIDEXY` - Hide mouse coordinate display
+
+**Example:**
+```spin2
+debug(`term Status size 100 30 textsize 14 title "Sensor Readings" color LIME BLACK ORANGE BLACK`)
 ```
 
 ### Displaying Text
+
+#### Simple Text Output
 ```spin2
-' Simple text
-debug(`term MyTerm print "Hello World" 13`)
+' Display a string followed by newline (13 = carriage return)
+debug(`MyTerminal 'Hello, World!' 13)
 
-' Formatted numbers
-debug(`term MyTerm print "Value: ", dec(value), " hex: ", hex(value, 8)`)
+' Multiple lines
+debug(`MyTerminal 'Line 1' 13 'Line 2' 13 'Line 3' 13)
 
-' Colors
-debug(`term MyTerm color 2 print "Green text"`)
-debug(`term MyTerm color 0 4 print "Black on red"`)
+' Mix text and numbers
+debug(`MyTerminal 'Temperature: ' dec(temp) ' °C' 13)
 ```
 
-### Terminal Controls
-- **Echo Off**: Filter echoed characters for cleaner display
-- **Clear**: Clear the terminal screen
-- **Save**: Export terminal contents to file
+#### Numeric Display
+```spin2
+' Display numbers in different formats
+debug(`MyTerminal 'Decimal: ' dec(value) 13)
+debug(`MyTerminal 'Hex: ' hex(value, 8) 13)
+debug(`MyTerminal 'Binary: ' bin(value, 16) 13)
+```
 
-### Special Characters
-- `13` - Newline
-- `9` - Tab
-- `8` - Backspace
-- `12` - Clear screen
+#### Using Colors
+The terminal supports 4 color combinations (combos 0-3):
+
+```spin2
+' Set up 4 color combos: white/black, black/orange, lime/black, red/yellow
+debug(`term MyTerminal color WHITE BLACK  BLACK ORANGE  LIME BLACK  RED YELLOW`)
+
+' Select and use different combos
+debug(`MyTerminal 4 'Normal text' 13)        ' Combo 0 (white on black)
+debug(`MyTerminal 5 'Warning!' 13)           ' Combo 1 (black on orange)
+debug(`MyTerminal 6 'Success!' 13)           ' Combo 2 (lime on black)
+debug(`MyTerminal 7 'Error!' 13)             ' Combo 3 (red on yellow)
+```
+
+**Default Colors** (if you don't specify COLOR):
+- Combo 0: Orange on Black
+- Combo 1: Black on Orange
+- Combo 2: Lime on Black
+- Combo 3: Black on Lime
+
+### Control Codes
+
+Control codes let you position the cursor, clear the display, and control colors:
+
+| Code | Function | Example |
+|------|----------|---------|
+| `0` | Clear screen and home cursor | `debug(\`MyTerm 0)` |
+| `1` | Home cursor (no clear) | `debug(\`MyTerm 1)` |
+| `2 col` | Set cursor column | `debug(\`MyTerm 2 10)` → column 10 |
+| `3 row` | Set cursor row | `debug(\`MyTerm 3 5)` → row 5 |
+| `4-7` | Select color combo 0-3 | `debug(\`MyTerm 5)` → combo 1 |
+| `8` | Backspace | `debug(\`MyTerm 8)` |
+| `9` | Tab to next 8-col boundary | `debug(\`MyTerm 9)` |
+| `13` | Newline/carriage return | `debug(\`MyTerm 13)` |
+
+**Example: Cursor Positioning**
+```spin2
+' Create a status display at specific positions
+debug(`MyTerm 0)                    ' Clear screen
+debug(`MyTerm 3 0 2 5 'CPU:')       ' Row 0, column 5
+debug(`MyTerm 3 1 2 5 'Temp:')      ' Row 1, column 5
+debug(`MyTerm 3 2 2 5 'Memory:')    ' Row 2, column 5
+
+' Update values
+debug(`MyTerm 3 0 2 15 dec(cpu_usage) '%')
+debug(`MyTerm 3 1 2 15 dec(temperature) ' C')
+debug(`MyTerm 3 2 2 15 dec(memory_free) ' KB')
+```
+
+### Mouse Coordinate Display (NEW!)
+
+When you move your mouse over the terminal, a small flyout shows the character position under the cursor:
+
+**What You See:**
+- Format: `column,row` (e.g., "42,10" means column 42, row 10)
+- Coordinates are 0-based (top-left is 0,0)
+- Automatically positions itself to avoid blocking text
+
+**When It Appears:**
+- Mouse over the terminal character area → coordinates shown
+- Mouse outside terminal → coordinates hidden
+- Use `HIDEXY` directive to disable if not needed
+
+**Use Cases:**
+- Finding exact positions for cursor positioning (codes 2 and 3)
+- Aligning text and graphics
+- Planning terminal layouts
+
+### Advanced Features
+
+#### UPDATE Mode - Smooth Animation
+For high-speed output or animations, use UPDATE mode to prevent flickering:
+
+```spin2
+' Enable UPDATE mode
+debug(`term Display size 80 24 UPDATE`)
+
+' Draw content (not visible yet)
+debug(`Display 0)                     ' Clear
+debug(`Display 'Frame 1' 13)          ' Add content
+debug(`Display 'More data...' 13)     ' Add more
+
+' Make it visible all at once
+debug(`Display UPDATE)                ' Flip to screen
+```
+
+**How It Works:**
+- Without UPDATE: Each character appears immediately (may flicker)
+- With UPDATE: Changes buffered, displayed all at once when UPDATE sent
+- Perfect for animations, graphs, or rapidly changing displays
+
+**Example: Animated Counter**
+```spin2
+PUB animate_counter() | count
+
+  debug(`term Counter size 20 5 UPDATE`)
+
+  repeat count from 0 to 100
+    debug(`Counter 0)                ' Clear (buffered)
+    debug(`Counter 3 1 2 5)          ' Position (buffered)
+    debug(`Counter dec(count))       ' Show count (buffered)
+    debug(`Counter UPDATE)           ' Display all at once
+    waitms(50)
+```
+
+#### PC_KEY - Keyboard Input
+Forward keyboard input from your computer to the P2:
+
+```spin2
+' Enable keyboard forwarding
+debug(`term MyTerm PC_KEY`)
+
+' P2 can now read keystrokes
+' (implementation details in your P2 program)
+```
+
+#### PC_MOUSE - Mouse Input
+Forward mouse position and button clicks to the P2:
+
+```spin2
+' Enable mouse forwarding
+debug(`term MyTerm PC_MOUSE`)
+
+' P2 receives mouse coordinates and button states
+' (implementation details in your P2 program)
+```
+
+### Common Tasks
+
+#### Creating a Log Window
+```spin2
+PUB logger() | count
+
+  debug(`term Log size 100 40 textsize 10 title "Event Log" HIDEXY`)
+
+  repeat count from 1 to 100
+    debug(`Log dec(count) ': Event occurred at ' dec(getms()) ' ms' 13)
+    waitms(100)
+```
+
+#### Status Dashboard
+```spin2
+PUB dashboard() | temp, speed, status
+
+  debug(`term Dash size 50 10 color LIME BLACK RED BLACK`)
+  debug(`Dash 0)                                ' Clear
+  debug(`Dash 3 1 2 2 'Temperature:')
+  debug(`Dash 3 2 2 2 'Speed:')
+  debug(`Dash 3 3 2 2 'Status:')
+
+  repeat
+    temp := read_temperature()
+    speed := read_speed()
+    status := system_status()
+
+    ' Update temperature
+    debug(`Dash 3 1 2 20 dec(temp) ' C  ')
+
+    ' Update speed
+    debug(`Dash 3 2 2 20 dec(speed) ' RPM  ')
+
+    ' Update status with color
+    if status == OK
+      debug(`Dash 3 3 2 20 4 'OK     ')    ' Combo 0 (lime)
+    else
+      debug(`Dash 3 3 2 20 5 'ERROR  ')    ' Combo 1 (red)
+
+    waitms(100)
+```
+
+#### Colorful Messages
+```spin2
+debug(`term Messages color WHITE BLACK YELLOW BLACK RED BLACK LIME BLACK`)
+
+debug(`Messages 4 '[INFO] ' 'System started' 13)
+debug(`Messages 5 '[WARN] ' 'Low memory' 13)
+debug(`Messages 6 '[ERROR] ' 'Sensor failure' 13)
+debug(`Messages 7 '[OK] ' 'All systems nominal' 13)
+```
+
+### Tips and Best Practices
+
+**Choosing Terminal Size:**
+- Text logging: 80-100 columns × 30-40 rows
+- Status display: 40-60 columns × 10-20 rows
+- Full debugging: 100-120 columns × 40-50 rows
+- Consider your monitor resolution
+
+**Font Size:**
+- 1080p monitors: 12-14pt works well
+- 4K monitors: 16-20pt for readability
+- Experiment to find what's comfortable
+
+**Using Colors Effectively:**
+- Reserve bright colors for important messages
+- Use consistent colors (red=error, yellow=warning, green=ok)
+- Don't overuse colors - they lose impact
+
+**Performance:**
+- Use UPDATE mode for >10 updates/second
+- Clear only when needed (clearing is slow)
+- Position cursor once, then output data
+
+**Mouse Coordinates:**
+- Use to plan cursor positioning commands
+- Hide with HIDEXY if coordinates aren't needed
+- Coordinates help align multi-column displays
+
+### Common Issues
+
+**Text not appearing?**
+- If using UPDATE mode, did you send UPDATE command?
+- Check that terminal was created first
+- Verify window isn't hidden behind other windows
+
+**Wrong colors?**
+- Color combos are 0-3, selected with codes 4-7
+- Make sure you specified COLOR in configuration
+- Default is orange on black if not specified
+
+**Text wrapping unexpectedly?**
+- Line wraps at column boundary automatically
+- Use cursor positioning (codes 2,3) for control
+- Consider larger SIZE if text is too wide
+
+**Scrolling too fast?**
+- Terminal auto-scrolls when full
+- Use larger SIZE to see more lines
+- Consider UPDATE mode to batch multiple lines
+
+### Keyboard Shortcuts
+
+When terminal window is focused:
+- **Ctrl+C** - Copy selected text
+- **Ctrl+S** - Save terminal contents
+- **Ctrl+W** - Close window
 
 ## Logic Analyzer
 

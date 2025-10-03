@@ -167,6 +167,318 @@ Both trigger:
 **Cause**: String conversion of binary data
 **Fix**: Keep data as Buffer throughout pipeline
 
+## TERM Window Technical Implementation
+
+### Architecture Overview
+The TERM window implements a monospace text terminal for debug output from Propeller 2 microcontrollers. It demonstrates the base class delegation pattern, leveraging DebugWindowBase for common functionality while implementing terminal-specific features like control codes, color combinations, and character cell rendering.
+
+### Key Components
+
+#### 1. Base Class Delegation Pattern
+The TERM window exemplifies modern DebugWindowBase architecture:
+- **Common Commands**: CLEAR, UPDATE, SAVE, CLOSE, PC_KEY, PC_MOUSE delegated to base class
+- **Window Lifecycle**: Base class handles creation, ready state, and cleanup
+- **Message Queueing**: Messages queued until window ready, then processed immediately
+- **Error Handling**: Unified error reporting through base class methods
+
+#### 2. Double Buffering System
+Matches Pascal's Bitmap[0] hidden buffer approach:
+- **Offscreen Canvas**: Hidden buffer (window.offscreenCanvas) receives all drawing operations
+- **Visible Canvas**: Display canvas (window.visibleCanvas) updated on demand
+- **Immediate Mode**: When UPDATE directive NOT used, each character copies to visible immediately
+- **Deferred Mode**: When UPDATE directive used, visible canvas only updates on explicit UPDATE command
+
+#### 3. Shared Component Integration
+- **Spin2NumericParser** (`spin2NumericParser.ts`): Parses numeric values from Spin2 debug commands
+- **CanvasRenderer** (`canvasRenderer.ts`): Canvas drawing utility functions
+- **DebugColor** (`debugColor.ts`): Color parsing with brightness levels (0-15)
+
+### Configuration Parameters
+
+**Window Setup:**
+- `TITLE 'string'` - Set window caption (default: "{displayName} TERM")
+- `POS left top` - Set window position (default: auto-placement via WindowPlacer)
+- `SIZE columns rows` - Terminal dimensions in characters (1-256, default: 40×20)
+  - Values clamped to [1, 256] range
+  - Determines character grid dimensions
+
+**Text Rendering:**
+- `TEXTSIZE half-pix` - Font size in points (6-200, default: 12pt)
+  - Affects both character width and height
+  - Uses special terminal font metrics calculation
+  - Formula: charHeight = fontSize * 96/72 * 1.25 (includes descender space)
+  - Formula: charWidth = (fontSize * 96/72) * 0.6 (monospace ratio)
+
+**Color System:**
+- `COLOR fg0 bg0 [fg1 bg1 [fg2 bg2 [fg3 bg3]]]` - Define up to 4 color combinations
+  - Default combos match Pascal DefaultTermColors:
+    - Combo 0: ORANGE on BLACK
+    - Combo 1: BLACK on ORANGE
+    - Combo 2: LIME on BLACK
+    - Combo 3: BLACK on LIME
+  - Each color supports optional brightness (0-15)
+  - Example: `COLOR WHITE 15 BLACK 0 RED 12 YELLOW 8`
+- `BACKCOLOR color {brightness}` - Deprecated, use COLOR instead
+
+**Display Control:**
+- `UPDATE` - Enable deferred update mode (requires explicit UPDATE commands)
+- `HIDEXY` - Hide mouse coordinate display
+
+### Control Codes Documentation
+
+The TERM window repurposes ASCII control codes for debug-specific functions (not standard terminal emulation):
+
+| Code | Function | Behavior |
+|------|----------|----------|
+| 0 | Clear & Home | Clears entire display and homes cursor to (0,0) |
+| 1 | Home | Homes cursor to (0,0) without clearing |
+| 2 n | Set Column | Sets cursor column to value n (0-based, clamped to columns-1) |
+| 3 n | Set Row | Sets cursor row to value n (0-based, clamped to rows-1) |
+| 4 | Color Combo 0 | Selects foreground/background color combo 0 |
+| 5 | Color Combo 1 | Selects foreground/background color combo 1 |
+| 6 | Color Combo 2 | Selects foreground/background color combo 2 |
+| 7 | Color Combo 3 | Selects foreground/background color combo 3 (NOT bell!) |
+| 8 | Backspace | Moves cursor back one position with line wrap |
+| 9 | Tab | Advances to next 8-column boundary (fixed tab width) |
+| 10, 13 | Newline/CR | Advances to next line, scrolls at bottom |
+| 32-255 | Character | Displays character at cursor position |
+
+**Special Behaviors:**
+- **Backspace (8)**: Wraps to end of previous line when at column 0
+- **Tab (9)**: Spaces to next multiple of 8 (not configurable)
+- **Newline (10/13)**: Auto-scrolls when cursor on last row
+- **Line Wrap**: Automatic wrap at column boundary (checked BEFORE writing character)
+
+### Commands Documentation
+
+**Window Management** (delegated to base class):
+- `CLEAR` - Clears terminal display and homes cursor
+- `UPDATE` - Forces display update when UPDATE directive used
+- `SAVE {WINDOW} 'filename'` - Saves terminal bitmap to file
+- `CLOSE` - Closes the window
+
+**Input Forwarding** (delegated to base class):
+- `PC_KEY` - Enables keyboard input forwarding to P2
+- `PC_MOUSE` - Enables mouse input forwarding to P2
+
+**Data Input:**
+- Numeric values: Control codes (0-31) or direct characters (32-255)
+- Quoted strings: Display text at cursor position
+- Example: `debug(\`Term MyTerm 4 'Hello' 13 10 6 'World')`
+  - Selects combo 0 (orange on black)
+  - Prints "Hello"
+  - Newline
+  - Selects combo 2 (lime on black)
+  - Prints "World"
+
+### Mouse Coordinate Feature (NEW)
+
+**Coordinate Display System:**
+The TERM window displays real-time mouse coordinates showing the character position under the cursor:
+
+**Display Format:** `column,row` (0-based indices)
+- Column range: 0 to (columns-1)
+- Row range: 0 to (rows-1)
+- Updates on mousemove within character area
+
+**Positioning Algorithm:**
+Intelligent quadrant-based positioning prevents obscuring text:
+
+```javascript
+// Divide canvas into 4 quadrants based on mouse position
+const quadrant = (x >= width/2 ? 1 : 0) | (y >= height/2 ? 2 : 0);
+
+// Position coordinate display away from cursor:
+// Quadrant 0 (top-left): Display bottom-right of cursor
+// Quadrant 1 (top-right): Display bottom-left of cursor
+// Quadrant 2 (bottom-left): Display top-right of cursor
+// Quadrant 3 (bottom-right): Display top-left of cursor
+```
+
+**Coordinate Calculation:**
+```javascript
+// Transform pixel coordinates to character position
+const marginLeft = charWidth / 2;  // Half-character margin
+const marginTop = charWidth / 2;
+const col = Math.floor((x - marginLeft) / charWidth);
+const row = Math.floor((y - marginTop) / charHeight);
+```
+
+**HIDEXY Directive:**
+- When `HIDEXY` included in configuration, coordinate display is disabled
+- Coordinate div remains hidden regardless of mouse position
+- Reduces visual clutter for simple terminals
+
+**Visibility Rules:**
+- Only shown when mouse within character area (respects margins)
+- Hidden when mouse outside character grid
+- Hidden on mouseleave event
+- Styled to match window theme (background/grid colors)
+
+### Technical Implementation Details
+
+#### Font Metrics Calculation
+Terminal windows use specialized font metrics (differs from other windows):
+
+```typescript
+// TEXTSIZE is font size in points (Pascal compatibility)
+metrics.textSizePts = fontSize;
+
+// Convert points to pixels at 96 DPI with descender space
+metrics.charHeight = Math.round(fontSize * 96 / 72 * 1.25);
+
+// Monospace width is ~60% of base height
+metrics.charWidth = Math.round((fontSize * 96 / 72) * 0.6);
+
+// Line height equals character height for terminals
+metrics.lineHeight = metrics.charHeight;
+
+// Baseline is 80% down from top
+metrics.baseline = Math.round(metrics.charHeight * 0.8);
+```
+
+**Rationale:**
+- Pascal uses `Font.Size = TEXTSIZE` then measures TextHeight('X')
+- TypeScript pre-calculates to avoid async measurement delays
+- 1.25 multiplier accounts for descender space (g, j, p, q, y)
+- 0.6 ratio approximates monospace character width
+
+#### Character Cell Rendering
+Each character renders to both offscreen and (optionally) visible canvas:
+
+**Immediate Mode** (UPDATE directive NOT present):
+```typescript
+// 1. Draw background rectangle to offscreen canvas
+offscreenCtx.fillStyle = bgcolor;
+offscreenCtx.fillRect(xOffset, yOffset, charWidth, charHeight);
+
+// 2. Draw character to offscreen canvas
+offscreenCtx.fillStyle = fgcolor;
+offscreenCtx.fillText(char, xOffset, yBaseline);
+
+// 3. IMMEDIATELY copy rectangle to visible canvas
+visibleCtx.drawImage(
+  offscreenCanvas,
+  xOffset, yOffset, charWidth, charHeight,  // source rect
+  xOffset, yOffset, charWidth, charHeight   // dest rect
+);
+```
+
+**Deferred Mode** (UPDATE directive present):
+```typescript
+// 1-2. Same as immediate mode (draw to offscreen)
+// 3. NO copy to visible canvas
+
+// Later, when UPDATE command received:
+visibleCtx.drawImage(offscreenCanvas, 0, 0);  // Copy entire canvas
+```
+
+#### Scrolling Implementation
+Matches Pascal's scroll-up-by-one-line approach:
+
+```typescript
+// 1. Save content (all but top line)
+const imageData = offscreenCtx.getImageData(
+  0, charHeight, canvasWidth, canvasHeight - charHeight
+);
+
+// 2. Move content up by one line
+offscreenCtx.putImageData(imageData, 0, 0);
+
+// 3. Clear last line with current background color
+offscreenCtx.fillStyle = bgcolor;
+offscreenCtx.fillRect(
+  0, canvasHeight - charHeight, canvasWidth, charHeight
+);
+
+// 4. If immediate mode, update visible canvas
+if (!delayedUpdate) {
+  visibleCtx.drawImage(offscreenCanvas, 0, 0);
+}
+```
+
+**Scroll Trigger:**
+- Occurs when cursor on last row and newline received
+- Cursor remains on last row after scroll
+- Preserves current color combo for cleared line
+
+#### Margin Calculations
+Matches Pascal's half-character-width margin:
+
+```typescript
+const marginSize = Math.floor(charWidth / 2);
+const divHeight = canvasHeight + (marginSize * 2);
+const divWidth = canvasWidth + (marginSize * 2);
+```
+
+**Purpose:**
+- Provides visual breathing room around text
+- Prevents characters from touching window edges
+- Maintains symmetry (equal margins all sides)
+
+### Pascal Compatibility
+
+**Source Reference:** `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas`
+- Configuration: `TERM_Configure` procedure (line 2181)
+- Update: `TERM_Update` procedure (line 2223)
+- Character handling: `TERM_Chr` procedure
+
+**Complete Parity Achieved:**
+- All control codes (0-13) match Pascal behavior
+- Color combo system identical (4 combos, fg/bg pairs)
+- Double buffering matches Bitmap[0] hidden buffer approach
+- Font metrics calculation approximates Pascal's TextWidth/TextHeight
+- Scrolling behavior identical
+- Line wrap logic identical (check BEFORE writing character)
+
+**Deviations from Pascal:**
+- **No ANSI Support**: ANSI escape sequences removed (matches current Pascal)
+- **ASCII 7 Repurposed**: Selects color combo 3, NOT audio bell
+- **Font Rendering**: Uses web fonts instead of Windows GDI fonts
+- **Coordinate Display**: Mouse coordinate feature is TypeScript addition
+
+### Testing Infrastructure
+
+**Test File:** `tests/debugTermWin.test.ts`
+
+**Test Coverage:**
+- Configuration parsing (TITLE, POS, SIZE, TEXTSIZE, COLOR, UPDATE, HIDEXY)
+- Control code processing (0-13)
+- Color combo selection (4-7)
+- Character rendering and cursor advancement
+- Line wrapping behavior
+- Scrolling at bottom of display
+- Backspace with line wrap
+- Tab stops (8-column boundaries)
+- Double buffering (immediate vs deferred mode)
+- Base class command delegation
+
+**Validation Approach:**
+- Mock serial data injection
+- Canvas state inspection via executeJavaScript
+- Cursor position tracking
+- Color combo state verification
+- Scroll behavior confirmation
+
+**Example Test Pattern:**
+```typescript
+test('Control code 0 clears display and homes cursor', async () => {
+  // Send clear command
+  termWindow.routeMessage(['`MyTerm', '0']);
+
+  // Verify cursor at home position
+  expect(termWindow.cursorPosition).toEqual({ x: 0, y: 0 });
+
+  // Verify canvas cleared (check via executeJavaScript)
+});
+```
+
+### Known Limitations
+
+1. **PC_KEY/PC_MOUSE**: Input forwarding structure in place, P2 response path not yet implemented
+2. **Font Metrics**: Approximated calculation vs. Pascal's actual measurement
+3. **SAVE Command**: Bitmap save delegated to base class (may need TERM-specific handling)
+
 ## PLOT Window Technical Implementation
 
 ### Architecture Overview

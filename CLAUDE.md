@@ -12,10 +12,38 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ### 🏔️ SESSION MINDSET - TECHNICAL CLIMBING
 **Before ANY work**: Remember we follow **Technical Climbing Methodology**
 
-- **Start from last protection point** (working code + tests + documentation)  
+- **Start from last protection point** (working code + tests + documentation)
 - **Place protection before climbing** (document/test what works before changing)
 - **Never fall below protection** (don't break working functionality)
 - **Document immediately** when something works or fails
+
+## 🎯 PROJECT PRINCIPLES
+
+### Development Philosophy
+- **No time pressure** - We work consistently and carefully on all code we generate
+- **Quality over speed** - Thorough, well-tested implementations are the priority
+
+### Project Goals
+- **100% Functional Parity** - TypeScript reimplementation of original Pascal codebase
+- **Proper TypeScript Techniques** - Achieve parity using idiomatic TypeScript patterns
+- **Pascal Source as Reference** - Original implementation defines the specification
+
+### Time Estimation
+- **Consecutive hours only** - Estimates are in cumulative work hours, not days/weeks
+- All task estimates use `estimate_minutes` parameter in MCP tasks
+
+### Troubleshooting Methodology
+1. **Gather ALL symptoms** - Document every observable issue before attempting fixes
+2. **Comprehensive solutions** - Find fixes that address all or most symptoms simultaneously
+3. **Account for everything** - If symptoms remain unaddressed, identify separate solutions
+4. **Complete fixes only** - Every build fixes ALL symptoms found, not partial fixes
+
+### Problem Resolution Process
+1. **Generate hypotheses** - List possible causes for observed issues
+2. **Deep code research** - Investigate each hypothesis thoroughly
+3. **Prove or disprove** - Systematically eliminate hypotheses through evidence
+4. **Identify root cause** - Continue until actual cause is definitively found
+5. **Fix once, fix right** - Address the root cause, not symptoms
 
 ## 📚 WORK TYPE QUICK REFERENCE
 
