@@ -15,16 +15,48 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 export class Downloader {
   private context: Context;
   private serialPort: UsbSerial;
+  private _isDownloading: boolean = false;
 
   constructor(ctx: Context, serialPort: UsbSerial) {
     this.context = ctx;
     this.serialPort = serialPort;
   }
 
+  public isDownloading(): boolean {
+    return this._isDownloading;
+  }
+
+  /**
+   * Handle protocol data during download.
+   * Returns true if data was consumed (protocol message), false if it should be routed normally.
+   */
+  public handleProtocolData(data: Buffer): boolean {
+    const text = data.toString('utf8');
+
+    // Check for Prop_Ver response (P2 identification)
+    if (text.includes('Prop_Ver')) {
+      this.logMessage(`[DOWNLOAD PROTOCOL] P2 identification response consumed: ${text.trim()}`);
+      return true; // Consumed - don't route to displays
+    }
+
+    // Check for download checksum responses (. or !)
+    const trimmed = text.trim();
+    if (trimmed === '.' || trimmed === '!') {
+      this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${trimmed}`);
+      return true; // Consumed - don't route to displays
+    }
+
+    // Not a protocol message - let it route normally
+    return false;
+  }
+
   public async download(binaryFilespec: string, toFlash: boolean): Promise<{ success: boolean; errorMessage?: string }> {
-    let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
-    const failedToLoad: boolean = loadUint8ArrayFailed(binaryImage) ? true : false;
-    if (failedToLoad == false) {
+    this._isDownloading = true;
+
+    try {
+      let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
+      const failedToLoad: boolean = loadUint8ArrayFailed(binaryImage) ? true : false;
+      if (failedToLoad == false) {
       // Create ObjectImage to analyze the binary
       const imageAnalyzer = new ObjectImage('analyzer');
       imageAnalyzer.adopt(binaryImage);
@@ -56,30 +88,12 @@ export class Downloader {
         this.logMessage(`  -- Composite aligned? ${binaryImage.length % 4 === 0 ? 'YES' : `NO (mod 4 = ${binaryImage.length % 4})`}`);
       }
 
-      // Validate checksum locally before sending
-      const validationImage = new ObjectImage('validation');
-      validationImage.adopt(binaryImage);
-
-      // Log the first few bytes of the image to see what we have
-      const sig = validationImage.readLong(0x00);
-      const headerChecksum = validationImage.readLong(0x04);
-
-      // Also show the raw bytes for debugging
-      const rawBytes = Array.from(binaryImage.slice(0, 8))
+      // Log binary info for diagnostics
+      const rawBytes = Array.from(binaryImage.slice(0, 16))
         .map(b => '0x' + b.toString(16).padStart(2, '0'))
         .join(' ');
-
-      this.logMessage(`  -- First 8 bytes (raw): ${rawBytes}`);
-      this.logMessage(`  -- Binary header: Sig=0x${sig.toString(16).padStart(8, '0')} Checksum=0x${headerChecksum.toString(16).padStart(8, '0')}`);
+      this.logMessage(`  -- First 16 bytes: ${rawBytes}`);
       this.logMessage(`  -- Binary size: ${binaryImage.length} bytes`);
-
-      const checksumResult = validationImage.validateP2Checksum();
-      this.logMessage(`  -- Local checksum validation: ${checksumResult.valid ? 'PASSED' : 'FAILED'}`);
-      if (!checksumResult.valid) {
-        this.logMessage(`  -- WARNING: ${checksumResult.details}`);
-        this.logMessage(`  -- Calculated sum: 0x${checksumResult.calculatedSum.toString(16).padStart(8, '0')}`);
-        this.logMessage(`  -- Stored checksum: 0x${checksumResult.storedSum.toString(16).padStart(8, '0')}`);
-      }
 
       // For flash downloads, skip P2 checksum validation - it interferes with flashing
       // RAM downloads use P2 checksum validation
@@ -187,8 +201,11 @@ export class Downloader {
         // The port will be reused for debug communications after download completes
       }
       return { success: noDownloadError, errorMessage: noDownloadError ? undefined : errMsg };
+      }
+      return { success: false, errorMessage: 'Failed to load binary file' };
+    } finally {
+      this._isDownloading = false;
     }
-    return { success: false, errorMessage: 'Failed to load binary file' }; // Failed to load file
   }
 
   public async insertP2FlashLoader(binaryImage: Uint8Array, enableDebug: boolean = false): Promise<Uint8Array> {

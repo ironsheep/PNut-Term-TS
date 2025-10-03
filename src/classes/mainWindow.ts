@@ -1296,21 +1296,6 @@ export class MainWindow {
   private handleSerialRx(data: Buffer | string) {
     // Handle received data - can be Buffer (raw bytes) or string (from parser)
 
-    // CRITICAL: Check if download is in progress
-    // During download, ALL serial data is protocol traffic that should be consumed by the downloader
-    // This prevents version strings, dots, and checksum responses from contaminating the display
-    if (this._serialPort && this._serialPort.isDownloading()) {
-      this.logConsoleMessage('[SERIAL RX] Download in progress - data consumed by downloader, not routed');
-      // Still update RX activity indicator
-      const dataLength = Buffer.isBuffer(data) ? data.length : data.length;
-      this.rxCharCounter += dataLength;
-      if (this.rxCharCounter >= 50 || !this.rxActivityTimer) {
-        this.blinkActivityLED('rx');
-        this.rxCharCounter = 0;
-      }
-      return; // DO NOT ROUTE - let downloader handle all data
-    }
-
     // RX activity indicator - blink for ALL received data (binary or text)
     const dataLength = Buffer.isBuffer(data) ? data.length : data.length;
     this.rxCharCounter += dataLength;
@@ -1355,6 +1340,18 @@ export class MainWindow {
 
       this.logConsoleMessage('[SERIAL RX HEX/ASCII]:');
       hexLines.forEach((line) => this.logConsoleMessage(line));
+
+      // During download: give Downloader first chance to consume protocol messages
+      if (this.downloader?.isDownloading()) {
+        const consumed = this.downloader.handleProtocolData(data);
+        if (consumed) {
+          // Protocol message consumed by Downloader - don't route to displays
+          this.logConsoleMessage(`[DOWNLOAD] Protocol message consumed, not routing to displays`);
+          return;
+        }
+        // Not a protocol message - fall through to normal routing
+        this.logConsoleMessage(`[DOWNLOAD] Application data during download, routing normally`);
+      }
 
       // Two-Tier Pattern Matching: Process serial data through new architecture
       this.serialProcessor.receiveData(data);
@@ -3574,10 +3571,16 @@ export class MainWindow {
 
     // Get available serial ports using UsbSerial
     const deviceList = await UsbSerial.serialDeviceList(this.context);
-    const portList = deviceList.map((device: string) => ({
-      label: device,
-      value: device
-    }));
+    const portList = deviceList.map((device: string) => {
+      // deviceList entries are "path,serialNumber" - split to get just the path
+      const lineParts = device.split(',');
+      const devicePath = lineParts[0];
+      const serialNumber = lineParts[1] || 'unknown';
+      return {
+        label: `${devicePath} (SN: ${serialNumber})`,
+        value: devicePath  // Only the path, not the comma-separated string
+      };
+    });
 
     if (portList.length === 0) {
       dialog.showMessageBox(this.mainWindow!, {

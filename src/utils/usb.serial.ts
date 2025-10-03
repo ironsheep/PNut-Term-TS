@@ -71,14 +71,12 @@ export class UsbSerial extends EventEmitter {
     // Handle ALL data through raw handler - no parser interference!
     // Parser was corrupting binary data and destroying performance
     this._serialPort.on('data', (data: Buffer) => {
-      // Check for P2 detection strings first
-      const wasConsumed = this.checkForP2Response(data);
+      // FIRST: Check for P2 detection (sets _p2DeviceId)
+      // This MUST happen before emit so detection state is ready before any routing decisions
+      this.checkForP2Response(data);
 
-      // Only emit data to MainWindow if it wasn't consumed by P2 detection
-      // This prevents Propeller ID responses from being forwarded during downloads
-      if (!wasConsumed) {
-        this.emit('data', data);
-      }
+      // THEN: Emit raw data to MainWindow (preserves binary integrity)
+      this.emit('data', data);
     });
 
     // now open the port
@@ -249,39 +247,47 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async deviceIsPropellerV2(): Promise<boolean> {
-    this.logMessage(`* deviceIsPropellerV2() ENTER - current _p2DeviceId: '${this._p2DeviceId}'`);
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() ENTER - current _p2DeviceId: '${this._p2DeviceId}'`);
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - _expectingP2Response will be set to TRUE`);
 
     // For downloads: ALWAYS reset and check P2
     const didCheck = await this.requestPropellerVersionForDownload(); // Always reset for download
     let foundPropellerStatus: boolean = false;
 
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Waiting 200ms for P2 response...`);
     // Wait for response after reset
     await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
 
-    // Check detection buffer directly for debugging
-    this.logMessage(`* deviceIsPropellerV2() - detection buffer before processing: '${this._p2DetectionBuffer}'`);
+    // Check _p2DeviceId BEFORE trying to re-process buffer
+    // The data handler should have already set this during the async wait above
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - After 200ms wait, _p2DeviceId: '${this._p2DeviceId}'`);
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - detection buffer after wait: '${this._p2DetectionBuffer}'`);
 
     // Process any P2 response in the existing buffer
     // The buffer already has data from the serial port handler
     if (this._p2DetectionBuffer.length > 0) {
+      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Buffer has ${this._p2DetectionBuffer.length} chars, re-processing...`);
       // Convert buffer string back to Buffer for processing
       const bufferData = Buffer.from(this._p2DetectionBuffer, 'utf8');
       this.checkForP2Response(bufferData);
+    } else {
+      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Buffer is empty (likely already processed by data handler)`);
     }
 
     const [deviceString, deviceErrorString] = this.getIdStringOrError();
-    this.logMessage(`* deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`);
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`);
 
     if (deviceErrorString.length > 0) {
-      this.logMessage(`* deviceIsPropeller() ERROR: ${deviceErrorString}`);
+      this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() ERROR: ${deviceErrorString}`);
     } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
       foundPropellerStatus = true;
     }
 
-    this.logMessage(`* deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`);
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`);
 
     // Clear flag after processing P2 response - resume normal data forwarding
     this._expectingP2Response = false;
+    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - _expectingP2Response cleared to FALSE`);
 
     return foundPropellerStatus;
   }
@@ -293,8 +299,8 @@ export class UsbSerial extends EventEmitter {
   private async requestPropellerVersionForDownload(): Promise<boolean> {
     const requestPropType: string = 'Prop_Chk';
 
-    this.logMessage(`* requestPropellerVersionForDownload() - ALWAYS resetting for download`);
-    this.logMessage(`* requestPropellerVersionForDownload() - port open (${this._serialPort.isOpen})`);
+    this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - ALWAYS resetting for download`);
+    this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - port open (${this._serialPort.isOpen})`);
 
     // Set flag to consume P2 ID responses (don't forward to mainWindow during download)
     this._expectingP2Response = true;
@@ -306,7 +312,7 @@ export class UsbSerial extends EventEmitter {
 
       // Use RTS instead of DTR if RTS override is enabled
       if (this.context.runEnvironment.rtsOverride) {
-        this.logMessage(`* requestPropellerVersionForDownload() - Using RTS reset`);
+        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using RTS reset`);
         // FTDI workaround: Toggle twice for proper pulse
         await this.setRts(false);  // Ensure we start HIGH
         await waitMSec(5);          // Let it settle
@@ -314,7 +320,7 @@ export class UsbSerial extends EventEmitter {
         await waitMSec(10);         // Hold for 10ms
         await this.setRts(false);   // Return HIGH (de-assert)
       } else {
-        this.logMessage(`* requestPropellerVersionForDownload() - Using DTR reset`);
+        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using DTR reset`);
         // The Prop Plug hardware generates a 17µs reset pulse automatically when DTR toggles
         // We just need to trigger it and time our Prop_Chk correctly
 
@@ -322,7 +328,7 @@ export class UsbSerial extends EventEmitter {
         await this.setDtr(true);    // This triggers the hardware's 17µs reset pulse
         await this.setDtr(false);   // Return DTR to idle state
 
-        this.logMessage(`* requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`);
+        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`);
       }
 
       // Fm Silicon Doc:
@@ -335,13 +341,19 @@ export class UsbSerial extends EventEmitter {
       // PNut v51 sends Prop_Chk at 17ms after reset (not within 15ms window as documented)
       await waitMSec(17); // Match PNut v51 timing: 17ms after reset
 
-      this.logMessage(`* requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`);
+      // CRITICAL: Clear stale data from detection buffer before sending Prop_Chk
+      // Any data received BEFORE the reset (from old program) must be discarded
+      this._p2DetectionBuffer = '';
+      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Detection buffer cleared`);
+
+      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`);
       // Use space terminator as observed in PNut v51, not CR
       await this.write(`> ${requestPropType} 0 0 0 0 `);
+      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Command sent, waiting for response`);
       // drain() now called inside write() for guaranteed delivery
       return true;
     } catch (error) {
-      this.logMessage(`* requestPropellerVersionForDownload() ERROR: ${JSON.stringify(error, null, 2)}`);
+      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() ERROR: ${JSON.stringify(error, null, 2)}`);
       return false;
     }
   }
@@ -552,51 +564,51 @@ export class UsbSerial extends EventEmitter {
   }
 
   // Check raw data for P2 version response (no parser needed!)
-  // Returns true if data was consumed (P2 response during download), false if data should be forwarded
-  private checkForP2Response(data: Buffer): boolean {
+  // Sets _p2DeviceId when Prop_Ver response detected
+  // Data is always emitted regardless - suppression happens downstream if needed
+  private checkForP2Response(data: Buffer): void {
     // Convert to string for P2 detection only
     const text = data.toString('utf8', 0, data.length);
+    this.logConsoleMessage(`[P2-CHECK] Received ${data.length} bytes, _expectingP2Response=${this._expectingP2Response}`);
+    this.logConsoleMessage(`[P2-CHECK] Text: '${text.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`);
+
     this._p2DetectionBuffer += text;
+    this.logConsoleMessage(`[P2-CHECK] Buffer now: '${this._p2DetectionBuffer.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`);
 
     // Look for complete lines
     const lines = this._p2DetectionBuffer.split(/\r?\n/);
+    this.logConsoleMessage(`[P2-CHECK] Split into ${lines.length} lines`);
 
     // Keep incomplete line in buffer
     this._p2DetectionBuffer = lines.pop() || '';
-
-    // Track if we consumed any P2 responses that shouldn't be forwarded
-    let consumedP2Response = false;
+    this.logConsoleMessage(`[P2-CHECK] Incomplete line kept in buffer: '${this._p2DetectionBuffer}'`);
 
     // Check for checksum verification responses (. or !) first
     // These should be single-character responses, not just any text containing these characters
     if (this._expectingChecksumResponse) {
       const trimmedText = text.trim();
       if (trimmedText === '.' || trimmedText === '!') {
-        this.logMessage(`  -- Consuming checksum response during download operation: '${trimmedText}'`);
-        consumedP2Response = true;
+        this.logMessage(`  -- Checksum response detected: '${trimmedText}'`);
       }
     }
 
     // Process complete lines for Prop_Ver responses
     for (const line of lines) {
+      this.logConsoleMessage(`[P2-CHECK] Processing line: '${line}'`);
       if (line.startsWith('Prop_Ver ')) {
-        this.logMessage(`  -- P2 DETECTED [${line}]`);
+        this.logConsoleMessage(`  -- P2 DETECTED [${line}]`);
         // Extract version code after "Prop_Ver " - could be 1 or 2 chars (e.g., "A" or "Au")
         const versionCode = line.substring(9).trim();
         // Use first character for version identification
         const idLetter = versionCode.charAt(0);
         this._p2DeviceId = this.descriptionForVerLetter(idLetter);
         this._p2loadLimit = this.limitForVerLetter(idLetter);
-        this.logMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`);
-
-        // If we're expecting this response during download, consume it (don't forward to mainWindow)
-        if (this._expectingP2Response) {
-          this.logMessage(`  -- Consuming P2 ID response during download operation`);
-          consumedP2Response = true;
-        }
+        this.logConsoleMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`);
+        this.logConsoleMessage(`[P2-CHECK] Set _p2DeviceId to: '${this._p2DeviceId}'`);
 
         // Clear buffer after successful detection
         this._p2DetectionBuffer = '';
+        this.logConsoleMessage(`[P2-CHECK] Buffer cleared after detection`);
         break;
       }
     }
@@ -605,8 +617,6 @@ export class UsbSerial extends EventEmitter {
     if (this._p2DetectionBuffer.length > 1000) {
       this._p2DetectionBuffer = this._p2DetectionBuffer.slice(-100);
     }
-
-    return consumedP2Response;
   }
 
   public async setDTR(value: boolean): Promise<void> {
