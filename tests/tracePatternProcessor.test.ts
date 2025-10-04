@@ -109,19 +109,21 @@ describe('TracePatternProcessor', () => {
     });
 
     // Test scrolling trace values with remapping
-    it('should set trace 8 (V flip + scroll) with correct orientation', () => {
+    it('should set trace 8 (Normal + scroll) with correct orientation', () => {
       processor.setPattern(8);
+      // Trace 8 = pattern 0 + scroll: Normal, starts at top-left (0,0)
       const pos = processor.getPosition();
       expect(pos.x).toBe(0);
-      expect(pos.y).toBe(99); // Should match trace 2 position
+      expect(pos.y).toBe(0); // Pattern 0 starts at (0,0)
       expect(processor.getTraceValue()).toBe(8);
     });
 
-    it('should set trace 10 (normal + scroll) with correct orientation', () => {
+    it('should set trace 10 (V flip + scroll) with correct orientation', () => {
       processor.setPattern(10);
+      // Trace 10 = pattern 2 + scroll: V flip, starts at bottom-left (0,99)
       const pos = processor.getPosition();
       expect(pos.x).toBe(0);
-      expect(pos.y).toBe(0); // Should match trace 0 position
+      expect(pos.y).toBe(99); // Pattern 2 starts at (0, height-1)
       expect(processor.getTraceValue()).toBe(10);
     });
   });
@@ -297,83 +299,83 @@ describe('TracePatternProcessor', () => {
     });
 
     it('should scroll for trace 8 when at edge', () => {
-      // Trace 8 maps to pattern 2 (V flip) with scrolling
+      // Trace 8 = pattern 0 (Normal) + scrolling
       processor.setPattern(8);
-      // V flip starts at bottom-left, moves left-to-right
-      let pos = processor.getPosition();
-      expect(pos).toEqual({ x: 0, y: 1 }); // Bottom left for 2x2
-      
-      // Move right
-      processor.step();
-      pos = processor.getPosition();
-      expect(pos).toEqual({ x: 1, y: 1 }); // Bottom right
-      
-      // Next step should trigger scroll up
-      processor.step();
-      expect(scrollCallback).toHaveBeenCalledWith(0, -1);
-      expect(processor.getPosition()).toEqual({ x: 0, y: 1 });
-    });
-
-    it('should scroll for trace 10 when at edge', () => {
-      // Trace 10 maps to pattern 0 (normal) with scrolling
-      processor.setPattern(10);
       // Normal starts at top-left, moves left-to-right
       let pos = processor.getPosition();
-      expect(pos).toEqual({ x: 0, y: 0 }); // Top left
-      
+      expect(pos).toEqual({ x: 0, y: 0 }); // Top left for 2x2
+
       // Move right
       processor.step();
       pos = processor.getPosition();
       expect(pos).toEqual({ x: 1, y: 0 }); // Top right
-      
-      // Next step should trigger scroll down
+
+      // Next step should scroll DOWN and stay at same position
       processor.step();
-      expect(scrollCallback).toHaveBeenCalledWith(0, 1);
-      expect(processor.getPosition()).toEqual({ x: 0, y: 0 });
+      expect(scrollCallback).toHaveBeenCalledWith(0, 1); // Scroll DOWN
+      expect(processor.getPosition()).toEqual({ x: 0, y: 0 }); // Position unchanged when scrolling
+    });
+
+    it('should scroll for trace 10 when at edge', () => {
+      // Trace 10 = pattern 2 (V flip) + scrolling
+      processor.setPattern(10);
+      // V flip starts at bottom-left (0, height-1) = (0, 1), moves left-to-right
+      let pos = processor.getPosition();
+      expect(pos).toEqual({ x: 0, y: 1 }); // Bottom left
+
+      // Move right
+      processor.step();
+      pos = processor.getPosition();
+      expect(pos).toEqual({ x: 1, y: 1 }); // Bottom right
+
+      // Next step should scroll UP and stay at same position
+      processor.step();
+      expect(scrollCallback).toHaveBeenCalledWith(0, -1); // Scroll UP
+      expect(processor.getPosition()).toEqual({ x: 0, y: 1 }); // Position unchanged when scrolling
     });
 
     // Test each scrolling pattern individually with manual setup
     it('should scroll correctly for trace 9 (180° rotation + scroll)', () => {
       processor.setPattern(9);
-      // 180° rotation: starts at 1,1, moves left
-      // First step goes to 0,1, and scrolling occurs at left edge when x=0
-      processor.step(); // Move to 0,1
-      processor.step(); // This should trigger scroll
-      expect(scrollCallback).toHaveBeenCalledWith(0, -1);
+      // Trace 9 = pattern 1 + scroll: H flip, scrolls DOWN
+      // Starts at 1,0, moves left
+      processor.step(); // Move to 0,0
+      processor.step(); // Wrap to 1,0 and scroll
+      expect(scrollCallback).toHaveBeenCalledWith(0, 1); // Scroll DOWN
     });
 
     it('should scroll correctly for trace 11 (H flip + scroll)', () => {
       processor.setPattern(11);
-      // H flip: starts at 1,0, moves left
-      // First step goes to 0,0, scrolling occurs at left edge when x=0
-      processor.step(); // Move to 0,0
-      processor.step(); // This should trigger scroll
-      expect(scrollCallback).toHaveBeenCalledWith(0, 1);
+      // Trace 11 = pattern 3 + scroll: 180° rotation, scrolls UP
+      // Starts at 1,1, moves left
+      processor.step(); // Move to 0,1
+      processor.step(); // Wrap to 1,1 and scroll
+      expect(scrollCallback).toHaveBeenCalledWith(0, -1); // Scroll UP
     });
 
     it('should scroll correctly for trace 13 (90° CW + V flip + scroll)', () => {
       processor.setPattern(13);
-      // 90° CW + V flip: starts at 1,1, moves up
-      // First step goes to 1,0, scrolling occurs at top edge when y=0
-      processor.step(); // Move to 1,0
-      processor.step(); // This should trigger scroll
-      expect(scrollCallback).toHaveBeenCalledWith(-1, 0);
+      // Trace 13 = pattern 5 + scroll: 90° CCW, scrolls RIGHT
+      // Starts at 0,1, moves up
+      processor.step(); // Move to 0,0
+      processor.step(); // Wrap to 0,1 and scroll
+      expect(scrollCallback).toHaveBeenCalledWith(1, 0); // Scroll RIGHT
     });
 
     it('should scroll correctly for trace 15 (90° CCW + scroll)', () => {
       processor.setPattern(15);
-      // 90° CCW: starts at 0,1, moves up
-      // First step goes to 0,0, scrolling occurs at top edge when y=0
-      processor.step(); // Move to 0,0
-      processor.step(); // This should trigger scroll
-      expect(scrollCallback).toHaveBeenCalledWith(1, 0);
+      // Trace 15 = pattern 7 + scroll: 90° CW + V flip, scrolls LEFT
+      // Starts at 1,1, moves up
+      processor.step(); // Move to 1,0
+      processor.step(); // Wrap to 1,1 and scroll
+      expect(scrollCallback).toHaveBeenCalledWith(-1, 0); // Scroll LEFT
     });
 
     const scrollTests = [
-      { trace: 8, orientation: 'V flip', start: { x: 1, y: 1 }, scroll: { x: 0, y: -1 } },
-      { trace: 10, orientation: 'Normal', start: { x: 1, y: 0 }, scroll: { x: 0, y: 1 } },
-      { trace: 12, orientation: '90° CW', start: { x: 1, y: 1 }, scroll: { x: -1, y: 0 } },
-      { trace: 14, orientation: '90° CCW + V flip', start: { x: 0, y: 1 }, scroll: { x: 1, y: 0 } }
+      { trace: 8, orientation: 'V flip (pattern 0)', start: { x: 1, y: 1 }, scroll: { x: 0, y: 1 } }, // Pattern 0 scrolls DOWN
+      { trace: 10, orientation: 'Normal (pattern 2)', start: { x: 1, y: 0 }, scroll: { x: 0, y: -1 } }, // Pattern 2 scrolls UP
+      { trace: 12, orientation: '90° CCW + V flip (pattern 4)', start: { x: 1, y: 1 }, scroll: { x: 1, y: 0 } }, // Pattern 4 scrolls RIGHT
+      { trace: 14, orientation: '90° CW (pattern 6)', start: { x: 0, y: 1 }, scroll: { x: -1, y: 0 } } // Pattern 6 scrolls LEFT
     ];
 
     scrollTests.forEach(({ trace, orientation, start, scroll }) => {

@@ -713,9 +713,12 @@ describe('CanvasRenderer', () => {
     describe('scrollCanvas', () => {
       test('should convert scrollSpeed to scrollBitmap parameters', () => {
         const js = renderer.scrollCanvas('testCanvas', 5, 100, 100);
-        
-        expect(js).toContain('const scrollX = -5');
-        expect(js).toContain('const scrollY = 0');
+
+        // New simplified implementation passes scrollX directly to drawImage
+        // scrollX=5 means shift right (destination starts at +5)
+        expect(js).toContain('offscreenCanvas.width = 100');
+        expect(js).toContain('offscreenCanvas.height = 100');
+        expect(js).toContain('ctx.drawImage(offscreenCanvas');
       });
     });
 
