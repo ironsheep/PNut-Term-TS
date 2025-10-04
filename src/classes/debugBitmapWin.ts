@@ -56,6 +56,8 @@ export interface BitmapDisplaySpec {
   tracePattern?: number; // TRACE directive - trace pattern (0-11)
   rate?: number; // RATE directive - update rate (0=manual, -1=fullscreen, >0=pixel count)
   manualUpdate?: boolean; // UPDATE directive - manual update mode flag
+  colorMode?: ColorMode; // Color mode from declaration (LUT1, LUT2, RGB8, etc.)
+  colorTune?: number; // Color tuning parameter (0-7)
 }
 
 /**
@@ -358,8 +360,38 @@ export class DebugBitmapWindow extends DebugWindowBase {
           case 'HSV16X':
           case 'RGB16':
           case 'RGB24':
-            // Color mode recognized - will be set during window initialization
-            // Just skip it here (window will process it from full command)
+            // Map color mode directive to ColorMode enum
+            const colorModeMap: { [key: string]: ColorMode } = {
+              'LUT1': ColorMode.LUT1,
+              'LUT2': ColorMode.LUT2,
+              'LUT4': ColorMode.LUT4,
+              'LUT8': ColorMode.LUT8,
+              'LUMA8': ColorMode.LUMA8,
+              'LUMA8W': ColorMode.LUMA8W,
+              'LUMA8X': ColorMode.LUMA8X,
+              'HSV8': ColorMode.HSV8,
+              'HSV8W': ColorMode.HSV8W,
+              'HSV8X': ColorMode.HSV8X,
+              'RGBI8': ColorMode.RGBI8,
+              'RGBI8W': ColorMode.RGBI8W,
+              'RGBI8X': ColorMode.RGBI8X,
+              'RGB8': ColorMode.RGB8,
+              'HSV16': ColorMode.HSV16,
+              'HSV16W': ColorMode.HSV16W,
+              'HSV16X': ColorMode.HSV16X,
+              'RGB16': ColorMode.RGB16,
+              'RGB24': ColorMode.RGB24
+            };
+            displaySpec.colorMode = colorModeMap[directive];
+
+            // Check if next token is a tune parameter (0-7)
+            if (i + 1 < lineParts.length && !isNaN(parseInt(lineParts[i + 1]))) {
+              const possibleTune = parseInt(lineParts[i + 1]);
+              if (possibleTune >= 0 && possibleTune <= 7) {
+                displaySpec.colorTune = possibleTune;
+                i++; // Consume tune parameter
+              }
+            }
             break;
 
           default:
@@ -407,8 +439,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
       sparseMode: displaySpec.sparseColor !== undefined,
       manualUpdate: displaySpec.manualUpdate ?? false,
       tracePattern: displaySpec.tracePattern ?? 0,
-      colorMode: ColorMode.RGB8,
-      colorTune: 0,
+      colorMode: displaySpec.colorMode ?? ColorMode.RGB8,
+      colorTune: displaySpec.colorTune ?? 0,
       isInitialized: false
     };
 
@@ -424,6 +456,15 @@ export class DebugBitmapWindow extends DebugWindowBase {
     }
 
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+
+    // Apply color mode and tune from declaration if provided
+    if (displaySpec.colorMode !== undefined) {
+      this.colorTranslator.setColorMode(displaySpec.colorMode);
+      if (displaySpec.colorTune !== undefined) {
+        this.colorTranslator.setTune(displaySpec.colorTune);
+      }
+    }
+
     this.traceProcessor = new TracePatternProcessor();
     this.canvasRenderer = new CanvasRenderer();
 
