@@ -51,6 +51,11 @@ export interface BitmapDisplaySpec {
   backgroundColor?: number;
   hideXY?: boolean;
   explicitPackedMode?: PackedDataMode; // Explicit packed data mode from declaration (e.g., LONGS_2BIT)
+  sparseColor?: number; // SPARSE directive - background color for sparse mode
+  lutColors?: number[]; // LUTCOLORS directive - LUT palette colors
+  tracePattern?: number; // TRACE directive - trace pattern (0-11)
+  rate?: number; // RATE directive - update rate (0=manual, -1=fullscreen, >0=pixel count)
+  manualUpdate?: boolean; // UPDATE directive - manual update mode flag
 }
 
 /**
@@ -271,6 +276,68 @@ export class DebugBitmapWindow extends DebugWindowBase {
             displaySpec.hideXY = true;
             break;
 
+          case 'SPARSE':
+            if (i + 1 < lineParts.length) {
+              const colorStr = lineParts[++i];
+              // Parse sparse background color
+              displaySpec.sparseColor = parseInt(colorStr);
+            } else {
+              errorMessage = 'SPARSE directive missing color value';
+              isValid = false;
+            }
+            break;
+
+          case 'TRACE':
+            if (i + 1 < lineParts.length) {
+              const pattern = parseInt(lineParts[++i]);
+              if (!isNaN(pattern) && pattern >= 0 && pattern <= 11) {
+                displaySpec.tracePattern = pattern;
+              } else {
+                errorMessage = 'TRACE pattern must be 0-11';
+                isValid = false;
+              }
+            } else {
+              errorMessage = 'TRACE directive missing pattern value';
+              isValid = false;
+            }
+            break;
+
+          case 'RATE':
+            if (i + 1 < lineParts.length) {
+              const rate = parseInt(lineParts[++i]);
+              if (!isNaN(rate)) {
+                displaySpec.rate = rate;
+              } else {
+                errorMessage = 'RATE directive requires numeric value';
+                isValid = false;
+              }
+            } else {
+              errorMessage = 'RATE directive missing value';
+              isValid = false;
+            }
+            break;
+
+          case 'LUTCOLORS':
+            // Collect all remaining color values
+            displaySpec.lutColors = [];
+            while (i + 1 < lineParts.length) {
+              const nextPart = lineParts[i + 1];
+              // Stop if we hit another directive (all caps word)
+              if (nextPart === nextPart.toUpperCase() && isNaN(parseInt(nextPart))) {
+                break;
+              }
+              i++;
+              const colorValue = parseInt(nextPart);
+              if (!isNaN(colorValue)) {
+                displaySpec.lutColors.push(colorValue);
+              }
+            }
+            break;
+
+          case 'UPDATE':
+            displaySpec.manualUpdate = true;
+            break;
+
           // Color mode commands (can be in declaration per Pascal)
           case 'LUT1':
           case 'LUT2':
@@ -328,18 +395,18 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.windowLogPrefix = 'bitW';
     this.initialPosition = displaySpec.position;
     
-    // Initialize state with defaults
+    // Initialize state with defaults, applying declaration directives
     this.state = {
-      width: 256,
-      height: 256,
-      dotSizeX: 1,
-      dotSizeY: 1,
-      rate: 0, // 0 means use suggested rate
+      width: displaySpec.size?.width ?? 256,
+      height: displaySpec.size?.height ?? 256,
+      dotSizeX: displaySpec.dotSize?.x ?? 1,
+      dotSizeY: displaySpec.dotSize?.y ?? 1,
+      rate: displaySpec.rate ?? 0, // 0 means use suggested rate
       rateCounter: 0,
-      backgroundColor: 0x000000,
-      sparseMode: false,
-      manualUpdate: false,
-      tracePattern: 0,
+      backgroundColor: displaySpec.backgroundColor ?? 0x000000,
+      sparseMode: displaySpec.sparseColor !== undefined,
+      manualUpdate: displaySpec.manualUpdate ?? false,
+      tracePattern: displaySpec.tracePattern ?? 0,
       colorMode: ColorMode.RGB8,
       colorTune: 0,
       isInitialized: false
@@ -348,9 +415,27 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Initialize shared components
     this.lutManager = new LUTManager();
     this.colorTranslator = new ColorTranslator();
+
+    // Apply LUTCOLORS from declaration if provided
+    if (displaySpec.lutColors && displaySpec.lutColors.length > 0) {
+      for (let i = 0; i < displaySpec.lutColors.length && i < 16; i++) {
+        this.lutManager.setColor(i, displaySpec.lutColors[i]);
+      }
+    }
+
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
     this.traceProcessor = new TracePatternProcessor();
     this.canvasRenderer = new CanvasRenderer();
+
+    // Apply TRACE pattern from declaration if provided
+    if (displaySpec.tracePattern !== undefined) {
+      this.traceProcessor.setPattern(displaySpec.tracePattern);
+    }
+
+    // Apply SPARSE background color from declaration if provided
+    if (displaySpec.sparseColor !== undefined) {
+      this.state.backgroundColor = displaySpec.sparseColor;
+    }
 
     // Set up canvas ID for bitmap
     this.bitmapCanvasId = `bitmap-canvas-${this.idString}`;

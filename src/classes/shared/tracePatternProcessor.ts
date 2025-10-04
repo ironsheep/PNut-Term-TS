@@ -36,21 +36,21 @@ interface TraceState {
  * - **7**: 90° CW rotation + V flip - bottom-to-top, right-to-left
  * 
  * ### Values 8-15 (with scrolling enabled):
- * When bit 3 is set, scrolling is enabled with a specific orientation mapping:
- * - **8**: Vertical flip + scrolling (same orientation as trace=2)
- * - **9**: 180° rotation + scrolling (same orientation as trace=3)
- * - **10**: Normal orientation + scrolling (same orientation as trace=0)
- * - **11**: Horizontal flip + scrolling (same orientation as trace=1)
- * - **12**: 90° CW rotation + scrolling (same orientation as trace=6)
- * - **13**: 90° CW rotation + V flip + scrolling (same orientation as trace=7)
- * - **14**: 90° CCW rotation + V flip + scrolling (same orientation as trace=4)
- * - **15**: 90° CCW rotation + scrolling (same orientation as trace=5)
- * 
+ * When bit 3 is set, scrolling is enabled. The base pattern (bits 0-2) determines
+ * orientation, same as patterns 0-7:
+ * - **8**: Normal + scrolling (same orientation as trace=0, scroll down)
+ * - **9**: Horizontal flip + scrolling (same orientation as trace=1, scroll down)
+ * - **10**: Vertical flip + scrolling (same orientation as trace=2, scroll up)
+ * - **11**: 180° rotation + scrolling (same orientation as trace=3, scroll up)
+ * - **12**: 90° CCW + V flip + scrolling (same orientation as trace=4, scroll right)
+ * - **13**: 90° CCW + scrolling (same orientation as trace=5, scroll right)
+ * - **14**: 90° CW + scrolling (same orientation as trace=6, scroll left)
+ * - **15**: 90° CW + V flip + scrolling (same orientation as trace=7, scroll left)
+ *
  * ### Key Implementation Notes:
- * - The scrolling bit (bit 3) doesn't simply add scrolling to the base orientation
- * - Values 8-15 use a remapped orientation pattern: the equivalent non-scrolling 
- *   orientation can be found by XORing with 0b1010 (10)
- * - When scrolling is enabled, the bitmap shifts its content instead of wrapping 
+ * - The scrolling bit (bit 3) simply adds scrolling to the base orientation
+ * - Values 8-15 use the same base pattern as 0-7: pattern & 7 extracts base
+ * - When scrolling is enabled, the bitmap shifts its content instead of wrapping
  *   when reaching edges
  * - Scroll direction depends on the data flow direction for that trace mode
  * 
@@ -93,20 +93,14 @@ export class TracePatternProcessor {
    */
   public setPattern(pattern: number, modifyRate: boolean = true): void {
     pattern = pattern & 0xF; // Ensure 0-15
-    
+
     // Determine base pattern and scroll state
     this.state.scrollEnabled = (pattern & 0x8) !== 0;
-    
-    // Map trace values to actual orientation patterns
-    if (pattern < 8) {
-      // Direct mapping for non-scrolling patterns
-      this.state.pattern = pattern;
-    } else {
-      // Remapped patterns for scrolling modes
-      const scrollMapping = [2, 3, 0, 1, 6, 7, 4, 5];
-      this.state.pattern = scrollMapping[pattern - 8];
-    }
-    
+
+    // Extract base pattern (bits 0-2) - patterns 8-15 use same base as 0-7
+    // Pascal: case vTrace and 7
+    this.state.pattern = pattern & 0x7;
+
     // Set initial position based on pattern
     this.resetPositionForPattern();
   }
@@ -334,13 +328,8 @@ export class TracePatternProcessor {
    * Get the current actual trace value (0-15)
    */
   public getTraceValue(): number {
-    if (!this.state.scrollEnabled) {
-      return this.state.pattern;
-    } else {
-      // Reverse map from pattern to scrolling trace value
-      const reverseMapping = [10, 11, 8, 9, 14, 15, 12, 13];
-      const index = [0, 1, 2, 3, 4, 5, 6, 7].indexOf(this.state.pattern);
-      return reverseMapping[index];
-    }
+    // Reconstruct trace value from base pattern and scroll bit
+    // Pattern 8-15 = base pattern (0-7) + bit 3 set
+    return this.state.pattern | (this.state.scrollEnabled ? 0x8 : 0);
   }
 }

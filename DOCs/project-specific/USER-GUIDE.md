@@ -912,38 +912,310 @@ debug(`plot MyPlot pos -1920 100`)    ' Position on left monitor
 
 ## Bitmap Display
 
-The Bitmap window displays raster images and supports various pixel formats.
+The Bitmap window displays pixel-based graphics with support for animations, various color modes, and automated plotting patterns. Ideal for displaying images, creating visualizations, and real-time graphics.
 
-### Display Modes
+### Creating a Bitmap Window
 
-#### RGB8 Mode (8-bit color)
+**Basic Declaration**:
 ```spin2
-debug(`bitmap MyBitmap size 256 192 rgb8 lut8`)
+debug(`bitmap MyBitmap size 256 256`)
 ```
 
-#### RGB16 Mode (16-bit color)
+**With Configuration**:
 ```spin2
-debug(`bitmap MyBitmap size 320 240 rgb16`)
+debug(`bitmap MyBitmap title "Graphics Display" pos 100 100 size 320 240 dotsize 2`)
 ```
 
-#### RGB24 Mode (24-bit true color)
+**Complete Declaration Example** (all directives in one declaration):
 ```spin2
-debug(`bitmap MyBitmap size 640 480 rgb24`)
+debug(`bitmap MyBitmap title "Test" size 256 256 dotsize 8 trace 5 rate 100 sparse $FF lut2 longs_2bit lutcolors RED GREEN BLUE YELLOW update`)
+' Now send pixel data - window is already configured
+debug(`MyBitmap \`(pixel_value))
 ```
 
-### Trace Patterns
-Control how pixels are drawn:
-- `SPARSE` - Random pixel placement
-- `LUMA` - Brightness-based 
-- `RGB` - Color channel separation
-- `HSBLUMA` - HSB color space
-- Custom patterns via `TRACE` command
+**Configuration Options** (all can be used in declaration or as runtime commands):
+- `TITLE "text"` - Window title
+- `POS x y` - Window position on screen
+- `SIZE width height` - Bitmap dimensions (1-2048 pixels)
+- `DOTSIZE x {y}` - Pixel scaling factor (1-256). Single value sets both X and Y.
+- `COLOR color` - Background color
+- `HIDEXY` - Hide mouse coordinate display
+- `SPARSE color` - Enable sparse mode with specified background color
+- `TRACE pattern` - Set trace pattern (0-11) for pixel plotting direction
+- `RATE count` - Update frequency (0=manual, -1=fullscreen, >0=pixel count)
+- `LUTCOLORS c1 c2 ...` - Set LUT palette colors (up to 16 colors)
+- `UPDATE` - Enable manual update mode (requires UPDATE command to refresh display)
+- Color modes: `LUT1`, `LUT2`, `LUT4`, `LUT8`, `LUMA8`, `HSV8`, `RGB8`, `RGB16`, `RGB24`, etc.
+- Packed data modes: `LONGS_2BIT`, `BYTES_4BIT`, etc. (optional ALT/SIGNED modifiers)
+
+### Color Modes
+
+The BITMAP window supports 19 different color modes for various use cases.
+
+**LUT Modes** (Palette-based):
+```spin2
+debug(`bitmap MyBitmap size 256 256 lut8`)
+debug(`bitmap MyBitmap lutcolors $FF0000 $00FF00 $0000FF RED BLUE`)  ' Set palette colors
+```
+- `LUT1` - 2 colors (1-bit)
+- `LUT2` - 4 colors (2-bit)
+- `LUT4` - 16 colors (4-bit)
+- `LUT8` - 256 colors (8-bit)
+
+**Direct Color Modes**:
+```spin2
+debug(`bitmap MyBitmap size 320 240 rgb24`)  ' 24-bit true color
+debug(`bitmap MyBitmap size 256 192 rgb16`)  ' 16-bit color
+debug(`bitmap MyBitmap size 256 192 rgb8`)   ' 8-bit RGB
+```
+- `RGB24` - 24-bit true color (16.7M colors)
+- `RGB16` - 16-bit color
+- `RGB8` - 8-bit RGB
+
+**LUMA Modes** (Brightness with color):
+```spin2
+debug(`bitmap MyBitmap size 256 256 luma8 5`)  ' Tune parameter 0-7
+```
+- `LUMA8`, `LUMA8W`, `LUMA8X` - 8-bit luminance modes
+
+**HSV Modes** (Hue-Saturation-Value):
+```spin2
+debug(`bitmap MyBitmap size 256 256 hsv16`)
+```
+- `HSV8`, `HSV8W`, `HSV8X` - 8-bit HSV modes
+- `HSV16`, `HSV16W`, `HSV16X` - 16-bit HSV modes
+
+**RGBI Modes** (RGB + Intensity):
+```spin2
+debug(`bitmap MyBitmap size 256 256 rgbi8`)
+```
+- `RGBI8`, `RGBI8W`, `RGBI8X` - 8-bit RGBI modes
+
+**Tune Parameter**: Many modes accept an optional tune parameter (0-7) to adjust color rendering.
+
+### Color Formats
+
+Colors can be specified in multiple formats:
+
+**Hexadecimal** (most common):
+```spin2
+debug(`bitmap MyBitmap sparse $FF0000`)  ' Red in hex
+debug(`bitmap MyBitmap lutcolors $00FF00 $0000FF`)  ' Green and Blue
+```
+
+**Decimal**:
+```spin2
+debug(`bitmap MyBitmap sparse 16711680`)  ' Red as decimal
+```
+
+**Binary**:
+```spin2
+debug(`bitmap MyBitmap lutcolors %11111111 %10101010`)  ' Binary format
+```
+
+**Quaternary** (base-4):
+```spin2
+debug(`bitmap MyBitmap lutcolors %%33 %%00`)  ' Quaternary format
+```
+
+**Named Colors**:
+```spin2
+debug(`bitmap MyBitmap lutcolors RED GREEN BLUE YELLOW CYAN MAGENTA`)
+debug(`bitmap MyBitmap sparse BLACK`)
+```
+
+Available named colors: `RED`, `GREEN`, `BLUE`, `YELLOW`, `CYAN`, `MAGENTA`, `ORANGE`, `PURPLE`, `PINK`, `BROWN`, `GRAY`/`GREY`, `WHITE`, `BLACK`
+
+### Pixel Plotting
+
+**Manual Pixel Placement**:
+```spin2
+debug(`bitmap MyBitmap set 100 50`)  ' Set position to (100, 50)
+debug(`bitmap MyBitmap`, udec($FF0000))  ' Plot red pixel
+```
+
+**Streaming Data**:
+```spin2
+' Plot multiple pixels
+debug(`bitmap MyBitmap`, udec($FF0000), udec($00FF00), udec($0000FF))
+```
+
+### Trace Patterns (Automated Plotting)
+
+Trace patterns control how pixels are automatically plotted when streaming data. There are 16 patterns (0-15):
+
+**Non-Scrolling Patterns (0-7)**:
+```spin2
+debug(`bitmap MyBitmap trace 0`)  ' Left to right, top to bottom (normal)
+debug(`bitmap MyBitmap trace 1`)  ' Right to left, top to bottom
+debug(`bitmap MyBitmap trace 2`)  ' Left to right, bottom to top
+debug(`bitmap MyBitmap trace 3`)  ' Right to left, bottom to top
+debug(`bitmap MyBitmap trace 4`)  ' Top to bottom, left to right
+debug(`bitmap MyBitmap trace 5`)  ' Bottom to top, left to right
+debug(`bitmap MyBitmap trace 6`)  ' Top to bottom, right to left
+debug(`bitmap MyBitmap trace 7`)  ' Bottom to top, right to left
+```
+
+**Scrolling Patterns (8-15)**:
+Same orientations as 0-7, but with scrolling enabled:
+```spin2
+debug(`bitmap MyBitmap trace 8`)   ' Pattern 0 + scroll down
+debug(`bitmap MyBitmap trace 10`)  ' Pattern 2 + scroll up
+debug(`bitmap MyBitmap trace 12`)  ' Pattern 4 + scroll right
+debug(`bitmap MyBitmap trace 14`)  ' Pattern 6 + scroll left
+```
+
+**Plot Rate**:
+```spin2
+debug(`bitmap MyBitmap rate 256`)  ' Plot every 256th pixel
+debug(`bitmap MyBitmap rate 0`)    ' Auto-suggest based on trace pattern
+```
+
+### SPARSE Mode (Border Effect)
+
+SPARSE mode creates a border effect around pixels, useful for grid-like visualizations:
+
+```spin2
+debug(`bitmap MyBitmap sparse $000000`)  ' Enable SPARSE mode with black background
+```
+
+**How it Works**:
+- Pixels matching the background color are skipped
+- Non-background pixels get a border effect
+- Border is drawn in the background color
+- Inner pixel is drawn at 75% size in the pixel color
+- Works with all `DOTSIZE` values
+
+**Example**:
+```spin2
+debug(`bitmap MyBitmap size 64 64 dotsize 8 8 sparse $000000`)
+debug(`bitmap MyBitmap trace 0`)
+' Each pixel will have a black border with colored center
+```
 
 ### Scrolling
+
+**Scroll Bitmap Content**:
 ```spin2
-debug(`bitmap MyBitmap scroll 1 0`)  ' Scroll right 1 pixel
-debug(`bitmap MyBitmap scroll 0 -1`) ' Scroll up 1 pixel
+debug(`bitmap MyBitmap scroll 1 0`)   ' Scroll right 1 pixel
+debug(`bitmap MyBitmap scroll -1 0`)  ' Scroll left 1 pixel
+debug(`bitmap MyBitmap scroll 0 1`)   ' Scroll down 1 pixel
+debug(`bitmap MyBitmap scroll 0 -1`)  ' Scroll up 1 pixel
+debug(`bitmap MyBitmap scroll 10 5`)  ' Scroll right 10, down 5
 ```
+
+### Mouse Coordinate Display
+
+**Hover Feature**: Move your mouse over the bitmap to see pixel coordinates.
+
+**Features**:
+- Shows (X,Y) coordinates in a flyout
+- Automatically positions to avoid window edges
+- Respects `DOTSIZE` scaling
+- Can be disabled with `HIDEXY` directive
+
+**Example**:
+```spin2
+debug(`bitmap MyBitmap size 256 256`)        ' Coordinates enabled
+debug(`bitmap MyBitmap size 256 256 hidexy`) ' Coordinates disabled
+```
+
+### Common Commands
+
+**Clear Display**:
+```spin2
+debug(`bitmap MyBitmap clear`)
+```
+
+**Save to File**:
+```spin2
+debug(`bitmap MyBitmap save "screenshot.bmp"`)          ' Save canvas
+debug(`bitmap MyBitmap save window "fullwindow.bmp"`)   ' Save window with title bar
+```
+
+**Update Display**:
+```spin2
+debug(`bitmap MyBitmap update`)  ' Force display update
+```
+
+**Close Window**:
+```spin2
+debug(`bitmap MyBitmap close`)
+```
+
+### Practical Examples
+
+**Creating an Animation**:
+```spin2
+' Setup bitmap with scrolling trace
+debug(`bitmap Anim size 128 128 dotsize 4 4 rgb24 trace 8`)
+debug(`bitmap Anim rate 128`)
+
+' Stream color data - will scroll down automatically
+repeat
+  debug(`bitmap Anim`, udec(color_value))
+  color_value := calculate_next_color()
+```
+
+**Drawing a Grid with SPARSE Mode**:
+```spin2
+' Setup grid with border effect
+debug(`bitmap Grid size 32 32 dotsize 16 16 sparse $222222 rgb8`)
+debug(`bitmap Grid trace 0 rate 1`)
+
+' Draw colored cells
+repeat y from 0 to 31
+  repeat x from 0 to 31
+    debug(`bitmap Grid`, udec(get_cell_color(x, y)))
+```
+
+**LUT Palette Animation**:
+```spin2
+' Setup palette-based bitmap
+debug(`bitmap Palette size 256 256 lut8`)
+debug(`bitmap Palette lutcolors RED ORANGE YELLOW GREEN CYAN BLUE PURPLE`)
+
+' Animate by changing palette
+repeat
+  debug(`bitmap Palette lutcolors`, generate_palette_colors())
+  waitms(50)
+```
+
+**Plotting Sensor Data**:
+```spin2
+' Heatmap display
+debug(`bitmap Sensor size 320 240 dotsize 2 2 luma8`)
+debug(`bitmap Sensor trace 0 rate 1`)
+
+' Stream sensor readings
+repeat
+  value := read_temperature_sensor()
+  debug(`bitmap Sensor`, udec(value))
+```
+
+### Troubleshooting
+
+**Validation Errors**:
+All validation errors appear in the LOGGER window with descriptive messages:
+- "Bitmap size out of range" - Width or height exceeds 2048
+- "SET command requires two numeric coordinates" - Invalid SET parameters
+- "SCROLL command missing X and/or Y coordinates" - Invalid SCROLL parameters
+- "Cannot plot pixels before bitmap size is defined" - Send SIZE first
+
+**Performance Issues**:
+- Large bitmaps (>1024×1024) with high DOTSIZE may show latency
+- Use `RATE` command to reduce update frequency
+- SPARSE mode has ~20% performance impact (acceptable for most uses)
+
+**Pixel Positioning**:
+- Coordinates are 0-based: (0,0) is top-left
+- Maximum coordinates are (width-1, height-1)
+- Out-of-bounds coordinates will show error message
+
+**Color Issues**:
+- Ensure color values match the selected color mode
+- LUT modes require palette setup with `LUTCOLORS`
+- Named colors work in all commands that accept colors
 
 ## MIDI Monitor
 

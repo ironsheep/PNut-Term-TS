@@ -208,10 +208,29 @@ describe('DebugBitmapWindow', () => {
       expect(true).toBe(true);
     });
 
-    it('should handle SCROLL command', () => {
+    it('should handle SCROLL command with valid coordinates', async () => {
       window.updateContent(['256', '256', 'SCROLL', '10', '-20']);
-      
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockBrowserWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should log error for SCROLL command with invalid coordinates', async () => {
+      const logSpy = jest.spyOn(window as any, 'logMessage');
+
+      window.updateContent(['256', '256', 'SCROLL', 'invalid', '20']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(logSpy).toHaveBeenCalledWith('ERROR: SCROLL command requires two numeric coordinates');
+    });
+
+    it('should log error for SCROLL command missing coordinates', async () => {
+      const logSpy = jest.spyOn(window as any, 'logMessage');
+
+      window.updateContent(['256', '256', 'SCROLL', '10']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(logSpy).toHaveBeenCalledWith('ERROR: SCROLL command missing X and/or Y coordinates');
     });
 
     it('should handle TRACE command', () => {
@@ -451,6 +470,146 @@ describe('DebugBitmapWindow', () => {
       newWindow['saveBitmap']('test.bmp', false);
       
       expect(logSpy).toHaveBeenCalledWith('ERROR: Cannot save bitmap before it is initialized');
+    });
+  });
+
+  describe('Trace pattern mapping', () => {
+    beforeEach(() => {
+      window['debugWindow'] = mockBrowserWindow;
+    });
+
+    it('should correctly map pattern 0-7 to base patterns 0-7 without scrolling', async () => {
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+
+      for (let pattern = 0; pattern < 8; pattern++) {
+        jest.clearAllMocks();
+        window.updateContent(['256', '256', 'TRACE', pattern.toString()]);
+        await new Promise(resolve => setImmediate(resolve));
+        expect(mockTraceProcessor.setPattern).toHaveBeenCalledWith(pattern);
+      }
+    });
+
+    it('should correctly map pattern 8-15 to base patterns 0-7 with scrolling', async () => {
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+
+      // Pattern 8 should map to base 0 + scroll (not base 2!)
+      // Pattern 9 should map to base 1 + scroll (not base 3!)
+      // etc.
+      for (let pattern = 8; pattern < 16; pattern++) {
+        jest.clearAllMocks();
+        window.updateContent(['256', '256', 'TRACE', pattern.toString()]);
+        await new Promise(resolve => setImmediate(resolve));
+        expect(mockTraceProcessor.setPattern).toHaveBeenCalledWith(pattern);
+      }
+    });
+  });
+
+  describe('RATE command behavior', () => {
+    beforeEach(() => {
+      window['debugWindow'] = mockBrowserWindow;
+    });
+
+    it('should use specified rate when RATE > 0', async () => {
+      window.updateContent(['256', '256', 'RATE', '120']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(window['state'].rate).toBe(120);
+    });
+
+    it('should auto-suggest rate when RATE = 0', async () => {
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+      (mockTraceProcessor.getSuggestedRate as jest.Mock).mockReturnValue(256);
+
+      window.updateContent(['256', '256', 'RATE', '0']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(mockTraceProcessor.getSuggestedRate).toHaveBeenCalled();
+      expect(window['state'].rate).toBe(256);
+    });
+
+    it('should update rate when TRACE is set and rate is 0', async () => {
+      window['state'].rate = 0;
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+      (mockTraceProcessor.getSuggestedRate as jest.Mock).mockReturnValue(128);
+
+      window.updateContent(['256', '256', 'TRACE', '5']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(mockTraceProcessor.getSuggestedRate).toHaveBeenCalled();
+      expect(window['state'].rate).toBe(128);
+    });
+  });
+
+  describe('Color format validation', () => {
+    beforeEach(() => {
+      window['debugWindow'] = mockBrowserWindow;
+    });
+
+    it('should handle LUTCOLORS with hex format', async () => {
+      const mockLutManager = (LUTManager as jest.MockedClass<typeof LUTManager>).mock.instances[0];
+      (mockLutManager.getPaletteSize as jest.Mock)
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(1);
+
+      window.updateContent(['256', '256', 'LUTCOLORS', '$FF0000', '$00FF00']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      // parseColorValue should handle hex format
+      expect(mockLutManager.setColor).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle LUTCOLORS with decimal format', async () => {
+      const mockLutManager = (LUTManager as jest.MockedClass<typeof LUTManager>).mock.instances[0];
+      (mockLutManager.getPaletteSize as jest.Mock)
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(1);
+
+      window.updateContent(['256', '256', 'LUTCOLORS', '16711680', '65280']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(mockLutManager.setColor).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle SPARSE with hex color', async () => {
+      window.updateContent(['256', '256', 'SPARSE', '$FF0000']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(window['state'].sparseMode).toBe(true);
+      // backgroundColor should be set by parseColorValue
+    });
+
+    it('should handle SPARSE with decimal color', async () => {
+      window.updateContent(['256', '256', 'SPARSE', '16711680']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(window['state'].sparseMode).toBe(true);
+    });
+  });
+
+  describe('Tune parameter handling', () => {
+    beforeEach(() => {
+      window['debugWindow'] = mockBrowserWindow;
+    });
+
+    it('should mask tune parameter to 0-7 range', async () => {
+      const mockColorTranslator = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances[0];
+
+      // Test value 15 should be masked to 7 (15 & 0x7 = 7)
+      window.updateContent(['256', '256', 'LUMA8', '15']);
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(mockColorTranslator.setTune).toHaveBeenCalledWith(7);
+    });
+
+    it('should handle valid tune values 0-7', async () => {
+      const mockColorTranslator = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances[0];
+
+      for (let tune = 0; tune <= 7; tune++) {
+        jest.clearAllMocks();
+        window.updateContent(['256', '256', 'HSV8', tune.toString()]);
+        await new Promise(resolve => setImmediate(resolve));
+        expect(mockColorTranslator.setTune).toHaveBeenCalledWith(tune);
+      }
     });
   });
 
