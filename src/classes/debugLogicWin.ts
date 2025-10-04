@@ -32,7 +32,7 @@ import {
 import { v8_0_0 } from 'pixi.js';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export interface LogicDisplaySpec {
   displayName: string;
@@ -481,16 +481,22 @@ export class DebugLogicWindow extends DebugWindowBase {
                   isValid = false;
                 }
               */
-                
-              // FIXME: UNDONE handle packedDataMode
+
               case 'HIDEXY':
                 // just set it!
                 displaySpec.hideXY = true;
                 break;
 
               default:
-                DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
-                isValid = false;
+                // Check if it's a packed data mode
+                const [isPackedMode, packedConfig] = PackedDataProcessor.validatePackedMode(element);
+                if (isPackedMode) {
+                  displaySpec.isPackedData = true;
+                  // Packed mode configuration will be used during data processing
+                } else {
+                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
+                  isValid = false;
+                }
                 break;
             }
           }

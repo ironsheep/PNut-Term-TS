@@ -85,7 +85,7 @@ export interface GlobalSettings {
 const DEFAULT_SERIAL_BAUD = 2000000;
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export class MainWindow {
   private context: Context;

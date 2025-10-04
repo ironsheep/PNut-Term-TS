@@ -1209,84 +1209,159 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Handle DTR reset - close current log and start new one
    */
   public handleDTRReset(): void {
-    // Close current log file
-    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      this.logFile.write(`\n=== DTR Reset at ${new Date().toISOString()} ===\n`);
-      this.logFile.end();
-      this.logFile = null; // Clear reference after ending
+    // Step 1: Flush write buffer to old log file
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.writeTimer = null;
     }
+    this.flushWriteBuffer();
 
-    // Reset log file state for new session
-    this.logFileReady = false;
-    this.pendingLogMessages = []; // Clear any pending messages
+    // Step 2: Close current log file with proper cleanup
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      // Write session end message to old log
+      this.logFile.write(`\n=== Session ended due to DTR Reset at ${new Date().toISOString()} ===\n`);
 
-    // Clear the display (must be after logFile.end() to avoid write-after-end)
-    this.clearOutput();
+      // End the old log file and wait for it to close
+      const oldLogFile = this.logFile;
+      this.logFile = null; // Clear reference immediately to prevent new writes
+      this.logFileReady = false; // Block new writes
 
-    // Create new log file
-    this.initializeLogFile();
+      oldLogFile.end(() => {
+        // Callback when old file is fully closed
+        this.logConsoleMessage('[DEBUG LOGGER] Old log file closed after DTR reset');
 
-    // Update status bar with new filename
-    this.updateStatusBar();
+        // Step 3: Clear both buffers AFTER old file is closed
+        this.writeBuffer = [];
+        this.pendingLogMessages = [];
 
-    // Log system message
-    this.logSystemMessage('DTR Reset - New session started');
+        // Step 4: Clear the display
+        this.clearOutput();
+
+        // Step 5: Create new log file
+        this.initializeLogFile();
+
+        // Step 6: Update status bar with new filename
+        this.updateStatusBar();
+
+        // Step 7: Log system message to NEW log file
+        this.logSystemMessage('New session started due to DTR Reset');
+      });
+    } else {
+      // No log file to close, just reset state
+      this.writeBuffer = [];
+      this.pendingLogMessages = [];
+      this.logFileReady = false;
+      this.clearOutput();
+      this.initializeLogFile();
+      this.updateStatusBar();
+      this.logSystemMessage('New session started due to DTR Reset');
+    }
   }
 
   /**
    * Handle RTS reset - close current log and start new one
    */
   public handleRTSReset(): void {
-    // Close current log file
-    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      this.logFile.write(`\n=== RTS Reset at ${new Date().toISOString()} ===\n`);
-      this.logFile.end();
-      this.logFile = null; // Clear reference after ending
+    // Step 1: Flush write buffer to old log file
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.writeTimer = null;
     }
+    this.flushWriteBuffer();
 
-    // Reset log file state for new session
-    this.logFileReady = false;
-    this.pendingLogMessages = []; // Clear any pending messages
+    // Step 2: Close current log file with proper cleanup
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      // Write session end message to old log
+      this.logFile.write(`\n=== Session ended due to RTS Reset at ${new Date().toISOString()} ===\n`);
 
-    // Clear the display (must be after logFile.end() to avoid write-after-end)
-    this.clearOutput();
+      // End the old log file and wait for it to close
+      const oldLogFile = this.logFile;
+      this.logFile = null; // Clear reference immediately to prevent new writes
+      this.logFileReady = false; // Block new writes
 
-    // Create new log file
-    this.initializeLogFile();
+      oldLogFile.end(() => {
+        // Callback when old file is fully closed
+        this.logConsoleMessage('[DEBUG LOGGER] Old log file closed after RTS reset');
 
-    // Update status bar with new filename
-    this.updateStatusBar();
+        // Step 3: Clear both buffers AFTER old file is closed
+        this.writeBuffer = [];
+        this.pendingLogMessages = [];
 
-    // Log system message
-    this.logSystemMessage('RTS Reset - New session started');
+        // Step 4: Clear the display
+        this.clearOutput();
+
+        // Step 5: Create new log file
+        this.initializeLogFile();
+
+        // Step 6: Update status bar with new filename
+        this.updateStatusBar();
+
+        // Step 7: Log system message to NEW log file
+        this.logSystemMessage('New session started due to RTS Reset');
+      });
+    } else {
+      // No log file to close, just reset state
+      this.writeBuffer = [];
+      this.pendingLogMessages = [];
+      this.logFileReady = false;
+      this.clearOutput();
+      this.initializeLogFile();
+      this.updateStatusBar();
+      this.logSystemMessage('New session started due to RTS Reset');
+    }
   }
 
   /**
    * Handle download start - close current log and start new one for download session
    */
   public handleDownloadStart(): void {
-    // Close current log file
-    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      this.logFile.write(`\n=== Download Started at ${new Date().toISOString()} ===\n`);
-      this.logFile.end();
-      this.logFile = null; // Clear reference after ending
+    // Step 1: Flush write buffer to old log file
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.writeTimer = null;
     }
+    this.flushWriteBuffer();
 
-    // Reset log file state for new session
-    this.logFileReady = false;
-    this.pendingLogMessages = []; // Clear any pending messages
+    // Step 2: Close current log file with proper cleanup
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      // Write session end message to old log
+      this.logFile.write(`\n=== Session ended - Download Started at ${new Date().toISOString()} ===\n`);
 
-    // Clear the display (must be after logFile.end() to avoid write-after-end)
-    this.clearOutput();
+      // End the old log file and wait for it to close
+      const oldLogFile = this.logFile;
+      this.logFile = null; // Clear reference immediately to prevent new writes
+      this.logFileReady = false; // Block new writes
 
-    // Create new log file
-    this.initializeLogFile();
+      oldLogFile.end(() => {
+        // Callback when old file is fully closed
+        this.logConsoleMessage('[DEBUG LOGGER] Old log file closed after download start');
 
-    // Update status bar with new filename
-    this.updateStatusBar();
+        // Step 3: Clear both buffers AFTER old file is closed
+        this.writeBuffer = [];
+        this.pendingLogMessages = [];
 
-    // Log system message
-    this.logSystemMessage('Download Session Started');
+        // Step 4: Clear the display
+        this.clearOutput();
+
+        // Step 5: Create new log file
+        this.initializeLogFile();
+
+        // Step 6: Update status bar with new filename
+        this.updateStatusBar();
+
+        // Step 7: Log system message to NEW log file
+        this.logSystemMessage('Download Session Started');
+      });
+    } else {
+      // No log file to close, just reset state
+      this.writeBuffer = [];
+      this.pendingLogMessages = [];
+      this.logFileReady = false;
+      this.clearOutput();
+      this.initializeLogFile();
+      this.updateStatusBar();
+      this.logSystemMessage('Download Session Started');
+    }
   }
 
   /**
