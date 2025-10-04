@@ -159,7 +159,9 @@ export class TracePatternProcessor {
   public getSuggestedRate(): number {
     // For patterns 0-3 (horizontal scan), use width
     // For patterns 4-7 (vertical scan), use height
-    return (this.state.pattern <= 3) ? this.state.width : this.state.height;
+    const rate = (this.state.pattern <= 3) ? this.state.width : this.state.height;
+    console.log(`[TRACE getSuggestedRate] pattern=${this.state.pattern}, width=${this.state.width}, height=${this.state.height}, returning=${rate}`);
+    return rate;
   }
 
   /**
@@ -198,12 +200,16 @@ export class TracePatternProcessor {
           this.state.pixelX++;
         } else {
           this.state.pixelX = 0;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(0, 1); // Scroll down
-          } else if (this.state.pixelY < this.state.height - 1) {
-            this.state.pixelY++;
+            this.triggerScroll(0, 1); // Scroll down, stay at same Y
           } else {
-            this.state.pixelY = 0;
+            // No scroll: advance to next row
+            if (this.state.pixelY < this.state.height - 1) {
+              this.state.pixelY++;
+            } else {
+              this.state.pixelY = 0; // Wrap around
+            }
           }
         }
         break;
@@ -213,12 +219,16 @@ export class TracePatternProcessor {
           this.state.pixelX--;
         } else {
           this.state.pixelX = this.state.width - 1;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(0, 1); // Scroll down
-          } else if (this.state.pixelY < this.state.height - 1) {
-            this.state.pixelY++;
+            this.triggerScroll(0, 1); // Scroll down, stay at same Y
           } else {
-            this.state.pixelY = 0;
+            // No scroll: advance to next row
+            if (this.state.pixelY < this.state.height - 1) {
+              this.state.pixelY++;
+            } else {
+              this.state.pixelY = 0; // Wrap around
+            }
           }
         }
         break;
@@ -228,12 +238,16 @@ export class TracePatternProcessor {
           this.state.pixelX++;
         } else {
           this.state.pixelX = 0;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(0, -1); // Scroll up
-          } else if (this.state.pixelY > 0) {
-            this.state.pixelY--;
+            this.triggerScroll(0, -1); // Scroll up, stay at same Y
           } else {
-            this.state.pixelY = this.state.height - 1;
+            // No scroll: advance to next row (upward)
+            if (this.state.pixelY > 0) {
+              this.state.pixelY--;
+            } else {
+              this.state.pixelY = this.state.height - 1; // Wrap around
+            }
           }
         }
         break;
@@ -243,12 +257,16 @@ export class TracePatternProcessor {
           this.state.pixelX--;
         } else {
           this.state.pixelX = this.state.width - 1;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(0, -1); // Scroll up
-          } else if (this.state.pixelY > 0) {
-            this.state.pixelY--;
+            this.triggerScroll(0, -1); // Scroll up, stay at same Y
           } else {
-            this.state.pixelY = this.state.height - 1;
+            // No scroll: advance to next row (upward)
+            if (this.state.pixelY > 0) {
+              this.state.pixelY--;
+            } else {
+              this.state.pixelY = this.state.height - 1; // Wrap around
+            }
           }
         }
         break;
@@ -258,12 +276,16 @@ export class TracePatternProcessor {
           this.state.pixelY++;
         } else {
           this.state.pixelY = 0;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(1, 0); // Scroll right
-          } else if (this.state.pixelX < this.state.width - 1) {
-            this.state.pixelX++;
+            this.triggerScroll(1, 0); // Scroll right, stay at same X
           } else {
-            this.state.pixelX = 0;
+            // No scroll: advance to next column (increment X for left-to-right)
+            if (this.state.pixelX < this.state.width - 1) {
+              this.state.pixelX++;
+            } else {
+              this.state.pixelX = 0; // Wrap around
+            }
           }
         }
         break;
@@ -273,12 +295,16 @@ export class TracePatternProcessor {
           this.state.pixelY--;
         } else {
           this.state.pixelY = this.state.height - 1;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(1, 0); // Scroll right
-          } else if (this.state.pixelX < this.state.width - 1) {
-            this.state.pixelX++;
+            this.triggerScroll(1, 0); // Scroll right, stay at same X
           } else {
-            this.state.pixelX = 0;
+            // No scroll: advance to next column (increment X for left-to-right)
+            if (this.state.pixelX < this.state.width - 1) {
+              this.state.pixelX++;
+            } else {
+              this.state.pixelX = 0; // Wrap around
+            }
           }
         }
         break;
@@ -288,12 +314,17 @@ export class TracePatternProcessor {
           this.state.pixelY++;
         } else {
           this.state.pixelY = 0;
+          // When scrolling is enabled, scroll instead of advancing position
+          // This keeps us painting at the same column (31) while image shifts left
           if (scroll) {
-            this.triggerScroll(-1, 0); // Scroll left
-          } else if (this.state.pixelX > 0) {
-            this.state.pixelX--;
+            this.triggerScroll(-1, 0); // Scroll left, stay at same X
           } else {
-            this.state.pixelX = this.state.width - 1;
+            // No scroll: advance to next column (decrement X for right-to-left)
+            if (this.state.pixelX > 0) {
+              this.state.pixelX--;
+            } else {
+              this.state.pixelX = this.state.width - 1; // Wrap around
+            }
           }
         }
         break;
@@ -303,12 +334,16 @@ export class TracePatternProcessor {
           this.state.pixelY--;
         } else {
           this.state.pixelY = this.state.height - 1;
+          // When scrolling is enabled, scroll instead of advancing position
           if (scroll) {
-            this.triggerScroll(-1, 0); // Scroll left
-          } else if (this.state.pixelX > 0) {
-            this.state.pixelX--;
+            this.triggerScroll(-1, 0); // Scroll left, stay at same X
           } else {
-            this.state.pixelX = this.state.width - 1;
+            // No scroll: advance to next column (decrement X for right-to-left)
+            if (this.state.pixelX > 0) {
+              this.state.pixelX--;
+            } else {
+              this.state.pixelX = this.state.width - 1; // Wrap around
+            }
           }
         }
         break;

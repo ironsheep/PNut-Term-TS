@@ -372,36 +372,24 @@ export class CanvasRenderer {
    * Returns JavaScript string for execution
    */
   plotPixelLegacy(canvasId: string, x: number, y: number, color: string): string {
-    return `
-      (function() {
-      const canvas = document.getElementById('${canvasId}');
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Clip to canvas bounds
-      if (${x} < 0 || ${x} >= canvas.width || ${y} < 0 || ${y} >= canvas.height) return;
-      
-      // Get image data for single pixel
-      const imageData = ctx.getImageData(${x}, ${y}, 1, 1);
-      const data = imageData.data;
-      
-      // Parse color hex string
-      const color = '${color}';
-      const r = parseInt(color.substr(1, 2), 16);
-      const g = parseInt(color.substr(3, 2), 16);
-      const b = parseInt(color.substr(5, 2), 16);
-      
-      // Set pixel color
-      data[0] = r;
-      data[1] = g;
-      data[2] = b;
-      data[3] = 255; // Full opacity
-      
-      // Put pixel back
-      ctx.putImageData(imageData, ${x}, ${y});
-    `;
+    return `(function() {
+const canvas = document.getElementById('${canvasId}');
+if (!canvas) { console.error('Canvas not found: ${canvasId}'); return; }
+const ctx = canvas.getContext('2d');
+if (!ctx) { console.error('Context not available'); return; }
+if (${x} < 0 || ${x} >= canvas.width || ${y} < 0 || ${y} >= canvas.height) return;
+const imageData = ctx.getImageData(${x}, ${y}, 1, 1);
+const data = imageData.data;
+const color = '${color}';
+const r = parseInt(color.substr(1, 2), 16);
+const g = parseInt(color.substr(3, 2), 16);
+const b = parseInt(color.substr(5, 2), 16);
+data[0] = r;
+data[1] = g;
+data[2] = b;
+data[3] = 255;
+ctx.putImageData(imageData, ${x}, ${y});
+})();`;
   }
 
   /**
@@ -416,24 +404,17 @@ export class CanvasRenderer {
     dotSizeX: number,
     dotSizeY: number
   ): string {
-    return `
-      const canvas = document.getElementById('${canvasId}');
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Calculate scaled position
-      const scaledX = ${x} * ${dotSizeX};
-      const scaledY = ${y} * ${dotSizeY};
-      
-      // Clip to canvas bounds
-      if (scaledX >= canvas.width || scaledY >= canvas.height) return;
-      
-      // Set fill color and draw rectangle
-      ctx.fillStyle = '${color}';
-      ctx.fillRect(scaledX, scaledY, ${dotSizeX}, ${dotSizeY});
-    `;
+    return `(function() {
+const canvas = document.getElementById('${canvasId}');
+if (!canvas) { console.error('Canvas not found: ${canvasId}'); return; }
+const ctx = canvas.getContext('2d');
+if (!ctx) { console.error('Context not available'); return; }
+const scaledX = ${x} * ${dotSizeX};
+const scaledY = ${y} * ${dotSizeY};
+if (scaledX >= canvas.width || scaledY >= canvas.height) return;
+ctx.fillStyle = '${color}';
+ctx.fillRect(scaledX, scaledY, ${dotSizeX}, ${dotSizeY});
+})();`;
   }
 
   /**
@@ -447,43 +428,27 @@ export class CanvasRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): string {
-    return `
-      const canvas = document.getElementById('${canvasId}');
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Create off-screen canvas for smooth scrolling
-      const offscreenCanvas = document.createElement('canvas');
-      offscreenCanvas.width = ${canvasWidth};
-      offscreenCanvas.height = ${canvasHeight};
-      const offscreenCtx = offscreenCanvas.getContext('2d');
-      
-      // Copy current canvas content to off-screen canvas
-      offscreenCtx.drawImage(canvas, 0, 0);
-      
-      // Clear the main canvas
-      ctx.clearRect(0, 0, ${canvasWidth}, ${canvasHeight});
-
-      // Calculate source and destination rectangles for scrolling
-      // Note: scrollX and scrollY are the amounts to scroll
-
-      // Source rectangle (what part of the image to copy)
-      let sx = Math.max(0, -${scrollX});
-      let sy = Math.max(0, -${scrollY});
-      let sw = ${canvasWidth} - Math.abs(${scrollX});
-      let sh = ${canvasHeight} - Math.abs(${scrollY});
-
-      // Destination rectangle (where to draw it)
-      let dx = Math.max(0, ${scrollX});
-      let dy = Math.max(0, ${scrollY});
-      
-      // Draw the scrolled content
-      if (sw > 0 && sh > 0) {
-        ctx.drawImage(offscreenCanvas, sx, sy, sw, sh, dx, dy, sw, sh);
-      }
-    `;
+    // Pascal logic: CopyRect(dst, canvas, src) where
+    //   src := Rect(0, 0, width, height) - entire source image
+    //   dst := Rect(scrollX, scrollY, width+scrollX, height+scrollY) - destination offset by scroll
+    // scrollX=-1 means dst starts at -1, shifting image LEFT (column 0 disappears off left edge)
+    // scrollX=+1 means dst starts at +1, shifting image RIGHT (column width-1 disappears off right edge)
+    return `(function() {
+const canvas = document.getElementById('${canvasId}');
+if (!canvas) { console.error('Canvas not found: ${canvasId}'); return; }
+const ctx = canvas.getContext('2d');
+if (!ctx) { console.error('Context not available'); return; }
+const offscreenCanvas = document.createElement('canvas');
+offscreenCanvas.width = ${canvasWidth};
+offscreenCanvas.height = ${canvasHeight};
+const offscreenCtx = offscreenCanvas.getContext('2d');
+if (!offscreenCtx) { console.error('Offscreen context not available'); return; }
+offscreenCtx.drawImage(canvas, 0, 0);
+ctx.clearRect(0, 0, ${canvasWidth}, ${canvasHeight});
+// Copy entire source (0,0 to width,height) to destination offset by (scrollX, scrollY)
+// Canvas automatically clips anything outside bounds
+ctx.drawImage(offscreenCanvas, 0, 0, ${canvasWidth}, ${canvasHeight}, (${scrollX}), (${scrollY}), ${canvasWidth}, ${canvasHeight});
+})();`;
   }
 
   /**

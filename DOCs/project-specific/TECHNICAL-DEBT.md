@@ -290,16 +290,27 @@ Some debug windows have incorrect construction patterns that need standardizatio
 
 ### TECH-DEBT-002: Pascal Hanning Window Mathematical Differences
 - **Issue**: Pascal Hanning window implementation differs significantly from standard DSP practices
-- **Details**: 
+- **Details**:
   - Uses formula (1 - cos(2πi/N)) instead of standard 0.5*(1 - cos(2πi/(N-1)))
   - Results in non-symmetric window function for even sizes
   - Produces coherent gain of 1.0 instead of standard 0.5
   - Maximum window value is 2*scale (8192) instead of scale (4096)
 - **Impact**: Different frequency response characteristics than expected in standard DSP
 - **Status**: Documented, needs discussion with original Pascal author
-- **Files**: `src/classes/shared/windowFunctions.ts`, `tests/windowFunctions.test.ts`
 
-### TECH-DEBT-003: Window Function Edge Case Handling
+### TECH-DEBT-003: BITMAP Window Black Border (Visual Deviation from Pascal)
+- **Issue**: BITMAP window displays 10-pixel black border around canvas, differing from Pascal implementation
+- **Location**: `src/classes/debugBitmapWin.ts:1233` - `body { padding: 10px; background-color: #000; }`
+- **Root Cause**: Body element has 10px padding with black background, creating visual spacing
+- **Current Behavior**: Black border provides breathing room between canvas and window chrome
+- **Pascal Behavior**: No border - canvas directly against window edges
+- **Impact**: Minor visual difference, actually aesthetically pleasing
+- **Decision**: Keep current implementation (user preference), document as intentional deviation
+- **Future Consideration**: May add toggle option or remove padding to match Pascal exactly
+- **Added**: 2025-10-04
+
+### TECH-DEBT-004: Window Function Edge Case Handling
+- **Files**: `src/classes/shared/windowFunctions.ts`, `tests/windowFunctions.test.ts`
 - **Issue**: Hamming and Blackman window formulas produce NaN for single-sample windows
 - **Details**: Division by (N-1) = 0 when N = 1 causes NaN, currently handled by returning 0
 - **Impact**: Unexpected behavior for edge cases, potential Pascal implementation oversight

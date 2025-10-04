@@ -141,11 +141,14 @@ export class WindowRouter extends EventEmitter {
   
   // Logging
   private logger: RouterLogger;
-  
+
+  // Shutdown flag
+  private isShuttingDown: boolean = false;
+
   // Buffer settings
   private readonly BUFFER_SIZE = 1000;
   private readonly BUFFER_TIMEOUT = 100; // ms
-  
+
   private constructor() {
     super();
     
@@ -179,6 +182,16 @@ export class WindowRouter extends EventEmitter {
   public setContext(context: Context): void {
     this.context = context;
     this.logConsoleMessage('[ROUTER] Context set for directory-based recording paths');
+  }
+
+  /**
+   * Set shutdown flag to prevent window creation during shutdown
+   */
+  public setShuttingDown(shuttingDown: boolean): void {
+    this.isShuttingDown = shuttingDown;
+    if (shuttingDown) {
+      this.logger.info('SHUTDOWN', 'Router set to shutdown mode - blocking window creation');
+    }
   }
   
   /**
@@ -563,19 +576,25 @@ export class WindowRouter extends EventEmitter {
     }
     
     if (!routed) {
+      // GUARD: Don't create windows during shutdown
+      if (this.isShuttingDown) {
+        this.logConsoleMessage(`[SHUTDOWN] Ignoring window creation request during shutdown: ${windowName}`);
+        return;
+      }
+
       // Log error to terminal for user visibility - safely display binary data
       const safeWindowName = safeDisplayString(windowName);
       const safeCommand = safeDisplayString(command);
       const errorMsg = `ERROR: Unknown window '${safeWindowName}' - cannot route command: ${safeCommand}`;
       this.logConsoleMessage(`[ROUTER DEBUG] 🚨 No window found for "${safeWindowName}" - emitting windowNeeded event`);
       this.logger.error('ROUTE', errorMsg);
-      
+
       // Send error to terminal window for user visibility
       const terminalWindow = this.windows.get('terminal');
       if (terminalWindow) {
         terminalWindow.handler(`\n${errorMsg}\n`);
       }
-      
+
       // Emit event in case someone wants to handle missing windows
       this.logConsoleMessage(`[ROUTER DEBUG] 📡 Emitting windowNeeded event: type="${windowName}", command="${command}"`);
       this.emit('windowNeeded', { type: windowName, command: command, error: errorMsg });

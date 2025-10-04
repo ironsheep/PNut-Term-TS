@@ -122,14 +122,16 @@ export class Spin2NumericParser {
     }
 
     // Apply negative sign if present
-    const result = isNegative ? -parsed : parsed;
+    // Use >>> 0 to ensure unsigned 32-bit representation for positive hex values
+    const result = isNegative ? -parsed : (parsed >>> 0);
 
     // Check for overflow/underflow
-    if (result > this.INT32_MAX) {
-      this.logError('Hexadecimal value exceeds INT32_MAX', value);
-      return this.INT32_MAX;
+    // Hexadecimal values are unsigned 32-bit, use UINT32_MAX
+    if (!isNegative && parsed > this.UINT32_MAX) {
+      this.logError('Hexadecimal value exceeds UINT32_MAX', value);
+      return this.UINT32_MAX;
     }
-    if (result < this.INT32_MIN) {
+    if (isNegative && result < this.INT32_MIN) {
       this.logError('Hexadecimal value below INT32_MIN', value);
       return this.INT32_MIN;
     }

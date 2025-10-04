@@ -433,7 +433,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
       height: displaySpec.size?.height ?? 256,
       dotSizeX: displaySpec.dotSize?.x ?? 1,
       dotSizeY: displaySpec.dotSize?.y ?? 1,
-      rate: displaySpec.rate ?? 0, // 0 means use suggested rate
+      rate: displaySpec.rate ?? 1, // Default: update after every pixel (real-time)
       rateCounter: 0,
       backgroundColor: displaySpec.backgroundColor ?? 0x000000,
       sparseMode: displaySpec.sparseColor !== undefined,
@@ -516,7 +516,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
       return; // Base class handled it
     }
 
-    let dataStartIndex = 0;
+    // Start at index 1 to skip window name (lineParts[0] is always `windowName for runtime commands)
+    let dataStartIndex = 1;
 
     // Process commands
     for (let i = 0; i < lineParts.length; i++) {
@@ -676,9 +677,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
       this.initializeCanvas();
     }
 
-    // Update RATE if it's 0 (use suggested rate)
+    // Update RATE if it's 0 (use default of 1 for real-time updates)
     if (this.state.rate === 0) {
-      this.state.rate = this.traceProcessor.getSuggestedRate();
+      this.state.rate = 1; // Real-time: plot every pixel
+      this.logMessage(`[RATE INIT] Using default rate=1 (real-time) for tracePattern=${this.state.tracePattern}`);
+    } else {
+      this.logMessage(`[RATE INIT] Using explicit rate=${this.state.rate} for tracePattern=${this.state.tracePattern}`);
     }
 
     this.state.isInitialized = true;
@@ -785,15 +789,21 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     // Use canvas renderer to scroll
     if (!this.debugWindow) return;
-    this.debugWindow.webContents.executeJavaScript(
-      this.canvasRenderer.scrollBitmap(
-        this.bitmapCanvasId,
-        scrollX * this.state.dotSizeX,
-        scrollY * this.state.dotSizeY,
-        this.state.width * this.state.dotSizeX,
-        this.state.height * this.state.dotSizeY
-      )
+
+    const scrollCode = this.canvasRenderer.scrollBitmap(
+      this.bitmapCanvasId,
+      scrollX * this.state.dotSizeX,
+      scrollY * this.state.dotSizeY,
+      this.state.width * this.state.dotSizeX,
+      this.state.height * this.state.dotSizeY
     );
+
+    this.logMessage(`[SCROLL] Executing scroll: scrollX=${scrollX}, scrollY=${scrollY}`);
+    this.debugWindow.webContents.executeJavaScript(scrollCode)
+      .catch(err => {
+        this.logMessage(`ERROR scrolling bitmap: ${err}`);
+        this.logMessage(`Failed scroll code: ${scrollCode.substring(0, 200)}...`);
+      });
   }
 
   /**
@@ -803,9 +813,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.state.tracePattern = pattern & 0xF; // 0-15
     this.traceProcessor.setPattern(pattern);
 
-    // Update rate if 0
+    // Update rate if 0 (use real-time default)
     if (this.state.rate === 0) {
-      this.state.rate = this.traceProcessor.getSuggestedRate();
+      this.state.rate = 1; // Real-time: plot every pixel
     }
   }
 
@@ -816,10 +826,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.state.rate = Math.max(0, rate);
     this.state.rateCounter = 0;
 
-    // If rate is 0, use suggested rate
+    // If rate is 0, use real-time default
     if (this.state.rate === 0) {
-      this.state.rate = this.traceProcessor.getSuggestedRate();
+      this.state.rate = 1; // Real-time: plot every pixel
     }
+
+    this.logMessage(`[RATE SET] rate=${this.state.rate}, rateCounter reset to 0`);
   }
 
   /**
@@ -872,16 +884,24 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private parseColorModeCommand(command: string, remainingParts: string[]): boolean {
     // Check for LUTCOLORS command
     if (command === 'LUTCOLORS') {
+      this.logMessage(`[LUTCOLORS] Processing ${remainingParts.length} colors: [${remainingParts.join(', ')}]`);
       // Parse LUT colors using shared parser for consistency
+      let colorCount = 0;
       for (const colorStr of remainingParts) {
         const colorValue = this.parseColorValue(colorStr);
         if (colorValue !== null) {
           const index = this.lutManager.getPaletteSize();
           if (index < 256) {
             this.lutManager.setColor(index, colorValue);
+            this.logMessage(`[LUTCOLORS] Set LUT[${index}] = 0x${colorValue.toString(16)} (${colorStr})`);
+            colorCount++;
           }
         }
       }
+      this.logMessage(`[LUTCOLORS] Loaded ${colorCount} colors into LUT`);
+      // Sync palette to ColorTranslator
+      this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+      this.logMessage(`[LUTCOLORS] Synced palette to ColorTranslator`);
       return true;
     }
 
@@ -934,22 +954,34 @@ export class DebugBitmapWindow extends DebugWindowBase {
       return;
     }
 
-    for (const part of dataParts) {
-      if (!this.isNumeric(part)) continue;
+    this.logMessage(`[BITMAP DATA] Processing ${dataParts.length} data parts: [${dataParts.join(', ')}]`);
 
-      const rawValue = parseInt(part);
+    for (const part of dataParts) {
+      // Parse value using Spin2NumericParser to handle all formats (hex, decimal, binary, etc.)
+      const rawValue = Spin2NumericParser.parseValue(part);
+      if (rawValue === null) {
+        this.logMessage(`[BITMAP DATA] Failed to parse value: ${part}`);
+        continue;
+      }
+      this.logMessage(`[BITMAP DATA] Parsed ${part} → 0x${rawValue.toString(16)}`);
+
 
       // Unpack data based on explicit packed mode (if specified) or derived from color mode
       const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
+      this.logMessage(`[UNPACK] Mode=${packedMode}, rawValue=0x${rawValue.toString(16)}`);
       const unpackedValues = PackedDataProcessor.unpackSamples(
         rawValue,
         packedMode
       );
+      this.logMessage(`[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map(v => '0x'+v.toString(16)).join(', ')}]`);
 
       // Process each unpacked value
-      for (const value of unpackedValues) {
+      this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}, rateCounter=${this.state.rateCounter}`);
+      for (let idx = 0; idx < unpackedValues.length; idx++) {
+        const value = unpackedValues[idx];
         // Handle rate cycling
         this.state.rateCounter++;
+        this.logMessage(`[LOOP] Iteration ${idx+1}/${unpackedValues.length}: value=0x${value.toString(16)}, rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, condition=${this.state.rateCounter >= this.state.rate}`);
         if (this.state.rateCounter >= this.state.rate) {
           this.state.rateCounter = 0;
 
@@ -965,6 +997,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
           // Translate color
           const rgb24 = this.colorTranslator.translateColor(value);
           const color = `#${rgb24.toString(16).padStart(6, '0')}`;
+          this.logMessage(`[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(16)} → ${color}`);
 
           // Plot pixel with SPARSE mode two-layer rendering if enabled
           if (this.debugWindow) {
@@ -991,7 +1024,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
                   }
                 }
               `;
-              this.debugWindow.webContents.executeJavaScript(outerCode);
+              this.debugWindow.webContents.executeJavaScript(outerCode)
+                .catch(err => this.logMessage(`ERROR plotting outer rect: ${err}`));
 
               // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
               // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
@@ -1009,24 +1043,29 @@ export class DebugBitmapWindow extends DebugWindowBase {
                   }
                 }
               `;
-              this.debugWindow.webContents.executeJavaScript(innerCode);
+              this.debugWindow.webContents.executeJavaScript(innerCode)
+                .catch(err => this.logMessage(`ERROR plotting inner rect: ${err}`));
             } else {
               // NORMAL MODE: Standard pixel plotting
               if (this.state.dotSizeX === 1 && this.state.dotSizeY === 1) {
                 this.debugWindow.webContents.executeJavaScript(
                   this.canvasRenderer.plotPixel(this.bitmapCanvasId, pos.x, pos.y, color)
-                );
+                ).catch(err => this.logMessage(`ERROR plotting pixel: ${err}`));
               } else {
-                this.debugWindow.webContents.executeJavaScript(
-                  this.canvasRenderer.plotScaledPixel(
-                    this.bitmapCanvasId,
-                    pos.x,
-                    pos.y,
-                    color,
-                    this.state.dotSizeX,
-                    this.state.dotSizeY
-                  )
+                const plotCode = this.canvasRenderer.plotScaledPixel(
+                  this.bitmapCanvasId,
+                  pos.x,
+                  pos.y,
+                  color,
+                  this.state.dotSizeX,
+                  this.state.dotSizeY
                 );
+                this.logMessage(`[PLOT] Executing: canvas='${this.bitmapCanvasId}' pos=(${pos.x},${pos.y}) color=${color} dot=(${this.state.dotSizeX},${this.state.dotSizeY})`);
+                this.debugWindow.webContents.executeJavaScript(plotCode)
+                  .catch(err => {
+                    this.logMessage(`ERROR plotting scaled pixel: ${err}`);
+                    this.logMessage(`Failed code: ${plotCode.substring(0, 200)}...`);
+                  });
               }
             }
           }

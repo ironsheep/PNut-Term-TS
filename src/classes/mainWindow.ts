@@ -124,6 +124,7 @@ export class MainWindow {
   private debugLoggerWindow: DebugLoggerWindow | null = null;
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private immediateLog: boolean = true;
+  private isShuttingDown: boolean = false; // Flag to prevent serial processing during shutdown
   private termColors: TerminalColor = {
     xmitBGColor: '#FFF8E7', // hex string '#RRGGBB' yellowish pastel
     rcvBGColor: '#8AB3E9', // cyan pastel
@@ -1078,9 +1079,23 @@ export class MainWindow {
 
     if (app) {
       app.on('window-all-closed', () => {
-        // Quit the app when all windows are closed, even on macOS
+        // Shutdown flags and listener removal already done in mainWindow 'close' event
         // This makes the app behave like a single-window application
-        this.logConsoleMessage('[STARTUP] All windows closed, quitting app');
+        this.logConsoleMessage('[SHUTDOWN] All windows closed, initiating shutdown sequence');
+
+        // STEP 3: Close all debug windows (clean up references)
+        this.closeAllDebugWindows();
+
+        // STEP 4: Skip serial port close - let process cleanup handle it
+        // The Napi::Error occurs when trying to close an already-closing port
+        // Safer to just remove listeners and let Node.js cleanup on exit
+        if (this._serialPort) {
+          this.logConsoleMessage('[SHUTDOWN] Serial port cleanup - skipping explicit close to avoid Napi::Error');
+          this._serialPort = undefined; // Release reference
+        }
+
+        // STEP 5: Quit app
+        this.logConsoleMessage('[SHUTDOWN] Quitting app');
         app.quit();
         this.mainWindowOpen = false;
       });
@@ -1294,6 +1309,11 @@ export class MainWindow {
   }
 
   private handleSerialRx(data: Buffer | string) {
+    // GUARD: Ignore all serial data during shutdown
+    if (this.isShuttingDown) {
+      return; // Silently drop data - no logging to avoid spam
+    }
+
     // Handle received data - can be Buffer (raw bytes) or string (from parser)
 
     // RX activity indicator - blink for ALL received data (binary or text)
@@ -1865,6 +1885,10 @@ export class MainWindow {
         contextIsolation: false
       }
     });
+
+    // Increase max listeners to prevent EventEmitter warning
+    // Multiple debug windows + IPC handlers can exceed default limit of 10
+    this.mainWindow.webContents.setMaxListeners(20);
 
     this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');
 
@@ -4134,6 +4158,17 @@ export class MainWindow {
     // All DOM initialization now consolidated in single handler above (line ~2248)
 
     this.mainWindow!.on('close', (event: any) => {
+      // CRITICAL: Set shutdown flags IMMEDIATELY when close begins
+      // This prevents serial data from being processed during shutdown
+      this.isShuttingDown = true;
+      this.windowRouter.setShuttingDown(true);
+      if (this._serialPort) {
+        this._serialPort.setShuttingDown(true);
+        this._serialPort.removeAllListeners('data');
+        this._serialPort.removeAllListeners('error');
+        this._serialPort.removeAllListeners('close');
+      }
+
       if (!this.knownClosedBy) {
         this.logMessage('[x]: Application is quitting...[close]');
       }

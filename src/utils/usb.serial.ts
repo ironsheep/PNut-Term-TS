@@ -47,6 +47,7 @@ export class UsbSerial extends EventEmitter {
   private _isDownloading: boolean = false;  // Track download state
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
   private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
+  private _isShuttingDown: boolean = false;  // Flag to stop processing data during shutdown
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -71,6 +72,11 @@ export class UsbSerial extends EventEmitter {
     // Handle ALL data through raw handler - no parser interference!
     // Parser was corrupting binary data and destroying performance
     this._serialPort.on('data', (data: Buffer) => {
+      // GUARD: During shutdown, drop all incoming data immediately
+      if (this._isShuttingDown) {
+        return; // Silently ignore - prevents race conditions during app exit
+      }
+
       // FIRST: Check for P2 detection (sets _p2DeviceId)
       // This MUST happen before emit so detection state is ready before any routing decisions
       this.checkForP2Response(data);
@@ -212,6 +218,14 @@ export class UsbSerial extends EventEmitter {
 
   public isDownloading(): boolean {
     return this._isDownloading;
+  }
+
+  /**
+   * Set shutdown flag to stop processing incoming data
+   * Called during app shutdown to prevent race conditions
+   */
+  public setShuttingDown(shuttingDown: boolean): void {
+    this._isShuttingDown = shuttingDown;
   }
 
   public async close(): Promise<void> {
