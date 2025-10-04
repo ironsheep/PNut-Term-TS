@@ -101,6 +101,7 @@ describe('DebugLogicWindow', () => {
       windowTitle: 'Logic Display',
       title: 'Test Logic',
       position: { x: 0, y: 0 },
+      hasExplicitPosition: false,
       size: { width: 800, height: 600 },
       nbrSamples: 100,
       spacing: 8,
@@ -305,62 +306,6 @@ describe('DebugLogicWindow', () => {
       });
     });
 
-    describe('CLEAR command', () => {
-      it('should clear channel data', () => {
-        // Add some data first
-        testCommand(debugLogicWindow, 'LOGIC', '255', () => {});
-        
-        // Clear it
-        testCommand(debugLogicWindow, 'LOGIC', 'CLEAR', () => {
-          // Verify channels are cleared
-          const channels = debugLogicWindow['channelSamples'];
-          channels.forEach((channel: any) => {
-            expect(channel.samples.every((s: number) => s === 0)).toBe(true);
-          });
-        });
-      });
-    });
-
-    describe('CLOSE command', () => {
-      it('should close the window', () => {
-        const closeSpy = jest.spyOn(debugLogicWindow, 'closeDebugWindow');
-        
-        testCommand(debugLogicWindow, 'LOGIC', 'CLOSE', () => {
-          expect(closeSpy).toHaveBeenCalled();
-        });
-      });
-    });
-
-    describe('SAVE command', () => {
-      it('should save window to file', async () => {
-        const saveSpy = jest.spyOn(debugLogicWindow as any, 'saveWindowToBMPFilename');
-        
-        await debugLogicWindow.updateContent(['LOGIC', 'SAVE', "'test.bmp'"]);
-        
-        expect(saveSpy).toHaveBeenCalledWith('test.bmp');
-      });
-    });
-
-    describe('PC_KEY command', () => {
-      it('should enable keyboard input', () => {
-        const enableSpy = jest.spyOn(debugLogicWindow as any, 'enableKeyboardInput');
-        
-        testCommand(debugLogicWindow, 'LOGIC', 'PC_KEY', () => {
-          expect(enableSpy).toHaveBeenCalled();
-        });
-      });
-    });
-
-    describe('PC_MOUSE command', () => {
-      it('should enable mouse input', () => {
-        const enableSpy = jest.spyOn(debugLogicWindow as any, 'enableMouseInput');
-        
-        testCommand(debugLogicWindow, 'LOGIC', 'PC_MOUSE', () => {
-          expect(enableSpy).toHaveBeenCalled();
-        });
-      });
-    });
-
     describe('Numeric data processing', () => {
       it('should record samples to channels', () => {
         // Send binary data
@@ -394,6 +339,83 @@ describe('DebugLogicWindow', () => {
           expect(channels).toBeDefined();
         });
       });
+    });
+  });
+
+  describe('Base class delegation', () => {
+    beforeEach(() => {
+      // Trigger window creation with numeric data
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, '0']);
+    });
+
+    it('should delegate CLEAR command to base class', () => {
+      const clearSpy = jest.spyOn(debugLogicWindow as any, 'clearDisplayContent');
+
+      // Add some sample data
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, '255']);
+
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'CLEAR']);
+
+      // clearDisplayContent should have been called via base class delegation
+      expect(clearSpy).toHaveBeenCalled();
+
+      clearSpy.mockRestore();
+    });
+
+    it('should delegate UPDATE command to base class', () => {
+      const updateSpy = jest.spyOn(debugLogicWindow as any, 'forceDisplayUpdate');
+
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'UPDATE']);
+
+      // forceDisplayUpdate should have been called via base class delegation
+      expect(updateSpy).toHaveBeenCalled();
+
+      updateSpy.mockRestore();
+    });
+
+    it('should delegate CLOSE command to base class', () => {
+      const mockWindow = mockBrowserWindowInstances[0];
+
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'CLOSE']);
+
+      // Window close should have been called via base class delegation
+      expect(mockWindow.close).toHaveBeenCalled();
+    });
+
+    it('should delegate PC_KEY command to base class', () => {
+      const inputForwarder = debugLogicWindow['inputForwarder'];
+      const pollingSpy = jest.spyOn(inputForwarder, 'startPolling');
+
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'PC_KEY']);
+
+      // Input forwarding should be enabled via base class delegation
+      expect(pollingSpy).toHaveBeenCalled();
+
+      pollingSpy.mockRestore();
+    });
+
+    it('should delegate PC_MOUSE command to base class', () => {
+      const inputForwarder = debugLogicWindow['inputForwarder'];
+      const pollingSpy = jest.spyOn(inputForwarder, 'startPolling');
+
+      debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'PC_MOUSE']);
+
+      // Input forwarding should be enabled via base class delegation
+      expect(pollingSpy).toHaveBeenCalled();
+
+      pollingSpy.mockRestore();
+    });
+
+    it('should delegate SAVE command to base class', async () => {
+      const mockNativeImage = {
+        toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
+      };
+      mockBrowserWindowInstances[0].webContents.capturePage = jest.fn().mockResolvedValue(mockNativeImage);
+
+      await debugLogicWindow.updateContent([mockDisplaySpec.displayName, 'SAVE', "'test.bmp'"]);
+
+      // SAVE command should be handled via base class delegation
+      expect(mockBrowserWindowInstances[0].webContents.capturePage).toHaveBeenCalled();
     });
   });
 

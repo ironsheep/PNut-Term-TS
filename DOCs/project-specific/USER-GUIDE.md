@@ -444,30 +444,253 @@ When terminal window is focused:
 
 ## Logic Analyzer
 
-The Logic window displays digital signals over time, perfect for protocol debugging.
+The LOGIC window is a 32-channel logic analyzer that displays digital signals over time, perfect for debugging protocols, timing relationships, and digital I/O. It features advanced triggering, channel grouping, and a helpful crosshair display.
 
-### Setup
+### What is a Logic Analyzer?
+
+A logic analyzer captures and displays digital signals (high/low, 1/0) from your Propeller 2. Unlike an oscilloscope which shows voltage levels, a logic analyzer shows timing relationships between multiple digital channels.
+
+**Perfect for:**
+- Debugging serial protocols (SPI, I2C, UART)
+- Analyzing timing between signals
+- Watching multiple I/O pins simultaneously
+- Capturing events that happen too fast to see
+
+### Getting Started
+
+#### Creating a Basic Logic Analyzer
+
 ```spin2
-debug(`logic MyLogic size 800 300 samples 8192 trigger %0001`)
+debug(`logic MyLogic)           ' Creates 32-channel logic analyzer
 ```
 
-### Capturing Data
+This creates a logic analyzer window with default settings (32 samples, 8-pixel spacing).
+
+#### Sending Data
+
 ```spin2
 repeat
-  debug(`logic MyLogic`, ubin(ina.[7..0]))  ' Send 8 digital channels
+  data := ina.[7..0]            ' Read 8 pins
+  debug(`logic MyLogic `(data)) ' Send to analyzer
+  waitms(10)
 ```
 
-### Trigger Modes
-- **None**: Free-running capture
-- **Rising Edge**: Trigger on 0→1 transition
-- **Falling Edge**: Trigger on 1→0 transition
-- **Either Edge**: Trigger on any transition
-- **Pattern Match**: Trigger on specific bit pattern
+Each value you send represents one time sample. Each bit in the value represents one channel (bit 0 = channel 0, bit 1 = channel 1, etc.).
 
-### Measurements
-- Click and drag to measure time between edges
-- Hover over signals for instant values
-- Use zoom controls for detailed analysis
+### Configuration Options
+
+**Window Setup:**
+```spin2
+debug(`logic MyLogic title 'I/O Monitor' pos 100 50)
+```
+- `TITLE 'text'` - Custom window title
+- `POS x y` - Window position on screen
+
+**Capture Settings:**
+```spin2
+debug(`logic MyLogic samples 256 spacing 4)
+```
+- `SAMPLES count` - Number of samples to display (4-2048, default: 32)
+- `SPACING pixels` - Width of each sample in pixels (1-256, default: 8)
+- `RATE divisor` - Capture every Nth sample (default: 1)
+
+**Display Settings:**
+```spin2
+debug(`logic MyLogic textsize 10 linesize 3)
+```
+- `TEXTSIZE points` - Font size for channel labels (6-200, default: 12)
+- `LINESIZE size` - Signal line thickness (1-7, default: 1)
+- `HIDEXY` - Hide mouse coordinate display
+
+### Organizing Channels
+
+Instead of 32 separate channels, you can group related bits with names and colors:
+
+```spin2
+debug(`logic MyLogic 'Clock' 1 lime)      ' Name bit 0 "Clock", lime color
+debug(`logic MyLogic 'Data' 8 cyan)       ' Next 8 bits "Data 0-7", cyan color
+debug(`logic MyLogic 'Control' 4 yellow)  ' Next 4 bits "Control 0-3", yellow
+```
+
+**Benefits:**
+- Easier to read display
+- Color-coded signals
+- Grouped related bits
+- Professional-looking waveforms
+
+**Complete Example:**
+```spin2
+debug(`logic SPI 'SCK' 1 lime 'MOSI' 1 cyan 'MISO' 1 yellow 'CS' 1 red)
+```
+
+### Using Triggers
+
+Triggers let you capture data only when a specific condition occurs, perfect for catching intermittent events.
+
+#### Basic Trigger
+
+```spin2
+debug(`logic MyLogic trigger $FF $80)  ' Trigger when bits 0-7 match $80
+```
+
+**Parameters:**
+- First number (`$FF`) - **Mask**: which bits to check (1 = check this bit, 0 = ignore)
+- Second number (`$80`) - **Match**: pattern to look for
+
+**Trigger fires when:** `(data & mask) == match`
+
+#### Practical Trigger Examples
+
+**Trigger on single bit high:**
+```spin2
+debug(`logic MyLogic trigger $01 $01)  ' Bit 0 goes high
+```
+
+**Trigger on specific byte value:**
+```spin2
+debug(`logic MyLogic trigger $FF $5A)  ' Bits 0-7 = $5A
+```
+
+**Trigger on any of several bits:**
+```spin2
+debug(`logic MyLogic trigger $0F $0F)  ' Any of bits 0-3 high
+```
+
+#### Advanced Trigger Control
+
+```spin2
+debug(`logic MyLogic trigger $FF $80 16 64)
+```
+- Third number (`16`) - **Offset**: Where to position trigger in display buffer
+- Fourth number (`64`) - **Holdoff**: Minimum samples between triggers
+
+**Holdoff Example:**
+```spin2
+debug(`logic MyLogic holdoff 100)  ' Wait 100 samples between triggers
+```
+
+Prevents re-triggering too quickly, giving you stable waveform capture.
+
+### Mouse Coordinate Display
+
+Move your mouse over the logic analyzer to see timing and channel information.
+
+**Display shows:** "sample,channel"
+- **Sample number**: How many samples from the right edge (negative = past samples)
+- **Channel number**: Which channel (0 = top channel)
+
+**Example:** "-5,3" means 5 samples ago on channel 3
+
+**Bonus Feature - Crosshair:**
+The LOGIC window includes crosshair lines that follow your mouse, making it easy to:
+- Align timing across multiple channels
+- Measure time between events
+- See exact sample positions
+
+**Hide coordinates:** Use `HIDEXY` directive if you don't want the display.
+
+### Common Commands
+
+**Window Management:**
+```spin2
+debug(`logic MyLogic clear)   ' Clear all channel data
+debug(`logic MyLogic close)   ' Close the window
+```
+
+**Save Display:**
+```spin2
+debug(`logic MyLogic save 'capture.bmp')  ' Save waveform to file
+```
+
+### Complete Example: SPI Protocol Analyzer
+
+```spin2
+CON
+  SCK_PIN = 0
+  MOSI_PIN = 1
+  MISO_PIN = 2
+  CS_PIN = 3
+
+PUB main()
+  ' Configure logic analyzer with labeled channels
+  debug(`logic SPI title 'SPI Protocol Monitor' samples 128)
+  debug(`logic SPI 'SCK' 1 lime)     ' Clock on pin 0
+  debug(`logic SPI 'MOSI' 1 cyan)    ' Master Out on pin 1
+  debug(`logic SPI 'MISO' 1 yellow)  ' Master In on pin 2
+  debug(`logic SPI 'CS' 1 red)       ' Chip Select on pin 3
+
+  ' Trigger on CS going low (start of transaction)
+  debug(`logic SPI trigger $08 $00)  ' Bit 3 (CS) = low
+
+  repeat
+    spi_data := ina.[3..0]           ' Read all 4 SPI pins
+    debug(`logic SPI `(spi_data))    ' Send to analyzer
+    waitms(1)
+```
+
+### Complete Example: I2C Bus Monitor
+
+```spin2
+PUB monitor_i2c()
+  ' Setup 2-channel I2C monitor
+  debug(`logic I2C title 'I2C Bus' samples 256 spacing 2)
+  debug(`logic I2C 'SCL' 1 green)    ' Clock
+  debug(`logic I2C 'SDA' 1 yellow)   ' Data
+
+  ' Trigger on START condition (SDA falling while SCL high)
+  debug(`logic I2C trigger $03 $02)  ' SCL=1, SDA=0
+
+  repeat
+    bus_state := ina.[1..0]
+    debug(`logic I2C `(bus_state))
+    waitus(10)
+```
+
+### Tips and Tricks
+
+**Capture Fast Events:**
+- Use smaller `SPACING` (1-2 pixels) to fit more samples
+- Increase `SAMPLES` to capture longer sequences
+- Use `RATE` to subsample very high-speed signals
+
+**Analyze Slow Events:**
+- Use `RATE` divisor to capture every Nth sample
+- Example: `RATE 100` captures every 100th sample
+
+**Debug Protocols:**
+- Name channels after signal names (SCK, MOSI, etc.)
+- Use colors to group related signals
+- Use trigger to catch start conditions
+
+**Stable Waveforms:**
+- Set appropriate `HOLDOFF` to prevent re-triggering
+- Position trigger in middle of display (default offset)
+- Use mask to ignore noisy bits
+
+### Mouse Coordinate Display Features
+
+**What you see:**
+- Coordinates update as you move mouse
+- Format: "sample,channel" (e.g., "-10,5" = 10 samples ago, channel 5)
+- Crosshair lines help align across channels
+
+**Positioning:**
+- Display automatically moves to avoid obscuring data
+- Always readable regardless of mouse position
+- Disappears when mouse leaves window
+
+### Packed Data Modes (Advanced)
+
+For efficient data transmission, the LOGIC window supports packed data formats:
+
+```spin2
+debug(`logic MyLogic 8BIT)  ' Pack 4 samples per long (8 bits each)
+```
+
+**Available formats:** 1BIT, 2BIT, 4BIT, 8BIT, 16BIT, 32BIT
+**Modifiers:** ALT (alternate bits), SIGNED (signed values)
+
+Most users won't need packed modes - they're for high-speed data capture.
 
 ## Oscilloscope
 

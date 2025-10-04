@@ -1026,6 +1026,16 @@ export class DebugLogicWindow extends DebugWindowBase {
     //   <numeric data> // data applied to channels in ascending order
     // ----------------------------------------------------------------
     this.logMessage(`at updateContent(${lineParts.join(' ')})`);
+
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Remove display name prefix (index 0) and pass remaining parts to base class
+    const commandParts = lineParts.slice(1);
+    if (await this.handleCommonCommand(commandParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
+
+    // Continue with LOGIC-specific processing (TRIGGER, HOLDOFF, channel data)
     // ON first numeric data, create the window! then do update
     if (lineParts.length >= 2) {
       // have data, parse it
@@ -1085,31 +1095,6 @@ export class DebugLogicWindow extends DebugWindowBase {
           this.logMessage(
             `at updateContent() with updated trigger-holdoffSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`
           );
-        } else if (lineParts[index].toUpperCase() == 'CLEAR') {
-          // clear all channels
-          this.clearChannelData();
-        } else if (lineParts[index].toUpperCase() == 'CLOSE') {
-          // close the window
-          this.closeDebugWindow();
-        } else if (lineParts[index].toUpperCase() == 'SAVE') {
-          // get filename for save
-          if (index + 1 < lineParts.length) {
-            const saveFileName = this.removeStringQuotes(lineParts[++index]);
-            // save the window to a file (as BMP)
-            await this.saveWindowToBMPFilename(saveFileName);
-          } else {
-            this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
-          }
-        } else if (lineParts[index].toUpperCase() == 'PC_KEY') {
-          // Enable keyboard input forwarding
-          this.enableKeyboardInput();
-          // PC_KEY must be last command
-          break;
-        } else if (lineParts[index].toUpperCase() == 'PC_MOUSE') {
-          // Enable mouse input forwarding
-          this.enableMouseInput();
-          // PC_MOUSE must be last command
-          break;
         } else {
           // do we have packed data spec?
           // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
@@ -1189,6 +1174,24 @@ export class DebugLogicWindow extends DebugWindowBase {
         }
       }
     }
+  }
+
+  /**
+   * Override base class method for CLEAR command
+   * Called by base class handleCommonCommand() when CLEAR is received
+   */
+  protected clearDisplayContent(): void {
+    this.clearChannelData();
+  }
+
+  /**
+   * Override base class method for UPDATE command
+   * Called by base class handleCommonCommand() when UPDATE is received
+   * Note: LOGIC updates immediately as samples arrive, no deferred update mode
+   */
+  protected forceDisplayUpdate(): void {
+    // LOGIC window updates immediately when data arrives (no buffering)
+    // This method is a no-op but required for base class interface
   }
 
   private recordSampleToChannels(sample: number) {
