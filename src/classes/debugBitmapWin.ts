@@ -50,6 +50,7 @@ export interface BitmapDisplaySpec {
   dotSize?: { x: number; y: number };
   backgroundColor?: number;
   hideXY?: boolean;
+  explicitPackedMode?: PackedDataMode; // Explicit packed data mode from declaration (e.g., LONGS_2BIT)
 }
 
 /**
@@ -161,7 +162,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     //   COLOR <bgnd-color> [default: black]
     //   HIDEXY [default: not hidden]
     
-    DebugBitmapWindow.logConsoleMessageStatic(`CL: at parseBitmapDeclaration()`);
+    DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_WINDOW] CL: at parseBitmapDeclaration()`);
     let displaySpec: BitmapDisplaySpec = {} as BitmapDisplaySpec;
     displaySpec.displayName = '';
     displaySpec.title = 'Bitmap';
@@ -225,17 +226,31 @@ export class DebugBitmapWindow extends DebugWindowBase {
             break;
             
           case 'DOTSIZE':
-            if (i + 2 < lineParts.length) {
+            if (i + 1 < lineParts.length) {
               const x = parseInt(lineParts[++i]);
-              const y = parseInt(lineParts[++i]);
-              if (!isNaN(x) && !isNaN(y) && x >= 1 && y >= 1) {
-                displaySpec.dotSize = { x, y };
+              if (!isNaN(x) && x >= 1) {
+                // Check if there's a second value
+                if (i + 1 < lineParts.length) {
+                  const nextVal = parseInt(lineParts[i + 1]);
+                  if (!isNaN(nextVal) && nextVal >= 1) {
+                    // Two values provided
+                    const y = nextVal;
+                    i++;
+                    displaySpec.dotSize = { x, y };
+                  } else {
+                    // Only one value, use for both X and Y
+                    displaySpec.dotSize = { x, y: x };
+                  }
+                } else {
+                  // Only one value, use for both X and Y
+                  displaySpec.dotSize = { x, y: x };
+                }
               } else {
-                errorMessage = 'DOTSIZE directive requires two positive numeric values';
+                errorMessage = 'DOTSIZE directive requires at least one positive numeric value';
                 isValid = false;
               }
             } else {
-              errorMessage = 'DOTSIZE directive missing values';
+              errorMessage = 'DOTSIZE directive missing value';
               isValid = false;
             }
             break;
@@ -255,10 +270,39 @@ export class DebugBitmapWindow extends DebugWindowBase {
           case 'HIDEXY':
             displaySpec.hideXY = true;
             break;
-            
+
+          // Color mode commands (can be in declaration per Pascal)
+          case 'LUT1':
+          case 'LUT2':
+          case 'LUT4':
+          case 'LUT8':
+          case 'LUMA8':
+          case 'LUMA8W':
+          case 'LUMA8X':
+          case 'HSV8':
+          case 'HSV8W':
+          case 'HSV8X':
+          case 'RGBI8':
+          case 'RGBI8W':
+          case 'RGBI8X':
+          case 'RGB8':
+          case 'HSV16':
+          case 'HSV16W':
+          case 'HSV16X':
+          case 'RGB16':
+          case 'RGB24':
+            // Color mode recognized - will be set during window initialization
+            // Just skip it here (window will process it from full command)
+            break;
+
           default:
-            // Unknown directive - could be packed data mode
-            // For now, just skip it
+            // Check if this is a packed data mode directive (e.g., LONGS_2BIT, BYTES_4BIT)
+            const [isPackedMode, packedMode] = PackedDataProcessor.validatePackedMode(lineParts[i]);
+            if (isPackedMode) {
+              displaySpec.explicitPackedMode = packedMode;
+              DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed packed data mode: ${lineParts[i]}`);
+            }
+            // Unknown directives are gracefully skipped
             break;
         }
         
@@ -267,7 +311,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     }
     
     if (!isValid) {
-      DebugBitmapWindow.logConsoleMessageStatic(`ERROR: parseBitmapDeclaration() - ${errorMessage}`);
+      DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_WINDOW] ERROR: parseBitmapDeclaration() - ${errorMessage}`);
     }
     
     return [isValid, displaySpec];
@@ -334,7 +378,13 @@ export class DebugBitmapWindow extends DebugWindowBase {
   /**
    * Process debug commands and data
    */
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
+    // First, let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    const commandParts = lineParts.slice(1); // Remove display name prefix
+    if (await this.handleCommonCommand(commandParts)) {
+      return; // Base class handled it
+    }
+
     let dataStartIndex = 0;
 
     // Process commands
@@ -363,11 +413,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
       // Parse commands
       switch (part) {
-        case 'CLEAR':
-          this.clearBitmap();
-          dataStartIndex = i + 1;
-          break;
-
         case 'SET':
           if (i + 2 < lineParts.length) {
             const x = parseInt(lineParts[i + 1]);
@@ -384,18 +429,19 @@ export class DebugBitmapWindow extends DebugWindowBase {
           }
           break;
 
-        case 'UPDATE':
-          this.updateCanvas();
-          dataStartIndex = i + 1;
-          break;
-
         case 'SCROLL':
           if (i + 2 < lineParts.length) {
             const scrollX = parseInt(lineParts[i + 1]);
             const scrollY = parseInt(lineParts[i + 2]);
-            this.scrollBitmap(scrollX, scrollY);
-            dataStartIndex = i + 3;
-            i += 2;
+            if (!isNaN(scrollX) && !isNaN(scrollY)) {
+              this.scrollBitmap(scrollX, scrollY);
+              dataStartIndex = i + 3;
+              i += 2;
+            } else {
+              this.logMessage(`ERROR: SCROLL command requires two numeric coordinates`);
+            }
+          } else {
+            this.logMessage(`ERROR: SCROLL command missing X and/or Y coordinates`);
           }
           break;
 
@@ -436,36 +482,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
           }
           break;
 
-        case 'SAVE':
-          // Handle SAVE command with optional WINDOW parameter
-          let saveWindow = false;
-          let filename = '';
-          if (i + 1 < lineParts.length) {
-            if (lineParts[i + 1].toUpperCase() === 'WINDOW') {
-              saveWindow = true;
-              filename = lineParts[i + 2] || 'bitmap.bmp';
-              i++;
-            } else {
-              filename = lineParts[i + 1];
-            }
-            this.saveBitmap(filename, saveWindow);
-            dataStartIndex = i + 2;
-            i++;
-          }
-          break;
-
-        case 'PC_KEY':
-        case 'PC_MOUSE':
-          // These commands should appear last in DEBUG statement
-          // They enable input forwarding
-          if (part === 'PC_KEY') {
-            this.enableKeyboardInput();
-          } else {
-            this.enableMouseInput();
-          }
-          dataStartIndex = lineParts.length; // No data after these
-          break;
-
         default:
           // Check for color mode commands
           if (this.parseColorModeCommand(part, lineParts.slice(i + 1))) {
@@ -492,6 +508,22 @@ export class DebugBitmapWindow extends DebugWindowBase {
     if (dataStartIndex < lineParts.length) {
       this.processDataValues(lineParts.slice(dataStartIndex));
     }
+  }
+
+  /**
+   * Override base class method for CLEAR command
+   * Called by base class handleCommonCommand() when CLEAR is received
+   */
+  protected clearDisplayContent(): void {
+    this.clearBitmap();
+  }
+
+  /**
+   * Override base class method for UPDATE command
+   * Called by base class handleCommonCommand() when UPDATE is received
+   */
+  protected forceDisplayUpdate(): void {
+    this.updateCanvas();
   }
 
   /**
@@ -528,11 +560,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     // Set up the visible canvas
     const canvasHTML = `
-      <canvas id="${this.bitmapCanvasId}" 
-              width="${this.state.width * this.state.dotSizeX}" 
+      <canvas id="${this.bitmapCanvasId}"
+              width="${this.state.width * this.state.dotSizeX}"
               height="${this.state.height * this.state.dotSizeY}"
               style="image-rendering: pixelated; width: 100%; height: 100%;">
       </canvas>
+      <div id="coordinate-display"></div>
     `;
 
     // Create window if not exists
@@ -708,21 +741,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private parseColorModeCommand(command: string, remainingParts: string[]): boolean {
     // Check for LUTCOLORS command
     if (command === 'LUTCOLORS') {
-      // Parse LUT colors
+      // Parse LUT colors using shared parser for consistency
       for (const colorStr of remainingParts) {
-        // Try to parse color value (handles $, %, and plain numbers)
-        let colorValue: number | null = null;
-        
-        if (colorStr.startsWith('$')) {
-          const parsed = parseInt(colorStr.substring(1), 16);
-          if (!isNaN(parsed)) colorValue = parsed;
-        } else if (colorStr.startsWith('%')) {
-          const parsed = parseInt(colorStr.substring(1), 2);
-          if (!isNaN(parsed)) colorValue = parsed;
-        } else if (this.isNumeric(colorStr)) {
-          colorValue = parseInt(colorStr);
-        }
-        
+        const colorValue = this.parseColorValue(colorStr);
         if (colorValue !== null) {
           const index = this.lutManager.getPaletteSize();
           if (index < 256) {
@@ -786,11 +807,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
       if (!this.isNumeric(part)) continue;
 
       const rawValue = parseInt(part);
-      
-      // Unpack data based on current packed mode
+
+      // Unpack data based on explicit packed mode (if specified) or derived from color mode
+      const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
       const unpackedValues = PackedDataProcessor.unpackSamples(
         rawValue,
-        this.getPackedDataMode()
+        packedMode
       );
 
       // Process each unpacked value
@@ -813,25 +835,68 @@ export class DebugBitmapWindow extends DebugWindowBase {
           const rgb24 = this.colorTranslator.translateColor(value);
           const color = `#${rgb24.toString(16).padStart(6, '0')}`;
 
-          // Plot pixel
-          if (this.state.dotSizeX === 1 && this.state.dotSizeY === 1) {
-            if (this.debugWindow) {
-              this.debugWindow.webContents.executeJavaScript(
-              this.canvasRenderer.plotPixel(this.bitmapCanvasId, pos.x, pos.y, color)
-            );
-            }
-          } else {
-            if (this.debugWindow) {
-              this.debugWindow.webContents.executeJavaScript(
-              this.canvasRenderer.plotScaledPixel(
-                this.bitmapCanvasId, 
-                pos.x, 
-                pos.y, 
-                color,
-                this.state.dotSizeX,
-                this.state.dotSizeY
-              )
-            );
+          // Plot pixel with SPARSE mode two-layer rendering if enabled
+          if (this.debugWindow) {
+            if (this.state.sparseMode) {
+              // SPARSE MODE: Two-layer rendering with border effect
+              // Calculate center position with offset (Pascal: x := vPixelX * vDotSize + vDotSize shr 1)
+              const centerX = pos.x * this.state.dotSizeX + (this.state.dotSizeX >> 1);
+              const centerY = pos.y * this.state.dotSizeY + (this.state.dotSizeY >> 1);
+
+              // Convert border color to hex string
+              const borderRgb24 = this.state.backgroundColor & 0xFFFFFF;
+              const borderColor = `#${borderRgb24.toString(16).padStart(6, '0')}`;
+
+              // LAYER 1: Draw outer rectangle (border) at 100% DOTSIZE
+              const outerX = centerX - (this.state.dotSizeX >> 1);
+              const outerY = centerY - (this.state.dotSizeY >> 1);
+              const outerCode = `
+                const canvas = document.getElementById('${this.bitmapCanvasId}');
+                if (canvas) {
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.fillStyle = '${borderColor}';
+                    ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
+                  }
+                }
+              `;
+              this.debugWindow.webContents.executeJavaScript(outerCode);
+
+              // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
+              // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
+              const innerW = this.state.dotSizeX - (this.state.dotSizeX >> 2);
+              const innerH = this.state.dotSizeY - (this.state.dotSizeY >> 2);
+              const innerX = centerX - (innerW >> 1);
+              const innerY = centerY - (innerH >> 1);
+              const innerCode = `
+                const canvas = document.getElementById('${this.bitmapCanvasId}');
+                if (canvas) {
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.fillStyle = '${color}';
+                    ctx.fillRect(${innerX}, ${innerY}, ${innerW}, ${innerH});
+                  }
+                }
+              `;
+              this.debugWindow.webContents.executeJavaScript(innerCode);
+            } else {
+              // NORMAL MODE: Standard pixel plotting
+              if (this.state.dotSizeX === 1 && this.state.dotSizeY === 1) {
+                this.debugWindow.webContents.executeJavaScript(
+                  this.canvasRenderer.plotPixel(this.bitmapCanvasId, pos.x, pos.y, color)
+                );
+              } else {
+                this.debugWindow.webContents.executeJavaScript(
+                  this.canvasRenderer.plotScaledPixel(
+                    this.bitmapCanvasId,
+                    pos.x,
+                    pos.y,
+                    color,
+                    this.state.dotSizeX,
+                    this.state.dotSizeY
+                  )
+                );
+              }
             }
           }
 
@@ -1005,6 +1070,19 @@ export class DebugBitmapWindow extends DebugWindowBase {
               image-rendering: -moz-crisp-edges;
               image-rendering: crisp-edges;
             }
+            #coordinate-display {
+              position: absolute;
+              padding: 8px;
+              background: #000;
+              color: #ccc;
+              border: 1px solid #ccc;
+              font-family: 'Parallax', 'Consolas', 'Courier New', monospace;
+              font-size: 12px;
+              pointer-events: none;
+              display: none;
+              z-index: 999;
+              white-space: nowrap;
+            }
           </style>
         </head>
         <body>
@@ -1023,7 +1101,109 @@ export class DebugBitmapWindow extends DebugWindowBase {
       // Register with WindowRouter when window is ready
       this.registerWithRouter();
     });
-    
+
+    this.debugWindow.webContents.once('did-finish-load', () => {
+      // Inject JavaScript for mouse coordinate tracking
+      const mouseTrackingCode = `
+        (function() {
+          const canvas = document.getElementById('${this.bitmapCanvasId}');
+          const display = document.getElementById('coordinate-display');
+
+          if (!canvas || !display) {
+            console.error('[BITMAP_WINDOW] Missing canvas or display element');
+            return;
+          }
+
+          // Mouse move handler - update coordinates
+          canvas.addEventListener('mousemove', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = Math.floor(event.clientX - rect.left);
+            const mouseY = Math.floor(event.clientY - rect.top);
+
+            if (!${this.displaySpec.hideXY || false}) {
+              updateCoordinateDisplay(mouseX, mouseY);
+            }
+          });
+
+          // Mouse enter handler
+          canvas.addEventListener('mouseenter', function() {
+            // Coordinate display will be shown by mousemove
+          });
+
+          // Mouse leave handler - hide display
+          canvas.addEventListener('mouseleave', function() {
+            display.style.display = 'none';
+          });
+
+          // Function to update coordinate display
+          function updateCoordinateDisplay(x, y) {
+            const dotSizeX = ${this.state.dotSizeX};
+            const dotSizeY = ${this.state.dotSizeY};
+            const canvasWidth = ${this.state.width * this.state.dotSizeX};
+            const canvasHeight = ${this.state.height * this.state.dotSizeY};
+
+            // Check if mouse is within canvas bounds
+            if (x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight) {
+              // Calculate bitmap coordinates
+              const col = Math.floor(x / dotSizeX);
+              const row = Math.floor(y / dotSizeY);
+
+              // Update display text
+              display.textContent = col + ',' + row;
+              display.style.display = 'block';
+
+              // Position based on quadrant to avoid obscuring pixels
+              const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
+
+              // Get display dimensions for positioning
+              const displayRect = display.getBoundingClientRect();
+              const textWidth = displayRect.width;
+              const textHeight = displayRect.height;
+
+              // Calculate flyout position with 12px offset from mouse
+              let displayX, displayY;
+              const offset = 12;
+
+              switch(quadrant) {
+                case 0: // Top-left - show bottom-right of mouse
+                  displayX = x + offset;
+                  displayY = y + offset;
+                  break;
+                case 1: // Top-right - show bottom-left of mouse
+                  displayX = x - textWidth - offset;
+                  displayY = y + offset;
+                  break;
+                case 2: // Bottom-left - show top-right of mouse
+                  displayX = x + offset;
+                  displayY = y - textHeight - offset;
+                  break;
+                case 3: // Bottom-right - show top-left of mouse
+                  displayX = x - textWidth - offset;
+                  displayY = y - textHeight - offset;
+                  break;
+              }
+
+              display.style.left = (displayX + 10) + 'px';  // +10 for body padding
+              display.style.top = (displayY + 10) + 'px';   // +10 for body padding
+            } else {
+              // Mouse outside canvas area - hide display
+              display.style.display = 'none';
+            }
+          }
+
+          console.log('[BITMAP_WINDOW] Mouse coordinate tracking initialized');
+        })();
+      `;
+
+      this.debugWindow?.webContents.executeJavaScript(mouseTrackingCode)
+        .then(() => {
+          this.logMessage('Mouse coordinate tracking enabled');
+        })
+        .catch(error => {
+          this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
+        });
+    });
+
     this.debugWindow.on('closed', () => {
       this.logMessage('* Bitmap window closed');
       this.closeDebugWindow();

@@ -133,6 +133,133 @@ Before any change, ask:
 - ❌ Makes "improvements" beyond the bug
 - ❌ Creates new problems
 
+## 🔍 **DECLARATION PARSER COMPLETENESS CHECK**
+
+**Problem:** Declaration parsers can silently skip directives, causing "100% parity" claims to be false.
+
+**Symptoms:**
+- Window fails to open with "parse result: isValid=false"
+- Directives work in Pascal but ignored in TypeScript
+- Other windows handle the same directive correctly
+- Shared utilities exist but aren't called
+
+### **MANDATORY STEPS for Declaration Parser Repairs:**
+
+#### **Step 1: Cross-Window Comparison**
+```bash
+# Search for the directive across all windows
+grep -r "DIRECTIVE_NAME" src/classes/debug*.ts
+
+# Question to answer:
+# - Do other windows parse this directive?
+# - If YES: Why doesn't this window?
+# - Pattern comparison: What's different?
+```
+
+**Example:**
+```bash
+grep -r "LONGS_2BIT" src/classes/debug*.ts
+# Found in: debugFftWin.ts (line 801), debugScopeXyWin.ts (line 766)
+# Missing in: debugBitmapWin.ts
+# CONCLUSION: BITMAP should parse it too
+```
+
+#### **Step 2: Pascal Source Research FIRST**
+```bash
+# Before skipping ANY directive, verify Pascal behavior
+# Search Pascal: key_directive_name in WINDOW_Configure, WINDOW_Update
+
+# Questions to answer:
+# - Does Pascal handle this explicitly?
+# - Is it processed during declaration or runtime?
+# - What parameters does it accept?
+# - Are there single/multiple value variants?
+```
+
+**Example:**
+```pascal
+// DebugDisplayUnit.pas line 2395-2396
+key_longs_1bit..key_bytes_4bit: KeyPack;  // Pascal EXPLICITLY processes
+
+// If Pascal handles it explicitly → TypeScript MUST handle it too
+```
+
+#### **Step 3: Shared Infrastructure Audit**
+```bash
+# Check if we already have utilities for this category
+grep -r "Processor\|Validator\|Parser" src/classes/shared/
+
+# Questions to answer:
+# - Do shared utilities exist for this directive category?
+# - Is the window importing them?
+# - Are the utility functions being CALLED?
+```
+
+**Example:**
+```typescript
+// File imports PackedDataProcessor ✅
+import { PackedDataProcessor } from './shared/packedDataProcessor';
+
+// But declaration parser doesn't call validatePackedMode() ❌
+// default: break;  // Silent skip = BUG
+
+// CORRECT:
+default:
+  const [isValid, mode] = PackedDataProcessor.validatePackedMode(token);
+  if (isValid) { displaySpec.packedMode = mode; }
+```
+
+#### **Step 4: Complete Directive Inventory**
+```markdown
+# Create a coverage matrix for ALL directives
+
+| Pascal Directive | Parameters | TypeScript Handler | Status |
+|------------------|------------|-------------------|--------|
+| TITLE | string | line 184-190 | ✅ WORKING |
+| DOTSIZE | x {y} | line 227-241 | ⚠️ Missing single-value |
+| LONGS_2BIT | none | NOT PARSED | ❌ MISSING |
+| LUT2 | none | NOT IN DECLARATION | ❌ MISSING |
+
+# Process:
+1. Extract ALL key_* cases from Pascal WINDOW_Configure
+2. Extract ALL key_* cases from Pascal WINDOW_Update
+3. Map each to TypeScript parser location
+4. Identify gaps (Pascal has, TypeScript doesn't)
+5. Fix ALL gaps, not just the reported symptom
+```
+
+#### **Step 5: Parameter Variant Detection**
+```markdown
+# Many directives accept MULTIPLE formats
+
+Pascal Examples:
+- DOTSIZE 8        → Single value (x=8, y=8)
+- DOTSIZE 8 8      → Two values (x=8, y=8)
+- LONGS_2BIT       → Packed mode directive
+- LONGS_2BIT ALT   → With modifier
+- LONGS_2BIT SIGNED → With different modifier
+
+# Test BOTH/ALL variants in external testing
+# Don't assume single format works for all cases
+```
+
+### **Checklist for Declaration Parser Fixes:**
+
+- [ ] Searched other windows for this directive pattern
+- [ ] Read Pascal source for explicit handling
+- [ ] Verified shared utilities exist and are CALLED
+- [ ] Created complete directive inventory from Pascal
+- [ ] Identified ALL parameter variants
+- [ ] Added test cases for each variant
+- [ ] Confirmed fix works in external testing (not just unit tests)
+
+### **Prevention:**
+
+**For NEW window implementations or upgrades:**
+- Use `WINDOW-UPGRADE-METHODOLOGY.md` process
+- Create directive coverage matrix FIRST
+- Validate completeness BEFORE claiming "100% parity"
+
 ## 📚 **REMEMBER: THIS IS A LARGE, COMPLEX APPLICATION**
 
 - **Thousands of lines** of working code
@@ -146,7 +273,7 @@ Before any change, ask:
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.1 (Added Declaration Parser Completeness Check)  
 **Date:** 2025-08-21  
 **Status:** MANDATORY REFERENCE - Read before ANY code changes  
 **Violation Consequence:** Potential destruction of working systems

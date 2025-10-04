@@ -51,6 +51,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 |-----------|-------------|-----------|
 | 🐛 **Debug/Fix** | `CODE-REPAIR-METHODOLOGY.md`, `TEST-DRIVEN-DEBUGGING.md` | Surgical fixes, test-first |
 | 🔧 **Feature** | `TECHNICAL-CLIMBING.md`, `SYSTEMATIC-CHANGE-PROCESS.md` | Build on protection, impact analysis |
+| 🪟 **Window Upgrade** | `WINDOW-UPGRADE-METHODOLOGY.md`, `CODE-REPAIR-METHODOLOGY.md` | Directive inventory, parity verification |
 | 🧪 **Testing** | `TESTING-STANDARDS.md`, `tests/README-TESTING-STANDARDS.md` | Byte-perfect validation |
 | 🏗️ **Architecture** | `ARCHITECTURE.md`, `SHARED-COMPONENT-REQUIREMENTS.md` | Preserve working systems |
 | 📝 **Documentation** | `REPOSITORY-ORGANIZATION.md` | Current state first |
