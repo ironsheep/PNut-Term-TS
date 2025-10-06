@@ -465,6 +465,10 @@ export class MainWindow {
     try {
       // Extract command data from two-tier message (stay in new system, don't convert back)
       const data = new TextDecoder().decode(message.data);
+
+      // NOTE: Message is already logged via routeToDebugLogger (see applyStandardRouting line 504)
+      // BACKTICK_WINDOW messages are routed to BOTH windowCreator AND debugLogger
+
       const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
       this.logConsoleMessage(
         `[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
@@ -475,21 +479,62 @@ export class MainWindow {
         return;
       }
 
-      const possibleName: string = lineParts[0].substring(1).toUpperCase();
+      // 1. FIRST: Check if this is for existing window(s) - support multi-window routing
+      // Extract window names by checking against registered displays
+      const targetWindows: string[] = [];
+      let dataStartIndex = 0;
+
+      // Check each part starting from lineParts[0] (which starts with backtick)
+      // First part has backtick: `a -> extract 'a'
+      const firstWindow = lineParts[0].substring(1).toUpperCase();
+      const displayNames = Object.keys(this.displays).map(name => name.toUpperCase());
+
+      if (displayNames.includes(firstWindow)) {
+        targetWindows.push(firstWindow);
+        dataStartIndex = 1;
+
+        // Check remaining parts for additional window names
+        for (let i = 1; i < lineParts.length; i++) {
+          const part = lineParts[i].toUpperCase();
+          if (displayNames.includes(part)) {
+            targetWindows.push(part);
+            dataStartIndex = i + 1;
+          } else {
+            // Not a window name, must be data - stop checking
+            break;
+          }
+        }
+      }
+
       let foundDisplay: boolean = false;
 
-      // 1. FIRST: Check if this is for an existing window (route data to it)
-      const displayEntries = Object.entries(this.displays);
-      displayEntries.forEach(([displayName, window]) => {
-        if (displayName.toUpperCase() === possibleName) {
-          // Found existing window, route to it
-          const debugWindow = window as DebugWindowBase;
-          const cleanedParts: string[] = lineParts.map((part) => part.replace(/,/g, ''));
-          debugWindow.updateContent(cleanedParts);
-          foundDisplay = true;
-          this.logConsoleMessage(`[TWO-TIER] Routed to existing window: ${displayName}`);
-        }
-      });
+      if (targetWindows.length > 0) {
+        // Extract data portion (everything after window names)
+        const dataParts = lineParts.slice(dataStartIndex);
+        const cleanedParts = dataParts.map((part) => part.replace(/,/g, ''));
+
+        // Route to each target window with ONLY the data portion
+        targetWindows.forEach(windowName => {
+          const displayEntry = Object.entries(this.displays).find(
+            ([name]) => name.toUpperCase() === windowName
+          );
+
+          if (displayEntry) {
+            const [displayName, window] = displayEntry;
+            const debugWindow = window as DebugWindowBase;
+
+            // Prepend window name back to data for window's parser
+            const windowData = [displayName, ...cleanedParts];
+            debugWindow.updateContent(windowData);
+            foundDisplay = true;
+            this.logConsoleMessage(
+              `[TWO-TIER] Routed to existing window '${displayName}' with ${cleanedParts.length} data values`
+            );
+          }
+        });
+      }
+
+      const possibleName: string = lineParts[0].substring(1).toUpperCase();
 
       if (!foundDisplay) {
         // 2. SECOND: Window creation - infer window type from command
@@ -1087,10 +1132,9 @@ export class MainWindow {
         this.closeAllDebugWindows();
 
         // STEP 4: Skip serial port close - let process cleanup handle it
-        // The Napi::Error occurs when trying to close an already-closing port
         // Safer to just remove listeners and let Node.js cleanup on exit
         if (this._serialPort) {
-          this.logConsoleMessage('[SHUTDOWN] Serial port cleanup - skipping explicit close to avoid Napi::Error');
+          this.logConsoleMessage('[SHUTDOWN] Serial port cleanup - skipping explicit close');
           this._serialPort = undefined; // Release reference
         }
 

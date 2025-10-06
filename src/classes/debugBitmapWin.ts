@@ -53,7 +53,7 @@ export interface BitmapDisplaySpec {
   explicitPackedMode?: PackedDataMode; // Explicit packed data mode from declaration (e.g., LONGS_2BIT)
   sparseColor?: number; // SPARSE directive - background color for sparse mode
   lutColors?: number[]; // LUTCOLORS directive - LUT palette colors
-  tracePattern?: number; // TRACE directive - trace pattern (0-11)
+  tracePattern?: number; // TRACE directive - trace pattern (0-15)
   rate?: number; // RATE directive - update rate (0=manual, -1=fullscreen, >0=pixel count)
   manualUpdate?: boolean; // UPDATE directive - manual update mode flag
   colorMode?: ColorMode; // Color mode from declaration (LUT1, LUT2, RGB8, etc.)
@@ -204,6 +204,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
               const y = parseInt(lineParts[++i]);
               if (!isNaN(x) && !isNaN(y)) {
                 displaySpec.position = { x, y };
+                displaySpec.hasExplicitPosition = true; // Mark that POS was explicitly set
               } else {
                 errorMessage = 'POS directive requires two numeric values';
                 isValid = false;
@@ -216,10 +217,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
             
           case 'SIZE':
             if (i + 2 < lineParts.length) {
-              const width = parseInt(lineParts[++i]);
+              const width = parseInt(lineParts[++i]);   // Pascal: SIZE width height
               const height = parseInt(lineParts[++i]);
-              if (!isNaN(width) && !isNaN(height) && 
-                  width >= 1 && width <= 2048 && 
+              if (!isNaN(width) && !isNaN(height) &&
+                  width >= 1 && width <= 2048 &&
                   height >= 1 && height <= 2048) {
                 displaySpec.size = { width, height };
               } else {
@@ -234,7 +235,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
             
           case 'DOTSIZE':
             if (i + 1 < lineParts.length) {
-              const x = parseInt(lineParts[++i]);
+              const x = parseInt(lineParts[++i]);  // Pascal: DOTSIZE x y
               if (!isNaN(x) && x >= 1) {
                 // Check if there's a second value
                 if (i + 1 < lineParts.length) {
@@ -292,10 +293,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
           case 'TRACE':
             if (i + 1 < lineParts.length) {
               const pattern = parseInt(lineParts[++i]);
-              if (!isNaN(pattern) && pattern >= 0 && pattern <= 11) {
+              if (!isNaN(pattern) && pattern >= 0 && pattern <= 15) {
                 displaySpec.tracePattern = pattern;
               } else {
-                errorMessage = 'TRACE pattern must be 0-11';
+                errorMessage = 'TRACE pattern must be 0-15';
                 isValid = false;
               }
             } else {
@@ -384,12 +385,38 @@ export class DebugBitmapWindow extends DebugWindowBase {
             };
             displaySpec.colorMode = colorModeMap[directive];
 
-            // Check if next token is a tune parameter (0-7)
-            if (i + 1 < lineParts.length && !isNaN(parseInt(lineParts[i + 1]))) {
-              const possibleTune = parseInt(lineParts[i + 1]);
-              if (possibleTune >= 0 && possibleTune <= 7) {
-                displaySpec.colorTune = possibleTune;
-                i++; // Consume tune parameter
+            // Check if next token is a tune parameter
+            // For LUMA8/RGBI8 modes, tune can be:
+            // - A number 0-7
+            // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
+            if (i + 1 < lineParts.length) {
+              const nextToken = lineParts[i + 1].toUpperCase();
+
+              // Try parsing as color name first (for LUMA/RGBI modes)
+              const colorToTune: { [key: string]: number } = {
+                'ORANGE': 0,
+                'BLUE': 1,
+                'GREEN': 2,
+                'CYAN': 3,
+                'RED': 4,
+                'MAGENTA': 5,
+                'YELLOW': 6,
+                'GRAY': 7,
+                'GREY': 7  // Alternative spelling
+              };
+
+              if (colorToTune.hasOwnProperty(nextToken)) {
+                displaySpec.colorTune = colorToTune[nextToken];
+                i++; // Consume color name
+                DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`);
+              } else if (!isNaN(parseInt(nextToken))) {
+                // Try parsing as number
+                const possibleTune = parseInt(nextToken);
+                if (possibleTune >= 0 && possibleTune <= 7) {
+                  displaySpec.colorTune = possibleTune;
+                  i++; // Consume tune parameter
+                  DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed numeric tune: ${possibleTune}`);
+                }
               }
             }
             break;
@@ -433,7 +460,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
       height: displaySpec.size?.height ?? 256,
       dotSizeX: displaySpec.dotSize?.x ?? 1,
       dotSizeY: displaySpec.dotSize?.y ?? 1,
-      rate: displaySpec.rate ?? 1, // Default: update after every pixel (real-time)
+      rate: displaySpec.rate ?? 0, // Default: auto-set based on trace pattern (Pascal default)
       rateCounter: 0,
       backgroundColor: displaySpec.backgroundColor ?? 0x000000,
       sparseMode: displaySpec.sparseColor !== undefined,
@@ -677,10 +704,23 @@ export class DebugBitmapWindow extends DebugWindowBase {
       this.initializeCanvas();
     }
 
-    // Update RATE if it's 0 (use default of 1 for real-time updates)
-    if (this.state.rate === 0) {
-      this.state.rate = 1; // Real-time: plot every pixel
-      this.logMessage(`[RATE INIT] Using default rate=1 (real-time) for tracePattern=${this.state.tracePattern}`);
+    // Handle special rate values (Pascal logic)
+    if (this.state.rate === -1) {
+      // Rate -1 means full screen update: set to width * height
+      this.state.rate = this.state.width * this.state.height;
+      this.logMessage(`[RATE INIT] rate=-1 expanded to width*height=${this.state.rate} for ${this.state.width}x${this.state.height} window`);
+    } else if (this.state.rate === 0) {
+      // Rate 0 means auto-set based on trace pattern (Pascal: SetTrace with ModifyRate=true)
+      // For horizontal scan patterns (0-3): use width
+      // For vertical scan patterns (4-7): use height
+      const basePattern = this.state.tracePattern & 0x7; // Get base pattern (0-7)
+      if (basePattern <= 3) {
+        this.state.rate = this.state.width;
+        this.logMessage(`[RATE INIT] rate=0 with horizontal trace ${this.state.tracePattern} → rate=width=${this.state.rate}`);
+      } else {
+        this.state.rate = this.state.height;
+        this.logMessage(`[RATE INIT] rate=0 with vertical trace ${this.state.tracePattern} → rate=height=${this.state.rate}`);
+      }
     } else {
       this.logMessage(`[RATE INIT] Using explicit rate=${this.state.rate} for tracePattern=${this.state.tracePattern}`);
     }
@@ -729,16 +769,33 @@ export class DebugBitmapWindow extends DebugWindowBase {
     const g = (bgColor >> 8) & 0xFF;
     const b = bgColor & 0xFF;
 
-    // Clear canvas using JavaScript
+    // Initialize offscreen canvas if needed and clear both canvases
     const clearJS = `
-      const canvas = document.getElementById('${this.bitmapCanvasId}');
-      if (canvas) {
+      (function() {
+        const canvas = document.getElementById('${this.bitmapCanvasId}');
+        if (!canvas) return;
+
+        // Create offscreen canvas if it doesn't exist (use bracket notation for hyphenated IDs)
+        const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
+        if (!window[offscreenKey]) {
+          window[offscreenKey] = document.createElement('canvas');
+          window[offscreenKey].width = ${this.state.width};
+          window[offscreenKey].height = ${this.state.height};
+        }
+
+        const offscreen = window[offscreenKey];
+        const offCtx = offscreen.getContext('2d');
+        if (offCtx) {
+          offCtx.fillStyle = 'rgb(${r}, ${g}, ${b})';
+          offCtx.fillRect(0, 0, ${this.state.width}, ${this.state.height});
+        }
+
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.fillStyle = 'rgb(${r}, ${g}, ${b})';
           ctx.fillRect(0, 0, ${this.state.width * this.state.dotSizeX}, ${this.state.height * this.state.dotSizeY});
         }
-      }
+      })();
     `;
 
     this.debugWindow.webContents.executeJavaScript(clearJS).catch((error) => {
@@ -766,15 +823,39 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
   /**
    * Update the visible canvas from offscreen canvas
+   * Pascal equivalent: Canvas.StretchDraw(Rect(0, 0, vClientWidth, vClientHeight), Bitmap[1])
    */
   private updateCanvas(): void {
-    // In the current implementation, we're drawing directly to the canvas
-    // using CanvasRenderer methods, so this is primarily used to force
-    // a refresh when in manual update mode.
-    
-    // For now, this is a no-op since we're updating the canvas
-    // directly through plotPixel/plotScaledPixel calls.
-    // If we need double-buffering in the future, we can implement it here.
+    if (!this.debugWindow) return;
+
+    const stretchJS = `
+      (function() {
+        const canvas = document.getElementById('${this.bitmapCanvasId}');
+        if (!canvas) return;
+
+        const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
+        const offscreen = window[offscreenKey];
+        if (!offscreen) return;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Disable image smoothing for pixel-perfect scaling
+          ctx.imageSmoothingEnabled = false;
+          ctx.webkitImageSmoothingEnabled = false;
+          ctx.msImageSmoothingEnabled = false;
+
+          // StretchDraw: Draw offscreen (logical bitmap) to display canvas with scaling
+          ctx.drawImage(offscreen,
+            0, 0, ${this.state.width}, ${this.state.height},
+            0, 0, ${this.state.width * this.state.dotSizeX}, ${this.state.height * this.state.dotSizeY}
+          );
+        }
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(stretchJS).catch((error) => {
+      this.logMessage(`Failed to execute StretchDraw: ${error}`);
+    });
   }
 
   /**
@@ -823,15 +904,21 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Set pixel update rate
    */
   private setRate(rate: number): void {
-    this.state.rate = Math.max(0, rate);
+    this.state.rate = rate; // Accept negative values for special handling
     this.state.rateCounter = 0;
 
-    // If rate is 0, use real-time default
-    if (this.state.rate === 0) {
-      this.state.rate = 1; // Real-time: plot every pixel
+    // Handle special rate values (Pascal logic)
+    if (this.state.rate === -1) {
+      // Rate -1 means full screen update: set to width * height
+      this.state.rate = this.state.width * this.state.height;
+      this.logMessage(`[RATE SET] rate=-1 expanded to width*height=${this.state.rate}`);
+    } else if (this.state.rate === 0) {
+      // Rate 0 means manual update mode but we use 1 for pixel processing
+      this.state.rate = 1;
+      this.logMessage(`[RATE SET] rate=0 (manual mode) using 1 for processing`);
+    } else {
+      this.logMessage(`[RATE SET] rate=${this.state.rate}, rateCounter reset to 0`);
     }
-
-    this.logMessage(`[RATE SET] rate=${this.state.rate}, rateCounter reset to 0`);
   }
 
   /**
@@ -933,10 +1020,36 @@ export class DebugBitmapWindow extends DebugWindowBase {
       this.colorTranslator.setColorMode(this.state.colorMode);
 
       // Check for tune parameter
-      if (remainingParts.length > 0 && this.isNumeric(remainingParts[0])) {
-        const tune = parseInt(remainingParts[0]) & 0x7;
-        this.state.colorTune = tune;
-        this.colorTranslator.setTune(tune);
+      // For LUMA8/RGBI8 modes, tune can be:
+      // - A number 0-7
+      // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
+      if (remainingParts.length > 0) {
+        const tuneToken = remainingParts[0].toUpperCase();
+
+        // Try parsing as color name first
+        const colorToTune: { [key: string]: number } = {
+          'ORANGE': 0,
+          'BLUE': 1,
+          'GREEN': 2,
+          'CYAN': 3,
+          'RED': 4,
+          'MAGENTA': 5,
+          'YELLOW': 6,
+          'GRAY': 7,
+          'GREY': 7  // Alternative spelling
+        };
+
+        if (colorToTune.hasOwnProperty(tuneToken)) {
+          const tune = colorToTune[tuneToken];
+          this.state.colorTune = tune;
+          this.colorTranslator.setTune(tune);
+          this.logMessage(`[COLOR MODE] Set tune from color name: ${tuneToken} -> ${tune}`);
+        } else if (this.isNumeric(remainingParts[0])) {
+          const tune = parseInt(remainingParts[0]) & 0x7;
+          this.state.colorTune = tune;
+          this.colorTranslator.setTune(tune);
+          this.logMessage(`[COLOR MODE] Set numeric tune: ${tune}`);
+        }
       }
 
       return true;
@@ -976,103 +1089,112 @@ export class DebugBitmapWindow extends DebugWindowBase {
       this.logMessage(`[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map(v => '0x'+v.toString(16)).join(', ')}]`);
 
       // Process each unpacked value
-      this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}, rateCounter=${this.state.rateCounter}`);
+      this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}`);
       for (let idx = 0; idx < unpackedValues.length; idx++) {
         const value = unpackedValues[idx];
-        // Handle rate cycling
+
+        // Increment rate counter (Pascal: Inc(vRateCount))
         this.state.rateCounter++;
-        this.logMessage(`[LOOP] Iteration ${idx+1}/${unpackedValues.length}: value=0x${value.toString(16)}, rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, condition=${this.state.rateCounter >= this.state.rate}`);
-        if (this.state.rateCounter >= this.state.rate) {
-          this.state.rateCounter = 0;
 
-          // Get current pixel position
-          const pos = this.traceProcessor.getPosition();
+        // Get current pixel position
+        const pos = this.traceProcessor.getPosition();
 
-          // Skip if sparse mode and value matches background
-          if (this.state.sparseMode && value === this.state.backgroundColor) {
-            this.traceProcessor.step();
-            continue;
-          }
-
-          // Translate color
-          const rgb24 = this.colorTranslator.translateColor(value);
-          const color = `#${rgb24.toString(16).padStart(6, '0')}`;
-          this.logMessage(`[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(16)} → ${color}`);
-
-          // Plot pixel with SPARSE mode two-layer rendering if enabled
-          if (this.debugWindow) {
-            if (this.state.sparseMode) {
-              // SPARSE MODE: Two-layer rendering with border effect
-              // Calculate center position with offset (Pascal: x := vPixelX * vDotSize + vDotSize shr 1)
-              const centerX = pos.x * this.state.dotSizeX + (this.state.dotSizeX >> 1);
-              const centerY = pos.y * this.state.dotSizeY + (this.state.dotSizeY >> 1);
-
-              // Convert border color to hex string
-              const borderRgb24 = this.state.backgroundColor & 0xFFFFFF;
-              const borderColor = `#${borderRgb24.toString(16).padStart(6, '0')}`;
-
-              // LAYER 1: Draw outer rectangle (border) at 100% DOTSIZE
-              const outerX = centerX - (this.state.dotSizeX >> 1);
-              const outerY = centerY - (this.state.dotSizeY >> 1);
-              const outerCode = `
-                const canvas = document.getElementById('${this.bitmapCanvasId}');
-                if (canvas) {
-                  const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                    ctx.fillStyle = '${borderColor}';
-                    ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
-                  }
-                }
-              `;
-              this.debugWindow.webContents.executeJavaScript(outerCode)
-                .catch(err => this.logMessage(`ERROR plotting outer rect: ${err}`));
-
-              // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
-              // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
-              const innerW = this.state.dotSizeX - (this.state.dotSizeX >> 2);
-              const innerH = this.state.dotSizeY - (this.state.dotSizeY >> 2);
-              const innerX = centerX - (innerW >> 1);
-              const innerY = centerY - (innerH >> 1);
-              const innerCode = `
-                const canvas = document.getElementById('${this.bitmapCanvasId}');
-                if (canvas) {
-                  const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                    ctx.fillStyle = '${color}';
-                    ctx.fillRect(${innerX}, ${innerY}, ${innerW}, ${innerH});
-                  }
-                }
-              `;
-              this.debugWindow.webContents.executeJavaScript(innerCode)
-                .catch(err => this.logMessage(`ERROR plotting inner rect: ${err}`));
-            } else {
-              // NORMAL MODE: Standard pixel plotting
-              if (this.state.dotSizeX === 1 && this.state.dotSizeY === 1) {
-                this.debugWindow.webContents.executeJavaScript(
-                  this.canvasRenderer.plotPixel(this.bitmapCanvasId, pos.x, pos.y, color)
-                ).catch(err => this.logMessage(`ERROR plotting pixel: ${err}`));
-              } else {
-                const plotCode = this.canvasRenderer.plotScaledPixel(
-                  this.bitmapCanvasId,
-                  pos.x,
-                  pos.y,
-                  color,
-                  this.state.dotSizeX,
-                  this.state.dotSizeY
-                );
-                this.logMessage(`[PLOT] Executing: canvas='${this.bitmapCanvasId}' pos=(${pos.x},${pos.y}) color=${color} dot=(${this.state.dotSizeX},${this.state.dotSizeY})`);
-                this.debugWindow.webContents.executeJavaScript(plotCode)
-                  .catch(err => {
-                    this.logMessage(`ERROR plotting scaled pixel: ${err}`);
-                    this.logMessage(`Failed code: ${plotCode.substring(0, 200)}...`);
-                  });
-              }
-            }
-          }
-
-          // Step to next position
+        // Skip if sparse mode and value matches background
+        if (this.state.sparseMode && value === this.state.backgroundColor) {
           this.traceProcessor.step();
+          continue;
         }
+
+        // Translate color
+        const rgb24 = this.colorTranslator.translateColor(value);
+        const color = `#${rgb24.toString(16).padStart(6, '0')}`;
+        this.logMessage(`[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(16)} → ${color}`);
+
+        // Plot pixel with SPARSE mode two-layer rendering if enabled
+        if (this.debugWindow) {
+          if (this.state.sparseMode) {
+            // SPARSE MODE: Two-layer rendering with border effect
+            // Calculate center position with offset (Pascal: x := vPixelX * vDotSize + vDotSize shr 1)
+            const centerX = pos.x * this.state.dotSizeX + (this.state.dotSizeX >> 1);
+            const centerY = pos.y * this.state.dotSizeY + (this.state.dotSizeY >> 1);
+
+            // Convert border color to hex string
+            const borderRgb24 = this.state.backgroundColor & 0xFFFFFF;
+            const borderColor = `#${borderRgb24.toString(16).padStart(6, '0')}`;
+
+            // LAYER 1: Draw outer rectangle (border) at 100% DOTSIZE
+            const outerX = centerX - (this.state.dotSizeX >> 1);
+            const outerY = centerY - (this.state.dotSizeY >> 1);
+            const outerCode = `
+              const canvas = document.getElementById('${this.bitmapCanvasId}');
+              if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.fillStyle = '${borderColor}';
+                  ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
+                }
+              }
+            `;
+            this.debugWindow.webContents.executeJavaScript(outerCode)
+              .catch(err => this.logMessage(`ERROR plotting outer rect: ${err}`));
+
+            // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
+            // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
+            const innerW = this.state.dotSizeX - (this.state.dotSizeX >> 2);
+            const innerH = this.state.dotSizeY - (this.state.dotSizeY >> 2);
+            const innerX = centerX - (innerW >> 1);
+            const innerY = centerY - (innerH >> 1);
+            const innerCode = `
+              const canvas = document.getElementById('${this.bitmapCanvasId}');
+              if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.fillStyle = '${color}';
+                  ctx.fillRect(${innerX}, ${innerY}, ${innerW}, ${innerH});
+                }
+              }
+            `;
+            this.debugWindow.webContents.executeJavaScript(innerCode)
+              .catch(err => this.logMessage(`ERROR plotting inner rect: ${err}`));
+          } else {
+            // NORMAL MODE: Plot to offscreen bitmap at logical coordinates
+            // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]
+            const plotToOffscreenJS = `
+              (function() {
+                const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
+                const offscreen = window[offscreenKey];
+                if (offscreen) {
+                  const offCtx = offscreen.getContext('2d');
+                  if (offCtx) {
+                    offCtx.fillStyle = '${color}';
+                    offCtx.fillRect(${pos.x}, ${pos.y}, 1, 1);
+                  }
+                }
+              })();
+            `;
+
+            this.logMessage(`[PLOT] Offscreen: pos=(${pos.x},${pos.y}) color=${color} on ${this.state.width}x${this.state.height} bitmap`);
+            this.debugWindow.webContents.executeJavaScript(plotToOffscreenJS)
+              .catch(err => {
+                this.logMessage(`ERROR plotting to offscreen: ${err}`);
+              });
+          }
+        }
+
+        // Step to next position
+        this.traceProcessor.step();
+      }
+    }
+
+    // Check if we should update the display (Pascal: RateCycle)
+    // Rate controls how often the display is updated
+    if (this.state.rateCounter >= this.state.rate) {
+      this.state.rateCounter = 0;
+
+      // Update display canvas with stretched bitmap (Pascal: BitmapToCanvas)
+      // Only do this in NORMAL mode (not SPARSE mode which draws directly to display canvas)
+      if (!this.state.sparseMode) {
+        this.updateCanvas();
       }
     }
   }
@@ -1101,7 +1223,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     let mode: ePackedDataMode;
     let bitsPerSample: number;
     let valueSize: ePackedDataWidth;
-    
+
     switch (this.state.colorMode) {
       case ColorMode.LUT1:
         mode = ePackedDataMode.PDM_LONGS_1BIT;
@@ -1129,17 +1251,20 @@ export class DebugBitmapWindow extends DebugWindowBase {
       case ColorMode.RGBI8W:
       case ColorMode.RGBI8X:
       case ColorMode.RGB8:
-        mode = ePackedDataMode.PDM_LONGS_8BIT;
+        // Default for 8-bit modes: no packing (each value is one 8-bit sample)
+        // This matches Pascal's SetPack(0) default behavior
+        mode = ePackedDataMode.PDM_UNKNOWN;
         bitsPerSample = 8;
-        valueSize = ePackedDataWidth.PDW_LONGS;
+        valueSize = ePackedDataWidth.PDW_BYTES;
         break;
       case ColorMode.HSV16:
       case ColorMode.HSV16W:
       case ColorMode.HSV16X:
       case ColorMode.RGB16:
-        mode = ePackedDataMode.PDM_LONGS_16BIT;
+        // Default for 16-bit modes: no packing (each value is one 16-bit sample)
+        mode = ePackedDataMode.PDM_UNKNOWN;
         bitsPerSample = 16;
-        valueSize = ePackedDataWidth.PDW_LONGS;
+        valueSize = ePackedDataWidth.PDW_WORDS;
         break;
       case ColorMode.RGB24:
         mode = ePackedDataMode.PDM_UNKNOWN; // RGB24 as 32-bit (no packing)
@@ -1196,7 +1321,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
         const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
         const debugLogger = DebugLoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        const titlePart = this.windowTitle ? ` TITLE '${this.windowTitle}'` : '';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}'${titlePart} POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
@@ -1215,8 +1341,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
       }
     });
     
-    // Register window with WindowPlacer for position tracking
-    if (this.debugWindow) {
+    // Register window with WindowPlacer for position tracking ONLY if no explicit position
+    // This prevents windowPlacer from overriding explicit POS directives
+    if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`bitmap-${this.idString}`, this.debugWindow);
     }

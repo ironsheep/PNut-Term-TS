@@ -185,3 +185,5 @@ tests/recordings/catalog.json
 /extracted-icons/app-icon-set
 /extracted-icons
 EXT-REF/
+/test-results
+context-keys-to-restore.txt
