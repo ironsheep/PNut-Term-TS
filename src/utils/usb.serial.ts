@@ -63,7 +63,8 @@ export class UsbSerial extends EventEmitter {
       dataBits: 8,
       stopBits: 1,
       parity: 'none',
-      autoOpen: false
+      autoOpen: false,
+      highWaterMark: 1024 * 1024  // 1MB buffer (up from 16KB default) to prevent USB data loss
     });
     // Open errors will be emitted as an error event
     this._serialPort.on('error', (err) => this.handleSerialError(err.message));

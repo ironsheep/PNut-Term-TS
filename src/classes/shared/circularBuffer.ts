@@ -270,10 +270,21 @@ export class CircularBuffer extends EventEmitter {
       return false;
     }
 
-    // Copy data, handling wrap-around
-    for (let i = 0; i < dataLength; i++) {
-      this.buffer[this.tail] = data[i];
-      this.tail = (this.tail + 1) % this.bufferSize;
+    // Copy data using bulk operations for speed and safety
+    // Split into two segments if wrap-around occurs
+    const spaceAtEnd = this.bufferSize - this.tail;
+
+    if (dataLength <= spaceAtEnd) {
+      // No wrap-around: single copy
+      this.buffer.set(data, this.tail);
+      this.tail = (this.tail + dataLength) % this.bufferSize;
+    } else {
+      // Wrap-around: two copies
+      // First: copy to end of buffer
+      this.buffer.set(data.subarray(0, spaceAtEnd), this.tail);
+      // Second: wrap around and copy remainder
+      this.buffer.set(data.subarray(spaceAtEnd), 0);
+      this.tail = dataLength - spaceAtEnd;
     }
 
     this.isEmpty = false;
@@ -441,6 +452,35 @@ export class CircularBuffer extends EventEmitter {
    */
   public getCurrentPosition(): number {
     return this.head;
+  }
+
+  /**
+   * Get current tail (write) position for tracking
+   */
+  public getTailPosition(): number {
+    return this.tail;
+  }
+
+  /**
+   * Peek at bytes at a specific absolute offset (for logging)
+   * Does not consume bytes or move head pointer
+   * Returns null if offset/length would read invalid data
+   */
+  public peekAtOffset(offset: number, length: number): Uint8Array | null {
+    if (offset < 0 || offset >= this.bufferSize || length <= 0) {
+      return null;
+    }
+
+    // Create result array
+    const result = new Uint8Array(length);
+
+    // Read bytes from buffer (may wrap around)
+    for (let i = 0; i < length; i++) {
+      const pos = (offset + i) % this.bufferSize;
+      result[i] = this.buffer[pos];
+    }
+
+    return result;
   }
 
   /**
