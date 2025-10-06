@@ -3,7 +3,7 @@
  */
 
 import { MainWindow } from '../src/classes/mainWindow';
-import { DebugLoggerWindow } from '../src/classes/debugLoggerWin';
+import { LoggerWindow } from '../src/classes/loggerWin';
 import { Context } from '../src/utils/context';
 import { WindowRouter } from '../src/classes/shared/windowRouter';
 
@@ -135,7 +135,7 @@ describe('Debug Logger Routing', () => {
 
   afterEach(() => {
     // Clean up singleton
-    (DebugLoggerWindow as any).instance = null;
+    (LoggerWindow as any).instance = null;
     // Clean up router if it has cleanup method
     const router = WindowRouter.getInstance();
     if (typeof (router as any).cleanup === 'function') {
@@ -153,7 +153,7 @@ describe('Debug Logger Routing', () => {
       (mainWindow as any).processRxQueue();
       
       // Verify Debug Logger was created
-      expect((mainWindow as any).debugLoggerWindow).toBeDefined();
+      expect((mainWindow as any).loggerWindow).toBeDefined();
       expect((mainWindow as any).displays['DebugLogger']).toBeDefined();
     });
 
@@ -175,7 +175,7 @@ describe('Debug Logger Routing', () => {
       });
       
       // Get the logger instance
-      const logger = (mainWindow as any).debugLoggerWindow;
+      const logger = (mainWindow as any).loggerWindow;
       expect(logger).toBeDefined();
       
       // Check that appendLog was called for each message
@@ -194,10 +194,10 @@ describe('Debug Logger Routing', () => {
       (mainWindow as any).processRxQueue();
       
       // Verify Debug Logger was created
-      expect((mainWindow as any).debugLoggerWindow).toBeDefined();
+      expect((mainWindow as any).loggerWindow).toBeDefined();
       
       // Verify message was routed
-      const logger = (mainWindow as any).debugLoggerWindow;
+      const logger = (mainWindow as any).loggerWindow;
       const appendLogSpy = jest.spyOn(logger, 'appendLog');
       
       // Process another INIT message
@@ -222,7 +222,7 @@ describe('Debug Logger Routing', () => {
       );
       
       // Verify message still went to logger (without command)
-      const logger = (mainWindow as any).debugLoggerWindow;
+      const logger = (mainWindow as any).loggerWindow;
       expect(logger).toBeDefined();
     });
 
@@ -240,7 +240,7 @@ describe('Debug Logger Routing', () => {
       expect(appendLogSpy).toHaveBeenCalledWith(regularMessage);
       
       // Should NOT create Debug Logger
-      expect((mainWindow as any).debugLoggerWindow).toBeUndefined();
+      expect((mainWindow as any).loggerWindow).toBeUndefined();
     });
 
     it('should handle rapid Cog messages efficiently', () => {
@@ -262,7 +262,7 @@ describe('Debug Logger Routing', () => {
       expect(elapsed).toBeLessThan(100);
       
       // Logger should be created
-      const logger = (mainWindow as any).debugLoggerWindow;
+      const logger = (mainWindow as any).loggerWindow;
       expect(logger).toBeDefined();
     });
   });
@@ -271,7 +271,7 @@ describe('Debug Logger Routing', () => {
     it('should handle Debug Logger window close', () => {
       // Create logger
       (mainWindow as any).processRxData('Cog0  Test message');
-      const logger = (mainWindow as any).debugLoggerWindow;
+      const logger = (mainWindow as any).loggerWindow;
       expect(logger).toBeDefined();
       
       // Simulate window close
@@ -279,20 +279,20 @@ describe('Debug Logger Routing', () => {
       
       // Should be removed from displays
       expect((mainWindow as any).displays['DebugLogger']).toBeUndefined();
-      expect((mainWindow as any).debugLoggerWindow).toBeNull();
+      expect((mainWindow as any).loggerWindow).toBeNull();
     });
 
     it('should recreate Debug Logger if closed and new Cog message arrives', () => {
       // Create and close
       (mainWindow as any).processRxData('Cog0  First message');
-      const firstLogger = (mainWindow as any).debugLoggerWindow;
+      const firstLogger = (mainWindow as any).loggerWindow;
       firstLogger.emit('close');
       
       // Send new Cog message
       (mainWindow as any).processRxData('Cog1  Second message');
       
       // Should have new logger
-      const secondLogger = (mainWindow as any).debugLoggerWindow;
+      const secondLogger = (mainWindow as any).loggerWindow;
       expect(secondLogger).toBeDefined();
       expect(secondLogger).not.toBe(firstLogger);
     });

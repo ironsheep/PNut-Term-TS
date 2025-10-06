@@ -42,8 +42,8 @@ import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
 import { DebugBitmapWindow } from './debugBitmapWin';
 import { DebugMidiWindow } from './debugMidiWin';
-import { DebugLoggerWindow } from './debugLoggerWin';
-import { DebugCOGWindow } from './debugCOGWindow';
+import { LoggerWindow } from './loggerWin';
+import { LoggerCOGWindow } from './loggerCOGWin';
 import { DebugDebuggerWindow } from './debugDebuggerWin';
 import { WindowRouter } from './shared/windowRouter';
 import { SerialMessageProcessor } from './shared/serialMessageProcessor';
@@ -121,7 +121,7 @@ export class MainWindow {
     height: 600
   };
   private displays: { [key: string]: DebugWindowBase } = {};
-  private debugLoggerWindow: DebugLoggerWindow | null = null;
+  private debugLoggerWindow: LoggerWindow | null = null;
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private immediateLog: boolean = true;
   private isShuttingDown: boolean = false; // Flag to prevent serial processing during shutdown
@@ -462,6 +462,9 @@ export class MainWindow {
    * MIGRATED: Complete functionality from handleDebugCommand for performance
    */
   private handleWindowCommand(message: ExtractedMessage | PooledMessage): void {
+    // Valid display type keywords for window creation
+    const VALID_DISPLAY_TYPES = ['SCOPE', 'SCOPE_XY', 'SCOPEXY', 'LOGIC', 'TERM', 'PLOT', 'BITMAP', 'MIDI', 'FFT', 'SPECTRO'];
+
     try {
       // Extract command data from two-tier message (stay in new system, don't convert back)
       const data = new TextDecoder().decode(message.data);
@@ -479,21 +482,38 @@ export class MainWindow {
         return;
       }
 
-      // 1. FIRST: Check if this is for existing window(s) - support multi-window routing
-      // Extract window names by checking against registered displays
-      const targetWindows: string[] = [];
-      let dataStartIndex = 0;
+      // Extract first token after backtick
+      const firstToken = lineParts[0].substring(1).toUpperCase();
 
-      // Check each part starting from lineParts[0] (which starts with backtick)
-      // First part has backtick: `a -> extract 'a'
-      const firstWindow = lineParts[0].substring(1).toUpperCase();
-      const displayNames = Object.keys(this.displays).map(name => name.toUpperCase());
+      // STEP 1: Check if this is a window creation command (display type keyword)
+      const isCreationCommand = VALID_DISPLAY_TYPES.some(type =>
+        firstToken === type || firstToken.endsWith(type)
+      );
 
-      if (displayNames.includes(firstWindow)) {
-        targetWindows.push(firstWindow);
+      if (isCreationCommand) {
+        // This is a window CREATION command - proceed to creation logic below
+        this.logConsoleMessage(`[TWO-TIER] Window creation command detected: ${firstToken}`);
+        // Fall through to window creation logic at line 539+
+      } else {
+        // This is a window UPDATE command - must have valid window name(s)
+        const displayNames = Object.keys(this.displays).map(name => name.toUpperCase());
+        const targetWindows: string[] = [];
+        let dataStartIndex = 0;
+
+        // STEP 2: First token MUST be a valid existing window name
+        if (!displayNames.includes(firstToken)) {
+          // ERROR: Window not found
+          const errorMsg = `ERROR: Window update failed - window '${firstToken}' not found (no preceding creation command)`;
+          this.logConsoleMessage(`[TWO-TIER] ${errorMsg}`);
+          this.logMessage(errorMsg);
+          return; // Stop processing - this is a protocol error
+        }
+
+        // First window found
+        targetWindows.push(firstToken);
         dataStartIndex = 1;
 
-        // Check remaining parts for additional window names
+        // STEP 3: Check remaining tokens for additional window names (multi-window routing)
         for (let i = 1; i < lineParts.length; i++) {
           const part = lineParts[i].toUpperCase();
           if (displayNames.includes(part)) {
@@ -504,16 +524,17 @@ export class MainWindow {
             break;
           }
         }
-      }
 
-      let foundDisplay: boolean = false;
+        // STEP 4: Route message to target windows
+        this.logConsoleMessage(
+          `[TWO-TIER] Routing update to ${targetWindows.length} window(s): [${targetWindows.join(', ')}], data starts at index ${dataStartIndex}`
+        );
 
-      if (targetWindows.length > 0) {
-        // Extract data portion (everything after window names)
+        // Extract data portion ONCE (window names were only for routing, windows don't need them)
+        // All windows receive same dataParts reference (zero copying)
         const dataParts = lineParts.slice(dataStartIndex);
-        const cleanedParts = dataParts.map((part) => part.replace(/,/g, ''));
 
-        // Route to each target window with ONLY the data portion
+        // Route SAME dataParts reference to all windows
         targetWindows.forEach(windowName => {
           const displayEntry = Object.entries(this.displays).find(
             ([name]) => name.toUpperCase() === windowName
@@ -523,46 +544,50 @@ export class MainWindow {
             const [displayName, window] = displayEntry;
             const debugWindow = window as DebugWindowBase;
 
-            // Prepend window name back to data for window's parser
-            const windowData = [displayName, ...cleanedParts];
-            debugWindow.updateContent(windowData);
-            foundDisplay = true;
+            // Pass same dataParts reference to all windows (no copying)
+            debugWindow.updateContent(dataParts);
             this.logConsoleMessage(
-              `[TWO-TIER] Routed to existing window '${displayName}' with ${cleanedParts.length} data values`
+              `[TWO-TIER] Routed to window '${displayName}' with data: [${dataParts.join(', ')}]`
             );
           }
         });
+
+        // Fall through to finally block for single pooled message release
+        return;
       }
 
-      const possibleName: string = lineParts[0].substring(1).toUpperCase();
+      // Window creation logic starts here (only reached if isCreationCommand = true)
+      const possibleName: string = firstToken;
+      let foundDisplay: boolean = false;
 
-      if (!foundDisplay) {
-        // 2. SECOND: Window creation - infer window type from command
-        let windowType = possibleName;
+      // Infer window type from command
+      let windowType = possibleName;
 
-        // Check if it's already a window type or ends with a window type
-        if (possibleName === 'LOGIC' || possibleName.endsWith('LOGIC')) {
-          windowType = 'LOGIC';
-        } else if (possibleName === 'TERM' || possibleName.endsWith('TERM')) {
-          windowType = 'TERM';
-        } else if (possibleName === 'SCOPE' || possibleName.endsWith('SCOPE')) {
-          windowType = 'SCOPE';
-        } else if (possibleName === 'SCOPE_XY' || possibleName.endsWith('SCOPEXY')) {
-          windowType = 'SCOPE_XY';
-        } else if (possibleName === 'PLOT' || possibleName.endsWith('PLOT')) {
-          windowType = 'PLOT';
-        } else if (possibleName === 'BITMAP' || possibleName.endsWith('BITMAP')) {
-          windowType = 'BITMAP';
-        } else if (possibleName === 'MIDI' || possibleName.endsWith('MIDI')) {
-          windowType = 'MIDI';
-        }
+      // Check if it's already a window type or ends with a window type
+      if (possibleName === 'LOGIC' || possibleName.endsWith('LOGIC')) {
+        windowType = 'LOGIC';
+      } else if (possibleName === 'TERM' || possibleName.endsWith('TERM')) {
+        windowType = 'TERM';
+      } else if (possibleName === 'SCOPE' || possibleName.endsWith('SCOPE')) {
+        windowType = 'SCOPE';
+      } else if (possibleName === 'SCOPE_XY' || possibleName.endsWith('SCOPEXY')) {
+        windowType = 'SCOPE_XY';
+      } else if (possibleName === 'PLOT' || possibleName.endsWith('PLOT')) {
+        windowType = 'PLOT';
+      } else if (possibleName === 'BITMAP' || possibleName.endsWith('BITMAP')) {
+        windowType = 'BITMAP';
+      } else if (possibleName === 'MIDI' || possibleName.endsWith('MIDI')) {
+        windowType = 'MIDI';
+      } else if (possibleName === 'FFT' || possibleName.endsWith('FFT')) {
+        windowType = 'FFT';
+      }
 
-        this.logConsoleMessage(
-          `[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`
-        );
+      this.logConsoleMessage(
+        `[TWO-TIER] Window creation - possibleName=[${possibleName}], windowType=[${windowType}]`
+      );
 
-        // 3. THIRD: Create new window based on type
-        switch (windowType) {
+      // Create new window based on type
+      switch (windowType) {
           case this.DISPLAY_SCOPE: {
             this.logConsoleMessage(`[TWO-TIER] Creating SCOPE window for: ${data}`);
             const [isValid, scopeSpec] = DebugScopeWindow.parseScopeDeclaration(lineParts);
@@ -704,7 +729,6 @@ export class MainWindow {
             this.logMessage(`ERROR: display [${windowType}] not supported!`);
             break;
         }
-      }
 
       // 4. FOURTH: Update logging behavior if window was found/created
       if (foundDisplay) {
@@ -838,7 +862,7 @@ export class MainWindow {
     const windowId = `COG-${cogId}`;
 
     // Create COG window using the refactored class
-    const cogWindow = new DebugCOGWindow(cogId, {
+    const cogWindow = new LoggerCOGWindow(cogId, {
       context: this.context,
       windowId: windowId
     });
@@ -929,7 +953,7 @@ export class MainWindow {
       const windowKey = `COG-${cogId}`;
       const cogWindow = this.displays[windowKey];
 
-      if (cogWindow && cogWindow instanceof DebugCOGWindow) {
+      if (cogWindow && cogWindow instanceof LoggerCOGWindow) {
         cogWindow.close();
         delete this.displays[windowKey];
         // Don't manually unregister - the window will unregister itself when closed
@@ -962,7 +986,7 @@ export class MainWindow {
 
     // Get the COG window
     const windowKey = `COG-${cogId}`;
-    const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+    const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
 
     if (cogWindow) {
       // Export is now handled internally by the COG window
@@ -978,7 +1002,7 @@ export class MainWindow {
     if (!this.debugLoggerWindow) {
       // Auto-create debug logger if needed
       try {
-        this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
+        this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         this.displays['DebugLogger'] = this.debugLoggerWindow;
 
         this.debugLoggerWindow.on('close', () => {
@@ -1465,7 +1489,7 @@ export class MainWindow {
   /**
    * Create Debug Logger Window immediately on startup for auto-logging
    */
-  private createDebugLoggerWindow(): void {
+  private createLoggerWindow(): void {
     if (this.debugLoggerWindow) {
       this.logConsoleMessage('[DEBUG LOGGER] Debug Logger already exists, skipping creation');
       return;
@@ -1473,7 +1497,7 @@ export class MainWindow {
 
     this.logConsoleMessage('[DEBUG LOGGER] Creating debug logger window for auto-logging...');
     try {
-      this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
+      this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
       this.displays['DebugLogger'] = this.debugLoggerWindow;
 
@@ -1558,7 +1582,7 @@ export class MainWindow {
     // Just reset their internal state for new session
     for (let cogId = 0; cogId < 8; cogId++) {
       const windowKey = `COG-${cogId}`;
-      const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+      const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
       if (cogWindow && cogWindow.isOpen()) {
         this.logConsoleMessage(`[P2 SYNC] 🔄 Resetting ${windowKey} window state`);
         cogWindow.handleDTRReset();
@@ -1792,7 +1816,7 @@ export class MainWindow {
     if (!this.debugLoggerWindow) {
       this.logConsoleMessage('[DEBUG LOGGER] Creating debug logger window...');
       try {
-        this.debugLoggerWindow = DebugLoggerWindow.getInstance(this.context);
+        this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
         this.displays['DebugLogger'] = this.debugLoggerWindow;
 
@@ -3277,7 +3301,7 @@ export class MainWindow {
 
       // CRITICAL: Auto-create Debug Logger Window immediately on startup
       // This ensures logging starts immediately, not waiting for first message
-      this.createDebugLoggerWindow();
+      this.createLoggerWindow();
 
       // Load terminal mode setting after window is ready
       this.loadTerminalMode();
@@ -5289,7 +5313,7 @@ export class MainWindow {
           // Broadcast DTR reset to all active COG windows
           for (let cogId = 0; cogId < 8; cogId++) {
             const windowKey = `COG-${cogId}`;
-            const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+            const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
             if (cogWindow && cogWindow.isOpen()) {
               cogWindow.handleDTRReset();
             }
@@ -5364,7 +5388,7 @@ export class MainWindow {
           // Broadcast RTS reset to all active COG windows (same as DTR)
           for (let cogId = 0; cogId < 8; cogId++) {
             const windowKey = `COG-${cogId}`;
-            const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+            const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
             if (cogWindow && cogWindow.isOpen()) {
               cogWindow.handleDTRReset(); // Same handler for both DTR and RTS
             }
@@ -5592,7 +5616,7 @@ export class MainWindow {
             // Notify all COG windows about the download
             for (let cogId = 0; cogId < 8; cogId++) {
               const windowKey = `COG-${cogId}`;
-              const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+              const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
               if (cogWindow && cogWindow.isOpen()) {
                 cogWindow.handleDownload();
               }
@@ -6276,7 +6300,7 @@ export class MainWindow {
         // Notify all COG windows about the reset
         for (let cogId = 0; cogId < 8; cogId++) {
           const windowKey = `COG-${cogId}`;
-          const cogWindow = this.displays[windowKey] as unknown as DebugCOGWindow;
+          const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
           if (cogWindow) {
             if (useRTS) {
               cogWindow.handleDownload(); // Use download handler for RTS

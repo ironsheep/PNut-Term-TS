@@ -1,6 +1,6 @@
 /** @format */
 
-// src/classes/debugLoggerWin.ts
+// src/classes/loggerWin.ts
 
 import { BrowserWindow, ipcMain } from 'electron';
 import { Context } from '../utils/context';
@@ -48,7 +48,7 @@ interface PerformanceWarning {
  * - Window management beyond its own singleton instance
  * - Terminal output display (MainWindow handles this)
  */
-export class DebugLoggerWindow extends DebugWindowBase {
+export class LoggerWindow extends DebugWindowBase {
   /**
    * Get the canvas ID for this window (required by base class)
    */
@@ -57,7 +57,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
   }
 
 
-  private static instance: DebugLoggerWindow | null = null;
+  private static instance: LoggerWindow | null = null;
   private logFile: fs.WriteStream | null = null;
   private logFilePath: string | null = null;
   private cogsAreShowing: boolean = false;
@@ -109,7 +109,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     super(context, 'DebugLogger', 'logger');
     
     // Default to green theme
-    this.theme = DebugLoggerWindow.THEMES.green;
+    this.theme = LoggerWindow.THEMES.green;
     
     // Create the window but DON'T show it yet
     this.debugWindow = this.createDebugWindow();
@@ -155,11 +155,11 @@ export class DebugLoggerWindow extends DebugWindowBase {
   /**
    * Get or create the singleton instance
    */
-  public static getInstance(context: Context): DebugLoggerWindow {
-    if (!DebugLoggerWindow.instance) {
-      DebugLoggerWindow.instance = new DebugLoggerWindow(context);
+  public static getInstance(context: Context): LoggerWindow {
+    if (!LoggerWindow.instance) {
+      LoggerWindow.instance = new LoggerWindow(context);
     }
-    return DebugLoggerWindow.instance;
+    return LoggerWindow.instance;
   }
 
   /**
@@ -373,7 +373,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
       }
       
       // Clear singleton instance
-      DebugLoggerWindow.instance = null;
+      LoggerWindow.instance = null;
       
       // Mark window as null to prevent further operations
       this.debugWindow = null;
@@ -1171,7 +1171,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
    * Change the theme
    */
   public setTheme(themeName: 'green' | 'amber'): void {
-    this.theme = DebugLoggerWindow.THEMES[themeName] || DebugLoggerWindow.THEMES.green;
+    this.theme = LoggerWindow.THEMES[themeName] || LoggerWindow.THEMES.green;
     if (this.debugWindow) {
       this.debugWindow.webContents.send('set-theme', this.theme);
     }
@@ -1391,7 +1391,7 @@ export class DebugLoggerWindow extends DebugWindowBase {
     }
     
     // Clear singleton instance
-    DebugLoggerWindow.instance = null;
+    LoggerWindow.instance = null;
     
     // Clean up the window - check if it's destroyed first
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {

@@ -637,9 +637,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
    */
   protected processMessageImmediate(lineParts: string[]): void {
     // Window is now created in constructor, so just process the message
-    const unparsedCommand = lineParts.join(' ');
-    this.logMessage(`processMessageImmediate: Processing [${unparsedCommand}]`);
-    this.handleData(unparsedCommand);
+    this.logMessage(`processMessageImmediate: Processing ${lineParts.length} elements: [${lineParts.join(' ')}]`);
+    this.handleData(lineParts);
   }
 
   private parseConfiguration(lineParts: string[]): void {
@@ -882,10 +881,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     return modeMap[modeStr] || null;
   }
 
-  protected handleData(data: string): void {
-    const elements = data.trim().split(/\s+/);
-    this.logMessage(`handleData: Processing ${elements.length} elements: ${data.substring(0, 50)}...`);
-    
+  protected handleData(elements: string[]): void {
+    this.logMessage(`handleData: Processing ${elements.length} elements`);
+
     for (const element of elements) {
       const upperElement = element.toUpperCase();
 

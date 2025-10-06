@@ -935,15 +935,15 @@ export class DebugFFTWindow extends DebugWindowBase {
    */
   protected processMessageImmediate(lineParts: string[]): void {
     const unparsedCommand = lineParts.join(' ');
-    
-    // Skip the display name (first part)
-    if (lineParts.length < 2) {
+
+    // Window name already stripped by mainWindow routing
+    if (lineParts.length < 1) {
       this.logMessage(`No data to process in: ${unparsedCommand}`);
       return;
     }
-    
-    // Process from index 1 onwards (after display name)
-    for (let i = 1; i < lineParts.length; i++) {
+
+    // Process all elements
+    for (let i = 0; i < lineParts.length; i++) {
       const part = lineParts[i];
       
       // Check for commands

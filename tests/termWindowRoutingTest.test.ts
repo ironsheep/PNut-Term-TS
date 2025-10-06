@@ -4,7 +4,7 @@ import { Context } from '../src/utils/context';
 import { WindowRouter } from '../src/classes/shared/windowRouter';
 import { MessagePool } from '../src/classes/shared/messagePool';
 import { MessageExtractor } from '../src/classes/shared/messageExtractor';
-import { DebugLoggerWindow } from '../src/classes/debugLoggerWin';
+import { LoggerWindow } from '../src/classes/loggerWin';
 import { DebugTermWindow } from '../src/classes/debugTermWin';
 import { CircularBuffer } from '../src/classes/shared/circularBuffer';
 import { DynamicQueue } from '../src/classes/shared/dynamicQueue';
@@ -25,7 +25,7 @@ describe('TERM Window Message Routing and Pool Management', () => {
   let windowRouter: WindowRouter;
   let messagePool: MessagePool;
   let messageExtractor: MessageExtractor;
-  let debugLogger: DebugLoggerWindow | null = null;
+  let debugLogger: LoggerWindow | null = null;
   let termWindow: DebugTermWindow | null = null;
 
   // Track message pool allocations  

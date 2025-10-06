@@ -1,6 +1,6 @@
 /** @format */
 
-// src/classes/debugCOGWindow.ts
+// src/classes/loggerCOGWin.ts
 
 import { BrowserWindow, ipcMain, dialog } from 'electron';
 import { EventEmitter } from 'events';
@@ -36,7 +36,7 @@ export interface COGTheme {
  * - Serial data parsing
  * - Managing other COG windows
  */
-export class DebugCOGWindow extends DebugWindowBase {
+export class LoggerCOGWindow extends DebugWindowBase {
   private cogId: number;
   private theme: COGTheme;
 
@@ -97,7 +97,7 @@ export class DebugCOGWindow extends DebugWindowBase {
     console.log(`[COG${cogId}] COG window created and initializing`);
 
     // Start with dormant theme
-    this.theme = DebugCOGWindow.THEMES.dormant;
+    this.theme = LoggerCOGWindow.THEMES.dormant;
 
     // Load preferences
     this.loadPreferences();
@@ -602,7 +602,7 @@ export class DebugCOGWindow extends DebugWindowBase {
    * Switch window to active theme
    */
   private switchToActiveTheme(): void {
-    this.theme = DebugCOGWindow.THEMES.active;
+    this.theme = LoggerCOGWindow.THEMES.active;
     // Theme switch happens in the renderer process based on first message
   }
 

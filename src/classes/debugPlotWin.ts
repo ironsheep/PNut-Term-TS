@@ -1255,11 +1255,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
   protected processMessageImmediate(lineParts: string[]): void {
     // For LUT commands, we need synchronous execution to match Pascal behavior
-    const commandParts = lineParts.slice(1); // Remove display name prefix
-    const commandString = commandParts.join(' ');
+    // Window name was already stripped by mainWindow routing
+    const commandString = lineParts.join(' ');
 
     // Check if this is a LUT command that needs synchronous processing
-    const firstToken = commandParts[0]?.toUpperCase();
+    const firstToken = lineParts[0]?.toUpperCase();
     // Also check if any part contains LUTCOLORS (could be in compound)
     const hasLutColors = commandString.toUpperCase().includes('LUTCOLORS');
     if (firstToken === 'LUT' || firstToken === 'LUTCOLORS' || hasLutColors) {
@@ -1310,14 +1310,14 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
     // First, let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    const commandParts = lineParts.slice(1); // Remove display name prefix
-    if (await this.handleCommonCommand(commandParts)) {
-      this.logMessage(`Base class handled common command: ${commandParts[0]}`);
+    // Window name was already stripped by mainWindow routing
+    if (await this.handleCommonCommand(lineParts)) {
+      this.logMessage(`Base class handled common command: ${lineParts[0]}`);
       return; // Base class handled it
     }
 
     // Build command string for PLOT-specific parsing
-    const commandString = commandParts.join(' ');
+    const commandString = lineParts.join(' ');
     this.logMessage(`---- PLOT parsing: ${commandString}`);
 
     try {

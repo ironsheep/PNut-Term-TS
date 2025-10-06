@@ -826,16 +826,15 @@ export class DebugTermWindow extends DebugWindowBase {
     //this.logMessage(`at updateContent(${unparsedCommand})`);
 
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Remove display name prefix (index 0) and pass remaining parts to base class
-    const commandParts = lineParts.slice(1);
-    if (await this.handleCommonCommand(commandParts)) {
+    // Window name was already stripped by mainWindow routing
+    if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done
       return;
     }
 
     // Continue with TERM-specific processing (control codes, strings)
     // ON first numeric data, create the window! then do update
-    for (let index = 1; index < lineParts.length; index++) {
+    for (let index = 0; index < lineParts.length; index++) {
       const currLinePart = lineParts[index];
       if (currLinePart.charAt(0) == "'") {
         // display string at cursor position with current colors

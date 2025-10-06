@@ -1,8 +1,8 @@
 /** @format */
 
-// tests/debugLoggerWindow.test.ts
+// tests/loggerWindow.test.ts
 
-import { DebugLoggerWindow } from '../src/classes/debugLoggerWin';
+import { LoggerWindow } from '../src/classes/loggerWin';
 import { Context } from '../src/utils/context';
 import { BrowserWindow } from 'electron';
 import * as fs from 'fs';
@@ -29,15 +29,15 @@ jest.mock('../src/utils/files', () => ({
   getFormattedDateTime: jest.fn().mockReturnValue('20250812_120000')
 }));
 
-describe('DebugLoggerWindow', () => {
-  let debugLogger: DebugLoggerWindow;
+describe('LoggerWindow', () => {
+  let debugLogger: LoggerWindow;
   let mockContext: Context;
   let mockBrowserWindow: any;
   let mockWriteStream: any;
   
   beforeEach(() => {
     // Clear singleton
-    DebugLoggerWindow['instance'] = null;
+    LoggerWindow['instance'] = null;
     
     // Setup fs mocks
     mockWriteStream = {
@@ -109,22 +109,22 @@ describe('DebugLoggerWindow', () => {
   
   describe('Singleton Pattern', () => {
     it('should return same instance', () => {
-      const instance1 = DebugLoggerWindow.getInstance(mockContext);
-      const instance2 = DebugLoggerWindow.getInstance(mockContext);
+      const instance1 = LoggerWindow.getInstance(mockContext);
+      const instance2 = LoggerWindow.getInstance(mockContext);
       expect(instance1).toBe(instance2);
     });
     
     it('should create window on first getInstance', () => {
-      const instance = DebugLoggerWindow.getInstance(mockContext);
+      const instance = LoggerWindow.getInstance(mockContext);
       expect(instance).toBeDefined();
-      // DebugLoggerWindow creates window lazily, not in getInstance
+      // LoggerWindow creates window lazily, not in getInstance
       // This is expected behavior for the singleton pattern
     });
   });
   
   describe('Message Processing', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
       // Mark window as ready so messages are processed immediately
       debugLogger['isWindowReady'] = true;
     });
@@ -154,7 +154,7 @@ describe('DebugLoggerWindow', () => {
   
   describe('Performance Optimizations', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
       debugLogger['isWindowReady'] = true;
       jest.useFakeTimers();
     });
@@ -217,7 +217,7 @@ describe('DebugLoggerWindow', () => {
   
   describe('File Logging', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
       jest.useFakeTimers();
     });
     
@@ -259,7 +259,7 @@ describe('DebugLoggerWindow', () => {
   
   describe('Theme Support', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
     });
     
     it('should initialize with green theme', () => {
@@ -280,7 +280,7 @@ describe('DebugLoggerWindow', () => {
   
   describe('Window Management', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
     });
     
     it('should position at bottom-right by default', () => {
@@ -313,7 +313,7 @@ describe('DebugLoggerWindow', () => {
       expect(debugLogger['logFile']).toBeNull();
       
       // Should clear singleton
-      expect(DebugLoggerWindow['instance']).toBeNull();
+      expect(LoggerWindow['instance']).toBeNull();
       
       jest.useRealTimers();
     });
@@ -321,7 +321,7 @@ describe('DebugLoggerWindow', () => {
   
   describe('System Messages', () => {
     beforeEach(() => {
-      debugLogger = DebugLoggerWindow.getInstance(mockContext);
+      debugLogger = LoggerWindow.getInstance(mockContext);
       debugLogger['isWindowReady'] = true;
     });
     

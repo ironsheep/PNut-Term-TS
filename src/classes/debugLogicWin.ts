@@ -1034,18 +1034,17 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.logMessage(`at updateContent(${lineParts.join(' ')})`);
 
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Remove display name prefix (index 0) and pass remaining parts to base class
-    const commandParts = lineParts.slice(1);
-    if (await this.handleCommonCommand(commandParts)) {
+    // Window name was already stripped by mainWindow routing
+    if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done
       return;
     }
 
     // Continue with LOGIC-specific processing (TRIGGER, HOLDOFF, channel data)
     // ON first numeric data, create the window! then do update
-    if (lineParts.length >= 2) {
+    if (lineParts.length >= 1) {
       // have data, parse it
-      for (let index = 1; index < lineParts.length; index++) {
+      for (let index = 0; index < lineParts.length; index++) {
         this.logMessage(`  -- at [${lineParts[index]}] in lineParts[${index}]`);
         if (lineParts[index].toUpperCase() == 'TRIGGER') {
           // parse trigger spec update

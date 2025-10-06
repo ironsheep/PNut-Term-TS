@@ -538,13 +538,13 @@ export class DebugBitmapWindow extends DebugWindowBase {
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // First, let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    const commandParts = lineParts.slice(1); // Remove display name prefix
-    if (await this.handleCommonCommand(commandParts)) {
+    // Window name was already stripped by mainWindow routing
+    if (await this.handleCommonCommand(lineParts)) {
       return; // Base class handled it
     }
 
-    // Start at index 1 to skip window name (lineParts[0] is always `windowName for runtime commands)
-    let dataStartIndex = 1;
+    // Track where pixel data starts (after processing commands)
+    let dataStartIndex = 0;
 
     // Process commands
     for (let i = 0; i < lineParts.length; i++) {

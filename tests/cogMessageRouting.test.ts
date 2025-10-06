@@ -4,7 +4,7 @@
 
 import { jest } from '@jest/globals';
 import { MainWindow } from '../src/classes/mainWindow';
-import { DebugLoggerWindow } from '../src/classes/debugLoggerWin';
+import { LoggerWindow } from '../src/classes/loggerWin';
 import { setupDebugWindowTest, cleanupDebugWindowTest, createMockBrowserWindow } from './shared/mockHelpers';
 import { setupDebugWindowTests } from './shared/debugWindowTestUtils';
 
@@ -50,8 +50,8 @@ jest.mock('../src/classes/debugPlotWin');
 jest.mock('../src/classes/debugLogicWin');
 jest.mock('../src/classes/debugBitmapWin');
 jest.mock('../src/classes/debugMidiWin');
-jest.mock('../src/classes/debugLoggerWin', () => ({
-  DebugLoggerWindow: {
+jest.mock('../src/classes/loggerWin', () => ({
+  LoggerWindow: {
     getInstance: jest.fn()
   }
 }));
@@ -82,13 +82,13 @@ describe('Cog Message Routing', () => {
     // Add currentFolder required by MainWindow constructor
     mockContext.currentFolder = '/test/workspace';
     
-    // Set up DebugLoggerWindow mock to return a mock instance
+    // Set up LoggerWindow mock to return a mock instance
     const mockLoggerInstance = {
       updateContent: jest.fn(),
       on: jest.fn(),
       handleDTRReset: jest.fn()
     };
-    (DebugLoggerWindow.getInstance as jest.Mock).mockReturnValue(mockLoggerInstance);
+    (LoggerWindow.getInstance as jest.Mock).mockReturnValue(mockLoggerInstance);
     
     // Create MainWindow instance
     mainWindow = new MainWindow(mockContext);
@@ -133,9 +133,9 @@ describe('Cog Message Routing', () => {
   });
   
   describe('Debug Logger auto-creation', () => {
-    it('should auto-create DebugLoggerWindow on first Cog message', () => {
+    it('should auto-create LoggerWindow on first Cog message', () => {
       // Verify logger window property exists and starts as null
-      expect((mainWindow as any).debugLoggerWindow).toBeNull();
+      expect((mainWindow as any).loggerWindow).toBeNull();
       
       // Test processing a Cog message through serialProcessor
       const cogMessage = Buffer.from('Cog0: First debug message\r\n');
@@ -162,12 +162,12 @@ describe('Cog Message Routing', () => {
     
     it('should fall back to console logging if window creation fails', () => {
       // Mock getInstance to throw an error
-      (DebugLoggerWindow.getInstance as jest.Mock).mockImplementation(() => {
+      (LoggerWindow.getInstance as jest.Mock).mockImplementation(() => {
         throw new Error('Window creation failed');
       });
       
       // Verify the mock is set up correctly
-      expect(() => DebugLoggerWindow.getInstance(mockContext)).toThrow('Window creation failed');
+      expect(() => LoggerWindow.getInstance(mockContext)).toThrow('Window creation failed');
     });
   });
   
@@ -236,14 +236,14 @@ describe('Cog Message Routing', () => {
       };
       
       // Mock getInstance to return our controlled mock
-      (DebugLoggerWindow.getInstance as jest.Mock).mockReturnValue(mockLogger);
+      (LoggerWindow.getInstance as jest.Mock).mockReturnValue(mockLogger);
       
-      // Verify we can set and clear the debugLoggerWindow property
-      (mainWindow as any).debugLoggerWindow = mockLogger;
-      expect((mainWindow as any).debugLoggerWindow).toBe(mockLogger);
+      // Verify we can set and clear the loggerWindow property
+      (mainWindow as any).loggerWindow = mockLogger;
+      expect((mainWindow as any).loggerWindow).toBe(mockLogger);
       
-      (mainWindow as any).debugLoggerWindow = null;
-      expect((mainWindow as any).debugLoggerWindow).toBeNull();
+      (mainWindow as any).loggerWindow = null;
+      expect((mainWindow as any).loggerWindow).toBeNull();
     });
   });
 });

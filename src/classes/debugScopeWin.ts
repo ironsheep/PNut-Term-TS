@@ -272,7 +272,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // now parse overrides to defaults
     // console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
-      displaySpec.displayName = lineParts[1];
+      displaySpec.displayName = lineParts[0];
       isValid = true; // invert default value
     }
     if (lineParts.length > 2) {
@@ -738,7 +738,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
-    // here with lineParts = ['`{displayName}, ...]
+    // Window name already stripped by mainWindow routing
     // Valid directives are:
     this.logMessage(`at updateContent() with lineParts=[${lineParts.join(', ')}]`);
     // --- these create a new channel spec
@@ -755,12 +755,12 @@ export class DebugScopeWindow extends DebugWindowBase {
     //   <numeric data> // data applied to channels in ascending order
     //this.logMessage(`at updateContent(${lineParts.join(' ')})`);
     // ON first numeric data, create the window! then do update
-    if (lineParts.length >= 2) {
+    if (lineParts.length >= 1) {
       // have data, parse it
-      if (lineParts[1].charAt(0) == "'") {
+      if (lineParts[0].charAt(0) == "'") {
         // parse channel spec
         let channelSpec: ScopeChannelSpec = {} as ScopeChannelSpec;
-        channelSpec.name = lineParts[1].slice(1, -1);
+        channelSpec.name = lineParts[0].slice(1, -1);
         // Set defaults for all channel properties
         channelSpec.minValue = 0;
         channelSpec.maxValue = 255;
@@ -772,7 +772,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         channelSpec.lgndShowMinLine = true;
         let colorName = 'LIME'; // vs. green
         let colorBrightness = 15;
-        if (lineParts[2].toUpperCase().startsWith('AUTO')) {
+        if (lineParts[0].toUpperCase().startsWith('AUTO')) {
           // parse AUTO spec - set trigger auto mode for this channel
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
           // Auto means we should use auto trigger for this channel
@@ -782,21 +782,21 @@ export class DebugScopeWindow extends DebugWindowBase {
           channelSpec.minValue = 0;
           channelSpec.maxValue = 255;
           if (lineParts.length > 3) {
-            channelSpec.ySize = Number(lineParts[3]);
+            channelSpec.ySize = Number(lineParts[0]);
           }
           if (lineParts.length > 4) {
-            channelSpec.yBaseOffset = Number(lineParts[4]);
+            channelSpec.yBaseOffset = Number(lineParts[0]);
           }
           if (lineParts.length > 5) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[5];
+            const legend: string = lineParts[0];
             this.parseLegend(legend, channelSpec);
           }
           if (lineParts.length > 6) {
-            colorName = lineParts[6];
+            colorName = lineParts[0];
           }
           if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[7]);
+            colorBrightness = Number(lineParts[0]);
           }
         } else {
           // parse manual spec
@@ -804,39 +804,39 @@ export class DebugScopeWindow extends DebugWindowBase {
           let isNumber: boolean = false;
           let parsedValue: number = 0;
           if (lineParts.length > 2) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
             if (isNumber) {
               channelSpec.minValue = parsedValue;
             }
           }
           if (lineParts.length > 3) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
             if (isNumber) {
               channelSpec.maxValue = parsedValue;
             }
           }
           if (lineParts.length > 4) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
             if (isNumber) {
               channelSpec.ySize = parsedValue;
             }
           }
           if (lineParts.length > 5) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[5]);
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
             if (isNumber) {
               channelSpec.yBaseOffset = parsedValue;
             }
           }
           if (lineParts.length > 6) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[6];
+            const legend: string = lineParts[0];
             this.parseLegend(legend, channelSpec);
           }
           if (lineParts.length > 7) {
-            colorName = lineParts[7];
+            colorName = lineParts[0];
           }
           if (lineParts.length > 8) {
-            colorBrightness = Number(lineParts[8]);
+            colorBrightness = Number(lineParts[0]);
           }
         }
         const channelColor = new DebugColor(colorName, colorBrightness);
@@ -853,7 +853,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           this.channelSamples.push({ samples: [] });
           this.logMessage(`at updateContent() added channelSample for new channel, now have ${this.channelSamples.length} samples`);
         }
-      } else if (lineParts[1].toUpperCase() == 'TRIGGER') {
+      } else if (lineParts[0].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
         //   TRIGGER1 <channel|-1>2 {arm-level3 {trigger-level4 {offset5}}}
         //   TRIGGER1 <channel|-1>2 {HOLDOFF3 <2-2048>4}
@@ -867,21 +867,21 @@ export class DebugScopeWindow extends DebugWindowBase {
           this.updateTriggerStatus();
         }
         if (lineParts.length > 2) {
-          const desiredChannel: number = Number(lineParts[2]);
+          const desiredChannel: number = Number(lineParts[0]);
           if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
             this.triggerSpec.trigChannel = desiredChannel;
           } else {
             this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
           }
           if (lineParts.length > 3) {
-            if (lineParts[3].toUpperCase() == 'HOLDOFF') {
+            if (lineParts[0].toUpperCase() == 'HOLDOFF') {
               if (lineParts.length >= 4) {
-                const [isNumber, trigHoldoff] = this.isSpinNumber(lineParts[4]);
+                const [isNumber, trigHoldoff] = this.isSpinNumber(lineParts[0]);
                 if (isNumber) {
                   this.triggerSpec.trigHoldoff = trigHoldoff;
                 }
               }
-            } else if (lineParts[3].toUpperCase() == 'AUTO') {
+            } else if (lineParts[0].toUpperCase() == 'AUTO') {
               this.triggerSpec.trigAuto = true;
               const channelSpec = this.channelSpecs[this.triggerSpec.trigChannel];
               // arm range is 33% of max-min: (high - low) / 3 + low
@@ -891,19 +891,19 @@ export class DebugScopeWindow extends DebugWindowBase {
               const newTrigLevel = (channelSpec.maxValue - channelSpec.minValue) / 2 + channelSpec.minValue;
               this.triggerSpec.trigLevel = newTrigLevel;
             } else {
-              let [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
+              let [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
               if (isNumber) {
                 this.triggerSpec.trigArmLevel = parsedValue;
               }
               this.triggerSpec.trigAuto = false;
               if (lineParts.length > 4) {
-                [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
                 if (isNumber) {
                   this.triggerSpec.trigLevel = parsedValue;
                 }
               }
               if (lineParts.length > 5) {
-                [isNumber, parsedValue] = this.isSpinNumber(lineParts[5]);
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
                 if (isNumber) {
                   this.triggerSpec.trigRtOffset = parsedValue;
                 }
@@ -913,54 +913,54 @@ export class DebugScopeWindow extends DebugWindowBase {
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'HOLDOFF') {
+      } else if (lineParts[0].toUpperCase() == 'HOLDOFF') {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
         if (lineParts.length > 2) {
-          const [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
+          const [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
           if (isNumber) {
             this.triggerSpec.trigHoldoff = parsedValue;
           }
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[1].toUpperCase() == 'CLEAR') {
+      } else if (lineParts[0].toUpperCase() == 'CLEAR') {
         // clear all channels
         this.clearChannelData();
-      } else if (lineParts[1].toUpperCase() == 'CLOSE') {
+      } else if (lineParts[0].toUpperCase() == 'CLOSE') {
         // close the window
         this.closeDebugWindow();
-      } else if (lineParts[1].toUpperCase() == 'SAVE') {
+      } else if (lineParts[0].toUpperCase() == 'SAVE') {
         // save the window to a file
         if (lineParts.length >= 2) {
-          const saveFileName = this.removeStringQuotes(lineParts[2]);
+          const saveFileName = this.removeStringQuotes(lineParts[0]);
           // save the window to a file (as BMP)
           await this.saveWindowToBMPFilename(saveFileName);
         } else {
           this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
         }
-      } else if (lineParts[1].toUpperCase() == 'PC_KEY') {
+      } else if (lineParts[0].toUpperCase() == 'PC_KEY') {
         // Enable keyboard input forwarding
         this.enableKeyboardInput();
         // PC_KEY must be last command
         return;
-      } else if (lineParts[1].toUpperCase() == 'PC_MOUSE') {
+      } else if (lineParts[0].toUpperCase() == 'PC_MOUSE') {
         // Enable mouse input forwarding
         this.enableMouseInput();
         // PC_MOUSE must be last command
         return;
-      } else if (lineParts[1].toUpperCase() == 'LINE') {
+      } else if (lineParts[0].toUpperCase() == 'LINE') {
         // Update line width
         if (lineParts.length > 2) {
-          const lineSize = Number(lineParts[2]);
+          const lineSize = Number(lineParts[0]);
           if (!isNaN(lineSize) && lineSize >= 0 && lineSize <= 32) {
             this.displaySpec.lineSize = lineSize;
           }
         }
-      } else if (lineParts[1].toUpperCase() == 'DOT') {
+      } else if (lineParts[0].toUpperCase() == 'DOT') {
         // Update dot size
         if (lineParts.length > 2) {
-          const dotSize = Number(lineParts[2]);
+          const dotSize = Number(lineParts[0]);
           if (!isNaN(dotSize) && dotSize >= 0 && dotSize <= 32) {
             this.displaySpec.dotSize = dotSize;
           }
@@ -968,17 +968,17 @@ export class DebugScopeWindow extends DebugWindowBase {
       } else {
         // do we have packed data spec?
         // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
-        // const [isPackedData, newMode] = this.isPackedDataMode(lineParts[1]);
+        // const [isPackedData, newMode] = this.isPackedDataMode(lineParts[0]);
         // if (isPackedData) {
         //   // remember the new mode so we can unpack the data correctly
         //   this.packedMode = newMode;
         //   // now look for ALT and SIGNED keywords which may follow
         //   if (lineParts.length > 2) {
-        //     const nextKeyword = lineParts[2].toUpperCase();
+        //     const nextKeyword = lineParts[0].toUpperCase();
         //     if (nextKeyword == 'ALT') {
         //       this.packedMode.isAlternate = true;
         //       if (lineParts.length > 3) {
-        //         const nextKeyword = lineParts[3].toUpperCase();
+        //         const nextKeyword = lineParts[0].toUpperCase();
         //         if (nextKeyword == 'SIGNED') {
         //           this.packedMode.isSigned = true;
         //         }
@@ -989,7 +989,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         //   }
         
         // Check if current word is a packed data mode
-        const [isPackedData, _] = PackedDataProcessor.validatePackedMode(lineParts[1]);
+        const [isPackedData, _] = PackedDataProcessor.validatePackedMode(lineParts[0]);
         if (isPackedData) {
           // Collect packed mode and any following keywords
           const keywords: string[] = [];
@@ -1015,7 +1015,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         } else {
           // do we have number?
           this.logMessage(`at updateContent() with numeric data: [${lineParts}](${lineParts.length})`);
-          const [isValidNumber] = this.isSpinNumber(lineParts[1]);
+          const [isValidNumber] = this.isSpinNumber(lineParts[0]);
           if (isValidNumber) {
             if (this.isFirstNumericData) {
               this.isFirstNumericData = false;
@@ -1122,7 +1122,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               );
             }
           } else {
-            this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[1]} of [${lineParts.join(' ')}]`);
+            this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[0]} of [${lineParts.join(' ')}]`);
           }
         }
       }

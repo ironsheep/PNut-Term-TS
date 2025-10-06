@@ -4,7 +4,7 @@
 // Tests using actual P2 debug output from test-log-forParsing.log
 
 import { MainWindow } from '../src/classes/mainWindow';
-import { DebugLoggerWindow } from '../src/classes/debugLoggerWin';
+import { LoggerWindow } from '../src/classes/loggerWin';
 import { setupDebugWindowTests } from './shared/debugWindowTestUtils';
 
 // Mock electron
@@ -131,7 +131,7 @@ describe('P2 Debug Output Processing', () => {
       }).not.toThrow();
     });
     
-    it('should auto-create DebugLoggerWindow on first Cog message', () => {
+    it('should auto-create LoggerWindow on first Cog message', () => {
       // Test processing a Cog message through the new API
       const cogMessage = Buffer.from(P2_DEBUG_OUTPUT[0] + '\r\n');
       
@@ -255,7 +255,7 @@ describe('P2 Debug Output Processing', () => {
         updateContent: jest.fn(),
         on: jest.fn(),
       };
-      jest.spyOn(DebugLoggerWindow, 'getInstance').mockReturnValue(mockLogger as any);
+      jest.spyOn(LoggerWindow, 'getInstance').mockReturnValue(mockLogger as any);
       
       // Set up state
       (mainWindow as any).waitingForINIT = false;
