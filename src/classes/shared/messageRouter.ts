@@ -285,15 +285,16 @@ export class MessageRouter extends EventEmitter {
         // P2_SYSTEM_INIT is "Cog0 INIT $0000_0000 $0000_0000 load" - route like COG0
         return MessageType.COG_MESSAGE;
 
-      case SharedMessageType.WINDOW_LOGIC:
-      case SharedMessageType.WINDOW_SCOPE:
-      case SharedMessageType.WINDOW_SCOPE_XY:
-      case SharedMessageType.WINDOW_FFT:
-      case SharedMessageType.WINDOW_SPECTRO:
-      case SharedMessageType.WINDOW_PLOT:
-      case SharedMessageType.WINDOW_TERM:
-      case SharedMessageType.WINDOW_BITMAP:
-      case SharedMessageType.WINDOW_MIDI:
+      case SharedMessageType.BACKTICK_LOGIC:
+      case SharedMessageType.BACKTICK_SCOPE:
+      case SharedMessageType.BACKTICK_SCOPE_XY:
+      case SharedMessageType.BACKTICK_FFT:
+      case SharedMessageType.BACKTICK_SPECTRO:
+      case SharedMessageType.BACKTICK_PLOT:
+      case SharedMessageType.BACKTICK_TERM:
+      case SharedMessageType.BACKTICK_BITMAP:
+      case SharedMessageType.BACKTICK_MIDI:
+      case SharedMessageType.BACKTICK_UPDATE:
         return MessageType.BACKTICK_WINDOW;
 
       case SharedMessageType.TERMINAL_OUTPUT:

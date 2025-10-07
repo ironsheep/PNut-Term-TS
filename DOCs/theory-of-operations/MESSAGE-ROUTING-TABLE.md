@@ -8,7 +8,7 @@ Messages flow from USB serial → Worker Thread → SharedMessagePool → Messag
 
 ## Complete Routing Table
 
-All 28 SharedMessageType values from worker thread extraction.
+All 30 SharedMessageType values from worker thread extraction.
 
 | # | SharedMessageType | Maps to MessageType | Destinations | WindowRouter Behavior | Error if Missing? |
 |---|-------------------|---------------------|--------------|----------------------|-------------------|
@@ -33,19 +33,21 @@ All 28 SharedMessageType values from worker thread extraction.
 | 14 | `DEBUGGER5_416BYTE` | `DEBUGGER_416BYTE` | DebugLogger + DebuggerWindow | Routes to `debugger-5` (auto-create) | ⚠️ Auto-create |
 | 15 | `DEBUGGER6_416BYTE` | `DEBUGGER_416BYTE` | DebugLogger + DebuggerWindow | Routes to `debugger-6` (auto-create) | ⚠️ Auto-create |
 | 16 | `DEBUGGER7_416BYTE` | `DEBUGGER_416BYTE` | DebugLogger + DebuggerWindow | Routes to `debugger-7` (auto-create) | ⚠️ Auto-create |
-| **Window Commands (Backtick) - 9 Types** |
-| 18 | `WINDOW_LOGIC` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 19 | `WINDOW_SCOPE` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 20 | `WINDOW_SCOPE_XY` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 21 | `WINDOW_FFT` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 22 | `WINDOW_SPECTRO` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 23 | `WINDOW_PLOT` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 24 | `WINDOW_TERM` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 25 | `WINDOW_BITMAP` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
-| 26 | `WINDOW_MIDI` | `BACKTICK_WINDOW` | Creation OR Update | Routes to user-named window | ✅ Yes (if update) |
+| **Backtick Window Commands - Creation (9 Types with Known Keywords)** |
+| 18 | `BACKTICK_LOGIC` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 19 | `BACKTICK_SCOPE` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 20 | `BACKTICK_SCOPE_XY` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 21 | `BACKTICK_FFT` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 22 | `BACKTICK_SPECTRO` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 23 | `BACKTICK_PLOT` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 24 | `BACKTICK_TERM` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 25 | `BACKTICK_BITMAP` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| 26 | `BACKTICK_MIDI` | `BACKTICK_WINDOW` | Window Creation | Creates window with display type | ❌ No |
+| **Backtick Window Update (User-Defined Names)** |
+| 27 | `BACKTICK_UPDATE` | `BACKTICK_WINDOW` | Window Update | Routes to named window (e.g., `j k l $FFB7) | ✅ Yes (error if not found) |
 | **User Program Output (Catch-All)** |
-| 27 | `TERMINAL_OUTPUT` | `TERMINAL_OUTPUT` | DebugLogger + **MainWindow.appendLog()** | N/A (direct to blue window) | N/A |
-| 28 | `INVALID_COG` | `INVALID_COG` | DebugLogger + **MainWindow.appendLog()** | N/A (direct to blue window) | N/A |
+| 28 | `TERMINAL_OUTPUT` | `TERMINAL_OUTPUT` | DebugLogger + **MainWindow.appendLog()** | N/A (direct to blue window) | N/A |
+| 29 | `INVALID_COG` | `INVALID_COG` | DebugLogger + **MainWindow.appendLog()** | N/A (direct to blue window) | N/A |
 
 ## Routing Behaviors
 

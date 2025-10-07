@@ -106,6 +106,7 @@ export class WindowRouter extends EventEmitter {
 
   // Window management
   private windows: Map<string, { type: string; handler: WindowHandler; stats: WindowInfo }> = new Map();
+  private displaysMap: { [key: string]: any } | null = null; // Reference to mainWindow.displays
   
   // Two-tiered registration: Track window instances even before they're ready
   private windowInstances: Map<string, { type: string; instance: any; isReady: boolean }> = new Map();
@@ -182,6 +183,14 @@ export class WindowRouter extends EventEmitter {
   public setContext(context: Context): void {
     this.context = context;
     this.logConsoleMessage('[ROUTER] Context set for directory-based recording paths');
+  }
+
+  /**
+   * Set the displays map reference from mainWindow (for routing lookups)
+   */
+  public setDisplaysMap(displaysMap: { [key: string]: any }): void {
+    this.displaysMap = displaysMap;
+    this.logger.info('SETUP', 'Displays map reference set - routing by displayName enabled');
   }
 
   /**
@@ -370,21 +379,33 @@ export class WindowRouter extends EventEmitter {
   }
   
   /**
-   * Route text message (DEBUG commands, Cog messages, etc.)
+   * Route text message (Cog messages, backtick commands, terminal output)
+   *
+   * CLEAN ARCHITECTURE: Messages are already classified by worker thread.
+   * This method just routes to appropriate windows based on simple content checks.
+   * NO LEGACY TEXT PARSING - message types are carried in the typed message system.
    */
   public routeTextMessage(text: string): void {
     const startTime = performance.now();
-    
+
     let handled = false;
-    
-    // 1. Check for Cog messages, INIT messages, OR backtick commands (all P2 debug output)
-    if (text.startsWith('Cog') || text.includes('INIT') || text.includes('`')) {
+
+    // 1. BACKTICK COMMANDS - Window updates (already classified by worker as BACKTICK_UPDATE)
+    if (text.includes('`')) {
+      const tickIndex = text.indexOf('`');
+      const command = text.substring(tickIndex);
+      this.routeBacktickCommand(command);
+      handled = true;
+    }
+    // 2. COG MESSAGES - Route to DebugLogger and individual COG window (already classified by worker)
+    // NOTE: COG ID is already tagged in the message metadata from worker classification
+    else if (text.startsWith('Cog') || text.includes('INIT')) {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
-      
+
       // Always route to DebugLogger window for logging
       let loggerWindowFound = false;
       for (const [windowId, window] of this.windows) {
-        if (window.type === 'logger') {  // DebugLoggerWindow registers as 'logger' type
+        if (window.type === 'logger') {
           this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
           window.handler(text);
           window.stats.messagesReceived++;
@@ -397,94 +418,21 @@ export class WindowRouter extends EventEmitter {
         }
       }
 
-      // Check if this is a COG-specific message and route to COG window
-      const cogId = this.extractCOGId(text);
-      if (cogId !== null && cogId >= 0 && cogId <= 7) {
-        const cogWindowId = `COG${cogId}`;
-        const cogWindow = this.windows.get(cogWindowId);
-        if (cogWindow && cogWindow.handler) {
-          this.logConsoleMessage(`[ROUTER->COG${cogId}] Routing message to COG ${cogId} window`);
-          cogWindow.handler(text);
-          cogWindow.stats.messagesReceived++;
-          handled = true;
-
-          if (this.isRecording) {
-            this.recordMessage(cogWindowId, cogWindow.type, 'text', text);
-          }
-        }
-      }
-
       // Defensive error logging: warn if no logger window found
       if (!loggerWindowFound) {
         this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive Cog message: "${text.substring(0, 50)}..."`);
         console.warn('[ROUTING] ⚠️ Cog message received but no DebugLoggerWindow registered! Message will be lost.');
         console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
       }
-      
-      // Check for embedded backtick commands in Cog messages
-      if (text.includes('`')) {
-        const tickIndex = text.indexOf('`');
-        const embeddedCommand = text.substring(tickIndex);
-        this.logger.debug('ROUTE', `Found embedded command in Cog message: ${embeddedCommand}`);
-        
-        // Parse and route the embedded command
-        this.routeBacktickCommand(embeddedCommand);
-      }
-      
-      // DISABLED: False reboot detection - only actual DTR/RTS events should trigger resets
-      // Normal P2 debug messages should NOT trigger system reboot events
-      /*
-      // Detect P2 processor reset/reboot events  
-      if (text.startsWith('Cog0') && text.includes('INIT')) {
-        // Check for the golden synchronization marker
-        if (text.includes('$0000_0000 $0000_0000 load')) {
-          this.logger.info('ROUTE', '🎯 P2 SYSTEM REBOOT detected - golden sync marker found');
-          this.logConsoleMessage(`[P2 SYNC] 🎯 SYSTEM REBOOT: ${text}`);
-          // Emit special event for complete synchronization reset
-          this.emit('p2SystemReboot', { message: text, timestamp: Date.now() });
-        } else {
-          this.logger.info('ROUTE', 'Processor reset detected (Cog0 INIT)');
-          // Regular processor reset event
-          this.emit('processorReset', { message: text });
-        }
-      */
     }
-    // 2. Check for standalone backtick commands
-    else if (text.includes('`')) {
-      const tickIndex = text.indexOf('`');
-      const command = text.substring(tickIndex);
-      this.routeBacktickCommand(command);
-      handled = true;
-    }
-    // 3. Check for DEBUG command format
-    else if (text.startsWith('DEBUG ')) {
-      const parts = text.split(' ', 3);
-      if (parts.length >= 2) {
-        const windowType = parts[1].toLowerCase();
-        
-        // Route to all windows of this type
-        for (const [windowId, window] of this.windows) {
-          if (window.type === windowType) {
-            window.handler(text);
-            window.stats.messagesReceived++;
-            handled = true;
-            
-            // Record if enabled
-            if (this.isRecording) {
-              this.recordMessage(windowId, window.type, 'text', text);
-            }
-          }
-        }
-      }
-    }
-    
-    // Default to terminal window if not handled
-    if (!handled) {
+    // 3. TERMINAL OUTPUT - Fallback for unhandled text
+    else {
       const terminalWindow = this.windows.get('terminal');
       if (terminalWindow) {
         terminalWindow.handler(text);
         terminalWindow.stats.messagesReceived++;
-        
+        handled = true;
+
         if (this.isRecording) {
           this.recordMessage('terminal', 'terminal', 'text', text);
         }
@@ -498,109 +446,117 @@ export class WindowRouter extends EventEmitter {
   
   /**
    * Parse and route backtick commands to appropriate debug windows
+   *
+   * Supports two formats:
+   * 1. Single window: `windowName data...
+   * 2. Multi-window: `win1 win2 win3 data... (splits into individual commands)
    */
   private routeBacktickCommand(command: string): void {
-    // Backtick commands have format: `WINDOWTYPE command data...
-    // Example: `TERM MyTerm SIZE 80 25
-    
     this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command}"`);
-    
+
     if (!command.startsWith('`')) {
       this.logConsoleMessage(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command}"`);
       this.logger.warn('ROUTE', `Invalid backtick command: ${command}`);
       return;
     }
-    
+
     // CRITICAL: Never create COG-0 windows from backtick commands
-    // COG0 is the system COG and should never have a debug window
     if (command.includes('COG-0') || command.includes('COG0')) {
       this.logConsoleMessage(`[ROUTER DEBUG] ⚠️ Ignoring COG-0 backtick command (system COG): "${command}"`);
       this.logger.info('ROUTE', 'Ignoring COG-0 backtick command (system COG)');
       return;
     }
-    
-    // Remove the backtick and parse
+
+    // Remove the backtick and parse (preserves exact original working logic)
     const cleanCommand = command.substring(1).trim();
     const parts = cleanCommand.split(' ');
-    
+
     this.logConsoleMessage(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
-    
+
     if (parts.length < 1) {
       this.logConsoleMessage(`[ROUTER DEBUG] ❌ Empty backtick command`);
       this.logger.warn('ROUTE', `Empty backtick command`);
       return;
     }
-    
-    // First check if this is a CLOSE command (e.g., `MyLogic close)
-    const windowName = parts[0]; // Keep original case for window name
-    const isCloseCommand = parts.length >= 2 && parts[1].toLowerCase() === 'close';
-    
-    // CRITICAL: Never create COG-0 windows
-    if (windowName === 'COG-0' || windowName === 'COG0') {
-      this.logConsoleMessage(`[ROUTER DEBUG] ⚠️ Blocking COG-0 window creation (system COG)`);
-      this.logger.info('ROUTE', 'Blocked COG-0 window creation attempt');
+
+    // EXACT MIGRATION OF WORKING MULTI-WINDOW LOGIC from mainWindow.ts
+    // Get first token (case-insensitive comparison)
+    const firstToken = parts[0].toUpperCase();
+
+    // Get all registered window names from displays map (case-insensitive)
+    if (!this.displaysMap) {
+      this.logger.error('ROUTE', 'Displays map not set - cannot route backtick commands');
       return;
     }
-    
-    this.logConsoleMessage(`[ROUTER DEBUG] Looking for window: "${windowName}"${isCloseCommand ? ' (CLOSE command)' : ''}`);
-    this.logConsoleMessage(`[ROUTER DEBUG] Registered windows: [${Array.from(this.windows.keys()).join(', ')}]`);
-    
-    if (isCloseCommand) {
-      // Handle CLOSE command - find and close the window
-      this.logConsoleMessage(`[ROUTER DEBUG] Processing CLOSE command for window: "${windowName}"`);
-      const window = this.windows.get(windowName);
-      if (window) {
-        this.logConsoleMessage(`[ROUTER DEBUG] ✅ Found window "${windowName}" - sending close command`);
-        window.handler(command); // Let the window handle its own close
-        // Window will unregister itself when it closes
-        return;
+    const registeredWindowNames = Object.keys(this.displaysMap).map(name => name.toUpperCase());
+
+    // STEP 1: First token MUST be a valid registered window
+    if (!registeredWindowNames.includes(firstToken)) {
+      // Not a registered window - this is an error for UPDATE commands
+      if (!this.isShuttingDown) {
+        const errorMsg = `ERROR: Window update failed - window '${parts[0]}' not found (no preceding creation command)`;
+        this.logConsoleMessage(`[ROUTER DEBUG] ${errorMsg}`);
+        this.logger.error('ROUTE', errorMsg);
+
+        const terminalWindow = this.windows.get('terminal');
+        if (terminalWindow) {
+          terminalWindow.handler(`\n${errorMsg}\n`);
+        }
+      }
+      return;
+    }
+
+    // STEP 2: Collect all consecutive window names
+    const targetWindows: string[] = [];
+    let dataStartIndex = 1;
+
+    // First window found
+    targetWindows.push(firstToken);
+
+    // STEP 3: Check remaining tokens for additional window names (multi-window routing)
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i].toUpperCase();
+      if (registeredWindowNames.includes(part)) {
+        targetWindows.push(part);
+        dataStartIndex = i + 1;
       } else {
-        this.logConsoleMessage(`[ROUTER DEBUG] ❌ Window "${windowName}" not found for CLOSE command`);
-        return; // Don't emit windowNeeded for CLOSE commands
+        // Not a window name, must be data - stop checking
+        break;
       }
     }
-    
-    // Try to route to window by exact name first (e.g., MyLogic, MyTerm)
-    let routed = false;
-    const window = this.windows.get(windowName);
-    if (window) {
-      this.logConsoleMessage(`[ROUTER DEBUG] ✅ Found window by name: "${windowName}"`);
-      // Send the full command including backtick for window to parse
-      window.handler(command);
-      window.stats.messagesReceived++;
-      routed = true;
-      
-      if (this.isRecording) {
-        this.recordMessage(windowName, window.type, 'text', command);
-      }
-    }
-    
-    if (!routed) {
-      // GUARD: Don't create windows during shutdown
-      if (this.isShuttingDown) {
-        this.logConsoleMessage(`[SHUTDOWN] Ignoring window creation request during shutdown: ${windowName}`);
-        return;
-      }
 
-      // Log error to terminal for user visibility - safely display binary data
-      const safeWindowName = safeDisplayString(windowName);
-      const safeCommand = safeDisplayString(command);
-      const errorMsg = `ERROR: Unknown window '${safeWindowName}' - cannot route command: ${safeCommand}`;
-      this.logConsoleMessage(`[ROUTER DEBUG] 🚨 No window found for "${safeWindowName}" - emitting windowNeeded event`);
-      this.logger.error('ROUTE', errorMsg);
+    // STEP 4: Extract data portion ONCE (window names were only for routing, windows don't need them)
+    const dataParts = parts.slice(dataStartIndex);
+    const dataString = dataParts.join(' ');
 
-      // Send error to terminal window for user visibility
-      const terminalWindow = this.windows.get('terminal');
-      if (terminalWindow) {
-        terminalWindow.handler(`\n${errorMsg}\n`);
+    this.logConsoleMessage(
+      `[ROUTER DEBUG] Multi-window dispatch to ${targetWindows.length} window(s): [${targetWindows.join(', ')}], data: "${dataString}"`
+    );
+
+    // STEP 5: Route SAME data to all target windows
+    targetWindows.forEach(windowNameUpper => {
+      // Find window in displays map (case-insensitive match)
+      const displayEntry = Object.entries(this.displaysMap!).find(
+        ([name]) => name.toUpperCase() === windowNameUpper
+      );
+
+      if (displayEntry) {
+        const [displayName, window] = displayEntry;
+        const debugWindow = window as any; // DebugWindowBase type
+
+        this.logConsoleMessage(`[ROUTER DEBUG]   ✅ Routing to window "${displayName}": "${dataString}"`);
+
+        // Call updateContent with dataParts array (original working logic)
+        const dataParts = dataString.split(' ');
+        debugWindow.updateContent(dataParts);
+
+        if (this.isRecording) {
+          this.recordMessage(displayName, debugWindow.windowType || 'unknown', 'text', dataString);
+        }
+      } else {
+        this.logConsoleMessage(`[ROUTER DEBUG]   ❌ Window "${windowNameUpper}" not found in displays map`);
       }
-
-      // Emit event in case someone wants to handle missing windows
-      this.logConsoleMessage(`[ROUTER DEBUG] 📡 Emitting windowNeeded event: type="${windowName}", command="${command}"`);
-      this.emit('windowNeeded', { type: windowName, command: command, error: errorMsg });
-    } else {
-      this.logConsoleMessage(`[ROUTER DEBUG] ✅ Successfully routed command to existing window`);
-    }
+    });
   }
   
   /**
@@ -938,36 +894,9 @@ export class WindowRouter extends EventEmitter {
     this.recordingBuffer = [];
   }
 
-  /**
-   * Extract COG ID from message text
-   * Looks for patterns like "Cog 0:", "COG1:", "[COG 2]", "<3>", etc.
-   */
-  private extractCOGId(message: string): number | null {
-    // Debug logging to see what messages we're trying to extract COG IDs from
-    console.log(`[ROUTER] Extracting COG ID from: "${message}"`);
-
-    // COG prefix patterns - EXACT format: "CogN " (no space between Cog and number)
-    const patterns = [
-      /^Cog(\d+)\s/i,            // "Cog0 ", "Cog1 " - EXACT required format
-      /^COG(\d+)\s/i,            // "COG0 ", "COG1 " - uppercase variant
-      /^\[COG(\d+)\]/i,          // "[COG0]" - bracketed variant
-      /^<(\d+)>/,                // "<0>" - shorthand variant
-    ];
-
-    for (const pattern of patterns) {
-      const match = message.match(pattern);
-      if (match) {
-        const cogId = parseInt(match[1], 10);
-        if (cogId >= 0 && cogId <= 7) {
-          console.log(`[ROUTER] Found COG ID ${cogId} using pattern: ${pattern}`);
-          return cogId;
-        }
-      }
-    }
-
-    console.log(`[ROUTER] No COG ID found in message: "${message}"`);
-    return null;
-  }
+  // REMOVED: extractCOGId() - Legacy text parsing method
+  // COG IDs are now carried in message metadata from worker classification
+  // No need to re-parse text that was already classified
   
   /**
    * Update routing statistics

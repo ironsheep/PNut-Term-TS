@@ -58,8 +58,9 @@ export class DocumentationViewer {
   }
 
   private findUserGuide(): string {
-    // Look for user guide in multiple locations
+    // Look for application help in multiple locations (prioritize APP-HELP.md)
     const candidates = [
+      path.join(process.cwd(), 'DOCs', 'APP-HELP.md'),
       path.join(process.cwd(), 'DOCs', 'USER-GUIDE.md'),
       path.join(process.cwd(), 'DOCs', 'project-specific', 'USER-GUIDE.md'),
       path.join(process.cwd(), 'DOCs', 'project-specific', 'USER-GUIDE-UPDATED.md'),

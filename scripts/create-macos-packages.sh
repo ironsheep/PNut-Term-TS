@@ -100,6 +100,13 @@ create_package() {
         echo "   ✅ Copied external files"
     fi
 
+    # Copy documentation
+    if [ -d "DOCs" ]; then
+        mkdir -p "$APP_DIR/DOCs"
+        cp -r DOCs/* "$APP_DIR/DOCs/"
+        echo "   ✅ Copied documentation files"
+    fi
+
     # Copy fonts
     cp -r fonts "$PKG_DIR/PNut-Term-TS.app/Contents/Resources/"
 

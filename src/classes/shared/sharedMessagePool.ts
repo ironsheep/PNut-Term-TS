@@ -78,19 +78,22 @@ export enum SharedMessageType {
   // P2 System Init (golden sync point)
   P2_SYSTEM_INIT = 17,
 
-  // Window types (backtick commands)
-  WINDOW_LOGIC = 18,
-  WINDOW_SCOPE = 19,
-  WINDOW_SCOPE_XY = 20,
-  WINDOW_FFT = 21,
-  WINDOW_SPECTRO = 22,
-  WINDOW_PLOT = 23,
-  WINDOW_TERM = 24,
-  WINDOW_BITMAP = 25,
-  WINDOW_MIDI = 26,
+  // Backtick window commands - CREATION with known type keywords
+  BACKTICK_LOGIC = 18,
+  BACKTICK_SCOPE = 19,
+  BACKTICK_SCOPE_XY = 20,
+  BACKTICK_FFT = 21,
+  BACKTICK_SPECTRO = 22,
+  BACKTICK_PLOT = 23,
+  BACKTICK_TERM = 24,
+  BACKTICK_BITMAP = 25,
+  BACKTICK_MIDI = 26,
 
-  TERMINAL_OUTPUT = 27,
-  INVALID_COG = 28
+  // Backtick window UPDATE (user-defined names or data updates)
+  BACKTICK_UPDATE = 27,
+
+  TERMINAL_OUTPUT = 28,
+  INVALID_COG = 29
 }
 
 // Slot header offsets (in Int32Array indices)
@@ -468,8 +471,8 @@ export function getMessageCategory(type: SharedMessageType): string {
   if (type === SharedMessageType.P2_SYSTEM_INIT) {
     return 'P2_INIT';
   }
-  if (type >= SharedMessageType.WINDOW_LOGIC && type <= SharedMessageType.WINDOW_MIDI) {
-    return 'WINDOW';
+  if (type >= SharedMessageType.BACKTICK_LOGIC && type <= SharedMessageType.BACKTICK_UPDATE) {
+    return 'BACKTICK';
   }
   if (type === SharedMessageType.DB_PACKET) {
     return 'DB_PACKET';

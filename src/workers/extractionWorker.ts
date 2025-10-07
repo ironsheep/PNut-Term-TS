@@ -286,25 +286,29 @@ function classifyMessage(data: Uint8Array): SharedMessageType | null {
   }
 
   // Window commands: `<command> ...
+  // ANY backtick message is a window message (creation OR update)
+  // Main thread routing will distinguish between creation and update commands
   if (firstByte === 0x60) { // Backtick
     const command = extractWindowCommand(data);
     if (command) {
+      // Check for specific window type keywords for precise classification
       switch (command) {
-        case 'logic': return SharedMessageType.WINDOW_LOGIC;
-        case 'scope': return SharedMessageType.WINDOW_SCOPE;
-        case 'scope_xy': return SharedMessageType.WINDOW_SCOPE_XY;
-        case 'fft': return SharedMessageType.WINDOW_FFT;
-        case 'spectro': return SharedMessageType.WINDOW_SPECTRO;
-        case 'plot': return SharedMessageType.WINDOW_PLOT;
-        case 'term': return SharedMessageType.WINDOW_TERM;
-        case 'bitmap': return SharedMessageType.WINDOW_BITMAP;
-        case 'midi': return SharedMessageType.WINDOW_MIDI;
+        case 'logic': return SharedMessageType.BACKTICK_LOGIC;
+        case 'scope': return SharedMessageType.BACKTICK_SCOPE;
+        case 'scope_xy': return SharedMessageType.BACKTICK_SCOPE_XY;
+        case 'fft': return SharedMessageType.BACKTICK_FFT;
+        case 'spectro': return SharedMessageType.BACKTICK_SPECTRO;
+        case 'plot': return SharedMessageType.BACKTICK_PLOT;
+        case 'term': return SharedMessageType.BACKTICK_TERM;
+        case 'bitmap': return SharedMessageType.BACKTICK_BITMAP;
+        case 'midi': return SharedMessageType.BACKTICK_MIDI;
         default:
-          // Unknown window command - treat as terminal output
-          return SharedMessageType.TERMINAL_OUTPUT;
+          // Unknown window command - this is a window update with user-defined name (e.g., `j k l $FFB7)
+          return SharedMessageType.BACKTICK_UPDATE;
       }
     }
-    return SharedMessageType.TERMINAL_OUTPUT;
+    // Backtick with no valid command - still treat as window update
+    return SharedMessageType.BACKTICK_UPDATE;
   }
 
   // P2_SYSTEM_INIT: "Cog0 INIT $0000_0000 $0000_0000 load"

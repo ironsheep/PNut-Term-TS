@@ -118,6 +118,13 @@ PACKAGE_EOF
         echo "   ✅ Copied external files (flash_loader.obj, etc.)"
     fi
 
+    # Copy documentation
+    if [ -d "DOCs" ]; then
+        mkdir -p "$pkg_dir/resources/app/DOCs"
+        cp -r DOCs/* "$pkg_dir/resources/app/DOCs/"
+        echo "   ✅ Copied documentation files"
+    fi
+
     # Copy fonts
     if [ -d "fonts" ]; then
         cp -r fonts "$pkg_dir/resources/"

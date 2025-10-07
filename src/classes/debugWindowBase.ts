@@ -185,7 +185,9 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.context = ctx;
     this.inputForwarder = new InputForwarder();
     this.windowRouter = WindowRouter.getInstance();
-    this.windowId = windowId;
+    // CASE-INSENSITIVE: Normalize window ID to lowercase for routing
+    // while preserving original case in displayName (set by derived classes)
+    this.windowId = windowId.toLowerCase();
     this.windowType = windowType;
 
     // Initialize TLong transmission utility

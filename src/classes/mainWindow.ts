@@ -153,6 +153,7 @@ export class MainWindow {
 
     // Initialize WindowRouter with context for proper directory handling
     this.windowRouter = WindowRouter.getInstance(this.context);
+    this.windowRouter.setDisplaysMap(this.displays); // Give router access to displays map for routing
     if (this.context.runEnvironment.loggingEnabled) {
       this.context.logger.forceLogMessage('MainWindow started.');
     }
@@ -310,9 +311,11 @@ export class MainWindow {
 
       // Create debugger window directly like other debug windows (scope, plot, etc.)
       const windowName = `debugger-${cogId}`;
+      // CASE-INSENSITIVE: Normalize for display lookup
+      const normalizedName = windowName.toLowerCase();
 
       // Check if window already exists
-      if (!this.displays[windowName]) {
+      if (!this.displays[normalizedName]) {
         this.logConsoleMessage(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
         const debuggerDisplay = new DebugDebuggerWindow(this.context, cogId);
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
@@ -321,7 +324,7 @@ export class MainWindow {
 
       // Send the packet to the window (whether new or existing)
       // Use updateContent() which handles queuing if window not ready
-      const debuggerWindow = this.displays[windowName] as DebugDebuggerWindow;
+      const debuggerWindow = this.displays[normalizedName] as DebugDebuggerWindow;
       if (debuggerWindow) {
         this.logConsoleMessage(`[DEBUGGER] Sending 416-byte packet to debugger window for COG${cogId}`);
         debuggerWindow.updateContent(packet);
@@ -1723,17 +1726,19 @@ export class MainWindow {
   private DISPLAY_MIDI: string = 'MIDI';
 
   private hookNotifcationsAndRememberWindow(windowName: string, windowObject: DebugWindowBase) {
-    this.logMessage(`GOOD DISPLAY: Received for ${windowName}`);
+    // CASE-INSENSITIVE: Normalize window name for storage (matches windowId normalization in DebugWindowBase)
+    const normalizedName = windowName.toLowerCase();
+    this.logMessage(`GOOD DISPLAY: Received for ${windowName} (stored as: ${normalizedName})`);
     // esure we get notifications of window close
     windowObject.on('close', () => {
       this.logMessage(`CallBack: Window ${windowName} is closing.`);
-      this.cleanupOnClose(windowName);
+      this.cleanupOnClose(normalizedName);
     });
     windowObject.on('closed', () => {
       this.logMessage(`CallBack: Window ${windowName} has closed.`);
     });
     // remember active displays!
-    this.displays[windowName] = windowObject;
+    this.displays[normalizedName] = windowObject;
   }
 
   private cleanupOnClose(windowName: string) {
