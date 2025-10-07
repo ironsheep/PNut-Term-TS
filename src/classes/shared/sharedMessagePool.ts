@@ -35,7 +35,6 @@ export enum MessageType {
   DEBUGGER_416BYTE = 'DEBUGGER_416BYTE',
   P2_SYSTEM_INIT = 'P2_SYSTEM_INIT',
   TERMINAL_OUTPUT = 'TERMINAL_OUTPUT',
-  INCOMPLETE_DEBUG = 'INCOMPLETE_DEBUG',
   INVALID_COG = 'INVALID_COG'
 }
 
@@ -143,6 +142,8 @@ export class SharedMessagePool {
   private acquisitions: number = 0;
   private releases: number = 0;
   private overflows: number = 0;
+  private highWaterMark: number = 0;
+  private fullCapacityLogged: boolean = false;
 
   /**
    * Create a new SharedMessagePool
@@ -191,6 +192,7 @@ export class SharedMessagePool {
     instance.acquisitions = 0;
     instance.releases = 0;
     instance.overflows = 0;
+    instance.fullCapacityLogged = false;
 
     SharedMessagePool.logConsoleMessage(
       `Attached to shared pool: ${instance.maxSlots} slots × ${instance.slotSize} bytes`
@@ -228,6 +230,14 @@ export class SharedMessagePool {
         this.slotsAllocated++;
         this.slotsFree--;
 
+        // Update high water mark
+        if (this.slotsAllocated > this.highWaterMark) {
+          const oldHighWater = this.highWaterMark;
+          this.highWaterMark = this.slotsAllocated;
+          const usagePercent = Math.round((this.slotsAllocated / this.maxSlots) * 1000) / 10;
+          console.log(`[MessagePool] 📈 NEW HIGH WATER MARK: ${this.slotsAllocated}/${this.maxSlots} slots (${usagePercent}%) [was: ${oldHighWater}]`);
+        }
+
         SharedMessagePool.logConsoleMessage(`Acquired slot ${slotId} (free: ${this.slotsFree}/${this.maxSlots})`);
 
         return this.createSlotHandle(slotId);
@@ -236,6 +246,13 @@ export class SharedMessagePool {
 
     // Pool exhausted - all slots in use
     this.overflows++;
+
+    // Log if pool hits full capacity
+    if (!this.fullCapacityLogged) {
+      console.error(`[MessagePool] 🔴 FULL CAPACITY REACHED: Pool exhausted (${this.maxSlots} slots all in use)`);
+      this.fullCapacityLogged = true;
+    }
+
     console.error('[SharedMessagePool] Pool exhausted! All slots in use.');
     return null;
   }
@@ -273,6 +290,17 @@ export class SharedMessagePool {
       // Slot is now free for reuse
       this.slotsFree++;
       this.slotsAllocated--;
+
+      // Reset full capacity flag once slots become available again
+      if (this.slotsFree > 0 && this.fullCapacityLogged) {
+        this.fullCapacityLogged = false;
+      }
+
+      // Check if pool went empty
+      if (this.slotsAllocated === 0) {
+        console.log(`[MessagePool] 🔄 Pool went EMPTY (all slots released)`);
+      }
+
       SharedMessagePool.logConsoleMessage(`Released slot ${poolId} (free: ${this.slotsFree}/${this.maxSlots})`);
     } else if (newCount < 0) {
       console.error(`[SharedMessagePool] Double-release detected! Slot ${poolId} refCount went negative.`);
@@ -382,8 +410,23 @@ export class SharedMessagePool {
       acquisitions: this.acquisitions,
       releases: this.releases,
       overflows: this.overflows,
+      highWaterMark: this.highWaterMark,
       utilizationPercent: Math.round((this.slotsAllocated / this.maxSlots) * 100)
     };
+  }
+
+  /**
+   * Log final statistics (called on shutdown)
+   */
+  public logFinalStats(): void {
+    const stats = this.getStats();
+    console.log(`[MessagePool] 📊 FINAL STATISTICS:`);
+    console.log(`  Max Slots: ${stats.maxSlots}`);
+    console.log(`  High Water Mark: ${stats.highWaterMark} slots (${Math.round((stats.highWaterMark / stats.maxSlots) * 1000) / 10}%)`);
+    console.log(`  Total Acquisitions: ${stats.acquisitions.toLocaleString()}`);
+    console.log(`  Total Releases: ${stats.releases.toLocaleString()}`);
+    console.log(`  Overflows: ${stats.overflows}`);
+    console.log(`  Current Utilization: ${stats.utilizationPercent}% (${stats.slotsAllocated}/${stats.maxSlots} slots)`);
   }
 
   /**

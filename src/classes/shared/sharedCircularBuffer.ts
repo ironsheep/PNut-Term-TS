@@ -52,6 +52,14 @@ export class SharedCircularBuffer extends EventEmitter {
   // Statistics (not shared - each thread tracks its own)
   private overflowCount: number = 0;
   private highWaterMark: number = 0;
+  private fullCapacityLogged: boolean = false;
+
+  // Rate tracking for USB data
+  private bytesInLastSecond: number = 0;
+  private lastRateCheckTime: number = Date.now();
+  private peakBytesPerSecond: number = 0;
+  private peakRateStartTime: number = 0;
+  private peakRateDuration: number = 0;
 
   /**
    * Create a new SharedCircularBuffer
@@ -91,6 +99,12 @@ export class SharedCircularBuffer extends EventEmitter {
     instance.overflowCount = 0;
     instance.highWaterMark = 0;
     instance.savedPositions = []; // CRITICAL: Initialize saved positions array
+    instance.fullCapacityLogged = false;
+    instance.bytesInLastSecond = 0;
+    instance.lastRateCheckTime = Date.now();
+    instance.peakBytesPerSecond = 0;
+    instance.peakRateStartTime = 0;
+    instance.peakRateDuration = 0;
 
     SharedCircularBuffer.logConsoleMessage(`[SharedCircularBuffer] Attached to shared buffers (${transferables.size} bytes)`);
 
@@ -119,12 +133,46 @@ export class SharedCircularBuffer extends EventEmitter {
     const available = this.getAvailableSpace();
     if (dataLength > available) {
       this.overflowCount++;
+      // Log if buffer hits full capacity
+      if (available === 0 && !this.fullCapacityLogged) {
+        console.error(`[CircularBuffer] 🔴 FULL CAPACITY REACHED: Buffer exhausted (${this.bufferSize} bytes)`);
+        this.fullCapacityLogged = true;
+      }
       this.emit('bufferOverflow', {
         attempted: dataLength,
         available: available
       });
       SharedCircularBuffer.logConsoleMessage(`[SharedCircularBuffer] OVERFLOW: Attempted ${dataLength} bytes, only ${available} available`);
       return false;
+    }
+    // Reset full capacity flag once space becomes available again
+    if (available > 0 && this.fullCapacityLogged) {
+      this.fullCapacityLogged = false;
+    }
+
+    // Track bytes/second for rate calculation
+    this.bytesInLastSecond += dataLength;
+    const now = Date.now();
+    const elapsed = now - this.lastRateCheckTime;
+
+    // Update rate every second
+    if (elapsed >= 1000) {
+      const currentRate = Math.round(this.bytesInLastSecond / (elapsed / 1000));
+
+      // Track peak rate and duration
+      if (currentRate > this.peakBytesPerSecond) {
+        // New peak
+        this.peakBytesPerSecond = currentRate;
+        this.peakRateStartTime = now;
+        this.peakRateDuration = 0;
+      } else if (currentRate === this.peakBytesPerSecond && this.peakBytesPerSecond > 0) {
+        // Sustaining peak
+        this.peakRateDuration = now - this.peakRateStartTime;
+      }
+
+      // Reset for next second
+      this.bytesInLastSecond = 0;
+      this.lastRateCheckTime = now;
     }
 
     // Get current tail position atomically
@@ -149,7 +197,10 @@ export class SharedCircularBuffer extends EventEmitter {
     // Update high water mark
     const used = this.getUsedSpace();
     if (used > this.highWaterMark) {
+      const oldHighWater = this.highWaterMark;
       this.highWaterMark = used;
+      const usagePercent = Math.round((used / this.bufferSize) * 1000) / 10;
+      console.log(`[CircularBuffer] 📈 NEW HIGH WATER MARK: ${used}/${this.bufferSize} bytes (${usagePercent}%) [was: ${oldHighWater}]`);
     }
 
     return true;
@@ -180,6 +231,7 @@ export class SharedCircularBuffer extends EventEmitter {
     // Check if buffer is now empty
     if (newHead === tail) {
       Atomics.store(this.sharedState, IS_EMPTY_INDEX, 1);
+      console.log(`[CircularBuffer] 🔄 Buffer went EMPTY (all data consumed)`);
     }
 
     return { status: NextStatus.DATA, value };
@@ -341,8 +393,25 @@ export class SharedCircularBuffer extends EventEmitter {
       highWaterMark: this.highWaterMark,
       overflowCount: this.overflowCount,
       warningThreshold: 80,
-      isNearFull: usagePercent >= 80
+      isNearFull: usagePercent >= 80,
+      peakBytesPerSecond: this.peakBytesPerSecond,
+      peakRateDuration: this.peakRateDuration
     };
+  }
+
+  /**
+   * Log final statistics (called on shutdown)
+   */
+  public logFinalStats(): void {
+    const stats = this.getStats();
+    console.log(`[CircularBuffer] 📊 FINAL STATISTICS:`);
+    console.log(`  Size: ${stats.size.toLocaleString()} bytes`);
+    console.log(`  High Water Mark: ${stats.highWaterMark.toLocaleString()} bytes (${Math.round((stats.highWaterMark / stats.size) * 1000) / 10}%)`);
+    console.log(`  Overflow Count: ${stats.overflowCount}`);
+    console.log(`  Peak USB Rate: ${stats.peakBytesPerSecond.toLocaleString()} bytes/sec`);
+    if (stats.peakRateDuration > 0) {
+      console.log(`  Peak Rate Duration: ${Math.round(stats.peakRateDuration / 1000)} seconds`);
+    }
   }
 
   /**

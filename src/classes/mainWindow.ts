@@ -328,6 +328,16 @@ export class MainWindow {
       }
     });
 
+    // CRITICAL: Listen for P2 system reboot (golden sync marker)
+    this.serialProcessor.on('p2SystemReboot', (eventData: { message: string; timestamp: number }) => {
+      this.logConsoleMessage(`[P2 SYNC] 🎯 P2 SYSTEM REBOOT DETECTED from SerialProcessor!`);
+      this.logConsoleMessage(`[P2 SYNC] Message: ${eventData.message}`);
+      this.logConsoleMessage(`[P2 SYNC] Timestamp: ${new Date(eventData.timestamp).toISOString()}`);
+
+      // Trigger complete synchronization reset
+      this.handleP2SystemReboot(eventData);
+    });
+
     // Reset debugger response state on DTR/RTS reset
     this.serialProcessor.on('dtrReset', () => {
       this.logConsoleMessage('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
@@ -424,11 +434,11 @@ export class MainWindow {
       this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
     }
 
-    // IMPORTANT: Display terminal output in BOTH the debug logger AND main window
-    if (message.type === MessageType.TERMINAL_OUTPUT) {
+    // IMPORTANT: Display terminal output and invalid COG messages in BOTH the debug logger AND main window
+    if (message.type === MessageType.TERMINAL_OUTPUT || message.type === MessageType.INVALID_COG) {
       // Decode terminal data and display in main window's blue terminal area
       const terminalText = new TextDecoder().decode(message.data);
-      this.logConsoleMessage(`[TERMINAL] 🔵 Routing TERMINAL_OUTPUT to blue window:`);
+      this.logConsoleMessage(`[TERMINAL] 🔵 Routing ${message.type} to blue window:`);
       this.logConsoleMessage(`[TERMINAL]   Raw bytes: [${Array.from(message.data).join(', ')}]`);
       this.logConsoleMessage(`[TERMINAL]   Decoded text: "${terminalText}"`);
       this.logConsoleMessage(`[TERMINAL]   Text length: ${terminalText.length} chars`);
@@ -499,66 +509,22 @@ export class MainWindow {
       if (isCreationCommand) {
         // This is a window CREATION command - proceed to creation logic below
         this.logConsoleMessage(`[TWO-TIER] Window creation command detected: ${firstToken}`);
-        // Fall through to window creation logic at line 539+
+        // Fall through to window creation logic below
       } else {
-        // This is a window UPDATE command - must have valid window name(s)
-        const displayNames = Object.keys(this.displays).map(name => name.toUpperCase());
-        const targetWindows: string[] = [];
-        let dataStartIndex = 0;
+        // This is a window UPDATE command - route to WindowRouter for name-based routing
+        this.logConsoleMessage(`[TWO-TIER] Window update command detected: ${firstToken}`);
 
-        // STEP 2: First token MUST be a valid existing window name
-        if (!displayNames.includes(firstToken)) {
-          // ERROR: Window not found
-          const errorMsg = `ERROR: Window update failed - window '${firstToken}' not found (no preceding creation command)`;
-          this.logConsoleMessage(`[TWO-TIER] ${errorMsg}`);
-          this.logMessage(errorMsg);
-          return; // Stop processing - this is a protocol error
-        }
-
-        // First window found
-        targetWindows.push(firstToken);
-        dataStartIndex = 1;
-
-        // STEP 3: Check remaining tokens for additional window names (multi-window routing)
-        for (let i = 1; i < lineParts.length; i++) {
-          const part = lineParts[i].toUpperCase();
-          if (displayNames.includes(part)) {
-            targetWindows.push(part);
-            dataStartIndex = i + 1;
-          } else {
-            // Not a window name, must be data - stop checking
-            break;
-          }
-        }
-
-        // STEP 4: Route message to target windows
-        this.logConsoleMessage(
-          `[TWO-TIER] Routing update to ${targetWindows.length} window(s): [${targetWindows.join(', ')}], data starts at index ${dataStartIndex}`
-        );
-
-        // Extract data portion ONCE (window names were only for routing, windows don't need them)
-        // All windows receive same dataParts reference (zero copying)
-        const dataParts = lineParts.slice(dataStartIndex);
-
-        // Route SAME dataParts reference to all windows
-        targetWindows.forEach(windowName => {
-          const displayEntry = Object.entries(this.displays).find(
-            ([name]) => name.toUpperCase() === windowName
-          );
-
-          if (displayEntry) {
-            const [displayName, window] = displayEntry;
-            const debugWindow = window as DebugWindowBase;
-
-            // Pass same dataParts reference to all windows (no copying)
-            debugWindow.updateContent(dataParts);
-            this.logConsoleMessage(
-              `[TWO-TIER] Routed to window '${displayName}' with data: [${dataParts.join(', ')}]`
-            );
-          }
+        // Pass full backtick command to WindowRouter for unified window routing
+        this.windowRouter.routeMessage({
+          type: 'text',
+          data: data,  // Full backtick command with data
+          timestamp: message.timestamp || Date.now()
         });
 
-        // Fall through to finally block for single pooled message release
+        // WindowRouter will:
+        // - Find window by name
+        // - Route to window if exists
+        // - Log error if window not found (ERROR on missing for updates)
         return;
       }
 
@@ -754,15 +720,25 @@ export class MainWindow {
    * Route to debugger window (80-byte packets)
    */
   private routeToDebuggerWindow(message: ExtractedMessage): void {
-    if (message.metadata?.cogId !== undefined) {
-      this.logConsoleMessage(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
+    let cogId: number | undefined = message.metadata?.cogId;
+
+    // For DB_PACKET, extract COG ID from subtype byte (byte 1)
+    if (message.type === MessageType.DB_PACKET && message.data.length >= 2) {
+      cogId = message.data[1]; // Subtype byte often contains COG ID
+      this.logConsoleMessage(`[TWO-TIER] DB_PACKET for COG ${cogId}`);
+    }
+
+    if (cogId !== undefined) {
+      this.logConsoleMessage(`[TWO-TIER] Routing debugger data for COG ${cogId}`);
       // Route binary debugger data to appropriate COG debugger window
       this.windowRouter.routeMessage({
         type: 'binary',
         data: message.data,
         timestamp: message.timestamp,
-        cogId: message.metadata.cogId
+        cogId: cogId
       });
+    } else {
+      this.logConsoleMessage(`[TWO-TIER] Warning: Debugger message without COG ID`);
     }
   }
 
@@ -789,11 +765,6 @@ export class MainWindow {
         break;
       case MessageType.INVALID_COG:
         displayText = `[INVALID COG] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(
-          message.data
-        )}`;
-        break;
-      case MessageType.INCOMPLETE_DEBUG:
-        displayText = `[INCOMPLETE] ${message.metadata?.warningMessage || ''}: ${new TextDecoder().decode(
           message.data
         )}`;
         break;
@@ -2824,7 +2795,9 @@ export class MainWindow {
 
       // Log to debug logger if it exists
       if (this.debugLoggerWindow) {
-        const displayData = data.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+        // Format with <cr> notation for carriage returns
+        // Examples: "hello\r" → "hello<cr>", "\r" → "<cr>"
+        const displayData = data.replace(/\r/g, '<cr>').replace(/\n/g, '<lf>');
         this.debugLoggerWindow.logSystemMessage(`[TX] ${displayData}`);
       }
     });

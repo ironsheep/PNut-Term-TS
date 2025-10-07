@@ -45,6 +45,13 @@ export class WorkerExtractor extends EventEmitter {
   private totalMessagesExtracted: number = 0;
   private bufferOverflows: number = 0;
 
+  // Message extraction rate tracking
+  private messagesInLastSecond: number = 0;
+  private lastMessageRateCheckTime: number = Date.now();
+  private peakMessagesPerSecond: number = 0;
+  private peakMessageRateStartTime: number = 0;
+  private peakMessageRateDuration: number = 0;
+
   constructor(bufferSize: number = 1048576, maxSlots: number = 1000, maxMessageSize: number = 65536) {
     super();
 
@@ -147,6 +154,31 @@ export class WorkerExtractor extends EventEmitter {
       case 'message':
         // Worker extracted message - emit poolId (zero-copy!)
         this.totalMessagesExtracted++;
+        this.messagesInLastSecond++;
+
+        // Track message extraction rate
+        const now = Date.now();
+        const elapsed = now - this.lastMessageRateCheckTime;
+
+        // Update rate every second
+        if (elapsed >= 1000) {
+          const currentRate = Math.round(this.messagesInLastSecond / (elapsed / 1000));
+
+          // Track peak rate and duration
+          if (currentRate > this.peakMessagesPerSecond) {
+            // New peak
+            this.peakMessagesPerSecond = currentRate;
+            this.peakMessageRateStartTime = now;
+            this.peakMessageRateDuration = 0;
+          } else if (currentRate === this.peakMessagesPerSecond && this.peakMessagesPerSecond > 0) {
+            // Sustaining peak
+            this.peakMessageRateDuration = now - this.peakMessageRateStartTime;
+          }
+
+          // Reset for next second
+          this.messagesInLastSecond = 0;
+          this.lastMessageRateCheckTime = now;
+        }
 
         WorkerExtractor.logConsoleMessage(`Received poolId ${msg.poolId} from worker (total: ${this.totalMessagesExtracted})`);
 
@@ -207,11 +239,31 @@ export class WorkerExtractor extends EventEmitter {
       totalBytesReceived: this.totalBytesReceived,
       totalMessagesExtracted: this.totalMessagesExtracted,
       bufferOverflows: this.bufferOverflows,
+      peakMessagesPerSecond: this.peakMessagesPerSecond,
+      peakMessageRateDuration: this.peakMessageRateDuration,
       bufferStats: this.buffer.getStats(),
       poolStats: this.messagePool.getStats(),
       workerReady: this.workerReady,
       usbLogger: this.usbLogger.getStats()
     };
+  }
+
+  /**
+   * Log final statistics (called on shutdown)
+   */
+  public logFinalStats(): void {
+    console.log(`[WorkerExtractor] 📊 FINAL STATISTICS:`);
+    console.log(`  Total Bytes Received: ${this.totalBytesReceived.toLocaleString()} bytes`);
+    console.log(`  Total Messages Extracted: ${this.totalMessagesExtracted.toLocaleString()}`);
+    console.log(`  Buffer Overflows: ${this.bufferOverflows}`);
+    console.log(`  Peak Message Rate: ${this.peakMessagesPerSecond.toLocaleString()} messages/sec`);
+    if (this.peakMessageRateDuration > 0) {
+      console.log(`  Peak Rate Duration: ${Math.round(this.peakMessageRateDuration / 1000)} seconds`);
+    }
+
+    // Log component stats
+    this.buffer.logFinalStats();
+    this.messagePool.logFinalStats();
   }
 
   /**
@@ -248,6 +300,9 @@ export class WorkerExtractor extends EventEmitter {
    */
   public async shutdown(): Promise<void> {
     WorkerExtractor.logConsoleMessage('Shutting down worker');
+
+    // Log final statistics before shutdown
+    this.logFinalStats();
 
     // Disable USB logging and flush
     if (this.usbLogger.isEnabled()) {

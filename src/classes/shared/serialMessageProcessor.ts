@@ -149,6 +149,12 @@ export class SerialMessageProcessor extends EventEmitter {
       this.emit('debuggerPacketReceived', packet);
     });
 
+    // CRITICAL: Forward P2 system reboot event for golden sync handling
+    this.router.on('p2SystemReboot', (eventData: { message: string; timestamp: number }) => {
+      this.logConsoleMessage('[Processor] 🎯 Forwarding p2SystemReboot event - golden sync marker');
+      this.emit('p2SystemReboot', eventData);
+    });
+
     this.router.on('routingError', (error) => {
       console.error('[Processor] Routing error:', error);
       this.emit('routingError', error);

@@ -38,7 +38,6 @@ export interface RoutingConfig {
   'TERMINAL_OUTPUT': RouteDestination[];
 
   // SPECIAL CASES
-  'INCOMPLETE_DEBUG': RouteDestination[];
   'INVALID_COG': RouteDestination[];
 }
 
@@ -106,7 +105,6 @@ export class MessageRouter extends EventEmitter {
     'DEBUGGER_416BYTE': 0,
     'P2_SYSTEM_INIT': 0,
     'TERMINAL_OUTPUT': 0,
-    'INCOMPLETE_DEBUG': 0,
     'INVALID_COG': 0
   };
   private destinationCounts: Record<string, number> = {};
@@ -129,7 +127,6 @@ export class MessageRouter extends EventEmitter {
       'DEBUGGER_416BYTE': [],
       'P2_SYSTEM_INIT': [],
       'TERMINAL_OUTPUT': [],
-      'INCOMPLETE_DEBUG': [],
       'INVALID_COG': []
     };
   }
@@ -198,6 +195,14 @@ export class MessageRouter extends EventEmitter {
 
       // Update statistics
       this.messagesRouted[legacyType]++;
+
+      // CRITICAL: Emit P2 System Reboot event for golden sync marker
+      // P2_SYSTEM_INIT is "Cog0 INIT $0000_0000 $0000_0000 load" - triggers complete system reset
+      if (sharedType === SharedMessageType.P2_SYSTEM_INIT) {
+        const messageText = new TextDecoder().decode(data);
+        this.logConsoleMessage(`[MessageRouter] 🎯 P2_SYSTEM_INIT detected - emitting p2SystemReboot event`);
+        this.emit('p2SystemReboot', { message: messageText, timestamp: Date.now() });
+      }
 
       // Emit debugger packet event if needed
       if (legacyType === 'DEBUGGER_416BYTE' && data instanceof Uint8Array) {
@@ -277,7 +282,8 @@ export class MessageRouter extends EventEmitter {
         return MessageType.DEBUGGER_416BYTE;
 
       case SharedMessageType.P2_SYSTEM_INIT:
-        return MessageType.P2_SYSTEM_INIT;
+        // P2_SYSTEM_INIT is "Cog0 INIT $0000_0000 $0000_0000 load" - route like COG0
+        return MessageType.COG_MESSAGE;
 
       case SharedMessageType.WINDOW_LOGIC:
       case SharedMessageType.WINDOW_SCOPE:
@@ -341,23 +347,23 @@ export class MessageRouter extends EventEmitter {
     // Terminal FIRST principle - default route
     this.registerDestination(MessageType.TERMINAL_OUTPUT, debugLogger);
 
-    // COG messages to debug logger - REMOVED to fix duplicate routing
-    // WindowRouter has hardcoded policy to route all messages to debug logger (windowRouter.ts:371-385)
-    // So we only need to route to cogWindowRouter, which will handle debug logger routing
-    // this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
+    // COG messages to debug logger (always logged)
+    this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
 
-    // COG messages to individual COG windows (conditional - only if COG windows exist)
+    // COG messages to individual COG windows (conditional - only if COG windows exist, silent drop)
     if (cogWindowRouter) {
       this.registerDestination(MessageType.COG_MESSAGE, cogWindowRouter);
     }
 
-    // P2 System Init to debug logger with golden sync
-    this.registerDestination(MessageType.P2_SYSTEM_INIT, debugLogger);
+    // P2 System Init now routes as COG_MESSAGE (removed separate routing)
 
-    // 0xDB packets to debug logger
+    // 0xDB packets to debug logger and debugger window
     this.registerDestination(MessageType.DB_PACKET, debugLogger);
+    if (debuggerWindow) {
+      this.registerDestination(MessageType.DB_PACKET, debuggerWindow);
+    }
 
-    // 80-byte debugger packets to both debugger windows and debug logger
+    // 416-byte debugger packets to both debugger windows and debug logger
     if (debuggerWindow) {
       this.registerDestination(MessageType.DEBUGGER_416BYTE, debuggerWindow);
     }
@@ -371,7 +377,6 @@ export class MessageRouter extends EventEmitter {
 
     // Special cases to debug logger with warnings
     this.registerDestination(MessageType.INVALID_COG, debugLogger);
-    this.registerDestination(MessageType.INCOMPLETE_DEBUG, debugLogger);
   }
 
   /**

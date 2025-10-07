@@ -834,9 +834,8 @@ export class LoggerWindow extends DebugWindowBase {
         break;
         
       case MessageType.INVALID_COG:
-      case MessageType.INCOMPLETE_DEBUG:
         // Error/warning messages
-        const errorMsg = Array.isArray(actualData) ? actualData.join(' ') : 
+        const errorMsg = Array.isArray(actualData) ? actualData.join(' ') :
                         (actualData instanceof Uint8Array ? new TextDecoder().decode(actualData) : String(actualData));
         this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
         this.writeToLog(`[WARNING] ${errorMsg}`);
