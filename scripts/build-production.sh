@@ -12,6 +12,10 @@ echo "🧹 Cleaning dist directory..."
 rm -rf dist
 mkdir -p dist
 
+# Compile TypeScript first to get workers and other non-bundled files
+echo "📝 Compiling TypeScript..."
+npx tsc
+
 # Copy required runtime assets
 echo "📁 Copying runtime assets..."
 mkdir -p ./prebuilds
@@ -55,6 +59,22 @@ esbuild.build({
   external: ['electron', '@serialport/bindings-cpp', 'usb'],
   minify: true
 }).then(() => console.log('   ✅ Electron bundle created'));
+"
+
+# Build the Worker bundle (includes all dependencies)
+echo "   Building Worker bundle..."
+node -e "
+const esbuild = require('esbuild');
+esbuild.build({
+  entryPoints: ['src/workers/extractionWorker.ts'],
+  bundle: true,
+  outfile: 'dist/workers/extractionWorker.bundled.js',
+  platform: 'node',
+  target: 'node18',
+  external: ['worker_threads'],
+  minify: false,
+  format: 'cjs'
+}).then(() => console.log('   ✅ Worker bundle created'));
 "
 
 # Insert build date into non-minified version

@@ -5,40 +5,33 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 // src/classes/shared/serialMessageProcessor.ts
 
 import { EventEmitter } from 'events';
-import { CircularBuffer } from './circularBuffer';
-import { DynamicQueue } from './dynamicQueue';
-import { SerialReceiver } from './serialReceiver';
-import { MessageExtractor, ExtractedMessage, MessageType } from './messageExtractor';
+import { MessageType, ExtractedMessage } from './sharedMessagePool';
 import { MessageRouter, RouteDestination } from './messageRouter';
 import { DTRResetManager } from './dtrResetManager';
 import { PerformanceMonitor } from './performanceMonitor';
+import { WorkerExtractor } from './workerExtractor';
 
 /**
- * SerialMessageProcessor - Two-Tier Pattern Matching Pipeline Integration
- * 
- * Integrates all components for P2 serial message processing pipeline:
- * SerialReceiver → CircularBuffer → MessageExtractor → MessageRouter → Windows
- * 
- * ARCHITECTURE INTEGRATION:
- * - SerialReceiver: Buffer → CircularBuffer with 1MB capacity  
- * - MessageExtractor: Two-Tier Pattern Matching with Pascal study decisions
- * - MessageRouter: Terminal FIRST, Debugger SECOND routing philosophy
+ * SerialMessageProcessor - Autonomous Worker Thread Architecture
+ *
+ * Integrates components for P2 serial message processing:
+ * Main Thread → SharedCircularBuffer → Autonomous Worker → SharedMessagePool → MessageRouter → Windows
+ *
+ * ARCHITECTURE:
+ * - WorkerExtractor: Main thread writes USB data to SharedCircularBuffer
+ * - Worker Thread: Autonomous loop monitors buffer, extracts messages to SharedMessagePool
+ * - MessageRouter: Routes messages from SharedMessagePool to windows
  * - DTRResetManager: P2 hardware reset synchronization
- * 
- * COMPONENT INDEPENDENCE (Clean separation of concerns):
- * - SerialReceiver: Only handles Buffer → CircularBuffer conversion
- * - MessageExtractor: Only handles Two-Tier pattern matching and extraction
- * - MessageRouter: Only handles confidence-based message routing
- * - DTRResetManager: Only handles reset synchronization and log boundaries
- * 
- * This is the ONLY place where components are wired together.
- * All P2-specific logic is contained within individual components.
+ *
+ * KEY DESIGN:
+ * - Worker thread is autonomous (no coordination messages)
+ * - Zero-copy via SharedArrayBuffer
+ * - Single SharedMessagePool (no duplicate pools)
+ * - Router reads from pool, processes, routes to windows, releases
  */
 
 export interface ProcessorStats {
-  receiver: any;
-  buffer: any;
-  extractor: any;
+  workerExtractor: any;
   router: any;
   dtrReset: any;
   isRunning: boolean;
@@ -61,14 +54,11 @@ export class SerialMessageProcessor extends EventEmitter {
     }
   }
 
-  // Core components
-  private buffer: CircularBuffer;
-  private receiver: SerialReceiver;
-  private extractorQueue: DynamicQueue<ExtractedMessage>;
-  private extractor: MessageExtractor;
+  // Worker Thread architecture components
+  private workerExtractor: WorkerExtractor;
   private router: MessageRouter;
   private dtrResetManager: DTRResetManager;
-  
+
   // Performance monitoring
   private performanceMonitor: PerformanceMonitor;
 
@@ -76,79 +66,83 @@ export class SerialMessageProcessor extends EventEmitter {
   private isRunning: boolean = false;
   private startTime: number = 0;
 
-  constructor(enablePerformanceLogging: boolean = false, performanceLogPath?: string) {
+  constructor(
+    enablePerformanceLogging: boolean = false,
+    performanceLogPath?: string
+  ) {
     super();
 
-    // Create components in dependency order
-    this.buffer = new CircularBuffer();
-    this.receiver = new SerialReceiver(this.buffer);
-    this.extractorQueue = new DynamicQueue<ExtractedMessage>(100, 5000, 'ExtractorQueue');
-    this.extractor = new MessageExtractor(this.buffer, this.extractorQueue);
-    this.router = new MessageRouter(this.extractorQueue);
+    this.logConsoleMessage('[Processor] Initializing Worker Thread architecture');
+
+    // Create WorkerExtractor (contains SharedCircularBuffer + SharedMessagePool)
+    this.workerExtractor = new WorkerExtractor(1048576, 1000, 65536);
+
+    // Create router (Worker Thread architecture only)
+    this.router = new MessageRouter();
+
+    // Wire SharedMessagePool to router
+    this.router.setSharedMessagePool(this.workerExtractor.getMessagePool());
+
+    // Create DTR reset manager
     this.dtrResetManager = new DTRResetManager(this.router);
-    
+
     // Create performance monitor
     const logPath = performanceLogPath || (enablePerformanceLogging ? 'performance.log' : undefined);
     this.performanceMonitor = new PerformanceMonitor(logPath);
-    
-    // Wire performance monitoring to all components
-    this.buffer.setPerformanceMonitor(this.performanceMonitor);
-    this.receiver.setPerformanceMonitor(this.performanceMonitor);
-    this.extractorQueue.setPerformanceMonitor(this.performanceMonitor, 'ExtractorQueue');
-    this.extractor.setPerformanceMonitor(this.performanceMonitor);
+
+    // Wire performance monitoring
     this.router.setPerformanceMonitor(this.performanceMonitor);
     this.dtrResetManager.setPerformanceMonitor(this.performanceMonitor);
 
-    // Wire up the pipeline
+    // Wire up Worker Thread pipeline
     this.setupPipeline();
   }
 
   /**
-   * Set up component connections
+   * Set up Worker Thread pipeline connections
    */
   private setupPipeline(): void {
-    // SerialReceiver triggers MessageExtractor
-    this.receiver.setExtractionCallback(() => {
-      const hasMore = this.extractor.extractMessages();
-      
-      // If messages were extracted, trigger router
-      if (this.extractorQueue.getSize() > 0) {
-        this.router.processMessages();
-      }
+    if (!this.workerExtractor) {
+      throw new Error('WorkerExtractor not initialized');
+    }
 
-      // If more data might be extractable, schedule another extraction
-      if (hasMore) {
-        setImmediate(() => {
-          this.extractor.extractMessages();
-          if (this.extractorQueue.getSize() > 0) {
-            this.router.processMessages();
-          }
-        });
-      }
+    // Worker sends poolId when message extracted
+    this.workerExtractor.on('messageExtracted', (poolId: number) => {
+      this.logConsoleMessage(`[Processor] Worker extracted message, poolId: ${poolId}`);
+
+      // Route from SharedMessagePool (zero-copy!)
+      this.router.routeFromPool(poolId);
+    });
+
+    // Handle worker ready
+    this.workerExtractor.on('workerReady', () => {
+      this.logConsoleMessage('[Processor] Worker thread ready');
+      this.emit('workerReady');
     });
 
     // Handle buffer overflow
-    this.receiver.on('bufferOverflow', (event) => {
-      console.error('[Processor] Buffer overflow, waiting for resync');
-      this.emit('bufferOverflow', event);
-      
+    this.workerExtractor.on('bufferOverflow', () => {
+      console.error('[Processor] Worker buffer overflow, waiting for resync');
+      this.emit('bufferOverflow', {});
+
       // Clear buffer and wait for clean message boundary
-      this.buffer.clear();
+      this.workerExtractor!.clearBuffer();
       this.dtrResetManager.clearSynchronization();
     });
 
-    // Handle extraction events
-    this.extractor.on('messagesExtracted', (count) => {
-      this.emit('messagesExtracted', count);
+    // Handle worker errors
+    this.workerExtractor.on('workerError', (error) => {
+      console.error('[Processor] Worker error:', error);
+      this.emit('workerError', error);
     });
 
-    // Handle routing events
+    // Handle routing events (same as old architecture)
     this.router.on('messageRouted', (event) => {
       // Update DTR reset manager message counts
       const isBeforeReset = this.dtrResetManager.isMessageBeforeReset(event.message.timestamp);
       this.dtrResetManager.updateMessageCounts(isBeforeReset);
     });
-    
+
     // CRITICAL: Forward debugger packet event for P2 response
     this.router.on('debuggerPacketReceived', (packet: Uint8Array) => {
       this.logConsoleMessage('[Processor] Forwarding debuggerPacketReceived event');
@@ -181,13 +175,14 @@ export class SerialMessageProcessor extends EventEmitter {
     this.dtrResetManager.on('syncStatusChanged', (status) => {
       this.emit('syncStatusChanged', status);
     });
-    
+
     // Handle performance threshold alerts
     this.performanceMonitor.on('threshold', (alert) => {
       this.logConsoleMessage('[Processor] Performance threshold exceeded:', alert);
       this.emit('performanceAlert', alert);
     });
   }
+
 
   /**
    * Start processing
@@ -219,7 +214,10 @@ export class SerialMessageProcessor extends EventEmitter {
 
     // Wait for queues to drain
     await this.router.waitForQueueDrain(5000);
-    
+
+    // Shutdown worker thread
+    await this.workerExtractor.shutdown();
+
     // Stop performance snapshots
     this.performanceMonitor.stopSnapshots();
 
@@ -232,14 +230,15 @@ export class SerialMessageProcessor extends EventEmitter {
    * This is the entry point for all serial data
    */
   public receiveData(data: Buffer): void {
-    this.logConsoleMessage(`[TWO-TIER] 🔄 SerialMessageProcessor.receiveData(): ${data.length} bytes, running: ${this.isRunning}`);
-    
+    this.logConsoleMessage(`[SerialMessageProcessor] receiveData(): ${data.length} bytes, running: ${this.isRunning}`);
+
     if (!this.isRunning) {
       this.logConsoleMessage('[Processor] Received data while not running, ignoring');
       return;
     }
 
-    this.receiver.receiveData(data);
+    // Pass to WorkerExtractor (writes to SharedCircularBuffer)
+    this.workerExtractor.receiveData(data);
   }
 
   /**
@@ -282,9 +281,7 @@ export class SerialMessageProcessor extends EventEmitter {
     const uptime = this.isRunning ? Date.now() - this.startTime : 0;
 
     return {
-      receiver: this.receiver.getStats(),
-      buffer: this.buffer.getStats(),
-      extractor: this.extractor.getStats(),
+      workerExtractor: this.workerExtractor.getStats(),
       router: this.router.getStats(),
       dtrReset: this.dtrResetManager.getStats(),
       isRunning: this.isRunning,
@@ -298,8 +295,7 @@ export class SerialMessageProcessor extends EventEmitter {
    * Reset all statistics
    */
   public resetStats(): void {
-    this.receiver.resetStats();
-    this.extractor.resetStats();
+    // Note: WorkerExtractor doesn't have resetStats yet
     this.router.resetStats();
     this.dtrResetManager.resetStats();
     this.performanceMonitor.reset();
@@ -309,9 +305,7 @@ export class SerialMessageProcessor extends EventEmitter {
    * Clear all buffers and queues
    */
   public clearAll(): void {
-    this.buffer.clear();
-    this.extractorQueue.clear();
-    this.router.getInputQueue().clear();
+    this.workerExtractor.clearBuffer();
   }
 
   /**
@@ -322,12 +316,11 @@ export class SerialMessageProcessor extends EventEmitter {
   }
 
   /**
-   * Check if system is idle
+   * Check if system is idle (LEGACY - simplified for Worker Thread architecture)
+   * Worker Thread architecture has no queue, so always considered idle
    */
   public isIdle(): boolean {
-    return this.router.isIdle() && 
-           !this.receiver.isExtractionPending() &&
-           !this.dtrResetManager.isResetPending();
+    return !this.dtrResetManager.isResetPending();
   }
 
   /**
@@ -335,12 +328,11 @@ export class SerialMessageProcessor extends EventEmitter {
    */
   public getComponents() {
     return {
-      buffer: this.buffer,
-      receiver: this.receiver,
-      extractor: this.extractor,
+      workerExtractor: this.workerExtractor,
       router: this.router,
       dtrResetManager: this.dtrResetManager,
-      performanceMonitor: this.performanceMonitor
+      performanceMonitor: this.performanceMonitor,
+      architecture: 'Worker Thread'
     };
   }
 

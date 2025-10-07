@@ -28,30 +28,51 @@ export class Downloader {
 
   /**
    * Handle protocol data during download.
-   * Returns true if data was consumed (protocol message), false if it should be routed normally.
+   * Returns object with:
+   *   - consumed: true if protocol message was found and handled
+   *   - remainingData: if checksum was concatenated with app output, this contains the app output to route
    */
-  public handleProtocolData(data: Buffer): boolean {
+  public handleProtocolData(data: Buffer): { consumed: boolean; remainingData?: Buffer } {
     const text = data.toString('utf8');
 
     // Check for Prop_Ver response (P2 identification)
     if (text.includes('Prop_Ver')) {
       this.logMessage(`[DOWNLOAD PROTOCOL] P2 identification response consumed: ${text.trim()}`);
-      return true; // Consumed - don't route to displays
+      return { consumed: true }; // Consumed - don't route to displays
     }
 
     // Check for download checksum responses (. or !)
+    // NOTE: P2 sends checksum then immediately starts user code, so checksum
+    // often arrives concatenated with app output (e.g., ".Cog0  INIT")
     const trimmed = text.trim();
-    if (trimmed === '.' || trimmed === '!') {
-      this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${trimmed}`);
-      return true; // Consumed - don't route to displays
+    if (trimmed.startsWith('.') || trimmed.startsWith('!')) {
+      const checksumChar = trimmed[0];
+      this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${checksumChar}`);
+
+      // CRITICAL: End download mode immediately - P2 has the code and is now executing it
+      // Any subsequent messages are from the running user application and should route normally
+      this._isDownloading = false;
+      this.logMessage(`[DOWNLOAD STATE] isDownloading = false (checksum received, P2 now executing user code)`);
+
+      // Check if checksum was concatenated with app output (expected P2 behavior)
+      if (trimmed.length > 1) {
+        // Strip the checksum character and return the remaining app output for routing
+        const appOutput = trimmed.substring(1); // Remove the checksum character
+        const remainingBuffer = Buffer.from(appOutput, 'utf8');
+        this.logMessage(`[DOWNLOAD PROTOCOL] Checksum concatenated with ${appOutput.length} bytes of app output - routing app output: "${appOutput.substring(0, 40)}..."`);
+        return { consumed: true, remainingData: remainingBuffer };
+      }
+
+      return { consumed: true }; // Checksum only, no app output
     }
 
     // Not a protocol message - let it route normally
-    return false;
+    return { consumed: false };
   }
 
   public async download(binaryFilespec: string, toFlash: boolean): Promise<{ success: boolean; errorMessage?: string }> {
     this._isDownloading = true;
+    this.logMessage(`[DOWNLOAD STATE] isDownloading = true (download starting)`);
 
     try {
       let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
@@ -205,6 +226,7 @@ export class Downloader {
       return { success: false, errorMessage: 'Failed to load binary file' };
     } finally {
       this._isDownloading = false;
+      this.logMessage(`[DOWNLOAD STATE] isDownloading = false (download complete/failed)`);
     }
   }
 

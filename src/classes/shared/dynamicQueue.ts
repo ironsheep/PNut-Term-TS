@@ -60,10 +60,14 @@ export class DynamicQueue<T> {
   private totalEnqueued: number = 0;
   private totalDequeued: number = 0;
   private droppedCount: number = 0;
-  
+
   // Performance monitoring
   private performanceMonitor: PerformanceMonitor | null = null;
   private queueName: string = 'DynamicQueue';
+
+  // Queue fill state tracking
+  private wasFull: boolean = false;
+  private wasNonEmpty: boolean = false;
 
   constructor(initialCapacity: number = 10, maxCapacity: number = 1000, name?: string) {
     this.capacity = Math.min(initialCapacity, maxCapacity);
@@ -94,12 +98,18 @@ export class DynamicQueue<T> {
       if (!this.resize()) {
         // Can't resize further, drop the item
         this.droppedCount++;
-        
+
+        // Log when queue first fills up
+        if (!this.wasFull) {
+          console.log(`[QUEUE FILLED] ${this.queueName} reached max capacity (${this.maxCapacity}), dropping items`);
+          this.wasFull = true;
+        }
+
         // Record overflow in performance monitor
         if (this.performanceMonitor) {
           this.performanceMonitor.recordQueueOverflow(this.queueName);
         }
-        
+
         return false;
       }
     }
@@ -110,11 +120,14 @@ export class DynamicQueue<T> {
     this.size++;
     this.totalEnqueued++;
 
+    // Track that queue has items
+    this.wasNonEmpty = true;
+
     // Update high water mark
     if (this.size > this.highWaterMark) {
       this.highWaterMark = this.size;
     }
-    
+
     // Record metrics in performance monitor
     if (this.performanceMonitor) {
       this.performanceMonitor.recordQueueMetrics(this.queueName, this.size, 'enqueue');
@@ -137,7 +150,19 @@ export class DynamicQueue<T> {
     this.head = (this.head + 1) % this.capacity;
     this.size--;
     this.totalDequeued++;
-    
+
+    // Log when queue becomes cleared (empty)
+    if (this.wasNonEmpty && this.size === 0) {
+      console.log(`[QUEUE CLEARED] ${this.queueName} is now empty`);
+      this.wasNonEmpty = false;
+    }
+
+    // Log when queue becomes non-full after being full
+    if (this.wasFull && this.size < this.capacity) {
+      console.log(`[QUEUE NOT FULL] ${this.queueName} can accept items again (size: ${this.size}/${this.capacity})`);
+      this.wasFull = false;
+    }
+
     // Record metrics in performance monitor
     if (this.performanceMonitor) {
       this.performanceMonitor.recordQueueMetrics(this.queueName, this.size, 'dequeue');
@@ -183,6 +208,12 @@ export class DynamicQueue<T> {
     this.head = 0;
     this.tail = this.size;
     this.resizeCount++;
+
+    // Log when queue becomes non-full after being full (successful resize means we have room now)
+    if (this.wasFull) {
+      console.log(`[QUEUE NOT FULL] ${this.queueName} resized to ${this.capacity}, can accept items again`);
+      this.wasFull = false;
+    }
 
     this.logConsoleMessage(`[DynamicQueue] Resized from ${this.capacity / 2} to ${this.capacity} (resize #${this.resizeCount})`);
 
@@ -231,10 +262,19 @@ export class DynamicQueue<T> {
    * Clear the queue
    */
   public clear(): void {
+    const hadItems = this.size > 0;
     this.items = new Array(this.capacity);
     this.head = 0;
     this.tail = 0;
     this.size = 0;
+
+    // Reset state tracking
+    if (hadItems) {
+      console.log(`[QUEUE CLEARED] ${this.queueName} explicitly cleared`);
+    }
+    this.wasNonEmpty = false;
+    this.wasFull = false;
+
     // Don't reset statistics - they're cumulative
   }
 

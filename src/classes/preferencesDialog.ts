@@ -23,7 +23,9 @@ export class PreferencesDialog {
       logDirectory: './logs/',
       autoSaveDebug: true,
       newLogOnDtrReset: true,
-      maxLogSize: 'unlimited'
+      maxLogSize: 'unlimited',
+      enableUSBLogging: false,
+      usbLogFilePath: './logs/'  // Directory only - filename is auto-timestamped
     },
     recordings: {
       recordingsDirectory: './recordings/'
@@ -320,6 +322,15 @@ export class PreferencesDialog {
         <option value="unlimited">Unlimited</option>
       </select>
     </div>
+    <div class="form-group">
+      <label>Enable USB Traffic Logging:</label>
+      <input type="checkbox" id="enable-usb-logging">
+    </div>
+    <div class="form-group">
+      <label>USB Log Directory:</label>
+      <input type="text" id="usb-log-path" value="./logs/" style="flex: 1; max-width: 200px; border: 1px solid #ccc; padding: 5px 8px; border-radius: 3px; font-size: 13px;" title="Directory for timestamped USB traffic logs">
+      <span style="font-size: 11px; color: #666; margin-left: 10px;">Logs are timestamped automatically</span>
+    </div>
   </div>
 
   <div class="section">
@@ -377,6 +388,8 @@ export class PreferencesDialog {
       document.getElementById('auto-save-debug').checked = settings.logging.autoSaveDebug;
       document.getElementById('new-log-dtr').checked = settings.logging.newLogOnDtrReset;
       document.getElementById('max-log-size').value = settings.logging.maxLogSize;
+      document.getElementById('enable-usb-logging').checked = settings.logging.enableUSBLogging || false;
+      document.getElementById('usb-log-path').value = settings.logging.usbLogFilePath || './logs/usb-traffic.log';
 
       // Recordings settings
       document.getElementById('recordings-directory').value = settings.recordings.recordingsDirectory;
@@ -404,7 +417,9 @@ export class PreferencesDialog {
           logDirectory: document.getElementById('log-directory').value,
           autoSaveDebug: document.getElementById('auto-save-debug').checked,
           newLogOnDtrReset: document.getElementById('new-log-dtr').checked,
-          maxLogSize: document.getElementById('max-log-size').value
+          maxLogSize: document.getElementById('max-log-size').value,
+          enableUSBLogging: document.getElementById('enable-usb-logging').checked,
+          usbLogFilePath: document.getElementById('usb-log-path').value
         },
         recordings: {
           recordingsDirectory: document.getElementById('recordings-directory').value

@@ -22,7 +22,7 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
 import { DebuggerInteraction } from './shared/debuggerInteraction';
-import { MessagePool, PooledMessage } from './shared/messagePool';
+import { ExtractedMessage } from './shared/sharedMessagePool';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
@@ -1847,7 +1847,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   
   /**
    * Required abstract method - update content
-   * Handles both PooledMessage objects and raw data for backward compatibility
+   * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
   protected processMessageImmediate(data: any): void {
     // Check if window components are initialized
@@ -1863,38 +1863,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       return;
     }
     
-    let actualData: any;
-    let pooledMessage: PooledMessage | null = null;
-    
-    // Check if this is a PooledMessage that needs to be released
-    if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
-      pooledMessage = data as PooledMessage;
-      actualData = pooledMessage.data;
-      this.logConsoleMessage(`[DEBUGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
-    } else {
-      actualData = data;
-    }
-    
+    // In Worker Thread architecture, windows receive ExtractedMessage
+    // Router handles SharedMessagePool release
     try {
       // Route through the main message handler
-      this.handleDebuggerMessage(actualData);
+      this.handleDebuggerMessage(data);
     } catch (error) {
       console.error(`[DEBUGGER] Error processing message: ${error}`);
-    } finally {
-      // Always release the pooled message if we have one
-      if (pooledMessage) {
-        try {
-          const messagePool = MessagePool.getInstance();
-          const wasLastConsumer = messagePool.release(pooledMessage);
-          if (wasLastConsumer) {
-            this.logConsoleMessage(`[DEBUGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
-          } else {
-            this.logConsoleMessage(`[DEBUGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
-          }
-        } catch (releaseError) {
-          console.error(`[DEBUGGER] Error releasing pooled message: ${releaseError}`);
-        }
-      }
     }
   }
 

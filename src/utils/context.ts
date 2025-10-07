@@ -33,6 +33,8 @@ export interface RuntimeEnvironment {
   logToConsole: boolean;
   verbose: boolean;
   quiet: boolean;
+  usbTrafficLogging: boolean;
+  usbLogFilePath?: string;
 }
 export interface UserPreferences {
   logging: {
@@ -102,7 +104,9 @@ export class Context {
       logToConsole: true,
       verbose: false,
       quiet: false,
-      consoleMode: false      // Default to no console delay
+      consoleMode: false,     // Default to no console delay
+      usbTrafficLogging: false,  // Default USB logging off
+      usbLogFilePath: undefined
     };
     this.actions = {
       writeRAM: false,

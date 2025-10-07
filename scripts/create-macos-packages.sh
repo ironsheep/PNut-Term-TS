@@ -87,6 +87,12 @@ create_package() {
     cp dist/electron-main.js "$APP_DIR/dist/"
     echo "   ✅ Copied bundled application files (CLI and Electron entry points)"
 
+    # Copy workers directory
+    if [ -d "dist/workers" ]; then
+        cp -r dist/workers "$APP_DIR/dist/"
+        echo "   ✅ Copied worker files"
+    fi
+
     # Copy external files
     if [ -d "src/ext" ]; then
         mkdir -p "$APP_DIR/dist/ext"

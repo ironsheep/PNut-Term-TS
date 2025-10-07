@@ -22,5 +22,17 @@ Promise.all([
     external: ['electron'],
     minify: false,
     sourcemap: true
+  }),
+  // Build the Worker (bundle all dependencies into single file)
+  esbuild.build({
+    entryPoints: ['src/workers/extractionWorker.ts'],
+    bundle: true,
+    outfile: 'dist/workers/extractionWorker.bundled.js',
+    platform: 'node',
+    target: 'node23',
+    external: ['worker_threads'], // Keep worker_threads external (Node.js built-in)
+    minify: true,
+    sourcemap: true,
+    format: 'cjs' // CommonJS format for worker threads
   })
 ]).catch(() => process.exit(1));

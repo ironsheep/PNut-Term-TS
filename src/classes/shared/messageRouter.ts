@@ -5,58 +5,51 @@
 const ENABLE_CONSOLE_LOG: boolean = false;
 
 import { EventEmitter } from 'events';
-import { DynamicQueue } from './dynamicQueue';
-import { ExtractedMessage, MessageType } from './messageExtractor';
+import { ExtractedMessage, MessageType, SharedMessageType } from './sharedMessagePool';
 import { PerformanceMonitor } from './performanceMonitor';
-import { MessagePool, PooledMessage } from './messagePool';
+import { SharedMessagePool } from './sharedMessagePool';
 
 /**
  * Route destination interface
- * Updated to handle both PooledMessage references and legacy ExtractedMessage copies
+ * Handlers receive ExtractedMessage (router handles SharedMessagePool release)
  */
 export interface RouteDestination {
   name: string;
-  handler: (message: ExtractedMessage | PooledMessage) => void;
+  handler: (message: ExtractedMessage) => void;
 }
 
 /**
  * Routing configuration by message type - Two-Tier Pattern Matching
+ * Uses string keys for MessageType values
  */
 export interface RoutingConfig {
   // TIER 1: VERY DISTINCTIVE
-  [MessageType.DB_PACKET]: RouteDestination[];
-  [MessageType.P2_SYSTEM_INIT]: RouteDestination[];
-  
-  // TIER 1: DISTINCTIVE  
-  [MessageType.COG_MESSAGE]: RouteDestination[];
-  [MessageType.BACKTICK_WINDOW]: RouteDestination[];
-  
+  'DB_PACKET': RouteDestination[];
+  'P2_SYSTEM_INIT': RouteDestination[];
+
+  // TIER 1: DISTINCTIVE
+  'COG_MESSAGE': RouteDestination[];
+  'BACKTICK_WINDOW': RouteDestination[];
+
   // TIER 2: NEEDS CONTEXT
-  [MessageType.DEBUGGER_416BYTE]: RouteDestination[];
-  
+  'DEBUGGER_416BYTE': RouteDestination[];
+
   // DEFAULT ROUTE
-  [MessageType.TERMINAL_OUTPUT]: RouteDestination[];
-  
+  'TERMINAL_OUTPUT': RouteDestination[];
+
   // SPECIAL CASES
-  [MessageType.INCOMPLETE_DEBUG]: RouteDestination[];
-  [MessageType.INVALID_COG]: RouteDestination[];
+  'INCOMPLETE_DEBUG': RouteDestination[];
+  'INVALID_COG': RouteDestination[];
 }
 
 /**
  * Router statistics
  */
 export interface RouterStats {
-  messagesRouted: Record<MessageType, number>;
+  messagesRouted: Record<string, number>;
   destinationCounts: Record<string, number>;
   routingErrors: number;
-  queueHighWaterMark: number;
-  processingPending: boolean;
   totalMessagesRouted: number;
-  
-  // Message pool integration statistics
-  pooledMessagesRouted: number;
-  copyOperationsAvoided: number;
-  averageConsumerCount: number;
 }
 
 /**
@@ -102,61 +95,42 @@ export class MessageRouter extends EventEmitter {
       console.log(...args);
     }
   }
-  private inputQueue: DynamicQueue<ExtractedMessage>;
+
   private routingConfig: RoutingConfig;
-  private processingPending: boolean = false;
-  
+
   // Statistics
-  private messagesRouted: Record<MessageType, number> = {
-    [MessageType.DB_PACKET]: 0,
-    [MessageType.COG_MESSAGE]: 0,
-    [MessageType.BACKTICK_WINDOW]: 0,
-    [MessageType.DEBUGGER_416BYTE]: 0,
-    [MessageType.P2_SYSTEM_INIT]: 0,
-    [MessageType.TERMINAL_OUTPUT]: 0,
-    [MessageType.INCOMPLETE_DEBUG]: 0,
-    [MessageType.INVALID_COG]: 0
+  private messagesRouted: Record<string, number> = {
+    'DB_PACKET': 0,
+    'COG_MESSAGE': 0,
+    'BACKTICK_WINDOW': 0,
+    'DEBUGGER_416BYTE': 0,
+    'P2_SYSTEM_INIT': 0,
+    'TERMINAL_OUTPUT': 0,
+    'INCOMPLETE_DEBUG': 0,
+    'INVALID_COG': 0
   };
   private destinationCounts: Record<string, number> = {};
   private routingErrors: number = 0;
-  
+
   // Performance monitoring
   private performanceMonitor: PerformanceMonitor | null = null;
-  
-  // Message pool integration
-  private messagePool: MessagePool;
-  private pooledMessagesRouted: number = 0;
-  private copyOperationsAvoided: number = 0;
-  private totalConsumerCount: number = 0;
-  
-  // Adaptive timer configuration
-  private timerIntervals = {
-    fast: 2,     // High load: 2ms
-    normal: 5,   // Normal: 5ms 
-    idle: 20     // Idle: 20ms
-  };
-  private currentTimerInterval: number = 5; // Start with normal
-  private lastProcessingTime: number = 0;
-  private messageVelocity: number = 0; // Messages per second
-  private lastVelocityCheck: number = Date.now();
-  private processingTimer: NodeJS.Timeout | null = null;
-  private messagesInLastSecond: number = 0;
 
-  constructor(inputQueue: DynamicQueue<ExtractedMessage>) {
+  // Worker Thread SharedMessagePool integration
+  private sharedMessagePool: SharedMessagePool | null = null;
+
+  constructor() {
     super();
-    this.inputQueue = inputQueue;
-    this.messagePool = MessagePool.getInstance();
     
     // Initialize empty routing config for Two-Tier Pattern Matching
     this.routingConfig = {
-      [MessageType.DB_PACKET]: [],
-      [MessageType.COG_MESSAGE]: [],
-      [MessageType.BACKTICK_WINDOW]: [],
-      [MessageType.DEBUGGER_416BYTE]: [],
-      [MessageType.P2_SYSTEM_INIT]: [],
-      [MessageType.TERMINAL_OUTPUT]: [],
-      [MessageType.INCOMPLETE_DEBUG]: [],
-      [MessageType.INVALID_COG]: []
+      'DB_PACKET': [],
+      'COG_MESSAGE': [],
+      'BACKTICK_WINDOW': [],
+      'DEBUGGER_416BYTE': [],
+      'P2_SYSTEM_INIT': [],
+      'TERMINAL_OUTPUT': [],
+      'INCOMPLETE_DEBUG': [],
+      'INVALID_COG': []
     };
   }
 
@@ -165,6 +139,167 @@ export class MessageRouter extends EventEmitter {
    */
   public setPerformanceMonitor(monitor: PerformanceMonitor): void {
     this.performanceMonitor = monitor;
+  }
+
+  /**
+   * Set SharedMessagePool for Worker Thread zero-copy routing (NEW)
+   */
+  public setSharedMessagePool(pool: SharedMessagePool): void {
+    this.sharedMessagePool = pool;
+    this.logConsoleMessage('[MessageRouter] SharedMessagePool configured for zero-copy routing');
+  }
+
+  /**
+   * Route message from SharedMessagePool using poolId (NEW - Direct SharedMessagePool Architecture)
+   * Router is a consumer of SharedMessagePool:
+   * 1. Query message type (don't read data yet)
+   * 2. Determine destinations
+   * 3. Increment refCount if there are other consumers (debug logger)
+   * 4. Read message data, process/reformat for windows
+   * 5. Send processed data to window destinations
+   * 6. Release SharedMessagePool slot (our reference)
+   */
+  public routeFromPool(poolId: number): void {
+    if (!this.sharedMessagePool) {
+      console.error('[MessageRouter] Cannot route from pool - SharedMessagePool not configured');
+      return;
+    }
+
+    try {
+      // Query message type without reading full data
+      const sharedType = this.sharedMessagePool.getMessageType(poolId);
+
+      // Map to legacy type for routing decision
+      const legacyType = this.mapSharedTypeToLegacy(sharedType);
+
+      // Determine destinations
+      const destinations = this.routingConfig[legacyType];
+
+      if (!destinations || destinations.length === 0) {
+        console.warn(`[MessageRouter] No destinations for type ${legacyType}, poolId ${poolId}`);
+        this.sharedMessagePool.release(poolId);
+        return;
+      }
+
+      this.logConsoleMessage(`[MessageRouter] Routing poolId ${poolId}, type ${legacyType} to ${destinations.length} destinations`);
+
+      // Now read the full message data for processing
+      const slot = this.sharedMessagePool.get(poolId);
+      const data = slot.readData();
+
+      // Create ExtractedMessage for window processing
+      const message: ExtractedMessage = {
+        type: legacyType,
+        data: data,
+        timestamp: Date.now(),
+        confidence: 'VERY_DISTINCTIVE',
+        metadata: {}
+      };
+
+      // Update statistics
+      this.messagesRouted[legacyType]++;
+
+      // Emit debugger packet event if needed
+      if (legacyType === 'DEBUGGER_416BYTE' && data instanceof Uint8Array) {
+        this.emit('debuggerPacketReceived', data);
+      }
+
+      // Record performance metrics
+      if (this.performanceMonitor) {
+        this.performanceMonitor.recordRouting();
+        this.performanceMonitor.recordMessageLatency(message.timestamp, Date.now());
+      }
+
+      // Route processed message to each destination
+      // Windows receive the processed ExtractedMessage, not the poolId
+      for (const destination of destinations) {
+        try {
+          destination.handler(message);
+          this.destinationCounts[destination.name]++;
+          this.emit('messageRouted', {
+            message,
+            destination: destination.name
+          });
+        } catch (error) {
+          console.error(`[MessageRouter] Error routing to ${destination.name}:`, error);
+          this.routingErrors++;
+          if (this.performanceMonitor) {
+            this.performanceMonitor.recordRoutingError();
+          }
+          this.emit('destinationError', {
+            message,
+            destination: destination.name,
+            error
+          });
+        }
+      }
+
+      // Release our SharedMessagePool reference
+      this.sharedMessagePool.release(poolId);
+      this.logConsoleMessage(`[MessageRouter] Released poolId ${poolId}`);
+
+    } catch (error) {
+      console.error(`[MessageRouter] Error routing from pool ${poolId}:`, error);
+      this.routingErrors++;
+      // Still try to release on error
+      if (this.sharedMessagePool) {
+        this.sharedMessagePool.release(poolId);
+      }
+    }
+  }
+
+  /**
+   * Map SharedMessageType (from Worker) to legacy MessageType string (for routing)
+   */
+  private mapSharedTypeToLegacy(sharedType: SharedMessageType): MessageType {
+    switch (sharedType) {
+      case SharedMessageType.DB_PACKET:
+        return MessageType.DB_PACKET;
+
+      case SharedMessageType.COG0_MESSAGE:
+      case SharedMessageType.COG1_MESSAGE:
+      case SharedMessageType.COG2_MESSAGE:
+      case SharedMessageType.COG3_MESSAGE:
+      case SharedMessageType.COG4_MESSAGE:
+      case SharedMessageType.COG5_MESSAGE:
+      case SharedMessageType.COG6_MESSAGE:
+      case SharedMessageType.COG7_MESSAGE:
+        return MessageType.COG_MESSAGE;
+
+      case SharedMessageType.DEBUGGER0_416BYTE:
+      case SharedMessageType.DEBUGGER1_416BYTE:
+      case SharedMessageType.DEBUGGER2_416BYTE:
+      case SharedMessageType.DEBUGGER3_416BYTE:
+      case SharedMessageType.DEBUGGER4_416BYTE:
+      case SharedMessageType.DEBUGGER5_416BYTE:
+      case SharedMessageType.DEBUGGER6_416BYTE:
+      case SharedMessageType.DEBUGGER7_416BYTE:
+        return MessageType.DEBUGGER_416BYTE;
+
+      case SharedMessageType.P2_SYSTEM_INIT:
+        return MessageType.P2_SYSTEM_INIT;
+
+      case SharedMessageType.WINDOW_LOGIC:
+      case SharedMessageType.WINDOW_SCOPE:
+      case SharedMessageType.WINDOW_SCOPE_XY:
+      case SharedMessageType.WINDOW_FFT:
+      case SharedMessageType.WINDOW_SPECTRO:
+      case SharedMessageType.WINDOW_PLOT:
+      case SharedMessageType.WINDOW_TERM:
+      case SharedMessageType.WINDOW_BITMAP:
+      case SharedMessageType.WINDOW_MIDI:
+        return MessageType.BACKTICK_WINDOW;
+
+      case SharedMessageType.TERMINAL_OUTPUT:
+        return MessageType.TERMINAL_OUTPUT;
+
+      case SharedMessageType.INVALID_COG:
+        return MessageType.INVALID_COG;
+
+      default:
+        console.warn(`[MessageRouter] Unknown SharedMessageType: ${sharedType}, defaulting to TERMINAL_OUTPUT`);
+        return MessageType.TERMINAL_OUTPUT;
+    }
   }
 
   /**
@@ -191,275 +326,6 @@ export class MessageRouter extends EventEmitter {
       this.routingConfig[messageType].splice(index, 1);
       this.logConsoleMessage(`[MessageRouter] Unregistered ${destinationName} from ${messageType} messages`);
     }
-  }
-
-  /**
-   * Process messages from queue using adaptive timer instead of setImmediate
-   * Called when new messages are available
-   * Returns true if more processing might be needed
-   */
-  public processMessages(): boolean {
-    if (this.processingPending) {
-      return false; // Already processing
-    }
-
-    if (this.inputQueue.isEmpty()) {
-      return false; // Nothing to process
-    }
-
-    // Schedule async processing with adaptive timer
-    this.processingPending = true;
-    this.scheduleProcessingWithTimer();
-
-    return true;
-  }
-  
-  /**
-   * Schedule message processing using adaptive timer intervals
-   */
-  private scheduleProcessingWithTimer(): void {
-    // Clear any existing timer
-    if (this.processingTimer) {
-      clearTimeout(this.processingTimer);
-    }
-    
-    // Update timer interval based on load
-    this.updateAdaptiveTimer();
-    
-    this.processingTimer = setTimeout(() => {
-      this.processMessageBatch();
-    }, this.currentTimerInterval);
-  }
-  
-  /**
-   * Update timer interval based on message velocity and processing time
-   */
-  private updateAdaptiveTimer(): void {
-    const now = Date.now();
-    
-    // Calculate message velocity (messages per second)
-    if (now - this.lastVelocityCheck >= 1000) {
-      this.messageVelocity = this.messagesInLastSecond;
-      this.messagesInLastSecond = 0;
-      this.lastVelocityCheck = now;
-    }
-    
-    // Determine appropriate timer interval with hysteresis
-    let targetInterval: number;
-    
-    if (this.messageVelocity > 100 || this.lastProcessingTime > 10) {
-      // High load: >100 msgs/sec or processing taking >10ms
-      targetInterval = this.timerIntervals.fast;
-    } else if (this.messageVelocity > 20 || this.lastProcessingTime > 3) {
-      // Normal load: >20 msgs/sec or processing taking >3ms
-      targetInterval = this.timerIntervals.normal;
-    } else {
-      // Idle: low message rate and fast processing
-      targetInterval = this.timerIntervals.idle;
-    }
-    
-    // Implement hysteresis to prevent timer thrashing
-    const currentCategory = this.getTimerCategory(this.currentTimerInterval);
-    const targetCategory = this.getTimerCategory(targetInterval);
-    
-    // Only change if moving to different category or significant difference
-    if (currentCategory !== targetCategory || 
-        Math.abs(this.currentTimerInterval - targetInterval) > 2) {
-      this.currentTimerInterval = targetInterval;
-      this.logConsoleMessage(`[MessageRouter] Adaptive timer: ${targetInterval}ms (velocity: ${this.messageVelocity} msg/s, processing: ${this.lastProcessingTime}ms)`);
-    }
-  }
-  
-  /**
-   * Get timer category for hysteresis logic
-   */
-  private getTimerCategory(interval: number): 'fast' | 'normal' | 'idle' {
-    if (interval <= this.timerIntervals.fast) return 'fast';
-    if (interval <= this.timerIntervals.normal) return 'normal';
-    return 'idle';
-  }
-
-  /**
-   * Process messages synchronously for testing
-   * Returns the count of messages processed
-   */
-  public processMessagesSync(): number {
-    let messagesProcessed = 0;
-    const maxBatchSize = 1000; // Higher limit for testing
-    
-    while (!this.inputQueue.isEmpty() && messagesProcessed < maxBatchSize) {
-      const message = this.inputQueue.dequeue();
-      if (!message) break;
-
-      try {
-        this.routeMessage(message);
-        messagesProcessed++;
-      } catch (error) {
-        console.error('[MessageRouter] Error routing message:', error);
-        this.routingErrors++;
-        this.emit('routingError', { message, error });
-      }
-    }
-
-    if (messagesProcessed > 0) {
-      this.emit('batchProcessed', messagesProcessed);
-    }
-
-    return messagesProcessed;
-  }
-
-  /**
-   * Process a batch of messages (process ALL available messages, not just one)
-   */
-  private processMessageBatch(): void {
-    const batchStartTime = Date.now();
-    let messagesProcessed = 0;
-    const maxBatchSize = 100; // Process up to 100 messages per batch
-
-    while (!this.inputQueue.isEmpty() && messagesProcessed < maxBatchSize) {
-      const message = this.inputQueue.dequeue();
-      if (!message) break;
-
-      try {
-        this.routeMessage(message);
-        messagesProcessed++;
-      } catch (error) {
-        console.error('[MessageRouter] Error routing message:', error);
-        this.routingErrors++;
-        this.emit('routingError', { message, error });
-      }
-    }
-
-    // Record processing time for adaptive timer
-    this.lastProcessingTime = Date.now() - batchStartTime;
-    this.messagesInLastSecond += messagesProcessed;
-    
-    this.processingPending = false;
-
-    if (messagesProcessed > 0) {
-      this.emit('batchProcessed', messagesProcessed);
-    }
-
-    // If queue still has messages, schedule another batch with adaptive timer
-    if (!this.inputQueue.isEmpty()) {
-      this.processingPending = true;
-      this.scheduleProcessingWithTimer();
-    }
-  }
-
-  /**
-   * Route a single message to its destinations using reference counting
-   */
-  private routeMessage(message: ExtractedMessage): void {
-    this.logConsoleMessage(`[TWO-TIER] 🎯 Routing message: ${message.type}, ${message.data.length} bytes`);
-    
-    const destinations = this.routingConfig[message.type];
-    
-    this.logConsoleMessage(`[TWO-TIER] 🎯 Found ${destinations?.length || 0} destinations for ${message.type}`);
-    
-    if (!destinations || destinations.length === 0) {
-      console.warn(`[MessageRouter] No destinations for ${message.type} message`);
-      this.emit('unroutableMessage', message);
-      return;
-    }
-
-    // Update statistics
-    this.messagesRouted[message.type]++;
-    
-    // CRITICAL: Emit event for debugger packets that require response
-    if (message.type === 'DEBUGGER_416BYTE' && message.data instanceof Uint8Array) {
-      this.logConsoleMessage('[MessageRouter] Emitting debuggerPacketReceived event for P2 response');
-      this.emit('debuggerPacketReceived', message.data);
-    }
-    
-    // Record performance metrics
-    if (this.performanceMonitor) {
-      this.performanceMonitor.recordRouting();
-      // Record latency from message timestamp to now
-      this.performanceMonitor.recordMessageLatency(message.timestamp, Date.now());
-    }
-
-    // CRITICAL CHANGE: Use MessagePool for reference counting instead of copying
-    // Always add debug logger as additional consumer (everything goes to logger)
-    const totalConsumers = destinations.length;
-    this.totalConsumerCount += totalConsumers;
-    
-    this.logConsoleMessage(`[MessageRouter] Creating pooled message for ${totalConsumers} consumers`);
-    
-    // Acquire pooled message with correct consumer count
-    const pooledMessage = this.messagePool.acquire(message.data, message.type, totalConsumers);
-    
-    if (!pooledMessage) {
-      console.error(`[MessageRouter] Failed to acquire pooled message for ${message.type}`);
-      this.routingErrors++;
-      return;
-    }
-    
-    // Copy metadata to pooled message
-    pooledMessage.metadata = {
-      originalTimestamp: message.timestamp,
-      confidence: message.confidence,
-      extractorMetadata: message.metadata
-    };
-    
-    this.pooledMessagesRouted++;
-    this.copyOperationsAvoided += (totalConsumers - 1); // We avoided N-1 copy operations
-    
-    this.logConsoleMessage(`[MessageRouter] Pooled message #${pooledMessage.poolId} created with ${pooledMessage.consumerCount} consumers`);
-
-    // Route reference to each destination - NO COPYING
-    for (const destination of destinations) {
-      try {
-        // Pass the SAME pooled message reference to each destination
-        // Each destination is responsible for calling release() when done
-        destination.handler(pooledMessage);
-        this.destinationCounts[destination.name]++;
-
-        this.emit('messageRouted', {
-          message: pooledMessage,
-          destination: destination.name
-        });
-
-      } catch (error) {
-        console.error(`[MessageRouter] Error routing to ${destination.name}:`, error);
-        this.routingErrors++;
-        
-        // If routing failed, we need to release this consumer's reference
-        try {
-          this.messagePool.release(pooledMessage);
-          this.logConsoleMessage(`[MessageRouter] Released failed consumer reference for ${destination.name}`);
-        } catch (releaseError) {
-          console.error(`[MessageRouter] Error releasing failed consumer reference:`, releaseError);
-        }
-        
-        // Record routing error
-        if (this.performanceMonitor) {
-          this.performanceMonitor.recordRoutingError();
-        }
-        
-        this.emit('destinationError', {
-          message,
-          destination: destination.name,
-          error
-        });
-      }
-    }
-  }
-
-  /**
-   * DEPRECATED: Message copying eliminated by reference counting
-   * This method is kept for backward compatibility but should not be used
-   */
-  private copyMessage(message: ExtractedMessage): ExtractedMessage {
-    console.warn('[MessageRouter] DEPRECATED: copyMessage() called - should use reference counting instead');
-    this.copyOperationsAvoided--; // Decrement since we're still copying
-    return {
-      type: message.type,
-      data: new Uint8Array(message.data), // Copy the data array
-      timestamp: message.timestamp,
-      confidence: message.confidence,
-      metadata: message.metadata ? { ...message.metadata } : undefined
-    };
   }
 
   /**
@@ -509,132 +375,39 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Wait for queue to drain (for DTR reset scenarios)
+   * Wait for queue to drain (LEGACY - no-op in Worker Thread architecture)
+   * Worker Thread architecture processes messages immediately from SharedMessagePool
    */
   public async waitForQueueDrain(timeoutMs: number = 5000): Promise<boolean> {
-    const startTime = Date.now();
-
-    return new Promise((resolve) => {
-      const checkQueue = () => {
-        if (this.inputQueue.isEmpty() && !this.processingPending) {
-          resolve(true);
-          return;
-        }
-
-        if (Date.now() - startTime > timeoutMs) {
-          console.warn('[MessageRouter] Queue drain timeout');
-          resolve(false);
-          return;
-        }
-
-        setTimeout(checkQueue, 10);
-      };
-
-      checkQueue();
-    });
+    // No-op: Worker Thread architecture has no queue to drain
+    return Promise.resolve(true);
   }
 
   /**
-   * Get router statistics including message pool metrics
+   * Get router statistics
    */
   public getStats(): RouterStats {
-    const queueStats = this.inputQueue.getStats();
     const totalRouted = Object.values(this.messagesRouted).reduce((a, b) => a + b, 0);
-    const avgConsumerCount = this.pooledMessagesRouted > 0 
-      ? (this.totalConsumerCount / this.pooledMessagesRouted) 
-      : 0;
 
     return {
       messagesRouted: { ...this.messagesRouted },
       destinationCounts: { ...this.destinationCounts },
       routingErrors: this.routingErrors,
-      queueHighWaterMark: queueStats.highWaterMark,
-      processingPending: this.processingPending,
-      totalMessagesRouted: totalRouted,
-      
-      // Message pool integration statistics
-      pooledMessagesRouted: this.pooledMessagesRouted,
-      copyOperationsAvoided: this.copyOperationsAvoided,
-      averageConsumerCount: Math.round(avgConsumerCount * 10) / 10 // Round to 1 decimal
-    };
-  }
-
-  /**
-   * Configure adaptive timer intervals
-   * @param fast Interval for high load (default: 2ms)
-   * @param normal Interval for normal load (default: 5ms)
-   * @param idle Interval for idle (default: 20ms)
-   */
-  public configureAdaptiveTimer(fast: number = 2, normal: number = 5, idle: number = 20): void {
-    this.timerIntervals = { fast, normal, idle };
-    this.logConsoleMessage(`[MessageRouter] Adaptive timer configured: fast=${fast}ms, normal=${normal}ms, idle=${idle}ms`);
-  }
-  
-  /**
-   * Get current timer configuration and status
-   */
-  public getTimerStatus(): {
-    currentInterval: number;
-    messageVelocity: number;
-    lastProcessingTime: number;
-    configuration: { fast: number; normal: number; idle: number };
-  } {
-    return {
-      currentInterval: this.currentTimerInterval,
-      messageVelocity: this.messageVelocity,
-      lastProcessingTime: this.lastProcessingTime,
-      configuration: { ...this.timerIntervals }
+      totalMessagesRouted: totalRouted
     };
   }
   
   /**
-   * Stop adaptive timer processing (cleanup)
-   */
-  public stopAdaptiveTimer(): void {
-    if (this.processingTimer) {
-      clearTimeout(this.processingTimer);
-      this.processingTimer = null;
-    }
-    this.processingPending = false;
-    this.logConsoleMessage('[MessageRouter] Adaptive timer stopped');
-  }
-
-  /**
-   * Reset statistics including message pool metrics
+   * Reset statistics
    */
   public resetStats(): void {
     for (const key in this.messagesRouted) {
-      this.messagesRouted[key as MessageType] = 0;
+      this.messagesRouted[key] = 0;
     }
     for (const key in this.destinationCounts) {
       this.destinationCounts[key] = 0;
     }
     this.routingErrors = 0;
-    
-    // Reset message pool statistics
-    this.pooledMessagesRouted = 0;
-    this.copyOperationsAvoided = 0;
-    this.totalConsumerCount = 0;
-    
-    // Reset adaptive timer statistics
-    this.messageVelocity = 0;
-    this.messagesInLastSecond = 0;
-    this.lastProcessingTime = 0;
-    this.currentTimerInterval = this.timerIntervals.normal;
-  }
-
-  /**
-   * Get input queue reference
-   */
-  public getInputQueue(): DynamicQueue<ExtractedMessage> {
-    return this.inputQueue;
-  }
-
-  /**
-   * Check if router is idle
-   */
-  public isIdle(): boolean {
-    return this.inputQueue.isEmpty() && !this.processingPending;
   }
 
   /**

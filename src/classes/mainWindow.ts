@@ -47,9 +47,8 @@ import { LoggerCOGWindow } from './loggerCOGWin';
 import { DebugDebuggerWindow } from './debugDebuggerWin';
 import { WindowRouter } from './shared/windowRouter';
 import { SerialMessageProcessor } from './shared/serialMessageProcessor';
-import { MessageType, ExtractedMessage } from './shared/messageExtractor';
+import { MessageType, ExtractedMessage } from './shared/sharedMessagePool';
 import { RouteDestination } from './shared/messageRouter';
-import { PooledMessage, MessagePool } from './shared/messagePool';
 import { COGWindowManager, COGDisplayMode } from './shared/cogWindowManager';
 import { COGHistoryManager } from './shared/cogHistoryManager';
 import { PlacementStrategy } from '../utils/windowPlacer';
@@ -270,28 +269,28 @@ export class MainWindow {
     // Create routing destinations for Two-Tier Pattern Matching
     const debugLoggerDestination: RouteDestination = {
       name: 'DebugLogger',
-      handler: (message: ExtractedMessage | PooledMessage) => {
+      handler: (message: ExtractedMessage) => {
         this.routeToDebugLogger(message);
       }
     };
 
     const windowCreatorDestination: RouteDestination = {
       name: 'WindowCreator',
-      handler: (message: ExtractedMessage | PooledMessage) => {
+      handler: (message: ExtractedMessage) => {
         this.handleWindowCommand(message);
       }
     };
 
     const debuggerWindowDestination: RouteDestination = {
       name: 'DebuggerWindow',
-      handler: (message: ExtractedMessage | PooledMessage) => {
+      handler: (message: ExtractedMessage) => {
         this.routeToDebuggerWindow(message);
       }
     };
 
     const cogWindowRouterDestination: RouteDestination = {
       name: 'COGWindowRouter',
-      handler: (message: ExtractedMessage | PooledMessage) => {
+      handler: (message: ExtractedMessage) => {
         this.routeToCOGWindows(message);
       }
     };
@@ -345,6 +344,22 @@ export class MainWindow {
     this.serialProcessor.start();
     this.logConsoleMessage('[TWO-TIER] ✅ SerialMessageProcessor started successfully');
 
+    // Enable USB traffic logging if requested via CLI
+    if (this.context.runEnvironment.usbTrafficLogging) {
+      const components = this.serialProcessor.getComponents();
+      if (components.workerExtractor) {
+        // Create USB log path in Electron process (same as debug logger)
+        const { getFormattedDateTime } = require('../utils/files');
+        const path = require('path');
+        const logsDir = this.context.getLogDirectory();
+        const timestamp = getFormattedDateTime();
+        const usbLogPath = path.join(logsDir, `usb-traffic_${timestamp}.log`);
+
+        this.logConsoleMessage(`[USB LOGGING] Enabling USB traffic logging to ${usbLogPath}`);
+        components.workerExtractor.enableUSBLogging(usbLogPath);
+      }
+    }
+
     // Performance monitoring will be started after DOM is ready (in did-finish-load handler)
 
     // Handle processor events
@@ -364,7 +379,7 @@ export class MainWindow {
   /**
    * Route COG messages to individual COG windows via WindowRouter (conditional routing)
    */
-  private routeToCOGWindows(message: ExtractedMessage | PooledMessage): void {
+  private routeToCOGWindows(message: ExtractedMessage): void {
     // Only route COG messages
     if (message.type !== MessageType.COG_MESSAGE) {
       return;
@@ -397,63 +412,55 @@ export class MainWindow {
   /**
    * Route message to Debug Logger (Terminal FIRST principle)
    */
-  private routeToDebugLogger(message: ExtractedMessage | PooledMessage): void {
+  private routeToDebugLogger(message: ExtractedMessage): void {
     this.logConsoleMessage(
       `[TWO-TIER] 📨 Routing message to Debug Logger: ${message.type}, ${message.data.length} bytes`
     );
 
-    try {
-      // Use type-safe handoff to debug logger - no more guessing!
-      if (this.debugLoggerWindow) {
-        this.logConsoleMessage(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
+    // Use type-safe handoff to debug logger - no more guessing!
+    if (this.debugLoggerWindow) {
+      this.logConsoleMessage(`[TWO-TIER] ✅ Debug Logger window available, processing message`);
+    } else {
+      this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
+    }
+
+    // IMPORTANT: Display terminal output in BOTH the debug logger AND main window
+    if (message.type === MessageType.TERMINAL_OUTPUT) {
+      // Decode terminal data and display in main window's blue terminal area
+      const terminalText = new TextDecoder().decode(message.data);
+      this.logConsoleMessage(`[TERMINAL] 🔵 Routing TERMINAL_OUTPUT to blue window:`);
+      this.logConsoleMessage(`[TERMINAL]   Raw bytes: [${Array.from(message.data).join(', ')}]`);
+      this.logConsoleMessage(`[TERMINAL]   Decoded text: "${terminalText}"`);
+      this.logConsoleMessage(`[TERMINAL]   Text length: ${terminalText.length} chars`);
+      this.logConsoleMessage(`[TERMINAL]   Calling appendLog...`);
+      this.appendLog(terminalText);
+      this.logConsoleMessage(`[TERMINAL] ✅ appendLog called successfully`);
+    }
+
+    if (this.debugLoggerWindow) {
+      // Convert buffer to appropriate data type
+      let data: string[] | Uint8Array;
+
+      if (message.type === MessageType.DEBUGGER_416BYTE) {
+        // Binary data stays as Uint8Array
+        data = message.data;
       } else {
-        this.logConsoleMessage(`[TWO-TIER] ❌ Debug Logger window NOT available, using fallback`);
+        // Text data converted to string array for compatibility
+        const textData = new TextDecoder().decode(message.data);
+        data = [textData];  // Wrap in array as processTypedMessage expects string[]
       }
 
-      // IMPORTANT: Display terminal output in BOTH the debug logger AND main window
-      if (message.type === MessageType.TERMINAL_OUTPUT) {
-        // Decode terminal data and display in main window's blue terminal area
-        const terminalText = new TextDecoder().decode(message.data);
-        this.logConsoleMessage(`[TERMINAL] 🔵 Routing TERMINAL_OUTPUT to blue window:`);
-        this.logConsoleMessage(`[TERMINAL]   Raw bytes: [${Array.from(message.data).join(', ')}]`);
-        this.logConsoleMessage(`[TERMINAL]   Decoded text: "${terminalText}"`);
-        this.logConsoleMessage(`[TERMINAL]   Text length: ${terminalText.length} chars`);
-        this.logConsoleMessage(`[TERMINAL]   Calling appendLog...`);
-        this.appendLog(terminalText);
-        this.logConsoleMessage(`[TERMINAL] ✅ appendLog called successfully`);
-      }
-
-      if (this.debugLoggerWindow) {
-        // Convert buffer to appropriate data type
-        let data: string[] | Uint8Array;
-
-        if (message.type === MessageType.DEBUGGER_416BYTE) {
-          // Binary data stays as Uint8Array
-          data = message.data;
-        } else {
-          // Text data converted to string array for compatibility
-          const textData = new TextDecoder().decode(message.data);
-          data = [textData];  // Wrap in array as processTypedMessage expects string[]
-        }
-
-        // Direct type-safe call - no router guessing needed
-        this.debugLoggerWindow.processTypedMessage(message.type, data);
-      } else {
-        // Fallback to router if debug logger not available
-        const routerMessage = {
-          type: 'text' as const,
-          data: this.formatMessageForDisplay(message),
-          timestamp: message.timestamp,
-          cogId: message.metadata?.cogId
-        };
-        this.windowRouter.routeMessage(routerMessage);
-      }
-    } finally {
-      // CRITICAL: Release pooled message after processing
-      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
-        MessagePool.getInstance().release(message as PooledMessage);
-        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebugLogger handler`);
-      }
+      // Direct type-safe call - no router guessing needed
+      this.debugLoggerWindow.processTypedMessage(message.type, data);
+    } else {
+      // Fallback to router if debug logger not available
+      const routerMessage = {
+        type: 'text' as const,
+        data: this.formatMessageForDisplay(message),
+        timestamp: message.timestamp,
+        cogId: message.metadata?.cogId
+      };
+      this.windowRouter.routeMessage(routerMessage);
     }
   }
 
@@ -461,13 +468,12 @@ export class MainWindow {
    * Handle window command (backtick commands) - Two-Tier System
    * MIGRATED: Complete functionality from handleDebugCommand for performance
    */
-  private handleWindowCommand(message: ExtractedMessage | PooledMessage): void {
+  private handleWindowCommand(message: ExtractedMessage): void {
     // Valid display type keywords for window creation
     const VALID_DISPLAY_TYPES = ['SCOPE', 'SCOPE_XY', 'SCOPEXY', 'LOGIC', 'TERM', 'PLOT', 'BITMAP', 'MIDI', 'FFT', 'SPECTRO'];
 
-    try {
-      // Extract command data from two-tier message (stay in new system, don't convert back)
-      const data = new TextDecoder().decode(message.data);
+    // Extract command data from two-tier message (stay in new system, don't convert back)
+    const data = new TextDecoder().decode(message.data);
 
       // NOTE: Message is already logged via routeToDebugLogger (see applyStandardRouting line 504)
       // BACKTICK_WINDOW messages are routed to BOTH windowCreator AND debugLogger
@@ -742,43 +748,28 @@ export class MainWindow {
           this.logMessage(`* Received: ${data} - UNHANDLED  lineParts=[${lineParts.join(',')}]`);
         }
       }
-    } finally {
-      // CRITICAL: Release pooled message after processing (preserve two-tier performance)
-      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
-        MessagePool.getInstance().release(message as PooledMessage);
-        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from WindowCreator handler`);
-      }
-    }
   }
 
   /**
    * Route to debugger window (80-byte packets)
    */
-  private routeToDebuggerWindow(message: ExtractedMessage | PooledMessage): void {
-    try {
-      if (message.metadata?.cogId !== undefined) {
-        this.logConsoleMessage(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
-        // Route binary debugger data to appropriate COG debugger window
-        this.windowRouter.routeMessage({
-          type: 'binary',
-          data: message.data,
-          timestamp: message.timestamp,
-          cogId: message.metadata.cogId
-        });
-      }
-    } finally {
-      // CRITICAL: Release pooled message after processing
-      if ('poolId' in message && message.poolId !== undefined && 'inUse' in message) {
-        MessagePool.getInstance().release(message as PooledMessage);
-        this.logConsoleMessage(`[MESSAGE-POOL] Released pooled message #${message.poolId} from DebuggerWindow handler`);
-      }
+  private routeToDebuggerWindow(message: ExtractedMessage): void {
+    if (message.metadata?.cogId !== undefined) {
+      this.logConsoleMessage(`[TWO-TIER] Debugger data for COG ${message.metadata.cogId}`);
+      // Route binary debugger data to appropriate COG debugger window
+      this.windowRouter.routeMessage({
+        type: 'binary',
+        data: message.data,
+        timestamp: message.timestamp,
+        cogId: message.metadata.cogId
+      });
     }
   }
 
   /**
    * Format extracted message for display in debug logger
    */
-  private formatMessageForDisplay(message: ExtractedMessage | PooledMessage): string {
+  private formatMessageForDisplay(message: ExtractedMessage): string {
     let displayText = '';
 
     switch (message.type) {
@@ -1150,7 +1141,7 @@ export class MainWindow {
       app.on('window-all-closed', () => {
         // Shutdown flags and listener removal already done in mainWindow 'close' event
         // This makes the app behave like a single-window application
-        this.logConsoleMessage('[SHUTDOWN] All windows closed, initiating shutdown sequence');
+        this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] All windows closed, initiating shutdown sequence`);
 
         // STEP 3: Close all debug windows (clean up references)
         this.closeAllDebugWindows();
@@ -1158,12 +1149,12 @@ export class MainWindow {
         // STEP 4: Skip serial port close - let process cleanup handle it
         // Safer to just remove listeners and let Node.js cleanup on exit
         if (this._serialPort) {
-          this.logConsoleMessage('[SHUTDOWN] Serial port cleanup - skipping explicit close');
+          this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Serial port cleanup - skipping explicit close`);
           this._serialPort = undefined; // Release reference
         }
 
         // STEP 5: Quit app
-        this.logConsoleMessage('[SHUTDOWN] Quitting app');
+        this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Quitting app`);
         app.quit();
         this.mainWindowOpen = false;
       });
@@ -1393,52 +1384,31 @@ export class MainWindow {
     }
 
     if (Buffer.isBuffer(data)) {
-      // Add microsecond timestamp using process.hrtime
-      const hrtime = process.hrtime();
-      const microseconds = Math.floor(hrtime[0] * 1000000 + hrtime[1] / 1000);
-      this.logConsoleMessage(`[SERIAL RX ${microseconds}µs] Received ${data.length} bytes`);
-
-      // Log hex and ASCII for debugging - same format as debug logger
-      const hexLines: string[] = [];
-      const bytesPerLine = 16;
-      for (let offset = 0; offset < data.length; offset += bytesPerLine) {
-        const lineBytes = data.slice(offset, Math.min(offset + bytesPerLine, data.length));
-
-        // Build hex part
-        let hexPart = '';
-        for (let i = 0; i < bytesPerLine; i++) {
-          if (i < lineBytes.length) {
-            hexPart += `$${lineBytes[i].toString(16).toUpperCase().padStart(2, '0')} `;
-          } else {
-            hexPart += '    ';
-          }
-          if (i === 7) hexPart += ' '; // Extra space in middle
-        }
-
-        // Build ASCII part
-        let asciiPart = '';
-        for (let i = 0; i < lineBytes.length; i++) {
-          const byte = lineBytes[i] & 0x7f; // Mask with 0x7F to clean up binary data display
-          asciiPart += byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.';
-        }
-
-        const offsetHex = offset.toString(16).padStart(4, '0');
-        hexLines.push(`  ${offsetHex}: ${hexPart}  ${asciiPart}`);
-      }
-
-      this.logConsoleMessage('[SERIAL RX HEX/ASCII]:');
-      hexLines.forEach((line) => this.logConsoleMessage(line));
+      // USB traffic logging deferred to MessageExtractor (via metadata queue)
+      // Removed hot-path hex dump that was blocking serial receives
 
       // During download: give Downloader first chance to consume protocol messages
       if (this.downloader?.isDownloading()) {
-        const consumed = this.downloader.handleProtocolData(data);
-        if (consumed) {
-          // Protocol message consumed by Downloader - don't route to displays
-          this.logConsoleMessage(`[DOWNLOAD] Protocol message consumed, not routing to displays`);
+        const result = this.downloader.handleProtocolData(data);
+        if (result.consumed) {
+          // Protocol message consumed by Downloader
+          this.logConsoleMessage(`[DOWNLOAD] Protocol message consumed`);
+
+          // If there's remaining data (checksum was concatenated with app output), route it
+          if (result.remainingData) {
+            this.logConsoleMessage(`[DOWNLOAD] Routing ${result.remainingData.length} bytes of app output that was concatenated with checksum`);
+            this.serialProcessor.receiveData(result.remainingData);
+          }
           return;
         }
-        // Not a protocol message - fall through to normal routing
-        this.logConsoleMessage(`[DOWNLOAD] Application data during download, routing normally`);
+        // Not a protocol message - log details for debugging
+        const hex = Array.from(data.slice(0, Math.min(32, data.length)))
+          .map(b => '0x' + b.toString(16).padStart(2, '0'))
+          .join(' ');
+        const text = data.toString('utf8', 0, Math.min(32, data.length)).replace(/[\r\n]/g, '\\n');
+        this.logConsoleMessage(`[DOWNLOAD] Non-protocol data: ${data.length} bytes, hex=[${hex}], text="${text}"`);
+        this.logConsoleMessage(`[DOWNLOAD] Non-protocol data during download, dropping (${data.length} bytes)`);
+        return; // Drop all non-protocol data during download
       }
 
       // Two-Tier Pattern Matching: Process serial data through new architecture
@@ -4784,9 +4754,8 @@ export class MainWindow {
       // Get performance snapshot from serial processor
       const stats = this.serialProcessor.getStats();
       const perfSnapshot = stats.performance;
-      const bufferStats = stats.buffer;
 
-      if (!perfSnapshot || !bufferStats) {
+      if (!perfSnapshot) {
         return;
       }
 
@@ -4861,11 +4830,11 @@ export class MainWindow {
           bufferUsage: perfSnapshot.metrics.bufferUsagePercent,
           queueDepth: totalQueueDepth,
           status: statusSymbol,
-          bufferSize: bufferStats.size,
-          bufferUsed: bufferStats.used,
-          bufferAvailable: bufferStats.available,
-          highWaterMark: bufferStats.highWaterMark || 0,
-          overflowEvents: bufferStats.overflowCount || 0,
+          bufferSize: stats.workerExtractor?.bufferStats?.size || 0,
+          bufferUsed: stats.workerExtractor?.bufferStats?.used || 0,
+          bufferAvailable: stats.workerExtractor?.bufferStats?.available || 0,
+          highWaterMark: stats.workerExtractor?.bufferStats?.highWaterMark || 0,
+          overflowEvents: stats.workerExtractor?.bufferOverflows || 0,
           totalMessages: routingStats.messagesRouted,
           messagesPerSecond: perfSnapshot.metrics.throughput.messagesPerSecond || 0,
           recordingActive: routingStats.recordingActive,
@@ -5926,6 +5895,28 @@ export class MainWindow {
         this.logConsoleMessage(
           `[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`
         );
+      }
+    }
+
+    // Apply USB logging settings
+    if (settings.logging) {
+      const components = this.serialProcessor.getComponents();
+      if (components.workerExtractor) {
+        if (settings.logging.enableUSBLogging) {
+          // Create USB log path in Electron process (same as debug logger)
+          const { getFormattedDateTime } = require('../utils/files');
+          const path = require('path');
+          const logsDir = this.context.getLogDirectory();
+          const timestamp = getFormattedDateTime();
+          const logFilePath = path.join(logsDir, `usb-traffic_${timestamp}.log`);
+          this.logConsoleMessage(`[PREFERENCES] Enabling USB traffic logging to ${logFilePath}`);
+          components.workerExtractor.enableUSBLogging(logFilePath);
+        } else {
+          if (components.workerExtractor.isUSBLoggingEnabled()) {
+            this.logConsoleMessage('[PREFERENCES] Disabling USB traffic logging');
+            components.workerExtractor.disableUSBLogging();
+          }
+        }
       }
     }
 

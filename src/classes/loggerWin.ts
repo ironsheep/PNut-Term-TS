@@ -9,8 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
-import { MessageType } from './shared/messageExtractor';
-import { MessagePool, PooledMessage } from './shared/messagePool';
+import { MessageType, ExtractedMessage } from './shared/sharedMessagePool';
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
 // Console logging control for debugging
@@ -698,43 +697,16 @@ export class LoggerWindow extends DebugWindowBase {
 
   /**
    * Process messages immediately (required by base class)
-   * Handles both PooledMessage objects and raw data for backward compatibility
+   * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
   protected processMessageImmediate(lineParts: string[] | any): void {
     this.logConsoleMessage('[DEBUG LOGGER] processMessageImmediate called with:', lineParts);
-    
-    let actualData: string[] | any;
-    let pooledMessage: PooledMessage | null = null;
-    
-    // Check if this is a PooledMessage that needs to be released
-    if (lineParts && typeof lineParts === 'object' && 'poolId' in lineParts && 'consumerCount' in lineParts) {
-      pooledMessage = lineParts as PooledMessage;
-      actualData = pooledMessage.data;
-      this.logConsoleMessage(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
-    } else {
-      actualData = lineParts;
-    }
-    
+
     try {
       // Extract data immediately before any async operations
-      this.processMessageImmediateSync(actualData);
+      this.processMessageImmediateSync(lineParts);
     } catch (error) {
       console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
-    } finally {
-      // Always release the pooled message if we have one
-      if (pooledMessage) {
-        try {
-          const messagePool = MessagePool.getInstance();
-          const wasLastConsumer = messagePool.release(pooledMessage);
-          if (wasLastConsumer) {
-            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
-          } else {
-            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
-          }
-        } catch (releaseError) {
-          console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
-        }
-      }
     }
   }
   
@@ -788,43 +760,16 @@ export class LoggerWindow extends DebugWindowBase {
 
   /**
    * Process message with type information (type-safe handoff)
-   * Handles both PooledMessage objects and raw data for backward compatibility
+   * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
-  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array | PooledMessage): void {
+  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array): void {
     this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
-    
-    let actualData: string[] | Uint8Array;
-    let pooledMessage: PooledMessage | null = null;
-    
-    // Check if this is a PooledMessage that needs to be released
-    if (data && typeof data === 'object' && 'poolId' in data && 'consumerCount' in data) {
-      pooledMessage = data as PooledMessage;
-      actualData = pooledMessage.data as string[] | Uint8Array;
-      this.logConsoleMessage(`[DEBUG LOGGER] Received pooled message #${pooledMessage.poolId}, consumers: ${pooledMessage.consumersRemaining}`);
-    } else {
-      actualData = data as string[] | Uint8Array;
-    }
-    
+
     try {
       // Extract data immediately before any async operations
-      this.processTypedMessageSync(messageType, actualData);
+      this.processTypedMessageSync(messageType, data);
     } catch (error) {
       console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
-    } finally {
-      // Always release the pooled message if we have one
-      if (pooledMessage) {
-        try {
-          const messagePool = MessagePool.getInstance();
-          const wasLastConsumer = messagePool.release(pooledMessage);
-          if (wasLastConsumer) {
-            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId} (last consumer)`);
-          } else {
-            this.logConsoleMessage(`[DEBUG LOGGER] Released pooled message #${pooledMessage.poolId}, ${pooledMessage.consumersRemaining} consumers remaining`);
-          }
-        } catch (releaseError) {
-          console.error(`[DEBUG LOGGER] Error releasing pooled message: ${releaseError}`);
-        }
-      }
     }
   }
   

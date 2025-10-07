@@ -13,6 +13,45 @@ import { Logger } from './classes/logger';
 import { Context } from './utils/context';
 import * as fs from 'fs';
 
+// GC PROFILING: Enable GC monitoring to detect pauses that delay serial receives
+if (global.gc) {
+  let lastGCTime = Date.now();
+  const gcStats = { count: 0, totalTime: 0, maxPause: 0 };
+
+  // Monitor GC via performance observer
+  const { PerformanceObserver } = require('perf_hooks');
+  const obs = new PerformanceObserver((list: any) => {
+    const entries = list.getEntries();
+    for (const entry of entries) {
+      if (entry.entryType === 'gc') {
+        gcStats.count++;
+        gcStats.totalTime += entry.duration;
+        if (entry.duration > gcStats.maxPause) {
+          gcStats.maxPause = entry.duration;
+        }
+
+        // Warn if GC pause is significant (>10ms could delay serial)
+        if (entry.duration > 10) {
+          console.warn(`[GC PAUSE] 🔥 ${entry.kind} took ${entry.duration.toFixed(2)}ms - may delay serial receives!`);
+        }
+      }
+    }
+  });
+  obs.observe({ entryTypes: ['gc'] });
+
+  // Log summary every 30 seconds
+  setInterval(() => {
+    if (gcStats.count > 0) {
+      console.log(`[GC STATS] Count: ${gcStats.count}, Total: ${gcStats.totalTime.toFixed(0)}ms, Max pause: ${gcStats.maxPause.toFixed(2)}ms`);
+      gcStats.count = 0;
+      gcStats.totalTime = 0;
+      gcStats.maxPause = 0;
+    }
+  }, 30000);
+} else {
+  console.log('[GC MONITORING] Not enabled - run with --expose-gc to enable');
+}
+
 // Get the context file path from command line
 const args = process.argv.slice(2);
 const contextIndex = args.findIndex(arg => arg === '--context');
@@ -52,6 +91,8 @@ electronContext.runEnvironment.ideMode = config.ideMode || false;
 electronContext.runEnvironment.rtsOverride = config.rtsOverride || false;
 electronContext.runEnvironment.quiet = config.quiet || false;
 electronContext.runEnvironment.serialPortDevices = config.serialPortDevices || [];
+electronContext.runEnvironment.usbTrafficLogging = config.usbTrafficLogging || false;
+electronContext.runEnvironment.usbLogFilePath = config.usbLogFilePath;
 electronContext.logger = logger;
 
 // Store download file specs separately since they're not in RuntimeEnvironment

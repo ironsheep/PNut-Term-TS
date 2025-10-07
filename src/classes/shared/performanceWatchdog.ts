@@ -6,8 +6,9 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 
 import { EventEmitter } from 'events';
 import { PerformanceMonitor } from './performanceMonitor';
-import { MessagePool } from './messagePool';
-import { CircularBuffer } from './circularBuffer';
+
+// Note: PerformanceWatchdog is legacy and not used in Worker Thread architecture
+// Performance monitoring is handled by PerformanceMonitor directly
 
 /**
  * Performance level thresholds
@@ -121,8 +122,9 @@ export class PerformanceWatchdog extends EventEmitter {
   };
   
   private performanceMonitor: PerformanceMonitor;
-  private messagePool: MessagePool;
-  private circularBuffer?: CircularBuffer;
+  // Legacy fields - not used in Worker Thread architecture
+  // private messagePool: MessagePool;
+  // private circularBuffer?: CircularBuffer;
   
   private updateTimer?: NodeJS.Timeout;
   private currentLevel: PerformanceLevel = PerformanceLevel.GREEN;
@@ -146,7 +148,7 @@ export class PerformanceWatchdog extends EventEmitter {
   private constructor() {
     super();
     this.performanceMonitor = new PerformanceMonitor();
-    this.messagePool = MessagePool.getInstance();
+    // Legacy: messagePool not used in Worker Thread architecture
   }
   
   /**
@@ -167,10 +169,10 @@ export class PerformanceWatchdog extends EventEmitter {
   }
   
   /**
-   * Set circular buffer reference for monitoring
+   * Set circular buffer reference for monitoring (LEGACY - no-op)
    */
-  public setCircularBuffer(buffer: CircularBuffer): void {
-    this.circularBuffer = buffer;
+  public setCircularBuffer(buffer: any): void {
+    // No-op: Worker Thread architecture uses SharedCircularBuffer
   }
   
   /**
@@ -209,8 +211,9 @@ export class PerformanceWatchdog extends EventEmitter {
     
     // Get current performance stats
     const perfSnapshot = this.performanceMonitor.getSnapshot();
-    const poolStats = this.messagePool.getStats();
-    const bufferStats = this.circularBuffer?.getStats();
+    // Legacy: poolStats and bufferStats not used in Worker Thread architecture
+    const poolStats = { poolSize: 0, freeCount: 0, efficiency: '0', slowReleaseCount: 0 };
+    const bufferStats = { usagePercent: 0, used: 0, available: 0, overflowCount: 0 };
     
     // Calculate rates (using snapshot metrics)
     const bytesPerSecond = perfSnapshot.metrics.throughput.bytesPerSecond;

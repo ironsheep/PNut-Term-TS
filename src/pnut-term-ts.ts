@@ -168,6 +168,7 @@ export class DebugTerminalInTypeScript {
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
       .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
       .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)')
+      .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
       .option('--console-mode', 'Running with console output - adds delay before close');
 
     this.program.addHelpText('beforeAll', `$-`);
@@ -183,6 +184,7 @@ export class DebugTerminalInTypeScript {
          $ pnut-term-ts --ide                                    # IDE mode (auto-detects single USB device)
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
          $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
+         $ pnut-term-ts -u -p P9cektn7                           # Enable USB traffic logging (timestamped log file)
 
       Device Selection:
          When only one USB serial device is connected, it will be automatically selected.
@@ -281,6 +283,13 @@ export class DebugTerminalInTypeScript {
       this.context.runEnvironment.rtsOverride = true;
       const modeText = options.ide ? 'IDE mode' : 'standalone mode';
       this.context.logger.verboseMsg(`RTS control line enabled for ${modeText}`);
+    }
+
+    // Store USB traffic logging flag
+    // NOTE: Path will be created in MainWindow (Electron process), not here (CLI process)
+    if (options.logUsbTrfc) {
+      this.context.runEnvironment.usbTrafficLogging = true;
+      this.context.logger.verboseMsg(`USB traffic logging will be enabled in Electron process`);
     }
 
     if (!options.quiet) {
@@ -550,6 +559,7 @@ export class DebugTerminalInTypeScript {
         rtsOverride: this.context.runEnvironment.rtsOverride,
         quiet: this.context.runEnvironment.quiet,
         serialPortDevices: this.context.runEnvironment.serialPortDevices,
+        usbTrafficLogging: this.context.runEnvironment.usbTrafficLogging,
         // These are passed separately as they're not in RuntimeEnvironment
         ramFileSpec: this.context.actions.writeRAM ? this.context.actions.binFilename : '',
         flashFileSpec: this.context.actions.writeFlash ? this.context.actions.binFilename : ''
