@@ -519,10 +519,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Set up canvas ID for bitmap
     this.bitmapCanvasId = `bitmap-canvas-${this.idString}`;
 
-    // If SIZE was provided in declaration, initialize the window immediately
-    if (displaySpec.size) {
-      this.setBitmapSize(this.state.width, this.state.height);
-    }
+    // Initialize bitmap canvas with either explicit SIZE or defaults (256x256)
+    // Must always initialize to set isInitialized=true so window can process messages
+    this.setBitmapSize(this.state.width, this.state.height);
 
     // Set USB serial connection for input forwarding
     // Note: USB serial will be set later when available
