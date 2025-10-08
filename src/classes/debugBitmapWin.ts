@@ -17,7 +17,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * Bitmap window state
@@ -155,6 +155,15 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private idString: string;
   private windowTitle: string;
   private windowContent: string = '';
+
+  /**
+   * Static console logging - override base class to use bitmap's ENABLE_CONSOLE_LOG
+   */
+  protected static logConsoleMessageStatic(...args: any[]): void {
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(...args);
+    }
+  }
 
   /**
    * Parse bitmap display declaration

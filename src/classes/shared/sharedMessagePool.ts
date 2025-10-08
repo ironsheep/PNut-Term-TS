@@ -3,30 +3,34 @@
 // src/classes/shared/sharedMessagePool.ts
 
 /**
- * SharedMessagePool - Zero-copy message storage for Worker Thread extraction
+ * SharedMessagePool - Variable-size zero-copy message storage with size classes
  *
- * Uses SharedArrayBuffer for thread-safe message passing between Worker and Main threads.
- * Messages are allocated in variable-size slots with atomic reference counting.
+ * External Interface (UNCHANGED):
+ * - Constructor: new SharedMessagePool(maxSlots, maxMessageSize)
+ * - Transferables: {metadataBuffer, dataBuffer, maxSlots, maxMessageSize}
+ * - Methods: acquire(size), release(poolId), get(poolId), getMessageType(poolId)
  *
- * Memory Layout per Slot:
- * ┌──────────────┬──────────┬──────────────┬──────────────┬─────────────┐
- * │ refCount (4) │ type (1) │ length (2)   │ reserved (1) │ data (var)  │
- * │              │          │              │              │             │
- * │ Atomic ref   │ Message  │ Byte count   │ Alignment    │ Message     │
- * │ counter      │ type enum│ (0-65535)    │              │ bytes       │
- * └──────────────┴──────────┴──────────────┴──────────────┴─────────────┘
+ * Internal Implementation (NEW):
+ * - Partitions single buffer into two size classes:
+ *   - Slots 0-9999: Small pool (128 bytes each) for typical messages
+ *   - Slots 10000-10499: Large pool (8192 bytes each) for debugger/DB packets
+ * - Total: 10500 slots, ~5.2 MB (vs 64 MB with 1000×64KB slots)
  *
  * Thread Safety:
  * - Worker allocates slots, writes message data, sets refCount
  * - Main thread reads message data, decrements refCount on release
- * - When refCount reaches 0, slot is automatically free for reuse
+ * - Atomic operations prevent race conditions
+ *
+ * Memory Layout per Slot:
+ * ┌──────────────┬──────────┬──────────────┬──────────────┬─────────────┐
+ * │ refCount (4) │ type (1) │ length (2)   │ reserved (1) │ data (var)  │
+ * └──────────────┴──────────┴──────────────┴──────────────┴─────────────┘
  */
 
 const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * Legacy MessageType enum for routing
- * Used by messageRouter and windows for simplified message classification
  */
 export enum MessageType {
   DB_PACKET = 'DB_PACKET',
@@ -40,7 +44,6 @@ export enum MessageType {
 
 /**
  * Extracted Message Interface
- * Used for message passing between router and windows
  */
 export interface ExtractedMessage {
   type: MessageType;
@@ -50,12 +53,11 @@ export interface ExtractedMessage {
   metadata?: Record<string, any>;
 }
 
-// SharedMessageType Enum - Single byte identifies specific type AND COG ID
-// Used internally by Worker Thread for precise classification
+// SharedMessageType Enum
 export enum SharedMessageType {
   DB_PACKET = 0,
 
-  // COG messages (COG ID embedded in enum: 0-7)
+  // COG messages (COG ID embedded: 0-7)
   COG0_MESSAGE = 1,
   COG1_MESSAGE = 2,
   COG2_MESSAGE = 3,
@@ -65,7 +67,7 @@ export enum SharedMessageType {
   COG6_MESSAGE = 7,
   COG7_MESSAGE = 8,
 
-  // Debugger messages (COG ID embedded in enum: 0-7)
+  // Debugger messages (COG ID embedded: 0-7)
   DEBUGGER0_416BYTE = 9,
   DEBUGGER1_416BYTE = 10,
   DEBUGGER2_416BYTE = 11,
@@ -75,10 +77,9 @@ export enum SharedMessageType {
   DEBUGGER6_416BYTE = 15,
   DEBUGGER7_416BYTE = 16,
 
-  // P2 System Init (golden sync point)
   P2_SYSTEM_INIT = 17,
 
-  // Backtick window commands - CREATION with known type keywords
+  // Backtick window commands
   BACKTICK_LOGIC = 18,
   BACKTICK_SCOPE = 19,
   BACKTICK_SCOPE_XY = 20,
@@ -88,25 +89,52 @@ export enum SharedMessageType {
   BACKTICK_TERM = 24,
   BACKTICK_BITMAP = 25,
   BACKTICK_MIDI = 26,
-
-  // Backtick window UPDATE (user-defined names or data updates)
   BACKTICK_UPDATE = 27,
 
   TERMINAL_OUTPUT = 28,
   INVALID_COG = 29
 }
 
-// Slot header offsets (in Int32Array indices)
-const REFCOUNT_OFFSET = 0;  // 4 bytes (Int32)
+// Slot header layout (metadata before data)
+const METADATA_SIZE = 8;  // 4 bytes refCount + 1 byte type + 2 bytes length + 1 reserved
+const TYPE_OFFSET = 4;
+const LENGTH_OFFSET = 5;
 
-// Slot header offsets (in Uint8Array indices)
-const TYPE_OFFSET = 4;      // 1 byte
-const LENGTH_OFFSET = 5;    // 2 bytes (Uint16)
-const RESERVED_OFFSET = 7;  // 1 byte
-const DATA_OFFSET = 8;      // Variable length data starts here
+/**
+ * Size class configuration (INTERNAL)
+ */
+const SMALL_POOL_SLOTS = 10000;  // Increased to handle burst workloads
+const SMALL_SLOT_SIZE = 128;
+const LARGE_POOL_SLOTS = 500;    // Increased proportionally
+const LARGE_SLOT_SIZE = 8192;
+const TOTAL_SLOTS = SMALL_POOL_SLOTS + LARGE_POOL_SLOTS;  // 10500
 
-const HEADER_SIZE = 8; // Total header size in bytes
+// poolId ranges
+const SMALL_POOL_START = 0;
+const SMALL_POOL_END = SMALL_POOL_SLOTS - 1;  // 9999
+const LARGE_POOL_START = SMALL_POOL_SLOTS;     // 10000
+const LARGE_POOL_END = TOTAL_SLOTS - 1;        // 10499
 
+/**
+ * Pool slot handle - provides methods to read/write slot data
+ */
+export interface PoolSlot {
+  poolId: number;
+
+  writeType(type: SharedMessageType): void;
+  writeLength(length: number): void;
+  writeData(data: Uint8Array): void;
+  setRefCount(count: number): void;
+
+  readType(): SharedMessageType;
+  readLength(): number;
+  readData(): Uint8Array;
+  getRefCount(): number;
+}
+
+/**
+ * Transferable objects for worker thread initialization (UNCHANGED)
+ */
 export interface SharedMessagePoolTransferables {
   metadataBuffer: SharedArrayBuffer;
   dataBuffer: SharedArrayBuffer;
@@ -114,18 +142,9 @@ export interface SharedMessagePoolTransferables {
   maxMessageSize: number;
 }
 
-export interface PoolSlot {
-  poolId: number;
-  readType(): SharedMessageType;
-  readLength(): number;
-  readData(): Uint8Array;
-  writeType(type: SharedMessageType): void;
-  writeLength(length: number): void;
-  writeData(data: Uint8Array): void;
-  setRefCount(count: number): void;
-  getRefCount(): number;
-}
-
+/**
+ * SharedMessagePool - Variable-size message pool with internal size classes
+ */
 export class SharedMessagePool {
   private static logConsoleMessage(...args: any[]): void {
     if (ENABLE_CONSOLE_LOG) {
@@ -133,269 +152,291 @@ export class SharedMessagePool {
     }
   }
 
-  private readonly maxSlots: number;
-  private readonly maxMessageSize: number;
-  private readonly metadataView: Int32Array;  // [refCount per slot]
-  private readonly dataView: Uint8Array;      // [type, length, reserved, data...] per slot
-  private readonly slotSize: number;          // Total bytes per slot (header + max message)
+  // Single metadata array for ALL slots
+  private metadata: Int32Array;
+
+  // Single data buffer partitioned into variable-size slots
+  private data: Uint8Array;
+
+  // Track which slots are in which pool (for statistics)
+  private smallSlotsFree: number = SMALL_POOL_SLOTS;
+  private smallSlotsAllocated: number = 0;
+  private largeSlotsFree: number = LARGE_POOL_SLOTS;
+  private largeSlotsAllocated: number = 0;
 
   // Statistics
-  private slotsAllocated: number = 0;
-  private slotsFree: number = 0;
-  private acquisitions: number = 0;
-  private releases: number = 0;
-  private overflows: number = 0;
-  private highWaterMark: number = 0;
-  private fullCapacityLogged: boolean = false;
+  private smallAcquisitions: number = 0;
+  private largeAcquisitions: number = 0;
+  private smallReleases: number = 0;
+  private largeReleases: number = 0;
+  private smallOverflows: number = 0;
+  private largeOverflows: number = 0;
+  private smallHighWaterMark: number = 0;
+  private largeHighWaterMark: number = 0;
 
   /**
-   * Create a new SharedMessagePool
-   * @param maxSlots Maximum number of pool slots (default: 1000)
-   * @param maxMessageSize Maximum message size in bytes (default: 65536)
+   * Constructor - UNCHANGED external signature
+   * Parameters are accepted for compatibility but internal config used
    */
   constructor(maxSlots: number = 1000, maxMessageSize: number = 65536) {
-    this.maxSlots = maxSlots;
-    this.maxMessageSize = maxMessageSize;
-    this.slotSize = HEADER_SIZE + maxMessageSize;
+    // Calculate total memory needed for partitioned layout
+    const smallPoolBytes = SMALL_POOL_SLOTS * SMALL_SLOT_SIZE;
+    const largePoolBytes = LARGE_POOL_SLOTS * LARGE_SLOT_SIZE;
+    const totalDataBytes = smallPoolBytes + largePoolBytes;
 
-    // Create shared buffer for metadata (reference counts)
-    const metadataBuffer = new SharedArrayBuffer(maxSlots * 4); // 4 bytes per refCount
-    this.metadataView = new Int32Array(metadataBuffer);
+    // Create metadata array (one Int32 per slot for refCount)
+    this.metadata = new Int32Array(new SharedArrayBuffer(TOTAL_SLOTS * 4));
 
-    // Create shared buffer for data (headers + message data)
-    const dataBuffer = new SharedArrayBuffer(maxSlots * this.slotSize);
-    this.dataView = new Uint8Array(dataBuffer);
-
-    // Initialize all slots as free (refCount = 0)
-    for (let i = 0; i < maxSlots; i++) {
-      Atomics.store(this.metadataView, i, 0);
-    }
-
-    this.slotsFree = maxSlots;
+    // Create data buffer (partitioned: small slots first, then large slots)
+    this.data = new Uint8Array(new SharedArrayBuffer(totalDataBytes));
 
     SharedMessagePool.logConsoleMessage(
-      `Created pool: ${maxSlots} slots × ${this.slotSize} bytes = ${(maxSlots * this.slotSize / 1024 / 1024).toFixed(2)}MB`
+      `Initialized with ${SMALL_POOL_SLOTS} small slots (${SMALL_SLOT_SIZE}B) + ${LARGE_POOL_SLOTS} large slots (${LARGE_SLOT_SIZE}B)`
+    );
+    SharedMessagePool.logConsoleMessage(
+      `Total: ${TOTAL_SLOTS} slots, ${(totalDataBytes / 1024).toFixed(0)} KB`
     );
   }
 
   /**
-   * Create SharedMessagePool from transferred SharedArrayBuffers
-   * Used in Worker thread to access the same pool as main thread
+   * Create SharedMessagePool from transferred SharedArrayBuffers (Worker Thread)
+   * UNCHANGED external signature
    */
-  public static fromTransferables(transferables: SharedMessagePoolTransferables): SharedMessagePool {
+  public static fromTransferables(transferables: {
+    metadataBuffer: SharedArrayBuffer;
+    dataBuffer: SharedArrayBuffer;
+    maxSlots: number;
+    maxMessageSize: number;
+  }): SharedMessagePool {
     const instance = Object.create(SharedMessagePool.prototype);
 
-    instance.maxSlots = transferables.maxSlots;
-    instance.maxMessageSize = transferables.maxMessageSize;
-    instance.slotSize = HEADER_SIZE + transferables.maxMessageSize;
-    instance.metadataView = new Int32Array(transferables.metadataBuffer);
-    instance.dataView = new Uint8Array(transferables.dataBuffer);
-    instance.slotsAllocated = 0;
-    instance.slotsFree = 0;
-    instance.acquisitions = 0;
-    instance.releases = 0;
-    instance.overflows = 0;
-    instance.fullCapacityLogged = false;
+    // Attach to transferred buffers
+    instance.metadata = new Int32Array(transferables.metadataBuffer);
+    instance.data = new Uint8Array(transferables.dataBuffer);
 
-    SharedMessagePool.logConsoleMessage(
-      `Attached to shared pool: ${instance.maxSlots} slots × ${instance.slotSize} bytes`
-    );
+    // Initialize counters
+    instance.smallSlotsFree = SMALL_POOL_SLOTS;
+    instance.smallSlotsAllocated = 0;
+    instance.largeSlotsFree = LARGE_POOL_SLOTS;
+    instance.largeSlotsAllocated = 0;
+    instance.smallAcquisitions = 0;
+    instance.largeAcquisitions = 0;
+    instance.smallReleases = 0;
+    instance.largeReleases = 0;
+    instance.smallOverflows = 0;
+    instance.largeOverflows = 0;
+    instance.smallHighWaterMark = 0;
+    instance.largeHighWaterMark = 0;
 
     return instance;
   }
 
   /**
-   * Get transferable objects to send to Worker
+   * Get transferable objects for worker thread - UNCHANGED external signature
    */
   public getTransferables(): SharedMessagePoolTransferables {
     return {
-      metadataBuffer: this.metadataView.buffer as SharedArrayBuffer,
-      dataBuffer: this.dataView.buffer as SharedArrayBuffer,
-      maxSlots: this.maxSlots,
-      maxMessageSize: this.maxMessageSize
+      metadataBuffer: this.metadata.buffer as SharedArrayBuffer,
+      dataBuffer: this.data.buffer as SharedArrayBuffer,
+      maxSlots: TOTAL_SLOTS,
+      maxMessageSize: LARGE_SLOT_SIZE - METADATA_SIZE
     };
   }
 
   /**
-   * Acquire a free slot from the pool
-   * Thread-safe using Atomics.compareExchange
-   * @returns PoolSlot object or null if pool exhausted
+   * Calculate byte offset in data buffer for given poolId
+   * Small pool: slots 0-1999, 128 bytes each, sequential
+   * Large pool: slots 2000-2099, 8192 bytes each, sequential after small pool
    */
-  public acquire(): PoolSlot | null {
-    // Atomically find and claim a free slot (refCount === 0)
-    for (let slotId = 0; slotId < this.maxSlots; slotId++) {
-      // Try to claim: if refCount is 0, set it to 1
-      const previous = Atomics.compareExchange(this.metadataView, slotId, 0, 1);
+  private getSlotDataOffset(poolId: number): number {
+    if (poolId <= SMALL_POOL_END) {
+      // Small pool: poolId 0-1999
+      return poolId * SMALL_SLOT_SIZE;
+    } else {
+      // Large pool: poolId 2000-2099
+      const largePoolIndex = poolId - LARGE_POOL_START;
+      return (SMALL_POOL_SLOTS * SMALL_SLOT_SIZE) + (largePoolIndex * LARGE_SLOT_SIZE);
+    }
+  }
 
-      if (previous === 0) {
-        // Successfully claimed this slot!
-        this.acquisitions++;
-        this.slotsAllocated++;
-        this.slotsFree--;
+  /**
+   * Get slot size for given poolId
+   */
+  private getSlotSize(poolId: number): number {
+    return poolId <= SMALL_POOL_END ? SMALL_SLOT_SIZE : LARGE_SLOT_SIZE;
+  }
 
-        // Update high water mark
-        if (this.slotsAllocated > this.highWaterMark) {
-          const oldHighWater = this.highWaterMark;
-          this.highWaterMark = this.slotsAllocated;
-          const usagePercent = Math.round((this.slotsAllocated / this.maxSlots) * 1000) / 10;
-          console.log(`[MessagePool] 📈 NEW HIGH WATER MARK: ${this.slotsAllocated}/${this.maxSlots} slots (${usagePercent}%) [was: ${oldHighWater}]`);
+  /**
+   * Determine if poolId is in small or large pool
+   */
+  private isSmallPool(poolId: number): boolean {
+    return poolId <= SMALL_POOL_END;
+  }
+
+  /**
+   * Select appropriate pool based on message size
+   * Returns starting poolId for the selected pool
+   */
+  private selectPool(messageSize: number): { start: number; end: number; slotSize: number } {
+    const maxDataSize = messageSize;
+
+    if (maxDataSize <= (SMALL_SLOT_SIZE - METADATA_SIZE)) {
+      return {
+        start: SMALL_POOL_START,
+        end: SMALL_POOL_END,
+        slotSize: SMALL_SLOT_SIZE
+      };
+    } else {
+      return {
+        start: LARGE_POOL_START,
+        end: LARGE_POOL_END,
+        slotSize: LARGE_SLOT_SIZE
+      };
+    }
+  }
+
+  /**
+   * Acquire a slot from the appropriate size class
+   * Thread-safe using Atomics.compareExchange
+   * UNCHANGED external signature
+   */
+  public acquire(messageSize?: number): PoolSlot | null {
+    const pool = this.selectPool(messageSize || 0);
+    const isSmall = (pool.start === SMALL_POOL_START);
+
+    // Try to find free slot in selected pool
+    for (let poolId = pool.start; poolId <= pool.end; poolId++) {
+      if (Atomics.compareExchange(this.metadata, poolId, 0, 1) === 0) {
+        // Successfully acquired slot
+        if (isSmall) {
+          this.smallAcquisitions++;
+          this.smallSlotsFree--;
+          this.smallSlotsAllocated++;
+          if (this.smallSlotsAllocated > this.smallHighWaterMark) {
+            this.smallHighWaterMark = this.smallSlotsAllocated;
+          }
+        } else {
+          this.largeAcquisitions++;
+          this.largeSlotsFree--;
+          this.largeSlotsAllocated++;
+          if (this.largeSlotsAllocated > this.largeHighWaterMark) {
+            this.largeHighWaterMark = this.largeSlotsAllocated;
+          }
         }
 
-        SharedMessagePool.logConsoleMessage(`Acquired slot ${slotId} (free: ${this.slotsFree}/${this.maxSlots})`);
+        SharedMessagePool.logConsoleMessage(
+          `Acquired ${isSmall ? 'small' : 'large'} slot ${poolId} (size ${messageSize})`
+        );
 
-        return this.createSlotHandle(slotId);
+        return this.createSlotHandle(poolId);
       }
     }
 
-    // Pool exhausted - all slots in use
-    this.overflows++;
-
-    // Log if pool hits full capacity
-    if (!this.fullCapacityLogged) {
-      console.error(`[MessagePool] 🔴 FULL CAPACITY REACHED: Pool exhausted (${this.maxSlots} slots all in use)`);
-      this.fullCapacityLogged = true;
+    // Pool exhausted
+    if (isSmall) {
+      this.smallOverflows++;
+    } else {
+      this.largeOverflows++;
     }
 
-    console.error('[SharedMessagePool] Pool exhausted! All slots in use.');
+    SharedMessagePool.logConsoleMessage(
+      `${isSmall ? 'Small' : 'Large'} pool exhausted (size ${messageSize})`
+    );
+
     return null;
   }
 
   /**
-   * Get a slot by ID (for reading in main thread after Worker sends poolId)
-   * @param poolId Slot ID from Worker
-   * @returns PoolSlot object
+   * Release a slot back to pool
+   * Thread-safe using Atomics.sub
+   * UNCHANGED external signature
+   */
+  public release(poolId: number): void {
+    const newCount = Atomics.sub(this.metadata, poolId, 1) - 1;
+
+    if (newCount === 0) {
+      // Slot is now free
+      const isSmall = this.isSmallPool(poolId);
+
+      if (isSmall) {
+        this.smallSlotsFree++;
+        this.smallSlotsAllocated--;
+        this.smallReleases++;
+      } else {
+        this.largeSlotsFree++;
+        this.largeSlotsAllocated--;
+        this.largeReleases++;
+      }
+
+      SharedMessagePool.logConsoleMessage(
+        `Released ${isSmall ? 'small' : 'large'} slot ${poolId}`
+      );
+    }
+  }
+
+  /**
+   * Get slot handle for reading
+   * UNCHANGED external signature
    */
   public get(poolId: number): PoolSlot {
-    if (poolId < 0 || poolId >= this.maxSlots) {
-      throw new Error(`Invalid poolId: ${poolId}`);
-    }
-
     return this.createSlotHandle(poolId);
   }
 
   /**
-   * Release a reference to a pool slot
-   * Thread-safe using Atomics.sub
-   * When refCount reaches 0, slot is automatically free for reuse
-   * @param poolId Slot ID to release
-   */
-  public release(poolId: number): void {
-    if (poolId < 0 || poolId >= this.maxSlots) {
-      throw new Error(`Invalid poolId: ${poolId}`);
-    }
-
-    // Atomically decrement reference count
-    const newCount = Atomics.sub(this.metadataView, poolId, 1) - 1;
-
-    this.releases++;
-
-    if (newCount === 0) {
-      // Slot is now free for reuse
-      this.slotsFree++;
-      this.slotsAllocated--;
-
-      // Reset full capacity flag once slots become available again
-      if (this.slotsFree > 0 && this.fullCapacityLogged) {
-        this.fullCapacityLogged = false;
-      }
-
-      // Check if pool went empty
-      if (this.slotsAllocated === 0) {
-        console.log(`[MessagePool] 🔄 Pool went EMPTY (all slots released)`);
-      }
-
-      SharedMessagePool.logConsoleMessage(`Released slot ${poolId} (free: ${this.slotsFree}/${this.maxSlots})`);
-    } else if (newCount < 0) {
-      console.error(`[SharedMessagePool] Double-release detected! Slot ${poolId} refCount went negative.`);
-    }
-  }
-
-  /**
-   * Get message type without reading full message data
-   * Used by router to determine destinations before reading message
-   * @param poolId Slot ID
-   * @returns SharedMessageType enum value
+   * Get message type without reading full data
+   * UNCHANGED external signature
    */
   public getMessageType(poolId: number): SharedMessageType {
-    if (poolId < 0 || poolId >= this.maxSlots) {
-      throw new Error(`Invalid poolId: ${poolId}`);
-    }
-
-    const slotOffset = poolId * this.slotSize;
-    return this.dataView[slotOffset + TYPE_OFFSET];
+    const offset = this.getSlotDataOffset(poolId);
+    return this.data[offset + TYPE_OFFSET] as SharedMessageType;
   }
 
   /**
-   * Increment reference count for multiple consumers
-   * Thread-safe using Atomics.add
-   * @param poolId Slot ID
-   * @param count Number to add to refCount
-   */
-  public incrementRefCount(poolId: number, count: number): void {
-    if (poolId < 0 || poolId >= this.maxSlots) {
-      throw new Error(`Invalid poolId: ${poolId}`);
-    }
-
-    if (count <= 0) {
-      throw new Error(`Invalid increment count: ${count}`);
-    }
-
-    // Atomically increment reference count
-    Atomics.add(this.metadataView, poolId, count);
-
-    SharedMessagePool.logConsoleMessage(`Incremented slot ${poolId} refCount by ${count}`);
-  }
-
-  /**
-   * Create a PoolSlot handle for a given slot ID
+   * Create slot handle with read/write methods
    */
   private createSlotHandle(poolId: number): PoolSlot {
-    const metadataView = this.metadataView;
-    const dataView = this.dataView;
-    const slotSize = this.slotSize;
-    const slotOffset = poolId * slotSize;
+    const offset = this.getSlotDataOffset(poolId);
+    const slotSize = this.getSlotSize(poolId);
 
     return {
       poolId,
 
-      readType(): SharedMessageType {
-        return dataView[slotOffset + TYPE_OFFSET];
+      writeType: (type: SharedMessageType) => {
+        this.data[offset + TYPE_OFFSET] = type;
       },
 
-      readLength(): number {
-        // Read 2-byte length (little-endian)
-        const lengthOffset = slotOffset + LENGTH_OFFSET;
-        return dataView[lengthOffset] | (dataView[lengthOffset + 1] << 8);
+      writeLength: (length: number) => {
+        this.data[offset + LENGTH_OFFSET] = length & 0xFF;
+        this.data[offset + LENGTH_OFFSET + 1] = (length >> 8) & 0xFF;
       },
 
-      readData(): Uint8Array {
-        const length = this.readLength();
-        const dataOffset = slotOffset + DATA_OFFSET;
-        return new Uint8Array(dataView.buffer, dataView.byteOffset + dataOffset, length);
+      writeData: (data: Uint8Array) => {
+        const maxData = slotSize - METADATA_SIZE;
+        if (data.length > maxData) {
+          throw new Error(`Data too large for slot: ${data.length} > ${maxData}`);
+        }
+        this.data.set(data, offset + METADATA_SIZE);
       },
 
-      writeType(type: SharedMessageType): void {
-        dataView[slotOffset + TYPE_OFFSET] = type;
+      setRefCount: (count: number) => {
+        Atomics.store(this.metadata, poolId, count);
       },
 
-      writeLength(length: number): void {
-        // Write 2-byte length (little-endian)
-        const lengthOffset = slotOffset + LENGTH_OFFSET;
-        dataView[lengthOffset] = length & 0xFF;
-        dataView[lengthOffset + 1] = (length >> 8) & 0xFF;
+      readType: (): SharedMessageType => {
+        return this.data[offset + TYPE_OFFSET] as SharedMessageType;
       },
 
-      writeData(data: Uint8Array): void {
-        const dataOffset = slotOffset + DATA_OFFSET;
-        dataView.set(data, dataOffset);
+      readLength: (): number => {
+        return this.data[offset + LENGTH_OFFSET] | (this.data[offset + LENGTH_OFFSET + 1] << 8);
       },
 
-      setRefCount(count: number): void {
-        Atomics.store(metadataView, poolId, count);
+      readData: (): Uint8Array => {
+        const length = this.data[offset + LENGTH_OFFSET] | (this.data[offset + LENGTH_OFFSET + 1] << 8);
+        return this.data.slice(offset + METADATA_SIZE, offset + METADATA_SIZE + length);
       },
 
-      getRefCount(): number {
-        return Atomics.load(metadataView, poolId);
+      getRefCount: (): number => {
+        return Atomics.load(this.metadata, poolId);
       }
     };
   }
@@ -405,77 +446,54 @@ export class SharedMessagePool {
    */
   public getStats() {
     return {
-      maxSlots: this.maxSlots,
-      maxMessageSize: this.maxMessageSize,
-      slotSize: this.slotSize,
-      slotsAllocated: this.slotsAllocated,
-      slotsFree: this.slotsFree,
-      acquisitions: this.acquisitions,
-      releases: this.releases,
-      overflows: this.overflows,
-      highWaterMark: this.highWaterMark,
-      utilizationPercent: Math.round((this.slotsAllocated / this.maxSlots) * 100)
+      smallPool: {
+        totalSlots: SMALL_POOL_SLOTS,
+        slotSize: SMALL_SLOT_SIZE,
+        slotsFree: this.smallSlotsFree,
+        slotsAllocated: this.smallSlotsAllocated,
+        acquisitions: this.smallAcquisitions,
+        releases: this.smallReleases,
+        overflows: this.smallOverflows,
+        highWaterMark: this.smallHighWaterMark
+      },
+      largePool: {
+        totalSlots: LARGE_POOL_SLOTS,
+        slotSize: LARGE_SLOT_SIZE,
+        slotsFree: this.largeSlotsFree,
+        slotsAllocated: this.largeSlotsAllocated,
+        acquisitions: this.largeAcquisitions,
+        releases: this.largeReleases,
+        overflows: this.largeOverflows,
+        highWaterMark: this.largeHighWaterMark
+      },
+      total: {
+        totalSlots: TOTAL_SLOTS,
+        totalMemoryKB: ((SMALL_POOL_SLOTS * SMALL_SLOT_SIZE + LARGE_POOL_SLOTS * LARGE_SLOT_SIZE) / 1024).toFixed(0)
+      }
     };
   }
 
   /**
-   * Log final statistics (called on shutdown)
+   * Log final statistics
    */
   public logFinalStats(): void {
     const stats = this.getStats();
-    console.log(`[MessagePool] 📊 FINAL STATISTICS:`);
-    console.log(`  Max Slots: ${stats.maxSlots}`);
-    console.log(`  High Water Mark: ${stats.highWaterMark} slots (${Math.round((stats.highWaterMark / stats.maxSlots) * 1000) / 10}%)`);
-    console.log(`  Total Acquisitions: ${stats.acquisitions.toLocaleString()}`);
-    console.log(`  Total Releases: ${stats.releases.toLocaleString()}`);
-    console.log(`  Overflows: ${stats.overflows}`);
-    console.log(`  Current Utilization: ${stats.utilizationPercent}% (${stats.slotsAllocated}/${stats.maxSlots} slots)`);
-  }
 
-  /**
-   * Clear all slots (for testing/reset)
-   */
-  public clear(): void {
-    for (let i = 0; i < this.maxSlots; i++) {
-      Atomics.store(this.metadataView, i, 0);
-    }
-    this.slotsFree = this.maxSlots;
-    this.slotsAllocated = 0;
-    SharedMessagePool.logConsoleMessage('Pool cleared');
-  }
-}
+    console.log('[SharedMessagePool] 📊 FINAL STATISTICS:');
+    console.log('  Small Pool:');
+    console.log(`    Slots: ${stats.smallPool.totalSlots} × ${stats.smallPool.slotSize}B`);
+    console.log(`    Acquisitions: ${stats.smallPool.acquisitions.toLocaleString()}`);
+    console.log(`    Releases: ${stats.smallPool.releases.toLocaleString()}`);
+    console.log(`    Overflows: ${stats.smallPool.overflows}`);
+    console.log(`    High Water Mark: ${stats.smallPool.highWaterMark} / ${stats.smallPool.totalSlots}`);
 
-/**
- * Helper function to extract COG ID from SharedMessageType enum
- */
-export function getCogIdFromType(type: SharedMessageType): number | null {
-  if (type >= SharedMessageType.COG0_MESSAGE && type <= SharedMessageType.COG7_MESSAGE) {
-    return type - SharedMessageType.COG0_MESSAGE;
-  }
-  if (type >= SharedMessageType.DEBUGGER0_416BYTE && type <= SharedMessageType.DEBUGGER7_416BYTE) {
-    return type - SharedMessageType.DEBUGGER0_416BYTE;
-  }
-  return null;
-}
+    console.log('  Large Pool:');
+    console.log(`    Slots: ${stats.largePool.totalSlots} × ${stats.largePool.slotSize}B`);
+    console.log(`    Acquisitions: ${stats.largePool.acquisitions.toLocaleString()}`);
+    console.log(`    Releases: ${stats.largePool.releases.toLocaleString()}`);
+    console.log(`    Overflows: ${stats.largePool.overflows}`);
+    console.log(`    High Water Mark: ${stats.largePool.highWaterMark} / ${stats.largePool.totalSlots}`);
 
-/**
- * Helper function to get message category from SharedMessageType enum
- */
-export function getMessageCategory(type: SharedMessageType): string {
-  if (type >= SharedMessageType.COG0_MESSAGE && type <= SharedMessageType.COG7_MESSAGE) {
-    return 'COG';
+    console.log(`  Total Memory: ${stats.total.totalMemoryKB} KB`);
   }
-  if (type >= SharedMessageType.DEBUGGER0_416BYTE && type <= SharedMessageType.DEBUGGER7_416BYTE) {
-    return 'DEBUGGER';
-  }
-  if (type === SharedMessageType.P2_SYSTEM_INIT) {
-    return 'P2_INIT';
-  }
-  if (type >= SharedMessageType.BACKTICK_LOGIC && type <= SharedMessageType.BACKTICK_UPDATE) {
-    return 'BACKTICK';
-  }
-  if (type === SharedMessageType.DB_PACKET) {
-    return 'DB_PACKET';
-  }
-  return 'OTHER';
 }

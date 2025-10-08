@@ -25,7 +25,7 @@ import path from 'path';
  * - 'workerError': (error) => void - Worker encountered error
  */
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export class WorkerExtractor extends EventEmitter {
   private static logConsoleMessage(...args: any[]): void {

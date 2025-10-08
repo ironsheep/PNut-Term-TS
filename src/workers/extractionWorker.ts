@@ -27,7 +27,7 @@ if (!parentPort) {
   throw new Error('ExtractionWorker must be run as Worker Thread');
 }
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 function logConsoleMessage(...args: any[]): void {
   if (ENABLE_CONSOLE_LOG) {
@@ -380,11 +380,24 @@ function extractMessages(): void {
         continue;
       }
 
-      // Acquire slot from SharedMessagePool
-      const slot = messagePool.acquire();
+      // Acquire pool slot with message size for size class selection
+      // If pool is full, retry multiple times to allow main thread to release
+      let slot = messagePool.acquire(messageData.length);
+      let retries = 0;
+      const MAX_RETRIES = 1000;  // Retry up to 1000 times
+
+      while (!slot && retries < MAX_RETRIES) {
+        // Pool full - retry immediately
+        // Atomic operations have memory barriers, so we'll see releases
+        retries++;
+        slot = messagePool.acquire(messageData.length);
+      }
+
       if (!slot) {
-        console.error('[ExtractionWorker] SharedMessagePool exhausted!');
-        break;
+        // Pool still full after many retries - message will be lost!
+        console.error('[ExtractionWorker] Pool exhausted after ' + retries + ' retries, message lost!');
+        // Continue extracting to clear buffer
+        continue;
       }
 
       // Write message to pool
