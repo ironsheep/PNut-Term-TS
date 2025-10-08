@@ -9,8 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
-import { MessageType, ExtractedMessage } from './shared/sharedMessagePool';
+import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool';
 import { PerformanceMonitor } from './shared/performanceMonitor';
+import { SerialMessage } from './shared/windowRouter';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
@@ -759,11 +760,39 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
+   * Override base class handleRouterMessage to properly route to processTypedMessage
+   * WindowRouter calls this with SerialMessage containing SharedMessageType
+   */
+  public handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
+    try {
+      // Check if it's a SerialMessage object with messageType
+      if (typeof message === 'object' && !Array.isArray(message) && !(message instanceof Uint8Array)) {
+        const serialMsg = message as SerialMessage;
+        if (serialMsg.messageType !== undefined) {
+          // SerialMessage with SharedMessageType - route to processTypedMessage
+          const data = typeof serialMsg.data === 'string' ? [serialMsg.data] : serialMsg.data;
+          this.processTypedMessage(serialMsg.messageType, data);
+          return;
+        }
+      }
+
+      // Fallback for legacy paths
+      if (typeof message === 'string') {
+        this.processTypedMessage(SharedMessageType.TERMINAL_OUTPUT, [message]);
+      } else if (message instanceof Uint8Array) {
+        this.processTypedMessage(SharedMessageType.DEBUGGER0_416BYTE, message);
+      }
+    } catch (error) {
+      console.error('[DEBUG LOGGER] Error in handleRouterMessage:', error);
+    }
+  }
+
+  /**
    * Process message with type information (type-safe handoff)
    * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
-  public processTypedMessage(messageType: MessageType, data: string[] | Uint8Array): void {
-    this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: ${messageType}`);
+  public processTypedMessage(messageType: SharedMessageType, data: string[] | Uint8Array): void {
+    this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: SharedMessageType ${messageType}`);
 
     try {
       // Extract data immediately before any async operations
@@ -772,94 +801,102 @@ export class LoggerWindow extends DebugWindowBase {
       console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
     }
   }
-  
+
   /**
    * Internal synchronous message processing (extracted for proper release timing)
    */
-  private processTypedMessageSync(messageType: MessageType, actualData: string[] | Uint8Array): void {
-    switch(messageType) {
-      case MessageType.DEBUGGER_416BYTE:
-        // Binary debugger data - display with proper 80-byte formatting
-        if (actualData instanceof Uint8Array) {
-          const formatted = this.formatDebuggerMessage(actualData);
-          this.appendMessage(formatted, 'debugger-formatted');
-          this.writeToLog(formatted);
-        }
-        break;
-        
-      case MessageType.DB_PACKET:
-        // DB prefix messages - use same hex format as 80-byte
-        if (actualData instanceof Uint8Array) {
-          const formatted = this.formatDebuggerMessage(actualData);
-          this.appendMessage(formatted, 'debugger-formatted');
-          this.writeToLog(formatted);
-        }
-        break;
-
-      case MessageType.COG_MESSAGE:
-      case MessageType.P2_SYSTEM_INIT:
-        // Text data - display as readable text (should go to main console)
-        if (Array.isArray(actualData)) {
-          const message = actualData.join(' ');
-          this.appendMessage(message, 'cog-message');
-          this.writeToLog(message);
-        } else if (typeof actualData === 'string') {
-          this.appendMessage(actualData, 'cog-message');
-          this.writeToLog(actualData);
-        }
-        break;
-        
-      case MessageType.TERMINAL_OUTPUT:
-        // DEFENSIVE: Check if data is actually ASCII before displaying
-        if (actualData instanceof Uint8Array) {
-          if (this.isASCIIData(actualData)) {
-            // Convert to string and display
-            const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
-            this.appendMessage(textMessage, 'cog-message');
-            this.writeToLog(textMessage);
-          } else {
-            // Binary data misclassified as terminal - display as hex fallback
-            const hexFallback = this.formatBinaryAsHexFallback(actualData);
-            this.appendMessage(hexFallback, 'binary-message');
-            this.writeToLog(hexFallback);
-          }
-        } else if (Array.isArray(actualData)) {
-          const message = actualData.join(' ');
-          this.appendMessage(message, 'cog-message');
-          this.writeToLog(message);
-        } else if (typeof actualData === 'string') {
-          this.appendMessage(actualData, 'cog-message');
-          this.writeToLog(actualData);
-        }
-        break;
-        
-      case MessageType.INVALID_COG:
-        // Error/warning messages
-        const errorMsg = Array.isArray(actualData) ? actualData.join(' ') :
-                        (actualData instanceof Uint8Array ? new TextDecoder().decode(actualData) : String(actualData));
-        this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
-        this.writeToLog(`[WARNING] ${errorMsg}`);
-        break;
-        
-      default:
-        // Fallback - use safe display with defensive binary check
-        if (actualData instanceof Uint8Array) {
-          if (this.isASCIIData(actualData)) {
-            const textData = new TextDecoder().decode(actualData);
-            this.appendMessage(textData, 'generic-message');
-            this.writeToLog(textData);
-          } else {
-            const hexData = this.formatBinaryAsHexFallback(actualData);
-            this.appendMessage(hexData, 'binary-message');
-            this.writeToLog(hexData);
-          }
-        } else {
-          const displayData = Array.isArray(actualData) ? actualData.join(' ') : String(actualData);
-          this.appendMessage(displayData, 'generic-message');
-          this.writeToLog(displayData);
-        }
+  private processTypedMessageSync(messageType: SharedMessageType, actualData: string[] | Uint8Array): void {
+    // Handle DEBUGGER_416BYTE range (DEBUGGER0-DEBUGGER7)
+    if (
+      messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+      messageType <= SharedMessageType.DEBUGGER7_416BYTE
+    ) {
+      // Binary debugger data - display with proper 416-byte formatting
+      if (actualData instanceof Uint8Array) {
+        const formatted = this.formatDebuggerMessage(actualData);
+        this.appendMessage(formatted, 'debugger-formatted');
+        this.writeToLog(formatted);
+      }
     }
-    
+    // Handle DB_PACKET
+    else if (messageType === SharedMessageType.DB_PACKET) {
+      // DB prefix messages - use same hex format as debugger packets
+      if (actualData instanceof Uint8Array) {
+        const formatted = this.formatDebuggerMessage(actualData);
+        this.appendMessage(formatted, 'debugger-formatted');
+        this.writeToLog(formatted);
+      }
+    }
+    // Handle COG messages (COG0-COG7) and P2_SYSTEM_INIT
+    else if (
+      (messageType >= SharedMessageType.COG0_MESSAGE && messageType <= SharedMessageType.COG7_MESSAGE) ||
+      messageType === SharedMessageType.P2_SYSTEM_INIT
+    ) {
+      // Text data - display as readable text
+      if (Array.isArray(actualData)) {
+        const message = actualData.join(' ');
+        this.appendMessage(message, 'cog-message');
+        this.writeToLog(message);
+      } else if (typeof actualData === 'string') {
+        this.appendMessage(actualData, 'cog-message');
+        this.writeToLog(actualData);
+      }
+    }
+    // Handle TERMINAL_OUTPUT
+    else if (messageType === SharedMessageType.TERMINAL_OUTPUT) {
+      // DEFENSIVE: Check if data is actually ASCII before displaying
+      if (actualData instanceof Uint8Array) {
+        if (this.isASCIIData(actualData)) {
+          // Convert to string and display
+          const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
+          this.appendMessage(textMessage, 'cog-message');
+          this.writeToLog(textMessage);
+        } else {
+          // Binary data misclassified as terminal - display as hex fallback
+          const hexFallback = this.formatBinaryAsHexFallback(actualData);
+          this.appendMessage(hexFallback, 'binary-message');
+          this.writeToLog(hexFallback);
+        }
+      } else if (Array.isArray(actualData)) {
+        const message = actualData.join(' ');
+        this.appendMessage(message, 'cog-message');
+        this.writeToLog(message);
+      } else if (typeof actualData === 'string') {
+        this.appendMessage(actualData, 'cog-message');
+        this.writeToLog(actualData);
+      }
+    }
+    // Handle INVALID_COG
+    else if (messageType === SharedMessageType.INVALID_COG) {
+      // Error/warning messages
+      const errorMsg = Array.isArray(actualData)
+        ? actualData.join(' ')
+        : actualData instanceof Uint8Array
+          ? new TextDecoder().decode(actualData)
+          : String(actualData);
+      this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
+      this.writeToLog(`[WARNING] ${errorMsg}`);
+    }
+    // Fallback for unknown types
+    else {
+      // Fallback - use safe display with defensive binary check
+      if (actualData instanceof Uint8Array) {
+        if (this.isASCIIData(actualData)) {
+          const textData = new TextDecoder().decode(actualData);
+          this.appendMessage(textData, 'generic-message');
+          this.writeToLog(textData);
+        } else {
+          const hexData = this.formatBinaryAsHexFallback(actualData);
+          this.appendMessage(hexData, 'binary-message');
+          this.writeToLog(hexData);
+        }
+      } else {
+        const displayData = Array.isArray(actualData) ? actualData.join(' ') : String(actualData);
+        this.appendMessage(displayData, 'generic-message');
+        this.writeToLog(displayData);
+      }
+    }
+
     this.updateStatusBar();
   }
   

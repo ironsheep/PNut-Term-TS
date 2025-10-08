@@ -188,6 +188,58 @@ The following classes currently have no test files:
 
 ## Architecture Issues
 
+### Remove SerialMessage Interface - Use ExtractedMessage Throughout
+**Date Added**: 2025-10-08
+**Priority**: Medium - Post-First-Release Refactor
+**Category**: Architecture / Code Simplification
+
+**Current State**:
+- Two message wrapper types exist with overlapping purposes:
+  1. **SerialMessage** - Legacy wrapper created by MainWindow destination handlers
+     - `{ type: 'binary'|'text', data: Uint8Array|string, timestamp: number, messageType?: SharedMessageType }`
+     - Added as intermediate format between MessageRouter and WindowRouter
+  2. **ExtractedMessage** - Created by MessageRouter from SharedMessagePool
+     - `{ type: SharedMessageType, data: Uint8Array, timestamp: number, confidence: string }`
+     - Comes from Worker Thread extraction with Two-Tier Pattern Matching
+
+**Problem**:
+- SerialMessage is a redundant wrapper that adds no value
+- MainWindow destination handlers receive ExtractedMessage, then wrap it in SerialMessage
+- WindowRouter receives SerialMessage, unwraps it back to process the original data
+- Extra object creation and type conversions
+- More complex type signatures (handlers accept `SerialMessage | Uint8Array | string`)
+- Two different message formats increases cognitive load
+
+**Desired State**:
+- **ExtractedMessage** is the single message format throughout the entire routing pipeline
+- MessageRouter emits ExtractedMessage → handlers pass ExtractedMessage → WindowRouter receives ExtractedMessage
+- Eliminate SerialMessage interface entirely
+- Simpler type signatures: handlers accept just `ExtractedMessage`
+- One canonical message format from extraction to final window delivery
+
+**Implementation Plan**:
+1. Update MainWindow destination handlers to pass ExtractedMessage directly
+2. Change WindowRouter.routeMessage() signature from SerialMessage to ExtractedMessage
+3. Update all handler type signatures to accept ExtractedMessage
+4. Remove SerialMessage interface definition
+5. Update LoggerWindow.handleRouterMessage() to handle ExtractedMessage
+6. Update all tests and benchmarks
+
+**Benefits**:
+- Simpler architecture with one message type
+- No unnecessary wrapper creation/unwrapping
+- Clearer data flow: Worker → SharedMessagePool → MessageRouter → ExtractedMessage → Windows
+- Reduced cognitive load for future developers
+- Fewer type conversions and object allocations
+
+**Estimated Effort**: 8-12 hours for complete refactoring across all files
+
+**Required for Release**: NO - Current system works, refactor for simplicity and maintainability
+
+**Note**: During the MessageType → SharedMessageType refactor (2025-10-08), we implemented Option 1 (minimal changes) to quickly restore debug logger functionality. This preserved SerialMessage as a temporary fix. The proper long-term solution is to remove SerialMessage entirely and use ExtractedMessage everywhere.
+
+---
+
 ### Serial Processing Thread Architecture
 **Priority: Medium - Performance and reliability improvement**
 **Date Identified: 2025-01-21**

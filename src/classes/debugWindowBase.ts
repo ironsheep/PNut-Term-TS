@@ -620,8 +620,9 @@ export abstract class DebugWindowBase extends EventEmitter {
   /**
    * Handle messages from WindowRouter
    * This method processes both SerialMessage objects and raw data
+   * Protected to allow subclasses to override (e.g., LoggerWindow)
    */
-  private handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
+  protected handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
     try {
       if (typeof message === 'string') {
         // Text message - parse and process

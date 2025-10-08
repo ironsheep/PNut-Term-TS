@@ -5,7 +5,7 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 // src/classes/shared/serialMessageProcessor.ts
 
 import { EventEmitter } from 'events';
-import { MessageType, ExtractedMessage } from './sharedMessagePool';
+import { SharedMessageType, ExtractedMessage } from './sharedMessagePool';
 import { MessageRouter, RouteDestination } from './messageRouter';
 import { DTRResetManager } from './dtrResetManager';
 import { PerformanceMonitor } from './performanceMonitor';
@@ -264,7 +264,7 @@ export class SerialMessageProcessor extends EventEmitter {
   /**
    * Register a message destination
    */
-  public registerDestination(messageType: MessageType, destination: RouteDestination): void {
+  public registerDestination(messageType: SharedMessageType, destination: RouteDestination): void {
     this.router.registerDestination(messageType, destination);
   }
 
@@ -274,10 +274,9 @@ export class SerialMessageProcessor extends EventEmitter {
   public applyStandardRouting(
     debugLogger: RouteDestination,
     windowCreator: RouteDestination,
-    debuggerWindow?: RouteDestination,
-    cogWindowRouter?: RouteDestination
+    debuggerWindow?: RouteDestination
   ): void {
-    this.router.applyStandardRouting(debugLogger, windowCreator, debuggerWindow, cogWindowRouter);
+    this.router.applyStandardRouting(debugLogger, windowCreator, debuggerWindow);
   }
 
   /**

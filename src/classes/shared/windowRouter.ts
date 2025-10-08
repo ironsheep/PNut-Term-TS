@@ -12,6 +12,7 @@ import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
 import { safeDisplayString } from '../../utils/displayUtils';
 import { BinaryRecorder } from './binaryRecorder';
 import { Context } from '../../utils/context';
+import { SharedMessageType } from './sharedMessagePool';
 
 /**
  * Window handler callback for routing messages to debug windows
@@ -26,8 +27,7 @@ export interface SerialMessage {
   data: Uint8Array | string;
   timestamp: number;
   source?: string;
-  messageType?: string;  // Actual message type (COG_MESSAGE, TERMINAL_OUTPUT, BACKTICK_WINDOW, etc.)
-  metadata?: Record<string, any>;  // Metadata including cogId already extracted by MessageRouter
+  messageType?: SharedMessageType;  // SharedMessageType from worker classification (cogId embedded in type)
 }
 
 /**
@@ -291,10 +291,16 @@ export class WindowRouter extends EventEmitter {
       this.logger.trace('ROUTE', `Routing ${message.type} message (${dataSize} bytes)`);
 
       if (message.type === 'binary') {
-        // Use COG ID from metadata (already extracted by MessageRouter from SharedMessageType)
-        this.routeBinaryMessage(message.data as Uint8Array, message.metadata?.cogId);
+        // Pass SharedMessageType - cogId will be extracted on-demand if needed
+        const cogId = message.messageType !== undefined &&
+                      message.messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+                      message.messageType <= SharedMessageType.DEBUGGER7_416BYTE
+          ? message.messageType - SharedMessageType.DEBUGGER0_416BYTE
+          : undefined;
+        this.routeBinaryMessage(message.data as Uint8Array, cogId);
       } else {
-        this.routeTextMessage(message.data as string, message.messageType, message.metadata?.cogId);
+        // Pass full SerialMessage to preserve timestamp and messageType
+        this.routeTextMessage(message);
       }
       
       // Update statistics
@@ -390,61 +396,76 @@ export class WindowRouter extends EventEmitter {
    * Route text message (Cog messages, backtick commands, terminal output)
    *
    * CLEAN ARCHITECTURE: Messages are already classified by worker thread.
-   * Routes based on messageType, not content parsing.
+   * Routes based on SharedMessageType, not content parsing.
    *
-   * @param text The text message to route
-   * @param messageType The MessageType (COG_MESSAGE, TERMINAL_OUTPUT, BACKTICK_WINDOW, etc.)
-   * @param cogId Optional COG ID from message metadata (already extracted by worker from SharedMessageType)
+   * @param message SerialMessage with text data, timestamp, and SharedMessageType
    */
-  public routeTextMessage(text: string, messageType?: string, cogId?: number): void {
+  public routeTextMessage(message: SerialMessage): void {
     const startTime = performance.now();
 
     let handled = false;
 
+    // Extract data from SerialMessage
+    const text = message.data as string;
+    const messageType = message.messageType;
+
+    // Extract cogId from SharedMessageType for COG messages
+    let cogId: number | undefined;
+    if (messageType !== undefined) {
+      if (messageType >= SharedMessageType.COG0_MESSAGE && messageType <= SharedMessageType.COG7_MESSAGE) {
+        cogId = messageType - SharedMessageType.COG0_MESSAGE;
+      } else if (
+        messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+        messageType <= SharedMessageType.DEBUGGER7_416BYTE
+      ) {
+        cogId = messageType - SharedMessageType.DEBUGGER0_416BYTE;
+      }
+    }
+
+    // Check if message is backtick command (BACKTICK_* range)
+    const isBacktickCommand =
+      messageType !== undefined &&
+      messageType >= SharedMessageType.BACKTICK_LOGIC &&
+      messageType <= SharedMessageType.BACKTICK_UPDATE;
+
     // 1. BACKTICK COMMANDS - Window updates
-    if (messageType === 'BACKTICK_WINDOW' || text.includes('`')) {
+    if (isBacktickCommand || text.includes('`')) {
       const tickIndex = text.indexOf('`');
       const command = text.substring(tickIndex);
       this.routeBacktickCommand(command);
       handled = true;
     }
-    // 2. COG MESSAGES - Route to DebugLogger and individual COG window
-    // Use MessageType to identify COG messages, not text content
-    else if (messageType === 'COG_MESSAGE') {
+    // 2. COG MESSAGES - Route to DebugLogger AND individual COG window
+    // Use SharedMessageType to identify COG messages (COG0-COG7 and P2_SYSTEM_INIT)
+    else if (
+      messageType !== undefined &&
+      ((messageType >= SharedMessageType.COG0_MESSAGE && messageType <= SharedMessageType.COG7_MESSAGE) ||
+        messageType === SharedMessageType.P2_SYSTEM_INIT)
+    ) {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
 
-      // Always route to DebugLogger window for logging
-      let loggerWindowFound = false;
-      for (const [windowId, window] of this.windows) {
-        if (window.type === 'logger') {
-          this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
-          window.handler(text);
-          window.stats.messagesReceived++;
-          handled = true;
-          loggerWindowFound = true;
+      // Always route to DebugLogger window for logging (ONE place - no duplicates)
+      const loggerWindow = this.windows.get('logger');
+      if (loggerWindow) {
+        this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
+        loggerWindow.handler(message);  // Pass full SerialMessage with timestamp and messageType
+        loggerWindow.stats.messagesReceived++;
+        handled = true;
 
-          if (this.isRecording) {
-            this.recordMessage(windowId, window.type, 'text', text);
-          }
+        if (this.isRecording) {
+          this.recordMessage('logger', loggerWindow.type, 'text', text);
         }
       }
 
-      // Defensive error logging: warn if no logger window found
-      if (!loggerWindowFound) {
-        this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive Cog message: "${text.substring(0, 50)}..."`);
-        console.warn('[ROUTING] ⚠️ Cog message received but no DebugLoggerWindow registered! Message will be lost.');
-        console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
-      }
-
       // Also route to individual COG window if registered (optional - silent drop if not registered)
-      // Use COG ID from message metadata (extracted by MessageRouter from SharedMessageType)
+      // Extract COG ID from SharedMessageType (lazy evaluation - only when needed for routing)
       if (cogId !== undefined && cogId >= 0 && cogId <= 7) {
         const cogWindowId = `COG${cogId}`;
         const cogWindow = this.windows.get(cogWindowId);
 
         if (cogWindow) {
           this.logConsoleMessage(`[ROUTER->COG${cogId}] Sending ${text.length} bytes to COG${cogId} window`);
-          cogWindow.handler(text);
+          cogWindow.handler(message);  // Pass full SerialMessage
           cogWindow.stats.messagesReceived++;
           handled = true;
 
@@ -455,7 +476,40 @@ export class WindowRouter extends EventEmitter {
         // Silent drop if COG window not registered (optional window)
       }
     }
-    // 3. TERMINAL OUTPUT - Fallback for unhandled text
+    // 3. TERMINAL OUTPUT and INVALID_COG - Route to DebugLogger AND blue terminal
+    else if (
+      messageType === SharedMessageType.TERMINAL_OUTPUT ||
+      messageType === SharedMessageType.INVALID_COG
+    ) {
+      this.logger.debug('ROUTE', `Routing terminal/invalid output: ${text.substring(0, 50)}...`);
+
+      // Route to DebugLogger for record
+      const loggerWindow = this.windows.get('logger');
+      if (loggerWindow) {
+        this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
+        loggerWindow.handler(message);  // Pass full SerialMessage
+        loggerWindow.stats.messagesReceived++;
+        handled = true;
+
+        if (this.isRecording) {
+          this.recordMessage('logger', loggerWindow.type, 'text', text);
+        }
+      }
+
+      // Route to main window blue terminal for user visibility
+      const terminalWindow = this.windows.get('terminal');
+      if (terminalWindow) {
+        this.logConsoleMessage(`[ROUTER->TERMINAL] Sending ${text.length} bytes to blue terminal`);
+        terminalWindow.handler(text);  // Terminal still gets text for now (MainWindow.appendLog)
+        terminalWindow.stats.messagesReceived++;
+        handled = true;
+
+        if (this.isRecording) {
+          this.recordMessage('terminal', 'terminal', 'text', text);
+        }
+      }
+    }
+    // 4. Fallback for unhandled text
     else {
       const terminalWindow = this.windows.get('terminal');
       if (terminalWindow) {

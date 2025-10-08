@@ -30,27 +30,14 @@
 const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
- * Legacy MessageType enum for routing
- */
-export enum MessageType {
-  DB_PACKET = 'DB_PACKET',
-  COG_MESSAGE = 'COG_MESSAGE',
-  BACKTICK_WINDOW = 'BACKTICK_WINDOW',
-  DEBUGGER_416BYTE = 'DEBUGGER_416BYTE',
-  P2_SYSTEM_INIT = 'P2_SYSTEM_INIT',
-  TERMINAL_OUTPUT = 'TERMINAL_OUTPUT',
-  INVALID_COG = 'INVALID_COG'
-}
-
-/**
  * Extracted Message Interface
+ * Uses SharedMessageType directly (preserves COG ID in type)
  */
 export interface ExtractedMessage {
-  type: MessageType;
+  type: SharedMessageType;
   data: Uint8Array;
   timestamp: number;
   confidence?: string;
-  metadata?: Record<string, any>;
 }
 
 // SharedMessageType Enum

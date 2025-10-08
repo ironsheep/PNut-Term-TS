@@ -5,7 +5,7 @@
 const ENABLE_CONSOLE_LOG: boolean = false;
 
 import { EventEmitter } from 'events';
-import { ExtractedMessage, MessageType, SharedMessageType } from './sharedMessagePool';
+import { ExtractedMessage, SharedMessageType } from './sharedMessagePool';
 import { PerformanceMonitor } from './performanceMonitor';
 import { SharedMessagePool } from './sharedMessagePool';
 
@@ -19,27 +19,12 @@ export interface RouteDestination {
 }
 
 /**
- * Routing configuration by message type - Two-Tier Pattern Matching
- * Uses string keys for MessageType values
+ * Routing configuration by SharedMessageType
+ * Uses SharedMessageType enum values as keys (preserves COG ID specificity)
  */
-export interface RoutingConfig {
-  // TIER 1: VERY DISTINCTIVE
-  'DB_PACKET': RouteDestination[];
-  'P2_SYSTEM_INIT': RouteDestination[];
-
-  // TIER 1: DISTINCTIVE
-  'COG_MESSAGE': RouteDestination[];
-  'BACKTICK_WINDOW': RouteDestination[];
-
-  // TIER 2: NEEDS CONTEXT
-  'DEBUGGER_416BYTE': RouteDestination[];
-
-  // DEFAULT ROUTE
-  'TERMINAL_OUTPUT': RouteDestination[];
-
-  // SPECIAL CASES
-  'INVALID_COG': RouteDestination[];
-}
+export type RoutingConfig = {
+  [key in SharedMessageType]?: RouteDestination[];
+};
 
 /**
  * Router statistics
@@ -97,16 +82,8 @@ export class MessageRouter extends EventEmitter {
 
   private routingConfig: RoutingConfig;
 
-  // Statistics
-  private messagesRouted: Record<string, number> = {
-    'DB_PACKET': 0,
-    'COG_MESSAGE': 0,
-    'BACKTICK_WINDOW': 0,
-    'DEBUGGER_416BYTE': 0,
-    'P2_SYSTEM_INIT': 0,
-    'TERMINAL_OUTPUT': 0,
-    'INVALID_COG': 0
-  };
+  // Statistics - keyed by SharedMessageType enum values
+  private messagesRouted: Record<number, number> = {};
   private destinationCounts: Record<string, number> = {};
   private routingErrors: number = 0;
 
@@ -118,17 +95,18 @@ export class MessageRouter extends EventEmitter {
 
   constructor() {
     super();
-    
+
     // Initialize empty routing config for Two-Tier Pattern Matching
-    this.routingConfig = {
-      'DB_PACKET': [],
-      'COG_MESSAGE': [],
-      'BACKTICK_WINDOW': [],
-      'DEBUGGER_416BYTE': [],
-      'P2_SYSTEM_INIT': [],
-      'TERMINAL_OUTPUT': [],
-      'INVALID_COG': []
-    };
+    // All SharedMessageType values have destinations initialized to empty arrays
+    this.routingConfig = {};
+
+    // Initialize statistics for all SharedMessageType values
+    for (const typeKey in SharedMessageType) {
+      const typeValue = SharedMessageType[typeKey as keyof typeof SharedMessageType];
+      if (typeof typeValue === 'number') {
+        this.messagesRouted[typeValue] = 0;
+      }
+    }
   }
 
   /**
@@ -166,43 +144,32 @@ export class MessageRouter extends EventEmitter {
       // Query message type without reading full data
       const sharedType = this.sharedMessagePool.getMessageType(poolId);
 
-      // Map to legacy type for routing decision
-      const legacyType = this.mapSharedTypeToLegacy(sharedType);
-
-      // Determine destinations
-      const destinations = this.routingConfig[legacyType];
+      // Determine destinations using SharedMessageType directly
+      const destinations = this.routingConfig[sharedType];
 
       if (!destinations || destinations.length === 0) {
-        console.warn(`[MessageRouter] No destinations for type ${legacyType}, poolId ${poolId}`);
+        console.warn(`[MessageRouter] No destinations for SharedMessageType ${sharedType}, poolId ${poolId}`);
         this.sharedMessagePool.release(poolId);
         return;
       }
 
-      this.logConsoleMessage(`[MessageRouter] Routing poolId ${poolId}, type ${legacyType} to ${destinations.length} destinations`);
+      this.logConsoleMessage(`[MessageRouter] Routing poolId ${poolId}, SharedMessageType ${sharedType} to ${destinations.length} destinations`);
 
       // Now read the full message data for processing
       const slot = this.sharedMessagePool.get(poolId);
       const data = slot.readData();
 
-      // Extract COG ID from SharedMessageType for COG messages (COG0_MESSAGE = 1, COG1_MESSAGE = 2, etc.)
-      let cogId: number | undefined;
-      if (sharedType >= SharedMessageType.COG0_MESSAGE && sharedType <= SharedMessageType.COG7_MESSAGE) {
-        cogId = sharedType - SharedMessageType.COG0_MESSAGE;
-      } else if (sharedType >= SharedMessageType.DEBUGGER0_416BYTE && sharedType <= SharedMessageType.DEBUGGER7_416BYTE) {
-        cogId = sharedType - SharedMessageType.DEBUGGER0_416BYTE;
-      }
-
       // Create ExtractedMessage for window processing
+      // Receiver can extract cogId from SharedMessageType on-demand if needed
       const message: ExtractedMessage = {
-        type: legacyType,
+        type: sharedType,  // Use SharedMessageType directly - preserves COG ID specificity
         data: data,
         timestamp: Date.now(),
-        confidence: 'VERY_DISTINCTIVE',
-        metadata: cogId !== undefined ? { cogId } : {}
+        confidence: 'VERY_DISTINCTIVE'
       };
 
       // Update statistics
-      this.messagesRouted[legacyType]++;
+      this.messagesRouted[sharedType]++;
 
       // CRITICAL: Emit P2 System Reboot event for golden sync marker
       // P2_SYSTEM_INIT is "Cog0 INIT $0000_0000 $0000_0000 load" - triggers complete system reset
@@ -213,7 +180,7 @@ export class MessageRouter extends EventEmitter {
       }
 
       // Emit debugger packet event if needed
-      if (legacyType === 'DEBUGGER_416BYTE' && data instanceof Uint8Array) {
+      if (sharedType >= SharedMessageType.DEBUGGER0_416BYTE && sharedType <= SharedMessageType.DEBUGGER7_416BYTE) {
         this.emit('debuggerPacketReceived', data);
       }
 
@@ -262,128 +229,97 @@ export class MessageRouter extends EventEmitter {
   }
 
   /**
-   * Map SharedMessageType (from Worker) to legacy MessageType string (for routing)
+   * Register a destination for a SharedMessageType
    */
-  private mapSharedTypeToLegacy(sharedType: SharedMessageType): MessageType {
-    switch (sharedType) {
-      case SharedMessageType.DB_PACKET:
-        return MessageType.DB_PACKET;
-
-      case SharedMessageType.COG0_MESSAGE:
-      case SharedMessageType.COG1_MESSAGE:
-      case SharedMessageType.COG2_MESSAGE:
-      case SharedMessageType.COG3_MESSAGE:
-      case SharedMessageType.COG4_MESSAGE:
-      case SharedMessageType.COG5_MESSAGE:
-      case SharedMessageType.COG6_MESSAGE:
-      case SharedMessageType.COG7_MESSAGE:
-        return MessageType.COG_MESSAGE;
-
-      case SharedMessageType.DEBUGGER0_416BYTE:
-      case SharedMessageType.DEBUGGER1_416BYTE:
-      case SharedMessageType.DEBUGGER2_416BYTE:
-      case SharedMessageType.DEBUGGER3_416BYTE:
-      case SharedMessageType.DEBUGGER4_416BYTE:
-      case SharedMessageType.DEBUGGER5_416BYTE:
-      case SharedMessageType.DEBUGGER6_416BYTE:
-      case SharedMessageType.DEBUGGER7_416BYTE:
-        return MessageType.DEBUGGER_416BYTE;
-
-      case SharedMessageType.P2_SYSTEM_INIT:
-        // P2_SYSTEM_INIT is "Cog0 INIT $0000_0000 $0000_0000 load" - route like COG0
-        return MessageType.COG_MESSAGE;
-
-      case SharedMessageType.BACKTICK_LOGIC:
-      case SharedMessageType.BACKTICK_SCOPE:
-      case SharedMessageType.BACKTICK_SCOPE_XY:
-      case SharedMessageType.BACKTICK_FFT:
-      case SharedMessageType.BACKTICK_SPECTRO:
-      case SharedMessageType.BACKTICK_PLOT:
-      case SharedMessageType.BACKTICK_TERM:
-      case SharedMessageType.BACKTICK_BITMAP:
-      case SharedMessageType.BACKTICK_MIDI:
-      case SharedMessageType.BACKTICK_UPDATE:
-        return MessageType.BACKTICK_WINDOW;
-
-      case SharedMessageType.TERMINAL_OUTPUT:
-        return MessageType.TERMINAL_OUTPUT;
-
-      case SharedMessageType.INVALID_COG:
-        return MessageType.INVALID_COG;
-
-      default:
-        console.warn(`[MessageRouter] Unknown SharedMessageType: ${sharedType}, defaulting to TERMINAL_OUTPUT`);
-        return MessageType.TERMINAL_OUTPUT;
+  public registerDestination(messageType: SharedMessageType, destination: RouteDestination): void {
+    // Initialize array if not exists
+    if (!this.routingConfig[messageType]) {
+      this.routingConfig[messageType] = [];
     }
-  }
 
-  /**
-   * Register a destination for a message type
-   */
-  public registerDestination(messageType: MessageType, destination: RouteDestination): void {
-    if (!this.routingConfig[messageType].find(d => d.name === destination.name)) {
-      this.routingConfig[messageType].push(destination);
+    if (!this.routingConfig[messageType]!.find(d => d.name === destination.name)) {
+      this.routingConfig[messageType]!.push(destination);
       this.destinationCounts[destination.name] = 0;
-      
+
       // Reduce registration logging noise in production
-    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_ROUTING) {
-      this.logConsoleMessage(`[MessageRouter] Registered ${destination.name} for ${messageType} messages`);
-    }
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_ROUTING) {
+        this.logConsoleMessage(`[MessageRouter] Registered ${destination.name} for SharedMessageType ${messageType} messages`);
+      }
     }
   }
 
   /**
    * Unregister a destination
    */
-  public unregisterDestination(messageType: MessageType, destinationName: string): void {
-    const index = this.routingConfig[messageType].findIndex(d => d.name === destinationName);
+  public unregisterDestination(messageType: SharedMessageType, destinationName: string): void {
+    if (!this.routingConfig[messageType]) {
+      return;
+    }
+
+    const index = this.routingConfig[messageType]!.findIndex(d => d.name === destinationName);
     if (index >= 0) {
-      this.routingConfig[messageType].splice(index, 1);
-      this.logConsoleMessage(`[MessageRouter] Unregistered ${destinationName} from ${messageType} messages`);
+      this.routingConfig[messageType]!.splice(index, 1);
+      this.logConsoleMessage(`[MessageRouter] Unregistered ${destinationName} from SharedMessageType ${messageType} messages`);
     }
   }
 
   /**
-   * Apply standard routing configuration
-   * This sets up the typical P2 message routing
+   * Apply standard routing configuration using SharedMessageType
+   * This sets up the typical P2 message routing per MESSAGE-ROUTING-TABLE.md
    */
   public applyStandardRouting(
     debugLogger: RouteDestination,
     windowCreator: RouteDestination,
-    debuggerWindow?: RouteDestination,
-    cogWindowRouter?: RouteDestination
+    debuggerWindow?: RouteDestination
   ): void {
     // Terminal FIRST principle - default route
-    this.registerDestination(MessageType.TERMINAL_OUTPUT, debugLogger);
+    this.registerDestination(SharedMessageType.TERMINAL_OUTPUT, debugLogger);
 
-    // COG messages to debug logger (always logged)
-    this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
+    // COG messages (COG0-COG7) to debug logger - Individual COG windows handled by WindowRouter
+    for (let cogId = 0; cogId <= 7; cogId++) {
+      const cogMessageType = SharedMessageType.COG0_MESSAGE + cogId;
+      this.registerDestination(cogMessageType, debugLogger);
+    }
 
-    // NOTE: Individual COG windows (if needed) would be handled by WindowRouter
-    // cogWindowRouter destination was causing duplicate routing to logger
-
-    // P2 System Init now routes as COG_MESSAGE (removed separate routing)
+    // P2_SYSTEM_INIT to debug logger (special COG0 message for golden sync)
+    this.registerDestination(SharedMessageType.P2_SYSTEM_INIT, debugLogger);
 
     // 0xDB packets to debug logger and debugger window
-    this.registerDestination(MessageType.DB_PACKET, debugLogger);
+    this.registerDestination(SharedMessageType.DB_PACKET, debugLogger);
     if (debuggerWindow) {
-      this.registerDestination(MessageType.DB_PACKET, debuggerWindow);
+      this.registerDestination(SharedMessageType.DB_PACKET, debuggerWindow);
     }
 
-    // 416-byte debugger packets to both debugger windows and debug logger
-    if (debuggerWindow) {
-      this.registerDestination(MessageType.DEBUGGER_416BYTE, debuggerWindow);
+    // 416-byte debugger packets (DEBUGGER0-DEBUGGER7) to debugger window and debug logger
+    for (let cogId = 0; cogId <= 7; cogId++) {
+      const debuggerType = SharedMessageType.DEBUGGER0_416BYTE + cogId;
+      if (debuggerWindow) {
+        this.registerDestination(debuggerType, debuggerWindow);
+      }
+      // Also send to debug logger so user can see the binary debug data
+      this.registerDestination(debuggerType, debugLogger);
     }
-    // Also send to debug logger so user can see the binary debug data
-    this.registerDestination(MessageType.DEBUGGER_416BYTE, debugLogger);
 
-    // Backtick window commands to window creator
-    this.registerDestination(MessageType.BACKTICK_WINDOW, windowCreator);
-    // Also send to debug logger so user can see all backtick window messages
-    this.registerDestination(MessageType.BACKTICK_WINDOW, debugLogger);
+    // Backtick window commands to window creator and debug logger
+    const backtickTypes = [
+      SharedMessageType.BACKTICK_LOGIC,
+      SharedMessageType.BACKTICK_SCOPE,
+      SharedMessageType.BACKTICK_SCOPE_XY,
+      SharedMessageType.BACKTICK_FFT,
+      SharedMessageType.BACKTICK_SPECTRO,
+      SharedMessageType.BACKTICK_PLOT,
+      SharedMessageType.BACKTICK_TERM,
+      SharedMessageType.BACKTICK_BITMAP,
+      SharedMessageType.BACKTICK_MIDI,
+      SharedMessageType.BACKTICK_UPDATE
+    ];
+    for (const backtickType of backtickTypes) {
+      this.registerDestination(backtickType, windowCreator);
+      this.registerDestination(backtickType, debugLogger);
+    }
 
     // Special cases to debug logger with warnings
-    this.registerDestination(MessageType.INVALID_COG, debugLogger);
+    this.registerDestination(SharedMessageType.INVALID_COG, debugLogger);
   }
 
   /**
@@ -434,7 +370,8 @@ export class MessageRouter extends EventEmitter {
    */
   public clearAllDestinations(): void {
     for (const messageType in this.routingConfig) {
-      this.routingConfig[messageType as MessageType] = [];
+      const msgType = parseInt(messageType) as SharedMessageType;
+      this.routingConfig[msgType] = [];
     }
     this.logConsoleMessage('[MessageRouter] All destinations cleared');
   }

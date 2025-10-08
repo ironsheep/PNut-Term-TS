@@ -246,7 +246,11 @@ export class WindowRouterBenchmark {
     const result = await this.benchmark.benchmark(
       'WindowRouter Message Routing',
       () => {
-        this.router.routeTextMessage('TEST MESSAGE DATA');
+        this.router.routeTextMessage({
+          type: 'text',
+          data: 'TEST MESSAGE DATA',
+          timestamp: Date.now()
+        });
       },
       { iterations: 10000 }
     );
@@ -281,7 +285,11 @@ export class WindowRouterBenchmark {
       'WindowRouter Throughput (16 Mbps simulation)',
       () => {
         for (let i = 0; i < messagesPerChunk; i++) {
-          this.router.routeTextMessage('X'.repeat(messageSize));
+          this.router.routeTextMessage({
+            type: 'text',
+            data: 'X'.repeat(messageSize),
+            timestamp: Date.now()
+          });
         }
       },
       { iterations: 10, warmupIterations: 2 }
@@ -309,7 +317,11 @@ export class WindowRouterBenchmark {
       'Concurrent Window Routing (50 windows)',
       () => {
         // Route to all windows
-        this.router.routeTextMessage('BROADCAST MESSAGE');
+        this.router.routeTextMessage({
+          type: 'text',
+          data: 'BROADCAST MESSAGE',
+          timestamp: Date.now()
+        });
       },
       { iterations: 1000 }
     );
