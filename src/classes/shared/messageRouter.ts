@@ -184,13 +184,21 @@ export class MessageRouter extends EventEmitter {
       const slot = this.sharedMessagePool.get(poolId);
       const data = slot.readData();
 
+      // Extract COG ID from SharedMessageType for COG messages (COG0_MESSAGE = 1, COG1_MESSAGE = 2, etc.)
+      let cogId: number | undefined;
+      if (sharedType >= SharedMessageType.COG0_MESSAGE && sharedType <= SharedMessageType.COG7_MESSAGE) {
+        cogId = sharedType - SharedMessageType.COG0_MESSAGE;
+      } else if (sharedType >= SharedMessageType.DEBUGGER0_416BYTE && sharedType <= SharedMessageType.DEBUGGER7_416BYTE) {
+        cogId = sharedType - SharedMessageType.DEBUGGER0_416BYTE;
+      }
+
       // Create ExtractedMessage for window processing
       const message: ExtractedMessage = {
         type: legacyType,
         data: data,
         timestamp: Date.now(),
         confidence: 'VERY_DISTINCTIVE',
-        metadata: {}
+        metadata: cogId !== undefined ? { cogId } : {}
       };
 
       // Update statistics
@@ -351,10 +359,8 @@ export class MessageRouter extends EventEmitter {
     // COG messages to debug logger (always logged)
     this.registerDestination(MessageType.COG_MESSAGE, debugLogger);
 
-    // COG messages to individual COG windows (conditional - only if COG windows exist, silent drop)
-    if (cogWindowRouter) {
-      this.registerDestination(MessageType.COG_MESSAGE, cogWindowRouter);
-    }
+    // NOTE: Individual COG windows (if needed) would be handled by WindowRouter
+    // cogWindowRouter destination was causing duplicate routing to logger
 
     // P2 System Init now routes as COG_MESSAGE (removed separate routing)
 

@@ -272,7 +272,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // now parse overrides to defaults
     // console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
-      displaySpec.displayName = lineParts[0];
+      displaySpec.displayName = lineParts[1];  // lineParts[0] is '`SCOPE', lineParts[1] is the window name
       isValid = true; // invert default value
     }
     if (lineParts.length > 2) {

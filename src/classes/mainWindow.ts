@@ -289,19 +289,15 @@ export class MainWindow {
       }
     };
 
-    const cogWindowRouterDestination: RouteDestination = {
-      name: 'COGWindowRouter',
-      handler: (message: ExtractedMessage) => {
-        this.routeToCOGWindows(message);
-      }
-    };
+    // NOTE: cogWindowRouterDestination removed - was causing duplicate routing to logger
+    // Individual COG window routing (if needed) is handled by WindowRouter
 
     // Apply standard P2 routing configuration
     this.serialProcessor.applyStandardRouting(
       debugLoggerDestination,
       windowCreatorDestination,
       debuggerWindowDestination,
-      cogWindowRouterDestination
+      undefined  // cogWindowRouter not needed - causes duplicate routing
     );
 
     // Listen for debugger packets to create/update debugger windows
@@ -390,39 +386,6 @@ export class MainWindow {
   }
 
   /**
-   * Route COG messages to individual COG windows via WindowRouter (conditional routing)
-   */
-  private routeToCOGWindows(message: ExtractedMessage): void {
-    // Only route COG messages
-    if (message.type !== MessageType.COG_MESSAGE) {
-      return;
-    }
-
-    this.logConsoleMessage(
-      `[COG ROUTER] 🎯 Routing COG message to individual windows: ${message.data.length} bytes`
-    );
-
-    try {
-      // Convert message data to string for WindowRouter processing
-      const messageText = new TextDecoder().decode(message.data);
-
-      // Create router message in the format WindowRouter expects
-      const routerMessage = {
-        type: 'text' as const,
-        data: messageText,
-        timestamp: message.timestamp,
-        cogId: message.metadata?.cogId
-      };
-
-      // Send to WindowRouter for conditional routing to individual COG windows
-      this.windowRouter.routeMessage(routerMessage);
-
-    } catch (error) {
-      this.logConsoleMessage(`[COG ROUTER] ❌ Error routing COG message: ${error}`);
-    }
-  }
-
-  /**
    * Route message to Debug Logger (Terminal FIRST principle)
    */
   private routeToDebugLogger(message: ExtractedMessage): void {
@@ -471,10 +434,21 @@ export class MainWindow {
         type: 'text' as const,
         data: this.formatMessageForDisplay(message),
         timestamp: message.timestamp,
-        cogId: message.metadata?.cogId
+        messageType: message.type,
+        metadata: message.metadata
       };
       this.windowRouter.routeMessage(routerMessage);
     }
+
+    // WindowRouter handles routing to individual COG windows based on messageType and metadata.cogId
+    const routerMessage = {
+      type: 'text' as const,
+      data: new TextDecoder().decode(message.data),
+      timestamp: message.timestamp,
+      messageType: message.type,  // Pass actual MessageType (COG_MESSAGE, etc.)
+      metadata: message.metadata  // Pass metadata including cogId
+    };
+    this.windowRouter.routeMessage(routerMessage);
   }
 
   /**

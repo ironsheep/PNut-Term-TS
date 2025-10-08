@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, shell } from 'electron';
+import { BrowserWindow, ipcMain, shell, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import MarkdownIt from 'markdown-it';
@@ -58,22 +58,12 @@ export class DocumentationViewer {
   }
 
   private findUserGuide(): string {
-    // Look for application help in multiple locations (prioritize APP-HELP.md)
-    const candidates = [
-      path.join(process.cwd(), 'DOCs', 'APP-HELP.md'),
-      path.join(process.cwd(), 'DOCs', 'USER-GUIDE.md'),
-      path.join(process.cwd(), 'DOCs', 'project-specific', 'USER-GUIDE.md'),
-      path.join(process.cwd(), 'DOCs', 'project-specific', 'USER-GUIDE-UPDATED.md'),
-      path.join(process.cwd(), 'README.md')
-    ];
+    // Determine base path: In packaged apps, use process.resourcesPath
+    // In development, use process.cwd()
+    const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
 
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-
-    return candidates[0]; // Fallback to first option
+    // Return APP-HELP.md path - this file must always be packaged with the app
+    return path.join(basePath, 'DOCs', 'APP-HELP.md');
   }
 
   private loadDocument(filepath: string): void {

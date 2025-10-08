@@ -26,7 +26,8 @@ export interface SerialMessage {
   data: Uint8Array | string;
   timestamp: number;
   source?: string;
-  cogId?: number;  // Optional COG ID for debugger messages
+  messageType?: string;  // Actual message type (COG_MESSAGE, TERMINAL_OUTPUT, BACKTICK_WINDOW, etc.)
+  metadata?: Record<string, any>;  // Metadata including cogId already extracted by MessageRouter
 }
 
 /**
@@ -262,7 +263,7 @@ export class WindowRouter extends EventEmitter {
    */
   public unregisterWindow(windowId: string): void {
     this.logger.debug('UNREGISTER', `Unregistering window: ${windowId}`);
-    
+
     if (this.windows.delete(windowId)) {
       this.stats.windowsActive = this.windows.size;
       this.logger.info('UNREGISTER', `Window unregistered: ${windowId}. Active windows: ${this.stats.windowsActive}`);
@@ -271,22 +272,29 @@ export class WindowRouter extends EventEmitter {
       this.logger.warn('UNREGISTER', `Attempted to unregister non-existent window: ${windowId}`);
     }
   }
-  
+
+  /**
+   * Get a registered window by ID
+   */
+  public getWindow(windowId: string): { type: string; handler: WindowHandler; stats: WindowInfo } | undefined {
+    return this.windows.get(windowId);
+  }
+
   /**
    * Route a message to appropriate window(s)
    */
   public routeMessage(message: SerialMessage): void {
     const startTime = performance.now();
-    
+
     try {
       const dataSize = typeof message.data === 'string' ? message.data.length : message.data.length;
       this.logger.trace('ROUTE', `Routing ${message.type} message (${dataSize} bytes)`);
-      
+
       if (message.type === 'binary') {
-        // Use tagged COG ID if available
-        this.routeBinaryMessage(message.data as Uint8Array, message.cogId);
+        // Use COG ID from metadata (already extracted by MessageRouter from SharedMessageType)
+        this.routeBinaryMessage(message.data as Uint8Array, message.metadata?.cogId);
       } else {
-        this.routeTextMessage(message.data as string);
+        this.routeTextMessage(message.data as string, message.messageType, message.metadata?.cogId);
       }
       
       // Update statistics
@@ -382,24 +390,27 @@ export class WindowRouter extends EventEmitter {
    * Route text message (Cog messages, backtick commands, terminal output)
    *
    * CLEAN ARCHITECTURE: Messages are already classified by worker thread.
-   * This method just routes to appropriate windows based on simple content checks.
-   * NO LEGACY TEXT PARSING - message types are carried in the typed message system.
+   * Routes based on messageType, not content parsing.
+   *
+   * @param text The text message to route
+   * @param messageType The MessageType (COG_MESSAGE, TERMINAL_OUTPUT, BACKTICK_WINDOW, etc.)
+   * @param cogId Optional COG ID from message metadata (already extracted by worker from SharedMessageType)
    */
-  public routeTextMessage(text: string): void {
+  public routeTextMessage(text: string, messageType?: string, cogId?: number): void {
     const startTime = performance.now();
 
     let handled = false;
 
-    // 1. BACKTICK COMMANDS - Window updates (already classified by worker as BACKTICK_UPDATE)
-    if (text.includes('`')) {
+    // 1. BACKTICK COMMANDS - Window updates
+    if (messageType === 'BACKTICK_WINDOW' || text.includes('`')) {
       const tickIndex = text.indexOf('`');
       const command = text.substring(tickIndex);
       this.routeBacktickCommand(command);
       handled = true;
     }
-    // 2. COG MESSAGES - Route to DebugLogger and individual COG window (already classified by worker)
-    // NOTE: COG ID is already tagged in the message metadata from worker classification
-    else if (text.startsWith('Cog') || text.includes('INIT')) {
+    // 2. COG MESSAGES - Route to DebugLogger and individual COG window
+    // Use MessageType to identify COG messages, not text content
+    else if (messageType === 'COG_MESSAGE') {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
 
       // Always route to DebugLogger window for logging
@@ -423,6 +434,25 @@ export class WindowRouter extends EventEmitter {
         this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive Cog message: "${text.substring(0, 50)}..."`);
         console.warn('[ROUTING] ⚠️ Cog message received but no DebugLoggerWindow registered! Message will be lost.');
         console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
+      }
+
+      // Also route to individual COG window if registered (optional - silent drop if not registered)
+      // Use COG ID from message metadata (extracted by MessageRouter from SharedMessageType)
+      if (cogId !== undefined && cogId >= 0 && cogId <= 7) {
+        const cogWindowId = `COG${cogId}`;
+        const cogWindow = this.windows.get(cogWindowId);
+
+        if (cogWindow) {
+          this.logConsoleMessage(`[ROUTER->COG${cogId}] Sending ${text.length} bytes to COG${cogId} window`);
+          cogWindow.handler(text);
+          cogWindow.stats.messagesReceived++;
+          handled = true;
+
+          if (this.isRecording) {
+            this.recordMessage(cogWindowId, cogWindow.type, 'text', text);
+          }
+        }
+        // Silent drop if COG window not registered (optional window)
       }
     }
     // 3. TERMINAL OUTPUT - Fallback for unhandled text
