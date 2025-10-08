@@ -491,7 +491,7 @@ export class MainWindow {
       // NOTE: Message is already logged via routeToDebugLogger (see applyStandardRouting line 504)
       // BACKTICK_WINDOW messages are routed to BOTH windowCreator AND debugLogger
 
-      const lineParts: string[] = data.split(' ').filter((part) => part.trim() !== '');
+      const lineParts: string[] = data.split(' ').map(part => part.trim()).filter(part => part !== '');
       this.logConsoleMessage(
         `[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
       );
@@ -505,9 +505,8 @@ export class MainWindow {
       const firstToken = lineParts[0].substring(1).toUpperCase();
 
       // STEP 1: Check if this is a window creation command (display type keyword)
-      const isCreationCommand = VALID_DISPLAY_TYPES.some(type =>
-        firstToken === type || firstToken.endsWith(type)
-      );
+      // Only match exact display type (e.g., `bitmap MyBitmap), not window names ending with type (e.g., `MyBitmap)
+      const isCreationCommand = VALID_DISPLAY_TYPES.some(type => firstToken === type);
 
       if (isCreationCommand) {
         // This is a window CREATION command - proceed to creation logic below

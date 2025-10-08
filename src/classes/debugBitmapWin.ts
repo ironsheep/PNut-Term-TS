@@ -196,7 +196,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
       let i = 2;
       while (i < lineParts.length && isValid) {
         const directive = lineParts[i].toUpperCase();
-        
+        DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_PARSE] i=${i}, directive="${directive}" (from "${lineParts[i]}")`);
+
         switch (directive) {
           case 'TITLE':
             if (i + 1 < lineParts.length) {
@@ -393,6 +394,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
               'RGB24': ColorMode.RGB24
             };
             displaySpec.colorMode = colorModeMap[directive];
+            DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`);
 
             // Check if next token is a tune parameter
             // For LUMA8/RGBI8 modes, tune can be:
@@ -877,18 +879,32 @@ export class DebugBitmapWindow extends DebugWindowBase {
     scrollX = Math.max(-this.state.width, Math.min(this.state.width, scrollX));
     scrollY = Math.max(-this.state.height, Math.min(this.state.height, scrollY));
 
-    // Use canvas renderer to scroll
     if (!this.debugWindow) return;
 
-    const scrollCode = this.canvasRenderer.scrollBitmap(
-      this.bitmapCanvasId,
-      scrollX * this.state.dotSizeX,
-      scrollY * this.state.dotSizeY,
-      this.state.width * this.state.dotSizeX,
-      this.state.height * this.state.dotSizeY
-    );
+    // Scroll the OFFSCREEN BITMAP where pixel data lives, not the display canvas
+    // The display canvas gets updated from the offscreen bitmap via updateCanvas()
+    // NOTE: We don't clear the exposed edge - new pixels will overwrite it immediately
+    // This avoids async timing issues where clear might execute after updateCanvas()
+    const scrollCode = `(function() {
+const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
+const offscreen = window[offscreenKey];
+if (!offscreen) { console.error('Offscreen bitmap not found: ' + offscreenKey); return; }
+const ctx = offscreen.getContext('2d');
+if (!ctx) { console.error('Offscreen context not available'); return; }
+// Create temp canvas to hold current bitmap
+const tempCanvas = document.createElement('canvas');
+tempCanvas.width = ${this.state.width};
+tempCanvas.height = ${this.state.height};
+const tempCtx = tempCanvas.getContext('2d');
+if (!tempCtx) { console.error('Temp context not available'); return; }
+// Copy current bitmap to temp
+tempCtx.drawImage(offscreen, 0, 0);
+// Copy back with scroll offset (scrollX/Y are in logical pixels, not scaled)
+// The exposed edge will contain "garbage" (wrapped data) until new pixels overwrite it
+ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${scrollX}), (${scrollY}), ${this.state.width}, ${this.state.height});
+})();`;
 
-    this.logMessage(`[SCROLL] Executing scroll: scrollX=${scrollX}, scrollY=${scrollY}`);
+    this.logMessage(`[SCROLL] Scrolling offscreen bitmap: scrollX=${scrollX}, scrollY=${scrollY}`);
     this.debugWindow.webContents.executeJavaScript(scrollCode)
       .catch(err => {
         this.logMessage(`ERROR scrolling bitmap: ${err}`);
@@ -1117,6 +1133,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
         // Translate color
         const rgb24 = this.colorTranslator.translateColor(value);
         const color = `#${rgb24.toString(16).padStart(6, '0')}`;
+        const totalValues = unpackedValues.length;
+        if (this.state.tracePattern === 4 && (idx < 5 || idx >= totalValues - 5)) {
+          this.logMessage(`[TRACE4] value[${idx}/${totalValues}]: pos(${pos.x},${pos.y}) = 0x${value.toString(16)} → ${color}`);
+        }
         this.logMessage(`[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(16)} → ${color}`);
 
         // Plot pixel with SPARSE mode two-layer rendering if enabled

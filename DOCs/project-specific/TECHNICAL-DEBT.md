@@ -2,6 +2,59 @@
 
 This document tracks technical debt items in the PNut-Term-TS project.
 
+## ⚠️ CRITICAL - DO NOT SHIP
+
+### WindowRouter Array Copy Performance Issue
+**Priority: CRITICAL - Blocks production release**
+**File:** `src/classes/shared/windowRouter.ts:551`
+**Added:** 2025-10-08
+
+**Problem:**
+Currently creates a NEW array for EACH window via `dataString.split(' ')` inside the forEach loop.
+For multi-window commands like `` `a b c d e f g h i $7``, this creates 9 separate `["$7"]` arrays.
+With 20 windows, this creates 20 copies of the same data.
+
+**Impact:**
+- Excessive array allocations proportional to window count
+- Multiplies GC pressure by number of target windows
+- Completely defeats all byte-copy reduction efforts
+- Violates core performance design principle
+
+**Current Code (WRONG):**
+```typescript
+targetWindows.forEach(windowNameUpper => {
+  const windowDataParts = dataString.split(' ');  // NEW ARRAY PER WINDOW!
+  debugWindow.updateContent(windowDataParts);
+});
+```
+
+**Required Fix:**
+Share ONE array reference across all windows:
+```typescript
+const sharedDataParts = parts.slice(dataStartIndex);  // ONE ARRAY
+targetWindows.forEach(windowNameUpper => {
+  debugWindow.updateContent(sharedDataParts);  // SHARE IT
+});
+```
+
+**Investigation Needed:**
+When using shared array reference, observed inconsistent behavior where HSV16 windows worked
+perfectly but first 9 windows broke (or vice versa). Must identify root cause:
+- Are windows modifying the shared array? (Grep shows no mutations)
+- Async timing issues with canvas operations?
+- Different code paths for different window types?
+- Something else causing non-deterministic behavior?
+
+**Acceptance Criteria:**
+- ONE array created per multi-window command, regardless of window count
+- All windows receive same array reference
+- All bitmap tests pass with shared reference
+- Behavior is deterministic across runs
+
+**Estimated effort:** 4-8 hours investigation + fix
+
+---
+
 ## Pre-Release Audit Items
 
 ### Debug Window Pascal Parity Audit

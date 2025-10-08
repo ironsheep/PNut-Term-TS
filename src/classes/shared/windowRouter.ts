@@ -2,7 +2,7 @@
 
 // src/classes/shared/windowRouter.ts
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -469,7 +469,7 @@ export class WindowRouter extends EventEmitter {
 
     // Remove the backtick and parse (preserves exact original working logic)
     const cleanCommand = command.substring(1).trim();
-    const parts = cleanCommand.split(' ');
+    const parts = cleanCommand.split(' ').map(part => part.trim()).filter(part => part !== '');
 
     this.logConsoleMessage(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
 
@@ -546,9 +546,11 @@ export class WindowRouter extends EventEmitter {
 
         this.logConsoleMessage(`[ROUTER DEBUG]   ✅ Routing to window "${displayName}": "${dataString}"`);
 
-        // Call updateContent with dataParts array (original working logic)
-        const dataParts = dataString.split(' ');
-        debugWindow.updateContent(dataParts);
+        // Call updateContent with dataParts array
+        // NOTE: Re-splitting here seems to fix first 9 windows but breaks HSV16 - investigating why
+        const windowDataParts = dataString.split(' ');
+        this.logConsoleMessage(`[ROUTER DEBUG]   📤 Sending dataParts array: [${windowDataParts.join(', ')}] (${windowDataParts.length} parts)`);
+        debugWindow.updateContent(windowDataParts);
 
         if (this.isRecording) {
           this.recordMessage(displayName, debugWindow.windowType || 'unknown', 'text', dataString);

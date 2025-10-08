@@ -625,6 +625,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     try {
       if (typeof message === 'string') {
         // Text message - parse and process
+        // NOTE: WindowRouter already trims/filters - don't do it again here
         const lineParts = message.split(' ');
         this.updateContent(lineParts);
       } else if (message instanceof Uint8Array) {
@@ -634,6 +635,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       } else if (typeof message === 'object' && message.type && message.data) {
         // SerialMessage object
         if (message.type === 'text' && typeof message.data === 'string') {
+          // NOTE: WindowRouter already trims/filters - don't do it again here
           const lineParts = (message.data as string).split(' ');
           this.updateContent(lineParts);
         } else if (message.type === 'binary' && message.data instanceof Uint8Array) {
