@@ -8,15 +8,15 @@
   *Originally Chip's Debug listener, now available on all platforms*
 
   ![Project Maintenance][maintenance-shield]
-  
+
   [![License][license-shield]](LICENSE)
-  
+
   ![NodeJS][node-badge]
 
   [![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
-  
+
   [![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
-  
+
 </div>
 
 ## PNut-Term-TS cross platform debug terminal
@@ -43,7 +43,7 @@ Additional pages:
 
 - [PNut-Term-TS Command-line](CommandLine.md) - command line reference
 - [PNut-Term-TS ChangeLog](CHANGELOG.md) - history of releases (Including what's new in this release!)
-- [PNut_TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler 
+- [PNut_TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
 - [P2\_PNut_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
 
 
@@ -51,17 +51,13 @@ Additional pages:
 
 - Replacement for Propeller Serial Termainal
 - Downloads a compiled file to the P2 RAM or FLASH
-- Download from command-line enables file watcher which redownloads on file change
 - Switches to PST behavior after download
 - (Will have) Built-in support for all debug displays supported by PNut
 - Full logging support for all traffic tofrom P2
 - Automatic time-stamped log names for each new download
-- File-watcher for automatic downloads can be disabled
-- Has the concept of last file download making re-download a simple button-press
 - PropPlug can be selected from command-line or within terminal.
 - Last PropPlug used is remembered
 - "Only" PropPlug will automatically be used if none specified
-- [Enable]/[Disable] releases USB port for use by other tools
 
 ## Status of Debug Display Support
 
