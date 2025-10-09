@@ -3,6 +3,9 @@
 .todo-mcp/
 CLAUDE-EXPORTS/
 
+# Build assets
+dmg-assets/
+
 # User-specific settings files
 test-external/pnut-term-settings.json
 pnut-term-settings.json
@@ -174,6 +177,7 @@ cython_debug/
 .DS_Store
 /.history
 /release
+/reference
 /prebuilds
 src/classes/f1.txt
 /fonts
