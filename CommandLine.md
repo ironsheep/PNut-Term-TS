@@ -15,44 +15,71 @@
 Our new PNut-Term-TS will show you the following when you specify `-h` or `--help`:
 
 ```text
-PNut-Term-TS: Usage: pnut-term-ts [optons]
+PNut-Term-TS: Usage: pnut-term-ts [options]
 
-Serial Terminal TS - v0.1.0
+PNut Terminal TS - v0.5.0
 
 Options:
   -V, --version             Output the version number
-  -f, --flash               Download to FLASH and run
-  -r, --ram                 Download to RAM and run
-  -b, --debug(b)aud {rate}  Debug baud rate (default 2000000)
-  -p, --plug <dvcNode>      Receive serial data from Propeller attached to <dvcNode>
+  -f, --flash <fileSpec>    Download to FLASH and run
+  -r, --ram <fileSpec>      Download to RAM and run
+  -b, --debug(b)aud {rate}  set debug baud rate (default 2000000)
+  -p, --plug <dvcNode>      Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)
   -n, --dvcnodes            List available USB PropPlug device (n)odes
-  -l, --log <basename>      Specify .log file basename
-  -d, --debug               Output term-ts Debug messages
-  -v, --verbose             Output term-ts verbose messages
-  -q, --quiet               Quiet mode (suppress term-ts banner and non-error text)
+  -d, --debug               Output Term-TS Debug messages
+  -v, --verbose             Output Term-TS Verbose messages
+  -q, --quiet               Quiet mode (suppress Term-TS banner and non-error text)
+  --ide                     IDE mode - minimal UI for VSCode/IDE integration
+  --rts                     Use RTS instead of DTR for device reset (requires --ide)
+  -u, --log-usb-trfc        Enable USB traffic logging (timestamped log file)
+  --console-mode            Running with console output - adds delay before close
   -h, --help                display help for command
 
-      Example:
-         $ pnut-term-ts -p P9cektn7           # run using PropPlug on /dev/tty.usbserial-P9cektn7
-         $ pnut-term-ts -l myApp -p P9cektn7  # run and log to myApp-YYMMDD-HHmm.log
-         
+      Examples:
+         $ pnut-term-ts                                          # auto-detects and uses USB serial device (if only one connected)
+         $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
+         $ pnut-term-ts -r myTopfile.bin                         # download to RAM (auto-detects single USB device)
+         $ pnut-term-ts -r myTopfile.bin -p P9cektn7             # download myTopfile.bin to RAM and run
+         $ pnut-term-ts --ide                                    # IDE mode (auto-detects single USB device)
+         $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
+         $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
+         $ pnut-term-ts -u -p P9cektn7                           # Enable USB traffic logging (timestamped log file)
+
+      Device Selection:
+         When only one USB serial device is connected, it will be automatically selected.
+         Use -p option to specify a device when multiple are connected.
+         Use -n option to list all available USB serial devices.
+
+      Device Control:
+         DTR (Data Terminal Ready): Used by Parallax PropPlug devices
+         RTS (Request To Send): Used by some non-Parallax devices
+
+         In standalone mode: Use DTR/RTS toggle buttons in the toolbar
+         In IDE mode: VSCode SPIN2 extension controls DTR/RTS via --rts flag
+
 pnut-term-ts: * Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.
-pnut-term-ts: * Version 0.1.0, Build date: 5/11/2025
+pnut-term-ts: * Version 0.5.0, {buildDateHere}
 ```
 
 These options should already make sense but here's a light-weight recap:
 
 | Option forms | Description |
 | --- | --- |
-| <pre>-r, -\-ram</pre> | Download to RAM and run  |
-| <pre>-f, -\-flash</pre> | Download to FLASH and run  |
-| <pre>-b, -\-debugbaud {rate}</pre> | set Debug baud rate (default 2000000) |
-| <pre>-l, -\-log {basename}</pre> | control the generation of the additional (.lst) listing and (.ob) object files |
-| <pre>-V, -\-version</pre> | shows the term ts version information |
-| <pre>-d, --debug,<br>-q, --quiet,<br>-v, --verbose</pre> | control how little or how much extra messaging is output from Pnut Term TS |
+| <pre>-V, -\-version</pre> | Shows the PNut Term TS version information |
+| <pre>-r, -\-ram {fileSpec}</pre> | Download binary file to RAM and run |
+| <pre>-f, -\-flash {fileSpec}</pre> | Download binary file to FLASH and run |
+| <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000) |
+| <pre>-p, -\-plug {dvcNode}</pre> | Specify USB serial device (auto-detects if only one connected) |
+| <pre>-n, -\-dvcnodes</pre> | List all available USB PropPlug devices |
+| <pre>-d, -\-debug</pre> | Enable debug-level messaging |
+| <pre>-v, -\-verbose</pre> | Enable verbose-level messaging |
+| <pre>-q, -\-quiet</pre> | Suppress banner and non-error messages |
+| <pre>-\-ide</pre> | Enable IDE mode for VSCode/IDE integration |
+| <pre>-\-rts</pre> | Use RTS instead of DTR for device reset (requires --ide) |
+| <pre>-u, -\-log-usb-trfc</pre> | Enable USB traffic logging to timestamped log file |
+| <pre>-\-console-mode</pre> | Add delay before close when running with console output |
 
-
-And of course `-h` or `--help` produces the output as shown above.
+And of course `-h` or `--help` produces the full help output as shown above.
 
 
 ---
