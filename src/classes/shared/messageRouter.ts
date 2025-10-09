@@ -300,7 +300,8 @@ export class MessageRouter extends EventEmitter {
       this.registerDestination(debuggerType, debugLogger);
     }
 
-    // Backtick window commands to window creator and debug logger
+    // Backtick window commands to window creator
+    // WindowCreator will forward to WindowRouter, which handles logging
     const backtickTypes = [
       SharedMessageType.BACKTICK_LOGIC,
       SharedMessageType.BACKTICK_SCOPE,
@@ -315,7 +316,6 @@ export class MessageRouter extends EventEmitter {
     ];
     for (const backtickType of backtickTypes) {
       this.registerDestination(backtickType, windowCreator);
-      this.registerDestination(backtickType, debugLogger);
     }
 
     // Special cases to debug logger with warnings

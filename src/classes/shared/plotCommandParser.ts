@@ -64,8 +64,8 @@ export class PlotCommandParser implements IPlotCommandParser {
    */
   private initializeDebugLogger(): void {
     try {
-      const DebugLoggerWindow = require('../debugLoggerWin').DebugLoggerWindow;
-      this.debugLogger = DebugLoggerWindow.getInstance(this.context);
+      const LoggerWindow = require('../loggerWin').LoggerWindow;
+      this.debugLogger = LoggerWindow.getInstance(this.context);
       this.errorHandler.initializeDebugLogger(this.context);
     } catch (error) {
       console.warn('Failed to initialize debug logger for PLOT parser:', error);

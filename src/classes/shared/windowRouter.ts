@@ -423,16 +423,41 @@ export class WindowRouter extends EventEmitter {
     }
 
     // Check if message is backtick command (BACKTICK_* range)
+    // Creation commands are forwarded here by MainWindow after window creation for logging
+    // Update commands are routed here for logging AND window update
     const isBacktickCommand =
       messageType !== undefined &&
       messageType >= SharedMessageType.BACKTICK_LOGIC &&
       messageType <= SharedMessageType.BACKTICK_UPDATE;
 
-    // 1. BACKTICK COMMANDS - Window updates
-    if (isBacktickCommand || text.includes('`')) {
-      const tickIndex = text.indexOf('`');
-      const command = text.substring(tickIndex);
-      this.routeBacktickCommand(command);
+    const isCreationCommand =
+      messageType !== undefined &&
+      messageType >= SharedMessageType.BACKTICK_LOGIC &&
+      messageType <= SharedMessageType.BACKTICK_MIDI;
+
+    const isUpdateCommand = messageType === SharedMessageType.BACKTICK_UPDATE;
+
+    // 1. BACKTICK COMMANDS - Window creation and update commands
+    if (isBacktickCommand) {
+      // ALWAYS route to Debug Logger for logging (creation AND update)
+      const loggerWindow = this.windows.get('logger');
+      if (loggerWindow) {
+        const commandType = isCreationCommand ? 'creation' : 'update';
+        this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes (backtick ${commandType}) to DebugLogger window`);
+        loggerWindow.handler(message);  // Pass full SerialMessage with timestamp and messageType
+        loggerWindow.stats.messagesReceived++;
+
+        if (this.isRecording) {
+          this.recordMessage('logger', loggerWindow.type, 'text', text);
+        }
+      }
+
+      // For UPDATE commands ONLY: Also route to target window(s)
+      // Creation commands are logged above but NOT routed to windows (they don't exist yet)
+      if (isUpdateCommand) {
+        this.routeBacktickCommand(text);
+      }
+
       handled = true;
     }
     // 2. COG MESSAGES - Route to DebugLogger AND individual COG window

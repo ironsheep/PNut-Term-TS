@@ -444,7 +444,8 @@ export class MainWindow {
       this.windowRouter.routeMessage({
         type: 'text',
         data: data, // Full backtick command with data
-        timestamp: message.timestamp || Date.now()
+        timestamp: message.timestamp,
+        messageType: message.type // CRITICAL: SharedMessageType so WindowRouter knows it's BACKTICK_UPDATE
       });
 
       // WindowRouter will:
@@ -629,6 +630,15 @@ export class MainWindow {
     // 4. FOURTH: Update logging behavior if window was found/created
     if (foundDisplay) {
       this.immediateLog = false; // Switch from immediate to buffered logging
+
+      // Route creation command to WindowRouter for logging
+      // WindowRouter will log to DebugLogger (single responsibility for routing)
+      this.windowRouter.routeMessage({
+        type: 'text',
+        data: data,
+        timestamp: message.timestamp,
+        messageType: message.type // SharedMessageType for the creation command
+      });
     }
 
     // 5. FIFTH: Log unhandled commands
@@ -833,7 +843,7 @@ export class MainWindow {
       // Auto-create debug logger if needed
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
-        this.displays['DebugLogger'] = this.debugLoggerWindow;
+        this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
 
         // Register with WindowRouter for message routing
         this.windowRouter.registerWindow(
@@ -844,7 +854,7 @@ export class MainWindow {
 
         this.debugLoggerWindow.on('close', () => {
           this.windowRouter.unregisterWindow('logger');
-          delete this.displays['DebugLogger'];
+          delete this.displays['DebugLogger'];  // Use original case
           this.debugLoggerWindow = null;
         });
 
@@ -995,12 +1005,32 @@ export class MainWindow {
         // STEP 3: Close all debug windows (clean up references)
         this.closeAllDebugWindows();
 
-        // STEP 4: Skip serial port close - let process cleanup handle it
-        // Safer to just remove listeners and let Node.js cleanup on exit
+        // STEP 3.5: Clear LED activity timers to prevent firing after window destruction
+        if (this.txActivityTimer) {
+          clearTimeout(this.txActivityTimer);
+          this.txActivityTimer = null;
+        }
+        if (this.rxActivityTimer) {
+          clearTimeout(this.rxActivityTimer);
+          this.rxActivityTimer = null;
+        }
+
+        // STEP 4: Close serial port properly to prevent Napi::Error on shutdown
+        // Listeners were already removed in mainWindow 'close' event handler
         if (this._serialPort) {
           this.logConsoleMessage(
-            `[SHUTDOWN ${new Date().toISOString()}] Serial port cleanup - skipping explicit close`
+            `[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`
           );
+          try {
+            this._serialPort.close(); // Synchronous close - no await needed
+            this.logConsoleMessage(
+              `[SHUTDOWN ${new Date().toISOString()}] Serial port closed successfully`
+            );
+          } catch (error) {
+            this.logConsoleMessage(
+              `[SHUTDOWN ${new Date().toISOString()}] Serial port close error (non-fatal): ${error}`
+            );
+          }
           this._serialPort = undefined; // Release reference
         }
 
@@ -1322,7 +1352,7 @@ export class MainWindow {
     try {
       this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
-      this.displays['DebugLogger'] = this.debugLoggerWindow;
+      this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
 
       // Register with WindowRouter for message routing
       this.windowRouter.registerWindow(
@@ -1336,7 +1366,7 @@ export class MainWindow {
         this.logMessage('Debug Logger Window closed');
         this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
         this.windowRouter.unregisterWindow('logger');
-        delete this.displays['DebugLogger'];
+        delete this.displays['DebugLogger'];  // Use original case
         this.debugLoggerWindow = null;
         this.updateLoggingStatus(false);
       });
@@ -1613,19 +1643,18 @@ export class MainWindow {
   private DISPLAY_MIDI: string = 'MIDI';
 
   private hookNotifcationsAndRememberWindow(windowName: string, windowObject: DebugWindowBase) {
-    // CASE-INSENSITIVE: Normalize window name for storage (matches windowId normalization in DebugWindowBase)
-    const normalizedName = windowName.toLowerCase();
-    this.logMessage(`GOOD DISPLAY: Received for ${windowName} (stored as: ${normalizedName})`);
+    // CASE-INSENSITIVE: Store with ORIGINAL case - comparisons handle case-insensitivity
+    this.logMessage(`GOOD DISPLAY: Received for ${windowName}`);
     // esure we get notifications of window close
     windowObject.on('close', () => {
       this.logMessage(`CallBack: Window ${windowName} is closing.`);
-      this.cleanupOnClose(normalizedName);
+      this.cleanupOnClose(windowName);  // Pass original case name
     });
     windowObject.on('closed', () => {
       this.logMessage(`CallBack: Window ${windowName} has closed.`);
     });
-    // remember active displays!
-    this.displays[normalizedName] = windowObject;
+    // remember active displays - store with ORIGINAL case
+    this.displays[windowName] = windowObject;
   }
 
   private cleanupOnClose(windowName: string) {
@@ -1651,7 +1680,7 @@ export class MainWindow {
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
-        this.displays['DebugLogger'] = this.debugLoggerWindow;
+        this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
 
         // Register with WindowRouter for message routing
         this.windowRouter.registerWindow(
@@ -1665,7 +1694,7 @@ export class MainWindow {
           this.logMessage('Debug Logger Window closed');
           this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
           this.windowRouter.unregisterWindow('logger');
-          delete this.displays['DebugLogger'];
+          delete this.displays['DebugLogger'];  // Use original case
           this.debugLoggerWindow = null;
         });
 

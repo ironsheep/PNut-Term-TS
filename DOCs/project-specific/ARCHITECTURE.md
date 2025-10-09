@@ -314,40 +314,52 @@ The `setMenuBarVisibility(false)` call does **NOT** affect the macOS system menu
 - **Important**: Debug statements ALWAYS use debug baud rate, not download rate
 
 #### Debug Message Structure (CORRECTED)
-All debug output from P2 follows this specific pattern:
+The P2 sends two distinct message types:
 
-**Format**: `"CogN: [content]"` where N is 0-7
+**1. COG Messages** (plain debug output):
+- **Format**: `"CogN: [content]"` where N is 0-7
+- **Examples**:
+  - `"Cog0: Temperature is 72.5"`
+  - `"Cog1: Sensor reading complete"`
 
-**Content Types**:
-1. **Plain debug text**: `"Cog0: Temperature is 72.5"`
-2. **Window creation**: `"Cog0: `TERM MyTerm SIZE 80 24"`
-3. **Window routing**: `"Cog0: `MyTerm 'Hello World'"`
+**2. Backtick Commands** (window commands):
+- **Format**: `` `WINDOWTYPE Name parameters`` or `` `Name data``
+- **NO COG PREFIX** - sent directly without "CogN:" wrapper
+- **Examples**:
+  - `` `TERM MyTerm SIZE 80 24``
+  - `` `MyTerm 'Hello World'``
+  - `` `SCOPE MyScope RANGE 0 100``
 
-**Critical**: The backtick (`) appears WITHIN the content portion, not at the message start!
+**Critical**: Backtick commands are standalone messages, not embedded within COG messages!
 
 #### Routing Logic
-The router processes each Cog-prefixed message as follows:
+The router processes two distinct message types:
 
-1. **Receive**: `"CogN: [content]"`
+**COG Messages** (`"CogN: [content]"`):
+1. **Receive**: Message with COG prefix
 2. **Log**: Write to debug log file (always)
-3. **Route to General Terminal**: Display in debug output terminal
-4. **Parse Content**: Look for backtick commands
-   - If window creation: Create new window with user-specified name
-   - If window routing: Send to named window (e.g., `MyTerm)
-5. **Track Association**: Remember CogN + WindowName pairs for routing
+3. **Route to Debug Logger window**: Display in debug output window
+4. **Route to COG window**: If individual COG window registered (optional)
+
+**Backtick Commands** (`` `WINDOWTYPE ...`` or `` `Name ...``):
+1. **Receive**: Message starting with backtick (no COG prefix)
+2. **Log**: Write to Debug Logger window (always)
+3. **Parse Command**: Extract window type/name and parameters
+4. **Route/Create**: Create new window or route data to existing window
 
 **Example Flow**:
 ```
-"Cog0: `TERM MyTerm SIZE 80 24"  → Creates TERM window "MyTerm" for Cog0
-"Cog0: `MyTerm 'Temperature: '"  → Routes to MyTerm window
-"Cog0: `MyTerm 72.5"             → Routes to MyTerm window
-"Cog0: Debug checkpoint reached"  → General debug terminal only
-"Cog1: `SCOPE Signals"           → Creates SCOPE window for Cog1
+"`TERM MyTerm SIZE 80 24"        → Creates TERM window "MyTerm"
+"`MyTerm 'Temperature: '"        → Routes to MyTerm window
+"`MyTerm 72.5"                   → Routes to MyTerm window
+"Cog0: Debug checkpoint reached" → Debug Logger window only
+"`SCOPE Signals"                 → Creates SCOPE window
+"Cog1: Sensor data ready"        → Debug Logger window (from COG1)
 ```
 
 #### Display System Layers
 
-**Layer 1: General Debug Terminal**
+**Layer 1: Debug Logger Window**
 - Receives ALL Cog-prefixed messages
 - Shows complete debug stream
 - Logs everything to files

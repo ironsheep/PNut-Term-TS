@@ -66,7 +66,7 @@ export class LoggerWindow extends DebugWindowBase {
   private lineBuffer: string[] = [];
   
   // Performance optimizations for 2Mbps handling
-  private renderQueue: Array<{message: string, className?: string, timestamp?: number}> = [];
+  private renderQueue: Array<{message: string, className?: string, timestamp: number}> = [];
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_INTERVAL_MS = 16; // 60fps update rate
   private readonly BATCH_SIZE_LIMIT = 100; // Max messages per batch
@@ -977,7 +977,7 @@ export class LoggerWindow extends DebugWindowBase {
       // This creates a clean vertical column for debug text
       
       const messages = batch.map((item, index) => {
-        const msgTime = item.timestamp || Date.now();
+        const msgTime = item.timestamp;
         const d = new Date(msgTime);
         
         // Get all time components

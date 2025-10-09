@@ -485,6 +485,10 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.logMessageBase(`- New ${this.windowType} window: ${this.windowId}`);
       this._debugWindow = window;
 
+      // Increase EventEmitter listener limit for WebContents to prevent memory leak warnings
+      // Debug windows register many listeners (did-stop-loading, ipc-message, etc.)
+      window.webContents.setMaxListeners(20);
+
       // Add OTHER event listeners as needed
     } else {
       // Prevent recursive close handling

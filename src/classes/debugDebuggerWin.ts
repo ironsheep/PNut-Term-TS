@@ -1738,8 +1738,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
 
       // Log to debug logger with reproducible command format
       try {
-        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
-        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const LoggerWindow = require('./loggerWin').LoggerWindow;
+        const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
         debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${width}x${height} Mon:${monitorId}) DEBUGGER 'COG${this.cogId}' POS ${x} ${y} SIZE ${width} ${height}`);
       } catch (error) {

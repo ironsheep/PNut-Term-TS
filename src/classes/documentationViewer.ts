@@ -58,9 +58,11 @@ export class DocumentationViewer {
   }
 
   private findUserGuide(): string {
-    // Determine base path: In packaged apps, use process.resourcesPath
+    // Determine base path: In packaged apps, use process.resourcesPath/app
     // In development, use process.cwd()
-    const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
+    const basePath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app')  // App files are in Resources/app/
+      : process.cwd();
 
     // Return APP-HELP.md path - this file must always be packaged with the app
     return path.join(basePath, 'DOCs', 'APP-HELP.md');

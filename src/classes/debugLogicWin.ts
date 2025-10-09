@@ -630,8 +630,8 @@ export class DebugLogicWindow extends DebugWindowBase {
 
       // Log to debug logger with reproducible command format
       try {
-        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
-        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const LoggerWindow = require('./loggerWin').LoggerWindow;
+        const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
         debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) LOGIC '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
       } catch (error) {
@@ -1487,33 +1487,14 @@ export class DebugLogicWindow extends DebugWindowBase {
           ctx.lineTo(${currXOffset + spacing + 0.5}, ${currYOffset}); // Overlap by 0.5 pixels
           ctx.stroke();
         `;
-        
-        // DEBUG: Log the generated JavaScript before executing
-        this.logMessage(`DEBUG: Generated JavaScript (${jsCode.length} chars): ${jsCode.substring(0, 200)}${jsCode.length > 200 ? '...' : ''}`);
-        
-        // DEBUG: Check if window and canvas elements exist before executing
-        this.debugWindow.webContents.executeJavaScript(`
-          (function() {
-            const canvas = document.getElementById('${canvasName}');
-            // console.log('Canvas check for ${canvasName}:', canvas ? 'EXISTS' : 'MISSING');
-            if (canvas) {
-              // console.log('Canvas type:', canvas.tagName, 'Width:', canvas.width, 'Height:', canvas.height);
-            }
-            return canvas ? true : false;
-          })();
-        `).then((canvasExists) => {
-          this.logMessage(`DEBUG: Canvas ${canvasName} exists: ${canvasExists}`);
-          
-          // Now execute the actual drawing JavaScript
-          if (this.debugWindow) {
-            this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
-              this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
-              this.logMessage(`FAILED JavaScript was: ${jsCode}`);
-            });
-          }
-        }).catch((error) => {
-          this.logMessage(`Failed to check canvas existence: ${error}`);
-        });
+
+        // Execute the drawing JavaScript directly
+        if (this.debugWindow) {
+          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+            this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
+            this.logMessage(`FAILED JavaScript was: ${jsCode}`);
+          });
+        }
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }

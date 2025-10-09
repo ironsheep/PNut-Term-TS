@@ -1802,8 +1802,8 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // Log to debug logger with reproducible command format
       try {
-        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
-        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const LoggerWindow = require('./loggerWin').LoggerWindow;
+        const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
         debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.canvasWidth}x${this.canvasHeight} Mon:${monitorId}) FFT '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${this.canvasWidth} ${this.canvasHeight}`);
       } catch (error) {

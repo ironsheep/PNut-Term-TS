@@ -58,8 +58,8 @@ export class PlotErrorHandler {
    */
   initializeDebugLogger(context: any): void {
     try {
-      const DebugLoggerWindow = require('../debugLoggerWin').DebugLoggerWindow;
-      this.debugLogger = DebugLoggerWindow.getInstance(context);
+      const LoggerWindow = require('../loggerWin').LoggerWindow;
+      this.debugLogger = LoggerWindow.getInstance(context);
     } catch (error) {
       console.warn('Failed to initialize debug logger for PLOT parser:', error);
     }

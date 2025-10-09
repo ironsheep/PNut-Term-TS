@@ -1346,8 +1346,8 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 
       // Log to debug logger with reproducible command format
       try {
-        const DebugLoggerWindow = require('./debugLoggerWin').DebugLoggerWindow;
-        const debugLogger = DebugLoggerWindow.getInstance(this.context);
+        const LoggerWindow = require('./loggerWin').LoggerWindow;
+        const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
         const titlePart = this.windowTitle ? ` TITLE '${this.windowTitle}'` : '';
         debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}'${titlePart} POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
