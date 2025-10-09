@@ -8,6 +8,7 @@ import { performance } from 'perf_hooks';
 import { WindowRouter } from '../classes/shared/windowRouter';
 import { DebuggerRenderer } from '../classes/shared/debuggerRenderer';
 import { DebuggerDataManager } from '../classes/shared/debuggerDataManager';
+import { SharedMessageType, ExtractedMessage } from '../classes/shared/sharedMessagePool';
 
 /**
  * Performance metrics for a benchmark run
@@ -247,8 +248,8 @@ export class WindowRouterBenchmark {
       'WindowRouter Message Routing',
       () => {
         this.router.routeTextMessage({
-          type: 'text',
-          data: 'TEST MESSAGE DATA',
+          type: SharedMessageType.BACKTICK_TERM,
+          data: new TextEncoder().encode('TEST MESSAGE DATA'),
           timestamp: Date.now()
         });
       },
@@ -286,8 +287,8 @@ export class WindowRouterBenchmark {
       () => {
         for (let i = 0; i < messagesPerChunk; i++) {
           this.router.routeTextMessage({
-            type: 'text',
-            data: 'X'.repeat(messageSize),
+            type: SharedMessageType.BACKTICK_TERM,
+            data: new TextEncoder().encode('X'.repeat(messageSize)),
             timestamp: Date.now()
           });
         }
@@ -318,8 +319,8 @@ export class WindowRouterBenchmark {
       () => {
         // Route to all windows
         this.router.routeTextMessage({
-          type: 'text',
-          data: 'BROADCAST MESSAGE',
+          type: SharedMessageType.BACKTICK_TERM,
+          data: new TextEncoder().encode('BROADCAST MESSAGE'),
           timestamp: Date.now()
         });
       },

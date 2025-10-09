@@ -188,12 +188,22 @@ The following classes currently have no test files:
 
 ## Architecture Issues
 
-### Remove SerialMessage Interface - Use ExtractedMessage Throughout
+### ✅ COMPLETED: Remove SerialMessage Interface - Use ExtractedMessage Throughout
 **Date Added**: 2025-10-08
+**Date Completed**: 2025-10-09
 **Priority**: Medium - Post-First-Release Refactor
 **Category**: Architecture / Code Simplification
 
-**Current State**:
+**COMPLETION NOTES**:
+- Eliminated SerialMessage interface entirely
+- WindowRouter now accepts ExtractedMessage directly
+- MainWindow passes ExtractedMessage through without wrapping
+- All handlers updated to work with ExtractedMessage
+- TextDecoder used on-demand for string conversion
+- Reduces object allocations and type conversions
+- Files changed: mainWindow.ts, windowRouter.ts, debugWindowBase.ts, loggerWin.ts, performanceBenchmark.ts
+
+**Original State**:
 - Two message wrapper types exist with overlapping purposes:
   1. **SerialMessage** - Legacy wrapper created by MainWindow destination handlers
      - `{ type: 'binary'|'text', data: Uint8Array|string, timestamp: number, messageType?: SharedMessageType }`
@@ -236,7 +246,52 @@ The following classes currently have no test files:
 
 **Required for Release**: NO - Current system works, refactor for simplicity and maintainability
 
-**Note**: During the MessageType → SharedMessageType refactor (2025-10-08), we implemented Option 1 (minimal changes) to quickly restore debug logger functionality. This preserved SerialMessage as a temporary fix. The proper long-term solution is to remove SerialMessage entirely and use ExtractedMessage everywhere.
+**Note**: During the MessageType → SharedMessageType refactor (2025-10-08), we implemented Option 1 (minimal changes) to quickly restore debug logger functionality. This preserved SerialMessage as a temporary fix. The proper long-term solution was completed on 2025-10-09.
+
+---
+
+### Review Message Passing Architecture - ExtractedMessage Interface Design
+**Date Added**: 2025-10-09
+**Priority**: Medium - Post-First-Release Refactor
+**Category**: Architecture / API Design
+
+**Current State**:
+- `ExtractedMessage` is now used throughout the message routing pipeline
+- Interface: `{ type: SharedMessageType, data: Uint8Array, timestamp: number, confidence?: string }`
+- Windows receive ExtractedMessage and decode Uint8Array to string on-demand
+- Replaced SerialMessage successfully but may not be the optimal long-term interface
+
+**Concern**:
+The ExtractedMessage interface was designed for the worker thread extraction layer but is now being used as the universal message format all the way to window handlers. This may not be the most appropriate interface for window-level message passing:
+
+1. **Data format**: Always Uint8Array requiring TextDecoder on every access
+2. **Type granularity**: SharedMessageType enum may be too protocol-specific for window handlers
+3. **Metadata**: Contains worker-specific fields like `confidence` that windows don't use
+4. **Semantic mismatch**: "Extracted" implies extraction phase, but windows are consumption phase
+
+**Questions to Investigate**:
+- Should windows receive a different interface optimized for consumption?
+- Is on-demand TextDecoder.decode() the right pattern or should we pre-decode?
+- Should there be a WindowMessage interface separate from ExtractedMessage?
+- What metadata do windows actually need vs what the protocol provides?
+- Should binary vs text handling be more explicit in the type system?
+
+**Potential Approaches**:
+1. Keep ExtractedMessage but rename it to something more universal (Message, DebugMessage, etc.)
+2. Create separate WindowMessage interface that windows receive
+3. Split into BinaryMessage and TextMessage variants with discriminated union
+4. Pre-decode text messages earlier in the pipeline
+
+**Impact of Current Design**:
+- ✅ Working correctly - no functional issues
+- ✅ Eliminated unnecessary wrapper (SerialMessage)
+- ⚠️ May have semantic/ergonomic issues for window layer
+- ⚠️ TextDecoder.decode() called repeatedly for same data
+- ⚠️ Interface name doesn't reflect its universal usage
+
+**Required for Release**: NO - Current implementation works, review for future refinement
+
+**Estimated Effort**: 8-16 hours for analysis, design, and implementation if changes needed
 
 ---
 

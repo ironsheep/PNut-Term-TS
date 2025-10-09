@@ -11,7 +11,6 @@ import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
 import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool';
 import { PerformanceMonitor } from './shared/performanceMonitor';
-import { SerialMessage } from './shared/windowRouter';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
@@ -761,17 +760,16 @@ export class LoggerWindow extends DebugWindowBase {
 
   /**
    * Override base class handleRouterMessage to properly route to processTypedMessage
-   * WindowRouter calls this with SerialMessage containing SharedMessageType
+   * WindowRouter calls this with ExtractedMessage containing SharedMessageType
    */
-  public handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
+  public handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
     try {
-      // Check if it's a SerialMessage object with messageType
+      // Check if it's an ExtractedMessage object with type
       if (typeof message === 'object' && !Array.isArray(message) && !(message instanceof Uint8Array)) {
-        const serialMsg = message as SerialMessage;
-        if (serialMsg.messageType !== undefined) {
-          // SerialMessage with SharedMessageType - route to processTypedMessage
-          const data = typeof serialMsg.data === 'string' ? [serialMsg.data] : serialMsg.data;
-          this.processTypedMessage(serialMsg.messageType, data);
+        const extractedMsg = message as ExtractedMessage;
+        if (extractedMsg.type !== undefined) {
+          // ExtractedMessage with SharedMessageType - route to processTypedMessage
+          this.processTypedMessage(extractedMsg.type, extractedMsg.data);
           return;
         }
       }

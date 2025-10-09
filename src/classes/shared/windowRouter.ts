@@ -12,23 +12,12 @@ import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
 import { safeDisplayString } from '../../utils/displayUtils';
 import { BinaryRecorder } from './binaryRecorder';
 import { Context } from '../../utils/context';
-import { SharedMessageType } from './sharedMessagePool';
+import { SharedMessageType, ExtractedMessage } from './sharedMessagePool';
 
 /**
  * Window handler callback for routing messages to debug windows
  */
-export type WindowHandler = (message: SerialMessage | Uint8Array | string) => void;
-
-/**
- * Serial message interface for routing
- */
-export interface SerialMessage {
-  type: 'binary' | 'text';
-  data: Uint8Array | string;
-  timestamp: number;
-  source?: string;
-  messageType?: SharedMessageType;  // SharedMessageType from worker classification (cogId embedded in type)
-}
+export type WindowHandler = (message: ExtractedMessage | Uint8Array | string) => void;
 
 /**
  * Information about a registered window
@@ -282,36 +271,38 @@ export class WindowRouter extends EventEmitter {
 
   /**
    * Route a message to appropriate window(s)
+   * Accepts ExtractedMessage directly from worker thread (zero-copy)
    */
-  public routeMessage(message: SerialMessage): void {
+  public routeMessage(message: ExtractedMessage): void {
     const startTime = performance.now();
 
     try {
-      const dataSize = typeof message.data === 'string' ? message.data.length : message.data.length;
-      this.logger.trace('ROUTE', `Routing ${message.type} message (${dataSize} bytes)`);
+      const dataSize = message.data.length;
+      this.logger.trace('ROUTE', `Routing message type ${message.type} (${dataSize} bytes)`);
 
-      if (message.type === 'binary') {
-        // Pass SharedMessageType - cogId will be extracted on-demand if needed
-        const cogId = message.messageType !== undefined &&
-                      message.messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
-                      message.messageType <= SharedMessageType.DEBUGGER7_416BYTE
-          ? message.messageType - SharedMessageType.DEBUGGER0_416BYTE
-          : undefined;
-        this.routeBinaryMessage(message.data as Uint8Array, cogId);
+      // Determine binary vs text from SharedMessageType enum ranges
+      const isBinaryMessage =
+        message.type >= SharedMessageType.DEBUGGER0_416BYTE &&
+        message.type <= SharedMessageType.DEBUGGER7_416BYTE;
+
+      if (isBinaryMessage) {
+        // Binary debugger message - extract COG ID from SharedMessageType
+        const cogId = message.type - SharedMessageType.DEBUGGER0_416BYTE;
+        this.routeBinaryMessage(message.data, cogId);
       } else {
-        // Pass full SerialMessage to preserve timestamp and messageType
+        // Text message (COG, backtick, terminal) - decode in routeTextMessage
         this.routeTextMessage(message);
       }
-      
+
       // Update statistics
       const routingTime = performance.now() - startTime;
       this.updateRoutingStats(routingTime, message.data);
-      
+
       // Log performance if slow
       if (routingTime > 1.0) {
-        this.logger.warn('PERFORMANCE', `Slow routing detected: ${routingTime.toFixed(2)}ms (${message.type}, ${dataSize}B)`);
+        this.logger.warn('PERFORMANCE', `Slow routing detected: ${routingTime.toFixed(2)}ms (type=${message.type}, ${dataSize}B)`);
       }
-      
+
     } catch (error) {
       this.stats.errors++;
       this.logger.logError('ROUTE', error as Error, { messageType: message.type });
@@ -398,16 +389,16 @@ export class WindowRouter extends EventEmitter {
    * CLEAN ARCHITECTURE: Messages are already classified by worker thread.
    * Routes based on SharedMessageType, not content parsing.
    *
-   * @param message SerialMessage with text data, timestamp, and SharedMessageType
+   * @param message ExtractedMessage with Uint8Array data, timestamp, and SharedMessageType
    */
-  public routeTextMessage(message: SerialMessage): void {
+  public routeTextMessage(message: ExtractedMessage): void {
     const startTime = performance.now();
 
     let handled = false;
 
-    // Extract data from SerialMessage
-    const text = message.data as string;
-    const messageType = message.messageType;
+    // Decode Uint8Array to string on-demand
+    const text = new TextDecoder().decode(message.data);
+    const messageType = message.type;
 
     // Extract cogId from SharedMessageType for COG messages
     let cogId: number | undefined;

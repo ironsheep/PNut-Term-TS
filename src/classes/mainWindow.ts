@@ -272,13 +272,8 @@ export class MainWindow {
     const debugLoggerDestination: RouteDestination = {
       name: 'DebugLogger',
       handler: (message: ExtractedMessage) => {
-        // WindowRouter handles ALL window routing
-        this.windowRouter.routeMessage({
-          type: 'text',
-          data: new TextDecoder().decode(message.data),
-          timestamp: message.timestamp,
-          messageType: message.type
-        });
+        // WindowRouter handles ALL window routing - pass ExtractedMessage directly
+        this.windowRouter.routeMessage(message);
       }
     };
 
@@ -293,13 +288,8 @@ export class MainWindow {
     const debuggerWindowDestination: RouteDestination = {
       name: 'DebuggerWindow',
       handler: (message: ExtractedMessage) => {
-        // WindowRouter handles ALL window routing
-        this.windowRouter.routeMessage({
-          type: 'binary',
-          data: message.data,
-          timestamp: message.timestamp,
-          messageType: message.type
-        });
+        // WindowRouter handles ALL window routing - pass ExtractedMessage directly
+        this.windowRouter.routeMessage(message);
       }
     };
 
@@ -440,15 +430,11 @@ export class MainWindow {
       // This is a window UPDATE command - route to WindowRouter for name-based routing
       this.logConsoleMessage(`[TWO-TIER] Window update command detected: ${firstToken}`);
 
-      // Pass full backtick command to WindowRouter for unified window routing
-      this.windowRouter.routeMessage({
-        type: 'text',
-        data: data, // Full backtick command with data
-        timestamp: message.timestamp,
-        messageType: message.type // CRITICAL: SharedMessageType so WindowRouter knows it's BACKTICK_UPDATE
-      });
+      // Pass ExtractedMessage directly to WindowRouter (no conversion needed)
+      this.windowRouter.routeMessage(message);
 
       // WindowRouter will:
+      // - Decode Uint8Array to string
       // - Find window by name
       // - Route to window if exists
       // - Log error if window not found (ERROR on missing for updates)
@@ -632,13 +618,8 @@ export class MainWindow {
       this.immediateLog = false; // Switch from immediate to buffered logging
 
       // Route creation command to WindowRouter for logging
-      // WindowRouter will log to DebugLogger (single responsibility for routing)
-      this.windowRouter.routeMessage({
-        type: 'text',
-        data: data,
-        timestamp: message.timestamp,
-        messageType: message.type // SharedMessageType for the creation command
-      });
+      // WindowRouter will decode ExtractedMessage and log to DebugLogger
+      this.windowRouter.routeMessage(message);
     }
 
     // 5. FIFTH: Log unhandled commands

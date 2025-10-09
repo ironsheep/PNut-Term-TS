@@ -15,7 +15,8 @@ import { localFSpecForFilename, screenshotFSpecForFilename } from '../utils/file
 import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
-import { WindowRouter, WindowHandler, SerialMessage } from './shared/windowRouter';
+import { WindowRouter, WindowHandler } from './shared/windowRouter';
+import { ExtractedMessage } from './shared/sharedMessagePool';
 import { MessageQueue, BatchedMessageQueue } from './shared/messageQueue';
 import { TLongTransmission } from './shared/tLongTransmission';
 
@@ -623,10 +624,10 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   /**
    * Handle messages from WindowRouter
-   * This method processes both SerialMessage objects and raw data
+   * This method processes both ExtractedMessage objects and raw data
    * Protected to allow subclasses to override (e.g., LoggerWindow)
    */
-  protected handleRouterMessage(message: SerialMessage | Uint8Array | string): void {
+  protected handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
     try {
       if (typeof message === 'string') {
         // Text message - parse and process
@@ -638,15 +639,10 @@ export abstract class DebugWindowBase extends EventEmitter {
         // DebugLoggerWindow and DebugDebuggerWindow need raw binary
         this.updateContent(message);
       } else if (typeof message === 'object' && message.type && message.data) {
-        // SerialMessage object
-        if (message.type === 'text' && typeof message.data === 'string') {
-          // NOTE: WindowRouter already trims/filters - don't do it again here
-          const lineParts = (message.data as string).split(' ');
-          this.updateContent(lineParts);
-        } else if (message.type === 'binary' && message.data instanceof Uint8Array) {
-          // Handle binary data - pass through as-is
-          this.updateContent(message.data as Uint8Array);
-        }
+        // ExtractedMessage object - decode Uint8Array to string for text windows
+        const text = new TextDecoder().decode(message.data);
+        const lineParts = text.split(' ');
+        this.updateContent(lineParts);
       }
     } catch (error) {
       this.logMessageBase(`- Error handling router message: ${error}`);
