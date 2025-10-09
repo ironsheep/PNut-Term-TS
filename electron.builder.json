@@ -34,9 +34,9 @@
     ],
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "entitlements": "./buildSupport/entitlements.mac.plist",
-    "entitlementsInherit": "./buildSupport/entitlementsInherit.mac.plist",
-    "extendInfo": "./buildSupport/Info.plist"
+    "entitlements": "./buildSupport/macos/entitlements.mac.plist",
+    "entitlementsInherit": "./buildSupport/macos/entitlementsInherit.mac.plist",
+    "extendInfo": "./buildSupport/macos/Info.plist"
   },
   "win": {
     "target": ["zip"],

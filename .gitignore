@@ -5,6 +5,8 @@ CLAUDE-EXPORTS/
 
 # Build assets
 dmg-assets/
+assets/*-rounded.png
+assets/icon_original.icns
 
 # User-specific settings files
 test-external/pnut-term-settings.json

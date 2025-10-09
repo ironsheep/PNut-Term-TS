@@ -67,7 +67,6 @@ tsc --watch      # Watch mode
 ```json
 {
   "build": "tsc && npm run build:esbuild && node scripts/insertBuildDate.js && npm run minify",
-  "buildnew": "tsc && npm run build:esbuild && npm run minify && node build.js",
   "build:esbuild": "node esbuild.config.js",
   "minify": "terser dist/pnut-term-ts.js -c -m -o dist/pnut-term-ts.min.js"
 }
