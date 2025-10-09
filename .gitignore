@@ -1,3 +1,8 @@
+# Claude Code and AI assistant files
+.claude/
+.todo-mcp/
+CLAUDE-EXPORTS/
+
 # User-specific settings files
 test-external/pnut-term-settings.json
 pnut-term-settings.json
@@ -186,4 +191,28 @@ tests/recordings/catalog.json
 /extracted-icons
 EXT-REF/
 /test-results
+/test-external
+/test-output
+/sprint-plans
+
+# Obsolete test/debug files
+test-cli.js
+test-command-line-download.sh
+test-download.bin
+test-plot-hover.sh
+test-plot-hover.spin2
+test-worker-hsv16.js
+test_interpolation.js
+test-results.txt
+debug_pattern_test.js
+real-directory-test.js
+github.tar.gz
+
+# Obsolete build artifacts
+sea-prep-*.blob
+performance.log
+test-performance.log
+test-with-queue.log
+test-without-queue.log
+
 context-keys-to-restore.txt

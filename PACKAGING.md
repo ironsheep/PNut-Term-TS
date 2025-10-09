@@ -47,11 +47,13 @@ This creates:
 ## Quick Commands
 
 ```bash
-# For testing with P2 hardware (BEST OPTION):
-./scripts/create-electron-ready-package.sh
+# All platforms (dual architecture):
+npm run packageAll
 
-# For standalone executable:
-npm run packageStandaloneMacOS
+# Individual platforms (each builds x64 + arm64):
+npm run packageWin        # Windows
+npm run packageLinux      # Linux
+npm run packageMac        # macOS
 
 # Basic build only:
 npm run build
@@ -60,35 +62,28 @@ npm run build
 ## Container Limitations
 
 Running in a Linux container (GitHub Codespaces/Docker) means:
-- Cannot create macOS DMG files
-- Cannot sign macOS applications  
+- Cannot create macOS DMG files (DMG creation requires macOS)
+- Cannot sign macOS applications (code signing requires macOS + certificates)
 - Cannot use macOS-specific packaging tools
 - Cross-compilation has limitations
 
-## Solution
+## Current Solution
 
-The `create-electron-ready-package.sh` script works around these limitations by:
-1. Creating proper macOS app structure
-2. Deferring Electron installation to target Mac
-3. Avoiding DMG creation
-4. Providing setup scripts for target machine
-
-## Notes
-
-- The electron-ready package is ~5MB (vs ~200MB with Electron bundled)
-- Electron gets cached on target Mac after first install
-- No system pollution - Electron installs locally in app directory
-- Works across different macOS versions (Intel and Apple Silicon)
+All packaging scripts create **dual-architecture** packages (x64 + arm64):
+- Packages are production-ready with Electron bundled
+- Each package is ~100MB per architecture
+- Works across Intel and Apple Silicon Macs
+- TAR.GZ format for easy distribution
 
 ## Testing Workflow
 
 1. Make code changes
 2. Run `npm run build`
-3. Run `./scripts/create-electron-ready-package.sh`
-4. Copy `release/electron-ready-macos.tar.gz` to Mac
-5. Extract and run `SETUP.command`
+3. Run appropriate package command (`npm run packageWin`, `packageLinux`, or `packageMac`)
+4. Copy generated package from `release/` directory to target machine
+5. Extract and run
 6. Test with P2 hardware
 
 ---
-Last Updated: 2025-08-13
-Sprint 1 Completion
+Last Updated: 2025-10-09
+Updated to reflect dual-architecture packaging as current standard

@@ -1,1 +1,0 @@
-const { Command } = require("commander"); const p = new Command(); p.option("--ide", "test").option("--rts", "test2").option("-n, --dvcnodes", "test3"); console.log(p.parse(["/usr/bin/node", "test.js", "--dvcnodes"]).opts());

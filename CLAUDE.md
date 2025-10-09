@@ -26,7 +26,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ### Project Goals
 - **100% Functional Parity** - TypeScript reimplementation of original Pascal codebase
 - **Proper TypeScript Techniques** - Achieve parity using idiomatic TypeScript patterns
-- **Pascal Source as Reference** - Original implementation defines the specification
+- **Pascal Source as Reference** - Original implementation defines the specification (see Pascal Source Reference section below)
 
 ### Time Estimation
 - **Consecutive hours only** - Estimates are in cumulative work hours, not days/weeks
@@ -45,6 +45,10 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 4. **Identify root cause** - Continue until actual cause is definitively found
 5. **Fix once, fix right** - Address the root cause, not symptoms
 
+### Code Quality Requirements
+- **Preserve unparsed debug strings** - Keep exact formatting from device
+- **Full command context in errors** - Include all relevant information in error messages
+
 ## 📚 WORK TYPE QUICK REFERENCE
 
 | Work Type | Primary Docs | Key Focus |
@@ -59,7 +63,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 **Foundation for ALL work**: `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md`
 
 ### 🔄 **LIVING DOCUMENTATION SYSTEM**
-- **Process breakdowns** → Upgrade documentation immediately  
+- **Process breakdowns** → Upgrade documentation immediately
 - **New patterns discovered** → Add to appropriate process docs
 - **Repeated mistakes** → Strengthen guidance to prevent recurrence
 - **Every failure** is an opportunity to improve our process documentation
@@ -70,17 +74,10 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 - **Standard**: Defined features, tests → normal execution
 - **Simple**: Typos, configs → quick mode
 
-## 📊 Test Results Location
-**Test logs and external results**: `test-results/external-results/`
-- **Console logs**: `console-*.log` (renderer/browser console output)
-- **Main logs**: `test-run-*.log` (main process logs with window placement data)
-- **Window placement logs**: Search for `[WINDOW PLACER]` patterns in main logs
-
-
 ## Todo MCP Mastery Operations
 
 ### Dual System Strategy
-**MCP Tasks**: Persistent, session-spanning, permanent ID «#N»  
+**MCP Tasks**: Persistent, session-spanning, permanent ID «#N»
 **TodoWrite**: Current task breakdown only, cleared on completion
 
 ```bash
@@ -194,21 +191,39 @@ Log which used: "[DTR RESET]" vs "[RTS RESET]"
 
 See `DOCs/project-specific/DTR-RTS-CONTROL-LINES.md`
 
-## ⚠️ Test Execution Container
+## ⚠️ Test Execution
 
-**NEVER `npm test` directly** - saturates container → lockup/termination
+**Container constraint**: NEVER run `npm test` directly without arguments - saturates Docker container → lockup/termination
 
-**USE:**
+**Safe test execution methods:**
 ```bash
+# Full test suite (sequential, safe for Docker)
 scripts/claude/run_tests_sequentially.sh
-# Audit first: ls tests/*.test.ts vs cat script
+
+# Single test file (parallel is OK for individual tests)
+npm test -- specific.test.ts
+
+# With output redirection (MUST use -- to prevent NPM parsing 2>&1 as filename)
+npm test -- file.test.ts 2>&1
+
+# Alternative: Direct Jest execution (bypasses NPM argument parsing)
+npx jest file.test.ts 2>&1
+
+# Silent mode (suppresses NPM noise)
+npm test -s
 ```
 
-Rules:
-- No `npm test` without args (parallel)
-- Use sequential script for full runs
-- Individual OK: `npm test -- specific.test.ts`
-- Keep script updated
+**Critical rules:**
+- ❌ Never: `npm test` (no arguments - runs all tests in parallel)
+- ❌ Never: `npm test file.test.ts 2>&1` (NPM parses "2" as literal filename)
+- ✅ Always: Use `--` separator before test file names when using npm test
+- ✅ Always: Use sequential script for full test runs
+- 🔧 Maintenance: Keep `scripts/claude/run_tests_sequentially.sh` updated with all test files from `tests/*.test.ts`
+
+**Why this matters:**
+- **NPM argument parsing**: Without `--`, NPM interprets shell operators like `2>&1` as literal arguments
+- **Docker environment**: Running all tests in parallel exhausts container resources
+- **Audit before running**: Compare `ls tests/*.test.ts` output against script contents to ensure completeness
 
 ## 🚨 TESTING STANDARDS - BYTE-PERFECT VALIDATION
 
@@ -222,43 +237,37 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 
 **NEVER:**
 - Count messages instead of validating bytes
-- Use "length > 5" or similar approximations  
+- Use "length > 5" or similar approximations
 - Allow ANY unaccounted bytes
 - Let broken systems reach human testing
 
 **Process:** Tests MUST fail loud/fast → Fix code → Tests pass → THEN human testing
-**See:** `DOCs/project-specific/TESTING-STANDARDS.md` and `tests/README-TESTING-STANDARDS.md`
 
-## ⚠️ Shell Redirection NPM
+**Test results location:** `test-results/external-results/`
+- **Console logs**: `console-*.log` (renderer/browser console output)
+- **Main logs**: `test-run-*.log` (main process logs with window placement data)
+- **Window placement logs**: Search for `[WINDOW PLACER]` patterns in main logs
 
-NPM passes `2>&1` as literal args!
-
-**WRONG:**
-```bash
-npm test file.test.ts 2>&1  # "2" becomes filename
-```
-
-**CORRECT:**
-```bash
-npm test -- file.test.ts 2>&1  # -- stops parsing
-npx jest file.test.ts 2>&1     # Direct execution
-npm test -s                     # Silent mode
-```
+**Documentation references:**
+- `DOCs/project-specific/TESTING-STANDARDS.md`
+- `tests/README-TESTING-STANDARDS.md`
 
 ## Build/Package
 
-### Production Packaging (ONLY use these!)
-- **All platforms**: `npm run packageAll` (builds all 6 architecture packages)
-- **Windows only**: `npm run packageWin` or `./scripts/create-windows-package.sh`
-- **Linux only**: `npm run packageLinux` or `./scripts/create-linux-package.sh`
-- **macOS only**: `npm run packageMac` or `./scripts/create-macos-packages.sh`
+### Production Packaging
 
-**IMPORTANT**: These are the ONLY three build scripts to use:
+**NPM scripts** (recommended for all platforms):
+- **All platforms**: `npm run packageAll` - Builds all 6 architecture packages (Windows/Linux/macOS × x64/arm64)
+- **Windows only**: `npm run packageWin` - Windows x64 + arm64
+- **Linux only**: `npm run packageLinux` - Linux x64 + arm64
+- **macOS only**: `npm run packageMac` - macOS x64 + arm64
+
+**Shell scripts** (direct execution, equivalent to NPM scripts):
 1. `scripts/create-windows-package.sh` - Windows x64/arm64
 2. `scripts/create-linux-package.sh` - Linux x64/arm64
 3. `scripts/create-macos-packages.sh` - macOS x64/arm64
 
-All other build scripts have been archived. See `PACKAGING.md` for details.
+**Note**: All packages build dual architecture (x64 + arm64). All other build scripts have been archived. See `PACKAGING.md` for complete packaging documentation and details.
 
 ## Workflow
 
@@ -281,18 +290,28 @@ All other build scripts have been archived. See `PACKAGING.md` for details.
 2. Document: completed/in-progress/next
 3. Resume: todo list + read state file
 
-## 📚 Documentation Locations
+## 📚 Documentation & References
 
-### User & Admin Guides
+### Documentation Locations
+
+**User & Admin Guides:**
 - **User Guide**: `DOCs/USER-GUIDE.md` and `DOCs/project-specific/USER-GUIDE.md`
 - **Admin/Technical**: `DOCs/project-specific/ADMIN-GUIDE-SERIAL-IMPLEMENTATION.md`
 - **Window Status**: Track implementation status in window sprint documents
 
+**Process & Architecture:**
+- **Universal patterns**: `DOCs/pure-process/` - Methodology applicable to any project
+- **Project-specific**: `DOCs/project-specific/` - Architecture, commands, status, Pascal sources, build, tests, debt, user guide
+- **Repository structure**: `DOCs/REPOSITORY-ORGANIZATION.md` - Complete repo organization guide
+
 ### Pascal Source Reference
-- **Location**: `/pascal-source/P2_PNut_Public/` (mounted at root)
-- **Main File**: `DebugDisplayUnit.pas` (all windows except debugger)
-- **Version**: Currently syncing to v51a
-- **Debugger File**: Different file (TBD when implementing debugger)
+
+**Location**: `/pascal-source/P2_PNut_Public/` (mounted at repository root)
+**Main File**: `DebugDisplayUnit.pas` (defines all debug windows except debugger)
+**Version**: Currently syncing to v51a
+**Debugger File**: Different file (TBD when implementing debugger window)
+
+The Pascal source is the **definitive specification** - when TypeScript behavior differs from Pascal, the Pascal implementation is correct.
 
 ## 🗺️ PROJECT QUICK NAVIGATION
 
@@ -359,8 +378,11 @@ npm run build                              # Build TypeScript
 scripts/claude/run_tests_sequentially.sh  # Safe test execution (NOT npm test)
 npm test -- specific.test.ts              # Single test OK
 
-# Package (macOS only)
-./scripts/create-electron-ready-package.sh
+# Package (all dual-architecture: x64 + arm64)
+npm run packageAll                        # All platforms (6 packages total)
+npm run packageWin                        # Windows (2 packages)
+npm run packageLinux                      # Linux (2 packages)
+npm run packageMac                        # macOS (2 packages)
 
 # Development
 npm run dev                               # Watch mode
@@ -380,17 +402,3 @@ npm run dev                               # Watch mode
 **PNut-Term-TS**: Cross-platform debug terminal for Parallax Propeller2, Electron/TypeScript
 
 **Architecture Flow**: `pnut-term-ts.ts` → `MainWindow` → `DebugWindowBase` → Individual debug windows
-
-## References
-
-📁 `DOCs/pure-process/`: Universal patterns
-📁 `DOCs/project-specific/`: Architecture, commands, status, Pascal sources, build, tests, debt, user guide
-📁 `DOCs/REPOSITORY-ORGANIZATION.md`: Repo structure
-
-## Requirements
-
-- Sequential tests (Docker environment)
-- Use `--` with npm test redirects
-- Preserve unparsed debug strings
-- Full command context in errors
-- Update test files in `scripts/claude/`
