@@ -997,12 +997,13 @@ export class MainWindow {
         }
 
         // STEP 4: Close serial port properly to prevent Napi::Error on shutdown
-        // Listeners were already removed in mainWindow 'close' event handler
         if (this._serialPort) {
           this.logConsoleMessage(
             `[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`
           );
           try {
+            // CRITICAL: Remove all event listeners before closing to prevent Napi::Error
+            this._serialPort.removeAllListeners();
             this._serialPort.close(); // Synchronous close - no await needed
             this.logConsoleMessage(
               `[SHUTDOWN ${new Date().toISOString()}] Serial port closed successfully`
