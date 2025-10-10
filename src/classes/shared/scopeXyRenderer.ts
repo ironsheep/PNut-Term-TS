@@ -44,12 +44,15 @@ export class ScopeXyRenderer {
 
     if (logScale) {
       // Pascal: Rf := (Log2(Hypot(x, y) + 1) / Log2(Int64(vRange) + 1)) * (vWidth div 2);
+      // where (vWidth div 2) is the display radius
       const r = Math.sqrt(x * x + y * y);
-      const rf = (Math.log2(r + 1) / Math.log2(range + 1)) * (1 / scale);
+      const displayRadius = scale * range;  // Derive display radius from scale and range
+      const rf = (Math.log2(r + 1) / Math.log2(range + 1)) * displayRadius;
       const theta = Math.atan2(y, x);
-      
-      transformedX = rf * Math.cos(theta) * scale;
-      transformedY = rf * Math.sin(theta) * scale;
+
+      // Apply angle transformation to get X,Y components
+      transformedX = rf * Math.cos(theta);
+      transformedY = rf * Math.sin(theta);
     } else {
       // Direct scaling
       transformedX = x * scale;
@@ -85,8 +88,10 @@ export class ScopeXyRenderer {
 
     if (logScale) {
       // Pascal: if x <> 0 then Rf := (Log2(x) / Log2(vRange)) * (vWidth div 2) else Rf := 0
+      // where (vWidth div 2) is the display radius
       if (radius !== 0) {
-        rf = (Math.log2(Math.abs(radius)) / Math.log2(range)) * (1 / scale) * scale;
+        const displayRadius = scale * range;  // Derive display radius from scale and range
+        rf = (Math.log2(Math.abs(radius)) / Math.log2(range)) * displayRadius;
       } else {
         rf = 0;
       }
@@ -96,7 +101,7 @@ export class ScopeXyRenderer {
 
     // Pascal: Tf := Pi / 2 - (y + vTheta) / vTwoPi * Pi * 2;
     const tf = Math.PI / 2 - ((angle + theta) / twopi) * Math.PI * 2;
-    
+
     const x = rf * Math.cos(tf);
     const y = rf * Math.sin(tf);
 
