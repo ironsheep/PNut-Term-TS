@@ -976,7 +976,7 @@ export class MainWindow {
     }
 
     if (app) {
-      app.on('window-all-closed', () => {
+      app.on('window-all-closed', async () => {
         // Shutdown flags and listener removal already done in mainWindow 'close' event
         // This makes the app behave like a single-window application
         this.logConsoleMessage(
@@ -1002,9 +1002,10 @@ export class MainWindow {
             `[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`
           );
           try {
-            // CRITICAL: Remove all event listeners before closing to prevent Napi::Error
-            this._serialPort.removeAllListeners();
-            this._serialPort.close(); // Synchronous close - no await needed
+            // CRITICAL: Set shutdown flag to stop processing incoming data
+            this._serialPort.setShuttingDown(true);
+            // CRITICAL: Properly await async close() to ensure clean shutdown
+            await this._serialPort.close();
             this.logConsoleMessage(
               `[SHUTDOWN ${new Date().toISOString()}] Serial port closed successfully`
             );
