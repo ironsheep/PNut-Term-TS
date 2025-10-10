@@ -582,12 +582,7 @@ export class DebugFFTWindow extends DebugWindowBase {
           // Validate power of 2 between 4 and 2048
           if (!this.isPowerOfTwo(samplesValue) || samplesValue < 4 || samplesValue > 2048) {
             const nearest = this.nearestPowerOfTwo(samplesValue, 4, 2048);
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.warn(
-            //   `WARNING: FFT SAMPLES must be power of 2 (4-2048). ` +
-            //   `Invalid value '${samplesValue}' in command: ${unparsedCommand}. ` +
-            //   `Using nearest valid value: ${nearest}`
-            // );
+            // Silent rounding to nearest power of 2 (matches Pascal behavior)
             spec.samples = nearest;
           } else {
             spec.samples = samplesValue;
@@ -618,11 +613,8 @@ export class DebugFFTWindow extends DebugWindowBase {
               }
             }
           }
-        } else {
-          // TODO: TECH-DEBT - Static method logging support needed
-          // console.error(`ERROR: Missing parameter for SAMPLES in: ${unparsedCommand}`);
-          isValid = false;
         }
+        // Missing parameter handled by using defaults
         continue;
       }
       
@@ -641,16 +633,8 @@ export class DebugFFTWindow extends DebugWindowBase {
             const rateValue = Number(lineParts[++index]);
             if (rateValue >= 1 && rateValue <= 2048) {
               spec.rate = rateValue;
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(
-              //   `WARNING: Invalid RATE value '${rateValue}' (must be 1-2048) in: ${unparsedCommand}. Using default.`
-              // );
             }
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Missing parameter for RATE in: ${unparsedCommand}`);
-            isValid = false;
+            // Silent clamping if out of range (matches Pascal behavior)
           }
           break;
           
@@ -660,10 +644,8 @@ export class DebugFFTWindow extends DebugWindowBase {
             if (lineValue >= -32 && lineValue <= 32) {
               spec.lineSize = Math.abs(lineValue);
               spec.dotSize = 0; // Line mode disables dot mode
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(`WARNING: Invalid LINE value '${lineValue}' (must be -32 to 32)`);
             }
+            // Silent clamping if out of range (matches Pascal behavior)
           } else {
             // Default line size
             spec.lineSize = 3;
@@ -677,17 +659,15 @@ export class DebugFFTWindow extends DebugWindowBase {
             if (dotValue >= 0 && dotValue <= 32) {
               spec.dotSize = dotValue;
               spec.lineSize = 0; // Dot mode disables line mode
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(`WARNING: Invalid DOT value '${dotValue}' (must be 0-32)`);
             }
+            // Silent clamping if out of range (matches Pascal behavior)
           } else {
             // Default dot size
             spec.dotSize = 3;
             spec.lineSize = 0;
           }
           break;
-          
+
         case 'RANGE':
           // RANGE can have 1 or 2 parameters
           if (index < lineParts.length - 1) {
@@ -702,11 +682,8 @@ export class DebugFFTWindow extends DebugWindowBase {
               spec.firstBin = 0;
               spec.lastBin = Math.min(firstParam, (spec.samples / 2) - 1);
             }
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Missing parameter for RANGE`);
-            isValid = false;
           }
+          // Silent clamping to valid range (matches Pascal behavior)
           break;
           
         case 'DOTSIZE':
@@ -714,16 +691,8 @@ export class DebugFFTWindow extends DebugWindowBase {
             const dotValue = Number(lineParts[++index]);
             if (dotValue >= 0 && dotValue <= 32) {
               spec.dotSize = dotValue;
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(
-              //   `WARNING: Invalid DOTSIZE value '${dotValue}' (must be 0-32) in: ${unparsedCommand}. Using default: 0`
-              // );
             }
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Missing parameter for DOTSIZE in: ${unparsedCommand}`);
-            isValid = false;
+            // Silent clamping if out of range (matches Pascal behavior)
           }
           break;
           
@@ -732,16 +701,8 @@ export class DebugFFTWindow extends DebugWindowBase {
             const lineValue = Number(lineParts[++index]);
             if (lineValue >= -32 && lineValue <= 32) {
               spec.lineSize = lineValue;
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(
-              //   `WARNING: Invalid LINESIZE value '${lineValue}' (must be -32 to 32) in: ${unparsedCommand}. Using default: 3`
-              // );
             }
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Missing parameter for LINESIZE in: ${unparsedCommand}`);
-            isValid = false;
+            // Silent clamping if out of range (matches Pascal behavior)
           }
           break;
           
@@ -750,16 +711,8 @@ export class DebugFFTWindow extends DebugWindowBase {
             const textValue = Number(lineParts[++index]);
             if (textValue >= 6 && textValue <= 200) {
               spec.textSize = textValue;
-            } else {
-              // TODO: TECH-DEBT - Static method logging support needed
-              // console.warn(
-              //   `WARNING: Invalid TEXTSIZE value '${textValue}' (must be 6-200) in: ${unparsedCommand}. Using default: 10`
-              // );
             }
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Missing parameter for TEXTSIZE in: ${unparsedCommand}`);
-            isValid = false;
+            // Silent clamping if out of range (matches Pascal behavior)
           }
           break;
           
@@ -772,11 +725,8 @@ export class DebugFFTWindow extends DebugWindowBase {
               spec.window.grid = colors.grid;
             }
             index = colorIndex - 1; // Adjust for loop increment
-          } else {
-            // TODO: TECH-DEBT - Static method logging support needed
-            // console.error(`ERROR: Invalid COLOR specification in: ${unparsedCommand}`);
-            isValid = false;
           }
+          // Invalid color specs are handled by DisplaySpecParser
           break;
           
         case 'LOGSCALE':
@@ -867,9 +817,7 @@ export class DebugFFTWindow extends DebugWindowBase {
           break;
           
         default:
-          // Unknown directive - log but continue
-          // TODO: TECH-DEBT - Static method logging support needed
-          // console.warn(`WARNING: Unknown directive '${element}' in: ${unparsedCommand}`);
+          // Unknown directive - silently ignore (matches Pascal behavior)
           break;
       }
       
@@ -915,6 +863,36 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
+   * Clear display and sample buffer (called by base class CLEAR command)
+   */
+  protected clearDisplayContent(): void {
+    this.clearBuffer();
+    // Also clear the canvas if window exists
+    if (this.canvasRenderer && this.debugWindow) {
+      const jsCode = `
+        (function() {
+          const canvas = document.getElementById('${this.canvasId}');
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '${this.displaySpec.window.background}';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+        })();
+      `;
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to clear canvas: ${error}`);
+      });
+    }
+  }
+
+  /**
+   * Force display update (called by base class UPDATE command)
+   */
+  protected forceDisplayUpdate(): void {
+    this.drawFFT();
+  }
+
+  /**
    * Close the debug window
    */
   public closeDebugWindow(): void {
@@ -933,7 +911,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Update FFT window content with new data
    */
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     const unparsedCommand = lineParts.join(' ');
 
     // Window name already stripped by mainWindow routing
@@ -942,50 +920,17 @@ export class DebugFFTWindow extends DebugWindowBase {
       return;
     }
 
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Note: lineParts already has display name stripped by router
+    if (await this.handleCommonCommand(lineParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
+
+    // FFT-specific data processing
     // Process all elements
     for (let i = 0; i < lineParts.length; i++) {
       const part = lineParts[i];
-      
-      // Check for commands
-      if (part.toUpperCase() === 'CLEAR') {
-        this.clearBuffer();
-        if (this.canvasRenderer && this.debugWindow) {
-          // Clear the canvas
-          const jsCode = `
-            (function() {
-              const canvas = document.getElementById('${this.canvasId}');
-              if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '${this.displaySpec.window.background}';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-              }
-            })();
-          `;
-          this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-            this.logMessage(`Failed to clear canvas: ${error}`);
-          });
-        }
-        continue;
-      }
-      
-      if (part.toUpperCase() === 'SAVE') {
-        // Handle SAVE command with optional filename
-        let filename = 'fft_spectrum.png';
-        if (i + 1 < lineParts.length && !lineParts[i + 1].startsWith("'")) {
-          filename = lineParts[i + 1];
-          i++; // Skip filename in next iteration
-        }
-        this.saveFFTDisplay(filename);
-        continue;
-      }
-      
-      // Check for PC_KEY or PC_MOUSE commands
-      if (part === 'PC_KEY' || part === 'PC_MOUSE') {
-        // Handle input forwarding
-        const remainingParts = lineParts.slice(i);
-        this.handleInputCommand(remainingParts);
-        break; // These commands consume the rest of the line
-      }
       
       // Check for channel configuration (starts with quoted string)
       if (part.startsWith("'") || part.startsWith('"')) {
