@@ -486,13 +486,13 @@ describe('DebugScopeXyWindow', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       triggerWindowReady();
-      
+
       // Too few parameters for data point - won't complete a pair
       window.updateContent(['100']);
-      
+
       // Should not crash
       expect(window).toBeDefined();
-      
+
       // The implementation doesn't log errors for incomplete data,
       // it just waits for more data to complete the pair
       // So we won't check for error logging here
@@ -502,15 +502,97 @@ describe('DebugScopeXyWindow', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test']);
       triggerWindowReady();
-      
+
       // Simulate window destruction
       const mockWindow = mockBrowserWindowInstances[0];
       mockWindow.isDestroyed.mockReturnValue(true);
-      
+
       // Should not throw when updating destroyed window
       expect(() => {
         window.updateContent(['100', '200']);
       }).not.toThrow();
+    });
+  });
+
+  describe('Base class delegation', () => {
+    const displayName = 'test';
+
+    beforeEach(() => {
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
+      window.createDebugWindow(['SCOPE_XY', displayName]);
+      triggerWindowReady();
+    });
+
+    it('should delegate CLEAR command to base class', async () => {
+      const clearSpy = jest.spyOn(window as any, 'clearDisplayContent');
+
+      window.updateContent([displayName, 'CLEAR']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // clearDisplayContent should have been called via base class delegation
+      expect(clearSpy).toHaveBeenCalled();
+    });
+
+    it('should delegate SAVE command to base class', async () => {
+      const saveSpy = jest.spyOn(window as any, 'saveWindowToBMPFilename');
+
+      window.updateContent([displayName, 'SAVE', 'test.bmp']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // saveWindowToBMPFilename should have been called via base class delegation
+      expect(saveSpy).toHaveBeenCalledWith('test.bmp');
+    });
+
+    it('should delegate PC_KEY command to base class', async () => {
+      const keySpy = jest.spyOn(window as any, 'enableKeyboardInput');
+
+      window.updateContent([displayName, 'PC_KEY']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // enableKeyboardInput should have been called via base class delegation
+      expect(keySpy).toHaveBeenCalled();
+    });
+
+    it('should delegate PC_MOUSE command to base class', async () => {
+      const mouseSpy = jest.spyOn(window as any, 'enableMouseInput');
+
+      window.updateContent([displayName, 'PC_MOUSE']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // enableMouseInput should have been called via base class delegation
+      expect(mouseSpy).toHaveBeenCalled();
+    });
+
+    it('should delegate UPDATE command to base class', async () => {
+      const updateSpy = jest.spyOn(window as any, 'forceDisplayUpdate');
+
+      window.updateContent([displayName, 'UPDATE']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // forceDisplayUpdate should have been called via base class delegation
+      expect(updateSpy).toHaveBeenCalled();
+    });
+
+    it('should delegate CLOSE command to base class', async () => {
+      const closeSpy = jest.spyOn(window as any, 'closeDebugWindow');
+
+      window.updateContent([displayName, 'CLOSE']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // closeDebugWindow should have been called via base class delegation
+      expect(closeSpy).toHaveBeenCalled();
     });
   });
 });

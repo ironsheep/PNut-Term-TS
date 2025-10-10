@@ -190,6 +190,24 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   }
 
   /**
+   * Clear display and sample buffer (called by base class CLEAR command)
+   */
+  protected clearDisplayContent(): void {
+    this.persistenceManager.clear();
+    this.dataBuffer = [];
+    this.rateCounter = 0;
+    this.backgroundDrawn = false;
+    this.render(true); // Force clear
+  }
+
+  /**
+   * Force display update (called by base class UPDATE command)
+   */
+  protected forceDisplayUpdate(): void {
+    this.render();
+  }
+
+  /**
    * Override enableMouseInput to add SCOPE_XY-specific coordinate transformation
    */
   protected enableMouseInput(): void {
@@ -633,12 +651,20 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   }
 
   /**
-   * Update content with new data
+   * Process data and commands (synchronous wrapper for async operations)
    */
   protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  /**
+   * Process data and commands (async implementation)
+   */
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     // Window is now created in constructor, so just process the message
-    this.logMessage(`processMessageImmediate: Processing ${lineParts.length} elements: [${lineParts.join(' ')}]`);
-    this.handleData(lineParts);
+    this.logMessage(`processMessageAsync: Processing ${lineParts.length} elements: [${lineParts.join(' ')}]`);
+    await this.handleData(lineParts);
   }
 
   private parseConfiguration(lineParts: string[]): void {
@@ -881,70 +907,19 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     return modeMap[modeStr] || null;
   }
 
-  protected handleData(elements: string[]): void {
+  protected async handleData(elements: string[]): Promise<void> {
     this.logMessage(`handleData: Processing ${elements.length} elements`);
 
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Strip display name/window name (first element) before passing to base class
+    const commandParts = elements.length > 0 ? elements.slice(1) : [];
+    if (await this.handleCommonCommand(commandParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
+
+    // SCOPE_XY-specific data processing
     for (const element of elements) {
-      const upperElement = element.toUpperCase();
-
-      // Handle commands
-      if (upperElement === 'CLEAR') {
-        this.persistenceManager.clear();
-        this.dataBuffer = [];
-        this.rateCounter = 0;
-        this.backgroundDrawn = false; // Reset background flag
-        this.render(true); // Force clear on CLEAR command
-        continue;
-      }
-
-      if (upperElement === 'SAVE') {
-        // Handle SAVE command with optional WINDOW parameter
-        let saveWindow = false;
-        let filename = 'scope_xy.bmp';
-        const saveIdx = elements.indexOf(element);
-        
-        if (saveIdx + 1 < elements.length) {
-          if (elements[saveIdx + 1].toUpperCase() === 'WINDOW') {
-            saveWindow = true;
-            if (saveIdx + 2 < elements.length) {
-              filename = elements[saveIdx + 2];
-            }
-            elements.splice(saveIdx + 1, 2); // Remove WINDOW and filename
-          } else {
-            filename = elements[saveIdx + 1];
-            elements.splice(saveIdx + 1, 1); // Remove filename
-          }
-        }
-        
-        // Use inherited method from DebugWindowBase
-        if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-          if (saveWindow) {
-            this.saveWindowToBMPFilename(filename);
-          } else {
-            // For now, save the whole window (canvas-only save would need additional implementation)
-            this.saveWindowToBMPFilename(filename);
-          }
-        }
-        continue;
-      }
-
-      if (upperElement === 'CLOSE') {
-        this.closeDebugWindow();
-        return;
-      }
-
-      if (upperElement === 'PC_KEY') {
-        // Enable keyboard forwarding to P2 device
-        this.enableKeyboardInput();
-        continue;
-      }
-
-      if (upperElement === 'PC_MOUSE') {
-        // Enable mouse forwarding to P2 device
-        this.enableMouseInput();
-        continue;
-      }
-
       // Process numerical data
       const value = parseInt(element);
       if (!isNaN(value)) {
