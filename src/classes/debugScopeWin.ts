@@ -731,6 +731,21 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
+  /**
+   * Override: Clear all channel data (called by base class CLEAR command)
+   */
+  protected clearDisplayContent(): void {
+    this.clearChannelData();
+  }
+
+  /**
+   * Override: Force display update (called by base class UPDATE command)
+   * SCOPE updates automatically when new data arrives, so this is a no-op
+   */
+  protected forceDisplayUpdate(): void {
+    // SCOPE display updates automatically on data arrival
+    // No explicit refresh needed
+  }
 
   protected processMessageImmediate(lineParts: string[]): void {
     // Handle async internally
@@ -741,6 +756,12 @@ export class DebugScopeWindow extends DebugWindowBase {
     // Window name already stripped by mainWindow routing
     // Valid directives are:
     this.logMessage(`at updateContent() with lineParts=[${lineParts.join(', ')}]`);
+
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    if (await this.handleCommonCommand(lineParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
     // --- these create a new channel spec
     //   '{NAME}' {min {max {y-size {y-base {legend} {color}}}}}
     //   '{NAME}' AUTO {y-size {y-base {legend} {color}}}
@@ -924,32 +945,8 @@ export class DebugScopeWindow extends DebugWindowBase {
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[0].toUpperCase() == 'CLEAR') {
-        // clear all channels
-        this.clearChannelData();
-      } else if (lineParts[0].toUpperCase() == 'CLOSE') {
-        // close the window
-        this.closeDebugWindow();
-      } else if (lineParts[0].toUpperCase() == 'SAVE') {
-        // save the window to a file
-        if (lineParts.length >= 2) {
-          const saveFileName = this.removeStringQuotes(lineParts[0]);
-          // save the window to a file (as BMP)
-          await this.saveWindowToBMPFilename(saveFileName);
-        } else {
-          this.logMessage(`at updateContent() missing SAVE fileName in [${lineParts.join(' ')}]`);
-        }
-      } else if (lineParts[0].toUpperCase() == 'PC_KEY') {
-        // Enable keyboard input forwarding
-        this.enableKeyboardInput();
-        // PC_KEY must be last command
-        return;
-      } else if (lineParts[0].toUpperCase() == 'PC_MOUSE') {
-        // Enable mouse input forwarding
-        this.enableMouseInput();
-        // PC_MOUSE must be last command
-        return;
       } else if (lineParts[0].toUpperCase() == 'LINE') {
+        // CLEAR, CLOSE, SAVE, PC_KEY, PC_MOUSE now handled by base class
         // Update line width
         if (lineParts.length > 2) {
           const lineSize = Number(lineParts[0]);

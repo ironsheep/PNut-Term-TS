@@ -42,6 +42,8 @@ import { DebugPlotWindow } from './debugPlotWin';
 import { DebugLogicWindow } from './debugLogicWin';
 import { DebugBitmapWindow } from './debugBitmapWin';
 import { DebugMidiWindow } from './debugMidiWin';
+import { DebugFFTWindow } from './debugFftWin';
+import { DebugSpectroWindow } from './debugSpectroWin';
 import { LoggerWindow } from './loggerWin';
 import { LoggerCOGWindow } from './loggerCOGWin';
 import { DebugDebuggerWindow } from './debugDebuggerWin';
@@ -500,6 +502,44 @@ export class MainWindow {
           this.logConsoleMessage(`[TWO-TIER] ✅ SCOPEXY window '${scopeXySpec.displayName}' created successfully`);
         } else {
           this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse SCOPEXY command: ${data}`);
+          if (this.context.runEnvironment.loggingEnabled) {
+            this.logMessage(`BAD DISPLAY: Received: ${data}`);
+          }
+        }
+        break;
+      }
+
+      case this.DISPLAY_FFT: {
+        this.logConsoleMessage(`[TWO-TIER] Creating FFT window for: ${data}`);
+        const [isValid, fftSpec] = DebugFFTWindow.parseFftDeclaration(lineParts);
+        this.logConsoleMessage(`[TWO-TIER] FFT parse result: isValid=${isValid}`);
+
+        if (isValid) {
+          const fftDisplay = new DebugFFTWindow(this.context, fftSpec);
+          this.hookNotifcationsAndRememberWindow(fftSpec.displayName, fftDisplay);
+          foundDisplay = true;
+          this.logConsoleMessage(`[TWO-TIER] ✅ FFT window '${fftSpec.displayName}' created successfully`);
+        } else {
+          this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse FFT command: ${data}`);
+          if (this.context.runEnvironment.loggingEnabled) {
+            this.logMessage(`BAD DISPLAY: Received: ${data}`);
+          }
+        }
+        break;
+      }
+
+      case this.DISPLAY_SPECTRO: {
+        this.logConsoleMessage(`[TWO-TIER] Creating SPECTRO window for: ${data}`);
+        const [isValid, spectroSpec] = DebugSpectroWindow.parseSpectroDeclaration(lineParts);
+        this.logConsoleMessage(`[TWO-TIER] SPECTRO parse result: isValid=${isValid}`);
+
+        if (isValid) {
+          const spectroDisplay = new DebugSpectroWindow(this.context, spectroSpec);
+          this.hookNotifcationsAndRememberWindow(spectroSpec.displayName, spectroDisplay);
+          foundDisplay = true;
+          this.logConsoleMessage(`[TWO-TIER] ✅ SPECTRO window '${spectroSpec.displayName}' created successfully`);
+        } else {
+          this.logConsoleMessage(`[TWO-TIER] ❌ Failed to parse SPECTRO command: ${data}`);
           if (this.context.runEnvironment.loggingEnabled) {
             this.logMessage(`BAD DISPLAY: Received: ${data}`);
           }
@@ -1619,6 +1659,8 @@ export class MainWindow {
 
   private DISPLAY_SCOPE: string = 'SCOPE';
   private DISPLAY_SCOPEXY: string = 'SCOPE_XY';
+  private DISPLAY_FFT: string = 'FFT';
+  private DISPLAY_SPECTRO: string = 'SPECTRO';
   private DISPLAY_TERM: string = 'TERM';
   private DISPLAY_PLOT: string = 'PLOT';
   private DISPLAY_LOGIC: string = 'LOGIC';

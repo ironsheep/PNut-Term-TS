@@ -13,11 +13,12 @@
 10. [Bitmap Display](#bitmap-display)
 11. [MIDI Monitor](#midi-monitor)
 12. [FFT Analyzer](#fft-analyzer)
-13. [P2 Debugger](#p2-debugger)
-14. [Recording & Playback](#recording--playback)
-15. [Keyboard Shortcuts](#keyboard-shortcuts)
-16. [Troubleshooting](#troubleshooting)
-17. [Advanced Topics](#advanced-topics)
+13. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
+14. [P2 Debugger](#p2-debugger)
+15. [Recording & Playback](#recording--playback)
+16. [Keyboard Shortcuts](#keyboard-shortcuts)
+17. [Troubleshooting](#troubleshooting)
+18. [Advanced Topics](#advanced-topics)
     - [Custom Window Layouts](#custom-window-layouts)
     - [Scripting](#scripting)
     - [Serial Communication Architecture](#serial-communication-architecture)
@@ -29,7 +30,7 @@
 The P2 Debug Terminal is a comprehensive debugging environment for the Parallax Propeller 2 (P2) microcontroller. It provides real-time visualization and interactive debugging capabilities through specialized windows that interpret DEBUG commands from your P2 programs.
 
 ### Key Features
-- **10 specialized debug windows** for different data visualization needs
+- **11 specialized debug windows** for different data visualization needs
 - **Real-time data streaming** at up to 16 Mbps
 - **Interactive P2 debugger** with breakpoints and memory inspection
 - **Recording and playback** for regression testing
@@ -123,6 +124,7 @@ debug(`bitmap MyBitmap size 320 240 lut8`)            ' Bitmap display
 | **Bitmap** | Image display | Camera output, graphics |
 | **MIDI** | Music data | MIDI device monitoring |
 | **FFT** | Frequency analysis | Audio spectrum, vibration |
+| **SPECTRO** | Time-frequency analysis | Waterfall displays, signal evolution |
 | **Debugger** | Code debugging | Breakpoints, memory inspection |
 
 ## Terminal Window
@@ -1261,17 +1263,292 @@ debug(`fft MyFFT size 800 400 samples 1024 rate 44100`)
 
 ### Window Functions
 Reduce spectral leakage:
-- `RECTANGLE` - No window (maximum frequency resolution)
-- `HANNING` - General purpose
-- `HAMMING` - Similar to Hanning, better stopband
-- `BLACKMAN` - Excellent stopband, wider mainlobe
-- `FLATTOP` - Best amplitude accuracy
+- **RECTANGLE** - No window (maximum frequency resolution)
+- **HANNING** - General purpose
+- **HAMMING** - Similar to Hanning, better stopband
+- **BLACKMAN** - Excellent stopband, wider mainlobe
+- **FLATTOP** - Best amplitude accuracy
 
 ### Controls
 - **Magnitude Scale**: Linear/Logarithmic
 - **Frequency Range**: Zoom to specific bands
 - **Peak Hold**: Capture maximum values
 - **Averaging**: Smooth noisy signals
+
+## SPECTRO (Spectrogram/Waterfall Display)
+
+The SPECTRO window displays real-time spectrograms showing frequency content over time as a scrolling waterfall display. Perfect for visualizing how signals change, analyzing modulation, and identifying patterns in audio or sensor data.
+
+### What is a Spectrogram?
+
+A spectrogram combines frequency analysis (like FFT) with time visualization. Instead of showing just the current frequency content, it creates a "waterfall" where:
+- **X-axis**: Frequency bins (or time, depending on trace pattern)
+- **Y-axis**: Time progression (scrolls as new data arrives)
+- **Color**: Magnitude (brightness shows signal strength)
+
+**Perfect for:**
+- Analyzing audio signals and music
+- Visualizing sensor data over time
+- Detecting frequency changes and patterns
+- Monitoring signal quality and interference
+- Creating heat maps of data trends
+
+### Getting Started
+
+#### Creating a Basic Spectrogram
+```spin2
+debug(`SPECTRO MySpectro)  ' Creates spectrogram with default settings
+```
+
+This creates a spectrogram with:
+- 512-sample FFT (showing frequencies 0-255)
+- 256 rows of history
+- Scrolling waterfall display
+
+#### Feeding Data
+```spin2
+repeat
+  sample := read_adc()
+  debug(`MySpectro `(sample))  ' Send audio/sensor samples
+  waitms(1)
+```
+
+Each sample you send is buffered. When enough samples accumulate (default: 512), an FFT is performed and one row is added to the waterfall.
+
+### Configuration Options
+
+**Window Setup**:
+```spin2
+debug(`SPECTRO MySpectro title "Audio Analyzer" pos 100 50`)
+```
+- `TITLE 'text'` - Custom window title
+- `POS x y` - Window position on screen
+
+**FFT Configuration**:
+```spin2
+debug(`SPECTRO MySpectro samples 1024 0 127`)
+```
+- `SAMPLES n {first} {last}` - FFT size and frequency range (4-2048, power-of-2)
+  - `n`: FFT size (default: 512)
+  - `first`: First frequency bin to display (default: 0)
+  - `last`: Last frequency bin to display (default: n/2-1)
+
+**Waterfall Settings**:
+```spin2
+debug(`SPECTRO MySpectro depth 512 rate 64`)
+```
+- `DEPTH n` - Number of history rows (1-2048, default: 256)
+  - More depth = longer history visible
+- `RATE n` - Samples between FFT updates (default: samples/8)
+  - Higher rate = slower updates, smoother display
+  - Lower rate = faster updates, more detail
+
+**Magnitude Control**:
+```spin2
+debug(`SPECTRO MySpectro mag 3 range 1000`)
+```
+- `MAG n` - Magnitude scaling (0-11, default: 0)
+  - Acts as right-shift: 0=max sensitivity, 11=min sensitivity
+- `RANGE n` - Maximum value for color mapping (default: 2147483647)
+  - Magnitudes above this value saturate to white/bright
+
+**Display Options**:
+```spin2
+debug(`SPECTRO MySpectro logscale dotsize 2 trace 15`)
+```
+- `LOGSCALE` - Enable logarithmic magnitude scale (compresses dynamic range)
+- `DOTSIZE x {y}` - Pixel size (1-16, default: 1×1)
+  - Makes waterfall rows taller/wider for visibility
+- `TRACE n` - Scroll pattern (0-15, default: 15)
+  - Controls scroll direction and orientation
+- `HIDEXY` - Hide mouse coordinate display
+
+### Color Modes
+
+The SPECTRO window supports 6 color modes to visualize magnitude:
+
+**Grayscale Modes** (luminance):
+```spin2
+debug(`SPECTRO MySpectro luma8`)    ' Standard grayscale
+debug(`SPECTRO MySpectro luma8w`)   ' Grayscale with wrapping
+debug(`SPECTRO MySpectro luma8x`)   ' Extended grayscale (default)
+```
+
+**HSV Modes** (hue-saturation-value with phase coloring):
+```spin2
+debug(`SPECTRO MySpectro hsv16`)    ' HSV with phase information
+debug(`SPECTRO MySpectro hsv16w`)   ' HSV with wrapping
+debug(`SPECTRO MySpectro hsv16x`)   ' Extended HSV
+```
+
+**HSV Phase Coloring**: In HSV16 modes, color represents the phase angle of the FFT, allowing you to see both magnitude (brightness) and phase (hue) simultaneously.
+
+### Usage Examples
+
+**Basic Audio Analyzer**:
+```spin2
+' Simple audio spectrogram
+debug(`SPECTRO Audio samples 512 luma8x)
+
+repeat
+  sample := read_microphone()
+  debug(`Audio `(sample))
+  waitms(1)
+```
+
+**High-Resolution Frequency Analysis**:
+```spin2
+' Fine frequency resolution with large FFT
+debug(`SPECTRO Fine samples 2048 0 236 range 1000 luma8x green)
+debug(`Fine logscale depth 512)  ' Long history, log scale
+
+repeat
+  j += 2850 + qsin(2500, i++, 30_000)
+  k := qsin(1000, j, 50_000)
+  debug(`Fine `(k))
+```
+
+**Phase-Colored Spectrogram**:
+```spin2
+' HSV16 shows both magnitude (brightness) and phase (color)
+debug(`SPECTRO Signal samples 1024 hsv16 logscale)
+
+repeat
+  signal := signal_generator()
+  debug(`Signal `(signal))
+```
+
+**Compact Display with Scaling**:
+```spin2
+' Vertical orientation with scaled pixels
+debug(`SPECTRO Compact samples 256 trace 6 dotsize 2 mag 3)
+
+repeat
+  debug(`Compact `(sensor_reading()))
+  waitms(10)
+```
+
+### Understanding Trace Patterns
+
+Trace patterns control how the waterfall scrolls and the orientation of the display:
+
+**Patterns 0-3** (Horizontal, no scroll):
+- Display fills left-to-right, top-to-bottom
+- When full, continues from start (no scroll)
+
+**Patterns 4-7** (Vertical, no scroll):
+- Display fills top-to-bottom, left-to-right
+- Width and height are swapped
+
+**Patterns 8-11** (Horizontal with scroll):
+- New rows push old rows off the edge
+- Creates true waterfall effect
+
+**Patterns 12-15** (Vertical with scroll):
+- Same as 8-11 but rotated 90°
+- Waterfall scrolls left/right instead of up/down
+
+**Popular choices**:
+- `TRACE 15` - Vertical waterfall scrolling down (default, most common)
+- `TRACE 8` - Horizontal waterfall scrolling up
+- `TRACE 6` - Vertical static display (90° clockwise)
+
+### Common Commands
+
+**Window Management**:
+```spin2
+debug(`SPECTRO MySpectro clear)   ' Clear waterfall and reset buffer
+debug(`SPECTRO MySpectro update)  ' Force display refresh
+debug(`SPECTRO MySpectro close)   ' Close the window
+```
+
+**Save Display**:
+```spin2
+debug(`SPECTRO MySpectro save 'spectrogram.bmp')  ' Save waterfall to file
+```
+
+### Tips and Best Practices
+
+**Choosing FFT Size**:
+- **Smaller (128-256)**: Fast updates, less frequency detail
+- **Medium (512-1024)**: Good balance (most common)
+- **Large (2048)**: Maximum frequency resolution, slower updates
+
+**Setting MAG and RANGE**:
+- Start with MAG=0 and RANGE=max (default)
+- If display too bright → increase MAG (shift right)
+- If display too dim → decrease RANGE to compress scale
+- Use LOGSCALE for signals with wide dynamic range
+
+**Using LOGSCALE**:
+- Essential for audio (large amplitude variations)
+- Helps visualize weak signals alongside strong ones
+- Formula: `log2(mag+1) / log2(range+1) * range`
+
+**Display Size**:
+- DOTSIZE makes rows taller/wider for easier viewing
+- Useful on high-resolution monitors
+- Example: `DOTSIZE 2 1` makes rows 2× wider, same height
+
+**Color Mode Selection**:
+- **LUMA8X**: Best for general-purpose (default)
+- **HSV16**: Shows phase information (advanced)
+- **LUMA8/LUMA8W**: Alternative grayscale mappings
+
+### Mouse Coordinate Display
+
+Move your mouse over the spectrogram to see frequency bin and time information:
+
+**Display format**: Coordinates show bin number and sample position
+- Helps identify exact frequencies of interest
+- Use with `HIDEXY` directive to disable if not needed
+
+### Complete Example: Audio Spectrum Analyzer
+
+```spin2
+CON
+  _clkfreq = 160_000_000
+
+PUB main() | sample, i, j, k
+
+  ' Configure high-resolution audio spectrogram
+  debug(`SPECTRO AudioSpec title "Audio Analyzer" samples 1024 depth 512)
+  debug(`AudioSpec range 5000 luma8x logscale dotsize 1 2)
+
+  ' Generate test signal (two frequencies)
+  repeat
+    j += 2850 + qsin(2500, i++, 30_000)  ' Frequency modulation
+    k := qsin(1000, j, 50_000)           ' Audio signal
+    debug(`AudioSpec `(k))
+    waitms(1)
+```
+
+### Troubleshooting
+
+**Waterfall not scrolling?**:
+- Check TRACE setting (patterns 8-15 enable scroll)
+- Verify data is being sent continuously
+- Ensure RATE setting allows updates
+
+**Display too bright or too dim?**:
+- Adjust MAG value (0-11)
+- Reduce RANGE for dimmer signals
+- Try LOGSCALE for better dynamic range
+
+**Wrong orientation?**:
+- Use TRACE patterns 0-7 for horizontal
+- Use TRACE patterns 4-7 or 12-15 for vertical
+- Patterns affect width/height calculation
+
+**FFT not updating?**:
+- Need to send at least SAMPLES values before first FFT
+- RATE controls how often FFT runs (every RATE samples)
+- Check that window was created successfully
+
+**Performance issues?**:
+- Reduce FFT size (512 or 256 instead of 2048)
+- Increase RATE to update less frequently
+- Decrease DEPTH for less history
 
 ## P2 Debugger
 

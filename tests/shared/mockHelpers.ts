@@ -246,7 +246,11 @@ export function createMockBrowserWindow(overrides: any = {}) {
     once: jest.fn(),
     removeListener: jest.fn(),
     removeAllListeners: jest.fn(),
+    setMaxListeners: jest.fn(),
     executeJavaScript: (jest.fn() as any).mockResolvedValue(undefined),
+    capturePage: (jest.fn() as any).mockResolvedValue({
+      toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
+    }),
     ...overrides.webContents
   };
 
@@ -270,8 +274,12 @@ export function createMockBrowserWindow(overrides: any = {}) {
     getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
     setSize: jest.fn(),
     getSize: jest.fn().mockReturnValue([800, 600]),
+    setContentSize: jest.fn(),
+    getContentSize: jest.fn().mockReturnValue([800, 600]),
     setPosition: jest.fn(),
     getPosition: jest.fn().mockReturnValue([0, 0]),
+    setMenuBarVisibility: jest.fn(),
+    removeMenu: jest.fn(),
     on: jest.fn(),
     once: jest.fn(),
     removeListener: jest.fn(),

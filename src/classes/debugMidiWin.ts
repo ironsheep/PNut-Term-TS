@@ -28,6 +28,9 @@ import { DebugColor } from './shared/debugColor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export interface MidiDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
@@ -190,7 +193,7 @@ export class DebugMidiWindow extends DebugWindowBase {
     this._windowTitle = title;
     this.setWindowTitle(title);
   }
-  
+
   /**
    * Create and configure the MIDI window using standard BrowserWindow pattern
    */
@@ -487,11 +490,28 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
-   * Process MIDI data and commands
+   * Process MIDI data and commands (synchronous wrapper for async operations)
    */
   protected processMessageImmediate(lineParts: string[]): void {
-    let i = 0;
-    
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  /**
+   * Process MIDI data and commands (async implementation)
+   */
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Strip display name/window name (first element) before passing to base class
+    const commandParts = lineParts.length > 0 ? lineParts.slice(1) : [];
+    if (await this.handleCommonCommand(commandParts)) {
+      // Base class handled the command, we're done
+      return;
+    }
+
+    // Process MIDI-specific commands and data starting from index 1 (skip display name)
+    let i = 1;
+
     while (i < lineParts.length) {
       const part = lineParts[i];
       
@@ -555,50 +575,9 @@ export class DebugMidiWindow extends DebugWindowBase {
         i += 3;
         continue;
       }
-      
-      if (part === 'CLEAR') {
-        this.drawKeyboard(true);
-        i++;
-        continue;
-      }
-      
-      if (part === 'SAVE') {
-        let filename = 'midi.bmp';
-        let saveWindow = false;
-        
-        if (i + 1 < lineParts.length && lineParts[i + 1] === 'WINDOW') {
-          saveWindow = true;
-          if (i + 2 < lineParts.length) {
-            filename = lineParts[i + 2].replace(/['"]/g, '');
-            i += 3;
-          } else {
-            i += 2;
-          }
-        } else if (i + 1 < lineParts.length) {
-          filename = lineParts[i + 1].replace(/['"]/g, '');
-          i += 2;
-        } else {
-          i++;
-        }
-        
-        this.saveWindowToBMPFilename(filename);
-        continue;
-      }
 
-      if (part === 'PC_KEY') {
-        this.pcKeyEnabled = true;
-        this.enableKeyboardInput();
-        i++;
-        continue;
-      }
+      // CLEAR, SAVE, PC_KEY, PC_MOUSE now handled by base class
 
-      if (part === 'PC_MOUSE') {
-        this.pcMouseEnabled = true;
-        this.enableMouseInput();
-        i++;
-        continue;
-      }
-      
       // Try to parse as MIDI data byte
       const value = Spin2NumericParser.parseCount(part);
       if (value !== null) {
@@ -680,6 +659,20 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
+   * Override: Clear display content (called by base class CLEAR command)
+   */
+  protected clearDisplayContent(): void {
+    this.drawKeyboard(true);
+  }
+
+  /**
+   * Override: Force display update (called by base class UPDATE command)
+   */
+  protected forceDisplayUpdate(): void {
+    this.drawKeyboard(false);
+  }
+
+  /**
    * Clean up resources when window is closed
    */
   closeDebugWindow(): void {
@@ -687,7 +680,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       this.midiWindow.close();
       this.midiWindow = null;
     }
-    
+
     this.keyLayout = null;
   }
 

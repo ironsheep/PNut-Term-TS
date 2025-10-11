@@ -118,7 +118,8 @@ describe('DebugScopeWindow', () => {
         grid: '#808080'
       },
       isPackedData: false,
-      hideXY: false
+      hideXY: false,
+      hasExplicitPosition: false
     } as ScopeDisplaySpec;
 
     debugScopeWindow = new DebugScopeWindow(mockContext, mockDisplaySpec);

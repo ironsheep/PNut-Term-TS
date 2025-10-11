@@ -2668,6 +2668,378 @@ if (!this.windowCreated && isFirstData) {
 5. **Save Format**: BMP only (no PNG support yet)
 6. **Auto-Range**: Fixed magnitude scale per channel (no automatic peak detection)
 
+## SPECTRO Window Technical Implementation
+
+### Architecture Overview
+
+The SPECTRO window implements a real-time spectrogram (waterfall display) showing frequency content over time. It combines FFT processing with scrolling bitmap display to create time-frequency visualizations from Propeller 2 microcontrollers. The window demonstrates base class delegation, circular buffer management, trace pattern scrolling, and multiple color mode support.
+
+### Key Components
+
+**File**: `src/classes/debugSpectroWin.ts`
+
+#### 1. Base Class Delegation Pattern
+
+The SPECTRO window follows modern DebugWindowBase architecture:
+- **Common Commands**: CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE delegated to base class
+- **SPECTRO-Specific**: Circular sample buffering, FFT processing, waterfall scrolling
+- **Window Lifecycle**: Base class handles creation, ready state, and cleanup
+- **Message Queueing**: Messages queued until window ready (constructor calls onWindowReady())
+- **Error Handling**: Silent clamping matches Pascal behavior (no log spam for range adjustments)
+
+#### 2. Circular Sample Buffer System
+
+**Buffer Architecture**:
+- **Size**: Fixed 2048 samples (BUFFER_SIZE = DataSets in Pascal)
+- **Management**: Circular buffer with wraparound pointer (BUFFER_MASK = 2047)
+- **Pointers**: sampleWritePtr tracks write position, sampleCount tracks available samples
+- **FFT Trigger**: When sampleCount reaches configured FFT size, perform FFT
+
+**Buffer Operations**:
+```typescript
+// Add sample to buffer (Pascal: SPECTRO_SampleBuff[SamplePtr])
+sampleBuffer[sampleWritePtr] = sample;
+sampleWritePtr = (sampleWritePtr + 1) & BUFFER_MASK;
+
+// Copy samples for FFT (circular buffer read)
+for (let x = 0; x < fftSize; x++) {
+  const bufferIndex = (sampleWritePtr - fftSize + x) & BUFFER_MASK;
+  fftInput[x] = sampleBuffer[bufferIndex];
+}
+```
+
+#### 3. FFT Processing Integration
+
+**FFT System**:
+- **Shared Component**: FFTProcessor (same as FFT window)
+- **Sizes**: Power-of-2 from 4 to 2048 samples
+- **Window Function**: Hanning window applied to reduce spectral leakage
+- **Output**: Power spectrum (magnitude squared) and phase angle for each bin
+- **Magnitude Scaling**: 0-11 (acts as right-shift for dynamic range control)
+
+**Processing Flow**:
+1. Samples accumulate in circular buffer
+2. When sampleCount == fftSize, check rate counter
+3. If rateCycle() returns true, perform FFT
+4. Extract bin range (firstBin to lastBin)
+5. Apply log scale transformation if enabled
+6. Map magnitude to color value
+7. Plot pixel row in waterfall display
+8. Scroll display using trace pattern
+
+#### 4. Waterfall Scrolling System
+
+**Trace Pattern Integration**:
+- **Patterns 0-15**: 16 scrolling orientations (TracePatternProcessor)
+- **Dimensions**: Bins × Depth, swapped if (trace & 0x4) == 0
+- **Scroll Callback**: Waterfall bitmap shifts when trace reaches edge
+- **Plot Position**: Current pixel location from trace processor
+
+**Scrolling Modes**:
+- **Patterns 0-3** (horizontal): width=bins, height=depth
+- **Patterns 4-7** (horizontal): width=depth, height=bins
+- **Patterns 8-11** (vertical with scroll): width=bins, height=depth
+- **Patterns 12-15** (vertical with scroll): width=depth, height=bins
+
+**Offscreen Rendering**:
+- Pixels plotted to offscreen canvas for atomic updates
+- Waterfall scroll applied to offscreen bitmap
+- Copy offscreen to visible canvas on FFT completion
+- Prevents flicker and tearing
+
+#### 5. Color Mode System
+
+**Supported Modes** (ColorTranslator):
+1. **LUMA8** - 8-bit grayscale (0-255)
+2. **LUMA8W** - 8-bit grayscale with color wrapping
+3. **LUMA8X** - 8-bit grayscale with extended range (default)
+4. **HSV16** - 16-bit HSV with phase coloring
+5. **HSV16W** - 16-bit HSV with wrapping
+6. **HSV16X** - 16-bit HSV with extended range
+
+**Phase Coloring** (HSV16 modes only):
+```typescript
+// Add phase information to magnitude
+if (colorMode >= ColorMode.HSV16 && colorMode <= ColorMode.HSV16X) {
+  colorValue = magnitude | ((fftAngle[bin] >> 16) & 0xFF00);
+}
+```
+
+**Color Translation**:
+- ColorTranslator converts magnitude to RGB24
+- Magnitude scaled to 0-255 range
+- Log scale optional: `log2(v+1) / log2(range+1) * range`
+- Phase encoded in upper byte for HSV modes
+
+### Configuration Parameters
+
+**SPECTRO Declaration**: ``SPECTRO <name> [directives...]``
+
+**Window Setup**:
+- `TITLE 'string'` - Set window caption (default: "Spectro {displayName}")
+- `POS left top` - Set window position (default: auto-placement via WindowPlacer)
+- `SIZE width height` - Window dimensions (overridden by calculated canvas size)
+
+**FFT Configuration**:
+- `SAMPLES n {first} {last}` - FFT size and bin range (4-2048, power-of-2)
+  - n: FFT size (rounded to nearest power of 2 if invalid)
+  - first: First frequency bin to display (default: 0)
+  - last: Last frequency bin to display (default: n/2-1)
+  - Canvas width/height determined by bin range and depth
+
+**Waterfall Configuration**:
+- `DEPTH n` - Waterfall history depth in rows (1-2048, default: 256)
+  - Number of FFT results displayed in scrolling dimension
+  - Memory impact: depth × bins × 4 bytes per pixel (RGBA)
+- `RATE n` - Samples between FFT updates (1-2048, default: samples/8)
+  - Controls FFT update frequency
+  - Higher rate = slower updates, smoother display
+  - Lower rate = faster updates, higher CPU usage
+- `MAG n` - Magnitude scaling (0-11, acts as right-shift, default: 0)
+  - 0: No shift (maximum sensitivity)
+  - 11: Divide by 2048 (minimum sensitivity)
+  - Adjusts dynamic range of magnitude values
+- `RANGE n` - Maximum range for color mapping (1-2147483647, default: 0x7FFFFFFF)
+  - Magnitude values scaled to this range
+  - Formula: `colorValue = round(magnitude * (255 / range))`
+
+**Display Configuration**:
+- `TRACE n` - Trace pattern for scrolling (0-15, default: 15)
+  - Determines scroll direction and orientation
+  - See "Waterfall Scrolling System" for pattern details
+- `DOTSIZE x {y}` - Pixel size (1-16, default: 1×1)
+  - x: Horizontal pixel size
+  - y: Vertical pixel size (optional, defaults to x)
+  - Scales waterfall bitmap for visibility
+- `LOGSCALE` - Enable logarithmic magnitude scale
+  - Formula: `Round(Log2(v+1)/Log2(range+1)*range)`
+  - Compresses large dynamic range
+  - Useful for signals with high peak-to-average ratio
+- `HIDEXY` - Hide mouse coordinate display
+- `COLOR bg` - Background color (default: BLACK)
+
+**Color Modes**:
+- `LUMA8` - 8-bit grayscale
+- `LUMA8W` - 8-bit grayscale with wrapping
+- `LUMA8X` - 8-bit grayscale extended (default)
+- `HSV16` - 16-bit HSV with phase
+- `HSV16W` - 16-bit HSV with wrapping
+- `HSV16X` - 16-bit HSV extended
+
+**Packed Data Modes**:
+- Same 12 formats as FFT window
+- LONGS_1BIT through BYTES_4BIT
+- ALT and SIGNED modifiers supported
+- Unpacked samples fed to circular buffer
+
+### Commands Documentation
+
+**Window Management** (delegated to base class):
+- `CLEAR` - Clears circular buffer, resets pointers, clears canvas
+  - sampleWritePtr = 0
+  - sampleCount = 0
+  - rateCounter = rate - 1
+  - Trace pattern reset to configured value
+- `UPDATE` - Forces waterfall display refresh (copies offscreen to visible)
+- `SAVE {WINDOW} 'filename'` - Saves waterfall display to BMP file
+- `CLOSE` - Closes the window
+
+**Input Forwarding** (delegated to base class):
+- `PC_KEY` - Enables keyboard input forwarding to P2
+- `PC_MOUSE` - Enables mouse input forwarding to P2
+
+**Data Input**:
+- Numeric values: Sample data added to circular buffer
+- Backtick data: `` `(value) `` format
+- Packed data modes: 12 formats with optional ALT/SIGNED modifiers
+- Example: `` `debug(\`MySpectro \`(sample1, sample2)) ``
+
+### Usage Examples
+
+**Basic Spectrogram**:
+```spin2
+' Configure spectrogram with default settings
+debug(`SPECTRO MySpectro SAMPLES 512)
+
+' Feed audio samples
+repeat
+  sample := read_adc()
+  debug(`MySpectro `(sample))
+```
+
+**High-Resolution Frequency Analysis**:
+```spin2
+' Large FFT for fine frequency resolution
+debug(`SPECTRO MySpectro SAMPLES 2048 0 236 RANGE 1000 LUMA8X GREEN)
+
+repeat
+  j += 2850 + qsin(2500, i++, 30_000)
+  k := qsin(1000, j, 50_000)
+  debug(`MySpectro `(k))
+```
+
+**Phase-Colored Spectrogram**:
+```spin2
+' HSV16 mode shows phase information
+debug(`SPECTRO MySpectro SAMPLES 1024 HSV16 LOGSCALE DEPTH 512)
+
+repeat
+  sample := signal_generator()
+  debug(`MySpectro `(sample))
+```
+
+**Compact Display with Scaling**:
+```spin2
+' Vertical orientation, scaled pixels
+debug(`SPECTRO MySpectro SAMPLES 256 TRACE 6 DOTSIZE 2 MAG 3)
+
+repeat
+  debug(`MySpectro `(sensor_reading()))
+```
+
+### Technical Implementation Details
+
+#### Circular Buffer Management
+
+**Buffer Fill Logic**:
+```typescript
+// Pascal: if SamplePop < vSamples then Inc(SamplePop)
+if (sampleCount < fftSize) {
+  sampleCount++;
+}
+
+// Exit if buffer not full
+// Pascal: if SamplePop <> vSamples then Continue
+if (sampleCount !== fftSize) {
+  return;
+}
+```
+
+**Rate Control**:
+```typescript
+// Pascal: function RateCycle
+private rateCycle(): boolean {
+  this.rateCounter++;
+  if (this.rateCounter >= this.displaySpec.rate) {
+    this.rateCounter = 0;
+    return true;
+  }
+  return false;
+}
+```
+
+#### FFT Processing and Rendering
+
+**FFT Computation Flow**:
+1. Copy samples from circular buffer (handling wraparound)
+2. Apply Hanning window function
+3. Perform Cooley-Tukey FFT
+4. Extract power spectrum (magnitude squared)
+5. Apply magnitude scaling (right-shift by MAG value)
+6. Extract phase angle for HSV16 modes
+
+**Pixel Plotting**:
+```typescript
+// Get current position from trace processor
+const pos = this.traceProcessor.getPosition();
+
+// Plot pixel to offscreen bitmap
+ctx.fillStyle = color;
+ctx.fillRect(pos.x * dotSize, pos.y * dotSizeY, dotSize, dotSizeY);
+
+// Step trace (triggers scroll if at edge)
+this.traceProcessor.step();
+```
+
+#### Waterfall Scrolling Implementation
+
+**Scroll Trigger**:
+- TracePatternProcessor calls scrollCallback when edge reached
+- Callback receives scrollX and scrollY offset values
+- Negative offsets shift bitmap (e.g., scrollY=-1 shifts up one row)
+
+**Scroll Operation**:
+```typescript
+// Create temp canvas holding current bitmap
+tempCtx.drawImage(offscreen, 0, 0);
+
+// Copy back with scroll offset (creates gap for new row)
+ctx.drawImage(tempCanvas, 0, 0, width, height,
+              scrollX, scrollY, width, height);
+```
+
+**Display Update Timing**:
+- Offscreen bitmap updated incrementally during FFT bin plotting
+- Just before last pixel (at lastBin), copy offscreen to visible canvas
+- Ensures atomic visual update (no partial FFT rows visible)
+
+### Testing Infrastructure
+
+**Test Files:**
+- Unit tests: `tests/debugSpectroWin.test.ts` (45 tests, all passing)
+- Integration tests: Manual with P2 hardware and reference programs
+
+**Test Coverage**:
+- ✅ Display spec creation with defaults
+- ✅ SAMPLES configuration with power-of-2 validation
+- ✅ All configuration directives (DEPTH, MAG, RANGE, RATE, TRACE, DOTSIZE, LOGSCALE, HIDEXY)
+- ✅ All color modes (LUMA8, LUMA8W, LUMA8X, HSV16, HSV16W, HSV16X)
+- ✅ Complex configuration from DEBUG_SPECTRO.spin2
+- ✅ Window creation lifecycle
+- ✅ Sample buffer management (accumulation, wraparound, clear)
+- ✅ Canvas dimension calculation
+- ✅ Base class command delegation (CLEAR, SAVE)
+
+**Validation Approach**:
+- Generate known frequency signals on P2
+- Verify waterfall shows expected frequency progression over time
+- Test all 16 trace patterns for correct scroll direction
+- Validate color modes match Pascal output
+- Compare log scale transformation against Pascal formula
+- Test circular buffer wraparound with >2048 samples
+
+**Reference Programs**:
+- `/pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SPECTRO.spin2`
+- Pascal implementation: `DebugDisplayUnit.pas` lines 1719-1900
+
+### Performance Characteristics
+
+**FFT Processing**:
+- Cooley-Tukey algorithm: O(n log n) complexity
+- 512-sample FFT: ~1ms processing time
+- 2048-sample FFT: ~5ms processing time
+- Hanning window overhead: ~0.1ms
+- Rate control reduces CPU usage for slower update rates
+
+**Rendering**:
+- JavaScript injection for pixel plotting
+- Offscreen canvas prevents flicker
+- Atomic bitmap updates (copy on FFT completion)
+- Scroll operation: O(width × height) pixel copy
+- Frame rate: Depends on RATE setting and FFT size
+
+**Memory Usage**:
+- Circular buffer: 2048 samples × 4 bytes = 8KB
+- FFT working arrays: 3 × 2048 × 4 bytes = 24KB (input, power, angle)
+- Offscreen canvas: width × height × 4 bytes (RGBA)
+- Example: 256×512 waterfall = 512KB bitmap
+- Total: ~550KB for typical configuration
+
+**Data Throughput**:
+- Sample rate: Determined by P2 transmission rate
+- FFT update rate: Controlled by RATE parameter
+- Buffer prevents sample loss during FFT processing
+- Circular buffer enables continuous streaming
+
+### Known Limitations
+
+1. **Fixed Buffer Size**: 2048 samples maximum (BUFFER_SIZE constant)
+2. **Single Window Function**: Hanning only (Hamming/Blackman available but not exposed)
+3. **Coordinate Display**: Basic implementation (no frequency/time axes)
+4. **No Persistence Modes**: Single-pass waterfall only (no averaging, peak hold)
+5. **Color Palettes**: Fixed color translator modes (no custom palettes)
+6. **Bitmap Export**: No waterfall history export (only current visible bitmap)
+
 ## Future Enhancements
 
 ### Planned

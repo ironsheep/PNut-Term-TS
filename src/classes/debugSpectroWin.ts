@@ -1,0 +1,940 @@
+/** @format */
+
+'use strict';
+
+import { BrowserWindow } from 'electron';
+
+// src/classes/debugSpectroWin.ts
+
+import { Context } from '../utils/context';
+import { DebugColor } from './shared/debugColor';
+import { PackedDataProcessor } from './shared/packedDataProcessor';
+import { CanvasRenderer } from './shared/canvasRenderer';
+import { DisplaySpecParser } from './shared/displaySpecParser';
+import { ColorTranslator, ColorMode } from './shared/colorTranslator';
+import { FFTProcessor } from './shared/fftProcessor';
+import { WindowFunctions } from './shared/windowFunctions';
+import { TracePatternProcessor } from './shared/tracePatternProcessor';
+import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
+
+import {
+  DebugWindowBase,
+  ePackedDataMode,
+  ePackedDataWidth,
+  PackedDataMode,
+  Position,
+  Size,
+  WindowColor
+} from './debugWindowBase';
+
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = false;
+
+/**
+ * SPECTRO Display Specification Interface
+ * Defines the configuration for the SPECTRO window display
+ */
+export interface SpectroDisplaySpec {
+  displayName: string;
+  windowTitle: string;
+  title: string;
+  position: Position;
+  hasExplicitPosition: boolean;
+  size: Size;
+  nbrSamples: number;     // Required by BaseDisplaySpec (same as samples)
+  samples: number;        // FFT size (4-2048, power of 2)
+  firstBin: number;       // First frequency bin to display
+  lastBin: number;        // Last frequency bin to display
+  depth: number;          // Waterfall history depth (vWidth in Pascal)
+  magnitude: number;      // FFT magnitude scaling (0-11, shift amount)
+  range: number;          // Maximum range for color scaling
+  rate: number;           // Update rate (samples between FFT updates)
+  tracePattern: number;   // Trace pattern (0-15)
+  dotSize: number;        // Dot size for pixels
+  dotSizeY: number;       // Y dot size (can differ from X)
+  colorMode: ColorMode;   // Color mode for magnitude visualization
+  logScale: boolean;      // Enable log scale for magnitude
+  hideXY: boolean;        // Hide coordinate display
+  window: WindowColor;    // Required by BaseDisplaySpec
+  packedMode?: PackedDataMode;  // Optional packed data configuration
+}
+
+/**
+ * Debug SPECTRO Window Implementation
+ *
+ * Displays real-time spectrogram (waterfall) showing frequency content over time.
+ * Uses FFT for frequency analysis and scrolling bitmap display.
+ *
+ * === DECLARATION SYNTAX ===
+ * `SPECTRO {display_name} {directives...}`
+ *
+ * === CONFIGURATION DIRECTIVES ===
+ * - `SAMPLES n [first] [last]` - FFT size (4-2048, power of 2) and bin range
+ * - `DEPTH n` - Waterfall depth in rows (1-2048, default: calculated from size)
+ * - `MAG n` - Magnitude scaling (0-11, acts as right-shift, default: 0)
+ * - `RANGE n` - Maximum range for color mapping (1-2147483647, default: 2147483647)
+ * - `RATE n` - Update rate in samples (default: samples/8)
+ * - `TRACE n` - Trace pattern for scrolling (0-15, default: 15)
+ * - `DOTSIZE x [y]` - Pixel size (1-16, default: 1x1)
+ * - `LOGSCALE` - Enable logarithmic scale for magnitude
+ * - `HIDEXY` - Hide coordinate display
+ * - Color modes: `LUMA8`, `LUMA8W`, `LUMA8X`, `HSV16`, `HSV16W`, `HSV16X`
+ * - Standard directives: TITLE, POS, SIZE
+ * - Packing modes: LONGS_1BIT..BYTES_4BIT with optional SIGNED/ALT
+ *
+ * === DATA FEEDING SYNTAX ===
+ * `{display_name} {samples | commands}`
+ *
+ * Commands:
+ * - `CLEAR` - Clear display and reset buffer
+ * - `SAVE [WINDOW] filename` - Save screenshot
+ * - `PC_KEY` - Enable keyboard input forwarding
+ * - `PC_MOUSE` - Enable mouse input forwarding
+ *
+ * === EXAMPLE USAGE ===
+ * ```spin2
+ * ' From DEBUG_SPECTRO.spin2
+ * debug(`SPECTRO MySpectro SAMPLES 2048 0 236 RANGE 1000 LUMA8X GREEN)
+ * repeat
+ *   j += 2850 + qsin(2500, i++, 30_000)
+ *   k := qsin(1000, j, 50_000)
+ *   debug(`MySpectro `(k))
+ * ```
+ *
+ * === TECHNICAL DETAILS ===
+ * - Circular sample buffer stores up to 2048 samples
+ * - FFT performed when buffer fills to configured sample count
+ * - Each FFT result becomes one row in waterfall display
+ * - Scrolling controlled by trace pattern (patterns 8-15 enable scroll)
+ * - Color intensity mapped from magnitude using selected color mode
+ * - Log scale: Round(Log2(v+1)/Log2(range+1)*range)
+ * - Phase coloring available with HSV16 modes
+ *
+ * === PASCAL REFERENCE ===
+ * Based on Pascal implementation in DebugDisplayUnit.pas:
+ * - Configuration: `SPECTRO_Configure` procedure (line 1719)
+ * - Update: `SPECTRO_Update` procedure (line 1792)
+ * - Drawing: `SPECTRO_Draw` procedure (line 1836)
+ *
+ * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SPECTRO.spin2
+ * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
+ */
+export class DebugSpectroWindow extends DebugWindowBase {
+  private displaySpec: SpectroDisplaySpec;
+  private fftProcessor: FFTProcessor;
+  private windowFunctions: WindowFunctions;
+  private canvasRenderer: CanvasRenderer | undefined;
+  private colorTranslator: ColorTranslator;
+  private traceProcessor: TracePatternProcessor;
+
+  // Sample buffer management (circular buffer)
+  private readonly BUFFER_SIZE = 2048;  // SPECTRO_Samples = DataSets
+  private readonly BUFFER_MASK = this.BUFFER_SIZE - 1;  // SPECTRO_PtrMask
+  private sampleBuffer: Int32Array;     // SPECTRO_SampleBuff
+  private sampleWritePtr = 0;           // SamplePtr in Pascal
+  private sampleCount = 0;              // SamplePop in Pascal
+
+  // Rate control
+  private rateCounter = 0;              // vRateCount in Pascal
+
+  // FFT properties
+  private fftExp = 0;                   // FFTexp
+  private fftSize = 0;                  // vSamples
+
+  // FFT working arrays
+  private fftInput: Int32Array;         // FFTsamp[x]
+  private fftPower: Int32Array;         // FFTpower[x]
+  private fftAngle: Int32Array;         // FFTangle[x]
+
+  // Canvas management
+  private canvasId: string = '';
+  private bitmapCanvasId: string = '';
+  private canvasWidth: number = 0;
+  private canvasHeight: number = 0;
+  private windowCreated: boolean = false;
+
+  constructor(context: Context, displaySpec: SpectroDisplaySpec, windowId: string = `spectro-${Date.now()}`) {
+    super(context, windowId, 'spectro');
+    this.windowLogPrefix = 'spectroW';
+
+    // Initialize FFT processor and window functions
+    this.fftProcessor = new FFTProcessor();
+    this.windowFunctions = new WindowFunctions();
+    this.colorTranslator = new ColorTranslator();
+    this.traceProcessor = new TracePatternProcessor();
+
+    // Initialize circular sample buffer
+    this.sampleBuffer = new Int32Array(this.BUFFER_SIZE);
+
+    // Initialize FFT working arrays (FFT output is half the input size)
+    this.fftInput = new Int32Array(this.BUFFER_SIZE);
+    this.fftPower = new Int32Array(this.BUFFER_SIZE / 2);
+    this.fftAngle = new Int32Array(this.BUFFER_SIZE / 2);
+
+    // Store the display spec
+    this.displaySpec = displaySpec;
+
+    // Set up color translator
+    this.colorTranslator.setColorMode(this.displaySpec.colorMode);
+
+    // Prepare FFT lookup tables
+    this.fftSize = this.displaySpec.samples;
+    this.fftExp = Math.log2(this.fftSize);
+    this.fftProcessor.prepareFFT(this.fftSize);
+
+    // Calculate window dimensions based on trace pattern and bins
+    this.calculateSpectroWindowDimensions();
+
+    // Set up trace processor for waterfall scrolling
+    this.traceProcessor.setPattern(this.displaySpec.tracePattern);
+    this.traceProcessor.setBitmapSize(this.canvasWidth, this.canvasHeight);
+
+    // Set scroll callback for trace processor
+    this.traceProcessor.setScrollCallback((scrollX: number, scrollY: number) => {
+      this.scrollWaterfall(scrollX, scrollY);
+    });
+
+    // Initialize rate counter
+    this.rateCounter = this.displaySpec.rate - 1;
+
+    // Mark window as ready to process messages
+    this.onWindowReady();
+  }
+
+  /**
+   * Calculate window dimensions based on configuration
+   * Pascal: vHeight := FFTlast - FFTfirst + 1; if vTrace and $4 = 0 then swap(vWidth, vHeight)
+   */
+  private calculateSpectroWindowDimensions(): void {
+    // Height is number of frequency bins to display
+    let height = this.displaySpec.lastBin - this.displaySpec.firstBin + 1;
+    let width = this.displaySpec.depth;
+
+    // Trace patterns 0-3 (horizontal) swap dimensions
+    // Pascal: if vTrace and $4 = 0 then swap width and height
+    if ((this.displaySpec.tracePattern & 0x4) === 0) {
+      const temp = width;
+      width = height;
+      height = temp;
+    }
+
+    this.canvasWidth = width * this.displaySpec.dotSize;
+    this.canvasHeight = height * this.displaySpec.dotSizeY;
+  }
+
+  /**
+   * Parse SPECTRO window configuration from debug command
+   */
+  public static createDisplaySpec(displayName: string, lineParts: string[]): SpectroDisplaySpec {
+    const FFT_DEFAULT = 512;
+    const FFT_MAX = 2048;
+
+    // Initialize with defaults matching Pascal SPECTRO_Configure
+    const spec: SpectroDisplaySpec = {
+      displayName: displayName,
+      windowTitle: `Spectro ${displayName}`,
+      title: '',
+      position: { x: 0, y: 0 },
+      hasExplicitPosition: false,
+      size: { width: 400, height: 300 },
+      nbrSamples: FFT_DEFAULT,  // Required by BaseDisplaySpec
+      samples: FFT_DEFAULT,
+      firstBin: 0,
+      lastBin: FFT_DEFAULT / 2 - 1,  // Will be 255 for default 512
+      depth: 256,  // Default vWidth
+      magnitude: 0,  // FFTmag
+      range: 0x7FFFFFFF,  // vRange
+      rate: 0,  // Will be set to samples/8 if 0
+      tracePattern: 0xF,  // Default: scrolling mode 7 (vertical scroll)
+      dotSize: 1,
+      dotSizeY: 1,
+      colorMode: ColorMode.LUMA8X,  // key_luma8x
+      logScale: false,
+      hideXY: false,
+      window: { background: 'black', grid: 'gray' }  // Required by BaseDisplaySpec
+    };
+
+    // Parse configuration directives
+    for (let index = 2; index < lineParts.length; index++) {
+      const element = lineParts[index].toUpperCase();
+
+      // Handle SAMPLES with optional first and last bins
+      if (element === 'SAMPLES') {
+        if (index < lineParts.length - 1) {
+          const samplesValue = Number(lineParts[++index]);
+
+          // Round to nearest power of 2 between 4 and 2048
+          // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax)))
+          const clamped = Math.max(4, Math.min(FFT_MAX, samplesValue));
+          const fftExp = Math.round(Math.log2(clamped));
+          spec.samples = Math.pow(2, fftExp);
+
+          // Default first and last bins
+          spec.firstBin = 0;
+          spec.lastBin = spec.samples / 2 - 1;
+
+          // Optional first bin parameter
+          if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+            const first = Number(lineParts[++index]);
+            if (first >= 0 && first < spec.samples / 2 - 2) {
+              spec.firstBin = first;
+
+              // Optional last bin parameter
+              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+                const last = Number(lineParts[++index]);
+                if (last > spec.firstBin && last <= spec.samples / 2 - 1) {
+                  spec.lastBin = last;
+                }
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      // Try to parse common keywords (TITLE, POS, SIZE, etc.)
+      const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, spec);
+      if (parsed) {
+        index = index + consumed - 1;
+        continue;
+      }
+
+      // Parse SPECTRO-specific keywords
+      switch (element) {
+        case 'DEPTH':
+          if (index < lineParts.length - 1) {
+            const depthValue = Number(lineParts[++index]);
+            if (depthValue >= 1 && depthValue <= FFT_MAX) {
+              spec.depth = depthValue;
+            }
+          }
+          break;
+
+        case 'MAG':
+          if (index < lineParts.length - 1) {
+            const magValue = Number(lineParts[++index]);
+            if (magValue >= 0 && magValue <= 11) {
+              spec.magnitude = magValue;
+            }
+          }
+          break;
+
+        case 'RANGE':
+          if (index < lineParts.length - 1) {
+            const rangeValue = Number(lineParts[++index]);
+            if (rangeValue >= 1 && rangeValue <= 0x7FFFFFFF) {
+              spec.range = rangeValue;
+            }
+          }
+          break;
+
+        case 'RATE':
+          if (index < lineParts.length - 1) {
+            const rateValue = Number(lineParts[++index]);
+            if (rateValue >= 1 && rateValue <= FFT_MAX) {
+              spec.rate = rateValue;
+            }
+          }
+          break;
+
+        case 'TRACE':
+          if (index < lineParts.length - 1) {
+            const traceValue = Number(lineParts[++index]);
+            spec.tracePattern = traceValue & 0xF;  // 0-15
+          }
+          break;
+
+        case 'DOTSIZE':
+          if (index < lineParts.length - 1) {
+            const dotX = Number(lineParts[++index]);
+            if (dotX >= 1 && dotX <= 16) {
+              spec.dotSize = dotX;
+              spec.dotSizeY = dotX;
+
+              // Optional second parameter for Y
+              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+                const dotY = Number(lineParts[++index]);
+                if (dotY >= 1 && dotY <= 16) {
+                  spec.dotSizeY = dotY;
+                }
+              }
+            }
+          }
+          break;
+
+        case 'LOGSCALE':
+          spec.logScale = true;
+          break;
+
+        case 'HIDEXY':
+          spec.hideXY = true;
+          break;
+
+        // Color modes
+        case 'LUMA8':
+          spec.colorMode = ColorMode.LUMA8;
+          break;
+        case 'LUMA8W':
+          spec.colorMode = ColorMode.LUMA8W;
+          break;
+        case 'LUMA8X':
+          spec.colorMode = ColorMode.LUMA8X;
+          break;
+        case 'HSV16':
+          spec.colorMode = ColorMode.HSV16;
+          break;
+        case 'HSV16W':
+          spec.colorMode = ColorMode.HSV16W;
+          break;
+        case 'HSV16X':
+          spec.colorMode = ColorMode.HSV16X;
+          break;
+
+        // Packed data modes
+        default:
+          const [isPackedMode, packedMode] = PackedDataProcessor.validatePackedMode(element);
+          if (isPackedMode) {
+            spec.packedMode = packedMode;
+          }
+          break;
+      }
+    }
+
+    // Apply defaults
+    // Pascal: if vRate = 0 then vRate := vSamples div 8
+    if (spec.rate === 0) {
+      spec.rate = Math.floor(spec.samples / 8);
+    }
+
+    return spec;
+  }
+
+  /**
+   * Parse SPECTRO declaration (wrapper for createDisplaySpec to match window creation pattern)
+   * Returns [isValid, spec] tuple matching other debug windows
+   */
+  public static parseSpectroDeclaration(lineParts: string[]): [boolean, SpectroDisplaySpec] {
+    // Extract display name from lineParts[1]
+    if (lineParts.length < 2) {
+      const emptySpec = {} as SpectroDisplaySpec;
+      return [false, emptySpec];
+    }
+
+    const displayName = lineParts[1];
+    const spec = DebugSpectroWindow.createDisplaySpec(displayName, lineParts);
+    return [true, spec];
+  }
+
+  /**
+   * Clear display and sample buffer (called by base class CLEAR command)
+   */
+  protected clearDisplayContent(): void {
+    this.clearBuffer();
+    this.clearCanvas();
+  }
+
+  /**
+   * Force display update (called by base class UPDATE command)
+   */
+  protected forceDisplayUpdate(): void {
+    // SPECTRO doesn't have explicit UPDATE in Pascal
+    // Just trigger a redraw if we have data
+    if (this.windowCreated) {
+      this.updateWaterfallDisplay();
+    }
+  }
+
+  /**
+   * Close the debug window
+   */
+  public closeDebugWindow(): void {
+    this.logMessage(`Closing SPECTRO window`);
+    this.debugWindow = null;
+  }
+
+  /**
+   * Get the canvas ID for this window
+   */
+  protected getCanvasId(): string {
+    return this.bitmapCanvasId;
+  }
+
+  /**
+   * Update SPECTRO window content with new data
+   */
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
+    if (lineParts.length < 1) {
+      return;
+    }
+
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Strip display name/window name (first element) before passing to base class
+    const commandParts = lineParts.length > 0 ? lineParts.slice(1) : [];
+    if (await this.handleCommonCommand(commandParts)) {
+      return;
+    }
+
+    // Process sample data (skip index 0 which is the display name)
+    for (let i = 1; i < lineParts.length; i++) {
+      const part = lineParts[i];
+
+      // Check for string (not allowed in SPECTRO)
+      // Pascal: if NextStr then Break
+      if (part.startsWith("'") || part.startsWith('"')) {
+        this.logMessage(`ERROR: String data not allowed in SPECTRO window`);
+        break;
+      }
+
+      // Check for backtick-enclosed data
+      if (part.startsWith('`')) {
+        const dataMatch = part.match(/^`\(([^)]+)\)`?$/);
+        if (dataMatch) {
+          const dataExpr = dataMatch[1];
+          const value = Number(dataExpr);
+          if (!isNaN(value)) {
+            // Create window on first data if not created yet
+            if (!this.windowCreated) {
+              this.initializeCanvas();
+              this.createDebugWindow();
+              this.windowCreated = true;
+            }
+
+            this.addSample(value);
+          }
+        }
+        continue;
+      }
+
+      // Handle packed data if configured
+      if (this.displaySpec.packedMode) {
+        const numValue = Number(part);
+        if (!isNaN(numValue)) {
+          // Unpack samples
+          const samples = PackedDataProcessor.unpackSamples(numValue, this.displaySpec.packedMode);
+
+          // Add each unpacked sample
+          for (const sample of samples) {
+            if (!this.windowCreated) {
+              this.initializeCanvas();
+              this.createDebugWindow();
+              this.windowCreated = true;
+            }
+            this.addSample(sample);
+          }
+        }
+      } else {
+        // Try to parse as raw numeric value
+        const numValue = Number(part);
+        if (!isNaN(numValue)) {
+          if (!this.windowCreated) {
+            this.initializeCanvas();
+            this.createDebugWindow();
+            this.windowCreated = true;
+          }
+          this.addSample(numValue);
+        }
+      }
+    }
+  }
+
+  /**
+   * Add a sample to the circular buffer
+   * Pascal: SPECTRO_SampleBuff[SamplePtr] := UnPack(v)
+   */
+  private addSample(sample: number): void {
+    // Enter sample into buffer
+    this.sampleBuffer[this.sampleWritePtr] = sample;
+
+    // Advance write pointer with wraparound
+    // Pascal: SamplePtr := (SamplePtr + 1) and SPECTRO_PtrMask
+    this.sampleWritePtr = (this.sampleWritePtr + 1) & this.BUFFER_MASK;
+
+    // Increment sample count
+    // Pascal: if SamplePop < vSamples then Inc(SamplePop)
+    if (this.sampleCount < this.fftSize) {
+      this.sampleCount++;
+    }
+
+    // Exit if sample buffer not full
+    // Pascal: if SamplePop <> vSamples then Continue
+    if (this.sampleCount !== this.fftSize) {
+      return;
+    }
+
+    // Check if we should perform FFT
+    // Pascal: if RateCycle then SPECTRO_Draw
+    if (this.rateCycle()) {
+      this.performFFTAndDraw();
+    }
+  }
+
+  /**
+   * Check if rate counter has cycled
+   * Pascal: function RateCycle
+   */
+  private rateCycle(): boolean {
+    // Increment rate counter
+    this.rateCounter++;
+
+    // Check if we've reached the rate threshold
+    if (this.rateCounter >= this.displaySpec.rate) {
+      this.rateCounter = 0;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Perform FFT and draw results to waterfall
+   * Pascal: SPECTRO_Draw procedure
+   */
+  private performFFTAndDraw(): void {
+    // Copy samples from circular buffer to FFT input
+    // Pascal: for x := 0 to vSamples - 1 do FFTsamp[x] := SPECTRO_SampleBuff[(SamplePtr - vSamples + x) and SPECTRO_PtrMask]
+    for (let x = 0; x < this.fftSize; x++) {
+      const bufferIndex = (this.sampleWritePtr - this.fftSize + x) & this.BUFFER_MASK;
+      this.fftInput[x] = this.sampleBuffer[bufferIndex];
+    }
+
+    // Perform FFT - pass only the relevant portion of the input array
+    // Pascal: PerformFFT
+    const fftInputSlice = this.fftInput.slice(0, this.fftSize);
+    const result = this.fftProcessor.performFFT(fftInputSlice, this.displaySpec.magnitude);
+    this.fftPower = result.power;
+    this.fftAngle = result.angle;
+
+    // Calculate scaling factor
+    // Pascal: fScale := 255 / vRange
+    const fScale = 255 / this.displaySpec.range;
+
+    // Plot FFT bins as pixels
+    // Pascal: for x := FFTfirst to FFTlast do
+    for (let x = this.displaySpec.firstBin; x <= this.displaySpec.lastBin; x++) {
+      let v = this.fftPower[x];
+
+      // Apply log scale if enabled
+      // Pascal: if vLogScale then v := Round(Log2(Int64(v) + 1) / Log2(Int64(vRange) + 1) * vRange)
+      if (this.displaySpec.logScale) {
+        v = Math.round(
+          Math.log2(v + 1) / Math.log2(this.displaySpec.range + 1) * this.displaySpec.range
+        );
+      }
+
+      // Scale to 0-255
+      // Pascal: p := Round(v * fScale)
+      let p = Math.round(v * fScale);
+      if (p > 0xFF) p = 0xFF;
+
+      // Add phase for HSV16 modes
+      // Pascal: if vColorMode in [key_hsv16..key_hsv16x] then p := p or FFTangle[x] shr 16 and $FF00
+      if (this.displaySpec.colorMode >= ColorMode.HSV16 &&
+          this.displaySpec.colorMode <= ColorMode.HSV16X) {
+        p = p | ((this.fftAngle[x] >> 16) & 0xFF00);
+      }
+
+      // Plot pixel using color translator
+      this.plotPixel(p);
+
+      // Capture bitmap just before last pixel triggers scroll
+      // Pascal: if x = FFTlast then BitmapToCanvas(0)
+      if (x === this.displaySpec.lastBin) {
+        this.updateWaterfallDisplay();
+      }
+
+      // Step trace to next position (triggers scroll if at edge)
+      // Pascal: StepTrace
+      this.traceProcessor.step();
+    }
+  }
+
+  /**
+   * Plot a pixel at the current trace position
+   * Pascal: PlotPixel(p)
+   */
+  private plotPixel(colorValue: number): void {
+    if (!this.debugWindow) return;
+
+    // Translate color value using color translator
+    const rgb24 = this.colorTranslator.translateColor(colorValue);
+    const color = `#${rgb24.toString(16).padStart(6, '0')}`;
+
+    // Get current pixel position from trace processor
+    const pos = this.traceProcessor.getPosition();
+
+    // Plot pixel to offscreen bitmap
+    const plotCode = `
+      (function() {
+        const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
+        const offscreen = window[offscreenKey];
+        if (offscreen) {
+          const ctx = offscreen.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '${color}';
+            ctx.fillRect(${pos.x * this.displaySpec.dotSize}, ${pos.y * this.displaySpec.dotSizeY},
+                        ${this.displaySpec.dotSize}, ${this.displaySpec.dotSizeY});
+          }
+        }
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(plotCode).catch((error) => {
+      this.logMessage(`Failed to plot pixel: ${error}`);
+    });
+  }
+
+  /**
+   * Scroll the waterfall display
+   * Called by trace processor when scrolling is needed
+   */
+  private scrollWaterfall(scrollX: number, scrollY: number): void {
+    if (!this.debugWindow) return;
+
+    const scrollCode = `
+      (function() {
+        const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
+        const offscreen = window[offscreenKey];
+        if (!offscreen) return;
+
+        const ctx = offscreen.getContext('2d');
+        if (!ctx) return;
+
+        // Create temp canvas to hold current bitmap
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = offscreen.width;
+        tempCanvas.height = offscreen.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+
+        // Copy current bitmap to temp
+        tempCtx.drawImage(offscreen, 0, 0);
+
+        // Copy back with scroll offset
+        ctx.drawImage(tempCanvas, 0, 0, offscreen.width, offscreen.height,
+                     ${scrollX}, ${scrollY}, offscreen.width, offscreen.height);
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(scrollCode).catch((error) => {
+      this.logMessage(`Failed to scroll waterfall: ${error}`);
+    });
+  }
+
+  /**
+   * Update the waterfall display (copy offscreen to visible canvas)
+   * Pascal: BitmapToCanvas(0)
+   */
+  private updateWaterfallDisplay(): void {
+    if (!this.debugWindow) return;
+
+    const updateCode = `
+      (function() {
+        const canvas = document.getElementById('${this.bitmapCanvasId}');
+        if (!canvas) return;
+
+        const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
+        const offscreen = window[offscreenKey];
+        if (!offscreen) return;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Disable image smoothing for pixel-perfect display
+          ctx.imageSmoothingEnabled = false;
+          ctx.webkitImageSmoothingEnabled = false;
+          ctx.msImageSmoothingEnabled = false;
+
+          // Draw offscreen bitmap to display canvas
+          ctx.drawImage(offscreen, 0, 0);
+        }
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(updateCode).catch((error) => {
+      this.logMessage(`Failed to update display: ${error}`);
+    });
+  }
+
+  /**
+   * Clear the sample buffer and reset pointers
+   */
+  private clearBuffer(): void {
+    this.sampleBuffer.fill(0);
+    this.sampleWritePtr = 0;
+    this.sampleCount = 0;  // SamplePop = 0
+    this.rateCounter = this.displaySpec.rate - 1;  // vRateCount := vRate - 1
+
+    // Reset trace pattern
+    // Pascal: SetTrace(vTrace, False)
+    this.traceProcessor.setPattern(this.displaySpec.tracePattern);
+
+    this.logMessage('Sample buffer cleared');
+  }
+
+  /**
+   * Clear the canvas with background color
+   */
+  private clearCanvas(): void {
+    if (!this.debugWindow) return;
+
+    const clearCode = `
+      (function() {
+        const canvas = document.getElementById('${this.bitmapCanvasId}');
+        if (!canvas) return;
+
+        const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
+        if (!window[offscreenKey]) {
+          window[offscreenKey] = document.createElement('canvas');
+          window[offscreenKey].width = ${this.canvasWidth};
+          window[offscreenKey].height = ${this.canvasHeight};
+        }
+
+        const offscreen = window[offscreenKey];
+
+        // Clear offscreen
+        const offCtx = offscreen.getContext('2d');
+        if (offCtx) {
+          offCtx.fillStyle = '#000000';
+          offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+        }
+
+        // Clear display
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(clearCode).catch((error) => {
+      this.logMessage(`Failed to clear canvas: ${error}`);
+    });
+  }
+
+  /**
+   * Initialize the canvas and renderer
+   */
+  protected initializeCanvas(): void {
+    if (!this.canvasRenderer) {
+      this.canvasRenderer = new CanvasRenderer();
+    }
+
+    // Canvas dimensions already calculated in constructor
+    this.bitmapCanvasId = `spectro-canvas-${this.displaySpec.displayName}`;
+  }
+
+  /**
+   * Create the debug window with canvas
+   */
+  private createDebugWindow(): void {
+    this.logMessage(`Creating SPECTRO debug window: ${this.displaySpec.windowTitle}`);
+
+    let x = this.displaySpec.position.x;
+    let y = this.displaySpec.position.y;
+
+    // Use base class method for consistent chrome adjustments
+    const windowDimensions = this.calculateWindowDimensions(this.canvasWidth, this.canvasHeight);
+
+    // If no POS clause was present, use WindowPlacer
+    if (!this.displaySpec.hasExplicitPosition) {
+      const windowPlacer = WindowPlacer.getInstance();
+      const placementConfig: PlacementConfig = {
+        dimensions: { width: windowDimensions.width, height: windowDimensions.height },
+        cascadeIfFull: true
+      };
+      const position = windowPlacer.getNextPosition(`spectro-${this.displaySpec.displayName}`, placementConfig);
+      x = position.x;
+      y = position.y;
+
+      // Log to debug logger
+      try {
+        const LoggerWindow = require('./loggerWin').LoggerWindow;
+        const debugLogger = LoggerWindow.getInstance(this.context);
+        const monitorId = position.monitor ? position.monitor.id : '1';
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${windowDimensions.width}x${windowDimensions.height} Mon:${monitorId}) SPECTRO '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${windowDimensions.width} ${windowDimensions.height}`);
+      } catch (error) {
+        console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
+      }
+    }
+
+    // Create browser window
+    this.debugWindow = new BrowserWindow({
+      width: windowDimensions.width,
+      height: windowDimensions.height,
+      x,
+      y,
+      title: this.displaySpec.windowTitle,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+
+    // Register window with WindowPlacer
+    if (!this.displaySpec.hasExplicitPosition) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`spectro-${this.displaySpec.displayName}`, this.debugWindow);
+    }
+
+    // Set up window event handlers
+    this.debugWindow.on('ready-to-show', () => {
+      this.logMessage('SPECTRO window ready to show');
+      this.debugWindow?.show();
+      this.registerWithRouter();
+    });
+
+    this.debugWindow.on('closed', () => {
+      this.logMessage('SPECTRO window closed');
+      this.closeDebugWindow();
+    });
+
+    // Generate HTML content
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${this.displaySpec.windowTitle}</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 10px;
+              overflow: hidden;
+              background-color: #000;
+            }
+            canvas {
+              display: block;
+              image-rendering: pixelated;
+              image-rendering: -moz-crisp-edges;
+              image-rendering: crisp-edges;
+            }
+            #coordinate-display {
+              position: absolute;
+              padding: 8px;
+              background: #000;
+              color: #ccc;
+              border: 1px solid #ccc;
+              font-family: 'Parallax', 'Consolas', 'Courier New', monospace;
+              font-size: 12px;
+              pointer-events: none;
+              display: ${this.displaySpec.hideXY ? 'none' : 'block'};
+              z-index: 999;
+              white-space: nowrap;
+            }
+          </style>
+        </head>
+        <body>
+          <canvas id="${this.bitmapCanvasId}" width="${this.canvasWidth}" height="${this.canvasHeight}"></canvas>
+          <div id="coordinate-display"></div>
+        </body>
+      </html>
+    `;
+
+    // Load the HTML content
+    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+    // Initialize canvas after load
+    this.debugWindow.webContents.once('did-finish-load', () => {
+      this.clearCanvas();
+    });
+  }
+}

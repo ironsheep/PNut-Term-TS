@@ -845,6 +845,22 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
+   * Parse FFT declaration (wrapper for createDisplaySpec to match window creation pattern)
+   * Returns [isValid, spec] tuple matching other debug windows
+   */
+  public static parseFftDeclaration(lineParts: string[]): [boolean, FFTDisplaySpec] {
+    // Extract display name from lineParts[1]
+    if (lineParts.length < 2) {
+      const emptySpec = {} as FFTDisplaySpec;
+      return [false, emptySpec];
+    }
+
+    const displayName = lineParts[1];
+    const spec = DebugFFTWindow.createDisplaySpec(displayName, lineParts);
+    return [true, spec];
+  }
+
+  /**
    * Check if a number is a power of two
    */
   private static isPowerOfTwo(n: number): boolean {
