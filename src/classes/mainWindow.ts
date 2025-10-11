@@ -409,7 +409,7 @@ export class MainWindow {
       .map((part) => part.trim())
       .filter((part) => part !== '');
     this.logConsoleMessage(
-      `[TWO-TIER] handleWindowCommand() - [${data}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
+      `[TWO-TIER] handleWindowCommand() - [${data.trimEnd()}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
     );
 
     if (lineParts.length === 0 || lineParts[0].charAt(0) !== '`') {

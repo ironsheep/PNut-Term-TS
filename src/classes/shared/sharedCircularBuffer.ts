@@ -231,7 +231,7 @@ export class SharedCircularBuffer extends EventEmitter {
     // Check if buffer is now empty
     if (newHead === tail) {
       Atomics.store(this.sharedState, IS_EMPTY_INDEX, 1);
-      console.log(`[CircularBuffer] 🔄 Buffer went EMPTY (all data consumed)`);
+      // console.log(`[CircularBuffer] 🔄 Buffer went EMPTY (all data consumed)`);
     }
 
     return { status: NextStatus.DATA, value };

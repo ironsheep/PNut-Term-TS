@@ -552,10 +552,10 @@ export class WindowRouter extends EventEmitter {
    * 2. Multi-window: `win1 win2 win3 data... (splits into individual commands)
    */
   private routeBacktickCommand(command: string): void {
-    this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command}"`);
+    this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command.trimEnd()}"`);
 
     if (!command.startsWith('`')) {
-      this.logConsoleMessage(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command}"`);
+      this.logConsoleMessage(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command.trimEnd()}"`);
       this.logger.warn('ROUTE', `Invalid backtick command: ${command}`);
       return;
     }
