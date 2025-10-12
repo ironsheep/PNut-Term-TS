@@ -185,8 +185,8 @@ export class DebugLogicWindow extends DebugWindowBase {
   private holdoffCounter: number = 0;
   private triggerSampleIndex: number = -1; // Track which sample caused the trigger
   // diagnostics used to limit the number of samples displayed while testing
-  private dbgUpdateCount: number = 31 * 6; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
-  private dbgLogMessageCount: number = 32 * 6; //256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
+  private dbgUpdateCount: number = Number.MAX_SAFE_INTEGER; // Run forever - was limiting to 31 * 6 updates
+  private dbgLogMessageCount: number = Number.MAX_SAFE_INTEGER; // Log forever - was limiting to 32 * 6 logs
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec, windowId?: string) {
     // Use the user-provided display name as the window ID for proper routing
@@ -306,6 +306,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           const newChannelSpec: LogicChannelSpec = {} as LogicChannelSpec;
 
           const thisGroupNbr: number = displaySpec.channelSpecs.length;
+          // Use full brightness (15) to match Pascal's DefaultScopeColors which are at full intensity
           const defaultChannelColor = new DebugColor(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 15);
           newChannelSpec.color = defaultChannelColor.rgbString; // might be overridden below
           newChannelSpec.nbrBits = 1; // default to 1 bit (may be overridden below)
@@ -1238,8 +1239,8 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.holdoffCounter--;
         this.updateTriggerStatus(); // Update to show holdoff countdown
         if (this.holdoffCounter === 0) {
-          // Holdoff expired, reset trigger
-          this.triggerArmed = false;
+          // Holdoff expired, re-arm trigger for next event
+          this.triggerArmed = true;  // Re-arm (not false)
           this.triggerFired = false;
           this.triggerSampleIndex = -1;
           this.triggerProcessor.resetTrigger();
@@ -1247,13 +1248,8 @@ export class DebugLogicWindow extends DebugWindowBase {
         }
       }
       
-      // Only update display if no trigger enabled or trigger conditions met
-      if (!this.triggerArmed || this.triggerFired) {
-        // Proceed with normal sample recording
-      } else {
-        // Trigger enabled but not fired yet, skip this sample
-        return;
-      }
+      // Always proceed with sample recording - Pascal continues recording even when waiting for trigger
+      // The display position is what changes, not the recording
     }
     
     const numberOfChannels = this.singleBitChannelCount;
@@ -1331,18 +1327,12 @@ export class DebugLogicWindow extends DebugWindowBase {
     didScroll: boolean
   ): void {
     if (this.debugWindow) {
-      if (this.dbgUpdateCount > 0) {
-        // DISABLE RUN FOREVER this.dbgUpdateCount--;
-      }
-      if (this.dbgUpdateCount == 0) {
-        return;
-      }
-      // if (--this.dbgLogMessageCount > 0) {
-      if (this.dbgLogMessageCount > 0) {
-        this.logMessage(
-          `at updateLogicChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
-        );
-      }
+      // Debug limiting disabled - run forever
+      // Previously would stop after dbgUpdateCount reached 0
+      // Always log for debugging (no longer limited by counter)
+      this.logMessage(
+        `at updateLogicChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
+      );
       const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
       const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
       const drawWidth: number = canvasWidth;
@@ -1369,12 +1359,11 @@ export class DebugLogicWindow extends DebugWindowBase {
       const drawYOffset: number = 0;
       const channelColor: string = channelSpec.color;
       const spacing: number = this.displaySpec.spacing;
-      if (this.dbgLogMessageCount > 0) {
-        this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-        this.logMessage(
-          `  -- #${samples.length} currSample=(${currSample},#${samples.length}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-        );
-      }
+      // Always log drawing details for debugging
+      this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
+      this.logMessage(
+        `  -- #${samples.length} currSample=(${currSample},#${samples.length}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
+      );
       // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
       // try {
       //   this.debugWindow.webContents.executeJavaScript(`
@@ -1502,9 +1491,8 @@ export class DebugLogicWindow extends DebugWindowBase {
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }
-      //if (didScroll) {
-      //  this.dbgUpdateCount = 0; // stop after first scroll
-      //}
+      // Debug limiting removed - continues updating forever
+      // Previously would stop after first scroll
     }
   }
 
