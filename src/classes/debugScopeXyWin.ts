@@ -411,7 +411,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) SCOPE_XY '${this.windowTitle}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) SCOPE_XY '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }

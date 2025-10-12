@@ -235,7 +235,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       const LoggerWindow = require('./loggerWin').LoggerWindow;
       const debugLogger = LoggerWindow.getInstance(this.context);
       const monitorId = position.monitor ? position.monitor.id : '1';
-      debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.vWidth}x${this.vHeight} Mon:${monitorId}) MIDI '${this.windowId}' POS ${x} ${y} SIZE ${this.vWidth} ${this.vHeight}`);
+      debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.vWidth}x${this.vHeight} Mon:${monitorId}) MIDI '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${this.vWidth} ${this.vHeight}`);
     } catch (error) {
       console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
     }
@@ -483,7 +483,7 @@ export class DebugMidiWindow extends DebugWindowBase {
         // Set up font for key labels
         ctx.font = '${Math.floor(this.keySize / 3)}px Arial';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = 'middle';  // Changed from 'top' to 'middle' for proper centering after rotation
     `;
 
     // Add white keys drawing code
@@ -592,8 +592,9 @@ export class DebugMidiWindow extends DebugWindowBase {
 
       // Draw MIDI note number (rotated 90 degrees clockwise to read vertically)
       // Note: key.numX already accounts for irregular white key shapes near black keys
+      // Position text in the center of the key vertically
       ctx.save();
-      ctx.translate(${key.numX - this.keyOffset}, ${top + radius + 2});
+      ctx.translate(${key.numX - this.keyOffset}, ${top + key.bottom / 2});
       ctx.rotate(Math.PI / 2);  // 90 degrees clockwise
       ctx.fillStyle = '${key.isBlack ? '#BBB' : '#444'}';
       ctx.fillText('${keyNum}', 0, 0);
