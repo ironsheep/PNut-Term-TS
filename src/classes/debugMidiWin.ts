@@ -592,9 +592,10 @@ export class DebugMidiWindow extends DebugWindowBase {
 
       // Draw MIDI note number (rotated 90 degrees clockwise to read vertically)
       // Note: key.numX already accounts for irregular white key shapes near black keys
-      // Position text at the top of the key with small offset for visibility
+      // Position text at the top of the key - Pascal uses ChrWidth (≈ text size * 0.8)
       ctx.save();
-      ctx.translate(${key.numX - this.keyOffset}, ${top + 15});
+      const textOffset = Math.floor(${Math.floor(this.keySize / 3)} * 0.8);  // Approximate ChrWidth
+      ctx.translate(${key.numX - this.keyOffset}, ${top} + textOffset);
       ctx.rotate(Math.PI / 2);  // 90 degrees clockwise
       ctx.fillStyle = '${key.isBlack ? '#BBB' : '#444'}';
       ctx.fillText('${keyNum}', 0, 0);
