@@ -58,14 +58,46 @@ export class DocumentationViewer {
   }
 
   private findUserGuide(): string {
-    // Determine base path: In packaged apps, use process.resourcesPath/app
-    // In development, use process.cwd()
-    const basePath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app')  // App files are in Resources/app/
-      : process.cwd();
+    // Try multiple locations to find the documentation
+    const possiblePaths = [];
 
-    // Return APP-HELP.md path - this file must always be packaged with the app
-    return path.join(basePath, 'DOCs', 'APP-HELP.md');
+    // For packaged apps on macOS
+    if (app.isPackaged) {
+      // Try the standard packaged location
+      possiblePaths.push(path.join(process.resourcesPath, 'app', 'DOCs', 'APP-HELP.md'));
+
+      // Also try without the 'app' subdirectory (some packaging variations)
+      possiblePaths.push(path.join(process.resourcesPath, 'DOCs', 'APP-HELP.md'));
+
+      // Try relative to the executable location
+      possiblePaths.push(path.join(app.getAppPath(), 'DOCs', 'APP-HELP.md'));
+    }
+
+    // For development mode
+    possiblePaths.push(path.join(process.cwd(), 'DOCs', 'APP-HELP.md'));
+
+    // Try relative to the main module
+    possiblePaths.push(path.join(__dirname, '..', '..', 'DOCs', 'APP-HELP.md'));
+    possiblePaths.push(path.join(__dirname, '..', 'DOCs', 'APP-HELP.md'));
+
+    // Log all paths being checked for debugging
+    console.log('[Documentation] Checking for APP-HELP.md in the following locations:');
+    possiblePaths.forEach((p, i) => {
+      const exists = fs.existsSync(p);
+      console.log(`  ${i + 1}. ${p} - ${exists ? '✅ Found' : '❌ Not found'}`);
+    });
+
+    // Return the first path that exists
+    for (const docPath of possiblePaths) {
+      if (fs.existsSync(docPath)) {
+        console.log(`[Documentation] Using documentation from: ${docPath}`);
+        return docPath;
+      }
+    }
+
+    // If none found, return the expected location (will trigger fallback content)
+    console.log('[Documentation] APP-HELP.md not found in any expected location');
+    return possiblePaths[0];
   }
 
   private loadDocument(filepath: string): void {

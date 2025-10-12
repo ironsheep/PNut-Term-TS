@@ -152,6 +152,13 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
+   * Get window title (public getter for base class abstract requirement)
+   */
+  get windowTitle(): string {
+    return 'Debug Logger';
+  }
+
+  /**
    * Get or create the singleton instance
    */
   public static getInstance(context: Context): LoggerWindow {
@@ -1038,7 +1045,9 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private writeToLog(message: string): void {
     const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${message}\n`;
+    // Strip trailing CR/LF from message before logging (messages arrive with line endings from P2)
+    const cleanMessage = message.replace(/[\r\n]+$/, '');
+    const logEntry = `[${timestamp}] ${cleanMessage}\n`;
 
     if (this.logFileReady && this.logFile) {
       // Log file is ready - write normally

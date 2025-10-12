@@ -226,7 +226,14 @@ export class DebugFFTWindow extends DebugWindowBase {
     // But we mark the window as "ready" to process messages for channel specs and first data
     this.onWindowReady();
   }
-  
+
+  /**
+   * Get window title (public getter for base class abstract requirement)
+   */
+  get windowTitle(): string {
+    return this.displaySpec.windowTitle;
+  }
+
   /**
    * Initialize the packed data processor based on configuration
    */
@@ -925,9 +932,25 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Update FFT window content with new data
+   * Entry point for message processing from WindowRouter
+   * Called by router's updateContent(dataParts)
    */
-  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
+  public updateContent(lineParts: string[]): void {
+    this.processMessageImmediate(lineParts);
+  }
+
+  /**
+   * Update FFT window content with new data (synchronous wrapper for async operations)
+   */
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  /**
+   * Process FFT data and commands (async implementation)
+   */
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     const unparsedCommand = lineParts.join(' ');
 
     // Window name already stripped by mainWindow routing
@@ -1888,9 +1911,29 @@ export class DebugFFTWindow extends DebugWindowBase {
       </html>
     `;
 
-    // Load the HTML content
-    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-    
+    // Write HTML to temp file to allow file:// font URLs to work (like TERM window does)
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `pnut-fft-${this.windowId}-${Date.now()}.html`);
+
+    fs.writeFileSync(tempFile, htmlContent);
+    this.logMessage(`Wrote FFT HTML to temp file: ${tempFile}`);
+
+    // Load the temp file instead of using data URL
+    this.debugWindow.loadFile(tempFile);
+
+    // Clean up temp file after a delay
+    setTimeout(() => {
+      try {
+        fs.unlinkSync(tempFile);
+        this.logMessage(`Cleaned up FFT temp file: ${tempFile}`);
+      } catch (err) {
+        // File might already be gone, that's ok
+      }
+    }, 5000);
+
     // Store canvas ID for later use
     this.canvasId = 'fft-canvas';
   }

@@ -63,28 +63,18 @@ Additional pages:
 
 We are implementing the Graphical Debug Display support over time. Here's a full list of the displays and the current support status of each:
 
-| Display | Status | Notes
-| --- | --- | --- |
-| Term | ✅ Complete | 100% Pascal parity - Mouse coordinates, base class delegation, comprehensive tests |
-| Plot | ✅ Complete | 100% Pascal parity - Command registry, parser system, comprehensive tests |
-| Logic | ✅ Complete | 100% Pascal parity - Trigger system, crosshair display, base class delegation |
-| Scope | in-progress | Started - Needs trigger support and completion |
-| Scope_XY | in-progress | Started - Needs XY coordinate display completion |
-| FFT | in-progress | Started - Needs spectrum analysis completion |
-| Bitmap | in-progress | Started - Needs bitmap rendering completion |
-| MIDI | in-progress | Started - Needs MIDI visualization completion |
-| Spectro | | *- not started* |
-| Debugger* | | *- not started* |
-
-**NOTE:** *the debugger\* display is our full-screen debugger window*
-
-### Completed Windows (100% Pascal Parity)
-
-The following windows have achieved complete functional parity with the Pascal reference implementation:
-
-- **TERM Window**: Terminal display with control codes, color combinations, mouse coordinate display, and base class delegation
-- **PLOT Window**: Cartesian plotting with advanced parser system, sprite layers, and gamma-corrected rendering
-- **LOGIC Window**: 32-channel logic analyzer with mask/match triggering, channel grouping, crosshair display, and packed data modes
+| Display | Status |
+| --- | --- |
+| Term | ✅ Implemented - 100% Pascal parity as of version 51a |
+| Plot | 🧪 Testing |
+| Logic | 🧪 Testing |
+| Scope | 🧪 Testing |
+| Scope_XY | 🧪 Testing |
+| FFT | 🧪 Testing |
+| Bitmap | 🧪 Testing |
+| MIDI | 🧪 Testing |
+| Spectro | 🧪 Testing |
+| Debugger | ⬜ Not started |
 
 ## Installing PNut-Term-TS
 

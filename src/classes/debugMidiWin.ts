@@ -29,7 +29,7 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export interface MidiDisplaySpec {
   displayName: string;
@@ -158,13 +158,20 @@ export class DebugMidiWindow extends DebugWindowBase {
   private canvas: HTMLCanvasElement | null = null;
   private canvasCtx: CanvasRenderingContext2D | null = null;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
-  private midiWindow: BrowserWindow | null = null;
+
+  // Track canvas initialization state to prevent race conditions
+  private canvasInitialized: boolean = false;
+  private pendingDrawRequest: boolean = false;
+  private pendingClear: boolean = false;
 
   constructor(ctx: Context, displaySpec: MidiDisplaySpec, windowId: string = `midi-${Date.now()}`) {
     super(ctx, windowId, 'midi');
-    
+
     this.displaySpec = displaySpec;
-    
+
+    // Enable logging for MIDI window
+    this.isLogging = true;
+
     // Initialize MIDI configuration from displaySpec
     this.midiSize = displaySpec.keySize;
     this.midiKeyFirst = displaySpec.keyRange.first;
@@ -175,12 +182,22 @@ export class DebugMidiWindow extends DebugWindowBase {
     this._windowTitle = displaySpec.windowTitle;
     this.vWidth = displaySpec.size.width;
     this.vHeight = displaySpec.size.height;
-    
+
     // Calculate initial key size using Pascal formula
     this.keySize = 8 + this.midiSize * 4; // MidiSizeBase=8, MidiSizeFactor=4
-    
+
     // Window ID will be set by MainWindow
     this.midiWindowId = Date.now() % 1000000;
+
+    // Calculate keyboard layout BEFORE creating window to get correct dimensions
+    this.updateKeyboardLayout();
+
+    // Create the actual BrowserWindow (now with correct dimensions)
+    this.createDebugWindow();
+
+    // CRITICAL: Mark window as ready to process messages (matches TERM window pattern)
+    // This ensures messages are processed immediately instead of being queued indefinitely
+    this.onWindowReady();
   }
 
   // Getter for window title
@@ -224,10 +241,12 @@ export class DebugMidiWindow extends DebugWindowBase {
     }
     
     // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(this.vWidth, this.vHeight);
+    // Add status bar height (20px + 2px border) to ensure no scrollbar
+    const STATUS_BAR_HEIGHT = 22;
+    const windowDimensions = this.calculateWindowDimensions(this.vWidth, this.vHeight + STATUS_BAR_HEIGHT);
 
-    // Create browser window
-    this.midiWindow = new BrowserWindow({
+    // Create browser window using base class property
+    this.debugWindow = new BrowserWindow({
       width: windowDimensions.width,
       height: windowDimensions.height,
       x,
@@ -240,20 +259,42 @@ export class DebugMidiWindow extends DebugWindowBase {
     });
 
     // Register window with WindowPlacer for position tracking
-    windowPlacer.registerWindow(`midi-${this.windowId}`, this.midiWindow);
+    windowPlacer.registerWindow(`midi-${this.windowId}`, this.debugWindow);
 
-    // Set up window content
+    // Write HTML to temp file to allow file:// font URLs to work (like TERM window does)
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `pnut-midi-${this.windowId}-${Date.now()}.html`);
+
     const html = this.getHTML();
-    this.midiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    fs.writeFileSync(tempFile, html);
+    this.logMessage(`Wrote MIDI HTML to temp file: ${tempFile}`);
+
+    // Load the temp file instead of using data URL
+    this.debugWindow.loadFile(tempFile);
+
+    // Clean up temp file after a delay
+    setTimeout(() => {
+      try {
+        fs.unlinkSync(tempFile);
+        this.logMessage(`Cleaned up MIDI temp file: ${tempFile}`);
+      } catch (err) {
+        // File might already be gone, that's ok
+      }
+    }, 5000);
 
     // Set up window event handlers
-    this.midiWindow.on('ready-to-show', () => {
+    this.debugWindow.on('ready-to-show', () => {
       this.logMessage('MIDI window ready to show');
-      this.midiWindow?.show();
+      // Register with WindowRouter when window is ready
+      this.registerWithRouter();
+      this.debugWindow?.show();
       this.initializeWindow();
     });
 
-    this.midiWindow.on('closed', () => {
+    this.debugWindow.on('closed', () => {
       this.logMessage('MIDI window closed');
       this.closeDebugWindow();
     });
@@ -268,13 +309,19 @@ export class DebugMidiWindow extends DebugWindowBase {
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>${this._windowTitle}</title>
     <style>
+        @font-face {
+            font-family: 'Parallax';
+            src: url('${this.getParallaxFontUrl()}') format('truetype');
+        }
         body {
             margin: 0;
             padding: 0;
             background: #f0f0f0;
-            font-family: Arial, sans-serif;
+            font-family: 'Parallax', Arial, sans-serif;
+            overflow: hidden;
         }
         canvas {
             display: block;
@@ -286,6 +333,7 @@ export class DebugMidiWindow extends DebugWindowBase {
             border-top: 1px solid #ccc;
             padding: 2px 5px;
             font-size: 11px;
+            font-family: 'Parallax', Arial, sans-serif;
         }
     </style>
 </head>
@@ -294,27 +342,6 @@ export class DebugMidiWindow extends DebugWindowBase {
     <div class="status-bar">
         MIDI Keyboard - Channel ${this.midiChannel}, Keys ${this.midiKeyFirst}-${this.midiKeyLast}
     </div>
-    <script>
-        const { ipcRenderer } = require('electron');
-        
-        // Get canvas and context for drawing
-        const canvas = document.getElementById('midi-canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Handle window events
-        ipcRenderer.on('render-update', (event, data) => {
-            // Rendering will be handled by main process via CanvasRenderer
-        });
-        
-        // Forward mouse events for MIDI key interaction
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            ipcRenderer.send('midi-click', {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            });
-        });
-    </script>
 </body>
 </html>`;
   }
@@ -323,16 +350,68 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Initialize the window after it's ready
    */
   private initializeWindow(): void {
-    // Calculate keyboard layout
-    this.updateKeyboardLayout();
+    // Keyboard layout already calculated in constructor
+    // Initialize double buffering and canvas with verification
+    this.debugWindow?.webContents.executeJavaScript(`
+      (function() {
+        // Get visible canvas
+        const visibleCanvas = document.getElementById('midi-canvas');
+        if (!visibleCanvas) {
+          console.error('[MIDI] FATAL: Canvas element not found');
+          return 'Canvas element not found';
+        }
+        window.visibleCanvas = visibleCanvas;
+        window.visibleCtx = visibleCanvas.getContext('2d');
+        if (!window.visibleCtx) {
+          console.error('[MIDI] FATAL: Could not get 2D context from canvas');
+          return 'Could not get 2D context';
+        }
 
-    // Set up canvas renderer with the window's canvas
-    this.midiWindow?.webContents.executeJavaScript(`
-      window.midiCanvas = document.getElementById('midi-canvas');
-      window.midiCtx = window.midiCanvas.getContext('2d');
-    `).then(() => {
-      // Initial draw
-      this.drawKeyboard(true);
+        // Create offscreen canvas for double buffering (like TERM window)
+        window.offscreenCanvas = document.createElement('canvas');
+        window.offscreenCanvas.width = ${this.vWidth};
+        window.offscreenCanvas.height = ${this.vHeight};
+        window.offscreenCtx = window.offscreenCanvas.getContext('2d');
+        if (!window.offscreenCtx) {
+          console.error('[MIDI] FATAL: Could not create offscreen canvas context');
+          return 'Could not create offscreen context';
+        }
+
+        // Clear both canvases with background color
+        const bgColor = '#f0f0f0';
+        window.offscreenCtx.fillStyle = bgColor;
+        window.offscreenCtx.fillRect(0, 0, ${this.vWidth}, ${this.vHeight});
+        window.visibleCtx.fillStyle = bgColor;
+        window.visibleCtx.fillRect(0, 0, ${this.vWidth}, ${this.vHeight});
+
+        console.log('[MIDI] Canvas initialization successful - double buffering enabled');
+        console.log('[MIDI] Visible canvas:', visibleCanvas.width, 'x', visibleCanvas.height);
+        console.log('[MIDI] Offscreen canvas:', window.offscreenCanvas.width, 'x', window.offscreenCanvas.height);
+        return 'OK';
+      })()
+    `).then((result) => {
+      if (result === 'OK') {
+        this.logMessage('MIDI: Canvas initialization successful with double buffering');
+        // Mark canvas as initialized
+        this.canvasInitialized = true;
+
+        // Process any pending draw request
+        if (this.pendingDrawRequest) {
+          this.logMessage('MIDI: Processing pending draw request');
+          this.drawKeyboard(this.pendingClear);
+          this.pendingDrawRequest = false;
+          this.pendingClear = false;
+        } else {
+          // Initial draw if no pending request
+          this.drawKeyboard(true);
+        }
+      } else {
+        this.logMessage(`MIDI: ERROR during canvas initialization: ${result}`);
+        console.error('MIDI canvas initialization failed:', result);
+      }
+    }).catch((error) => {
+      this.logMessage(`MIDI: FATAL ERROR initializing canvas: ${error.message}`);
+      console.error('MIDI canvas initialization error:', error);
     });
 
     // Enable input forwarding if requested
@@ -363,11 +442,21 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
-   * Draw the piano keyboard using CanvasRenderer
+   * Draw the piano keyboard using double buffering
    * @param clear If true, reset all velocities to 0
    */
   private drawKeyboard(clear: boolean): void {
-    if (!this.keyLayout || !this.midiWindow) return;
+    if (!this.keyLayout || !this.debugWindow) return;
+
+    // If canvas not initialized yet, queue the request for later
+    if (!this.canvasInitialized) {
+      this.pendingDrawRequest = true;
+      if (clear) {
+        this.pendingClear = true;
+      }
+      this.logMessage('MIDI: Canvas not initialized yet, queuing draw request');
+      return;
+    }
 
     // Clear velocities if requested
     if (clear) {
@@ -376,20 +465,25 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     const r = Math.floor(this.keySize / 4); // Corner radius
 
-    // Build complete drawing JavaScript for injection
+    // Build complete drawing JavaScript for injection using double buffering
     let drawingCode = `
-      const canvas = document.getElementById('midi-canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Clear canvas with background color
-      ctx.fillStyle = '#E0E0E0';
-      ctx.fillRect(0, 0, ${this.vWidth}, ${this.vHeight});
-      
-      // Set up font for key labels
-      ctx.font = '${Math.floor(this.keySize / 3)}px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
+      (function() {
+        // Verify canvas contexts exist
+        if (!window.offscreenCtx || !window.visibleCtx) {
+          console.error('[MIDI] Canvas contexts not initialized');
+          return 'Canvas contexts not initialized';
+        }
+
+        const ctx = window.offscreenCtx; // Draw to offscreen buffer first
+
+        // Clear offscreen canvas with background color
+        ctx.fillStyle = '#E0E0E0';
+        ctx.fillRect(0, 0, ${this.vWidth}, ${this.vHeight});
+
+        // Set up font for key labels
+        ctx.font = '${Math.floor(this.keySize / 3)}px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
     `;
 
     // Add white keys drawing code
@@ -408,73 +502,102 @@ export class DebugMidiWindow extends DebugWindowBase {
       }
     }
 
+    // Add code to copy from offscreen to visible canvas at the end
+    drawingCode += `
+        // Copy offscreen canvas to visible canvas
+        window.visibleCtx.drawImage(window.offscreenCanvas, 0, 0);
+        console.log('[MIDI] Keyboard drawn successfully with double buffering');
+        return 'OK';
+      })()
+    `;
+
+    // Log first 500 chars of drawing code for debugging
+    this.logMessage(`MIDI: Executing drawing JavaScript (${drawingCode.length} chars total):\n${drawingCode.substring(0, 500)}...`);
+
     // Execute the complete drawing code
-    this.midiWindow.webContents.executeJavaScript(drawingCode);
+    this.debugWindow.webContents.executeJavaScript(drawingCode).then((result) => {
+      if (result === 'OK') {
+        this.logMessage('MIDI: Keyboard drawn successfully');
+      } else {
+        this.logMessage(`MIDI: ERROR during drawing: ${result}`);
+      }
+    }).catch((error) => {
+      this.logMessage(`MIDI: ERROR executing drawing JavaScript: ${error.message}`);
+      console.error('MIDI drawing error:', error);
+      console.error('Failed JavaScript code:', drawingCode);
+    });
   }
 
   /**
    * Generate JavaScript code for drawing a single piano key
    */
   private generateKeyDrawingCode(keyNum: number, key: KeyInfo, keyColor: number, velocityColor: number, radius: number): string {
+    // Calculate key coordinates relative to canvas
+    const border = Math.floor(this.keySize / 6);
     const left = key.left - this.keyOffset;
-    const right = key.right - this.keyOffset; 
-    const bottom = this.vHeight - this.keyOffset;
+    const right = key.right - this.keyOffset;
+    const top = border; // Top of all keys is at border offset
+    const bottom = border + key.bottom; // CRITICAL: key.bottom is a HEIGHT, must add border offset for Y coordinate
     const velocity = this.midiVelocity[keyNum] || 0;
-    
+
     const keyColorHex = this.rgbToHex(keyColor);
     const velocityColorHex = this.rgbToHex(velocityColor);
-    
+
+    // Log velocity bar placement for debugging
+    if (velocity > 0) {
+      const velocityHeight = Math.floor((bottom - top - radius) * velocity / 127);
+      const velocityTop = bottom - radius - velocityHeight;
+      this.logMessage(`MIDI: Drawing velocity bar on key ${keyNum}: velocity=${velocity}, height=${velocityHeight}px, position Y=${velocityTop}-${velocityTop + velocityHeight}, color=${velocityColorHex}`);
+    }
+
     return `
       // Draw key ${keyNum} (${key.isBlack ? 'black' : 'white'})
       ctx.fillStyle = '${keyColorHex}';
       ctx.beginPath();
-      ctx.moveTo(${left + radius}, ${-radius});
-      ctx.lineTo(${right - radius}, ${-radius});
-      ctx.quadraticCurveTo(${right}, ${-radius}, ${right}, ${-radius + radius});
+      ctx.moveTo(${left + radius}, ${top});
+      ctx.lineTo(${right - radius}, ${top});
+      ctx.quadraticCurveTo(${right}, ${top}, ${right}, ${top + radius});
       ctx.lineTo(${right}, ${bottom - radius});
       ctx.quadraticCurveTo(${right}, ${bottom}, ${right - radius}, ${bottom});
       ctx.lineTo(${left + radius}, ${bottom});
       ctx.quadraticCurveTo(${left}, ${bottom}, ${left}, ${bottom - radius});
-      ctx.lineTo(${left}, ${-radius + radius});
-      ctx.quadraticCurveTo(${left}, ${-radius}, ${left + radius}, ${-radius});
+      ctx.lineTo(${left}, ${top + radius});
+      ctx.quadraticCurveTo(${left}, ${top}, ${left + radius}, ${top});
       ctx.closePath();
       ctx.fill();
-      
+
       // Draw velocity bar if active
       ${velocity > 0 ? `
         ctx.fillStyle = '${velocityColorHex}';
-        const velocityHeight = Math.floor((${bottom} - ${radius}) * ${velocity} / 127);
+        const velocityHeight = Math.floor((${bottom} - ${top} - ${radius}) * ${velocity} / 127);
         const velocityTop = ${bottom} - ${radius} - velocityHeight;
-        ctx.beginPath();
-        ctx.moveTo(${left}, velocityTop);
-        ctx.lineTo(${right - left}, velocityTop);
-        ctx.lineTo(${right - left}, velocityTop + velocityHeight + ${radius});
-        ctx.quadraticCurveTo(${right - left}, velocityTop + velocityHeight + ${radius}, ${right - left}, velocityTop + velocityHeight + ${radius});
-        ctx.lineTo(${left}, velocityTop + velocityHeight + ${radius});
-        ctx.quadraticCurveTo(${left}, velocityTop + velocityHeight + ${radius}, ${left}, velocityTop + velocityHeight);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillRect(${left + 1}, velocityTop, ${right - left - 2}, velocityHeight);
       ` : ''}
-      
+
       // Draw key outline
       ctx.strokeStyle = '${key.isBlack ? '#444' : '#888'}';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(${left + radius}, ${-radius});
-      ctx.lineTo(${right - radius}, ${-radius});
-      ctx.quadraticCurveTo(${right}, ${-radius}, ${right}, ${-radius + radius});
+      ctx.moveTo(${left + radius}, ${top});
+      ctx.lineTo(${right - radius}, ${top});
+      ctx.quadraticCurveTo(${right}, ${top}, ${right}, ${top + radius});
       ctx.lineTo(${right}, ${bottom - radius});
       ctx.quadraticCurveTo(${right}, ${bottom}, ${right - radius}, ${bottom});
       ctx.lineTo(${left + radius}, ${bottom});
       ctx.quadraticCurveTo(${left}, ${bottom}, ${left}, ${bottom - radius});
-      ctx.lineTo(${left}, ${-radius + radius});
-      ctx.quadraticCurveTo(${left}, ${-radius}, ${left + radius}, ${-radius});
+      ctx.lineTo(${left}, ${top + radius});
+      ctx.quadraticCurveTo(${left}, ${top}, ${left + radius}, ${top});
       ctx.closePath();
       ctx.stroke();
-      
-      // Draw MIDI note number
+
+      // Draw MIDI note number (rotated 90 degrees clockwise to read vertically)
+      // Note: key.numX already accounts for irregular white key shapes near black keys
+      ctx.save();
+      ctx.translate(${key.numX - this.keyOffset}, ${top + radius + 2});
+      ctx.rotate(Math.PI / 2);  // 90 degrees clockwise
       ctx.fillStyle = '${key.isBlack ? '#BBB' : '#444'}';
-      ctx.fillText('${keyNum}', ${key.numX - this.keyOffset}, ${radius});
+      ctx.fillText('${keyNum}', 0, 0);
+      ctx.restore();
     `;
   }
 
@@ -490,6 +613,14 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
+   * Entry point for message processing from WindowRouter
+   * Called by router's updateContent(dataParts)
+   */
+  public updateContent(lineParts: string[]): void {
+    this.processMessageImmediate(lineParts);
+  }
+
+  /**
    * Process MIDI data and commands (synchronous wrapper for async operations)
    */
   protected processMessageImmediate(lineParts: string[]): void {
@@ -502,15 +633,14 @@ export class DebugMidiWindow extends DebugWindowBase {
    */
   private async processMessageAsync(lineParts: string[]): Promise<void> {
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Strip display name/window name (first element) before passing to base class
-    const commandParts = lineParts.length > 0 ? lineParts.slice(1) : [];
-    if (await this.handleCommonCommand(commandParts)) {
+    // Window name was already stripped by mainWindow before routing - pass lineParts directly
+    if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done
       return;
     }
 
-    // Process MIDI-specific commands and data starting from index 1 (skip display name)
-    let i = 1;
+    // Process MIDI-specific commands and data starting from index 0
+    let i = 0;
 
     while (i < lineParts.length) {
       const part = lineParts[i];
@@ -601,30 +731,36 @@ export class DebugMidiWindow extends DebugWindowBase {
       case 0: // Wait for note-on or note-off event
         if ((byte & 0xF0) === 0x90 && (byte & 0x0F) === this.midiChannel) {
           this.midiState = 1; // Note-on event
+          this.logMessage(`MIDI: Note-on command received (channel ${byte & 0x0F})`);
         } else if ((byte & 0xF0) === 0x80 && (byte & 0x0F) === this.midiChannel) {
           this.midiState = 3; // Note-off event
+          this.logMessage(`MIDI: Note-off command received (channel ${byte & 0x0F})`);
         }
         break;
 
       case 1: // Note-on, get note
         this.midiNote = byte;
         this.midiState = 2;
+        this.logMessage(`MIDI: Note number = ${byte}`);
         break;
 
       case 2: // Note-on, get velocity
         this.midiVelocity[this.midiNote] = byte;
         this.midiState = 1;
+        this.logMessage(`MIDI: ✅ Note-ON: key=${this.midiNote}, velocity=${byte} → Highlight color will be placed on key`);
         this.drawKeyboard(false);
         break;
 
       case 3: // Note-off, get note
         this.midiNote = byte;
         this.midiState = 4;
+        this.logMessage(`MIDI: Note number = ${byte}`);
         break;
 
       case 4: // Note-off, get velocity (Pascal stores as negative but displays as 0)
         this.midiVelocity[this.midiNote] = 0; // Note off always shows as no velocity
         this.midiState = 3;
+        this.logMessage(`MIDI: ✅ Note-OFF: key=${this.midiNote} → Highlight removed`);
         this.drawKeyboard(false);
         break;
     }
@@ -676,12 +812,15 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Clean up resources when window is closed
    */
   closeDebugWindow(): void {
-    if (this.midiWindow) {
-      this.midiWindow.close();
-      this.midiWindow = null;
-    }
-
+    // Base class handles window closure via debugWindow property
+    // Just clean up MIDI-specific resources
     this.keyLayout = null;
+    this.canvasInitialized = false;
+    this.pendingDrawRequest = false;
+    this.pendingClear = false;
+
+    // Let base class handle the actual window closure
+    this.debugWindow = null;
   }
 
   /**

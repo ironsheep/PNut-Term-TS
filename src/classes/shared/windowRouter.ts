@@ -551,6 +551,59 @@ export class WindowRouter extends EventEmitter {
    * 1. Single window: `windowName data...
    * 2. Multi-window: `win1 win2 win3 data... (splits into individual commands)
    */
+  /**
+   * Tokenize command string respecting quoted strings and commas
+   * - Preserves quoted strings intact (including commas and spaces inside quotes)
+   * - Splits on whitespace outside quotes
+   * - Commas outside quotes become separate tokens
+   */
+  private tokenizeCommand(command: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    let inQuote: string | null = null; // null, '"', or "'"
+
+    for (let i = 0; i < command.length; i++) {
+      const ch = command[i];
+
+      if (inQuote) {
+        // Inside quoted string - add everything until closing quote
+        current += ch;
+        if (ch === inQuote) {
+          inQuote = null;
+        }
+      } else {
+        // Outside quoted string
+        if (ch === '"' || ch === "'") {
+          // Starting quoted string
+          current += ch;
+          inQuote = ch;
+        } else if (ch === ',') {
+          // Comma outside quotes - finish current token and add comma as separate token
+          if (current.trim()) {
+            tokens.push(current.trim());
+            current = '';
+          }
+          tokens.push(',');
+        } else if (ch === ' ' || ch === '\t') {
+          // Whitespace outside quotes - finish current token
+          if (current.trim()) {
+            tokens.push(current.trim());
+            current = '';
+          }
+        } else {
+          current += ch;
+        }
+      }
+    }
+
+    // Add final token if any
+    if (current.trim()) {
+      tokens.push(current.trim());
+    }
+
+    return tokens;
+  }
+
   private routeBacktickCommand(command: string): void {
     this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command.trimEnd()}"`);
 
@@ -567,9 +620,9 @@ export class WindowRouter extends EventEmitter {
       return;
     }
 
-    // Remove the backtick and parse (preserves exact original working logic)
+    // Remove the backtick and parse with quote-aware tokenizer
     const cleanCommand = command.substring(1).trim();
-    const parts = cleanCommand.split(' ').map(part => part.trim()).filter(part => part !== '');
+    const parts = this.tokenizeCommand(cleanCommand);
 
     this.logConsoleMessage(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
 
@@ -646,11 +699,10 @@ export class WindowRouter extends EventEmitter {
 
         this.logConsoleMessage(`[ROUTER DEBUG]   ✅ Routing to window "${displayName}": "${dataString}"`);
 
-        // Call updateContent with dataParts array
-        // NOTE: Re-splitting here seems to fix first 9 windows but breaks HSV16 - investigating why
-        const windowDataParts = dataString.split(' ');
-        this.logConsoleMessage(`[ROUTER DEBUG]   📤 Sending dataParts array: [${windowDataParts.join(', ')}] (${windowDataParts.length} parts)`);
-        debugWindow.updateContent(windowDataParts);
+        // Send dataParts directly - already properly tokenized by tokenizeCommand()
+        // Commas are already separate tokens, quoted strings are intact
+        this.logConsoleMessage(`[ROUTER DEBUG]   📤 Sending dataParts array: [${dataParts.join(', ')}] (${dataParts.length} parts)`);
+        debugWindow.updateContent(dataParts);
 
         if (this.isRecording) {
           this.recordMessage(displayName, debugWindow.windowType || 'unknown', 'text', dataString);

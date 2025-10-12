@@ -153,8 +153,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private bitmapCanvasId: string;
   private initialPosition?: { x: number; y: number };
   private idString: string;
-  private windowTitle: string;
+  private _windowTitle: string = '';
   private windowContent: string = '';
+
+  get windowTitle(): string {
+    return this._windowTitle;
+  }
 
   /**
    * Static console logging - override base class to use bitmap's ENABLE_CONSOLE_LOG
@@ -458,9 +462,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
     super(ctx, windowId, 'bitmap');
     
     this.displaySpec = displaySpec;
-    
+
     // Initialize from displaySpec
-    this.windowTitle = displaySpec.title;
+    this._windowTitle = displaySpec.title;
     this.idString = displaySpec.displayName;
     this.windowLogPrefix = 'bitW';
     this.initialPosition = displaySpec.position;

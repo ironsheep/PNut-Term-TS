@@ -63,7 +63,7 @@ describe('DebugMidiWindow', () => {
   describe('MIDI message parsing', () => {
     it('should parse note-on messages correctly', async () => {
       // Send note-on for middle C (60) with velocity 64 on channel 0
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       // Window should be created
       expect((midiWindow as any).debugWindow).toBeDefined();
@@ -71,10 +71,10 @@ describe('DebugMidiWindow', () => {
 
     it('should parse note-off messages correctly', async () => {
       // First send note-on
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       // Then send note-off
-      await midiWindow.updateContent(['test-midi', '$80', '60', '0']);
+      await midiWindow.updateContent(['$80', '60', '0']);
 
       // Window should still exist
       expect((midiWindow as any).debugWindow).toBeDefined();
@@ -82,13 +82,13 @@ describe('DebugMidiWindow', () => {
 
     it('should filter messages by channel', async () => {
       // Set to channel 1
-      await midiWindow.updateContent(['test-midi', 'CHANNEL', '1']);
+      await midiWindow.updateContent(['CHANNEL', '1']);
 
       // Send note-on on channel 0 (should be ignored)
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       // Send note-on on channel 1 (should be processed)
-      await midiWindow.updateContent(['test-midi', '$91', '60', '64']);
+      await midiWindow.updateContent(['$91', '60', '64']);
 
       // Both should be processed without error
       expect((midiWindow as any).debugWindow).toBeDefined();
@@ -96,10 +96,10 @@ describe('DebugMidiWindow', () => {
 
     it('should handle running status correctly', async () => {
       // Send note-on with status byte
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       // Send another note-on without status byte (running status)
-      await midiWindow.updateContent(['test-midi', '62', '64']);
+      await midiWindow.updateContent(['62', '64']);
 
       // Should process both notes
       expect((midiWindow as any).debugWindow).toBeDefined();
@@ -109,12 +109,12 @@ describe('DebugMidiWindow', () => {
   describe('Command parsing', () => {
     beforeEach(() => {
       // Trigger window creation with MIDI data before testing commands
-      midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      midiWindow.updateContent(['$90', '60', '64']);
     });
 
     it('should handle COLOR command', async () => {
       // COLOR command takes two colors for MIDI window
-      await midiWindow.updateContent(['test-midi', 'COLOR', 'red', 'blue']);
+      await midiWindow.updateContent(['COLOR', 'red', 'blue']);
 
       // Colors should be updated
       expect((midiWindow as any).whiteKeyColor).toBeDefined();
@@ -123,8 +123,7 @@ describe('DebugMidiWindow', () => {
 
     it('should handle RANGE command', async () => {
       // Set range from MIDI note 48 to 72
-      // Note: Include display name as first element (matches router behavior)
-      midiWindow.updateContent(['test-midi', 'RANGE', '48', '72']);
+      midiWindow.updateContent(['RANGE', '48', '72']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -135,8 +134,7 @@ describe('DebugMidiWindow', () => {
     });
 
     it('should handle CHANNEL command', async () => {
-      // Note: Include display name as first element (matches router behavior)
-      midiWindow.updateContent(['test-midi', 'CHANNEL', '5']);
+      midiWindow.updateContent(['CHANNEL', '5']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -147,8 +145,7 @@ describe('DebugMidiWindow', () => {
 
     it('should handle SIZE command', async () => {
       // SIZE takes one parameter - the MIDI display size (1-50)
-      // Note: Include display name as first element (matches router behavior)
-      midiWindow.updateContent(['test-midi', 'SIZE', '10']);
+      midiWindow.updateContent(['SIZE', '10']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -159,7 +156,7 @@ describe('DebugMidiWindow', () => {
     });
 
     it('should handle TITLE command', async () => {
-      await midiWindow.updateContent(['test-midi', 'TITLE', 'My MIDI Keyboard']);
+      await midiWindow.updateContent(['TITLE', 'My MIDI Keyboard']);
 
       // Title should be set
       const mockWindow = (midiWindow as any).debugWindow;
@@ -169,7 +166,7 @@ describe('DebugMidiWindow', () => {
     });
 
     it('should handle POS command', async () => {
-      await midiWindow.updateContent(['test-midi', 'POS', '100', '200']);
+      await midiWindow.updateContent(['POS', '100', '200']);
 
       // Position should be set
       const mockWindow = (midiWindow as any).debugWindow;
@@ -183,7 +180,7 @@ describe('DebugMidiWindow', () => {
 
   describe('Edge cases', () => {
     it('should handle empty input', async () => {
-      await midiWindow.updateContent(['test-midi']);
+      await midiWindow.updateContent([]);
 
       // Should not crash
       expect(midiWindow).toBeDefined();
@@ -191,7 +188,7 @@ describe('DebugMidiWindow', () => {
 
     it('should handle mixed commands and data', async () => {
       // Mix of commands and MIDI data - COLOR needs two color parameters
-      await midiWindow.updateContent(['test-midi', 'COLOR', 'red', 'blue', 'TITLE', 'Test', '$90', '60', '64']);
+      await midiWindow.updateContent(['COLOR', 'red', 'blue', 'TITLE', 'Test', '$90', '60', '64']);
 
       // Should process all correctly
       expect((midiWindow as any).whiteKeyColor).toBeDefined();
@@ -200,7 +197,7 @@ describe('DebugMidiWindow', () => {
 
     it('should handle invalid MIDI data gracefully', async () => {
       // Invalid status byte
-      await midiWindow.updateContent(['test-midi', '$F5', '60', '64']);
+      await midiWindow.updateContent(['$F5', '60', '64']);
 
       // Should not crash
       expect((midiWindow as any).debugWindow).toBeDefined();
@@ -208,7 +205,7 @@ describe('DebugMidiWindow', () => {
 
     it('should handle partial commands at end of input', async () => {
       // COLOR command without parameter
-      await midiWindow.updateContent(['test-midi', 'COLOR']);
+      await midiWindow.updateContent(['COLOR']);
 
       // Should not crash
       expect(midiWindow).toBeDefined();
@@ -217,17 +214,17 @@ describe('DebugMidiWindow', () => {
 
   describe('Window lifecycle', () => {
     it('should create window with correct structure', async () => {
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       const mockWindow = (midiWindow as any).debugWindow;
       expect(mockWindow).toBeDefined();
       if (mockWindow) {
-        expect(mockWindow.loadURL).toHaveBeenCalled();
+        expect(mockWindow.loadFile).toHaveBeenCalled();
       }
     });
 
     it('should clean up on close', async () => {
-      await midiWindow.updateContent(['test-midi', '$90', '60', '64']);
+      await midiWindow.updateContent(['$90', '60', '64']);
 
       const mockWindow = (midiWindow as any).debugWindow;
       expect(mockWindow).toBeDefined();
@@ -242,17 +239,15 @@ describe('DebugMidiWindow', () => {
   });
 
   describe('Base class delegation', () => {
-    const displayName = 'test-midi';
-
     beforeEach(() => {
       // Trigger window creation with MIDI data
-      midiWindow.updateContent([displayName, '$90', '60', '64']);
+      midiWindow.updateContent(['$90', '60', '64']);
     });
 
     it('should delegate CLEAR command to base class', async () => {
       const clearSpy = jest.spyOn(midiWindow as any, 'clearDisplayContent');
 
-      midiWindow.updateContent([displayName, 'CLEAR']);
+      midiWindow.updateContent(['CLEAR']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -264,7 +259,7 @@ describe('DebugMidiWindow', () => {
     it('should delegate SAVE command to base class', async () => {
       const saveSpy = jest.spyOn(midiWindow as any, 'saveWindowToBMPFilename');
 
-      midiWindow.updateContent([displayName, 'SAVE', 'test.bmp']);
+      midiWindow.updateContent(['SAVE', 'test.bmp']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -276,7 +271,7 @@ describe('DebugMidiWindow', () => {
     it('should delegate PC_KEY command to base class', async () => {
       const keySpy = jest.spyOn(midiWindow as any, 'enableKeyboardInput');
 
-      midiWindow.updateContent([displayName, 'PC_KEY']);
+      midiWindow.updateContent(['PC_KEY']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -288,7 +283,7 @@ describe('DebugMidiWindow', () => {
     it('should delegate PC_MOUSE command to base class', async () => {
       const mouseSpy = jest.spyOn(midiWindow as any, 'enableMouseInput');
 
-      midiWindow.updateContent([displayName, 'PC_MOUSE']);
+      midiWindow.updateContent(['PC_MOUSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -300,7 +295,7 @@ describe('DebugMidiWindow', () => {
     it('should delegate UPDATE command to base class', async () => {
       const updateSpy = jest.spyOn(midiWindow as any, 'forceDisplayUpdate');
 
-      midiWindow.updateContent([displayName, 'UPDATE']);
+      midiWindow.updateContent(['UPDATE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -312,7 +307,7 @@ describe('DebugMidiWindow', () => {
     it('should delegate CLOSE command to base class', async () => {
       const closeSpy = jest.spyOn(midiWindow as any, 'closeDebugWindow');
 
-      midiWindow.updateContent([displayName, 'CLOSE']);
+      midiWindow.updateContent(['CLOSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));

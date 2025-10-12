@@ -151,7 +151,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private bitmapCanvasId: string = '';
   private canvasWidth: number = 0;
   private canvasHeight: number = 0;
-  private windowCreated: boolean = false;
 
   constructor(context: Context, displaySpec: SpectroDisplaySpec, windowId: string = `spectro-${Date.now()}`) {
     super(context, windowId, 'spectro');
@@ -185,20 +184,39 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Calculate window dimensions based on trace pattern and bins
     this.calculateSpectroWindowDimensions();
 
+    // Initialize canvas ID immediately (don't wait for data)
+    this.bitmapCanvasId = `spectro-canvas-${this.displaySpec.displayName}`;
+
+    // Initialize canvas renderer
+    if (!this.canvasRenderer) {
+      this.canvasRenderer = new CanvasRenderer();
+    }
+
     // Set up trace processor for waterfall scrolling
     this.traceProcessor.setPattern(this.displaySpec.tracePattern);
     this.traceProcessor.setBitmapSize(this.canvasWidth, this.canvasHeight);
 
-    // Set scroll callback for trace processor
-    this.traceProcessor.setScrollCallback((scrollX: number, scrollY: number) => {
-      this.scrollWaterfall(scrollX, scrollY);
-    });
+    // Note: Set scroll callback AFTER window is created to avoid null reference
+    // Will be set in createDebugWindow() after window exists
 
     // Initialize rate counter
     this.rateCounter = this.displaySpec.rate - 1;
 
-    // Mark window as ready to process messages
+    // CRITICAL FIX: Create window immediately, don't wait for data
+    // This matches TERM window pattern and ensures window appears when declared
+    this.logMessage('Creating SPECTRO window immediately in constructor');
+    this.createDebugWindow();
+
+    // CRITICAL: Mark window as ready to process messages
+    // Without this, all messages get queued instead of processed immediately
     this.onWindowReady();
+  }
+
+  /**
+   * Get window title (public getter for base class abstract requirement)
+   */
+  get windowTitle(): string {
+    return this.displaySpec.windowTitle;
   }
 
   /**
@@ -438,10 +456,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
    */
   protected forceDisplayUpdate(): void {
     // SPECTRO doesn't have explicit UPDATE in Pascal
-    // Just trigger a redraw if we have data
-    if (this.windowCreated) {
-      this.updateWaterfallDisplay();
-    }
+    // Just trigger a redraw
+    this.updateWaterfallDisplay();
   }
 
   /**
@@ -460,22 +476,37 @@ export class DebugSpectroWindow extends DebugWindowBase {
   }
 
   /**
-   * Update SPECTRO window content with new data
+   * Entry point for message processing from WindowRouter
+   * Called by router's updateContent(dataParts)
    */
-  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
+  public updateContent(lineParts: string[]): void {
+    this.processMessageImmediate(lineParts);
+  }
+
+  /**
+   * Update SPECTRO window content with new data (synchronous wrapper for async operations)
+   */
+  protected processMessageImmediate(lineParts: string[]): void {
+    // Handle async internally
+    this.processMessageAsync(lineParts);
+  }
+
+  /**
+   * Process SPECTRO data and commands (async implementation)
+   */
+  private async processMessageAsync(lineParts: string[]): Promise<void> {
     if (lineParts.length < 1) {
       return;
     }
 
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Strip display name/window name (first element) before passing to base class
-    const commandParts = lineParts.length > 0 ? lineParts.slice(1) : [];
-    if (await this.handleCommonCommand(commandParts)) {
+    // Window name was already stripped by mainWindow before routing - pass lineParts directly
+    if (await this.handleCommonCommand(lineParts)) {
       return;
     }
 
-    // Process sample data (skip index 0 which is the display name)
-    for (let i = 1; i < lineParts.length; i++) {
+    // Process sample data starting from index 0
+    for (let i = 0; i < lineParts.length; i++) {
       const part = lineParts[i];
 
       // Check for string (not allowed in SPECTRO)
@@ -492,13 +523,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           const dataExpr = dataMatch[1];
           const value = Number(dataExpr);
           if (!isNaN(value)) {
-            // Create window on first data if not created yet
-            if (!this.windowCreated) {
-              this.initializeCanvas();
-              this.createDebugWindow();
-              this.windowCreated = true;
-            }
-
+            // Window already created in constructor, just add sample
             this.addSample(value);
           }
         }
@@ -514,11 +539,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
           // Add each unpacked sample
           for (const sample of samples) {
-            if (!this.windowCreated) {
-              this.initializeCanvas();
-              this.createDebugWindow();
-              this.windowCreated = true;
-            }
             this.addSample(sample);
           }
         }
@@ -526,11 +546,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
         // Try to parse as raw numeric value
         const numValue = Number(part);
         if (!isNaN(numValue)) {
-          if (!this.windowCreated) {
-            this.initializeCanvas();
-            this.createDebugWindow();
-            this.windowCreated = true;
-          }
           this.addSample(numValue);
         }
       }
@@ -811,17 +826,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
     });
   }
 
-  /**
-   * Initialize the canvas and renderer
-   */
-  protected initializeCanvas(): void {
-    if (!this.canvasRenderer) {
-      this.canvasRenderer = new CanvasRenderer();
-    }
-
-    // Canvas dimensions already calculated in constructor
-    this.bitmapCanvasId = `spectro-canvas-${this.displaySpec.displayName}`;
-  }
+  // Note: initializeCanvas() method removed - initialization now happens in constructor
 
   /**
    * Create the debug window with canvas
@@ -888,6 +893,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
       this.closeDebugWindow();
     });
 
+    // NOW it's safe to set the scroll callback since window exists
+    // This avoids null reference errors when trace processor triggers scroll
+    this.traceProcessor.setScrollCallback((scrollX: number, scrollY: number) => {
+      this.scrollWaterfall(scrollX, scrollY);
+    });
+
     // Generate HTML content
     const htmlContent = `
       <!DOCTYPE html>
@@ -895,6 +906,10 @@ export class DebugSpectroWindow extends DebugWindowBase {
         <head>
           <title>${this.displaySpec.windowTitle}</title>
           <style>
+            @font-face {
+              font-family: 'Parallax';
+              src: url('file:///${__dirname.replace(/\\/g, '/')}/../../assets/fonts/Parallax.ttf') format('truetype');
+            }
             body {
               margin: 0;
               padding: 10px;
@@ -925,16 +940,40 @@ export class DebugSpectroWindow extends DebugWindowBase {
         <body>
           <canvas id="${this.bitmapCanvasId}" width="${this.canvasWidth}" height="${this.canvasHeight}"></canvas>
           <div id="coordinate-display"></div>
+          <script>
+            // Create offscreen canvas immediately for double buffering
+            const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
+            window[offscreenKey] = document.createElement('canvas');
+            window[offscreenKey].width = ${this.canvasWidth};
+            window[offscreenKey].height = ${this.canvasHeight};
+          </script>
         </body>
       </html>
     `;
 
-    // Load the HTML content
-    this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    // Write HTML to temp file to allow file:// font URLs to work
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `pnut-spectro-${this.windowId}-${Date.now()}.html`);
+    fs.writeFileSync(tempFile, htmlContent);
 
-    // Initialize canvas after load
+    // Load from file system
+    this.debugWindow.loadFile(tempFile);
+
+    // Initialize canvas after load and clean up temp file
     this.debugWindow.webContents.once('did-finish-load', () => {
       this.clearCanvas();
+
+      // Clean up temp file after a delay to ensure it's fully loaded
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(tempFile);
+        } catch (error) {
+          // Ignore cleanup errors
+        }
+      }, 5000);
     });
   }
 }

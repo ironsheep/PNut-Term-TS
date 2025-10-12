@@ -34,7 +34,18 @@ jest.mock('electron', () => {
 jest.mock('fs', () => ({
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),
-  writeFileSync: jest.fn()
+  writeFileSync: jest.fn(),
+  unlinkSync: jest.fn() // Added for temp file cleanup
+}));
+
+// Mock OS module for temp directory
+jest.mock('os', () => ({
+  tmpdir: jest.fn().mockReturnValue('/tmp')
+}));
+
+// Mock path module
+jest.mock('path', () => ({
+  join: jest.fn((...args) => args.join('/'))
 }));
 
 // Mock USB serial
@@ -360,8 +371,8 @@ describe('DebugSpectroWindow', () => {
 
       expect(debugSpectroWindow['debugWindow']).toBeNull();
 
-      // Send numeric data to trigger window creation
-      debugSpectroWindow.updateContent(['TestSpectro', '`(123)']);
+      // Send numeric data to trigger window creation (window name already stripped by router)
+      debugSpectroWindow.updateContent(['`(123)']);
 
       // Wait for async processing to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -374,7 +385,7 @@ describe('DebugSpectroWindow', () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', ['SPECTRO', 'TestSpectro']);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
 
-      debugSpectroWindow.updateContent(['TestSpectro', 'CLEAR']);
+      debugSpectroWindow.updateContent(['CLEAR']);
 
       expect(mockBrowserWindowInstances.length).toBe(0);
       expect(debugSpectroWindow['debugWindow']).toBeNull();
@@ -389,31 +400,31 @@ describe('DebugSpectroWindow', () => {
 
     it('should accept updateContent calls without error', () => {
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', 'CLEAR']);
+        debugSpectroWindow.updateContent(['CLEAR']);
       }).not.toThrow();
     });
 
     it('should handle CLEAR command', () => {
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', 'CLEAR']);
+        debugSpectroWindow.updateContent(['CLEAR']);
       }).not.toThrow();
     });
 
     it('should handle SAVE command', () => {
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', 'SAVE', 'test.bmp']);
+        debugSpectroWindow.updateContent(['SAVE', 'test.bmp']);
       }).not.toThrow();
     });
 
     it('should handle numeric data', () => {
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', '123']);
+        debugSpectroWindow.updateContent(['123']);
       }).not.toThrow();
     });
 
     it('should handle backtick-enclosed data', () => {
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', '`(456)']);
+        debugSpectroWindow.updateContent(['`(456)']);
       }).not.toThrow();
     });
 
@@ -421,7 +432,7 @@ describe('DebugSpectroWindow', () => {
       // SPECTRO doesn't allow string data (unlike other windows)
       // Should not throw but should log error
       expect(() => {
-        debugSpectroWindow.updateContent(['TestSpectro', "'text'"]);
+        debugSpectroWindow.updateContent(["'text'"]);
       }).not.toThrow();
     });
   });
@@ -439,7 +450,7 @@ describe('DebugSpectroWindow', () => {
     it('should accumulate samples in circular buffer', async () => {
       // Add a few samples
       for (let i = 0; i < 10; i++) {
-        debugSpectroWindow.updateContent(['TestSpectro', `${i * 100}`]);
+        debugSpectroWindow.updateContent([`${i * 100}`]);
       }
 
       // Wait for async processing to complete
@@ -458,7 +469,7 @@ describe('DebugSpectroWindow', () => {
 
       // Fill more than BUFFER_SIZE samples
       for (let i = 0; i < 2100; i++) {
-        debugSpectroWindow.updateContent(['TestSpectro', `${i}`]);
+        debugSpectroWindow.updateContent([`${i}`]);
       }
 
       // Wait for async processing to complete
@@ -471,7 +482,7 @@ describe('DebugSpectroWindow', () => {
     it('should clear buffer on CLEAR command', async () => {
       // Add some samples
       for (let i = 0; i < 100; i++) {
-        debugSpectroWindow.updateContent(['TestSpectro', `${i}`]);
+        debugSpectroWindow.updateContent([`${i}`]);
       }
 
       // Wait for async processing to complete
@@ -480,7 +491,7 @@ describe('DebugSpectroWindow', () => {
       expect(debugSpectroWindow['sampleCount']).toBeGreaterThan(0);
 
       // Clear
-      debugSpectroWindow.updateContent(['TestSpectro', 'CLEAR']);
+      debugSpectroWindow.updateContent(['CLEAR']);
 
       // Wait for async processing to complete
       await new Promise(resolve => setImmediate(resolve));

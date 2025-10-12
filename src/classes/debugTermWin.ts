@@ -140,10 +140,6 @@ export class DebugTermWindow extends DebugWindowBase {
   private selectedCombo: number = 0;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
   private offscreenCanvasInitialized: boolean = false;
-  // Window drag tracking (matches Pascal CaptionStr and CaptionPos)
-  private captionStr: string = ''; // Original caption without position
-  private captionPos: boolean = false; // True when showing position in title
-  private moveEndTimer: NodeJS.Timeout | null = null; // Timer to detect end of drag
 
   constructor(ctx: Context, displaySpec: TermDisplaySpec, windowId?: string) {
     // Use the user-provided display name as the window ID for proper routing
@@ -156,9 +152,6 @@ export class DebugTermWindow extends DebugWindowBase {
     // adjust our contentInset for font size
     // Keep contentInset at 0 for full canvas usage
     // this.contentInset = this.displaySpec.font.charWidth / 2;
-
-    // Initialize caption tracking (matches Pascal CaptionStr)
-    this.captionStr = this.windowTitle;
 
     // CRITICAL FIX: Create window immediately, don't wait for data
     // This ensures windows appear when created, even if closed before data arrives
@@ -555,34 +548,6 @@ export class DebugTermWindow extends DebugWindowBase {
       this.logMessage('* Term window title updated');
     });
 
-    // Handle window move events - update title with position during drag
-    // Matches Pascal FormMove procedure (DebugDisplayUnit.pas:864-869)
-    this.debugWindow.on('move', () => {
-      if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-        const bounds = this.debugWindow.getBounds();
-        // Update title to show position (matches Pascal: Caption := CaptionStr + ' (' + IntToStr(Left) + ', ' + IntToStr(Top) + ')')
-        this.debugWindow.setTitle(`${this.captionStr} (${bounds.x}, ${bounds.y})`);
-        this.captionPos = true;
-
-        // Clear any existing timer
-        if (this.moveEndTimer) {
-          clearTimeout(this.moveEndTimer);
-        }
-
-        // Set timer to restore title after drag ends (900ms - gives user time to see position)
-        // Timer resets on each move event, so it only fires when dragging stops
-        // Matches Pascal's FormPaint restoration behavior
-        this.moveEndTimer = setTimeout(() => {
-          if (this.debugWindow && !this.debugWindow.isDestroyed() && this.captionPos) {
-            // Restore original caption (matches Pascal: Caption := CaptionStr)
-            this.debugWindow.setTitle(this.captionStr);
-            this.captionPos = false;
-          }
-          this.moveEndTimer = null;
-        }, 900);
-      }
-    });
-
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
       // Register with WindowRouter when window is ready
@@ -817,12 +782,6 @@ export class DebugTermWindow extends DebugWindowBase {
 
   public closeDebugWindow(): void {
     this.logMessage(`at closeDebugWindow() TERM`);
-
-    // Clean up move end timer
-    if (this.moveEndTimer) {
-      clearTimeout(this.moveEndTimer);
-      this.moveEndTimer = null;
-    }
 
     try {
       if (this.debugWindow && !this.debugWindow.isDestroyed()) {

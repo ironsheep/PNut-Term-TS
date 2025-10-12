@@ -33,7 +33,18 @@ jest.mock('electron', () => {
 jest.mock('fs', () => ({
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),
-  writeFileSync: jest.fn()
+  writeFileSync: jest.fn(),
+  unlinkSync: jest.fn() // Added for temp file cleanup
+}));
+
+// Mock OS module for temp directory
+jest.mock('os', () => ({
+  tmpdir: jest.fn().mockReturnValue('/tmp')
+}));
+
+// Mock path module
+jest.mock('path', () => ({
+  join: jest.fn((...args) => args.join('/'))
 }));
 
 // Mock USB serial for InputForwarder
@@ -265,9 +276,9 @@ describe('DebugFFTWindow', () => {
       
       expect(debugFftWindow['debugWindow']).toBeNull();
       
-      // Send numeric data to trigger window creation
-      debugFftWindow.updateContent(['FFT', '`(123)']);
-      
+      // Send numeric data to trigger window creation (window name already stripped by router)
+      debugFftWindow.updateContent(['`(123)']);
+
       expect(mockBrowserWindowInstances.length).toBe(1);
       expect(debugFftWindow['debugWindow']).toBeDefined();
     });
@@ -275,9 +286,9 @@ describe('DebugFFTWindow', () => {
     it('should not create window on non-numeric data', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', ['FFT', 'TestFFT']);
       debugFftWindow = new DebugFFTWindow(mockContext, displaySpec);
-      
-      debugFftWindow.updateContent(['FFT', 'CLEAR']);
-      
+
+      debugFftWindow.updateContent(['CLEAR']);
+
       expect(mockBrowserWindowInstances.length).toBe(0);
       expect(debugFftWindow['debugWindow']).toBeNull();
     });
@@ -285,16 +296,16 @@ describe('DebugFFTWindow', () => {
     it('should create window after channel configurations', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', ['FFT', 'TestFFT']);
       debugFftWindow = new DebugFFTWindow(mockContext, displaySpec);
-      
-      // Add channel configurations first
-      debugFftWindow.updateContent(['FFT', "'Ch1'", '5', '1024', '100', '20', '0', 'RED']);
-      debugFftWindow.updateContent(['FFT', "'Ch2'", '3', '512', '80', '100', '0', 'BLUE']);
-      
+
+      // Add channel configurations first (window name already stripped)
+      debugFftWindow.updateContent(["'Ch1'", '5', '1024', '100', '20', '0', 'RED']);
+      debugFftWindow.updateContent(["'Ch2'", '3', '512', '80', '100', '0', 'BLUE']);
+
       // Still no window created
       expect(mockBrowserWindowInstances.length).toBe(0);
-      
+
       // First data should create window
-      debugFftWindow.updateContent(['FFT', '`(456)']);
+      debugFftWindow.updateContent(['`(456)']);
       
       expect(mockBrowserWindowInstances.length).toBe(1);
       expect(debugFftWindow['debugWindow']).toBeDefined();
@@ -308,19 +319,19 @@ describe('DebugFFTWindow', () => {
     });
 
     it('should accept updateContent calls without error', () => {
-      // For Phase 1, updateContent is just a stub
+      // Window name already stripped by router
       expect(() => {
-        debugFftWindow.updateContent(['TestFFT', 'CLEAR']);
+        debugFftWindow.updateContent(['CLEAR']);
       }).not.toThrow();
     });
 
     it('should handle various command formats', () => {
       expect(() => {
-        debugFftWindow.updateContent(['TestFFT', '123', '456']);
+        debugFftWindow.updateContent(['123', '456']);
       }).not.toThrow();
-      
+
       expect(() => {
-        debugFftWindow.updateContent(['TestFFT', 'SAVE']);
+        debugFftWindow.updateContent(['SAVE']);
       }).not.toThrow();
     });
   });

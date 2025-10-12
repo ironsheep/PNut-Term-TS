@@ -110,6 +110,13 @@ export class LoggerCOGWindow extends DebugWindowBase {
   }
 
   /**
+   * Get window title (public getter for base class abstract requirement)
+   */
+  get windowTitle(): string {
+    return `COG ${this.cogId} Debug`;
+  }
+
+  /**
    * Load user preferences
    */
   private loadPreferences(): void {

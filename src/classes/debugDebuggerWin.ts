@@ -483,6 +483,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
+   * Get window title (public getter for base class abstract requirement)
+   */
+  get windowTitle(): string {
+    return this.getWindowTitle();
+  }
+
+  /**
    * Get window title
    */
   protected getWindowTitle(): string {

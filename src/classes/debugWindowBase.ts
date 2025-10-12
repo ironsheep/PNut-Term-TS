@@ -155,6 +155,11 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected inputForwarder: InputForwarder;
   protected wheelTimer: NodeJS.Timeout | null = null;
   protected lastWheelDelta: number = 0;
+
+  // Window drag tracking (matches Pascal CaptionStr and CaptionPos)
+  private captionStr: string = ''; // Original caption without position
+  private captionPos: boolean = false; // True when showing position in title
+  private moveEndTimer: NodeJS.Timeout | null = null; // Timer to detect end of drag
   
   // WindowRouter integration
   protected windowRouter: WindowRouter;
@@ -204,6 +209,12 @@ export abstract class DebugWindowBase extends EventEmitter {
   // Abstract methods that must be overridden by derived classes
   //abstract createDebugWindow(): void;
   abstract closeDebugWindow(): void;
+
+  /**
+   * Get the window title. Must be implemented by derived classes.
+   * Used for drag position tracking and window identification.
+   */
+  abstract get windowTitle(): string;
 
   /**
    * Process message content immediately. Must be implemented by derived classes.
@@ -490,6 +501,41 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Debug windows register many listeners (did-stop-loading, ipc-message, etc.)
       window.webContents.setMaxListeners(20);
 
+      // Add window drag position tracking (matches Pascal FormMove behavior)
+      // Skip for windows that don't support drag: COG, LOGGER, DEBUGGER
+      if (this.windowType !== 'cog' && this.windowType !== 'logger' && this.windowType !== 'debugger') {
+        // Initialize caption tracking (matches Pascal CaptionStr)
+        this.captionStr = this.windowTitle;
+
+        // Handle window move events - update title with position during drag
+        // Matches Pascal FormMove procedure (DebugDisplayUnit.pas:864-869)
+        window.on('move', () => {
+          if (this._debugWindow && !this._debugWindow.isDestroyed()) {
+            const bounds = this._debugWindow.getBounds();
+            // Update title to show position (matches Pascal: Caption := CaptionStr + ' (' + IntToStr(Left) + ', ' + IntToStr(Top) + ')')
+            this._debugWindow.setTitle(`${this.captionStr} (${bounds.x}, ${bounds.y})`);
+            this.captionPos = true;
+
+            // Clear any existing timer
+            if (this.moveEndTimer) {
+              clearTimeout(this.moveEndTimer);
+            }
+
+            // Set timer to restore title after drag ends (900ms - gives user time to see position)
+            // Timer resets on each move event, so it only fires when dragging stops
+            // Matches Pascal's FormPaint restoration behavior
+            this.moveEndTimer = setTimeout(() => {
+              if (this._debugWindow && !this._debugWindow.isDestroyed() && this.captionPos) {
+                // Restore original caption (matches Pascal: Caption := CaptionStr)
+                this._debugWindow.setTitle(this.captionStr);
+                this.captionPos = false;
+              }
+              this.moveEndTimer = null;
+            }, 900);
+          }
+        });
+      }
+
       // Add OTHER event listeners as needed
     } else {
       // Prevent recursive close handling
@@ -516,6 +562,11 @@ export abstract class DebugWindowBase extends EventEmitter {
       if (this.wheelTimer) {
         clearTimeout(this.wheelTimer);
         this.wheelTimer = null;
+      }
+      // Clear move end timer (window drag tracking)
+      if (this.moveEndTimer) {
+        clearTimeout(this.moveEndTimer);
+        this.moveEndTimer = null;
       }
       // Remove event listeners and close the window
       if (this._debugWindow != null && !this._debugWindow.isDestroyed()) {

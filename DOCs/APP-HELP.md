@@ -1,5 +1,14 @@
 # PNut-Term-TS Application Help
 
+## Quick Start Guide
+
+1. **Connect your Propeller 2** device via USB
+2. **Launch PNut-Term-TS** from Applications (macOS), Start Menu (Windows), or command line
+3. **Select your serial port** from the Connection menu
+4. **Click Connect** or press `Cmd/Ctrl+Shift+C`
+5. **Open Debug Logger** with `F2` to see all traffic
+6. Your P2 debug messages will automatically route to appropriate windows!
+
 ## Introduction
 
 **PNut-Term-TS** is a cross-platform debug terminal application for the Parallax Propeller 2 (P2) microcontroller. Built with Electron and TypeScript, it provides comprehensive debugging capabilities through multiple specialized visualization windows.
@@ -195,7 +204,7 @@ Cog2  Counter: 1234
 ---
 
 ### 7. FFT Analyzer Window
-**Status**: ✅ **Fully Implemented**
+**Status**: 🔧 **Recently Fixed** (v0.5.0)
 
 **Purpose**: Frequency spectrum analysis
 
@@ -209,11 +218,12 @@ Cog2  Counter: 1234
 - Frequency domain display
 - Peak detection
 - Logarithmic/linear scales
+- **Note**: Infrastructure fixes applied for window creation and routing
 
 ---
 
 ### 8. Spectrogram Window
-**Status**: ✅ **Fully Implemented**
+**Status**: 🔧 **Recently Fixed** (v0.5.0)
 
 **Purpose**: Time-frequency waterfall display
 
@@ -227,6 +237,7 @@ Cog2  Counter: 1234
 - Waterfall display
 - Color-coded intensity
 - Time evolution of spectrum
+- **Note**: Window creation pattern updated to match working windows
 
 ---
 
@@ -285,7 +296,7 @@ Cog2  Counter: 1234
 ---
 
 ### 12. MIDI Display Window
-**Status**: ✅ **Fully Implemented**
+**Status**: 🔧 **Recently Fixed** (v0.5.0)
 
 **Purpose**: MIDI message visualization
 
@@ -299,6 +310,7 @@ Cog2  Counter: 1234
 - MIDI message decoding
 - Note on/off visualization
 - Control change display
+- **Note**: Fixed message routing and canvas rendering issues
 
 ---
 
@@ -705,6 +717,46 @@ Attach relevant log files when reporting issues.
 
 ---
 
-**Last Updated**: 2025-10-07
+## Command-Line Usage
+
+PNut-Term-TS can also be run from the command line:
+
+### Installation
+**macOS**: Add to PATH after installing the app:
+```bash
+export PATH="/Applications/PNut-Term-TS.app/Contents/Resources/bin:$PATH"
+```
+
+**Windows**: Add the installation directory to your PATH environment variable
+
+**Linux**: The executable is in the bin directory of the extracted package
+
+### Basic Commands
+```bash
+# Launch the GUI application
+pnut-term-ts
+
+# Connect to specific port at startup
+pnut-term-ts --port /dev/tty.usbserial-1420 --baud 921600
+
+# Enable verbose logging
+pnut-term-ts --verbose
+
+# Show help and available options
+pnut-term-ts --help
+```
+
+### Advanced Options
+- `--port <path>`: Serial port to connect on startup
+- `--baud <rate>`: Baud rate (115200, 230400, 460800, 921600)
+- `--dtr`: Use DTR for reset (default)
+- `--rts`: Use RTS for reset instead of DTR
+- `--verbose`: Enable verbose logging output
+- `--quiet`: Suppress informational messages
+- `--file <path>`: Load binary file for P2 download
+
+---
+
+**Last Updated**: 2024-10-12
 **Version**: 0.5.0
 **Architecture**: Worker Thread with SharedArrayBuffer

@@ -117,8 +117,12 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   // Canvas elements
   private scopeXyCanvasId: string;
   private idString: string;
-  private windowTitle: string;
+  private _windowTitle: string;
   private windowContent: string = '';
+
+  get windowTitle(): string {
+    return this._windowTitle;
+  }
 
   // Configuration
   private range: number = 0x7FFFFFFF;
@@ -169,7 +173,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Generate unique canvas ID
     this.idString = Date.now().toString();
     this.scopeXyCanvasId = `scope-xy-canvas-${this.idString}`;
-    this.windowTitle = 'SCOPE_XY';
+    this._windowTitle = 'SCOPE_XY';
     
     // CRITICAL FIX: Create window immediately, don't wait for first message
     // This ensures windows appear when created, matching Logic/Scope/Term pattern
@@ -677,7 +681,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       switch (element) {
         case 'TITLE':
           if (i + 1 < lineParts.length) {
-            this.windowTitle = this.parseString(lineParts[++i]);
+            this._windowTitle = this.parseString(lineParts[++i]);
           }
           break;
 
