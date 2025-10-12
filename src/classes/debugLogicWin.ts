@@ -32,7 +32,7 @@ import {
 import { v8_0_0 } from 'pixi.js';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export interface LogicDisplaySpec {
   displayName: string;
@@ -195,6 +195,9 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.windowLogPrefix = 'lcgW';
     // record our Debug Logic Window Spec
     this.displaySpec = displaySpec;
+
+    // Enable logging for LOGIC window
+    this.isLogging = true;
     // init default Trigger Spec
     this.triggerSpec = {
       trigEnabled: false,

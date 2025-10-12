@@ -29,7 +29,7 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export interface MidiDisplaySpec {
   displayName: string;
@@ -169,8 +169,8 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     this.displaySpec = displaySpec;
 
-    // Enable logging for MIDI window
-    this.isLogging = true;
+    // Disable logging for MIDI window
+    this.isLogging = false;
 
     // Initialize MIDI configuration from displaySpec
     this.midiSize = displaySpec.keySize;
