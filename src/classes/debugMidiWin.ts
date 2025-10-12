@@ -592,9 +592,9 @@ export class DebugMidiWindow extends DebugWindowBase {
 
       // Draw MIDI note number (rotated 90 degrees clockwise to read vertically)
       // Note: key.numX already accounts for irregular white key shapes near black keys
-      // Position text in the center of the key vertically
+      // Position text at the top of the key with small offset for visibility
       ctx.save();
-      ctx.translate(${key.numX - this.keyOffset}, ${top + key.bottom / 2});
+      ctx.translate(${key.numX - this.keyOffset}, ${top + 15});
       ctx.rotate(Math.PI / 2);  // 90 degrees clockwise
       ctx.fillStyle = '${key.isBlack ? '#BBB' : '#444'}';
       ctx.fillText('${keyNum}', 0, 0);
