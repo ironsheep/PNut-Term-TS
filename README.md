@@ -72,7 +72,7 @@ We are implementing the Graphical Debug Display support over time. Here's a full
 | Scope_XY | 🧪 Testing |
 | FFT | 🧪 Testing |
 | Bitmap | 🧪 Testing |
-| MIDI | 🧪 Testing |
+| MIDI | ✅ Implemented - 100% Pascal parity as of version 51a |
 | Spectro | 🧪 Testing |
 | Debugger | ⬜ Not started |
 
