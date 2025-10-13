@@ -26,7 +26,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export interface ScopeDisplaySpec {
   displayName: string;
@@ -78,10 +78,10 @@ export interface ScopeTriggerSpec {
 
 /**
  * Debug SCOPE Window - Oscilloscope Waveform Display
- * 
+ *
  * Displays real-time oscilloscope-style waveforms with multiple channels.
  * Supports trigger modes, auto-scaling, and packed data formats for high-performance data visualization.
- * 
+ *
  * ## Features
  * - **Multi-Channel Display**: Up to 8 channels with independent configurations
  * - **Trigger Modes**: Manual trigger levels with arm/trigger thresholds, AUTO mode, and holdoff control
@@ -89,7 +89,7 @@ export interface ScopeTriggerSpec {
  * - **Packed Data Support**: Efficient data transfer using BYTE2/4, WORD2, LONG formats with SIGNED/ALT modifiers
  * - **Auto-scaling**: Automatic min/max detection for channel ranges
  * - **Coordinate Display**: Mouse position feedback with optional Y-axis inversion
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -101,7 +101,7 @@ export interface ScopeTriggerSpec {
  * - `TEXTSIZE half-pix` - Text size for labels (6-200, default: 12)
  * - `COLOR bg {grid}` - Window and grid colors (default: BLACK, GRAY 4)
  * - `HIDEXY` - Hide coordinate display
- * 
+ *
  * ## Data Format
  * Channel configuration: `'{name}' {min} {max} {y-size} {y-base} {legend} {color} {bright}`
  * Auto-scaling mode: `'{name}' AUTO {y-size} {y-base} {legend} {color} {bright}`
@@ -112,7 +112,7 @@ export interface ScopeTriggerSpec {
  * - legend: %abcd format (a=max legend, b=min legend, c=max line, d=min line)
  * - color: Channel color name, bright: Color brightness (0-15)
  * - Example: `debug(\`MyScope 'Ch1' 0 1024 100 50 %1111 RED 15\`(sample_value))`
- * 
+ *
  * ## Commands
  * - `CLEAR` - Clear all channel data and reset display
  * - `UPDATE` - Force display update (when UPDATE directive is used)
@@ -125,27 +125,27 @@ export interface ScopeTriggerSpec {
  * - `TRIGGER ch HOLDOFF samples` - Set trigger holdoff period
  * - `LINE size` - Update line width, `DOT size` - Update dot size
  * - Packed data modes: `BYTE2/4`, `WORD2`, `LONG` with optional `SIGNED`/`ALT` modifiers
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `SCOPE_Configure` procedure (line 1151)
  * - Update: `SCOPE_Update` procedure (line 1209)
  * - Trigger handling: `Scope_Trigger` procedures
  * - Channel management: `Scope_Channel_Config` procedures
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic scope with two channels
  * debug(`SCOPE MyScope SIZE 400 300 SAMPLES 512 RATE 2)
  * debug(`MyScope 'Voltage' 0 3300 120 10 %1111 YELLOW 15)
  * debug(`MyScope 'Current' 0 1000 120 140 %1111 CYAN 15)
- * 
+ *
  * repeat
  *   voltage := adc_read(0)
  *   current := adc_read(1)
  *   debug(`MyScope \`(voltage, current))
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Channels are created dynamically when channel configuration is encountered
  * - First numeric data triggers window creation and display initialization
@@ -153,12 +153,12 @@ export interface ScopeTriggerSpec {
  * - Supports both manual trigger levels and automatic triggering
  * - Mouse coordinates display with optional Y-axis inversion for debugging
  * - Efficient packed data processing for high-speed data acquisition scenarios
- * 
+ *
  * ## Deviations from Pascal
  * - Enhanced mouse coordinate display with pixel-level precision
  * - Additional color validation and error handling
  * - Improved trigger state management and visual feedback
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_SCOPE.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
@@ -185,10 +185,10 @@ export class DebugScopeWindow extends DebugWindowBase {
   // diagnostics used to limit the number of samples displayed while testing
   private dbgUpdateCount: number = 260; // NOTE 120 (no scroll) ,140 (scroll plus more), 260 scroll twice;
   private dbgLogMessageCount: number = 256 + 1; // log first N samples then stop (2 channel: 128+1 is 64 samples)
-  
+
   protected logMessage(message: string): void {
     // if (this.dbgLogMessageCount > 0) {
-      super.logMessage(message);
+    super.logMessage(message);
     //   this.dbgLogMessageCount--;
     // }
   }
@@ -198,6 +198,10 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.windowLogPrefix = 'scoW';
     // record our Debug Scope Window Spec
     this.displaySpec = displaySpec;
+
+    // Enable logging for SCOPE window
+    this.isLogging = true;
+
     // init default Trigger Spec
     this.triggerSpec = {
       trigEnabled: false,
@@ -219,7 +223,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       isAlternate: false,
       isSigned: false
     };
-    
+
     // Window creation deferred until first numeric data arrives and all channels are known
     // This allows proper sizing based on actual channel specifications
     // But we mark the window as "ready" to process messages for channel specs and first data
@@ -272,13 +276,13 @@ export class DebugScopeWindow extends DebugWindowBase {
     // now parse overrides to defaults
     // console.log(`CL: at overrides ScopeDisplaySpec: ${lineParts}`);
     if (lineParts.length > 1) {
-      displaySpec.displayName = lineParts[1];  // lineParts[0] is '`SCOPE', lineParts[1] is the window name
+      displaySpec.displayName = lineParts[1]; // lineParts[0] is '`SCOPE', lineParts[1] is the window name
       isValid = true; // invert default value
     }
     if (lineParts.length > 2) {
       for (let index = 2; index < lineParts.length; index++) {
         const element = lineParts[index];
-        
+
         // Try to parse common keywords first
         const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
         if (parsed) {
@@ -299,7 +303,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 isValid = false;
               }
               break;
-              
+
             case 'POS':
               // POS is not in the original scope parser but should be supported
               const [posParsed, pos] = DisplaySpecParser.parsePosKeyword(lineParts, index);
@@ -312,7 +316,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 isValid = false;
               }
               break;
-              
+
             case 'RATE':
               // ensure we have one more value
               if (index < lineParts.length - 1) {
@@ -322,11 +326,11 @@ export class DebugScopeWindow extends DebugWindowBase {
                 isValid = false;
               }
               break;
-              
+
             case 'HIDEXY':
               displaySpec.hideXY = true;
               break;
-              
+
             // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
             /*
             case 'TITLE':
@@ -414,7 +418,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
-    
+
     // If no POS clause was present, use WindowPlacer for intelligent positioning
     if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
@@ -432,15 +436,15 @@ export class DebugScopeWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) SCOPE '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) SCOPE '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
     }
-    
-    this.logMessage(
-      `  -- SCOPE window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
-    );
+
+    this.logMessage(`  -- SCOPE window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`);
 
     // now generate the window with the calculated sizes
     const displayName: string = this.windowTitle;
@@ -460,7 +464,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`scope-${this.displaySpec.displayName}`, this.debugWindow);
     }
-    
+
     // hook window events before being shown
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Scope window will show...');
@@ -672,7 +676,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
       // Mark window as ready to process queued messages
       this.onWindowReady();
-      
+
       // Only update channel labels if we have channels defined
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
@@ -793,7 +797,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         channelSpec.lgndShowMinLine = true;
         let colorName = 'LIME'; // vs. green
         let colorBrightness = 15;
-        if (lineParts[0].toUpperCase().startsWith('AUTO')) {
+        if (lineParts.length > 1 && lineParts[1].toUpperCase().startsWith('AUTO')) {
           // parse AUTO spec - set trigger auto mode for this channel
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
           // Auto means we should use auto trigger for this channel
@@ -802,62 +806,62 @@ export class DebugScopeWindow extends DebugWindowBase {
           // AUTO channels default to 0-255 range
           channelSpec.minValue = 0;
           channelSpec.maxValue = 255;
+          if (lineParts.length > 2) {
+            channelSpec.ySize = Number(lineParts[2]);
+          }
           if (lineParts.length > 3) {
-            channelSpec.ySize = Number(lineParts[0]);
+            channelSpec.yBaseOffset = Number(lineParts[3]);
           }
           if (lineParts.length > 4) {
-            channelSpec.yBaseOffset = Number(lineParts[0]);
-          }
-          if (lineParts.length > 5) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[0];
+            const legend: string = lineParts[4];
             this.parseLegend(legend, channelSpec);
           }
-          if (lineParts.length > 6) {
-            colorName = lineParts[0];
+          if (lineParts.length > 5) {
+            colorName = lineParts[5];
           }
-          if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[0]);
+          if (lineParts.length > 6) {
+            colorBrightness = Number(lineParts[6]);
           }
         } else {
           // parse manual spec
           //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
           let isNumber: boolean = false;
           let parsedValue: number = 0;
-          if (lineParts.length > 2) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+          if (lineParts.length > 1) {
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[1]);
             if (isNumber) {
               channelSpec.minValue = parsedValue;
             }
           }
-          if (lineParts.length > 3) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+          if (lineParts.length > 2) {
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
             if (isNumber) {
               channelSpec.maxValue = parsedValue;
             }
           }
-          if (lineParts.length > 4) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+          if (lineParts.length > 3) {
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
             if (isNumber) {
               channelSpec.ySize = parsedValue;
             }
           }
-          if (lineParts.length > 5) {
-            [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+          if (lineParts.length > 4) {
+            [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
             if (isNumber) {
               channelSpec.yBaseOffset = parsedValue;
             }
           }
-          if (lineParts.length > 6) {
+          if (lineParts.length > 5) {
             // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
-            const legend: string = lineParts[0];
+            const legend: string = lineParts[5];
             this.parseLegend(legend, channelSpec);
           }
-          if (lineParts.length > 7) {
-            colorName = lineParts[0];
+          if (lineParts.length > 6) {
+            colorName = lineParts[6];
           }
-          if (lineParts.length > 8) {
-            colorBrightness = Number(lineParts[0]);
+          if (lineParts.length > 7) {
+            colorBrightness = Number(lineParts[7]);
           }
         }
         const channelColor = new DebugColor(colorName, colorBrightness);
@@ -868,11 +872,13 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
         this.channelSpecs.push(channelSpec);
-        
+
         // If window is already created, we need to add a corresponding channelSample
         if (this.windowCreated && this.channelSamples.length < this.channelSpecs.length) {
           this.channelSamples.push({ samples: [] });
-          this.logMessage(`at updateContent() added channelSample for new channel, now have ${this.channelSamples.length} samples`);
+          this.logMessage(
+            `at updateContent() added channelSample for new channel, now have ${this.channelSamples.length} samples`
+          );
         }
       } else if (lineParts[0].toUpperCase() == 'TRIGGER') {
         // parse trigger spec update
@@ -984,18 +990,18 @@ export class DebugScopeWindow extends DebugWindowBase {
         //       this.packedMode.isSigned = true;
         //     }
         //   }
-        
+
         // Check if current word is a packed data mode
         const [isPackedData, _] = PackedDataProcessor.validatePackedMode(lineParts[0]);
         if (isPackedData) {
           // Collect packed mode and any following keywords
           const keywords: string[] = [];
           let index = 1;
-          
+
           // Add the mode
           keywords.push(lineParts[index]);
           index++;
-          
+
           // Look for ALT and SIGNED keywords
           while (index < lineParts.length) {
             const keyword = lineParts[index].toUpperCase();
@@ -1006,7 +1012,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               break;
             }
           }
-          
+
           // Parse all keywords together
           this.packedMode = PackedDataProcessor.parsePackedModeKeywords(keywords);
         } else {
@@ -1036,7 +1042,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               }
               this.calculateAutoTriggerAndScale();
               this.initChannelSamples();
-              
+
               // NOW create the window with all channel specifications known
               if (!this.windowCreated) {
                 this.createDebugWindow();
@@ -1044,7 +1050,9 @@ export class DebugScopeWindow extends DebugWindowBase {
               }
             }
             let scopeSamples: number[] = [];
-            for (let index = 1; index < lineParts.length; index++) {
+            // WindowRouter strips display name before routing, so lineParts contains just the data
+            // Start from index 0 to capture all sample values
+            for (let index = 0; index < lineParts.length; index++) {
               // spin2 output has underscores for commas in numbers, so remove them
               const [isValidNumber, sampleValue] = this.isSpinNumber(lineParts[index]);
               if (isValidNumber) {
@@ -1068,14 +1076,20 @@ export class DebugScopeWindow extends DebugWindowBase {
                 unpackedSamples.push(...samples);
               }
               scopeSamples = unpackedSamples;
-              this.logMessage(`* UPD-INFO unpacked ${scopeSamples.length} samples from packed data mode: ${JSON.stringify(this.packedMode)}`);
+              this.logMessage(
+                `* UPD-INFO unpacked ${scopeSamples.length} samples from packed data mode: ${JSON.stringify(
+                  this.packedMode
+                )}`
+              );
             }
 
             // parse numeric data
             let didScroll: boolean = false; // in case we need this for performance of window update
             const numberChannels: number = this.channelSpecs.length;
             const nbrSamples = scopeSamples.length;
-            this.logMessage(`* UPD-INFO channels=${numberChannels}, samples=${nbrSamples}, samples=[${scopeSamples.join(',')}]`);
+            this.logMessage(
+              `* UPD-INFO channels=${numberChannels}, samples=${nbrSamples}, samples=[${scopeSamples.join(',')}]`
+            );
             if (nbrSamples == numberChannels) {
               /*
               if (this.dbgLogMessageCount > 0) {
@@ -1100,7 +1114,9 @@ export class DebugScopeWindow extends DebugWindowBase {
                 }
                 // record our sample (shifting left if necessary)
                 didScroll = this.recordChannelSample(chanIdx, nextSample);
-                this.logMessage(`* UPD-INFO recorded sample ${nextSample} for channel ${chanIdx}, channelSamples[${chanIdx}].samples.length=${this.channelSamples[chanIdx].samples.length}`);
+                this.logMessage(
+                  `* UPD-INFO recorded sample ${nextSample} for channel ${chanIdx}, channelSamples[${chanIdx}].samples.length=${this.channelSamples[chanIdx].samples.length}`
+                );
                 // update scope chanel canvas with new sample
                 const canvasName = `channel-${chanIdx}`;
                 //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
@@ -1128,18 +1144,21 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private calculateAutoTriggerAndScale() {
     this.logMessage(`at calculateAutoTriggerAndScale()`);
-    if (this.triggerSpec.trigAuto && this.triggerSpec.trigChannel >= 0 && 
-        this.triggerSpec.trigChannel < this.channelSpecs.length) {
+    if (
+      this.triggerSpec.trigAuto &&
+      this.triggerSpec.trigChannel >= 0 &&
+      this.triggerSpec.trigChannel < this.channelSpecs.length
+    ) {
       // Get the channel spec for the trigger channel
       const channelSpec = this.channelSpecs[this.triggerSpec.trigChannel];
-      
+
       // Calculate arm level at 33% from bottom
       const range = channelSpec.maxValue - channelSpec.minValue;
-      this.triggerSpec.trigArmLevel = (range / 3) + channelSpec.minValue;
-      
+      this.triggerSpec.trigArmLevel = range / 3 + channelSpec.minValue;
+
       // Calculate trigger level at 50% (center)
-      this.triggerSpec.trigLevel = (range / 2) + channelSpec.minValue;
-      
+      this.triggerSpec.trigLevel = range / 2 + channelSpec.minValue;
+
       this.logMessage(`Auto-trigger calculated for channel ${this.triggerSpec.trigChannel}:`);
       this.logMessage(`  Range: ${channelSpec.minValue} to ${channelSpec.maxValue}`);
       this.logMessage(`  Arm level (33%): ${this.triggerSpec.trigArmLevel}`);
@@ -1182,7 +1201,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   private recordChannelSample(channelIndex: number, sample: number): boolean {
     //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
     let didScroll: boolean = false;
-    
+
     // Handle trigger evaluation if enabled and this is the trigger channel
     if (this.triggerSpec.trigEnabled && channelIndex === this.triggerSpec.trigChannel) {
       // Set trigger levels in the processor
@@ -1191,32 +1210,32 @@ export class DebugScopeWindow extends DebugWindowBase {
         this.triggerSpec.trigLevel,
         this.triggerSpec.trigSlope.toLowerCase() as 'positive' | 'negative'
       );
-      
+
       // Process the sample with the trigger processor
       this.triggerProcessor.processSample(sample, {
         trigHoldoff: this.triggerSpec.trigHoldoff
       });
-      
+
       // Sync our local state with the trigger processor
       const triggerState = this.triggerProcessor.getTriggerState();
       const wasArmed = this.triggerArmed;
       const wasFired = this.triggerFired;
-      
+
       this.triggerArmed = triggerState.armed;
       this.triggerFired = triggerState.fired;
       this.holdoffCounter = triggerState.holdoff;
-      
+
       // Update UI when state changes
       if (wasArmed !== this.triggerArmed || wasFired !== this.triggerFired) {
         this.updateTriggerStatus();
-        
+
         // If we just fired, remember the sample position
         if (!wasFired && this.triggerFired) {
           this.triggerSampleIndex = this.channelSamples[channelIndex]?.samples.length || 0;
           this.updateTriggerPosition();
         }
       }
-      
+
       // Handle holdoff countdown
       if (this.holdoffCounter > 0) {
         this.holdoffCounter--;
@@ -1230,10 +1249,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           this.updateTriggerStatus();
         }
       }
-      
+
       // Store current sample as previous for next iteration
       this.previousSample = sample;
-      
+
       // Only update display if no trigger enabled or trigger conditions met
       if (!this.triggerSpec.trigEnabled || !this.triggerArmed || this.triggerFired) {
         // Proceed with normal sample recording
@@ -1242,7 +1261,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         return false;
       }
     }
-    
+
     if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
       const channelSamples = this.channelSamples[channelIndex];
       if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
@@ -1287,6 +1306,11 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
+  /**
+   * Update scope channel display using Pascal's clear-and-redraw approach
+   * This approach is required for triggering support - we draw from the circular buffer
+   * at calculated positions instead of scrolling pixels
+   */
   private updateScopeChannelData(
     canvasName: string,
     channelSpec: ScopeChannelSpec,
@@ -1294,123 +1318,69 @@ export class DebugScopeWindow extends DebugWindowBase {
     didScroll: boolean
   ): void {
     if (this.debugWindow) {
-      //if (this.dbgUpdateCount > 0) {
-      // DISABLE STOP this.dbgUpdateCount--;
-      //}
-      //if (this.dbgUpdateCount == 0) {
-      //  return;
-      //}
       if (--this.dbgLogMessageCount > 0) {
         this.logMessage(
           `at updateScopeChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
         );
       }
       try {
-        // placement need to be scale sample range to vertical canvas size
-        const currSample: number = samples[samples.length - 1];
-        const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : currSample;
-        // Invert and scale the sample to to our display range
-        const currSampleInverted: number = this.scaleAndInvertValue(currSample, channelSpec);
-        const prevSampleInverted: number = this.scaleAndInvertValue(prevSample, channelSpec);
-        // coord for current and previous samples
-        // NOTE:  this.channelSpecs[x].yBaseOffset is NOT used in our implementation
-        const currXOffset: number = this.canvasMargin + (samples.length - 1) * this.channelLineWidth;
-        const currYOffset: number =
-          this.channelLineWidth / 2 + currSampleInverted + this.canvasMargin + this.channelInset;
-        const prevXOffset: number = this.canvasMargin + (samples.length - 2) * this.channelLineWidth;
-        const prevYOffset: number =
-          this.channelLineWidth / 2 + prevSampleInverted + this.canvasMargin + this.channelInset;
-        //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
-        // draw region for the channel
+        // Draw region dimensions
         const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
         const drawHeight: number = channelSpec.ySize + this.channelLineWidth / 2;
         const drawXOffset: number = this.canvasMargin;
         const drawYOffset: number = this.channelInset + this.canvasMargin;
         const channelColor: string = channelSpec.color;
-        if (this.dbgLogMessageCount > 0) {
-          this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-          this.logMessage(
-            `  -- #${samples.length} currSample=(${currSample}->${currSampleInverted}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-          );
-        }
-        // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
-        // this.debugWindow.webContents.executeJavaScript(`
-        //   (function() {
-        //     // Locate the canvas element by its ID
-        //     const canvas = document.getElementById('${canvasName}');
-        //
-        //     if (canvas && canvas instanceof HTMLCanvasElement) {
-        //       // Get the canvas context
-        //       const ctx = canvas.getContext('2d');
-        //
-        //       if (ctx) {
-        //         // Set the line color and width
-        //         const lineColor = '${channelColor}';
-        //         const lineWidth = ${this.channelLineWidth};
-        //         const scrollSpeed = lineWidth;
-        //         const canvWidth = ${drawWidth};
-        //         const canvHeight = ${drawHeight};
-        //         const canvXOffset = ${drawXOffset};
-        //         const canvYOffset = ${drawYOffset};
-        //
-        //         if (${didScroll}) {
-        //           // Create an off-screen canvas
-        //           const offScreenCanvas = document.createElement('canvas');
-        //           offScreenCanvas.width = canvWidth - scrollSpeed;
-        //           offScreenCanvas.height = canvHeight;
-        //           const offScreenCtx = offScreenCanvas.getContext('2d');
-        //
-        //           if (offScreenCtx) {
-        //             // Copy the relevant part of the canvas to the off-screen canvas
-        //             //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-        //             offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-        //
-        //             // Clear the original canvas
-        //             //  clearRect(x, y, width, height)
-        //             //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
-        //             // fix? artifact!! (maybe line-width caused?!!!)
-        //             ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-        //
-        //             // Copy the content back to the original canvas
-        //             //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-        //             ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-        //           }
-        //         }
-        //
-        //         // Set the solid line pattern
-        //         ctx.setLineDash([]); // Empty array for solid line
-        //
-        //         // Draw the new line segment
-        //         ctx.strokeStyle = lineColor;
-        //         ctx.lineWidth = lineWidth;
-        //         ctx.beginPath();
-        //         ctx.moveTo(${prevXOffset}, ${prevYOffset});
-        //         ctx.lineTo(${currXOffset}, ${currYOffset});
-        //         ctx.stroke();
-        //       }
-        //     }
-        //   })();
-        // `);
-        
+
+        // Pascal approach: Clear ENTIRE canvas, redraw graticule, then redraw all samples
         let jsCode = '';
-        
-        // Handle scrolling if needed
-        if (didScroll) {
-          const scrollSpeed = this.channelLineWidth;
-          jsCode += this.canvasRenderer.scrollCanvas(canvasName, scrollSpeed, drawWidth, drawHeight, drawXOffset, drawYOffset);
+
+        // 1. Clear the ENTIRE canvas (fillRect with background color)
+        jsCode += `
+          const canvas = document.getElementById('${canvasName}');
+          if (!canvas) { console.error('Canvas not found'); return; }
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { console.error('Context not available'); return; }
+
+          // Clear entire canvas with background color (including graticule area)
+          ctx.fillStyle = '${this.displaySpec.window.background}';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        `;
+
+        // 2. Redraw graticule (grid lines and labels)
+        jsCode += this.redrawGraticule(channelSpec);
+
+        // 3. Draw all samples from buffer at calculated positions (Pascal algorithm)
+        // Pascal: x := (vMarginLeft + vWidth - 1) shl 8 - Round(k / vSamples * vWidth * $100);
+        // We draw from newest (index 0) to oldest, with newest at the right edge
+        jsCode += `
+          // Draw all samples from circular buffer
+          ctx.strokeStyle = '${channelColor}';
+          ctx.lineWidth = ${this.channelLineWidth};
+          ctx.setLineDash([]); // Solid line
+          ctx.beginPath();
+        `;
+
+        let firstSample = true;
+        for (let k = 0; k < samples.length; k++) {
+          const sample = samples[k];
+          const invertedY = this.scaleAndInvertValue(sample, channelSpec);
+
+          // Calculate X position: samples[0] is oldest (left), samples[length-1] is newest (right)
+          // Array structure: shift() removes oldest from front, push() adds newest to end
+          const normalizedPos = k / (this.displaySpec.nbrSamples - 1);
+          const x = drawXOffset + Math.round(normalizedPos * (drawWidth - this.channelLineWidth));
+          const y = drawYOffset + invertedY + this.channelLineWidth / 2;
+
+          if (firstSample) {
+            jsCode += `ctx.moveTo(${x}, ${y});\n`;
+            firstSample = false;
+          } else {
+            jsCode += `ctx.lineTo(${x}, ${y});\n`;
+          }
         }
-        
-        // Draw the scope signal line
-        jsCode += this.canvasRenderer.drawLine(
-          canvasName,
-          prevXOffset,
-          prevYOffset,
-          currXOffset,
-          currYOffset,
-          channelColor,
-          this.channelLineWidth
-        );
-        
+
+        jsCode += `ctx.stroke();\n`;
+
         // Execute all the JavaScript at once
         this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
           this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
@@ -1418,9 +1388,6 @@ export class DebugScopeWindow extends DebugWindowBase {
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }
-      //if (didScroll) {
-      //  this.dbgUpdateCount = 0; // stop after first scroll
-      //}
     }
   }
 
@@ -1429,7 +1396,9 @@ export class DebugScopeWindow extends DebugWindowBase {
       this.logMessage(`at updateScopeChannelLabel(${name}, ${colorString})`);
       try {
         const channelLabel: string = `<p style="color: ${colorString};">${name}</p>`;
-        this.debugWindow.webContents.executeJavaScript(`
+        this.debugWindow.webContents
+          .executeJavaScript(
+            `
           (function() {
             const labelsDivision = document.getElementById('labels');
             if (labelsDivision) {
@@ -1438,16 +1407,24 @@ export class DebugScopeWindow extends DebugWindowBase {
               labelsDivision.innerHTML = labelContent;
             }
           })();
-        `).catch((error) => {
-          this.logMessage(`Failed to execute channel label JavaScript: ${error}`);
-        });
+        `
+          )
+          .catch((error) => {
+            this.logMessage(`Failed to execute channel label JavaScript: ${error}`);
+          });
       } catch (error) {
         console.error('Failed to update channel label:', error);
       }
     }
   }
 
-  private drawHorizontalLine(canvasName: string, channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string, lineWidth: number = 1) {
+  private drawHorizontalLine(
+    canvasName: string,
+    channelSpec: ScopeChannelSpec,
+    YOffset: number,
+    gridColor: string,
+    lineWidth: number = 1
+  ) {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalLine(${canvasName}, ${YOffset}, ${gridColor}, width=${lineWidth})`);
       try {
@@ -1489,23 +1466,25 @@ export class DebugScopeWindow extends DebugWindowBase {
         //     }
         //   })();
         // `);
-        
+
         // Calculate the proper end X coordinate for the dashed line
         // Use a large value that will be constrained by canvas width in the JavaScript
         const lineEndX = 9999; // Canvas width will limit this in the renderer
-        
+
         // Generate the JavaScript code using CanvasRenderer with dynamic width calculation
-        const jsCode = this.canvasRenderer.drawDashedLine(
-          canvasName,
-          lineXOffset,
-          lineYOffset,
-          lineEndX,
-          lineYOffset,
-          gridColor,
-          horizLineWidth,
-          [3, 3]
-        ).replace(`ctx.lineTo(${lineEndX},`, 'ctx.lineTo(canvas.width - (2 * ' + this.canvasMargin + '),');
-        
+        const jsCode = this.canvasRenderer
+          .drawDashedLine(
+            canvasName,
+            lineXOffset,
+            lineYOffset,
+            lineEndX,
+            lineYOffset,
+            gridColor,
+            horizLineWidth,
+            [3, 3]
+          )
+          .replace(`ctx.lineTo(${lineEndX},`, 'ctx.lineTo(canvas.width - (2 * ' + this.canvasMargin + '),');
+
         this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
           this.logMessage(`Failed to execute line draw JavaScript: ${error}`);
         });
@@ -1526,13 +1505,15 @@ export class DebugScopeWindow extends DebugWindowBase {
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = this.stringForRangeValue(value);
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), text=[${valueText}]`);
-        
+
         // Validate parameters to prevent JavaScript errors
         if (!isFinite(textXOffset) || !isFinite(textYOffset)) {
-          this.logMessage(`ERROR: Invalid parameters in drawHorizontalValue: textX=${textXOffset}, textY=${textYOffset}`);
+          this.logMessage(
+            `ERROR: Invalid parameters in drawHorizontalValue: textX=${textXOffset}, textY=${textYOffset}`
+          );
           return;
         }
-        
+
         // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
         // this.debugWindow.webContents.executeJavaScript(`
         //   (function() {
@@ -1559,7 +1540,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         //     }
         //   })();
         // `);
-        
+
         const jsCode = this.canvasRenderer.drawText(
           canvasName,
           valueText,
@@ -1571,7 +1552,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           'left',
           'top'
         );
-        
+
         this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
           this.logMessage(`Failed to execute text draw JavaScript: ${error}`);
         });
@@ -1603,16 +1584,24 @@ export class DebugScopeWindow extends DebugWindowBase {
         const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
         const valueText: string = this.stringForRangeValue(value);
         this.logMessage(`  -- atTop=(${atTop}), lineY=(${lineYOffset}), valueText=[${valueText}]`);
-        
+
         // Validate parameters to prevent JavaScript errors
-        if (!isFinite(lineXOffset) || !isFinite(lineYOffset) || !isFinite(textXOffset) || !isFinite(textYOffset) || !isFinite(horizLineWidth)) {
-          this.logMessage(`ERROR: Invalid parameters in drawHorizontalLineAndValue: lineX=${lineXOffset}, lineY=${lineYOffset}, textX=${textXOffset}, textY=${textYOffset}, lineWidth=${horizLineWidth}`);
+        if (
+          !isFinite(lineXOffset) ||
+          !isFinite(lineYOffset) ||
+          !isFinite(textXOffset) ||
+          !isFinite(textYOffset) ||
+          !isFinite(horizLineWidth)
+        ) {
+          this.logMessage(
+            `ERROR: Invalid parameters in drawHorizontalLineAndValue: lineX=${lineXOffset}, lineY=${lineYOffset}, textX=${textXOffset}, textY=${textYOffset}, lineWidth=${horizLineWidth}`
+          );
           return;
         }
-        
+
         // Escape valueText to prevent JavaScript injection
         const escapedValueText = valueText.replace(/'/g, "\\'").replace(/"/g, '\\"');
-        
+
         // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
         // this.debugWindow.webContents.executeJavaScript(`
         //   (function() {
@@ -1653,26 +1642,26 @@ export class DebugScopeWindow extends DebugWindowBase {
         //     }
         //   })();
         // `);
-        
+
         // Compute all values before template to avoid scope issues
         const canvasMarginValue = this.canvasMargin;
-        
+
         // Generate clean JavaScript code for dashed line and text without fragile string replacement
         // Use IIFE to avoid variable redeclaration errors
         const jsCode = `
           (function() {
             const canvas = document.getElementById('${canvasName}');
             if (!canvas) return;
-            
+
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
-            
+
             // Measure text width
             ctx.font = '9px Arial';
             const textMetrics = ctx.measureText('${escapedValueText}');
             const textWidth = textMetrics.width;
             const canWidth = canvas.width - (2 * ${canvasMarginValue});
-            
+
             // Draw the dashed line after the text
             ctx.save();
             ctx.strokeStyle = '${gridColor}';
@@ -1683,14 +1672,14 @@ export class DebugScopeWindow extends DebugWindowBase {
             ctx.lineTo(canWidth, ${lineYOffset});
             ctx.stroke();
             ctx.restore();
-            
+
             // Draw the text
             ctx.font = '9px Arial';
             ctx.fillStyle = '${textColor}';
             ctx.fillText('${escapedValueText}', ${textXOffset}, ${textYOffset});
           })();
         `;
-        
+
         this.logMessage(`DEBUG: Generated jsCode for drawHorizontalLineAndValue: ${jsCode.substring(0, 300)}...`);
         this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
           this.logMessage(`Failed to execute line & text JavaScript: ${error}`);
@@ -1701,19 +1690,138 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
+  /**
+   * Generate JavaScript to redraw the graticule (grid lines and labels) for a channel
+   * Generates raw canvas commands that use the canvas/ctx from the calling context
+   */
+  private redrawGraticule(channelSpec: ScopeChannelSpec): string {
+    let jsCode = '';
+    const channelGridColor: string = channelSpec.gridColor;
+    const channelTextColor: string = channelSpec.textColor;
+
+    // Redraw grid lines and labels using the same logic as initial drawing
+    // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
+    if (channelSpec.lgndShowMax && !channelSpec.lgndShowMaxLine) {
+      //  %1x0x => max legend, NOT max line, so value ONLY
+      jsCode += this.generateHorizontalValueJS(channelSpec, channelSpec.maxValue, channelTextColor);
+    }
+    if (channelSpec.lgndShowMin && !channelSpec.lgndShowMinLine) {
+      //  %x1x0 => min legend, NOT min line, so value ONLY
+      jsCode += this.generateHorizontalValueJS(channelSpec, channelSpec.minValue, channelTextColor);
+    }
+    if (channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+      //  %1x1x => max legend, max line, so show value and line!
+      jsCode += this.generateHorizontalLineAndValueJS(
+        channelSpec,
+        channelSpec.maxValue,
+        channelGridColor,
+        channelTextColor
+      );
+    }
+    if (channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+      //  %x1x1 => min legend, min line, so show value and line!
+      jsCode += this.generateHorizontalLineAndValueJS(
+        channelSpec,
+        channelSpec.minValue,
+        channelGridColor,
+        channelTextColor
+      );
+    }
+    if (!channelSpec.lgndShowMax && channelSpec.lgndShowMaxLine) {
+      //  %0x1x => NOT max legend, max line, show line ONLY
+      jsCode += this.generateHorizontalLineJS(channelSpec, channelSpec.maxValue, channelGridColor);
+    }
+    if (!channelSpec.lgndShowMin && channelSpec.lgndShowMinLine) {
+      //  %x0x1 => NOT min legend, min line, show line ONLY
+      jsCode += this.generateHorizontalLineJS(channelSpec, channelSpec.minValue, channelGridColor);
+    }
+
+    return jsCode;
+  }
+
+  /**
+   * Generate raw canvas commands to draw a horizontal line (helper for redrawGraticule)
+   * Assumes canvas and ctx are already defined in the calling context
+   */
+  private generateHorizontalLineJS(channelSpec: ScopeChannelSpec, YOffset: number, gridColor: string): string {
+    const atTop: boolean = YOffset == channelSpec.maxValue;
+    const horizLineWidth: number = 2;
+    const lineYOffset: number =
+      (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
+      this.channelInset +
+      this.canvasMargin;
+    const lineXOffset: number = this.canvasMargin;
+
+    return `
+      ctx.save();
+      ctx.strokeStyle = '${gridColor}';
+      ctx.lineWidth = ${horizLineWidth};
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(${lineXOffset}, ${lineYOffset});
+      ctx.lineTo(canvas.width - (2 * ${this.canvasMargin}), ${lineYOffset});
+      ctx.stroke();
+      ctx.restore();
+    `;
+  }
+
+  /**
+   * Generate raw canvas commands to draw a horizontal value label (helper for redrawGraticule)
+   * Assumes canvas and ctx are already defined in the calling context
+   * Text is centered vertically on the graticule line
+   */
+  private generateHorizontalValueJS(channelSpec: ScopeChannelSpec, YOffset: number, textColor: string): string {
+    const atTop: boolean = YOffset == channelSpec.maxValue;
+    const horizLineWidth: number = 2;
+    // Use the SAME Y calculation as the line to ensure text is aligned with it
+    const lineYOffset: number =
+      (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
+      this.channelInset +
+      this.canvasMargin;
+    const textXOffset: number = 5 + this.canvasMargin;
+    const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
+    const valueText: string = this.stringForRangeValue(value);
+
+    return `
+      ctx.save();
+      ctx.fillStyle = '${textColor}';
+      ctx.font = '9px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('${valueText}', ${textXOffset}, ${lineYOffset});
+      ctx.restore();
+    `;
+  }
+
+  /**
+   * Generate raw canvas commands to draw a horizontal line with value label (helper for redrawGraticule)
+   * Assumes canvas and ctx are already defined in the calling context
+   */
+  private generateHorizontalLineAndValueJS(
+    channelSpec: ScopeChannelSpec,
+    YOffset: number,
+    gridColor: string,
+    textColor: string
+  ): string {
+    let jsCode = '';
+    jsCode += this.generateHorizontalLineJS(channelSpec, YOffset, gridColor);
+    jsCode += this.generateHorizontalValueJS(channelSpec, YOffset, textColor);
+    return jsCode;
+  }
+
   private scaleAndInvertValue(value: number, channelSpec: ScopeChannelSpec): number {
     // scale the value to the vertical channel size then invert the value
     const range: number = channelSpec.maxValue - channelSpec.minValue;
     const adjustedValue = value - channelSpec.minValue;
     let possiblyScaledValue: number;
-    
+
     // Scale the value to fit in the display range
     if (range != 0) {
       possiblyScaledValue = Math.round((adjustedValue / range) * (channelSpec.ySize - 1));
     } else {
       possiblyScaledValue = 0;
     }
-    
+
     // Clamp to valid range
     possiblyScaledValue = Math.max(0, Math.min(channelSpec.ySize - 1, possiblyScaledValue));
     const invertedValue: number = channelSpec.ySize - 1 - possiblyScaledValue;
@@ -1731,12 +1839,12 @@ export class DebugScopeWindow extends DebugWindowBase {
     const valueString: string = `${prefix}${value} `;
     return valueString;
   }
-  
+
   private updateTriggerStatus(): void {
     if (this.debugWindow && this.triggerSpec.trigEnabled) {
       let statusText = 'READY';
       let statusClass = 'trigger-status'; // Base class
-      
+
       if (this.holdoffCounter > 0) {
         statusText = `HOLDOFF (${this.holdoffCounter})`;
         statusClass += ' triggered';
@@ -1747,17 +1855,18 @@ export class DebugScopeWindow extends DebugWindowBase {
         statusText = 'ARMED';
         statusClass += ' armed';
       }
-      
+
       // Update window title to show trigger status
       const baseTitle = this.displaySpec.windowTitle;
       this.debugWindow.setTitle(`${baseTitle} - ${statusText}`);
-      
+
       // Update HTML status element
-      const channelInfo = this.triggerSpec.trigChannel >= 0 ? 
-        `CH${this.triggerSpec.trigChannel + 1}` : '';
+      const channelInfo = this.triggerSpec.trigChannel >= 0 ? `CH${this.triggerSpec.trigChannel + 1}` : '';
       const levelInfo = `T:${this.triggerSpec.trigLevel.toFixed(1)} A:${this.triggerSpec.trigArmLevel.toFixed(1)}`;
-      
-      this.debugWindow.webContents.executeJavaScript(`
+
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const statusEl = document.getElementById('trigger-status');
           if (statusEl) {
@@ -1766,36 +1875,42 @@ export class DebugScopeWindow extends DebugWindowBase {
             statusEl.style.display = 'block';
           }
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to update scope trigger status: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to update scope trigger status: ${error}`);
+        });
     } else if (this.debugWindow) {
       // Hide trigger status when disabled
-      this.debugWindow.webContents.executeJavaScript(`
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const statusEl = document.getElementById('trigger-status');
           if (statusEl) statusEl.style.display = 'none';
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to hide scope trigger status: ${error}`);
-      });
-      
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to hide scope trigger status: ${error}`);
+        });
+
       // Reset window title
       this.debugWindow.setTitle(this.windowTitle);
     }
   }
-  
+
   private updateTriggerPosition(): void {
     if (this.debugWindow && this.triggerSpec.trigEnabled && this.triggerFired) {
       // For scope, the trigger position is at the current sample offset
       const triggerXPos = this.canvasMargin + this.triggerSpec.trigRtOffset * this.channelLineWidth;
-      
+
       // Draw a vertical line at the trigger position for all channels
       let allJsCode = '';
       for (let chanIdx = 0; chanIdx < this.channelSpecs.length; chanIdx++) {
         const canvasName = `channel-${chanIdx}`;
         const channelSpec = this.channelSpecs[chanIdx];
-        
+
         // Draw vertical trigger position line with glow effect
         const jsCode = this.canvasRenderer.drawLine(
           canvasName,
@@ -1806,7 +1921,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(255, 0, 0, 0.8)', // Red trigger line
           2
         );
-        
+
         // Add a second line for glow effect
         const glowCode = this.canvasRenderer.drawLine(
           canvasName,
@@ -1817,10 +1932,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(255, 0, 0, 0.3)', // Semi-transparent for glow
           4
         );
-        
+
         allJsCode += jsCode + glowCode;
       }
-      
+
       // Add trigger position marker at top
       if (this.channelSpecs.length > 0) {
         const markerCode = this.canvasRenderer.drawText(
@@ -1833,27 +1948,33 @@ export class DebugScopeWindow extends DebugWindowBase {
         );
         allJsCode += markerCode;
       }
-      
+
       this.debugWindow.webContents.executeJavaScript(`(function() { ${allJsCode} })();`).catch((error) => {
         this.logMessage(`Failed to execute channel update JavaScript: ${error}`);
       });
     }
   }
-  
+
   private drawTriggerLevels(): void {
-    if (this.debugWindow && this.triggerSpec.trigEnabled && 
-        this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < this.channelSpecs.length) {
+    if (
+      this.debugWindow &&
+      this.triggerSpec.trigEnabled &&
+      this.triggerSpec.trigChannel >= 0 &&
+      this.triggerSpec.trigChannel < this.channelSpecs.length
+    ) {
       const chanIdx = this.triggerSpec.trigChannel;
       const canvasName = `channel-${chanIdx}`;
       const channelSpec = this.channelSpecs[chanIdx];
       const canvasWidth = this.displaySpec.nbrSamples * this.channelLineWidth + this.canvasMargin;
-      
+
       // Draw arm level (orange solid line with label)
-      if (this.triggerSpec.trigArmLevel >= channelSpec.minValue && 
-          this.triggerSpec.trigArmLevel <= channelSpec.maxValue) {
+      if (
+        this.triggerSpec.trigArmLevel >= channelSpec.minValue &&
+        this.triggerSpec.trigArmLevel <= channelSpec.maxValue
+      ) {
         const armYInverted = this.scaleAndInvertValue(this.triggerSpec.trigArmLevel, channelSpec);
         const armYOffset = this.channelInset + this.canvasMargin + armYInverted;
-        
+
         // Draw solid orange line
         const jsCodeArm = this.canvasRenderer.drawLine(
           canvasName,
@@ -1864,7 +1985,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(255, 165, 0, 0.8)', // Orange for arm level
           1
         );
-        
+
         // Add "ARM" label
         const armLabelCode = this.canvasRenderer.drawText(
           canvasName,
@@ -1874,18 +1995,19 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(255, 165, 0, 0.9)',
           '9px Arial'
         );
-        
-        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCodeArm} ${armLabelCode} })();`).catch((error) => {
-          this.logMessage(`Failed to execute trigger arm level JavaScript: ${error}`);
-        });
+
+        this.debugWindow.webContents
+          .executeJavaScript(`(function() { ${jsCodeArm} ${armLabelCode} })();`)
+          .catch((error) => {
+            this.logMessage(`Failed to execute trigger arm level JavaScript: ${error}`);
+          });
       }
-      
+
       // Draw trigger level (green solid line with label)
-      if (this.triggerSpec.trigLevel >= channelSpec.minValue && 
-          this.triggerSpec.trigLevel <= channelSpec.maxValue) {
+      if (this.triggerSpec.trigLevel >= channelSpec.minValue && this.triggerSpec.trigLevel <= channelSpec.maxValue) {
         const trigYInverted = this.scaleAndInvertValue(this.triggerSpec.trigLevel, channelSpec);
         const trigYOffset = this.channelInset + this.canvasMargin + trigYInverted;
-        
+
         // Draw solid green line (thicker)
         const jsCodeTrig = this.canvasRenderer.drawLine(
           canvasName,
@@ -1896,7 +2018,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(0, 255, 0, 0.8)', // Green for trigger level
           2
         );
-        
+
         // Add "TRIG" label
         const trigLabelCode = this.canvasRenderer.drawText(
           canvasName,
@@ -1906,10 +2028,12 @@ export class DebugScopeWindow extends DebugWindowBase {
           'rgba(0, 255, 0, 0.9)',
           '9px Arial'
         );
-        
-        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCodeTrig} ${trigLabelCode} })();`).catch((error) => {
-          this.logMessage(`Failed to execute trigger level JavaScript: ${error}`);
-        });
+
+        this.debugWindow.webContents
+          .executeJavaScript(`(function() { ${jsCodeTrig} ${trigLabelCode} })();`)
+          .catch((error) => {
+            this.logMessage(`Failed to execute trigger level JavaScript: ${error}`);
+          });
       }
     }
   }
@@ -1932,16 +2056,15 @@ export class DebugScopeWindow extends DebugWindowBase {
     const marginTop = this.channelInset;
     const width = this.displaySpec.size.width - 2 * this.contentInset;
     const height = this.displaySpec.size.height - 2 * this.channelInset;
-    
+
     // Check if mouse is within the display area
-    if (x >= marginLeft && x < marginLeft + width && 
-        y >= marginTop && y < marginTop + height) {
+    if (x >= marginLeft && x < marginLeft + width && y >= marginTop && y < marginTop + height) {
       // Transform to scope coordinates
       // X: relative to left margin
       const scopeX = x - marginLeft;
       // Y: inverted with bottom = 0
       const scopeY = marginTop + height - 1 - y;
-      
+
       return { x: scopeX, y: scopeY };
     } else {
       // Mouse is outside display area
@@ -1969,52 +2092,54 @@ export class DebugScopeWindow extends DebugWindowBase {
   protected enableMouseInput(): void {
     // Call base implementation first
     super.enableMouseInput();
-    
+
     // Add coordinate display functionality
     if (this.debugWindow) {
       const marginLeft = this.contentInset;
       const marginTop = this.channelInset;
       const displayWidth = this.displaySpec.size.width - 2 * this.contentInset;
       const displayHeight = this.displaySpec.size.height - 2 * this.channelInset;
-      
-      this.debugWindow.webContents.executeJavaScript(`
+
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const container = document.getElementById('container');
           const coordDisplay = document.getElementById('coordinate-display');
           const crosshairH = document.getElementById('crosshair-horizontal');
           const crosshairV = document.getElementById('crosshair-vertical');
-          
+
           if (container && coordDisplay && crosshairH && crosshairV) {
             // Track mouse position
             let lastMouseX = -1;
             let lastMouseY = -1;
-            
+
             container.addEventListener('mousemove', (event) => {
               const rect = container.getBoundingClientRect();
               const x = event.clientX - rect.left;
               const y = event.clientY - rect.top;
-              
+
               // Calculate relative position within data area
               const dataX = x - ${marginLeft};
               const dataY = y - ${marginTop};
-              
+
               // Check if within display area
-              if (dataX >= 0 && dataX < ${displayWidth} && 
+              if (dataX >= 0 && dataX < ${displayWidth} &&
                   dataY >= 0 && dataY < ${displayHeight}) {
-                
+
                 // Calculate scope coordinates
                 const scopeX = dataX;
                 const scopeY = ${displayHeight} - 1 - dataY;
-                
+
                 // Update coordinate display
                 coordDisplay.textContent = scopeX + ',' + scopeY;
                 coordDisplay.style.display = 'block';
-                
+
                 // Position the display near cursor, avoiding edges
                 const displayRect = coordDisplay.getBoundingClientRect();
                 let displayX = event.clientX + 10;
                 let displayY = event.clientY - displayRect.height - 10;
-                
+
                 // Adjust if too close to edges
                 if (displayX + displayRect.width > window.innerWidth - 10) {
                   displayX = event.clientX - displayRect.width - 10;
@@ -2022,16 +2147,16 @@ export class DebugScopeWindow extends DebugWindowBase {
                 if (displayY < 10) {
                   displayY = event.clientY + 10;
                 }
-                
+
                 coordDisplay.style.left = displayX + 'px';
                 coordDisplay.style.top = displayY + 'px';
-                
+
                 // Update crosshair position
                 crosshairH.style.display = 'block';
                 crosshairV.style.display = 'block';
                 crosshairH.style.top = event.clientY + 'px';
                 crosshairV.style.left = event.clientX + 'px';
-                
+
                 lastMouseX = x;
                 lastMouseY = y;
               } else {
@@ -2041,7 +2166,7 @@ export class DebugScopeWindow extends DebugWindowBase {
                 crosshairV.style.display = 'none';
               }
             });
-            
+
             // Hide displays when mouse leaves container
             container.addEventListener('mouseleave', () => {
               coordDisplay.style.display = 'none';
@@ -2050,9 +2175,11 @@ export class DebugScopeWindow extends DebugWindowBase {
             });
           }
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to enable scope mouse input tracking: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to enable scope mouse input tracking: ${error}`);
+        });
     }
   }
 }

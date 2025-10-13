@@ -13,7 +13,7 @@ import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool'
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true; // Temporarily enabled for debugging renderer initialization
+const ENABLE_CONSOLE_LOG: boolean = false; // Temporarily enabled for debugging renderer initialization
 
 export interface DebugLoggerTheme {
   name: string;
@@ -34,13 +34,13 @@ interface PerformanceWarning {
 /**
  * Debug Logger Window - Singleton window that captures ALL debug output
  * This is the "Tall Thin Man" - a heads-up console positioned at bottom-right
- * 
+ *
  * RESPONSIBILITIES:
  * - Display formatted debugger messages (80-byte packets, DB packets)
  * - Log all messages to timestamped files for analysis
  * - Provide defensive display of misclassified binary data
  * - Handle high-throughput data with batched rendering (2Mbps capable)
- * 
+ *
  * NOT RESPONSIBLE FOR:
  * - Message classification or routing (MessageExtractor handles this)
  * - Serial data parsing or protocol interpretation
@@ -55,7 +55,6 @@ export class LoggerWindow extends DebugWindowBase {
     return 'debugLoggerCanvas';
   }
 
-
   private static instance: LoggerWindow | null = null;
   private logFile: fs.WriteStream | null = null;
   private logFilePath: string | null = null;
@@ -63,16 +62,16 @@ export class LoggerWindow extends DebugWindowBase {
   private theme: DebugLoggerTheme;
   private maxLines: number = 10000;
   private lineBuffer: string[] = [];
-  
+
   // Performance optimizations for 2Mbps handling
-  private renderQueue: Array<{message: string, className?: string, timestamp: number}> = [];
+  private renderQueue: Array<{ message: string; className?: string; timestamp: number }> = [];
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_INTERVAL_MS = 16; // 60fps update rate
   private readonly BATCH_SIZE_LIMIT = 100; // Max messages per batch
   private writeBuffer: string[] = [];
   private writeTimer: NodeJS.Timeout | null = null;
   private readonly WRITE_INTERVAL_MS = 100; // Flush to disk every 100ms
-  
+
   // High-resolution timestamp tracking
   private sessionStartTime: number = performance.now();
   private lastMessageTime: number = 0;
@@ -193,17 +192,17 @@ export class LoggerWindow extends DebugWindowBase {
       const logsDir = this.context.getLogDirectory();
       this.logConsoleMessage('[DEBUG LOGGER] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
-      
+
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
       const basename = 'debug';
       this.logFilePath = path.join(logsDir, `${basename}_${timestamp}.log`); // Remove duplicate "_debug"
       this.logConsoleMessage('[DEBUG LOGGER] Log file path:', this.logFilePath);
-      
+
       // Create write stream
       this.logFile = fs.createWriteStream(this.logFilePath, { flags: 'a' });
       this.logConsoleMessage('[DEBUG LOGGER] Write stream created successfully');
-      
+
       // Wait for the stream to be ready before writing
       this.logFile.once('open', (fd) => {
         this.logConsoleMessage('[DEBUG LOGGER] Write stream opened with fd:', fd);
@@ -231,19 +230,18 @@ export class LoggerWindow extends DebugWindowBase {
           }
         });
       });
-      
+
       // Handle stream errors
       this.logFile.once('error', (err) => {
         console.error('[DEBUG LOGGER] Write stream error:', err);
-      })
-      
+      });
+
       // Notify MainWindow that logging started
       this.notifyLoggingStatus(true);
       this.logConsoleMessage('[DEBUG LOGGER] Log file initialized successfully at:', this.logFilePath);
-      
+
       // ENHANCEMENT: Console logging for audit trail visibility
       this.logConsoleMessage(`[DEBUG LOGGER] Started new log: ${this.logFilePath}`);
-      
     } catch (error) {
       // Use base class logMessage to send to console, not Debug Logger window
       console.error('[DEBUG LOGGER] Failed to initialize log file:', error);
@@ -278,27 +276,27 @@ export class LoggerWindow extends DebugWindowBase {
     const charWidth = 10;
     const lineHeight = 18;
     // Use base class method for consistent chrome adjustments
-    const contentWidth = (80 * charWidth) + 20;  // 80 chars + padding
-    const contentHeight = (24 * lineHeight) + 10; // 24 lines + small padding
+    const contentWidth = 80 * charWidth + 20; // 80 chars + padding
+    const contentHeight = 24 * lineHeight + 10; // 24 lines + small padding
     const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
     const windowWidth = windowDimensions.width;
     const windowHeight = windowDimensions.height;
-    
+
     // Use WindowPlacer for intelligent positioning
     // For now, let's use a simpler approach to ensure it appears
     const { screen } = require('electron');
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
-    
+
     // Position at bottom-right with margin
     const margin = 20;
     const position = {
       x: width - windowWidth - margin,
       y: height - windowHeight - margin
     };
-    
+
     this.logConsoleMessage(`[DEBUG LOGGER] Positioning at bottom-right: ${position.x}, ${position.y}`);
-    
+
     const window = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
@@ -316,11 +314,11 @@ export class LoggerWindow extends DebugWindowBase {
       minimizable: true,
       closable: true
     });
-    
+
     // Load simple HTML for debug output display
     const html = this.generateHTML();
     window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    
+
     // Set up IPC handlers for menu buttons
     ipcMain.on('toggle-all-cogs', () => {
       if (this.cogsAreShowing) {
@@ -333,14 +331,14 @@ export class LoggerWindow extends DebugWindowBase {
         // DON'T update state here - let handleShowAllCOGs() do it via updateCOGsState()
       }
     });
-    
+
     ipcMain.on('export-cog-logs', () => {
       this.logConsoleMessage('[DEBUG LOGGER] Export Active COG Logs button clicked');
       // TODO: Implement COG log export functionality
       // This will use COGLogExporter to save all active COG logs
       this.emit('export-cog-logs-requested');
     });
-    
+
     // CRITICAL: Use BOTH ready-to-show AND did-finish-load for reliability
     // ready-to-show fires when window is ready to display (earlier)
     // did-finish-load fires when DOM is loaded (later, more reliable for IPC)
@@ -366,7 +364,9 @@ export class LoggerWindow extends DebugWindowBase {
 
       // Process any pending batches that accumulated before renderer was ready
       if (this.renderQueue.length > 0) {
-        console.log(`[DEBUG LOGGER] 📦 Processing ${this.renderQueue.length} queued messages now that renderer is ready`);
+        console.log(
+          `[DEBUG LOGGER] 📦 Processing ${this.renderQueue.length} queued messages now that renderer is ready`
+        );
         this.processBatch();
       } else {
         console.log('[DEBUG LOGGER] No queued messages to process');
@@ -375,7 +375,7 @@ export class LoggerWindow extends DebugWindowBase {
       // Verify registration
       const router = this.windowRouter;
       const activeWindows = router.getActiveWindows();
-      const loggerWindow = activeWindows.find(w => w.windowType === 'logger');
+      const loggerWindow = activeWindows.find((w) => w.windowType === 'logger');
       if (loggerWindow) {
         console.log('[DEBUG LOGGER] Verified still registered:', loggerWindow.windowId);
       } else {
@@ -411,39 +411,39 @@ export class LoggerWindow extends DebugWindowBase {
         handleRendererReady();
       }
     }, 2000);
-    
+
     // Handle window close event
     window.on('close', () => {
       this.logConsoleMessage('[DEBUG LOGGER] Window being closed by user');
       // Don't call closeDebugWindow here - it would cause infinite recursion
       // Just clean up resources directly
-      
+
       // Flush any pending messages
       if (this.batchTimer) {
         clearTimeout(this.batchTimer);
         this.processBatch();
       }
-      
+
       // Flush any pending writes
       if (this.writeTimer) {
         clearTimeout(this.writeTimer);
         this.flushWriteBuffer();
       }
-      
+
       // Close log file
       if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
         this.logFile.write(`\n=== Debug Logger Session Ended at ${new Date().toISOString()} ===\n`);
         this.logFile.end();
         this.logFile = null;
       }
-      
+
       // Clear singleton instance
       LoggerWindow.instance = null;
-      
+
       // Mark window as null to prevent further operations
       this.debugWindow = null;
     });
-    
+
     return window;
   }
 
@@ -602,14 +602,14 @@ export class LoggerWindow extends DebugWindowBase {
     const output = document.getElementById('output');
     const modeIndicator = document.getElementById('mode-indicator');
     const returnToLiveButton = document.getElementById('return-to-live');
-    
+
     // Hybrid scrolling state
     let autoScroll = true;          // Start in live mode
     let scrollThreshold = 50;       // Pixels from bottom = "live mode"
     let maxScrollbackLines = 1000;  // User configurable from preferences
     let maxDOMLines = 1500;         // DOM performance limit
     let isInitialLoad = true;       // Track initial load to prevent race condition
-    
+
     // Helper functions
     function updateModeIndicator(mode) {
       if (mode === 'live') {
@@ -620,20 +620,20 @@ export class LoggerWindow extends DebugWindowBase {
         returnToLiveButton.style.display = 'inline-block';
       }
     }
-    
+
     function scrollToBottom() {
       output.scrollTop = output.scrollHeight;
     }
-    
+
     function isNearBottom() {
       return (output.scrollTop + output.clientHeight) >= (output.scrollHeight - scrollThreshold);
     }
-    
+
     // Simple scroll behavior - if user scrolls up, pause auto-scroll
     // If they scroll back to bottom, resume
     output.addEventListener('scroll', function() {
       const nearBottom = isNearBottom();
-      
+
       if (nearBottom && !autoScroll) {
         // User scrolled back to bottom - resume auto-scroll
         autoScroll = true;
@@ -644,18 +644,18 @@ export class LoggerWindow extends DebugWindowBase {
         updateModeIndicator('history');
       }
     });
-    
+
     // Return to Live button handler
     returnToLiveButton.addEventListener('click', function() {
       autoScroll = true;
       updateModeIndicator('live');
       scrollToBottom();
     });
-    
+
     ipcRenderer.on('append-message', (event, data) => {
       const line = document.createElement('div');
       line.className = data.type || 'cog-message';
-      
+
       if (data.timestamp) {
         const timestamp = document.createElement('span');
         // Add 'short' class for abbreviated timestamps
@@ -664,31 +664,31 @@ export class LoggerWindow extends DebugWindowBase {
         timestamp.textContent = data.timestamp;
         line.appendChild(timestamp);
       }
-      
+
       const content = document.createElement('span');
       content.textContent = data.message;
       line.appendChild(content);
-      
+
       output.appendChild(line);
-      
+
       // Always scroll to bottom after adding content
       // Simple approach - just stay at bottom
       scrollToBottom();
-      
+
       // Manage DOM size for performance
       while (output.children.length > maxDOMLines) {
         output.removeChild(output.firstChild);
       }
     });
-    
+
     // Handle batch messages (performance optimization for 2Mbps)
     ipcRenderer.on('append-messages-batch', (event, messages) => {
       const fragment = document.createDocumentFragment();
-      
+
       messages.forEach(data => {
         const line = document.createElement('div');
         line.className = data.type || 'cog-message';
-        
+
         if (data.timestamp) {
           const timestamp = document.createElement('span');
           // Add 'short' class for abbreviated timestamps
@@ -697,26 +697,26 @@ export class LoggerWindow extends DebugWindowBase {
           timestamp.textContent = data.timestamp;
           line.appendChild(timestamp);
         }
-        
+
         const content = document.createElement('span');
         content.textContent = data.message;
         line.appendChild(content);
-        
+
         fragment.appendChild(line);
       });
-      
+
       output.appendChild(fragment);
-      
+
       // Always scroll to bottom after adding content
       // Simple approach - just stay at bottom
       scrollToBottom();
-      
+
       // Manage DOM size for performance
       while (output.children.length > maxDOMLines) {
         output.removeChild(output.firstChild);
       }
     });
-    
+
     ipcRenderer.on('clear-output', () => {
       output.innerHTML = '';
       // Reset to live mode on session reset
@@ -724,19 +724,19 @@ export class LoggerWindow extends DebugWindowBase {
       isInitialLoad = true;  // Reset initial load flag
       updateModeIndicator('live');
     });
-    
-    
+
+
     // Handle scrollback preference updates
     ipcRenderer.on('set-scrollback-lines', (event, lines) => {
       maxScrollbackLines = Math.min(Math.max(lines, 100), 10000); // Clamp to 100-10000 range
       // console.log('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
     });
-    
+
     ipcRenderer.on('set-theme', (event, theme) => {
       document.body.style.backgroundColor = theme.backgroundColor;
       document.body.style.color = theme.foregroundColor;
     });
-    
+
     // Add button handlers
     const cogButton = document.getElementById('btn-show-all-cogs');
     let cogsShowing = false;
@@ -752,7 +752,7 @@ export class LoggerWindow extends DebugWindowBase {
       cogsShowing = showing;
       cogButton.textContent = cogsShowing ? 'Hide All 8 COGs' : 'Show All 8 COGs';
     });
-    
+
     document.getElementById('btn-export-cog-logs').addEventListener('click', () => {
       ipcRenderer.send('export-cog-logs');
     });
@@ -775,13 +775,13 @@ export class LoggerWindow extends DebugWindowBase {
       console.error(`[DEBUG LOGGER] Error processing message: ${error}`);
     }
   }
-  
+
   /**
    * Internal synchronous message processing (extracted for proper release timing)
    */
   private processMessageImmediateSync(actualData: string[] | any): void {
     this.logConsoleMessage('[DEBUG LOGGER] processMessageImmediateSync called with:', actualData);
-    
+
     // Handle binary data (debugger protocol)
     if (actualData instanceof Uint8Array) {
       this.logConsoleMessage('[DEBUG LOGGER] Processing binary debugger message:', actualData.length, 'bytes');
@@ -793,10 +793,9 @@ export class LoggerWindow extends DebugWindowBase {
     else if (Array.isArray(actualData)) {
       const message = actualData.join(' ');
       this.logConsoleMessage('[DEBUG LOGGER] Processing array message:', message);
-      
+
       // Check if this is a formatted debugger message
-      if (message.includes('=== Initial Debugger Message') || 
-          message.includes('=== Debugger Protocol')) {
+      if (message.includes('=== Initial Debugger Message') || message.includes('=== Debugger Protocol')) {
         // This is a formatted debugger message, display with special styling
         this.appendMessage(message, 'debugger-formatted');
         this.writeToLog(message);
@@ -805,21 +804,20 @@ export class LoggerWindow extends DebugWindowBase {
         this.appendMessage(message, 'cog-message');
         this.writeToLog(message);
       }
-    } 
+    }
     // Handle raw string
     else if (typeof actualData === 'string') {
       this.logConsoleMessage('[DEBUG LOGGER] Processing string message:', actualData);
-      
+
       // Check if this is a formatted debugger message
-      if (actualData.includes('=== Initial Debugger Message') || 
-          actualData.includes('=== Debugger Protocol')) {
+      if (actualData.includes('=== Initial Debugger Message') || actualData.includes('=== Debugger Protocol')) {
         this.appendMessage(actualData, 'debugger-formatted');
       } else {
         this.appendMessage(actualData, 'cog-message');
       }
       this.writeToLog(actualData);
     }
-    
+
     // Update status bar
     this.updateStatusBar();
   }
@@ -856,7 +854,9 @@ export class LoggerWindow extends DebugWindowBase {
    * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
   public processTypedMessage(messageType: SharedMessageType, data: string[] | Uint8Array): void {
-    console.log(`[DEBUG LOGGER] 📨 processTypedMessage called: type=${messageType}, dataLength=${data.length}, rendererReady=${this.rendererReady}, queueLength=${this.renderQueue.length}`);
+    console.log(
+      `[DEBUG LOGGER] 📨 processTypedMessage called: type=${messageType}, dataLength=${data.length}, rendererReady=${this.rendererReady}, queueLength=${this.renderQueue.length}`
+    );
     this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: SharedMessageType ${messageType}`);
 
     try {
@@ -872,10 +872,7 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private processTypedMessageSync(messageType: SharedMessageType, actualData: string[] | Uint8Array): void {
     // Handle DEBUGGER_416BYTE range (DEBUGGER0-DEBUGGER7)
-    if (
-      messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
-      messageType <= SharedMessageType.DEBUGGER7_416BYTE
-    ) {
+    if (messageType >= SharedMessageType.DEBUGGER0_416BYTE && messageType <= SharedMessageType.DEBUGGER7_416BYTE) {
       // Binary debugger data - display with proper 416-byte formatting
       if (actualData instanceof Uint8Array) {
         const formatted = this.formatDebuggerMessage(actualData);
@@ -950,8 +947,8 @@ export class LoggerWindow extends DebugWindowBase {
       const errorMsg = Array.isArray(actualData)
         ? actualData.join(' ')
         : actualData instanceof Uint8Array
-          ? new TextDecoder().decode(actualData)
-          : String(actualData);
+        ? new TextDecoder().decode(actualData)
+        : String(actualData);
       this.appendMessage(`[WARNING] ${errorMsg}`, 'warning-message');
       this.writeToLog(`[WARNING] ${errorMsg}`);
     }
@@ -977,24 +974,25 @@ export class LoggerWindow extends DebugWindowBase {
 
     this.updateStatusBar();
   }
-  
+
   /**
    * Update the status bar with current file info
    */
   private updateStatusBar(): void {
     if (!this.debugWindow || this.debugWindow.isDestroyed()) return;
-    
+
     // Get log file name
     const logFileName = this.logFilePath ? path.basename(this.logFilePath) : 'No file';
-    
+
     // Get line count
     const lineCount = this.lineBuffer.length;
-    
+
     // Get approximate size
-    const sizeKB = this.logFilePath && fs.existsSync(this.logFilePath) 
-      ? (fs.statSync(this.logFilePath).size / 1024).toFixed(1)
-      : '0';
-    
+    const sizeKB =
+      this.logFilePath && fs.existsSync(this.logFilePath)
+        ? (fs.statSync(this.logFilePath).size / 1024).toFixed(1)
+        : '0';
+
     // Send update to renderer
     this.debugWindow.webContents.executeJavaScript(`
       document.getElementById('log-filename').textContent = '${logFileName}';
@@ -1011,10 +1009,14 @@ export class LoggerWindow extends DebugWindowBase {
     this.renderQueue.push({
       message,
       className: type,
-      timestamp: Date.now()  // Capture precise arrival time
+      timestamp: Date.now() // Capture precise arrival time
     });
 
-    console.log(`[DEBUG LOGGER] ➕ appendMessage: queueLength=${this.renderQueue.length}, type=${type}, msgPreview="${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+    console.log(
+      `[DEBUG LOGGER] ➕ appendMessage: queueLength=${
+        this.renderQueue.length
+      }, type=${type}, msgPreview="${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`
+    );
 
     // Also keep in internal buffer
     this.lineBuffer.push(message);
@@ -1036,12 +1038,16 @@ export class LoggerWindow extends DebugWindowBase {
       this.processBatch();
     }
   }
-  
+
   /**
    * Process queued messages in batch for performance
    */
   private processBatch(): void {
-    console.log(`[DEBUG LOGGER] 📤 processBatch called: queueLength=${this.renderQueue.length}, rendererReady=${this.rendererReady}, windowExists=${!!this.debugWindow}, windowDestroyed=${this.debugWindow?.isDestroyed()}`);
+    console.log(
+      `[DEBUG LOGGER] 📤 processBatch called: queueLength=${this.renderQueue.length}, rendererReady=${
+        this.rendererReady
+      }, windowExists=${!!this.debugWindow}, windowDestroyed=${this.debugWindow?.isDestroyed()}`
+    );
 
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
@@ -1062,7 +1068,9 @@ export class LoggerWindow extends DebugWindowBase {
 
     // Take current batch
     const batch = this.renderQueue.splice(0, this.BATCH_SIZE_LIMIT);
-    console.log(`[DEBUG LOGGER] Processing batch of ${batch.length} messages, ${this.renderQueue.length} remaining in queue`);
+    console.log(
+      `[DEBUG LOGGER] Processing batch of ${batch.length} messages, ${this.renderQueue.length} remaining in queue`
+    );
 
     // Send batch to renderer
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
@@ -1070,28 +1078,28 @@ export class LoggerWindow extends DebugWindowBase {
       // Format: HH:MM:SS.mmmmmm (always 15 chars)
       // Within same second: spaces replace HH:MM:SS for perfect column alignment
       // This creates a clean vertical column for debug text
-      
+
       const messages = batch.map((item, index) => {
         const msgTime = item.timestamp;
         const d = new Date(msgTime);
-        
+
         // Get all time components
         const hours = d.getHours().toString().padStart(2, '0');
         const minutes = d.getMinutes().toString().padStart(2, '0');
         const seconds = d.getSeconds().toString().padStart(2, '0');
         const millis = d.getMilliseconds();
-        
+
         // Use performance counter for microsecond precision
         const perfMicros = Math.floor((performance.now() * 1000) % 1000);
         const microString = `${millis.toString().padStart(3, '0')}${perfMicros.toString().padStart(3, '0')}`;
-        
+
         let timestamp: string;
-        
+
         // Check what parts changed from last timestamp
         const lastHours = this.lastFullTimestamp ? this.lastFullTimestamp.substring(0, 2) : '';
         const lastMinutes = this.lastFullTimestamp ? this.lastFullTimestamp.substring(3, 5) : '';
         const lastSeconds = this.lastFullTimestamp ? this.lastFullTimestamp.substring(6, 8) : '';
-        
+
         if (index === 0 || hours !== lastHours || minutes !== lastMinutes || seconds !== lastSeconds) {
           // Something changed - show the changed parts
           if (hours !== lastHours || index === 0) {
@@ -1109,20 +1117,20 @@ export class LoggerWindow extends DebugWindowBase {
           // Same second - just show microseconds with spaces for alignment
           timestamp = `        .${microString}`;
         }
-        
+
         return {
           message: item.message,
           type: item.className || 'cog-message',
           timestamp: timestamp
         };
       });
-      
+
       this.logConsoleMessage(`[DEBUG LOGGER] Sending batch of ${messages.length} messages to window`);
       this.debugWindow.webContents.send('append-messages-batch', messages);
     } else {
       this.logConsoleMessage('[DEBUG LOGGER] Window not available for batch processing');
     }
-    
+
     // If more messages pending, schedule next batch
     if (this.renderQueue.length > 0) {
       this.batchTimer = setTimeout(() => this.processBatch(), this.BATCH_INTERVAL_MS);
@@ -1162,7 +1170,11 @@ export class LoggerWindow extends DebugWindowBase {
     } else {
       // Log file not ready yet - buffer the message for later
       this.pendingLogMessages.push(logEntry);
-      this.logConsoleMessage(`[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+      this.logConsoleMessage(
+        `[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${
+          message.length > 50 ? '...' : ''
+        }`
+      );
 
       // Limit buffer size to prevent memory issues
       if (this.pendingLogMessages.length > 1000) {
@@ -1171,14 +1183,16 @@ export class LoggerWindow extends DebugWindowBase {
       }
     }
   }
-  
+
   /**
    * Flush pending messages that were buffered during log file initialization
    * RACE CONDITION FIX: Called once log file is ready
    */
   private flushPendingMessages(): void {
     if (this.pendingLogMessages.length > 0) {
-      this.logConsoleMessage(`[DEBUG LOGGER] 🚀 Flushing ${this.pendingLogMessages.length} pending messages to log file`);
+      this.logConsoleMessage(
+        `[DEBUG LOGGER] 🚀 Flushing ${this.pendingLogMessages.length} pending messages to log file`
+      );
 
       // Add all pending messages to the write buffer
       this.writeBuffer.push(...this.pendingLogMessages);
@@ -1225,18 +1239,18 @@ export class LoggerWindow extends DebugWindowBase {
   public logSerialMessage(message: string): void {
     // Determine message type based on content
     let messageType = 'cog-message';
-    
+
     // Check if it's binary hex data
     if (message.startsWith('Cog') && message.includes('0x')) {
       messageType = 'binary-message';
     } else if (message.startsWith('[P2 Binary Data')) {
       messageType = 'binary-message';
     }
-    
+
     this.appendMessage(message, messageType);
     this.writeToLog(message);
   }
-  
+
   /**
    * Log a system message (different styling)
    */
@@ -1275,8 +1289,8 @@ export class LoggerWindow extends DebugWindowBase {
       this.debugWindow.webContents.send('clear-output');
     }
     this.lineBuffer = [];
-    this.renderQueue = [];  // Clear pending messages to prevent them showing after reset
-    
+    this.renderQueue = []; // Clear pending messages to prevent them showing after reset
+
     // Write separator in log file only if stream is still writable
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       this.logFile.write(`\n=== Output Cleared at ${new Date().toISOString()} ===\n\n`);
@@ -1476,19 +1490,19 @@ export class LoggerWindow extends DebugWindowBase {
    */
   public closeDebugWindow(): void {
     this.logConsoleMessage('[DEBUG LOGGER] Closing window and terminating log...');
-    
+
     // Flush any pending messages
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
       this.processBatch();
     }
-    
+
     // Flush any pending writes
     if (this.writeTimer) {
       clearTimeout(this.writeTimer);
       this.flushWriteBuffer();
     }
-    
+
     // Close log file
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       this.logFile.write(`\n=== Debug Logger Session Ended at ${new Date().toISOString()} ===\n`);
@@ -1496,16 +1510,16 @@ export class LoggerWindow extends DebugWindowBase {
       this.logFile = null;
       this.logConsoleMessage('[DEBUG LOGGER] Log file closed');
     }
-    
+
     // Clear singleton instance
     LoggerWindow.instance = null;
-    
+
     // Clean up the window - check if it's destroyed first
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.close();
       this.debugWindow = null;
     }
-    
+
     this.logConsoleMessage('[DEBUG LOGGER] Window closed and log terminated');
   }
 
@@ -1539,37 +1553,35 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private formatDebuggerMessage(data: Uint8Array): string {
     if (data.length === 0) return 'Cog ? (empty debugger message)';
-    
+
     const firstByte = data[0];
     const cogId = firstByte <= 0x07 ? firstByte : -1;
     const lines: string[] = [];
-    
-    const prefix = cogId >= 0 
-      ? `Cog ${cogId}:` 
-      : `INVALID(0x${firstByte.toString(16).toUpperCase()}):`;
-    
+
+    const prefix = cogId >= 0 ? `Cog ${cogId}:` : `INVALID(0x${firstByte.toString(16).toUpperCase()}):`;
+
     // Add header line
     lines.push(prefix);
-    
+
     const bytesPerLine = 32;
-    
+
     // For 416-byte packets, only show first 40 bytes (status block)
     const bytesToShow = data.length === 416 ? 40 : data.length;
-    
+
     // Process in groups of 32 bytes per line
     for (let offset = 0; offset < bytesToShow; offset += bytesPerLine) {
       const lineLongs: string[] = [];
       const endOffset = Math.min(offset + bytesPerLine, bytesToShow);
-      
+
       // Build hex representation as 32-bit longs with proper spacing
       for (let i = offset; i < endOffset; i += 4) {
         // Combine four bytes into a 32-bit long (byte order 0,1,2,3 as they appear)
         if (i + 3 < bytesToShow) {
           // Full 4 bytes available
           const byte0 = data[i].toString(16).padStart(2, '0').toUpperCase();
-          const byte1 = data[i+1].toString(16).padStart(2, '0').toUpperCase();
-          const byte2 = data[i+2].toString(16).padStart(2, '0').toUpperCase();
-          const byte3 = data[i+3].toString(16).padStart(2, '0').toUpperCase();
+          const byte1 = data[i + 1].toString(16).padStart(2, '0').toUpperCase();
+          const byte2 = data[i + 2].toString(16).padStart(2, '0').toUpperCase();
+          const byte3 = data[i + 3].toString(16).padStart(2, '0').toUpperCase();
           lineLongs.push(`$${byte0}${byte1}${byte2}${byte3}`);
         } else {
           // Handle partial bytes at end
@@ -1579,7 +1591,7 @@ export class LoggerWindow extends DebugWindowBase {
           }
           lineLongs.push(`$${hex}`);
         }
-        
+
         // Add spacing after groups (counting longs, not bytes)
         const longPos = (i - offset) / 4;
         if (longPos === 1 && i + 4 < endOffset) {
@@ -1591,20 +1603,20 @@ export class LoggerWindow extends DebugWindowBase {
         }
         // Note: 32-byte boundary would need triple space but we're at line end
       }
-      
+
       // Format with 3-digit hex offset: "000: $XXXXXXXX $XXXXXXXX ..."
       const offsetStr = offset.toString(16).padStart(3, '0').toUpperCase();
       const hexPart = lineLongs.join(' ');
       const formattedLine = `  ${offsetStr}: ${hexPart}`;
-      
+
       lines.push(formattedLine);
     }
-    
+
     // Add indicator for 416-byte packets that we're only showing the status block
     if (data.length === 416) {
       lines.push(`  ... [${data.length - bytesToShow} more bytes]`);
     }
-    
+
     return lines.join('\n');
   }
 
@@ -1615,21 +1627,21 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private formatBinaryWithAscii(data: Uint8Array): string {
     if (data.length === 0) return '(empty binary data)';
-    
+
     const lines: string[] = [];
     const bytesPerLine = 16;
-    
+
     // Process in groups of 16 bytes per line with hex + ASCII display
     for (let offset = 0; offset < data.length; offset += bytesPerLine) {
       const lineBytes: string[] = [];
       const asciiBytes: string[] = [];
       const endOffset = Math.min(offset + bytesPerLine, data.length);
-      
+
       // Build hex representation with proper spacing
       for (let i = offset; i < endOffset; i++) {
         const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
         lineBytes.push(`$${hex}`);
-        
+
         // Build ASCII representation
         const byte = data[i];
         if (byte >= 32 && byte <= 126) {
@@ -1637,31 +1649,31 @@ export class LoggerWindow extends DebugWindowBase {
         } else {
           asciiBytes.push('.');
         }
-        
+
         // Add extra space after 8 bytes for readability
-        if ((i - offset) === 7 && i + 1 < endOffset) {
+        if (i - offset === 7 && i + 1 < endOffset) {
           lineBytes.push(' '); // Extra space between groups of 8
         }
       }
-      
+
       // Pad hex display to consistent width (for alignment)
       const hexWidth = 51; // Width for 16 bytes: "$XX $XX ... $XX  $XX $XX ... $XX"
       const hexPart = lineBytes.join(' ');
       const paddedHexPart = hexPart.padEnd(hexWidth);
-      
+
       // Pad ASCII to 16 characters
       while (asciiBytes.length < bytesPerLine) {
         asciiBytes.push(' ');
       }
-      
+
       // Format: "  XXXX: $XX $XX ... $XX  |ASCII_CHARS|"
       const offsetStr = offset.toString(16).padStart(4, '0').toUpperCase();
       const asciiPart = asciiBytes.join('');
       const formattedLine = `  ${offsetStr}: ${paddedHexPart} |${asciiPart}|`;
-      
+
       lines.push(formattedLine);
     }
-    
+
     return lines.join('\n');
   }
 
@@ -1670,23 +1682,23 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private formatBinaryAsHexFallback(data: Uint8Array): string {
     if (data.length === 0) return '[BINARY: empty]';
-    
+
     // Use standard hex display with ASCII interpretation
     const lines: string[] = [];
     const bytesPerLine = 16;
-    
+
     lines.push(`[BINARY DATA: ${data.length} bytes - displaying as hex]`);
-    
+
     for (let offset = 0; offset < data.length; offset += bytesPerLine) {
       const lineBytes: string[] = [];
       const asciiBytes: string[] = [];
       const endOffset = Math.min(offset + bytesPerLine, data.length);
-      
+
       // Hex representation
       for (let i = offset; i < endOffset; i++) {
         const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
         lineBytes.push(hex);
-        
+
         // ASCII interpretation
         const byte = data[i];
         if (byte >= 32 && byte <= 126) {
@@ -1695,20 +1707,20 @@ export class LoggerWindow extends DebugWindowBase {
           asciiBytes.push('.');
         }
       }
-      
+
       // Add padding for hex display alignment
       while (lineBytes.length < bytesPerLine) {
         lineBytes.push('  ');
         asciiBytes.push(' ');
       }
-      
+
       const hexPart = lineBytes.join(' ');
       const asciiPart = asciiBytes.join('');
       const offsetStr = offset.toString(16).padStart(4, '0').toUpperCase();
-      
+
       lines.push(`  ${offsetStr}: ${hexPart}  |${asciiPart}|`);
     }
-    
+
     return lines.join('\n');
   }
 
@@ -1719,42 +1731,40 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private formatBinaryAsHex(data: Uint8Array): string {
     if (data.length === 0) return 'Cog ? (empty message)';
-    
+
     // First byte IS the COG ID (no masking needed for valid P2 debugger protocol)
     const firstByte = data[0];
     const cogId = firstByte <= 0x07 ? firstByte : -1; // -1 indicates invalid COG ID
     const lines: string[] = [];
     const bytesPerLine = 16;
-    
+
     // Show warning for invalid COG IDs
-    const prefix = cogId >= 0 
-      ? `Cog ${cogId} ` 
-      : `INVALID(0x${firstByte.toString(16).toUpperCase()}) `;
+    const prefix = cogId >= 0 ? `Cog ${cogId} ` : `INVALID(0x${firstByte.toString(16).toUpperCase()}) `;
     const indent = ' '.repeat(prefix.length);
-    
+
     for (let offset = 0; offset < data.length; offset += bytesPerLine) {
       const lineBytes: string[] = [];
       const endOffset = Math.min(offset + bytesPerLine, data.length);
-      
+
       // Format each byte as $xx
       for (let i = offset; i < endOffset; i++) {
         const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
         lineBytes.push(`$${hex}`);
-        
+
         // Add double space after 8 bytes (except at end of line)
-        if ((i - offset) === 7 && (i + 1) < endOffset) {
+        if (i - offset === 7 && i + 1 < endOffset) {
           lineBytes.push(' '); // Extra space for group separator
         }
       }
-      
+
       // First line gets the Cog prefix, others get indent
       const linePrefix = offset === 0 ? prefix : indent;
       lines.push(linePrefix + lineBytes.join(' '));
     }
-    
+
     return lines.join('\n');
   }
-  
+
   /**
    * Get buffered lines for testing
    */
@@ -1767,7 +1777,7 @@ export class LoggerWindow extends DebugWindowBase {
    */
   public setPerformanceMonitor(monitor: PerformanceMonitor): void {
     this.performanceMonitor = monitor;
-    
+
     // Listen for performance threshold events
     monitor.on('threshold', (alert) => {
       this.handlePerformanceThreshold(alert);
@@ -1780,18 +1790,18 @@ export class LoggerWindow extends DebugWindowBase {
   private handlePerformanceThreshold(alert: any): void {
     const now = Date.now();
     const alertKey = `${alert.type}_${alert.component || 'general'}`;
-    
+
     // Check rate limiting
     const lastWarningTime = this.warningRateLimiter.get(alertKey) || 0;
     if (now - lastWarningTime < this.WARNING_COOLDOWN_MS) {
       return; // Skip this warning due to rate limiting
     }
-    
+
     this.warningRateLimiter.set(alertKey, now);
-    
+
     let level: 'WARN' | 'CRITICAL' | 'ERROR' = 'WARN';
     let message = '';
-    
+
     switch (alert.type) {
       case 'buffer':
         const usage = alert.usagePercent || alert.details?.usagePercent;
@@ -1803,7 +1813,7 @@ export class LoggerWindow extends DebugWindowBase {
           message = `[PERF_WARN] Buffer usage ${usage.toFixed(1)}% exceeds threshold`;
         }
         break;
-        
+
       case 'queue':
         const depth = alert.depth || alert.details?.depth;
         const name = alert.name || alert.component || 'unknown';
@@ -1815,7 +1825,7 @@ export class LoggerWindow extends DebugWindowBase {
           message = `[PERF_WARN] Queue '${name}' depth ${depth} exceeds threshold`;
         }
         break;
-        
+
       case 'latency':
         const latency = alert.latencyMs || alert.details?.latencyMs;
         if (latency >= 500) {
@@ -1826,14 +1836,14 @@ export class LoggerWindow extends DebugWindowBase {
           message = `[PERF_WARN] Processing latency ${latency}ms exceeds threshold`;
         }
         break;
-        
+
       default:
         message = `[PERF_WARN] Performance threshold exceeded: ${JSON.stringify(alert)}`;
     }
-    
+
     // Add context and recommendations
     message += this.getPerformanceRecommendations(alert.type, alert);
-    
+
     // Log the warning
     this.logPerformanceWarning(level, message, alert);
   }
@@ -1841,29 +1851,33 @@ export class LoggerWindow extends DebugWindowBase {
   /**
    * Log a performance warning with proper formatting
    */
-  public logPerformanceWarning(level: 'WARN' | 'CRITICAL' | 'ERROR' | 'RECOVERY', message: string, details?: any): void {
+  public logPerformanceWarning(
+    level: 'WARN' | 'CRITICAL' | 'ERROR' | 'RECOVERY',
+    message: string,
+    details?: any
+  ): void {
     const warning: PerformanceWarning = {
       timestamp: Date.now(),
       level,
       message,
       details
     };
-    
+
     // Add to history (circular buffer)
     this.warningHistory.push(warning);
     if (this.warningHistory.length > this.MAX_WARNING_HISTORY) {
       this.warningHistory.shift();
     }
-    
+
     // Format for display
     const formattedMessage = `${message}`;
-    
+
     // Use appropriate styling based on level
     let messageType = 'system-message';
     if (level === 'CRITICAL' || level === 'ERROR') {
       messageType = 'error-message';
     }
-    
+
     this.appendMessage(formattedMessage, messageType);
     this.writeToLog(`[${level}] ${message}`);
   }
@@ -1872,7 +1886,11 @@ export class LoggerWindow extends DebugWindowBase {
    * Log data rate warning
    */
   public logDataRateWarning(currentRate: number, sustainableRate: number): void {
-    const message = `[PERF_WARN] Data rate ${(currentRate/1024/1024).toFixed(1)}Mbps exceeds sustainable rate ${(sustainableRate/1024/1024).toFixed(1)}Mbps`;
+    const message = `[PERF_WARN] Data rate ${(currentRate / 1024 / 1024).toFixed(1)}Mbps exceeds sustainable rate ${(
+      sustainableRate /
+      1024 /
+      1024
+    ).toFixed(1)}Mbps`;
     this.logPerformanceWarning('WARN', message, { currentRate, sustainableRate });
   }
 
@@ -1898,25 +1916,25 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private getPerformanceRecommendations(alertType: string, alert: any): string {
     const recommendations = [];
-    
+
     switch (alertType) {
       case 'buffer':
         recommendations.push('Consider: reduce baud rate');
         recommendations.push('close unused windows');
         recommendations.push('enable emergency mode');
         break;
-        
+
       case 'queue':
         recommendations.push('Consider: reduce message volume');
         recommendations.push('check for blocking operations');
         break;
-        
+
       case 'latency':
         recommendations.push('Consider: reduce UI update frequency');
         recommendations.push('disable non-essential features');
         break;
     }
-    
+
     return recommendations.length > 0 ? ` (${recommendations.join(', ')})` : '';
   }
 
