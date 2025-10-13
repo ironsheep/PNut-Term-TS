@@ -31,7 +31,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export interface LogicDisplaySpec {
   displayName: string;
@@ -84,10 +84,10 @@ export interface LogicTriggerSpec {
 
 /**
  * Debug LOGIC Window - Logic Analyzer Display
- * 
+ *
  * A multi-channel logic analyzer for visualizing digital signals from Propeller 2 microcontrollers.
  * Displays up to 32 digital channels with configurable triggering, channel grouping, and packed data modes.
- * 
+ *
  * ## Features
  * - **32-Channel Logic Analyzer**: Display up to 32 independent digital signals
  * - **Channel Grouping**: Combine multiple bits into named channels with custom widths
@@ -95,7 +95,7 @@ export interface LogicTriggerSpec {
  * - **Packed Data Modes**: Support for 12 different packed data formats
  * - **Auto-scrolling**: Continuous data capture with automatic scrolling
  * - **Custom Colors**: Per-channel color configuration
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -109,14 +109,14 @@ export interface LogicTriggerSpec {
  * - `TRIGGER mask match {offset {holdoff}}` - Configure triggering
  * - `HIDEXY` - Hide mouse coordinate display
  * - Packed data modes - Enable packed data processing
- * 
+ *
  * ## Data Format
  * Data is fed as 32-bit values representing logic states:
  * - Each bit represents one logic channel (0=low, 1=high)
  * - Channels can be grouped and named via configuration
  * - Packed data modes allow compressed multi-sample transfers
  * - Example: `debug(\`Logic \`(portA | (portB << 8)))`
- * 
+ *
  * ## Commands
  * - `numeric_data` - 32-bit logic sample data
  * - `CLEAR` - Clear display and sample buffer
@@ -125,39 +125,39 @@ export interface LogicTriggerSpec {
  * - `CLOSE` - Close the window
  * - `PC_KEY` - Enable keyboard input forwarding
  * - `PC_MOUSE` - Enable mouse input forwarding
- * 
+ *
  * ## Trigger System
  * - **Mask**: Specifies which bits to monitor (1=monitor, 0=ignore)
  * - **Match**: Pattern to match on monitored bits
  * - **Offset**: Sample position for trigger (default: SAMPLES/2)
  * - **Holdoff**: Minimum samples between triggers (default: SAMPLES)
  * - Trigger fires when: `(data & mask) == match`
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `LOGIC_Configure` procedure (line 926)
  * - Update: `LOGIC_Update` procedure (line 1034)
  * - Trigger handling: Part of LOGIC_Update procedure
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic 8-channel logic analyzer
  * debug(`LOGIC MyLogic SAMPLES 64 'Port[7..0]' 8)
  * repeat
  *   debug(`MyLogic `(ina[7..0]))
- * 
+ *
  * ' Triggered capture with named channels
  * debug(`LOGIC MyLogic TRIGGER $FF $80 'Data' 8 'Clock' 'Enable')
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Channel colors cycle through: LIME, RED, CYAN, YELLOW, MAGENTA, BLUE, ORANGE, OLIVE
  * - Trigger processor handles edge detection and holdoff timing
  * - Packed data processor supports all 12 P2 packed modes with ALT/SIGNED variants
- * 
+ *
  * ## Deviations from Pascal
  * - None - Full Pascal compatibility maintained
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_LOGIC.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
@@ -203,7 +203,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.displaySpec = displaySpec;
 
     // Enable logging for LOGIC window
-    this.isLogging = true;
+    this.isLogging = false;
     // init default Trigger Spec
     this.triggerSpec = {
       trigEnabled: false,
@@ -222,14 +222,14 @@ export class DebugLogicWindow extends DebugWindowBase {
       isAlternate: false,
       isSigned: false
     };
-    
+
     // CRITICAL FIX: Create window immediately, don't wait for numeric data
     // This ensures windows appear when created, even if closed before data arrives
     this.logMessage('Creating LOGIC window immediately in constructor');
     this.calculateAutoTriggerAndScale();
     this.createDebugWindow();
     this.initChannelSamples();
-    
+
     // CRITICAL: Mark window as ready to process messages
     this.onWindowReady();
   }
@@ -387,9 +387,13 @@ export class DebugLogicWindow extends DebugWindowBase {
             //console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
             displaySpec.channelSpecs.push(newChannelSpec);
           } else {
-            DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: missing closing quote for Channel name [${lineParts.join(' ')}]`);
+            DebugLogicWindow.logConsoleMessageStatic(
+              `CL: LogicDisplaySpec: missing closing quote for Channel name [${lineParts.join(' ')}]`
+            );
           }
-          DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`);
+          DebugLogicWindow.logConsoleMessageStatic(
+            `CL: LogicDisplaySpec - ending at [${lineParts[index]}] of lineParts[${index}]`
+          );
         } else {
           // Try to parse common keywords first
           const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
@@ -420,7 +424,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   isValid = false;
                 }
                 break;
-              
+
               // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
               /*
               case 'TITLE':
@@ -454,14 +458,16 @@ export class DebugLogicWindow extends DebugWindowBase {
                 }
                 break;
               */
-              
+
               case 'SPACING':
                 // ensure we have one more value
                 if (index < lineParts.length - 1) {
                   displaySpec.spacing = Number(lineParts[++index]); // FIX: was incorrectly assigning to nbrSamples
                   // Validate spacing range
                   if (displaySpec.spacing < 1 || displaySpec.spacing > 32) {
-                    DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`);
+                    DebugLogicWindow.logConsoleMessageStatic(
+                      `CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`
+                    );
                     displaySpec.spacing = Math.max(1, Math.min(32, displaySpec.spacing));
                   }
                 } else {
@@ -469,7 +475,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                   isValid = false;
                 }
                 break;
-                
+
               // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
               /*
               case 'LINESIZE':
@@ -516,7 +522,9 @@ export class DebugLogicWindow extends DebugWindowBase {
         }
       }
     }
-    DebugLogicWindow.logConsoleMessageStatic(`CL: at end of parseLogicDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugLogicWindow.logConsoleMessageStatic(
+      `CL: at end of parseLogicDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`
+    );
     return [isValid, displaySpec];
   }
 
@@ -530,7 +538,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
 
     // Labels need full text height for readability, traces use enhanced calculation
-    const labelHeight: number = this.displaySpec.font.lineHeight; // Full text height for labels  
+    const labelHeight: number = this.displaySpec.font.lineHeight; // Full text height for labels
     const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
     const channelSpacing: number = 0; // No spacing - channels butt together
 
@@ -583,12 +591,13 @@ export class DebugLogicWindow extends DebugWindowBase {
     const dataCanvases: string[] = [];
 
     const labelCanvasWidth: number = this.contentInset + labelMaxChars * (this.displaySpec.font.charWidth - 2) - 4; // Reduce by 4px to move labels left
+    const labelMargins: number = 16; // 8px left + 8px right margins for spacing
     const dataCanvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing + this.contentInset; // contentInset' for the Xoffset into window for canvas
 
     // Calculate total height: match Pascal exactly - each channel gets full ChrHeight
     const channelHeight: number = this.displaySpec.font.charHeight; // Pascal: ChrHeight per channel
     const channelGroupHeight: number = channelHeight * activeBitChannels;
-    const channelGroupWidth: number = labelCanvasWidth + dataCanvasWidth;
+    const channelGroupWidth: number = labelCanvasWidth + labelMargins + dataCanvasWidth;
 
     // pass to other users
     this.labelHeight = labelHeight;
@@ -597,7 +606,9 @@ export class DebugLogicWindow extends DebugWindowBase {
     // Create channels in normal order (0 to n-1) - CSS will flip display order to put channel 0 at bottom
     for (let index = 0; index < activeBitChannels; index++) {
       const idNbr: number = index;
-      labelDivs.push(`<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${channelHeight}">Label ${idNbr}</div>`);
+      labelDivs.push(
+        `<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${channelHeight}">Label ${idNbr}</div>`
+      );
       dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
     }
 
@@ -610,22 +621,42 @@ export class DebugLogicWindow extends DebugWindowBase {
     const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
     const windowHeight = windowDimensions.height;
     const windowWidth = windowDimensions.width;
-    
-    this.logMessage(`DEBUG: Created ${labelDivs.length} labels and ${dataCanvases.length} canvases for ${activeBitChannels} channels`);
+
+    this.logMessage(
+      `DEBUG: Created ${labelDivs.length} labels and ${dataCanvases.length} canvases for ${activeBitChannels} channels`
+    );
     this.logMessage(`DEBUG: Window dimensions - Width: ${windowWidth}, Height: ${windowHeight}`);
-    this.logMessage(`DEBUG: Font metrics - charHeight: ${this.displaySpec.font.charHeight}, lineHeight: ${this.displaySpec.font.lineHeight}`);
-    this.logMessage(`DEBUG: Channel calculations - labelHeight: ${labelHeight}, channelHeight: ${channelHeight}, canvasHeight: ${canvasHeight}`);
-    this.logMessage(`DEBUG: Pascal equivalent: vHeight = ${activeBitChannels} * charHeight(${this.displaySpec.font.charHeight}) = ${activeBitChannels * this.displaySpec.font.charHeight}`);
-    this.logMessage(`DEBUG: TypeScript channelGroupHeight: ${channelGroupHeight}, containerPadding: ${containerPadding}, contentHeight: ${contentHeight}`);
-    this.logMessage(`DEBUG: DETAILED CALCULATION: charHeight=${this.displaySpec.font.charHeight}, activeBitChannels=${activeBitChannels}`);
-    this.logMessage(`DEBUG: DETAILED CALCULATION: channelGroupHeight = ${activeBitChannels} * ${this.displaySpec.font.charHeight} = ${channelGroupHeight}`);
-    this.logMessage(`DEBUG: DETAILED CALCULATION: containerPadding = 2 * ${this.displaySpec.font.charHeight} = ${containerPadding}`);
-    this.logMessage(`DEBUG: DETAILED CALCULATION: contentHeight = ${channelGroupHeight} + ${containerPadding} = ${contentHeight}`);
+    this.logMessage(
+      `DEBUG: Font metrics - charHeight: ${this.displaySpec.font.charHeight}, lineHeight: ${this.displaySpec.font.lineHeight}`
+    );
+    this.logMessage(
+      `DEBUG: Channel calculations - labelHeight: ${labelHeight}, channelHeight: ${channelHeight}, canvasHeight: ${canvasHeight}`
+    );
+    this.logMessage(
+      `DEBUG: Pascal equivalent: vHeight = ${activeBitChannels} * charHeight(${this.displaySpec.font.charHeight}) = ${
+        activeBitChannels * this.displaySpec.font.charHeight
+      }`
+    );
+    this.logMessage(
+      `DEBUG: TypeScript channelGroupHeight: ${channelGroupHeight}, containerPadding: ${containerPadding}, contentHeight: ${contentHeight}`
+    );
+    this.logMessage(
+      `DEBUG: DETAILED CALCULATION: charHeight=${this.displaySpec.font.charHeight}, activeBitChannels=${activeBitChannels}`
+    );
+    this.logMessage(
+      `DEBUG: DETAILED CALCULATION: channelGroupHeight = ${activeBitChannels} * ${this.displaySpec.font.charHeight} = ${channelGroupHeight}`
+    );
+    this.logMessage(
+      `DEBUG: DETAILED CALCULATION: containerPadding = 2 * ${this.displaySpec.font.charHeight} = ${containerPadding}`
+    );
+    this.logMessage(
+      `DEBUG: DETAILED CALCULATION: contentHeight = ${channelGroupHeight} + ${containerPadding} = ${contentHeight}`
+    );
     this.logMessage(`DEBUG: DETAILED CALCULATION: windowHeight = ${contentHeight} + 40 (title bar) = ${windowHeight}`);
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
-    
+
     // If no POS clause was present, use WindowPlacer for intelligent positioning
     if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
@@ -643,15 +674,15 @@ export class DebugLogicWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) LOGIC '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) LOGIC '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
     }
-    
-    this.logMessage(
-      `  -- LOGIC window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
-    );
+
+    this.logMessage(`  -- LOGIC window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`);
 
     // now generate the window with the calculated sizes
     const displayName: string = this.windowTitle;
@@ -672,26 +703,36 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // HYPOTHESIS 4 DEBUGGING: Registration Side Effects
     const beforeBounds = this.debugWindow.getBounds();
-    this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`);
+    this.logConsoleMessage(
+      `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`
+    );
 
     // Register window with WindowPlacer for position tracking
     if (this.debugWindow) {
       const windowPlacer = WindowPlacer.getInstance();
-      this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`);
+      this.logConsoleMessage(
+        `[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`
+      );
       windowPlacer.registerWindow(`logic-${this.displaySpec.displayName}`, this.debugWindow);
 
       // Check for position changes after registration
       setTimeout(() => {
         const afterBounds = this.debugWindow!.getBounds();
-        this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`);
+        this.logConsoleMessage(
+          `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`
+        );
         if (beforeBounds.x !== afterBounds.x || beforeBounds.y !== afterBounds.y) {
-          this.logConsoleMessage(`[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${afterBounds.x - beforeBounds.x} Δy:${afterBounds.y - beforeBounds.y}`);
+          this.logConsoleMessage(
+            `[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${
+              afterBounds.x - beforeBounds.x
+            } Δy:${afterBounds.y - beforeBounds.y}`
+          );
         } else {
           this.logConsoleMessage(`[DEBUG_WIN_LOGIC] ✅ HYPOTHESIS 4: Position stable during registration`);
         }
       }, 100);
     }
-    
+
     // HYPOTHESIS 6 DEBUGGING: Content Loading Interference
     this.debugWindow.on('ready-to-show', () => {
       const readyBounds = this.debugWindow!.getBounds();
@@ -702,7 +743,9 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     this.debugWindow.webContents.once('did-finish-load', () => {
       const loadedBounds = this.debugWindow!.getBounds();
-      this.logConsoleMessage(`[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`);
+      this.logConsoleMessage(
+        `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 6: DID-FINISH-LOAD: (${loadedBounds.x}, ${loadedBounds.y})`
+      );
     });
 
     this.debugWindow.on('show', () => {
@@ -733,11 +776,13 @@ export class DebugLogicWindow extends DebugWindowBase {
           this.debugWindow.setContentSize(this.contentWidth, this.contentHeight);
           this.logMessage(`DEBUG: Set content size to Pascal dimensions: ${this.contentWidth}x${this.contentHeight}`);
         }
-        
+
         // Check actual content dimensions after adjustment
         const contentSize = this.debugWindow.getContentSize();
         const windowSize = this.debugWindow.getSize();
-        this.logMessage(`DEBUG: FINAL SIZES - Window: ${windowSize[0]}x${windowSize[1]}, Content: ${contentSize[0]}x${contentSize[1]}`);
+        this.logMessage(
+          `DEBUG: FINAL SIZES - Window: ${windowSize[0]}x${windowSize[1]}, Content: ${contentSize[0]}x${contentSize[1]}`
+        );
         this.debugWindow.show();
       }
     });
@@ -779,6 +824,8 @@ export class DebugLogicWindow extends DebugWindowBase {
             border-color: ${this.displaySpec.window.background};
             padding: 0px;
             margin: 0px;
+            margin-left: 8px; /* Add white space from left edge */
+            margin-right: 8px; /* Add white space between labels and trace data */
           }
           #labels > div {
             flex-grow: 0;
@@ -788,7 +835,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             //background-color:rgba(188, 208, 208, 0.9);
             height: ${channelHeight}px; /* Use tight channel height */
             // padding: top right bottom left - position text to align with trace center
-            padding: ${Math.floor((channelHeight - canvasHeight) / 2)}px 2px ${Math.ceil((channelHeight - canvasHeight) / 2)}px 0px;
+            padding: ${Math.floor((channelHeight - canvasHeight) / 2)}px 6px ${Math.ceil(
+      (channelHeight - canvasHeight) / 2
+    )}px 0px;
             margin: 0px; /* No margins - channels butt together */
           }
           #labels > div > p {
@@ -812,7 +861,9 @@ export class DebugLogicWindow extends DebugWindowBase {
             flex-direction: row; /* Arrange children in a row */
             flex-grow: 0;
             padding: top right bottom left;
-            padding: ${this.displaySpec.font.charHeight}px ${this.canvasMargin}px ${this.displaySpec.font.charHeight}px 0px;
+            padding: ${this.displaySpec.font.charHeight}px ${this.canvasMargin}px ${
+      this.displaySpec.font.charHeight
+    }px 0px;
           }
           #label-2 {
             //background-color:rgb(231, 151, 240);
@@ -838,7 +889,7 @@ export class DebugLogicWindow extends DebugWindowBase {
             font-size: 10px;
             font-family: Arial, sans-serif;
             border-radius: 3px;
-            display: none; /* Hidden by default, shown when trigger is enabled */
+            display: none !important; /* Always hidden - trigger logic still works internally */
           }
           #trigger-status.armed {
             background-color: rgba(255, 165, 0, 0.8); /* Orange for armed */
@@ -941,7 +992,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.updateLogicChannelLabel(canvasName, channelBitSpec.name, channelBitSpec.color);
     }
   }
-  
+
   private updateTriggerStatus(): void {
     // Check that window exists and is not destroyed
     if (!this.debugWindow || this.debugWindow.isDestroyed()) {
@@ -964,9 +1015,13 @@ export class DebugLogicWindow extends DebugWindowBase {
       }
 
       // Also show trigger mask/match values for debugging
-      const triggerInfo = `M:${this.triggerSpec.trigMask.toString(2).padStart(8, '0')} T:${this.triggerSpec.trigMatch.toString(2).padStart(8, '0')}`;
+      const triggerInfo = `M:${this.triggerSpec.trigMask.toString(2).padStart(8, '0')} T:${this.triggerSpec.trigMatch
+        .toString(2)
+        .padStart(8, '0')}`;
 
-      this.debugWindow.webContents.executeJavaScript(`
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const statusEl = document.getElementById('trigger-status');
           if (statusEl) {
@@ -975,24 +1030,30 @@ export class DebugLogicWindow extends DebugWindowBase {
             statusEl.style.display = 'block';
           }
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to update trigger status: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to update trigger status: ${error}`);
+        });
     } else if (this.debugWindow) {
       // Hide trigger status when trigger is disabled
-      this.debugWindow.webContents.executeJavaScript(`
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const statusEl = document.getElementById('trigger-status');
           const posEl = document.getElementById('trigger-position');
           if (statusEl) statusEl.style.display = 'none';
           if (posEl) posEl.style.display = 'none';
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to hide trigger status: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to hide trigger status: ${error}`);
+        });
     }
   }
-  
+
   private updateTriggerPosition(): void {
     // Check that window exists and is not destroyed
     if (!this.debugWindow || this.debugWindow.isDestroyed()) {
@@ -1007,7 +1068,9 @@ export class DebugLogicWindow extends DebugWindowBase {
       // Also need to account for the label width offset
       const labelWidth = this.labelWidth;
 
-      this.debugWindow.webContents.executeJavaScript(`
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const posEl = document.getElementById('trigger-position');
           if (posEl) {
@@ -1022,9 +1085,11 @@ export class DebugLogicWindow extends DebugWindowBase {
             }, 1000);
           }
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to update trigger position: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to update trigger position: ${error}`);
+        });
     }
   }
 
@@ -1147,18 +1212,18 @@ export class DebugLogicWindow extends DebugWindowBase {
           //       index++;
           //     }
           //   }
-          
+
           // Collect packed mode and any following keywords
           const keywords: string[] = [];
           let tempIndex = index;
-          
+
           // Check if current word is a packed data mode
           const [isPackedData, _] = PackedDataProcessor.validatePackedMode(lineParts[tempIndex]);
           if (isPackedData) {
             // Collect the mode and any following ALT/SIGNED keywords
             keywords.push(lineParts[tempIndex]);
             tempIndex++;
-            
+
             // Look for ALT and SIGNED keywords
             while (tempIndex < lineParts.length) {
               const keyword = lineParts[tempIndex].toUpperCase();
@@ -1169,10 +1234,10 @@ export class DebugLogicWindow extends DebugWindowBase {
                 break;
               }
             }
-            
+
             // Parse all keywords together
             this.packedMode = PackedDataProcessor.parsePackedModeKeywords(keywords);
-            
+
             // Update index to skip processed keywords
             index = tempIndex - 1;
           } else {
@@ -1324,7 +1389,9 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.channelSamples.push({ samples: [] });
       }
     }
-    this.logMessage(`  -- Initialized circular buffer size ${this.bufferSize}, channels: ${this.channelBitSpecs.length}`);
+    this.logMessage(
+      `  -- Initialized circular buffer size ${this.bufferSize}, channels: ${this.channelBitSpecs.length}`
+    );
   }
 
   private clearChannelData(): void {
@@ -1417,11 +1484,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     return false;
   }
 
-  private drawChannelFromSamples(
-    canvasName: string,
-    channelSpec: LogicChannelBitSpec,
-    samples: number[]
-  ): void {
+  private drawChannelFromSamples(canvasName: string, channelSpec: LogicChannelBitSpec, samples: number[]): void {
     // Check that window exists and is not destroyed
     if (!this.debugWindow || this.debugWindow.isDestroyed()) {
       return;
@@ -1549,16 +1612,15 @@ export class DebugLogicWindow extends DebugWindowBase {
     const marginTop = this.channelVInset;
     const width = this.displaySpec.size.width - this.contentInset - this.labelWidth;
     const height = this.displaySpec.size.height - 2 * this.channelVInset;
-    
+
     // Check if mouse is within the display area
-    if (x >= marginLeft && x < marginLeft + width && 
-        y >= marginTop && y < marginTop + height) {
+    if (x >= marginLeft && x < marginLeft + width && y >= marginTop && y < marginTop + height) {
       // Transform to logic coordinates
       // X: negative sample number (samples back from current)
       const sampleX = -Math.floor((marginLeft + width - 1 - x) / this.displaySpec.spacing);
       // Y: channel number (0-based from top)
       const channelY = Math.floor((y - marginTop) / this.displaySpec.font.charHeight);
-      
+
       return { x: sampleX, y: channelY };
     } else {
       // Mouse is outside display area
@@ -1586,52 +1648,54 @@ export class DebugLogicWindow extends DebugWindowBase {
   protected enableMouseInput(): void {
     // Call base implementation first
     super.enableMouseInput();
-    
+
     // Add coordinate display functionality
     if (this.debugWindow) {
       const marginLeft = this.contentInset + this.labelWidth;
       const marginTop = this.channelVInset;
       const displayWidth = this.displaySpec.size.width - this.contentInset - this.labelWidth;
       const displayHeight = this.displaySpec.size.height - 2 * this.channelVInset;
-      
-      this.debugWindow.webContents.executeJavaScript(`
+
+      this.debugWindow.webContents
+        .executeJavaScript(
+          `
         (function() {
           const container = document.getElementById('container');
           const coordDisplay = document.getElementById('coordinate-display');
           const crosshairH = document.getElementById('crosshair-horizontal');
           const crosshairV = document.getElementById('crosshair-vertical');
-          
+
           if (container && coordDisplay && crosshairH && crosshairV) {
             // Track mouse position
             let lastMouseX = -1;
             let lastMouseY = -1;
-            
+
             container.addEventListener('mousemove', (event) => {
               const rect = container.getBoundingClientRect();
               const x = event.clientX - rect.left;
               const y = event.clientY - rect.top;
-              
+
               // Calculate relative position within data area
               const dataX = x - ${marginLeft};
               const dataY = y - ${marginTop};
-              
+
               // Check if within display area
-              if (dataX >= 0 && dataX < ${displayWidth} && 
+              if (dataX >= 0 && dataX < ${displayWidth} &&
                   dataY >= 0 && dataY < ${displayHeight}) {
-                
+
                 // Calculate logic coordinates
                 const sampleX = -Math.floor((${displayWidth} - 1 - dataX) / ${this.displaySpec.spacing});
                 const channelY = Math.floor(dataY / ${this.displaySpec.font.charHeight});
-                
+
                 // Update coordinate display
                 coordDisplay.textContent = sampleX + ',' + channelY;
                 coordDisplay.style.display = 'block';
-                
+
                 // Position the display near cursor, avoiding edges
                 const displayRect = coordDisplay.getBoundingClientRect();
                 let displayX = event.clientX + 10;
                 let displayY = event.clientY - displayRect.height - 10;
-                
+
                 // Adjust if too close to edges
                 if (displayX + displayRect.width > window.innerWidth - 10) {
                   displayX = event.clientX - displayRect.width - 10;
@@ -1639,16 +1703,16 @@ export class DebugLogicWindow extends DebugWindowBase {
                 if (displayY < 10) {
                   displayY = event.clientY + 10;
                 }
-                
+
                 coordDisplay.style.left = displayX + 'px';
                 coordDisplay.style.top = displayY + 'px';
-                
+
                 // Update crosshair position
                 crosshairH.style.display = 'block';
                 crosshairV.style.display = 'block';
                 crosshairH.style.top = event.clientY + 'px';
                 crosshairV.style.left = event.clientX + 'px';
-                
+
                 lastMouseX = x;
                 lastMouseY = y;
               } else {
@@ -1658,7 +1722,7 @@ export class DebugLogicWindow extends DebugWindowBase {
                 crosshairV.style.display = 'none';
               }
             });
-            
+
             // Hide displays when mouse leaves container
             container.addEventListener('mouseleave', () => {
               coordDisplay.style.display = 'none';
@@ -1667,9 +1731,11 @@ export class DebugLogicWindow extends DebugWindowBase {
             });
           }
         })();
-      `).catch((error) => {
-        this.logMessage(`Failed to enable mouse input tracking: ${error}`);
-      });
+      `
+        )
+        .catch((error) => {
+          this.logMessage(`Failed to enable mouse input tracking: ${error}`);
+        });
     }
   }
 }

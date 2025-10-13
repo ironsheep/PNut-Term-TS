@@ -13,7 +13,7 @@ import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool'
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true; // Temporarily enabled for debugging renderer initialization
 
 export interface DebugLoggerTheme {
   name: string;
@@ -81,6 +81,7 @@ export class LoggerWindow extends DebugWindowBase {
   // Message buffering for race condition protection
   private pendingLogMessages: string[] = [];
   private logFileReady: boolean = false;
+  private rendererReady: boolean = false; // Track when renderer DOM is ready for IPC
 
   // Performance warning tracking
   private performanceMonitor: PerformanceMonitor | null = null;
@@ -104,51 +105,66 @@ export class LoggerWindow extends DebugWindowBase {
   };
 
   private constructor(context: Context) {
+    console.log('[DEBUG LOGGER] 🏗️  Constructor called, creating singleton instance');
+
     // Call parent with a fixed name since this is a singleton
     super(context, 'DebugLogger', 'logger');
-    
+
     // Default to green theme
     this.theme = LoggerWindow.THEMES.green;
-    
+
+    console.log('[DEBUG LOGGER] Creating debug window...');
     // Create the window but DON'T show it yet
     this.debugWindow = this.createDebugWindow();
     // Window will be shown in the 'ready-to-show' event handler
-    
+    console.log('[DEBUG LOGGER] Debug window created');
+
     // CRITICAL: Register with router IMMEDIATELY so we don't lose messages
     // The Debug Logger is special - it needs to capture ALL messages from the start
+    console.log('[DEBUG LOGGER] 📡 Registering with WindowRouter immediately...');
     this.logConsoleMessage('[DEBUG LOGGER] Registering with WindowRouter immediately...');
     try {
       this.registerWithRouter();
+      console.log('[DEBUG LOGGER] ✅ Successfully registered with WindowRouter (immediate)');
       this.logConsoleMessage('[DEBUG LOGGER] Successfully registered with WindowRouter (immediate)');
     } catch (error) {
-      console.error('[DEBUG LOGGER] Failed to register immediately:', error);
+      console.error('[DEBUG LOGGER] ❌ Failed to register immediately:', error);
       // Try again after a short delay
       setTimeout(() => {
+        console.log('[DEBUG LOGGER] Retry registration after 100ms...');
         this.logConsoleMessage('[DEBUG LOGGER] Retry registration after 100ms...');
         try {
           this.registerWithRouter();
+          console.log('[DEBUG LOGGER] ✅ Successfully registered with WindowRouter (retry)');
           this.logConsoleMessage('[DEBUG LOGGER] Successfully registered with WindowRouter (retry)');
         } catch (err) {
-          console.error('[DEBUG LOGGER] Failed to register on retry:', err);
+          console.error('[DEBUG LOGGER] ❌ Failed to register on retry:', err);
         }
       }, 100);
     }
-    
+
     // Initialize log file after window is created
     // This ensures MainWindow has time to set up event listeners
     setTimeout(() => {
+      console.log('[DEBUG LOGGER] Initializing log file...');
       this.initializeLogFile();
     }, 100);
-    
-    // Mark as ready so messages aren't queued
+
+    // Mark as ready so messages aren't queued by base class
+    console.log('[DEBUG LOGGER] Marking window as ready (isWindowReady=true) to avoid base class queuing');
     (this as any).isWindowReady = true;
-    
-    // Process any messages that might have been queued
+
+    // Process any messages that might have been queued by base class
     if ((this as any).messageQueue && (this as any).messageQueue.length > 0) {
       const queue = (this as any).messageQueue;
+      console.log(`[DEBUG LOGGER] Processing ${queue.length} messages from base class queue`);
       (this as any).messageQueue = [];
       queue.forEach((msg: any) => this.processMessageImmediate(msg));
+    } else {
+      console.log('[DEBUG LOGGER] No messages in base class queue');
     }
+
+    console.log('[DEBUG LOGGER] Constructor complete, rendererReady=', this.rendererReady);
   }
 
   /**
@@ -325,33 +341,76 @@ export class LoggerWindow extends DebugWindowBase {
       this.emit('export-cog-logs-requested');
     });
     
-    // Use did-finish-load instead of ready-to-show (more reliable with data URLs)
-    this.logConsoleMessage('[DEBUG LOGGER] Setting up did-finish-load event handler...');
-    window.webContents.once('did-finish-load', () => {
-      this.logConsoleMessage('[DEBUG LOGGER] Window did-finish-load event fired!');
+    // CRITICAL: Use BOTH ready-to-show AND did-finish-load for reliability
+    // ready-to-show fires when window is ready to display (earlier)
+    // did-finish-load fires when DOM is loaded (later, more reliable for IPC)
+    console.log('[DEBUG LOGGER] Setting up window ready event handlers...');
+
+    let readyHandled = false; // Prevent double-handling
+
+    const handleRendererReady = () => {
+      if (readyHandled) {
+        console.log('[DEBUG LOGGER] Renderer ready handler already called, skipping');
+        return;
+      }
+      readyHandled = true;
+
+      console.log('[DEBUG LOGGER] Renderer ready event fired!');
       window.show();
-      window.focus(); // Also focus the window
-      this.logConsoleMessage('[DEBUG LOGGER] Window shown and focused');
-      // Window is now ready for content
-      this.logMessage('Debug Logger window ready');
-      
-      // Don't register again - we already did it in the constructor
-      // Just verify we're still registered
+      window.focus();
+      console.log('[DEBUG LOGGER] Window shown and focused');
+
+      // CRITICAL: Mark renderer as ready for IPC messages
+      this.rendererReady = true;
+      console.log('[DEBUG LOGGER] ✅ Renderer marked as ready for IPC');
+
+      // Process any pending batches that accumulated before renderer was ready
+      if (this.renderQueue.length > 0) {
+        console.log(`[DEBUG LOGGER] 📦 Processing ${this.renderQueue.length} queued messages now that renderer is ready`);
+        this.processBatch();
+      } else {
+        console.log('[DEBUG LOGGER] No queued messages to process');
+      }
+
+      // Verify registration
       const router = this.windowRouter;
       const activeWindows = router.getActiveWindows();
       const loggerWindow = activeWindows.find(w => w.windowType === 'logger');
       if (loggerWindow) {
-        this.logConsoleMessage('[DEBUG LOGGER] Verified still registered:', loggerWindow.windowId);
+        console.log('[DEBUG LOGGER] Verified still registered:', loggerWindow.windowId);
       } else {
         console.error('[DEBUG LOGGER] ❌ Registration was lost! Re-registering...');
         try {
           this.registerWithRouter();
-          this.logConsoleMessage('[DEBUG LOGGER] Re-registered successfully');
+          console.log('[DEBUG LOGGER] Re-registered successfully');
         } catch (error) {
           console.error('[DEBUG LOGGER] ❌ Re-registration failed:', error);
         }
       }
+
+      // Send ready message to console for debugging
+      this.logMessage('Debug Logger window ready');
+    };
+
+    // Try both events - whichever fires first wins
+    // ready-to-show is on BrowserWindow, did-finish-load is on webContents
+    window.once('ready-to-show', () => {
+      console.log('[DEBUG LOGGER] ready-to-show event fired');
+      handleRendererReady();
     });
+
+    window.webContents.once('did-finish-load', () => {
+      console.log('[DEBUG LOGGER] did-finish-load event fired');
+      handleRendererReady();
+    });
+
+    // Fallback timeout in case neither event fires
+    setTimeout(() => {
+      if (!readyHandled) {
+        console.warn('[DEBUG LOGGER] ⚠️ Timeout waiting for renderer ready events, forcing ready state');
+        handleRendererReady();
+      }
+    }, 2000);
     
     // Handle window close event
     window.on('close', () => {
@@ -797,6 +856,7 @@ export class LoggerWindow extends DebugWindowBase {
    * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
   public processTypedMessage(messageType: SharedMessageType, data: string[] | Uint8Array): void {
+    console.log(`[DEBUG LOGGER] 📨 processTypedMessage called: type=${messageType}, dataLength=${data.length}, rendererReady=${this.rendererReady}, queueLength=${this.renderQueue.length}`);
     this.logConsoleMessage(`[DEBUG LOGGER] Processing typed message: SharedMessageType ${messageType}`);
 
     try {
@@ -845,6 +905,19 @@ export class LoggerWindow extends DebugWindowBase {
       } else if (typeof actualData === 'string') {
         this.appendMessage(actualData, 'cog-message');
         this.writeToLog(actualData);
+      } else if (actualData instanceof Uint8Array) {
+        // DEFENSIVE: COG messages should be text - verify before decoding
+        if (this.isASCIIData(actualData)) {
+          // Valid ASCII text - decode and display
+          const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
+          this.appendMessage(textMessage, 'cog-message');
+          this.writeToLog(textMessage);
+        } else {
+          // Binary data misclassified as COG - display defensively with hex fallback
+          const hexFallback = this.formatBinaryAsHexFallback(actualData);
+          this.appendMessage(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`, 'binary-message');
+          this.writeToLog(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`);
+        }
       }
     }
     // Handle TERMINAL_OUTPUT
@@ -935,12 +1008,14 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private appendMessage(message: string, type: string = 'cog-message'): void {
     // Add to queue for batched processing with individual timestamps
-    this.renderQueue.push({ 
-      message, 
+    this.renderQueue.push({
+      message,
       className: type,
       timestamp: Date.now()  // Capture precise arrival time
     });
-    
+
+    console.log(`[DEBUG LOGGER] ➕ appendMessage: queueLength=${this.renderQueue.length}, type=${type}, msgPreview="${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+
     // Also keep in internal buffer
     this.lineBuffer.push(message);
     if (this.lineBuffer.length > this.maxLines) {
@@ -948,14 +1023,16 @@ export class LoggerWindow extends DebugWindowBase {
       const removeCount = Math.floor(this.maxLines * 0.1);
       this.lineBuffer.splice(0, removeCount);
     }
-    
+
     // Schedule batch processing if not already scheduled
     if (!this.batchTimer) {
+      console.log(`[DEBUG LOGGER] ⏰ Scheduling batch timer (${this.BATCH_INTERVAL_MS}ms)`);
       this.batchTimer = setTimeout(() => this.processBatch(), this.BATCH_INTERVAL_MS);
     }
-    
+
     // Force immediate flush if queue is getting too large
     if (this.renderQueue.length >= this.BATCH_SIZE_LIMIT) {
+      console.log(`[DEBUG LOGGER] 🚨 Queue limit reached (${this.BATCH_SIZE_LIMIT}), forcing immediate flush`);
       this.processBatch();
     }
   }
@@ -964,16 +1041,29 @@ export class LoggerWindow extends DebugWindowBase {
    * Process queued messages in batch for performance
    */
   private processBatch(): void {
+    console.log(`[DEBUG LOGGER] 📤 processBatch called: queueLength=${this.renderQueue.length}, rendererReady=${this.rendererReady}, windowExists=${!!this.debugWindow}, windowDestroyed=${this.debugWindow?.isDestroyed()}`);
+
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
     }
-    
-    if (this.renderQueue.length === 0) return;
-    
+
+    if (this.renderQueue.length === 0) {
+      console.log('[DEBUG LOGGER] Queue empty, nothing to process');
+      return;
+    }
+
+    // CRITICAL: Don't send to renderer until it's ready for IPC
+    if (!this.rendererReady) {
+      console.log(`[DEBUG LOGGER] ⏸️  Renderer not ready, keeping ${this.renderQueue.length} messages queued`);
+      this.logConsoleMessage(`[DEBUG LOGGER] Renderer not ready, keeping ${this.renderQueue.length} messages queued`);
+      return; // Keep messages in queue until renderer is ready
+    }
+
     // Take current batch
     const batch = this.renderQueue.splice(0, this.BATCH_SIZE_LIMIT);
-    
+    console.log(`[DEBUG LOGGER] Processing batch of ${batch.length} messages, ${this.renderQueue.length} remaining in queue`);
+
     // Send batch to renderer
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       // High-resolution timestamps with fixed-width alignment
