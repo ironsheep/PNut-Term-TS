@@ -29,7 +29,6 @@ import {
   TextStyle,
   WindowColor
 } from './debugWindowBase';
-import { v8_0_0 } from 'pixi.js';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = true;
@@ -184,9 +183,16 @@ export class DebugLogicWindow extends DebugWindowBase {
   private triggerFired: boolean = false;
   private holdoffCounter: number = 0;
   private triggerSampleIndex: number = -1; // Track which sample caused the trigger
+  private postTriggerSamples: number = 0; // Samples captured after trigger
   // diagnostics used to limit the number of samples displayed while testing
   private dbgUpdateCount: number = Number.MAX_SAFE_INTEGER; // Run forever - was limiting to 31 * 6 updates
   private dbgLogMessageCount: number = Number.MAX_SAFE_INTEGER; // Log forever - was limiting to 32 * 6 logs
+  // Pascal-style circular buffer implementation
+  private circularBuffer: number[] = []; // Circular buffer for all samples (like Pascal's LogicSampleBuff)
+  private samplePtr: number = 0; // Write pointer into circular buffer (like Pascal's SamplePtr)
+  private samplePop: number = 0; // Number of valid samples in buffer (like Pascal's SamplePop)
+  private bufferSize: number = 2048; // Size of circular buffer (matches Pascal's LogicSets)
+  private triggerFrozenPtr: number = -1; // Pointer position when trigger fired (for frozen display)
 
   constructor(ctx: Context, displaySpec: LogicDisplaySpec, windowId?: string) {
     // Use the user-provided display name as the window ID for proper routing
@@ -588,8 +594,8 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.labelHeight = labelHeight;
     this.labelWidth = labelCanvasWidth;
 
-    // Create channels in reverse order so bottom channel (highest index) displays at top
-    for (let index = activeBitChannels - 1; index >= 0; index--) {
+    // Create channels in normal order (0 to n-1) - CSS will flip display order to put channel 0 at bottom
+    for (let index = 0; index < activeBitChannels; index++) {
       const idNbr: number = index;
       labelDivs.push(`<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${channelHeight}">Label ${idNbr}</div>`);
       dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
@@ -760,7 +766,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           }
           #labels {
             display: flex;
-            flex-direction: column; /* Arrange children in a column */
+            flex-direction: column-reverse; /* Reverse order: channel 0 at bottom, matching Pascal */
             flex-grow: 0;
             //background-color:rgb(86, 234, 234);
             background-color: ${this.displaySpec.window.background};
@@ -792,7 +798,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           }
           #data {
             display: flex;
-            flex-direction: column; /* Arrange children in a column */
+            flex-direction: column-reverse; /* Reverse order: channel 0 at bottom, matching Pascal */
             flex-grow: 0;
             width: ${dataCanvasWidth}px;
             border-style: solid;
@@ -843,13 +849,13 @@ export class DebugLogicWindow extends DebugWindowBase {
           #trigger-position {
             position: absolute;
             width: 2px;
-            background-color: rgba(255, 0, 0, 0.8); /* Red trigger line */
+            background-color: rgba(255, 0, 0, 0.3); /* Red trigger line - more transparent */
             height: ${channelGroupHeight}px;
             pointer-events: none;
             display: none; /* Hidden by default */
             top: ${this.displaySpec.font.charHeight}px; /* Position within data area */
             left: -10px; /* Start hidden off-screen */
-            box-shadow: 0 0 4px rgba(255, 0, 0, 0.6); /* Add glow effect */
+            box-shadow: 0 0 3px rgba(255, 0, 0, 0.3); /* Softer glow effect */
             z-index: 10; /* Ensure it's above canvas elements */
           }
           @keyframes pulse {
@@ -937,10 +943,15 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
   
   private updateTriggerStatus(): void {
-    if (this.debugWindow && this.triggerSpec.trigEnabled) {
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+
+    if (this.triggerSpec.trigEnabled) {
       let statusText = 'READY';
       let statusClass = '';
-      
+
       if (this.holdoffCounter > 0) {
         statusText = `HOLDOFF (${this.holdoffCounter})`;
         statusClass = 'triggered';
@@ -951,10 +962,10 @@ export class DebugLogicWindow extends DebugWindowBase {
         statusText = 'ARMED';
         statusClass = 'armed';
       }
-      
+
       // Also show trigger mask/match values for debugging
       const triggerInfo = `M:${this.triggerSpec.trigMask.toString(2).padStart(8, '0')} T:${this.triggerSpec.trigMatch.toString(2).padStart(8, '0')}`;
-      
+
       this.debugWindow.webContents.executeJavaScript(`
         (function() {
           const statusEl = document.getElementById('trigger-status');
@@ -983,18 +994,25 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
   
   private updateTriggerPosition(): void {
-    if (this.debugWindow && this.triggerSpec.trigEnabled && this.triggerFired) {
-      // Calculate the actual trigger position based on current sample position
-      // The trigger fired at the current sample minus the offset
-      const currentSamplePos = this.channelSamples[0]?.samples.length || 0;
-      const triggerSamplePos = Math.max(0, currentSamplePos - this.triggerSpec.trigSampOffset);
-      const triggerXPos = triggerSamplePos * this.displaySpec.spacing;
-      
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+
+    if (this.triggerSpec.trigEnabled && this.triggerFired) {
+      // The trigger position should be displayed at trigSampOffset position from the left
+      // This is where the trigger point is positioned in the frozen display
+      const triggerXPos = this.triggerSpec.trigSampOffset * this.displaySpec.spacing;
+
+      // Also need to account for the label width offset
+      const labelWidth = this.labelWidth;
+
       this.debugWindow.webContents.executeJavaScript(`
         (function() {
           const posEl = document.getElementById('trigger-position');
           if (posEl) {
-            posEl.style.left = '${triggerXPos}px';
+            // Position relative to the data area (after labels)
+            posEl.style.left = '${labelWidth + triggerXPos}px';
             posEl.style.display = 'block';
             // Add pulsing animation when first triggered
             posEl.style.animation = 'pulse 0.5s ease-in-out 2';
@@ -1022,7 +1040,8 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
-    // here with lineParts = ['`{displayName}, ...]
+    // WindowRouter strips display name before routing, so we receive just data parts
+    // lineParts = ['0'] or ['TRIGGER', '$07', '$04'] etc. (no display name)
     // ----------------------------------------------------------------
     // Valid directives are:
     // --- these update the trigger spec
@@ -1038,18 +1057,16 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.logMessage(`at updateContent(${lineParts.join(' ')})`);
 
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Strip display name/window name (first element) before passing to base class
-    const commandParts = lineParts.length > 0 ? lineParts.slice(1) : [];
-    if (await this.handleCommonCommand(commandParts)) {
+    if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done
       return;
     }
 
     // Continue with LOGIC-specific processing (TRIGGER, HOLDOFF, channel data)
-    // ON first numeric data, create the window! then do update
-    if (lineParts.length > 1) {
-      // have data, parse it (skip index 0 which is display name)
-      for (let index = 1; index < lineParts.length; index++) {
+    // Process all data starting from index 0 (no display name to skip)
+    if (lineParts.length > 0) {
+      // have data, parse it
+      for (let index = 0; index < lineParts.length; index++) {
         this.logMessage(`  -- at [${lineParts[index]}] in lineParts[${index}]`);
         if (lineParts[index].toUpperCase() == 'TRIGGER') {
           // parse trigger spec update
@@ -1204,70 +1221,81 @@ export class DebugLogicWindow extends DebugWindowBase {
     // This method is a no-op but required for base class interface
   }
 
-  private recordSampleToChannels(sample: number) {
-    // we have a single sample value than has a bit for each channel
-    //  isolate the bits for each channel and update each channel
+  private recordSampleToChannels(sample: number): void {
+    // Pascal-style circular buffer implementation
     const nbrBitsInSample: number = this.channelBitSpecs.length;
     this.logMessage(
       `at recordSampleToChannels(0b${sample.toString(2).padStart(nbrBitsInSample, '0')}) w/${
         this.channelBitSpecs.length
       } channels`
     );
-    
-    // Handle trigger evaluation if enabled
-    if (this.triggerSpec.trigEnabled) {
-      // Use trigger processor to evaluate the trigger condition
-      const triggerMet = this.triggerProcessor.evaluateTriggerCondition(sample, this.triggerSpec);
-      
-      // Update trigger state
-      if (this.triggerArmed && !this.triggerFired) {
-        // Already armed, check if we should fire
-        if (triggerMet) {
-          // Trigger fired!
-          this.triggerFired = true;
-          this.holdoffCounter = this.triggerSpec.trigHoldoff;
-          this.triggerProcessor.updateTriggerState(true, true);
-          // Remember which sample triggered (accounting for offset)
-          this.triggerSampleIndex = (this.channelSamples[0]?.samples.length || 0) - this.triggerSpec.trigSampOffset;
-          this.updateTriggerStatus();
-          this.updateTriggerPosition();
-        }
-      }
-      
-      // Handle holdoff countdown
-      if (this.holdoffCounter > 0) {
-        this.holdoffCounter--;
-        this.updateTriggerStatus(); // Update to show holdoff countdown
-        if (this.holdoffCounter === 0) {
-          // Holdoff expired, re-arm trigger for next event
-          this.triggerArmed = true;  // Re-arm (not false)
-          this.triggerFired = false;
-          this.triggerSampleIndex = -1;
-          this.triggerProcessor.resetTrigger();
-          this.updateTriggerStatus();
-        }
-      }
-      
-      // Always proceed with sample recording - Pascal continues recording even when waiting for trigger
-      // The display position is what changes, not the recording
+
+    // Add sample to circular buffer (like Pascal's LogicSampleBuff[SamplePtr])
+    this.circularBuffer[this.samplePtr] = sample;
+    this.samplePtr = (this.samplePtr + 1) & (this.bufferSize - 1); // Wrap around using mask
+    if (this.samplePop < this.displaySpec.nbrSamples) {
+      this.samplePop++;
     }
-    
-    const numberOfChannels = this.singleBitChannelCount;
-    for (let channelIdx = 0; channelIdx < numberOfChannels; channelIdx++) {
-      // create canvas name for channel
-      const canvasName = `data-${channelIdx}`;
-      // isolate bit from sample for this channel
-      const bitValue = (sample >> channelIdx) & 1;
-      // record the sample for this channel
-      const didScroll: boolean = this.recordChannelSample(channelIdx, bitValue);
-      // update the channel display
-      //this.logMessage(`* UPD-INFO recorded (${bitValue}) for ${canvasName}`);
-      const channelSpec: LogicChannelBitSpec = this.channelBitSpecs[channelIdx];
-      this.updateLogicChannelData(canvasName, channelSpec, this.channelSamples[channelIdx].samples, didScroll);
+
+    // Handle trigger evaluation if enabled (Pascal-style)
+    let shouldDraw = false;
+
+    if (this.triggerSpec.trigEnabled && this.triggerSpec.trigMask !== 0) {
+      // Only check trigger if buffer is full (like Pascal)
+      if (this.samplePop === this.displaySpec.nbrSamples) {
+        // Get sample at trigger offset position (like Pascal line 1083)
+        const triggerCheckIndex = (this.samplePtr - this.triggerSpec.trigSampOffset) & (this.bufferSize - 1);
+        const triggerCheckSample = this.circularBuffer[triggerCheckIndex];
+
+        // Check trigger condition
+        const triggerMet = ((triggerCheckSample ^ this.triggerSpec.trigMatch) & this.triggerSpec.trigMask) === 0;
+
+        if (this.triggerArmed) {
+          if (triggerMet) {
+            // Trigger fired!
+            this.triggerFired = true;
+            this.triggerArmed = false;
+            this.triggerFrozenPtr = this.samplePtr; // Remember position when triggered
+            this.updateTriggerStatus();
+            this.updateTriggerPosition();
+          }
+        } else {
+          // Check for re-arm condition (opposite of trigger)
+          const rearmMet = ((triggerCheckSample ^ this.triggerSpec.trigMatch) & this.triggerSpec.trigMask) !== 0;
+          if (rearmMet) {
+            this.triggerArmed = true;
+            this.updateTriggerStatus();
+          }
+        }
+
+        // Handle holdoff
+        if (this.holdoffCounter > 0) {
+          this.holdoffCounter--;
+          this.updateTriggerStatus();
+        }
+
+        // Determine if we should draw
+        if (!this.triggerFired || this.holdoffCounter > 0) {
+          // Not triggered or in holdoff - don't draw
+          return;
+        }
+
+        // We have a trigger and holdoff is complete - draw and reset holdoff
+        this.holdoffCounter = this.triggerSpec.trigHoldoff;
+        shouldDraw = true;
+      }
+    } else {
+      // No trigger enabled - always draw when we have enough samples
+      shouldDraw = this.samplePop > 0;
+    }
+
+    // Draw if needed
+    if (shouldDraw) {
+      this.drawAllChannelsFromBuffer();
     }
   }
 
-  private calculateAutoTriggerAndScale() {
+  private calculateAutoTriggerAndScale(): void {
     // FIXME: UNDONE check if auto is set, if is then calculate the trigger level and scale
     this.logMessage(`at calculateAutoTriggerAndScale()`);
     if (false) {
@@ -1279,9 +1307,15 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
   }
 
-  private initChannelSamples() {
+  private initChannelSamples(): void {
     this.logMessage(`at initChannelSamples()`);
-    // clear the channel data
+    // Initialize circular buffer for Pascal-style operation
+    this.circularBuffer = new Array(this.bufferSize).fill(0);
+    this.samplePtr = 0;
+    this.samplePop = 0;
+    this.triggerFrozenPtr = -1;
+
+    // Keep channel samples for compatibility (but will be rebuilt from circular buffer)
     this.channelSamples = [];
     if (this.channelBitSpecs.length == 0) {
       this.channelSamples.push({ samples: [] });
@@ -1290,11 +1324,18 @@ export class DebugLogicWindow extends DebugWindowBase {
         this.channelSamples.push({ samples: [] });
       }
     }
-    this.logMessage(`  -- [${JSON.stringify(this.channelSamples, null, 2)}]`);
+    this.logMessage(`  -- Initialized circular buffer size ${this.bufferSize}, channels: ${this.channelBitSpecs.length}`);
   }
 
-  private clearChannelData() {
+  private clearChannelData(): void {
     this.logMessage(`at clearChannelData()`);
+    // Clear circular buffer (Pascal-style)
+    this.circularBuffer.fill(0);
+    this.samplePtr = 0;
+    this.samplePop = 0;
+    this.triggerFrozenPtr = -1;
+
+    // Clear channel samples for compatibility
     for (let index = 0; index < this.channelBitSpecs.length; index++) {
       const channelSamples = this.channelSamples[index];
       // clear the channel data
@@ -1302,212 +1343,191 @@ export class DebugLogicWindow extends DebugWindowBase {
     }
   }
 
-  private recordChannelSample(channelIndex: number, sample: number): boolean {
-    //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
-    let didScroll: boolean = false;
-    if (channelIndex >= 0 && channelIndex < this.channelBitSpecs.length) {
-      const channelSamples = this.channelSamples[channelIndex];
-      if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
-        // remove oldest sample
-        channelSamples.samples.shift();
-        didScroll = true;
-      }
-      // record the new sample
-      channelSamples.samples.push(sample);
-    } else {
-      this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
+  private clearAllCanvases(): void {
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
     }
-    return didScroll;
+
+    this.logMessage(`at clearAllCanvases()`);
+    // Clear all channel canvases
+    for (let index = 0; index < this.channelBitSpecs.length; index++) {
+      const canvasName = `data-${index}`;
+      const jsCode = `
+        (function() {
+          const canvas = document.getElementById('${canvasName}');
+          if (canvas && canvas instanceof HTMLCanvasElement) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+        })();
+      `;
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((err) => {
+        this.logMessage(`Failed to clear canvas ${canvasName}: ${err}`);
+      });
+    }
   }
 
+  private drawAllChannelsFromBuffer(): void {
+    // Pascal-style drawing from circular buffer (like LOGIC_Draw procedure)
+    this.logMessage(`at drawAllChannelsFromBuffer() with samplePop=${this.samplePop}`);
+
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+
+    // Clear all canvases first (like Pascal's ClearBitmap)
+    this.clearAllCanvases();
+
+    // Use frozen pointer if triggered, otherwise use current pointer
+    const drawPtr = this.triggerFrozenPtr >= 0 ? this.triggerFrozenPtr : this.samplePtr;
+
+    // Extract samples for each channel from circular buffer
+    for (let channelIdx = 0; channelIdx < this.singleBitChannelCount; channelIdx++) {
+      const samples: number[] = [];
+
+      // Extract channel bits from circular buffer (drawing backwards from current position)
+      for (let k = this.samplePop - 1; k >= 0; k--) {
+        // Access samples backward from write pointer (like Pascal line 1136)
+        const bufferIndex = (drawPtr - k - 1) & (this.bufferSize - 1);
+        const fullSample = this.circularBuffer[bufferIndex];
+        // Extract bit for this channel
+        const bitValue = (fullSample >> channelIdx) & 1;
+        samples.push(bitValue);
+      }
+
+      // Draw this channel with extracted samples
+      const canvasName = `data-${channelIdx}`;
+      const channelSpec = this.channelBitSpecs[channelIdx];
+      this.drawChannelFromSamples(canvasName, channelSpec, samples);
+    }
+
+    // Update trigger position indicator if triggered
+    if (this.triggerFired && this.triggerSpec.trigEnabled) {
+      this.updateTriggerPosition();
+    }
+  }
+
+  private recordChannelSample(channelIndex: number, sample: number): boolean {
+    // This method is now deprecated - using circular buffer instead
+    // Kept for compatibility but not used
+    return false;
+  }
+
+  private drawChannelFromSamples(
+    canvasName: string,
+    channelSpec: LogicChannelBitSpec,
+    samples: number[]
+  ): void {
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+
+    if (samples.length > 0) {
+      this.logMessage(`at drawChannelFromSamples(${canvasName}, w/#${samples.length}) sample(s)`);
+
+      const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
+      const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
+      const drawHeight: number = canvasHeight - this.channelVInset * 2;
+      const channelColor: string = channelSpec.color;
+      const spacing: number = this.displaySpec.spacing;
+
+      // Build JavaScript to draw samples (canvas already cleared in drawAllChannelsFromBuffer)
+      let jsCode = `
+        const canvas = document.getElementById('${canvasName}');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Set line properties
+        const lineColor = '${channelColor}';
+        const lineWidth = ${this.displaySpec.lineSize};
+        const spacing = ${spacing};
+        const drawHeight = ${drawHeight};
+        const vInset = ${this.channelVInset};
+
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = lineWidth;
+        ctx.setLineDash([]);
+        ctx.lineCap = 'square';
+        ctx.lineJoin = 'miter';
+
+        // Draw samples from right to left (Pascal-style)
+        const samples = [${samples.join(',')}];
+        if (samples.length === 0) return;
+
+        ctx.beginPath();
+        for (let i = 0; i < samples.length; i++) {
+          // Position from right edge, moving left (like Pascal line 1135)
+          const x = (${canvasWidth} - (samples.length - i) * spacing);
+          const invSample = 1 - samples[i];
+          const y = invSample * drawHeight + vInset;
+
+          if (i === 0) {
+            // Move to first point
+            ctx.moveTo(x, y);
+          } else {
+            // Draw from previous x to current x at previous y (horizontal)
+            const prevX = (${canvasWidth} - (samples.length - i + 1) * spacing);
+            const prevInvSample = 1 - samples[i - 1];
+            const prevY = prevInvSample * drawHeight + vInset;
+
+            // Draw horizontal line at previous level
+            ctx.lineTo(x, prevY);
+            // Draw vertical transition
+            ctx.lineTo(x, y);
+          }
+          // Extend horizontal to next sample position (or edge)
+          const nextX = (i === samples.length - 1) ? ${canvasWidth} : (${canvasWidth} - (samples.length - i - 1) * spacing);
+          ctx.lineTo(nextX, y);
+        }
+        ctx.stroke();
+      `;
+
+      // Execute the drawing JavaScript
+      try {
+        if (this.debugWindow) {
+          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+            this.logMessage(`Failed to execute channel drawing JavaScript: ${error}`);
+          });
+        }
+      } catch (error) {
+        console.error('Failed to draw channel:', error);
+      }
+    }
+  }
+
+  // Keep old method for compatibility but it's no longer used
   private updateLogicChannelData(
     canvasName: string,
     channelSpec: LogicChannelBitSpec,
     samples: number[],
     didScroll: boolean
   ): void {
-    if (this.debugWindow) {
-      // Debug limiting disabled - run forever
-      // Previously would stop after dbgUpdateCount reached 0
-      // Always log for debugging (no longer limited by counter)
-      this.logMessage(
-        `at updateLogicChannelData(${canvasName}, w/#${samples.length}) sample(s), didScroll=(${didScroll})`
-      );
-      const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
-      const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
-      const drawWidth: number = canvasWidth;
-      const drawHeight: number = canvasHeight - this.channelVInset * 2;
-
-      // get prior 0,1 and next 0,1
-      const currSample: number = samples[samples.length - 1];
-      const prevSample: number = samples.length > 1 ? samples[samples.length - 2] : 0; // channels start at ZERO value
-      const currInvSample: number = 1 - currSample;
-      const prevInvSample: number = 1 - prevSample;
-      const havePrevSample: boolean = samples.length > 1;
-      // let's leave 2px at top and bottom of canvas (this.channelVInset) draw only in between...
-      this.logMessage(`  -- currInvSample=${currInvSample}, prevInvSample=${prevInvSample}`);
-
-      // offset to sample value
-      const currXOffset: number = (samples.length - 1) * this.displaySpec.spacing;
-      const currYOffset: number = currInvSample * drawHeight + this.channelVInset;
-
-      const prevXOffset: number = havePrevSample ? (samples.length - 2) * this.displaySpec.spacing : currXOffset;
-      const prevYOffset: number = havePrevSample ? prevInvSample * drawHeight + this.channelVInset : currYOffset;
-      //this.logMessage(`  -- prev=[${prevYOffset},${prevXOffset}], curr=[${currYOffset},${currXOffset}]`);
-      // draw region for the channel
-      const drawXOffset: number = this.channelVInset;
-      const drawYOffset: number = 0;
-      const channelColor: string = channelSpec.color;
-      const spacing: number = this.displaySpec.spacing;
-      // Always log drawing details for debugging
-      this.logMessage(`  -- DRAW size=(${drawWidth},${drawHeight}), offset=(${drawYOffset},${drawXOffset})`);
-      this.logMessage(
-        `  -- #${samples.length} currSample=(${currSample},#${samples.length}) @ rc=[${currYOffset},${currXOffset}], prev=[${prevYOffset},${prevXOffset}]`
-      );
-      // ORIGINAL CODE COMMENTED OUT - Using CanvasRenderer instead
-      // try {
-      //   this.debugWindow.webContents.executeJavaScript(`
-      //     (function() {
-      //       // Locate the canvas element by its ID
-      //       const canvas = document.getElementById('${canvasName}');
-      //
-      //       if (canvas && canvas instanceof HTMLCanvasElement) {
-      //         // Get the canvas context
-      //         const ctx = canvas.getContext('2d');
-      //
-      //         if (ctx) {
-      //           // Set the line color and width
-      //           const lineColor = '${channelColor}';
-      //           const lineWidth = ${this.displaySpec.lineSize};
-      //           const spacing = ${this.displaySpec.spacing};
-      //           const scrollSpeed = lineWidth + spacing;
-      //           const canvWidth = ${canvasWidth};
-      //           const canvHeight = ${canvasHeight};
-      //           const canvXOffset = ${drawXOffset};
-      //           const canvYOffset = ${drawYOffset};
-      //
-      //           if (${didScroll}) {
-      //             // Create an off-screen canvas
-      //             const offScreenCanvas = document.createElement('canvas');
-      //             offScreenCanvas.width = canvWidth - scrollSpeed;
-      //             offScreenCanvas.height = canvHeight;
-      //             const offScreenCtx = offScreenCanvas.getContext('2d');
-      //
-      //             if (offScreenCtx) {
-      //               // Copy the relevant part of the canvas to the off-screen canvas
-      //               //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-      //               offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-      //
-      //               // Clear the original canvas
-      //               //  clearRect(x, y, width, height)
-      //               //ctx.clearRect(canvXOffset, canvYOffset, canvWidth, canvHeight);
-      //               // fix? artifact!! (maybe line-width caused?!!!)
-      //               ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-      //
-      //               // Copy the content back to the original canvas
-      //               //  drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-      //               ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-      //             }
-      //           }
-      //
-      //           // Set the solid line pattern
-      //           ctx.setLineDash([]); // Empty array for solid line
-      //
-      //           // Draw the new line segment
-      //           ctx.strokeStyle = lineColor;
-      //           ctx.lineWidth = lineWidth;
-      //           ctx.beginPath();
-      //           ctx.moveTo(${prevXOffset}+${spacing}-1, ${prevYOffset});
-      //           ctx.lineTo(${currXOffset}, ${currYOffset});
-      //           ctx.lineTo(${currXOffset}+${spacing}-1, ${currYOffset});
-      //           ctx.stroke();
-      //         }
-      //       }
-      //     })();
-      //   `);
-      
-      try {
-        // Check if this is the trigger sample for highlighting
-        const isTriggerSample = this.triggerFired && 
-                                this.triggerSampleIndex >= 0 && 
-                                samples.length - 1 === this.triggerSampleIndex &&
-                                channelSpec === this.channelBitSpecs[0]; // Only highlight first channel
-        
-        // Use a brighter/different color for the trigger sample
-        const lineColor = isTriggerSample ? '#FF0000' : channelColor; // Red for trigger
-        const lineWidth = isTriggerSample ? this.displaySpec.lineSize + 1 : this.displaySpec.lineSize;
-        
-        // Generate single comprehensive JavaScript block like the original
-        let jsCode = `
-          const canvas = document.getElementById('${canvasName}');
-          if (!canvas) return;
-          
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          
-          const lineColor = '${lineColor}';
-          const lineWidth = ${lineWidth};
-          const spacing = ${spacing};
-          const canvWidth = ${canvasWidth};
-          const canvHeight = ${canvasHeight};
-          const canvXOffset = ${drawXOffset};
-          const canvYOffset = ${drawYOffset};
-          
-          // Handle scrolling if needed
-          ${didScroll ? `
-          const scrollSpeed = lineWidth + spacing;
-          const offScreenCanvas = document.createElement('canvas');
-          offScreenCanvas.width = canvWidth - scrollSpeed;
-          offScreenCanvas.height = canvHeight;
-          const offScreenCtx = offScreenCanvas.getContext('2d');
-          
-          if (offScreenCtx) {
-            offScreenCtx.drawImage(canvas, scrollSpeed + canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight, 0, 0, canvWidth - scrollSpeed, canvHeight);
-            ctx.clearRect(canvXOffset-2, canvYOffset, canvWidth+2, canvHeight);
-            ctx.drawImage(offScreenCanvas, 0, 0, canvWidth - scrollSpeed, canvHeight, canvXOffset, canvYOffset, canvWidth - scrollSpeed, canvHeight);
-          }
-          ` : ''}
-          
-          // Set line style and draw the logic signal as one continuous path
-          ctx.strokeStyle = lineColor;
-          ctx.lineWidth = lineWidth;
-          ctx.setLineDash([]);
-          ctx.lineCap = 'round'; // Round line caps for better connection
-          ctx.lineJoin = 'round'; // Round line joins for smoother corners
-          ctx.beginPath();
-          ctx.moveTo(${prevXOffset + spacing - 0.5}, ${prevYOffset});
-          ctx.lineTo(${currXOffset}, ${currYOffset});
-          ctx.lineTo(${currXOffset + spacing + 0.5}, ${currYOffset}); // Overlap by 0.5 pixels
-          ctx.stroke();
-        `;
-
-        // Execute the drawing JavaScript directly
-        if (this.debugWindow) {
-          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
-            this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
-            this.logMessage(`FAILED JavaScript was: ${jsCode}`);
-          });
-        }
-      } catch (error) {
-        console.error('Failed to update channel data:', error);
-      }
-      // Debug limiting removed - continues updating forever
-      // Previously would stop after first scroll
-    }
+    // This method is deprecated - use drawChannelFromSamples instead
+    this.drawChannelFromSamples(canvasName, channelSpec, samples);
   }
 
   private updateLogicChannelLabel(divId: string, label: string, color: string): void {
-    if (this.debugWindow) {
-      this.logMessage(`at updateLogicChannelLabel('${divId}', '${label}', ${color})`);
-      try {
-        const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
-        const jsCode = this.canvasRenderer.updateElementHTML(divId, labelSpan);
-        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-          this.logMessage(`Failed to execute label update JavaScript: ${error}`);
-        });
-      } catch (error) {
-        console.error(`Failed to update ${divId}: ${error}`);
-      }
+    // Check that window exists and is not destroyed
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+
+    this.logMessage(`at updateLogicChannelLabel('${divId}', '${label}', ${color})`);
+    try {
+      const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
+      const jsCode = this.canvasRenderer.updateElementHTML(divId, labelSpan);
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to execute label update JavaScript: ${error}`);
+      });
+    } catch (error) {
+      console.error(`Failed to update ${divId}: ${error}`);
     }
   }
 

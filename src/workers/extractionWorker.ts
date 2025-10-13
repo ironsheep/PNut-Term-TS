@@ -23,7 +23,9 @@ import { SharedMessagePool, SharedMessageType, PoolSlot } from '../classes/share
  * - Zero-copy: Worker writes to SharedMessagePool, main reads same memory
  */
 
-if (!parentPort) {
+// More defensive check - in some environments parentPort might exist but be undefined
+if (typeof parentPort === 'undefined' || !parentPort) {
+  console.error('[ExtractionWorker] ERROR: parentPort is not available - not running as Worker Thread');
   throw new Error('ExtractionWorker must be run as Worker Thread');
 }
 
@@ -495,8 +497,12 @@ parentPort.on('message', (msg: any) => {
 });
 
 // Signal that worker is loaded
-parentPort.postMessage({
-  type: 'loaded'
-});
+try {
+  parentPort.postMessage({
+    type: 'loaded'
+  });
 
-logConsoleMessage('Worker loaded and ready');
+  logConsoleMessage('Worker loaded and ready');
+} catch (error) {
+  console.error('[ExtractionWorker] Failed to send loaded message:', error);
+}

@@ -12,6 +12,11 @@ import { UsbSerial } from '../utils/usb.serial';
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
 
+// Checksum control - set to false to disable P2 checksum validation for all downloads
+// When false: Downloads use '~' terminator (immediate execution, no response)
+// When true: RAM downloads use '?' terminator (checksum validation with '.' or '!' response)
+const USE_CHECKSUM: boolean = false;
+
 export class Downloader {
   private context: Context;
   private serialPort: UsbSerial;
@@ -41,11 +46,11 @@ export class Downloader {
       return { consumed: true }; // Consumed - don't route to displays
     }
 
-    // Check for download checksum responses (. or !)
+    // Check for download checksum responses (. or !) - only if checksums are enabled
     // NOTE: P2 sends checksum then immediately starts user code, so checksum
     // often arrives concatenated with app output (e.g., ".Cog0  INIT")
     const trimmed = text.trim();
-    if (trimmed.startsWith('.') || trimmed.startsWith('!')) {
+    if (USE_CHECKSUM && (trimmed.startsWith('.') || trimmed.startsWith('!'))) {
       const checksumChar = trimmed[0];
       this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${checksumChar}`);
 
@@ -116,14 +121,15 @@ export class Downloader {
       this.logMessage(`  -- First 16 bytes: ${rawBytes}`);
       this.logMessage(`  -- Binary size: ${binaryImage.length} bytes`);
 
-      // For flash downloads, skip P2 checksum validation - it interferes with flashing
-      // RAM downloads use P2 checksum validation
+      // Checksum decision logic:
+      // 1. Flash downloads NEVER use P2 checksum (it interferes with the flash loader)
+      // 2. RAM downloads use checksum based on USE_CHECKSUM constant
       if (actuallyWriteToFlash) {
         needsP2ChecksumVerify = false;
         this.logMessage(`  -- ${target} download WITHOUT P2 checksum (flash loader handles integrity)`);
       } else {
-        needsP2ChecksumVerify = true;
-        this.logMessage(`  -- ${target} download with checksum validation`);
+        needsP2ChecksumVerify = USE_CHECKSUM;
+        this.logMessage(`  -- ${target} download ${USE_CHECKSUM ? 'with checksum validation' : 'WITHOUT P2 checksum (USE_CHECKSUM=false)'}`);
       }
 
       // Append checksum for P2 validation (RAM downloads only)

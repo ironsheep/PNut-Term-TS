@@ -1197,6 +1197,15 @@ export class LoggerWindow extends DebugWindowBase {
    * Handle DTR reset - close current log and start new one
    */
   public handleDTRReset(): void {
+    // CRITICAL: Process any pending messages in render queue BEFORE clearing
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    if (this.renderQueue.length > 0) {
+      this.processBatch(); // Send pending messages to display NOW
+    }
+
     // Step 1: Flush write buffer to old log file
     if (this.writeTimer) {
       clearTimeout(this.writeTimer);
@@ -1250,6 +1259,15 @@ export class LoggerWindow extends DebugWindowBase {
    * Handle RTS reset - close current log and start new one
    */
   public handleRTSReset(): void {
+    // CRITICAL: Process any pending messages in render queue BEFORE clearing
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    if (this.renderQueue.length > 0) {
+      this.processBatch(); // Send pending messages to display NOW
+    }
+
     // Step 1: Flush write buffer to old log file
     if (this.writeTimer) {
       clearTimeout(this.writeTimer);
@@ -1303,6 +1321,17 @@ export class LoggerWindow extends DebugWindowBase {
    * Handle download start - close current log and start new one for download session
    */
   public handleDownloadStart(): void {
+    // CRITICAL: Process any pending messages in render queue BEFORE clearing
+    // This ensures pre-download messages (like "Cog0 INIT") get displayed
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    if (this.renderQueue.length > 0) {
+      this.logConsoleMessage(`[DEBUG LOGGER] Processing ${this.renderQueue.length} pending messages before download`);
+      this.processBatch(); // Send pending messages to display NOW
+    }
+
     // Step 1: Flush write buffer to old log file
     if (this.writeTimer) {
       clearTimeout(this.writeTimer);
