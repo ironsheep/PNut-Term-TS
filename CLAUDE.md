@@ -20,8 +20,9 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ## 🎯 PROJECT PRINCIPLES
 
 ### Development Philosophy
-- **No time pressure** - We work consistently and carefully on all code we generate
+- **NO TIME CONSTRAINTS** - We work to find the best possible solutions, period
 - **Quality over speed** - Thorough, well-tested implementations are the priority
+- **Solution excellence** - Our only focus is finding and implementing optimal fixes
 
 ### Project Goals
 - **100% Functional Parity** - TypeScript reimplementation of original Pascal codebase
@@ -48,6 +49,91 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ### Code Quality Requirements
 - **Preserve unparsed debug strings** - Keep exact formatting from device
 - **Full command context in errors** - Include all relevant information in error messages
+
+## 🎯 FINAL RELEASE PREPARATION MODE
+
+**Current Phase**: Windows 90%+ complete, final behavior cleanup until product release
+
+### Critical Constraints
+- **MINIMAL code changes only** - preserve working functionality at all costs
+- **NO broad refactors** - avoid triggering wider testing requirements
+- **Surgical fixes** - address specific symptoms without side effects
+- **NO TIME PRESSURE** - focus on finding the best possible solution
+
+### Workflow for Final Window Polish
+1. Test with external hardware
+2. Document symptoms (logs + verbal observations from user)
+3. Investigate and understand root cause (REQUIRED before fixing)
+4. Apply minimal surgical fix
+5. Verify fix doesn't break existing functionality
+6. Update tests to match finalized window behavior
+7. Disable diagnostic logging (console + constructor)
+8. Move to next window
+
+### Professional Engineer Problem Resolution Protocol
+
+**Step 1: Symptom Collection**
+- Record ALL symptoms from logs (every observable issue)
+- Record ALL symptoms from verbal user descriptions
+- Document in `tasks/TEST_RESULTS_YYYYMMDD_HHMMSS.md` if complex/multi-symptom
+- Account for EVERY symptom - none left behind
+- Group related symptoms together
+
+**Step 2: Hypothesis Generation**
+- ⚠️ **NO SOLUTION BIAS** - Do not jump to conclusions before understanding
+- Create hypotheses for EACH symptom independently
+- Consider why ALL symptoms occur together (may share root cause)
+- List multiple possible causes per symptom
+- Rank hypotheses by likelihood based on evidence
+
+**Step 3: Systematic Investigation**
+- Enable diagnostic logging (two points: console log + constructor logging)
+- Prove or disprove each hypothesis with code evidence
+- Deep code research to understand actual behavior
+- Trace execution paths that produce each symptom
+- Check variable states, timing, data flow
+
+**Step 4: 🚨 MANDATORY CHECKPOINT - Understanding Required**
+⚠️ **STOP: Do you understand WHY this happens?**
+
+Before proceeding to fix, answer these questions:
+- [ ] Can you explain the exact root cause of EACH symptom?
+- [ ] Do you know the precise code path causing EACH issue?
+- [ ] Can you account for ALL observed symptoms?
+- [ ] Do you understand the mechanism producing the behavior?
+- [ ] Can you predict what will happen if you make the fix?
+
+**If NO to ANY question: Continue investigation. DO NOT fix yet.**
+
+**Step 5: Minimal Surgical Fix**
+- Address root cause, not symptoms
+- Minimal code changes (preserve working code)
+- One fix should address all related symptoms
+- Document exactly what changed and why
+
+**Step 6: Verification & Finalization**
+- Verify fix addresses ALL symptoms
+- Check that no existing functionality broke
+- Compare to Pascal source if behavior seems uncertain
+- Update tests after window finalized
+- Disable diagnostic logging (console + constructor) when window complete
+
+### Diagnostic Logging Strategy
+During investigation:
+- Enable console logging in window
+- Enable constructor logging
+- Add temporary trace logging as needed
+
+When window complete:
+- Disable console logging
+- Disable constructor logging
+- Remove temporary trace logging
+
+### Test Strategy for This Phase
+- Primary testing: External hardware (real-world behavior)
+- Automated tests: Update AFTER window finalized
+- Test updates confirm final window behavior matches specification
+- Focus: Fewer tests during polish, comprehensive tests after completion
 
 ## 📚 WORK TYPE QUICK REFERENCE
 
