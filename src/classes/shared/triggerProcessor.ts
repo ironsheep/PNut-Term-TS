@@ -124,10 +124,9 @@ export class LogicTriggerProcessor extends TriggerProcessor {
 
 /**
  * Scope window trigger processor
- * Implements level-crossing triggering with arm/fire states
+ * Implements level-based triggering with arm/fire states (Pascal-faithful)
  */
 export class ScopeTriggerProcessor extends TriggerProcessor {
-  private previousSample: number | null = null;
   private armLevel: number = 0;
   private fireLevel: number = 0;
   private slope: 'positive' | 'negative' = 'positive';
@@ -153,45 +152,40 @@ export class ScopeTriggerProcessor extends TriggerProcessor {
   }
 
   /**
-   * Evaluate if the sample crosses the trigger level
+   * Evaluate if the sample is at or beyond the trigger level
+   * Pascal behavior: Absolute comparison, not crossing detection
    * @param sample - The current sample value
    * @param triggerSpec - Contains trigger configuration
    * @returns true if trigger condition is met
    */
   evaluateTriggerCondition(sample: number, triggerSpec?: any): boolean {
-    if (this.previousSample === null) {
-      this.previousSample = sample;
-      return false;
-    }
-
-    let crossedLevel = false;
+    // Pascal lines 1297-1312: Pure absolute comparison, no previous sample needed
+    let conditionMet = false;
 
     if (this.slope === 'positive') {
-      // Positive slope: trigger when crossing from below to above
-      crossedLevel = this.previousSample < this.fireLevel && sample >= this.fireLevel;
+      // Pascal line 1300: if t >= vTriggerFire then
+      // Positive slope: trigger when sample AT OR ABOVE fire level
+      conditionMet = sample >= this.fireLevel;
     } else {
-      // Negative slope: trigger when crossing from above to below
-      crossedLevel = this.previousSample > this.fireLevel && sample <= this.fireLevel;
+      // Pascal line 1308: if t <= vTriggerFire then
+      // Negative slope: trigger when sample AT OR BELOW fire level
+      conditionMet = sample <= this.fireLevel;
     }
 
-    this.previousSample = sample;
-    return crossedLevel;
+    return conditionMet;
   }
 
   /**
-   * Check if sample crosses arm level
+   * Check if sample is at arm level (absolute level checking, not crossing)
+   * Pascal behavior: Arm when sample reaches arm level, not when crossing
    */
-  private crossesArmLevel(sample: number): boolean {
-    if (this.previousSample === null) {
-      return false;
-    }
-
+  private isAtArmLevel(sample: number): boolean {
     if (this.slope === 'positive') {
-      // For positive slope, arm when crossing arm level from below
-      return this.previousSample < this.armLevel && sample >= this.armLevel;
+      // For positive slope, arm when sample is at or below arm level
+      return sample <= this.armLevel;
     } else {
-      // For negative slope, arm when crossing arm level from above
-      return this.previousSample > this.armLevel && sample <= this.armLevel;
+      // For negative slope, arm when sample is at or above arm level
+      return sample >= this.armLevel;
     }
   }
 
@@ -205,34 +199,27 @@ export class ScopeTriggerProcessor extends TriggerProcessor {
       return true; // Update display during holdoff
     }
 
-    // If no trigger levels are set, always update display
-    if (this.armLevel === 0 && this.fireLevel === 0) {
-      this.previousSample = sample;
-      return true;
-    }
-
-    // Check for arm level crossing
+    // Check if sample is at arm level (absolute level, matches Pascal behavior)
     if (!this.triggerArmed && !this.triggerFired) {
-      if (this.crossesArmLevel(sample)) {
+      if (this.isAtArmLevel(sample)) {
         this.updateTriggerState(true, false);
       }
     }
 
-    // Check for trigger level crossing if armed
+    // Check for trigger level (absolute comparison) if armed
+    // Pascal lines 1297-1312: if armed, check if at/beyond fire level
     if (this.triggerArmed && !this.triggerFired) {
       if (this.evaluateTriggerCondition(sample)) {
+        // Pascal: vTriggered := True; vArmed := False;
         this.updateTriggerState(false, true);
         this.setHoldoff(triggerSpec.trigHoldoff);
-        this.previousSample = sample;
         return true; // Update display on trigger
       }
     }
 
-    // Store current sample for next comparison
-    this.previousSample = sample;
-
-    // Update display if triggered or no trigger is set
-    return this.triggerFired || (this.armLevel === 0 && this.fireLevel === 0);
+    // Update display only if trigger has fired
+    // Pascal logic: Display updates when triggered AND holdoff expired
+    return this.triggerFired;
   }
 
   /**
@@ -240,6 +227,5 @@ export class ScopeTriggerProcessor extends TriggerProcessor {
    */
   resetTrigger(): void {
     super.resetTrigger();
-    this.previousSample = null;
   }
 }

@@ -175,11 +175,10 @@ export class DebugScopeWindow extends DebugWindowBase {
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
   private triggerProcessor: ScopeTriggerProcessor;
-  // Trigger state properties
+  // Trigger state properties (Pascal-faithful: absolute level comparison, no crossing detection)
   private triggerArmed: boolean = false;
   private triggerFired: boolean = false;
   private holdoffCounter: number = 0;
-  private previousSample: number = 0; // For slope detection
   private triggerSampleIndex: number = -1; // Track which sample caused the trigger
   private windowCreated: boolean = false; // Track if window has been created yet
   // diagnostics used to limit the number of samples displayed while testing
@@ -533,11 +532,10 @@ export class DebugScopeWindow extends DebugWindowBase {
             font-family: 'Parallax', sans-serif;
             font-style: italic;
             font-size: 10px;
-            /* display: flex; */
-            /* flex-direction: row;   Arrange children in a row */
-            /* justify-content: flex-start;  left edge grounded */
-            /* align-items: top; vertically at top */
-            /*  align-items: center;  vertically centered */
+            display: flex;
+            flex-direction: row;   /* Arrange children horizontally side-by-side */
+            justify-content: flex-start;  /* left edge grounded */
+            align-items: center;  /* vertically centered */
             flex-grow: 0;
             gap: 10px; /* Create a 10px gap between items */
             height: ${channelLabelHeight}px;
@@ -585,7 +583,7 @@ export class DebugScopeWindow extends DebugWindowBase {
             font-size: 12px;
             font-family: Arial, sans-serif;
             border-radius: 3px;
-            display: none; /* Hidden by default */
+            display: none !important; /* Always hidden - trigger logic still works internally */
             z-index: 100;
           }
           #trigger-status.armed {
@@ -888,49 +886,64 @@ export class DebugScopeWindow extends DebugWindowBase {
         //  trigger-level (trigFire? 0)
         //  trigger offset (0) samples / 2
         // Holdoff (2-2048) samples
+
+        // Reset trigger state when new TRIGGER command arrives (re-arm)
+        this.triggerArmed = false;
+        this.triggerFired = false;
+        this.holdoffCounter = 0;
+        this.triggerSampleIndex = -1;
+        this.triggerProcessor.resetTrigger();
+
         this.triggerSpec.trigEnabled = true;
         // Update trigger status when first enabled (if window exists)
         if (this.windowCreated && this.debugWindow) {
           this.updateTriggerStatus();
         }
-        if (lineParts.length > 2) {
-          const desiredChannel: number = Number(lineParts[0]);
+        // Default to AUTO mode unless explicit levels are provided
+        let hasExplicitLevels = false;
+        if (lineParts.length > 1) {
+          const desiredChannel: number = Number(lineParts[1]);
           if (desiredChannel >= -1 && desiredChannel < this.channelSpecs.length) {
             this.triggerSpec.trigChannel = desiredChannel;
           } else {
             this.logMessage(`at updateContent() with invalid channel: ${desiredChannel} in [${lineParts.join(' ')}]`);
           }
-          if (lineParts.length > 3) {
-            if (lineParts[0].toUpperCase() == 'HOLDOFF') {
+          if (lineParts.length > 2) {
+            if (lineParts[2].toUpperCase() == 'HOLDOFF') {
               if (lineParts.length >= 4) {
-                const [isNumber, trigHoldoff] = this.isSpinNumber(lineParts[0]);
+                const [isNumber, trigHoldoff] = this.isSpinNumber(lineParts[3]);
                 if (isNumber) {
                   this.triggerSpec.trigHoldoff = trigHoldoff;
                 }
               }
-            } else if (lineParts[0].toUpperCase() == 'AUTO') {
+              // No explicit levels, will default to AUTO
+            } else if (lineParts[2].toUpperCase() == 'AUTO') {
               this.triggerSpec.trigAuto = true;
-              const channelSpec = this.channelSpecs[this.triggerSpec.trigChannel];
-              // arm range is 33% of max-min: (high - low) / 3 + low
-              const newArmLevel = (channelSpec.maxValue - channelSpec.minValue) / 3 + channelSpec.minValue;
-              this.triggerSpec.trigArmLevel = newArmLevel;
-              // trigger level is 50% of max-min: (high - low) / 2 + low
-              const newTrigLevel = (channelSpec.maxValue - channelSpec.minValue) / 2 + channelSpec.minValue;
-              this.triggerSpec.trigLevel = newTrigLevel;
+              hasExplicitLevels = true;
+              if (this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < this.channelSpecs.length) {
+                const channelSpec = this.channelSpecs[this.triggerSpec.trigChannel];
+                // arm range is 33% of max-min: (high - low) / 3 + low
+                const newArmLevel = (channelSpec.maxValue - channelSpec.minValue) / 3 + channelSpec.minValue;
+                this.triggerSpec.trigArmLevel = newArmLevel;
+                // trigger level is 50% of max-min: (high - low) / 2 + low
+                const newTrigLevel = (channelSpec.maxValue - channelSpec.minValue) / 2 + channelSpec.minValue;
+                this.triggerSpec.trigLevel = newTrigLevel;
+              }
             } else {
-              let [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+              let [isNumber, parsedValue] = this.isSpinNumber(lineParts[2]);
               if (isNumber) {
                 this.triggerSpec.trigArmLevel = parsedValue;
+                hasExplicitLevels = true;
               }
               this.triggerSpec.trigAuto = false;
-              if (lineParts.length > 4) {
-                [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+              if (lineParts.length > 3) {
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[3]);
                 if (isNumber) {
                   this.triggerSpec.trigLevel = parsedValue;
                 }
               }
-              if (lineParts.length > 5) {
-                [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+              if (lineParts.length > 4) {
+                [isNumber, parsedValue] = this.isSpinNumber(lineParts[4]);
                 if (isNumber) {
                   this.triggerSpec.trigRtOffset = parsedValue;
                 }
@@ -938,13 +951,17 @@ export class DebugScopeWindow extends DebugWindowBase {
             }
           }
         }
+        // If no explicit levels provided, default to AUTO mode
+        if (!hasExplicitLevels) {
+          this.triggerSpec.trigAuto = true;
+        }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
       } else if (lineParts[0].toUpperCase() == 'HOLDOFF') {
         // parse trigger spec update
         //   HOLDOFF1 <2-2048>2
-        if (lineParts.length > 2) {
-          const [isNumber, parsedValue] = this.isSpinNumber(lineParts[0]);
+        if (lineParts.length > 1) {
+          const [isNumber, parsedValue] = this.isSpinNumber(lineParts[1]);
           if (isNumber) {
             this.triggerSpec.trigHoldoff = parsedValue;
           }
@@ -1052,9 +1069,15 @@ export class DebugScopeWindow extends DebugWindowBase {
             let scopeSamples: number[] = [];
             // WindowRouter strips display name before routing, so lineParts contains just the data
             // Start from index 0 to capture all sample values
+            // Multi-channel data arrives as "value1 , value2" so filter out commas and empty strings
             for (let index = 0; index < lineParts.length; index++) {
+              const part = lineParts[index].trim();
+              // Skip commas and empty strings (multi-channel data separator)
+              if (part === ',' || part === '') {
+                continue;
+              }
               // spin2 output has underscores for commas in numbers, so remove them
-              const [isValidNumber, sampleValue] = this.isSpinNumber(lineParts[index]);
+              const [isValidNumber, sampleValue] = this.isSpinNumber(part);
               if (isValidNumber) {
                 scopeSamples.push(sampleValue);
               } else {
@@ -1091,19 +1114,18 @@ export class DebugScopeWindow extends DebugWindowBase {
               `* UPD-INFO channels=${numberChannels}, samples=${nbrSamples}, samples=[${scopeSamples.join(',')}]`
             );
             if (nbrSamples == numberChannels) {
-              /*
-              if (this.dbgLogMessageCount > 0) {
-                this.logMessage(
-                  `at updateContent() #${numberChannels} channels, #${nbrSamples} samples of [${scopeSamples.join(
-                    ','
-                  )}], lineparts=[${lineParts.join(',')}]`
-                );
-              }
-              */
+              // ═══════════════════════════════════════════════════════════════
+              // STEP 1: RECORD ALL SAMPLES IMMEDIATELY
+              // No trigger logic, no UI updates - just add to buffers
+              // Matches original Pascal: didScroll based on buffer shift, not trigger
+              // ═══════════════════════════════════════════════════════════════
+              const clampedSamples: number[] = []; // Store clamped samples for trigger evaluation
+              let bufferShifted = false; // Track if ANY buffer shifted (original behavior)
+
               for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
                 let nextSample: number = Number(scopeSamples[chanIdx]);
-                //this.logMessage(`* UPD-INFO nextSample: ${nextSample} for channel[${chanIdx}]`);
-                // limit the sample to the channel's min/max?!
+
+                // Clamp sample to channel's min/max
                 const channelSpec = this.channelSpecs[chanIdx];
                 if (nextSample < channelSpec.minValue) {
                   nextSample = channelSpec.minValue;
@@ -1112,19 +1134,87 @@ export class DebugScopeWindow extends DebugWindowBase {
                   nextSample = channelSpec.maxValue;
                   this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
                 }
-                // record our sample (shifting left if necessary)
-                didScroll = this.recordChannelSample(chanIdx, nextSample);
+
+                // Store clamped sample for later trigger evaluation
+                clampedSamples[chanIdx] = nextSample;
+
+                // Add sample to buffer - returns true if buffer was full and shifted
+                const shifted = this.addSampleToBuffer(chanIdx, nextSample);
+                if (shifted) {
+                  bufferShifted = true; // Original Pascal: didScroll means "buffer scrolled"
+                }
                 this.logMessage(
                   `* UPD-INFO recorded sample ${nextSample} for channel ${chanIdx}, channelSamples[${chanIdx}].samples.length=${this.channelSamples[chanIdx].samples.length}`
                 );
-                // update scope chanel canvas with new sample
-                const canvasName = `channel-${chanIdx}`;
-                //this.logMessage(`* UPD-INFO recorded (${nextSample}) for ${canvasName}`);
-                // Check if channel samples exist before accessing
-                if (this.channelSamples[chanIdx]) {
-                  this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+              }
+
+              // Set didScroll based on buffer state (original behavior)
+              didScroll = bufferShifted;
+
+              // DIAGNOSTIC: Check if channel buffers are synchronized (they should always be the same length)
+              if (this.channelSamples.length === 2) {
+                const len0 = this.channelSamples[0].samples.length;
+                const len1 = this.channelSamples[1].samples.length;
+                if (len0 !== len1) {
+                  this.logMessage(`*** BUFFER DESYNC: ch0=${len0}, ch1=${len1}, diff=${len0 - len1}, maxSamples=${this.displaySpec.nbrSamples}`);
+                }
+              }
+
+              // ═══════════════════════════════════════════════════════════════
+              // STEP 2: EVALUATE TRIGGER (once per sample-set)
+              // Only evaluates on trigger channel, no buffer modification
+              // Use the CLAMPED sample value, not the raw one
+              // ═══════════════════════════════════════════════════════════════
+              // DIAGNOSTIC: Log trigger condition evaluation
+              this.logMessage(`*** TRIGGER EVAL: trigEnabled=${this.triggerSpec.trigEnabled}, trigChannel=${this.triggerSpec.trigChannel}, nbrSamples=${nbrSamples}`);
+              this.logMessage(`*** TRIGGER COND: enabled=${this.triggerSpec.trigEnabled}, ch>=0=${this.triggerSpec.trigChannel >= 0}, ch<samples=${this.triggerSpec.trigChannel < nbrSamples}`);
+              this.logMessage(`*** TRIGGER RESULT: condition=${this.triggerSpec.trigEnabled && this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < nbrSamples}`);
+
+              if (this.triggerSpec.trigEnabled && this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < nbrSamples) {
+                // Pascal line 1288: if SamplePop <> vSamples then Continue;
+                // CRITICAL: Buffer must be completely full before trigger evaluation starts
+                const triggerChannelBuffer = this.channelSamples[this.triggerSpec.trigChannel];
+                const bufferIsFull = triggerChannelBuffer.samples.length >= this.displaySpec.nbrSamples;
+                this.logMessage(`*** TRIGGER: Buffer check - length=${triggerChannelBuffer.samples.length}, required=${this.displaySpec.nbrSamples}, full=${bufferIsFull}`);
+
+                if (!bufferIsFull) {
+                  // Buffer not full - skip trigger evaluation entirely (Pascal: Continue)
+                  this.logMessage(`*** TRIGGER: BUFFER NOT FULL - skipping trigger evaluation, using buffer-based didScroll=${bufferShifted}`);
+                  didScroll = bufferShifted; // Use buffer-based scrolling until buffer fills
                 } else {
-                  this.logMessage(`* UPD-ERROR channel samples not initialized for channel ${chanIdx}`);
+                  // Buffer full - proceed with trigger evaluation
+                  // Pascal: t := Y_SampleBuff[((SamplePtr - vTriggerOffset - 1) and Y_PtrMask) * Y_SetSize + vTriggerChannel];
+                  // Get sample from buffer at trigger offset position (NOT the newest sample!)
+                  const bufferLength = triggerChannelBuffer.samples.length;
+                  const triggerSampleIndex = bufferLength - this.triggerSpec.trigRtOffset - 1;
+                  const triggerSample = triggerChannelBuffer.samples[triggerSampleIndex];
+
+                  this.logMessage(`*** TRIGGER: Buffer position - length=${bufferLength}, offset=${this.triggerSpec.trigRtOffset}, sampleIndex=${triggerSampleIndex}, sample=${triggerSample}`);
+                  this.logMessage(`*** TRIGGER: CALLING evaluateTrigger() with channel=${this.triggerSpec.trigChannel}, sample=${triggerSample}`);
+                  didScroll = this.evaluateTrigger(this.triggerSpec.trigChannel, triggerSample);
+                  this.logMessage(`*** TRIGGER: evaluateTrigger() returned didScroll=${didScroll}`);
+                }
+              } else {
+                // No trigger enabled - Pascal line 1332: else if RateCycle then SCOPE_Draw;
+                // When trigger disabled, always draw (rate limiting happens elsewhere)
+                this.logMessage(`*** TRIGGER: ELSE BRANCH - no trigger, setting didScroll=true (continuous draw)`);
+                didScroll = true;
+              }
+
+              // ═══════════════════════════════════════════════════════════════
+              // STEP 3: UPDATE DISPLAY (if trigger conditions met)
+              // Pascal: SCOPE_Draw is called ONCE per sample-set, ONLY when trigger conditions met
+              // ═══════════════════════════════════════════════════════════════
+              if (didScroll) {
+                // Update ALL channels' display now that we have a complete sample set
+                for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
+                  const canvasName = `channel-${chanIdx}`;
+                  const channelSpec = this.channelSpecs[chanIdx];
+                  if (this.channelSamples[chanIdx]) {
+                    this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+                  } else {
+                    this.logMessage(`* UPD-ERROR channel samples not initialized for channel ${chanIdx}`);
+                  }
                 }
               }
             } else {
@@ -1144,6 +1234,14 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private calculateAutoTriggerAndScale() {
     this.logMessage(`at calculateAutoTriggerAndScale()`);
+
+    // Pascal line 1022/1202: vTriggerOffset := vSamples div 2;
+    // Set default trigger offset to center of display (half the samples)
+    if (this.triggerSpec.trigRtOffset === 0) {
+      this.triggerSpec.trigRtOffset = Math.floor(this.displaySpec.nbrSamples / 2);
+      this.logMessage(`  Set default trigger offset to center: ${this.triggerSpec.trigRtOffset}`);
+    }
+
     if (
       this.triggerSpec.trigAuto &&
       this.triggerSpec.trigChannel >= 0 &&
@@ -1198,82 +1296,102 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
-  private recordChannelSample(channelIndex: number, sample: number): boolean {
-    //this.logMessage(`at recordChannelSample(${channelIndex}, ${sample})`);
-    let didScroll: boolean = false;
+  /**
+   * Add sample to buffer - simple, unconditional recording
+   * No trigger logic, no UI updates, just add to circular buffer
+   * Returns true if buffer was full and shifted (matches original Pascal behavior where didScroll meant "buffer scrolled")
+   */
+  private addSampleToBuffer(channelIndex: number, sample: number): boolean {
+    const channelSamples = this.channelSamples[channelIndex];
+    const beforeLength = channelSamples.samples.length;
+    const maxSamples = this.displaySpec.nbrSamples;
+    let bufferShifted = false;
 
-    // Handle trigger evaluation if enabled and this is the trigger channel
-    if (this.triggerSpec.trigEnabled && channelIndex === this.triggerSpec.trigChannel) {
-      // Set trigger levels in the processor
-      this.triggerProcessor.setTriggerLevels(
-        this.triggerSpec.trigArmLevel,
-        this.triggerSpec.trigLevel,
-        this.triggerSpec.trigSlope.toLowerCase() as 'positive' | 'negative'
-      );
+    // If buffer is full, remove oldest sample (shift left)
+    if (channelSamples.samples.length >= maxSamples) {
+      channelSamples.samples.shift();
+      bufferShifted = true; // Original meaning: buffer scrolled/shifted
+    }
 
-      // Process the sample with the trigger processor
-      this.triggerProcessor.processSample(sample, {
-        trigHoldoff: this.triggerSpec.trigHoldoff
-      });
+    // Add new sample to end (newest)
+    channelSamples.samples.push(sample);
 
-      // Sync our local state with the trigger processor
-      const triggerState = this.triggerProcessor.getTriggerState();
-      const wasArmed = this.triggerArmed;
-      const wasFired = this.triggerFired;
+    const afterLength = channelSamples.samples.length;
+    this.logMessage(`*** BUFFER ADD ch${channelIndex}: before=${beforeLength}, max=${maxSamples}, after=${afterLength}, sample=${sample}, shifted=${bufferShifted}`);
 
-      this.triggerArmed = triggerState.armed;
-      this.triggerFired = triggerState.fired;
-      this.holdoffCounter = triggerState.holdoff;
+    return bufferShifted;
+  }
 
-      // Update UI when state changes
-      if (wasArmed !== this.triggerArmed || wasFired !== this.triggerFired) {
-        this.updateTriggerStatus();
+  /**
+   * Evaluate trigger conditions on trigger channel
+   * Returns true if display should update (trigger fired and holdoff expired)
+   */
+  private evaluateTrigger(channelIndex: number, sample: number): boolean {
+    this.logMessage(`>>> evaluateTrigger ENTRY: channel=${channelIndex}, sample=${sample}, armed=${this.triggerArmed}, holdoff=${this.holdoffCounter}`);
+    let didScroll = false;
 
-        // If we just fired, remember the sample position
-        if (!wasFired && this.triggerFired) {
-          this.triggerSampleIndex = this.channelSamples[channelIndex]?.samples.length || 0;
-          this.updateTriggerPosition();
-        }
-      }
+    // Pascal line 1285: vTriggered := False; (reset at start of EACH sample evaluation)
+    let vTriggered = false;
 
-      // Handle holdoff countdown
-      if (this.holdoffCounter > 0) {
-        this.holdoffCounter--;
-        this.updateTriggerStatus();
-        if (this.holdoffCounter === 0) {
-          // Holdoff expired, reset trigger
+    // Pascal lines 1295-1324: Inline trigger evaluation
+    const t = sample;
+    const armLevel = this.triggerSpec.trigArmLevel;
+    const fireLevel = this.triggerSpec.trigLevel;
+    const isPositiveSlope = (fireLevel >= armLevel);
+
+    if (this.triggerArmed) {
+      // Already armed - check if we should fire
+      if (isPositiveSlope) {
+        // Positive slope: fire when sample >= fireLevel
+        if (t >= fireLevel) {
+          vTriggered = true;
           this.triggerArmed = false;
-          this.triggerFired = false;
-          this.triggerSampleIndex = -1;
-          this.triggerProcessor.resetTrigger();
-          this.updateTriggerStatus();
+          this.logMessage(`>>> TRIGGER FIRED (positive): sample=${t} >= fireLevel=${fireLevel}`);
+        }
+      } else {
+        // Negative slope: fire when sample <= fireLevel
+        if (t <= fireLevel) {
+          vTriggered = true;
+          this.triggerArmed = false;
+          this.logMessage(`>>> TRIGGER FIRED (negative): sample=${t} <= fireLevel=${fireLevel}`);
         }
       }
-
-      // Store current sample as previous for next iteration
-      this.previousSample = sample;
-
-      // Only update display if no trigger enabled or trigger conditions met
-      if (!this.triggerSpec.trigEnabled || !this.triggerArmed || this.triggerFired) {
-        // Proceed with normal sample recording
-      } else {
-        // Trigger enabled but not fired yet, skip this sample
-        return false;
-      }
-    }
-
-    if (channelIndex >= 0 && channelIndex < this.channelSamples.length) {
-      const channelSamples = this.channelSamples[channelIndex];
-      if (channelSamples.samples.length >= this.displaySpec.nbrSamples) {
-        // remove oldest sample
-        channelSamples.samples.shift();
-        didScroll = true;
-      }
-      // record the new sample
-      channelSamples.samples.push(sample);
     } else {
-      this.logMessage(`at recordChannelSample() with invalid channelIndex: ${channelIndex}`);
+      // Not armed - check if we should arm
+      if (isPositiveSlope) {
+        // Positive slope: arm when sample <= armLevel
+        if (t <= armLevel) {
+          this.triggerArmed = true;
+          this.logMessage(`>>> TRIGGER ARMED (positive): sample=${t} <= armLevel=${armLevel}`);
+        }
+      } else {
+        // Negative slope: arm when sample >= armLevel
+        if (t >= armLevel) {
+          this.triggerArmed = true;
+          this.logMessage(`>>> TRIGGER ARMED (negative): sample=${t} >= armLevel=${armLevel}`);
+        }
+      }
     }
+
+    // Pascal line 1326: if vHoldOffCount > 0 then Dec(vHoldOffCount);
+    if (this.holdoffCounter > 0) {
+      this.holdoffCounter--;
+      this.logMessage(`>>> HOLDOFF decrement: ${this.holdoffCounter + 1} -> ${this.holdoffCounter}`);
+    }
+
+    // Pascal line 1327: if not vTriggered or (vHoldOffCount > 0) then Continue;
+    // Skip drawing if didn't trigger OR holdoff active
+    if (!vTriggered || this.holdoffCounter > 0) {
+      this.logMessage(`>>> SKIP UPDATE: triggered=${vTriggered}, holdoff=${this.holdoffCounter}`);
+      return false; // Continue (skip draw)
+    }
+
+    // Pascal line 1328: vHoldOffCount := vHoldOff;
+    // Reached here: triggered AND holdoff expired - reset holdoff and draw
+    this.holdoffCounter = this.triggerSpec.trigHoldoff;
+    didScroll = true;
+    this.logMessage(`>>> ALLOW UPDATE: Reset holdoff to ${this.holdoffCounter}, didScroll=true`);
+
     return didScroll;
   }
 
@@ -1348,6 +1466,11 @@ export class DebugScopeWindow extends DebugWindowBase {
 
         // 2. Redraw graticule (grid lines and labels)
         jsCode += this.redrawGraticule(channelSpec);
+
+        // 2b. Draw trigger indicator if triggered (Pascal: drawn in ClearBitmap when vTriggered is true)
+        if (this.triggerFired && this.triggerSpec.trigEnabled) {
+          jsCode += this.generateTriggerIndicatorJS(canvasName, channelSpec);
+        }
 
         // 3. Draw all samples from buffer at calculated positions (Pascal algorithm)
         // Pascal: x := (vMarginLeft + vWidth - 1) shl 8 - Round(k / vSamples * vWidth * $100);
@@ -1807,6 +1930,45 @@ export class DebugScopeWindow extends DebugWindowBase {
     jsCode += this.generateHorizontalLineJS(channelSpec, YOffset, gridColor);
     jsCode += this.generateHorizontalValueJS(channelSpec, YOffset, textColor);
     return jsCode;
+  }
+
+  /**
+   * Generate raw canvas commands to draw the trigger indicator (vertical dashed line)
+   * Assumes canvas and ctx are already defined in the calling context
+   * Pascal reference: x := vBitmapWidth - vMarginRight - Round((vTriggerOffset + 1) / vSamples * vWidth)
+   */
+  private generateTriggerIndicatorJS(canvasName: string, channelSpec: ScopeChannelSpec): string {
+    // Calculate drawing area dimensions
+    const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
+    const drawXOffset: number = this.canvasMargin;
+
+    // Calculate trigger X position (Pascal algorithm)
+    // x = rightEdge - ((trigOffset + 1) / nbrSamples) * width
+    const triggerX = Math.round(
+      drawXOffset + drawWidth - ((this.triggerSpec.trigRtOffset + 1) / this.displaySpec.nbrSamples) * drawWidth
+    );
+
+    // Calculate Y range (top to bottom of channel)
+    const topY = this.channelInset + this.canvasMargin;
+    const bottomY = topY + channelSpec.ySize;
+
+    // Use translucent red for trigger indicator (like LOGIC window)
+    // LOGIC uses: rgba(255, 0, 0, 0.3) with box-shadow for glow effect
+    const triggerColor = 'rgba(255, 0, 0, 0.3)';
+
+    return `
+      ctx.save();
+      ctx.strokeStyle = '${triggerColor}';
+      ctx.lineWidth = 2;  // Slightly thicker for visibility
+      ctx.setLineDash([]);  // Solid line (more visible with translucency)
+      ctx.shadowColor = '${triggerColor}';
+      ctx.shadowBlur = 3;  // Soft glow like LOGIC
+      ctx.beginPath();
+      ctx.moveTo(${triggerX}, ${topY});
+      ctx.lineTo(${triggerX}, ${bottomY});
+      ctx.stroke();
+      ctx.restore();
+    `;
   }
 
   private scaleAndInvertValue(value: number, channelSpec: ScopeChannelSpec): number {
