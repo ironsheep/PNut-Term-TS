@@ -104,18 +104,21 @@ describe('ScopeXyRenderer', () => {
     });
 
     it('should apply log scaling correctly', () => {
-      const scale = 1;
-      const range = 100;
+      // Use realistic values: scale = radius / range (like actual usage)
+      const radius = 128;
+      const range = 500;
+      const scale = radius / range;  // 0.256
       const result = renderer.transformCartesian(10, 10, scale, true, range);
-      
-      // Log scaling formula: r = sqrt(x^2 + y^2), rf = log2(r+1) / log2(range+1)
+
+      // Log scaling formula: r = sqrt(x^2 + y^2), displayRadius = scale * range = radius
       const r = Math.sqrt(10 * 10 + 10 * 10); // ~14.14
-      const rf = Math.log2(r + 1) / Math.log2(range + 1);
+      const displayRadius = scale * range; // = radius = 128
+      const rf = (Math.log2(r + 1) / Math.log2(range + 1)) * displayRadius;
       const theta = Math.atan2(10, 10);
-      
-      const expectedX = rf * Math.cos(theta) * scale;
-      const expectedY = rf * Math.sin(theta) * scale;
-      
+
+      const expectedX = rf * Math.cos(theta);
+      const expectedY = rf * Math.sin(theta);
+
       expect(result.x).toBeCloseTo(expectedX);
       expect(result.y).toBeCloseTo(expectedY);
     });
@@ -178,19 +181,22 @@ describe('ScopeXyRenderer', () => {
     });
 
     it('should handle log scaling for radius', () => {
-      const radius = 10;
+      const inputRadius = 10;
       const angle = 0;
       const twopi = 0x100000000;
       const theta = 0;
-      const scale = 1;
-      const range = 100;
-      
-      const result = renderer.transformPolar(radius, angle, twopi, theta, scale, true, range);
-      
-      // Log scaled radius
-      const rf = Math.log2(Math.abs(radius)) / Math.log2(range);
+      // Use realistic scale: displayRadius / dataRange
+      const displayRadius = 128;
+      const range = 500;
+      const scale = displayRadius / range;  // 0.256
+
+      const result = renderer.transformPolar(inputRadius, angle, twopi, theta, scale, true, range);
+
+      // Log scaled radius: displayRadius = scale * range = 128
+      const actualDisplayRadius = scale * range;
+      const rf = (Math.log2(Math.abs(inputRadius)) / Math.log2(range)) * actualDisplayRadius;
       const tf = Math.PI / 2;
-      
+
       expect(result.x).toBeCloseTo(0);
       expect(result.y).toBeCloseTo(rf);
     });
@@ -245,12 +251,17 @@ describe('ScopeXyRenderer', () => {
       expect(script).toContain('ctx.globalAlpha = 0.3');
     });
 
-    it('should draw 4 concentric circles', () => {
+    it('should draw 3 inner grid circles plus distinct outer perimeter circle', () => {
       const script = renderer.drawCircularGrid('test-canvas', 100, 100, 50, 8);
-      
+
+      // Should have 3 inner circles (loop: i=1,2,3 with i < 4)
       expect(script).toContain('const circleCount = 4');
-      expect(script).toContain('for (let i = 1; i <= circleCount; i++)');
-      expect(script).toContain('ctx.arc(100, 100, r, 0, Math.PI * 2)');
+      expect(script).toContain('for (let i = 1; i < circleCount; i++)');  // Changed to < from <=
+
+      // Should have distinct outer perimeter circle with higher opacity
+      expect(script).toContain('// Draw distinct outer perimeter circle');
+      expect(script).toContain('ctx.globalAlpha = 0.5;  // More visible than grid circles');
+      expect(script).toContain('ctx.arc(100, 100, 50, 0, Math.PI * 2)');  // Outer circle at full radius
     });
 
     it('should draw radial lines based on divisions', () => {

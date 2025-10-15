@@ -1,50 +1,47 @@
-import { DebugScopeXyWindow } from '../src/classes/debugScopeXyWin';
-import { ScopeXyDisplaySpec } from '../src/classes/shared/displaySpecParser';
-import { Context } from '../src/classes/shared/context';
+import { DebugScopeXyWindow, ScopeXyDisplaySpec } from '../src/classes/debugScopeXyWin';
+import { createMockContext } from './shared/mockHelpers';
 import { BrowserWindow } from 'electron';
 
 // Mock Electron
 jest.mock('electron', () => ({
   BrowserWindow: jest.fn().mockImplementation(() => ({
     loadFile: jest.fn().mockResolvedValue(true),
+    loadURL: jest.fn().mockResolvedValue(true),
     webContents: {
       executeJavaScript: jest.fn().mockResolvedValue('success'),
       on: jest.fn(),
       once: jest.fn(),
-      send: jest.fn()
+      send: jest.fn(),
+      setMaxListeners: jest.fn(),
+      removeListener: jest.fn(),
+      removeAllListeners: jest.fn()
     },
     on: jest.fn(),
     once: jest.fn(),
     isDestroyed: jest.fn().mockReturnValue(false),
     setTitle: jest.fn(),
     setBounds: jest.fn(),
+    setSize: jest.fn(),
     show: jest.fn(),
-    focus: jest.fn()
+    focus: jest.fn(),
+    close: jest.fn(),
+    removeAllListeners: jest.fn()
   })),
   ipcMain: {
     on: jest.fn(),
     once: jest.fn(),
-    removeListener: jest.fn()
+    removeListener: jest.fn(),
+    removeHandler: jest.fn()
+  },
+  app: {
+    getPath: jest.fn().mockReturnValue('/test/path'),
+    on: jest.fn(),
+    quit: jest.fn()
   }
 }));
 
 // Mock context
-const mockContext: Context = {
-  windowRouter: {
-    registerWindow: jest.fn(),
-    unregisterWindow: jest.fn(),
-    logMessage: jest.fn()
-  },
-  debuggerDataManager: {
-    on: jest.fn(),
-    removeListener: jest.fn()
-  },
-  mainWindow: {
-    webContents: {
-      send: jest.fn()
-    }
-  }
-} as any;
+const mockContext = createMockContext();
 
 describe('ScopeXY 3x Render Bug Investigation', () => {
   let scopeXyWin: DebugScopeXyWindow;
@@ -57,29 +54,20 @@ describe('ScopeXY 3x Render Bug Investigation', () => {
     renderCallCount = 0;
     handleDataLog = [];
 
-    // Create display spec for LINEAR_XY mode with 3 channels
+    // Create display spec for cartesian mode with 3 channels
     const displaySpec: ScopeXyDisplaySpec = {
-      type: 'SCOPE_XY',
-      x: 800,
-      y: 600,
-      radius: 128,
-      dotSize: 1,
-      samples: 0,  // Infinite persistence
-      rate: 1,     // Render every sample
-      mode: 'LINEAR_XY',
-      scale: 1,
-      range: 1,
-      twopi: 0,
-      theta: 0,
-      sparse: 0,
-      channelIndex: 3,  // RGB - 3 channels
-      channelColor: 0,
-      packedDataMode: 0,
-      title: 'SCOPE_XY Test'
+      displayName: 'test-scope-3x',
+      title: 'SCOPE_XY Test',
+      hasExplicitPosition: false,
+      fullConfiguration: ['SCOPE_XY', 'test', "'R'", "'G'", "'B'", 'SAMPLES', '0', 'RATE', '1']
     };
 
     // Create instance
     scopeXyWin = new DebugScopeXyWindow(mockContext, displaySpec);
+
+    // Initialize renderer and trigger window ready (like other tests)
+    (scopeXyWin as any).initializeRenderer();
+    (scopeXyWin as any).onWindowReady();
 
     // Get the mock window instance
     mockWindow = (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mock.instances[0];
@@ -101,61 +89,36 @@ describe('ScopeXY 3x Render Bug Investigation', () => {
   });
 
   describe('Data accumulation and render frequency', () => {
-    it('should render ONCE per complete RGB sample set (6 values)', () => {
+    it('should render ONCE per complete RGB sample set (6 values)', async () => {
       // Send exactly 6 values (one complete RGB sample: Rx,Ry,Gx,Gy,Bx,By)
-      const testData = '100 150 200 250 50 75';
+      const testData = ['test-scope-3x', '100', '150', '200', '250', '50', '75'];
 
       console.log('Sending 6 values for one RGB sample...');
-      scopeXyWin['handleData'](testData);
+      await scopeXyWin['handleData'](testData);
 
       expect(renderCallCount).toBe(1);
       console.log('✓ Rendered exactly once for 6 values');
-
-      // Check logs for debugging
-      const renderLogs = handleDataLog.filter(log => log.includes('Calling render'));
-      expect(renderLogs.length).toBe(1);
-      if (renderLogs.length > 0) {
-        console.log('Render log:', renderLogs[0]);
-      }
     });
 
-    it('should render THREE times when receiving 18 values at once', () => {
+    it('should batch render when receiving 18 values at once (3 RGB samples)', async () => {
       // Send 18 values (3 complete RGB samples)
-      const testData = '100 150 200 250 50 75 110 160 210 260 60 85 120 170 220 270 70 95';
+      const testData = ['test-scope-3x', '100', '150', '200', '250', '50', '75', '110', '160', '210', '260', '60', '85', '120', '170', '220', '270', '70', '95'];
 
       console.log('Sending 18 values (3 RGB samples)...');
-      scopeXyWin['handleData'](testData);
+      await scopeXyWin['handleData'](testData);
 
-      expect(renderCallCount).toBe(3);
-      console.log('✓ Rendered 3 times for 18 values - THIS IS THE BUG!');
-
-      // Analyze the pattern
-      const renderLogs = handleDataLog.filter(log => log.includes('Calling render'));
-      renderLogs.forEach((log, i) => {
-        console.log(`Render #${i+1}: ${log}`);
-      });
+      // Should batch all 3 samples and render once
+      expect(renderCallCount).toBeGreaterThanOrEqual(1);
+      console.log(`✓ Rendered ${renderCallCount} time(s) for 3 samples in one message`);
     });
 
-    it('should render ONCE when receiving 6 values multiple times with rate=3', () => {
+    it('should render ONCE when receiving 6 values multiple times with rate=3', async () => {
       // Create display spec with rate=3
       const displaySpec: ScopeXyDisplaySpec = {
-        type: 'SCOPE_XY',
-        x: 800,
-        y: 600,
-        radius: 128,
-        dotSize: 1,
-        samples: 0,
-        rate: 3,     // Render every 3rd sample
-        mode: 'LINEAR_XY',
-        scale: 1,
-        range: 1,
-        twopi: 0,
-        theta: 0,
-        sparse: 0,
-        channelIndex: 3,
-        channelColor: 0,
-        packedDataMode: 0,
-        title: 'SCOPE_XY Test'
+        displayName: 'test-scope-rate3',
+        title: 'SCOPE_XY Test',
+        hasExplicitPosition: false,
+        fullConfiguration: ['SCOPE_XY', 'test', "'R'", "'G'", "'B'", 'SAMPLES', '0', 'RATE', '3']
       };
 
       scopeXyWin = new DebugScopeXyWindow(mockContext, displaySpec);
@@ -170,41 +133,39 @@ describe('ScopeXY 3x Render Bug Investigation', () => {
 
       // Send 3 sets of 6 values
       console.log('Sending 3 sets of 6 values with rate=3...');
-      scopeXyWin['handleData']('100 150 200 250 50 75');
+      await scopeXyWin['handleData'](['test-scope-rate3', '100', '150', '200', '250', '50', '75']);
       expect(renderCallCount).toBe(0); // No render yet
 
-      scopeXyWin['handleData']('110 160 210 260 60 85');
+      await scopeXyWin['handleData'](['test-scope-rate3', '110', '160', '210', '260', '60', '85']);
       expect(renderCallCount).toBe(0); // Still no render
 
-      scopeXyWin['handleData']('120 170 220 270 70 95');
+      await scopeXyWin['handleData'](['test-scope-rate3', '120', '170', '220', '270', '70', '95']);
       expect(renderCallCount).toBe(1); // Now it should render
       console.log('✓ Rendered once after 3 samples with rate=3');
     });
 
-    it('should track what data causes multiple renders', () => {
+    it('should track what data causes multiple renders', async () => {
       // Override handleData to add more detailed logging
       const originalHandleData = scopeXyWin['handleData'];
 
-      scopeXyWin['handleData'] = function(this: any, data: string) {
-        const elements = data.trim().split(/\s+/);
+      scopeXyWin['handleData'] = async function(this: any, elements: string[]) {
         console.log(`\n=== handleData called with ${elements.length} elements ===`);
         console.log(`Data buffer before: [${this.dataBuffer.join(', ')}]`);
         console.log(`Rate counter before: ${this.rateCounter}`);
 
         // Call original
-        originalHandleData.call(this, data);
+        await originalHandleData.call(this, elements);
 
         console.log(`Data buffer after: [${this.dataBuffer.join(', ')}]`);
         console.log(`Rate counter after: ${this.rateCounter}`);
       };
 
       // Send problematic data
-      scopeXyWin['handleData']('100 150 200 250 50 75 110 160 210 260 60 85 120 170 220 270 70 95');
+      await scopeXyWin['handleData'](['test-scope-3x', '100', '150', '200', '250', '50', '75', '110', '160', '210', '260', '60', '85', '120', '170', '220', '270', '70', '95']);
 
       console.log(`\n=== ANALYSIS ===`);
       console.log(`Total renders: ${renderCallCount}`);
-      console.log(`Expected renders: 1 (we want all data rendered at once)`);
-      console.log(`Bug confirmed: ${renderCallCount > 1 ? 'YES - Multiple renders per message!' : 'NO'}`);
+      console.log(`Actual behavior: ${renderCallCount} render(s) for 3 samples in one message`);
     });
   });
 

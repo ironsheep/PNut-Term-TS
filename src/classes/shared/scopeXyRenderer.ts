@@ -186,14 +186,22 @@ export class ScopeXyRenderer {
       ctx.lineWidth = 1;
       ctx.globalAlpha = 0.3;
 
-      // Draw concentric circles
+      // Draw concentric circles (inner grid circles only)
       const circleCount = 4;
-      for (let i = 1; i <= circleCount; i++) {
+      for (let i = 1; i < circleCount; i++) {  // Changed <= to < to exclude outermost
         const r = (${radius} / circleCount) * i;
         ctx.beginPath();
         ctx.arc(${centerX}, ${centerY}, r, 0, Math.PI * 2);
         ctx.stroke();
       }
+
+      // Draw distinct outer perimeter circle (Pascal SmoothShape equivalent)
+      // This is more prominent than the grid circles
+      ctx.globalAlpha = 0.5;  // More visible than grid circles
+      ctx.beginPath();
+      ctx.arc(${centerX}, ${centerY}, ${radius}, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.3;  // Restore grid alpha for radial lines
 
       // Draw radial lines
       for (let i = 0; i < ${divisions}; i++) {
@@ -229,6 +237,46 @@ export class ScopeXyRenderer {
     return 'Canvas not found';
   }
 })()`;
+  }
+
+  /**
+   * Generate JavaScript code to draw range indicator
+   * Displays "r=<range>" or "r=<range> logscale" at top, right of vertical centerline
+   *
+   * @param canvasId Canvas element ID
+   * @param range Data range value
+   * @param logScale Whether log scale is enabled
+   * @param textSize Font size in pixels
+   * @param canvasSize Canvas size
+   * @returns JavaScript code string to execute in browser context
+   */
+  public drawRangeIndicator(
+    canvasId: string,
+    range: number,
+    logScale: boolean,
+    textSize: number,
+    canvasSize: number
+  ): string {
+    const text = logScale ? `r=${range} logscale` : `r=${range}`;
+    const y = textSize + 2; // Just below top edge
+    // Position to the right of vertical centerline (3/4 from left edge)
+    const x = canvasSize * 3 / 4;
+
+    return `(() => {
+      const canvas = document.getElementById('${canvasId}');
+      if (!canvas) return 'No canvas';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 'No context';
+
+      ctx.save();
+      ctx.fillStyle = '#808080';  // Gray text
+      ctx.font = '${textSize}px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('${text}', ${x}, ${y});
+      ctx.restore();
+
+      return 'Range indicator drawn';
+    })()`;
   }
 
   /**

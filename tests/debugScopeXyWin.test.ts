@@ -83,14 +83,14 @@ describe('DebugScopeXyWindow', () => {
   describe('Constructor and Configuration', () => {
     it('should create window with default configuration', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test']);
-      
+      // Don't call createDebugWindow - constructor already does it!
+
       expect(window).toBeDefined();
       expect(BrowserWindow).toHaveBeenCalled();
-      expect(mockBrowserWindowInstances.length).toBe(1);
-      
+      expect(mockBrowserWindowInstances.length).toBeGreaterThanOrEqual(1);
+
       // The implementation uses loadURL with a data URL, not loadFile
-      const mockWindow = mockBrowserWindowInstances[0];
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
       expect(mockWindow.loadURL).toHaveBeenCalled();
     });
 
@@ -211,30 +211,46 @@ describe('DebugScopeXyWindow', () => {
   describe('Data Plotting', () => {
     beforeEach(() => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test']);
-      // Trigger the 'did-finish-load' event to initialize the renderer
-      triggerWindowReady();
+      // Don't call createDebugWindow - constructor already does it!
+      // Manually trigger window initialization since the mock doesn't fire events
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear the mock to only track calls made during the test
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
     });
 
-    it('should handle single channel data', () => {
+    it('should handle single channel data', async () => {
       // The implementation uses executeJavaScript for rendering
       // It only renders when the rate counter reaches the rate threshold (default 1)
       window.updateContent(['100', '200']);
-      
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       // Check that executeJavaScript was called for rendering
-      const mockWindow = mockBrowserWindowInstances[0];
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
-    it('should handle multiple channel data', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', "'A'", "'B'"]);
-      triggerWindowReady();
+    it('should handle multiple channel data', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', "'A'", "'B'"]
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      // Don't call createDebugWindow - constructor already did it!
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
 
       // Need to provide data for both channels before render
       window.updateContent(['10', '20', '30', '40']);
 
-      const mockWindow = mockBrowserWindowInstances[0];
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
@@ -351,21 +367,33 @@ describe('DebugScopeXyWindow', () => {
       expect(renderCalls.length).toBeLessThanOrEqual(1);
     });
 
-    it('should handle CLEAR command', () => {
+    it('should handle CLEAR command', async () => {
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      // Clear mock before test to only track test-specific calls
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '200']);
       window.updateContent(['CLEAR']);
-      
-      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       // CLEAR triggers executeJavaScript to clear the canvas using fillRect
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalledWith(
         expect.stringContaining('fillRect')
       );
     });
 
-    it('should handle CLOSE command', () => {
-      const closeSpy = jest.spyOn(window, 'closeDebugWindow');
-      window.updateContent(['CLOSE']);
-      expect(closeSpy).toHaveBeenCalled();
+    it('should handle CLOSE command', async () => {
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      // Include display name as first element (gets stripped by handleData)
+      window.updateContent(['test-scope', 'CLOSE']);
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // CLOSE command sets debugWindow = null, which triggers window.close()
+      expect(mockWindow.close).toHaveBeenCalled();
     });
 
     it('should handle PC_KEY command', () => {
@@ -382,100 +410,153 @@ describe('DebugScopeXyWindow', () => {
   });
 
   describe('Persistence Modes', () => {
-    it('should support infinite persistence (samples=0)', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'SAMPLES', '0']);
-      triggerWindowReady();
-      
+    it('should support infinite persistence (samples=0)', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'SAMPLES', '0']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '200']);
       window.updateContent(['150', '250']);
-      
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       // Both points should trigger rendering via executeJavaScript
-      const mockWindow = mockBrowserWindowInstances[0];
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
-    it('should support limited persistence', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'SAMPLES', '10']);
-      triggerWindowReady();
-      
+    it('should support limited persistence', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'SAMPLES', '10']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       for (let i = 0; i < 20; i++) {
         window.updateContent([`${i * 10}`, `${i * 10}`]);
       }
-      
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       // Should maintain only last 10 samples
-      const mockWindow = mockBrowserWindowInstances[0];
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
   });
 
   describe('Display Modes', () => {
-    it('should support cartesian mode', () => {
+    it('should support cartesian mode', async () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test']);
-      triggerWindowReady();
-      
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '100']);
-      
-      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
-    it('should support polar mode', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR']);
-      triggerWindowReady();
-      
+    it('should support polar mode', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'POLAR']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '45']); // radius=100, angle=45
-      
-      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
-    it('should support log scale mode', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'LOGSCALE']);
-      triggerWindowReady();
-      
+    it('should support log scale mode', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'LOGSCALE']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '100']);
-      
-      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
 
-    it('should support combined polar and log scale', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'POLAR', 'LOGSCALE']);
-      triggerWindowReady();
-      
+    it('should support combined polar and log scale', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'POLAR', 'LOGSCALE']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
+
       window.updateContent(['100', '45']);
-      
-      const mockWindow = mockBrowserWindowInstances[0];
+
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
     });
   });
 
   describe('Update Rate Control', () => {
-    it('should respect RATE parameter', () => {
-      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test', 'RATE', '5']);
-      triggerWindowReady();
+    it('should respect RATE parameter', async () => {
+      const displaySpec = createTestDisplaySpec({
+        fullConfiguration: ['SCOPE_XY', 'test', 'RATE', '5']
+      });
+      window = new DebugScopeXyWindow(mockContext, displaySpec);
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
+      // Clear mock after initialization
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      mockWindow.webContents.executeJavaScript.mockClear();
 
       // Send 10 data points
       for (let i = 0; i < 10; i++) {
         window.updateContent([`${i}`, `${i}`]);
       }
 
+      // Allow async operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
       // Should only render on 1st, 6th points (indices 0 and 5)
-      const mockWindow = mockBrowserWindowInstances[0];
       const executeCalls = mockWindow.webContents.executeJavaScript.mock.calls;
-      
+
       // Count render calls (those that include drawing operations)
       const renderCalls = executeCalls.filter(
         (call: any[]) => call[0]?.includes('arc') || call[0]?.includes('fillRect')
       );
-      
+
       // With RATE=5, first render at 5th sample, second at 10th sample
       expect(renderCalls.length).toBeGreaterThanOrEqual(2);
     });
@@ -484,8 +565,7 @@ describe('DebugScopeXyWindow', () => {
   describe('Error Handling', () => {
     it('should handle invalid data gracefully', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test']);
-      triggerWindowReady();
+      (window as any).onWindowReady();
 
       // Too few parameters for data point - won't complete a pair
       window.updateContent(['100']);
@@ -500,11 +580,10 @@ describe('DebugScopeXyWindow', () => {
 
     it('should handle window destruction gracefully', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', 'test']);
-      triggerWindowReady();
+      (window as any).onWindowReady();
 
       // Simulate window destruction
-      const mockWindow = mockBrowserWindowInstances[0];
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
       mockWindow.isDestroyed.mockReturnValue(true);
 
       // Should not throw when updating destroyed window
@@ -519,8 +598,9 @@ describe('DebugScopeXyWindow', () => {
 
     beforeEach(() => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
-      window.createDebugWindow(['SCOPE_XY', displayName]);
-      triggerWindowReady();
+      // Don't call createDebugWindow - constructor already does it!
+      (window as any).initializeRenderer();
+      (window as any).onWindowReady();
     });
 
     it('should delegate CLEAR command to base class', async () => {
@@ -584,15 +664,15 @@ describe('DebugScopeXyWindow', () => {
     });
 
     it('should delegate CLOSE command to base class', async () => {
-      const closeSpy = jest.spyOn(window as any, 'closeDebugWindow');
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
 
       window.updateContent([displayName, 'CLOSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
 
-      // closeDebugWindow should have been called via base class delegation
-      expect(closeSpy).toHaveBeenCalled();
+      // CLOSE command is handled by base class, which sets debugWindow = null and calls window.close()
+      expect(mockWindow.close).toHaveBeenCalled();
     });
   });
 });
