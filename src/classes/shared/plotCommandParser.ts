@@ -2170,7 +2170,7 @@ export class PlotCommandParser implements IPlotCommandParser {
           this.logError(`[PLOT PARSE ERROR] Invalid color value for SPRITEDEF: ${tokens[tokenIndex].value}`);
           return result;
         }
-        colors.push(colorValue & 0xFFFFFF); // Ensure 24-bit RGB
+        colors.push(colorValue); // Keep full 32-bit ARGB (alpha in high byte)
       }
 
       // Fill remaining colors with black if fewer than 256 provided

@@ -577,34 +577,14 @@ export class PlotWindowIntegrator {
   }
 
   private colorNameToHex(colorName: string, brightness?: number): string {
-    // Default brightness is 15 (full)
-    const bright = brightness !== undefined ? brightness : 15;
-    const factor = bright / 15.0; // Scale to 0-1
+    // Import DebugColor for Pascal-accurate RGBI8X color conversion
+    const { DebugColor } = require('./debugColor');
 
-    // Color name to RGB values
-    const colors: Record<string, [number, number, number]> = {
-      'BLACK': [0, 0, 0],
-      'WHITE': [255, 255, 255],
-      'RED': [255, 0, 0],
-      'GREEN': [0, 255, 0],
-      'BLUE': [0, 0, 255],
-      'CYAN': [0, 255, 255],
-      'MAGENTA': [255, 0, 255],
-      'YELLOW': [255, 255, 0],
-      'ORANGE': [255, 128, 0],
-      'GRAY': [128, 128, 128],
-      'GREY': [128, 128, 128]
-    };
+    // Default brightness is 8 (mid-range) to match Pascal defaults
+    const bright = brightness !== undefined ? brightness : 8;
 
-    const rgb = colors[colorName] || [255, 255, 255]; // Default to white
-
-    // Apply brightness factor
-    const r = Math.round(rgb[0] * factor);
-    const g = Math.round(rgb[1] * factor);
-    const b = Math.round(rgb[2] * factor);
-
-    // Convert to hex
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase();
+    // Use Pascal's RGBI8X color mode for accurate brightness handling
+    return DebugColor.colorNameToRGB24UsingRGBI8X(colorName, bright);
   }
 
   /**
@@ -741,35 +721,14 @@ export class PlotWindowIntegrator {
   }
 
   /**
-   * Convert named color with brightness to hex color
+   * Convert named color with brightness to hex color using Pascal's RGBI8X mode
    */
   private convertColorWithBrightness(colorName: string, brightness: number): string {
-    const colorMap: Record<string, [number, number, number]> = {
-      'BLACK': [0, 0, 0],
-      'WHITE': [255, 255, 255],
-      'RED': [255, 0, 0],
-      'GREEN': [0, 255, 0],
-      'BLUE': [0, 0, 255],
-      'CYAN': [0, 255, 255],
-      'MAGENTA': [255, 0, 255],
-      'YELLOW': [255, 255, 0],
-      'ORANGE': [255, 165, 0],
-      'GRAY': [128, 128, 128],
-      'GREY': [128, 128, 128]
-    };
+    // Import DebugColor for Pascal-accurate RGBI8X color conversion
+    const { DebugColor } = require('./debugColor');
 
-    const baseColor = colorMap[colorName.toUpperCase()];
-    if (!baseColor) {
-      return '#000000'; // Default to black for unknown colors
-    }
-
-    // Apply brightness scaling (0-15 range)
-    const scale = brightness / 15;
-    const r = Math.round(baseColor[0] * scale);
-    const g = Math.round(baseColor[1] * scale);
-    const b = Math.round(baseColor[2] * scale);
-
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    // Use Pascal's RGBI8X color mode for accurate brightness handling
+    return DebugColor.colorNameToRGB24UsingRGBI8X(colorName, brightness);
   }
 
   /**

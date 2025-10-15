@@ -10,7 +10,7 @@ export interface SpriteDefinition {
   width: number;
   height: number;
   pixels: number[];   // Array of pixel indices (0-255) into colors array
-  colors: number[];   // 256-color palette as RGB24 values
+  colors: number[];   // 256-color palette as ARGB32 values (alpha in bits 24-31)
 }
 
 export class SpriteManager {
@@ -44,7 +44,7 @@ export class SpriteManager {
    * @param width Sprite width in pixels
    * @param height Sprite height in pixels
    * @param pixels Array of pixel indices into color palette
-   * @param colors Array of 256 RGB24 color values
+   * @param colors Array of 256 ARGB32 color values (alpha in bits 24-31)
    * @throws Error if parameters are invalid
    */
   defineSprite(id: number, width: number, height: number, pixels: number[], colors: number[]): void {
@@ -170,10 +170,10 @@ export class SpriteManager {
       
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
-      
-      // Set opacity
-      ctx.globalAlpha = opacity / 255;
-      
+
+      // Note: Opacity is applied per-pixel in alpha calculation below (Pascal formula)
+      // Do not set globalAlpha here as that would apply opacity twice
+
       // Calculate drawing offset (sprite drawn from center)
       const halfWidth = sprite.width / 2;
       const halfHeight = sprite.height / 2;
@@ -194,19 +194,23 @@ export class SpriteManager {
         for (let px = 0; px < sprite.width; px++) {
           const pixelIndex = py * sprite.width + px;
           const colorIndex = sprite.pixels[pixelIndex];
-          const rgb24 = sprite.colors[colorIndex];
-          
-          // Extract RGB components from RGB24
-          const r = (rgb24 >> 16) & 0xFF;
-          const g = (rgb24 >> 8) & 0xFF;
-          const b = rgb24 & 0xFF;
-          
+          const argb32 = sprite.colors[colorIndex];
+
+          // Extract ARGB components from ARGB32 (Pascal format: alpha in high byte)
+          const a = (argb32 >> 24) & 0xFF;
+          const r = (argb32 >> 16) & 0xFF;
+          const g = (argb32 >> 8) & 0xFF;
+          const b = argb32 & 0xFF;
+
+          // Combine color alpha with sprite opacity (Pascal formula: ((a * opacity + 255) >> 8))
+          const combinedAlpha = ((a * opacity + 255) >> 8);
+
           // Set pixel in image data (RGBA format)
           const dataIndex = pixelIndex * 4;
           data[dataIndex] = r;
           data[dataIndex + 1] = g;
           data[dataIndex + 2] = b;
-          data[dataIndex + 3] = 255; // Full alpha in image data
+          data[dataIndex + 3] = combinedAlpha;
         }
       }
       

@@ -276,6 +276,85 @@ export class DebugColor {
     return `#${colorValue.toString(16).padStart(6, '0')}`;
   }
 
+  /**
+   * Convert color name and brightness to RGB using Pascal's RGBI8X mode
+   * This matches the exact Pascal implementation from DebugDisplayUnit.pas KeyColor() function
+   *
+   * Pascal uses: TranslateColor(h shl 5 or p shl 1, key_rgbi8x)
+   * where h = color index (0-7), p = brightness (0-15)
+   *
+   * @param colorName - Color name (BLACK, WHITE, ORANGE, BLUE, GREEN, CYAN, RED, MAGENTA, YELLOW, GRAY)
+   * @param brightness - Brightness level (0-15, default 8)
+   * @returns RGB24 color value as hex string
+   */
+  public static colorNameToRGB24UsingRGBI8X(colorName: string, brightness: number = 8): string {
+    const upperName = colorName.toUpperCase();
+
+    // Handle BLACK and WHITE specially (Pascal does this)
+    if (upperName === 'BLACK') {
+      return '#000000';
+    }
+    if (upperName === 'WHITE') {
+      return '#FFFFFF';
+    }
+
+    // Map color names to indices (matching Pascal key_orange..key_gray order)
+    const colorIndices: { [key: string]: number } = {
+      ORANGE: 0,   // key_orange
+      BLUE: 1,     // key_blue
+      GREEN: 2,    // key_green (Pascal calls it LIME internally)
+      CYAN: 3,     // key_cyan
+      RED: 4,      // key_red
+      MAGENTA: 5,  // key_magenta
+      YELLOW: 6,   // key_yellow
+      GRAY: 7,     // key_gray
+      GREY: 7,     // Alternative spelling
+      LIME: 2,     // Alias for GREEN
+      OLIVE: 7     // Legacy - treat as GRAY
+    };
+
+    const colorIndex = colorIndices[upperName];
+    if (colorIndex === undefined) {
+      // Unknown color - return gray
+      return '#808080';
+    }
+
+    // Clamp brightness to 0-15
+    brightness = Math.max(0, Math.min(15, brightness));
+
+    // Encode pixel value: (h << 5) | (p << 1)
+    // This matches Pascal: h shl 5 or p shl 1
+    let p = (colorIndex << 5) | (brightness << 1);
+
+    // Decode for RGBI8X mode (matches Pascal TranslateColor)
+    let v = (p >> 5) & 7;  // Color index from bits 7-5
+    p = ((p & 0x1F) << 3) | ((p & 0x1C) >> 2);  // Intensity from bits 4-0, expanded to 8 bits
+
+    // RGBI8X mode: double intensity for values < 128 when v ≠ 7
+    // This is the key difference from simple linear scaling!
+    if (v !== 7 && p < 0x80) {
+      p = p << 1;
+    }
+
+    // Calculate RGB value
+    let result: number;
+
+    if (v === 0) {
+      // Orange special case: R=full, G=half, B=0
+      // Pascal: p := p shl 16 or p shl 7 and $007F00
+      result = (p << 16) | ((p << 7) & 0x007F00);
+    } else {
+      // Standard RGB bit expansion from color index
+      // Bits of v control which components get intensity:
+      // bit 2 (0x4) = Red, bit 1 (0x2) = Green, bit 0 (0x1) = Blue
+      result = (((v >> 2) & 1) * p << 16) |
+               (((v >> 1) & 1) * p << 8)  |
+               (((v >> 0) & 1) * p << 0);
+    }
+
+    return `#${result.toString(16).padStart(6, '0')}`;
+  }
+
   // ----------------------------------------------------------------------
   // fun code to remember...
   private getRandomColor(): string {

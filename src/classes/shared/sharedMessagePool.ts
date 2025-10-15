@@ -419,6 +419,14 @@ export class SharedMessagePool {
 
       readData: (): Uint8Array => {
         const length = this.data[offset + LENGTH_OFFSET] | (this.data[offset + LENGTH_OFFSET + 1] << 8);
+
+        // DIAGNOSTIC: Log length for debugging SPRITEDEF truncation
+        if (ENABLE_CONSOLE_LOG || length > 1000) {
+          SharedMessagePool.logConsoleMessage(
+            `[DIAGNOSTIC] readData poolId=${poolId}, length=${length}, slotSize=${slotSize}, offset=${offset}`
+          );
+        }
+
         return this.data.slice(offset + METADATA_SIZE, offset + METADATA_SIZE + length);
       },
 

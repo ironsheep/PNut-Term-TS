@@ -44,6 +44,43 @@ let isExtracting: boolean = false;
 let extractionCount: number = 0;
 
 /**
+ * Helper: Check if byte sequence looks like start of valid P2 message
+ * Returns true if data starts with:
+ * - Backtick (0x60) - window command
+ * - "Cog" (0x43 0x6F 0x67) - COG message
+ * - 0xDB - debugger packet
+ * - 0x00-0x07 - 416-byte debugger packet (COG ID)
+ */
+function looksLikeMessageStart(firstByte: number | undefined): boolean {
+  if (firstByte === undefined) {
+    return true; // End of buffer - treat as valid boundary
+  }
+
+  // Backtick - window command
+  if (firstByte === 0x60) {
+    return true;
+  }
+
+  // "C" - potential start of "Cog" message
+  // Note: We can't peek further without complicating buffer state, so we accept "C" as valid
+  if (firstByte === 0x43) {
+    return true;
+  }
+
+  // 0xDB - debugger protocol packet
+  if (firstByte === 0xDB) {
+    return true;
+  }
+
+  // 0x00-0x07 - 416-byte debugger packet (COG ID)
+  if (firstByte >= 0x00 && firstByte <= 0x07) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Boundary Detection: Text message (CR/LF terminated)
  * Returns message bytes if complete, null if incomplete
  *
@@ -52,6 +89,11 @@ let extractionCount: number = 0;
  * - CRLF (0x0D 0x0A)
  * - LF only (0x0A)
  * - LFCR (0x0A 0x0D)
+ *
+ * CRITICAL FIX for SPRITEDEF bug:
+ * 1. Increased MAX_TEXT_LENGTH from 512 to 65536 bytes (SPRITEDEF ~2000 bytes)
+ * 2. EOL validation: CR/LF only treated as message boundary if followed by valid message start
+ *    This prevents false EOL detection when CR/LF bytes appear within message data
  */
 function findTextBoundary(): Uint8Array | null {
   if (!buffer || !buffer.hasData()) {
@@ -60,7 +102,7 @@ function findTextBoundary(): Uint8Array | null {
 
   buffer.savePosition();
   const messageBytes: number[] = [];
-  const MAX_TEXT_LENGTH = 512; // 512-byte limit per original validation
+  const MAX_TEXT_LENGTH = 65536; // 64KB - matches max message size, supports large SPRITEDEF commands
 
   while (messageBytes.length < MAX_TEXT_LENGTH) {
     const result = buffer.next();
@@ -76,51 +118,97 @@ function findTextBoundary(): Uint8Array | null {
     if (result.value === 0x0D) {
       const lfResult = buffer.next();
       if (lfResult.status === NextStatus.EMPTY) {
-        // CR at end of buffer - incomplete
-        buffer.restorePosition();
-        return null;
+        // CR at end of buffer - treat as valid EOL
+        return new Uint8Array(messageBytes);
       }
 
       if (lfResult.value === 0x0A) {
-        // CRLF pattern (0x0D 0x0A)
-        messageBytes.push(0x0A);
-        return new Uint8Array(messageBytes);
-      } else {
-        // CR only (0x0D) - put back the non-LF byte
-        buffer.restorePosition();
-        // Re-advance to include the CR we found
-        for (let i = 0; i < messageBytes.length; i++) {
-          buffer.next();
+        // CRLF pattern (0x0D 0x0A) - check if followed by valid message start
+        // Save position before peeking at next byte
+        const positionBeforePeek = buffer.savePosition();
+        const nextByteResult = buffer.next();
+        const nextByte = nextByteResult.status === NextStatus.EMPTY ? undefined : nextByteResult.value;
+
+        if (looksLikeMessageStart(nextByte)) {
+          // Valid EOL - restore position to put back the peeked byte, then return message
+          buffer.restorePosition();
+          messageBytes.push(0x0A);
+          return new Uint8Array(messageBytes);
+        } else {
+          // Not a valid EOL - embedded CR/LF in data, continue accumulating
+          // Position already advanced past nextByte by buffer.next() call
+          messageBytes.push(0x0A);
+          if (nextByte !== undefined) {
+            messageBytes.push(nextByte);
+          }
+          // Continue to next iteration
         }
-        return new Uint8Array(messageBytes);
+      } else {
+        // CR not followed by LF - check if CR alone is valid EOL
+        if (looksLikeMessageStart(lfResult.value)) {
+          // CR only is valid EOL - restore to put back the peeked byte
+          buffer.restorePosition();
+          // Re-advance to include CR we found
+          for (let i = 0; i < messageBytes.length; i++) {
+            buffer.next();
+          }
+          return new Uint8Array(messageBytes);
+        } else {
+          // Not a valid EOL - embedded CR in data, continue accumulating
+          messageBytes.push(lfResult.value!);
+          // Continue to next iteration
+        }
       }
     }
-
     // Check for LF (0x0A)
-    if (result.value === 0x0A) {
+    else if (result.value === 0x0A) {
       const crResult = buffer.next();
       if (crResult.status === NextStatus.EMPTY) {
-        // LF at end of buffer - LF only pattern
+        // LF at end of buffer - treat as valid EOL
         return new Uint8Array(messageBytes);
       }
 
       if (crResult.value === 0x0D) {
-        // LFCR pattern (0x0A 0x0D)
-        messageBytes.push(0x0D);
-        return new Uint8Array(messageBytes);
-      } else {
-        // LF only (0x0A) - put back the non-CR byte
-        buffer.restorePosition();
-        // Re-advance to include the LF we found
-        for (let i = 0; i < messageBytes.length; i++) {
-          buffer.next();
+        // LFCR pattern (0x0A 0x0D) - check if followed by valid message start
+        // Save position before peeking at next byte
+        const positionBeforePeek = buffer.savePosition();
+        const nextByteResult = buffer.next();
+        const nextByte = nextByteResult.status === NextStatus.EMPTY ? undefined : nextByteResult.value;
+
+        if (looksLikeMessageStart(nextByte)) {
+          // Valid EOL - restore position to put back the peeked byte, then return message
+          buffer.restorePosition();
+          messageBytes.push(0x0D);
+          return new Uint8Array(messageBytes);
+        } else {
+          // Not a valid EOL - embedded LF/CR in data, continue accumulating
+          // Position already advanced past nextByte by buffer.next() call
+          messageBytes.push(0x0D);
+          if (nextByte !== undefined) {
+            messageBytes.push(nextByte);
+          }
+          // Continue to next iteration
         }
-        return new Uint8Array(messageBytes);
+      } else {
+        // LF not followed by CR - check if LF alone is valid EOL
+        if (looksLikeMessageStart(crResult.value)) {
+          // LF only is valid EOL - restore to put back the peeked byte
+          buffer.restorePosition();
+          // Re-advance to include LF we found
+          for (let i = 0; i < messageBytes.length; i++) {
+            buffer.next();
+          }
+          return new Uint8Array(messageBytes);
+        } else {
+          // Not a valid EOL - embedded LF in data, continue accumulating
+          messageBytes.push(crResult.value!);
+          // Continue to next iteration
+        }
       }
     }
   }
 
-  // Too long (>512 bytes) - not a text message
+  // Too long (>65536 bytes) - not a text message
   buffer.restorePosition();
   return null;
 }
@@ -197,6 +285,10 @@ function findDBPacketBoundary(): Uint8Array | null {
 /**
  * Boundary Detection: 416-byte debugger packet
  * Returns message bytes if complete, null if incomplete
+ *
+ * CRITICAL: Must validate first byte is 0x00-0x07 (COG ID)
+ * Without this check, ANY 416 bytes would be extracted as a debugger packet,
+ * incorrectly splitting large text messages like SPRITEDEF commands!
  */
 function find416ByteBoundary(): Uint8Array | null {
   if (!buffer || !buffer.hasData()) {
@@ -204,10 +296,26 @@ function find416ByteBoundary(): Uint8Array | null {
   }
 
   buffer.savePosition();
-  const messageBytes: number[] = [];
+
+  // VALIDATION: Check first byte is 0x00-0x07 (COG ID for debugger packet)
+  const firstByteResult = buffer.next();
+  if (firstByteResult.status === NextStatus.EMPTY) {
+    buffer.restorePosition();
+    return null;
+  }
+
+  const firstByte = firstByteResult.value!;
+  if (firstByte < 0x00 || firstByte > 0x07) {
+    // Not a valid 416-byte debugger packet - restore position
+    buffer.restorePosition();
+    return null;
+  }
+
+  // Valid COG ID - extract remaining 415 bytes
+  const messageBytes: number[] = [firstByte];
   const DEBUGGER_SIZE = 416;
 
-  for (let i = 0; i < DEBUGGER_SIZE; i++) {
+  for (let i = 1; i < DEBUGGER_SIZE; i++) {
     const result = buffer.next();
     if (result.status === NextStatus.EMPTY) {
       buffer.restorePosition();
@@ -400,6 +508,11 @@ function extractMessages(): void {
         console.error('[ExtractionWorker] Pool exhausted after ' + retries + ' retries, message lost!');
         // Continue extracting to clear buffer
         continue;
+      }
+
+      // DIAGNOSTIC: Log length for large messages (SPRITEDEF debugging)
+      if (messageData.length > 1000) {
+        console.log(`[ExtractionWorker] DIAGNOSTIC: Writing large message poolId=${slot.poolId}, type=${messageType}, length=${messageData.length} bytes`);
       }
 
       // Write message to pool

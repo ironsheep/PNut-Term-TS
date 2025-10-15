@@ -24,7 +24,7 @@ import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
 const ENABLE_PERFORMANCE_MONITORING = false;
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 import {
   DebugWindowBase,
@@ -74,10 +74,10 @@ export interface CartesianSpec {
 
 /**
  * Debug PLOT Window - Sprite-based Graphics Display
- * 
+ *
  * Provides 2D graphics plotting with sprites, layers, and coordinate transformations.
  * Supports both Cartesian and Polar coordinate systems with programmable LUT colors and double buffering.
- * 
+ *
  * ## Features
  * - **Sprite Management**: Dynamic sprite creation, transformation, and layer management
  * - **Coordinate Systems**: Cartesian (with configurable axis directions) and Polar modes
@@ -86,7 +86,7 @@ export interface CartesianSpec {
  * - **LUT Colors**: Lookup table colors for efficient palette-based rendering
  * - **Drawing Primitives**: DOT, LINE, ARC, BOX, OVAL, and text rendering
  * - **Transformations**: Scale, rotate, and position sprites with real-time updates
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -97,14 +97,14 @@ export interface CartesianSpec {
  * - `COLOR bg {grid}` - Window and grid colors (default: BLACK)
  * - Packing modes: `LONGS`, `WORDS`, `BYTES` with optional `SIGNED`/`ALT` modifiers
  * - `HIDEXY` - Hide coordinate display
- * 
+ *
  * ## Data Format
  * Drawing commands: `DOT x y`, `LINE x1 y1 x2 y2`, `BOX x y width height`
  * Sprite operations: `SPRITE name x y scale rotation`
  * Color commands: `LUT index color`, `LUTFILL start count color`
  * Coordinate data can be fed as individual values or packed data streams
  * - Example: `debug(\`MyPlot DOT 100 150 LINESIZE 2 RED 15\`)`
- * 
+ *
  * ## Commands
  * - `CLEAR` - Clear display and reset all layers
  * - `UPDATE` - Force display update (when UPDATE directive is used)
@@ -117,7 +117,7 @@ export interface CartesianSpec {
  * - `ARC x y r start end` - Draw arc, `TEXT x y 'string'` - Draw text
  * - `LINESIZE size` - Set line width, `OPACITY level` - Set transparency
  * - `SPRITE name x y` - Position sprite, `LUT index color` - Set palette color
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `PLOT_Configure` procedure (line 1864)
@@ -125,22 +125,22 @@ export interface CartesianSpec {
  * - Sprite management: `Plot_Sprite_Create`, `Plot_Sprite_Update` procedures
  * - Layer operations: `Plot_Layer_Manage` procedures
  * - Drawing primitives: `Plot_Draw_*` procedure families
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic plotting with sprites
  * debug(`PLOT MyPlot SIZE 320 240 CARTESIAN 0 1)
  * debug(`MyPlot LUT 1 RED 15)
  * debug(`MyPlot LUT 2 BLUE 15)
- * 
+ *
  * ' Draw animated sprite
  * repeat angle from 0 to 359
  *   x := qsin(angle, 100, 30)
- *   y := qcos(angle, 100, 30) 
+ *   y := qcos(angle, 100, 30)
  *   debug(`MyPlot CLEAR DOT \`(x+160, y+120))
  *   waitms(10)
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Follows Pascal PNut behavior for parameter handling (no range validation)
  * - Sprite system supports dynamic creation and transformation
@@ -148,12 +148,12 @@ export interface CartesianSpec {
  * - Double buffering prevents flicker during rapid updates
  * - Invalid parameters retain previous values rather than using defaults
  * - Negative dimensions in BOX/OVAL are drawn as-is for directional drawing
- * 
+ *
  * ## Deviations from Pascal
  * - Enhanced sprite transformation matrix calculations
  * - Additional error logging for debugging purposes
  * - Improved memory management for large sprite collections
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_PLOT.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
@@ -189,14 +189,14 @@ export class DebugPlotWindow extends DebugWindowBase {
   private workingCtx?: OffscreenCanvasRenderingContext2D;
   private displayCanvas?: HTMLCanvasElement;
   private displayCtx?: CanvasRenderingContext2D;
-  
+
   // Shared classes for enhanced functionality
   private canvasRenderer: CanvasRenderer;
   private colorTranslator: ColorTranslator;
   private lutManager: LUTManager;
   private layerManager: LayerManager;
   private spriteManager: SpriteManager;
-  
+
   // State for new features
   private opacity: number = 255; // 0-255
   private textAngle: number = 0; // degrees
@@ -220,6 +220,10 @@ export class DebugPlotWindow extends DebugWindowBase {
     super(ctx, windowId, 'plot');
     this.windowLogPrefix = 'pltW';
     DebugColor.setDefaultBrightness(15); // set default brightness to max
+
+    // Enable logging for SCOPE_XY window
+    this.isLogging = false;
+
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
     this.updateMode = displaySpec.delayedUpdate || false; // Set update mode from display spec
@@ -230,7 +234,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     DebugPlotWindow.calcMetricsForFontPtSize(10, this.font);
     const normalText: number = 0b00000001;
     DebugPlotWindow.calcStyleFromBitfield(normalText, this.textStyle);
-    
+
     // Initialize shared classes
     this.canvasRenderer = new CanvasRenderer();
     this.lutManager = new LUTManager();
@@ -258,16 +262,22 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.logMessage('Creating PLOT window immediately in constructor');
     this.createDebugWindow();
   }
-  
+
   /**
    * Log a warning about an invalid parameter with defensive default
    * TECH-DEBT: Enhanced error logging with full command context
    */
-  private logParsingWarning(unparsedCommand: string, paramName: string, invalidValue: string | null, defaultValue: any): void {
+  private logParsingWarning(
+    unparsedCommand: string,
+    paramName: string,
+    invalidValue: string | null,
+    defaultValue: any
+  ): void {
     const valueDisplay = invalidValue === null ? 'missing' : `'${invalidValue}'`;
-    this.logMessage(`WARNING: Debug command parsing error:\n${unparsedCommand}\nInvalid ${valueDisplay} value for parameter ${paramName}, using default: ${defaultValue}`);
+    this.logMessage(
+      `WARNING: Debug command parsing error:\n${unparsedCommand}\nInvalid ${valueDisplay} value for parameter ${paramName}, using default: ${defaultValue}`
+    );
   }
-
 
   get windowTitle(): string {
     let desiredValue: string = `${this.displaySpec.displayName} PLOT`;
@@ -404,7 +414,9 @@ export class DebugPlotWindow extends DebugWindowBase {
         }
       }
     }
-    DebugPlotWindow.logConsoleMessageStatic(`CL: at end of parsePlotDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugPlotWindow.logConsoleMessageStatic(
+      `CL: at end of parsePlotDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`
+    );
     return [isValid, displaySpec];
   }
 
@@ -433,7 +445,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     // Check if position was explicitly set or is still at default (0,0)
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
-    
+
     // If no POS clause was present, use WindowPlacer for intelligent positioning
     if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
@@ -451,15 +463,15 @@ export class DebugPlotWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) PLOT '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) PLOT '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
     }
-    
-    this.logMessage(
-      `  -- PLOT window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
-    );
+
+    this.logMessage(`  -- PLOT window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`);
 
     // now generate the window with the calculated sizes
     const displayName: string = this.windowTitle;
@@ -468,7 +480,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       height: windowHeight,
       x: windowX,
       y: windowY,
-      show: false,  // Start hidden to prevent flashing
+      show: false, // Start hidden to prevent flashing
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false
@@ -480,7 +492,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`plot-${this.displaySpec.displayName}`, this.debugWindow);
     }
-    
+
     // hook window events before being shown
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
@@ -547,7 +559,9 @@ export class DebugPlotWindow extends DebugWindowBase {
             display: block;
             margin: 0;
           }
-          ${ENABLE_PERFORMANCE_MONITORING ? `
+          ${
+            ENABLE_PERFORMANCE_MONITORING
+              ? `
           #performance-overlay {
             position: absolute;
             top: 5px;
@@ -577,7 +591,9 @@ export class DebugPlotWindow extends DebugWindowBase {
             cursor: pointer;
             z-index: 1001;
           }
-          ` : ''}
+          `
+              : ''
+          }
           #coordinate-display {
             position: absolute;
             padding: 8px;
@@ -597,7 +613,11 @@ export class DebugPlotWindow extends DebugWindowBase {
         <div id="plot-data">
           <canvas id="plot-area" width="${canvasWidth}" height="${canvasHeight}"></canvas>
           <div id="coordinate-display"></div>
-          ${ENABLE_PERFORMANCE_MONITORING ? '<button id="performance-toggle" onclick="togglePerformanceOverlay()">PERF</button>' : ''}
+          ${
+            ENABLE_PERFORMANCE_MONITORING
+              ? '<button id="performance-toggle" onclick="togglePerformanceOverlay()">PERF</button>'
+              : ''
+          }
           ${ENABLE_PERFORMANCE_MONITORING ? '<div id="performance-overlay"></div>' : ''}
         </div>
       </body>
@@ -621,7 +641,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.initializeCanvas();
     });
   }
-  
+
   private initializeCanvas(): void {
     if (!this.debugWindow) return;
 
@@ -703,8 +723,9 @@ export class DebugPlotWindow extends DebugWindowBase {
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(result => {
+    this.debugWindow.webContents
+      .executeJavaScript(jsCode)
+      .then((result) => {
         this.logMessage(`Canvas initialization: ${result}`);
         this.shouldWriteToCanvas = true;
         this.canvasInitialized = true;
@@ -715,7 +736,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           this.initializePerformanceOverlay();
         }
       })
-      .catch(error => {
+      .catch((error) => {
         this.logMessage(`Failed to initialize canvas: ${error}`);
         this.shouldWriteToCanvas = false;
       });
@@ -759,13 +780,14 @@ export class DebugPlotWindow extends DebugWindowBase {
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(overlayCode)
-      .then(result => {
+    this.debugWindow.webContents
+      .executeJavaScript(overlayCode)
+      .then((result) => {
         this.logMessage(`Performance overlay: ${result}`);
         // Start periodic performance updates
         this.startPerformanceUpdates();
       })
-      .catch(error => {
+      .catch((error) => {
         this.logMessage(`Failed to initialize performance overlay: ${error}`);
       });
   }
@@ -803,10 +825,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .catch(error => {
-        // Silently ignore errors during performance updates to avoid spam
-      });
+    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+      // Silently ignore errors during performance updates to avoid spam
+    });
   }
 
   private setupInputEventListeners(): void {
@@ -1008,11 +1029,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(inputHandlerCode)
-      .then(result => {
+    this.debugWindow.webContents
+      .executeJavaScript(inputHandlerCode)
+      .then((result) => {
         this.logMessage(`Input event listeners setup: ${result}`);
       })
-      .catch(error => {
+      .catch((error) => {
         this.logMessage(`Failed to setup input event listeners: ${error}`);
       });
   }
@@ -1021,7 +1043,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // Double buffering is now handled in initializeCanvas
     // This method is kept for compatibility but doesn't do anything
   }
-  
+
   private async performUpdate(): Promise<void> {
     if (!this.debugWindow) return;
 
@@ -1103,13 +1125,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     try {
       if (this.spriteManager) {
         const spriteStats = this.spriteManager.getMemoryStats();
-        this.logMessage(`Cleaning up ${spriteStats.spriteCount} sprites (${Math.round(spriteStats.currentUsage / 1024)}KB)`);
+        this.logMessage(
+          `Cleaning up ${spriteStats.spriteCount} sprites (${Math.round(spriteStats.currentUsage / 1024)}KB)`
+        );
         this.spriteManager.clearAllSprites();
       }
 
       if (this.layerManager) {
         const layerStats = this.layerManager.getMemoryStats();
-        this.logMessage(`Cleaning up ${layerStats.layerCount} layers (${Math.round(layerStats.currentUsage / 1024)}KB)`);
+        this.logMessage(
+          `Cleaning up ${layerStats.layerCount} layers (${Math.round(layerStats.currentUsage / 1024)}KB)`
+        );
         this.layerManager.clearAllLayers();
       }
 
@@ -1207,13 +1233,14 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
     // Execute asynchronously but don't wait (fire and forget)
     // This prevents blocking the message processing loop
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(result => {
+    this.debugWindow.webContents
+      .executeJavaScript(jsCode)
+      .then((result) => {
         if (result !== 'cleared') {
           this.logMessage(`Clear result: ${result}`);
         }
       })
-      .catch(error => {
+      .catch((error) => {
         this.logMessage(`Failed to clear plot: ${error}`);
       });
 
@@ -1248,7 +1275,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // Perform the update regardless of buffering mode
     // performUpdate is async, but we don't wait for it to complete
     // to avoid blocking the message processing loop
-    this.performUpdate().catch(error => {
+    this.performUpdate().catch((error) => {
       this.logMessage(`Failed to force update: ${error}`);
     });
   }
@@ -1289,13 +1316,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         if (result.success && result.canvasOperations.length > 0) {
           // Execute LUT operations immediately and synchronously
-          const plotOperations = result.canvasOperations.map(op => ({
-            ...op,
-            type: op.type as any,
-            affectsState: true,
-            requiresUpdate: false,
-            deferrable: false
-          } as PlotCanvasOperation));
+          const plotOperations = result.canvasOperations.map(
+            (op) =>
+              ({
+                ...op,
+                type: op.type as any,
+                affectsState: true,
+                requiresUpdate: false,
+                deferrable: false
+              } as PlotCanvasOperation)
+          );
 
           // Execute synchronously
           for (const operation of plotOperations) {
@@ -1347,10 +1377,18 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         const command = parsedCommands[i];
-        this.logConsoleMessage(`[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
+        this.logConsoleMessage(
+          `[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${
+            result.success
+          }, canvasOps=${result.canvasOperations?.length || 0}`
+        );
 
         // DEBUG: Log execution flow
-        this.logMessage(`EXEC DEBUG: Command ${i + 1}: ${command.command} -> success=${result.success}, canvasOps=${result.canvasOperations?.length || 0}`);
+        this.logMessage(
+          `EXEC DEBUG: Command ${i + 1}: ${command.command} -> success=${result.success}, canvasOps=${
+            result.canvasOperations?.length || 0
+          }`
+        );
 
         // Log any errors or warnings
         if (result.errors.length > 0) {
@@ -1368,21 +1406,30 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         // Track canvas operations for performance monitoring (if enabled)
         if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor && result.canvasOperations.length > 0) {
           const monitor = this.performanceMonitor;
-          result.canvasOperations.forEach(op => {
+          result.canvasOperations.forEach((op) => {
             monitor.recordCanvasOperation(op.type);
           });
         }
 
         // Debug command results
-        this.logMessage(`RESULT DEBUG: Command '${command.command}' - success: ${result.success}, ops: ${result.canvasOperations?.length || 0}`);
+        this.logMessage(
+          `RESULT DEBUG: Command '${command.command}' - success: ${result.success}, ops: ${
+            result.canvasOperations?.length || 0
+          }`
+        );
 
         // Handle canvas operations based on command type
         if (result.success && result.canvasOperations.length > 0) {
-          this.logMessage(`CMD DEBUG: Processing command '${command.command}' with ${result.canvasOperations.length} operations`);
+          this.logMessage(
+            `CMD DEBUG: Processing command '${command.command}' with ${result.canvasOperations.length} operations`
+          );
           // Check if this is an immediate command (UPDATE, CLOSE, LUT, LUTCOLORS)
           // LUT commands are immediate like in Pascal - they modify state immediately
-          const isImmediateCommand = command.command === 'UPDATE' || command.command === 'CLOSE' ||
-                                     command.command === 'LUT' || command.command === 'LUTCOLORS';
+          const isImmediateCommand =
+            command.command === 'UPDATE' ||
+            command.command === 'CLOSE' ||
+            command.command === 'LUT' ||
+            command.command === 'LUTCOLORS';
 
           if (isImmediateCommand) {
             this.logMessage(`IMMEDIATE DEBUG: Executing immediate command ${command.command}`);
@@ -1402,15 +1449,20 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
             // For LUT commands, execute immediately like Pascal
             else if (command.command === 'LUT' || command.command === 'LUTCOLORS') {
-              this.logMessage(`LUT DEBUG: Executing LUT command immediately with ${result.canvasOperations.length} operations`);
+              this.logMessage(
+                `LUT DEBUG: Executing LUT command immediately with ${result.canvasOperations.length} operations`
+              );
               // Execute LUT operations immediately through the integrator
-              const plotOperations = result.canvasOperations.map(op => ({
-                ...op,
-                type: op.type as any,
-                affectsState: true,  // LUT affects state
-                requiresUpdate: false, // LUT doesn't need display update
-                deferrable: false    // LUT is immediate
-              } as PlotCanvasOperation));
+              const plotOperations = result.canvasOperations.map(
+                (op) =>
+                  ({
+                    ...op,
+                    type: op.type as any,
+                    affectsState: true, // LUT affects state
+                    requiresUpdate: false, // LUT doesn't need display update
+                    deferrable: false // LUT is immediate
+                  } as PlotCanvasOperation)
+              );
 
               // Execute synchronously for immediate effect - LUT must be immediate like Pascal
               // Use sync execution to ensure palette is updated before next command
@@ -1421,15 +1473,20 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           } else {
             // Regular commands get queued
-            this.logMessage(`QUEUE DEBUG: Queueing ${result.canvasOperations.length} canvas operations for ${command.command}`);
+            this.logMessage(
+              `QUEUE DEBUG: Queueing ${result.canvasOperations.length} canvas operations for ${command.command}`
+            );
             // Convert CanvasOperation to PlotCanvasOperation by adding required fields
-            const plotOperations = result.canvasOperations.map(op => ({
-              ...op,
-              type: op.type as any, // Type will be mapped by integrator
-              affectsState: false,
-              requiresUpdate: false,
-              deferrable: true
-            } as PlotCanvasOperation));
+            const plotOperations = result.canvasOperations.map(
+              (op) =>
+                ({
+                  ...op,
+                  type: op.type as any, // Type will be mapped by integrator
+                  affectsState: false,
+                  requiresUpdate: false,
+                  deferrable: true
+                } as PlotCanvasOperation)
+            );
             this.pendingOperations.push(...plotOperations);
 
             // In immediate mode (not buffered), execute after each command line
@@ -1439,7 +1496,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           }
         } else {
-          this.logMessage(`QUEUE DEBUG: No operations to queue - success=${result.success}, ops=${result.canvasOperations?.length || 0}`);
+          this.logMessage(
+            `QUEUE DEBUG: No operations to queue - success=${result.success}, ops=${
+              result.canvasOperations?.length || 0
+            }`
+          );
         }
       }
 
@@ -1447,7 +1508,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
         this.performanceMonitor.commandEnd();
       }
-
     } catch (error) {
       this.logMessage(`PARSER ERROR: Failed to process command '${commandString}': ${error}`);
       // End performance monitoring even in error case (if enabled)
@@ -1456,7 +1516,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       }
     }
   }
-
 
   // REMOVED: updatePlotDisplay and pushDisplayListToPlot - no longer needed with single-queue architecture
   // The integrator now directly calls drawing methods
@@ -1778,19 +1837,32 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     this.logMessage(`* getXY(${x},${y}) -> (${newX},${newY})`);
     return [newX, newY];
   }
-  
+
   private isColorModeCommand(command: string): boolean {
     const colorModes = [
-      'LUT1', 'LUT2', 'LUT4', 'LUT8',
-      'LUMA8', 'LUMA8W', 'LUMA8X',
-      'HSV8', 'HSV8W', 'HSV8X',
-      'RGBI8', 'RGBI8W', 'RGBI8X', 'RGB8',
-      'HSV16', 'HSV16W', 'HSV16X', 'RGB16',
+      'LUT1',
+      'LUT2',
+      'LUT4',
+      'LUT8',
+      'LUMA8',
+      'LUMA8W',
+      'LUMA8X',
+      'HSV8',
+      'HSV8W',
+      'HSV8X',
+      'RGBI8',
+      'RGBI8W',
+      'RGBI8X',
+      'RGB8',
+      'HSV16',
+      'HSV16W',
+      'HSV16X',
+      'RGB16',
       'RGB24'
     ];
     return colorModes.includes(command.toUpperCase());
   }
-  
+
   private async drawDotToPlot(dotSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
@@ -1844,14 +1916,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       this.logMessage(`Failed to draw dot: ${error}`);
     }
   }
-  
+
   private async drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const [plotCoordX, plotCoordY] = this.getCursorXY();
     const fgColor = this.currFgColor;
 
-    this.logMessage(`at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+    this.logMessage(
+      `at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`
+    );
 
     // Calculate rectangle bounds (centered on cursor)
     const x1 = plotCoordX - width / 2;
@@ -1892,14 +1966,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       this.logMessage(`Failed to draw box: ${error}`);
     }
   }
-  
+
   private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const [plotCoordX, plotCoordY] = this.getCursorXY();
     const fgColor = this.currFgColor;
 
-    this.logMessage(`at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`);
+    this.logMessage(
+      `at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`
+    );
 
     const rx = width / 2;
     const ry = height / 2;
@@ -2017,5 +2093,4 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   protected getCanvasId(): string {
     return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
-
 }

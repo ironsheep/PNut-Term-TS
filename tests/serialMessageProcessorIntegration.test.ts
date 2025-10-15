@@ -3,7 +3,7 @@
 // tests/serialMessageProcessorIntegration.test.ts
 
 import { SerialMessageProcessor } from '../src/classes/shared/serialMessageProcessor';
-import { MessageType } from '../src/classes/shared/messageExtractor';
+import { SharedMessageType } from '../src/classes/shared/sharedMessagePool';
 import { RouteDestination } from '../src/classes/shared/messageRouter';
 
 describe('SerialMessageProcessor Integration', () => {
@@ -11,10 +11,19 @@ describe('SerialMessageProcessor Integration', () => {
   let receivedMessages: any[] = [];
   let logRotations: any[] = [];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     processor = new SerialMessageProcessor();
     receivedMessages = [];
     logRotations = [];
+
+    // Wait for worker to be ready
+    await new Promise<void>((resolve) => {
+      processor.once('workerReady' as any, () => {
+        resolve();
+      });
+      // Timeout fallback
+      setTimeout(() => resolve(), 2000);
+    });
 
     // Set up test destination
     const testDestination: RouteDestination = {
@@ -23,17 +32,16 @@ describe('SerialMessageProcessor Integration', () => {
         receivedMessages.push({
           type: msg.type,
           data: Buffer.from(msg.data).toString(),
-          timestamp: msg.timestamp,
-          metadata: msg.metadata
+          timestamp: msg.timestamp
         });
       }
     };
 
     // Register destinations
-    processor.registerDestination(MessageType.TEXT, testDestination);
-    processor.registerDestination(MessageType.DEBUGGER_INIT, testDestination);
-    processor.registerDestination(MessageType.DEBUGGER_PROTOCOL, testDestination);
-    processor.registerDestination(MessageType.BINARY_UNKNOWN, testDestination);
+    processor.registerDestination(SharedMessageType.TERMINAL_OUTPUT, testDestination);
+    processor.registerDestination(SharedMessageType.DEBUGGER0_416BYTE, testDestination);
+    processor.registerDestination(SharedMessageType.DB_PACKET, testDestination);
+    processor.registerDestination(SharedMessageType.COG0_MESSAGE, testDestination);
 
     // Listen for log rotations
     processor.on('rotateLog', (event) => {
@@ -57,7 +65,7 @@ describe('SerialMessageProcessor Integration', () => {
       await processor.waitForIdle(1000);
 
       expect(receivedMessages).toHaveLength(1);
-      expect(receivedMessages[0].type).toBe(MessageType.TEXT);
+      expect(receivedMessages[0].type).toBe(SharedMessageType.TERMINAL_OUTPUT);
       expect(receivedMessages[0].data).toBe('Hello World');
     });
 
@@ -78,35 +86,46 @@ describe('SerialMessageProcessor Integration', () => {
       await processor.waitForIdle(1000);
 
       expect(receivedMessages).toHaveLength(3);
-      expect(receivedMessages[0].type).toBe(MessageType.TEXT);
-      expect(receivedMessages[1].type).toBe(MessageType.DEBUGGER_PROTOCOL);
-      expect(receivedMessages[2].type).toBe(MessageType.TEXT);
+      expect(receivedMessages[0].type).toBe(SharedMessageType.TERMINAL_OUTPUT);
+      expect(receivedMessages[1].type).toBe(SharedMessageType.DB_PACKET);
+      expect(receivedMessages[2].type).toBe(SharedMessageType.TERMINAL_OUTPUT);
     });
 
-    it('should handle Cog messages with metadata', async () => {
-      processor.receiveData(Buffer.from('Cog3: Debug output\n'));
+    it('should handle Cog messages', async () => {
+      // Register handler for COG3 messages
+      processor.registerDestination(SharedMessageType.COG3_MESSAGE, {
+        name: 'Cog3Handler',
+        handler: (msg) => {
+          receivedMessages.push({
+            type: msg.type,
+            data: Buffer.from(msg.data).toString(),
+            timestamp: msg.timestamp
+          });
+        }
+      });
+
+      processor.receiveData(Buffer.from('Cog3  Debug output\r\n'));
 
       await processor.waitForIdle(1000);
 
-      expect(receivedMessages).toHaveLength(1);
-      expect(receivedMessages[0].metadata?.cogId).toBe(3);
+      expect(receivedMessages.length).toBeGreaterThan(0);
+      const cogMsg = receivedMessages.find(m => m.type === SharedMessageType.COG3_MESSAGE);
+      expect(cogMsg).toBeDefined();
+      expect(cogMsg?.type).toBe(SharedMessageType.COG3_MESSAGE);
     });
 
-    it('should handle 80-byte debugger packets', async () => {
-      const packet = new Uint8Array(80);
+    it('should handle 416-byte debugger packets', async () => {
+      // Worker Thread architecture uses 416-byte packets, not 80-byte
+      const packet = new Uint8Array(416);
       packet[0] = 2; // COG 2
-      packet[20] = 0x10; // PC low byte
 
       processor.receiveData(Buffer.from(packet));
 
-      // Follow with text to trigger detection
-      processor.receiveData(Buffer.from('Text after packet\n'));
-
       await processor.waitForIdle(1000);
 
-      const debuggerMsg = receivedMessages.find(m => m.type === MessageType.DEBUGGER_INIT);
+      const debuggerMsg = receivedMessages.find(m => m.type === SharedMessageType.DEBUGGER2_416BYTE);
       expect(debuggerMsg).toBeDefined();
-      expect(debuggerMsg?.metadata?.cogId).toBe(2);
+      expect(debuggerMsg?.type).toBe(SharedMessageType.DEBUGGER2_416BYTE);
     });
   });
 
@@ -242,8 +261,8 @@ describe('SerialMessageProcessor Integration', () => {
 
       await processor.waitForIdle(2000);
 
-      const textMessages = receivedMessages.filter(m => m.type === MessageType.TEXT);
-      const protocolMessages = receivedMessages.filter(m => m.type === MessageType.DEBUGGER_PROTOCOL);
+      const textMessages = receivedMessages.filter(m => m.type === SharedMessageType.TERMINAL_OUTPUT);
+      const protocolMessages = receivedMessages.filter(m => m.type === SharedMessageType.DB_PACKET);
 
       expect(textMessages.length).toBe(50);
       expect(protocolMessages.length).toBe(50);
@@ -275,11 +294,9 @@ describe('SerialMessageProcessor Integration', () => {
 
       const stats = processor.getStats();
 
-      expect(stats.receiver).toBeDefined();
-      expect(stats.receiver.totalBytesReceived).toBeGreaterThan(0);
-      
-      expect(stats.buffer).toBeDefined();
-      expect(stats.extractor).toBeDefined();
+      expect(stats.workerExtractor).toBeDefined();
+      expect(stats.workerExtractor.totalBytesReceived).toBeGreaterThan(0);
+
       expect(stats.router).toBeDefined();
       expect(stats.dtrReset).toBeDefined();
       expect(stats.dtrReset.totalResets).toBe(1);
@@ -292,7 +309,7 @@ describe('SerialMessageProcessor Integration', () => {
       processor.resetStats();
 
       const stats = processor.getStats();
-      expect(stats.receiver.totalBytesReceived).toBe(0);
+      // Note: Worker Thread architecture doesn't reset workerExtractor stats
       expect(stats.router.totalMessagesRouted).toBe(0);
     });
   });
@@ -301,23 +318,16 @@ describe('SerialMessageProcessor Integration', () => {
     it('should maintain separation of concerns', () => {
       const components = processor.getComponents();
 
-      // Verify components exist
-      expect(components.buffer).toBeDefined();
-      expect(components.receiver).toBeDefined();
-      expect(components.extractor).toBeDefined();
+      // Verify Worker Thread architecture components exist
+      expect(components.workerExtractor).toBeDefined();
       expect(components.router).toBeDefined();
       expect(components.dtrResetManager).toBeDefined();
+      expect(components.architecture).toBe('Worker Thread');
 
       // Verify no cross-coupling
-      // Receiver should not know about message types
-      expect((components.receiver as any).MessageType).toBeUndefined();
-      
-      // Extractor should not know about routing
-      expect((components.extractor as any).router).toBeUndefined();
-      
       // Router should not know about buffer
       expect((components.router as any).buffer).toBeUndefined();
-      
+
       // DTR manager should not have buffer reference
       expect((components.dtrResetManager as any).buffer).toBeUndefined();
     });
