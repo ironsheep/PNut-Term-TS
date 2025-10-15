@@ -11,7 +11,7 @@ import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindow
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * Scope XY display specification
@@ -148,7 +148,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private rateCounter: number = 0;
 
   // Canvas margins - Pascal SetSize(ChrHeight*2, ChrHeight*2, ChrHeight*2, ChrHeight*2)
-  private margin: number = 0;  // Calculated as textSize * 2
+  private margin: number = 0; // Calculated as textSize * 2
 
   // Colors - exact from Pascal DefaultScopeColors
   private readonly defaultColors = [
@@ -174,7 +174,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.persistenceManager = new PersistenceManager();
 
     // Enable logging for SCOPE_XY window
-    this.isLogging = true;
+    this.isLogging = false;
 
     // Generate unique canvas ID
     this.idString = Date.now().toString();
@@ -554,7 +554,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private initializeRenderer(): void {
     // Create the renderer
     this.renderer = new ScopeXyRenderer();
-    this.logMessage(`initializeRenderer: Created renderer, radius=${this.radius}, polar=${this.polar}, margin=${this.margin}`);
+    this.logMessage(
+      `initializeRenderer: Created renderer, radius=${this.radius}, polar=${this.polar}, margin=${this.margin}`
+    );
 
     // Always initialize canvas with basic setup to ensure renderer context works
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
@@ -562,12 +564,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       const canvasSize = this.radius * 2 + this.margin * 2;
 
       // Simple canvas initialization - no complex chaining
-      const clearScript = this.renderer.clear(
-        this.scopeXyCanvasId,
-        canvasSize,
-        canvasSize,
-        this.backgroundColor
-      );
+      const clearScript = this.renderer.clear(this.scopeXyCanvasId, canvasSize, canvasSize, this.backgroundColor);
 
       this.logMessage(`initializeRenderer: Executing clear script for canvas '${this.scopeXyCanvasId}'`);
 
@@ -1256,7 +1253,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // Generate all rendering scripts (but don't execute yet)
     const bgColorStr = `#${this.backgroundColor.toString(16).padStart(6, '0')}`;
-    const gridColorStr = `#${0x808080.toString(16).padStart(6, '0')}`; // Medium gray grid for better visibility
+    const gridColorStr = `#${(0x808080).toString(16).padStart(6, '0')}`; // Medium gray grid for better visibility
 
     // Generate range indicator text
     // Pascal: TextOut(vBitmapWidth div 2 + ChrWidth * 2, ChrHeight div 2, s)
@@ -1300,7 +1297,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         // Position at small offset from edge to ensure clearance
         if (i < 4) {
           // Top area - position near top edge with clearance to dots
-          y = charWidth / 2;  // ~3 pixels from top for 10pt font
+          y = charWidth / 2; // ~3 pixels from top for 10pt font
         } else {
           // Bottom area
           y = canvasSize - labelMargin + charWidth / 2;
