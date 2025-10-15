@@ -235,6 +235,29 @@ export class UsbSerial extends EventEmitter {
     this.logMessage(`* USBSer closing...`);
     if (this._serialPort && this._serialPort.isOpen) {
       await waitMSec(10); // 500 allowed prop to restart? use 10 mSec instead
+
+      // CRITICAL: Drain outgoing data and flush incoming buffers before closing
+      // This prevents stale data from being picked up on next app start
+      try {
+        // First: Drain TX buffer (ensure outgoing data is sent)
+        await this.drain();
+        this.logMessage(`  -- close() TX buffer drained`);
+      } catch (drainErr: any) {
+        this.logMessage(`  -- close() Drain warning (non-fatal): ${drainErr.message}`);
+      }
+
+      try {
+        // Then: Flush RX/TX buffers (discard any stale incoming data)
+        await new Promise<void>((resolve, reject) => {
+          this._serialPort.flush((err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+        this.logMessage(`  -- close() RX/TX buffers flushed`);
+      } catch (flushErr: any) {
+        this.logMessage(`  -- close() Flush warning (non-fatal): ${flushErr.message}`);
+      }
     }
     // Remove all listeners to prevent memory leaks and allow port to be reused
     this._serialPort.removeAllListeners();
@@ -569,7 +592,21 @@ export class UsbSerial extends EventEmitter {
     //const myBuffer: Buffer = Buffer.from(myString, "utf8");
     //const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
     //this.downloadNew(myUint8Array);
-    
+
+    // DEFENSIVE: Flush any stale data from buffers before reset
+    // This prevents old data from previous session being picked up
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this._serialPort.flush((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      this.logConsoleMessage(`[USB] handleSerialOpen() - RX/TX buffers flushed before reset`);
+    } catch (flushErr: any) {
+      this.logConsoleMessage(`[USB] handleSerialOpen() - Flush warning (non-fatal): ${flushErr.message}`);
+    }
+
     // Use RTS instead of DTR if RTS override is enabled
     if (this.context.runEnvironment.rtsOverride) {
       await this.toggleRTS();
