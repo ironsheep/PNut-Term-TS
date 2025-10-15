@@ -1256,19 +1256,24 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // Generate all rendering scripts (but don't execute yet)
     const bgColorStr = `#${this.backgroundColor.toString(16).padStart(6, '0')}`;
-    const gridColorStr = `#${0x404040.toString(16).padStart(6, '0')}`; // Default gray grid
+    const gridColorStr = `#${0x808080.toString(16).padStart(6, '0')}`; // Medium gray grid for better visibility
 
     // Generate range indicator text
+    // Pascal: TextOut(vBitmapWidth div 2 + ChrWidth * 2, ChrHeight div 2, s)
     const rangeText = this.logScale ? `r=${this.range} logscale` : `r=${this.range}`;
-    const rangeY = this.textSize + 2;
-    const rangeX = canvasSize * 3 / 4;
+    const charWidth = this.textSize * 0.6; // Approximate character width
+    const charHeight = this.textSize;
+    const rangeX = canvasSize / 2 + charWidth * 2; // Center + 2 char widths
+    const rangeY = charHeight / 2; // Half char height from top
 
     // Generate legend commands
+    // Pascal positioning logic:
+    // if (i and 2) = 0 then x := ChrWidth else x := vBitmapWidth - ChrWidth - TextWidth(label)
+    // if i < 4 then y := ChrWidth else y := vBitmapHeight - ChrWidth - ChrHeight * 2
+    // if (i and 1) <> 0 then y := y + ChrHeight
+    const labelMargin = this.margin; // Computed outside template string
     const legendCommands: string[] = [];
     if (!this.hideXY && this.channels.length > 0) {
-      const margin = 10;
-      const lineHeight = this.textSize + 4;
-
       for (let i = 0; i < this.channels.length && i < 8; i++) {
         if (!this.channels[i].name) continue;
 
@@ -1278,29 +1283,43 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         let x: number;
         let y: number;
 
-        // Horizontal position
+        // Horizontal position (Pascal logic)
         if ((i & 2) === 0) {
-          x = margin;
+          // Even channel pairs (0,1 and 4,5): left side
+          x = charWidth;
         } else {
-          x = canvasSize - margin * 2;
+          // Odd channel pairs (2,3 and 6,7): right side, right-aligned
+          // Note: We'll use textAlign='right' for these
+          x = canvasSize - charWidth;
         }
 
-        // Vertical position
+        // Vertical position (Pascal logic)
+        // Pascal: y := ChrWidth (for top labels)
+        // Position label well above dots for clearance
+        // Dots start at margin pixels, text is charHeight tall
+        // Position at small offset from edge to ensure clearance
         if (i < 4) {
-          y = margin + lineHeight;
+          // Top area - position near top edge with clearance to dots
+          y = charWidth / 2;  // ~3 pixels from top for 10pt font
         } else {
-          y = canvasSize - margin - lineHeight * 2;
+          // Bottom area
+          y = canvasSize - labelMargin + charWidth / 2;
         }
 
-        // Add offset for odd-numbered channels
+        // Add offset for odd-numbered channels (second line)
         if ((i & 1) !== 0) {
-          y += lineHeight;
+          y += charHeight;
         }
+
+        // Set text alignment based on position
+        const textAlign = (i & 2) === 0 ? 'left' : 'right';
 
         legendCommands.push(`
           // Channel ${i}: ${name}
           ctx.fillStyle = '${colorStr}';
           ctx.font = 'bold italic ${this.textSize}px monospace';
+          ctx.textAlign = '${textAlign}';
+          ctx.textBaseline = 'top';
           ctx.fillText('${name}', ${x}, ${y});
         `);
       }
@@ -1320,50 +1339,29 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       ctx.fillRect(0, 0, ${canvasSize}, ${canvasSize});
       ctx.restore();
 
-      // 2. Draw circular grid
+      // 2. Draw grid (Pascal-style: outer circle + crosshair only)
+      // Pascal uses full opacity (255) for graticule
       ctx.save();
       ctx.strokeStyle = '${gridColorStr}';
       ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 1.0;
 
-      // Draw concentric circles (inner grid circles only)
-      const circleCount = 4;
-      for (let i = 1; i < circleCount; i++) {
-        const r = (${this.radius} / circleCount) * i;
-        ctx.beginPath();
-        ctx.arc(${gridCenterX}, ${gridCenterY}, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Draw distinct outer perimeter circle
-      ctx.globalAlpha = 0.5;
+      // Draw outer perimeter circle (Pascal SmoothShape equivalent)
       ctx.beginPath();
       ctx.arc(${gridCenterX}, ${gridCenterY}, ${this.radius}, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.globalAlpha = 0.3;
 
-      // Draw radial lines
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2;
-        const x = ${gridCenterX} + Math.cos(angle) * ${this.radius};
-        const y = ${gridCenterY} + Math.sin(angle) * ${this.radius};
-
-        ctx.beginPath();
-        ctx.moveTo(${gridCenterX}, ${gridCenterY});
-        ctx.lineTo(x, y);
-        ctx.stroke();
-      }
-
-      // Draw center crosshair
-      ctx.globalAlpha = 0.5;
+      // Draw center crosshair (vertical and horizontal centerlines)
+      // Vertical line (full canvas height)
       ctx.beginPath();
-      ctx.moveTo(${gridCenterX} - ${this.radius}, ${gridCenterY});
-      ctx.lineTo(${gridCenterX} + ${this.radius}, ${gridCenterY});
+      ctx.moveTo(${gridCenterX}, 0);
+      ctx.lineTo(${gridCenterX}, ${canvasSize});
       ctx.stroke();
 
+      // Horizontal line (full canvas width)
       ctx.beginPath();
-      ctx.moveTo(${gridCenterX}, ${gridCenterY} - ${this.radius});
-      ctx.lineTo(${gridCenterX}, ${gridCenterY} + ${this.radius});
+      ctx.moveTo(0, ${gridCenterY});
+      ctx.lineTo(${canvasSize}, ${gridCenterY});
       ctx.stroke();
 
       ctx.restore();
@@ -1372,7 +1370,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       ctx.save();
       ctx.fillStyle = '#808080';
       ctx.font = '${this.textSize}px monospace';
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
       ctx.fillText('${rangeText}', ${rangeX}, ${rangeY});
       ctx.restore();
 
