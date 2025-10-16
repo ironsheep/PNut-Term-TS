@@ -968,11 +968,11 @@ export class PlotWindowIntegrator {
         }
       }
 
-      // Validate color values are 24-bit RGB (0x000000-0xFFFFFF) with memory-safe checking
+      // Validate color values are 32-bit ARGB (0x00000000-0xFFFFFFFF) with memory-safe checking
       for (let i = 0; i < colors.length; i++) {
-        if (colors[i] < 0 || colors[i] > 0xFFFFFF) {
-          this.logError(`[PLOT ERROR] Color value 0x${colors[i].toString(16)} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0x000000-0xFFFFFF)`);
-          throw new Error(`Color value 0x${colors[i].toString(16)} at position ${i} out of bounds (0x000000-0xFFFFFF)`);
+        if (colors[i] < 0 || colors[i] > 0xFFFFFFFF) {
+          this.logError(`[PLOT ERROR] Color value 0x${colors[i].toString(16)} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0x00000000-0xFFFFFFFF)`);
+          throw new Error(`Color value 0x${colors[i].toString(16)} at position ${i} out of bounds (0x00000000-0xFFFFFFFF)`);
         }
       }
 
@@ -1007,12 +1007,17 @@ export class PlotWindowIntegrator {
   /**
    * Execute sprite drawing - render sprite at current position with transformations
    */
-  private executeDrawSprite(params: Record<string, any>): void {
+  private async executeDrawSprite(params: Record<string, any>): Promise<void> {
     this.logConsoleMessage('[INTEGRATOR] executeDrawSprite called with:', params);
 
     try {
       if (!this.plotWindow.spriteManager) {
         throw new Error('Sprite manager not available in plot window');
+      }
+
+      if (!this.plotWindow.debugWindow || !this.plotWindow.shouldWriteToCanvas) {
+        this.logConsoleMessage('[INTEGRATOR] Window not ready for sprite rendering');
+        return;
       }
 
       const { spriteId, orientation = 0, scale = 1.0, opacity = 255 } = params;
@@ -1028,136 +1033,108 @@ export class PlotWindowIntegrator {
         throw new Error(`Sprite ${spriteId} not defined`);
       }
 
-      // Get current plot position (vPixelX, vPixelY from plot window state)
+      // Get current plot position
       const currentX = this.plotWindow.cursorPosition?.x || 0;
       const currentY = this.plotWindow.cursorPosition?.y || 0;
 
-      // Create transformation matrix for rotation and scaling
-      const transformMatrix = this.createTransformationMatrix(orientation, scale);
+      // Get screen coordinates for sprite position
+      const [screenX, screenY] = this.plotWindow.getXY(currentX, currentY);
 
-      // Render sprite with transformations at current position
-      this.renderTransformedSprite(sprite, currentX, currentY, transformMatrix, opacity);
+      // Convert sprite data to JSON-safe format for passing to renderer
+      const spriteData = {
+        width: sprite.width,
+        height: sprite.height,
+        pixels: sprite.pixels,
+        colors: sprite.colors
+      };
 
-      this.logConsoleMessage(`[INTEGRATOR] Sprite ${spriteId} rendered at current position (${currentX}, ${currentY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`);
+      this.logConsoleMessage(`[INTEGRATOR] Drawing sprite ${spriteId} at (${screenX}, ${screenY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`);
+
+      // Execute sprite rendering in the renderer
+      const jsCode = `
+        (function() {
+          if (!window.plotCtx) {
+            console.error('[PLOT] Context not ready for sprite rendering');
+            return 'Context not ready';
+          }
+
+          const sprite = ${JSON.stringify(spriteData)};
+          const centerX = ${screenX};
+          const centerY = ${screenY};
+          const orientation = ${orientation};
+          const scale = ${scale};
+          const opacity = ${opacity};
+
+          // Save current context state
+          window.plotCtx.save();
+
+          // Set global alpha for opacity
+          window.plotCtx.globalAlpha = opacity / 255;
+
+          // Calculate transformation matrix
+          const angleRad = (orientation * Math.PI) / 180;
+          const cos = Math.cos(angleRad) * scale;
+          const sin = Math.sin(angleRad) * scale;
+
+          // Apply transformation matrix for rotation and scaling
+          window.plotCtx.setTransform(
+            cos,      // m11: horizontal scaling / rotation
+            sin,      // m12: horizontal skewing
+            -sin,     // m21: vertical skewing
+            cos,      // m22: vertical scaling / rotation
+            centerX,  // dx: horizontal translation
+            centerY   // dy: vertical translation
+          );
+
+          // Calculate sprite center offset for proper rotation around center
+          const centerOffsetX = -sprite.width / 2;
+          const centerOffsetY = -sprite.height / 2;
+
+          // Render each pixel
+          for (let y = 0; y < sprite.height; y++) {
+            for (let x = 0; x < sprite.width; x++) {
+              const pixelIndex = y * sprite.width + x;
+              const colorIndex = sprite.pixels[pixelIndex];
+
+              // Skip transparent pixels (color index 0 is typically transparent)
+              if (colorIndex === 0) continue;
+
+              // Get color from palette
+              const color = sprite.colors[colorIndex] || 0x000000;
+              const r = (color >> 16) & 0xFF;
+              const g = (color >> 8) & 0xFF;
+              const b = color & 0xFF;
+
+              // Set pixel color
+              window.plotCtx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+
+              // Draw pixel at transformed position (relative to sprite center)
+              window.plotCtx.fillRect(
+                centerOffsetX + x,
+                centerOffsetY + y,
+                1, 1
+              );
+            }
+          }
+
+          // Restore context state
+          window.plotCtx.restore();
+
+          return 'Sprite drawn';
+        })()
+      `;
+
+      try {
+        const result = await this.plotWindow.debugWindow.webContents.executeJavaScript(jsCode);
+        this.logConsoleMessage(`[INTEGRATOR] Sprite render result: ${result}`);
+      } catch (error) {
+        console.error('[INTEGRATOR] Failed to execute sprite rendering:', error);
+        throw error;
+      }
 
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to draw sprite:`, error);
       throw error;
-    }
-  }
-
-  /**
-   * Create 2D transformation matrix for rotation and scaling
-   */
-  private createTransformationMatrix(orientationDegrees: number, scale: number): TransformationMatrix {
-    // Convert degrees to radians
-    const angleRad = (orientationDegrees * Math.PI) / 180;
-
-    // Create transformation matrix combining rotation and scaling
-    // Matrix format: [a, b, c, d, tx, ty] for affine transformation
-    const cos = Math.cos(angleRad) * scale;
-    const sin = Math.sin(angleRad) * scale;
-
-    return {
-      a: cos,    // x scaling/rotation component
-      b: sin,    // x skewing component
-      c: -sin,   // y skewing component
-      d: cos,    // y scaling/rotation component
-      tx: 0,     // x translation (will be set during rendering)
-      ty: 0      // y translation (will be set during rendering)
-    };
-  }
-
-  /**
-   * Render sprite with transformations applied
-   */
-  private renderTransformedSprite(
-    sprite: any,
-    centerX: number,
-    centerY: number,
-    transform: TransformationMatrix,
-    opacity: number
-  ): void {
-    try {
-      // Get canvas context for direct pixel manipulation
-      const canvas = this.plotWindow.canvasProcessor?.canvas;
-      if (!canvas) {
-        console.warn('[INTEGRATOR] No canvas available for sprite rendering');
-        return;
-      }
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        console.warn('[INTEGRATOR] No canvas context available for sprite rendering');
-        return;
-      }
-
-      // Save current context state
-      ctx.save();
-
-      // Set global alpha for opacity
-      ctx.globalAlpha = opacity / 255;
-
-      // Apply coordinate system transformations (CARTESIAN/POLAR, axis directions)
-      const screenCoords = this.transformToScreenCoordinates(centerX, centerY);
-
-      // Set transformation matrix for rotation and scaling
-      ctx.setTransform(
-        transform.a,  // m11: horizontal scaling / rotation
-        transform.b,  // m12: horizontal skewing
-        transform.c,  // m21: vertical skewing
-        transform.d,  // m22: vertical scaling / rotation
-        screenCoords.x, // dx: horizontal translation
-        screenCoords.y  // dy: vertical translation
-      );
-
-      // Render sprite pixels using the palette
-      this.renderSpritePixels(ctx, sprite, transform);
-
-      // Restore context state
-      ctx.restore();
-
-    } catch (error) {
-      console.error('[INTEGRATOR] Error during sprite rendering:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Render individual sprite pixels with color palette lookup
-   */
-  private renderSpritePixels(ctx: CanvasRenderingContext2D, sprite: any, transform: TransformationMatrix): void {
-    const { width, height, pixels, colors } = sprite;
-
-    // Calculate sprite center offset for proper rotation around center
-    const centerOffsetX = -width / 2;
-    const centerOffsetY = -height / 2;
-
-    // Render each pixel
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const pixelIndex = y * width + x;
-        const colorIndex = pixels[pixelIndex];
-
-        // Skip transparent pixels (color index 0 is typically transparent)
-        if (colorIndex === 0) continue;
-
-        // Get color from palette
-        const color = colors[colorIndex] || 0x000000;
-        const r = (color >> 16) & 0xFF;
-        const g = (color >> 8) & 0xFF;
-        const b = color & 0xFF;
-
-        // Set pixel color
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-
-        // Draw pixel at transformed position (relative to sprite center)
-        ctx.fillRect(
-          centerOffsetX + x,
-          centerOffsetY + y,
-          1, 1
-        );
-      }
     }
   }
 
