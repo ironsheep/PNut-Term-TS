@@ -62,10 +62,10 @@ export interface BitmapDisplaySpec {
 
 /**
  * Debug BITMAP Window - Raster Graphics Display
- * 
+ *
  * Displays bitmap/raster graphics with configurable trace patterns, color modes, and update rates.
  * Supports 12 different trace patterns for pixel plotting order and image orientation transformations.
- * 
+ *
  * ## Features
  * - **Trace Patterns**: 12 different pixel plotting patterns (0-11) with rotation, flipping, and scrolling
  * - **Sparse Mode**: Memory-efficient mode for sparse pixel data
@@ -73,7 +73,7 @@ export interface BitmapDisplaySpec {
  * - **Manual/Auto Update**: Configurable update rates from real-time to full-screen buffering
  * - **LUT Support**: Lookup table colors for palette-based graphics
  * - **Input Forwarding**: PC_KEY and PC_MOUSE support with coordinate transformation
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -85,14 +85,14 @@ export interface BitmapDisplaySpec {
  * - `CTUNE tune` - Color tuning parameter for color mode adjustment
  * - `COLOR bg` - Background color (default: BLACK)
  * - `HIDEXY` - Hide coordinate display
- * 
+ *
  * ## Data Format
  * Pixel data is fed as color values, coordinates are determined by trace pattern:
  * - Direct pixel values: color data interpreted based on color mode
  * - Coordinate pairs: explicit x,y positioning when supported by trace pattern
  * - Packed data: efficient bulk pixel transfer using standard packed modes
  * - Example: `debug(\`MyBitmap TRACE 0 RATE 1\`(pixel_color))`
- * 
+ *
  * ## Commands
  * - `CLEAR` - Clear display and reset pixel position
  * - `UPDATE` - Force display update (when UPDATE directive is used)
@@ -104,14 +104,14 @@ export interface BitmapDisplaySpec {
  * - `RATE count` - Change update rate during runtime
  * - `LUT index color` - Set lookup table color
  * - `CTUNE value` - Adjust color tuning parameter
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `BITMAP_Configure` procedure (line 2364)
  * - Update: `BITMAP_Update` procedure (line 2408)
  * - Trace pattern handling: `Bitmap_Trace_Process` procedures
  * - Color management: `Bitmap_Color_Set` procedures
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic bitmap with normal raster scan
@@ -120,11 +120,11 @@ export interface BitmapDisplaySpec {
  *   repeat x from 0 to 319
  *     color := (x << 16) | (y << 8) | ((x+y) & $FF)
  *     debug(`MyBitmap \`(color))
- * 
+ *
  * ' Rotated display with sparse mode
  * debug(`BITMAP MyBitmap SIZE 128 128 TRACE 5 SPARSE RATE -1)
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Supports 12 trace patterns combining rotation, flipping, and scrolling behavior
  * - Rate parameter controls update frequency: 0=manual, -1=full screen, >0=pixel count
@@ -132,18 +132,18 @@ export interface BitmapDisplaySpec {
  * - Color tuning parameter adjusts color interpretation and gamma correction
  * - Coordinate transformation for mouse input matches selected trace pattern
  * - LUT manager provides efficient palette-based color mapping
- * 
+ *
  * ## Deviations from Pascal
  * - Enhanced color validation and error handling
  * - Additional sparse mode optimizations for memory efficiency
  * - Improved trace pattern coordinate calculations for accuracy
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_BITMAP.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugBitmapWindow extends DebugWindowBase {
   private displaySpec: BitmapDisplaySpec;
-  
+
   private state: BitmapState;
   private colorTranslator: ColorTranslator;
   private lutManager: LUTManager;
@@ -181,12 +181,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
     //   DOTSIZE <x> <y> [default: 1,1]
     //   COLOR <bgnd-color> [default: black]
     //   HIDEXY [default: not hidden]
-    
+
     DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_WINDOW] CL: at parseBitmapDeclaration()`);
     let displaySpec: BitmapDisplaySpec = {} as BitmapDisplaySpec;
     displaySpec.displayName = '';
     displaySpec.title = 'Bitmap';
-    
+
     let errorMessage = '';
     let isValid = true;
 
@@ -195,12 +195,14 @@ export class DebugBitmapWindow extends DebugWindowBase {
       isValid = false;
     } else {
       displaySpec.displayName = lineParts[1];
-      
+
       // Process remaining directives
       let i = 2;
       while (i < lineParts.length && isValid) {
         const directive = lineParts[i].toUpperCase();
-        DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_PARSE] i=${i}, directive="${directive}" (from "${lineParts[i]}")`);
+        DebugBitmapWindow.logConsoleMessageStatic(
+          `[BITMAP_PARSE] i=${i}, directive="${directive}" (from "${lineParts[i]}")`
+        );
 
         switch (directive) {
           case 'TITLE':
@@ -211,7 +213,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-            
+
           case 'POS':
             if (i + 2 < lineParts.length) {
               const x = parseInt(lineParts[++i]);
@@ -228,14 +230,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-            
+
           case 'SIZE':
             if (i + 2 < lineParts.length) {
-              const width = parseInt(lineParts[++i]);   // Pascal: SIZE width height
+              const width = parseInt(lineParts[++i]); // Pascal: SIZE width height
               const height = parseInt(lineParts[++i]);
-              if (!isNaN(width) && !isNaN(height) &&
-                  width >= 1 && width <= 2048 &&
-                  height >= 1 && height <= 2048) {
+              if (!isNaN(width) && !isNaN(height) && width >= 1 && width <= 2048 && height >= 1 && height <= 2048) {
                 displaySpec.size = { width, height };
               } else {
                 errorMessage = 'SIZE directive requires two numeric values between 1 and 2048';
@@ -246,10 +246,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-            
+
           case 'DOTSIZE':
             if (i + 1 < lineParts.length) {
-              const x = parseInt(lineParts[++i]);  // Pascal: DOTSIZE x y
+              const x = parseInt(lineParts[++i]); // Pascal: DOTSIZE x y
               if (!isNaN(x) && x >= 1) {
                 // Check if there's a second value
                 if (i + 1 < lineParts.length) {
@@ -276,7 +276,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-            
+
           case 'COLOR':
             if (i + 1 < lineParts.length) {
               // Parse color value - could be named color or hex value
@@ -288,7 +288,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
               isValid = false;
             }
             break;
-            
+
           case 'HIDEXY':
             displaySpec.hideXY = true;
             break;
@@ -377,28 +377,30 @@ export class DebugBitmapWindow extends DebugWindowBase {
           case 'RGB24':
             // Map color mode directive to ColorMode enum
             const colorModeMap: { [key: string]: ColorMode } = {
-              'LUT1': ColorMode.LUT1,
-              'LUT2': ColorMode.LUT2,
-              'LUT4': ColorMode.LUT4,
-              'LUT8': ColorMode.LUT8,
-              'LUMA8': ColorMode.LUMA8,
-              'LUMA8W': ColorMode.LUMA8W,
-              'LUMA8X': ColorMode.LUMA8X,
-              'HSV8': ColorMode.HSV8,
-              'HSV8W': ColorMode.HSV8W,
-              'HSV8X': ColorMode.HSV8X,
-              'RGBI8': ColorMode.RGBI8,
-              'RGBI8W': ColorMode.RGBI8W,
-              'RGBI8X': ColorMode.RGBI8X,
-              'RGB8': ColorMode.RGB8,
-              'HSV16': ColorMode.HSV16,
-              'HSV16W': ColorMode.HSV16W,
-              'HSV16X': ColorMode.HSV16X,
-              'RGB16': ColorMode.RGB16,
-              'RGB24': ColorMode.RGB24
+              LUT1: ColorMode.LUT1,
+              LUT2: ColorMode.LUT2,
+              LUT4: ColorMode.LUT4,
+              LUT8: ColorMode.LUT8,
+              LUMA8: ColorMode.LUMA8,
+              LUMA8W: ColorMode.LUMA8W,
+              LUMA8X: ColorMode.LUMA8X,
+              HSV8: ColorMode.HSV8,
+              HSV8W: ColorMode.HSV8W,
+              HSV8X: ColorMode.HSV8X,
+              RGBI8: ColorMode.RGBI8,
+              RGBI8W: ColorMode.RGBI8W,
+              RGBI8X: ColorMode.RGBI8X,
+              RGB8: ColorMode.RGB8,
+              HSV16: ColorMode.HSV16,
+              HSV16W: ColorMode.HSV16W,
+              HSV16X: ColorMode.HSV16X,
+              RGB16: ColorMode.RGB16,
+              RGB24: ColorMode.RGB24
             };
             displaySpec.colorMode = colorModeMap[directive];
-            DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`);
+            DebugBitmapWindow.logConsoleMessageStatic(
+              `[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`
+            );
 
             // Check if next token is a tune parameter
             // For LUMA8/RGBI8 modes, tune can be:
@@ -409,21 +411,23 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
               // Try parsing as color name first (for LUMA/RGBI modes)
               const colorToTune: { [key: string]: number } = {
-                'ORANGE': 0,
-                'BLUE': 1,
-                'GREEN': 2,
-                'CYAN': 3,
-                'RED': 4,
-                'MAGENTA': 5,
-                'YELLOW': 6,
-                'GRAY': 7,
-                'GREY': 7  // Alternative spelling
+                ORANGE: 0,
+                BLUE: 1,
+                GREEN: 2,
+                CYAN: 3,
+                RED: 4,
+                MAGENTA: 5,
+                YELLOW: 6,
+                GRAY: 7,
+                GREY: 7 // Alternative spelling
               };
 
               if (colorToTune.hasOwnProperty(nextToken)) {
                 displaySpec.colorTune = colorToTune[nextToken];
                 i++; // Consume color name
-                DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`);
+                DebugBitmapWindow.logConsoleMessageStatic(
+                  `[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`
+                );
               } else if (!isNaN(parseInt(nextToken))) {
                 // Try parsing as number
                 const possibleTune = parseInt(nextToken);
@@ -446,29 +450,32 @@ export class DebugBitmapWindow extends DebugWindowBase {
             // Unknown directives are gracefully skipped
             break;
         }
-        
+
         i++;
       }
     }
-    
+
     if (!isValid) {
       DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP_WINDOW] ERROR: parseBitmapDeclaration() - ${errorMessage}`);
     }
-    
+
     return [isValid, displaySpec];
   }
 
   constructor(ctx: Context, displaySpec: BitmapDisplaySpec, windowId: string = `bitmap-${Date.now()}`) {
     super(ctx, windowId, 'bitmap');
-    
+
     this.displaySpec = displaySpec;
+
+    // Enable logging for BITMAP window
+    this.isLogging = true;
 
     // Initialize from displaySpec
     this._windowTitle = displaySpec.title;
     this.idString = displaySpec.displayName;
     this.windowLogPrefix = 'bitW';
     this.initialPosition = displaySpec.position;
-    
+
     // Initialize state with defaults, applying declaration directives
     this.state = {
       width: displaySpec.size?.width ?? 256,
@@ -542,7 +549,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
   closeDebugWindow(): void {
     // Stop input polling
     this.inputForwarder.stopPolling();
-    
+
     // Clean up window reference
     this.debugWindow = null;
   }
@@ -563,7 +570,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Process commands
     for (let i = 0; i < lineParts.length; i++) {
       const part = lineParts[i].toUpperCase();
-      
+
       // Check for bitmap size (first two values) - only if not initialized
       if (i === 0 && !this.state.isInitialized && this.isNumeric(part)) {
         const width = parseInt(part);
@@ -722,7 +729,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
     if (this.state.rate === -1) {
       // Rate -1 means full screen update: set to width * height
       this.state.rate = this.state.width * this.state.height;
-      this.logMessage(`[RATE INIT] rate=-1 expanded to width*height=${this.state.rate} for ${this.state.width}x${this.state.height} window`);
+      this.logMessage(
+        `[RATE INIT] rate=-1 expanded to width*height=${this.state.rate} for ${this.state.width}x${this.state.height} window`
+      );
     } else if (this.state.rate === 0) {
       // Rate 0 means auto-set based on trace pattern (Pascal: SetTrace with ModifyRate=true)
       // For horizontal scan patterns (0-3): use width
@@ -730,10 +739,14 @@ export class DebugBitmapWindow extends DebugWindowBase {
       const basePattern = this.state.tracePattern & 0x7; // Get base pattern (0-7)
       if (basePattern <= 3) {
         this.state.rate = this.state.width;
-        this.logMessage(`[RATE INIT] rate=0 with horizontal trace ${this.state.tracePattern} → rate=width=${this.state.rate}`);
+        this.logMessage(
+          `[RATE INIT] rate=0 with horizontal trace ${this.state.tracePattern} → rate=width=${this.state.rate}`
+        );
       } else {
         this.state.rate = this.state.height;
-        this.logMessage(`[RATE INIT] rate=0 with vertical trace ${this.state.tracePattern} → rate=height=${this.state.rate}`);
+        this.logMessage(
+          `[RATE INIT] rate=0 with vertical trace ${this.state.tracePattern} → rate=height=${this.state.rate}`
+        );
       }
     } else {
       this.logMessage(`[RATE INIT] Using explicit rate=${this.state.rate} for tracePattern=${this.state.tracePattern}`);
@@ -746,7 +759,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Initialize the bitmap canvas
    */
   private initializeCanvas(): void {
-
     // Set up the visible canvas
     const canvasHTML = `
       <canvas id="${this.bitmapCanvasId}"
@@ -778,10 +790,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     if (!this.debugWindow) return;
 
     // Convert background color to hex string
-    const bgColor = this.state.backgroundColor & 0xFFFFFF;
-    const r = (bgColor >> 16) & 0xFF;
-    const g = (bgColor >> 8) & 0xFF;
-    const b = bgColor & 0xFF;
+    const bgColor = this.state.backgroundColor & 0xffffff;
+    const r = (bgColor >> 16) & 0xff;
+    const g = (bgColor >> 8) & 0xff;
+    const b = bgColor & 0xff;
 
     // Initialize offscreen canvas if needed and clear both canvases
     const clearJS = `
@@ -828,7 +840,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     // Validate coordinates
     if (x < 0 || x >= this.state.width || y < 0 || y >= this.state.height) {
-      this.logMessage(`ERROR: Invalid pixel coordinates (${x},${y}). Must be within 0-${this.state.width - 1} x 0-${this.state.height - 1}`);
+      this.logMessage(
+        `ERROR: Invalid pixel coordinates (${x},${y}). Must be within 0-${this.state.width - 1} x 0-${
+          this.state.height - 1
+        }`
+      );
       return;
     }
 
@@ -908,18 +924,17 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 })();`;
 
     this.logMessage(`[SCROLL] Scrolling offscreen bitmap: scrollX=${scrollX}, scrollY=${scrollY}`);
-    this.debugWindow.webContents.executeJavaScript(scrollCode)
-      .catch(err => {
-        this.logMessage(`ERROR scrolling bitmap: ${err}`);
-        this.logMessage(`Failed scroll code: ${scrollCode.substring(0, 200)}...`);
-      });
+    this.debugWindow.webContents.executeJavaScript(scrollCode).catch((err) => {
+      this.logMessage(`ERROR scrolling bitmap: ${err}`);
+      this.logMessage(`Failed scroll code: ${scrollCode.substring(0, 200)}...`);
+    });
   }
 
   /**
    * Set trace pattern
    */
   private setTracePattern(pattern: number): void {
-    this.state.tracePattern = pattern & 0xF; // 0-15
+    this.state.tracePattern = pattern & 0xf; // 0-15
     this.traceProcessor.setPattern(pattern);
 
     // Update rate if 0 (use real-time default)
@@ -955,7 +970,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
   private setDotSize(dotX: number, dotY: number): void {
     this.state.dotSizeX = Math.max(1, dotX);
     this.state.dotSizeY = Math.max(1, dotY);
-    
+
     // Update input forwarder
     this.inputForwarder.setDotSize(this.state.dotSizeX, this.state.dotSizeY);
 
@@ -992,7 +1007,6 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     }
   }
 
-
   /**
    * Parse color mode commands
    */
@@ -1022,25 +1036,25 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 
     // Check for color mode commands
     const colorModeMap: { [key: string]: ColorMode } = {
-      'LUT1': ColorMode.LUT1,
-      'LUT2': ColorMode.LUT2,
-      'LUT4': ColorMode.LUT4,
-      'LUT8': ColorMode.LUT8,
-      'LUMA8': ColorMode.LUMA8,
-      'LUMA8W': ColorMode.LUMA8W,
-      'LUMA8X': ColorMode.LUMA8X,
-      'HSV8': ColorMode.HSV8,
-      'HSV8W': ColorMode.HSV8W,
-      'HSV8X': ColorMode.HSV8X,
-      'RGBI8': ColorMode.RGBI8,
-      'RGBI8W': ColorMode.RGBI8W,
-      'RGBI8X': ColorMode.RGBI8X,
-      'RGB8': ColorMode.RGB8,
-      'HSV16': ColorMode.HSV16,
-      'HSV16W': ColorMode.HSV16W,
-      'HSV16X': ColorMode.HSV16X,
-      'RGB16': ColorMode.RGB16,
-      'RGB24': ColorMode.RGB24
+      LUT1: ColorMode.LUT1,
+      LUT2: ColorMode.LUT2,
+      LUT4: ColorMode.LUT4,
+      LUT8: ColorMode.LUT8,
+      LUMA8: ColorMode.LUMA8,
+      LUMA8W: ColorMode.LUMA8W,
+      LUMA8X: ColorMode.LUMA8X,
+      HSV8: ColorMode.HSV8,
+      HSV8W: ColorMode.HSV8W,
+      HSV8X: ColorMode.HSV8X,
+      RGBI8: ColorMode.RGBI8,
+      RGBI8W: ColorMode.RGBI8W,
+      RGBI8X: ColorMode.RGBI8X,
+      RGB8: ColorMode.RGB8,
+      HSV16: ColorMode.HSV16,
+      HSV16W: ColorMode.HSV16W,
+      HSV16X: ColorMode.HSV16X,
+      RGB16: ColorMode.RGB16,
+      RGB24: ColorMode.RGB24
     };
 
     if (command in colorModeMap) {
@@ -1056,15 +1070,15 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 
         // Try parsing as color name first
         const colorToTune: { [key: string]: number } = {
-          'ORANGE': 0,
-          'BLUE': 1,
-          'GREEN': 2,
-          'CYAN': 3,
-          'RED': 4,
-          'MAGENTA': 5,
-          'YELLOW': 6,
-          'GRAY': 7,
-          'GREY': 7  // Alternative spelling
+          ORANGE: 0,
+          BLUE: 1,
+          GREEN: 2,
+          CYAN: 3,
+          RED: 4,
+          MAGENTA: 5,
+          YELLOW: 6,
+          GRAY: 7,
+          GREY: 7 // Alternative spelling
         };
 
         if (colorToTune.hasOwnProperty(tuneToken)) {
@@ -1106,15 +1120,13 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       }
       this.logMessage(`[BITMAP DATA] Parsed ${part} → 0x${rawValue.toString(16)}`);
 
-
       // Unpack data based on explicit packed mode (if specified) or derived from color mode
       const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
       this.logMessage(`[UNPACK] Mode=${packedMode}, rawValue=0x${rawValue.toString(16)}`);
-      const unpackedValues = PackedDataProcessor.unpackSamples(
-        rawValue,
-        packedMode
+      const unpackedValues = PackedDataProcessor.unpackSamples(rawValue, packedMode);
+      this.logMessage(
+        `[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map((v) => '0x' + v.toString(16)).join(', ')}]`
       );
-      this.logMessage(`[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map(v => '0x'+v.toString(16)).join(', ')}]`);
 
       // Process each unpacked value
       this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}`);
@@ -1138,9 +1150,15 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         const color = `#${rgb24.toString(16).padStart(6, '0')}`;
         const totalValues = unpackedValues.length;
         if (this.state.tracePattern === 4 && (idx < 5 || idx >= totalValues - 5)) {
-          this.logMessage(`[TRACE4] value[${idx}/${totalValues}]: pos(${pos.x},${pos.y}) = 0x${value.toString(16)} → ${color}`);
+          this.logMessage(
+            `[TRACE4] value[${idx}/${totalValues}]: pos(${pos.x},${pos.y}) = 0x${value.toString(16)} → ${color}`
+          );
         }
-        this.logMessage(`[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(16)} → ${color}`);
+        this.logMessage(
+          `[COLOR] Translate 0x${value.toString(16)} (mode=${this.state.colorMode}) → rgb24=0x${rgb24.toString(
+            16
+          )} → ${color}`
+        );
 
         // Plot pixel with SPARSE mode two-layer rendering if enabled
         if (this.debugWindow) {
@@ -1151,7 +1169,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
             const centerY = pos.y * this.state.dotSizeY + (this.state.dotSizeY >> 1);
 
             // Convert border color to hex string
-            const borderRgb24 = this.state.backgroundColor & 0xFFFFFF;
+            const borderRgb24 = this.state.backgroundColor & 0xffffff;
             const borderColor = `#${borderRgb24.toString(16).padStart(6, '0')}`;
 
             // LAYER 1: Draw outer rectangle (border) at 100% DOTSIZE
@@ -1167,8 +1185,9 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
                 }
               }
             `;
-            this.debugWindow.webContents.executeJavaScript(outerCode)
-              .catch(err => this.logMessage(`ERROR plotting outer rect: ${err}`));
+            this.debugWindow.webContents
+              .executeJavaScript(outerCode)
+              .catch((err) => this.logMessage(`ERROR plotting outer rect: ${err}`));
 
             // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
             // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
@@ -1186,8 +1205,9 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
                 }
               }
             `;
-            this.debugWindow.webContents.executeJavaScript(innerCode)
-              .catch(err => this.logMessage(`ERROR plotting inner rect: ${err}`));
+            this.debugWindow.webContents
+              .executeJavaScript(innerCode)
+              .catch((err) => this.logMessage(`ERROR plotting inner rect: ${err}`));
           } else {
             // NORMAL MODE: Plot to offscreen bitmap at logical coordinates
             // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]
@@ -1205,11 +1225,12 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
               })();
             `;
 
-            this.logMessage(`[PLOT] Offscreen: pos=(${pos.x},${pos.y}) color=${color} on ${this.state.width}x${this.state.height} bitmap`);
-            this.debugWindow.webContents.executeJavaScript(plotToOffscreenJS)
-              .catch(err => {
-                this.logMessage(`ERROR plotting to offscreen: ${err}`);
-              });
+            this.logMessage(
+              `[PLOT] Offscreen: pos=(${pos.x},${pos.y}) color=${color} on ${this.state.width}x${this.state.height} bitmap`
+            );
+            this.debugWindow.webContents.executeJavaScript(plotToOffscreenJS).catch((err) => {
+              this.logMessage(`ERROR plotting to offscreen: ${err}`);
+            });
           }
         }
 
@@ -1309,9 +1330,9 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         valueSize = ePackedDataWidth.PDW_LONGS;
         break;
     }
-    
-    return { 
-      mode, 
+
+    return {
+      mode,
       bitsPerSample,
       valueSize,
       isAlternate: false,
@@ -1324,7 +1345,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
    */
   private createDebugWindow(htmlContent: string): void {
     this.logMessage(`at createDebugWindow() BITMAP`);
-    
+
     // Calculate window size based on bitmap and dotsize
     const canvasWidth = this.state.width * this.state.dotSizeX;
     const canvasHeight = this.state.height * this.state.dotSizeY;
@@ -1332,12 +1353,12 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     const windowDimensions = this.calculateWindowDimensions(canvasWidth, canvasHeight);
     const windowWidth = windowDimensions.width;
     const windowHeight = windowDimensions.height;
-    
+
     // Check if position was explicitly set or use WindowPlacer
     let windowX = this.initialPosition?.x || 0;
     let windowY = this.initialPosition?.y || 0;
-    
-    // If no POS clause was present, use WindowPlacer for intelligent positioning  
+
+    // If no POS clause was present, use WindowPlacer for intelligent positioning
     if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       const placementConfig: PlacementConfig = {
@@ -1354,12 +1375,14 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
         const titlePart = this.windowTitle ? ` TITLE '${this.windowTitle}'` : '';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}'${titlePart} POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) BITMAP '${this.idString}'${titlePart} POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
     }
-    
+
     // Create the browser window
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
@@ -1372,14 +1395,14 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         contextIsolation: false
       }
     });
-    
+
     // Register window with WindowPlacer for position tracking ONLY if no explicit position
     // This prevents windowPlacer from overriding explicit POS directives
     if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`bitmap-${this.idString}`, this.debugWindow);
     }
-    
+
     // Set up the HTML content
     const fullHtml = `
       <!DOCTYPE html>
@@ -1419,10 +1442,10 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         </body>
       </html>
     `;
-    
+
     // Load the HTML
     this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(fullHtml)}`);
-    
+
     // Hook window events
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Bitmap window will show...');
@@ -1524,11 +1547,12 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         })();
       `;
 
-      this.debugWindow?.webContents.executeJavaScript(mouseTrackingCode)
+      this.debugWindow?.webContents
+        .executeJavaScript(mouseTrackingCode)
         .then(() => {
           this.logMessage('Mouse coordinate tracking enabled');
         })
-        .catch(error => {
+        .catch((error) => {
           this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
         });
     });
@@ -1538,7 +1562,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       this.closeDebugWindow();
     });
   }
-  
+
   /**
    * Override base class logMessage to handle missing context.logger
    */

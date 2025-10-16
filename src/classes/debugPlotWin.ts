@@ -24,7 +24,7 @@ import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
 const ENABLE_PERFORMANCE_MONITORING = false;
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 import {
   DebugWindowBase,
@@ -221,7 +221,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.windowLogPrefix = 'pltW';
     DebugColor.setDefaultBrightness(15); // set default brightness to max
 
-    // Enable logging for SCOPE_XY window
+    // Enable logging for PLOT window
     this.isLogging = false;
 
     // record our Debug Plot Window Spec

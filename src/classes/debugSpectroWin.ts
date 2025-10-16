@@ -41,22 +41,22 @@ export interface SpectroDisplaySpec {
   position: Position;
   hasExplicitPosition: boolean;
   size: Size;
-  nbrSamples: number;     // Required by BaseDisplaySpec (same as samples)
-  samples: number;        // FFT size (4-2048, power of 2)
-  firstBin: number;       // First frequency bin to display
-  lastBin: number;        // Last frequency bin to display
-  depth: number;          // Waterfall history depth (vWidth in Pascal)
-  magnitude: number;      // FFT magnitude scaling (0-11, shift amount)
-  range: number;          // Maximum range for color scaling
-  rate: number;           // Update rate (samples between FFT updates)
-  tracePattern: number;   // Trace pattern (0-15)
-  dotSize: number;        // Dot size for pixels
-  dotSizeY: number;       // Y dot size (can differ from X)
-  colorMode: ColorMode;   // Color mode for magnitude visualization
-  logScale: boolean;      // Enable log scale for magnitude
-  hideXY: boolean;        // Hide coordinate display
-  window: WindowColor;    // Required by BaseDisplaySpec
-  packedMode?: PackedDataMode;  // Optional packed data configuration
+  nbrSamples: number; // Required by BaseDisplaySpec (same as samples)
+  samples: number; // FFT size (4-2048, power of 2)
+  firstBin: number; // First frequency bin to display
+  lastBin: number; // Last frequency bin to display
+  depth: number; // Waterfall history depth (vWidth in Pascal)
+  magnitude: number; // FFT magnitude scaling (0-11, shift amount)
+  range: number; // Maximum range for color scaling
+  rate: number; // Update rate (samples between FFT updates)
+  tracePattern: number; // Trace pattern (0-15)
+  dotSize: number; // Dot size for pixels
+  dotSizeY: number; // Y dot size (can differ from X)
+  colorMode: ColorMode; // Color mode for magnitude visualization
+  logScale: boolean; // Enable log scale for magnitude
+  hideXY: boolean; // Hide coordinate display
+  window: WindowColor; // Required by BaseDisplaySpec
+  packedMode?: PackedDataMode; // Optional packed data configuration
 }
 
 /**
@@ -128,23 +128,23 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private traceProcessor: TracePatternProcessor;
 
   // Sample buffer management (circular buffer)
-  private readonly BUFFER_SIZE = 2048;  // SPECTRO_Samples = DataSets
-  private readonly BUFFER_MASK = this.BUFFER_SIZE - 1;  // SPECTRO_PtrMask
-  private sampleBuffer: Int32Array;     // SPECTRO_SampleBuff
-  private sampleWritePtr = 0;           // SamplePtr in Pascal
-  private sampleCount = 0;              // SamplePop in Pascal
+  private readonly BUFFER_SIZE = 2048; // SPECTRO_Samples = DataSets
+  private readonly BUFFER_MASK = this.BUFFER_SIZE - 1; // SPECTRO_PtrMask
+  private sampleBuffer: Int32Array; // SPECTRO_SampleBuff
+  private sampleWritePtr = 0; // SamplePtr in Pascal
+  private sampleCount = 0; // SamplePop in Pascal
 
   // Rate control
-  private rateCounter = 0;              // vRateCount in Pascal
+  private rateCounter = 0; // vRateCount in Pascal
 
   // FFT properties
-  private fftExp = 0;                   // FFTexp
-  private fftSize = 0;                  // vSamples
+  private fftExp = 0; // FFTexp
+  private fftSize = 0; // vSamples
 
   // FFT working arrays
-  private fftInput: Int32Array;         // FFTsamp[x]
-  private fftPower: Int32Array;         // FFTpower[x]
-  private fftAngle: Int32Array;         // FFTangle[x]
+  private fftInput: Int32Array; // FFTsamp[x]
+  private fftPower: Int32Array; // FFTpower[x]
+  private fftAngle: Int32Array; // FFTangle[x]
 
   // Canvas management
   private canvasId: string = '';
@@ -155,6 +155,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
   constructor(context: Context, displaySpec: SpectroDisplaySpec, windowId: string = `spectro-${Date.now()}`) {
     super(context, windowId, 'spectro');
     this.windowLogPrefix = 'spectroW';
+
+    // Enable logging for SPECTRO window
+    this.isLogging = true;
 
     // Initialize FFT processor and window functions
     this.fftProcessor = new FFTProcessor();
@@ -255,21 +258,21 @@ export class DebugSpectroWindow extends DebugWindowBase {
       position: { x: 0, y: 0 },
       hasExplicitPosition: false,
       size: { width: 400, height: 300 },
-      nbrSamples: FFT_DEFAULT,  // Required by BaseDisplaySpec
+      nbrSamples: FFT_DEFAULT, // Required by BaseDisplaySpec
       samples: FFT_DEFAULT,
       firstBin: 0,
-      lastBin: FFT_DEFAULT / 2 - 1,  // Will be 255 for default 512
-      depth: 256,  // Default vWidth
-      magnitude: 0,  // FFTmag
-      range: 0x7FFFFFFF,  // vRange
-      rate: 0,  // Will be set to samples/8 if 0
-      tracePattern: 0xF,  // Default: scrolling mode 7 (vertical scroll)
+      lastBin: FFT_DEFAULT / 2 - 1, // Will be 255 for default 512
+      depth: 256, // Default vWidth
+      magnitude: 0, // FFTmag
+      range: 0x7fffffff, // vRange
+      rate: 0, // Will be set to samples/8 if 0
+      tracePattern: 0xf, // Default: scrolling mode 7 (vertical scroll)
       dotSize: 1,
       dotSizeY: 1,
-      colorMode: ColorMode.LUMA8X,  // key_luma8x
+      colorMode: ColorMode.LUMA8X, // key_luma8x
       logScale: false,
       hideXY: false,
-      window: { background: 'black', grid: 'gray' }  // Required by BaseDisplaySpec
+      window: { background: 'black', grid: 'gray' } // Required by BaseDisplaySpec
     };
 
     // Parse configuration directives
@@ -340,7 +343,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
         case 'RANGE':
           if (index < lineParts.length - 1) {
             const rangeValue = Number(lineParts[++index]);
-            if (rangeValue >= 1 && rangeValue <= 0x7FFFFFFF) {
+            if (rangeValue >= 1 && rangeValue <= 0x7fffffff) {
               spec.range = rangeValue;
             }
           }
@@ -358,7 +361,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
         case 'TRACE':
           if (index < lineParts.length - 1) {
             const traceValue = Number(lineParts[++index]);
-            spec.tracePattern = traceValue & 0xF;  // 0-15
+            spec.tracePattern = traceValue & 0xf; // 0-15
           }
           break;
 
@@ -631,21 +634,18 @@ export class DebugSpectroWindow extends DebugWindowBase {
       // Apply log scale if enabled
       // Pascal: if vLogScale then v := Round(Log2(Int64(v) + 1) / Log2(Int64(vRange) + 1) * vRange)
       if (this.displaySpec.logScale) {
-        v = Math.round(
-          Math.log2(v + 1) / Math.log2(this.displaySpec.range + 1) * this.displaySpec.range
-        );
+        v = Math.round((Math.log2(v + 1) / Math.log2(this.displaySpec.range + 1)) * this.displaySpec.range);
       }
 
       // Scale to 0-255
       // Pascal: p := Round(v * fScale)
       let p = Math.round(v * fScale);
-      if (p > 0xFF) p = 0xFF;
+      if (p > 0xff) p = 0xff;
 
       // Add phase for HSV16 modes
       // Pascal: if vColorMode in [key_hsv16..key_hsv16x] then p := p or FFTangle[x] shr 16 and $FF00
-      if (this.displaySpec.colorMode >= ColorMode.HSV16 &&
-          this.displaySpec.colorMode <= ColorMode.HSV16X) {
-        p = p | ((this.fftAngle[x] >> 16) & 0xFF00);
+      if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
+        p = p | ((this.fftAngle[x] >> 16) & 0xff00);
       }
 
       // Plot pixel using color translator
@@ -775,8 +775,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private clearBuffer(): void {
     this.sampleBuffer.fill(0);
     this.sampleWritePtr = 0;
-    this.sampleCount = 0;  // SamplePop = 0
-    this.rateCounter = this.displaySpec.rate - 1;  // vRateCount := vRate - 1
+    this.sampleCount = 0; // SamplePop = 0
+    this.rateCounter = this.displaySpec.rate - 1; // vRateCount := vRate - 1
 
     // Reset trace pattern
     // Pascal: SetTrace(vTrace, False)
@@ -856,7 +856,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${windowDimensions.width}x${windowDimensions.height} Mon:${monitorId}) SPECTRO '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${windowDimensions.width} ${windowDimensions.height}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${x},${y} ${windowDimensions.width}x${windowDimensions.height} Mon:${monitorId}) SPECTRO '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${windowDimensions.width} ${windowDimensions.height}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }

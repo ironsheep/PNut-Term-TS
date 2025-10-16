@@ -53,18 +53,18 @@ export interface TermDisplaySpec {
 
 /**
  * Debug TERM Window - Text Terminal Display
- * 
+ *
  * A monospace text terminal for displaying debug output from Propeller 2 microcontrollers.
  * This implementation follows the Pascal PNut design, repurposing ASCII control characters
  * for debug-specific functions rather than standard terminal emulation.
- * 
+ *
  * ## Features
  * - **Monospace Text Display**: Fixed-width character grid with configurable size
  * - **Color Combinations**: Up to 4 foreground/background color pairs (combos 0-3)
  * - **Cursor Control**: Direct positioning, home, backspace, and tab support
  * - **Auto-scrolling**: Automatic scroll when text reaches bottom of display
  * - **Mouse/Keyboard Forwarding**: PC_KEY and PC_MOUSE input forwarding to P2
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -74,14 +74,14 @@ export interface TermDisplaySpec {
  * - `BACKCOLOR color {brightness}` - Set default text color (deprecated, use COLOR)
  * - `UPDATE` - Enable deferred update mode (requires UPDATE command)
  * - `HIDEXY` - Hide mouse coordinate display
- * 
+ *
  * ## Data Format
  * Data is fed as numeric control codes or quoted strings:
  * - Numeric values 0-31: Control codes for cursor and color management
  * - Numeric values 32-255: Direct character codes
  * - Quoted strings: Text to display at current cursor position
  * - Example: `debug(\`Term 0 'Hello' 13 10 'World')`
- * 
+ *
  * ## Commands
  * - `0` - Clear screen and home cursor
  * - `1` - Home cursor only
@@ -99,33 +99,33 @@ export interface TermDisplaySpec {
  * - `CLOSE` - Close the window
  * - `PC_KEY` - Enable keyboard input forwarding
  * - `PC_MOUSE` - Enable mouse input forwarding
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `TERM_Configure` procedure (line 2181)
  * - Update: `TERM_Update` procedure (line 2223)
  * - Character handling: `TERM_Chr` procedure
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic terminal output
  * debug(`TERM MyTerm SIZE 80 24 'Hello, World!')
- * 
+ *
  * ' Using color combos
  * debug(`TERM MyTerm COLOR WHITE BLACK RED YELLOW)
  * debug(`MyTerm 4 'Default' 5 ' Red on Yellow')
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Tab width is fixed at 8 columns
  * - Line wrapping occurs at column boundary
  * - Scrolling preserves current color combo for cleared lines
- * 
+ *
  * ## Deviations from Pascal
  * - **No ANSI Support**: ANSI escape sequences removed to match Pascal implementation
  * - **ASCII 7 Repurposed**: BELL character (ASCII 7) selects color combo 3, not audio bell
  * - **Color Combo Limit**: Limited to 4 color combinations (Pascal design)
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_TERM.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
@@ -146,7 +146,10 @@ export class DebugTermWindow extends DebugWindowBase {
     const actualWindowId = windowId || displaySpec.displayName;
     super(ctx, actualWindowId, 'terminal');
     this.windowLogPrefix = 'trmW';
-    this.isLogging = false; // Turn off logging for TERM window
+
+    // Logging for TERM window
+    this.isLogging = false;
+
     // record our Debug Term Window Spec
     this.displaySpec = displaySpec;
     // adjust our contentInset for font size
@@ -186,11 +189,11 @@ export class DebugTermWindow extends DebugWindowBase {
     // Convert points to pixels at 96 DPI (standard screen DPI)
     // TextHeight('X') doesn't include descenders, but we need room for them
     // Add about 25% more height for descender space
-    metrics.charHeight = Math.round(fontSize * 96 / 72 * 1.25);
+    metrics.charHeight = Math.round(((fontSize * 96) / 72) * 1.25);
 
     // Monospace width is typically 60% of the base height (not including descender extra)
     // This approximates Pascal's TextWidth('X')
-    metrics.charWidth = Math.round((fontSize * 96 / 72) * 0.6);
+    metrics.charWidth = Math.round(((fontSize * 96) / 72) * 0.6);
 
     // Line height equals character height for terminal (includes descender space)
     metrics.lineHeight = metrics.charHeight;
@@ -241,8 +244,8 @@ export class DebugTermWindow extends DebugWindowBase {
 
     displaySpec.colorCombos.push({ fgcolor: orangeColor, bgcolor: blackColor }); // Combo 0
     displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: orangeColor }); // Combo 1
-    displaySpec.colorCombos.push({ fgcolor: limeColor, bgcolor: blackColor });   // Combo 2
-    displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: limeColor });   // Combo 3
+    displaySpec.colorCombos.push({ fgcolor: limeColor, bgcolor: blackColor }); // Combo 2
+    displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: limeColor }); // Combo 3
 
     // now parse overrides to defaults
     DebugTermWindow.logConsoleMessageStatic(`CL: at overrides TermDisplaySpec: ${lineParts}`);
@@ -423,7 +426,9 @@ export class DebugTermWindow extends DebugWindowBase {
         }
       }
     }
-    DebugTermWindow.logConsoleMessageStatic(`CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
+    DebugTermWindow.logConsoleMessageStatic(
+      `CL: at end of parseTermDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`
+    );
     return [isValid, displaySpec];
   }
 
@@ -447,8 +452,8 @@ export class DebugTermWindow extends DebugWindowBase {
     const marginSize = Math.floor(this.displaySpec.font.charWidth / 2);
 
     // Add margins to canvas dimensions for total content size
-    const divHeight = canvasHeight + (marginSize * 2);
-    const divWidth = canvasWidth + (marginSize * 2);
+    const divHeight = canvasHeight + marginSize * 2;
+    const divWidth = canvasWidth + marginSize * 2;
 
     // Calculate window dimensions with chrome adjustments using base class method
     const contentHeight = divHeight;
@@ -459,7 +464,7 @@ export class DebugTermWindow extends DebugWindowBase {
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
-    
+
     // If no POS clause was present, use WindowPlacer for intelligent positioning
     if (!this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
@@ -477,15 +482,15 @@ export class DebugTermWindow extends DebugWindowBase {
         const LoggerWindow = require('./loggerWin').LoggerWindow;
         const debugLogger = LoggerWindow.getInstance(this.context);
         const monitorId = position.monitor ? position.monitor.id : '1';
-        debugLogger.logSystemMessage(`WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) TERM '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`);
+        debugLogger.logSystemMessage(
+          `WINDOW_PLACED (${windowX},${windowY} ${windowWidth}x${windowHeight} Mon:${monitorId}) TERM '${this.displaySpec.displayName}' POS ${windowX} ${windowY} SIZE ${windowWidth} ${windowHeight}`
+        );
       } catch (error) {
         console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
       }
     }
-    
-    this.logMessage(
-      `  -- TERM window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`
-    );
+
+    this.logMessage(`  -- TERM window size: ${windowWidth}x${windowHeight} @${windowX},${windowY}`);
 
     // now generate the window with the calculated sizes
     const displayName: string = this.windowTitle;
@@ -505,7 +510,7 @@ export class DebugTermWindow extends DebugWindowBase {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`term-${this.displaySpec.displayName}`, this.debugWindow);
     }
-    
+
     // Measure actual font metrics after window is created
     this.debugWindow.webContents.once('dom-ready', () => {
       // Measure the actual 'X' height in the Parallax font
@@ -769,11 +774,12 @@ export class DebugTermWindow extends DebugWindowBase {
       `;
 
       if (this.debugWindow) {
-        this.debugWindow.webContents.executeJavaScript(mouseTrackingCode)
+        this.debugWindow.webContents
+          .executeJavaScript(mouseTrackingCode)
           .then(() => {
             this.logMessage('Mouse coordinate tracking enabled');
           })
-          .catch(error => {
+          .catch((error) => {
             this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
           });
       }
@@ -1062,12 +1068,13 @@ export class DebugTermWindow extends DebugWindowBase {
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode)
-      .then(result => {
+    this.debugWindow.webContents
+      .executeJavaScript(jsCode)
+      .then((result) => {
         this.logMessage(`Offscreen canvas initialization: ${result}`);
         this.offscreenCanvasInitialized = true;
       })
-      .catch(error => {
+      .catch((error) => {
         this.logMessage(`Failed to initialize offscreen canvas: ${error}`);
       });
   }
@@ -1173,7 +1180,7 @@ export class DebugTermWindow extends DebugWindowBase {
       const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
       const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
       const fontSpec: string = `normal ${textSizePts}pt Consolas, monospace`;
-      
+
       // Draw to offscreen canvas (Pascal's Bitmap[0])
       // Then conditionally copy to visible canvas based on update mode
       const jsCode = `
@@ -1206,7 +1213,7 @@ export class DebugTermWindow extends DebugWindowBase {
       this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
         this.logMessage(`Failed to execute terminal text JavaScript: ${error}`);
       });
-      
+
       // Advance cursor
       this.cursorPosition.x++;
 
@@ -1230,22 +1237,15 @@ export class DebugTermWindow extends DebugWindowBase {
    */
   private clearLineFromCursor(): void {
     if (!this.debugWindow) return;
-    
+
     const charWidth = this.displaySpec.font.charWidth;
     const charHeight = this.displaySpec.font.charHeight;
     const startX = this.cursorPosition.x * charWidth + this.contentInset;
     const y = this.cursorPosition.y * this.displaySpec.font.lineHeight + this.contentInset;
     const width = (this.displaySpec.size.columns - this.cursorPosition.x) * charWidth;
     const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-    
-    const jsCode = this.canvasRenderer.clearCharacterCell(
-      'text-area',
-      startX,
-      y,
-      width,
-      charHeight,
-      bgcolor
-    );
+
+    const jsCode = this.canvasRenderer.clearCharacterCell('text-area', startX, y, width, charHeight, bgcolor);
     this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
       this.logMessage(`Failed to execute terminal clear line JavaScript: ${error}`);
     });
@@ -1311,27 +1311,26 @@ export class DebugTermWindow extends DebugWindowBase {
     // Calculate margins
     const marginLeft = this.contentInset;
     const marginTop = this.contentInset;
-    
+
     // Check if mouse is within the terminal area
     const terminalWidth = this.displaySpec.size.columns * this.displaySpec.font.charWidth;
     const terminalHeight = this.displaySpec.size.rows * this.displaySpec.font.charHeight;
-    
-    if (x >= marginLeft && x < marginLeft + terminalWidth && 
-        y >= marginTop && y < marginTop + terminalHeight) {
+
+    if (x >= marginLeft && x < marginLeft + terminalWidth && y >= marginTop && y < marginTop + terminalHeight) {
       // Transform to character coordinates
       const relX = x - marginLeft;
       const relY = y - marginTop;
-      
+
       // Convert to column and row
       const column = Math.floor(relX / this.displaySpec.font.charWidth);
       const row = Math.floor(relY / this.displaySpec.font.charHeight);
-      
-      return { 
+
+      return {
         x: Math.max(0, Math.min(column, this.displaySpec.size.columns - 1)),
         y: Math.max(0, Math.min(row, this.displaySpec.size.rows - 1))
       };
     }
-    
+
     // Outside terminal area
     return { x: -1, y: -1 };
   }

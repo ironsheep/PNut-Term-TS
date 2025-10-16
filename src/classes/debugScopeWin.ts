@@ -26,7 +26,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export interface ScopeDisplaySpec {
   displayName: string;
@@ -199,7 +199,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     this.displaySpec = displaySpec;
 
     // Enable logging for SCOPE window
-    this.isLogging = true;
+    this.isLogging = false;
 
     // init default Trigger Spec
     this.triggerSpec = {
@@ -1156,7 +1156,11 @@ export class DebugScopeWindow extends DebugWindowBase {
                 const len0 = this.channelSamples[0].samples.length;
                 const len1 = this.channelSamples[1].samples.length;
                 if (len0 !== len1) {
-                  this.logMessage(`*** BUFFER DESYNC: ch0=${len0}, ch1=${len1}, diff=${len0 - len1}, maxSamples=${this.displaySpec.nbrSamples}`);
+                  this.logMessage(
+                    `*** BUFFER DESYNC: ch0=${len0}, ch1=${len1}, diff=${len0 - len1}, maxSamples=${
+                      this.displaySpec.nbrSamples
+                    }`
+                  );
                 }
               }
 
@@ -1166,20 +1170,40 @@ export class DebugScopeWindow extends DebugWindowBase {
               // Use the CLAMPED sample value, not the raw one
               // ═══════════════════════════════════════════════════════════════
               // DIAGNOSTIC: Log trigger condition evaluation
-              this.logMessage(`*** TRIGGER EVAL: trigEnabled=${this.triggerSpec.trigEnabled}, trigChannel=${this.triggerSpec.trigChannel}, nbrSamples=${nbrSamples}`);
-              this.logMessage(`*** TRIGGER COND: enabled=${this.triggerSpec.trigEnabled}, ch>=0=${this.triggerSpec.trigChannel >= 0}, ch<samples=${this.triggerSpec.trigChannel < nbrSamples}`);
-              this.logMessage(`*** TRIGGER RESULT: condition=${this.triggerSpec.trigEnabled && this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < nbrSamples}`);
+              this.logMessage(
+                `*** TRIGGER EVAL: trigEnabled=${this.triggerSpec.trigEnabled}, trigChannel=${this.triggerSpec.trigChannel}, nbrSamples=${nbrSamples}`
+              );
+              this.logMessage(
+                `*** TRIGGER COND: enabled=${this.triggerSpec.trigEnabled}, ch>=0=${
+                  this.triggerSpec.trigChannel >= 0
+                }, ch<samples=${this.triggerSpec.trigChannel < nbrSamples}`
+              );
+              this.logMessage(
+                `*** TRIGGER RESULT: condition=${
+                  this.triggerSpec.trigEnabled &&
+                  this.triggerSpec.trigChannel >= 0 &&
+                  this.triggerSpec.trigChannel < nbrSamples
+                }`
+              );
 
-              if (this.triggerSpec.trigEnabled && this.triggerSpec.trigChannel >= 0 && this.triggerSpec.trigChannel < nbrSamples) {
+              if (
+                this.triggerSpec.trigEnabled &&
+                this.triggerSpec.trigChannel >= 0 &&
+                this.triggerSpec.trigChannel < nbrSamples
+              ) {
                 // Pascal line 1288: if SamplePop <> vSamples then Continue;
                 // CRITICAL: Buffer must be completely full before trigger evaluation starts
                 const triggerChannelBuffer = this.channelSamples[this.triggerSpec.trigChannel];
                 const bufferIsFull = triggerChannelBuffer.samples.length >= this.displaySpec.nbrSamples;
-                this.logMessage(`*** TRIGGER: Buffer check - length=${triggerChannelBuffer.samples.length}, required=${this.displaySpec.nbrSamples}, full=${bufferIsFull}`);
+                this.logMessage(
+                  `*** TRIGGER: Buffer check - length=${triggerChannelBuffer.samples.length}, required=${this.displaySpec.nbrSamples}, full=${bufferIsFull}`
+                );
 
                 if (!bufferIsFull) {
                   // Buffer not full - skip trigger evaluation entirely (Pascal: Continue)
-                  this.logMessage(`*** TRIGGER: BUFFER NOT FULL - skipping trigger evaluation, using buffer-based didScroll=${bufferShifted}`);
+                  this.logMessage(
+                    `*** TRIGGER: BUFFER NOT FULL - skipping trigger evaluation, using buffer-based didScroll=${bufferShifted}`
+                  );
                   didScroll = bufferShifted; // Use buffer-based scrolling until buffer fills
                 } else {
                   // Buffer full - proceed with trigger evaluation
@@ -1189,8 +1213,12 @@ export class DebugScopeWindow extends DebugWindowBase {
                   const triggerSampleIndex = bufferLength - this.triggerSpec.trigRtOffset - 1;
                   const triggerSample = triggerChannelBuffer.samples[triggerSampleIndex];
 
-                  this.logMessage(`*** TRIGGER: Buffer position - length=${bufferLength}, offset=${this.triggerSpec.trigRtOffset}, sampleIndex=${triggerSampleIndex}, sample=${triggerSample}`);
-                  this.logMessage(`*** TRIGGER: CALLING evaluateTrigger() with channel=${this.triggerSpec.trigChannel}, sample=${triggerSample}`);
+                  this.logMessage(
+                    `*** TRIGGER: Buffer position - length=${bufferLength}, offset=${this.triggerSpec.trigRtOffset}, sampleIndex=${triggerSampleIndex}, sample=${triggerSample}`
+                  );
+                  this.logMessage(
+                    `*** TRIGGER: CALLING evaluateTrigger() with channel=${this.triggerSpec.trigChannel}, sample=${triggerSample}`
+                  );
                   didScroll = this.evaluateTrigger(this.triggerSpec.trigChannel, triggerSample);
                   this.logMessage(`*** TRIGGER: evaluateTrigger() returned didScroll=${didScroll}`);
                 }
@@ -1211,7 +1239,12 @@ export class DebugScopeWindow extends DebugWindowBase {
                   const canvasName = `channel-${chanIdx}`;
                   const channelSpec = this.channelSpecs[chanIdx];
                   if (this.channelSamples[chanIdx]) {
-                    this.updateScopeChannelData(canvasName, channelSpec, this.channelSamples[chanIdx].samples, didScroll);
+                    this.updateScopeChannelData(
+                      canvasName,
+                      channelSpec,
+                      this.channelSamples[chanIdx].samples,
+                      didScroll
+                    );
                   } else {
                     this.logMessage(`* UPD-ERROR channel samples not initialized for channel ${chanIdx}`);
                   }
@@ -1317,7 +1350,9 @@ export class DebugScopeWindow extends DebugWindowBase {
     channelSamples.samples.push(sample);
 
     const afterLength = channelSamples.samples.length;
-    this.logMessage(`*** BUFFER ADD ch${channelIndex}: before=${beforeLength}, max=${maxSamples}, after=${afterLength}, sample=${sample}, shifted=${bufferShifted}`);
+    this.logMessage(
+      `*** BUFFER ADD ch${channelIndex}: before=${beforeLength}, max=${maxSamples}, after=${afterLength}, sample=${sample}, shifted=${bufferShifted}`
+    );
 
     return bufferShifted;
   }
@@ -1327,7 +1362,9 @@ export class DebugScopeWindow extends DebugWindowBase {
    * Returns true if display should update (trigger fired and holdoff expired)
    */
   private evaluateTrigger(channelIndex: number, sample: number): boolean {
-    this.logMessage(`>>> evaluateTrigger ENTRY: channel=${channelIndex}, sample=${sample}, armed=${this.triggerArmed}, holdoff=${this.holdoffCounter}`);
+    this.logMessage(
+      `>>> evaluateTrigger ENTRY: channel=${channelIndex}, sample=${sample}, armed=${this.triggerArmed}, holdoff=${this.holdoffCounter}`
+    );
     let didScroll = false;
 
     // Pascal line 1285: vTriggered := False; (reset at start of EACH sample evaluation)
@@ -1337,7 +1374,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     const t = sample;
     const armLevel = this.triggerSpec.trigArmLevel;
     const fireLevel = this.triggerSpec.trigLevel;
-    const isPositiveSlope = (fireLevel >= armLevel);
+    const isPositiveSlope = fireLevel >= armLevel;
 
     if (this.triggerArmed) {
       // Already armed - check if we should fire
