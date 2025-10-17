@@ -505,8 +505,8 @@ export class DebugTermWindow extends DebugWindowBase {
       }
     });
 
-    // Register window with WindowPlacer for position tracking
-    if (this.debugWindow) {
+    // Register window with WindowPlacer for position tracking (only if using auto-placement)
+    if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`term-${this.displaySpec.displayName}`, this.debugWindow);
     }

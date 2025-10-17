@@ -1768,9 +1768,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       }
     });
     
-    // Register with WindowPlacer for position tracking
-    const windowPlacer = WindowPlacer.getInstance();
-    windowPlacer.registerWindow(`debugger-cog${this.cogId}`, this.debugWindow);
+    // Register with WindowPlacer for position tracking (only if using auto-placement)
+    // Debugger uses windowDetails parameter, not displaySpec
+    const usedAutoPlacement = (windowDetails?.x === undefined && windowDetails?.y === undefined);
+    if (usedAutoPlacement) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`debugger-cog${this.cogId}`, this.debugWindow);
+    }
     
     // Set up window content
     const html = this.getHTML();

@@ -35,6 +35,7 @@ export interface MidiDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
   position: Position;
+  hasExplicitPosition: boolean; // true if POS clause was present
   size: Size;
   keySize: number; // Keyboard size (1-50, affects key width)
   keyRange: { first: number; last: number }; // Key range (0-127, default 21-108)
@@ -258,8 +259,10 @@ export class DebugMidiWindow extends DebugWindowBase {
       }
     });
 
-    // Register window with WindowPlacer for position tracking
-    windowPlacer.registerWindow(`midi-${this.windowId}`, this.debugWindow);
+    // Register window with WindowPlacer for position tracking (only if using auto-placement)
+    if (!this.displaySpec.hasExplicitPosition) {
+      windowPlacer.registerWindow(`midi-${this.windowId}`, this.debugWindow);
+    }
 
     // Write HTML to temp file to allow file:// font URLs to work (like TERM window does)
     const fs = require('fs');
@@ -834,6 +837,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       displayName: 'MIDI',
       windowTitle: 'MIDI Keyboard',
       position: { x: 0, y: 0 },
+      hasExplicitPosition: false, // Default: use auto-placement
       size: { width: 400, height: 300 },
       keySize: 4, // Default keyboard size
       keyRange: { first: 21, last: 108 }, // Default 88-key piano range

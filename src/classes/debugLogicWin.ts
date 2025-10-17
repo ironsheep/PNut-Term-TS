@@ -707,8 +707,8 @@ export class DebugLogicWindow extends DebugWindowBase {
       `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`
     );
 
-    // Register window with WindowPlacer for position tracking
-    if (this.debugWindow) {
+    // Register window with WindowPlacer for position tracking (only if using auto-placement)
+    if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       this.logConsoleMessage(
         `[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`

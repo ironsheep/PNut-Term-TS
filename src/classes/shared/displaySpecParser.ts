@@ -11,6 +11,7 @@ import { Spin2NumericParser } from './spin2NumericParser';
 export interface BaseDisplaySpec {
   title: string;
   position: Position;
+  hasExplicitPosition?: boolean; // Optional - true if POS clause was present
   size: Size;
   nbrSamples: number;
   window: WindowColor;
@@ -39,6 +40,10 @@ export class DisplaySpecParser {
           const [isValid, position] = this.parsePosKeyword(lineParts, index);
           if (isValid) {
             spec.position = position;
+            // Mark that an explicit position was provided
+            if ('hasExplicitPosition' in spec) {
+              (spec as any).hasExplicitPosition = true;
+            }
             consumed = 3;
             return [true, consumed];
           }
