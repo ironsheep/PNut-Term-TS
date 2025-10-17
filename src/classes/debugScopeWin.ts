@@ -392,7 +392,9 @@ export class DebugScopeWindow extends DebugWindowBase {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
         const adjHeight = this.channelLineWidth / 2 + this.canvasMargin * 2 + channelSpec.ySize + 2 * this.channelInset; // inset is above and below
-        channelWidth = this.canvasMargin * 2 + this.displaySpec.nbrSamples * 2;
+        // Pascal: vWidth comes from SIZE directive (KeySize sets vWidth)
+        // Canvas width = margins + drawing area width
+        channelWidth = this.canvasMargin * 2 + this.displaySpec.size.width;
         // create a canvas for each channel
         channelCanvases.push(`<canvas id="channel-${index}" width="${channelWidth}" height="${adjHeight}"></canvas>`);
         // account for channel height
@@ -404,11 +406,20 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
 
     this.logMessage(`at createDebugWindow() SCOPE set up done... w/${channelCanvases.length} canvase(s)`);
+    this.logMessage(`  -- Using SIZE directive: ${this.displaySpec.size.width}x${this.displaySpec.size.height}`);
 
-    // set height so no scroller by default - use calculated size based on actual content
+    // Pascal: ClientHeight := vMarginTop + vHeight + vMarginBottom
+    // SIZE directive values ARE the drawing area (like Pascal vHeight, vWidth)
+    // We must ADD margins to get the total content area
     const channelLabelHeight = 13; // 13 pixels for channel labels 10pt + gap below
-    const contentHeight = windowCanvasHeight + channelLabelHeight + this.contentInset * 2;
-    const contentWidth = this.displaySpec.nbrSamples * 2 + this.contentInset * 2;
+
+    // Calculate total content height:
+    // - Container top margin (contentInset)
+    // - Channel labels height
+    // - Sum of all canvas heights (windowCanvasHeight already calculated above)
+    // - Container bottom margin (contentInset)
+    const contentHeight = 2 * this.contentInset + channelLabelHeight + windowCanvasHeight;
+    const contentWidth = 2 * this.contentInset + channelWidth;
 
     // Use base class method for consistent chrome adjustments
     const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
@@ -458,8 +469,8 @@ export class DebugScopeWindow extends DebugWindowBase {
       }
     });
 
-    // Register window with WindowPlacer for position tracking
-    if (this.debugWindow) {
+    // Register window with WindowPlacer for position tracking (only if using auto-placement)
+    if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
       windowPlacer.registerWindow(`scope-${this.displaySpec.displayName}`, this.debugWindow);
     }
@@ -787,6 +798,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         // Set defaults for all channel properties
         channelSpec.minValue = 0;
         channelSpec.maxValue = 255;
+        // Pascal: vTall[i] := vHeight (SIZE directive IS the drawing area height)
         channelSpec.ySize = this.displaySpec.size.height;
         channelSpec.yBaseOffset = 0;
         channelSpec.lgndShowMax = true;
@@ -1042,6 +1054,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               // Create default channel if none exist
               if (this.channelSpecs.length == 0) {
                 const defaultColor: DebugColor = new DebugColor('GREEN', 15);
+                // Pascal: vTall[i] := vHeight (SIZE directive IS the drawing area height)
                 this.channelSpecs.push({
                   name: 'Channel 0',
                   color: defaultColor.rgbString,
@@ -1480,7 +1493,8 @@ export class DebugScopeWindow extends DebugWindowBase {
       }
       try {
         // Draw region dimensions
-        const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
+        // Pascal: drawWidth comes from SIZE directive (vWidth), not calculated from samples
+        const drawWidth: number = this.displaySpec.size.width;
         const drawHeight: number = channelSpec.ySize + this.channelLineWidth / 2;
         const drawXOffset: number = this.canvasMargin;
         const drawYOffset: number = this.channelInset + this.canvasMargin;
@@ -1976,7 +1990,8 @@ export class DebugScopeWindow extends DebugWindowBase {
    */
   private generateTriggerIndicatorJS(canvasName: string, channelSpec: ScopeChannelSpec): string {
     // Calculate drawing area dimensions
-    const drawWidth: number = this.displaySpec.nbrSamples * this.channelLineWidth;
+    // Pascal: drawWidth comes from SIZE directive (vWidth)
+    const drawWidth: number = this.displaySpec.size.width;
     const drawXOffset: number = this.canvasMargin;
 
     // Calculate trigger X position (Pascal algorithm)
@@ -2164,7 +2179,8 @@ export class DebugScopeWindow extends DebugWindowBase {
       const chanIdx = this.triggerSpec.trigChannel;
       const canvasName = `channel-${chanIdx}`;
       const channelSpec = this.channelSpecs[chanIdx];
-      const canvasWidth = this.displaySpec.nbrSamples * this.channelLineWidth + this.canvasMargin;
+      // Pascal: canvas width from SIZE directive (vWidth) + margins
+      const canvasWidth = this.displaySpec.size.width + this.canvasMargin;
 
       // Draw arm level (orange solid line with label)
       if (

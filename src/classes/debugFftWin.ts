@@ -456,9 +456,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.sampleReadPtr = this.sampleWritePtr;
     this.logMessage(`  -> Updated readPtr to ${this.sampleReadPtr}`);
 
-    // Trigger display update
+    // Trigger display update (async)
     this.logMessage('  -> Calling drawFFT()');
-    this.drawFFT();
+    this.drawFFT(); // Fire and forget async call
   }
 
   /**
@@ -966,7 +966,7 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Force display update (called by base class UPDATE command)
    */
   protected forceDisplayUpdate(): void {
-    this.drawFFT();
+    this.drawFFT(); // Fire and forget async call
   }
 
   /**
@@ -1230,7 +1230,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw the FFT spectrum display
    */
-  private drawFFT(): void {
+  private async drawFFT(): Promise<void> {
     this.logMessage(`drawFFT called: canvasRenderer=${this.canvasRenderer !== undefined}, debugWindow=${this.debugWindow !== null}`);
 
     if (!this.canvasRenderer || !this.debugWindow) {
@@ -1238,9 +1238,9 @@ export class DebugFFTWindow extends DebugWindowBase {
       return;
     }
 
-    // Clear canvas with background color
+    // Clear canvas with background color (wait for completion)
     this.logMessage('  -> Clearing canvas');
-    this.clearCanvas();
+    await this.clearCanvasAsync();
 
     // Draw grid if enabled
     if (this.displaySpec.grid) {
@@ -1269,6 +1269,44 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
+   * Clear the canvas with background color (async version)
+   */
+  private async clearCanvasAsync(): Promise<void> {
+    if (!this.debugWindow) return;
+
+    const jsCode = `
+      (function() {
+        const canvas = document.getElementById('${this.canvasId}');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+
+          // Clear the entire canvas first
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Fill with background color
+          ctx.fillStyle = '${this.displaySpec.window.background}';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // Redraw the border after clearing
+          const gridColor = '${this.displaySpec.window.grid}';
+          const bgColor = '${this.displaySpec.window.background}';
+          ctx.strokeStyle = (gridColor !== bgColor) ? gridColor : '#808080';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(${this.canvasMargin}, ${this.canvasMargin},
+                       ${this.displayWidth}, ${this.displayHeight});
+        }
+        return true;
+      })();
+    `;
+
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to clear canvas: ${error}`);
+    }
+  }
+
+  /**
    * Clear the canvas with background color
    */
   private clearCanvas(): void {
@@ -1279,6 +1317,11 @@ export class DebugFFTWindow extends DebugWindowBase {
         const canvas = document.getElementById('${this.canvasId}');
         if (canvas) {
           const ctx = canvas.getContext('2d');
+
+          // Clear the entire canvas first
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Fill with background color
           ctx.fillStyle = '${this.displaySpec.window.background}';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1967,9 +2010,11 @@ export class DebugFFTWindow extends DebugWindowBase {
       }
     });
 
-    // Register window with WindowPlacer for position tracking
-    const windowPlacer = WindowPlacer.getInstance();
-    windowPlacer.registerWindow(`fft-${this.displaySpec.displayName}`, this.debugWindow);
+    // Register window with WindowPlacer for position tracking (only if using auto-placement)
+    if (!this.displaySpec.hasExplicitPosition) {
+      const windowPlacer = WindowPlacer.getInstance();
+      windowPlacer.registerWindow(`fft-${this.displaySpec.displayName}`, this.debugWindow);
+    }
 
     // Set up window event handlers
     this.debugWindow.on('ready-to-show', () => {
