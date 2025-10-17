@@ -230,7 +230,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   }
 
   get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} SCOPE`;
+    let desiredValue: string = `${this.displaySpec.displayName} - SCOPE`;
     if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
       desiredValue = this.displaySpec.windowTitle;
     }
