@@ -1801,18 +1801,18 @@ export class MainWindow {
     const charHeight = 18; // Default character height
     this.logConsoleMessage(`     char size (default): ${charWidth} x ${charHeight}`);
 
-    // Calculate the required dimensions for 24 lines by 80 characters
+    // Calculate the required dimensions for 27 lines by 80 characters
     const minWidth = 80 * charWidth; // Minimum width for 80 characters
-    const minHeight = (24 + 1) * charHeight; // Minimum height for 24 lines + 1 for xmit data entry
+    const minHeight = (27 + 1) * charHeight; // Minimum height for 27 lines + 1 for xmit data entry
 
     // have small screen
     // linux: 1280x720
-    // set to 80x24 porportioned screen
+    // set to 80x27 proportioned screen
 
     // have larger screen
     // macOS (rt): 3200x1775
     // macOS (lt): 3200?x1775?
-    // set to 80x24 porportioned screen
+    // set to 80x27 proportioned screen
     const targetScreenWidth: number = height < 800 ? Math.round(width / 2) : Math.round(width / 4);
     const targetScreenHeight: number =
       height < 800 ? Math.round((height / 5) * 2) : Math.round(this.mainWindowGeometry.width / 3.3);
