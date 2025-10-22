@@ -1375,7 +1375,38 @@ Downloader.downloadComplete → MainWindow.switchToTerminal → DebugTermWindow.
 SerialData → Downloader.parseDebugString → Window.updateContent → Canvas.render
 ```
 
-**User Input**:
+**Main Window Data Entry** (User Text Input):
+```
+1. User types in dataEntry field and presses Enter (Renderer Process)
+   → keydown event handler appends '\r' (carriage return)
+   → ipcRenderer.send('send-serial-data', data)
+   → Logs to browser console: "[TERMINAL] Sent to P2: <data>"
+   → Clears input field
+
+2. IPC Handler receives message (Main Process)
+   → ipcMain.on('send-serial-data') triggered
+   → Logs to main console: "[TERMINAL INPUT] Sending to P2: <data>"
+   → Logs to Debug Logger window: "[TX] <data with <cr> notation>"
+   → Calls sendSerialData(data)
+
+3. Serial Transmission (Main Process)
+   → _serialPort.write(data) - actual transmission to P2
+   → Stores chars in recentTransmitBuffer (for echo filtering if enabled)
+   → Blinks blue TX LED in UI (every 50 chars)
+
+4. Activity Indicators
+   → TX LED flashes blue for 100ms
+   → Visual confirmation of transmission
+```
+
+**Critical Electron Security Note**:
+- Event handlers MUST be attached in initial HTML `<script>` tags using `require('electron')`
+- Handlers attached via `executeJavaScript()` CANNOT access `require()` due to Electron v5.0+ security restrictions
+- Initial HTML scripts run with `nodeIntegration: true` and can require modules
+- Later injected scripts cannot access Node.js APIs even with `contextIsolation: false`
+- Pattern: Attach all IPC handlers in `initializeHandlers()` function within initial HTML
+
+**User Input** (Debug Windows):
 ```
 DOM Event → InputForwarder.queue → SerialPort.write → P2 Device
 ```

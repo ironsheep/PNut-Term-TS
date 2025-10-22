@@ -2662,6 +2662,24 @@ export class MainWindow {
             });
           }
 
+          // Data entry input handler
+          const dataEntry = document.getElementById('dataEntry');
+          if (dataEntry && !dataEntry.dataset.handlerAttached) {
+            dataEntry.dataset.handlerAttached = 'true';
+            dataEntry.addEventListener('keydown', function(event) {
+              if (event.key === 'Enter') {
+                const data = dataEntry.value + '\\r';
+                ipcRenderer.send('send-serial-data', data);
+                console.log('[TERMINAL] Sent to P2:', JSON.stringify(data));
+                dataEntry.value = '';
+                event.preventDefault();
+              }
+            });
+
+            // Auto-focus on page load
+            dataEntry.focus();
+            console.log('[TERMINAL] Input control hooked for dataEntry');
+          }
 
           // Menu initialization moved to programmatic injection after window loads
           // This avoids data URL script execution restrictions
@@ -3247,8 +3265,8 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
 
-      // Setup text input control for data entry
-      this.hookTextInputControl('dataEntry');
+      // Data entry input handler now attached in initial HTML DOMContentLoaded
+      // (removed hookTextInputControl call - executeJavaScript cannot access require('electron'))
 
       // Check serial port status after window loads - delayed to let async operations complete
       setTimeout(async () => {
