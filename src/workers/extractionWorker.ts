@@ -50,6 +50,7 @@ let extractionCount: number = 0;
  * - "Cog" (0x43 0x6F 0x67) - COG message
  * - 0xDB - debugger packet
  * - 0x00-0x07 - 416-byte debugger packet (COG ID)
+ * - 0x01-0x10 - PST control sequences (terminal output)
  */
 function looksLikeMessageStart(firstByte: number | undefined): boolean {
   if (firstByte === undefined) {
@@ -73,7 +74,17 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
   }
 
   // 0x00-0x07 - 416-byte debugger packet (COG ID)
+  // Note: Enhanced validation in find416ByteBoundary() checks bytes 1-3 are 0x00
   if (firstByte >= 0x00 && firstByte <= 0x07) {
+    return true;
+  }
+
+  // PST control sequences - terminal output with control codes
+  // 0x01 - Home, 0x02 - Position (multi-byte), 0x03-0x06 - Cursor move,
+  // 0x08 - Backspace, 0x09 - Tab, 0x0A - LF, 0x0B - Clear EOL,
+  // 0x0C - Clear below, 0x0D - CR, 0x0E-0x0F - Position X/Y (multi-byte),
+  // 0x10 - Clear Screen
+  if (firstByte >= 0x01 && firstByte <= 0x10) {
     return true;
   }
 
@@ -289,6 +300,11 @@ function findDBPacketBoundary(): Uint8Array | null {
  * CRITICAL: Must validate first byte is 0x00-0x07 (COG ID)
  * Without this check, ANY 416 bytes would be extracted as a debugger packet,
  * incorrectly splitting large text messages like SPRITEDEF commands!
+ *
+ * ENHANCED VALIDATION: Bytes 1-3 must be 0x00 (COG number is little-endian LONG)
+ * This distinguishes debugger packets from terminal messages with PST control codes:
+ * - Debugger packet: 0x01 0x00 0x00 0x00 ... (COG 1)
+ * - Terminal with PST: 0x10 0x50 0x32 0x20 ... (Clear Screen + "P2 ")
  */
 function find416ByteBoundary(): Uint8Array | null {
   if (!buffer || !buffer.hasData()) {
@@ -311,11 +327,30 @@ function find416ByteBoundary(): Uint8Array | null {
     return null;
   }
 
-  // Valid COG ID - extract remaining 415 bytes
-  const messageBytes: number[] = [firstByte];
+  // ENHANCED VALIDATION: Bytes 1-3 must be 0x00 (COG number is little-endian LONG)
+  // This prevents confusion with PST control codes (0x01-0x10) in terminal messages
+  const byte1Result = buffer.next();
+  const byte2Result = buffer.next();
+  const byte3Result = buffer.next();
+
+  if (byte1Result.status === NextStatus.EMPTY ||
+      byte2Result.status === NextStatus.EMPTY ||
+      byte3Result.status === NextStatus.EMPTY) {
+    buffer.restorePosition();
+    return null;
+  }
+
+  if (byte1Result.value !== 0x00 || byte2Result.value !== 0x00 || byte3Result.value !== 0x00) {
+    // Not a valid debugger packet - bytes 1-3 should be 0x00 for little-endian LONG
+    buffer.restorePosition();
+    return null;
+  }
+
+  // Valid COG ID with proper LONG format - extract remaining 412 bytes
+  const messageBytes: number[] = [firstByte, 0x00, 0x00, 0x00];
   const DEBUGGER_SIZE = 416;
 
-  for (let i = 1; i < DEBUGGER_SIZE; i++) {
+  for (let i = 4; i < DEBUGGER_SIZE; i++) {  // Start at 4 since we already read 4 bytes
     const result = buffer.next();
     if (result.status === NextStatus.EMPTY) {
       buffer.restorePosition();

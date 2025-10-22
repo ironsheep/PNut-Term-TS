@@ -905,10 +905,10 @@ export class LoggerWindow extends DebugWindowBase {
       } else if (actualData instanceof Uint8Array) {
         // DEFENSIVE: COG messages should be text - verify before decoding
         if (this.isASCIIData(actualData)) {
-          // Valid ASCII text - decode and display
-          const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
-          this.appendMessage(textMessage, 'cog-message');
-          this.writeToLog(textMessage);
+          // Valid ASCII text - format with PST control code symbols
+          const formatted = this.formatPSTControlCodes(actualData);
+          this.appendMessage(formatted, 'cog-message');
+          this.writeToLog(formatted);
         } else {
           // Binary data misclassified as COG - display defensively with hex fallback
           const hexFallback = this.formatBinaryAsHexFallback(actualData);
@@ -922,10 +922,10 @@ export class LoggerWindow extends DebugWindowBase {
       // DEFENSIVE: Check if data is actually ASCII before displaying
       if (actualData instanceof Uint8Array) {
         if (this.isASCIIData(actualData)) {
-          // Convert to string and display
-          const textMessage = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false }).decode(actualData);
-          this.appendMessage(textMessage, 'cog-message');
-          this.writeToLog(textMessage);
+          // Format with PST control code symbols visible
+          const formatted = this.formatPSTControlCodes(actualData);
+          this.appendMessage(formatted, 'cog-message');
+          this.writeToLog(formatted);
         } else {
           // Binary data misclassified as terminal - display as hex fallback
           const hexFallback = this.formatBinaryAsHexFallback(actualData);
@@ -1532,16 +1532,108 @@ export class LoggerWindow extends DebugWindowBase {
 
   /**
    * Check if binary data is valid ASCII (defensive display)
+   * Includes PST control codes for terminal messages
    */
   private isASCIIData(data: Uint8Array): boolean {
     for (let i = 0; i < data.length; i++) {
       const byte = data[i];
-      // Allow printable ASCII (32-126), tabs (9), line feeds (10), carriage returns (13)
-      if (!(byte >= 32 && byte <= 126) && byte !== 9 && byte !== 10 && byte !== 13) {
+      // Allow PST control codes (1-16) and printable ASCII (32-126)
+      // PST codes: 0x01-0x10 (Home, Position, Cursor, Tab, LF, Clear, CR, etc.)
+      // Note: 0x09 (Tab), 0x0A (LF), 0x0D (CR) are covered by 1-16 range
+      if (!(byte >= 1 && byte <= 16) && !(byte >= 32 && byte <= 126)) {
         return false;
       }
     }
     return true;
+  }
+
+  /**
+   * Format PST control codes as readable symbols for logging
+   * Converts binary control codes to human-readable notation
+   *
+   * Single-byte codes: 0x01=<HOME>, 0x03-0x06=cursor, 0x08=<BS>, 0x09=<TAB>,
+   *                    0x0A=<LF>, 0x0B=<CLEOL>, 0x0C=<CLBELOW>, 0x0D=<CR>, 0x10=<CLS>
+   * Multi-byte codes:  0x02,x,y=<POS:x,y>, 0x0E,x=<SETX:x>, 0x0F,y=<SETY:y>
+   */
+  private formatPSTControlCodes(data: Uint8Array): string {
+    const chars: string[] = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+
+      switch (byte) {
+        case 0x01:
+          chars.push('<HOME>');
+          break;
+        case 0x02: // Position: read x,y parameters
+          if (i + 2 < data.length) {
+            chars.push(`<POS:${data[i+1]},${data[i+2]}>`);
+            i += 2; // Skip parameter bytes
+          } else {
+            chars.push('<POS:incomplete>');
+          }
+          break;
+        case 0x03:
+          chars.push('<LEFT>');
+          break;
+        case 0x04:
+          chars.push('<RIGHT>');
+          break;
+        case 0x05:
+          chars.push('<UP>');
+          break;
+        case 0x06:
+          chars.push('<DOWN>');
+          break;
+        case 0x08:
+          chars.push('<BS>');
+          break;
+        case 0x09:
+          chars.push('<TAB>');
+          break;
+        case 0x0A:
+          chars.push('<LF>');
+          break;
+        case 0x0B:
+          chars.push('<CLEOL>');
+          break;
+        case 0x0C:
+          chars.push('<CLBELOW>');
+          break;
+        case 0x0D:
+          chars.push('<CR>');
+          break;
+        case 0x0E: // Set X: read x parameter
+          if (i + 1 < data.length) {
+            chars.push(`<SETX:${data[i+1]}>`);
+            i += 1;
+          } else {
+            chars.push('<SETX:incomplete>');
+          }
+          break;
+        case 0x0F: // Set Y: read y parameter
+          if (i + 1 < data.length) {
+            chars.push(`<SETY:${data[i+1]}>`);
+            i += 1;
+          } else {
+            chars.push('<SETY:incomplete>');
+          }
+          break;
+        case 0x10:
+          chars.push('<CLS>');
+          break;
+        default:
+          // Printable ASCII or other
+          if (byte >= 32 && byte <= 126) {
+            chars.push(String.fromCharCode(byte));
+          } else {
+            // Unknown control code - show as hex
+            chars.push(`<0x${byte.toString(16).padStart(2, '0').toUpperCase()}>`);
+          }
+      }
+    }
+
+    return chars.join('');
   }
 
   /**

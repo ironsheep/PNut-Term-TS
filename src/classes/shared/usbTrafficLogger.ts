@@ -97,7 +97,40 @@ export class USBTrafficLogger {
 
     // Format hex dump asynchronously (non-blocking)
     setImmediate(() => {
-      const hexDump = this.formatHexDump(bytes, timestamp);
+      const hexDump = this.formatHexDump(bytes, timestamp, 'RECV');
+
+      // Write to file (async I/O)
+      if (this.logStream) {
+        this.logStream.write(hexDump + '\n');
+        this.bytesLogged += bytes.length;
+        this.packetsLogged++;
+      }
+    });
+  }
+
+  /**
+   * Log transmitted USB data (async, non-blocking)
+   * @param data - Raw data being transmitted to P2
+   * @param timestamp - When data was sent (Date.now())
+   */
+  public logTx(data: string | Uint8Array | Buffer, timestamp: number = Date.now()): void {
+    if (!this.enabled || !this.logStream) {
+      return;
+    }
+
+    // Convert to Uint8Array
+    let bytes: Uint8Array;
+    if (typeof data === 'string') {
+      bytes = new Uint8Array(Buffer.from(data, 'utf8'));
+    } else if (data instanceof Buffer) {
+      bytes = new Uint8Array(data);
+    } else {
+      bytes = data;
+    }
+
+    // Format hex dump asynchronously (non-blocking)
+    setImmediate(() => {
+      const hexDump = this.formatHexDump(bytes, timestamp, 'SEND');
 
       // Write to file (async I/O)
       if (this.logStream) {
@@ -111,14 +144,16 @@ export class USBTrafficLogger {
   /**
    * Format packet as hex dump
    * Matches original messageExtractor.ts format
+   * @param direction - 'RECV' for received data, 'SEND' for transmitted data
    */
-  private formatHexDump(data: Uint8Array, timestamp: number): string {
+  private formatHexDump(data: Uint8Array, timestamp: number, direction: 'RECV' | 'SEND'): string {
     const lines: string[] = [];
 
     // Header with timestamp
     const timestampStr = new Date(timestamp).toISOString();
-    lines.push(`[USB RECV ${timestampStr}] Received ${data.length} bytes`);
-    lines.push('[USB RECV HEX/ASCII]:');
+    const verb = direction === 'RECV' ? 'Received' : 'Sent';
+    lines.push(`[USB ${direction} ${timestampStr}] ${verb} ${data.length} bytes`);
+    lines.push(`[USB ${direction} HEX/ASCII]:`);
 
     // Hex dump (16 bytes per line)
     const bytesPerLine = 16;

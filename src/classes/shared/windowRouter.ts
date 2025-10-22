@@ -97,7 +97,8 @@ export class WindowRouter extends EventEmitter {
   // Window management
   private windows: Map<string, { type: string; handler: WindowHandler; stats: WindowInfo }> = new Map();
   private displaysMap: { [key: string]: any } | null = null; // Reference to mainWindow.displays
-  
+  private mainWindowInstance: any | null = null; // Reference to MainWindow for terminal output
+
   // Two-tiered registration: Track window instances even before they're ready
   private windowInstances: Map<string, { type: string; instance: any; isReady: boolean }> = new Map();
   
@@ -181,6 +182,14 @@ export class WindowRouter extends EventEmitter {
   public setDisplaysMap(displaysMap: { [key: string]: any }): void {
     this.displaysMap = displaysMap;
     this.logger.info('SETUP', 'Displays map reference set - routing by displayName enabled');
+  }
+
+  /**
+   * Set the main window instance reference (for PST terminal output)
+   */
+  public setMainWindow(mainWindow: any): void {
+    this.mainWindowInstance = mainWindow;
+    this.logger.info('SETUP', 'Main window reference set - PST terminal routing enabled');
   }
 
   /**
@@ -513,29 +522,30 @@ export class WindowRouter extends EventEmitter {
       }
 
       // Route to main window blue terminal for user visibility
-      const terminalWindow = this.windows.get('terminal');
-      if (terminalWindow) {
-        this.logConsoleMessage(`[ROUTER->TERMINAL] Sending ${text.length} bytes to blue terminal`);
-        terminalWindow.handler(text);  // Terminal still gets text for now (MainWindow.appendLog)
-        terminalWindow.stats.messagesReceived++;
+      if (this.mainWindowInstance) {
+        this.logConsoleMessage(`[ROUTER->TERMINAL] Sending ${text.length} bytes to blue terminal (PST)`);
+        this.mainWindowInstance.appendToTerminal(text);
         handled = true;
 
         if (this.isRecording) {
           this.recordMessage('terminal', 'terminal', 'text', text);
         }
+      } else {
+        this.logger.warn('ROUTE', 'Main window instance not set - cannot route terminal output');
       }
     }
     // 4. Fallback for unhandled text
     else {
-      const terminalWindow = this.windows.get('terminal');
-      if (terminalWindow) {
-        terminalWindow.handler(text);
-        terminalWindow.stats.messagesReceived++;
+      if (this.mainWindowInstance) {
+        this.logConsoleMessage(`[ROUTER->TERMINAL] Fallback routing ${text.length} bytes to blue terminal (PST)`);
+        this.mainWindowInstance.appendToTerminal(text);
         handled = true;
 
         if (this.isRecording) {
           this.recordMessage('terminal', 'terminal', 'text', text);
         }
+      } else {
+        this.logger.warn('ROUTE', 'Main window instance not set - cannot route fallback text');
       }
     }
     

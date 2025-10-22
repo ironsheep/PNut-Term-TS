@@ -289,6 +289,14 @@ export class WorkerExtractor extends EventEmitter {
   }
 
   /**
+   * Log transmitted data to USB traffic log
+   * @param data - Data being transmitted to P2
+   */
+  public logTxData(data: string | Uint8Array | Buffer): void {
+    this.usbLogger.logTx(data);
+  }
+
+  /**
    * Get USB logger statistics
    */
   public getUSBLoggerStats() {

@@ -156,6 +156,7 @@ export class MainWindow {
     // Initialize WindowRouter with context for proper directory handling
     this.windowRouter = WindowRouter.getInstance(this.context);
     this.windowRouter.setDisplaysMap(this.displays); // Give router access to displays map for routing
+    this.windowRouter.setMainWindow(this); // Give router direct reference for PST terminal output
     if (this.context.runEnvironment.loggingEnabled) {
       this.context.logger.forceLogMessage('MainWindow started.');
     }
@@ -1168,6 +1169,12 @@ export class MainWindow {
   //
   public sendSerialData(data: string): void {
     if (this._serialPort !== undefined) {
+      // Log transmitted data to USB traffic log if enabled
+      const components = this.serialProcessor.getComponents();
+      if (components.workerExtractor) {
+        components.workerExtractor.logTxData(data);
+      }
+
       this._serialPort.write(data);
 
       // Store transmitted characters for echo filtering
@@ -2052,7 +2059,7 @@ export class MainWindow {
           font-size: 12px;
           overflow: hidden;
         }
-        #log-content {
+        #pst-content {
           position: absolute;
           top: 0;
           bottom: 20px;
@@ -2063,6 +2070,12 @@ export class MainWindow {
           background-color: ${logContentBGColor};
           color: ${logContentFGColor};
           font-family: 'Parallax', Consolas, monospace;
+          white-space: pre-wrap;
+        }
+        #pst-content p {
+          margin: 0;
+          padding: 0;
+          white-space: pre-wrap;
         }
         #status-bar {
           position: fixed;
@@ -2083,7 +2096,7 @@ export class MainWindow {
       </style>
     </head>
     <body>
-      <div id="log-content"></div>
+      <div id="pst-content"></div>
       <div id="status-bar">
         <div class="status-field">
           <span id="connection-status">Disconnected</span>
@@ -2213,7 +2226,7 @@ export class MainWindow {
           font-family: 'Courier New', monospace;
           z-index: 1;
         }
-        #log-content {
+        #pst-content {
           position: absolute;
           top: 112px; /* Height of menu (28px) + toolbar (32px) + dataEntry with margins (52px) */
           bottom: 41px; /* Height of #status-bar */
@@ -2229,20 +2242,26 @@ export class MainWindow {
           box-shadow: inset 2px 2px 4px rgba(0,0,0,0.1); /* Lighter shadow effect */
           margin: 4px;
           font-family: Consolas, 'Courier New', monospace;
+          white-space: pre-wrap;
+        }
+        #pst-content p {
+          margin: 0;
+          padding: 0;
+          white-space: pre-wrap;
         }
         /* Font styles for terminal */
-        #log-content.font-default {
+        #pst-content.font-default {
           font-family: Consolas, 'Courier New', monospace;
         }
-        #log-content.font-parallax {
+        #pst-content.font-parallax {
           font-family: 'Parallax', Consolas, monospace;
         }
-        #log-content.font-ibm3270 {
+        #pst-content.font-ibm3270 {
           font-family: 'IBM 3270', 'Courier New', monospace;
           font-size: 14px;
         }
         /* IBM 3270 Green Phosphor theme */
-        #log-content.font-ibm3270-green {
+        #pst-content.font-ibm3270-green {
           font-family: 'IBM 3270', 'Courier New', monospace;
           font-size: 14px;
           background-color: #000000;
@@ -2250,7 +2269,7 @@ export class MainWindow {
           text-shadow: 0 0 2px #00FF00;
         }
         /* IBM 3270 Amber Phosphor theme */
-        #log-content.font-ibm3270-amber {
+        #pst-content.font-ibm3270-amber {
           font-family: 'IBM 3270', 'Courier New', monospace;
           font-size: 14px;
           background-color: #000000;
@@ -2414,7 +2433,7 @@ export class MainWindow {
             </select>
           </div>
         </div>
-        <div id="log-content">
+        <div id="pst-content">
 </div>
       </div>
       <div id="status-bar">
@@ -3115,7 +3134,7 @@ export class MainWindow {
           this.safeExecuteJS(
             `
             (function() {
-              const terminal = document.getElementById('log-content');
+              const terminal = document.getElementById('pst-content');
               if (terminal) {
                 terminal.innerHTML = '';
                 terminal.dataset.cursorX = '0';
@@ -4021,7 +4040,7 @@ export class MainWindow {
     this.safeExecuteJS(
       `
       (function() {
-        const terminal = document.getElementById('log-content');
+        const terminal = document.getElementById('pst-content');
         if (terminal) {
           terminal.innerHTML = '';
           terminal.dataset.cursorX = '0';
@@ -4379,7 +4398,7 @@ export class MainWindow {
       const messages = this.logBuffer.join('\n');
       this.safeExecuteJS(`
         (function() {
-          const logContent = document.getElementById('log-content');
+          const logContent = document.getElementById('pst-content');
           const p = document.createElement('p');
           p.textContent = "${messages.replace(/"/g, '\\"')}";
           logContent.appendChild(p);
@@ -4398,7 +4417,7 @@ export class MainWindow {
     this.safeExecuteJS(
       `
       (function() {
-        const logContent = document.getElementById('log-content');
+        const logContent = document.getElementById('pst-content');
         const p = document.createElement('p');
         p.textContent = "${message}";
         logContent.appendChild(p);
@@ -4413,35 +4432,55 @@ export class MainWindow {
 
   private PEND_MESSAGE_COUNT: number = 100;
 
-  private appendLog(message: string) {
-    this.logConsoleMessage(`[APPEND_LOG] 📝 Called with message: "${message}" (${message.length} chars)`);
-    if (this.mainWindow) {
-      this.logConsoleMessage(`[APPEND_LOG] ✅ mainWindow exists, adding to buffer`);
-      this.logBuffer.push(message);
-      this.logConsoleMessage(
-        `[APPEND_LOG] Buffer size: ${this.logBuffer.length}, PEND_MESSAGE_COUNT: ${this.PEND_MESSAGE_COUNT}`
-      );
-      if (this.logBuffer.length > this.PEND_MESSAGE_COUNT || this.immediateLog) {
-        this.logConsoleMessage(
-          `[APPEND_LOG] 🚀 Triggering flush (buffer=${this.logBuffer.length}, immediate=${this.immediateLog})`
-        );
-        this.flushLogBuffer();
+  // ======================================================================
+  // PST (Propeller Serial Terminal) Output System
+  // Handles P2 terminal output with PST control codes and ANSI sequences
+  // ======================================================================
+
+  private pstBuffer: string[] = [];
+  private pstBufferTimer: NodeJS.Timeout | null = null;
+  private readonly MAX_PST_BUFFER: number = 1000;  // Safety valve
+  private readonly PST_FLUSH_TIMEOUT_MS: number = 100;  // Flush partial lines after 100ms
+
+  /**
+   * Append P2 terminal output to PST buffer
+   * PUBLIC - Called by WindowRouter for TERMINAL_OUTPUT messages
+   */
+  public appendToTerminal(message: string): void {
+    this.pstBuffer.push(message);
+
+    // Primary flush trigger: EOL detected (CR, LF, CRLF, LFCR)
+    const hasEOL = /[\r\n]/.test(message);
+
+    // Safety valve: prevent runaway buffer
+    const hitSafetyLimit = this.pstBuffer.length >= this.MAX_PST_BUFFER;
+
+    if (hasEOL || hitSafetyLimit) {
+      // Clear any pending timeout
+      if (this.pstBufferTimer) {
+        clearTimeout(this.pstBufferTimer);
+        this.pstBufferTimer = null;
       }
+      this.flushPSTBuffer();
     } else {
-      this.logConsoleMessage(`[APPEND_LOG] ❌ mainWindow is null/undefined, message dropped!`);
+      // Timeout flush: catch partial lines after 100ms of no new data
+      if (this.pstBufferTimer) {
+        clearTimeout(this.pstBufferTimer);
+      }
+      this.pstBufferTimer = setTimeout(() => {
+        this.pstBufferTimer = null;
+        this.flushPSTBuffer();
+      }, this.PST_FLUSH_TIMEOUT_MS);
     }
-    // Logging now handled by DebugLogger
   }
 
-  private logBuffer: string[] = [];
-
-  private flushLogBuffer() {
-    this.logConsoleMessage(`[FLUSH] 🌊 flushLogBuffer called, buffer size: ${this.logBuffer.length}`);
-    if (this.mainWindow && !this.mainWindow.isDestroyed() && this.logBuffer.length > 0) {
-      this.logConsoleMessage(`[FLUSH] ✅ Window valid, processing ${this.logBuffer.length} messages`);
-      // Serialize the logBuffer array to a JSON string
-      // -------------------------------------------------
-      // Control Characters
+  /**
+   * Flush PST buffer - Process PST control codes and display text
+   * Handles PST control characters (0x01-0x10) and ANSI sequences
+   */
+  private flushPSTBuffer(): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed() && this.pstBuffer.length > 0) {
+      // PST Control Characters:
       //   0x01 - HM: Home
       //   0x02,x,y - PC: Cursor to x,y
       //   0x03 - ML: Cursor Left
@@ -4458,34 +4497,29 @@ export class MainWindow {
       //   0x0E,x - PX: Set Cursor to x
       //   0x0F,y - PY: Set Cursor to y
       //   0x10 - CS: Clear Screen
-      // ---------------------------------------------------
-      // remove control characters from string, handle these separately
 
-      // Check if any string in the logBuffer contains control characters
-      const hasControlChars = this.logBuffer.some((currString) => /[\x01-\x10]/.test(currString));
+      // Check if any string in the pstBuffer contains control characters
+      const hasControlChars = this.pstBuffer.some((currString) => /[\x01-\x10]/.test(currString));
       if (hasControlChars) {
-        // since we have control characters, let's handle each string individually
-        for (let index = 0; index < this.logBuffer.length; index++) {
-          const currLine: string = this.logBuffer[index];
-          // handle control characters found in any of the strings BUT
-          // we need to handle each in the order we find and emit non-control characters as we go
-          // Control chars 0x02, 0x0e and 0x0f require x,y or x or y which are the next byte(s) in the string
-          // let's also gather the non-control in strings before we emit them.
+        // Handle each string individually, processing control codes
+        for (let index = 0; index < this.pstBuffer.length; index++) {
+          const currLine: string = this.pstBuffer[index];
+          // Process control characters in order, emitting non-control characters as we go
+          // Control chars 0x02, 0x0E and 0x0F require x,y or x or y (next byte(s) in the string)
           let nonControlChars: string = '';
           let i = 0;
           while (i < currLine.length) {
             const charCode = currLine.charCodeAt(i);
             let x: number = 0;
             let y: number = 0;
-            // Check if the character is a control character
+            // Check if the character is a PST control character
             if (charCode >= 1 && charCode <= 16) {
-              // first, emit any non-control characters
+              // First, emit any accumulated non-control characters
               if (nonControlChars.length > 0) {
-                this.emitStrings([nonControlChars]);
+                this.emitPSTStrings([nonControlChars]);
                 nonControlChars = ''; // reset for next round
               }
-              // Control character found
-              // XYZZY filter for control characters (add the control handlers here)
+              // Process PST control character
               switch (charCode) {
                 case 1:
                   // HM: Home - Move cursor to position (0,0)
@@ -4557,40 +4591,105 @@ export class MainWindow {
                   break;
               }
             } else {
-              // Non-control character
+              // Non-control character - accumulate for display
               nonControlChars = `${nonControlChars}${currLine[i]}`;
             }
             i++;
           }
+          // Emit any remaining non-control characters
+          if (nonControlChars.length > 0) {
+            this.emitPSTStrings([nonControlChars]);
+          }
         }
       } else {
-        // If no control characters are found, just append the logBuffer directly
-        this.emitStrings(this.logBuffer);
+        // No control characters - just display the buffer directly
+        this.emitPSTStrings(this.pstBuffer);
       }
+      // Clear buffer after processing
+      this.pstBuffer = [];
+    }
+  }
+
+  // ======================================================================
+  // Diagnostic Logging (Application Status Messages)
+  // ======================================================================
+
+  private appendLog(message: string) {
+    this.logConsoleMessage(`[APPEND_LOG] 📝 Called with message: "${message}" (${message.length} chars)`);
+    if (this.mainWindow) {
+      this.logConsoleMessage(`[APPEND_LOG] ✅ mainWindow exists, adding to buffer`);
+      this.logBuffer.push(message);
+      this.logConsoleMessage(
+        `[APPEND_LOG] Buffer size: ${this.logBuffer.length}, PEND_MESSAGE_COUNT: ${this.PEND_MESSAGE_COUNT}`
+      );
+      if (this.logBuffer.length > this.PEND_MESSAGE_COUNT || this.immediateLog) {
+        this.logConsoleMessage(
+          `[APPEND_LOG] 🚀 Triggering flush (buffer=${this.logBuffer.length}, immediate=${this.immediateLog})`
+        );
+        this.flushLogBuffer();
+      }
+    } else {
+      this.logConsoleMessage(`[APPEND_LOG] ❌ mainWindow is null/undefined, message dropped!`);
+    }
+    // Logging now handled by DebugLogger
+  }
+
+  private logBuffer: string[] = [];
+
+  private flushLogBuffer() {
+    this.logConsoleMessage(`[DIAG FLUSH] 🌊 flushLogBuffer called, buffer size: ${this.logBuffer.length}`);
+    if (this.mainWindow && !this.mainWindow.isDestroyed() && this.logBuffer.length > 0) {
+      this.logConsoleMessage(`[DIAG FLUSH] ✅ Window valid, emitting ${this.logBuffer.length} diagnostic messages`);
+      // Simple diagnostic message output - no PST control code processing
+      // PST control codes are only processed in flushPSTBuffer() for P2 terminal output
+      this.emitDiagnosticStrings(this.logBuffer);
       this.logBuffer = [];
       this.updateStatus();
     }
   }
 
-  private emitStrings(buffer: string[]) {
-    this.logConsoleMessage(`[EMIT] 📤 emitStrings called with ${buffer.length} messages`);
+  private emitDiagnosticStrings(buffer: string[]) {
+    this.logConsoleMessage(`[DIAG EMIT] 📤 emitDiagnosticStrings called with ${buffer.length} messages`);
     if (buffer.length > 0) {
-      this.logConsoleMessage(`[EMIT] Messages to display: ${JSON.stringify(buffer)}`);
+      this.logConsoleMessage(`[DIAG EMIT] Diagnostic messages to display: ${JSON.stringify(buffer)}`);
       const messages = JSON.stringify(buffer);
       this.safeExecuteJS(
         `
         (function() {
-          const logContent = document.getElementById('log-content');
+          const pstContent = document.getElementById('pst-content');
           const messagesArray = ${messages};  // Parse the JSON string to get the array
           messagesArray.forEach(message => {
             const p = document.createElement('p');
             p.textContent = message;
-            logContent.appendChild(p);
+            pstContent.appendChild(p);
           });
-          logContent.scrollTop = logContent.scrollHeight;
+          pstContent.scrollTop = pstContent.scrollHeight;
         })();
       `,
-        'emit strings to log'
+        'emit diagnostic strings to terminal'
+      );
+    }
+  }
+
+  private emitPSTStrings(buffer: string[]) {
+    this.logConsoleMessage(`[PST EMIT] 📤 emitPSTStrings called with ${buffer.length} messages`);
+    if (buffer.length > 0) {
+      this.logConsoleMessage(`[PST EMIT] Messages to display: ${JSON.stringify(buffer)}`);
+      const messages = JSON.stringify(buffer);
+      this.safeExecuteJS(
+        `
+        (function() {
+          const pstContent = document.getElementById('pst-content');
+          const messagesArray = ${messages};  // Parse the JSON string to get the array
+          messagesArray.forEach(message => {
+            const p = document.createElement('p');
+            p.textContent = message;
+            pstContent.appendChild(p);
+          });
+          pstContent.scrollTop = pstContent.scrollHeight;
+        })();
+      `,
+        'emit PST strings to terminal'
       );
     }
   }
@@ -4865,7 +4964,7 @@ export class MainWindow {
         this.safeExecuteJS(
           `
           (function() {
-            const terminal = document.getElementById('log-content');
+            const terminal = document.getElementById('pst-content');
             if (terminal) {
               terminal.dataset.cursorX = '0';
               terminal.dataset.cursorY = '0';
@@ -4889,7 +4988,7 @@ export class MainWindow {
           this.safeExecuteJS(
             `
             (function() {
-              const terminal = document.getElementById('log-content');
+              const terminal = document.getElementById('pst-content');
               if (terminal) {
                 terminal.dataset.cursorX = '${this.cursorX}';
                 terminal.dataset.cursorY = '${this.cursorY}';
@@ -4913,7 +5012,7 @@ export class MainWindow {
         this.safeExecuteJS(
           `
           (function() {
-            const terminal = document.getElementById('log-content');
+            const terminal = document.getElementById('pst-content');
             if (terminal) {
               terminal.innerHTML = '';
               terminal.dataset.cursorX = '0';
@@ -4931,7 +5030,7 @@ export class MainWindow {
         this.safeExecuteJS(
           `
           (function() {
-            const terminal = document.getElementById('log-content');
+            const terminal = document.getElementById('pst-content');
             if (terminal) {
               const lines = terminal.querySelectorAll('p');
               const cursorY = parseInt(terminal.dataset.cursorY || '0');
@@ -4951,7 +5050,7 @@ export class MainWindow {
         this.safeExecuteJS(
           `
           (function() {
-            const terminal = document.getElementById('log-content');
+            const terminal = document.getElementById('pst-content');
             if (terminal) {
               const lines = terminal.querySelectorAll('p');
               const cursorY = parseInt(terminal.dataset.cursorY || '0');
@@ -4999,7 +5098,7 @@ export class MainWindow {
           this.safeExecuteJS(
             `
             (function() {
-              const terminal = document.getElementById('log-content');
+              const terminal = document.getElementById('pst-content');
               if (terminal) {
                 const lines = terminal.querySelectorAll('p');
                 const cursorY = parseInt(terminal.dataset.cursorY || '0');
@@ -5031,7 +5130,7 @@ export class MainWindow {
           this.safeExecuteJS(
             `
             (function() {
-              const terminal = document.getElementById('log-content');
+              const terminal = document.getElementById('pst-content');
               if (terminal) {
                 const lines = terminal.querySelectorAll('p');
                 if (lines.length > 0) {
@@ -5087,7 +5186,7 @@ export class MainWindow {
     this.safeExecuteJS(
       `
       (function() {
-        const terminal = document.getElementById('log-content');
+        const terminal = document.getElementById('pst-content');
         if (terminal) {
           terminal.dataset.cursorX = '${this.cursorX}';
           terminal.dataset.cursorY = '${this.cursorY}';
