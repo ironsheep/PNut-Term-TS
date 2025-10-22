@@ -154,16 +154,17 @@ describe('FFTProcessor', () => {
       const dcValue = 1000;
       const samples = generateDCOffset(64, dcValue);
       const samplesInt32 = new Int32Array(samples);
-      
+
       const result = fftProcessor.performFFT(samplesInt32);
-      
+
       // DC component should be in the first bin (index 0)
       expect(result.power[0]).toBeGreaterThan(0);
-      
+
       // Other bins should have much lower power
+      // Note: Hanning window causes some spectral leakage, so we allow up to 1/3 of DC power
       const nonDcPower = result.power.slice(1);
       const maxNonDcPower = Math.max(...nonDcPower);
-      expect(maxNonDcPower).toBeLessThan(result.power[0] / 10);
+      expect(maxNonDcPower).toBeLessThan(result.power[0] / 3);
     });
 
     it('should handle single frequency sine wave correctly', () => {

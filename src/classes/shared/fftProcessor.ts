@@ -162,25 +162,29 @@ export class FFTProcessor {
       i2 <<= 1;
     }
     
-    // Convert (real,imag) to (power,angle) (matching Pascal exactly)
+    // Convert (real,imag) to (power,angle)
+    // CRITICAL: For Cooley-Tukey DIT FFT with natural-order input,
+    // output is in BIT-REVERSED order. We must un-reverse it.
     const resultSize = this.fftSize >> 1;
     const power = new Int32Array(resultSize);
     const angle = new Int32Array(resultSize);
-    
+
     for (let i = 0; i < resultSize; i++) {
-      const i2 = this.rev32(i) >> (32 - this.fftExp);
+      // Extract from bit-reversed indices (matching Pascal exactly)
+      // For DIT FFT with natural-order input, output is in bit-reversed order
+      const i2 = this.rev32(i) >>> (32 - this.fftExp);
       const rx = Number(this.fftReal[i2]);
       const ry = Number(this.fftImag[i2]);
-      
+
       // Calculate power using Pascal's exact formula
       const magnitude_shift = magnitude;
       const scale_factor = (0x800 << this.fftExp) >> magnitude_shift;
       power[i] = Math.round(Math.hypot(rx, ry) / scale_factor);
-      
+
       // Calculate angle (matching Pascal)
       angle[i] = Math.round(Math.atan2(rx, ry) / (Math.PI * 2) * 0x100000000) & 0xFFFFFFFF;
     }
-    
+
     return { power, angle };
   }
   

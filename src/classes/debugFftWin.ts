@@ -28,7 +28,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * FFT Display Specification Interface
@@ -187,12 +187,15 @@ export class DebugFFTWindow extends DebugWindowBase {
     magnitude: number;
   }> = [];
 
+  // Drawing lock to prevent concurrent draws (matches Pascal's synchronous FFT_Draw)
+  private isDrawing = false;
+
   constructor(context: Context, displaySpec: FFTDisplaySpec, windowId: string = `fft-${Date.now()}`) {
     super(context, windowId, 'fft');
     this.windowLogPrefix = 'fftW';
 
     // Disable logging for FFT window (final polish phase)
-    this.isLogging = false;
+    this.isLogging = true;
 
     // Initialize FFT processor and window functions
     this.fftProcessor = new FFTProcessor();
@@ -265,14 +268,27 @@ export class DebugFFTWindow extends DebugWindowBase {
    * @param channelIndex The channel index (0-7)
    */
   private addSample(sample: number, channelIndex: number): void {
+    if (ENABLE_CONSOLE_LOG)
+      console.log(`[FFT] addSample(${sample}, ch${channelIndex}): mask=0x${this.channelMask.toString(16)}`);
+
     // Validate channel index
     if (channelIndex < 0 || channelIndex >= this.MAX_CHANNELS) {
+      if (ENABLE_CONSOLE_LOG) console.log(`[FFT] REJECTED: Invalid channel index: ${channelIndex}`);
       this.logMessage(`Invalid channel index: ${channelIndex}`);
       return;
     }
 
     // Check if this channel is enabled
-    if ((this.channelMask & (1 << channelIndex)) === 0) {
+    const channelEnabled = (this.channelMask & (1 << channelIndex)) !== 0;
+    if (ENABLE_CONSOLE_LOG)
+      console.log(
+        `[FFT] Channel ${channelIndex} enabled check: mask & (1<<${channelIndex}) = 0x${this.channelMask.toString(
+          16
+        )} & 0x${(1 << channelIndex).toString(16)} = ${channelEnabled}`
+      );
+
+    if (!channelEnabled) {
+      if (ENABLE_CONSOLE_LOG) console.log(`[FFT] REJECTED: Channel ${channelIndex} is disabled`);
       return; // Channel is disabled, ignore sample
     }
 
@@ -294,13 +310,21 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     // Only advance write pointer and count when we've filled all enabled channels
     // This ensures samples stay synchronized across channels
-    if (channelIndex === this.getLastEnabledChannel()) {
+    const lastChannel = this.getLastEnabledChannel();
+    if (ENABLE_CONSOLE_LOG)
+      console.log(
+        `[FFT] Channel check: current=${channelIndex}, last=${lastChannel}, match=${channelIndex === lastChannel}`
+      );
+
+    if (channelIndex === lastChannel) {
       // Advance write pointer with wraparound
       this.sampleWritePtr = (this.sampleWritePtr + 1) & (this.BUFFER_SIZE - 1);
 
       // Increment samplePop until buffer is filled (Pascal: lines 1672)
       if (this.samplePop < this.displaySpec.samples) {
         this.samplePop++;
+        if (ENABLE_CONSOLE_LOG)
+          console.log(`[FFT] samplePop incremented to ${this.samplePop} (target: ${this.displaySpec.samples})`);
       }
 
       // Pascal logic (lines 1673-1674):
@@ -309,13 +333,16 @@ export class DebugFFTWindow extends DebugWindowBase {
       if (this.samplePop >= this.displaySpec.samples) {
         // Buffer is full, check if rate cycle triggers
         const shouldTrigger = this.rateCycle();
-        this.logMessage(`samplePop reached ${this.samplePop}, rateCycle returned ${shouldTrigger}, rateCounter=${this.rateCounter}`);
+        this.logMessage(
+          `samplePop reached ${this.samplePop}, rateCycle returned ${shouldTrigger}, rateCounter=${this.rateCounter}`
+        );
         if (shouldTrigger) {
           this.logMessage('*** TRIGGERING FFT ***');
           this.triggerFFT();
-          // Reset samplePop to allow continuous FFT processing
-          // This allows the buffer to continue accepting samples for the next FFT
-          this.samplePop = 0;
+          // CRITICAL: Do NOT reset samplePop! Pascal keeps it at vSamples forever
+          // This creates a SLIDING WINDOW: FFT recalculates every vRate (256) samples
+          // NOT every vSamples (2048) samples
+          // Resetting would create non-overlapping windows → unstable peak location
         }
       }
     }
@@ -432,17 +459,22 @@ export class DebugFFTWindow extends DebugWindowBase {
 
   /**
    * Trigger FFT processing when enough samples are collected
+   *
+   * CRITICAL: This must match Pascal's synchronous blocking behavior (line 1674)
+   * Pascal: if RateCycle then FFT_Draw;  // Blocks until draw completes
    */
   private triggerFFT(): void {
-    this.logMessage(`triggerFFT called: windowCreated=${this.windowCreated}, debugWindow=${this.debugWindow !== null}, channels=${this.channels.length}`);
+    this.logMessage(
+      `triggerFFT called: windowCreated=${this.windowCreated}, debugWindow=${this.debugWindow !== null}, channels=${
+        this.channels.length
+      }`
+    );
 
-    // Only process if window exists
-    if (!this.windowCreated) {
-      this.logMessage('  -> Skipping: window not created yet');
-      return;
-    }
+    // CRITICAL FIX (Bug #2): FFT calculations should work WITHOUT a window
+    // This enables headless testing and prevents data loss if window creation fails
+    // Only skip DRAWING if window doesn't exist, not the calculations
 
-    // Process FFT for each enabled channel if we have channel configurations
+    // Process FFT calculations (always, regardless of window state)
     if (this.channels.length > 0) {
       this.logMessage(`  -> Processing ${this.channels.length} channel FFTs`);
       this.processChannelFFTs();
@@ -456,9 +488,38 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.sampleReadPtr = this.sampleWritePtr;
     this.logMessage(`  -> Updated readPtr to ${this.sampleReadPtr}`);
 
-    // Trigger display update (async)
+    // DRAWING is optional (only if window exists)
+    if (!this.windowCreated || !this.debugWindow) {
+      this.logMessage('  -> Skipping draw: window not available (headless mode)');
+      return;
+    }
+
+    // Check drawing lock - skip draw if previous draw still in progress
+    if (this.isDrawing) {
+      this.logMessage('  -> Skipping draw: previous draw still in progress');
+      return;
+    }
+
+    // Trigger display update (async but with lock)
     this.logMessage('  -> Calling drawFFT()');
-    this.drawFFT(); // Fire and forget async call
+    this.performDraw();
+  }
+
+  /**
+   * Perform the draw operation with lock protection
+   * Ensures only one draw happens at a time, matching Pascal's synchronous behavior
+   */
+  private async performDraw(): Promise<void> {
+    // Set lock
+    this.isDrawing = true;
+
+    try {
+      // Await the draw to completion (matches Pascal's synchronous FFT_Draw)
+      await this.drawFFT();
+    } finally {
+      // Always release lock, even if draw fails
+      this.isDrawing = false;
+    }
   }
 
   /**
@@ -489,8 +550,25 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Extract samples for this specific channel
       const samples = this.extractChannelSamples(startPtr, this.displaySpec.samples, i);
 
+      // DIAGNOSTIC: Check extracted samples for alternating zeros
+      if (ENABLE_CONSOLE_LOG) {
+        const first20 = Array.from(samples.slice(0, 20));
+        const hasAlternatingZeros = first20[1] === 0 && first20[3] === 0 && first20[5] === 0;
+        console.log(`[FFT EXTRACT] Ch${i} first 20 samples: ${first20.join(', ')}`);
+        console.log(`[FFT EXTRACT] Alternating zeros in INPUT: ${hasAlternatingZeros ? 'YES - BUG HERE!' : 'NO'}`);
+      }
+
       // Perform FFT with channel's magnitude setting
       const result = this.fftProcessor.performFFT(samples, channel.magnitude);
+
+      // DIAGNOSTIC: Check FFT output immediately after calculation
+      if (ENABLE_CONSOLE_LOG) {
+        const first20Power = Array.from(result.power.slice(0, 20));
+        const hasAlternatingZeros = first20Power[1] === 0 && first20Power[3] === 0 && first20Power[5] === 0;
+        console.log(`[FFT OUTPUT] Ch${i} first 20 power bins: ${first20Power.join(', ')}`);
+        console.log(`[FFT OUTPUT] Alternating zeros in OUTPUT: ${hasAlternatingZeros ? 'YES - BUG IN FFT!' : 'NO'}`);
+        console.log(`[FFT OUTPUT] Total bins returned: ${result.power.length}, Expected: ${this.displaySpec.samples / 2}`);
+      }
 
       // Store results for this channel
       this.channelFFTResults.push({
@@ -895,6 +973,8 @@ export class DebugFFTWindow extends DebugWindowBase {
       spec.dotSize = 1;
     }
 
+    console.log(`[FFT SPEC] After parsing: lineSize=${spec.lineSize}, dotSize=${spec.dotSize}`);
+
     // Ensure nbrSamples matches samples (required by BaseDisplaySpec)
     spec.nbrSamples = spec.samples;
 
@@ -989,16 +1069,16 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Entry point for message processing from WindowRouter
    * Called by router's updateContent(dataParts)
    */
-  public updateContent(lineParts: string[]): void {
-    this.processMessageImmediate(lineParts);
+  public async updateContent(lineParts: string[]): Promise<void> {
+    await this.processMessageImmediate(lineParts);
   }
 
   /**
-   * Update FFT window content with new data (synchronous wrapper for async operations)
+   * Update FFT window content with new data (async implementation)
    */
-  protected processMessageImmediate(lineParts: string[]): void {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
+    // Handle async operations and await them
+    await this.processMessageAsync(lineParts);
   }
 
   /**
@@ -1027,8 +1107,13 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // Check for channel configuration (starts with quoted string)
       if (part.startsWith("'") || part.startsWith('"')) {
+        if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Found quoted string at index ${i}: "${part}"`);
+
         // Parse channel configuration
         const channelConfig = this.parseChannelConfiguration(lineParts, i);
+
+        if (ENABLE_CONSOLE_LOG) console.log(`[FFT] parseChannelConfiguration returned:`, channelConfig);
+
         if (channelConfig) {
           // Add channel configuration
           const channelIndex = this.channels.length;
@@ -1037,10 +1122,20 @@ export class DebugFFTWindow extends DebugWindowBase {
           // Enable this channel in the mask
           this.channelMask |= 1 << channelIndex;
 
+          if (ENABLE_CONSOLE_LOG)
+            console.log(
+              `[FFT] Added channel ${channelIndex}: ${channelConfig.label}, mask now: 0x${this.channelMask.toString(
+                16
+              )}`
+            );
           this.logMessage(`Added channel ${channelIndex}: ${channelConfig.label}`);
 
           // Skip past the channel configuration parameters
-          i += 6; // Label + 6 numeric parameters
+          // Format: 'label' mag high tall base grid color textsize
+          // That's 8 total parts, so skip 7 more after the label (index i)
+          i += 7; // Label + 6 numeric parameters + textsize
+        } else {
+          if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Channel config parsing FAILED for part at index ${i}`);
         }
         continue;
       }
@@ -1057,12 +1152,20 @@ export class DebugFFTWindow extends DebugWindowBase {
           if (value !== null) {
             // NOW create the window with all channel specifications known
             if (!this.windowCreated) {
-              this.initializeCanvas();
-              this.createDebugWindow();
-              this.windowCreated = true;
+              try {
+                this.initializeCanvas();
+                this.createDebugWindow();
+                this.windowCreated = true;
+              } catch (error) {
+                // Window creation failed (e.g., in test environment)
+                // Log but continue processing - FFT calculations work without window
+                if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Window creation failed (headless mode):`, error);
+                this.windowCreated = true; // Mark as attempted to avoid repeated failures
+              }
             }
 
             // Add sample to buffer for current channel
+            // This should work even if window creation failed
             this.addSample(value, this.currentChannel);
 
             // Advance to next enabled channel (round-robin)
@@ -1101,12 +1204,20 @@ export class DebugFFTWindow extends DebugWindowBase {
         if (!isNaN(numValue)) {
           // CREATE WINDOW on first numeric data arrival (deferred creation pattern)
           if (!this.windowCreated) {
-            this.initializeCanvas();
-            this.createDebugWindow();
-            this.windowCreated = true;
+            try {
+              this.initializeCanvas();
+              this.createDebugWindow();
+              this.windowCreated = true;
+            } catch (error) {
+              // Window creation failed (e.g., in test environment)
+              // Log but continue processing - FFT calculations work without window
+              if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Window creation failed (headless mode):`, error);
+              this.windowCreated = true; // Mark as attempted to avoid repeated failures
+            }
           }
 
           // Add sample to buffer for current channel
+          // This should work even if window creation failed
           this.addSample(numValue, this.currentChannel);
 
           // Advance to next enabled channel
@@ -1134,7 +1245,17 @@ export class DebugFFTWindow extends DebugWindowBase {
    */
   private parseChannelConfiguration(parts: string[], startIndex: number): FFTChannelSpec | null {
     // Format: 'label' mag high tall base grid color
+    if (ENABLE_CONSOLE_LOG)
+      console.log(`[FFT] parseChannelConfiguration: startIndex=${startIndex}, parts.length=${parts.length}`);
+    if (ENABLE_CONSOLE_LOG)
+      console.log(
+        `[FFT] Boundary check: ${startIndex} + 6 = ${startIndex + 6} >= ${parts.length}? ${
+          startIndex + 6 >= parts.length
+        }`
+      );
+
     if (startIndex + 6 >= parts.length) {
+      if (ENABLE_CONSOLE_LOG) console.log(`[FFT] FAILED: Incomplete channel configuration at index ${startIndex}`);
       this.logMessage(`Incomplete channel configuration at index ${startIndex}`);
       return null;
     }
@@ -1231,7 +1352,9 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Draw the FFT spectrum display
    */
   private async drawFFT(): Promise<void> {
-    this.logMessage(`drawFFT called: canvasRenderer=${this.canvasRenderer !== undefined}, debugWindow=${this.debugWindow !== null}`);
+    this.logMessage(
+      `drawFFT called: canvasRenderer=${this.canvasRenderer !== undefined}, debugWindow=${this.debugWindow !== null}`
+    );
 
     if (!this.canvasRenderer || !this.debugWindow) {
       this.logMessage('  -> Skipping: canvas or window not ready');
@@ -1239,32 +1362,35 @@ export class DebugFFTWindow extends DebugWindowBase {
     }
 
     // Clear canvas with background color (wait for completion)
+    // Pascal equivalent: ClearBitmap (line 1687)
     this.logMessage('  -> Clearing canvas');
     await this.clearCanvasAsync();
 
-    // Draw grid if enabled
+    // Draw grid if enabled (wait for completion to match Pascal's synchronous behavior)
     if (this.displaySpec.grid) {
       this.logMessage('  -> Drawing grid');
-      this.drawFrequencyGrid();
+      await this.drawFrequencyGrid();
     }
 
-    // Draw FFT spectrum based on mode
+    // Draw FFT spectrum based on mode (wait for completion to match Pascal's synchronous behavior)
     if (this.channels.length > 0) {
       this.logMessage(`  -> Drawing ${this.channels.length} channel spectrums`);
       // Draw individual channels (in reverse order for proper overlay)
-      this.drawChannelSpectrums();
+      // Pascal: for j := vIndex - 1 downto 0 (line 1688)
+      await this.drawChannelSpectrums();
     } else {
       this.logMessage('  -> Drawing combined spectrum');
       // Draw combined spectrum
-      this.drawCombinedSpectrum();
+      await this.drawCombinedSpectrum();
     }
 
-    // Draw labels if enabled
+    // Draw labels if enabled (wait for completion to match Pascal's synchronous behavior)
     if (this.displaySpec.showLabels) {
       this.logMessage('  -> Drawing labels');
-      this.drawFrequencyLabels();
+      await this.drawFrequencyLabels();
     }
 
+    // Pascal equivalent: BitmapToCanvas(0) - all drawing complete (line 1711)
     this.logMessage('  -> drawFFT complete');
   }
 
@@ -1344,7 +1470,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw frequency grid lines
    */
-  private drawFrequencyGrid(): void {
+  private async drawFrequencyGrid(): Promise<void> {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1379,41 +1505,45 @@ export class DebugFFTWindow extends DebugWindowBase {
             ctx.stroke();
           }
         }
+        return true;
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
       this.logMessage(`Failed to draw grid: ${error}`);
-    });
+    }
   }
 
   /**
    * Draw the combined FFT spectrum (when no channels configured)
    */
-  private drawCombinedSpectrum(): void {
+  private async drawCombinedSpectrum(): Promise<void> {
     if (!this.fftPower || !this.debugWindow) return;
 
     const power = this.fftPower;
     const color = this.displaySpec.spectrumColor || '#00FF00';
     const defaultHigh = 0x7fffffff; // Pascal default (line 1610)
 
-    this.drawSpectrum(power, color, 0, defaultHigh, 100, 0);
+    await this.drawSpectrum(power, color, 0, defaultHigh, 100, 0);
   }
 
   /**
    * Draw individual channel spectrums
    * Pascal: draws in reverse order (vIndex - 1 downto 0) so last channel is on top
    */
-  private drawChannelSpectrums(): void {
+  private async drawChannelSpectrums(): Promise<void> {
     if (!this.debugWindow) return;
 
     // Draw in reverse order so last channel is on top (Pascal: line 1688)
+    // Must draw sequentially to maintain overlay order
     for (let i = this.channels.length - 1; i >= 0; i--) {
       if (i < this.channelFFTResults.length && this.channelFFTResults[i]) {
         const channel = this.channels[i];
         const { power } = this.channelFFTResults[i];
 
-        this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
+        await this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
       }
     }
   }
@@ -1436,14 +1566,14 @@ export class DebugFFTWindow extends DebugWindowBase {
    * @param tall Display height in pixels (Pascal: vTall[j])
    * @param grid Grid positioning (Pascal: vGrid[j])
    */
-  private drawSpectrum(
+  private async drawSpectrum(
     power: Int32Array,
     color: string,
     base: number,
     high: number,
     tall: number,
     grid: number
-  ): void {
+  ): Promise<void> {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1469,12 +1599,24 @@ export class DebugFFTWindow extends DebugWindowBase {
       powerData.push(value);
     }
 
-    // Find max value for scaling
-    const maxPower = Math.max(...powerData, 1);
-
     // Generate drawing commands based on display mode
+    // Pascal scales using configured 'high' parameter, not actual data max
     // Pascal logic (line 1702): if vLineSize >= 0 then DrawLineDot else vertical bars
     let drawCommands = '';
+
+    console.log(`[FFT DRAW] lineSize=${this.displaySpec.lineSize}, dotSize=${this.displaySpec.dotSize}`);
+    console.log(`[FFT DRAW] Channel: high=${high}, tall=${tall}, base=${base}`);
+
+    // Show power spectrum summary
+    const maxPower = Math.max(...powerData);
+    const maxBin = powerData.indexOf(maxPower);
+    console.log(`[FFT DRAW] Power spectrum: ${powerData.length} bins, max=${maxPower.toFixed(0)} at bin ${maxBin}`);
+    console.log(
+      `[FFT DRAW] First 10 bins: ${powerData
+        .slice(0, 10)
+        .map((v) => v.toFixed(0))
+        .join(', ')}`
+    );
 
     if (this.displaySpec.lineSize >= 0) {
       // Line/Dot mode (lineSize >= 0)
@@ -1483,7 +1625,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         // Line mode
         drawCommands = this.generateLineDrawCommands(
           powerData,
-          maxPower,
+          high,
           width,
           height,
           base,
@@ -1495,7 +1637,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         // Dot only mode (lineSize = 0, dotSize > 0)
         drawCommands = this.generateDotDrawCommands(
           powerData,
-          maxPower,
+          high,
           width,
           height,
           base,
@@ -1509,7 +1651,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Width of bar = abs(lineSize), plus optional dot on top
       drawCommands = this.generateBarDrawCommands(
         powerData,
-        maxPower,
+        high,
         width,
         height,
         base,
@@ -1528,20 +1670,26 @@ export class DebugFFTWindow extends DebugWindowBase {
           const ctx = canvas.getContext('2d');
           ${drawCommands}
         }
+        return true;
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
       this.logMessage(`Failed to draw spectrum: ${error}`);
-    });
+    }
   }
 
   /**
    * Generate line drawing commands
+   *
+   * Pascal scaling: fScale := (vTall[j] - 1) / vHigh[j] * $100; then y := ... - Round(v * fScale)
+   * Equivalent to: normalizedPower = v / high; then y = baseline - normalizedPower * tall
    */
   private generateLineDrawCommands(
     powerData: number[],
-    maxPower: number,
+    high: number,
     width: number,
     height: number,
     base: number,
@@ -1558,9 +1706,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
-    // Scale tall from 0-100 to actual height range within display area
-    const scaledHeight = (tall / 100) * displayHeight;
-    const baseY = displayTop + displayHeight - (base / 100) * displayHeight; // Top-down coordinates
+    // tall and base are already in PIXELS from Pascal channel config, not percentages
+    const scaledHeight = tall; // Use pixels directly
+    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = `
       ctx.strokeStyle = '${color}';
@@ -1569,8 +1717,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth / numBins) + (displayWidth / numBins) / 2;
-      const normalizedPower = Math.min(1, powerData[i] / maxPower);
+      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // Pascal: normalizes to configured 'high' parameter, not actual data max
+      const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
 
       if (i === 0) {
@@ -1589,12 +1738,15 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Pascal: SmoothLine(x, baseline, x, y, -vLineSize shl 6, color, $FF)
    * Draws vertical bars from baseline to value, with optional dot on top
    *
+   * Pascal scaling: fScale := (vTall[j] - 1) / vHigh[j] * $100; then y := ... - Round(v * fScale)
+   * Equivalent to: normalizedPower = v / high; then y = baseline - normalizedPower * tall
+   *
    * @param barWidth Width of vertical bars (from abs(lineSize))
    * @param dotSize Optional dot size to draw on top of bars (Pascal: vDotSize)
    */
   private generateBarDrawCommands(
     powerData: number[],
-    maxPower: number,
+    high: number,
     width: number,
     height: number,
     base: number,
@@ -1611,9 +1763,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
-    // Scale tall from 0-100 to actual height range within display area
-    const scaledHeight = (tall / 100) * displayHeight;
-    const baseY = displayTop + displayHeight - (base / 100) * displayHeight; // Top-down coordinates
+    // tall and base are already in PIXELS from Pascal channel config, not percentages
+    const scaledHeight = tall; // Use pixels directly
+    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = '';
 
@@ -1625,8 +1777,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth / numBins) + (displayWidth / numBins) / 2;
-      const normalizedPower = Math.min(1, powerData[i] / maxPower);
+      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // Pascal: normalizes to configured 'high' parameter, not actual data max
+      const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
 
       // Draw vertical line from baseline to value
@@ -1653,10 +1806,13 @@ export class DebugFFTWindow extends DebugWindowBase {
 
   /**
    * Generate dot drawing commands
+   *
+   * Pascal scaling: fScale := (vTall[j] - 1) / vHigh[j] * $100; then y := ... - Round(v * fScale)
+   * Equivalent to: normalizedPower = v / high; then y = baseline - normalizedPower * tall
    */
   private generateDotDrawCommands(
     powerData: number[],
-    maxPower: number,
+    high: number,
     width: number,
     height: number,
     base: number,
@@ -1672,17 +1828,18 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
-    // Scale tall from 0-100 to actual height range within display area
-    const scaledHeight = (tall / 100) * displayHeight;
-    const baseY = displayTop + displayHeight - (base / 100) * displayHeight; // Top-down coordinates
+    // tall and base are already in PIXELS from Pascal channel config, not percentages
+    const scaledHeight = tall; // Use pixels directly
+    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = `
       ctx.fillStyle = '${color}';
     `;
 
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth / numBins) + (displayWidth / numBins) / 2;
-      const normalizedPower = Math.min(1, powerData[i] / maxPower);
+      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // Pascal: normalizes to configured 'high' parameter, not actual data max
+      const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
 
       // Draw dot as small circle
@@ -1877,7 +2034,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw frequency labels
    */
-  private drawFrequencyLabels(): void {
+  private async drawFrequencyLabels(): Promise<void> {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1913,12 +2070,15 @@ export class DebugFFTWindow extends DebugWindowBase {
           const centerFreq = (${firstBin * binFrequency} + ${lastBin * binFrequency}) / 2;
           ctx.fillText(centerFreq.toFixed(0) + 'Hz', canvas.width / 2, canvas.height - 5);
         }
+        return true;
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
       this.logMessage(`Failed to draw labels: ${error}`);
-    });
+    }
   }
 
   /**

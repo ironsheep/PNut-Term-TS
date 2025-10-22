@@ -12,7 +12,7 @@ import { createMockBrowserWindow, createMockContext, setupDebugWindowTest, clean
  * Test setup configuration for debug windows
  */
 export interface DebugWindowTestConfig {
-  windowType: 'logic' | 'scope' | 'plot' | 'bitmap' | 'midi' | 'term';
+  windowType: 'logic' | 'scope' | 'plot' | 'bitmap' | 'midi' | 'term' | 'fft';
   displayName: string;
   mockExternalDependencies?: boolean;
   setupCanvas?: boolean;
