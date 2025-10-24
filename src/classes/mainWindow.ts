@@ -1228,25 +1228,27 @@ export class MainWindow {
   //
   public sendSerialData(data: string | Buffer): void {
     if (this._serialPort !== undefined) {
+      // Convert Buffer to string once (if needed) for all downstream uses
+      // Use latin1 encoding to preserve binary bytes (1:1 byte mapping)
+      const dataString = Buffer.isBuffer(data) ? data.toString('latin1') : data;
+
       // Log transmitted data to USB traffic log if enabled
       const components = this.serialProcessor.getComponents();
       if (components.workerExtractor) {
-        // Convert Buffer to string for logging if needed
-        const logData = Buffer.isBuffer(data) ? data.toString('latin1') : data;
-        components.workerExtractor.logTxData(logData);
+        components.workerExtractor.logTxData(dataString);
       }
 
+      // Write to serial port - accepts both string and Buffer
       this._serialPort.write(data);
 
       // Store transmitted characters for echo filtering
       if (this.echoOffEnabled) {
-        const transmitString = Buffer.isBuffer(data) ? data.toString('latin1') : data;
-        this.recentTransmitBuffer = transmitString.split('');
+        this.recentTransmitBuffer = dataString.split('');
         this.transmitTimestamp = Date.now();
       }
 
       // TX activity indicator - blink every 50 chars or first char
-      this.txCharCounter += data.length;
+      this.txCharCounter += dataString.length;
       if (this.txCharCounter >= 50 || !this.txActivityTimer) {
         this.blinkActivityLED('tx');
         this.txCharCounter = 0;

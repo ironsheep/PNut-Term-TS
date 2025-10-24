@@ -865,15 +865,17 @@ export class DebugPlotWindow extends DebugWindowBase {
       // Load the temp file instead of using data URL
       this.debugWindow.loadFile(tempFile);
 
-      // Clean up temp file after a delay
-      setTimeout(() => {
+      // Clean up temp file immediately after load finishes
+      // Once loaded, the content is in memory so the file is no longer needed
+      this.debugWindow.webContents.once('did-finish-load', () => {
         try {
           fs.unlinkSync(tempFile);
-          this.logMessage(`Cleaned up temp file: ${tempFile}`);
+          this.logMessage(`Cleaned up temp file after load: ${tempFile}`);
         } catch (err) {
           // File might already be gone, that's ok
+          this.logMessage(`Temp file cleanup error (non-fatal): ${err}`);
         }
-      }, 5000);
+      });
     } catch (error) {
       this.logMessage(`Failed to load HTML file: ${error}`);
     }
