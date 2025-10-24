@@ -574,7 +574,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           canvas {
             background-color: ${this.displaySpec.window.background};
             display: block;
-            margin: 0;
+            margin: 2px 7px;
           }
           ${
             ENABLE_PERFORMANCE_MONITORING
