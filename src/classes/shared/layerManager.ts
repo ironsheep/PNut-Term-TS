@@ -8,6 +8,7 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { Jimp } from 'jimp';
 
 export interface CropRect {
   left: number;
@@ -30,7 +31,7 @@ export class LayerManager {
     }
   }
 
-  private layers: (OffscreenCanvas | null)[];
+  public layers: (Awaited<ReturnType<typeof Jimp.read>> | null)[];
   private static readonly MAX_LAYERS = 8;
   private memoryUsage: number = 0; // Track memory usage in bytes
   private maxMemoryUsage: number = 0; // Track peak memory usage
@@ -66,24 +67,8 @@ export class LayerManager {
       // Check if file exists
       await fs.access(filepath);
 
-      // Read file as buffer
-      const buffer = await fs.readFile(filepath);
-      
-      // Create a Blob from the buffer (convert to Uint8Array)
-      const blob = new Blob([new Uint8Array(buffer)]);
-      
-      // Create an image bitmap from the blob
-      const imageBitmap = await createImageBitmap(blob);
-      
-      // Create OffscreenCanvas with image dimensions
-      const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('Failed to get 2D context from OffscreenCanvas');
-      }
-
-      // Draw image to canvas
-      ctx.drawImage(imageBitmap, 0, 0);
+      // Load image using Jimp (works in Node.js, supports BMP/PNG/JPG)
+      const image = await Jimp.read(filepath);
 
       // Clear any existing layer with proper memory tracking
       if (this.layers[index]) {
@@ -91,10 +76,10 @@ export class LayerManager {
       }
 
       // Calculate memory usage for new layer
-      const layerMemory = this.calculateLayerMemory(imageBitmap.width, imageBitmap.height);
+      const layerMemory = this.calculateLayerMemory(image.width, image.height);
 
-      // Store the new layer
-      this.layers[index] = canvas;
+      // Store the Jimp image object
+      this.layers[index] = image;
 
       // Update memory tracking and metadata
       this.memoryUsage += layerMemory;
@@ -106,7 +91,7 @@ export class LayerManager {
         size: layerMemory
       };
 
-      this.logConsoleMessage(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${imageBitmap.width}x${imageBitmap.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${image.width}x${image.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('ENOENT')) {
@@ -146,23 +131,36 @@ export class LayerManager {
     }
 
     try {
-      if (sourceRect) {
-        // Manual crop mode with explicit source rectangle
-        ctx.drawImage(
-          layer,
-          sourceRect.left,
-          sourceRect.top,
-          sourceRect.width,
-          sourceRect.height,
-          destX,
-          destY,
-          sourceRect.width,
-          sourceRect.height
-        );
-      } else {
-        // AUTO mode - use full layer dimensions
-        ctx.drawImage(layer, destX, destY);
+      // Determine source region
+      const srcX = sourceRect ? sourceRect.left : 0;
+      const srcY = sourceRect ? sourceRect.top : 0;
+      const srcWidth = sourceRect ? sourceRect.width : layer.width;
+      const srcHeight = sourceRect ? sourceRect.height : layer.height;
+
+      // Validate source rectangle bounds
+      if (srcX < 0 || srcY < 0 || srcX + srcWidth > layer.width || srcY + srcHeight > layer.height) {
+        throw new Error(`Source rectangle out of bounds: (${srcX},${srcY}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`);
       }
+
+      // Extract pixel data from Jimp image
+      // Jimp stores pixels in RGBA format, which matches ImageData
+      const imageData = ctx.createImageData(srcWidth, srcHeight);
+
+      // Copy pixels from Jimp to ImageData
+      let dataIndex = 0;
+      for (let y = srcY; y < srcY + srcHeight; y++) {
+        for (let x = srcX; x < srcX + srcWidth; x++) {
+          const pixelColor = layer.getPixelColor(x, y);
+          // Jimp stores colors as 32-bit integers: RRGGBBAA
+          imageData.data[dataIndex++] = (pixelColor >> 24) & 0xFF;  // R
+          imageData.data[dataIndex++] = (pixelColor >> 16) & 0xFF;  // G
+          imageData.data[dataIndex++] = (pixelColor >> 8) & 0xFF;   // B
+          imageData.data[dataIndex++] = pixelColor & 0xFF;          // A
+        }
+      }
+
+      // Draw the image data to the canvas
+      ctx.putImageData(imageData, destX, destY);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to draw layer: ${error.message}`);

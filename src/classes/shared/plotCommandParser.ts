@@ -1,6 +1,6 @@
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * PlotCommandParser - Main parser implementation for PLOT commands
@@ -2364,12 +2364,24 @@ export class PlotCommandParser implements IPlotCommandParser {
     };
 
     try {
-      const tokens = context.tokens;
+      // Filter out comma tokens (Pascal NextNum skips non-numeric elements)
+      this.logConsoleMessage(`[CROP] Received ${context.tokens.length} tokens BEFORE filtering:`);
+      context.tokens.forEach((t, i) => {
+        this.logConsoleMessage(`  [${i}] type=${t.type}, value="${t.value}"`);
+      });
 
-      if (tokens.length < 2) {
+      const tokens = context.tokens.filter(t => t.type !== 'DELIMITER');
+
+      this.logConsoleMessage(`[CROP] After filtering: ${tokens.length} tokens:`);
+      tokens.forEach((t, i) => {
+        this.logConsoleMessage(`  [${i}] type=${t.type}, value="${t.value}"`);
+      });
+
+      // CROP command requires at least layer index
+      if (tokens.length < 1) {
         result.success = false;
-        result.errors.push('CROP command requires layer index and coordinates');
-        this.logError(`[PLOT PARSE ERROR] Missing parameters for CROP command: ${context.originalCommand}`);
+        result.errors.push('CROP command requires layer index');
+        this.logError(`[PLOT PARSE ERROR] Missing layer index for CROP command: ${context.originalCommand}`);
         return result;
       }
 
@@ -2379,6 +2391,29 @@ export class PlotCommandParser implements IPlotCommandParser {
         result.success = false;
         result.errors.push(`Invalid layer index: ${tokens[0].value}. Must be 1-16`);
         this.logError(`[PLOT PARSE ERROR] Invalid layer index for CROP: ${tokens[0].value}`);
+        return result;
+      }
+
+      // CROP layer - minimal form, use defaults
+      if (tokens.length === 1) {
+        // Pascal default behavior: copy entire layer to (0, 0)
+        const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+          CanvasOperationType.CROP_LAYER,
+          {
+            layerIndex: layerValue,
+            mode: 'DEFAULT',
+            left: 0,
+            top: 0,
+            width: null,  // Will be filled from layer dimensions
+            height: null, // Will be filled from layer dimensions
+            destX: 0,
+            destY: 0
+          },
+          true // CROP is deferrable
+        );
+
+        result.canvasOperations = [this.convertToCanvasOperation(operation)];
+        this.logConsoleMessage(`[PLOT] CROP ${layerValue} (default: full layer to 0,0) parsed`);
         return result;
       }
 
@@ -2456,24 +2491,26 @@ export class PlotCommandParser implements IPlotCommandParser {
         }
 
         // Parse optional destination X coordinate
-        let destX = 0;
+        // Pascal default: t6 := t2 (dest x defaults to source left)
+        let destX = leftValue;
         if (tokens.length > 5) {
           const xValue = Spin2NumericParser.parseCoordinate(tokens[5].value);
           if (xValue === null) {
-            result.warnings.push(`Invalid x coordinate '${tokens[5].value}', using 0`);
-            this.logParameterWarning(context.originalCommand, 'CROP x', tokens[5].value, 0);
+            result.warnings.push(`Invalid x coordinate '${tokens[5].value}', using ${leftValue}`);
+            this.logParameterWarning(context.originalCommand, 'CROP x', tokens[5].value, leftValue);
           } else {
             destX = xValue;
           }
         }
 
         // Parse optional destination Y coordinate
-        let destY = 0;
+        // Pascal default: t7 := t3 (dest y defaults to source top)
+        let destY = topValue;
         if (tokens.length > 6) {
           const yValue = Spin2NumericParser.parseCoordinate(tokens[6].value);
           if (yValue === null) {
-            result.warnings.push(`Invalid y coordinate '${tokens[6].value}', using 0`);
-            this.logParameterWarning(context.originalCommand, 'CROP y', tokens[6].value, 0);
+            result.warnings.push(`Invalid y coordinate '${tokens[6].value}', using ${topValue}`);
+            this.logParameterWarning(context.originalCommand, 'CROP y', tokens[6].value, topValue);
           } else {
             destY = yValue;
           }

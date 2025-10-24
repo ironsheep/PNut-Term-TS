@@ -222,7 +222,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     DebugColor.setDefaultBrightness(15); // set default brightness to max
 
     // Enable logging for PLOT window
-    this.isLogging = false;
+    this.isLogging = true;
 
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
@@ -303,6 +303,21 @@ export class DebugPlotWindow extends DebugWindowBase {
     return this.colorTranslator;
   }
 
+  /**
+   * Remove surrounding quotes from a string if present
+   * @param str The string to process
+   * @returns String with quotes removed, or original if no quotes
+   */
+  private static removeQuotes(str: string): string {
+    if (str.length >= 2) {
+      if ((str[0] === '"' && str[str.length - 1] === '"') ||
+          (str[0] === "'" && str[str.length - 1] === "'")) {
+        return str.substring(1, str.length - 1);
+      }
+    }
+    return str;
+  }
+
   static parsePlotDeclaration(lineParts: string[]): [boolean, PlotDisplaySpec] {
     // here with lineParts = ['`PLOT', {displayName}, ...]
     // Valid directives are:
@@ -350,7 +365,9 @@ export class DebugPlotWindow extends DebugWindowBase {
           case 'TITLE':
             // ensure we have one more value
             if (index < lineParts.length - 1) {
-              displaySpec.windowTitle = lineParts[++index];
+              const titleValue = lineParts[++index];
+              // Remove surrounding quotes if present
+              displaySpec.windowTitle = DebugPlotWindow.removeQuotes(titleValue);
             } else {
               // console.log() as we are in class static method, not derived class...
               DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);

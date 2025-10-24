@@ -55,7 +55,7 @@
     "packageWin": "npm run build:production && ./scripts/create-windows-package.sh",
     "packageLinux": "npm run build:production && ./scripts/create-linux-package.sh",
     "packageAll": "npm run packageWin && npm run packageLinux && npm run packageMac",
-    "packageStandaloneMacOS": "npm run build && ./scripts/create-standalone-package.sh",
+    "packageStandaloneMacOS": "npm run build:production && ./scripts/create-standalone-package.sh",
     "signStandaloneMacOS": "./scripts/sign-standalone-macos.sh",
     "packageSignedMacOS": "npm run packageStandaloneMacOS && npm run signStandaloneMacOS",
     "build:esbuild": "node esbuild.config.js",

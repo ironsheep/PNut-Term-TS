@@ -1,6 +1,6 @@
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * Integration Design for PLOT Parser with Existing Systems
@@ -352,7 +352,7 @@ export class PlotWindowIntegrator {
           break;
 
         case CanvasOperationType.CROP_LAYER:
-          this.executeCropLayer(operation.parameters);
+          await this.executeCropLayer(operation.parameters);
           break;
 
         case CanvasOperationType.LUT_SET:
@@ -1382,7 +1382,7 @@ export class PlotWindowIntegrator {
   /**
    * Execute crop operation - copy rectangular region from layer to canvas
    */
-  private executeCropLayer(params: Record<string, any>): void {
+  private async executeCropLayer(params: Record<string, any>): Promise<void> {
     this.logConsoleMessage('[INTEGRATOR] executeCropLayer called with:', params);
 
     try {
@@ -1399,25 +1399,28 @@ export class PlotWindowIntegrator {
 
       const internalLayerIndex = layerIndex - 1;
 
-      // Get layer data
-      let layerData: any;
-      if (this.plotWindow.layerManager.layers && this.plotWindow.layerManager.layers[internalLayerIndex]) {
-        layerData = this.plotWindow.layerManager.layers[internalLayerIndex];
-      } else if (this.plotWindow.layerManager.getLayer) {
-        layerData = this.plotWindow.layerManager.getLayer(internalLayerIndex);
-      } else {
+      // Check if layer is loaded using LayerManager's method
+      if (!this.plotWindow.layerManager.isLayerLoaded(internalLayerIndex)) {
         throw new Error(`Layer ${layerIndex} not loaded`);
       }
 
-      if (!layerData || !layerData.data) {
-        throw new Error(`Layer ${layerIndex} contains no bitmap data`);
+      // Get layer dimensions
+      const dimensions = this.plotWindow.layerManager.getLayerDimensions(internalLayerIndex);
+      if (!dimensions) {
+        throw new Error(`Layer ${layerIndex} has no dimensions`);
+      }
+
+      // Handle DEFAULT mode - fill in width/height from layer dimensions
+      if (mode === 'DEFAULT') {
+        params.width = dimensions.width;
+        params.height = dimensions.height;
       }
 
       // Handle different crop modes
-      if (mode === 'AUTO') {
-        this.executeCropAuto(layerData, params);
+      if (mode === 'AUTO' || mode === 'DEFAULT') {
+        await this.executeCropAuto(internalLayerIndex, dimensions, params);
       } else {
-        this.executeCropExplicit(layerData, params);
+        await this.executeCropExplicit(internalLayerIndex, dimensions, params);
       }
 
     } catch (error) {
@@ -1429,7 +1432,7 @@ export class PlotWindowIntegrator {
   /**
    * Execute AUTO crop mode - automatically determine source rectangle
    */
-  private executeCropAuto(layerData: any, params: Record<string, any>): void {
+  private async executeCropAuto(layerIndex: number, dimensions: { width: number; height: number }, params: Record<string, any>): Promise<void> {
     const { destX, destY } = params;
 
     // For AUTO mode, copy the entire layer to the destination position
@@ -1437,11 +1440,11 @@ export class PlotWindowIntegrator {
     const sourceRect = {
       left: 0,
       top: 0,
-      width: layerData.width || layerData.data.width,
-      height: layerData.height || layerData.data.height
+      width: dimensions.width,
+      height: dimensions.height
     };
 
-    this.copyLayerToCanvas(layerData, sourceRect, destX, destY);
+    await this.copyLayerToCanvas(layerIndex, sourceRect, destX, destY);
 
     this.logConsoleMessage(`[INTEGRATOR] CROP AUTO: copied entire layer (${sourceRect.width}x${sourceRect.height}) to (${destX}, ${destY})`);
   }
@@ -1449,84 +1452,96 @@ export class PlotWindowIntegrator {
   /**
    * Execute explicit crop mode - use specified source rectangle
    */
-  private executeCropExplicit(layerData: any, params: Record<string, any>): void {
+  private async executeCropExplicit(layerIndex: number, dimensions: { width: number; height: number }, params: Record<string, any>): Promise<void> {
     const { left, top, width, height, destX, destY } = params;
 
     // Validate source rectangle bounds
-    const layerWidth = layerData.width || layerData.data.width;
-    const layerHeight = layerData.height || layerData.data.height;
-
-    if (left < 0 || top < 0 || left + width > layerWidth || top + height > layerHeight) {
-      throw new Error(`Source rectangle (${left},${top}) ${width}x${height} exceeds layer bounds ${layerWidth}x${layerHeight}`);
+    if (left < 0 || top < 0 || left + width > dimensions.width || top + height > dimensions.height) {
+      throw new Error(`Source rectangle (${left},${top}) ${width}x${height} exceeds layer bounds ${dimensions.width}x${dimensions.height}`);
     }
 
     const sourceRect = { left, top, width, height };
-    this.copyLayerToCanvas(layerData, sourceRect, destX, destY);
+    await this.copyLayerToCanvas(layerIndex, sourceRect, destX, destY);
 
     this.logConsoleMessage(`[INTEGRATOR] CROP EXPLICIT: copied (${left},${top}) ${width}x${height} to (${destX}, ${destY})`);
   }
 
   /**
    * Copy rectangular region from layer bitmap to canvas
+   * Follows the same pattern as sprite rendering - sends pixel data to renderer
    */
-  private copyLayerToCanvas(
-    layerData: any,
+  private async copyLayerToCanvas(
+    layerIndex: number,
     sourceRect: { left: number; top: number; width: number; height: number },
     destX: number,
     destY: number
-  ): void {
+  ): Promise<void> {
     try {
-      // Get canvas context
-      const canvas = this.plotWindow.canvasProcessor?.canvas;
-      if (!canvas) {
-        throw new Error('No canvas available for layer copying');
+      if (!this.plotWindow.debugWindow || !this.plotWindow.shouldWriteToCanvas) {
+        this.logConsoleMessage('[INTEGRATOR] Window not ready for layer rendering');
+        return;
       }
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('No canvas context available for layer copying');
+      // Get the Jimp image from layer manager
+      const layer = this.plotWindow.layerManager.layers[layerIndex];
+      if (!layer) {
+        throw new Error(`Layer ${layerIndex} not loaded`);
       }
 
-      // Get bitmap data
-      const bitmapData = layerData.data;
-      const layerWidth = bitmapData.width;
-      const layerHeight = bitmapData.height;
-
-      // Apply coordinate system transformations
-      const screenCoords = this.transformToScreenCoordinates(destX, destY);
-
-      // Create ImageData for the source rectangle
-      const imageData = ctx.createImageData(sourceRect.width, sourceRect.height);
-      const data = imageData.data;
-
-      // Copy pixels from bitmap to ImageData
-      for (let y = 0; y < sourceRect.height; y++) {
-        for (let x = 0; x < sourceRect.width; x++) {
-          const srcX = sourceRect.left + x;
-          const srcY = sourceRect.top + y;
-
-          // Bounds checking
-          if (srcX >= 0 && srcX < layerWidth && srcY >= 0 && srcY < layerHeight) {
-            const srcIndex = srcY * layerWidth + srcX;
-            const destIndex = (y * sourceRect.width + x) * 4;
-
-            // Get RGB from bitmap data
-            const rgb = bitmapData.pixels[srcIndex];
-            const r = (rgb >> 16) & 0xFF;
-            const g = (rgb >> 8) & 0xFF;
-            const b = rgb & 0xFF;
-
-            // Set RGBA in ImageData
-            data[destIndex] = r;     // Red
-            data[destIndex + 1] = g; // Green
-            data[destIndex + 2] = b; // Blue
-            data[destIndex + 3] = 255; // Alpha (fully opaque)
+      // Extract RGBA pixel data from source rectangle
+      const pixels: number[] = [];
+      for (let y = sourceRect.top; y < sourceRect.top + sourceRect.height; y++) {
+        for (let x = sourceRect.left; x < sourceRect.left + sourceRect.width; x++) {
+          if (x >= 0 && x < layer.width && y >= 0 && y < layer.height) {
+            const pixelColor = layer.getPixelColor(x, y);
+            // Jimp stores colors as 32-bit integers: RRGGBBAA
+            pixels.push((pixelColor >> 24) & 0xFF);  // R
+            pixels.push((pixelColor >> 16) & 0xFF);  // G
+            pixels.push((pixelColor >> 8) & 0xFF);   // B
+            pixels.push(pixelColor & 0xFF);          // A
+          } else {
+            // Out of bounds - push transparent black
+            pixels.push(0, 0, 0, 0);
           }
         }
       }
 
-      // Draw ImageData to canvas
-      ctx.putImageData(imageData, screenCoords.x, screenCoords.y);
+      // CROP uses absolute pixel coordinates - do NOT transform them
+      // Pascal CopyRect uses t6,t7 directly without transformation (line 2088)
+      this.logConsoleMessage(`[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX}, ${destY})`);
+
+      // Send pixel data to renderer and draw using putImageData
+      // NOTE: We use putImageData (not drawImage) because we pre-calculate exact pixel
+      // coordinates via transformToScreenCoordinates(). putImageData ignores canvas
+      // transforms, which is correct since our coordinates are already transformed.
+      const jsCode = `
+        (function() {
+          if (!window.plotCtx) {
+            console.error('[PLOT] Context not ready for layer rendering');
+            return 'Context not ready';
+          }
+
+          const width = ${sourceRect.width};
+          const height = ${sourceRect.height};
+          const pixels = ${JSON.stringify(pixels)};
+          const destX = ${destX};
+          const destY = ${destY};
+
+          // Create ImageData from pixel array
+          const imageData = window.plotCtx.createImageData(width, height);
+          for (let i = 0; i < pixels.length; i++) {
+            imageData.data[i] = pixels[i];
+          }
+
+          // Use putImageData since we already calculated exact pixel coordinates
+          window.plotCtx.putImageData(imageData, destX, destY);
+
+          return 'Layer copied';
+        })()
+      `;
+
+      const result = await this.plotWindow.debugWindow.webContents.executeJavaScript(jsCode);
+      this.logConsoleMessage(`[INTEGRATOR] Layer copy result: ${result}`);
 
     } catch (error) {
       console.error('[INTEGRATOR] Error during layer copying:', error);

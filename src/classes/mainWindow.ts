@@ -392,6 +392,57 @@ export class MainWindow {
   }
 
   /**
+   * Tokenize a command string, preserving quoted strings
+   * Handles both single and double quotes
+   */
+  private tokenizeCommand(command: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    let inQuote: string | null = null; // null, '"', or "'"
+
+    for (let i = 0; i < command.length; i++) {
+      const ch = command[i];
+
+      if (inQuote) {
+        // Inside quoted string - add everything until closing quote
+        current += ch;
+        if (ch === inQuote) {
+          inQuote = null;
+        }
+      } else {
+        // Outside quoted string
+        if (ch === '"' || ch === "'") {
+          // Starting quoted string
+          current += ch;
+          inQuote = ch;
+        } else if (ch === ',') {
+          // Comma outside quotes - finish current token and add comma as separate token
+          if (current.trim()) {
+            tokens.push(current.trim());
+            current = '';
+          }
+          tokens.push(',');
+        } else if (ch === ' ' || ch === '\t') {
+          // Whitespace outside quotes - finish current token
+          if (current.trim()) {
+            tokens.push(current.trim());
+            current = '';
+          }
+        } else {
+          current += ch;
+        }
+      }
+    }
+
+    // Add final token if any
+    if (current.trim()) {
+      tokens.push(current.trim());
+    }
+
+    return tokens;
+  }
+
+  /**
    * Handle window command (backtick commands) - Two-Tier System
    * MIGRATED: Complete functionality from handleDebugCommand for performance
    */
@@ -405,10 +456,8 @@ export class MainWindow {
     // NOTE: Message is already logged via routeToDebugLogger (see applyStandardRouting line 504)
     // BACKTICK_WINDOW messages are routed to BOTH windowCreator AND debugLogger
 
-    const lineParts: string[] = data
-      .split(' ')
-      .map((part) => part.trim())
-      .filter((part) => part !== '');
+    // Tokenize with proper quote handling (preserves 'Binary LEDS' as single token)
+    const lineParts: string[] = this.tokenizeCommand(data);
     this.logConsoleMessage(
       `[TWO-TIER] handleWindowCommand() - [${data.trimEnd()}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
     );
