@@ -560,21 +560,24 @@ export class DebugPlotWindow extends DebugWindowBase {
             overflow: hidden;
             width: 100%;
             height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
           }
           #plot-data {
             display: block;
             margin: 0;
             padding: 0;
             background-color: ${this.displaySpec.window.background};
-            width: 100%;
-            height: 100%;
+            width: ${canvasWidth}px;
+            height: ${canvasHeight}px;
             position: relative;
             box-sizing: border-box;
           }
           canvas {
             background-color: ${this.displaySpec.window.background};
             display: block;
-            margin: 2px 7px;
+            margin: 0;
           }
           ${
             ENABLE_PERFORMANCE_MONITORING
