@@ -262,7 +262,7 @@ export abstract class DebugWindowBase extends EventEmitter {
    * Set the serial data transmission callback for TLong communication.
    * This should be called by derived classes or the main window to enable P2 communication.
    */
-  public setSerialTransmissionCallback(callback: (data: string) => void): void {
+  public setSerialTransmissionCallback(callback: (data: string | Buffer) => void): void {
     this.tLongTransmitter.setSendCallback(callback);
     this.logMessageBase('TLong serial transmission callback configured');
   }

@@ -357,6 +357,17 @@ export class PlotCommandParser implements IPlotCommandParser {
       examples: ['PRECISE'],
       handler: this.handlePreciseCommand.bind(this)
     });
+
+    this.registerCommand({
+      name: 'CARTESIAN',
+      parameters: [
+        { name: 'xdir', type: 'number', required: true, range: { min: 0, max: 1 } },
+        { name: 'ydir', type: 'number', required: true, range: { min: 0, max: 1 } }
+      ],
+      description: 'Set Cartesian axis directions (0=normal, 1=inverted)',
+      examples: ['CARTESIAN 0 1', 'CARTESIAN 1 0'],
+      handler: this.handleCartesianCommand.bind(this)
+    });
   }
 
   /**
@@ -2571,6 +2582,57 @@ export class PlotCommandParser implements IPlotCommandParser {
       result.success = false;
       result.errors.push(`PRECISE command failed: ${error}`);
       this.logError(`[PLOT PARSE ERROR] PRECISE command execution failed: ${error}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Handle CARTESIAN command - sets axis directions for Cartesian coordinate system
+   * Pascal: CARTESIAN xdir ydir (0=normal, 1=inverted)
+   */
+  private handleCartesianCommand(context: CommandContext): CommandResult {
+    const result: CommandResult = {
+      success: true,
+      errors: [],
+      warnings: [],
+      canvasOperations: []
+    };
+
+    try {
+      // Validate parameters (expect xdir and ydir)
+      if (!context.tokens || context.tokens.length < 2) {
+        throw new Error('CARTESIAN command requires xdir and ydir parameters (0 or 1)');
+      }
+
+      const xdir = parseInt(context.tokens[0].value, 10);
+      const ydir = parseInt(context.tokens[1].value, 10);
+
+      // Validate range
+      if (isNaN(xdir) || xdir < 0 || xdir > 1) {
+        throw new Error(`Invalid xdir value: ${context.tokens[0].value} (must be 0 or 1)`);
+      }
+      if (isNaN(ydir) || ydir < 0 || ydir > 1) {
+        throw new Error(`Invalid ydir value: ${context.tokens[1].value} (must be 0 or 1)`);
+      }
+
+      // Create CARTESIAN operation for the integrator to handle
+      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
+        'SET_CARTESIAN' as any,
+        {
+          xdir: xdir === 1,  // Convert 1 to true, 0 to false
+          ydir: ydir === 1
+        },
+        false // CARTESIAN is immediate (affects coordinate system)
+      );
+
+      result.canvasOperations = [this.convertToCanvasOperation(operation)];
+      this.logConsoleMessage(`[PLOT] CARTESIAN ${xdir} ${ydir} parsed`);
+
+    } catch (error) {
+      result.success = false;
+      result.errors.push(`CARTESIAN command failed: ${error}`);
+      this.logError(`[PLOT PARSE ERROR] CARTESIAN command execution failed: ${error}`);
     }
 
     return result;

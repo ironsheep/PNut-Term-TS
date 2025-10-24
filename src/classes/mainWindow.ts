@@ -320,6 +320,7 @@ export class MainWindow {
       if (!this.displays[normalizedName]) {
         this.logConsoleMessage(`[DEBUGGER] Auto-creating debugger window for COG${cogId}`);
         const debuggerDisplay = new DebugDebuggerWindow(this.context, cogId);
+        debuggerDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
@@ -529,6 +530,7 @@ export class MainWindow {
         this.logConsoleMessage(`[TWO-TIER] SCOPE parse result: isValid=${isValid}`);
         if (isValid) {
           const scopeDisplay = new DebugScopeWindow(this.context, scopeSpec);
+          scopeDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(scopeSpec.displayName, scopeDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ SCOPE window '${scopeSpec.displayName}' created successfully`);
@@ -547,6 +549,7 @@ export class MainWindow {
         this.logConsoleMessage(`[TWO-TIER] SCOPEXY parse result: isValid=${isValid}`);
         if (isValid) {
           const scopeXyDisplay = new DebugScopeXyWindow(this.context, scopeXySpec);
+          scopeXyDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(scopeXySpec.displayName, scopeXyDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ SCOPEXY window '${scopeXySpec.displayName}' created successfully`);
@@ -566,6 +569,7 @@ export class MainWindow {
 
         if (isValid) {
           const fftDisplay = new DebugFFTWindow(this.context, fftSpec);
+          fftDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(fftSpec.displayName, fftDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ FFT window '${fftSpec.displayName}' created successfully`);
@@ -585,6 +589,7 @@ export class MainWindow {
 
         if (isValid) {
           const spectroDisplay = new DebugSpectroWindow(this.context, spectroSpec);
+          spectroDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(spectroSpec.displayName, spectroDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ SPECTRO window '${spectroSpec.displayName}' created successfully`);
@@ -608,6 +613,7 @@ export class MainWindow {
         if (isValid) {
           this.logConsoleMessage(`[TWO-TIER] Creating DebugLogicWindow instance...`);
           const logicDisplay = new DebugLogicWindow(this.context, logicSpec);
+          logicDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(logicSpec.displayName, logicDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ LOGIC window '${logicSpec.displayName}' created successfully`);
@@ -628,6 +634,7 @@ export class MainWindow {
         if (isValid) {
           this.logConsoleMessage(`[TWO-TIER] Creating DebugTermWindow with spec:`, termSpec);
           const termDisplay = new DebugTermWindow(this.context, termSpec);
+          termDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(termSpec.displayName, termDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ TERM window '${termSpec.displayName}' created successfully`);
@@ -647,6 +654,7 @@ export class MainWindow {
 
         if (isValid) {
           const plotDisplay = new DebugPlotWindow(this.context, plotSpec);
+          plotDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(plotSpec.displayName, plotDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ PLOT window '${plotSpec.displayName}' created successfully`);
@@ -666,6 +674,7 @@ export class MainWindow {
 
         if (isValid) {
           const bitmapDisplay = new DebugBitmapWindow(this.context, bitmapSpec);
+          bitmapDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(bitmapSpec.displayName, bitmapDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ BITMAP window '${bitmapSpec.displayName}' created successfully`);
@@ -685,6 +694,7 @@ export class MainWindow {
 
         if (isValid) {
           const midiDisplay = new DebugMidiWindow(this.context, midiSpec);
+          midiDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
           this.hookNotifcationsAndRememberWindow(midiSpec.displayName, midiDisplay);
           foundDisplay = true;
           this.logConsoleMessage(`[TWO-TIER] ✅ MIDI window '${midiSpec.displayName}' created successfully`);
@@ -1216,19 +1226,22 @@ export class MainWindow {
   // ----------------------------------------------------------------------
   // this is our serial transmitter!!
   //
-  public sendSerialData(data: string): void {
+  public sendSerialData(data: string | Buffer): void {
     if (this._serialPort !== undefined) {
       // Log transmitted data to USB traffic log if enabled
       const components = this.serialProcessor.getComponents();
       if (components.workerExtractor) {
-        components.workerExtractor.logTxData(data);
+        // Convert Buffer to string for logging if needed
+        const logData = Buffer.isBuffer(data) ? data.toString('latin1') : data;
+        components.workerExtractor.logTxData(logData);
       }
 
       this._serialPort.write(data);
 
       // Store transmitted characters for echo filtering
       if (this.echoOffEnabled) {
-        this.recentTransmitBuffer = data.split('');
+        const transmitString = Buffer.isBuffer(data) ? data.toString('latin1') : data;
+        this.recentTransmitBuffer = transmitString.split('');
         this.transmitTimestamp = Date.now();
       }
 

@@ -640,17 +640,272 @@ export class DebugPlotWindow extends DebugWindowBase {
           }
           ${ENABLE_PERFORMANCE_MONITORING ? '<div id="performance-overlay"></div>' : ''}
         </div>
+        <script>
+          // Mouse event IPC setup - must be in initial HTML, not injected code
+          // See mainWindow.ts:3144 - executeJavaScript injections cannot reliably access require('electron')
+          console.log('[PLOT INPUT] Script starting...');
+          const { ipcRenderer } = require('electron');
+          console.log('[PLOT INPUT] ipcRenderer loaded:', !!ipcRenderer);
+
+          // Track mouse state for IPC transmission
+          let mouseState = {
+            x: 0,
+            y: 0,
+            buttons: { left: false, middle: false, right: false },
+            wheelDelta: 0,
+            overCanvas: false
+          };
+
+          // Function to send mouse state to main process
+          function sendMouseEvent(wheelDelta) {
+            wheelDelta = wheelDelta || 0;
+            console.log('[PLOT INPUT] sendMouseEvent called - x:', mouseState.x, 'y:', mouseState.y, 'buttons:', JSON.stringify(mouseState.buttons), 'wheel:', wheelDelta);
+            try {
+              ipcRenderer.send('mouse-event', mouseState.x, mouseState.y, mouseState.buttons, wheelDelta);
+              console.log('[PLOT INPUT] IPC sent successfully');
+            } catch (error) {
+              console.error('[PLOT INPUT] Failed to send mouse event:', error);
+            }
+          }
+
+          // Set up mouse event listeners immediately - script is at end of body, so DOM is ready
+          console.log('[PLOT INPUT] Setting up event listeners...');
+          const canvas = document.getElementById('plot-area');
+          if (!canvas) {
+            console.error('[PLOT INPUT] Canvas not found!');
+          } else {
+            console.log('[PLOT INPUT] Canvas found:', canvas.id, canvas.width + 'x' + canvas.height);
+
+            // Mouse move handler
+            canvas.addEventListener('mousemove', function(event) {
+              const rect = canvas.getBoundingClientRect();
+              mouseState.x = Math.floor(event.clientX - rect.left);
+              mouseState.y = Math.floor(event.clientY - rect.top);
+
+              // Update coordinate display if not hidden
+              if (!${this.displaySpec.hideXY}) {
+                updateCoordinateDisplay(mouseState.x, mouseState.y);
+              }
+
+              sendMouseEvent();
+            });
+            console.log('[PLOT INPUT] mousemove handler attached');
+
+            // Mouse enter/leave handlers
+            canvas.addEventListener('mouseenter', function() {
+              console.log('[PLOT INPUT] mouseenter event');
+              mouseState.overCanvas = true;
+              sendMouseEvent();
+            });
+
+            canvas.addEventListener('mouseleave', function() {
+              console.log('[PLOT INPUT] mouseleave event');
+              mouseState.overCanvas = false;
+
+              // Hide coordinate display when mouse leaves canvas
+              const display = document.getElementById('coordinate-display');
+              if (display) {
+                display.style.display = 'none';
+              }
+
+              sendMouseEvent();
+            });
+            console.log('[PLOT INPUT] mouseenter/leave handlers attached');
+
+            // Mouse button handlers
+            canvas.addEventListener('mousedown', function(event) {
+              console.log('[PLOT INPUT] mousedown event - button:', event.button);
+              if (event.button === 0) mouseState.buttons.left = true;
+              if (event.button === 1) mouseState.buttons.middle = true;
+              if (event.button === 2) mouseState.buttons.right = true;
+              sendMouseEvent();
+            });
+
+            canvas.addEventListener('mouseup', function(event) {
+              console.log('[PLOT INPUT] mouseup event - button:', event.button);
+              if (event.button === 0) mouseState.buttons.left = false;
+              if (event.button === 1) mouseState.buttons.middle = false;
+              if (event.button === 2) mouseState.buttons.right = false;
+              sendMouseEvent();
+            });
+            console.log('[PLOT INPUT] mousedown/up handlers attached');
+
+            // Mouse wheel handler
+            canvas.addEventListener('wheel', function(event) {
+              console.log('[PLOT INPUT] wheel event - deltaY:', event.deltaY);
+              event.preventDefault();
+              const wheelDelta = -Math.sign(event.deltaY);
+              sendMouseEvent(wheelDelta);
+            });
+            console.log('[PLOT INPUT] wheel handler attached');
+
+            // Prevent context menu
+            canvas.addEventListener('contextmenu', function(event) {
+              console.log('[PLOT INPUT] contextmenu event - prevented');
+              event.preventDefault();
+            });
+            console.log('[PLOT INPUT] contextmenu handler attached');
+
+            // Function to update coordinate display
+            function updateCoordinateDisplay(x, y) {
+              const display = document.getElementById('coordinate-display');
+              if (!display) return;
+
+              const canvasWidth = ${this.displaySpec.size.width};
+              const canvasHeight = ${this.displaySpec.size.height};
+
+              // Calculate logical coordinates based on axis direction
+              let coordX = ${this.cartesianConfig.xdir} ? (canvasWidth - x) : x;
+              let coordY = ${this.cartesianConfig.ydir} ? y : (canvasHeight - y);
+
+              // Divide by dot size to get logical coordinates
+              coordX = Math.floor(coordX / ${this.displaySpec.dotSize.width});
+              coordY = Math.floor(coordY / ${this.displaySpec.dotSize.height});
+
+              // Update display text
+              display.textContent = coordX + ',' + coordY;
+
+              // Calculate display size for proper positioning
+              const displayRect = display.getBoundingClientRect();
+              const textWidth = displayRect.width;
+              const textHeight = displayRect.height;
+
+              // Position flyout based on quadrant
+              const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
+
+              let displayX, displayY;
+              switch(quadrant) {
+                case 0: // Top-left
+                  displayX = x + 9;
+                  displayY = y + 9;
+                  break;
+                case 1: // Top-right
+                  displayX = x - textWidth - 9;
+                  displayY = y + 9;
+                  break;
+                case 2: // Bottom-left
+                  displayX = x + 9;
+                  displayY = y - textHeight - 9;
+                  break;
+                case 3: // Bottom-right
+                  displayX = x - textWidth - 9;
+                  displayY = y - textHeight - 9;
+                  break;
+              }
+
+              // Ensure display stays within canvas bounds
+              displayX = Math.max(0, Math.min(canvasWidth - textWidth, displayX));
+              displayY = Math.max(0, Math.min(canvasHeight - textHeight, displayY));
+
+              display.style.left = displayX + 'px';
+              display.style.top = displayY + 'px';
+              display.style.display = 'block';
+            }
+
+            console.log('[PLOT INPUT] All mouse event handlers initialized successfully');
+          }
+
+          // Set up keyboard event listener with IPC transmission
+          document.addEventListener('keydown', function(event) {
+            console.log('[PLOT INPUT] keydown event - key:', event.key, 'code:', event.code);
+
+            // Map key to keyCode for PC_KEY transmission (matching Pascal behavior)
+            // Special keys get specific codes, printable characters use ASCII
+            let keyCode = 0;
+            if (event.key === 'ArrowLeft') keyCode = 1;
+            else if (event.key === 'ArrowRight') keyCode = 2;
+            else if (event.key === 'ArrowUp') keyCode = 3;
+            else if (event.key === 'ArrowDown') keyCode = 4;
+            else if (event.key === 'Home') keyCode = 5;
+            else if (event.key === 'End') keyCode = 6;
+            else if (event.key === 'Delete') keyCode = 7;
+            else if (event.key === 'Backspace') keyCode = 8;
+            else if (event.key === 'Tab') keyCode = 9;
+            else if (event.key === 'Insert') keyCode = 10;
+            else if (event.key === 'PageUp') keyCode = 11;
+            else if (event.key === 'PageDown') keyCode = 12;
+            else if (event.key === 'Enter') keyCode = 13;
+            else if (event.key === 'Escape') keyCode = 27;
+            else if (event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126) {
+              keyCode = event.key.charCodeAt(0); // ASCII 32-126 (Space to ~)
+            }
+
+            // Send key event via IPC to main process
+            if (keyCode > 0) {
+              try {
+                ipcRenderer.send('key-event', event.key, keyCode);
+                console.log('[PLOT INPUT] Key IPC sent - key:', event.key, 'code:', keyCode);
+              } catch (error) {
+                console.error('[PLOT INPUT] Failed to send key event:', error);
+              }
+            }
+          });
+          console.log('[PLOT INPUT] Keyboard handler attached');
+
+          console.log('[PLOT INPUT] Script initialization complete');
+        </script>
       </body>
     </html>
   `;
 
-    this.logMessage(`at createDebugWindow() PLOT with htmlContent: ${htmlContent}`);
+    this.logMessage(`at createDebugWindow() PLOT - loading HTML (length: ${htmlContent.length} chars)`);
 
     try {
-      this.debugWindow.loadURL(`data:text/html,${encodeURIComponent(htmlContent)}`);
+      // Write HTML to temp file and load it - this gives file:// context which allows
+      // access to local resources like fonts (data: URLs block local file access)
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const tempDir = os.tmpdir();
+      const tempFile = path.join(tempDir, `pnut-plot-${this.windowId}-${Date.now()}.html`);
+
+      fs.writeFileSync(tempFile, htmlContent);
+      this.logMessage(`Wrote HTML to temp file: ${tempFile}`);
+
+      // Load the temp file instead of using data URL
+      this.debugWindow.loadFile(tempFile);
+
+      // Clean up temp file after a delay
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(tempFile);
+          this.logMessage(`Cleaned up temp file: ${tempFile}`);
+        } catch (err) {
+          // File might already be gone, that's ok
+        }
+      }, 5000);
     } catch (error) {
-      this.logMessage(`Failed to load URL: ${error}`);
+      this.logMessage(`Failed to load HTML file: ${error}`);
     }
+
+    // Add console message listener to see renderer console output
+    this.debugWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      this.logMessage(`[RENDERER CONSOLE] ${message}`);
+    });
+
+    // Set up IPC handlers for mouse events from renderer
+    // The renderer sends 'mouse-event' via ipcRenderer.send()
+    this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+      if (channel === 'mouse-event') {
+        const [x, y, buttons, wheelDelta] = args;
+        this.logMessage(`[PLOT MOUSE IPC] Received mouse event: x=${x}, y=${y}, buttons=${JSON.stringify(buttons)}, wheel=${wheelDelta}`);
+
+        // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
+        this.vMouseX = x;
+        this.vMouseY = y;
+        this.vMouseButtons = {
+          left: buttons.left || false,
+          middle: buttons.middle || false,
+          right: buttons.right || false
+        };
+
+        // Handle wheel events
+        if (wheelDelta !== 0) {
+          this.vMouseWheel = wheelDelta;
+        }
+      }
+    });
+    this.logMessage('IPC mouse event handler registered');
     // Menu.setApplicationMenu(null); // DOESNT WORK!
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
@@ -749,6 +1004,17 @@ export class DebugPlotWindow extends DebugWindowBase {
         this.logMessage(`Canvas initialization: ${result}`);
         this.shouldWriteToCanvas = true;
         this.canvasInitialized = true;
+
+        // If there are pending operations that were queued before canvas was ready,
+        // execute them now. This handles the race condition where UPDATE command
+        // arrives before canvas initialization completes.
+        if (this.pendingOperations.length > 0) {
+          this.logMessage(`Canvas ready - executing ${this.pendingOperations.length} pending operations that were queued during initialization`);
+          this.performUpdate().catch((error) => {
+            this.logMessage(`Failed to execute pending operations after canvas init: ${error}`);
+          });
+        }
+
         // Set up input event listeners after canvas is ready
         this.setupInputEventListeners();
         // Initialize performance overlay (if enabled)
@@ -853,11 +1119,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   private setupInputEventListeners(): void {
     if (!this.debugWindow) return;
 
+    // Note: Mouse event handlers are now in initial HTML with proper require('electron') access
+    // This method only handles keyboard events which don't need IPC
     const inputHandlerCode = `
       (function() {
-        // Initialize input state
+        // Initialize input state for keyboard
         window.lastPressedKey = 0;
-        window.currentMouseState = 0;
 
         // Add keydown event listener to capture key presses
         document.addEventListener('keydown', function(event) {
@@ -893,159 +1160,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           }
         });
 
-        // Add mouse event listeners to track mouse state
-        const canvas = document.getElementById('plot-area');
-        if (canvas) {
-          let mouseButtons = 0;
-          let mouseX = 0;
-          let mouseY = 0;
-          let mouseOverCanvas = false;
-
-          // Mouse move handler with coordinate display
-          canvas.addEventListener('mousemove', function(event) {
-            const rect = canvas.getBoundingClientRect();
-            mouseX = Math.floor(event.clientX - rect.left);
-            mouseY = Math.floor(event.clientY - rect.top);
-
-            // Update coordinate display if not hidden
-            if (!${this.displaySpec.hideXY}) {
-              updateCoordinateDisplay(mouseX, mouseY);
-            }
-
-            updateMouseState();
-          });
-
-          // Mouse enter/leave handlers
-          canvas.addEventListener('mouseenter', function() {
-            mouseOverCanvas = true;
-            updateMouseState();
-          });
-
-          canvas.addEventListener('mouseleave', function() {
-            mouseOverCanvas = false;
-
-            // Hide coordinate display when mouse leaves canvas
-            const display = document.getElementById('coordinate-display');
-            if (display) {
-              display.style.display = 'none';
-            }
-
-            updateMouseState();
-          });
-
-          // Mouse button handlers
-          canvas.addEventListener('mousedown', function(event) {
-            // Set button bits: bit 24=left, bit 25=middle, bit 26=right
-            if (event.button === 0) mouseButtons |= (1 << 24); // Left
-            if (event.button === 1) mouseButtons |= (1 << 25); // Middle
-            if (event.button === 2) mouseButtons |= (1 << 26); // Right
-            updateMouseState();
-          });
-
-          canvas.addEventListener('mouseup', function(event) {
-            // Clear button bits
-            if (event.button === 0) mouseButtons &= ~(1 << 24); // Left
-            if (event.button === 1) mouseButtons &= ~(1 << 25); // Middle
-            if (event.button === 2) mouseButtons &= ~(1 << 26); // Right
-            updateMouseState();
-          });
-
-          // Prevent context menu on right click
-          canvas.addEventListener('contextmenu', function(event) {
-            event.preventDefault();
-          });
-
-          // Function to update coordinate display
-          function updateCoordinateDisplay(x, y) {
-            const display = document.getElementById('coordinate-display');
-            if (!display) return;
-
-            const canvasWidth = ${this.displaySpec.size.width};
-            const canvasHeight = ${this.displaySpec.size.height};
-
-            // Calculate logical coordinates based on axis direction
-            // Pascal: if vDirX then TextX := (ClientWidth - X) else TextX := X;
-            //         if vDirY then TextY := Y else TextY := (ClientHeight - Y);
-            let coordX = ${this.cartesianConfig.xdir} ? (canvasWidth - x) : x;
-            let coordY = ${this.cartesianConfig.ydir} ? y : (canvasHeight - y);
-
-            // Divide by dot size to get logical coordinates
-            // Pascal: Str := IntToStr(TextX div vDotSize) + ',' + IntToStr(TextY div vDotSizeY);
-            coordX = Math.floor(coordX / ${this.displaySpec.dotSize.width});
-            coordY = Math.floor(coordY / ${this.displaySpec.dotSize.height});
-
-            // Update display text
-            display.textContent = coordX + ',' + coordY;
-
-            // Calculate display size for proper positioning
-            const displayRect = display.getBoundingClientRect();
-            const textWidth = displayRect.width;
-            const textHeight = displayRect.height;
-
-            // Position flyout based on quadrant (matching Pascal's exact offsets)
-            const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
-
-            // Pascal uses specific offsets: cursor at (9,9) or (w-9,h-9)
-            let displayX, displayY;
-
-            switch(quadrant) {
-              case 0: // Mouse in top-left → show at cursor + offset
-                displayX = x + 9;
-                displayY = y + 9;
-                break;
-              case 1: // Mouse in top-right → show to left of cursor
-                displayX = x - textWidth - 9;
-                displayY = y + 9;
-                break;
-              case 2: // Mouse in bottom-left → show above cursor
-                displayX = x + 9;
-                displayY = y - textHeight - 9;
-                break;
-              case 3: // Mouse in bottom-right → show above-left of cursor
-                displayX = x - textWidth - 9;
-                displayY = y - textHeight - 9;
-                break;
-            }
-
-            // Ensure display stays within canvas bounds
-            displayX = Math.max(0, Math.min(canvasWidth - textWidth, displayX));
-            displayY = Math.max(0, Math.min(canvasHeight - textHeight, displayY));
-
-            display.style.left = displayX + 'px';
-            display.style.top = displayY + 'px';
-            display.style.right = 'auto';
-            display.style.bottom = 'auto';
-            display.style.display = 'block';
-          }
-
-          function updateMouseState() {
-            // Encode 32-bit mouse state:
-            // Bits 0-11: X position (0-4095)
-            // Bits 12-23: Y position (0-4095)
-            // Bits 24-26: Button states (left/middle/right)
-            // Bit 31: Mouse over canvas flag
-            let state = 0;
-
-            // X position (bits 0-11)
-            state |= (mouseX & 0xFFF);
-
-            // Y position (bits 12-23)
-            state |= ((mouseY & 0xFFF) << 12);
-
-            // Button states (bits 24-26) - already set by mouse handlers
-            state |= mouseButtons;
-
-            // Mouse over canvas flag (bit 31)
-            if (mouseOverCanvas) {
-              state |= (1 << 31);
-            }
-
-            window.currentMouseState = state;
-          }
-        }
-
-        console.log('[PLOT INPUT] Event listeners setup complete');
-        return 'Input handlers ready';
+        console.log('[PLOT INPUT] Keyboard event listeners setup complete');
+        return 'Keyboard handlers ready';
       })()
     `;
 

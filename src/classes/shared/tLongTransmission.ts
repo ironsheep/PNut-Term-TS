@@ -23,7 +23,7 @@ import { Context } from '../../utils/context';
 
 export class TLongTransmission {
   private context: Context;
-  private sendSerialDataCallback: ((data: string) => void) | null = null;
+  private sendSerialDataCallback: ((data: string | Buffer) => void) | null = null;
 
   constructor(ctx: Context) {
     this.context = ctx;
@@ -33,7 +33,7 @@ export class TLongTransmission {
    * Set the serial data transmission callback.
    * This should be the mainWindow.sendSerialData method.
    */
-  public setSendCallback(callback: (data: string) => void): void {
+  public setSendCallback(callback: (data: string | Buffer) => void): void {
     this.sendSerialDataCallback = callback;
   }
 
@@ -61,17 +61,17 @@ export class TLongTransmission {
       bytes.push(byteValue);
     }
 
-    // Convert bytes to string for transmission
-    // Serial data is transmitted as binary bytes
-    const binaryString = String.fromCharCode(...bytes);
+    // Create Buffer from raw bytes to avoid UTF-8 encoding issues
+    // String.fromCharCode() would UTF-8 encode values >127 (e.g., 0xFF → 0xC3 0xBF)
+    const buffer = Buffer.from(bytes);
 
     // Log transmission for debugging
     this.context.logger.forceLogMessage(
       `[TLONG] Transmitting value=${value} (0x${(value >>> 0).toString(16).padStart(8, '0')}) as bytes=[${bytes.map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`
     );
 
-    // Transmit via serial port
-    this.sendSerialDataCallback(binaryString);
+    // Transmit via serial port using Buffer for binary data
+    this.sendSerialDataCallback(buffer);
   }
 
   /**

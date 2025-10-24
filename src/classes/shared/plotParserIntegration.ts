@@ -335,6 +335,10 @@ export class PlotWindowIntegrator {
           this.executeSetPrecision(operation.parameters);
           break;
 
+        case 'SET_CARTESIAN' as any:
+          this.executeSetCartesian(operation.parameters);
+          break;
+
         case CanvasOperationType.PC_INPUT:
           await this.executePcInput(operation.parameters);
           break;
@@ -839,6 +843,20 @@ export class PlotWindowIntegrator {
 
     const precisionMode = newPrecise === 8 ? 'high precision (256ths of pixel)' : 'standard pixel coordinates';
     this.logConsoleMessage(`[INTEGRATOR] Precision toggled: ${currentPrecise} -> ${newPrecise} (${precisionMode})`);
+  }
+
+  private executeSetCartesian(params: Record<string, any>): void {
+    this.logConsoleMessage('[INTEGRATOR] executeSetCartesian called with:', params);
+
+    const { xdir, ydir } = params;
+
+    // Update plot window's Cartesian configuration
+    this.plotWindow.cartesianConfig = {
+      xdir: xdir === true || xdir === 1,
+      ydir: ydir === true || ydir === 1
+    };
+
+    this.logConsoleMessage(`[INTEGRATOR] Cartesian config set: xdir=${this.plotWindow.cartesianConfig.xdir}, ydir=${this.plotWindow.cartesianConfig.ydir}`);
   }
 
   private async executePcInput(params: Record<string, any>): Promise<void> {

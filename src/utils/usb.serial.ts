@@ -552,7 +552,7 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
-  public async write(value: string): Promise<void> {
+  public async write(value: string | Buffer): Promise<void> {
     //this.logMessage(`--> Tx ...`);
     return new Promise((resolve, reject) => {
       if (this.usbConnected) {
@@ -560,7 +560,8 @@ export class UsbSerial extends EventEmitter {
           if (err) {
             reject(err);
           } else {
-            this.logMessage(`--> Tx [${value.split(/\r?\n/).filter(Boolean)[0]}]`);
+            const logValue = Buffer.isBuffer(value) ? `<Buffer ${value.length} bytes>` : value.split(/\r?\n/).filter(Boolean)[0];
+            this.logMessage(`--> Tx [${logValue}]`);
             // Ensure data is fully transmitted before returning
             try {
               await this.drain();
