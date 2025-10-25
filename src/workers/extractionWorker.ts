@@ -43,6 +43,13 @@ let messagePool: SharedMessagePool | null = null;
 let isExtracting: boolean = false;
 let extractionCount: number = 0;
 
+// Idle timeout detection for CR/LF at buffer end
+// When CR/LF appears at buffer end, wait for this timeout before extracting
+// to distinguish "waiting for next USB packet" from "transmission complete"
+const IDLE_TIMEOUT_MS = 50; // 50ms idle time means transmission is complete
+let lastBufferActivity: number = 0; // Timestamp of last buffer read activity
+let hadDataLastCheck: boolean = false; // Track if buffer had data in last check
+
 /**
  * Helper: Check if byte sequence looks like start of valid P2 message
  * Returns true if data starts with:
@@ -94,6 +101,7 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
 /**
  * Boundary Detection: Text message (CR/LF terminated)
  * Returns message bytes if complete, null if incomplete
+ * @param idleTimeoutExpired - If true, treat CR/LF at buffer end as valid EOL (transmission complete)
  *
  * Supports 4 EOL patterns:
  * - CR only (0x0D)
@@ -105,8 +113,12 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
  * 1. Increased MAX_TEXT_LENGTH from 512 to 65536 bytes (SPRITEDEF ~2000 bytes)
  * 2. EOL validation: CR/LF only treated as message boundary if followed by valid message start
  *    This prevents false EOL detection when CR/LF bytes appear within message data
+ *
+ * IDLE TIMEOUT FIX for CR/LF split across USB packets:
+ * When CR/LF appears at buffer end, wait for idle timeout before treating as EOL
+ * This distinguishes "waiting for next USB packet" from "transmission complete"
  */
-function findTextBoundary(): Uint8Array | null {
+function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
   if (!buffer || !buffer.hasData()) {
     return null;
   }
@@ -129,8 +141,15 @@ function findTextBoundary(): Uint8Array | null {
     if (result.value === 0x0D) {
       const lfResult = buffer.next();
       if (lfResult.status === NextStatus.EMPTY) {
-        // CR at end of buffer - treat as valid EOL
-        return new Uint8Array(messageBytes);
+        // CR at end of buffer
+        // If idle timeout expired, treat as valid EOL (transmission complete)
+        // Otherwise wait for more data (LF might be in next USB packet)
+        if (idleTimeoutExpired) {
+          return new Uint8Array(messageBytes);
+        } else {
+          buffer.restorePosition();
+          return null; // Wait for more data
+        }
       }
 
       if (lfResult.value === 0x0A) {
@@ -175,8 +194,15 @@ function findTextBoundary(): Uint8Array | null {
     else if (result.value === 0x0A) {
       const crResult = buffer.next();
       if (crResult.status === NextStatus.EMPTY) {
-        // LF at end of buffer - treat as valid EOL
-        return new Uint8Array(messageBytes);
+        // LF at end of buffer
+        // If idle timeout expired, treat as valid EOL (transmission complete)
+        // Otherwise wait for more data (CR or backtick might be in next USB packet)
+        if (idleTimeoutExpired) {
+          return new Uint8Array(messageBytes);
+        } else {
+          buffer.restorePosition();
+          return null; // Wait for more data
+        }
       }
 
       if (crResult.value === 0x0D) {
@@ -499,13 +525,18 @@ function extractMessages(): void {
     while (extracted < maxBatch && buffer.hasData()) {
       let messageData: Uint8Array | null = null;
 
+      // Check if idle timeout has expired (for CR/LF at buffer end detection)
+      const now = Date.now();
+      const timeSinceLastActivity = now - lastBufferActivity;
+      const idleTimeoutExpired = timeSinceLastActivity >= IDLE_TIMEOUT_MS;
+
       // Try boundary detection in order of likelihood
       // 1. DB_PACKET (0xDB prefix)
       messageData = findDBPacketBoundary();
 
-      // 2. Text message (CR/LF)
+      // 2. Text message (CR/LF) - pass idle timeout flag
       if (!messageData) {
-        messageData = findTextBoundary();
+        messageData = findTextBoundary(idleTimeoutExpired);
       }
 
       // 3. 416-byte debugger packet
@@ -587,8 +618,20 @@ function extractMessages(): void {
  * Self-managing with isExtracting flag to prevent re-entry
  */
 function autonomousLoop(): void {
+  // Track buffer activity for idle timeout detection
+  const hasData = buffer && buffer.hasData();
+  const now = Date.now();
+
+  // Update lastBufferActivity when buffer transitions from empty to has-data
+  // This tracks when NEW data arrives
+  if (hasData && !hadDataLastCheck) {
+    lastBufferActivity = now;
+  }
+
+  hadDataLastCheck = hasData || false;
+
   // Check if buffer has data and we're not already extracting
-  if (buffer && buffer.hasData() && !isExtracting) {
+  if (buffer && hasData && !isExtracting) {
     extractMessages();
   }
 

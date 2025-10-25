@@ -182,6 +182,8 @@ export abstract class DebugWindowBase extends EventEmitter {
     right: boolean;
   } = { left: false, middle: false, right: false };
   protected vMouseWheel: number = 0;       // Mouse wheel delta (cleared after transmission)
+  private mouseInputEnabled: boolean = false;  // Flag to prevent duplicate mouse input initialization
+  private mouseEventHandlersSetup: boolean = false;  // Flag to prevent duplicate IPC handler registration
 
   // TLong transmission utility for P2 communication
   protected tLongTransmitter: TLongTransmission;
@@ -415,7 +417,11 @@ export abstract class DebugWindowBase extends EventEmitter {
       case 'PC_MOUSE':
         this.logMessageBase('Executing PC_MOUSE command');
         // Enable mouse input forwarding (for capturing future mouse events)
-        this.enableMouseInput();
+        // Only initialize once to prevent duplicate handlers and JavaScript redeclaration errors
+        if (!this.mouseInputEnabled) {
+          this.enableMouseInput();
+          this.mouseInputEnabled = true;
+        }
         // Return current mouse state and pixel color
         try {
           // Check if mouse is within valid bounds
@@ -1622,15 +1628,23 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected enableMouseInput(): void {
     this.logMessageBase('Enabling mouse input forwarding');
     this.inputForwarder.startPolling();
-    
+
     if (this.debugWindow) {
       // Get canvas ID from derived class
       const canvasId = this.getCanvasId();
-      
+
       this.debugWindow.webContents.executeJavaScript(`
-        const canvas = document.getElementById('${canvasId}');
-        if (canvas) {
-          let mouseButtons = { left: false, middle: false, right: false };
+        (function() {
+          // Guard against multiple initialization
+          if (window.__mouseInputInitialized) {
+            console.log('[MOUSE INPUT] Already initialized, skipping');
+            return;
+          }
+          window.__mouseInputInitialized = true;
+
+          const canvas = document.getElementById('${canvasId}');
+          if (canvas) {
+            let mouseButtons = { left: false, middle: false, right: false };
           
           // Mouse move handler
           canvas.addEventListener('mousemove', (event) => {
@@ -1693,6 +1707,7 @@ export abstract class DebugWindowBase extends EventEmitter {
             }
           });
         }
+        })(); // End IIFE
       `);
       
       // Set up mouse event handlers
@@ -1705,7 +1720,14 @@ export abstract class DebugWindowBase extends EventEmitter {
    */
   private setupMouseEventHandlers(): void {
     if (!this.debugWindow) return;
-    
+
+    // Guard against duplicate handler registration to prevent MaxListeners warning
+    if (this.mouseEventHandlersSetup) {
+      this.logMessageBase('Mouse event handlers already set up, skipping');
+      return;
+    }
+    this.mouseEventHandlersSetup = true;
+
     // Handle mouse events from renderer
     this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
       if (channel === 'mouse-event') {

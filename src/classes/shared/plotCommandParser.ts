@@ -361,11 +361,11 @@ export class PlotCommandParser implements IPlotCommandParser {
     this.registerCommand({
       name: 'CARTESIAN',
       parameters: [
-        { name: 'xdir', type: 'number', required: true, range: { min: 0, max: 1 } },
-        { name: 'ydir', type: 'number', required: true, range: { min: 0, max: 1 } }
+        { name: 'ydir', type: 'number', required: false, range: { min: 0, max: 1 } },
+        { name: 'xdir', type: 'number', required: false, range: { min: 0, max: 1 } }
       ],
-      description: 'Set Cartesian axis directions (0=normal, 1=inverted)',
-      examples: ['CARTESIAN 0 1', 'CARTESIAN 1 0'],
+      description: 'Set Cartesian coordinate mode with optional axis directions (0=normal, 1=inverted)',
+      examples: ['CARTESIAN', 'CARTESIAN 1', 'CARTESIAN 0 1'],
       handler: this.handleCartesianCommand.bind(this)
     });
   }
@@ -2588,8 +2588,11 @@ export class PlotCommandParser implements IPlotCommandParser {
   }
 
   /**
-   * Handle CARTESIAN command - sets axis directions for Cartesian coordinate system
-   * Pascal: CARTESIAN xdir ydir (0=normal, 1=inverted)
+   * Handle CARTESIAN command - sets Cartesian coordinate mode with optional axis directions
+   * Pascal: CARTESIAN {flipy {flipx}} (0=normal, 1=inverted)
+   * - CARTESIAN: Switches to Cartesian mode, preserves current axis directions
+   * - CARTESIAN flipy: Switches to Cartesian mode, sets ydir
+   * - CARTESIAN flipy flipx: Switches to Cartesian mode, sets ydir and xdir
    */
   private handleCartesianCommand(context: CommandContext): CommandResult {
     const result: CommandResult = {
@@ -2600,34 +2603,47 @@ export class PlotCommandParser implements IPlotCommandParser {
     };
 
     try {
-      // Validate parameters (expect xdir and ydir)
-      if (!context.tokens || context.tokens.length < 2) {
-        throw new Error('CARTESIAN command requires xdir and ydir parameters (0 or 1)');
+      // Parameters are optional - can be 0, 1, or 2 parameters
+      const tokenCount = context.tokens ? context.tokens.length : 0;
+
+      let ydir: boolean | undefined = undefined;
+      let xdir: boolean | undefined = undefined;
+
+      // Parse first parameter (ydir) if present
+      if (tokenCount >= 1) {
+        const ydirValue = parseInt(context.tokens[0].value, 10);
+        if (isNaN(ydirValue) || ydirValue < 0 || ydirValue > 1) {
+          throw new Error(`Invalid ydir value: ${context.tokens[0].value} (must be 0 or 1)`);
+        }
+        ydir = ydirValue === 1;
       }
 
-      const xdir = parseInt(context.tokens[0].value, 10);
-      const ydir = parseInt(context.tokens[1].value, 10);
-
-      // Validate range
-      if (isNaN(xdir) || xdir < 0 || xdir > 1) {
-        throw new Error(`Invalid xdir value: ${context.tokens[0].value} (must be 0 or 1)`);
-      }
-      if (isNaN(ydir) || ydir < 0 || ydir > 1) {
-        throw new Error(`Invalid ydir value: ${context.tokens[1].value} (must be 0 or 1)`);
+      // Parse second parameter (xdir) if present
+      if (tokenCount >= 2) {
+        const xdirValue = parseInt(context.tokens[1].value, 10);
+        if (isNaN(xdirValue) || xdirValue < 0 || xdirValue > 1) {
+          throw new Error(`Invalid xdir value: ${context.tokens[1].value} (must be 0 or 1)`);
+        }
+        xdir = xdirValue === 1;
       }
 
       // Create CARTESIAN operation for the integrator to handle
+      // undefined values mean "preserve current value"
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         'SET_CARTESIAN' as any,
         {
-          xdir: xdir === 1,  // Convert 1 to true, 0 to false
-          ydir: ydir === 1
+          xdir: xdir,  // undefined = preserve current
+          ydir: ydir   // undefined = preserve current
         },
         false // CARTESIAN is immediate (affects coordinate system)
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      this.logConsoleMessage(`[PLOT] CARTESIAN ${xdir} ${ydir} parsed`);
+
+      // Log with actual values for clarity
+      const xdirStr = xdir !== undefined ? `xdir=${xdir ? 1 : 0}` : 'xdir=unchanged';
+      const ydirStr = ydir !== undefined ? `ydir=${ydir ? 1 : 0}` : 'ydir=unchanged';
+      this.logConsoleMessage(`[PLOT] CARTESIAN parsed: ${ydirStr}, ${xdirStr}`);
 
     } catch (error) {
       result.success = false;

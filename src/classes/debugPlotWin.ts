@@ -379,6 +379,7 @@ export class DebugPlotWindow extends DebugWindowBase {
             if (index < lineParts.length - 2) {
               displaySpec.position.x = Number(lineParts[++index]);
               displaySpec.position.y = Number(lineParts[++index]);
+              displaySpec.hasExplicitPosition = true; // Mark that POS was explicitly specified
             } else {
               DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
               isValid = false;

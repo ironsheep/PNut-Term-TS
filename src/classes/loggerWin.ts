@@ -905,10 +905,10 @@ export class LoggerWindow extends DebugWindowBase {
       } else if (actualData instanceof Uint8Array) {
         // DEFENSIVE: COG messages should be text - verify before decoding
         if (this.isASCIIData(actualData)) {
-          // Valid ASCII text - format with PST control code symbols
-          const formatted = this.formatPSTControlCodes(actualData);
-          this.appendMessage(formatted, 'cog-message');
-          this.writeToLog(formatted);
+          // Valid ASCII text - decode as plain text (no PST formatting for COG messages)
+          const message = new TextDecoder().decode(actualData);
+          this.appendMessage(message, 'cog-message');
+          this.writeToLog(message);
         } else {
           // Binary data misclassified as COG - display defensively with hex fallback
           const hexFallback = this.formatBinaryAsHexFallback(actualData);

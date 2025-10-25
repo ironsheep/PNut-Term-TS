@@ -851,10 +851,14 @@ export class PlotWindowIntegrator {
     const { xdir, ydir } = params;
 
     // Update plot window's Cartesian configuration
-    this.plotWindow.cartesianConfig = {
-      xdir: xdir === true || xdir === 1,
-      ydir: ydir === true || ydir === 1
-    };
+    // Only update values that are provided (not undefined)
+    // This matches Pascal behavior: CARTESIAN {flipy {flipx}}
+    if (xdir !== undefined) {
+      this.plotWindow.cartesianConfig.xdir = xdir === true || xdir === 1;
+    }
+    if (ydir !== undefined) {
+      this.plotWindow.cartesianConfig.ydir = ydir === true || ydir === 1;
+    }
 
     this.logConsoleMessage(`[INTEGRATOR] Cartesian config set: xdir=${this.plotWindow.cartesianConfig.xdir}, ydir=${this.plotWindow.cartesianConfig.ydir}`);
   }
