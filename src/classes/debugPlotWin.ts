@@ -1276,6 +1276,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           `Cleaning up ${layerStats.layerCount} layers (${Math.round(layerStats.currentUsage / 1024)}KB)`
         );
         this.layerManager.clearAllLayers();
+        // Also release renderer layer caches
+        this.plotWindowIntegrator.releaseAllLayersInRenderer().catch(err =>
+          this.logMessage(`Failed to release renderer layer caches: ${err}`)
+        );
       }
 
       // Clear any deferred operations to prevent memory leaks
@@ -1332,6 +1336,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // Clear the layers first (synchronous operation)
     if (this.layerManager) {
       this.layerManager.clearAllLayers();
+      // Also release renderer layer caches
+      this.plotWindowIntegrator.releaseAllLayersInRenderer().catch(err =>
+        this.logMessage(`Failed to release renderer layer caches: ${err}`)
+      );
     }
 
     // CRITICAL: Clear the correct buffer based on update mode
@@ -1941,10 +1949,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   //  ----------------- Utility Routines -----------------------
   //
   private getCursorXY(): [number, number] {
-    // Convert cursor logical coordinates to screen coordinates
-    // The cursor stores logical coordinates from SET command
-    // We need to apply origin and axis transformations for screen positioning
-    return this.getXY(this.cursorPosition.x, this.cursorPosition.y);
+    // Convert cursor fixed-point coordinates to pixel coordinates, then to screen coordinates
+    // The cursor stores RAW fixed-point values from SET command (multiplied by 256)
+    // First divide by 256 to get pixels, then apply origin and axis transformations
+    const pixelX = Math.round(this.cursorPosition.x / 256.0);
+    const pixelY = Math.round(this.cursorPosition.y / 256.0);
+    return this.getXY(pixelX, pixelY);
   }
 
   public getXY(x: number, y: number): [number, number] {
@@ -1960,15 +1970,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       newX = this.origin.x + x;
     }
 
-    // Y-axis: Canvas already has Y increasing downward
-    // ydir false = normal (Y increases downward from origin)
-    // ydir true = inverted (Y increases upward from origin)
+    // Y-axis: Pascal behavior from PLOT_GetXY:
+    // vDirY true = Y increases upward from origin (normal mathematical coordinates)
+    // vDirY false = Y inverted (screen coordinates, Y increases downward)
     if (this.cartesianConfig.ydir) {
-      // Inverted: Y increases upward, so flip relative to canvas height
-      newY = this.displaySpec.size.height - 1 - this.origin.y - y;
-    } else {
-      // Normal: Y increases downward, matches canvas coordinates
+      // True: Y increases upward (mathematical coordinates)
       newY = this.origin.y + y;
+    } else {
+      // False: Y inverted (screen coordinates), flip relative to canvas height
+      newY = this.displaySpec.size.height - 1 - this.origin.y - y;
     }
 
     newX = Math.round(newX);

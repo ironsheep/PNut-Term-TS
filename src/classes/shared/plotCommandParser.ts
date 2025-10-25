@@ -189,10 +189,10 @@ export class PlotCommandParser implements IPlotCommandParser {
     this.registerCommand({
       name: 'LINESIZE',
       parameters: [
-        { name: 'size', type: 'number', required: true, range: { min: 1, max: 32 } }
+        { name: 'size', type: 'number', required: true }
       ],
-      description: 'Set default line size',
-      examples: ['LINESIZE 2'],
+      description: 'Set line size in pixels (any integer value)',
+      examples: ['LINESIZE 2', 'LINESIZE $400', 'LINESIZE -10'],
       handler: this.handleLineSizeCommand.bind(this)
     });
 
@@ -210,30 +210,17 @@ export class PlotCommandParser implements IPlotCommandParser {
 
     // Input commands - REMOVED: PC_KEY and PC_MOUSE now handled by base class handleCommonCommand()
 
-    // Color commands (will be expanded in next phase)
+    // Color commands
     this.registerCommand({
       name: 'COLOR',
       parameters: [
-        { name: 'color', type: 'color', required: true }
+        { name: 'color', type: 'color', required: true },
+        { name: 'brightness', type: 'count', required: false, defaultValue: 8, range: { min: 0, max: 15 } }
       ],
-      description: 'Set drawing color',
-      examples: ['COLOR RED', 'COLOR $FF0000'],
+      description: 'Set drawing color with optional brightness (default: 8)',
+      examples: ['COLOR RED', 'COLOR RED 10', 'COLOR $FF0000'],
       handler: this.handleColorCommand.bind(this)
     });
-
-    // Color name commands with optional brightness
-    const colorNames = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'CYAN', 'MAGENTA', 'YELLOW', 'ORANGE', 'GRAY', 'GREY'];
-    for (const colorName of colorNames) {
-      this.registerCommand({
-        name: colorName,
-        parameters: [
-          { name: 'brightness', type: 'count', required: false, defaultValue: 15, range: { min: 0, max: 15 } }
-        ],
-        description: `Set drawing color to ${colorName}`,
-        examples: [`${colorName}`, `${colorName} 10`],
-        handler: this.handleColorNameCommand.bind(this)
-      });
-    }
 
     // CONFIGURE commands for window appearance and positioning
     this.registerCommand({
@@ -466,14 +453,6 @@ export class PlotCommandParser implements IPlotCommandParser {
       if (token.type === 'COMMAND' && this.registry.hasCommand(token.value)) {
         const commandName = token.value.toUpperCase();
 
-        // Skip color names that are incorrectly tokenized as commands
-        const colorNames = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'YELLOW',
-                           'CYAN', 'MAGENTA', 'ORANGE', 'PURPLE', 'PINK', 'BROWN',
-                           'GRAY', 'GREY'];
-        if (colorNames.includes(commandName)) {
-          continue; // Skip color names
-        }
-
         // Check if this is a CONFIGURE command
         if (commandName === 'CONFIGURE') {
           inConfigureCommand = true;
@@ -502,10 +481,9 @@ export class PlotCommandParser implements IPlotCommandParser {
    */
   private isConfigureSubcommand(commandName: string): boolean {
     const configureSubcommands = ['TITLE', 'POS', 'SIZE', 'DOTSIZE', 'BACKCOLOR', 'HIDEXY', 'UPDATE'];
-    const colorNames = ['BLACK', 'WHITE', 'RED', 'GREEN', 'BLUE', 'CYAN', 'MAGENTA', 'YELLOW', 'ORANGE', 'GRAY', 'GREY'];
 
     const upperCommand = commandName.toUpperCase();
-    return configureSubcommands.includes(upperCommand) || colorNames.includes(upperCommand);
+    return configureSubcommands.includes(upperCommand);
   }
 
   /**
@@ -990,27 +968,28 @@ export class PlotCommandParser implements IPlotCommandParser {
       // Pascal format: LINE x y {linesize {opacity}}
       // LINE x y lineSize - 3 params: third is lineSize
       // LINE x y lineSize opacity - 4 params: third is lineSize, fourth is opacity
-      let lineSize = 1;
-      let opacity = 255;
+      // Don't set defaults here - let executor use state defaults
+      let lineSize: number | undefined = undefined;
+      let opacity: number | undefined = undefined;
 
       if (tokens.length === 3 && tokens[2].type === 'NUMBER') {
         // Three parameters: LINE x y lineSize
         const lineSizeValue = Spin2NumericParser.parseCount(tokens[2].value);
-        if (lineSizeValue !== null && lineSizeValue >= 1 && lineSizeValue <= 32) {
+        if (lineSizeValue !== null) {
           lineSize = lineSizeValue;
         } else {
-          result.warnings.push(`Invalid line size '${tokens[2].value}', using default: ${lineSize}`);
-          this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, lineSize);
+          result.warnings.push(`Invalid line size '${tokens[2].value}', will use state default`);
+          this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, 'state');
         }
       } else if (tokens.length >= 4) {
         // Four or more parameters: LINE x y lineSize opacity
         if (tokens[2].type === 'NUMBER') {
           const lineSizeValue = Spin2NumericParser.parseCount(tokens[2].value);
-          if (lineSizeValue !== null && lineSizeValue >= 1 && lineSizeValue <= 32) {
+          if (lineSizeValue !== null) {
             lineSize = lineSizeValue;
           } else {
-            result.warnings.push(`Invalid line size '${tokens[2].value}', using default: ${lineSize}`);
-            this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, lineSize);
+            result.warnings.push(`Invalid line size '${tokens[2].value}', will use state default`);
+            this.logParameterWarning(context.originalCommand, 'LINE linesize', tokens[2].value, 'state');
           }
         }
 
@@ -1019,22 +998,26 @@ export class PlotCommandParser implements IPlotCommandParser {
           if (opacityValue !== null && opacityValue >= 0 && opacityValue <= 255) {
             opacity = opacityValue;
           } else {
-            result.warnings.push(`Invalid opacity '${tokens[3].value}', using default: ${opacity}`);
-            this.logParameterWarning(context.originalCommand, 'LINE opacity', tokens[3].value, opacity);
+            result.warnings.push(`Invalid opacity '${tokens[3].value}', will use state default`);
+            this.logParameterWarning(context.originalCommand, 'LINE opacity', tokens[3].value, 'state');
           }
         }
       }
 
-      // Create canvas operation
+      // Create canvas operation - only include lineSize/opacity if explicitly provided
+      const params: Record<string, any> = { x, y };
+      if (lineSize !== undefined) params.lineSize = lineSize;
+      if (opacity !== undefined) params.opacity = opacity;
+
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         CanvasOperationType.DRAW_LINE,
-        { x, y, lineSize, opacity },
+        params,
         true // LINE is deferrable
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
 
-      this.logConsoleMessage(`[PLOT] LINE parsed: x=${x}, y=${y}, lineSize=${lineSize}, opacity=${opacity}`);
+      this.logConsoleMessage(`[PLOT] LINE parsed: x=${x}, y=${y}, lineSize=${lineSize ?? 'state'}, opacity=${opacity ?? 'state'}`);
 
     } catch (error) {
       result.success = false;
@@ -1129,66 +1112,55 @@ export class PlotCommandParser implements IPlotCommandParser {
       }
 
       // Parse optional lineSize parameter
-      let lineSize = commandName === 'DOT' ? 1 : 0; // DOT defaults to 1, others to 0 (filled)
+      // DOT defaults to state lineSize, other shapes default to 0 (filled) - but only if not explicitly provided
+      let lineSize: number | undefined = undefined;
+      let hasExplicitLineSize = false;
+
       if (tokenIndex < tokens.length && tokens[tokenIndex].type === 'NUMBER') {
+        hasExplicitLineSize = true;
         const lineSizeValue = Spin2NumericParser.parseCount(tokens[tokenIndex].value);
         if (lineSizeValue !== null) {
-          // Clamp lineSize to valid range
-          if (commandName === 'DOT') {
-            // DOT: must be 1-32 (cannot be filled/0)
-            if (lineSizeValue < 1) {
-              lineSize = 1;
-              result.warnings.push(`Line size clamped from ${lineSizeValue} to 1`);
-            } else if (lineSizeValue > 32) {
-              lineSize = 32;
-              result.warnings.push(`Line size clamped from ${lineSizeValue} to 32`);
-            } else {
-              lineSize = lineSizeValue;
-            }
-          } else {
-            // Other shapes: 0 (filled) or 1-32 (outline)
-            if (lineSizeValue < 0) {
-              lineSize = 1; // Negative values clamp to 1
-              result.warnings.push(`Line size clamped from ${lineSizeValue} to 1`);
-            } else if (lineSizeValue === 0) {
-              lineSize = 0; // Filled is valid for non-DOT shapes
-            } else if (lineSizeValue > 32) {
-              lineSize = 32;
-              result.warnings.push(`Line size clamped from ${lineSizeValue} to 32`);
-            } else {
-              lineSize = lineSizeValue;
-            }
-          }
+          lineSize = lineSizeValue;
         } else {
-          result.warnings.push(`Invalid line size '${tokens[tokenIndex].value}', using default: ${lineSize}`);
-          this.logParameterWarning(context.originalCommand, `${commandName} linesize`, tokens[tokenIndex].value, lineSize);
+          result.warnings.push(`Invalid line size '${tokens[tokenIndex].value}', will use default`);
+          this.logParameterWarning(context.originalCommand, `${commandName} linesize`, tokens[tokenIndex].value, 'default');
         }
         tokenIndex++;
       }
 
-      // Parse optional opacity parameter
-      let opacity = 255;
+      // If not explicitly provided, set the appropriate default for non-DOT shapes
+      // DOT leaves it undefined to use state default in executor
+      if (!hasExplicitLineSize && commandName !== 'DOT') {
+        lineSize = 0; // Other shapes default to filled
+      }
+
+      // Parse optional opacity parameter - don't set default, let executor use state
+      let opacity: number | undefined = undefined;
       if (tokenIndex < tokens.length && tokens[tokenIndex].type === 'NUMBER') {
         const opacityValue = Spin2NumericParser.parseCount(tokens[tokenIndex].value);
         if (opacityValue !== null && opacityValue >= 0 && opacityValue <= 255) {
           opacity = opacityValue;
         } else {
-          result.warnings.push(`Invalid opacity '${tokens[tokenIndex].value}', using default: ${opacity}`);
-          this.logParameterWarning(context.originalCommand, `${commandName} opacity`, tokens[tokenIndex].value, opacity);
+          result.warnings.push(`Invalid opacity '${tokens[tokenIndex].value}', will use state default`);
+          this.logParameterWarning(context.originalCommand, `${commandName} opacity`, tokens[tokenIndex].value, 'state');
         }
       }
 
-      // Create canvas operation
+      // Create canvas operation - only include values if defined
+      const finalParams: Record<string, any> = { ...params };
+      if (lineSize !== undefined) finalParams.lineSize = lineSize;
+      if (opacity !== undefined) finalParams.opacity = opacity;
+
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         operationType,
-        { ...params, lineSize, opacity },
+        finalParams,
         true // All drawing commands are deferrable
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
 
       const paramStr = requiredParams.map(p => `${p}=${params[p]}`).join(', ');
-      this.logConsoleMessage(`[PLOT] ${commandName} parsed: ${paramStr}, lineSize=${lineSize}, opacity=${opacity}`);
+      this.logConsoleMessage(`[PLOT] ${commandName} parsed: ${paramStr}, lineSize=${lineSize ?? 'state'}, opacity=${opacity ?? 'state'}`);
 
     } catch (error) {
       result.success = false;
@@ -1335,7 +1307,7 @@ export class PlotCommandParser implements IPlotCommandParser {
       const sizeValue = Spin2NumericParser.parseCount(tokens[0].value);
       let size = 1;
 
-      if (sizeValue !== null && sizeValue >= 1 && sizeValue <= 32) {
+      if (sizeValue !== null) {
         size = sizeValue;
       } else {
         result.warnings.push(`Invalid line size '${tokens[0].value}', using default: ${size}`);
@@ -1429,6 +1401,18 @@ export class PlotCommandParser implements IPlotCommandParser {
       }
 
       const colorValue = tokens[0].value;
+      let brightness = 8; // Default brightness (matches Pascal default)
+
+      // Parse optional brightness parameter (second token)
+      if (tokens.length > 1 && tokens[1].type === 'NUMBER') {
+        const brightnessValue = Spin2NumericParser.parseCount(tokens[1].value);
+        if (brightnessValue !== null) {
+          brightness = brightnessValue & 15; // Mask to 0-15 range (matches Pascal: val and 15)
+        } else {
+          result.warnings.push(`Invalid brightness '${tokens[1].value}', using default: ${brightness}`);
+          this.logParameterWarning(context.originalCommand, 'brightness', tokens[1].value, brightness);
+        }
+      }
 
       // Try to parse as hex color first
       let parsedColor: number | null = null;
@@ -1438,71 +1422,20 @@ export class PlotCommandParser implements IPlotCommandParser {
 
       const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
         CanvasOperationType.SET_COLOR,
-        { color: parsedColor !== null ? `#${parsedColor.toString(16).padStart(6, '0')}` : colorValue },
+        {
+          color: parsedColor !== null ? `#${parsedColor.toString(16).padStart(6, '0')}` : colorValue,
+          brightness: brightness
+        },
         true // COLOR should be deferrable with drawing operations
       );
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      this.logConsoleMessage(`[PLOT] COLOR parsed: ${colorValue}`);
+      this.logConsoleMessage(`[PLOT] COLOR parsed: ${colorValue}, brightness: ${brightness}`);
 
     } catch (error) {
       result.success = false;
       result.errors.push(`COLOR command failed: ${error}`);
       this.logError(`[PLOT PARSE ERROR] COLOR command execution failed: ${error}`);
-    }
-
-    return result;
-  }
-
-  private handleColorNameCommand(context: CommandContext): CommandResult {
-    const result: CommandResult = {
-      success: true,
-      errors: [],
-      warnings: [],
-      canvasOperations: []
-    };
-
-    try {
-      const tokens = context.tokens;
-      let brightness = 15; // Default full brightness
-
-      // Parse optional brightness parameter
-      if (tokens.length > 0 && tokens[0].type === 'NUMBER') {
-        const brightnessValue = Spin2NumericParser.parseCount(tokens[0].value);
-        if (brightnessValue !== null && brightnessValue >= 0 && brightnessValue <= 15) {
-          brightness = brightnessValue;
-        } else {
-          result.warnings.push(`Invalid brightness '${tokens[0].value}', using default: ${brightness}`);
-          this.logParameterWarning(context.originalCommand, 'brightness', tokens[0].value, brightness);
-        }
-      }
-
-      // Get the color name from the command context for compound commands,
-      // or extract from original for simple commands
-      let colorName: string;
-      if ((context as any).command) {
-        // In compound command, use the provided command name
-        colorName = (context as any).command;
-      } else {
-        // In simple command, extract from original
-        const commandParts = context.originalCommand.trim().split(/\s+/);
-        colorName = commandParts[0].toUpperCase();
-      }
-
-      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-        CanvasOperationType.SET_COLOR,
-        { color: colorName, brightness: brightness },
-        true // Color should be deferrable to batch with drawing operations
-      );
-      this.logConsoleMessage('[PARSER] Created color operation:', operation.type, '=', CanvasOperationType.SET_COLOR, 'params:', operation.parameters);
-
-      result.canvasOperations = [this.convertToCanvasOperation(operation)];
-      this.logConsoleMessage(`[PLOT] ${colorName} parsed: brightness=${brightness}`);
-
-    } catch (error) {
-      result.success = false;
-      result.errors.push(`Color command failed: ${error}`);
-      this.logError(`[PLOT PARSE ERROR] Color command execution failed: ${error}`);
     }
 
     return result;

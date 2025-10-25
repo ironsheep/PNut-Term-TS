@@ -39,9 +39,11 @@ export class LayerManager {
   private layerMetadata: Array<{ filename: string; loadTime: Date; size: number } | null> = [];
 
   constructor() {
+    console.log('[LAYER LIFECYCLE] LayerManager constructed');
     // Initialize array with null values for 8 layers
     this.layers = new Array(LayerManager.MAX_LAYERS).fill(null);
     this.layerMetadata = new Array(LayerManager.MAX_LAYERS).fill(null);
+    console.log('[LAYER LIFECYCLE] Layers array initialized:', this.layers.length, 'elements');
   }
 
   /**
@@ -91,6 +93,8 @@ export class LayerManager {
         size: layerMemory
       };
 
+      console.log(`[LAYER LIFECYCLE] Layer ${index} loaded successfully: "${filepath}" (${image.width}x${image.height})`);
+      console.log(`[LAYER LIFECYCLE] Layer reference type: ${typeof image}, has getPixelColor: ${typeof image?.getPixelColor}`);
       this.logConsoleMessage(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${image.width}x${image.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
     } catch (error) {
       if (error instanceof Error) {
@@ -221,16 +225,22 @@ export class LayerManager {
     const layer = this.layers[layerIndex];
     const metadata = this.layerMetadata[layerIndex];
 
+    console.log(`[LAYER LIFECYCLE] releaseLayer() called for index ${layerIndex}`);
+    console.log(`[LAYER LIFECYCLE] Stack trace:`, new Error().stack);
+
     if (layer !== null && metadata !== null) {
       // Update memory tracking
       this.memoryUsage -= metadata.size;
       this.memoryUsage = Math.max(0, this.memoryUsage); // Ensure non-negative
 
       // Clear the layer and metadata
+      console.log(`[LAYER LIFECYCLE] Setting layers[${layerIndex}] = null (was: ${metadata.filename})`);
       this.layers[layerIndex] = null;
       this.layerMetadata[layerIndex] = null;
 
       this.logConsoleMessage(`[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`);
+    } else {
+      console.log(`[LAYER LIFECYCLE] releaseLayer() called but layer already null or no metadata`);
     }
   }
 
@@ -254,6 +264,26 @@ export class LayerManager {
    * @returns true if layer is loaded, false otherwise
    */
   isLayerLoaded(layerIndex: number): boolean {
+    // DIAGNOSTIC: Log every check to understand the failure
+    const outOfBounds = layerIndex < 0 || layerIndex >= LayerManager.MAX_LAYERS;
+    const layerValue = outOfBounds ? 'OUT_OF_BOUNDS' : (this.layers[layerIndex] ? 'LOADED' : 'NULL');
+    const result = !outOfBounds && this.layers[layerIndex] !== null;
+
+    console.log(`[LAYER CHECK] isLayerLoaded(${layerIndex}): ${result}`);
+    if (!result && layerIndex >= 0 && layerIndex < LayerManager.MAX_LAYERS) {
+      console.log(`[LAYER CHECK] ⚠️ Layer is NULL at valid index ${layerIndex}!`);
+      console.log(`[LAYER CHECK] All layers state:`, this.layers.map((l: any, i: number) => `[${i}]: ${l ? 'EXISTS' : 'NULL'}`));
+    }
+
+    this.logConsoleMessage(
+      `[LAYER MANAGER] isLayerLoaded(${layerIndex}): ` +
+      `outOfBounds=${outOfBounds}, ` +
+      `MAX_LAYERS=${LayerManager.MAX_LAYERS}, ` +
+      `layerValue=${layerValue}, ` +
+      `layersArrayLength=${this.layers.length}, ` +
+      `result=${result}`
+    );
+
     if (layerIndex < 0 || layerIndex >= LayerManager.MAX_LAYERS) {
       return false;
     }

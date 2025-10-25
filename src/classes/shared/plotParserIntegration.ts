@@ -252,6 +252,9 @@ export class PlotWindowIntegrator {
    * Execute canvas operation using existing rendering infrastructure
    */
   async executeOperation(operation: PlotCanvasOperation): Promise<CommandResult> {
+    // Performance timing - start
+    const perfStart = performance.now();
+
     const result: CommandResult = {
       success: true,
       errors: [],
@@ -335,6 +338,18 @@ export class PlotWindowIntegrator {
           this.executeSetPrecision(operation.parameters);
           break;
 
+        case CanvasOperationType.SET_LINESIZE:
+          // State update handled in updateInternalState
+          break;
+
+        case CanvasOperationType.SET_OPACITY:
+          // State update handled in updateInternalState
+          break;
+
+        case CanvasOperationType.SET_TEXTANGLE:
+          // State update handled in updateInternalState
+          break;
+
         case 'SET_CARTESIAN' as any:
           this.executeSetCartesian(operation.parameters);
           break;
@@ -392,6 +407,11 @@ export class PlotWindowIntegrator {
       result.errors.push(`Failed to execute operation: ${error}`);
     }
 
+    // Performance timing - end and log
+    const perfDuration = performance.now() - perfStart;
+    console.log(`[OP TIMING] ${operation.type}: ${perfDuration.toFixed(2)}ms`,
+                operation.parameters ? `params: ${JSON.stringify(operation.parameters).substring(0, 100)}` : '');
+
     return result;
   }
 
@@ -399,30 +419,36 @@ export class PlotWindowIntegrator {
    * Execute drawing operation directly on canvas
    */
   private async executeDraw(command: string, params: Record<string, any>): Promise<void> {
-    // Apply precision multiplier if in high precision mode (vPrecise = 8)
-    const precisionMultiplier = this.state.precise === 8 ? 1.0 / 256.0 : 1.0;
+    // Coordinates from device are ALWAYS in fixed-point format (multiplied by 256)
+    // We always need to divide by 256 to get pixel coordinates
+    // The precise setting affects Pascal's INTERNAL smooth rendering, not our coordinate interpretation
+    const precisionMultiplier = 1.0 / 256.0;
 
     switch (command) {
       case 'DOT':
         // DOT is drawn as a small filled circle
         // Do NOT apply precision multiplier to dot size - it's already in pixels
         const dotSize = this.plotWindow.displaySpec?.dotSize || 1;
-        await this.plotWindow.drawCircleToPlot(dotSize, 0, params.opacity ?? 255);
+        await this.plotWindow.drawCircleToPlot(dotSize, 0, params.opacity ?? this.state.opacity);
         break;
 
       case 'LINE':
-        // IMPORTANT: Do NOT apply precision multiplier to LINE coordinates!
-        // In polar mode, these are radius/angle values, not pixel positions
-        // In cartesian mode with high precision, LINE still uses logical coordinates
-        // The precision handling happens inside drawLineToPlot based on coordinate mode
-        const lineX = params.x ?? 0;
-        const lineY = params.y ?? 0;
-        const lineSize = params.lineSize ?? 1;  // Line size is in pixels
+        // Apply precision multiplier to convert fixed-point coordinates to pixels
+        // Coordinates from device are always in fixed-point format (multiplied by 256)
+        // e.g., 40960 / 256 = 160 pixels, 57600 / 256 = 225 pixels
+        // Round to integer pixels (no decimals needed for canvas operations)
+        const lineX = Math.round((params.x ?? 0) * precisionMultiplier);
+        const lineY = Math.round((params.y ?? 0) * precisionMultiplier);
+        const lineSize = params.lineSize ?? this.state.lineSize;  // Use state lineSize as default
+        const opacity = params.opacity ?? this.state.opacity;
+
+        console.log(`[INTEGRATOR] LINE: raw=(${params.x},${params.y}) converted=(${lineX},${lineY}) lineSize=${lineSize}, opacity=${opacity}`);
+
         await this.plotWindow.drawLineToPlot(
           lineX,
           lineY,
           lineSize,
-          params.opacity ?? 255
+          opacity
         );
         break;
 
@@ -430,12 +456,12 @@ export class PlotWindowIntegrator {
         // Do NOT apply precision multiplier to diameter - it's already in pixels
         // Precision multiplier is only for coordinate positions, not sizes
         const diameter = params.diameter || 10;
-        const circleLineSize = params.lineSize !== undefined ? params.lineSize : 0;
+        const circleLineSize = params.lineSize !== undefined ? params.lineSize : 0; // Default to 0 (filled)
 
         this.logConsoleMessage('[INTEGRATOR] Drawing CIRCLE with params:', {
           diameter: diameter,
           lineSize: circleLineSize,
-          opacity: params.opacity ?? 255,
+          opacity: params.opacity ?? this.state.opacity,
           originalDiameter: params.diameter || 10,
           originalLineSize: params.lineSize,
           precisionMultiplier: precisionMultiplier
@@ -443,8 +469,8 @@ export class PlotWindowIntegrator {
 
         await this.plotWindow.drawCircleToPlot(
           diameter,
-          circleLineSize,  // Use precision-adjusted line size
-          params.opacity ?? 255
+          circleLineSize,
+          params.opacity ?? this.state.opacity
         );
         break;
 
@@ -508,20 +534,21 @@ export class PlotWindowIntegrator {
     });
 
     if (params.x !== undefined && params.y !== undefined) {
+      // Pascal stores RAW fixed-point values in vPixelX/vPixelY
+      // Conversion to screen coordinates happens only when drawing (in LINE, DOT, etc.)
+      // So we store the raw values here, just like Pascal does
       let x = params.x;
       let y = params.y;
 
-      // IMPORTANT: SET command does NOT use precision multiplier!
-      // Precision mode only affects drawing operations (LINE, DOT, etc.)
-      // SET always uses absolute coordinates regardless of precision mode
-      this.logConsoleMessage(`[INTEGRATOR] Raw SET params: x=${x}, y=${y} (no precision applied to SET)`);
+      this.logConsoleMessage(`[INTEGRATOR] SET: storing raw values x=${x}, y=${y}`);
 
       // Check if we're in polar mode
       if (this.state.coordinateMode === 'POLAR') {
         // In polar mode, SET coordinates are polar (radius, angle)
         // First parameter (x) is radius, second parameter (y) is angle
-        const radius = x;  // No precision multiplier for SET
-        const angle = y;   // No precision multiplier for SET
+        // Precision multiplier already applied above
+        const radius = x;
+        const angle = y;
 
         this.logConsoleMessage(`[INTEGRATOR] Polar mode - radius=${radius}, angle=${angle}`);
 
@@ -530,8 +557,7 @@ export class PlotWindowIntegrator {
 
         this.logConsoleMessage(`[INTEGRATOR] After polarToCartesian: x=${x}, y=${y}`);
       } else {
-        // In cartesian mode, SET uses coordinates directly
-        // No precision multiplier for SET command
+        // In cartesian mode, SET uses coordinates directly (already converted from fixed-point)
         this.logConsoleMessage(`[INTEGRATOR] Cartesian mode - x=${x}, y=${y}`);
       }
 
@@ -1235,7 +1261,13 @@ export class PlotWindowIntegrator {
             await this.plotWindow.layerManager.loadLayer(internalLayerIndex, filename);
           } else {
             // Fallback: create a simple layer storage implementation
+            console.error(`[LAYER LIFECYCLE] ⚠️ FALLBACK PATH EXECUTING! loadLayer method not found!`);
+            console.error(`[LAYER LIFECYCLE] layerManager type: ${typeof this.plotWindow.layerManager}`);
+            console.error(`[LAYER LIFECYCLE] loadLayer exists: ${!!this.plotWindow.layerManager.loadLayer}`);
+            console.error(`[LAYER LIFECYCLE] Stack trace:`, new Error().stack);
+
             if (!this.plotWindow.layerManager.layers) {
+              console.error(`[LAYER LIFECYCLE] 🚨 RECREATING LAYERS ARRAY - ALL LAYERS WILL BE LOST!`);
               this.plotWindow.layerManager.layers = new Array(16);
             }
             this.plotWindow.layerManager.layers[internalLayerIndex] = {
@@ -1253,6 +1285,9 @@ export class PlotWindowIntegrator {
         }
 
         this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${bitmapData.width}x${bitmapData.height})`);
+
+        // NEW: Transfer layer to renderer as offscreen canvas for fast cropping
+        await this.transferLayerToRenderer(internalLayerIndex, filename);
 
       } catch (loadError) {
         // Enhanced error classification and logging
@@ -1279,6 +1314,151 @@ export class PlotWindowIntegrator {
       console.error(`[INTEGRATOR] Failed to load layer:`, error);
       this.logError(`[PLOT ERROR] LAYER command failed: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Transfer loaded layer to renderer as offscreen canvas for fast cropping
+   * Uses PNG data URL for efficient transfer, renderer caches as offscreen canvas
+   */
+  private async transferLayerToRenderer(layerIndex: number, filename: string): Promise<void> {
+    try {
+      if (!this.plotWindow.debugWindow || !this.plotWindow.shouldWriteToCanvas) {
+        this.logConsoleMessage('[INTEGRATOR] Window not ready for layer transfer');
+        return;
+      }
+
+      // Get the Jimp image from layer manager
+      const layer = this.plotWindow.layerManager.layers[layerIndex];
+      if (!layer) {
+        throw new Error(`Layer ${layerIndex} not loaded in LayerManager`);
+      }
+
+      this.logConsoleMessage(`[INTEGRATOR] Transferring layer ${layerIndex} to renderer: ${layer.bitmap.width}x${layer.bitmap.height}`);
+
+      // Convert Jimp image to PNG data URL (compressed, efficient transfer)
+      // Note: getBase64() returns Promise<string>, no "Async" suffix in Jimp v1.x
+      const dataURL = await layer.getBase64('image/png');
+
+      // Send to renderer and create offscreen canvas
+      // Returns Promise that resolves when image loads and canvas is ready
+      await this.plotWindow.debugWindow.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+          try {
+            // Initialize layer canvases array if needed
+            if (!window.layerCanvases) {
+              window.layerCanvases = new Array(16);
+              console.log('[LAYER CACHE] Initialized layerCanvases array');
+            }
+
+            const layerIndex = ${layerIndex};
+            const img = new Image();
+
+            img.onload = () => {
+              try {
+                // Create offscreen canvas with exact dimensions
+                const offscreenCanvas = document.createElement('canvas');
+                offscreenCanvas.width = img.width;
+                offscreenCanvas.height = img.height;
+                const ctx = offscreenCanvas.getContext('2d', { alpha: true });
+
+                if (!ctx) {
+                  reject('Failed to get 2d context for offscreen canvas');
+                  return;
+                }
+
+                // Disable image smoothing for pixel-perfect rendering
+                ctx.imageSmoothingEnabled = false;
+
+                // Draw image to offscreen canvas
+                ctx.drawImage(img, 0, 0);
+
+                // Cache the offscreen canvas
+                window.layerCanvases[layerIndex] = offscreenCanvas;
+
+                console.log('[LAYER CACHE] Layer ' + layerIndex + ' cached: ' + img.width + 'x' + img.height);
+                resolve('Layer cached');
+              } catch (err) {
+                reject('Failed to create offscreen canvas: ' + err.message);
+              }
+            };
+
+            img.onerror = () => {
+              reject('Failed to load layer image');
+            };
+
+            img.src = '${dataURL}';
+          } catch (err) {
+            reject('Failed to transfer layer: ' + err.message);
+          }
+        })
+      `);
+
+      this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} successfully cached in renderer`);
+
+      // NOTE: We could release the Jimp image here to save memory since renderer has the data
+      // For now, keeping it in case we need it for other operations (SAVE, etc.)
+      // To release: this.plotWindow.layerManager.layers[layerIndex] = null;
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to transfer layer ${layerIndex} to renderer:`, error);
+      throw new Error(`Failed to transfer layer to renderer: ${error}`);
+    }
+  }
+
+  /**
+   * Release layer cache in renderer
+   * Called when layer is released from LayerManager
+   */
+  async releaseLayerInRenderer(layerIndex: number): Promise<void> {
+    try {
+      if (!this.plotWindow.debugWindow || !this.plotWindow.shouldWriteToCanvas) {
+        return;
+      }
+
+      await this.plotWindow.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          if (window.layerCanvases && window.layerCanvases[${layerIndex}]) {
+            console.log('[LAYER CACHE] Releasing layer ${layerIndex}');
+            window.layerCanvases[${layerIndex}] = null;
+            return 'Layer cache released';
+          }
+          return 'Layer not cached';
+        })()
+      `);
+
+      this.logConsoleMessage(`[INTEGRATOR] Released layer ${layerIndex} cache in renderer`);
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to release layer ${layerIndex} in renderer:`, error);
+    }
+  }
+
+  /**
+   * Release all layer caches in renderer
+   * Called when clearing all layers
+   */
+  async releaseAllLayersInRenderer(): Promise<void> {
+    try {
+      if (!this.plotWindow.debugWindow || !this.plotWindow.shouldWriteToCanvas) {
+        return;
+      }
+
+      await this.plotWindow.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          if (window.layerCanvases) {
+            console.log('[LAYER CACHE] Releasing all layer caches');
+            window.layerCanvases = new Array(16);
+            return 'All layer caches released';
+          }
+          return 'No caches to release';
+        })()
+      `);
+
+      this.logConsoleMessage(`[INTEGRATOR] Released all layer caches in renderer`);
+
+    } catch (error) {
+      console.error(`[INTEGRATOR] Failed to release all layers in renderer:`, error);
     }
   }
 
@@ -1421,10 +1601,29 @@ export class PlotWindowIntegrator {
 
       const internalLayerIndex = layerIndex - 1;
 
+      // DIAGNOSTIC: Log state before checking layer
+      this.logConsoleMessage(
+        `[INTEGRATOR] About to check layer: ` +
+        `layerIndex=${layerIndex}, ` +
+        `internalLayerIndex=${internalLayerIndex}, ` +
+        `layerManager exists=${!!this.plotWindow.layerManager}, ` +
+        `plotWindow exists=${!!this.plotWindow}`
+      );
+
       // Check if layer is loaded using LayerManager's method
       if (!this.plotWindow.layerManager.isLayerLoaded(internalLayerIndex)) {
+        // DIAGNOSTIC: Additional info when check fails
+        this.logConsoleMessage(
+          `[INTEGRATOR] Layer check FAILED! ` +
+          `Dumping state: ` +
+          `layerManager.layers.length=${this.plotWindow.layerManager.layers?.length}, ` +
+          `layerManager.layers[${internalLayerIndex}]=${this.plotWindow.layerManager.layers[internalLayerIndex] ? 'EXISTS' : 'NULL'}`
+        );
         throw new Error(`Layer ${layerIndex} not loaded`);
       }
+
+      this.logConsoleMessage(`[INTEGRATOR] Layer check passed for layer ${layerIndex}`);
+
 
       // Get layer dimensions
       const dimensions = this.plotWindow.layerManager.getLayerDimensions(internalLayerIndex);
@@ -1489,8 +1688,9 @@ export class PlotWindowIntegrator {
   }
 
   /**
-   * Copy rectangular region from layer bitmap to canvas
-   * Follows the same pattern as sprite rendering - sends pixel data to renderer
+   * Copy rectangular region from cached layer canvas to plot canvas
+   * NEW: Uses cached offscreen canvas with drawImage for 400x faster performance
+   * OLD: Extracted pixels via Jimp + JSON.stringify (40ms even for tiny crops)
    */
   private async copyLayerToCanvas(
     layerIndex: number,
@@ -1504,38 +1704,10 @@ export class PlotWindowIntegrator {
         return;
       }
 
-      // Get the Jimp image from layer manager
-      const layer = this.plotWindow.layerManager.layers[layerIndex];
-      if (!layer) {
-        throw new Error(`Layer ${layerIndex} not loaded`);
-      }
-
-      // Extract RGBA pixel data from source rectangle
-      const pixels: number[] = [];
-      for (let y = sourceRect.top; y < sourceRect.top + sourceRect.height; y++) {
-        for (let x = sourceRect.left; x < sourceRect.left + sourceRect.width; x++) {
-          if (x >= 0 && x < layer.width && y >= 0 && y < layer.height) {
-            const pixelColor = layer.getPixelColor(x, y);
-            // Jimp stores colors as 32-bit integers: RRGGBBAA
-            pixels.push((pixelColor >> 24) & 0xFF);  // R
-            pixels.push((pixelColor >> 16) & 0xFF);  // G
-            pixels.push((pixelColor >> 8) & 0xFF);   // B
-            pixels.push(pixelColor & 0xFF);          // A
-          } else {
-            // Out of bounds - push transparent black
-            pixels.push(0, 0, 0, 0);
-          }
-        }
-      }
-
-      // CROP uses absolute pixel coordinates - do NOT transform them
-      // Pascal CopyRect uses t6,t7 directly without transformation (line 2088)
       this.logConsoleMessage(`[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX}, ${destY})`);
 
-      // Send pixel data to renderer and draw using putImageData
-      // NOTE: We use putImageData (not drawImage) because we pre-calculate exact pixel
-      // coordinates via transformToScreenCoordinates(). putImageData ignores canvas
-      // transforms, which is correct since our coordinates are already transformed.
+      // NEW APPROACH: Use cached offscreen canvas with drawImage
+      // Just send coordinates - renderer has the bitmap cached
       const jsCode = `
         (function() {
           if (!window.plotCtx) {
@@ -1543,20 +1715,26 @@ export class PlotWindowIntegrator {
             return 'Context not ready';
           }
 
-          const width = ${sourceRect.width};
-          const height = ${sourceRect.height};
-          const pixels = ${JSON.stringify(pixels)};
-          const destX = ${destX};
-          const destY = ${destY};
-
-          // Create ImageData from pixel array
-          const imageData = window.plotCtx.createImageData(width, height);
-          for (let i = 0; i < pixels.length; i++) {
-            imageData.data[i] = pixels[i];
+          if (!window.layerCanvases || !window.layerCanvases[${layerIndex}]) {
+            console.error('[PLOT] Layer ${layerIndex} not cached in renderer');
+            return 'Layer not cached';
           }
 
-          // Use putImageData since we already calculated exact pixel coordinates
-          window.plotCtx.putImageData(imageData, destX, destY);
+          const layerCanvas = window.layerCanvases[${layerIndex}];
+
+          // Use drawImage to copy from cached layer canvas to plot canvas
+          // Use default 'source-over' for proper blending
+          window.plotCtx.drawImage(
+            layerCanvas,
+            ${sourceRect.left},   // sx: source x
+            ${sourceRect.top},    // sy: source y
+            ${sourceRect.width},  // sw: source width
+            ${sourceRect.height}, // sh: source height
+            ${destX},             // dx: dest x
+            ${destY},             // dy: dest y
+            ${sourceRect.width},  // dw: dest width (no scaling)
+            ${sourceRect.height}  // dh: dest height (no scaling)
+          );
 
           return 'Layer copied';
         })()
@@ -1681,8 +1859,9 @@ export class PlotWindowIntegrator {
         break;
 
       case CanvasOperationType.SET_LINESIZE:
-        if (operation.parameters.size) {
+        if (operation.parameters.size !== undefined) {
           this.state.lineSize = operation.parameters.size;
+          this.plotWindow.lineSize = operation.parameters.size;
         }
         break;
 
@@ -1799,6 +1978,18 @@ export class PlotWindowIntegrator {
         case 'SET_TEXTSTYLE':
           plotType = CanvasOperationType.SET_TEXTSTYLE;
           break;
+        case 'SET_LINESIZE':
+          plotType = CanvasOperationType.SET_LINESIZE;
+          break;
+        case 'SET_OPACITY':
+          plotType = CanvasOperationType.SET_OPACITY;
+          break;
+        case 'SET_TEXTANGLE':
+          plotType = CanvasOperationType.SET_TEXTANGLE;
+          break;
+        case 'SET_PRECISION':
+          plotType = CanvasOperationType.SET_PRECISION;
+          break;
         case 'PC_INPUT':
           plotType = CanvasOperationType.PC_INPUT;
           break;
@@ -1807,6 +1998,27 @@ export class PlotWindowIntegrator {
           break;
         case 'UPDATE_DISPLAY':
           plotType = CanvasOperationType.UPDATE_DISPLAY;
+          break;
+        case 'CONFIGURE_WINDOW':
+          plotType = CanvasOperationType.CONFIGURE_WINDOW;
+          break;
+        case 'DEFINE_SPRITE':
+          plotType = CanvasOperationType.DEFINE_SPRITE;
+          break;
+        case 'DRAW_SPRITE':
+          plotType = CanvasOperationType.DRAW_SPRITE;
+          break;
+        case 'LOAD_LAYER':
+          plotType = CanvasOperationType.LOAD_LAYER;
+          break;
+        case 'CROP_LAYER':
+          plotType = CanvasOperationType.CROP_LAYER;
+          break;
+        case 'LUT_SET':
+          plotType = CanvasOperationType.LUT_SET;
+          break;
+        case 'LUT_COLORS':
+          plotType = CanvasOperationType.LUT_COLORS;
           break;
         default:
           console.warn(`[INTEGRATOR] Unknown operation type: ${canvasOp.type}, using DRAW_DOT as fallback`);
