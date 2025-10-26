@@ -1314,11 +1314,13 @@ export class PlotCommandParser implements IPlotCommandParser {
         this.logParameterWarning(context.originalCommand, 'LINESIZE size', tokens[0].value, size);
       }
 
-      const operation: PlotCanvasOperation = PlotOperationFactory.createDrawOperation(
-        CanvasOperationType.SET_LINESIZE,
-        { size },
-        true // LINESIZE should be deferrable with drawing operations
-      );
+      const operation: PlotCanvasOperation = {
+        type: CanvasOperationType.SET_LINESIZE,
+        parameters: { size },
+        affectsState: true,  // SET_LINESIZE affects state
+        requiresUpdate: false,  // No immediate update needed
+        deferrable: true  // LINESIZE should be deferrable with drawing operations
+      };
 
       result.canvasOperations = [this.convertToCanvasOperation(operation)];
       this.logConsoleMessage(`[PLOT] LINESIZE parsed: size=${size}`);
@@ -2759,7 +2761,7 @@ export class PlotCommandParser implements IPlotCommandParser {
   private convertToCanvasOperation(plotOp: PlotCanvasOperation): any {
     // Return the PlotCanvasOperation as-is since it has all the needed info
     // The integrator knows how to handle PlotCanvasOperation directly
-    this.logConsoleMessage('[PARSER] convertToCanvasOperation returning:', plotOp.type, plotOp.parameters);
+    this.logConsoleMessage('[PARSER] convertToCanvasOperation returning:', plotOp.type, plotOp.parameters, 'affectsState=', plotOp.affectsState);
     return plotOp;
   }
 }

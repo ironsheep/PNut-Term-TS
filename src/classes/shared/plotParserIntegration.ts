@@ -339,7 +339,15 @@ export class PlotWindowIntegrator {
           break;
 
         case CanvasOperationType.SET_LINESIZE:
-          // State update handled in updateInternalState
+          // Apply linesize directly here as well to ensure it's set
+          if (operation.parameters.size !== undefined) {
+            // LineSize from device is in fixed-point format (256ths)
+            // Like coordinates, we need to divide by 256 to get pixels
+            const pixelLineSize = Math.max(1, Math.round(operation.parameters.size / 256.0));
+            this.logConsoleMessage('[INTEGRATOR] SET_LINESIZE direct: converting', operation.parameters.size, '/ 256 =', pixelLineSize, 'pixels');
+            this.state.lineSize = pixelLineSize;
+            this.plotWindow.lineSize = pixelLineSize;
+          }
           break;
 
         case CanvasOperationType.SET_OPACITY:
@@ -390,8 +398,12 @@ export class PlotWindowIntegrator {
       }
 
       // Update internal state if operation affects state
+      this.logConsoleMessage(`[INTEGRATOR] Checking affectsState for ${operation.type}: affectsState=${operation.affectsState}`);
       if (operation.affectsState) {
+        this.logConsoleMessage(`[INTEGRATOR] Calling updateInternalState for ${operation.type}`);
         this.updateInternalState(operation);
+      } else {
+        this.logConsoleMessage(`[INTEGRATOR] Skipping updateInternalState for ${operation.type} (affectsState=false/undefined)`);
       }
 
       // Trigger display update if required and not in buffered mode
@@ -1860,8 +1872,12 @@ export class PlotWindowIntegrator {
 
       case CanvasOperationType.SET_LINESIZE:
         if (operation.parameters.size !== undefined) {
-          this.state.lineSize = operation.parameters.size;
-          this.plotWindow.lineSize = operation.parameters.size;
+          // LineSize from device is in fixed-point format (256ths)
+          // Like coordinates, we need to divide by 256 to get pixels
+          // Pascal: radius parameter to SmoothLine is in 256ths
+          const pixelLineSize = Math.max(1, Math.round(operation.parameters.size / 256.0));
+          this.state.lineSize = pixelLineSize;
+          this.plotWindow.lineSize = pixelLineSize;
         }
         break;
 
@@ -2126,13 +2142,16 @@ export class PlotWindowIntegrator {
 
       // Debug logging for operations
       this.logConsoleMessage('[INTEGRATOR BATCH] Processing operation:', operation.type, (operation as any).parameters);
+      this.logConsoleMessage('[INTEGRATOR BATCH] Operation has affectsState property?', 'affectsState' in operation, 'value=', (operation as any).affectsState);
 
       if ('affectsState' in operation) {
         // Already a PlotCanvasOperation
         plotOperation = operation as PlotCanvasOperation;
+        this.logConsoleMessage('[INTEGRATOR BATCH] Using PlotCanvasOperation directly, affectsState=', plotOperation.affectsState);
       } else {
         // Convert CanvasOperation to PlotCanvasOperation
         plotOperation = this.convertFromCanvasOperation(operation as CanvasOperation);
+        this.logConsoleMessage('[INTEGRATOR BATCH] After conversion, affectsState=', plotOperation.affectsState);
       }
 
       const result = await this.executeOperation(plotOperation);

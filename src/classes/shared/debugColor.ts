@@ -330,10 +330,17 @@ export class DebugColor {
     let v = (p >> 5) & 7;  // Color index from bits 7-5
     p = ((p & 0x1F) << 3) | ((p & 0x1C) >> 2);  // Intensity from bits 4-0, expanded to 8 bits
 
-    // RGBI8X mode: double intensity for values < 128 when v ≠ 7
-    // This is the key difference from simple linear scaling!
-    if (v !== 7 && p < 0x80) {
-      p = p << 1;
+    // RGBI8X mode: special intensity handling when v ≠ 7
+    // Pascal: if (mode in [key_luma8x, key_rgbi8x]) and (v <> 7) then
+    //   if (p >= $80) then p := not p and $7F shl 1 else p := p shl 1;
+    if (v !== 7) {
+      if (p >= 0x80) {
+        // Bright colors: invert and scale
+        p = ((~p) & 0x7F) << 1;
+      } else {
+        // Dark colors: double intensity
+        p = p << 1;
+      }
     }
 
     // Calculate RGB value
