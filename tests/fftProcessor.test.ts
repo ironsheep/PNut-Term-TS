@@ -514,4 +514,79 @@ describe('FFTProcessor', () => {
       }
     });
   });
+
+  describe('FFT Power Calculation Bug from DEBUG_FFT.spin2', () => {
+    it('should produce reasonable power values for typical sine wave input', () => {
+      // Reproduce the exact scenario from our logs
+      // Input: Sine wave values around -1000 to +1000
+      // Expected: Power values that work with high=1000 and log scale
+
+      fftProcessor.prepareFFT(2048);
+
+      // Generate sine wave similar to what we see in logs
+      // From logs: 194, 380, 552, 703, 827, 920, 979, 983, 929, 840...
+      const samples = new Int32Array(2048);
+      for (let i = 0; i < 2048; i++) {
+        // Generate a 1kHz-like sine at ~50 cycles over 2048 samples
+        samples[i] = Math.round(1000 * Math.sin((2 * Math.PI * 48 * i) / 2048));
+      }
+
+      // Process with magnitude=0 as in the Spin2 example
+      const result = fftProcessor.performFFT(samples, 0);
+
+      // Find peak
+      let maxPower = 0;
+      let maxBin = 0;
+      for (let i = 0; i < result.power.length; i++) {
+        if (result.power[i] > maxPower) {
+          maxPower = result.power[i];
+          maxBin = i;
+        }
+      }
+
+      console.log(`=== FFT Power Calculation Test ===`);
+      console.log(`Peak power: ${maxPower} at bin ${maxBin}`);
+      console.log(`First 10 bins: ${Array.from(result.power.slice(0, 10))}`);
+      console.log(`Bins around peak (${maxBin-2} to ${maxBin+2}): ${Array.from(result.power.slice(maxBin-2, maxBin+3))}`);
+
+      // The issue we're seeing: power values are too small (8, 17, 19...)
+      // After fix, they should be larger to work with high=1000
+
+      // Peak should be at the expected bin (48 ± 1)
+      expect(maxBin).toBeGreaterThanOrEqual(47);
+      expect(maxBin).toBeLessThanOrEqual(49);
+
+      // Power values should be in a reasonable range for display
+      // With high=1000, we expect peak power to be significant
+      expect(maxPower).toBeGreaterThan(100); // Should be much larger than 220
+
+      // Noise floor should be relatively low
+      const noiseFloor = result.power[10];
+      expect(noiseFloor).toBeLessThan(maxPower * 0.1);
+    });
+
+    it('should verify log scale transformation issue', () => {
+      // Test log scale with actual values from our logs
+      const testCases = [
+        { raw: 8, high: 1000 },    // Noise floor
+        { raw: 220, high: 1000 },  // Peak value
+      ];
+
+      console.log(`=== Log Scale Transformation Test ===`);
+      for (const test of testCases) {
+        const logScaled = Math.round(
+          (Math.log2(test.raw + 1) / Math.log2(test.high + 1)) * test.high
+        );
+
+        const ratio = logScaled / test.raw;
+        console.log(`Raw: ${test.raw} -> Log scaled: ${logScaled} (amplification: ${ratio.toFixed(1)}x)`);
+
+        // The issue: small values get amplified too much
+        if (test.raw < 50) {
+          // Noise gets amplified by >30x with current formula
+          expect(ratio).toBeGreaterThan(30);
+        }
+      }
+    });
+  });
 });

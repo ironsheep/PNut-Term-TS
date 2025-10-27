@@ -194,7 +194,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     super(context, windowId, 'fft');
     this.windowLogPrefix = 'fftW';
 
-    // Disable logging for FFT window (final polish phase)
+    // Enable logging for FFT window debugging
     this.isLogging = true;
 
     // Initialize FFT processor and window functions
@@ -550,23 +550,26 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Extract samples for this specific channel
       const samples = this.extractChannelSamples(startPtr, this.displaySpec.samples, i);
 
-      // DIAGNOSTIC: Check extracted samples for alternating zeros
+      // DIAGNOSTIC: Check extracted samples
       if (ENABLE_CONSOLE_LOG) {
         const first20 = Array.from(samples.slice(0, 20));
-        const hasAlternatingZeros = first20[1] === 0 && first20[3] === 0 && first20[5] === 0;
         console.log(`[FFT EXTRACT] Ch${i} first 20 samples: ${first20.join(', ')}`);
-        console.log(`[FFT EXTRACT] Alternating zeros in INPUT: ${hasAlternatingZeros ? 'YES - BUG HERE!' : 'NO'}`);
+        const min = Math.min(...samples);
+        const max = Math.max(...samples);
+        const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+        console.log(`[FFT EXTRACT] Ch${i} stats: min=${min}, max=${max}, mean=${mean.toFixed(2)}`);
       }
 
       // Perform FFT with channel's magnitude setting
       const result = this.fftProcessor.performFFT(samples, channel.magnitude);
 
-      // DIAGNOSTIC: Check FFT output immediately after calculation
+      // DIAGNOSTIC: Check FFT output
       if (ENABLE_CONSOLE_LOG) {
         const first20Power = Array.from(result.power.slice(0, 20));
-        const hasAlternatingZeros = first20Power[1] === 0 && first20Power[3] === 0 && first20Power[5] === 0;
         console.log(`[FFT OUTPUT] Ch${i} first 20 power bins: ${first20Power.join(', ')}`);
-        console.log(`[FFT OUTPUT] Alternating zeros in OUTPUT: ${hasAlternatingZeros ? 'YES - BUG IN FFT!' : 'NO'}`);
+        const maxPower = Math.max(...result.power);
+        const maxBin = Array.from(result.power).indexOf(maxPower);
+        console.log(`[FFT OUTPUT] Ch${i} max power=${maxPower} at bin=${maxBin}`);
         console.log(`[FFT OUTPUT] Total bins returned: ${result.power.length}, Expected: ${this.displaySpec.samples / 2}`);
       }
 
@@ -972,8 +975,6 @@ export class DebugFFTWindow extends DebugWindowBase {
     if (spec.dotSize === 0 && spec.lineSize === 0) {
       spec.dotSize = 1;
     }
-
-    console.log(`[FFT SPEC] After parsing: lineSize=${spec.lineSize}, dotSize=${spec.dotSize}`);
 
     // Ensure nbrSamples matches samples (required by BaseDisplaySpec)
     spec.nbrSamples = spec.samples;
@@ -1585,15 +1586,27 @@ export class DebugFFTWindow extends DebugWindowBase {
     // Prepare power data with log scale if needed
     // Pascal formula (line 1699): v := Round(Log2(Int64(v) + 1) / Log2(Int64(vHigh[j]) + 1) * vHigh[j])
     const powerData: number[] = [];
+
+    // DIAGNOSTIC: Check what bins we're extracting
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(`[FFT DRAW] Extracting bins ${firstBin} to ${lastBin} from power array length ${power.length}`);
+      console.log(`[FFT DRAW] Raw power array first 10: ${Array.from(power.slice(0, 10)).join(', ')}`);
+    }
+
     for (let i = firstBin; i <= lastBin; i++) {
       let value = power[i];
 
       // Apply Pascal's log scale formula if enabled
       if (this.displaySpec.logScale) {
-        // Pascal: Round(Log2(v + 1) / Log2(high + 1) * high)
-        // This normalizes the logarithmic range [0, high] to itself
-        // high parameter is vHigh[j] from channel config (or defaultHigh for combined)
+        const oldValue = value;
+
+        // Pascal formula - exact parity with Pascal implementation
         value = Math.round((Math.log2(value + 1) / Math.log2(high + 1)) * high);
+
+        // DIAGNOSTIC: Show first few transformations
+        if (ENABLE_CONSOLE_LOG && i < firstBin + 5) {
+          console.log(`[FFT LOG SCALE] Bin ${i}: ${oldValue} -> ${value}`);
+        }
       }
 
       powerData.push(value);
@@ -1604,19 +1617,16 @@ export class DebugFFTWindow extends DebugWindowBase {
     // Pascal logic (line 1702): if vLineSize >= 0 then DrawLineDot else vertical bars
     let drawCommands = '';
 
+    // DIAGNOSTIC: Log drawing parameters
     console.log(`[FFT DRAW] lineSize=${this.displaySpec.lineSize}, dotSize=${this.displaySpec.dotSize}`);
     console.log(`[FFT DRAW] Channel: high=${high}, tall=${tall}, base=${base}`);
+    console.log(`[FFT DRAW] Power data: ${powerData.length} bins, firstBin=${this.displaySpec.firstBin}, lastBin=${this.displaySpec.lastBin}`);
 
     // Show power spectrum summary
     const maxPower = Math.max(...powerData);
     const maxBin = powerData.indexOf(maxPower);
-    console.log(`[FFT DRAW] Power spectrum: ${powerData.length} bins, max=${maxPower.toFixed(0)} at bin ${maxBin}`);
-    console.log(
-      `[FFT DRAW] First 10 bins: ${powerData
-        .slice(0, 10)
-        .map((v) => v.toFixed(0))
-        .join(', ')}`
-    );
+    console.log(`[FFT DRAW] Max power=${maxPower.toFixed(0)} at bin ${maxBin}`);
+    console.log(`[FFT DRAW] First 10 bins: ${powerData.slice(0, 10).map(v => v.toFixed(0)).join(', ')}`);
 
     if (this.displaySpec.lineSize >= 0) {
       // Line/Dot mode (lineSize >= 0)
@@ -1698,7 +1708,6 @@ export class DebugFFTWindow extends DebugWindowBase {
     lineWidth: number
   ): string {
     const numBins = powerData.length;
-    const binWidth = width / numBins;
 
     // Account for margins - draw within the display area
     const displayLeft = this.canvasMargin;
@@ -1716,11 +1725,25 @@ export class DebugFFTWindow extends DebugWindowBase {
       ctx.beginPath();
     `;
 
+    // DIAGNOSTIC: Log first few points
+    if (ENABLE_CONSOLE_LOG && numBins > 0) {
+      console.log(`[FFT DRAW COORDS] baseY=${baseY}, scaledHeight=${scaledHeight}`);
+      console.log(`[FFT DRAW COORDS] displayLeft=${displayLeft}, displayWidth=${displayWidth}`);
+    }
+
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
+      // Pascal: x := vMarginLeft shl 8 + Trunc((k - FFTfirst) / (FFTlast - FFTfirst) * (vWidth - 1) * $100);
+      // This linearly interpolates from left margin to right edge of display area
+      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
+
+      // DIAGNOSTIC: Log first few coordinate calculations
+      if (ENABLE_CONSOLE_LOG && i < 5) {
+        console.log(`[FFT DRAW COORDS] Point ${i}: powerData[${i}]=${powerData[i]}, normalized=${normalizedPower.toFixed(4)}, x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
+      }
 
       if (i === 0) {
         commands += `ctx.moveTo(${x}, ${y});\n`;
@@ -1777,7 +1800,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
+      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
@@ -1837,7 +1861,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     for (let i = 0; i < numBins; i++) {
-      const x = displayLeft + (i * displayWidth) / numBins + displayWidth / numBins / 2;
+      // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
+      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline

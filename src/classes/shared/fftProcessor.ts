@@ -113,6 +113,8 @@ export class FFTProcessor {
     // Load samples into (real,imag) with Hanning window applied (matching Pascal)
     for (let i = 0; i < this.fftSize; i++) {
       // Apply Hanning window using fixed-point multiplication
+      // The window values are in fixed-point format (scaled by FIXED_POINT_SCALE)
+      // This scaling is handled during butterfly operations, not here
       this.fftReal[i] = BigInt(samples[i]) * BigInt(this.fftWin[i]);
       this.fftImag[i] = 0n;
     }
@@ -177,6 +179,7 @@ export class FFTProcessor {
       const ry = Number(this.fftImag[i2]);
 
       // Calculate power using Pascal's exact formula
+      // Pascal: FFTpower[i1] := Round(Hypot(rx, ry) / ($800 shl FFTexp shr FFTmag));
       const magnitude_shift = magnitude;
       const scale_factor = (0x800 << this.fftExp) >> magnitude_shift;
       power[i] = Math.round(Math.hypot(rx, ry) / scale_factor);
