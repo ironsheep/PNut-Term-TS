@@ -222,3 +222,4 @@ test-with-queue.log
 test-without-queue.log
 
 context-keys-to-restore.txt
+/scripts/claude
