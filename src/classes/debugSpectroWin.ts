@@ -28,7 +28,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * SPECTRO Display Specification Interface
@@ -156,8 +156,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
     super(context, windowId, 'spectro');
     this.windowLogPrefix = 'spectroW';
 
-    // Enable logging for SPECTRO window
+    // Enable logging for SPECTRO window (both console and constructor logging)
     this.isLogging = true;
+    console.log(`[SPECTRO CONSTRUCTOR] Creating SPECTRO window with displayName: ${displaySpec.displayName}`);
 
     // Initialize FFT processor and window functions
     this.fftProcessor = new FFTProcessor();
