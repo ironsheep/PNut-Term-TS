@@ -15,7 +15,6 @@ import * as fs from 'fs';
 
 // GC PROFILING: Enable GC monitoring to detect pauses that delay serial receives
 if (global.gc) {
-  let lastGCTime = Date.now();
   const gcStats = { count: 0, totalTime: 0, maxPause: 0 };
 
   // Monitor GC via performance observer
@@ -98,6 +97,8 @@ electronContext.logger = logger;
 // Store download file specs separately since they're not in RuntimeEnvironment
 const ramFileSpec = config.ramFileSpec;
 const flashFileSpec = config.flashFileSpec;
+
+// Note: File existence is already checked in pnut-term-ts.ts before launching Electron
 
 // Suppress DevTools Autofill errors that don't apply to Electron
 app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
@@ -186,7 +187,7 @@ async function createMainWindow() {
         const mainWindow = new MainWindow(electronContext);
         // Store globally for second-instance handling
         (global as any).mainWindowInstance = mainWindow;
-        await mainWindow.initialize();
+        mainWindow.initialize();
 
         if (!electronContext.runEnvironment.quiet) {
             logger.logMessage('PNut-Term-TS Electron UI started');

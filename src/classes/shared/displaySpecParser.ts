@@ -36,15 +36,16 @@ export class DisplaySpecParser {
         break;
 
       case 'POS':
-        if (this.validateParameterCount(lineParts, index, 2)) {
-          const [isValid, position] = this.parsePosKeyword(lineParts, index);
+        // POS requires at least 1 parameter (X), Y is optional
+        if (this.validateParameterCount(lineParts, index, 1)) {
+          const [isValid, position, partsConsumed] = this.parsePosKeyword(lineParts, index);
           if (isValid) {
             spec.position = position;
             // Mark that an explicit position was provided
             if ('hasExplicitPosition' in spec) {
               (spec as any).hasExplicitPosition = true;
             }
-            consumed = 3;
+            consumed = partsConsumed;
             return [true, consumed];
           }
         }
@@ -65,7 +66,7 @@ export class DisplaySpecParser {
       case 'SAMPLES':
         if (this.validateParameterCount(lineParts, index, 1)) {
           const samples = Spin2NumericParser.parseCount(lineParts[index + 1]);
-          if (samples !== null && samples > 0) {
+          if (samples !== null && samples >= 0) { // Changed > to >= to allow 0 (infinite persistence)
             spec.nbrSamples = samples;
             consumed = 2;
             return [true, consumed];
@@ -73,16 +74,10 @@ export class DisplaySpecParser {
         }
         break;
 
-      case 'COLOR':
-        if (this.validateParameterCount(lineParts, index, 1)) {
-          const [isValid, windowColor, partsConsumed] = this.parseColorKeyword(lineParts, index);
-          if (isValid) {
-            spec.window = windowColor;
-            consumed = partsConsumed;
-            return [true, consumed];
-          }
-        }
-        break;
+      // NOTE: COLOR is NOT handled in shared parser because each window type
+      // has different COLOR semantics (SCOPE/LOGIC use it for background+grid,
+      // TERM uses it for text colors, etc.). Each window handles COLOR in its
+      // own custom parsing code.
     }
 
     return [false, 0];
@@ -168,19 +163,34 @@ export class DisplaySpecParser {
   /**
    * Parse POS keyword with x,y coordinates
    */
-  static parsePosKeyword(lineParts: string[], index: number): [boolean, Position] {
-    if (index + 2 >= lineParts.length) {
-      return [false, { x: 0, y: 0 }];
+  static parsePosKeyword(lineParts: string[], index: number): [boolean, Position, number] {
+    // Require at least 1 parameter (X position)
+    if (index + 1 >= lineParts.length) {
+      return [false, { x: 0, y: 0 }, 0];
     }
 
     const x = Spin2NumericParser.parseInteger(lineParts[index + 1], true); // Allow negatives for position
-    const y = Spin2NumericParser.parseInteger(lineParts[index + 2], true); // Allow negatives for position
-
-    if (x === null || y === null) {
-      return [false, { x: 0, y: 0 }];
+    if (x === null) {
+      return [false, { x: 0, y: 0 }, 0];
     }
 
-    return [true, { x, y }];
+    // Y parameter is OPTIONAL - matches Pascal behavior (KeyPos procedure)
+    // Pascal: if NextNum then Top := val (no else - silently uses default if not numeric)
+    let y = 0; // Default Y position
+    let consumed = 2; // POS keyword + X parameter
+
+    if (index + 2 < lineParts.length) {
+      // Check if next token is a keyword before trying to parse as Y coordinate
+      if (!this.isCommandKeyword(lineParts[index + 2])) {
+        const yValue = Spin2NumericParser.parseInteger(lineParts[index + 2], true);
+        if (yValue !== null) {
+          y = yValue;
+          consumed = 3; // POS keyword + X + Y parameters
+        }
+      }
+    }
+
+    return [true, { x, y }, consumed];
   }
 
   /**

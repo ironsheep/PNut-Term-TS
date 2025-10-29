@@ -21,6 +21,7 @@ import { Context } from '../utils/context';
 import { DebugColor } from './shared/debugColor';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { CanvasRenderer } from './shared/canvasRenderer';
+import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 
 import { DebugWindowBase, FontMetrics, Position, Size, WindowColor } from './debugWindowBase';
 import { waitMSec } from '../utils/timerUtils';
@@ -223,7 +224,7 @@ export class DebugTermWindow extends DebugWindowBase {
     // set defaults
     const bkgndColor: DebugColor = new DebugColor('BLACK');
     const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    const textColor: DebugColor = new DebugColor('ORANGE', 15);
+    const textColor: DebugColor = new DebugColor('ORANGE', 8); // Pascal defaults use full color RGB values
     DebugTermWindow.logConsoleMessageStatic(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -236,11 +237,11 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.hideXY = false;
 
     // Initialize default color combos to match Pascal DefaultTermColors
-    // Pascal: (clOrange, clBlack, clBlack, clOrange, clLime, clBlack, clBlack, clLime)
-    // Use full brightness (15) for colors to match Pascal's full color values
-    const orangeColor = new DebugColor('ORANGE', 15).rgbString;
-    const blackColor = new DebugColor('BLACK', 15).rgbString;
-    const limeColor = new DebugColor('LIME', 15).rgbString;
+    // Pascal: (clOrange=$FF7F00, clBlack=$000000, clLime=$00FF00) - direct RGB values
+    // Using brightness 8 gives full saturated color matching Pascal's defaults
+    const orangeColor = new DebugColor('ORANGE', 8).rgbString;
+    const blackColor = new DebugColor('BLACK', 0).rgbString; // Black is always black
+    const limeColor = new DebugColor('LIME', 8).rgbString;
 
     displaySpec.colorCombos.push({ fgcolor: orangeColor, bgcolor: blackColor }); // Combo 0
     displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: orangeColor }); // Combo 1
@@ -256,35 +257,30 @@ export class DebugTermWindow extends DebugWindowBase {
     if (lineParts.length > 2) {
       for (let index = 2; index < lineParts.length; index++) {
         const element = lineParts[index];
+
+        // Try shared parser first for TITLE and POS (not SIZE/COLOR - those have custom TERM semantics)
+        if (element.toUpperCase() === 'TITLE' || element.toUpperCase() === 'POS') {
+          const compatibleSpec: Partial<BaseDisplaySpec> = {
+            title: displaySpec.windowTitle,
+            position: displaySpec.position,
+            hasExplicitPosition: displaySpec.hasExplicitPosition,
+            size: { width: 0, height: 0 }, // Not used
+            nbrSamples: 0, // Not used
+            window: displaySpec.window
+          };
+          const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, compatibleSpec as BaseDisplaySpec);
+          if (parsed) {
+            // Copy parsed values back to displaySpec
+            displaySpec.windowTitle = compatibleSpec.title!;
+            if (compatibleSpec.position) displaySpec.position = compatibleSpec.position;
+            if (compatibleSpec.hasExplicitPosition) displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+            index += consumed - 1; // Adjust for loop increment
+            continue;
+          }
+        }
+
+        // Handle TERM-specific keywords
         switch (element.toUpperCase()) {
-          case 'TITLE':
-            // ensure we have one more value
-            if (index < lineParts.length - 1) {
-              displaySpec.windowTitle = lineParts[++index];
-            } else {
-              // console.log() as we are in class static method, not derived class...
-              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
-          case 'POS':
-            // ensure we have two more values
-            if (index < lineParts.length - 2) {
-              const x = Spin2NumericParser.parsePixel(lineParts[++index]);
-              const y = Spin2NumericParser.parsePixel(lineParts[++index]);
-              if (x !== null && y !== null) {
-                displaySpec.position.x = x;
-                displaySpec.position.y = y;
-                displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
-              } else {
-                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid position values`);
-                isValid = false;
-              }
-            } else {
-              DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
           case 'SIZE':
             // ensure we have two more values
             if (index < lineParts.length - 2) {

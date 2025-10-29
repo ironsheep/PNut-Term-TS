@@ -5615,6 +5615,17 @@ export class MainWindow {
     // Check if file exists
     if (!fs.existsSync(filePath)) {
       this.logMessage(`ERROR: File not found: ${filePath}`);
+
+      // Show error dialog to user
+      if (this.mainWindow) {
+        dialog.showMessageBox(this.mainWindow, {
+          type: 'error',
+          title: 'File Not Found',
+          message: `Cannot open file for download`,
+          detail: `The file "${path.basename(filePath)}" does not exist.\n\nFull path: ${filePath}`,
+          buttons: ['OK']
+        });
+      }
       return;
     }
 

@@ -312,8 +312,9 @@ export class DebugLogicWindow extends DebugWindowBase {
           const newChannelSpec: LogicChannelSpec = {} as LogicChannelSpec;
 
           const thisGroupNbr: number = displaySpec.channelSpecs.length;
-          // Use full brightness (15) to match Pascal's DefaultScopeColors which are at full intensity
-          const defaultChannelColor = new DebugColor(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 15);
+          // Pascal DefaultScopeColors: [clLime=$00FF00, clRed=$FF0000, clCyan=$00FFFF, etc.] - full RGB values
+          // Use brightness 8 for full saturated color matching Pascal's defaults
+          const defaultChannelColor = new DebugColor(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 8);
           newChannelSpec.color = defaultChannelColor.rgbString; // might be overridden below
           newChannelSpec.nbrBits = 1; // default to 1 bit (may be overridden below)
           //console.log(`CL: LogicDisplaySpec - new default: ${JSON.stringify(newChannelSpec, null, 2)}`);
@@ -412,52 +413,18 @@ export class DebugLogicWindow extends DebugWindowBase {
             switch (element.toUpperCase()) {
               case 'COLOR':
                 // Parse COLOR directive: COLOR <background> {<grid-color>}
-                const [colorParsed, colors, colorIndex] = DisplaySpecParser.parseColorKeyword(lineParts, index);
+                const [colorParsed, colors, consumed] = DisplaySpecParser.parseColorKeyword(lineParts, index);
                 if (colorParsed) {
                   displaySpec.window.background = colors.background;
                   if (colors.grid) {
                     displaySpec.window.grid = colors.grid;
                   }
-                  index = colorIndex - 1; // Adjust for loop increment
+                  index = index + consumed - 1; // Adjust for loop increment
                 } else {
                   DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Invalid COLOR specification`);
                   isValid = false;
                 }
                 break;
-
-              // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
-              /*
-              case 'TITLE':
-                // ensure we have one more value
-                if (index < lineParts.length - 1) {
-                  displaySpec.windowTitle = lineParts[++index];
-                } else {
-                  // console.log() as we are in class static method, not derived class...
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                  isValid = false;
-                }
-                break;
-              case 'POS':
-                // ensure we have two more values
-                if (index < lineParts.length - 2) {
-                  displaySpec.position.x = Number(lineParts[++index]);
-                  displaySpec.position.y = Number(lineParts[++index]);
-                  displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
-                } else {
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter(s) for ${element}`);
-                  isValid = false;
-                }
-                break;
-              case 'SAMPLES':
-                // ensure we have one more value
-                if (index < lineParts.length - 1) {
-                  displaySpec.nbrSamples = Number(lineParts[++index]);
-                } else {
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                  isValid = false;
-                }
-                break;
-              */
 
               case 'SPACING':
                 // ensure we have one more value
@@ -475,28 +442,6 @@ export class DebugLogicWindow extends DebugWindowBase {
                   isValid = false;
                 }
                 break;
-
-              // ORIGINAL PARSING COMMENTED OUT - Using DisplaySpecParser instead
-              /*
-              case 'LINESIZE':
-                // ensure we have one more value
-                if (index < lineParts.length - 1) {
-                  displaySpec.lineSize = Number(lineParts[++index]);
-                } else {
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                  isValid = false;
-                }
-                break;
-              case 'TEXTSIZE':
-                // ensure we have one more value
-                if (index < lineParts.length - 1) {
-                  displaySpec.textSize = Number(lineParts[++index]);
-                  DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
-                } else {
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                  isValid = false;
-                }
-              */
 
               case 'HIDEXY':
                 // just set it!

@@ -24,6 +24,7 @@ import { Context } from '../utils/context';
 import { DebugWindowBase, Position, Size } from './debugWindowBase';
 import { PianoKeyboardLayout, KeyInfo } from './shared/pianoKeyboardLayout';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 import { DebugColor } from './shared/debugColor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
@@ -648,23 +649,8 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     while (i < lineParts.length) {
       const part = lineParts[i];
-      
-      // Check for commands
-      if (part === 'TITLE' && i + 1 < lineParts.length) {
-        this._windowTitle = lineParts[i + 1];
-        this.setWindowTitle(lineParts[i + 1]);
-        i += 2;
-        continue;
-      }
-      
-      if (part === 'POS' && i + 2 < lineParts.length) {
-        const x = Spin2NumericParser.parsePixel(lineParts[i + 1]) || 0;
-        const y = Spin2NumericParser.parsePixel(lineParts[i + 2]) || 0;
-        this.setWindowPosition(x, y);
-        i += 3;
-        continue;
-      }
-      
+
+      // Custom SIZE override (1 parameter for midiSize, not 2 like shared parser)
       if (part === 'SIZE' && i + 1 < lineParts.length) {
         const size = Spin2NumericParser.parseCount(lineParts[i + 1]);
         if (size !== null && size >= 1 && size <= 50) {
@@ -675,7 +661,48 @@ export class DebugMidiWindow extends DebugWindowBase {
         i += 2;
         continue;
       }
-      
+
+      // Custom COLOR override (2 REQUIRED parameters, different from shared parser)
+      if (part === 'COLOR' && i + 2 < lineParts.length) {
+        const color1 = new DebugColor(lineParts[i + 1]).rgbValue;
+        const color2 = new DebugColor(lineParts[i + 2]).rgbValue;
+        this.vColor[0] = color1;
+        this.whiteKeyColor = color1;
+        this.vColor[1] = color2;
+        this.blackKeyColor = color2;
+        i += 3;
+        continue;
+      }
+
+      // Try shared parser for TITLE and POS
+      if (part === 'TITLE' || part === 'POS') {
+        const compatibleSpec: Partial<BaseDisplaySpec> = {
+          title: this._windowTitle,
+          position: { x: 0, y: 0 },
+          hasExplicitPosition: false,
+          size: { width: 0, height: 0 }, // Not used
+          nbrSamples: 0, // Not used
+          window: { background: '#000000', grid: '#808080' } // Not used
+        };
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, i, compatibleSpec as BaseDisplaySpec);
+        if (parsed) {
+          // Copy parsed values back
+          if (compatibleSpec.title) {
+            this._windowTitle = compatibleSpec.title;
+            this.setWindowTitle(compatibleSpec.title);
+          }
+          if (compatibleSpec.position) {
+            this.setWindowPosition(compatibleSpec.position.x, compatibleSpec.position.y);
+          }
+          if (compatibleSpec.hasExplicitPosition) {
+            this.displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+          }
+          i += consumed;
+          continue;
+        }
+      }
+
+      // MIDI-specific keywords
       if (part === 'RANGE' && i + 2 < lineParts.length) {
         const first = Spin2NumericParser.parseCount(lineParts[i + 1]);
         const last = Spin2NumericParser.parseCount(lineParts[i + 2]);
@@ -696,17 +723,6 @@ export class DebugMidiWindow extends DebugWindowBase {
           this.midiChannel = channel;
         }
         i += 2;
-        continue;
-      }
-      
-      if (part === 'COLOR' && i + 2 < lineParts.length) {
-        const color1 = new DebugColor(lineParts[i + 1]).rgbValue;
-        const color2 = new DebugColor(lineParts[i + 2]).rgbValue;
-        this.vColor[0] = color1;
-        this.whiteKeyColor = color1;
-        this.vColor[1] = color2;
-        this.blackKeyColor = color2;
-        i += 3;
         continue;
       }
 

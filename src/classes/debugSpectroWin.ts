@@ -254,7 +254,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Initialize with defaults matching Pascal SPECTRO_Configure
     const spec: SpectroDisplaySpec = {
       displayName: displayName,
-      windowTitle: `Spectro ${displayName}`,
+      windowTitle: `${displayName} - SPECTRO`,
       title: '',
       position: { x: 0, y: 0 },
       hasExplicitPosition: false,

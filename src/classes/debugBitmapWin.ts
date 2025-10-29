@@ -15,6 +15,7 @@ import { BrowserWindow } from 'electron';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = true;
@@ -204,50 +205,31 @@ export class DebugBitmapWindow extends DebugWindowBase {
           `[BITMAP_PARSE] i=${i}, directive="${directive}" (from "${lineParts[i]}")`
         );
 
-        switch (directive) {
-          case 'TITLE':
-            if (i + 1 < lineParts.length) {
-              displaySpec.title = lineParts[++i];
-            } else {
-              errorMessage = 'TITLE directive missing value';
-              isValid = false;
-            }
-            break;
-
-          case 'POS':
-            if (i + 2 < lineParts.length) {
-              const x = parseInt(lineParts[++i]);
-              const y = parseInt(lineParts[++i]);
-              if (!isNaN(x) && !isNaN(y)) {
-                displaySpec.position = { x, y };
-                displaySpec.hasExplicitPosition = true; // Mark that POS was explicitly set
-              } else {
-                errorMessage = 'POS directive requires two numeric values';
-                isValid = false;
-              }
-            } else {
-              errorMessage = 'POS directive missing values';
-              isValid = false;
-            }
-            break;
-
-          case 'SIZE':
-            if (i + 2 < lineParts.length) {
-              const width = parseInt(lineParts[++i]); // Pascal: SIZE width height
-              const height = parseInt(lineParts[++i]);
-              if (!isNaN(width) && !isNaN(height) && width >= 1 && width <= 2048 && height >= 1 && height <= 2048) {
-                displaySpec.size = { width, height };
-              } else {
-                errorMessage = 'SIZE directive requires two numeric values between 1 and 2048';
-                isValid = false;
-              }
-            } else {
-              errorMessage = 'SIZE directive missing values';
-              isValid = false;
-            }
-            break;
-
-          case 'DOTSIZE':
+        // Try shared parser first for common keywords (TITLE, POS, SIZE, SAMPLES, COLOR)
+        // Create a compatible spec object for the shared parser
+        const compatibleSpec: Partial<BaseDisplaySpec> = {
+          title: displaySpec.title,
+          position: displaySpec.position || { x: 0, y: 0 },
+          hasExplicitPosition: displaySpec.hasExplicitPosition,
+          size: displaySpec.size || { width: 256, height: 256 },
+          nbrSamples: 0, // Not used by BITMAP
+          window: { background: '#000000', grid: '#808080' } // Not used by BITMAP
+        };
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, i, compatibleSpec as BaseDisplaySpec);
+        if (parsed) {
+          // Copy parsed values back to displaySpec
+          displaySpec.title = compatibleSpec.title!;
+          if (compatibleSpec.position) displaySpec.position = compatibleSpec.position;
+          if (compatibleSpec.hasExplicitPosition) displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+          if (compatibleSpec.size) displaySpec.size = compatibleSpec.size;
+          i += consumed - 1; // Adjust for loop increment below
+          DebugBitmapWindow.logConsoleMessageStatic(
+            `[BITMAP_PARSE] ✅ Parsed shared keyword "${directive}", consumed ${consumed} parts`
+          );
+        } else {
+          // Handle BITMAP-specific keywords
+          switch (directive) {
+            case 'DOTSIZE':
             if (i + 1 < lineParts.length) {
               const x = parseInt(lineParts[++i]); // Pascal: DOTSIZE x y
               if (!isNaN(x) && x >= 1) {
@@ -277,19 +259,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
             }
             break;
 
-          case 'COLOR':
-            if (i + 1 < lineParts.length) {
-              // Parse color value - could be named color or hex value
-              const colorStr = lineParts[++i];
-              // TODO: Parse color properly using DebugColor class
-              displaySpec.backgroundColor = 0x000000; // Default to black for now
-            } else {
-              errorMessage = 'COLOR directive missing value';
-              isValid = false;
-            }
-            break;
-
-          case 'HIDEXY':
+            case 'HIDEXY':
             displaySpec.hideXY = true;
             break;
 
@@ -440,15 +410,16 @@ export class DebugBitmapWindow extends DebugWindowBase {
             }
             break;
 
-          default:
-            // Check if this is a packed data mode directive (e.g., LONGS_2BIT, BYTES_4BIT)
-            const [isPackedMode, packedMode] = PackedDataProcessor.validatePackedMode(lineParts[i]);
-            if (isPackedMode) {
-              displaySpec.explicitPackedMode = packedMode;
-              DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed packed data mode: ${lineParts[i]}`);
-            }
-            // Unknown directives are gracefully skipped
-            break;
+            default:
+              // Check if this is a packed data mode directive (e.g., LONGS_2BIT, BYTES_4BIT)
+              const [isPackedMode, packedMode] = PackedDataProcessor.validatePackedMode(lineParts[i]);
+              if (isPackedMode) {
+                displaySpec.explicitPackedMode = packedMode;
+                DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed packed data mode: ${lineParts[i]}`);
+              }
+              // Unknown directives are gracefully skipped
+              break;
+          }
         }
 
         i++;

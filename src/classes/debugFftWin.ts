@@ -860,13 +860,13 @@ export class DebugFFTWindow extends DebugWindowBase {
 
         case 'COLOR':
           // Parse COLOR directive: COLOR <background> {<grid-color>}
-          const [colorParsed, colors, colorIndex] = DisplaySpecParser.parseColorKeyword(lineParts, index);
+          const [colorParsed, colors, consumed] = DisplaySpecParser.parseColorKeyword(lineParts, index);
           if (colorParsed) {
             spec.window.background = colors.background;
             if (colors.grid) {
               spec.window.grid = colors.grid;
             }
-            index = colorIndex - 1; // Adjust for loop increment
+            index = index + consumed - 1; // Adjust for loop increment
           }
           // Invalid color specs are handled by DisplaySpecParser
           break;

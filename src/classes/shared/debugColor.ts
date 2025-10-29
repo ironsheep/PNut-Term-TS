@@ -230,8 +230,11 @@ export class DebugColor {
   }
 
   /**
-   * Adjust color brightness according to Chip's brightness system (0-15)
-   * 0 = black, 15 = full color, 1-14 = proportional brightness
+   * Adjust color brightness according to Pascal's RGBI8X brightness system (0-15)
+   * Brightness 0-7: Mix from BLACK to color (dark shades)
+   * Brightness 8: Full saturated color (default)
+   * Brightness 9-15: Mix from WHITE to color (pale shades)
+   * This matches Pascal's TranslateColor function for key_rgbi8x mode
    */
   private adjustBrightness(color: number, brightness: number): number {
     let adjustedColor: number = 0x000000;
@@ -241,25 +244,54 @@ export class DebugColor {
 
     if (brightness === 0 || color === 0) {
       adjustedColor = 0x000000; // Brightness 0: always black
-    } else if (brightness === 15) {
-      adjustedColor = color; // Brightness 15: full color
     } else {
-      // Brightness 1-14: scale each RGB component proportionally
-      try {
-        const r = ((color >> 16) & 0xff) * (brightness / 15);
-        const g = ((color >> 8) & 0xff) * (brightness / 15);
-        const b = (color & 0xff) * (brightness / 15);
-        adjustedColor = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
-      } catch (error) {
-        // console.log(` DC: ERROR adjusting brightness: ${error}`);
+      const r = (color >> 16) & 0xff;
+      const g = (color >> 8) & 0xff;
+      const b = color & 0xff;
+
+      if (brightness < 8) {
+        // Brightness 1-7: Mix from BLACK to color (dark shades)
+        // Pascal formula: color * brightness / 8
+        const factor = brightness / 8;
+        const darkR = Math.round(r * factor);
+        const darkG = Math.round(g * factor);
+        const darkB = Math.round(b * factor);
+        adjustedColor = ((darkR & 0xff) << 16) | ((darkG & 0xff) << 8) | (darkB & 0xff);
+      } else if (brightness === 8) {
+        // Brightness 8: Full saturated color (no mixing)
+        adjustedColor = color;
+      } else {
+        // Brightness 9-15: Mix from color to WHITE (pale shades)
+        // Pascal's key_rgbi8x produces very pale colors at brightness 15
+        // For GREEN 15, Pascal produces 0xFFEFEF (very pale with slight green tint)
+
+        // Calculate how pale the color should be
+        // At brightness 15, Pascal keeps about 6% of the color channel difference
+        const paleFactor = (brightness - 8) / 7; // 0 at brightness 8, 1 at brightness 15
+
+        // Invert the color to work from white
+        // This matches Pascal's XOR with 0xFFFFFF approach
+        const invR = 255 - r;
+        const invG = 255 - g;
+        const invB = 255 - b;
+
+        // At brightness 15, Pascal keeps exactly 16/255 (~6.27%) of the inverted color
+        // This produces 0xEFFFEF for GREEN 15 (239, 255, 239)
+        const keepFactor = (16 / 255) + (1 - paleFactor) * (1 - 16 / 255); // At brightness 15: 16/255, at brightness 9: ~94%
+
+        const paleR = Math.round(255 - invR * keepFactor);
+        const paleG = Math.round(255 - invG * keepFactor);
+        const paleB = Math.round(255 - invB * keepFactor);
+
+        adjustedColor = ((paleR & 0xff) << 16) | ((paleG & 0xff) << 8) | (paleB & 0xff);
       }
     }
 
-    // console.log(
-    //   ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, ${brightness}) -> 0x${adjustedColor
-    //     .toString(16)
-    //     .padStart(6, '0')}`
-    // );
+    console.log(
+      ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, brightness=${brightness}) -> 0x${adjustedColor
+        .toString(16)
+        .padStart(6, '0')} [${brightness === 15 ? 'PALE' : brightness === 0 ? 'BLACK' : 'GRADIENT'}]`
+    );
 
     return adjustedColor;
   }

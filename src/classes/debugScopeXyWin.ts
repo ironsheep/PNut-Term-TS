@@ -7,11 +7,12 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { ScopeXyRenderer } from './shared/scopeXyRenderer';
 import { PersistenceManager } from './shared/persistenceManager';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindowBase';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * Scope XY display specification
@@ -174,7 +175,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.persistenceManager = new PersistenceManager();
 
     // Enable logging for SCOPE_XY window
-    this.isLogging = false;
+    this.isLogging = true;
 
     // Generate unique canvas ID
     this.idString = Date.now().toString();
@@ -720,41 +721,53 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       const originalElement = lineParts[i];
       const element = originalElement.toUpperCase();
 
+      // Custom SIZE override (1 parameter for radius, not 2 like shared parser)
+      if (element === 'SIZE') {
+        if (i + 1 < lineParts.length) {
+          const size = parseInt(lineParts[++i]);
+          this.radius = Math.max(32, Math.min(2048, size));
+        }
+        i++;
+        continue;
+      }
+
+      // Try shared parser for common keywords (TITLE, POS, SAMPLES only - not COLOR due to type difference)
+      // SCOPE_XY uses numeric colors, shared parser uses RGB strings
+      if (element === 'TITLE' || element === 'POS' || element === 'SAMPLES') {
+        const compatibleSpec: Partial<BaseDisplaySpec> = {
+          title: this._windowTitle,
+          position: this.displaySpec.position || { x: 0, y: 0 },
+          hasExplicitPosition: this.displaySpec.hasExplicitPosition,
+          size: { width: 0, height: 0 }, // Not used
+          nbrSamples: this.samples,
+          window: { background: '#000000', grid: '#808080' } // Placeholder
+        };
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
+          lineParts,
+          i,
+          compatibleSpec as BaseDisplaySpec
+        );
+        if (parsed) {
+          // Copy parsed values back
+          this._windowTitle = compatibleSpec.title!;
+          if (compatibleSpec.position) this.displaySpec.position = compatibleSpec.position;
+          if (compatibleSpec.hasExplicitPosition)
+            this.displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+          if (compatibleSpec.nbrSamples !== undefined) { // Changed to check for undefined instead of truthiness
+            this.samples = compatibleSpec.nbrSamples;
+            this.persistenceManager.setPersistence(this.samples);
+          }
+          i += consumed;
+          continue;
+        }
+      }
+
+      // Handle SCOPE_XY-specific keywords
       switch (element) {
-        case 'TITLE':
-          if (i + 1 < lineParts.length) {
-            this._windowTitle = this.parseString(lineParts[++i]);
-          }
-          break;
-
-        case 'POS':
-          if (i + 2 < lineParts.length) {
-            const left = parseInt(lineParts[++i]);
-            const top = parseInt(lineParts[++i]);
-            this.displaySpec.position = { x: left, y: top };
-            this.displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
-          }
-          break;
-
-        case 'SIZE':
-          if (i + 1 < lineParts.length) {
-            const size = parseInt(lineParts[++i]);
-            this.radius = Math.max(32, Math.min(2048, size));
-          }
-          break;
-
         case 'RANGE':
           if (i + 1 < lineParts.length) {
             const range = parseInt(lineParts[++i]);
             this.range = Math.max(1, Math.min(0x7fffffff, range));
-          }
-          break;
-
-        case 'SAMPLES':
-          if (i + 1 < lineParts.length) {
-            const samples = parseInt(lineParts[++i]);
-            this.samples = Math.max(0, Math.min(512, samples));
-            this.persistenceManager.setPersistence(this.samples);
           }
           break;
 
@@ -1336,7 +1349,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       ctx.fillRect(0, 0, ${canvasSize}, ${canvasSize});
       ctx.restore();
 
-      // 2. Draw grid (Pascal-style: outer circle + crosshair only)
+      // 2. Draw grid (Pascal-style: outer circle + crosshair)
       // Pascal uses full opacity (255) for graticule
       ctx.save();
       ctx.strokeStyle = '${gridColorStr}';

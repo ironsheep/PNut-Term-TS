@@ -290,31 +290,26 @@ export class DebugScopeWindow extends DebugWindowBase {
           switch (element.toUpperCase()) {
             case 'COLOR':
               // Parse COLOR directive: COLOR <background> {<grid-color>}
-              const [colorParsed, colors, colorIndex] = DisplaySpecParser.parseColorKeyword(lineParts, index);
+              DebugScopeWindow.logConsoleMessageStatic(
+                `DEBUG WINDOW COLOR: Parsing COLOR at index ${index}, remaining: [${lineParts.slice(index).join(', ')}]`
+              );
+              const [colorParsed, colors, consumed] = DisplaySpecParser.parseColorKeyword(lineParts, index);
               if (colorParsed) {
+                DebugScopeWindow.logConsoleMessageStatic(
+                  `DEBUG WINDOW COLOR: Parsed successfully - background='${colors.background}', grid='${colors.grid}', consumed=${consumed} parts`
+                );
                 displaySpec.window.background = colors.background;
                 if (colors.grid) {
                   displaySpec.window.grid = colors.grid;
                 }
-                index = colorIndex - 1; // Adjust for loop increment
+                index = index + consumed - 1; // Adjust for loop increment
               } else {
-                // console.log(`CL: ScopeDisplaySpec: Invalid COLOR specification`);
+                DebugScopeWindow.logConsoleMessageStatic(`DEBUG WINDOW COLOR: Failed to parse COLOR specification`);
                 isValid = false;
               }
               break;
 
-            case 'POS':
-              // POS is not in the original scope parser but should be supported
-              const [posParsed, pos] = DisplaySpecParser.parsePosKeyword(lineParts, index);
-              if (posParsed) {
-                displaySpec.position = pos;
-                displaySpec.hasExplicitPosition = true; // POS clause found - use explicit position
-                index += 2; // Skip x and y values
-              } else {
-                // console.log(`CL: ScopeDisplaySpec: Invalid POS specification`);
-                isValid = false;
-              }
-              break;
+            // POS is now handled by parseCommonKeywords - remove duplicate handling
 
             case 'RATE':
               // ensure we have one more value
@@ -353,15 +348,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               }
               break;
             */
-            case 'SAMPLES':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                displaySpec.nbrSamples = Number(lineParts[++index]);
-              } else {
-                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
-              }
-              break;
+            // SAMPLES is now handled by parseCommonKeywords - remove duplicate handling
 
             default:
               // console.log(`CL: ScopeDisplaySpec: Unknown directive: ${element}`);
@@ -691,7 +678,8 @@ export class DebugScopeWindow extends DebugWindowBase {
         const channelSpec = this.channelSpecs[index];
         this.updateScopeChannelLabel(channelSpec.name, channelSpec.color);
         const channelGridColor: string = channelSpec.gridColor;
-        const channelTextColor: string = channelSpec.textColor;
+        // Use the same color for legend text as the trace to ensure they match
+        const channelTextColor: string = channelSpec.color; // Changed from channelSpec.textColor
         const windowGridColor: string = this.displaySpec.window.grid;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
@@ -805,8 +793,11 @@ export class DebugScopeWindow extends DebugWindowBase {
         channelSpec.lgndShowMin = true;
         channelSpec.lgndShowMaxLine = true;
         channelSpec.lgndShowMinLine = true;
-        let colorName = 'LIME'; // vs. green
-        let colorBrightness = 15;
+        // Pascal DefaultScopeColors: (clLime, clRed, clCyan, clYellow, clMagenta, clBlue, clOrange, clOlive)
+        const defaultScopeColors = ['LIME', 'RED', 'CYAN', 'YELLOW', 'MAGENTA', 'BLUE', 'ORANGE', 'OLIVE'];
+        const channelIndex = this.channelSpecs.length; // Current channel being added
+        let colorName = defaultScopeColors[channelIndex % 8]; // Cycle through default colors like Pascal
+        let colorBrightness = 8; // Default to full saturated color (brightness 8), not pale (15)
         if (lineParts.length > 1 && lineParts[1].toUpperCase().startsWith('AUTO')) {
           // parse AUTO spec - set trigger auto mode for this channel
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
@@ -833,6 +824,9 @@ export class DebugScopeWindow extends DebugWindowBase {
           if (lineParts.length > 6) {
             colorBrightness = Number(lineParts[6]);
           }
+          this.logMessage(
+            `DEBUG AUTO PARSE: colorName='${colorName}' (from index 5), brightness=${colorBrightness} (from index 6)`
+          );
         } else {
           // parse manual spec
           //   '{NAME1}' {min2 {max3 {y-size4 {y-base5 {legend6} {color7 {bright8}}}}}}  // legend is %abcd
@@ -873,11 +867,17 @@ export class DebugScopeWindow extends DebugWindowBase {
           if (lineParts.length > 7) {
             colorBrightness = Number(lineParts[7]);
           }
+          this.logMessage(
+            `DEBUG MANUAL PARSE: colorName='${colorName}' (from index 6), brightness=${colorBrightness} (from index 7)`
+          );
         }
         const channelColor = new DebugColor(colorName, colorBrightness);
         channelSpec.color = channelColor.rgbString;
         channelSpec.gridColor = channelColor.gridRgbString;
         channelSpec.textColor = channelColor.fontRgbString;
+        this.logMessage(
+          `DEBUG COLOR: Created DebugColor('${colorName}', ${colorBrightness}) → color='${channelSpec.color}', grid='${channelSpec.gridColor}', text='${channelSpec.textColor}'`
+        );
         // and record spec for this channel
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with channelSpec: ${JSON.stringify(channelSpec, null, 2)}`);
@@ -1871,7 +1871,8 @@ export class DebugScopeWindow extends DebugWindowBase {
   private redrawGraticule(channelSpec: ScopeChannelSpec): string {
     let jsCode = '';
     const channelGridColor: string = channelSpec.gridColor;
-    const channelTextColor: string = channelSpec.textColor;
+    // Use the same color for legend text as the trace to ensure they match
+    const channelTextColor: string = channelSpec.color; // Changed from channelSpec.textColor
 
     // Redraw grid lines and labels using the same logic as initial drawing
     // %abcd where a=enable max legend, b=min legend, c=max line, d=min line

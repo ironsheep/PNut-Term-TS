@@ -344,14 +344,30 @@ export class DebugTerminalInTypeScript {
       this.context.actions.writeFlash = true;
       this.requiresFilename = true;
       this.context.actions.binFilename = options.flash;
-      this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to FLASH`);
+
+      // Check if the file exists before proceeding
+      if (!fs.existsSync(this.context.actions.binFilename)) {
+        this.context.logger.errorMsg(`File not found for FLASH download: ${this.context.actions.binFilename}`);
+        this.context.logger.errorMsg(`Please check the file path and try again.`);
+        this.shouldAbort = true;
+      } else {
+        this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to FLASH`);
+      }
     }
 
     if (options.ram && !options.flash) {
       this.context.actions.writeRAM = true;
       this.requiresFilename = true;
       this.context.actions.binFilename = options.ram;
-      this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to RAM`);
+
+      // Check if the file exists before proceeding
+      if (!fs.existsSync(this.context.actions.binFilename)) {
+        this.context.logger.errorMsg(`File not found for RAM download: ${this.context.actions.binFilename}`);
+        this.context.logger.errorMsg(`Please check the file path and try again.`);
+        this.shouldAbort = true;
+      } else {
+        this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to RAM`);
+      }
     }
 
     // Show verbose environment info (always show for verbose mode, regardless of shouldAbort)
