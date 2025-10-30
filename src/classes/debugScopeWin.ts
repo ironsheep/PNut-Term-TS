@@ -748,7 +748,7 @@ export class DebugScopeWindow extends DebugWindowBase {
     // No explicit refresh needed
   }
 
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async internally
     this.processMessageAsync(lineParts);
   }

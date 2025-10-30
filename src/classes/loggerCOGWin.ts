@@ -925,7 +925,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
   /**
    * Implement abstract method from DebugWindowBase
    */
-  public processMessageImmediate(message: any): void {
+  public async processMessageImmediate(message: any): Promise<void> {
     this.processMessage(message);
   }
 

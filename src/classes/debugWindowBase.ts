@@ -221,8 +221,9 @@ export abstract class DebugWindowBase extends EventEmitter {
   /**
    * Process message content immediately. Must be implemented by derived classes.
    * This is called either immediately (if window is ready) or when queued messages are processed.
+   * IMPORTANT: This is async to allow LAYER commands to complete before subsequent commands execute.
    */
-  protected abstract processMessageImmediate(lineParts: string[] | any): void;
+  protected abstract processMessageImmediate(lineParts: string[] | any): Promise<void>;
 
   /**
    * Clear the display. Override in derived classes that support clearing.
@@ -464,11 +465,12 @@ export abstract class DebugWindowBase extends EventEmitter {
   /**
    * Public method for updating content. Handles queuing if window not ready.
    * Derived classes should NOT override this - override processMessageImmediate instead.
+   * IMPORTANT: Now async to maintain message ordering for LAYER commands.
    */
-  updateContent(lineParts: string[] | any): void {
+  async updateContent(lineParts: string[] | any): Promise<void> {
     if (this.isWindowReady) {
-      // Window is ready, process immediately
-      this.processMessageImmediate(lineParts);
+      // Window is ready, process immediately and await for proper ordering
+      await this.processMessageImmediate(lineParts);
     } else {
       // Window not ready yet, queue the message
       const queued = this.messageQueue.enqueue(lineParts);
@@ -600,8 +602,9 @@ export abstract class DebugWindowBase extends EventEmitter {
   /**
    * Mark window as ready and process any queued messages.
    * Should be called by derived classes when their window is fully initialized.
+   * IMPORTANT: Now async to await message processing.
    */
-  protected onWindowReady(): void {
+  protected async onWindowReady(): Promise<void> {
     if (this.isWindowReady) {
       this.logMessageBase(`- Window already marked as ready`);
       return;
@@ -615,12 +618,13 @@ export abstract class DebugWindowBase extends EventEmitter {
       const stats = this.messageQueue.getStats();
       this.logMessageBase(`- Processing ${stats.currentSize} queued messages`);
       
-      // Process all queued messages
+      // Process all queued messages SEQUENTIALLY
+      // CRITICAL: Await each message to ensure LAYER commands complete before CROP/UPDATE
       const queuedMessages = this.messageQueue.dequeueAll();
-      
+
       for (const message of queuedMessages) {
         try {
-          this.processMessageImmediate(message);
+          await this.processMessageImmediate(message);
         } catch (error) {
           this.logMessageBase(`- Error processing queued message: ${error}`);
         }

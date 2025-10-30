@@ -483,14 +483,14 @@ export class DebugSpectroWindow extends DebugWindowBase {
    * Entry point for message processing from WindowRouter
    * Called by router's updateContent(dataParts)
    */
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     this.processMessageImmediate(lineParts);
   }
 
   /**
    * Update SPECTRO window content with new data (synchronous wrapper for async operations)
    */
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async internally
     this.processMessageAsync(lineParts);
   }

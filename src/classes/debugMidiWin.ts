@@ -621,14 +621,14 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Entry point for message processing from WindowRouter
    * Called by router's updateContent(dataParts)
    */
-  public updateContent(lineParts: string[]): void {
+  public async updateContent(lineParts: string[]): Promise<void> {
     this.processMessageImmediate(lineParts);
   }
 
   /**
    * Process MIDI data and commands (synchronous wrapper for async operations)
    */
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async internally
     this.processMessageAsync(lineParts);
   }

@@ -796,7 +796,7 @@ export class DebugTermWindow extends DebugWindowBase {
     this.debugWindow = null;
   }
 
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async internally
     this.processMessageAsync(lineParts);
   }

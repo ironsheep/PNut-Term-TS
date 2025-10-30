@@ -15,21 +15,23 @@ import { LUTManager } from './shared/lutManager';
 import { LayerManager, CropRect } from './shared/layerManager';
 import { SpriteManager } from './shared/spriteManager';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
+import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
-import { PlotCommandParser } from './shared/plotCommandParser';
-import { PlotWindowIntegrator, PlotCanvasOperation } from './shared/plotParserIntegration';
+// Removed complex parser: import { PlotCommandParser } from './shared/plotCommandParser';
+import { PlotWindowIntegrator, PlotCanvasOperation, CanvasOperationType } from './shared/plotParserIntegration';
 import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
 
 // Compile-time flag for performance monitoring
 const ENABLE_PERFORMANCE_MONITORING = false;
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 import {
   DebugWindowBase,
   eHorizJustification,
   eVertJustification,
+  eTextWeight,
   FontMetrics,
   Position,
   Size,
@@ -62,9 +64,9 @@ export enum eCoordModes {
 }
 
 export interface PolarSpec {
-  // In polar mode, (x, y) coordinates are interpreted as (length, angle).
-  twopi: number; // For a twopi value of $100000000 or -$100000000, use 0 or -1.
-  offset: number;
+  // In polar mode, (x, y) coordinates are interpreted as (radius, angle).
+  twopi: number; // Full circle value (defaults to 0x100000000, -1 = -0x100000000, 0 = 0x100000000)
+  theta: number; // Angle offset (defaults to 0)
 }
 
 export interface CartesianSpec {
@@ -170,8 +172,8 @@ export class DebugPlotWindow extends DebugWindowBase {
   private origin: Position = { x: 0, y: 0 }; // users are: DOT, LINE, CIRCLE, OVAL, BOX, OBOX
   private canvasOffset: Position = { x: 0, y: 0 };
 
-  private polarConfig: PolarSpec = { twopi: 0x100000000, offset: 0 };
-  private cartesianConfig: CartesianSpec = { ydir: true, xdir: false };
+  private polarConfig: PolarSpec = { twopi: 0x100000000, theta: 0 };
+  private cartesianConfig: CartesianSpec = { ydir: false, xdir: false }; // Pascal default: vDirY := False (mathematical coords)
   private coordinateMode: eCoordModes = eCoordModes.CM_CARTESIAN; // default to cartesian mode
   private lineSize: number = 1;
   private precise: number = 8; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. [0, 8] used as shift value
@@ -180,6 +182,14 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   // Queue for pending canvas operations that need to be executed at display time
   private pendingOperations: PlotCanvasOperation[] = [];
+
+  // Simple parser state variables
+  private vPixelX: number = 0;  // Raw cursor X value
+  private vPixelY: number = 0;  // Raw cursor Y value
+  private plotCoordX: number = 0;  // Converted plot X coordinate
+  private plotCoordY: number = 0;  // Converted plot Y coordinate
+  private isCartesian: boolean = true;  // True = Cartesian mode, False = Polar mode
+  private isPrecise: boolean = false;  // Precise coordinate mode
 
   private shouldWriteToCanvas: boolean = true;
   private canvasInitialized: boolean = false;
@@ -204,7 +214,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   private updateMode: boolean = false; // True = buffered mode (wait for UPDATE), False = live mode (immediate display)
 
   // New parser system
-  private plotCommandParser: PlotCommandParser;
+  // Removed complex parser: private plotCommandParser: PlotCommandParser;
   private plotWindowIntegrator: PlotWindowIntegrator;
 
   // Performance monitoring
@@ -219,7 +229,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
     super(ctx, windowId, 'plot');
     this.windowLogPrefix = 'pltW';
-    DebugColor.setDefaultBrightness(15); // set default brightness to max
+    DebugColor.setDefaultBrightness(8); // Default to full saturated color (brightness 8 in RGBI8X), not pale (15)
 
     // Enable logging for PLOT window
     this.isLogging = true;
@@ -244,7 +254,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.spriteManager = new SpriteManager();
 
     // Initialize new parser system
-    this.plotCommandParser = new PlotCommandParser(this.context);
+    // Removed complex parser: this.plotCommandParser = new PlotCommandParser(this.context);
     this.plotWindowIntegrator = new PlotWindowIntegrator(this);
 
     // Initialize performance monitoring (if enabled)
@@ -304,14 +314,21 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
 
   /**
+   * Get the Y-axis direction configuration
+   * @returns true if Y increases downward (screen coordinates), false if Y increases upward (mathematical coordinates)
+   */
+  public get ydir(): boolean {
+    return this.cartesianConfig.ydir;
+  }
+
+  /**
    * Remove surrounding quotes from a string if present
    * @param str The string to process
    * @returns String with quotes removed, or original if no quotes
    */
   private static removeQuotes(str: string): string {
     if (str.length >= 2) {
-      if ((str[0] === '"' && str[str.length - 1] === '"') ||
-          (str[0] === "'" && str[str.length - 1] === "'")) {
+      if ((str[0] === '"' && str[str.length - 1] === '"') || (str[0] === "'" && str[str.length - 1] === "'")) {
         return str.substring(1, str.length - 1);
       }
     }
@@ -336,10 +353,10 @@ export class DebugPlotWindow extends DebugWindowBase {
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
-    // set defaults (use brightness 15 for full color to match Pascal defaults)
-    const bkgndColor: DebugColor = new DebugColor('BLACK', 15); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
+    // set defaults (use brightness 8 for full saturated colors in RGBI8X system)
+    const bkgndColor: DebugColor = new DebugColor('BLACK', 8); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
     const gridColor: DebugColor = new DebugColor('GRAY', 4); // Dim gray for grid
-    const textColor: DebugColor = new DebugColor('WHITE', 15); // Pascal: DefaultTextColor = clWhite (full brightness)
+    const textColor: DebugColor = new DebugColor('WHITE', 8); // Pascal: DefaultTextColor = clWhite (full saturated white)
     DebugPlotWindow.logConsoleMessageStatic(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -361,71 +378,63 @@ export class DebugPlotWindow extends DebugWindowBase {
     if (lineParts.length > 2) {
       for (let index = 2; index < lineParts.length; index++) {
         const element = lineParts[index];
-        switch (element.toUpperCase()) {
-          case 'TITLE':
-            // ensure we have one more value
-            if (index < lineParts.length - 1) {
-              const titleValue = lineParts[++index];
-              // Remove surrounding quotes if present
-              displaySpec.windowTitle = DebugPlotWindow.removeQuotes(titleValue);
-            } else {
-              // console.log() as we are in class static method, not derived class...
-              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
-          case 'POS':
-            // ensure we have two more values
-            if (index < lineParts.length - 2) {
-              displaySpec.position.x = Number(lineParts[++index]);
-              displaySpec.position.y = Number(lineParts[++index]);
-              displaySpec.hasExplicitPosition = true; // Mark that POS was explicitly specified
-            } else {
-              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
-          case 'SIZE':
-            // ensure we have two more values
-            if (index < lineParts.length - 2) {
-              displaySpec.size.width = Number(lineParts[++index]);
-              displaySpec.size.height = Number(lineParts[++index]);
-            } else {
-              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
-          case 'BACKCOLOR':
-            // ensure we have one more value
-            if (index < lineParts.length - 1) {
-              const colorName: string = lineParts[++index];
-              let colorBrightness: number = 15; // let's default to max brightness
-              if (index < lineParts.length - 1) {
-                // Check if next part is numeric (simple check for 0-9 or -)
-                const nextPart = lineParts[index + 1];
-                if (nextPart && /^-?\d/.test(nextPart)) {
-                  colorBrightness = Number(lineParts[++index]);
-                }
-              }
-              const textColor = new DebugColor(colorName, colorBrightness);
-              displaySpec.window.background = textColor.rgbString;
-            } else {
-              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
-            }
-            break;
-          case 'UPDATE':
-            displaySpec.delayedUpdate = true;
-            DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
-            break;
-          case 'HIDEXY':
-            displaySpec.hideXY = true;
-            DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: HIDEXY enabled');
-            break;
 
-          default:
-            DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Unknown directive: ${element}`);
-            break;
+        // Try shared parser first for common keywords (TITLE, POS, SIZE)
+        const compatibleSpec: Partial<BaseDisplaySpec> = {
+          title: displaySpec.windowTitle,
+          position: displaySpec.position,
+          hasExplicitPosition: displaySpec.hasExplicitPosition,
+          size: displaySpec.size,
+          nbrSamples: 0, // Not used by PLOT
+          window: displaySpec.window
+        };
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
+          lineParts,
+          index,
+          compatibleSpec as BaseDisplaySpec
+        );
+        if (parsed) {
+          // Copy parsed values back to displaySpec
+          displaySpec.windowTitle = compatibleSpec.title!;
+          if (compatibleSpec.position) displaySpec.position = compatibleSpec.position;
+          if (compatibleSpec.hasExplicitPosition) displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+          if (compatibleSpec.size) displaySpec.size = compatibleSpec.size;
+          index += consumed - 1; // Adjust for loop increment
+        } else {
+          // Handle PLOT-specific keywords
+          switch (element.toUpperCase()) {
+            case 'BACKCOLOR':
+              // ensure we have one more value
+              if (index < lineParts.length - 1) {
+                const colorName: string = lineParts[++index];
+                let colorBrightness: number = 8; // Default to full saturated color (brightness 8 in RGBI8X), not pale (15)
+                if (index < lineParts.length - 1) {
+                  // Check if next part is numeric (simple check for 0-9 or -)
+                  const nextPart = lineParts[index + 1];
+                  if (nextPart && /^-?\d/.test(nextPart)) {
+                    colorBrightness = Number(lineParts[++index]);
+                  }
+                }
+                const textColor = new DebugColor(colorName, colorBrightness);
+                displaySpec.window.background = textColor.rgbString;
+              } else {
+                DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
+                isValid = false;
+              }
+              break;
+            case 'UPDATE':
+              displaySpec.delayedUpdate = true;
+              DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
+              break;
+            case 'HIDEXY':
+              displaySpec.hideXY = true;
+              DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: HIDEXY enabled');
+              break;
+
+            default:
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Unknown directive: ${element}`);
+              break;
+          }
         }
         if (!isValid) {
           break;
@@ -891,7 +900,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
       if (channel === 'mouse-event') {
         const [x, y, buttons, wheelDelta] = args;
-        this.logMessage(`[PLOT MOUSE IPC] Received mouse event: x=${x}, y=${y}, buttons=${JSON.stringify(buttons)}, wheel=${wheelDelta}`);
+        this.logMessage(
+          `[PLOT MOUSE IPC] Received mouse event: x=${x}, y=${y}, buttons=${JSON.stringify(
+            buttons
+          )}, wheel=${wheelDelta}`
+        );
 
         // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
         this.vMouseX = x;
@@ -1012,7 +1025,9 @@ export class DebugPlotWindow extends DebugWindowBase {
         // execute them now. This handles the race condition where UPDATE command
         // arrives before canvas initialization completes.
         if (this.pendingOperations.length > 0) {
-          this.logMessage(`Canvas ready - executing ${this.pendingOperations.length} pending operations that were queued during initialization`);
+          this.logMessage(
+            `Canvas ready - executing ${this.pendingOperations.length} pending operations that were queued during initialization`
+          );
           this.performUpdate().catch((error) => {
             this.logMessage(`Failed to execute pending operations after canvas init: ${error}`);
           });
@@ -1277,9 +1292,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         );
         this.layerManager.clearAllLayers();
         // Also release renderer layer caches
-        this.plotWindowIntegrator.releaseAllLayersInRenderer().catch(err =>
-          this.logMessage(`Failed to release renderer layer caches: ${err}`)
-        );
+        this.plotWindowIntegrator
+          .releaseAllLayersInRenderer()
+          .catch((err) => this.logMessage(`Failed to release renderer layer caches: ${err}`));
       }
 
       // Clear any deferred operations to prevent memory leaks
@@ -1337,9 +1352,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     if (this.layerManager) {
       this.layerManager.clearAllLayers();
       // Also release renderer layer caches
-      this.plotWindowIntegrator.releaseAllLayersInRenderer().catch(err =>
-        this.logMessage(`Failed to release renderer layer caches: ${err}`)
-      );
+      this.plotWindowIntegrator
+        .releaseAllLayersInRenderer()
+        .catch((err) => this.logMessage(`Failed to release renderer layer caches: ${err}`));
     }
 
     // CRITICAL: Clear the correct buffer based on update mode
@@ -1427,7 +1442,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     });
   }
 
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // For LUT commands, we need synchronous execution to match Pascal behavior
     // Window name was already stripped by mainWindow routing
     const commandString = lineParts.join(' ');
@@ -1440,43 +1455,39 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       // Process LUT commands synchronously
       this.processLutCommandSync(commandString);
     } else {
-      // Handle other commands asynchronously
-      this.processMessageAsync(lineParts);
+      // Handle other commands asynchronously - AWAIT to maintain message ordering
+      // CRITICAL: LAYER commands must complete before subsequent CROP/UPDATE commands
+      await this.processMessageAsync(lineParts);
     }
   }
 
   private processLutCommandSync(commandString: string): void {
     try {
-      // Parse the LUT command
-      const parsedCommands = this.plotCommandParser.parse(commandString);
-      if (parsedCommands.length === 0) {
-        return;
-      }
+      // Use simple parser for LUT commands
+      const lineParts = commandString.split(' ').filter(part => part.length > 0);
 
-      // Execute parsed LUT commands synchronously
-      const results = this.plotCommandParser.executeCommands(parsedCommands);
+      // Process the LUT command directly
+      for (let index = 0; index < lineParts.length; index++) {
+        const command = lineParts[index].toUpperCase();
 
-      // Process results and execute operations synchronously
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        const command = parsedCommands[i];
+        if (command === 'LUT') {
+          // LUT index color
+          if (index + 2 < lineParts.length) {
+            const lutIndex = this.parseNumber(lineParts[++index]);
+            const color = lineParts[++index];
 
-        if (result.success && result.canvasOperations.length > 0) {
-          // Execute LUT operations immediately and synchronously
-          const plotOperations = result.canvasOperations.map(
-            (op) =>
-              ({
-                ...op,
-                type: op.type as any,
-                affectsState: true,
-                requiresUpdate: false,
-                deferrable: false
-              } as PlotCanvasOperation)
-          );
-
-          // Execute synchronously
-          for (const operation of plotOperations) {
-            this.plotWindowIntegrator.executeOperationSync(operation);
+            if (lutIndex !== null && lutIndex >= 0 && lutIndex <= 255) {
+              this.processLutCommand(lutIndex, lutIndex, color);
+            }
+          }
+        } else if (command === 'LUTCOLORS') {
+          // LUTCOLORS color0 color1 ... color7
+          const colors = [];
+          for (let i = 0; i < 8 && index + 1 < lineParts.length; i++) {
+            colors.push(lineParts[++index]);
+          }
+          if (colors.length > 0) {
+            this.processLutColorsCommand(colors);
           }
         }
       }
@@ -1493,7 +1504,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       return; // Base class handled it
     }
 
-    // Build command string for PLOT-specific parsing
+    // Build command string for logging
     const commandString = lineParts.join(' ');
     this.logMessage(`---- PLOT parsing: ${commandString}`);
 
@@ -1503,153 +1514,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         this.performanceMonitor.commandStart();
       }
 
-      // Parse commands using new deterministic parser
-      const parsedCommands = this.plotCommandParser.parse(commandString);
-
-      if (parsedCommands.length === 0) {
-        this.logMessage(`No commands found in: ${commandString}`);
-        if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
-          this.performanceMonitor.commandEnd();
-        }
-        return;
-      }
-
-      // Execute parsed commands
-      this.logConsoleMessage(`[PLOT DEBUG] Calling plotCommandParser.executeCommands()`);
-      const results = this.plotCommandParser.executeCommands(parsedCommands);
-      this.logConsoleMessage(`[PLOT DEBUG] executeCommands returned ${results.length} results`);
-
-      // Process results and execute canvas operations
-      this.logConsoleMessage(`[PLOT DEBUG] Processing ${results.length} results from executeCommands`);
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        const command = parsedCommands[i];
-        this.logConsoleMessage(
-          `[PLOT DEBUG] Processing result ${i + 1}: command='${command.command}', success=${
-            result.success
-          }, canvasOps=${result.canvasOperations?.length || 0}`
-        );
-
-        // DEBUG: Log execution flow
-        this.logMessage(
-          `EXEC DEBUG: Command ${i + 1}: ${command.command} -> success=${result.success}, canvasOps=${
-            result.canvasOperations?.length || 0
-          }`
-        );
-
-        // Log any errors or warnings
-        if (result.errors.length > 0) {
-          for (const error of result.errors) {
-            this.logMessage(`ERROR: ${error}`);
-          }
-        }
-
-        if (result.warnings.length > 0) {
-          for (const warning of result.warnings) {
-            this.logMessage(`WARNING: ${warning}`);
-          }
-        }
-
-        // Track canvas operations for performance monitoring (if enabled)
-        if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor && result.canvasOperations.length > 0) {
-          const monitor = this.performanceMonitor;
-          result.canvasOperations.forEach((op) => {
-            monitor.recordCanvasOperation(op.type);
-          });
-        }
-
-        // Debug command results
-        this.logMessage(
-          `RESULT DEBUG: Command '${command.command}' - success: ${result.success}, ops: ${
-            result.canvasOperations?.length || 0
-          }`
-        );
-
-        // Handle canvas operations based on command type
-        if (result.success && result.canvasOperations.length > 0) {
-          this.logMessage(
-            `CMD DEBUG: Processing command '${command.command}' with ${result.canvasOperations.length} operations`
-          );
-          // Check if this is an immediate command (UPDATE, CLOSE, LUT, LUTCOLORS)
-          // LUT commands are immediate like in Pascal - they modify state immediately
-          const isImmediateCommand =
-            command.command === 'UPDATE' ||
-            command.command === 'CLOSE' ||
-            command.command === 'LUT' ||
-            command.command === 'LUTCOLORS';
-
-          if (isImmediateCommand) {
-            this.logMessage(`IMMEDIATE DEBUG: Executing immediate command ${command.command}`);
-
-            // For UPDATE, execute all pending operations first, then the UPDATE
-            if (command.command === 'UPDATE') {
-              this.performUpdate(); // This executes pending ops and flips buffer
-            }
-            // For CLOSE, execute it immediately through the integrator
-            else if (command.command === 'CLOSE') {
-              // Execute pending operations first
-              if (this.pendingOperations.length > 0) {
-                this.performUpdate();
-              }
-              // Then close the window
-              this.closeDebugWindow();
-            }
-            // For LUT commands, execute immediately like Pascal
-            else if (command.command === 'LUT' || command.command === 'LUTCOLORS') {
-              this.logMessage(
-                `LUT DEBUG: Executing LUT command immediately with ${result.canvasOperations.length} operations`
-              );
-              // Execute LUT operations immediately through the integrator
-              const plotOperations = result.canvasOperations.map(
-                (op) =>
-                  ({
-                    ...op,
-                    type: op.type as any,
-                    affectsState: true, // LUT affects state
-                    requiresUpdate: false, // LUT doesn't need display update
-                    deferrable: false // LUT is immediate
-                  } as PlotCanvasOperation)
-              );
-
-              // Execute synchronously for immediate effect - LUT must be immediate like Pascal
-              // Use sync execution to ensure palette is updated before next command
-              for (const operation of plotOperations) {
-                this.plotWindowIntegrator.executeOperationSync(operation);
-              }
-              this.logMessage(`LUT DEBUG: LUT command execution completed synchronously`);
-            }
-          } else {
-            // Regular commands get queued
-            this.logMessage(
-              `QUEUE DEBUG: Queueing ${result.canvasOperations.length} canvas operations for ${command.command}`
-            );
-            // Convert CanvasOperation to PlotCanvasOperation by adding required fields
-            const plotOperations = result.canvasOperations.map(
-              (op) =>
-                ({
-                  ...op,
-                  type: op.type as any, // Type will be mapped by integrator
-                  affectsState: false,
-                  requiresUpdate: false,
-                  deferrable: true
-                } as PlotCanvasOperation)
-            );
-            this.pendingOperations.push(...plotOperations);
-
-            // In immediate mode (not buffered), execute after each command line
-            if (!this.displaySpec.delayedUpdate) {
-              this.logMessage(`QUEUE DEBUG: Immediate mode - executing queued operations`);
-              this.performUpdate();
-            }
-          }
-        } else {
-          this.logMessage(
-            `QUEUE DEBUG: No operations to queue - success=${result.success}, ops=${
-              result.canvasOperations?.length || 0
-            }`
-          );
-        }
-      }
+      // Simple token-by-token parser (like Term/Scope windows)
+      await this.parseSimpleCommands(lineParts);
 
       // End performance monitoring (if enabled)
       if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
@@ -1661,6 +1527,957 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {
         this.performanceMonitor.commandEnd();
       }
+    }
+  }
+
+  /**
+   * Simple token-by-token parser for PLOT commands
+   * Replaces the complex parser with a straightforward approach like Term/Scope windows
+   */
+  private async parseSimpleCommands(lineParts: string[]): Promise<void> {
+    for (let index = 0; index < lineParts.length; index++) {
+      let command = lineParts[index];
+
+      // Skip empty parts
+      if (!command) continue;
+
+      // Handle quoted strings
+      if (command.startsWith("'")) {
+        // This is a string literal, not a command
+        continue;
+      }
+
+      // Convert to uppercase for command matching
+      const upperCommand = command.toUpperCase();
+
+      // Check if this is a color command
+      const isColorCommand = this.isColorCommand(upperCommand);
+      if (isColorCommand) {
+        // Handle color command (ORANGE, CYAN, WHITE, etc.)
+        let brightness = 8; // Default to full saturated color (not pale)
+
+        // Check if next token is a brightness value
+        let nextIndex = index + 1;
+        if (nextIndex < lineParts.length) {
+          const nextToken = lineParts[nextIndex];
+          const brightnessValue = this.parseNumber(nextToken);
+          if (brightnessValue !== null && brightnessValue >= 0 && brightnessValue <= 15) {
+            brightness = brightnessValue;
+            index++; // Consume the brightness token
+            nextIndex++; // Update next token position
+          }
+        }
+
+        // Pascal: if TEXT is next, set text color; otherwise leave it unchanged
+        // Check if TEXT command follows this color command
+        const nextCommand = nextIndex < lineParts.length ? lineParts[nextIndex].toUpperCase() : '';
+        const textFollows = nextCommand === 'TEXT';
+
+        // Apply the color
+        this.setPlotColor(upperCommand, brightness, textFollows);
+        continue;
+      }
+
+      // Parse commands
+      switch(upperCommand) {
+        case 'SET': {
+          // SET x , y - Set cursor position (commas optional)
+          if (index + 1 < lineParts.length) {
+            const x = this.parseNumber(lineParts[++index]);
+            index = this.skipComma(lineParts, index); // Skip optional comma
+            if (index + 1 < lineParts.length) {
+              const y = this.parseNumber(lineParts[++index]);
+              if (x !== null && y !== null) {
+                this.setCursorPosition(x, y);
+              }
+            }
+          }
+          break;
+        }
+
+        case 'DOT': {
+          // DOT [lineSize [opacity]]
+          let lineSize = 1;
+          let opacity = 255;
+
+          if (index + 1 < lineParts.length) {
+            const val = this.parseNumber(lineParts[index + 1]);
+            if (val !== null) {
+              lineSize = val;
+              index++;
+            }
+          }
+
+          if (index + 1 < lineParts.length) {
+            const val = this.parseNumber(lineParts[index + 1]);
+            if (val !== null) {
+              opacity = val;
+              index++;
+            }
+          }
+
+          await this.drawDotToPlot(lineSize, opacity);
+          break;
+        }
+
+        case 'LINE': {
+          // LINE x y [lineSize [opacity]]
+          // Capture current cursor position immediately for this line's starting point
+          const fromX = this.plotCoordX;
+          const fromY = this.plotCoordY;
+
+          if (index + 2 < lineParts.length) {
+            const x = this.parseNumber(lineParts[++index]);
+            const y = this.parseNumber(lineParts[++index]);
+            let lineSize = 1;
+            let opacity = 255;
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                lineSize = val;
+                index++;
+              }
+            }
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                opacity = val;
+                index++;
+              }
+            }
+
+            if (x !== null && y !== null) {
+              await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity);
+            }
+          }
+          break;
+        }
+
+        case 'CIRCLE': {
+          // CIRCLE diameter [lineSize [opacity]]
+          if (index + 1 < lineParts.length) {
+            const diameter = this.parseNumber(lineParts[++index]);
+            let lineSize = 0; // 0 = filled
+            let opacity = 255;
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                lineSize = val;
+                index++;
+              }
+            }
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                opacity = val;
+                index++;
+              }
+            }
+
+            if (diameter !== null) {
+              await this.drawCircleToPlot(diameter, lineSize, opacity);
+            }
+          }
+          break;
+        }
+
+        case 'BOX': {
+          // BOX width height [lineSize [opacity]]
+          if (index + 2 < lineParts.length) {
+            const width = this.parseNumber(lineParts[++index]);
+            const height = this.parseNumber(lineParts[++index]);
+            let lineSize = 0; // 0 = filled
+            let opacity = 255;
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                lineSize = val;
+                index++;
+              }
+            }
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                opacity = val;
+                index++;
+              }
+            }
+
+            if (width !== null && height !== null) {
+              await this.drawBoxToPlot(width, height, lineSize, opacity);
+            }
+          }
+          break;
+        }
+
+        case 'OVAL': {
+          // OVAL width height [lineSize [opacity]]
+          if (index + 2 < lineParts.length) {
+            const width = this.parseNumber(lineParts[++index]);
+            const height = this.parseNumber(lineParts[++index]);
+            let lineSize = 0; // 0 = filled
+            let opacity = 255;
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                lineSize = val;
+                index++;
+              }
+            }
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                opacity = val;
+                index++;
+              }
+            }
+
+            if (width !== null && height !== null) {
+              await this.drawOvalToPlot(width, height, lineSize, opacity);
+            }
+          }
+          break;
+        }
+
+        case 'TEXT': {
+          // TEXT [size [style [angle]]] 'string'
+          let textSize = 10;
+          let textStyle = 1;
+          let textAngle = 0;
+          let text = '';
+
+          // Capture current cursor position and color immediately for this text command
+          const textX = this.plotCoordX;
+          const textY = this.plotCoordY;
+          // Pascal: Color commands check if TEXT follows and update vTextColor accordingly
+          // TEXT always uses vTextColor (set by color lookahead or remains white)
+          const textColor = this.currTextColor;
+
+          // Look for optional numeric parameters
+          let paramIndex = index + 1;
+
+          // Check for size
+          if (paramIndex < lineParts.length) {
+            const val = this.parseNumber(lineParts[paramIndex]);
+            if (val !== null && val >= 1 && val <= 100) {
+              textSize = val;
+              paramIndex++;
+            }
+          }
+
+          // Check for style
+          if (paramIndex < lineParts.length) {
+            const val = this.parseNumber(lineParts[paramIndex]);
+            if (val !== null && val >= 0 && val <= 255) {
+              textStyle = val;
+              paramIndex++;
+            }
+          }
+
+          // Check for angle
+          if (paramIndex < lineParts.length) {
+            const val = this.parseNumber(lineParts[paramIndex]);
+            if (val !== null) {
+              textAngle = val % 360;
+              if (textAngle < 0) textAngle += 360;
+              paramIndex++;
+            }
+          }
+
+          // Look for the text string
+          if (paramIndex < lineParts.length) {
+            const textPart = lineParts[paramIndex];
+            if (textPart.startsWith("'")) {
+              // Extract the text, handling multi-part strings
+              if (textPart.endsWith("'") && textPart.length > 1) {
+                // Single-part string
+                text = textPart.substring(1, textPart.length - 1);
+                index = paramIndex;
+              } else {
+                // Multi-part string
+                const stringParts = [textPart.substring(1)];
+                let searchIndex = paramIndex + 1;
+                while (searchIndex < lineParts.length) {
+                  const part = lineParts[searchIndex];
+                  if (part.endsWith("'")) {
+                    stringParts.push(part.substring(0, part.length - 1));
+                    break;
+                  } else {
+                    stringParts.push(part);
+                  }
+                  searchIndex++;
+                }
+                text = stringParts.join(' ');
+                index = searchIndex;
+              }
+            }
+          }
+
+          if (text) {
+            // Set font metrics and draw text
+            this.setFontMetrics(textSize, textStyle, textAngle, this.font, this.textStyle);
+            // Pass the captured coordinates and color to writeStringToPlot
+            await this.writeStringToPlotAt(text, textX, textY, textColor);
+          }
+          break;
+        }
+
+        case 'TEXTSIZE': {
+          // TEXTSIZE size
+          if (index + 1 < lineParts.length) {
+            const size = this.parseNumber(lineParts[++index]);
+            if (size !== null && size >= 1 && size <= 100) {
+              this.font.textSizePts = size;
+              this.font.charHeight = Math.round(size * 1.33); // Convert points to pixels
+            }
+          }
+          break;
+        }
+
+        case 'TEXTSTYLE': {
+          // TEXTSTYLE style
+          if (index + 1 < lineParts.length) {
+            const style = this.parseNumber(lineParts[++index]);
+            if (style !== null && style >= 0 && style <= 255) {
+              // bit 0 = bold, bit 1 = italic, bit 2 = underline
+              this.textStyle.weight = (style & 1) !== 0 ? eTextWeight.TW_BOLD : eTextWeight.TW_NORMAL;
+              this.textStyle.italic = (style & 2) !== 0;
+              this.textStyle.underline = (style & 4) !== 0;
+            }
+          }
+          break;
+        }
+
+        case 'ORIGIN': {
+          // ORIGIN x y
+          if (index + 2 < lineParts.length) {
+            const x = this.parseNumber(lineParts[++index]);
+            const y = this.parseNumber(lineParts[++index]);
+            if (x !== null && y !== null) {
+              this.origin.x = x;
+              this.origin.y = y;
+            }
+          }
+          break;
+        }
+
+        case 'CARTESIAN': {
+          // CARTESIAN [precise] - Set Cartesian coordinate mode
+          this.isCartesian = true;
+          if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'PRECISE') {
+            this.isPrecise = true;
+            index++;
+          }
+          break;
+        }
+
+        case 'POLAR': {
+          // POLAR [twopi [theta]] - Set polar coordinate mode (matching Pascal)
+          this.isCartesian = false;
+
+          // Optional first parameter: twopi
+          if (index + 1 < lineParts.length) {
+            const twopi = this.parseNumber(lineParts[index + 1]);
+            if (twopi !== null) {
+              // Match Pascal's special handling
+              if (twopi === -1) {
+                this.polarConfig.twopi = -0x100000000;
+              } else if (twopi === 0) {
+                this.polarConfig.twopi = 0x100000000;
+              } else {
+                this.polarConfig.twopi = twopi;
+              }
+              index++;
+
+              // Optional second parameter: theta (angle offset)
+              if (index + 1 < lineParts.length) {
+                const theta = this.parseNumber(lineParts[index + 1]);
+                if (theta !== null) {
+                  this.polarConfig.theta = theta;
+                  index++;
+                }
+              }
+            }
+          }
+
+          this.logMessage(`POLAR mode set: twopi=${this.polarConfig.twopi}, theta=${this.polarConfig.theta}`);
+          break;
+        }
+
+        case 'SPRITEDEF': {
+          // SPRITEDEF id width height pixels... colors...
+          if (index + 3 < lineParts.length) {
+            const spriteId = this.parseNumber(lineParts[++index]);
+            const width = this.parseNumber(lineParts[++index]);
+            const height = this.parseNumber(lineParts[++index]);
+
+            if (spriteId !== null && width !== null && height !== null) {
+              const pixelCount = width * height;
+              const pixels: number[] = [];
+              const colors: number[] = [];
+
+              // Read pixel indices
+              for (let i = 0; i < pixelCount && index + 1 < lineParts.length; i++) {
+                const pixel = this.parseNumber(lineParts[++index]);
+                if (pixel !== null) {
+                  pixels.push(pixel);
+                }
+              }
+
+              // Read up to 256 color palette entries (Pascal: reads until no more tokens)
+              for (let i = 0; i < 256 && index + 1 < lineParts.length; i++) {
+                const color = this.parseNumber(lineParts[++index]);
+                if (color !== null) {
+                  colors.push(color);
+                }
+              }
+
+              // Track how many colors were provided
+              const providedColors = colors.length;
+
+              // Pad colors array to 256 entries (Pascal behavior: uninitialized entries remain)
+              while (colors.length < 256) {
+                colors.push(0); // Fill remaining with transparent black
+              }
+
+              // Validate we have the right amount of pixel data
+              if (pixels.length === pixelCount) {
+                this.spriteManager.defineSprite(spriteId, width, height, pixels, colors);
+                this.logMessage(`SPRITEDEF: Defined sprite ${spriteId} (${width}x${height}) with ${providedColors} colors`);
+              } else {
+                this.logMessage(`SPRITEDEF ERROR: Expected ${pixelCount} pixels, got ${pixels.length} pixels`);
+              }
+            }
+          }
+          break;
+        }
+
+        case 'SPRITE': {
+          // SPRITE id , orientation , scale , opacity (commas optional)
+          // Current cursor position is where the sprite will be drawn
+          if (index + 1 < lineParts.length) {
+            const spriteId = this.parseNumber(lineParts[++index]);
+            index = this.skipComma(lineParts, index);
+            let orientation = 0;
+            let scale = 1;
+            let opacity = this.opacity; // Use current opacity as default
+
+            // Optional orientation (0-7)
+            index = this.skipComma(lineParts, index);
+            if (index + 1 < lineParts.length) {
+              const orientVal = this.parseNumber(lineParts[index + 1]);
+              if (orientVal !== null && orientVal >= 0 && orientVal <= 7) {
+                orientation = orientVal;
+                index++;
+                index = this.skipComma(lineParts, index);
+
+                // Optional scale (1-64)
+                if (index + 1 < lineParts.length) {
+                  const scaleVal = this.parseNumber(lineParts[index + 1]);
+                  if (scaleVal !== null && scaleVal >= 1 && scaleVal <= 64) {
+                    scale = scaleVal;
+                    index++;
+                    index = this.skipComma(lineParts, index);
+
+                    // Optional opacity (0-255)
+                    if (index + 1 < lineParts.length) {
+                      const opacityVal = this.parseNumber(lineParts[index + 1]);
+                      if (opacityVal !== null && opacityVal >= 0 && opacityVal <= 255) {
+                        opacity = opacityVal;
+                        index++;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            if (spriteId !== null) {
+              // Draw sprite at current cursor position
+              await this.drawSpriteToPlot(spriteId, orientation, scale, opacity);
+            }
+          }
+          break;
+        }
+
+        case 'LAYER': {
+          // LAYER layer 'filename.bmp'
+          // Load a bitmap file into the specified layer (1-based index)
+          if (index + 2 < lineParts.length) {
+            const layerIndex = this.parseNumber(lineParts[++index]);
+            const filename = DebugPlotWindow.removeQuotes(lineParts[++index]);
+
+            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 16) {
+              // Validate .bmp extension
+              if (filename.toLowerCase().endsWith('.bmp')) {
+                try {
+                  // Use integrator to load layer AND cache in renderer
+                  // LAYER must execute immediately (not deferred) so it's ready for subsequent CROP
+                  const operation: PlotCanvasOperation = {
+                    type: CanvasOperationType.LOAD_LAYER,
+                    parameters: {
+                      layerIndex: layerIndex, // Use 1-based index
+                      filename: filename
+                    },
+                    affectsState: false,
+                    requiresUpdate: false,
+                    deferrable: false // CRITICAL: Execute immediately, needed before CROP
+                  };
+
+                  // Execute LAYER immediately via integrator (loads + caches in renderer)
+                  const result = await this.plotWindowIntegrator.executeOperation(operation);
+                  if (result.success) {
+                    this.logMessage(`LAYER: Loaded layer ${layerIndex} from "${filename}" and cached in renderer`);
+                  } else {
+                    this.logMessage(`LAYER ERROR: ${result.errors.join(', ')}`);
+                  }
+                } catch (error) {
+                  this.logMessage(`LAYER ERROR: Failed to load "${filename}": ${error}`);
+                }
+              } else {
+                this.logMessage(`LAYER ERROR: File must have .bmp extension: "${filename}"`);
+              }
+            } else {
+              this.logMessage(`LAYER ERROR: Layer index must be 1-16, got ${layerIndex}`);
+            }
+          }
+          break;
+        }
+
+        case 'CROP': {
+          // CROP layer                                  - Copy entire layer to (0,0)
+          // CROP layer AUTO x y                         - Copy entire layer to (x,y)
+          // CROP layer left top width height [x y]      - Copy specific region
+          if (index + 1 < lineParts.length) {
+            const layerIndex = this.parseNumber(lineParts[++index]);
+
+            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 16) {
+              // Do NOT check if layer is loaded at parse time
+              // Layer loading is async, check happens at execution time in integrator
+
+              // Default values - integrator will fill in actual dimensions at execution time
+              let srcLeft = 0;
+              let srcTop = 0;
+              let srcWidth = 0; // Will be filled by integrator for DEFAULT/AUTO modes
+              let srcHeight = 0; // Will be filled by integrator for DEFAULT/AUTO modes
+              let destX = 0;
+              let destY = 0;
+
+              // Check for AUTO mode
+              index = this.skipComma(lineParts, index);
+              if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'AUTO') {
+                // CROP layer AUTO x y
+                index++; // skip AUTO
+                index = this.skipComma(lineParts, index);
+                if (index + 1 < lineParts.length) {
+                  const x = this.parseNumber(lineParts[++index]);
+                  index = this.skipComma(lineParts, index);
+                  if (index + 1 < lineParts.length) {
+                    const y = this.parseNumber(lineParts[++index]);
+                    if (x !== null && y !== null) {
+                      destX = x;
+                      destY = y;
+                    }
+                  }
+                }
+              }
+              // Check for explicit coordinates
+              else if (index + 1 < lineParts.length) {
+                const left = this.parseNumber(lineParts[index + 1]);
+                if (left !== null) {
+                  // We have explicit coordinates
+                  index++;
+                  index = this.skipComma(lineParts, index);
+
+                  if (index + 1 < lineParts.length) {
+                    const top = this.parseNumber(lineParts[++index]);
+                    index = this.skipComma(lineParts, index);
+
+                    if (index + 1 < lineParts.length) {
+                      const width = this.parseNumber(lineParts[++index]);
+                      index = this.skipComma(lineParts, index);
+
+                      if (index + 1 < lineParts.length) {
+                        const height = this.parseNumber(lineParts[++index]);
+
+                        if (top !== null && width !== null && height !== null) {
+                          srcLeft = left;
+                          srcTop = top;
+                          srcWidth = width;
+                          srcHeight = height;
+                          // Default destination is same as source
+                          destX = left;
+                          destY = top;
+
+                          // Optional destination coordinates
+                          index = this.skipComma(lineParts, index);
+                          if (index + 1 < lineParts.length) {
+                            const x = this.parseNumber(lineParts[index + 1]);
+                            if (x !== null) {
+                              index++;
+                              index = this.skipComma(lineParts, index);
+                              if (index + 1 < lineParts.length) {
+                                const y = this.parseNumber(lineParts[++index]);
+                                if (y !== null) {
+                                  destX = x;
+                                  destY = y;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Queue CROP operation for deferred execution (matches old working behavior)
+              // Determine mode based on what parameters were parsed
+              let mode: 'DEFAULT' | 'AUTO' | 'EXPLICIT' = 'DEFAULT';
+              if (lineParts.some((part, i) => i > 0 && part.toUpperCase() === 'AUTO')) {
+                mode = 'AUTO';
+              } else if (srcWidth > 0 && srcHeight > 0) {
+                // If we parsed explicit dimensions, it's EXPLICIT mode
+                mode = 'EXPLICIT';
+              }
+
+              const operation: PlotCanvasOperation = {
+                type: CanvasOperationType.CROP_LAYER,
+                parameters: {
+                  layerIndex: layerIndex, // Use 1-based index (integrator converts to 0-based)
+                  mode: mode,
+                  left: srcLeft,
+                  top: srcTop,
+                  width: srcWidth,
+                  height: srcHeight,
+                  destX: destX,
+                  destY: destY
+                },
+                affectsState: false, // CROP doesn't change parser state
+                requiresUpdate: false, // Will be handled by UPDATE command
+                deferrable: true // CRITICAL: Must defer for batch execution
+              };
+
+              this.pendingOperations.push(operation);
+              this.logMessage(`CROP: Queued ${mode} operation for layer ${layerIndex} - will execute on UPDATE`);
+            } else {
+              this.logMessage(`CROP ERROR: Layer index must be 1-16, got ${layerIndex}`);
+            }
+          }
+          break;
+        }
+
+        case 'LUT': {
+          // LUT index color
+          if (index + 2 < lineParts.length) {
+            const lutIndex = this.parseNumber(lineParts[++index]);
+            const color = lineParts[++index];
+
+            if (lutIndex !== null && lutIndex >= 0 && lutIndex <= 255) {
+              this.processLutCommand(lutIndex, lutIndex, color);
+            }
+          }
+          break;
+        }
+
+        case 'LUTCOLORS': {
+          // LUTCOLORS color0 color1 ... color7
+          const colors = [];
+          for (let i = 0; i < 8 && index + 1 < lineParts.length; i++) {
+            colors.push(lineParts[++index]);
+          }
+          if (colors.length > 0) {
+            this.processLutColorsCommand(colors);
+          }
+          break;
+        }
+
+        // These commands are handled by base class but included for completeness
+        case 'UPDATE':
+          this.performUpdate();
+          break;
+
+        case 'CLEAR':
+          // Base class handles this
+          break;
+
+        case 'CLOSE':
+          // Base class handles this
+          break;
+
+        default:
+          // Check if it's a number (could be direct pixel data or other numeric command)
+          const numValue = this.parseNumber(command);
+          if (numValue !== null) {
+            // Handle numeric commands if needed
+            // For now, just ignore numeric values
+          } else {
+            // Log unrecognized commands for debugging
+            this.logMessage(`PLOT: Unrecognized command '${command}'`);
+          }
+          break;
+      }
+    }
+
+    // If not in delayed update mode, perform update after processing all commands
+    if (!this.displaySpec.delayedUpdate) {
+      this.performUpdate();
+    }
+  }
+
+  /**
+   * Check if a token is a color command
+   */
+  private isColorCommand(token: string): boolean {
+    const colorCommands = [
+      'BLACK', 'WHITE', 'ORANGE', 'BLUE', 'GREEN', 'CYAN',
+      'RED', 'MAGENTA', 'YELLOW', 'GRAY', 'GREY',
+      'OLIVE', 'LIME', 'BLUE2', 'GRAY2', 'GRAY3'
+    ];
+    return colorCommands.includes(token);
+  }
+
+  /**
+   * Parse a number from a string token, handling Spin2 formats
+   * Delegates to shared Spin2NumericParser for consistent parsing across all windows
+   */
+  private parseNumber(token: string): number | null {
+    return Spin2NumericParser.parseValue(token);
+  }
+
+  /**
+   * Skip comma tokens and return next index
+   * Spin2 allows optional commas between parameters
+   */
+  private skipComma(lineParts: string[], index: number): number {
+    if (index + 1 < lineParts.length && lineParts[index + 1] === ',') {
+      return index + 1; // Skip the comma
+    }
+    return index;
+  }
+
+  /**
+   * Set the current drawing color
+   * Pascal: Sets vPlotColor always; vTextColor only if TEXT immediately follows
+   */
+  private setPlotColor(colorName: string, brightness: number = 8, textFollows: boolean = false): void {
+    const color = new DebugColor(colorName, brightness);
+    this.currFgColor = color.rgbString;
+
+    // Pascal: if TEXT is next command, set text color to this color
+    // Otherwise, text color remains unchanged (stays white/default)
+    if (textFollows) {
+      this.currTextColor = color.rgbString;
+      this.logMessage(`Set color to ${colorName} brightness ${brightness}: ${color.rgbString} (TEXT follows - updating text color)`);
+    } else {
+      this.logMessage(`Set color to ${colorName} brightness ${brightness}: ${color.rgbString}`);
+    }
+  }
+
+  /**
+   * Set cursor position
+   */
+  private setCursorPosition(x: number, y: number): void {
+    // Store raw values like Pascal does
+    this.vPixelX = x;
+    this.vPixelY = y;
+
+    // Update public cursor position for external access (used by sprite renderer)
+    this.cursorPosition = { x, y };
+
+    // Convert based on coordinate mode
+    if (this.isCartesian) {
+      // Apply origin offset for Cartesian mode
+      this.plotCoordX = x + this.origin.x;
+      this.plotCoordY = y + this.origin.y;
+    } else {
+      // Polar mode: x=radius (rho), y=angle (theta)
+      // Match Pascal's PolarToCartesian exactly:
+      // Tf := (Int64(theta_y) + Int64(vTheta)) / vTwoPi * Pi * 2;
+      const angleRad = ((y + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
+
+      // Pascal: SinCos(Tf, Yf, Xf); theta_y := Round(Yf * rho_x); rho_x := Round(Xf * rho_x);
+      const newX = Math.round(x * Math.cos(angleRad));
+      const newY = Math.round(x * Math.sin(angleRad));
+
+      this.plotCoordX = this.origin.x + newX;
+      this.plotCoordY = this.origin.y + newY;
+    }
+
+    this.logMessage(`SET cursor to (${x}, ${y}) -> plot coords (${this.plotCoordX}, ${this.plotCoordY})`);
+  }
+
+  /**
+   * Process LUT command
+   */
+  private processLutCommand(startIndex: number, endIndex: number, colorSpec: string): void {
+    // Parse color specification
+    let rgbValue = 0;
+    if (colorSpec.startsWith('$')) {
+      rgbValue = parseInt(colorSpec.substring(1), 16);
+    } else if (colorSpec.startsWith('#')) {
+      rgbValue = parseInt(colorSpec.substring(1), 16);
+    } else if (DebugColor.isValidColorName(colorSpec)) {
+      const color = new DebugColor(colorSpec, 8);
+      rgbValue = color.rgbValue;
+    } else {
+      rgbValue = parseInt(colorSpec, 10);
+    }
+
+    // Update LUT palette
+    for (let i = startIndex; i <= endIndex && i < 256; i++) {
+      this.lutManager.setColor(i, rgbValue);
+    }
+
+    // Update color translator palette
+    this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+
+    this.logMessage(`LUT set indices ${startIndex}-${endIndex} to color 0x${rgbValue.toString(16)}`);
+  }
+
+  /**
+   * Process LUTCOLORS command
+   */
+  private processLutColorsCommand(colors: string[]): void {
+    colors.forEach((colorSpec, index) => {
+      if (index < 8) { // Only first 8 colors
+        this.processLutCommand(index, index, colorSpec);
+      }
+    });
+  }
+
+  /**
+   * Draw a box on the plot
+   */
+  private async drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
+    if (!this.debugWindow) return;
+
+    let [x, y] = this.getCursorXY();
+
+    // Apply ydir transformation for canvas coordinates
+    if (!this.cartesianConfig.ydir) {
+      y = this.displaySpec.size.height - y;
+    }
+
+    const filled = lineSize === 0;
+
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        if (${filled}) {
+          window.plotCtx.fillStyle = '${this.currFgColor}';
+          window.plotCtx.fillRect(${x}, ${y}, ${width}, ${height});
+        } else {
+          window.plotCtx.strokeStyle = '${this.currFgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.strokeRect(${x}, ${y}, ${width}, ${height});
+        }
+
+        window.plotCtx.globalAlpha = 1.0;
+        return 'Box drawn';
+      })()
+    `;
+
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw box: ${error}`);
+    }
+  }
+
+  /**
+   * Draw an oval on the plot
+   */
+  private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
+    if (!this.debugWindow) return;
+
+    let [x, y] = this.getCursorXY();
+
+    // Apply ydir transformation for canvas coordinates
+    if (!this.cartesianConfig.ydir) {
+      y = this.displaySpec.size.height - y;
+    }
+
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const filled = lineSize === 0;
+
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        window.plotCtx.beginPath();
+        window.plotCtx.ellipse(${centerX}, ${centerY}, ${width / 2}, ${height / 2}, 0, 0, 2 * Math.PI);
+
+        if (${filled}) {
+          window.plotCtx.fillStyle = '${this.currFgColor}';
+          window.plotCtx.fill();
+        } else {
+          window.plotCtx.strokeStyle = '${this.currFgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.stroke();
+        }
+
+        window.plotCtx.globalAlpha = 1.0;
+        return 'Oval drawn';
+      })()
+    `;
+
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw oval: ${error}`);
+    }
+  }
+
+  /**
+   * Draw a dot at the current cursor position
+   */
+  private async drawDotToPlot(lineSize: number, opacity: number): Promise<void> {
+    if (!this.debugWindow) return;
+
+    let [x, y] = this.getCursorXY();
+
+    // Apply ydir transformation for canvas coordinates
+    if (!this.cartesianConfig.ydir) {
+      y = this.displaySpec.size.height - y;
+    }
+
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.globalAlpha = ${opacity / 255};
+        window.plotCtx.fillStyle = '${this.currFgColor}';
+
+        // Draw dot as a small filled rectangle
+        const size = ${lineSize};
+        const halfSize = Math.floor(size / 2);
+        window.plotCtx.fillRect(${x} - halfSize, ${y} - halfSize, size, size);
+
+        window.plotCtx.globalAlpha = 1.0;
+        return 'Dot drawn';
+      })()
+    `;
+
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw dot: ${error}`);
     }
   }
 
@@ -1721,16 +2538,38 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
-  public async drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): Promise<void> {
+  public async drawLineToPlotFrom(fromX: number, fromY: number, x: number, y: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
-    this.logMessage(`at drawLineToPlot(${x}, ${y}, ${lineSize}, ${opacity})`);
+    this.logMessage(`at drawLineToPlotFrom(${fromX}, ${fromY} to ${x}, ${y}, ${lineSize}, ${opacity})`);
     const fgColor: string = this.currFgColor;
-    if (this.coordinateMode == eCoordModes.CM_POLAR) {
-      [x, y] = this.polarToCartesian(x, y);
+
+    // Transform the target coordinates if in polar mode
+    let targetX = x;
+    let targetY = y;
+    if (!this.isCartesian) {
+      // In polar mode, x=radius (rho), y=angle (theta)
+      // Transform to Cartesian coordinates
+      const angleRad = ((y + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
+      targetX = this.origin.x + Math.round(x * Math.cos(angleRad));
+      targetY = this.origin.y + Math.round(x * Math.sin(angleRad));
+    } else {
+      // In Cartesian mode, apply origin offset
+      targetX = x + this.origin.x;
+      targetY = y + this.origin.y;
     }
-    const [plotFmCoordX, plotFmCoordY] = this.getCursorXY();
-    const [plotToCoordX, plotToCoordY] = this.getXY(x, y);
+
+    // Apply ydir transformation for canvas coordinates
+    // Pascal: if not vDirY then p.y := ClientHeight - p.y;
+    let plotFmCoordX = fromX;
+    let plotFmCoordY = fromY;
+    let plotToCoordX = targetX;
+    let plotToCoordY = targetY;
+    if (!this.cartesianConfig.ydir) {
+      plotFmCoordY = this.displaySpec.size.height - fromY;
+      plotToCoordY = this.displaySpec.size.height - targetY;
+    }
+
     this.logMessage(
       `  -- fm(${plotFmCoordX},${plotFmCoordY}) - to(${plotToCoordX},${plotToCoordY}) color=[${fgColor}]`
     );
@@ -1782,11 +2621,24 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
+  public async drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): Promise<void> {
+    // Backward compatibility method - uses current cursor position as starting point
+    const [fromX, fromY] = this.getCursorXY();
+    await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity);
+  }
+
   public async drawCircleToPlot(diameter: number, lineSize: number, opacity: number): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
     const fgColor: string = this.currFgColor;
-    const [plotCoordX, plotCoordY] = this.getCursorXY();
+    let [plotCoordX, plotCoordY] = this.getCursorXY();
+
+    // Apply ydir transformation for canvas coordinates
+    // Pascal: if not vDirY then p.y := ClientHeight - p.y;
+    if (!this.cartesianConfig.ydir) {
+      plotCoordY = this.displaySpec.size.height - plotCoordY;
+    }
+
     const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
     const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
     this.logMessage(
@@ -1841,14 +2693,243 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
-  public async writeStringToPlot(text: string): Promise<void> {
+  public async drawSpriteToPlot(spriteId: number, orientation: number, scale: number, opacity: number): Promise<void> {
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    try {
+      // Get sprite definition
+      const sprite = this.spriteManager.getSprite(spriteId);
+      if (!sprite) {
+        this.logMessage(`Sprite ${spriteId} not defined, skipping draw`);
+        return;
+      }
+
+      // Get current cursor position (set by SET command)
+      let [plotX, plotY] = this.getCursorXY();
+
+      // Pascal: Inc(t1, t5 shr 1); Inc(t2, t5 shr 1); - offset by half scale for centering
+      plotX += Math.floor(scale / 2);
+      plotY += Math.floor(scale / 2);
+
+      this.logMessage(`Drawing sprite ${spriteId} at (${plotX},${plotY}) orientation=${orientation} scale=${scale} opacity=${opacity}`);
+
+      // Convert orientation (0-7) to degrees: 0=0°, 1=90°, 2=180°, 3=270°, 4=90°+flip, etc.
+      // Pascal orientations: 0-3 are rotations, 4-7 add horizontal flip
+      const orientationDegrees = (orientation & 0x03) * 90; // 0,90,180,270
+      const flipHorizontal = (orientation & 0x04) !== 0; // Bit 2 indicates flip
+
+      // Convert sprite data to JSON-safe format for passing to renderer
+      const spriteData = {
+        width: sprite.width,
+        height: sprite.height,
+        pixels: sprite.pixels,
+        colors: sprite.colors
+      };
+
+      // Use tested implementation with Canvas2D transformations (more efficient than per-pixel calculations)
+      const jsCode = `
+        (function() {
+          if (!window.plotCtx) {
+            console.error('[PLOT] Context not ready for sprite rendering');
+            return 'Context not ready';
+          }
+
+          const sprite = ${JSON.stringify(spriteData)};
+          const centerX = ${plotX};
+          const centerY = ${plotY};
+          const orientationDeg = ${orientationDegrees};
+          const flipH = ${flipHorizontal};
+          const scale = ${scale};
+          const opacity = ${opacity};
+
+          // Save current context state
+          window.plotCtx.save();
+
+          // Set global alpha for opacity
+          window.plotCtx.globalAlpha = opacity / 255;
+
+          // Calculate transformation matrix
+          const angleRad = (orientationDeg * Math.PI) / 180;
+          const cos = Math.cos(angleRad) * scale;
+          const sin = Math.sin(angleRad) * scale;
+
+          // Apply horizontal flip if needed
+          const flipScale = flipH ? -1 : 1;
+
+          // Apply transformation matrix for rotation and scaling
+          window.plotCtx.setTransform(
+            cos * flipScale,  // m11: horizontal scaling / rotation
+            sin,              // m12: horizontal skewing
+            -sin * flipScale, // m21: vertical skewing
+            cos,              // m22: vertical scaling / rotation
+            centerX,          // dx: horizontal translation
+            centerY           // dy: vertical translation
+          );
+
+          // Calculate sprite center offset for proper rotation around center
+          const centerOffsetX = -sprite.width / 2;
+          const centerOffsetY = -sprite.height / 2;
+
+          // Render each pixel
+          for (let y = 0; y < sprite.height; y++) {
+            for (let x = 0; x < sprite.width; x++) {
+              const pixelIndex = y * sprite.width + x;
+              const colorIndex = sprite.pixels[pixelIndex];
+
+              // Get color from palette (ARGB format)
+              const color32 = sprite.colors[colorIndex] || 0x00000000;
+              const alpha = (color32 >>> 24) & 0xFF;
+              const r = (color32 >>> 16) & 0xFF;
+              const g = (color32 >>> 8) & 0xFF;
+              const b = color32 & 0xFF;
+
+              // Skip fully transparent pixels
+              if (alpha === 0) continue;
+
+              // Set pixel color (alpha handled by globalAlpha)
+              window.plotCtx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+
+              // Draw pixel at transformed position (relative to sprite center)
+              window.plotCtx.fillRect(
+                centerOffsetX + x,
+                centerOffsetY + y,
+                1, 1
+              );
+            }
+          }
+
+          // Restore context state
+          window.plotCtx.restore();
+
+          return 'Sprite drawn';
+        })()
+      `;
+
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw sprite: ${error}`);
+    }
+  }
+
+  /**
+   * Draw a layer (or portion of it) to the plot canvas
+   * Matches Pascal: Bitmap[0].Canvas.CopyRect(...)
+   */
+  public async drawLayerToPlot(
+    layerIndex: number,
+    srcLeft: number,
+    srcTop: number,
+    srcWidth: number,
+    srcHeight: number,
+    destX: number,
+    destY: number
+  ): Promise<void> {
+    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+
+    try {
+      // Verify layer is loaded
+      if (!this.layerManager.isLayerLoaded(layerIndex)) {
+        this.logMessage(`Cannot draw layer ${layerIndex + 1}: not loaded`);
+        return;
+      }
+
+      // Get the layer from LayerManager
+      const layer = this.layerManager.layers[layerIndex];
+      if (!layer) {
+        this.logMessage(`Cannot draw layer ${layerIndex + 1}: layer object is null`);
+        return;
+      }
+
+      // Validate bounds
+      if (srcLeft < 0 || srcTop < 0 || srcLeft + srcWidth > layer.width || srcTop + srcHeight > layer.height) {
+        this.logMessage(`CROP ERROR: Source rectangle out of bounds: (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`);
+        return;
+      }
+
+      this.logMessage(`CROP: Drawing layer ${layerIndex + 1} region (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} to (${destX},${destY})`);
+      this.logMessage(`DEBUG: shouldWriteToCanvas=${this.shouldWriteToCanvas}, debugWindow=${!!this.debugWindow}`);
+
+      // Extract RGBA pixel data from source rectangle
+      // EXACT copy of original working implementation from plotParserIntegration.ts
+      const pixels: number[] = [];
+      this.logMessage(`DEBUG: Starting pixel extraction, layer dimensions: ${layer.width}x${layer.height}`);
+      for (let y = srcTop; y < srcTop + srcHeight; y++) {
+        for (let x = srcLeft; x < srcLeft + srcWidth; x++) {
+          if (x >= 0 && x < layer.width && y >= 0 && y < layer.height) {
+            const pixelColor = layer.getPixelColor(x, y);
+            // Jimp stores colors as 32-bit integers: RRGGBBAA
+            pixels.push((pixelColor >> 24) & 0xFF);  // R
+            pixels.push((pixelColor >> 16) & 0xFF);  // G
+            pixels.push((pixelColor >> 8) & 0xFF);   // B
+            pixels.push(pixelColor & 0xFF);          // A
+          } else {
+            // Out of bounds - push transparent black
+            pixels.push(0, 0, 0, 0);
+          }
+        }
+      }
+
+      this.logMessage(`DEBUG: Extracted ${pixels.length} pixel bytes (expected ${srcWidth * srcHeight * 4})`);
+
+      // Send pixel data to renderer using JSON.stringify
+      // This is EXACTLY how the original working code did it
+      this.logMessage(`DEBUG: About to call executeJavaScript with ${pixels.length} bytes`);
+      const jsCode = `
+        (function() {
+          if (!window.plotCtx) {
+            console.error('[PLOT] Context not ready for layer rendering');
+            return 'Context not ready';
+          }
+
+          const width = ${srcWidth};
+          const height = ${srcHeight};
+          const pixels = ${JSON.stringify(pixels)};
+          const destX = ${destX};
+          const destY = ${destY};
+
+          // Create ImageData from pixel array
+          const imageData = window.plotCtx.createImageData(width, height);
+          for (let i = 0; i < pixels.length; i++) {
+            imageData.data[i] = pixels[i];
+          }
+
+          // Use putImageData since we already calculated exact pixel coordinates
+          window.plotCtx.putImageData(imageData, destX, destY);
+
+          return 'Layer copied';
+        })()
+      `;
+
+      this.logMessage(`DEBUG: JavaScript string size: ${jsCode.length} characters`);
+      this.logMessage(`DEBUG: Calling executeJavaScript now...`);
+      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.logMessage(`DEBUG: executeJavaScript returned: ${result}`);
+      this.logMessage(`CROP result: ${result}`);
+    } catch (error) {
+      this.logMessage(`Failed to draw layer: ${error}`);
+    }
+  }
+
+  public async writeStringToPlotAt(text: string, x: number, y: number, color?: string): Promise<void> {
     if (!this.debugWindow) return;
 
-    this.logMessage(`at writeStringToPlot('${text}')`);
+    // Use the provided color or fall back to current text color (NOT foreground/plot color)
+    // Pascal: Text uses vTextColor (DefaultTextColor = clWhite), not vPlotColor
+    const textColor = color || this.currTextColor;
+
+    // Apply ydir transformation like Pascal's AngleTextOut (line 722):
+    // if vDirY then TextY := Y else TextY := (ClientHeight - Y);
+    let textYOffset = y;
+    if (!this.cartesianConfig.ydir) {
+      // Default behavior: flip Y coordinate (mathematical coords, Y increases upward)
+      textYOffset = this.displaySpec.size.height - y;
+    }
+
+    this.logMessage(`at writeStringToPlotAt('${text}', ${x}, ${y}) -> canvas Y=${textYOffset}, color=${textColor})`);
     const textHeight: number = this.font.charHeight;
     const lineHeight: number = this.font.lineHeight;
     const fontSize: number = this.font.textSizePts;
-    const [textXOffset, textYOffset] = this.getCursorXY();
+    const textXOffset = x;
     const vertLineInset: number = (lineHeight - textHeight) / 2; // 1/2 gap above and below text
     const textYbaseline: number = textYOffset + vertLineInset + this.font.baseline;
     // now let's apply alignment effects
@@ -1877,7 +2958,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         : this.textStyle.vertAlign == eVertJustification.VJ_MIDDLE
         ? 'Vmid'
         : 'Vbot';
-    const textColor: string = this.currTextColor;
     const fontWeight: string = this.fontWeightName(this.textStyle);
     const fontStyle: string = this.textStyle.italic ? 'italic ' : '';
     // FIXME: UNDONE add underline support
@@ -1945,16 +3025,20 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
+  public async writeStringToPlot(text: string): Promise<void> {
+    // Backward compatibility method - uses current cursor position
+    const [x, y] = this.getCursorXY();
+    await this.writeStringToPlotAt(text, x, y);
+  }
+
   // -----------------------------------------------------------
   //  ----------------- Utility Routines -----------------------
   //
   private getCursorXY(): [number, number] {
-    // Convert cursor fixed-point coordinates to pixel coordinates, then to screen coordinates
-    // The cursor stores RAW fixed-point values from SET command (multiplied by 256)
-    // First divide by 256 to get pixels, then apply origin and axis transformations
-    const pixelX = Math.round(this.cursorPosition.x / 256.0);
-    const pixelY = Math.round(this.cursorPosition.y / 256.0);
-    return this.getXY(pixelX, pixelY);
+    // Return the current plot coordinates
+    // These are already calculated and stored by setCursorPosition
+    this.logMessage(`getCursorXY() returning (${this.plotCoordX}, ${this.plotCoordY})`);
+    return [this.plotCoordX, this.plotCoordY];
   }
 
   public getXY(x: number, y: number): [number, number] {
@@ -1970,14 +3054,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       newX = this.origin.x + x;
     }
 
-    // Y-axis: Pascal behavior from PLOT_GetXY:
-    // vDirY true = Y increases upward from origin (normal mathematical coordinates)
-    // vDirY false = Y inverted (screen coordinates, Y increases downward)
+    // Y-axis: Pascal behavior from PLOT_GetXY (line 722):
+    // Pascal: if vDirY then TextY := Y else TextY := (ClientHeight - Y);
+    // vDirY false (default) = flip Y coordinate (mathematical coordinates, Y increases upward from bottom)
+    // vDirY true = direct Y (screen coordinates, Y increases downward from top)
     if (this.cartesianConfig.ydir) {
-      // True: Y increases upward (mathematical coordinates)
+      // True: Direct Y mapping (screen coordinates, Y down)
       newY = this.origin.y + y;
     } else {
-      // False: Y inverted (screen coordinates), flip relative to canvas height
+      // False (default): Flip Y coordinate (mathematical coordinates, Y up)
       newY = this.displaySpec.size.height - 1 - this.origin.y - y;
     }
 
@@ -2012,228 +3097,14 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     return colorModes.includes(command.toUpperCase());
   }
 
-  private async drawDotToPlot(dotSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
-
-    const [plotCoordX, plotCoordY] = this.getCursorXY();
-    const fgColor = this.currFgColor;
-
-    this.logMessage(`at drawDotToPlot(${dotSize}, ${opacity}) @(${plotCoordX},${plotCoordY})`);
-
-    // Execute drawing in the renderer
-    const jsCode = `
-      (function() {
-        if (!window.plotCtx) {
-          console.error('[PLOT] Context not ready for dot drawing');
-          return 'Context not ready';
-        }
-
-        // Save current state
-        const savedAlpha = window.plotCtx.globalAlpha;
-
-        // Set opacity with gamma correction to match Pascal implementation
-        // Pascal uses gamma-corrected blending with power 2.0
-        // This makes low opacity values more visible
-        const linearOpacity = ${opacity} / 255;
-        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2); // Apply gamma correction
-        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
-
-        // Draw dot as a filled circle or single pixel
-        window.plotCtx.fillStyle = '${fgColor}';
-
-        if (${dotSize} <= 1) {
-          // Single pixel
-          window.plotCtx.fillRect(${plotCoordX}, ${plotCoordY}, 1, 1);
-        } else {
-          // Draw as filled circle
-          window.plotCtx.beginPath();
-          window.plotCtx.arc(${plotCoordX}, ${plotCoordY}, ${dotSize / 2}, 0, 2 * Math.PI);
-          window.plotCtx.fill();
-        }
-
-        // Restore alpha
-        window.plotCtx.globalAlpha = savedAlpha;
-
-        return 'Dot drawn';
-      })()
-    `;
-
-    try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
-      // Buffer updates are handled in performUpdate() now
-    } catch (error) {
-      this.logMessage(`Failed to draw dot: ${error}`);
-    }
-  }
-
-  private async drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
-
-    const [plotCoordX, plotCoordY] = this.getCursorXY();
-    const fgColor = this.currFgColor;
-
-    this.logMessage(
-      `at drawBoxToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`
-    );
-
-    // Calculate rectangle bounds (centered on cursor)
-    const x1 = plotCoordX - width / 2;
-    const y1 = plotCoordY - height / 2;
-    const x2 = plotCoordX + width / 2;
-    const y2 = plotCoordY + height / 2;
-
-    // Execute box drawing in renderer
-    const jsCode = `
-      (function() {
-        if (!window.plotCtx) return 'Context not ready';
-
-        // Apply gamma correction to opacity
-        const linearOpacity = ${opacity} / 255;
-        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2);
-        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
-
-        if (${lineSize} === 0) {
-          // Filled rectangle
-          window.plotCtx.fillStyle = '${fgColor}';
-          window.plotCtx.fillRect(${x1}, ${y1}, ${width}, ${height});
-        } else {
-          // Outlined rectangle
-          window.plotCtx.strokeStyle = '${fgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
-          window.plotCtx.strokeRect(${x1}, ${y1}, ${width}, ${height});
-        }
-
-        window.plotCtx.globalAlpha = 1.0;
-        return 'Box drawn';
-      })()
-    `;
-
-    try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
-      // Buffer updates are handled in performUpdate() now
-    } catch (error) {
-      this.logMessage(`Failed to draw box: ${error}`);
-    }
-  }
-
-  private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
-
-    const [plotCoordX, plotCoordY] = this.getCursorXY();
-    const fgColor = this.currFgColor;
-
-    this.logMessage(
-      `at drawOvalToPlot(${width}x${height}, line:${lineSize}, op:${opacity}) @(${plotCoordX},${plotCoordY})`
-    );
-
-    const rx = width / 2;
-    const ry = height / 2;
-
-    // Execute oval drawing in renderer
-    const jsCode = `
-      (function() {
-        if (!window.plotCtx) return 'Context not ready';
-
-        window.plotCtx.save();
-        // Apply gamma correction to opacity
-        const linearOpacity = ${opacity} / 255;
-        const gammaCorrectedOpacity = Math.pow(linearOpacity, 1.0 / 2.2);
-        window.plotCtx.globalAlpha = gammaCorrectedOpacity;
-
-        window.plotCtx.beginPath();
-        window.plotCtx.ellipse(${plotCoordX}, ${plotCoordY}, ${rx}, ${ry}, 0, 0, 2 * Math.PI);
-
-        if (${lineSize} === 0) {
-          // Filled oval
-          window.plotCtx.fillStyle = '${fgColor}';
-          window.plotCtx.fill();
-        } else {
-          // Outlined oval
-          window.plotCtx.strokeStyle = '${fgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
-          window.plotCtx.stroke();
-        }
-
-        window.plotCtx.restore();
-        return 'Oval drawn';
-      })()
-    `;
-
-    try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
-      // Buffer updates are handled in performUpdate() now
-    } catch (error) {
-      this.logMessage(`Failed to draw oval: ${error}`);
-    }
-  }
-
-  private polarToCartesianNew(length: number, angle: number): [number, number] {
-    const { sin, cos } = this.sinCos(angle);
-    const x: number = Math.round(length * cos);
-    const y: number = Math.round(length * sin);
+  /**
+   * Convert polar coordinates to Cartesian
+   */
+  private polarToCartesian(radius: number, angle: number): [number, number] {
+    const angleRad = angle * Math.PI / 180;
+    const x = Math.round(radius * Math.cos(angleRad));
+    const y = Math.round(radius * Math.sin(angleRad));
     return [x, y];
-  }
-
-  private sinCos(angle: number): { sin: number; cos: number } {
-    return {
-      sin: Math.sin(angle),
-      cos: Math.cos(angle)
-    };
-  }
-
-  public polarToCartesian(length: number, angle: number): [number, number] {
-    // convert polar to cartesian
-    // Chips:
-    //   Tf := (Int64(theta_y) + Int64(vTheta)) / vTwoPi * Pi * 2;
-    //   SinCos(Tf, Yf, Xf);
-    //   theta_y := Round(Yf * rho_x);
-    //   rho_x := Round(Xf * rho_x);
-
-    // Smarty Pants:
-    //  const rho_x: number = Math.round(length * Math.cos(angle));
-    //  const theta_y: number = Math.round(length * Math.sin(angle));
-
-    // Chip's way:
-    const Tf = ((angle + this.polarConfig.offset) / this.polarConfig.twopi) * Math.PI * 2;
-    const { sin, cos } = this.sinCos(Tf);
-    const theta_y = Math.round(sin * length);
-    const rho_x = Math.round(cos * length);
-
-    this.logMessage(`* polarToCartesian(L:${length}, A:${angle}) -> (X:${rho_x}, Y:${theta_y})`);
-    return [rho_x, theta_y];
-  }
-
-  // Convert #rrggbb to rgba
-  private hexToRgba(hex: string, opacity: number): string {
-    // Remove the leading '#' if present
-    hex = hex.replace(/^#/, '');
-
-    // Parse the red, green, and blue components
-    const bigint = parseInt(hex, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-
-    // Return the rgba string
-    const rgbaStr: string = `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    this.logMessage(`* hexToRgba(${hex}, ${opacity}) -> ${rgbaStr}`);
-    return rgbaStr;
-  }
-
-  private plotOffsetByOrigin(newX: number, newY: number): [number, number] {
-    // remove the origin offset to get to canvas coordinates
-    const plotX: number = newX - this.origin.x;
-    const plotY: number = newY - this.origin.y;
-    //this.logMessage(`* plotOffsetByOrigin(${newX},${newY}) -> (${plotX},${plotY})`);
-    return [plotX, plotY];
-  }
-
-  private plotToCanvasCoord(cursor: Position): [number, number] {
-    // remove the origin offset subtraction then add it to get to canvas coordinates
-    const plotX: number = cursor.x + this.canvasOffset.x * 2;
-    const plotY: number = cursor.y + this.canvasOffset.y * 2;
-    this.logMessage(`* plotToCanvasCoord(${cursor.x},${cursor.y}) -> (${plotX},${plotY})`);
-    return [plotX, plotY];
   }
 
   /**
@@ -2242,4 +3113,5 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   protected getCanvasId(): string {
     return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
+
 }

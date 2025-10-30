@@ -765,7 +765,7 @@ export class LoggerWindow extends DebugWindowBase {
    * Process messages immediately (required by base class)
    * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
-  protected processMessageImmediate(lineParts: string[] | any): void {
+  protected async processMessageImmediate(lineParts: string[] | any): Promise<void> {
     this.logConsoleMessage('[DEBUG LOGGER] processMessageImmediate called with:', lineParts);
 
     try {

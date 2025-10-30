@@ -1255,50 +1255,20 @@ export class PlotWindowIntegrator {
         throw new Error('Invalid filename: must be a non-empty string');
       }
 
-      // Check memory usage before loading large files
+      // Load layer via LayerManager (single load path, no duplication)
       try {
-        // Load and parse BMP file from filesystem with enhanced error handling
-        const bitmapData = await this.loadBitmapFile(filename);
+        // LayerManager.loadLayer loads via Jimp and validates the file
+        await this.plotWindow.layerManager.loadLayer(internalLayerIndex, filename);
 
-        // Check memory constraints for large bitmaps
-        const estimatedMemory = bitmapData.width * bitmapData.height * 4; // RGBA bytes
-        if (estimatedMemory > 100 * 1024 * 1024) { // 100MB threshold
-          this.logError(`[PLOT ERROR] LAYER ${layerIndex} bitmap "${filename}" too large: ${Math.round(estimatedMemory / 1024 / 1024)}MB (max 100MB)`);
-          throw new Error(`Bitmap file too large: ${Math.round(estimatedMemory / 1024 / 1024)}MB (max 100MB)`);
+        // Get the loaded layer to check dimensions
+        const layer = this.plotWindow.layerManager.layers[internalLayerIndex];
+        if (!layer) {
+          throw new Error(`Layer failed to load in LayerManager`);
         }
 
-        // Store bitmap data in layer manager with memory allocation protection
-        try {
-          if (this.plotWindow.layerManager.loadLayer) {
-            await this.plotWindow.layerManager.loadLayer(internalLayerIndex, filename);
-          } else {
-            // Fallback: create a simple layer storage implementation
-            console.error(`[LAYER LIFECYCLE] ⚠️ FALLBACK PATH EXECUTING! loadLayer method not found!`);
-            console.error(`[LAYER LIFECYCLE] layerManager type: ${typeof this.plotWindow.layerManager}`);
-            console.error(`[LAYER LIFECYCLE] loadLayer exists: ${!!this.plotWindow.layerManager.loadLayer}`);
-            console.error(`[LAYER LIFECYCLE] Stack trace:`, new Error().stack);
+        this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${layer.width}x${layer.height})`);
 
-            if (!this.plotWindow.layerManager.layers) {
-              console.error(`[LAYER LIFECYCLE] 🚨 RECREATING LAYERS ARRAY - ALL LAYERS WILL BE LOST!`);
-              this.plotWindow.layerManager.layers = new Array(16);
-            }
-            this.plotWindow.layerManager.layers[internalLayerIndex] = {
-              filename: filename,
-              data: bitmapData,
-              width: bitmapData.width,
-              height: bitmapData.height
-            };
-          }
-        } catch (memError) {
-          // Clean up any partial allocations
-          this.cleanupFailedLayerOperation(layerIndex, filename);
-          this.logError(`[PLOT ERROR] Memory allocation failed for LAYER ${layerIndex} bitmap "${filename}": ${memError}`);
-          throw new Error(`Memory allocation failed for layer: ${memError}`);
-        }
-
-        this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${bitmapData.width}x${bitmapData.height})`);
-
-        // NEW: Transfer layer to renderer as offscreen canvas for fast cropping
+        // Transfer layer to renderer as offscreen canvas for fast cropping
         await this.transferLayerToRenderer(internalLayerIndex, filename);
 
       } catch (loadError) {
@@ -1647,6 +1617,7 @@ export class PlotWindowIntegrator {
       if (mode === 'DEFAULT') {
         params.width = dimensions.width;
         params.height = dimensions.height;
+        this.logConsoleMessage(`[INTEGRATOR] DEFAULT mode: Updated params with layer dimensions: width=${params.width}, height=${params.height}`);
       }
 
       // Handle different crop modes
@@ -1666,7 +1637,7 @@ export class PlotWindowIntegrator {
    * Execute AUTO crop mode - automatically determine source rectangle
    */
   private async executeCropAuto(layerIndex: number, dimensions: { width: number; height: number }, params: Record<string, any>): Promise<void> {
-    const { destX, destY } = params;
+    const { destX, destY, mode } = params;
 
     // For AUTO mode, copy the entire layer to the destination position
     // This matches Pascal's behavior where AUTO determines the source automatically
@@ -1676,6 +1647,15 @@ export class PlotWindowIntegrator {
       width: dimensions.width,
       height: dimensions.height
     };
+
+    // Special case: If this is a DEFAULT mode crop of the entire layer to (0,0),
+    // and the layer dimensions match the canvas dimensions, this is likely
+    // setting the base background layer
+    if (mode === 'DEFAULT' && destX === 0 && destY === 0 &&
+        dimensions.width === this.plotWindow.displaySpec.size.width &&
+        dimensions.height === this.plotWindow.displaySpec.size.height) {
+      this.logConsoleMessage(`[INTEGRATOR] CROP DEFAULT: Setting base layer ${layerIndex} as background`);
+    }
 
     await this.copyLayerToCanvas(layerIndex, sourceRect, destX, destY);
 
@@ -1716,7 +1696,15 @@ export class PlotWindowIntegrator {
         return;
       }
 
-      this.logConsoleMessage(`[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX}, ${destY})`);
+      // For CROP operations, the destination coordinates should be treated as
+      // canvas/pixel coordinates, not mathematical coordinates.
+      // The bitmap layers are pixel-based assets that should be placed at specific
+      // pixel positions regardless of the coordinate system.
+      // This is different from drawing operations which use the coordinate system.
+      let canvasDestX = destX;
+      let canvasDestY = destY;
+
+      this.logConsoleMessage(`[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to user(${destX}, ${destY}) -> canvas(${canvasDestX}, ${canvasDestY})`);
 
       // NEW APPROACH: Use cached offscreen canvas with drawImage
       // Just send coordinates - renderer has the bitmap cached
@@ -1734,19 +1722,33 @@ export class PlotWindowIntegrator {
 
           const layerCanvas = window.layerCanvases[${layerIndex}];
 
+          // Debug: Check if layer canvas has content
+          const layerCtx = layerCanvas.getContext('2d');
+          const imageData = layerCtx.getImageData(0, 0, 1, 1);
+          console.log('[CROP DEBUG] Layer ${layerIndex} first pixel RGBA:',
+            imageData.data[0], imageData.data[1], imageData.data[2], imageData.data[3]);
+
+          // Save current composite operation
+          const savedComposite = window.plotCtx.globalCompositeOperation;
+
+          // Ensure we're using source-over for proper layer drawing
+          window.plotCtx.globalCompositeOperation = 'source-over';
+
           // Use drawImage to copy from cached layer canvas to plot canvas
-          // Use default 'source-over' for proper blending
           window.plotCtx.drawImage(
             layerCanvas,
             ${sourceRect.left},   // sx: source x
             ${sourceRect.top},    // sy: source y
             ${sourceRect.width},  // sw: source width
             ${sourceRect.height}, // sh: source height
-            ${destX},             // dx: dest x
-            ${destY},             // dy: dest y
+            ${canvasDestX},       // dx: dest x (canvas coordinates)
+            ${canvasDestY},       // dy: dest y (canvas coordinates)
             ${sourceRect.width},  // dw: dest width (no scaling)
             ${sourceRect.height}  // dh: dest height (no scaling)
           );
+
+          // Restore previous composite operation
+          window.plotCtx.globalCompositeOperation = savedComposite;
 
           return 'Layer copied';
         })()

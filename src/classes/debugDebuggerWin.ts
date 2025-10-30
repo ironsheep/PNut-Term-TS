@@ -1860,7 +1860,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Required abstract method - update content
    * Receives ExtractedMessage from router (router handles SharedMessagePool release)
    */
-  protected processMessageImmediate(data: any): void {
+  protected async processMessageImmediate(data: any): Promise<void> {
     // Check if window components are initialized
     if (!this.componentsReady || !this.dataManager || !this.protocol) {
       console.warn(`[DEBUGGER] Window components not ready for COG ${this.cogId}, deferring message`);

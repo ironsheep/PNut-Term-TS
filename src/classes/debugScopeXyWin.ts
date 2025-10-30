@@ -700,7 +700,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   /**
    * Process data and commands (synchronous wrapper for async operations)
    */
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async internally
     this.processMessageAsync(lineParts);
   }
