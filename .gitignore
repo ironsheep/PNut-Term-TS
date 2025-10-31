@@ -223,3 +223,5 @@ test-without-queue.log
 
 context-keys-to-restore.txt
 /scripts/claude
+AGENTS.md
+CLAUDE.md

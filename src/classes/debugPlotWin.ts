@@ -176,7 +176,6 @@ export class DebugPlotWindow extends DebugWindowBase {
   private cartesianConfig: CartesianSpec = { ydir: false, xdir: false }; // Pascal default: vDirY := False (mathematical coords)
   private coordinateMode: eCoordModes = eCoordModes.CM_CARTESIAN; // default to cartesian mode
   private lineSize: number = 1;
-  private precise: number = 8; //  Toggle precise mode, where line size and (x,y) for DOT and LINE are expressed in 256ths of a pixel. [0, 8] used as shift value
   public currFgColor: string = '#00FFFF'; // #RRGGBB string - Pascal: DefaultPlotColor = clCyan
   public currTextColor: string = '#FFFFFF'; // #RRGGBB string - Pascal: DefaultTextColor = clWhite
 
@@ -941,6 +940,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     const bgColor = this.displaySpec.window.background;
     const useBuffering = this.updateMode; // Use buffering if in update mode
 
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) {
+      return;
+    }
+
     const jsCode = `
       (function() {
         // Get the canvas element
@@ -1582,12 +1586,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       switch(upperCommand) {
         case 'SET': {
           // SET x , y - Set cursor position (commas optional)
+          // Values are in 8.8 fixed-point format (value * 256)
           if (index + 1 < lineParts.length) {
-            const x = this.parseNumber(lineParts[++index]);
+            const xFixed = this.parseNumber(lineParts[++index]);
             index = this.skipComma(lineParts, index); // Skip optional comma
             if (index + 1 < lineParts.length) {
-              const y = this.parseNumber(lineParts[++index]);
-              if (x !== null && y !== null) {
+              const yFixed = this.parseNumber(lineParts[++index]);
+              if (xFixed !== null && yFixed !== null) {
+                const coordinateScale = this.isPrecise ? 256 : 1;
+                const x = xFixed / coordinateScale;
+                const y = yFixed / coordinateScale;
                 this.setCursorPosition(x, y);
               }
             }
@@ -1597,7 +1605,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         case 'DOT': {
           // DOT [lineSize [opacity]]
-          let lineSize = 1;
+          let lineSize = this.lineSize;  // Use persistent line size as default
           let opacity = 255;
 
           if (index + 1 < lineParts.length) {
@@ -1616,20 +1624,24 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           }
 
-          await this.drawDotToPlot(lineSize, opacity);
+          // Pascal applies thickness differently in precise mode - use 3 as visual match
+          const adjustedDotSize = this.isPrecise ? Math.max(3, lineSize) : lineSize;
+          await this.drawDotToPlot(adjustedDotSize, opacity);
           break;
         }
 
         case 'LINE': {
           // LINE x y [lineSize [opacity]]
+          // Values are in 8.8 fixed-point format (value * 256)
           // Capture current cursor position immediately for this line's starting point
           const fromX = this.plotCoordX;
           const fromY = this.plotCoordY;
 
-          if (index + 2 < lineParts.length) {
-            const x = this.parseNumber(lineParts[++index]);
-            const y = this.parseNumber(lineParts[++index]);
-            let lineSize = 1;
+          if (index + 1 < lineParts.length) {
+            const xFixed = this.parseNumber(lineParts[++index]);
+            index = this.skipComma(lineParts, index); // Skip optional comma
+            const yFixed = (index < lineParts.length) ? this.parseNumber(lineParts[++index]) : null;
+            let lineSize = this.lineSize;  // Use persistent line size as default
             let opacity = 255;
 
             if (index + 1 < lineParts.length) {
@@ -1648,8 +1660,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               }
             }
 
-            if (x !== null && y !== null) {
-              await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity);
+            if (xFixed !== null && yFixed !== null) {
+              const coordinateScale = this.isPrecise ? 256 : 1;
+              const x = xFixed / coordinateScale;
+              const y = yFixed / coordinateScale;
+              // Pascal applies thickness differently in precise mode - use 3 as visual match
+              const adjustedLineSize = this.isPrecise ? Math.max(3, lineSize) : lineSize;
+              this.logMessage(`LINE: from (${fromX}, ${fromY}) to (${x}, ${y}) with thickness ${adjustedLineSize}`);
+              await this.drawLineToPlotFrom(fromX, fromY, x, y, adjustedLineSize, opacity);
+            } else {
+              this.logMessage(`LINE: Failed to parse coordinates - xFixed=${xFixed}, yFixed=${yFixed}`);
             }
           }
           break;
@@ -1750,7 +1770,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         case 'TEXT': {
           // TEXT [size [style [angle]]] 'string'
           let textSize = 10;
-          let textStyle = 1;
+          let textStyleValue = 1;
           let textAngle = 0;
           let text = '';
 
@@ -1760,6 +1780,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           // Pascal: Color commands check if TEXT follows and update vTextColor accordingly
           // TEXT always uses vTextColor (set by color lookahead or remains white)
           const textColor = this.currTextColor;
+          const savedFont: FontMetrics = { ...this.font };
+          const savedTextStyle: TextStyle = { ...this.textStyle };
+          const workingFont: FontMetrics = { ...this.font };
+          const workingTextStyle: TextStyle = { ...this.textStyle };
 
           // Look for optional numeric parameters
           let paramIndex = index + 1;
@@ -1777,7 +1801,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (paramIndex < lineParts.length) {
             const val = this.parseNumber(lineParts[paramIndex]);
             if (val !== null && val >= 0 && val <= 255) {
-              textStyle = val;
+              textStyleValue = val;
               paramIndex++;
             }
           }
@@ -1822,10 +1846,38 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           }
 
           if (text) {
-            // Set font metrics and draw text
-            this.setFontMetrics(textSize, textStyle, textAngle, this.font, this.textStyle);
-            // Pass the captured coordinates and color to writeStringToPlot
-            await this.writeStringToPlotAt(text, textX, textY, textColor);
+            this.setFontMetrics(textSize, textStyleValue, textAngle, workingFont, workingTextStyle);
+
+            if (this.updateMode) {
+              const operation: PlotCanvasOperation = {
+                type: CanvasOperationType.DRAW_TEXT,
+                parameters: {
+                  text,
+                  size: textSize,
+                  style: textStyleValue,
+                  angle: textAngle,
+                  color: textColor,
+                  x: textX,
+                  y: textY,
+                  fontMetrics: { ...workingFont },
+                  textStyle: { ...workingTextStyle }
+                },
+                affectsState: false,
+                requiresUpdate: true,
+                deferrable: true
+              };
+              this.pendingOperations.push(operation);
+              this.logMessage(
+                `TEXT buffered (update mode): "${text}" at (${textX}, ${textY}) size=${textSize} angle=${textAngle}`
+              );
+            } else {
+              // Immediate mode - render text now using per-command metrics
+              this.font = workingFont;
+              this.textStyle = workingTextStyle;
+              await this.writeStringToPlotAt(text, textX, textY, textColor);
+              this.font = savedFont;
+              this.textStyle = savedTextStyle;
+            }
           }
           break;
         }
@@ -1856,6 +1908,18 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           break;
         }
 
+        case 'LINESIZE': {
+          // LINESIZE size - Set persistent line size for LINE commands
+          if (index + 1 < lineParts.length) {
+            const size = this.parseNumber(lineParts[++index]);
+            if (size !== null && size >= 0 && size <= 32) {
+              this.lineSize = size;
+              this.logMessage(`Set persistent line size to ${size}`);
+            }
+          }
+          break;
+        }
+
         case 'ORIGIN': {
           // ORIGIN x y
           if (index + 2 < lineParts.length) {
@@ -1870,12 +1934,42 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'CARTESIAN': {
-          // CARTESIAN [precise] - Set Cartesian coordinate mode
+          // CARTESIAN {flipy {flipx}} [PRECISE] - Match Pascal behavior
           this.isCartesian = true;
+          this.isPrecise = false;
+
+          // Optional flip parameters (0 = false, non-zero = true)
+          let nextIndex = index + 1;
+          if (nextIndex < lineParts.length) {
+            const nextToken = lineParts[nextIndex].toUpperCase();
+
+            if (nextToken !== 'PRECISE') {
+              const flipYValue = this.parseNumber(lineParts[nextIndex]);
+              if (flipYValue !== null) {
+                this.cartesianConfig.ydir = flipYValue !== 0;
+                index = nextIndex;
+                nextIndex = this.skipComma(lineParts, index) + 1;
+              }
+
+              if (nextIndex < lineParts.length) {
+                const flipXToken = lineParts[nextIndex].toUpperCase();
+                if (flipXToken !== 'PRECISE') {
+                  const flipXValue = this.parseNumber(lineParts[nextIndex]);
+                  if (flipXValue !== null) {
+                    this.cartesianConfig.xdir = flipXValue !== 0;
+                    index = nextIndex;
+                    nextIndex = this.skipComma(lineParts, index) + 1;
+                  }
+                }
+              }
+            }
+          }
+
           if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'PRECISE') {
             this.isPrecise = true;
             index++;
           }
+
           break;
         }
 
@@ -2249,9 +2343,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   /**
    * Parse a number from a string token, handling Spin2 formats
    * Delegates to shared Spin2NumericParser for consistent parsing across all windows
-   */
+  */
   private parseNumber(token: string): number | null {
-    return Spin2NumericParser.parseValue(token);
+    if (!token) {
+      return null;
+    }
+
+    // Pascal accepts optional commas immediately following numeric literals (e.g., 40_960,)
+    // Trim trailing commas so Spin2NumericParser receives a clean token.
+    const sanitizedToken = token.replace(/,+$/g, '');
+
+    return Spin2NumericParser.parseValue(sanitizedToken);
   }
 
   /**
@@ -2359,7 +2461,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Draw a box on the plot
    */
   private async drawBoxToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) return;
 
     let [x, y] = this.getCursorXY();
 
@@ -2391,7 +2494,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw box: ${error}`);
     }
@@ -2401,7 +2504,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Draw an oval on the plot
    */
   private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) return;
 
     let [x, y] = this.getCursorXY();
 
@@ -2438,7 +2542,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw oval: ${error}`);
     }
@@ -2504,7 +2608,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   // ----------------- Canvas Drawing Routines -----------------
   //
   private async clearPlotCanvas(): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow || !this.shouldWriteToCanvas) return;
 
     this.logMessage(`at clearPlot()`);
     const bgcolor: string = this.displaySpec.window.background;
@@ -2527,7 +2632,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
+      const result = await debugWindow.webContents.executeJavaScript(jsCode);
       this.logMessage(`Clear result: ${result}`);
       // In live mode (not updateMode), flip buffer immediately after clear
       if (!this.updateMode) {
@@ -2538,11 +2643,26 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
-  public async drawLineToPlotFrom(fromX: number, fromY: number, x: number, y: number, lineSize: number, opacity: number): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+  public async drawLineToPlotFrom(
+    fromX: number,
+    fromY: number,
+    x: number,
+    y: number,
+    lineSize: number,
+    opacity: number,
+    forceExecution: boolean = false,
+    colorOverride?: string
+  ): Promise<void> {
+    if (!forceExecution && this.updateMode) {
+      this.queueDeferredLine(fromX, fromY, x, y, lineSize, opacity, this.currFgColor);
+      return;
+    }
+
+    const debugWindow = this.debugWindow;
+    if (!debugWindow || !this.shouldWriteToCanvas) return;
 
     this.logMessage(`at drawLineToPlotFrom(${fromX}, ${fromY} to ${x}, ${y}, ${lineSize}, ${opacity})`);
-    const fgColor: string = this.currFgColor;
+    const fgColor: string = colorOverride ?? this.currFgColor;
 
     // Transform the target coordinates if in polar mode
     let targetX = x;
@@ -2612,42 +2732,169 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
       // Update cursor position after successful draw
       this.cursorPosition = { x, y };
+      this.vPixelX = x;
+      this.vPixelY = y;
+      this.plotCoordX = targetX;
+      this.plotCoordY = targetY;
       // Buffer updates are handled in performUpdate() now
     } catch (error) {
       this.logMessage(`Failed to draw line: ${error}`);
     }
   }
 
-  public async drawLineToPlot(x: number, y: number, lineSize: number, opacity: number): Promise<void> {
+  public async drawLineToPlot(
+    x: number,
+    y: number,
+    lineSize: number,
+    opacity: number,
+    forceExecution: boolean = false
+  ): Promise<void> {
     // Backward compatibility method - uses current cursor position as starting point
     const [fromX, fromY] = this.getCursorXY();
-    await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity);
+    await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity, forceExecution);
   }
 
-  public async drawCircleToPlot(diameter: number, lineSize: number, opacity: number): Promise<void> {
+  private queueDeferredLine(
+    fromX: number,
+    fromY: number,
+    x: number,
+    y: number,
+    lineSize: number,
+    opacity: number,
+    color: string
+  ): void {
+    const operation: PlotCanvasOperation = {
+      type: CanvasOperationType.DRAW_LINE,
+      parameters: {
+        fromX,
+        fromY,
+        x,
+        y,
+        lineSize,
+        opacity,
+        forceExecution: true,
+        color
+      },
+      affectsState: false,
+      requiresUpdate: true,
+      deferrable: true
+    };
+
+    this.pendingOperations.push(operation);
+    this.logMessage(
+      `LINE buffered (update mode): from (${fromX}, ${fromY}) to (${x}, ${y}) thickness ${lineSize}, opacity ${opacity}`
+    );
+
+    // Mirror immediate mode behavior: update cursor position and cached plot coordinates
+    this.cursorPosition = { x, y };
+    this.vPixelX = x;
+    this.vPixelY = y;
+
+    let targetPlotX = x + this.origin.x;
+    let targetPlotY = y + this.origin.y;
+
+    if (!this.isCartesian) {
+      const angleRad = ((y + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
+      targetPlotX = this.origin.x + Math.round(x * Math.cos(angleRad));
+      targetPlotY = this.origin.y + Math.round(x * Math.sin(angleRad));
+    }
+
+    this.plotCoordX = targetPlotX;
+    this.plotCoordY = targetPlotY;
+  }
+
+  private queueDeferredCircle(
+    centerX: number,
+    centerY: number,
+    diameter: number,
+    lineSize: number,
+    opacity: number,
+    color: string,
+    filled: boolean
+  ): void {
+    const operation: PlotCanvasOperation = {
+      type: CanvasOperationType.DRAW_CIRCLE,
+      parameters: {
+        centerX,
+        centerY,
+        diameter,
+        lineSize,
+        opacity,
+        color,
+        filled,
+        forceExecution: true
+      },
+      affectsState: false,
+      requiresUpdate: true,
+      deferrable: true
+    };
+
+    this.pendingOperations.push(operation);
+    this.logMessage(
+      `CIRCLE buffered (update mode): center (${centerX}, ${centerY}) diameter=${diameter} lineSize=${lineSize} opacity=${opacity}`
+    );
+  }
+
+  public async drawCircleToPlot(
+    diameter: number,
+    lineSize: number,
+    opacity: number,
+    forceExecution: boolean = false,
+    override?: { centerX?: number; centerY?: number; color?: string; filled?: boolean }
+  ): Promise<void> {
     if (!this.debugWindow || !this.shouldWriteToCanvas) return;
 
-    const fgColor: string = this.currFgColor;
     let [plotCoordX, plotCoordY] = this.getCursorXY();
+    if (override?.centerX !== undefined && override?.centerY !== undefined) {
+      plotCoordX = override.centerX;
+      plotCoordY = override.centerY;
+    }
 
-    // Apply ydir transformation for canvas coordinates
-    // Pascal: if not vDirY then p.y := ClientHeight - p.y;
+    let canvasY = plotCoordY;
     if (!this.cartesianConfig.ydir) {
-      plotCoordY = this.displaySpec.size.height - plotCoordY;
+      canvasY = this.displaySpec.size.height - plotCoordY;
+    }
+
+    const fgColor: string = override?.color ?? this.currFgColor;
+    const filled = override?.filled ?? lineSize === 0;
+
+    if (!forceExecution && this.updateMode) {
+      this.queueDeferredCircle(plotCoordX, plotCoordY, diameter, lineSize, opacity, fgColor, filled);
+      return;
+    }
+
+    await this.renderCircleAtCanvas(plotCoordX, plotCoordY, diameter, lineSize, opacity, fgColor, filled);
+  }
+
+  private async renderCircleAtCanvas(
+    plotX: number,
+    plotY: number,
+    diameter: number,
+    lineSize: number,
+    opacity: number,
+    fgColor: string,
+    filled: boolean
+  ): Promise<void> {
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) return;
+
+    let canvasX = plotX;
+    let canvasY = plotY;
+
+    if (!this.cartesianConfig.ydir) {
+      canvasY = this.displaySpec.size.height - plotY;
     }
 
     const opacityString: string = opacity == 255 ? 'opaque' : opacity == 0 ? 'clear' : opacity.toString();
     const lineSizeString: string = lineSize == 0 ? 'filled' : lineSize.toString();
     this.logMessage(
-      `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${plotCoordX},${plotCoordY})`
+      `at drawCircleToPlot(${diameter}, ${lineSizeString}, ${opacityString}) color=[${fgColor}] center @(${canvasX},${canvasY})`
     );
     this.logMessage(`  -- diameter=(${diameter}) color=[${fgColor}]`);
 
-    // Execute drawing in the renderer
-    const filled = lineSize === 0;
     const jsCode = `
       (function() {
         if (!window.plotCtx) {
@@ -2667,7 +2914,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         // Draw circle
         window.plotCtx.beginPath();
-        window.plotCtx.arc(${plotCoordX}, ${plotCoordY}, ${diameter / 2}, 0, 2 * Math.PI);
+        window.plotCtx.arc(${canvasX}, ${canvasY}, ${diameter / 2}, 0, 2 * Math.PI);
 
         if (${filled}) {
           window.plotCtx.fillStyle = '${fgColor}';
@@ -2686,7 +2933,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
       // Buffer updates are handled in performUpdate() now
     } catch (error) {
       this.logMessage(`Failed to draw circle: ${error}`);
@@ -2694,7 +2941,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   }
 
   public async drawSpriteToPlot(spriteId: number, orientation: number, scale: number, opacity: number): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow || !this.shouldWriteToCanvas) return;
 
     try {
       // Get sprite definition
@@ -2805,7 +3053,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         })()
       `;
 
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw sprite: ${error}`);
     }
@@ -2824,7 +3072,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     destX: number,
     destY: number
   ): Promise<void> {
-    if (!this.debugWindow || !this.shouldWriteToCanvas) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow || !this.shouldWriteToCanvas) return;
 
     try {
       // Verify layer is loaded
@@ -2847,7 +3096,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       }
 
       this.logMessage(`CROP: Drawing layer ${layerIndex + 1} region (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} to (${destX},${destY})`);
-      this.logMessage(`DEBUG: shouldWriteToCanvas=${this.shouldWriteToCanvas}, debugWindow=${!!this.debugWindow}`);
+      this.logMessage(`DEBUG: shouldWriteToCanvas=${this.shouldWriteToCanvas}, debugWindow=${!!debugWindow}`);
 
       // Extract RGBA pixel data from source rectangle
       // EXACT copy of original working implementation from plotParserIntegration.ts
@@ -2902,7 +3151,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
       this.logMessage(`DEBUG: JavaScript string size: ${jsCode.length} characters`);
       this.logMessage(`DEBUG: Calling executeJavaScript now...`);
-      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
+      const result = await debugWindow.webContents.executeJavaScript(jsCode);
       this.logMessage(`DEBUG: executeJavaScript returned: ${result}`);
       this.logMessage(`CROP result: ${result}`);
     } catch (error) {
@@ -2911,7 +3160,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   }
 
   public async writeStringToPlotAt(text: string, x: number, y: number, color?: string): Promise<void> {
-    if (!this.debugWindow) return;
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) return;
 
     // Use the provided color or fall back to current text color (NOT foreground/plot color)
     // Pascal: Text uses vTextColor (DefaultTextColor = clWhite), not vPlotColor
@@ -3018,7 +3268,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      await debugWindow.webContents.executeJavaScript(jsCode);
       // Buffer updates are handled in performUpdate() now
     } catch (error) {
       this.logMessage(`Failed to draw text: ${error}`);

@@ -445,6 +445,25 @@ export class PlotWindowIntegrator {
         break;
 
       case 'LINE':
+        if (params.fromX !== undefined && params.fromY !== undefined) {
+          const targetX = params.x !== undefined ? params.x : params.targetX;
+          const targetY = params.y !== undefined ? params.y : params.targetY;
+          const bufferedLineSize = params.lineSize !== undefined ? params.lineSize : this.state.lineSize;
+          const bufferedOpacity = params.opacity !== undefined ? params.opacity : this.state.opacity;
+          const bufferedColor = params.color;
+
+          await this.plotWindow.drawLineToPlotFrom(
+            params.fromX,
+            params.fromY,
+            targetX ?? 0,
+            targetY ?? 0,
+            bufferedLineSize,
+            bufferedOpacity,
+            true,
+            bufferedColor
+          );
+          break;
+        }
         // Apply precision multiplier to convert fixed-point coordinates to pixels
         // Coordinates from device are always in fixed-point format (multiplied by 256)
         // e.g., 40960 / 256 = 160 pixels, 57600 / 256 = 225 pixels
@@ -456,12 +475,7 @@ export class PlotWindowIntegrator {
 
         console.log(`[INTEGRATOR] LINE: raw=(${params.x},${params.y}) converted=(${lineX},${lineY}) lineSize=${lineSize}, opacity=${opacity}`);
 
-        await this.plotWindow.drawLineToPlot(
-          lineX,
-          lineY,
-          lineSize,
-          opacity
-        );
+        await this.plotWindow.drawLineToPlot(lineX, lineY, lineSize, opacity);
         break;
 
       case 'CIRCLE':
@@ -469,20 +483,32 @@ export class PlotWindowIntegrator {
         // Precision multiplier is only for coordinate positions, not sizes
         const diameter = params.diameter || 10;
         const circleLineSize = params.lineSize !== undefined ? params.lineSize : 0; // Default to 0 (filled)
+        const centerX = params.centerX;
+        const centerY = params.centerY;
+        const circleColor = params.color;
+        const circleFilled = params.filled;
 
         this.logConsoleMessage('[INTEGRATOR] Drawing CIRCLE with params:', {
           diameter: diameter,
           lineSize: circleLineSize,
           opacity: params.opacity ?? this.state.opacity,
-          originalDiameter: params.diameter || 10,
-          originalLineSize: params.lineSize,
-          precisionMultiplier: precisionMultiplier
+          centerX,
+          centerY,
+          color: circleColor,
+          filled: circleFilled
         });
 
         await this.plotWindow.drawCircleToPlot(
           diameter,
           circleLineSize,
-          params.opacity ?? this.state.opacity
+          params.opacity ?? this.state.opacity,
+          true,
+          {
+            centerX,
+            centerY,
+            color: circleColor,
+            filled: circleFilled
+          }
         );
         break;
 
@@ -501,6 +527,40 @@ export class PlotWindowIntegrator {
    * Execute text drawing with font setup
    */
   private async executeDrawText(params: Record<string, any>): Promise<void> {
+    if (params.x !== undefined && params.y !== undefined && params.text) {
+      this.logConsoleMessage('[INTEGRATOR] Buffered TEXT params:', params);
+      const savedFont = { ...this.plotWindow.font };
+      const savedTextStyle = { ...this.plotWindow.textStyle };
+
+      if (params.fontMetrics) {
+        this.plotWindow.font = { ...params.fontMetrics };
+      }
+      if (params.textStyle) {
+        this.plotWindow.textStyle = { ...params.textStyle };
+      }
+
+      if (params.size !== undefined && params.style !== undefined && params.angle !== undefined) {
+        this.plotWindow.setFontMetrics(
+          params.size,
+          params.style,
+          params.angle,
+          this.plotWindow.font,
+          this.plotWindow.textStyle
+        );
+      }
+
+      await this.plotWindow.writeStringToPlotAt(
+        params.text,
+        params.x,
+        params.y,
+        params.color
+      );
+
+      this.plotWindow.font = savedFont;
+      this.plotWindow.textStyle = savedTextStyle;
+      return;
+    }
+
     // Only apply pending color if the last operation was SET_COLOR
     // This matches Pascal behavior: color immediately before TEXT sets text color
     if (this.lastOperationType === CanvasOperationType.SET_COLOR && this.lastSetColor) {

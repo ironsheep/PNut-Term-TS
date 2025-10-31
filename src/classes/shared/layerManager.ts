@@ -226,7 +226,15 @@ export class LayerManager {
     const metadata = this.layerMetadata[layerIndex];
 
     console.log(`[LAYER LIFECYCLE] releaseLayer() called for index ${layerIndex}`);
-    console.log(`[LAYER LIFECYCLE] Stack trace:`, new Error().stack);
+
+    const stack = new Error().stack
+      ?.split('\n')
+      .slice(2, 6) // Skip the "Error" line and releaseLayer itself
+      .map((line) => line.trim())
+      .join(' -> ');
+    if (stack) {
+      console.log(`[LAYER LIFECYCLE] Release initiated by: ${stack}`);
+    }
 
     if (layer !== null && metadata !== null) {
       // Update memory tracking
