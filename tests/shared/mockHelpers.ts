@@ -251,6 +251,7 @@ export function createMockBrowserWindow(overrides: any = {}) {
     capturePage: (jest.fn() as any).mockResolvedValue({
       toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data'))
     }),
+    isDestroyed: jest.fn().mockReturnValue(false),
     ...overrides.webContents
   };
 
