@@ -178,11 +178,12 @@ export class FFTProcessor {
       const rx = Number(this.fftReal[i2]);
       const ry = Number(this.fftImag[i2]);
 
-      // Calculate power using Pascal's exact formula
+      // Calculate power using Pascal's exact formula with banker's rounding
       // Pascal: FFTpower[i1] := Round(Hypot(rx, ry) / ($800 shl FFTexp shr FFTmag));
+      // Pascal's Round uses banker's rounding (round half to even)
       const magnitude_shift = magnitude;
       const scale_factor = (0x800 << this.fftExp) >> magnitude_shift;
-      power[i] = Math.round(Math.hypot(rx, ry) / scale_factor);
+      power[i] = this.bankersRound(Math.hypot(rx, ry) / scale_factor);
 
       // Calculate angle (matching Pascal)
       angle[i] = Math.round(Math.atan2(rx, ry) / (Math.PI * 2) * 0x100000000) & 0xFFFFFFFF;
@@ -208,14 +209,41 @@ export class FFTProcessor {
   
   /**
    * Check if a number is a power of two
-   * 
+   *
    * @param n Number to check
    * @returns True if n is a power of two
    */
   private isPowerOfTwo(n: number): boolean {
     return n > 0 && (n & (n - 1)) === 0;
   }
-  
+
+  /**
+   * Banker's rounding (round half to even) - matches Pascal's Round function
+   *
+   * When a value is exactly halfway between two integers, round to the nearest even number.
+   * This reduces accumulation of rounding errors and matches Pascal's behavior.
+   *
+   * @param value The value to round
+   * @returns The rounded integer
+   */
+  private bankersRound(value: number): number {
+    const floor = Math.floor(value);
+    const diff = value - floor;
+    const EPSILON = 1e-9;
+
+    // Handle exact halfway cases - round to even
+    if (Math.abs(diff - 0.5) < EPSILON) {
+      return floor % 2 === 0 ? floor : floor + 1;
+    }
+
+    if (Math.abs(diff + 0.5) < EPSILON) {
+      return floor % 2 === 0 ? floor : floor - 1;
+    }
+
+    // Not a halfway case - use standard rounding
+    return Math.round(value);
+  }
+
   /**
    * Get the current prepared FFT size
    * 

@@ -15,6 +15,7 @@ import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { FFTProcessor } from './shared/fftProcessor';
 import { WindowFunctions } from './shared/windowFunctions';
 import { TracePatternProcessor } from './shared/tracePatternProcessor';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
@@ -53,6 +54,7 @@ export interface SpectroDisplaySpec {
   dotSize: number; // Dot size for pixels
   dotSizeY: number; // Y dot size (can differ from X)
   colorMode: ColorMode; // Color mode for magnitude visualization
+  colorTune: number; // Color tuning (Pascal vColorTune)
   logScale: boolean; // Enable log scale for magnitude
   hideXY: boolean; // Hide coordinate display
   window: WindowColor; // Required by BaseDisplaySpec
@@ -126,6 +128,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private canvasRenderer: CanvasRenderer | undefined;
   private colorTranslator: ColorTranslator;
   private traceProcessor: TracePatternProcessor;
+  private traceWidth: number = 0;
+  private traceHeight: number = 0;
+  private noiseFloor: number = 0;
 
   // Sample buffer management (circular buffer)
   private readonly BUFFER_SIZE = 2048; // SPECTRO_Samples = DataSets
@@ -179,6 +184,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
     // Set up color translator
     this.colorTranslator.setColorMode(this.displaySpec.colorMode);
+    this.colorTranslator.setTune(this.displaySpec.colorTune);
 
     // Prepare FFT lookup tables
     this.fftSize = this.displaySpec.samples;
@@ -187,6 +193,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
     // Calculate window dimensions based on trace pattern and bins
     this.calculateSpectroWindowDimensions();
+
+    this.noiseFloor = this.computeNoiseFloor();
 
     // Initialize canvas ID immediately (don't wait for data)
     this.bitmapCanvasId = `spectro-canvas-${this.displaySpec.displayName}`;
@@ -198,7 +206,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
     // Set up trace processor for waterfall scrolling
     this.traceProcessor.setPattern(this.displaySpec.tracePattern);
-    this.traceProcessor.setBitmapSize(this.canvasWidth, this.canvasHeight);
+    this.traceProcessor.setBitmapSize(this.traceWidth, this.traceHeight);
 
     // Note: Set scroll callback AFTER window is created to avoid null reference
     // Will be set in createDebugWindow() after window exists
@@ -240,8 +248,82 @@ export class DebugSpectroWindow extends DebugWindowBase {
       height = temp;
     }
 
+    this.traceWidth = width;
+    this.traceHeight = height;
     this.canvasWidth = width * this.displaySpec.dotSize;
     this.canvasHeight = height * this.displaySpec.dotSizeY;
+  }
+
+  /**
+   * Compute an intensity floor in pixel units to suppress noise.
+   * Empirically, values below roughly 8% of full scale map to near-black
+   * in the Pascal implementation, so we treat them as zero.
+   */
+  private computeNoiseFloor(): number {
+    const noiseFraction = 0.08; // 8% of 255
+    const floor = Math.round(255 * noiseFraction);
+    return Math.max(2, Math.min(254, floor));
+  }
+
+  /**
+   * Emulate Pascal's banker rounding (ties to even).
+   */
+  private bankersRound(value: number): number {
+    const floor = Math.floor(value);
+    const diff = value - floor;
+    const EPSILON = 1e-9;
+
+    if (Math.abs(diff - 0.5) < EPSILON) {
+      return floor % 2 === 0 ? floor : floor + 1;
+    }
+
+    if (Math.abs(diff + 0.5) < EPSILON) {
+      return floor % 2 === 0 ? floor : floor - 1;
+    }
+
+    return Math.round(value);
+  }
+
+  /**
+   * Attempt to parse a color tune token (named color or numeric value)
+   */
+  private static extractColorTune(lineParts: string[], startIndex: number): [number, number | null] {
+    if (startIndex >= lineParts.length) {
+      return [0, null];
+    }
+
+    const token = lineParts[startIndex];
+    const tuneFromName = DebugSpectroWindow.parseColorTuneName(token);
+    if (tuneFromName !== null) {
+      return [1, tuneFromName];
+    }
+
+    const numericValue = Spin2NumericParser.parseValue(token);
+    if (numericValue === null || !Number.isFinite(numericValue)) {
+      return [0, null];
+    }
+
+    const tune = Math.trunc(numericValue);
+    return [1, Math.max(0, Math.min(0xff, tune))];
+  }
+
+  /**
+   * Map Pascal color names to tune indices (0-7)
+   */
+  private static parseColorTuneName(token: string): number | null {
+    const colorMap: Record<string, number> = {
+      ORANGE: 0,
+      BLUE: 1,
+      GREEN: 2,
+      CYAN: 3,
+      RED: 4,
+      MAGENTA: 5,
+      YELLOW: 6,
+      GRAY: 7
+    };
+
+    const upper = token.toUpperCase();
+    return Object.prototype.hasOwnProperty.call(colorMap, upper) ? colorMap[upper] : null;
   }
 
   /**
@@ -271,6 +353,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
       dotSize: 1,
       dotSizeY: 1,
       colorMode: ColorMode.LUMA8X, // key_luma8x
+      colorTune: 0,
       logScale: false,
       hideXY: false,
       window: { background: 'black', grid: 'gray' } // Required by BaseDisplaySpec
@@ -395,21 +478,51 @@ export class DebugSpectroWindow extends DebugWindowBase {
         // Color modes
         case 'LUMA8':
           spec.colorMode = ColorMode.LUMA8;
+          const [consumedLuma8, tuneLuma8] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedLuma8 > 0 && tuneLuma8 !== null) {
+            spec.colorTune = tuneLuma8;
+            index += consumedLuma8;
+          }
           break;
         case 'LUMA8W':
           spec.colorMode = ColorMode.LUMA8W;
+          const [consumedLuma8W, tuneLuma8W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedLuma8W > 0 && tuneLuma8W !== null) {
+            spec.colorTune = tuneLuma8W;
+            index += consumedLuma8W;
+          }
           break;
         case 'LUMA8X':
           spec.colorMode = ColorMode.LUMA8X;
+          const [consumedLuma8X, tuneLuma8X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedLuma8X > 0 && tuneLuma8X !== null) {
+            spec.colorTune = tuneLuma8X;
+            index += consumedLuma8X;
+          }
           break;
         case 'HSV16':
           spec.colorMode = ColorMode.HSV16;
+          const [consumedHsv16, tuneHsv16] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedHsv16 > 0 && tuneHsv16 !== null) {
+            spec.colorTune = tuneHsv16;
+            index += consumedHsv16;
+          }
           break;
         case 'HSV16W':
           spec.colorMode = ColorMode.HSV16W;
+          const [consumedHsv16W, tuneHsv16W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedHsv16W > 0 && tuneHsv16W !== null) {
+            spec.colorTune = tuneHsv16W;
+            index += consumedHsv16W;
+          }
           break;
         case 'HSV16X':
           spec.colorMode = ColorMode.HSV16X;
+          const [consumedHsv16X, tuneHsv16X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          if (consumedHsv16X > 0 && tuneHsv16X !== null) {
+            spec.colorTune = tuneHsv16X;
+            index += consumedHsv16X;
+          }
           break;
 
         // Packed data modes
@@ -525,10 +638,10 @@ export class DebugSpectroWindow extends DebugWindowBase {
         const dataMatch = part.match(/^`\(([^)]+)\)`?$/);
         if (dataMatch) {
           const dataExpr = dataMatch[1];
-          const value = Number(dataExpr);
-          if (!isNaN(value)) {
+          const parsedValue = this.parseSampleValue(dataExpr);
+          if (parsedValue !== null) {
             // Window already created in constructor, just add sample
-            this.addSample(value);
+            this.addSample(parsedValue);
           }
         }
         continue;
@@ -536,10 +649,10 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
       // Handle packed data if configured
       if (this.displaySpec.packedMode) {
-        const numValue = Number(part);
-        if (!isNaN(numValue)) {
+        const parsedPackedValue = this.parseSampleValue(part);
+        if (parsedPackedValue !== null) {
           // Unpack samples
-          const samples = PackedDataProcessor.unpackSamples(numValue, this.displaySpec.packedMode);
+          const samples = PackedDataProcessor.unpackSamples(parsedPackedValue, this.displaySpec.packedMode);
 
           // Add each unpacked sample
           for (const sample of samples) {
@@ -548,12 +661,25 @@ export class DebugSpectroWindow extends DebugWindowBase {
         }
       } else {
         // Try to parse as raw numeric value
-        const numValue = Number(part);
-        if (!isNaN(numValue)) {
-          this.addSample(numValue);
+        const parsedValue = this.parseSampleValue(part);
+        if (parsedValue !== null) {
+          this.addSample(parsedValue);
         }
       }
     }
+  }
+
+  private parseSampleValue(rawValue: string): number | null {
+    if (!Spin2NumericParser.isNumeric(rawValue)) {
+      return null;
+    }
+
+    const parsed = Spin2NumericParser.parseValue(rawValue);
+    if (parsed === null || !Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return Math.trunc(parsed);
   }
 
   /**
@@ -638,19 +764,18 @@ export class DebugSpectroWindow extends DebugWindowBase {
         v = Math.round((Math.log2(v + 1) / Math.log2(this.displaySpec.range + 1)) * this.displaySpec.range);
       }
 
-      // Scale to 0-255
-      // Pascal: p := Round(v * fScale)
-      let p = Math.round(v * fScale);
-      if (p > 0xff) p = 0xff;
+      // Scale to 0-255 using banker rounding (matches Pascal behaviour)
+      let magnitudePixel = this.bankersRound(v * fScale);
+      if (magnitudePixel > 0xff) magnitudePixel = 0xff;
 
-      // Add phase for HSV16 modes
-      // Pascal: if vColorMode in [key_hsv16..key_hsv16x] then p := p or FFTangle[x] shr 16 and $FF00
-      if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
-        p = p | ((this.fftAngle[x] >> 16) & 0xff00);
+      let pixelValue = magnitudePixel;
+      if (pixelValue < this.noiseFloor) {
+        pixelValue = 0;
+      } else if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
+        pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
       }
 
-      // Plot pixel using color translator
-      this.plotPixel(p);
+      this.plotPixel(pixelValue);
 
       // Capture bitmap just before last pixel triggers scroll
       // Pascal: if x = FFTlast then BitmapToCanvas(0)
@@ -706,6 +831,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private scrollWaterfall(scrollX: number, scrollY: number): void {
     if (!this.debugWindow) return;
 
+    const scrollXPixels = scrollX * this.displaySpec.dotSize;
+    const scrollYPixels = scrollY * this.displaySpec.dotSizeY;
+
     const scrollCode = `
       (function() {
         const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
@@ -727,7 +855,20 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
         // Copy back with scroll offset
         ctx.drawImage(tempCanvas, 0, 0, offscreen.width, offscreen.height,
-                     ${scrollX}, ${scrollY}, offscreen.width, offscreen.height);
+                     ${scrollXPixels}, ${scrollYPixels}, offscreen.width, offscreen.height);
+
+        // Clear newly exposed region to background color
+        ctx.fillStyle = '#000000';
+        if (${scrollXPixels} < 0) {
+          ctx.fillRect(offscreen.width + ${scrollXPixels}, 0, ${-scrollXPixels}, offscreen.height);
+        } else if (${scrollXPixels} > 0) {
+          ctx.fillRect(0, 0, ${scrollXPixels}, offscreen.height);
+        }
+        if (${scrollYPixels} < 0) {
+          ctx.fillRect(0, offscreen.height + ${scrollYPixels}, offscreen.width, ${-scrollYPixels});
+        } else if (${scrollYPixels} > 0) {
+          ctx.fillRect(0, 0, offscreen.width, ${scrollYPixels});
+        }
       })();
     `;
 

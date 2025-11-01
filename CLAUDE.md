@@ -5,11 +5,13 @@ Essential guidance for Claude Code in PNut-Term-TS repository.
 ## 🎯 SESSION START PROTOCOL
 
 **MANDATORY ON SESSION START:**
+
 ```bash
 mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ```
 
 ### 🏔️ SESSION MINDSET - TECHNICAL CLIMBING
+
 **Before ANY work**: Remember we follow **Technical Climbing Methodology**
 
 - **Start from last protection point** (working code + tests + documentation)
@@ -20,26 +22,31 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ## 🎯 PROJECT PRINCIPLES
 
 ### Development Philosophy
+
 - **NO TIME CONSTRAINTS** - We work to find the best possible solutions, period
 - **Quality over speed** - Thorough, well-tested implementations are the priority
 - **Solution excellence** - Our only focus is finding and implementing optimal fixes
 
 ### Project Goals
+
 - **100% Functional Parity** - TypeScript reimplementation of original Pascal codebase
 - **Proper TypeScript Techniques** - Achieve parity using idiomatic TypeScript patterns
 - **Pascal Source as Reference** - Original implementation defines the specification (see Pascal Source Reference section below)
 
 ### Time Estimation
+
 - **Consecutive hours only** - Estimates are in cumulative work hours, not days/weeks
 - All task estimates use `estimate_minutes` parameter in MCP tasks
 
 ### Troubleshooting Methodology
+
 1. **Gather ALL symptoms** - Document every observable issue before attempting fixes
 2. **Comprehensive solutions** - Find fixes that address all or most symptoms simultaneously
 3. **Account for everything** - If symptoms remain unaddressed, identify separate solutions
 4. **Complete fixes only** - Every build fixes ALL symptoms found, not partial fixes
 
 ### Problem Resolution Process
+
 1. **Generate hypotheses** - List possible causes for observed issues
 2. **Deep code research** - Investigate each hypothesis thoroughly
 3. **Prove or disprove** - Systematically eliminate hypotheses through evidence
@@ -47,6 +54,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 5. **Fix once, fix right** - Address the root cause, not symptoms
 
 ### Code Quality Requirements
+
 - **Preserve unparsed debug strings** - Keep exact formatting from device
 - **Full command context in errors** - Include all relevant information in error messages
 
@@ -55,12 +63,14 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 **Current Phase**: Windows 90%+ complete, final behavior cleanup until product release
 
 ### Critical Constraints
+
 - **MINIMAL code changes only** - preserve working functionality at all costs
 - **NO broad refactors** - avoid triggering wider testing requirements
 - **Surgical fixes** - address specific symptoms without side effects
 - **NO TIME PRESSURE** - focus on finding the best possible solution
 
 ### Workflow for Final Window Polish
+
 1. Test with external hardware
 2. Document symptoms (logs + verbal observations from user)
 3. Investigate and understand root cause (REQUIRED before fixing)
@@ -73,6 +83,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ### Professional Engineer Problem Resolution Protocol
 
 **Step 1: Symptom Collection**
+
 - Record ALL symptoms from logs (every observable issue)
 - Record ALL symptoms from verbal user descriptions
 - Document in `tasks/TEST_RESULTS_YYYYMMDD_HHMMSS.md` if complex/multi-symptom
@@ -80,6 +91,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 - Group related symptoms together
 
 **Step 2: Hypothesis Generation**
+
 - ⚠️ **NO SOLUTION BIAS** - Do not jump to conclusions before understanding
 - Create hypotheses for EACH symptom independently
 - Consider why ALL symptoms occur together (may share root cause)
@@ -87,6 +99,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 - Rank hypotheses by likelihood based on evidence
 
 **Step 3: Systematic Investigation**
+
 - Enable diagnostic logging (two points: console log + constructor logging)
 - Prove or disprove each hypothesis with code evidence
 - Deep code research to understand actual behavior
@@ -97,6 +110,7 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 ⚠️ **STOP: Do you understand WHY this happens?**
 
 Before proceeding to fix, answer these questions:
+
 - [ ] Can you explain the exact root cause of EACH symptom?
 - [ ] Do you know the precise code path causing EACH issue?
 - [ ] Can you account for ALL observed symptoms?
@@ -106,12 +120,14 @@ Before proceeding to fix, answer these questions:
 **If NO to ANY question: Continue investigation. DO NOT fix yet.**
 
 **Step 5: Minimal Surgical Fix**
+
 - Address root cause, not symptoms
 - Minimal code changes (preserve working code)
 - One fix should address all related symptoms
 - Document exactly what changed and why
 
 **Step 6: Verification & Finalization**
+
 - Verify fix addresses ALL symptoms
 - Check that no existing functionality broke
 - Compare to Pascal source if behavior seems uncertain
@@ -119,17 +135,21 @@ Before proceeding to fix, answer these questions:
 - Disable diagnostic logging (console + constructor) when window complete
 
 ### Diagnostic Logging Strategy
+
 During investigation:
+
 - Enable console logging in window
 - Enable constructor logging
 - Add temporary trace logging as needed
 
 When window complete:
+
 - Disable console logging
 - Disable constructor logging
 - Remove temporary trace logging
 
 ### Test Strategy for This Phase
+
 - Primary testing: External hardware (real-world behavior)
 - Automated tests: Update AFTER window finalized
 - Test updates confirm final window behavior matches specification
@@ -137,24 +157,26 @@ When window complete:
 
 ## 📚 WORK TYPE QUICK REFERENCE
 
-| Work Type | Primary Docs | Key Focus |
-|-----------|-------------|-----------|
-| 🐛 **Debug/Fix** | `CODE-REPAIR-METHODOLOGY.md`, `TEST-DRIVEN-DEBUGGING.md` | Surgical fixes, test-first |
-| 🔧 **Feature** | `TECHNICAL-CLIMBING.md`, `SYSTEMATIC-CHANGE-PROCESS.md` | Build on protection, impact analysis |
+| Work Type             | Primary Docs                                                  | Key Focus                                |
+| --------------------- | ------------------------------------------------------------- | ---------------------------------------- |
+| 🐛 **Debug/Fix**      | `CODE-REPAIR-METHODOLOGY.md`, `TEST-DRIVEN-DEBUGGING.md`      | Surgical fixes, test-first               |
+| 🔧 **Feature**        | `TECHNICAL-CLIMBING.md`, `SYSTEMATIC-CHANGE-PROCESS.md`       | Build on protection, impact analysis     |
 | 🪟 **Window Upgrade** | `WINDOW-UPGRADE-METHODOLOGY.md`, `CODE-REPAIR-METHODOLOGY.md` | Directive inventory, parity verification |
-| 🧪 **Testing** | `TESTING-STANDARDS.md`, `tests/README-TESTING-STANDARDS.md` | Byte-perfect validation |
-| 🏗️ **Architecture** | `ARCHITECTURE.md`, `SHARED-COMPONENT-REQUIREMENTS.md` | Preserve working systems |
-| 📝 **Documentation** | `REPOSITORY-ORGANIZATION.md` | Current state first |
+| 🧪 **Testing**        | `TESTING-STANDARDS.md`, `tests/README-TESTING-STANDARDS.md`   | Byte-perfect validation                  |
+| 🏗️ **Architecture**   | `ARCHITECTURE.md`, `SHARED-COMPONENT-REQUIREMENTS.md`         | Preserve working systems                 |
+| 📝 **Documentation**  | `REPOSITORY-ORGANIZATION.md`                                  | Current state first                      |
 
 **Foundation for ALL work**: `DOCs/pure-process/TECHNICAL-CLIMBING-METHODOLOGY.md`
 
 ### 🔄 **LIVING DOCUMENTATION SYSTEM**
+
 - **Process breakdowns** → Upgrade documentation immediately
 - **New patterns discovered** → Add to appropriate process docs
 - **Repeated mistakes** → Strengthen guidance to prevent recurrence
 - **Every failure** is an opportunity to improve our process documentation
 
 ## 🔄 Work Assessment
+
 - **Complex**: Multi-window debug, race conditions, architecture → deeper analysis
 - **Documentation**: User guides, API docs → consider model upgrade
 - **Standard**: Defined features, tests → normal execution
@@ -163,6 +185,7 @@ When window complete:
 ## Todo MCP Mastery Operations
 
 ### Dual System Strategy
+
 **MCP Tasks**: Persistent, session-spanning, permanent ID «#N»
 **TodoWrite**: Current task breakdown only, cleared on completion
 
@@ -177,6 +200,7 @@ TodoWrite: []  # Clear for next task
 ```
 
 ### Core Parameters
+
 ```bash
 # Most functions use position_id OR task_id
 mcp__todo-mcp__todo_start position_id:1          # Interactive
@@ -191,17 +215,20 @@ force:true               # Boolean, not string
 ### Context Hygiene (40-Key Target)
 
 **VALUE SIZE matters more than key count**:
+
 - Keep values under 500 chars (pointers, not payloads)
 - Use patterns for bulk operations
 
 **🔔 TodoWrite Reminder = Context Assessment Point**
 When TodoWrite reminders appear, **ASSESS** (don't auto-save):
+
 - **"Have I discovered something I haven't preserved?"** → Save if yes
 - **"Is there a critical insight that would be lost?"** → Save if yes
 - **"Am I at a natural checkpoint worth marking?"** → Save if yes
 - **"Would future-me need this context?"** → Save if yes
 
 **Save ONLY when valuable**, examples:
+
 - `context_set key:"lesson_cog2_fails" value:"COG2 extraction stops after COG1"`
 - `context_set key:"workaround_dtr_double" value:"Check sequence numbers"`
 - Skip if: routine progress, obvious steps, temporary state
@@ -221,6 +248,7 @@ mcp__todo-mcp__context_set key:"task_#N_steps" value:"✓Step1|→Step2|Step3"
 ```
 
 ### Quick Commands
+
 ```bash
 # Recovery
 mcp__todo-mcp__context_resume     # "WHERE WAS I?"
@@ -235,18 +263,21 @@ mcp__todo-mcp__project_dump include_context:true  # Complete backup
 ```
 
 ### Task Lifecycle
+
 1. **Start** before work: `todo_start position_id:1`
 2. **Complete** after work: `todo_complete position_id:1`
 3. **Archive** when done: `todo_archive`
 4. Only ONE task `in_progress` at a time (auto-enforced)
 
 ### Anti-Patterns to Avoid
+
 - ❌ Multiple MCP task IDs in TodoWrite
 - ❌ Large values in context (>500 chars)
 - ❌ Deleting without audit
 - ❌ Ignoring context_resume on start
 
 ### Optional: Filesystem MCP (If Available)
+
 ```bash
 # Check availability
 mcp__filesystem__list_directory path:"."
@@ -258,7 +289,9 @@ mcp__filesystem__write_file         # Instead of echo
 ```
 
 ### Deep Learning Resources
+
 Study `.todo-mcp/mastery/` documentation for comprehensive patterns:
+
 - `01_DUAL_SYSTEM_MASTERY_STRATEGY.md`
 - `02_CONTEXT_HYGIENE_MASTERY.md`
 - `03_TODO_MCP_MASTERY_INTERFACE.md`
@@ -268,6 +301,7 @@ Study `.todo-mcp/mastery/` documentation for comprehensive patterns:
 ## ⚠️ DTR/RTS Control Lines
 
 **Mutually exclusive** - device uses ONE:
+
 - Parallax Prop Plugs → **DTR**
 - FTDI USB → Usually **DTR**
 - Chinese clones → Often **RTS**
@@ -282,6 +316,7 @@ See `DOCs/project-specific/DTR-RTS-CONTROL-LINES.md`
 **Container constraint**: NEVER run `npm test` directly without arguments - saturates Docker container → lockup/termination
 
 **Safe test execution methods:**
+
 ```bash
 # Full test suite (sequential, safe for Docker)
 scripts/claude/run_tests_sequentially.sh
@@ -300,6 +335,7 @@ npm test -s
 ```
 
 **Critical rules:**
+
 - ❌ Never: `npm test` (no arguments - runs all tests in parallel)
 - ❌ Never: `npm test file.test.ts 2>&1` (NPM parses "2" as literal filename)
 - ✅ Always: Use `--` separator before test file names when using npm test
@@ -307,6 +343,7 @@ npm test -s
 - 🔧 Maintenance: Keep `scripts/claude/run_tests_sequentially.sh` updated with all test files from `tests/*.test.ts`
 
 **Why this matters:**
+
 - **NPM argument parsing**: Without `--`, NPM interprets shell operators like `2>&1` as literal arguments
 - **Docker environment**: Running all tests in parallel exhausts container resources
 - **Audit before running**: Compare `ls tests/*.test.ts` output against script contents to ensure completeness
@@ -316,12 +353,14 @@ npm test -s
 **CRITICAL RULE: Perfect Data = Perfect Validation**
 
 When you have 100% of actual bytes, validate 100% of actual bytes:
+
 - **Account for every single input byte** - `totalExtracted === totalInput`
 - **Validate byte-by-byte content** - `Array.from(actual) === Array.from(expected)`
 - **Check exact message boundaries** - CR/LF positioning must be perfect
 - **Verify precise classification** - No approximations, exact counts only
 
 **NEVER:**
+
 - Count messages instead of validating bytes
 - Use "length > 5" or similar approximations
 - Allow ANY unaccounted bytes
@@ -330,11 +369,14 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 **Process:** Tests MUST fail loud/fast → Fix code → Tests pass → THEN human testing
 
 **Test results location:** `test-results/external-results/`
-- **Console logs**: `console-*.log` (renderer/browser console output)
-- **Main logs**: `test-run-*.log` (main process logs with window placement data)
+
+- **Console logs**: `CONSOLE.log` (renderer/browser console output)
+- **Main logs**: `debug-*.log` (main process logs with window placement data)
+- **USB traffic logs**: `usb-traffic-*.log` (main process logs with window placement data)
 - **Window placement logs**: Search for `[WINDOW PLACER]` patterns in main logs
 
 **Documentation references:**
+
 - `DOCs/project-specific/TESTING-STANDARDS.md`
 - `tests/README-TESTING-STANDARDS.md`
 
@@ -343,12 +385,14 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 ### Production Packaging
 
 **NPM scripts** (recommended for all platforms):
+
 - **All platforms**: `npm run packageAll` - Builds all 6 architecture packages (Windows/Linux/macOS × x64/arm64)
 - **Windows only**: `npm run packageWin` - Windows x64 + arm64
 - **Linux only**: `npm run packageLinux` - Linux x64 + arm64
 - **macOS only**: `npm run packageMac` - macOS x64 + arm64
 
 **Shell scripts** (direct execution, equivalent to NPM scripts):
+
 1. `scripts/create-windows-package.sh` - Windows x64/arm64
 2. `scripts/create-linux-package.sh` - Linux x64/arm64
 3. `scripts/create-macos-packages.sh` - macOS x64/arm64
@@ -358,13 +402,16 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 ## Workflow
 
 ### Planning
+
 - Plan → `tasks/TASK_NAME.md`
 - Present → Wait approval
 - Todo list with descriptions
 - Update as progressing
 
 ### Files
+
 **tasks/ ONLY:**
+
 - `[FEATURE]_IMPLEMENTATION.md`
 - `CURRENT_STATE_*.md`
 - `[FEATURE]_PROGRESS.md`
@@ -372,6 +419,7 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 **NEVER root** except configs/README/LICENSE/builds
 
 ### Compaction Recovery
+
 1. Save: `tasks/CURRENT_STATE_BEFORE_COMPACT.md`
 2. Document: completed/in-progress/next
 3. Resume: todo list + read state file
@@ -381,11 +429,13 @@ When you have 100% of actual bytes, validate 100% of actual bytes:
 ### Documentation Locations
 
 **User & Admin Guides:**
+
 - **User Guide**: `DOCs/USER-GUIDE.md` and `DOCs/project-specific/USER-GUIDE.md`
 - **Admin/Technical**: `DOCs/project-specific/ADMIN-GUIDE-SERIAL-IMPLEMENTATION.md`
 - **Window Status**: Track implementation status in window sprint documents
 
 **Process & Architecture:**
+
 - **Universal patterns**: `DOCs/pure-process/` - Methodology applicable to any project
 - **Project-specific**: `DOCs/project-specific/` - Architecture, commands, status, Pascal sources, build, tests, debt, user guide
 - **Repository structure**: `DOCs/REPOSITORY-ORGANIZATION.md` - Complete repo organization guide
@@ -402,6 +452,7 @@ The Pascal source is the **definitive specification** - when TypeScript behavior
 ## 🗺️ PROJECT QUICK NAVIGATION
 
 ### Core Structure
+
 ```
 src/
 ├── pnut-term-ts.ts          # Entry point
@@ -443,6 +494,7 @@ src/
 ```
 
 ### Test Structure
+
 ```
 tests/
 ├── *.test.ts                     # Test files (flat structure)
@@ -458,6 +510,7 @@ tests/
 ```
 
 ### Key Commands
+
 ```bash
 # Build & Test
 npm run build                              # Build TypeScript
@@ -475,6 +528,7 @@ npm run dev                               # Watch mode
 ```
 
 ### Quick Access Patterns
+
 - **Debug windows**: `src/classes/debug*.ts` (12 window types)
 - **Shared utilities**: `src/classes/shared/*.ts` (52 components!)
 - **Window routing**: `src/classes/shared/windowRouter.ts`

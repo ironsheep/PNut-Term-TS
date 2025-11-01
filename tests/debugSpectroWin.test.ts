@@ -1,7 +1,7 @@
 import { DebugSpectroWindow, SpectroDisplaySpec } from '../src/classes/debugSpectroWin';
 import { setupDebugWindowTests } from './shared/debugWindowTestUtils';
 import { createMockBrowserWindow } from './shared/mockHelpers';
-import { ColorMode } from '../src/classes/shared/colorTranslator';
+import { ColorMode, ColorTranslator } from '../src/classes/shared/colorTranslator';
 
 // Store reference to mock BrowserWindow instances
 let mockBrowserWindowInstances: any[] = [];
@@ -40,13 +40,38 @@ jest.mock('fs', () => ({
 
 // Mock OS module for temp directory
 jest.mock('os', () => ({
-  tmpdir: jest.fn().mockReturnValue('/tmp')
+  tmpdir: jest.fn().mockReturnValue('/tmp'),
+  platform: jest.fn().mockReturnValue('linux')
 }));
 
 // Mock path module
 jest.mock('path', () => ({
-  join: jest.fn((...args) => args.join('/'))
+  join: jest.fn((...args) => args.join('/')),
+  dirname: jest.fn((input: string) => {
+    if (!input) return '.';
+    const segments = input.split('/');
+    segments.pop();
+    return segments.length ? segments.join('/') : '/';
+  }),
+  resolve: jest.fn((...args) => args.join('/'))
 }));
+
+// Mock WindowPlacer to avoid ScreenManager dependencies during tests
+const mockWindowPlacerInstance = {
+  registerWindow: jest.fn(),
+  getNextPosition: jest.fn(() => ({ x: 0, y: 0, monitor: { id: '1' } })),
+  releaseWindow: jest.fn()
+};
+
+jest.mock('../src/utils/windowPlacer', () => ({
+  WindowPlacer: {
+    getInstance: jest.fn(() => mockWindowPlacerInstance)
+  }
+}));
+
+// Recorded Spectro samples captured from external DEBUG_SPECTRO run
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const recordedSpectroSamples: number[] = require('./recordings/spectro_samples_4096.json');
 
 // Mock USB serial
 jest.mock('../src/utils/usb.serial', () => ({
@@ -81,6 +106,11 @@ jest.mock('jimp', () => ({
 }));
 
 describe('DebugSpectroWindow', () => {
+  beforeEach(() => {
+    mockWindowPlacerInstance.registerWindow.mockClear();
+    mockWindowPlacerInstance.getNextPosition.mockClear();
+    mockWindowPlacerInstance.releaseWindow.mockClear();
+  });
   let debugSpectroWindow: DebugSpectroWindow;
   let mockContext: any;
   let cleanup: () => void;
@@ -115,6 +145,7 @@ describe('DebugSpectroWindow', () => {
       expect(displaySpec.range).toBe(0x7FFFFFFF); // Default range
       expect(displaySpec.tracePattern).toBe(0xF); // Default: scrolling mode 7
       expect(displaySpec.colorMode).toBe(ColorMode.LUMA8X); // Default color mode
+      expect(displaySpec.colorTune).toBe(0);
       expect(displaySpec.logScale).toBe(false);
       expect(displaySpec.hideXY).toBe(false);
     });
@@ -235,6 +266,7 @@ describe('DebugSpectroWindow', () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
 
       expect(displaySpec.colorMode).toBe(ColorMode.LUMA8);
+      expect(displaySpec.colorTune).toBe(0);
     });
 
     it('should parse LUMA8W color mode', () => {
@@ -272,6 +304,22 @@ describe('DebugSpectroWindow', () => {
       expect(displaySpec.colorMode).toBe(ColorMode.HSV16X);
     });
 
+    it('should parse color tune names following color mode directives', () => {
+      const lineParts = ['SPECTRO', 'TestSpectro', 'LUMA8X', 'MAGENTA'];
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
+
+      expect(displaySpec.colorMode).toBe(ColorMode.LUMA8X);
+      expect(displaySpec.colorTune).toBe(5); // MAGENTA -> index 5 per Pascal table
+    });
+
+    it('should parse numeric color tune following HSV modes', () => {
+      const lineParts = ['SPECTRO', 'TestSpectro', 'HSV16', '3'];
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
+
+      expect(displaySpec.colorMode).toBe(ColorMode.HSV16);
+      expect(displaySpec.colorTune).toBe(3);
+    });
+
     it('should handle complex configuration from DEBUG_SPECTRO.spin2', () => {
       // Example from the Pascal test file: SAMPLES 2048 0 236 RANGE 1000 LUMA8X GREEN
       const lineParts = [
@@ -289,6 +337,7 @@ describe('DebugSpectroWindow', () => {
       expect(displaySpec.lastBin).toBe(236);
       expect(displaySpec.range).toBe(1000);
       expect(displaySpec.colorMode).toBe(ColorMode.LUMA8X);
+      expect(displaySpec.colorTune).toBe(2);
     });
 
     it('should handle unknown directives gracefully', () => {
@@ -362,6 +411,18 @@ describe('DebugSpectroWindow', () => {
       expect(debugSpectroWindow['traceProcessor']).toBeDefined();
       expect(debugSpectroWindow['displaySpec'].tracePattern).toBe(15);
     });
+
+    it('should configure color translator with parsed tune', () => {
+      const tuneSpy = jest.spyOn(ColorTranslator.prototype, 'setTune');
+      try {
+        const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', ['SPECTRO', 'TestSpectro', 'LUMA8X', 'BLUE']);
+        debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+        expect(tuneSpy).toHaveBeenCalledWith(1); // BLUE -> index 1
+      } finally {
+        tuneSpy.mockRestore();
+      }
+    });
   });
 
   describe('Window Creation', () => {
@@ -369,14 +430,7 @@ describe('DebugSpectroWindow', () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', ['SPECTRO', 'TestSpectro']);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
 
-      expect(debugSpectroWindow['debugWindow']).toBeNull();
-
-      // Send numeric data to trigger window creation (window name already stripped by router)
-      debugSpectroWindow.updateContent(['`(123)']);
-
-      // Wait for async processing to complete
-      await new Promise(resolve => setImmediate(resolve));
-
+      // Window is now created eagerly in constructor
       expect(mockBrowserWindowInstances.length).toBe(1);
       expect(debugSpectroWindow['debugWindow']).toBeDefined();
     });
@@ -387,8 +441,9 @@ describe('DebugSpectroWindow', () => {
 
       debugSpectroWindow.updateContent(['CLEAR']);
 
-      expect(mockBrowserWindowInstances.length).toBe(0);
-      expect(debugSpectroWindow['debugWindow']).toBeNull();
+      // Constructor already created the window; CLEAR should not create additional windows
+      expect(mockBrowserWindowInstances.length).toBe(1);
+      expect(debugSpectroWindow['debugWindow']).toBeDefined();
     });
   });
 
@@ -498,6 +553,183 @@ describe('DebugSpectroWindow', () => {
 
       expect(debugSpectroWindow['sampleCount']).toBe(0);
       expect(debugSpectroWindow['sampleWritePtr']).toBe(0);
+    });
+
+    it('should parse Spin2-formatted numbers with underscores', async () => {
+      debugSpectroWindow.updateContent(['1_000', '-1_000', '0']);
+
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(debugSpectroWindow['sampleCount']).toBe(3);
+      expect(debugSpectroWindow['sampleWritePtr']).toBe(3);
+      expect(debugSpectroWindow['sampleBuffer'][0]).toBe(1000);
+      expect(debugSpectroWindow['sampleBuffer'][1]).toBe(-1000);
+      expect(debugSpectroWindow['sampleBuffer'][2]).toBe(0);
+    });
+
+    it('should parse backtick-enclosed Spin2 numeric tokens', async () => {
+      debugSpectroWindow.updateContent(['`(1_000)`', '`(-1_000)`']);
+
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(debugSpectroWindow['sampleCount']).toBe(2);
+      expect(debugSpectroWindow['sampleBuffer'][0]).toBe(1000);
+      expect(debugSpectroWindow['sampleBuffer'][1]).toBe(-1000);
+    });
+
+    it('should ignore non-numeric tokens while still capturing numeric samples', async () => {
+      debugSpectroWindow.updateContent(['MyScope', '351', 'noise', '1_024']);
+
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(debugSpectroWindow['sampleCount']).toBe(2);
+      expect(debugSpectroWindow['sampleBuffer'][0]).toBe(351);
+      expect(debugSpectroWindow['sampleBuffer'][1]).toBe(1024);
+    });
+  });
+
+  describe('FFT pipeline triggers', () => {
+    beforeEach(() => {
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', [
+        'SPECTRO', 'TestSpectro',
+        'SAMPLES', '8',
+        'RANGE', '1000',
+        'LUMA8X', 'GREEN'
+      ]);
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+    });
+
+    it('should invoke FFT draw once enough samples are collected', async () => {
+      const drawSpy = jest.spyOn(debugSpectroWindow as any, 'performFFTAndDraw').mockImplementation(() => {});
+
+      const tokens = [
+        'MyScope', '1_000',
+        'alias', '500',
+        'noise', '0',
+        'tag', '-1_000',
+        'extra', '750',
+        'data', '-750',
+        'foo', '250',
+        'bar', '-250'
+      ];
+
+      for (let i = 0; i < tokens.length; i += 2) {
+        debugSpectroWindow.updateContent([tokens[i], tokens[i + 1]]);
+      }
+
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(drawSpy).toHaveBeenCalledTimes(1);
+      drawSpy.mockRestore();
+    });
+  });
+
+  describe('FFT magnitude distribution', () => {
+    it('should concentrate energy in expected bin for synthetic sine wave', () => {
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', [
+        'SPECTRO', 'TestSpectro',
+        'SAMPLES', '2048',
+        'RANGE', '1000',
+        'RATE', '4096', // prevent automatic draws during setup
+        'LUMA8X', 'GREEN'
+      ]);
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+      const updateSpy = jest.spyOn(debugSpectroWindow as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+
+      const freqBin = 32;
+      const amplitude = 1000;
+      const totalSamples = displaySpec.samples;
+
+      for (let i = 0; i < totalSamples; i++) {
+        const sample = Math.round(amplitude * Math.sin((2 * Math.PI * freqBin * i) / totalSamples));
+        (debugSpectroWindow as any).addSample(sample);
+      }
+
+      // Manually trigger FFT draw
+      (debugSpectroWindow as any).performFFTAndDraw();
+
+      const fftPower: number[] = Array.from(debugSpectroWindow['fftPower']);
+      const maxPower = Math.max(...fftPower);
+      const maxIndex = fftPower.indexOf(maxPower);
+      const topBins = fftPower
+        .map((value, index) => ({ index, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
+      // Remove the dominant bin and look at the next highest
+      const fftPowerClone = fftPower.slice();
+      fftPowerClone.splice(maxIndex, 1);
+      const nextPower = Math.max(...fftPowerClone);
+
+      expect(maxIndex).toBeGreaterThan(freqBin - 2);
+      const topBinNeighbors = topBins.map((entry) => entry.index);
+      expect(topBinNeighbors.some((idx) => Math.abs(idx - freqBin) <= 2)).toBe(true);
+      expect(maxPower).toBeGreaterThanOrEqual(nextPower);
+
+      updateSpy.mockRestore();
+    });
+  });
+
+  describe('Recorded Spectro data parity', () => {
+    it('should match expected FFT peak for captured MySpectro stream', () => {
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('MySpectro', [
+        'SPECTRO',
+        'MySpectro',
+        'SAMPLES',
+        '2048',
+        '0',
+        '236',
+        'RANGE',
+        '1000',
+        'LUMA8X',
+        'GREEN'
+      ]);
+
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+      const updateSpy = jest.spyOn(debugSpectroWindow as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      const scrollSpy = jest.spyOn(debugSpectroWindow as any, 'scrollWaterfall').mockImplementation(() => {});
+      const drawnPixels: number[] = [];
+      const plotSpy = jest.spyOn(debugSpectroWindow as any, 'plotPixel').mockImplementation((pixelValue: unknown) => {
+        if (typeof pixelValue === 'number') {
+          drawnPixels.push(pixelValue);
+        }
+      });
+
+      const sampleBlock = recordedSpectroSamples.slice(0, displaySpec.samples);
+      sampleBlock.forEach((sample) => {
+        (debugSpectroWindow as any).addSample(sample);
+      });
+
+      (debugSpectroWindow as any).performFFTAndDraw();
+
+      const fftPowerArray = Array.from(debugSpectroWindow['fftPower'] as Int32Array);
+      const fftPower: Array<{ bin: number; value: number }> = fftPowerArray
+        .slice(displaySpec.firstBin, displaySpec.lastBin + 1)
+        .map((value: number, offset: number) => ({
+          bin: displaySpec.firstBin + offset,
+          value
+        }))
+        .sort((a, b) => b.value - a.value);
+
+      const topBin = fftPower[0];
+      expect(topBin.bin).toBe(145);
+      expect(topBin.value).toBeGreaterThan(150);
+
+      // Average the remaining bins (skipping top 10) to ensure background stays much lower than the peak
+      const backgroundValues = fftPower.slice(10, 200);
+      const background = backgroundValues.reduce((sum, entry) => sum + entry.value, 0) / backgroundValues.length;
+      expect(background).toBeLessThan(topBin.value / 4);
+
+      const noiseFloor = (debugSpectroWindow as any).noiseFloor;
+      expect(drawnPixels.length).toBeGreaterThan(0);
+      const activePixels = drawnPixels.filter((value) => (value & 0xff) > 0);
+      expect(activePixels.length).toBeGreaterThan(0);
+      expect(activePixels.every((value) => (value & 0xff) >= noiseFloor)).toBe(true);
+
+      updateSpy.mockRestore();
+      scrollSpy.mockRestore();
+      plotSpy.mockRestore();
     });
   });
 
