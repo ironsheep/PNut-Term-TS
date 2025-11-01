@@ -1387,13 +1387,19 @@ export class DebugFFTWindow extends DebugWindowBase {
       this.drawCombinedSpectrum();
     }
 
-    // Draw labels if enabled (synchronous like Pascal)
+    // Copy offscreen to visible canvas FIRST (Pascal: BitmapToCanvas)
+    await this.copyOffscreenToVisible();
+
+    // Draw channel labels - AFTER copy so they appear on top (Pascal: lines 3358-3375)
+    this.drawChannelLabels();
+
+    // Draw labels if enabled - AFTER copy so they appear on top (synchronous like Pascal)
     if (this.displaySpec.showLabels) {
       this.logMessage('  -> Drawing labels');
       this.drawFrequencyLabels();
     }
 
-    // Draw "logscale" indicator if log scale enabled (Pascal: lines 3350-3356)
+    // Draw "logscale" indicator if log scale enabled - AFTER copy (Pascal: lines 3350-3356)
     if (this.displaySpec.logScale) {
       this.logMessage('  -> Drawing logscale indicator');
       this.drawLogScaleIndicator();
@@ -1401,6 +1407,43 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     // Pascal equivalent: BitmapToCanvas(0) - all drawing complete (line 1711)
     this.logMessage('  -> drawFFT complete');
+  }
+
+  /**
+   * Copy offscreen canvas to visible canvas
+   */
+  private async copyOffscreenToVisible(): Promise<void> {
+    if (!this.debugWindow) return;
+
+    const jsCode = `
+      (function() {
+        const canvas = document.getElementById('${this.canvasId}');
+        if (!canvas) return false;
+
+        const offscreenKey = 'fftOffscreen_${this.canvasId}';
+        const offscreen = window[offscreenKey];
+
+        // Copy offscreen to visible if offscreen exists
+        if (offscreen) {
+          const displayCtx = canvas.getContext('2d');
+          if (displayCtx) {
+            // Disable image smoothing for pixel-perfect display
+            displayCtx.imageSmoothingEnabled = false;
+            displayCtx.webkitImageSmoothingEnabled = false;
+            displayCtx.msImageSmoothingEnabled = false;
+            displayCtx.drawImage(offscreen, 0, 0);
+          }
+        }
+
+        return true;
+      })();
+    `;
+
+    try {
+      await this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to copy offscreen to visible: ${error}`);
+    }
   }
 
   /**
@@ -1412,24 +1455,32 @@ export class DebugFFTWindow extends DebugWindowBase {
     const jsCode = `
       (function() {
         const canvas = document.getElementById('${this.canvasId}');
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
+        if (!canvas) return false;
 
-          // Clear the entire canvas first
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const offscreenKey = 'fftOffscreen_${this.canvasId}';
+        const offscreen = window[offscreenKey];
 
-          // Fill with background color
-          ctx.fillStyle = '${this.displaySpec.window.background}';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Clear offscreen canvas if it exists, otherwise clear visible canvas
+        const targetCanvas = offscreen || canvas;
+        const ctx = targetCanvas.getContext('2d');
 
-          // Redraw the border after clearing
-          const gridColor = '${this.displaySpec.window.grid}';
-          const bgColor = '${this.displaySpec.window.background}';
-          ctx.strokeStyle = (gridColor !== bgColor) ? gridColor : '#808080';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(${this.canvasMargin}, ${this.canvasMargin},
-                       ${this.displayWidth}, ${this.displayHeight});
-        }
+        // Clear the entire canvas first
+        ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+
+        // Fill with background color
+        ctx.fillStyle = '${this.displaySpec.window.background}';
+        ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+
+        // Redraw the border after clearing (Fix #3: Use asymmetric margins, Fix #6: save/restore)
+        ctx.save();
+        const gridColor = '${this.displaySpec.window.grid}';
+        const bgColor = '${this.displaySpec.window.background}';
+        ctx.strokeStyle = (gridColor !== bgColor) ? gridColor : '#808080';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(${this.canvasMarginLeft}, ${this.canvasMarginTop},
+                     ${this.displayWidth}, ${this.displayHeight});
+        ctx.restore();
+
         return true;
       })();
     `;
@@ -1460,13 +1511,15 @@ export class DebugFFTWindow extends DebugWindowBase {
           ctx.fillStyle = '${this.displaySpec.window.background}';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          // Redraw the border after clearing
+          // Redraw the border after clearing (Fix #3: Use asymmetric margins, Fix #6: save/restore)
+          ctx.save();
           const gridColor = '${this.displaySpec.window.grid}';
           const bgColor = '${this.displaySpec.window.background}';
           ctx.strokeStyle = (gridColor !== bgColor) ? gridColor : '#808080';
           ctx.lineWidth = 1;
-          ctx.strokeRect(${this.canvasMargin}, ${this.canvasMargin},
+          ctx.strokeRect(${this.canvasMarginLeft}, ${this.canvasMarginTop},
                        ${this.displayWidth}, ${this.displayHeight});
+          ctx.restore();
         }
       })();
     `;
@@ -1491,6 +1544,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         const canvas = document.getElementById('${this.canvasId}');
         if (canvas) {
           const ctx = canvas.getContext('2d');
+          ctx.save();
           ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
           ctx.lineWidth = 1;
 
@@ -1513,6 +1567,7 @@ export class DebugFFTWindow extends DebugWindowBase {
             ctx.lineTo(canvas.width, y);
             ctx.stroke();
           }
+          ctx.restore();
         }
         return true;
       })();
@@ -1586,14 +1641,14 @@ export class DebugFFTWindow extends DebugWindowBase {
    * @param tall Display height in pixels (Pascal: vTall[j])
    * @param grid Grid positioning (Pascal: vGrid[j])
    */
-  private drawSpectrum(
+  private async drawSpectrum(
     power: Int32Array,
     color: string,
     base: number,
     high: number,
     tall: number,
     grid: number
-  ): void {
+  ): Promise<void> {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1601,6 +1656,14 @@ export class DebugFFTWindow extends DebugWindowBase {
     const firstBin = this.displaySpec.firstBin;
     const lastBin = Math.min(this.displaySpec.lastBin, power.length - 1);
     const numBins = lastBin - firstBin + 1;
+
+    // Fix #7: Guard against empty bin ranges
+    if (numBins <= 0) {
+      if (ENABLE_CONSOLE_LOG) {
+        console.log(`[FFT DRAW] Invalid bin range: firstBin=${firstBin}, lastBin=${lastBin}, numBins=${numBins}`);
+      }
+      return;  // Early exit
+    }
 
     // Prepare power data with log scale if needed
     // Pascal formula (line 1699): v := Round(Log2(Int64(v) + 1) / Log2(Int64(vHigh[j]) + 1) * vHigh[j])
@@ -1637,15 +1700,17 @@ export class DebugFFTWindow extends DebugWindowBase {
     let drawCommands = '';
 
     // DIAGNOSTIC: Log drawing parameters
-    console.log(`[FFT DRAW] lineSize=${this.displaySpec.lineSize}, dotSize=${this.displaySpec.dotSize}`);
-    console.log(`[FFT DRAW] Channel: high=${high}, tall=${tall}, base=${base}`);
-    console.log(`[FFT DRAW] Power data: ${powerData.length} bins, firstBin=${this.displaySpec.firstBin}, lastBin=${this.displaySpec.lastBin}`);
+    if (ENABLE_CONSOLE_LOG) {
+      console.log(`[FFT DRAW] lineSize=${this.displaySpec.lineSize}, dotSize=${this.displaySpec.dotSize}`);
+      console.log(`[FFT DRAW] Channel: high=${high}, tall=${tall}, base=${base}`);
+      console.log(`[FFT DRAW] Power data: ${powerData.length} bins, firstBin=${this.displaySpec.firstBin}, lastBin=${this.displaySpec.lastBin}`);
 
-    // Show power spectrum summary
-    const maxPower = Math.max(...powerData);
-    const maxBin = powerData.indexOf(maxPower);
-    console.log(`[FFT DRAW] Max power=${maxPower.toFixed(0)} at bin ${maxBin}`);
-    console.log(`[FFT DRAW] First 10 bins: ${powerData.slice(0, 10).map(v => v.toFixed(0)).join(', ')}`);
+      // Show power spectrum summary
+      const maxPower = Math.max(...powerData);
+      const maxBin = powerData.indexOf(maxPower);
+      console.log(`[FFT DRAW] Max power=${maxPower.toFixed(0)} at bin ${maxBin}`);
+      console.log(`[FFT DRAW] First 10 bins: ${powerData.slice(0, 10).map(v => v.toFixed(0)).join(', ')}`);
+    }
 
     if (this.displaySpec.lineSize >= 0) {
       // Line/Dot mode (lineSize >= 0)
@@ -1696,18 +1761,20 @@ export class DebugFFTWindow extends DebugWindowBase {
     // grid is a bitmask: bit 1 = baseline, bit 2 = top, bit 4 = baseline label, bit 8 = top label
     let gridCommands = '';
     if (grid !== 0) {
-      const displayLeft = this.canvasMargin;
-      const displayTop = this.canvasMargin;
+      const displayLeft = this.canvasMarginLeft;
+      const displayTop = this.canvasMarginTop;
       const displayWidth = this.displayWidth;
       const displayHeight = this.displayHeight;
       const scaledHeight = tall > 0 ? tall - 1 : 0;
-      const baseY = displayTop + displayHeight - base;
+      const baseY = displayTop + displayHeight - 1 - base; // Fix: -1 to match spectrum baseline
 
-      // Use semi-transparent channel color for grid lines (Pascal: AlphaBlend with $40)
-      const gridColor = color; // Could add alpha blending here if needed
+      // Use semi-transparent channel color for grid lines (Pascal: AlphaBlend with $40 = 25% opacity)
+      // Convert color to rgba with 0.25 alpha
+      const gridColor = this.colorToRgba(color, 0.25);
 
       gridCommands = `
         ctx.strokeStyle = '${gridColor}';
+        ctx.fillStyle = '${gridColor}';
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]); // Dotted line (Pascal: psDot)
       `;
@@ -1733,9 +1800,9 @@ export class DebugFFTWindow extends DebugWindowBase {
         `;
       }
 
-      // Bit 4: Power label at baseline
+      // Bit 4: Power label at baseline (shows 0, the minimum)
       if ((grid & 4) !== 0) {
-        const labelText = high >= 0 ? `+${high}` : `${high}`;
+        const labelText = '+0';
         gridCommands += `
           ctx.fillStyle = '${gridColor}';
           ctx.font = '${this.displaySpec.textSize}px monospace';
@@ -1745,7 +1812,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         `;
       }
 
-      // Bit 8: Power label at top
+      // Bit 8: Power label at top (shows high, the maximum)
       if ((grid & 8) !== 0) {
         const topY = baseY - scaledHeight;
         const labelText = high >= 0 ? `+${high}` : `${high}`;
@@ -1761,21 +1828,36 @@ export class DebugFFTWindow extends DebugWindowBase {
       gridCommands += `ctx.setLineDash([]); // Reset to solid line`;
     }
 
-    // Execute drawing commands
+    // Execute drawing commands (Fix #10: Use offscreen canvas for double buffering with fallback)
+    // NOTE: clearAndCopy parameter controls whether to clear/copy or just accumulate drawing
     const jsCode = `
       (function() {
         const canvas = document.getElementById('${this.canvasId}');
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          ${drawCommands}
-          ${gridCommands}
+        if (!canvas) return false;
+
+        const offscreenKey = 'fftOffscreen_${this.canvasId}';
+        const offscreen = window[offscreenKey];
+
+        // Draw to offscreen if available, otherwise draw directly to visible canvas
+        const targetCanvas = offscreen || canvas;
+        const ctx = targetCanvas.getContext('2d');
+
+        // Ensure anti-aliasing is enabled for smooth line rendering
+        if (ctx.imageSmoothingEnabled !== undefined) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
         }
+
+        // Draw spectrum (background/border already cleared in clearOffscreenCanvas)
+        ${drawCommands}
+        ${gridCommands}
+
         return true;
       })();
     `;
 
     try {
-      this.debugWindow.webContents.executeJavaScript(jsCode);
+      await this.debugWindow.webContents.executeJavaScript(jsCode); // Fix #9: Await completion
     } catch (error) {
       this.logMessage(`Failed to draw spectrum: ${error}`);
     }
@@ -1800,19 +1882,22 @@ export class DebugFFTWindow extends DebugWindowBase {
   ): string {
     const numBins = powerData.length;
 
-    // Account for margins - draw within the display area
-    const displayLeft = this.canvasMargin;
-    const displayTop = this.canvasMargin;
+    // Account for margins - draw within the display area (Fix #3: Use asymmetric margins)
+    const displayLeft = this.canvasMarginLeft;
+    const displayTop = this.canvasMarginTop;
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
     const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
-    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
+    const baseY = displayTop + displayHeight - 1 - base; // Top-down coordinates (Fix #4: -1 for 0-indexed)
 
     let commands = `
+      ctx.save();
       ctx.strokeStyle = '${color}';
-      ctx.lineWidth = ${lineWidth};
+      ctx.lineWidth = ${lineWidth / 2};  // Fix: Pascal uses radius, Canvas uses diameter
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       ctx.beginPath();
     `;
 
@@ -1822,16 +1907,20 @@ export class DebugFFTWindow extends DebugWindowBase {
       console.log(`[FFT DRAW COORDS] displayLeft=${displayLeft}, displayWidth=${displayWidth}`);
     }
 
+    // Store coordinates for later dot drawing (Fix #2: prevents path-breaking bug)
+    const coordinates: Array<{x: number, y: number}> = [];
+
+    // Build line path WITHOUT interruption
     for (let i = 0; i < numBins; i++) {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Pascal: x := vMarginLeft shl 8 + Trunc((k - FFTfirst) / (FFTlast - FFTfirst) * (vWidth - 1) * $100);
       // This linearly interpolates from left margin to right edge of display area
       // Guard against division by zero when displaying single bin (numBins === 1)
       const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
-      const x = displayLeft + xScale * displayWidth;
+      const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
-      const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
+      const y = baseY - normalizedPower * scaledHeight + 0.5; // Fix: +0.5 for optimal anti-aliasing
 
       // DIAGNOSTIC: Log first few coordinate calculations
       if (ENABLE_CONSOLE_LOG && i < 5) {
@@ -1844,10 +1933,18 @@ export class DebugFFTWindow extends DebugWindowBase {
         commands += `ctx.lineTo(${x}, ${y});\n`;
       }
 
-      // Pascal DrawLineDot: if vDotSize > 0, draw dot at every vertex
-      if (dotSize > 0) {
+      // Store coordinates for dot drawing
+      coordinates.push({x, y});
+    }
+
+    // Stroke the complete line FIRST
+    commands += `ctx.stroke();\n`;
+
+    // NOW draw dots on top (if enabled) - Fix #2: Draw AFTER line is complete
+    if (dotSize > 0) {
+      commands += `ctx.fillStyle = '${color}';\n`;
+      for (const {x, y} of coordinates) {
         commands += `
-          ctx.fillStyle = '${color}';
           ctx.beginPath();
           ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
           ctx.fill();
@@ -1855,7 +1952,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       }
     }
 
-    commands += `ctx.stroke();\n`;
+    commands += `ctx.restore();`;
     return commands;
   }
 
@@ -1883,22 +1980,23 @@ export class DebugFFTWindow extends DebugWindowBase {
   ): string {
     const numBins = powerData.length;
 
-    // Account for margins - draw within the display area
-    const displayLeft = this.canvasMargin;
-    const displayTop = this.canvasMargin;
+    // Account for margins - draw within the display area (Fix #3: Use asymmetric margins)
+    const displayLeft = this.canvasMarginLeft;
+    const displayTop = this.canvasMarginTop;
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
     const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
-    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
+    const baseY = displayTop + displayHeight - 1 - base; // Top-down coordinates (Fix #4: -1 for 0-indexed)
 
     let commands = '';
 
     // Draw vertical bars
     commands += `
+      ctx.save();
       ctx.strokeStyle = '${color}';
-      ctx.lineWidth = ${barWidth};
+      ctx.lineWidth = ${barWidth / 2};  // Fix: Pascal uses radius, Canvas uses diameter
       ctx.lineCap = 'butt';
     `;
 
@@ -1906,10 +2004,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Guard against division by zero when displaying single bin (numBins === 1)
       const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
-      const x = displayLeft + xScale * displayWidth;
+      const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
-      const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
+      const y = baseY - normalizedPower * scaledHeight + 0.5; // Fix: +0.5 for optimal anti-aliasing
 
       // Draw vertical line from baseline to value
       commands += `
@@ -1930,6 +2028,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       }
     }
 
+    commands += `ctx.restore();`;
     return commands;
   }
 
@@ -1951,17 +2050,18 @@ export class DebugFFTWindow extends DebugWindowBase {
   ): string {
     const numBins = powerData.length;
 
-    // Account for margins - draw within the display area
-    const displayLeft = this.canvasMargin;
-    const displayTop = this.canvasMargin;
+    // Account for margins - draw within the display area (Fix #3: Use asymmetric margins)
+    const displayLeft = this.canvasMarginLeft;
+    const displayTop = this.canvasMarginTop;
     const displayWidth = this.displayWidth;
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
     const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
-    const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
+    const baseY = displayTop + displayHeight - 1 - base; // Top-down coordinates (Fix #4: -1 for 0-indexed)
 
     let commands = `
+      ctx.save();
       ctx.fillStyle = '${color}';
     `;
 
@@ -1969,10 +2069,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Guard against division by zero when displaying single bin (numBins === 1)
       const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
-      const x = displayLeft + xScale * displayWidth;
+      const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
-      const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
+      const y = baseY - normalizedPower * scaledHeight + 0.5; // Fix: +0.5 for optimal anti-aliasing
 
       // Draw dot as small circle
       commands += `
@@ -1982,6 +2082,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       `;
     }
 
+    commands += `ctx.restore();`;
     return commands;
   }
 
@@ -2144,10 +2245,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     if (!this.debugWindow) return;
 
     const displayWidth = this.displayWidth;
-    const chrWidth = this.displaySpec.textSize * 0.6; // Approximate character width
-    const textLength = 'logscale'.length;
-    const x = this.canvasMargin + displayWidth - textLength * chrWidth;
-    const y = this.canvasMargin + this.displaySpec.textSize / 2;
+    // Position at right edge, centered vertically in the area ABOVE the rectangle
+    const x = this.canvasMarginLeft + displayWidth;
+    const y = this.canvasMarginTop / 2; // Center vertically in top margin area
 
     const jsCode = `
       (function() {
@@ -2157,8 +2257,8 @@ export class DebugFFTWindow extends DebugWindowBase {
           ctx.fillStyle = '${this.displaySpec.window.grid}';
           ctx.font = '${this.displaySpec.textSize}px monospace';
           ctx.textAlign = 'right';
-          ctx.textBaseline = 'top';
-          ctx.fillText('logscale', ${x + textLength * chrWidth}, ${y});
+          ctx.textBaseline = 'middle';
+          ctx.fillText('logscale', ${x}, ${y});
         }
         return true;
       })();
@@ -2168,6 +2268,54 @@ export class DebugFFTWindow extends DebugWindowBase {
       this.debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw logscale indicator: ${error}`);
+    }
+  }
+
+  /**
+   * Draw channel labels at top of window
+   * Pascal: lines 3358-3375 - draws channel names with bold+italic font
+   */
+  private drawChannelLabels(): void {
+    if (!this.debugWindow || this.channels.length === 0) return;
+
+    const chrHeight = this.displaySpec.textSize;
+    const chrWidth = chrHeight * 0.6;
+    let x = this.canvasMarginLeft;
+    const y = chrHeight / 2; // Vertically centered on first character height
+
+    const jsCode = `
+      (function() {
+        const canvas = document.getElementById('${this.canvasId}');
+        if (!canvas) return false;
+
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.font = 'bold italic ${this.displaySpec.textSize}px monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+
+        ${this.channels
+          .map((channel, i) => {
+            if (!channel.label) return '';
+            const labelWidth = channel.label.length * chrWidth;
+            const code = `
+          ctx.fillStyle = '${channel.color}';
+          ctx.fillText('${channel.label}', ${x}, ${y});
+        `;
+            x += labelWidth + chrWidth * 2; // Space between labels
+            return code;
+          })
+          .join('')}
+
+        ctx.restore();
+        return true;
+      })();
+    `;
+
+    try {
+      this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw channel labels: ${error}`);
     }
   }
 
@@ -2269,18 +2417,20 @@ export class DebugFFTWindow extends DebugWindowBase {
     const charHeight = Math.round(this.displaySpec.textSize * 1.333);
     const charWidth = Math.round(charHeight * 0.6);
 
-    // Pascal FFT uses non-uniform margins: ChrWidth on sides/bottom, ChrHeight*2 on top
+    // Pascal FFT uses non-uniform margins: ChrWidth on sides, ChrHeight*2 on top
+    // Bottom margin increased to charHeight to accommodate frequency labels (3 labels at bottom)
     const marginLeft = charWidth;
     const marginTop = charHeight * 2;
     const marginRight = charWidth;
-    const marginBottom = charWidth;
+    const marginBottom = charHeight; // Increased from charWidth for frequency labels
 
     // Display area is what was specified in SIZE
     this.displayWidth = this.displaySpec.size.width;
     this.displayHeight = this.displaySpec.size.height;
 
-    // Store uniform margin for border drawing (use side margins since they're equal)
-    this.canvasMargin = marginLeft;
+    // Store asymmetric margins separately (Fix #3)
+    this.canvasMarginLeft = marginLeft;    // charWidth
+    this.canvasMarginTop = marginTop;      // charHeight * 2
 
     // Canvas size includes asymmetric margins
     this.canvasWidth = marginLeft + this.displayWidth + marginRight;
@@ -2423,11 +2573,15 @@ export class DebugFFTWindow extends DebugWindowBase {
             ctx.strokeStyle = (gridColor !== bgColor) ? gridColor : '#808080';  // Use gray if grid==background
             ctx.lineWidth = 1;
 
-            // Draw border - this creates the graticule frame
-            ctx.strokeRect(${this.canvasMargin}, ${this.canvasMargin},
+            // Draw border - this creates the graticule frame (Fix #3: Use asymmetric margins)
+            ctx.strokeRect(${this.canvasMarginLeft}, ${this.canvasMarginTop},
                          ${this.displayWidth}, ${this.displayHeight});
 
-            console.log('FFT canvas initialized');
+            // Create offscreen canvas immediately for double buffering (Fix #10)
+            const offscreenKey = 'fftOffscreen_${this.canvasId}';
+            window[offscreenKey] = document.createElement('canvas');
+            window[offscreenKey].width = ${this.canvasWidth};
+            window[offscreenKey].height = ${this.canvasHeight};
           </script>
         </body>
       </html>
@@ -2472,9 +2626,26 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.canvasId = 'fft-canvas';
   }
 
+  /**
+   * Convert a hex color to rgba with specified alpha
+   * Helper for AlphaBlend (Pascal: line 3285)
+   */
+  private colorToRgba(hexColor: string, alpha: number): string {
+    // Remove # if present
+    const hex = hexColor.replace('#', '');
+
+    // Parse hex to RGB
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   // Add private properties for canvas management
   private canvasId: string = '';
-  private canvasMargin: number = 10;
+  private canvasMarginLeft: number = 10;
+  private canvasMarginTop: number = 20;
   private canvasWidth: number = 400;
   private canvasHeight: number = 300;
   private displayWidth: number = 380;
