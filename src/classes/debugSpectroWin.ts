@@ -142,6 +142,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
   // Rate control
   private rateCounter = 0; // vRateCount in Pascal
 
+  // FFT operation guard (prevents overlapping FFT operations)
+  private isPerformingFFT = false;
+
   // FFT properties
   private fftExp = 0; // FFTexp
   private fftSize = 0; // vSamples
@@ -265,24 +268,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
     return Math.max(2, Math.min(254, floor));
   }
 
-  /**
-   * Emulate Pascal's banker rounding (ties to even).
-   */
-  private bankersRound(value: number): number {
-    const floor = Math.floor(value);
-    const diff = value - floor;
-    const EPSILON = 1e-9;
-
-    if (Math.abs(diff - 0.5) < EPSILON) {
-      return floor % 2 === 0 ? floor : floor + 1;
-    }
-
-    if (Math.abs(diff + 0.5) < EPSILON) {
-      return floor % 2 === 0 ? floor : floor - 1;
-    }
-
-    return Math.round(value);
-  }
 
   /**
    * Attempt to parse a color tune token (named color or numeric value)
@@ -709,7 +694,17 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Check if we should perform FFT
     // Pascal: if RateCycle then SPECTRO_Draw
     if (this.rateCycle()) {
-      this.performFFTAndDraw();
+      // Fire and forget - but guard against overlapping operations
+      if (!this.isPerformingFFT) {
+        this.isPerformingFFT = true;
+        this.performFFTAndDraw()
+          .catch((error) => {
+            this.logMessage(`FFT operation failed: ${error}`);
+          })
+          .finally(() => {
+            this.isPerformingFFT = false;
+          });
+      }
     }
   }
 
@@ -734,7 +729,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
    * Perform FFT and draw results to waterfall
    * Pascal: SPECTRO_Draw procedure
    */
-  private performFFTAndDraw(): void {
+  private async performFFTAndDraw(): Promise<void> {
     // Copy samples from circular buffer to FFT input
     // Pascal: for x := 0 to vSamples - 1 do FFTsamp[x] := SPECTRO_SampleBuff[(SamplePtr - vSamples + x) and SPECTRO_PtrMask]
     for (let x = 0; x < this.fftSize; x++) {
@@ -764,8 +759,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
         v = Math.round((Math.log2(v + 1) / Math.log2(this.displaySpec.range + 1)) * this.displaySpec.range);
       }
 
-      // Scale to 0-255 using banker rounding (matches Pascal behaviour)
-      let magnitudePixel = this.bankersRound(v * fScale);
+      // Scale to 0-255 using arithmetic rounding (matches Pascal's Round function)
+      let magnitudePixel = Math.round(v * fScale);
       if (magnitudePixel > 0xff) magnitudePixel = 0xff;
 
       let pixelValue = magnitudePixel;
@@ -775,12 +770,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
         pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
       }
 
-      this.plotPixel(pixelValue);
+      await this.plotPixel(pixelValue);
 
       // Capture bitmap just before last pixel triggers scroll
       // Pascal: if x = FFTlast then BitmapToCanvas(0)
       if (x === this.displaySpec.lastBin) {
-        this.updateWaterfallDisplay();
+        await this.updateWaterfallDisplay();
       }
 
       // Step trace to next position (triggers scroll if at edge)
@@ -805,7 +800,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
    *
    * @param colorValue Pixel color value (0-255 for LUMA modes, or packed HSV16 value)
    */
-  private plotPixel(colorValue: number): void {
+  private async plotPixel(colorValue: number): Promise<void> {
     if (!this.debugWindow) return;
 
     // Translate color value using color translator
@@ -832,9 +827,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(plotCode).catch((error) => {
+    try {
+      await this.debugWindow.webContents.executeJavaScript(plotCode);
+    } catch (error) {
       this.logMessage(`Failed to plot pixel: ${error}`);
-    });
+    }
   }
 
   /**
@@ -911,7 +908,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
    * Update the waterfall display (copy offscreen to visible canvas)
    * Pascal: BitmapToCanvas(0)
    */
-  private updateWaterfallDisplay(): void {
+  private async updateWaterfallDisplay(): Promise<void> {
     if (!this.debugWindow) return;
 
     const updateCode = `
@@ -936,9 +933,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(updateCode).catch((error) => {
+    try {
+      await this.debugWindow.webContents.executeJavaScript(updateCode);
+    } catch (error) {
       this.logMessage(`Failed to update display: ${error}`);
-    });
+    }
   }
 
   /**
