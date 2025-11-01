@@ -742,6 +742,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       this.fftInput[x] = this.sampleBuffer[bufferIndex];
     }
 
+    // DEBUG: Log first few input samples
+    if (ENABLE_CONSOLE_LOG) {
+      console.log('[SPECTRO DEBUG] First 8 input samples:', this.fftInput.slice(0, 8));
+    }
+
     // Perform FFT - pass only the relevant portion of the input array
     // Pascal: PerformFFT
     const fftInputSlice = this.fftInput.slice(0, this.fftSize);
@@ -749,12 +754,23 @@ export class DebugSpectroWindow extends DebugWindowBase {
     this.fftPower = result.power;
     this.fftAngle = result.angle;
 
+    // DEBUG: Log FFT power output
+    if (ENABLE_CONSOLE_LOG) {
+      const maxPower = Math.max(...this.fftPower);
+      const maxBin = this.fftPower.indexOf(maxPower);
+      console.log(`[SPECTRO DEBUG] FFT complete - Peak: bin ${maxBin}, power ${maxPower}`);
+      console.log('[SPECTRO DEBUG] Bins 0-10 power:', Array.from(this.fftPower.slice(0, 11)));
+      console.log(`[SPECTRO DEBUG] Display spec: range=${this.displaySpec.range}, magnitude=${this.displaySpec.magnitude}, logScale=${this.displaySpec.logScale}`);
+    }
+
     // Calculate scaling factor
     // Pascal: fScale := 255 / vRange
     const fScale = 255 / this.displaySpec.range;
 
     // Plot FFT bins as pixels
     // Pascal: for x := FFTfirst to FFTlast do
+    let zeroedCount = 0;
+    let nonZeroCount = 0;
     for (let x = this.displaySpec.firstBin; x <= this.displaySpec.lastBin; x++) {
       let v = this.fftPower[x];
 
@@ -769,10 +785,20 @@ export class DebugSpectroWindow extends DebugWindowBase {
       if (magnitudePixel > 0xff) magnitudePixel = 0xff;
 
       let pixelValue = magnitudePixel;
+      const beforeNoise = pixelValue;
       if (pixelValue < this.noiseFloor) {
         pixelValue = 0;
-      } else if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
-        pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
+        zeroedCount++;
+      } else {
+        nonZeroCount++;
+        if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
+          pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
+        }
+      }
+
+      // DEBUG: Log first few bin conversions
+      if (ENABLE_CONSOLE_LOG && x <= 10) {
+        console.log(`[SPECTRO DEBUG] Bin ${x}: power=${this.fftPower[x]} -> pixel=${beforeNoise} (noise floor=${this.noiseFloor}) -> final=${pixelValue}`);
       }
 
       this.plotPixel(pixelValue);
@@ -786,6 +812,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
       // Step trace to next position (triggers scroll if at edge)
       // Pascal: StepTrace
       this.traceProcessor.step();
+    }
+
+    // DEBUG: Log summary
+    if (ENABLE_CONSOLE_LOG) {
+      const totalBins = this.displaySpec.lastBin - this.displaySpec.firstBin + 1;
+      console.log(`[SPECTRO DEBUG] Noise floor suppression: ${zeroedCount}/${totalBins} bins zeroed, ${nonZeroCount} bins visible`);
     }
   }
 

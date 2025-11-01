@@ -195,16 +195,16 @@ export class FFTProcessor {
   /**
    * Bit reversal function matching Pascal's Rev32
    * Uses Rev4 lookup table for 4-bit chunks
-   * 
+   *
    * @param i Input integer to reverse
-   * @returns Bit-reversed value as 32-bit integer
+   * @returns Bit-reversed value as unsigned 32-bit integer
    */
   private rev32(i: number): number {
-    return (
+    return ((
       (FFTProcessor.REV4[(i >> 0) & 0xF] << 28) |
       (FFTProcessor.REV4[(i >> 4) & 0xF] << 24) |
       (FFTProcessor.REV4[(i >> 8) & 0xF] << 20)
-    ) & 0xFFF00000;
+    ) & 0xFFF00000) >>> 0; // Force unsigned interpretation
   }
   
   /**

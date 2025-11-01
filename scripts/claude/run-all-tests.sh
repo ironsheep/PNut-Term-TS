@@ -21,6 +21,7 @@ TEST_FILES=(
 "debugFftDataManagement.test.ts"
 "debugFftRendering.test.ts"
 "debugFftWin.test.ts"
+"hanningWindow.test.ts"
 "debugLogicWin.test.ts"
 "debugMidiWin.integration.test.ts"
 "debugMidiWin.test.ts"
