@@ -817,12 +817,14 @@ export class DebugFFTWindow extends DebugWindowBase {
             if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
               // Two parameters: firstBin and lastBin
               const secondParam = Number(lineParts[++index]);
-              spec.firstBin = Math.max(0, firstParam);
-              spec.lastBin = Math.min(secondParam, spec.samples / 2 - 1);
+              const first = Math.max(0, Math.min(firstParam, spec.samples / 2 - 2));
+              const last = Math.max(first + 1, Math.min(secondParam, spec.samples / 2 - 1));
+              spec.firstBin = first;
+              spec.lastBin = last;
             } else {
               // One parameter: just lastBin
               spec.firstBin = 0;
-              spec.lastBin = Math.min(firstParam, spec.samples / 2 - 1);
+              spec.lastBin = Math.max(1, Math.min(firstParam, spec.samples / 2 - 1));
             }
           }
           // Silent clamping to valid range (matches Pascal behavior)
@@ -1367,28 +1369,34 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.logMessage('  -> Clearing canvas');
     await this.clearCanvasAsync();
 
-    // Draw grid if enabled (wait for completion to match Pascal's synchronous behavior)
+    // Draw grid if enabled (synchronous like Pascal)
     if (this.displaySpec.grid) {
       this.logMessage('  -> Drawing grid');
-      await this.drawFrequencyGrid();
+      this.drawFrequencyGrid();
     }
 
-    // Draw FFT spectrum based on mode (wait for completion to match Pascal's synchronous behavior)
+    // Draw FFT spectrum based on mode (synchronous like Pascal)
     if (this.channels.length > 0) {
       this.logMessage(`  -> Drawing ${this.channels.length} channel spectrums`);
       // Draw individual channels (in reverse order for proper overlay)
       // Pascal: for j := vIndex - 1 downto 0 (line 1688)
-      await this.drawChannelSpectrums();
+      this.drawChannelSpectrums();
     } else {
       this.logMessage('  -> Drawing combined spectrum');
       // Draw combined spectrum
-      await this.drawCombinedSpectrum();
+      this.drawCombinedSpectrum();
     }
 
-    // Draw labels if enabled (wait for completion to match Pascal's synchronous behavior)
+    // Draw labels if enabled (synchronous like Pascal)
     if (this.displaySpec.showLabels) {
       this.logMessage('  -> Drawing labels');
-      await this.drawFrequencyLabels();
+      this.drawFrequencyLabels();
+    }
+
+    // Draw "logscale" indicator if log scale enabled (Pascal: lines 3350-3356)
+    if (this.displaySpec.logScale) {
+      this.logMessage('  -> Drawing logscale indicator');
+      this.drawLogScaleIndicator();
     }
 
     // Pascal equivalent: BitmapToCanvas(0) - all drawing complete (line 1711)
@@ -1471,7 +1479,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw frequency grid lines
    */
-  private async drawFrequencyGrid(): Promise<void> {
+  private drawFrequencyGrid(): void {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1511,7 +1519,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw grid: ${error}`);
     }
@@ -1520,31 +1528,42 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw the combined FFT spectrum (when no channels configured)
    */
-  private async drawCombinedSpectrum(): Promise<void> {
+  private drawCombinedSpectrum(): void {
     if (!this.fftPower || !this.debugWindow) return;
 
     const power = this.fftPower;
     const color = this.displaySpec.spectrumColor || '#00FF00';
-    const defaultHigh = 0x7fffffff; // Pascal default (line 1610)
 
-    await this.drawSpectrum(power, color, 0, defaultHigh, 100, 0);
+    // Pascal requires channel config with appropriate 'high' value.
+    // Since combined mode has no channel config, calculate appropriate high from data
+    // to mimic what user would configure (prevents 0x7FFFFFFF causing flat display)
+    let maxPower = 0;
+    for (let i = 0; i < power.length; i++) {
+      if (power[i] > maxPower) maxPower = power[i];
+    }
+    const high = Math.max(maxPower, 100); // Use max with floor to prevent division issues
+
+    // Pascal default: tall = vHeight (line 1611)
+    const tall = this.displayHeight;
+    const base = 0; // Pascal default (line 1612)
+
+    this.drawSpectrum(power, color, base, high, tall, 0);
   }
 
   /**
    * Draw individual channel spectrums
    * Pascal: draws in reverse order (vIndex - 1 downto 0) so last channel is on top
    */
-  private async drawChannelSpectrums(): Promise<void> {
+  private drawChannelSpectrums(): void {
     if (!this.debugWindow) return;
 
     // Draw in reverse order so last channel is on top (Pascal: line 1688)
-    // Must draw sequentially to maintain overlay order
     for (let i = this.channels.length - 1; i >= 0; i--) {
       if (i < this.channelFFTResults.length && this.channelFFTResults[i]) {
         const channel = this.channels[i];
         const { power } = this.channelFFTResults[i];
 
-        await this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
+        this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
       }
     }
   }
@@ -1567,14 +1586,14 @@ export class DebugFFTWindow extends DebugWindowBase {
    * @param tall Display height in pixels (Pascal: vTall[j])
    * @param grid Grid positioning (Pascal: vGrid[j])
    */
-  private async drawSpectrum(
+  private drawSpectrum(
     power: Int32Array,
     color: string,
     base: number,
     high: number,
     tall: number,
     grid: number
-  ): Promise<void> {
+  ): void {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -1641,7 +1660,8 @@ export class DebugFFTWindow extends DebugWindowBase {
           base,
           tall,
           color,
-          this.displaySpec.lineSize
+          this.displaySpec.lineSize,
+          this.displaySpec.dotSize
         );
       } else if (this.displaySpec.dotSize > 0) {
         // Dot only mode (lineSize = 0, dotSize > 0)
@@ -1672,6 +1692,75 @@ export class DebugFFTWindow extends DebugWindowBase {
       );
     }
 
+    // Draw per-channel grid lines and labels (Pascal: lines 3283-3327)
+    // grid is a bitmask: bit 1 = baseline, bit 2 = top, bit 4 = baseline label, bit 8 = top label
+    let gridCommands = '';
+    if (grid !== 0) {
+      const displayLeft = this.canvasMargin;
+      const displayTop = this.canvasMargin;
+      const displayWidth = this.displayWidth;
+      const displayHeight = this.displayHeight;
+      const scaledHeight = tall > 0 ? tall - 1 : 0;
+      const baseY = displayTop + displayHeight - base;
+
+      // Use semi-transparent channel color for grid lines (Pascal: AlphaBlend with $40)
+      const gridColor = color; // Could add alpha blending here if needed
+
+      gridCommands = `
+        ctx.strokeStyle = '${gridColor}';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]); // Dotted line (Pascal: psDot)
+      `;
+
+      // Bit 1: Horizontal line at baseline
+      if ((grid & 1) !== 0) {
+        gridCommands += `
+          ctx.beginPath();
+          ctx.moveTo(${displayLeft}, ${baseY});
+          ctx.lineTo(${displayLeft + displayWidth}, ${baseY});
+          ctx.stroke();
+        `;
+      }
+
+      // Bit 2: Horizontal line at top
+      if ((grid & 2) !== 0) {
+        const topY = baseY - scaledHeight;
+        gridCommands += `
+          ctx.beginPath();
+          ctx.moveTo(${displayLeft}, ${topY});
+          ctx.lineTo(${displayLeft + displayWidth}, ${topY});
+          ctx.stroke();
+        `;
+      }
+
+      // Bit 4: Power label at baseline
+      if ((grid & 4) !== 0) {
+        const labelText = high >= 0 ? `+${high}` : `${high}`;
+        gridCommands += `
+          ctx.fillStyle = '${gridColor}';
+          ctx.font = '${this.displaySpec.textSize}px monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('${labelText}', ${displayLeft + 5}, ${baseY});
+        `;
+      }
+
+      // Bit 8: Power label at top
+      if ((grid & 8) !== 0) {
+        const topY = baseY - scaledHeight;
+        const labelText = high >= 0 ? `+${high}` : `${high}`;
+        gridCommands += `
+          ctx.fillStyle = '${gridColor}';
+          ctx.font = '${this.displaySpec.textSize}px monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('${labelText}', ${displayLeft + 5}, ${topY});
+        `;
+      }
+
+      gridCommands += `ctx.setLineDash([]); // Reset to solid line`;
+    }
+
     // Execute drawing commands
     const jsCode = `
       (function() {
@@ -1679,13 +1768,14 @@ export class DebugFFTWindow extends DebugWindowBase {
         if (canvas) {
           const ctx = canvas.getContext('2d');
           ${drawCommands}
+          ${gridCommands}
         }
         return true;
       })();
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw spectrum: ${error}`);
     }
@@ -1705,7 +1795,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     base: number,
     tall: number,
     color: string,
-    lineWidth: number
+    lineWidth: number,
+    dotSize: number = 0
   ): string {
     const numBins = powerData.length;
 
@@ -1716,7 +1807,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
-    const scaledHeight = tall; // Use pixels directly
+    const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
     const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = `
@@ -1735,7 +1826,9 @@ export class DebugFFTWindow extends DebugWindowBase {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Pascal: x := vMarginLeft shl 8 + Trunc((k - FFTfirst) / (FFTlast - FFTfirst) * (vWidth - 1) * $100);
       // This linearly interpolates from left margin to right edge of display area
-      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
+      // Guard against division by zero when displaying single bin (numBins === 1)
+      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const x = displayLeft + xScale * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
@@ -1749,6 +1842,16 @@ export class DebugFFTWindow extends DebugWindowBase {
         commands += `ctx.moveTo(${x}, ${y});\n`;
       } else {
         commands += `ctx.lineTo(${x}, ${y});\n`;
+      }
+
+      // Pascal DrawLineDot: if vDotSize > 0, draw dot at every vertex
+      if (dotSize > 0) {
+        commands += `
+          ctx.fillStyle = '${color}';
+          ctx.beginPath();
+          ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
+          ctx.fill();
+        `;
       }
     }
 
@@ -1787,7 +1890,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
-    const scaledHeight = tall; // Use pixels directly
+    const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
     const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = '';
@@ -1801,7 +1904,9 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     for (let i = 0; i < numBins; i++) {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
-      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
+      // Guard against division by zero when displaying single bin (numBins === 1)
+      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const x = displayLeft + xScale * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
@@ -1853,7 +1958,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayHeight = this.displayHeight;
 
     // tall and base are already in PIXELS from Pascal channel config, not percentages
-    const scaledHeight = tall; // Use pixels directly
+    const scaledHeight = tall > 0 ? tall - 1 : 0; // Pascal: fScale uses (vTall[j] - 1)
     const baseY = displayTop + displayHeight - base; // Top-down coordinates (pixels)
 
     let commands = `
@@ -1862,7 +1967,9 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     for (let i = 0; i < numBins; i++) {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
-      const x = displayLeft + (i / (numBins - 1)) * displayWidth;
+      // Guard against division by zero when displaying single bin (numBins === 1)
+      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const x = displayLeft + xScale * displayWidth;
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
       const y = baseY - normalizedPower * scaledHeight; // Move up from baseline
@@ -2030,6 +2137,41 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
+   * Draw "logscale" text indicator in top-right
+   * Pascal: lines 3350-3356
+   */
+  private drawLogScaleIndicator(): void {
+    if (!this.debugWindow) return;
+
+    const displayWidth = this.displayWidth;
+    const chrWidth = this.displaySpec.textSize * 0.6; // Approximate character width
+    const textLength = 'logscale'.length;
+    const x = this.canvasMargin + displayWidth - textLength * chrWidth;
+    const y = this.canvasMargin + this.displaySpec.textSize / 2;
+
+    const jsCode = `
+      (function() {
+        const canvas = document.getElementById('${this.canvasId}');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '${this.displaySpec.window.grid}';
+          ctx.font = '${this.displaySpec.textSize}px monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText('logscale', ${x + textLength * chrWidth}, ${y});
+        }
+        return true;
+      })();
+    `;
+
+    try {
+      this.debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw logscale indicator: ${error}`);
+    }
+  }
+
+  /**
    * Save FFT display to file
    */
   private saveFFTDisplay(filename: string): void {
@@ -2059,7 +2201,7 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Draw frequency labels
    */
-  private async drawFrequencyLabels(): Promise<void> {
+  private drawFrequencyLabels(): void {
     if (!this.debugWindow) return;
 
     const width = this.displaySpec.windowWidth;
@@ -2100,7 +2242,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     `;
 
     try {
-      await this.debugWindow.webContents.executeJavaScript(jsCode);
+      this.debugWindow.webContents.executeJavaScript(jsCode);
     } catch (error) {
       this.logMessage(`Failed to draw labels: ${error}`);
     }

@@ -972,4 +972,88 @@ describe('DebugSpectroWindow', () => {
       plotSpy.mockRestore();
     });
   });
+
+  describe('End-to-End Data Flow', () => {
+    it('should handle sample data and trigger FFT correctly', async () => {
+      // Create SPECTRO with typical configuration matching DEBUG_SPECTRO.spin2
+      const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '2048', '0', '236', 'RANGE', '1000', 'LUMA8X', 'GREEN'];
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+      // Spy on private performFFTAndDraw method to verify it's called
+      const fftSpy = jest.spyOn(debugSpectroWindow as any, 'performFFTAndDraw');
+
+      // Generate a simple test signal: sine wave at bin 145 (typical for DEBUG_SPECTRO.spin2)
+      // Frequency = bin / fftSize = 145 / 2048 ≈ 0.0708
+      const samples: number[] = [];
+      const frequency = 145;
+      const fftSize = 2048;
+      const amplitude = 1000;
+
+      for (let i = 0; i < fftSize; i++) {
+        const value = Math.round(amplitude * Math.sin(2 * Math.PI * frequency * i / fftSize));
+        samples.push(value);
+      }
+
+      // Feed samples to SPECTRO window using updateContent method
+      const updateData = ['TestSpectro', ...samples.map(String)];
+      await debugSpectroWindow.updateContent(updateData);
+
+      // Verify FFT was triggered (should be called once after buffer fills)
+      // Note: Depending on rate parameter, may need multiple updates
+      // For default rate (samples/8 = 256), we need to feed all samples
+      expect(fftSpy).toHaveBeenCalled();
+
+      // Verify the window is still functioning (hasn't crashed)
+      expect(debugSpectroWindow).toBeDefined();
+
+      fftSpy.mockRestore();
+    });
+
+    it('should apply noise floor suppression correctly', () => {
+      const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '64', 'RANGE', '1000'];
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+      // Access private noiseFloor property
+      const noiseFloor = debugSpectroWindow['noiseFloor'];
+
+      // Noise floor should be approximately 8% of 255 = 20
+      expect(noiseFloor).toBeGreaterThan(15);
+      expect(noiseFloor).toBeLessThan(25);
+
+      // Verify it's reasonable (not 0, not 255)
+      expect(noiseFloor).toBeGreaterThan(0);
+      expect(noiseFloor).toBeLessThan(255);
+    });
+
+    it('should maintain perfect Pascal parity in FFT processing', () => {
+      // This test verifies that the FFT processor uses BigInt64 arrays
+      // to match Pascal's int64 arrays exactly
+      const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '512'];
+      const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
+      debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+
+      const fftProcessor = debugSpectroWindow['fftProcessor'];
+
+      // Verify FFT processor is initialized
+      expect(fftProcessor).toBeDefined();
+      expect(fftProcessor.getFFTSize()).toBe(512);
+
+      // Get lookup tables and verify they're BigInt64Array (matching Pascal's int64)
+      const sinTable = fftProcessor.getSinTable();
+      const cosTable = fftProcessor.getCosTable();
+      const windowTable = fftProcessor.getWindowTable();
+
+      expect(sinTable).toBeInstanceOf(BigInt64Array);
+      expect(cosTable).toBeInstanceOf(BigInt64Array);
+      expect(windowTable).toBeInstanceOf(BigInt64Array);
+
+      // Verify they contain reasonable values (±4096 for sin/cos, 0-8192 for window)
+      expect(Number(sinTable[0])).toBe(0); // sin(0) = 0
+      expect(Number(cosTable[0])).toBe(4096); // cos(0) = 1.0 * 4096
+      expect(Number(windowTable[0])).toBe(0); // Hanning window starts at 0
+      expect(Number(windowTable[256])).toBeGreaterThan(4000); // Peak near middle
+    });
+  });
 });

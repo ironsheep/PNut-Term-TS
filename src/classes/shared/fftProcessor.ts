@@ -39,9 +39,10 @@ export class FFTProcessor {
   private static readonly REV4 = [0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE, 0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF];
   
   // Lookup tables (allocated for maximum size)
-  private fftSin: Int32Array;
-  private fftCos: Int32Array;
-  private fftWin: Int32Array; // Hanning window coefficients
+  // Using BigInt64Array to match Pascal's int64 arrays exactly
+  private fftSin: BigInt64Array;
+  private fftCos: BigInt64Array;
+  private fftWin: BigInt64Array; // Hanning window coefficients
   
   // Working arrays for FFT computation
   private fftReal: BigInt64Array;
@@ -53,10 +54,11 @@ export class FFTProcessor {
   
   constructor() {
     // Initialize lookup tables for maximum FFT size
-    this.fftSin = new Int32Array(FFTProcessor.MAX_FFT_SIZE);
-    this.fftCos = new Int32Array(FFTProcessor.MAX_FFT_SIZE);
-    this.fftWin = new Int32Array(FFTProcessor.MAX_FFT_SIZE);
-    
+    // Using BigInt64Array to match Pascal's int64 arrays exactly
+    this.fftSin = new BigInt64Array(FFTProcessor.MAX_FFT_SIZE);
+    this.fftCos = new BigInt64Array(FFTProcessor.MAX_FFT_SIZE);
+    this.fftWin = new BigInt64Array(FFTProcessor.MAX_FFT_SIZE);
+
     // Initialize working arrays
     this.fftReal = new BigInt64Array(FFTProcessor.MAX_FFT_SIZE);
     this.fftImag = new BigInt64Array(FFTProcessor.MAX_FFT_SIZE);
@@ -80,16 +82,17 @@ export class FFTProcessor {
     for (let i = 0; i < size; i++) {
       // Calculate angle using bit-reversed index (matching Pascal)
       const tf = this.rev32(i) / 0x100000000 * Math.PI;
-      
+
       // Calculate sine and cosine with fixed-point scaling
+      // Store as BigInt to match Pascal's int64 arrays
       const yf = Math.sin(tf);
       const xf = Math.cos(tf);
-      this.fftSin[i] = Math.round(yf * FFTProcessor.FIXED_POINT_SCALE);
-      this.fftCos[i] = Math.round(xf * FFTProcessor.FIXED_POINT_SCALE);
-      
+      this.fftSin[i] = BigInt(Math.round(yf * FFTProcessor.FIXED_POINT_SCALE));
+      this.fftCos[i] = BigInt(Math.round(xf * FFTProcessor.FIXED_POINT_SCALE));
+
       // Calculate Hanning window coefficient (matching Pascal formula exactly)
       const hanningValue = 1 - Math.cos((i / size) * Math.PI * 2);
-      this.fftWin[i] = Math.round(hanningValue * FFTProcessor.FIXED_POINT_SCALE);
+      this.fftWin[i] = BigInt(Math.round(hanningValue * FFTProcessor.FIXED_POINT_SCALE));
     }
   }
   
@@ -113,9 +116,9 @@ export class FFTProcessor {
     // Load samples into (real,imag) with Hanning window applied (matching Pascal)
     for (let i = 0; i < this.fftSize; i++) {
       // Apply Hanning window using fixed-point multiplication
-      // The window values are in fixed-point format (scaled by FIXED_POINT_SCALE)
+      // The window values are already BigInt (int64) to match Pascal exactly
       // This scaling is handled during butterfly operations, not here
-      this.fftReal[i] = BigInt(samples[i]) * BigInt(this.fftWin[i]);
+      this.fftReal[i] = BigInt(samples[i]) * this.fftWin[i];
       this.fftImag[i] = 0n;
     }
     
@@ -141,8 +144,9 @@ export class FFTProcessor {
           const by = this.fftImag[ptrb];
           
           // Complex multiplication with fixed-point arithmetic (matching Pascal)
-          const rx = (bx * BigInt(this.fftCos[th]) - by * BigInt(this.fftSin[th])) / BigInt(FFTProcessor.FIXED_POINT_SCALE);
-          const ry = (bx * BigInt(this.fftSin[th]) + by * BigInt(this.fftCos[th])) / BigInt(FFTProcessor.FIXED_POINT_SCALE);
+          // fftCos and fftSin are already BigInt (int64) to match Pascal exactly
+          const rx = (bx * this.fftCos[th] - by * this.fftSin[th]) / BigInt(FFTProcessor.FIXED_POINT_SCALE);
+          const ry = (bx * this.fftSin[th] + by * this.fftCos[th]) / BigInt(FFTProcessor.FIXED_POINT_SCALE);
           
           this.fftReal[ptra] = ax + rx;
           this.fftImag[ptra] = ay + ry;
@@ -264,28 +268,28 @@ export class FFTProcessor {
   
   /**
    * Get a copy of the sine lookup table (for testing)
-   * 
-   * @returns Copy of sine lookup table for current FFT size
+   *
+   * @returns Copy of sine lookup table for current FFT size (BigInt64Array to match Pascal's int64)
    */
-  public getSinTable(): Int32Array {
+  public getSinTable(): BigInt64Array {
     return this.fftSin.slice(0, this.fftSize);
   }
-  
+
   /**
    * Get a copy of the cosine lookup table (for testing)
-   * 
-   * @returns Copy of cosine lookup table for current FFT size
+   *
+   * @returns Copy of cosine lookup table for current FFT size (BigInt64Array to match Pascal's int64)
    */
-  public getCosTable(): Int32Array {
+  public getCosTable(): BigInt64Array {
     return this.fftCos.slice(0, this.fftSize);
   }
-  
+
   /**
    * Get a copy of the Hanning window table (for testing)
-   * 
-   * @returns Copy of Hanning window table for current FFT size
+   *
+   * @returns Copy of Hanning window table for current FFT size (BigInt64Array to match Pascal's int64)
    */
-  public getWindowTable(): Int32Array {
+  public getWindowTable(): BigInt64Array {
     return this.fftWin.slice(0, this.fftSize);
   }
 }
