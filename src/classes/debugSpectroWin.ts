@@ -823,7 +823,19 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
   /**
    * Plot a pixel at the current trace position
-   * Pascal: PlotPixel(p)
+   *
+   * GEOMETRY FIX: This method retrieves the current position from TracePatternProcessor
+   * in LOGICAL bin/depth units (pos.x, pos.y), then converts to PIXEL coordinates by
+   * multiplying by dotSize/dotSizeY when rendering to canvas via fillRect.
+   *
+   * This keeps the coordinate system consistent:
+   * - TracePatternProcessor operates in logical space (bin/depth units)
+   * - Canvas operations (fillRect, scrolling) operate in pixel space
+   * - Conversion happens at the boundary between logical and pixel domains
+   *
+   * Pascal reference: PlotPixel (line ~3425) - uses vDotSize scaling in Pascal's bitmap
+   *
+   * @param colorValue Pixel color value (0-255 for LUMA modes, or packed HSV16 value)
    */
   private plotPixel(colorValue: number): void {
     if (!this.debugWindow) return;
@@ -832,10 +844,10 @@ export class DebugSpectroWindow extends DebugWindowBase {
     const rgb24 = this.colorTranslator.translateColor(colorValue);
     const color = `#${rgb24.toString(16).padStart(6, '0')}`;
 
-    // Get current pixel position from trace processor
+    // Get current pixel position from trace processor (in logical bin/depth units)
     const pos = this.traceProcessor.getPosition();
 
-    // Plot pixel to offscreen bitmap
+    // Plot pixel to offscreen bitmap, converting logical coordinates to pixels
     const plotCode = `
       (function() {
         const offscreenKey = 'spectroOffscreen_${this.bitmapCanvasId}';
@@ -844,6 +856,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           const ctx = offscreen.getContext('2d');
           if (ctx) {
             ctx.fillStyle = '${color}';
+            // Convert logical coordinates (pos.x, pos.y) to pixel coordinates by multiplying by dotSize
             ctx.fillRect(${pos.x * this.displaySpec.dotSize}, ${pos.y * this.displaySpec.dotSizeY},
                         ${this.displaySpec.dotSize}, ${this.displaySpec.dotSizeY});
           }
@@ -857,12 +870,29 @@ export class DebugSpectroWindow extends DebugWindowBase {
   }
 
   /**
-   * Scroll the waterfall display
-   * Called by trace processor when scrolling is needed
+   * Scroll the waterfall bitmap by the specified logical units
+   *
+   * CRITICAL GEOMETRY FIX: This method receives scroll deltas in LOGICAL bin/depth units
+   * from TracePatternProcessor.step() and converts them to PIXEL units by multiplying by
+   * dotSize/dotSizeY. This matches Pascal's ScrollBitmap behavior exactly.
+   *
+   * Previous implementations incorrectly operated in pixel space throughout, causing
+   * visual artifacts (mirroring/smearing) because the trace cursor advanced in pixels
+   * while FFT bins were plotted in logical coordinates.
+   *
+   * The fix: Keep trace coordinates in logical space (bin/depth units) and apply dotSize
+   * scaling ONLY when performing canvas operations (scrolling and plotting).
+   *
+   * Pascal reference: DebugDisplayUnit.pas, ScrollBitmap procedure (~lines 3077-3110)
+   *
+   * @param scrollX Horizontal scroll delta in logical bin units (±1)
+   * @param scrollY Vertical scroll delta in logical depth units (±1)
    */
   private scrollWaterfall(scrollX: number, scrollY: number): void {
     if (!this.debugWindow) return;
 
+    // Convert logical bin/depth units to pixel units by multiplying by dotSize
+    // This is the KEY FIX that resolved the visual mirroring issue
     const scrollXPixels = scrollX * this.displaySpec.dotSize;
     const scrollYPixels = scrollY * this.displaySpec.dotSizeY;
 
