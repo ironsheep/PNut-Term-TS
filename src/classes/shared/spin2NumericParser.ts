@@ -440,12 +440,9 @@ export class Spin2NumericParser {
       return null;
     }
 
-    if (result > 0xFFFFFF) {
-      this.logError('Color value exceeds 24-bit RGB range', value);
-      return 0xFFFFFF; // Cap at max RGB value
-    }
-
-    return result;
+    // Mask to 24-bit RGB (strip alpha byte if present)
+    // Pascal equivalent: p := p and $00FFFFFF
+    return result & 0xFFFFFF;
   }
 
   /**
