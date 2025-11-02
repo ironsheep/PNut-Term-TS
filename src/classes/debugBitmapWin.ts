@@ -414,8 +414,29 @@ export class DebugBitmapWindow extends DebugWindowBase {
               // Check if this is a packed data mode directive (e.g., LONGS_2BIT, BYTES_4BIT)
               const [isPackedMode, packedMode] = PackedDataProcessor.validatePackedMode(lineParts[i]);
               if (isPackedMode) {
-                displaySpec.explicitPackedMode = packedMode;
-                DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed packed data mode: ${lineParts[i]}`);
+                // Look ahead for ALT and SIGNED modifiers
+                const keywords: string[] = [lineParts[i]];
+                let lookahead = i + 1;
+
+                // Check next two tokens for ALT and/or SIGNED modifiers
+                while (lookahead < lineParts.length && lookahead <= i + 2) {
+                  const nextToken = lineParts[lookahead].toUpperCase();
+                  if (nextToken === 'ALT' || nextToken === 'SIGNED') {
+                    keywords.push(lineParts[lookahead]);
+                    lookahead++;
+                  } else {
+                    break;
+                  }
+                }
+
+                // Parse mode with modifiers
+                displaySpec.explicitPackedMode = PackedDataProcessor.parsePackedModeKeywords(keywords);
+                DebugBitmapWindow.logConsoleMessageStatic(
+                  `[BITMAP] Parsed packed data mode: ${keywords.join(' ')} (isAlternate=${displaySpec.explicitPackedMode.isAlternate})`
+                );
+
+                // Skip the modifier tokens we just consumed
+                i = lookahead - 1; // -1 because loop will increment
               }
               // Unknown directives are gracefully skipped
               break;
@@ -827,7 +848,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Pascal equivalent: Canvas.StretchDraw(Rect(0, 0, vClientWidth, vClientHeight), Bitmap[1])
    */
   private updateCanvas(): void {
-    if (!this.debugWindow) return;
+    if (!this.debugWindow) {
+      this.logMessage(`[UPDATE CANVAS] ERROR: debugWindow is null`);
+      return;
+    }
+
+    this.logMessage(`[UPDATE CANVAS] Executing StretchDraw: ${this.state.width}x${this.state.height} → ${this.state.width * this.state.dotSizeX}x${this.state.height * this.state.dotSizeY}`);
 
     const stretchJS = `
       (function() {
@@ -1093,7 +1119,10 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 
       // Unpack data based on explicit packed mode (if specified) or derived from color mode
       const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
-      this.logMessage(`[UNPACK] Mode=${packedMode}, rawValue=0x${rawValue.toString(16)}`);
+      this.logMessage(
+        `[UNPACK] Mode=${packedMode.mode}, bitsPerSample=${packedMode.bitsPerSample}, ` +
+        `isAlternate=${packedMode.isAlternate}, isSigned=${packedMode.isSigned}, rawValue=0x${rawValue.toString(16)}`
+      );
       const unpackedValues = PackedDataProcessor.unpackSamples(rawValue, packedMode);
       this.logMessage(
         `[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map((v) => '0x' + v.toString(16)).join(', ')}]`
@@ -1213,11 +1242,13 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     // Check if we should update the display (Pascal: RateCycle)
     // Rate controls how often the display is updated
     if (this.state.rateCounter >= this.state.rate) {
+      this.logMessage(`[RATE CYCLE] Triggered update: rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, sparseMode=${this.state.sparseMode}`);
       this.state.rateCounter = 0;
 
       // Update display canvas with stretched bitmap (Pascal: BitmapToCanvas)
       // Only do this in NORMAL mode (not SPARSE mode which draws directly to display canvas)
       if (!this.state.sparseMode) {
+        this.logMessage(`[UPDATE CANVAS] Calling updateCanvas() to transfer offscreen→display`);
         this.updateCanvas();
       }
     }
