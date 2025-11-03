@@ -17,6 +17,10 @@
     "url": "https://github.com/ironsheep/PNut-Term-TS/issues"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0 <24.0.0",
+    "npm": ">=10.0.0"
+  },
   "main": "dist/pnut-term-ts.min.js",
   "bin": {
     "pnut-term-ts": "./dist/pnut-term-ts.min.js"
