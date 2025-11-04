@@ -481,7 +481,16 @@ function find416ByteBoundary(): number | null {
 **Classification Rules:**
 
 ```typescript
+// Sticky context state for whitespace-only messages
+let stickyContext: MessageType = MessageType.TERMINAL_OUTPUT;
+
 function classifyMessageType(bytes: Uint8Array): MessageType {
+  // Rule 0: Whitespace-only messages (blank lines)
+  // Context-aware classification - inherit type from previous message
+  if (isWhitespaceOnly(bytes)) {
+    return stickyContext; // Return last COG/TERMINAL context
+  }
+
   // Rule 1: 0xDB packets
   if (bytes[0] === 0xDB) {
     return MessageType.DB_PACKET;
@@ -500,7 +509,9 @@ function classifyMessageType(bytes: Uint8Array): MessageType {
     const cogId = bytes[3] - 0x30; // '0' = 0x30
 
     if (cogId >= 0 && cogId <= 7) {
-      return MessageType.COG0_MESSAGE + cogId;
+      const messageType = MessageType.COG0_MESSAGE + cogId;
+      stickyContext = messageType; // Update context
+      return messageType;
     } else {
       return MessageType.INVALID_COG;
     }
@@ -512,9 +523,53 @@ function classifyMessageType(bytes: Uint8Array): MessageType {
   }
 
   // Default: Terminal output
+  stickyContext = MessageType.TERMINAL_OUTPUT; // Update context
   return MessageType.TERMINAL_OUTPUT;
 }
+
+/**
+ * Check if message contains only whitespace characters
+ * Whitespace: CR (0x0D), LF (0x0A), Space (0x20), Tab (0x09)
+ */
+function isWhitespaceOnly(bytes: Uint8Array): boolean {
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[i];
+    if (byte !== 0x0D && byte !== 0x0A && byte !== 0x20 && byte !== 0x09) {
+      return false; // Found non-whitespace
+    }
+  }
+  return true; // All whitespace
+}
 ```
+
+### Sticky Context Algorithm
+
+**Problem:** Blank lines (CR/LF only) have no message prefix to identify their source.
+
+**Solution:** Maintain "sticky context" that tracks the last COG or TERMINAL message type:
+
+1. **Initial State:** Context defaults to `TERMINAL_OUTPUT`
+2. **COG Message:** Updates context to that COG type (COG0-7)
+3. **Terminal Message:** Updates context to `TERMINAL_OUTPUT`
+4. **Binary/Window Messages:** Do NOT update context (preserve previous)
+5. **Whitespace-Only Message:** Inherits current sticky context
+
+**Example Flow:**
+```
+COG0 message         → Classify: COG0,     Context = COG0
+\r\n                 → Classify: COG0 (inherited)
+\r\n                 → Classify: COG0 (inherited)
+Terminal message     → Classify: TERMINAL, Context = TERMINAL
+\r\n                 → Classify: TERMINAL (inherited)
+COG2 message         → Classify: COG2,     Context = COG2
+\r\n                 → Classify: COG2 (inherited)
+```
+
+**Rationale:**
+- P2 firmware sends blank lines for visual spacing in debug output
+- Blank lines should maintain the same classification as surrounding messages
+- Context persists across any number of consecutive blank lines
+- Prevents misclassification of COG blank lines as TERMINAL_OUTPUT
 
 ### Hardware Workarounds
 

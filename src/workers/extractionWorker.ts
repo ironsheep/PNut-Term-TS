@@ -434,6 +434,24 @@ function isP2SystemInit(data: Uint8Array): boolean {
   return true;
 }
 
+// Sticky context for whitespace-only messages (blank lines)
+// Tracks last COG or TERMINAL message type to properly classify blank lines
+let stickyContext: SharedMessageType = SharedMessageType.TERMINAL_OUTPUT;
+
+/**
+ * Check if message contains only whitespace characters
+ * Whitespace: CR (0x0D), LF (0x0A), Space (0x20), Tab (0x09)
+ */
+function isWhitespaceOnly(data: Uint8Array): boolean {
+  for (let i = 0; i < data.length; i++) {
+    const byte = data[i];
+    if (byte !== 0x0D && byte !== 0x0A && byte !== 0x20 && byte !== 0x09) {
+      return false; // Found non-whitespace
+    }
+  }
+  return true; // All whitespace
+}
+
 /**
  * Classification: Classify message based on content
  * Returns SharedMessageType or null if unrecognized
@@ -441,6 +459,12 @@ function isP2SystemInit(data: Uint8Array): boolean {
 function classifyMessage(data: Uint8Array): SharedMessageType | null {
   if (data.length === 0) {
     return null;
+  }
+
+  // Rule 0: Whitespace-only messages (blank lines)
+  // Context-aware classification - inherit type from previous COG/TERMINAL message
+  if (isWhitespaceOnly(data)) {
+    return stickyContext; // Return last COG/TERMINAL context
   }
 
   const firstByte = data[0];
@@ -499,12 +523,15 @@ function classifyMessage(data: Uint8Array): SharedMessageType | null {
       // VALIDATION: Check for two spaces after COG ID
       if (data[4] === 0x20 && data[5] === 0x20) { // Two spaces
         const cogId = cogChar - 0x30;
-        return (SharedMessageType.COG0_MESSAGE + cogId) as SharedMessageType;
+        const messageType = (SharedMessageType.COG0_MESSAGE + cogId) as SharedMessageType;
+        stickyContext = messageType; // Update sticky context
+        return messageType;
       }
     }
   }
 
   // Terminal output fallback
+  stickyContext = SharedMessageType.TERMINAL_OUTPUT; // Update sticky context
   return SharedMessageType.TERMINAL_OUTPUT;
 }
 
