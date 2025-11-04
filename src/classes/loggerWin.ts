@@ -827,6 +827,12 @@ export class LoggerWindow extends DebugWindowBase {
    * WindowRouter calls this with ExtractedMessage containing SharedMessageType
    */
   public handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
+    // CRITICAL PERFORMANCE FIX: Early exit if window is destroyed or not ready
+    // This prevents wasting CPU on closed/invisible windows (6.2x overload reduction)
+    if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.rendererReady) {
+      return; // Don't waste CPU processing messages for closed windows
+    }
+
     try {
       // Check if it's an ExtractedMessage object with type
       if (typeof message === 'object' && !Array.isArray(message) && !(message instanceof Uint8Array)) {

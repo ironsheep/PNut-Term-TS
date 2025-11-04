@@ -2,13 +2,13 @@
 
 // tests/circularBuffer.test.ts
 
-import { CircularBuffer, NextStatus, NextResult } from '../src/classes/shared/circularBuffer';
+import { SharedCircularBuffer, NextStatus, NextResult } from '../src/classes/shared/sharedCircularBuffer';
 
-describe('CircularBuffer', () => {
-  let buffer: CircularBuffer;
+describe('SharedCircularBuffer', () => {
+  let buffer: SharedCircularBuffer;
 
   beforeEach(() => {
-    buffer = new CircularBuffer();
+    buffer = new SharedCircularBuffer();
   });
 
   describe('Basic Operations', () => {

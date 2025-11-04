@@ -532,6 +532,12 @@ export class LoggerCOGWindow extends DebugWindowBase {
    * Process incoming message for this COG
    */
   public processMessage(message: string, timestamp?: string): void {
+    // CRITICAL PERFORMANCE FIX: Early exit if window is destroyed
+    // This prevents wasting CPU on closed/invisible windows
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return; // Don't waste CPU processing messages for closed windows
+    }
+
     // Log message arrival for debugging
     console.log(`[COG${this.cogId}] Received message: "${message}"`);
 
