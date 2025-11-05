@@ -28,7 +28,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * FFT Display Specification Interface
@@ -195,7 +195,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.windowLogPrefix = 'fftW';
 
     // Enable logging for FFT window debugging
-    this.isLogging = true;
+    this.isLogging = false;
 
     // Initialize FFT processor and window functions
     this.fftProcessor = new FFTProcessor();
@@ -570,7 +570,9 @@ export class DebugFFTWindow extends DebugWindowBase {
         const maxPower = Math.max(...result.power);
         const maxBin = Array.from(result.power).indexOf(maxPower);
         console.log(`[FFT OUTPUT] Ch${i} max power=${maxPower} at bin=${maxBin}`);
-        console.log(`[FFT OUTPUT] Total bins returned: ${result.power.length}, Expected: ${this.displaySpec.samples / 2}`);
+        console.log(
+          `[FFT OUTPUT] Total bins returned: ${result.power.length}, Expected: ${this.displaySpec.samples / 2}`
+        );
       }
 
       // Store results for this channel
@@ -1662,7 +1664,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       if (ENABLE_CONSOLE_LOG) {
         console.log(`[FFT DRAW] Invalid bin range: firstBin=${firstBin}, lastBin=${lastBin}, numBins=${numBins}`);
       }
-      return;  // Early exit
+      return; // Early exit
     }
 
     // Prepare power data with log scale if needed
@@ -1703,13 +1705,20 @@ export class DebugFFTWindow extends DebugWindowBase {
     if (ENABLE_CONSOLE_LOG) {
       console.log(`[FFT DRAW] lineSize=${this.displaySpec.lineSize}, dotSize=${this.displaySpec.dotSize}`);
       console.log(`[FFT DRAW] Channel: high=${high}, tall=${tall}, base=${base}`);
-      console.log(`[FFT DRAW] Power data: ${powerData.length} bins, firstBin=${this.displaySpec.firstBin}, lastBin=${this.displaySpec.lastBin}`);
+      console.log(
+        `[FFT DRAW] Power data: ${powerData.length} bins, firstBin=${this.displaySpec.firstBin}, lastBin=${this.displaySpec.lastBin}`
+      );
 
       // Show power spectrum summary
       const maxPower = Math.max(...powerData);
       const maxBin = powerData.indexOf(maxPower);
       console.log(`[FFT DRAW] Max power=${maxPower.toFixed(0)} at bin ${maxBin}`);
-      console.log(`[FFT DRAW] First 10 bins: ${powerData.slice(0, 10).map(v => v.toFixed(0)).join(', ')}`);
+      console.log(
+        `[FFT DRAW] First 10 bins: ${powerData
+          .slice(0, 10)
+          .map((v) => v.toFixed(0))
+          .join(', ')}`
+      );
     }
 
     if (this.displaySpec.lineSize >= 0) {
@@ -1908,7 +1917,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     }
 
     // Store coordinates for later dot drawing (Fix #2: prevents path-breaking bug)
-    const coordinates: Array<{x: number, y: number}> = [];
+    const coordinates: Array<{ x: number; y: number }> = [];
 
     // Build line path WITHOUT interruption
     for (let i = 0; i < numBins; i++) {
@@ -1916,7 +1925,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Pascal: x := vMarginLeft shl 8 + Trunc((k - FFTfirst) / (FFTlast - FFTfirst) * (vWidth - 1) * $100);
       // This linearly interpolates from left margin to right edge of display area
       // Guard against division by zero when displaying single bin (numBins === 1)
-      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const xScale = numBins > 1 ? i / (numBins - 1) : 0.5; // Center single bin
       const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
@@ -1924,7 +1933,11 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // DIAGNOSTIC: Log first few coordinate calculations
       if (ENABLE_CONSOLE_LOG && i < 5) {
-        console.log(`[FFT DRAW COORDS] Point ${i}: powerData[${i}]=${powerData[i]}, normalized=${normalizedPower.toFixed(4)}, x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
+        console.log(
+          `[FFT DRAW COORDS] Point ${i}: powerData[${i}]=${powerData[i]}, normalized=${normalizedPower.toFixed(
+            4
+          )}, x=${x.toFixed(1)}, y=${y.toFixed(1)}`
+        );
       }
 
       if (i === 0) {
@@ -1934,7 +1947,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       }
 
       // Store coordinates for dot drawing
-      coordinates.push({x, y});
+      coordinates.push({ x, y });
     }
 
     // Stroke the complete line FIRST
@@ -1943,7 +1956,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     // NOW draw dots on top (if enabled) - Fix #2: Draw AFTER line is complete
     if (dotSize > 0) {
       commands += `ctx.fillStyle = '${color}';\n`;
-      for (const {x, y} of coordinates) {
+      for (const { x, y } of coordinates) {
         commands += `
           ctx.beginPath();
           ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
@@ -2003,7 +2016,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     for (let i = 0; i < numBins; i++) {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Guard against division by zero when displaying single bin (numBins === 1)
-      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const xScale = numBins > 1 ? i / (numBins - 1) : 0.5; // Center single bin
       const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
@@ -2068,7 +2081,7 @@ export class DebugFFTWindow extends DebugWindowBase {
     for (let i = 0; i < numBins; i++) {
       // FIX: Remove centering offset - Pascal linearly maps bins to x-coordinates
       // Guard against division by zero when displaying single bin (numBins === 1)
-      const xScale = numBins > 1 ? (i / (numBins - 1)) : 0.5; // Center single bin
+      const xScale = numBins > 1 ? i / (numBins - 1) : 0.5; // Center single bin
       const x = displayLeft + xScale * (displayWidth - 1) + 0.5; // Fix: +0.5 for optimal anti-aliasing (matches Pascal +$80)
       // Pascal: normalizes to configured 'high' parameter, not actual data max
       const normalizedPower = Math.min(1, powerData[i] / high);
@@ -2429,8 +2442,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.displayHeight = this.displaySpec.size.height;
 
     // Store asymmetric margins separately (Fix #3)
-    this.canvasMarginLeft = marginLeft;    // charWidth
-    this.canvasMarginTop = marginTop;      // charHeight * 2
+    this.canvasMarginLeft = marginLeft; // charWidth
+    this.canvasMarginTop = marginTop; // charHeight * 2
 
     // Canvas size includes asymmetric margins
     this.canvasWidth = marginLeft + this.displayWidth + marginRight;

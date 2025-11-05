@@ -18,7 +18,7 @@ import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * Bitmap window state
@@ -215,7 +215,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
           nbrSamples: 0, // Not used by BITMAP
           window: { background: '#000000', grid: '#808080' } // Not used by BITMAP
         };
-        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, i, compatibleSpec as BaseDisplaySpec);
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
+          lineParts,
+          i,
+          compatibleSpec as BaseDisplaySpec
+        );
         if (parsed) {
           // Copy parsed values back to displaySpec
           displaySpec.title = compatibleSpec.title!;
@@ -230,185 +234,185 @@ export class DebugBitmapWindow extends DebugWindowBase {
           // Handle BITMAP-specific keywords
           switch (directive) {
             case 'DOTSIZE':
-            if (i + 1 < lineParts.length) {
-              const x = parseInt(lineParts[++i]); // Pascal: DOTSIZE x y
-              if (!isNaN(x) && x >= 1) {
-                // Check if there's a second value
-                if (i + 1 < lineParts.length) {
-                  const nextVal = parseInt(lineParts[i + 1]);
-                  if (!isNaN(nextVal) && nextVal >= 1) {
-                    // Two values provided
-                    const y = nextVal;
-                    i++;
-                    displaySpec.dotSize = { x, y };
+              if (i + 1 < lineParts.length) {
+                const x = parseInt(lineParts[++i]); // Pascal: DOTSIZE x y
+                if (!isNaN(x) && x >= 1) {
+                  // Check if there's a second value
+                  if (i + 1 < lineParts.length) {
+                    const nextVal = parseInt(lineParts[i + 1]);
+                    if (!isNaN(nextVal) && nextVal >= 1) {
+                      // Two values provided
+                      const y = nextVal;
+                      i++;
+                      displaySpec.dotSize = { x, y };
+                    } else {
+                      // Only one value, use for both X and Y
+                      displaySpec.dotSize = { x, y: x };
+                    }
                   } else {
                     // Only one value, use for both X and Y
                     displaySpec.dotSize = { x, y: x };
                   }
                 } else {
-                  // Only one value, use for both X and Y
-                  displaySpec.dotSize = { x, y: x };
+                  errorMessage = 'DOTSIZE directive requires at least one positive numeric value';
+                  isValid = false;
                 }
               } else {
-                errorMessage = 'DOTSIZE directive requires at least one positive numeric value';
+                errorMessage = 'DOTSIZE directive missing value';
                 isValid = false;
               }
-            } else {
-              errorMessage = 'DOTSIZE directive missing value';
-              isValid = false;
-            }
-            break;
+              break;
 
             case 'HIDEXY':
-            displaySpec.hideXY = true;
-            break;
+              displaySpec.hideXY = true;
+              break;
 
-          case 'SPARSE':
-            if (i + 1 < lineParts.length) {
-              const colorStr = lineParts[++i];
-              // Parse sparse background color
-              displaySpec.sparseColor = parseInt(colorStr);
-            } else {
-              errorMessage = 'SPARSE directive missing color value';
-              isValid = false;
-            }
-            break;
-
-          case 'TRACE':
-            if (i + 1 < lineParts.length) {
-              const pattern = parseInt(lineParts[++i]);
-              if (!isNaN(pattern) && pattern >= 0 && pattern <= 15) {
-                displaySpec.tracePattern = pattern;
+            case 'SPARSE':
+              if (i + 1 < lineParts.length) {
+                const colorStr = lineParts[++i];
+                // Parse sparse background color
+                displaySpec.sparseColor = parseInt(colorStr);
               } else {
-                errorMessage = 'TRACE pattern must be 0-15';
+                errorMessage = 'SPARSE directive missing color value';
                 isValid = false;
               }
-            } else {
-              errorMessage = 'TRACE directive missing pattern value';
-              isValid = false;
-            }
-            break;
+              break;
 
-          case 'RATE':
-            if (i + 1 < lineParts.length) {
-              const rate = parseInt(lineParts[++i]);
-              if (!isNaN(rate)) {
-                displaySpec.rate = rate;
+            case 'TRACE':
+              if (i + 1 < lineParts.length) {
+                const pattern = parseInt(lineParts[++i]);
+                if (!isNaN(pattern) && pattern >= 0 && pattern <= 15) {
+                  displaySpec.tracePattern = pattern;
+                } else {
+                  errorMessage = 'TRACE pattern must be 0-15';
+                  isValid = false;
+                }
               } else {
-                errorMessage = 'RATE directive requires numeric value';
+                errorMessage = 'TRACE directive missing pattern value';
                 isValid = false;
               }
-            } else {
-              errorMessage = 'RATE directive missing value';
-              isValid = false;
-            }
-            break;
+              break;
 
-          case 'LUTCOLORS':
-            // Collect all remaining color values
-            displaySpec.lutColors = [];
-            while (i + 1 < lineParts.length) {
-              const nextPart = lineParts[i + 1];
-              // Stop if we hit another directive (all caps word)
-              if (nextPart === nextPart.toUpperCase() && isNaN(parseInt(nextPart))) {
-                break;
+            case 'RATE':
+              if (i + 1 < lineParts.length) {
+                const rate = parseInt(lineParts[++i]);
+                if (!isNaN(rate)) {
+                  displaySpec.rate = rate;
+                } else {
+                  errorMessage = 'RATE directive requires numeric value';
+                  isValid = false;
+                }
+              } else {
+                errorMessage = 'RATE directive missing value';
+                isValid = false;
               }
-              i++;
-              const colorValue = parseInt(nextPart);
-              if (!isNaN(colorValue)) {
-                displaySpec.lutColors.push(colorValue);
-              }
-            }
-            break;
+              break;
 
-          case 'UPDATE':
-            displaySpec.manualUpdate = true;
-            break;
-
-          // Color mode commands (can be in declaration per Pascal)
-          case 'LUT1':
-          case 'LUT2':
-          case 'LUT4':
-          case 'LUT8':
-          case 'LUMA8':
-          case 'LUMA8W':
-          case 'LUMA8X':
-          case 'HSV8':
-          case 'HSV8W':
-          case 'HSV8X':
-          case 'RGBI8':
-          case 'RGBI8W':
-          case 'RGBI8X':
-          case 'RGB8':
-          case 'HSV16':
-          case 'HSV16W':
-          case 'HSV16X':
-          case 'RGB16':
-          case 'RGB24':
-            // Map color mode directive to ColorMode enum
-            const colorModeMap: { [key: string]: ColorMode } = {
-              LUT1: ColorMode.LUT1,
-              LUT2: ColorMode.LUT2,
-              LUT4: ColorMode.LUT4,
-              LUT8: ColorMode.LUT8,
-              LUMA8: ColorMode.LUMA8,
-              LUMA8W: ColorMode.LUMA8W,
-              LUMA8X: ColorMode.LUMA8X,
-              HSV8: ColorMode.HSV8,
-              HSV8W: ColorMode.HSV8W,
-              HSV8X: ColorMode.HSV8X,
-              RGBI8: ColorMode.RGBI8,
-              RGBI8W: ColorMode.RGBI8W,
-              RGBI8X: ColorMode.RGBI8X,
-              RGB8: ColorMode.RGB8,
-              HSV16: ColorMode.HSV16,
-              HSV16W: ColorMode.HSV16W,
-              HSV16X: ColorMode.HSV16X,
-              RGB16: ColorMode.RGB16,
-              RGB24: ColorMode.RGB24
-            };
-            displaySpec.colorMode = colorModeMap[directive];
-            DebugBitmapWindow.logConsoleMessageStatic(
-              `[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`
-            );
-
-            // Check if next token is a tune parameter
-            // For LUMA8/RGBI8 modes, tune can be:
-            // - A number 0-7
-            // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
-            if (i + 1 < lineParts.length) {
-              const nextToken = lineParts[i + 1].toUpperCase();
-
-              // Try parsing as color name first (for LUMA/RGBI modes)
-              const colorToTune: { [key: string]: number } = {
-                ORANGE: 0,
-                BLUE: 1,
-                GREEN: 2,
-                CYAN: 3,
-                RED: 4,
-                MAGENTA: 5,
-                YELLOW: 6,
-                GRAY: 7,
-                GREY: 7 // Alternative spelling
-              };
-
-              if (colorToTune.hasOwnProperty(nextToken)) {
-                displaySpec.colorTune = colorToTune[nextToken];
-                i++; // Consume color name
-                DebugBitmapWindow.logConsoleMessageStatic(
-                  `[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`
-                );
-              } else if (!isNaN(parseInt(nextToken))) {
-                // Try parsing as number
-                const possibleTune = parseInt(nextToken);
-                if (possibleTune >= 0 && possibleTune <= 7) {
-                  displaySpec.colorTune = possibleTune;
-                  i++; // Consume tune parameter
-                  DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed numeric tune: ${possibleTune}`);
+            case 'LUTCOLORS':
+              // Collect all remaining color values
+              displaySpec.lutColors = [];
+              while (i + 1 < lineParts.length) {
+                const nextPart = lineParts[i + 1];
+                // Stop if we hit another directive (all caps word)
+                if (nextPart === nextPart.toUpperCase() && isNaN(parseInt(nextPart))) {
+                  break;
+                }
+                i++;
+                const colorValue = parseInt(nextPart);
+                if (!isNaN(colorValue)) {
+                  displaySpec.lutColors.push(colorValue);
                 }
               }
-            }
-            break;
+              break;
+
+            case 'UPDATE':
+              displaySpec.manualUpdate = true;
+              break;
+
+            // Color mode commands (can be in declaration per Pascal)
+            case 'LUT1':
+            case 'LUT2':
+            case 'LUT4':
+            case 'LUT8':
+            case 'LUMA8':
+            case 'LUMA8W':
+            case 'LUMA8X':
+            case 'HSV8':
+            case 'HSV8W':
+            case 'HSV8X':
+            case 'RGBI8':
+            case 'RGBI8W':
+            case 'RGBI8X':
+            case 'RGB8':
+            case 'HSV16':
+            case 'HSV16W':
+            case 'HSV16X':
+            case 'RGB16':
+            case 'RGB24':
+              // Map color mode directive to ColorMode enum
+              const colorModeMap: { [key: string]: ColorMode } = {
+                LUT1: ColorMode.LUT1,
+                LUT2: ColorMode.LUT2,
+                LUT4: ColorMode.LUT4,
+                LUT8: ColorMode.LUT8,
+                LUMA8: ColorMode.LUMA8,
+                LUMA8W: ColorMode.LUMA8W,
+                LUMA8X: ColorMode.LUMA8X,
+                HSV8: ColorMode.HSV8,
+                HSV8W: ColorMode.HSV8W,
+                HSV8X: ColorMode.HSV8X,
+                RGBI8: ColorMode.RGBI8,
+                RGBI8W: ColorMode.RGBI8W,
+                RGBI8X: ColorMode.RGBI8X,
+                RGB8: ColorMode.RGB8,
+                HSV16: ColorMode.HSV16,
+                HSV16W: ColorMode.HSV16W,
+                HSV16X: ColorMode.HSV16X,
+                RGB16: ColorMode.RGB16,
+                RGB24: ColorMode.RGB24
+              };
+              displaySpec.colorMode = colorModeMap[directive];
+              DebugBitmapWindow.logConsoleMessageStatic(
+                `[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`
+              );
+
+              // Check if next token is a tune parameter
+              // For LUMA8/RGBI8 modes, tune can be:
+              // - A number 0-7
+              // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
+              if (i + 1 < lineParts.length) {
+                const nextToken = lineParts[i + 1].toUpperCase();
+
+                // Try parsing as color name first (for LUMA/RGBI modes)
+                const colorToTune: { [key: string]: number } = {
+                  ORANGE: 0,
+                  BLUE: 1,
+                  GREEN: 2,
+                  CYAN: 3,
+                  RED: 4,
+                  MAGENTA: 5,
+                  YELLOW: 6,
+                  GRAY: 7,
+                  GREY: 7 // Alternative spelling
+                };
+
+                if (colorToTune.hasOwnProperty(nextToken)) {
+                  displaySpec.colorTune = colorToTune[nextToken];
+                  i++; // Consume color name
+                  DebugBitmapWindow.logConsoleMessageStatic(
+                    `[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`
+                  );
+                } else if (!isNaN(parseInt(nextToken))) {
+                  // Try parsing as number
+                  const possibleTune = parseInt(nextToken);
+                  if (possibleTune >= 0 && possibleTune <= 7) {
+                    displaySpec.colorTune = possibleTune;
+                    i++; // Consume tune parameter
+                    DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed numeric tune: ${possibleTune}`);
+                  }
+                }
+              }
+              break;
 
             default:
               // Check if this is a packed data mode directive (e.g., LONGS_2BIT, BYTES_4BIT)
@@ -432,7 +436,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
                 // Parse mode with modifiers
                 displaySpec.explicitPackedMode = PackedDataProcessor.parsePackedModeKeywords(keywords);
                 DebugBitmapWindow.logConsoleMessageStatic(
-                  `[BITMAP] Parsed packed data mode: ${keywords.join(' ')} (isAlternate=${displaySpec.explicitPackedMode.isAlternate})`
+                  `[BITMAP] Parsed packed data mode: ${keywords.join(' ')} (isAlternate=${
+                    displaySpec.explicitPackedMode.isAlternate
+                  })`
                 );
 
                 // Skip the modifier tokens we just consumed
@@ -460,7 +466,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.displaySpec = displaySpec;
 
     // Enable logging for BITMAP window
-    this.isLogging = true;
+    this.isLogging = false;
 
     // Initialize from displaySpec
     this._windowTitle = displaySpec.title;
@@ -853,7 +859,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
       return;
     }
 
-    this.logMessage(`[UPDATE CANVAS] Executing StretchDraw: ${this.state.width}x${this.state.height} → ${this.state.width * this.state.dotSizeX}x${this.state.height * this.state.dotSizeY}`);
+    this.logMessage(
+      `[UPDATE CANVAS] Executing StretchDraw: ${this.state.width}x${this.state.height} → ${
+        this.state.width * this.state.dotSizeX
+      }x${this.state.height * this.state.dotSizeY}`
+    );
 
     const stretchJS = `
       (function() {
@@ -1171,7 +1181,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
       this.logMessage(
         `[UNPACK] Mode=${packedMode.mode}, bitsPerSample=${packedMode.bitsPerSample}, ` +
-        `isAlternate=${packedMode.isAlternate}, isSigned=${packedMode.isSigned}, rawValue=0x${rawValue.toString(16)}`
+          `isAlternate=${packedMode.isAlternate}, isSigned=${packedMode.isSigned}, rawValue=0x${rawValue.toString(16)}`
       );
       const unpackedValues = PackedDataProcessor.unpackSamples(rawValue, packedMode);
       this.logMessage(
@@ -1293,14 +1303,18 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     // Check if we should update the display (Pascal: RateCycle)
     // Rate controls how often the display is updated
     if (this.state.rateCounter >= this.state.rate) {
-      this.logMessage(`[RATE CYCLE] Triggered update: rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, sparseMode=${this.state.sparseMode}`);
+      this.logMessage(
+        `[RATE CYCLE] Triggered update: rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, sparseMode=${this.state.sparseMode}`
+      );
 
       // Handle multiple rate cycles if counter significantly exceeds rate
       // This can happen if we batch many pixels together
       const cycleCount = Math.floor(this.state.rateCounter / this.state.rate);
       const remainder = this.state.rateCounter % this.state.rate;
 
-      this.logMessage(`[RATE CYCLE] cycleCount=${cycleCount}, remainder=${remainder}, RESET: ${this.state.rateCounter} → ${remainder}`);
+      this.logMessage(
+        `[RATE CYCLE] cycleCount=${cycleCount}, remainder=${remainder}, RESET: ${this.state.rateCounter} → ${remainder}`
+      );
       this.state.rateCounter = remainder;
 
       // Update display canvas with stretched bitmap (Pascal: BitmapToCanvas)

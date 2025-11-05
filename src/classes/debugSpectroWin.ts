@@ -29,7 +29,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * SPECTRO Display Specification Interface
@@ -165,7 +165,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
     this.windowLogPrefix = 'spectroW';
 
     // Enable logging for SPECTRO window (both console and constructor logging)
-    this.isLogging = true;
+    this.isLogging = false;
     console.log(`[SPECTRO CONSTRUCTOR] Creating SPECTRO window with displayName: ${displaySpec.displayName}`);
 
     // Initialize FFT processor and window functions
@@ -267,7 +267,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
     const floor = Math.round(255 * noiseFraction);
     return Math.max(2, Math.min(254, floor));
   }
-
 
   /**
    * Attempt to parse a color tune token (named color or numeric value)
