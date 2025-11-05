@@ -62,6 +62,7 @@ export interface UserPreferences {
     controlLine: string;
     defaultBaud: number;
     autoReconnect: boolean;
+    resetOnConnection: boolean;
   };
   debugLogger: {
     scrollbackLines: number;
@@ -89,6 +90,7 @@ export class Context {
   public runEnvironment: RuntimeEnvironment;
   public actions: Actions;
   public preferences: UserPreferences;
+  private preferencesFilePath: string = '';
 
   constructor(startupDirectory?: string) {
     this.runEnvironment = {
@@ -142,7 +144,8 @@ export class Context {
       serialPort: {
         controlLine: 'DTR',
         defaultBaud: 115200,
-        autoReconnect: true
+        autoReconnect: true,
+        resetOnConnection: true
       },
       debugLogger: {
         scrollbackLines: 1000
@@ -163,6 +166,47 @@ export class Context {
     this.currentFolder = startupDirectory || process.cwd();
     this.logger = new Logger();
     this.logger.setContext(this);
+
+    // Set preferences file path and load saved preferences
+    this.preferencesFilePath = path.join(this.currentFolder, 'pnut-term-preferences.json');
+    this.loadPreferences();
+  }
+
+  /**
+   * Load preferences from disk, or use defaults if file doesn't exist
+   */
+  private loadPreferences(): void {
+    try {
+      if (fs.existsSync(this.preferencesFilePath)) {
+        const data = fs.readFileSync(this.preferencesFilePath, 'utf8');
+        const savedPrefs = JSON.parse(data);
+        this.preferences = { ...this.preferences, ...savedPrefs };
+
+        // Sync resetOnConnection to runtime environment
+        if (savedPrefs.serialPort && savedPrefs.serialPort.resetOnConnection !== undefined) {
+          this.runEnvironment.resetOnConnection = savedPrefs.serialPort.resetOnConnection;
+        }
+
+        this.logConsoleMessage(`[CONTEXT] Loaded preferences from ${this.preferencesFilePath}`);
+      } else {
+        this.logConsoleMessage(`[CONTEXT] No preferences file found, using defaults`);
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[CONTEXT] Error loading preferences: ${error}, using defaults`);
+    }
+  }
+
+  /**
+   * Save preferences to disk
+   */
+  private savePreferences(): void {
+    try {
+      const data = JSON.stringify(this.preferences, null, 2);
+      fs.writeFileSync(this.preferencesFilePath, data, 'utf8');
+      this.logConsoleMessage(`[CONTEXT] Saved preferences to ${this.preferencesFilePath}`);
+    } catch (error) {
+      this.logConsoleMessage(`[CONTEXT] Error saving preferences: ${error}`);
+    }
   }
 
   /**
@@ -170,7 +214,16 @@ export class Context {
    */
   public updatePreferences(newPreferences: UserPreferences): void {
     this.preferences = { ...this.preferences, ...newPreferences };
+
+    // Sync resetOnConnection to runtime environment
+    if (newPreferences.serialPort && newPreferences.serialPort.resetOnConnection !== undefined) {
+      this.runEnvironment.resetOnConnection = newPreferences.serialPort.resetOnConnection;
+    }
+
     this.logConsoleMessage('[CONTEXT] Preferences updated:', this.preferences);
+
+    // Save to disk
+    this.savePreferences();
   }
 
   /**
