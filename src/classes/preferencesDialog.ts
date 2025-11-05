@@ -315,7 +315,7 @@ export class PreferencesDialog {
       <input type="checkbox" id="auto-save-debug" checked>
     </div>
     <div class="form-group">
-      <label>New Log on DTR Reset:</label>
+      <label>New Log on P2 Reset:</label>
       <input type="checkbox" id="new-log-dtr" checked>
     </div>
     <div class="form-group">
