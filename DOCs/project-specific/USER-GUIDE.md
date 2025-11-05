@@ -4,21 +4,22 @@
 1. [Introduction](#introduction)
 2. [Installation & Setup](#installation--setup)
 3. [Getting Started](#getting-started)
-4. [Debug Windows Overview](#debug-windows-overview)
-5. [Terminal Window](#terminal-window)
-6. [Logic Analyzer](#logic-analyzer)
-7. [Oscilloscope](#oscilloscope)
-8. [XY Scope](#xy-scope)
-9. [Plot Window](#plot-window)
-10. [Bitmap Display](#bitmap-display)
-11. [MIDI Monitor](#midi-monitor)
-12. [FFT Analyzer](#fft-analyzer)
-13. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
-14. [P2 Debugger](#p2-debugger)
-15. [Recording & Playback](#recording--playback)
-16. [Keyboard Shortcuts](#keyboard-shortcuts)
-17. [Troubleshooting](#troubleshooting)
-18. [Advanced Topics](#advanced-topics)
+4. [Connection & Startup Behavior](#connection--startup-behavior)
+5. [Debug Windows Overview](#debug-windows-overview)
+6. [Terminal Window](#terminal-window)
+7. [Logic Analyzer](#logic-analyzer)
+8. [Oscilloscope](#oscilloscope)
+9. [XY Scope](#xy-scope)
+10. [Plot Window](#plot-window)
+11. [Bitmap Display](#bitmap-display)
+12. [MIDI Monitor](#midi-monitor)
+13. [FFT Analyzer](#fft-analyzer)
+14. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
+15. [P2 Debugger](#p2-debugger)
+16. [Recording & Playback](#recording--playback)
+17. [Keyboard Shortcuts](#keyboard-shortcuts)
+18. [Troubleshooting](#troubleshooting)
+19. [Advanced Topics](#advanced-topics)
     - [Custom Window Layouts](#custom-window-layouts)
     - [Scripting](#scripting)
     - [Serial Communication Architecture](#serial-communication-architecture)
@@ -105,10 +106,161 @@ Debug windows open automatically when your P2 program sends the appropriate DEBU
 ```spin2
 ' Open different window types
 debug(`scope MyScope size 400 300 samples 1000`)      ' Oscilloscope
-debug(`logic MyLogic size 600 200 samples 8192`)      ' Logic analyzer  
+debug(`logic MyLogic size 600 200 samples 8192`)      ' Logic analyzer
 debug(`plot MyPlot size 500 500 polar`)               ' Plot window
 debug(`bitmap MyBitmap size 320 240 lut8`)            ' Bitmap display
 ```
+
+## Connection & Startup Behavior
+
+Understanding how the terminal handles connections and resets is important for effective debugging workflows. The P2 Debug Terminal supports two primary use cases, each requiring different startup behavior.
+
+### The Two Primary Workflows
+
+#### Workflow 1: Passive Monitoring (Non-Intrusive Debugging)
+
+**Use Case**: Your P2 is already running a program and sending debug data. You want to capture and view this data stream without interrupting the running program.
+
+**Example Scenarios**:
+- Observing a long-running test or data collection program
+- Capturing diagnostic output from a deployed system
+- Monitoring real-time sensor data without causing a reset
+- Debugging timing-sensitive code where a reset would lose state
+
+**Setting**: Disable "Reset P2 on Connection" in preferences
+
+**What Happens**:
+1. You launch the terminal and select the COM port
+2. The port opens without toggling DTR (no hardware reset)
+3. The P2 continues running its current program undisturbed
+4. You immediately begin receiving and displaying any debug output
+5. The running program's state remains intact
+
+**When to Use**: When you need to observe what's already happening without disrupting it. This is particularly valuable for:
+- Production debugging (observing live systems)
+- Time-series data collection
+- Situations where program state must be preserved
+
+---
+
+#### Workflow 2: Active Development (Reset and Load)
+
+**Use Case**: You're actively developing code, making changes, and want to download fresh code to the P2 for testing.
+
+**Example Scenarios**:
+- Writing new P2 code and testing iteratively
+- Debugging a specific issue that requires code modifications
+- Starting a program from a known clean state
+- Running automated test sequences
+
+**Setting**: Enable "Reset P2 on Connection" in preferences
+
+**What Happens**:
+1. You launch the terminal and select the COM port
+2. The port opens and immediately toggles DTR (triggers hardware reset)
+3. The P2 resets to a known clean state
+4. You can then download new code via the GUI or observe the existing program restart
+5. Debug output begins from the fresh start
+
+**When to Use**: When you want guaranteed clean-slate execution. This is the traditional development workflow where:
+- Each test run starts from reset
+- Previous program state doesn't matter
+- You're downloading new code to test
+- Reproducible startup behavior is required
+
+---
+
+### Understanding the "Reset P2 on Connection" Preference
+
+**Location**: File → Preferences → Serial Port → "Reset P2 on Connection"
+
+**To Change This Setting**:
+1. Open the Preferences dialog (File → Preferences or Ctrl/Cmd+,)
+2. Look under the "Serial Port" section
+3. Check or uncheck "Reset P2 on Connection"
+4. Click "Apply" to save
+
+This single checkbox controls the fundamental behavior when connecting to your P2:
+
+| Setting | DTR Toggled on Connect? | Data Capture Starts | Use Case |
+|---------|-------------------------|---------------------|----------|
+| ☑️ **Enabled** | Yes (immediate reset) | After reset | Active development, clean start |
+| ☐ **Disabled** | No (no reset) | Immediately | Passive monitoring, observe running code |
+
+**Default**: Enabled (traditional development mode)
+
+**Note**: This setting persists across app restarts - you only need to change it once for your preferred workflow.
+
+---
+
+### Command-Line Mode (IDE Integration)
+
+When the terminal is launched from an IDE (like Visual Studio Code) with download parameters (`-R` for RAM or `-F` for Flash), the startup behavior is **automatically controlled** regardless of your preference setting:
+
+```bash
+# Download to RAM
+pnut-term-ts -R myprogram.binary
+
+# Download to Flash
+pnut-term-ts -F myprogram.binary
+```
+
+**Automatic Behavior**:
+1. Port opens without resetting (ignores "Reset P2 on Connection" preference)
+2. Any existing debug traffic is ignored
+3. When download begins, DTR toggles to reset the P2 into bootloader mode
+4. Code downloads cleanly
+5. After download completes, debug output from the new program is captured
+
+**Why This Works**: The download command needs precise control of the reset timing. Resetting on connection would interfere with the bootloader protocol, so the terminal delays the reset until the exact moment it's needed for download.
+
+---
+
+### Best Practices
+
+**Choose "Reset on Connection" = Enabled when**:
+- You're actively writing and testing code
+- You want reproducible test runs
+- Previous program state doesn't matter
+- You're using the GUI to download code
+
+**Choose "Reset on Connection" = Disabled when**:
+- You need to observe a running program
+- The P2 is in a specific state you need to preserve
+- You're capturing data from a long-running process
+- You want non-intrusive monitoring
+
+**Command-Line Downloads**: Don't worry about the preference - it's automatically handled correctly.
+
+---
+
+### Technical Details: DTR and Hardware Reset
+
+The P2 hardware reset is triggered by toggling the DTR (Data Terminal Ready) control line on the USB-serial connection:
+
+- **DTR Toggle**: A 10ms pulse on the DTR line
+- **Hardware Response**: The Parallax PropPlug or compatible adapter generates a 17µs reset pulse to the P2
+- **Result**: The P2 resets, and the bootloader becomes active for ~17ms
+
+Some USB-serial adapters use RTS (Request To Send) instead of DTR. The terminal automatically detects and uses the correct control line for your hardware.
+
+---
+
+### Troubleshooting Connection Issues
+
+**Problem**: "I enabled 'Reset on Connection' but my P2 doesn't reset"
+- **Solution**: Your adapter might use RTS instead of DTR. Check adapter documentation or try the RTS override setting.
+
+**Problem**: "My program keeps resetting when I just want to watch the output"
+- **Solution**: Disable "Reset on Connection" in preferences.
+
+**Problem**: "Command-line download doesn't work even though GUI download works"
+- **Solution**: Command-line mode uses different timing. Ensure you're using `-R` (RAM) or `-F` (Flash) flags correctly.
+
+**Problem**: "I see garbage data briefly before my program starts"
+- **Solution**: This is normal with "Reset on Connection" disabled. The terminal captures whatever is on the serial line. Enable "Reset on Connection" for clean startup.
+
+---
 
 ## Debug Windows Overview
 

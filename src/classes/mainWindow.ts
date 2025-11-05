@@ -1308,6 +1308,33 @@ export class MainWindow {
       this.updateControlLineUI();
       this.logMessage(`🔧 Control line mode set to ${this.controlLineMode} for this device`);
 
+      // Conditional reset based on user preference
+      // Only reset if preference is enabled (default: true for traditional mode)
+      if (this.context.runEnvironment.resetOnConnection) {
+        this.logMessage(`[STARTUP] Reset on connection enabled - performing DTR/RTS reset`);
+
+        // Block traffic during reset
+        this._serialPort.setIgnoreFrontTraffic(true);
+
+        // Perform reset using appropriate control line
+        try {
+          if (this.context.runEnvironment.rtsOverride) {
+            await this._serialPort.toggleRTS();
+          } else {
+            await this._serialPort.toggleDTR();
+          }
+          this.logMessage(`[STARTUP] Reset pulse completed`);
+        } catch (resetErr) {
+          this.logMessage(`[STARTUP] Reset error (non-fatal): ${resetErr}`);
+        }
+
+        // Allow traffic after reset
+        this._serialPort.setIgnoreFrontTraffic(false);
+        this.logMessage(`[STARTUP] Traffic gate opened after reset`);
+      } else {
+        this.logMessage(`[STARTUP] Reset on connection disabled - passive monitoring mode`);
+      }
+
       // Initialize downloader with serial port
       if (!this.downloader && this._serialPort) {
         this.downloader = new Downloader(this.context, this._serialPort);
@@ -5369,28 +5396,20 @@ export class MainWindow {
         // So we only touch the hardware when going from ON to OFF (de-asserting)
 
         if (newState) {
-          // Press ON: Just track state internally, DON'T touch hardware
-          this.logMessage(`[DTR TOGGLE] DTR ON (tracked internally, no hardware change)`);
-          this.dtrState = newState;
-        } else {
-          // Press OFF: Actually toggle DTR to trigger the hardware reset pulse
-          this.logMessage(`[DTR TOGGLE] DTR OFF - triggering hardware reset pulse`);
+          // Press ON: Quiesce system (block traffic, flush logs, prepare for reset)
+          this.logMessage(`[DTR TOGGLE] DTR ON - quiescing system`);
 
-          // Toggle DTR to trigger Prop Plug's 17µs reset pulse
-          await this._serialPort.setDTR(true);
-          await this._serialPort.setDTR(false);
-          this.logMessage(`[DTR TOGGLE] Hardware reset pulse triggered`);
+          // 1. Block incoming traffic immediately
+          this._serialPort.setIgnoreFrontTraffic(true);
+          this.logMessage(`[DTR TOGGLE] Traffic blocked`);
 
-          // Update state
-          this.dtrState = newState;
-
-          // Handle the reset in our system
-          this.logMessage(`[DTR RESET] Device reset via DTR toggle`);
+          // 2. Flush and rotate logs while traffic is blocked
           if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleDTRReset();
+            this.debugLoggerWindow.handleDTRReset();  // This flushes/rotates logs
+            this.logMessage(`[DTR TOGGLE] Logs flushed and rotated`);
           }
 
-          // Broadcast DTR reset to all active COG windows
+          // Broadcast to COG windows to flush their logs too
           for (let cogId = 0; cogId < 8; cogId++) {
             const windowKey = `COG-${cogId}`;
             const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
@@ -5399,7 +5418,31 @@ export class MainWindow {
             }
           }
 
-          // Signal parser that DTR reset occurred
+          // 3. Log quiesce message to NEW log
+          this.logMessage(`[DTR TOGGLE] System quiesced - awaiting reset on next button press`);
+
+          // 4. Update state
+          this.dtrState = newState;
+        } else {
+          // Press OFF: Release and reset (actual hardware reset happens now)
+          this.logMessage(`[DTR TOGGLE] DTR OFF - releasing and resetting P2`);
+
+          // 1. Log the reset action (before traffic resumes)
+          this.logMessage(`[DTR RESET] DTR releasing - reset pulse now`);
+
+          // 2. Toggle DTR to trigger Prop Plug's 17µs reset pulse
+          await this._serialPort.setDTR(true);
+          await this._serialPort.setDTR(false);
+          this.logMessage(`[DTR TOGGLE] Hardware reset pulse triggered (P2 stopped in ~17µs)`);
+
+          // 3. Open traffic gate (P2 stopped in µs, bootloader ready in 17ms, gate opens in ~1ms)
+          this._serialPort.setIgnoreFrontTraffic(false);
+          this.logMessage(`[DTR TOGGLE] Traffic gate opened`);
+
+          // 4. Update state
+          this.dtrState = newState;
+
+          // 5. Signal parser that DTR reset occurred
           this.serialProcessor.onDTRReset();
 
           // Save DTR preference for this device
@@ -5445,36 +5488,53 @@ export class MainWindow {
     if (this._serialPort) {
       try {
         if (newState) {
-          // Press ON: Just track state internally, DON'T touch hardware
-          // This avoids triggering the Prop Plug's automatic reset pulse
-          this.logMessage(`[RTS TOGGLE] RTS ON (tracked internally, no hardware change)`);
-          this.rtsState = newState;
-        } else {
-          // Press OFF: Actually toggle RTS to trigger the hardware reset pulse
-          // The Prop Plug will generate a ~17µs reset pulse automatically
-          this.logMessage(`[RTS TOGGLE] RTS OFF - Triggering hardware reset pulse`);
+          // Press ON: Quiesce system (block traffic, flush logs, prepare for reset)
+          this.logMessage(`[RTS TOGGLE] RTS ON - quiescing system`);
 
-          // Toggle RTS to trigger the Prop Plug's built-in reset pulse
-          await this._serialPort.setRTS(true);
-          await this._serialPort.setRTS(false);
+          // 1. Block incoming traffic immediately
+          this._serialPort.setIgnoreFrontTraffic(true);
+          this.logMessage(`[RTS TOGGLE] Traffic blocked`);
 
-          this.logMessage(`[RTS RESET] Device reset via RTS pulse - clearing log and synchronizing parser`);
-
-          // Handle the reset in our system
+          // 2. Flush and rotate logs while traffic is blocked
           if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleRTSReset();
+            this.debugLoggerWindow.handleRTSReset();  // This flushes/rotates logs
+            this.logMessage(`[RTS TOGGLE] Logs flushed and rotated`);
           }
 
-          // Broadcast RTS reset to all active COG windows (same as DTR)
+          // Broadcast to COG windows to flush their logs too
           for (let cogId = 0; cogId < 8; cogId++) {
             const windowKey = `COG-${cogId}`;
             const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
             if (cogWindow && cogWindow.isOpen()) {
-              cogWindow.handleDTRReset(); // Same handler for both DTR and RTS
+              cogWindow.handleDTRReset();  // Same handler for DTR/RTS
             }
           }
 
-          // Sync parser on RTS reset (using RTS-specific method)
+          // 3. Log quiesce message to NEW log
+          this.logMessage(`[RTS TOGGLE] System quiesced - awaiting reset on next button press`);
+
+          // 4. Update state
+          this.rtsState = newState;
+        } else {
+          // Press OFF: Release and reset (actual hardware reset happens now)
+          this.logMessage(`[RTS TOGGLE] RTS OFF - releasing and resetting P2`);
+
+          // 1. Log the reset action (before traffic resumes)
+          this.logMessage(`[RTS RESET] RTS releasing - reset pulse now`);
+
+          // 2. Toggle RTS to trigger Prop Plug's 17µs reset pulse
+          await this._serialPort.setRTS(true);
+          await this._serialPort.setRTS(false);
+          this.logMessage(`[RTS TOGGLE] Hardware reset pulse triggered (P2 stopped in ~17µs)`);
+
+          // 3. Open traffic gate (P2 stopped in µs, bootloader ready in 17ms, gate opens in ~1ms)
+          this._serialPort.setIgnoreFrontTraffic(false);
+          this.logMessage(`[RTS TOGGLE] Traffic gate opened`);
+
+          // 4. Update state
+          this.rtsState = newState;
+
+          // 5. Signal parser that RTS reset occurred
           this.serialProcessor.onRTSReset();
 
           // Save RTS preference for this device when successfully used
@@ -6014,6 +6074,14 @@ export class MainWindow {
         // Store for future use (implement auto-reconnect logic separately)
         this.logConsoleMessage(
           `[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`
+        );
+      }
+
+      // Apply reset on connection setting
+      if (settings.serialPort.resetOnConnection !== undefined) {
+        this.context.runEnvironment.resetOnConnection = settings.serialPort.resetOnConnection;
+        this.logConsoleMessage(
+          `[PREFERENCES] Reset on connection ${settings.serialPort.resetOnConnection ? 'enabled' : 'disabled'}`
         );
       }
     }

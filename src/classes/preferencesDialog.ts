@@ -17,7 +17,8 @@ export class PreferencesDialog {
     serialPort: {
       controlLine: 'DTR',
       defaultBaud: 115200,
-      autoReconnect: true
+      autoReconnect: true,
+      resetOnConnection: true
     },
     logging: {
       logDirectory: './logs/',
@@ -297,8 +298,12 @@ export class PreferencesDialog {
       <label>Auto-Reconnect:</label>
       <input type="checkbox" id="auto-reconnect" checked>
     </div>
+    <div class="form-group">
+      <label>Reset P2 on Connection:</label>
+      <input type="checkbox" id="reset-on-connection" checked>
+    </div>
   </div>
-  
+
   <div class="section">
     <h2>Logging</h2>
     <div class="form-group">
@@ -382,7 +387,8 @@ export class PreferencesDialog {
       document.querySelector(\`input[name="control-line"][value="\${settings.serialPort.controlLine}"]\`).checked = true;
       document.getElementById('default-baud').value = settings.serialPort.defaultBaud;
       document.getElementById('auto-reconnect').checked = settings.serialPort.autoReconnect;
-      
+      document.getElementById('reset-on-connection').checked = settings.serialPort.resetOnConnection;
+
       // Logging settings
       document.getElementById('log-directory').value = settings.logging.logDirectory;
       document.getElementById('auto-save-debug').checked = settings.logging.autoSaveDebug;
@@ -411,7 +417,8 @@ export class PreferencesDialog {
         serialPort: {
           controlLine: document.querySelector('input[name="control-line"]:checked').value,
           defaultBaud: parseInt(document.getElementById('default-baud').value),
-          autoReconnect: document.getElementById('auto-reconnect').checked
+          autoReconnect: document.getElementById('auto-reconnect').checked,
+          resetOnConnection: document.getElementById('reset-on-connection').checked
         },
         logging: {
           logDirectory: document.getElementById('log-directory').value,

@@ -48,6 +48,7 @@ export class UsbSerial extends EventEmitter {
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
   private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
   private _isShuttingDown: boolean = false;  // Flag to stop processing data during shutdown
+  private _ignoreFrontTraffic: boolean = false;  // Flag to drop incoming data (quiesce/startup control)
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -64,6 +65,7 @@ export class UsbSerial extends EventEmitter {
       stopBits: 1,
       parity: 'none',
       autoOpen: false,
+      hupcl: false,  // Prevent automatic DTR/RTS assertion on port open
       highWaterMark: 1024 * 1024  // 1MB buffer (up from 16KB default) to prevent USB data loss
     });
     // Open errors will be emitted as an error event
@@ -76,6 +78,11 @@ export class UsbSerial extends EventEmitter {
       // GUARD: During shutdown, drop all incoming data immediately
       if (this._isShuttingDown) {
         return; // Silently ignore - prevents race conditions during app exit
+      }
+
+      // GUARD: During quiesce/startup control, drop incoming data
+      if (this._ignoreFrontTraffic) {
+        return; // Silently drop - system in quiesced state or awaiting reset
       }
 
       // FIRST: Check for P2 detection (sets _p2DeviceId)
@@ -229,12 +236,32 @@ export class UsbSerial extends EventEmitter {
     this._isShuttingDown = shuttingDown;
   }
 
+  /**
+   * Control whether incoming USB traffic is processed or dropped
+   * Used for startup control and manual quiesce/reset operations
+   */
+  public setIgnoreFrontTraffic(ignore: boolean): void {
+    this._ignoreFrontTraffic = ignore;
+    this.logMessage(`[USB] Traffic control: ${ignore ? 'BLOCKING' : 'FLOWING'}`);
+  }
+
   public async close(): Promise<void> {
     // (alternate suggested by perplexity search)
     // release the usb port
     this.logMessage(`* USBSer closing...`);
     if (this._serialPort && this._serialPort.isOpen) {
       await waitMSec(10); // 500 allowed prop to restart? use 10 mSec instead
+
+      // CRITICAL: Preserve DTR/RTS state before close to prevent P2 reset
+      // Even with hupcl:false, some platforms may toggle control lines on close
+      // Explicitly ensure DTR/RTS stay de-asserted (HIGH) to keep P2 running
+      try {
+        await this.setDtr(false);  // false = HIGH = de-asserted (no reset)
+        await this.setRts(false);  // false = HIGH = de-asserted (no reset)
+        this.logMessage(`  -- close() DTR/RTS preserved in de-asserted state`);
+      } catch (controlLineErr: any) {
+        this.logMessage(`  -- close() Control line warning (non-fatal): ${controlLineErr.message}`);
+      }
 
       // CRITICAL: Drain outgoing data and flush incoming buffers before closing
       // This prevents stale data from being picked up on next app start
@@ -608,12 +635,14 @@ export class UsbSerial extends EventEmitter {
       this.logConsoleMessage(`[USB] handleSerialOpen() - Flush warning (non-fatal): ${flushErr.message}`);
     }
 
+    // DISABLED FOR TESTING: No DTR/RTS toggle on startup
+    // Testing whether we can connect without triggering hardware reset
     // Use RTS instead of DTR if RTS override is enabled
-    if (this.context.runEnvironment.rtsOverride) {
-      await this.toggleRTS();
-    } else {
-      await this.toggleDTR();
-    }
+    // if (this.context.runEnvironment.rtsOverride) {
+    //   await this.toggleRTS();
+    // } else {
+    //   await this.toggleDTR();
+    // }
   }
 
   // Check raw data for P2 version response (no parser needed!)
@@ -690,24 +719,24 @@ export class UsbSerial extends EventEmitter {
     await this.setRts(value);
   }
 
-  private async toggleDTR(): Promise<void> {
+  public async toggleDTR(): Promise<void> {
     // toggle the propPlug DTR line
-    this.logConsoleMessage(`[USB] PRIVATE toggleDTR() ENTER - pulse sequence`);
+    this.logConsoleMessage(`[USB] PUBLIC toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
     await this.setDtr(true);
     await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setDtr(false);
-    this.logConsoleMessage(`[USB] PRIVATE toggleDTR() EXIT`);
+    this.logConsoleMessage(`[USB] PUBLIC toggleDTR() EXIT`);
   }
 
-  private async toggleRTS(): Promise<void> {
+  public async toggleRTS(): Promise<void> {
     // toggle the propPlug RTS line
-    this.logConsoleMessage(`[USB] PRIVATE toggleRTS() ENTER - pulse sequence`);
+    this.logConsoleMessage(`[USB] PUBLIC toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
     await this.setRts(true);
     await waitMSec(10);  // 10ms pulse is sufficient per spec
     await this.setRts(false);
-    this.logConsoleMessage(`[USB] PRIVATE toggleRTS() EXIT`);
+    this.logConsoleMessage(`[USB] PUBLIC toggleRTS() EXIT`);
   }
 
   private startReadListener() {

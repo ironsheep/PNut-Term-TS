@@ -41,7 +41,7 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 ### Data Visualization
 - **12 window types** for different data formats
 - **Multi-COG monitoring** with 8 independent COG windows
-- **Live updates** at full USB speed (up to 921,600 baud)
+- **Live updates** at full USB speed (up to 2\_000\_000 baud)
 - **Synchronized displays** across multiple windows
 
 ### Debug Logging
@@ -62,7 +62,7 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 
 ### Core Features
 - ✅ **Cross-Platform**: macOS (x64, ARM64), Windows, Linux
-- ✅ **High-Speed Serial**: Up to 921,600 baud
+- ✅ **High-Speed Serial**: Up to 2\_000\_000 baud
 - ✅ **Worker Thread Architecture**: Non-blocking USB processing
 - ✅ **Zero-Copy Buffers**: SharedArrayBuffer for peak performance
 - ✅ **DTR/RTS Control**: Hardware reset line support
@@ -71,7 +71,7 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 ### Debug Windows
 - ✅ **Debug Logger**: All traffic with timestamps and TX/RX indicators
 - ✅ **COG Windows** (0-7): Individual COG state monitoring
-- ✅ **Debugger Windows** (0-7): 416-byte debugger packet displays
+- ✅ **Debugger Windows** (0-7): single-step debugger
 - ✅ **Logic Analyzer**: 16-channel digital waveform display
 - ✅ **Oscilloscope**: Analog waveform visualization
 - ✅ **XY Scope**: Phase and trajectory plotting
@@ -131,19 +131,14 @@ Cog2  Counter: 1234
 ---
 
 ### 3. Debugger Windows (Debugger 0-7)
-**Status**: ✅ **Fully Implemented**
+**Status**:  **Pending Final Implementation**
 
-**Purpose**: Display 416-byte debugger packets for each COG
+**Purpose**: Display single-step debugger for each COG
 
 **Features**:
 - Auto-create on first debugger packet arrival
-- Display binary debug data in structured format
+- Display processor state data in structured format
 - One window per COG (0-7)
-- Triggered by 0xDB protocol packets
-
-**Packet Structure**:
-- First byte: 0x00-0x07 (COG ID)
-- Remaining 415 bytes: Debugger payload
 
 ---
 
@@ -204,7 +199,7 @@ Cog2  Counter: 1234
 ---
 
 ### 7. FFT Analyzer Window
-**Status**: 🔧 **Recently Fixed** (v0.5.0)
+**Status**: ✅ **Fully Implemented**
 
 **Purpose**: Frequency spectrum analysis
 
@@ -223,7 +218,7 @@ Cog2  Counter: 1234
 ---
 
 ### 8. Spectrogram Window
-**Status**: 🔧 **Recently Fixed** (v0.5.0)
+**Status**: ✅ **Fully Implemented**
 
 **Purpose**: Time-frequency waterfall display
 
@@ -296,7 +291,7 @@ Cog2  Counter: 1234
 ---
 
 ### 12. MIDI Display Window
-**Status**: 🔧 **Recently Fixed** (v0.5.0)
+**Status**: ✅ **Fully Implemented**
 
 **Purpose**: MIDI message visualization
 
@@ -383,6 +378,38 @@ Cog2  Counter: 1234
 **RTS Reset**
 - Toggle RTS line (alternative reset)
 - Use if RTS wired to RES instead of DTR
+
+---
+
+### Understanding Connection Behavior
+
+**Quick Decision Guide**: Does your P2 need to reset when you connect?
+
+**How to Change**: File → Preferences (Ctrl/Cmd+,) → Serial Port → "Reset P2 on Connection"
+
+#### ☑️ Enable "Reset on Connection" when:
+- You're actively developing and testing code
+- You want a clean start every time
+- Previous P2 state doesn't matter
+- **Result**: DTR toggles immediately → P2 resets → capture fresh output
+
+#### ☐ Disable "Reset on Connection" when:
+- P2 is already running something you want to observe
+- You need to capture existing data stream
+- You don't want to disturb the running program
+- **Result**: No DTR toggle → P2 keeps running → capture immediately
+
+**Default**: Enabled (traditional development mode)
+
+**Note**: Setting persists - change it once for your preferred workflow.
+
+#### 💡 Command-Line Downloads (`-R` RAM / `-F` Flash)
+When launched from an IDE with download parameters:
+- Connection behavior is automatic (ignores preference)
+- DTR toggles only when download starts (not on port open)
+- Ensures clean download protocol
+
+**See Full User Guide** (Connection & Startup Behavior section) for detailed workflows and examples.
 
 ---
 
@@ -757,6 +784,5 @@ pnut-term-ts --help
 
 ---
 
-**Last Updated**: 2024-10-12
+**Last Updated**: 2025-11-05
 **Version**: 0.5.0
-**Architecture**: Worker Thread with SharedArrayBuffer

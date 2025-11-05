@@ -26,6 +26,7 @@ export interface RuntimeEnvironment {
   debugBaudrate: number;
   ideMode: boolean;
   rtsOverride: boolean;
+  resetOnConnection: boolean;  // Control DTR/RTS reset on port open
   loggingEnabled: boolean;
   loggingLevel: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
   logToFile: boolean;
@@ -98,6 +99,7 @@ export class Context {
       debugBaudrate: 2000000,
       ideMode: false,
       rtsOverride: false,     // Default to DTR unless IDE specifies RTS
+      resetOnConnection: true,  // Default to traditional mode (reset on connect)
       loggingEnabled: false,  // Default to false for production
       loggingLevel: 'INFO',   // Default log level
       logToFile: false,
