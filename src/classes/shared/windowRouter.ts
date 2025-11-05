@@ -1011,9 +1011,9 @@ export class WindowRouter extends EventEmitter {
     
     if (this.useBinaryFormat && this.binaryRecorder) {
       // Record to binary format
-      const buffer = messageType === 'binary' 
+      const buffer = messageType === 'binary'
         ? Buffer.from(data as Uint8Array)
-        : Buffer.from(data as string, 'utf-8');
+        : Buffer.from(data as string, 'latin1'); // Use latin1 to preserve binary bytes
       this.binaryRecorder.recordMessage(buffer);
       this.recordingMessageCount++;
     } else {

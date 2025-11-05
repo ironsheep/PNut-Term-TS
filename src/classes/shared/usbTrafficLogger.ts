@@ -121,7 +121,9 @@ export class USBTrafficLogger {
     // Convert to Uint8Array
     let bytes: Uint8Array;
     if (typeof data === 'string') {
-      bytes = new Uint8Array(Buffer.from(data, 'utf8'));
+      // CRITICAL: Use latin1 encoding to preserve binary bytes (1:1 byte mapping)
+      // UTF-8 encoding corrupts binary data (e.g., 0xFF becomes 0xC3 0xBF)
+      bytes = new Uint8Array(Buffer.from(data, 'latin1'));
     } else if (data instanceof Buffer) {
       bytes = new Uint8Array(data);
     } else {

@@ -97,7 +97,7 @@ export class BinaryRecorder {
     
     // Determine type and convert to Buffer
     const isText = typeof data === 'string';
-    const buffer = isText ? Buffer.from(data, 'utf-8') : data;
+    const buffer = isText ? Buffer.from(data, 'latin1') : data; // Use latin1 to preserve binary bytes
     
     // Create entry buffer
     const entrySize = 4 + 1 + 4 + buffer.length; // delta + type + length + data

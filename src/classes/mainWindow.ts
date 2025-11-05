@@ -1382,7 +1382,8 @@ export class MainWindow {
         const hex = Array.from(data.slice(0, Math.min(32, data.length)))
           .map((b) => '0x' + b.toString(16).padStart(2, '0'))
           .join(' ');
-        const text = data.toString('utf8', 0, Math.min(32, data.length)).replace(/[\r\n]/g, '\\n');
+        // Use latin1 to preserve binary bytes for logging (1:1 byte mapping)
+        const text = data.toString('latin1', 0, Math.min(32, data.length)).replace(/[\r\n]/g, '\\n');
         this.logConsoleMessage(`[DOWNLOAD] Non-protocol data: ${data.length} bytes, hex=[${hex}], text="${text}"`);
         this.logConsoleMessage(`[DOWNLOAD] Non-protocol data during download, dropping (${data.length} bytes)`);
         return; // Drop all non-protocol data during download
