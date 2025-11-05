@@ -19,6 +19,22 @@ mcp__todo-mcp__context_resume    # WHERE WAS I? - Execute FIRST
 - **Never fall below protection** (don't break working functionality)
 - **Document immediately** when something works or fails
 
+## 🚨 CRITICAL SAFETY RULES
+
+### NEVER Destroy Modified Files
+
+**ABSOLUTE PROHIBITION - These commands are FORBIDDEN:**
+- ❌ `git restore <file>` on modified files
+- ❌ `git checkout <file>` on modified files
+- ❌ `git reset --hard` (destroys ALL work)
+- ❌ Any command that discards uncommitted changes
+
+**WHY**: Hours of work can be permanently lost. Git cannot recover uncommitted changes.
+
+**IF user wants to discard changes**: User must explicitly request it. Never assume.
+
+**BEFORE any destructive command**: ALWAYS ask user for confirmation first.
+
 ## 🎯 PROJECT PRINCIPLES
 
 ### Development Philosophy
