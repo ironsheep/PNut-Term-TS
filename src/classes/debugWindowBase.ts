@@ -155,6 +155,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected inputForwarder: InputForwarder;
   protected wheelTimer: NodeJS.Timeout | null = null;
   protected lastWheelDelta: number = 0;
+  protected hideXY: boolean = false; // Suppress coordinate text in cursor (HIDEXY keyword)
 
   // Window drag tracking (matches Pascal CaptionStr and CaptionPos)
   private captionStr: string = ''; // Original caption without position
@@ -425,32 +426,51 @@ export abstract class DebugWindowBase extends EventEmitter {
         }
         // Return current mouse state and pixel color
         try {
-          // Check if mouse is within valid bounds
-          if (this.vMouseX >= 0 && this.vMouseY >= 0) {
-            // Encode mouse position and button state
+          // Pascal: SendMousePos bounds check (DebugDisplayUnit.pas:3535)
+          // if (p.x < 0) or (p.x >= ClientWidth) or (p.y < 0) or (p.y >= ClientHeight)
+          const dimensions = this.getCanvasDimensions();
+
+          // DIAGNOSTIC: Log current state before bounds check
+          this.logMessageBase(`[MOUSE DIAG] PC_MOUSE state: vMouseX=${this.vMouseX}, vMouseY=${this.vMouseY}, dims=${JSON.stringify(dimensions)}`);
+
+          const inBounds = dimensions
+            ? (this.vMouseX >= 0 && this.vMouseX < dimensions.width &&
+               this.vMouseY >= 0 && this.vMouseY < dimensions.height)
+            : (this.vMouseX >= 0 && this.vMouseY >= 0); // Fallback for windows without canvases
+
+          // DIAGNOSTIC: Log bounds check result
+          this.logMessageBase(`[MOUSE DIAG] Bounds check: inBounds=${inBounds} (lower: x>=${0} y>=${0}, upper: x<${dimensions?.width} y<${dimensions?.height})`);
+
+          if (inBounds) {
+            // Pascal: Transform coordinates for transmission (SendMousePos:3550-3554)
+            // This happens here, not when capturing, so stored coordinates remain in canvas space
+            const transformed = this.transformMouseCoordinates(this.vMouseX, this.vMouseY);
+
+            // Encode mouse position and button state with transformed coordinates
             const positionValue = this.tLongTransmitter.encodeMouseData(
-              this.vMouseX,
-              this.vMouseY,
+              transformed.x,
+              transformed.y,
               this.vMouseButtons.left,
               this.vMouseButtons.middle,
               this.vMouseButtons.right,
               this.vMouseWheel
             );
 
-            // Get pixel color at mouse position (derived classes can override getPixelColorAt)
+            // Get pixel color at mouse position (use original canvas coordinates)
             const colorValue = this.getPixelColorAt(this.vMouseX, this.vMouseY);
 
             // Transmit position and color
             this.tLongTransmitter.transmitMouseData(positionValue, colorValue);
-            this.logMessageBase(`PC_MOUSE transmitted: pos=(${this.vMouseX},${this.vMouseY}) buttons=${JSON.stringify(this.vMouseButtons)} wheel=${this.vMouseWheel} color=0x${colorValue.toString(16)}`);
+            this.logMessageBase(`PC_MOUSE transmitted: pos=(${transformed.x},${transformed.y}) buttons=${JSON.stringify(this.vMouseButtons)} wheel=${this.vMouseWheel} color=0x${colorValue.toString(16)}`);
 
-            // Clear wheel delta after transmission (Pascal behavior)
+            // Clear wheel delta after transmission (Pascal: DebugDisplayUnit.pas:3568)
+            // Pascal clears IMMEDIATELY after every transmission
             this.vMouseWheel = 0;
           } else {
             // Mouse out of bounds - send Pascal's out-of-bounds values
             const outOfBounds = this.tLongTransmitter.createOutOfBoundsMouseData();
             this.tLongTransmitter.transmitMouseData(outOfBounds.position, outOfBounds.color);
-            this.logMessageBase('PC_MOUSE transmitted out-of-bounds data');
+            this.logMessageBase(`PC_MOUSE transmitted out-of-bounds data (x=${this.vMouseX}, y=${this.vMouseY}, dims=${JSON.stringify(dimensions)})`);
           }
         } catch (error) {
           this.logMessageBase(`PC_MOUSE transmission error: ${error}`);
@@ -1790,6 +1810,16 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
     // Default implementation - no transformation
     return { x, y };
+  }
+
+  /**
+   * Get canvas dimensions for bounds checking
+   * Override this in derived classes that have canvases
+   * Default returns null (no bounds checking - accept all coordinates)
+   */
+  protected getCanvasDimensions(): { width: number; height: number } | null {
+    // Default implementation - no bounds (for windows without canvases)
+    return null;
   }
 
   /**

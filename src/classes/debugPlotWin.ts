@@ -55,6 +55,7 @@ export interface PlotDisplaySpec {
   lutColors: LutColor[];
   delayedUpdate: boolean;
   hideXY: boolean;
+  colorMode?: ColorMode; // Optional color mode (LUT1, RGBI8, RGB24, etc.)
 }
 
 export enum eCoordModes {
@@ -163,6 +164,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   private displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
   private isFirstDisplayData: boolean = true;
   private contentInset: number = 0; // 0 pixels from left and right of window
+  private plotMouseEventHandlersSetup: boolean = false; // Guard for Plot-specific IPC handlers
   // current terminal state
   // Removed deferredCommands - now using single queue architecture
   public cursorPosition: Position = { x: 0, y: 0 };
@@ -236,6 +238,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
     this.updateMode = displaySpec.delayedUpdate || false; // Set update mode from display spec
+    this.hideXY = displaySpec.hideXY || false; // Apply hideXY from display spec to base class property
+    if (displaySpec.colorMode) {
+      this.colorMode = displaySpec.colorMode; // Apply color mode from display spec
+      this.logMessage(`DebugPlotWin: colorMode set to ${displaySpec.colorMode}`);
+    }
     this.logMessage(`DebugPlotWin: updateMode = ${this.updateMode} (${this.updateMode ? 'buffered' : 'live'} drawing)`);
     // calculate canvasOffet for origin
     this.canvasOffset = { x: displaySpec.size.width / 2, y: displaySpec.size.height / 2 };
@@ -249,6 +256,10 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.lutManager = new LUTManager();
     this.colorTranslator = new ColorTranslator();
     this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+    // Apply color mode to translator
+    if (displaySpec.colorMode) {
+      this.colorTranslator.setColorMode(displaySpec.colorMode);
+    }
     this.layerManager = new LayerManager();
     this.spriteManager = new SpriteManager();
 
@@ -398,6 +409,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           if (compatibleSpec.position) displaySpec.position = compatibleSpec.position;
           if (compatibleSpec.hasExplicitPosition) displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
           if (compatibleSpec.size) displaySpec.size = compatibleSpec.size;
+          if (compatibleSpec.hideXY !== undefined) displaySpec.hideXY = compatibleSpec.hideXY;
           index += consumed - 1; // Adjust for loop increment
         } else {
           // Handle PLOT-specific keywords
@@ -428,6 +440,30 @@ export class DebugPlotWindow extends DebugWindowBase {
             case 'HIDEXY':
               displaySpec.hideXY = true;
               DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: HIDEXY enabled');
+              break;
+
+            // Color mode keywords
+            case 'LUT1':
+            case 'LUT2':
+            case 'LUT4':
+            case 'LUT8':
+            case 'LUMA8':
+            case 'LUMA8W':
+            case 'LUMA8X':
+            case 'HSV8':
+            case 'HSV8W':
+            case 'HSV8X':
+            case 'RGBI8':
+            case 'RGBI8W':
+            case 'RGBI8X':
+            case 'RGB8':
+            case 'HSV16':
+            case 'HSV16W':
+            case 'HSV16X':
+            case 'RGB16':
+            case 'RGB24':
+              displaySpec.colorMode = element.toUpperCase() as ColorMode;
+              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Color mode set to ${element.toUpperCase()}`);
               break;
 
             default:
@@ -650,208 +686,9 @@ export class DebugPlotWindow extends DebugWindowBase {
           ${ENABLE_PERFORMANCE_MONITORING ? '<div id="performance-overlay"></div>' : ''}
         </div>
         <script>
-          // Mouse event IPC setup - must be in initial HTML, not injected code
-          // See mainWindow.ts:3144 - executeJavaScript injections cannot reliably access require('electron')
-          console.log('[PLOT INPUT] Script starting...');
-          const { ipcRenderer } = require('electron');
-          console.log('[PLOT INPUT] ipcRenderer loaded:', !!ipcRenderer);
-
-          // Track mouse state for IPC transmission
-          let mouseState = {
-            x: 0,
-            y: 0,
-            buttons: { left: false, middle: false, right: false },
-            wheelDelta: 0,
-            overCanvas: false
-          };
-
-          // Function to send mouse state to main process
-          function sendMouseEvent(wheelDelta) {
-            wheelDelta = wheelDelta || 0;
-            console.log('[PLOT INPUT] sendMouseEvent called - x:', mouseState.x, 'y:', mouseState.y, 'buttons:', JSON.stringify(mouseState.buttons), 'wheel:', wheelDelta);
-            try {
-              ipcRenderer.send('mouse-event', mouseState.x, mouseState.y, mouseState.buttons, wheelDelta);
-              console.log('[PLOT INPUT] IPC sent successfully');
-            } catch (error) {
-              console.error('[PLOT INPUT] Failed to send mouse event:', error);
-            }
-          }
-
-          // Set up mouse event listeners immediately - script is at end of body, so DOM is ready
-          console.log('[PLOT INPUT] Setting up event listeners...');
-          const canvas = document.getElementById('plot-area');
-          if (!canvas) {
-            console.error('[PLOT INPUT] Canvas not found!');
-          } else {
-            console.log('[PLOT INPUT] Canvas found:', canvas.id, canvas.width + 'x' + canvas.height);
-
-            // Mouse move handler
-            canvas.addEventListener('mousemove', function(event) {
-              const rect = canvas.getBoundingClientRect();
-              mouseState.x = Math.floor(event.clientX - rect.left);
-              mouseState.y = Math.floor(event.clientY - rect.top);
-
-              // Update coordinate display if not hidden
-              if (!${this.displaySpec.hideXY}) {
-                updateCoordinateDisplay(mouseState.x, mouseState.y);
-              }
-
-              sendMouseEvent();
-            });
-            console.log('[PLOT INPUT] mousemove handler attached');
-
-            // Mouse enter/leave handlers
-            canvas.addEventListener('mouseenter', function() {
-              console.log('[PLOT INPUT] mouseenter event');
-              mouseState.overCanvas = true;
-              sendMouseEvent();
-            });
-
-            canvas.addEventListener('mouseleave', function() {
-              console.log('[PLOT INPUT] mouseleave event');
-              mouseState.overCanvas = false;
-
-              // Hide coordinate display when mouse leaves canvas
-              const display = document.getElementById('coordinate-display');
-              if (display) {
-                display.style.display = 'none';
-              }
-
-              sendMouseEvent();
-            });
-            console.log('[PLOT INPUT] mouseenter/leave handlers attached');
-
-            // Mouse button handlers
-            canvas.addEventListener('mousedown', function(event) {
-              console.log('[PLOT INPUT] mousedown event - button:', event.button);
-              if (event.button === 0) mouseState.buttons.left = true;
-              if (event.button === 1) mouseState.buttons.middle = true;
-              if (event.button === 2) mouseState.buttons.right = true;
-              sendMouseEvent();
-            });
-
-            canvas.addEventListener('mouseup', function(event) {
-              console.log('[PLOT INPUT] mouseup event - button:', event.button);
-              if (event.button === 0) mouseState.buttons.left = false;
-              if (event.button === 1) mouseState.buttons.middle = false;
-              if (event.button === 2) mouseState.buttons.right = false;
-              sendMouseEvent();
-            });
-            console.log('[PLOT INPUT] mousedown/up handlers attached');
-
-            // Mouse wheel handler
-            canvas.addEventListener('wheel', function(event) {
-              console.log('[PLOT INPUT] wheel event - deltaY:', event.deltaY);
-              event.preventDefault();
-              const wheelDelta = -Math.sign(event.deltaY);
-              sendMouseEvent(wheelDelta);
-            });
-            console.log('[PLOT INPUT] wheel handler attached');
-
-            // Prevent context menu
-            canvas.addEventListener('contextmenu', function(event) {
-              console.log('[PLOT INPUT] contextmenu event - prevented');
-              event.preventDefault();
-            });
-            console.log('[PLOT INPUT] contextmenu handler attached');
-
-            // Function to update coordinate display
-            function updateCoordinateDisplay(x, y) {
-              const display = document.getElementById('coordinate-display');
-              if (!display) return;
-
-              const canvasWidth = ${this.displaySpec.size.width};
-              const canvasHeight = ${this.displaySpec.size.height};
-
-              // Calculate logical coordinates based on axis direction
-              let coordX = ${this.cartesianConfig.xdir} ? (canvasWidth - x) : x;
-              let coordY = ${this.cartesianConfig.ydir} ? y : (canvasHeight - y);
-
-              // Divide by dot size to get logical coordinates
-              coordX = Math.floor(coordX / ${this.displaySpec.dotSize.width});
-              coordY = Math.floor(coordY / ${this.displaySpec.dotSize.height});
-
-              // Update display text
-              display.textContent = coordX + ',' + coordY;
-
-              // Calculate display size for proper positioning
-              const displayRect = display.getBoundingClientRect();
-              const textWidth = displayRect.width;
-              const textHeight = displayRect.height;
-
-              // Position flyout based on quadrant
-              const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
-
-              let displayX, displayY;
-              switch(quadrant) {
-                case 0: // Top-left
-                  displayX = x + 9;
-                  displayY = y + 9;
-                  break;
-                case 1: // Top-right
-                  displayX = x - textWidth - 9;
-                  displayY = y + 9;
-                  break;
-                case 2: // Bottom-left
-                  displayX = x + 9;
-                  displayY = y - textHeight - 9;
-                  break;
-                case 3: // Bottom-right
-                  displayX = x - textWidth - 9;
-                  displayY = y - textHeight - 9;
-                  break;
-              }
-
-              // Ensure display stays within canvas bounds
-              displayX = Math.max(0, Math.min(canvasWidth - textWidth, displayX));
-              displayY = Math.max(0, Math.min(canvasHeight - textHeight, displayY));
-
-              display.style.left = displayX + 'px';
-              display.style.top = displayY + 'px';
-              display.style.display = 'block';
-            }
-
-            console.log('[PLOT INPUT] All mouse event handlers initialized successfully');
-          }
-
-          // Set up keyboard event listener with IPC transmission
-          document.addEventListener('keydown', function(event) {
-            console.log('[PLOT INPUT] keydown event - key:', event.key, 'code:', event.code);
-
-            // Map key to keyCode for PC_KEY transmission (matching Pascal behavior)
-            // Special keys get specific codes, printable characters use ASCII
-            let keyCode = 0;
-            if (event.key === 'ArrowLeft') keyCode = 1;
-            else if (event.key === 'ArrowRight') keyCode = 2;
-            else if (event.key === 'ArrowUp') keyCode = 3;
-            else if (event.key === 'ArrowDown') keyCode = 4;
-            else if (event.key === 'Home') keyCode = 5;
-            else if (event.key === 'End') keyCode = 6;
-            else if (event.key === 'Delete') keyCode = 7;
-            else if (event.key === 'Backspace') keyCode = 8;
-            else if (event.key === 'Tab') keyCode = 9;
-            else if (event.key === 'Insert') keyCode = 10;
-            else if (event.key === 'PageUp') keyCode = 11;
-            else if (event.key === 'PageDown') keyCode = 12;
-            else if (event.key === 'Enter') keyCode = 13;
-            else if (event.key === 'Escape') keyCode = 27;
-            else if (event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126) {
-              keyCode = event.key.charCodeAt(0); // ASCII 32-126 (Space to ~)
-            }
-
-            // Send key event via IPC to main process
-            if (keyCode > 0) {
-              try {
-                ipcRenderer.send('key-event', event.key, keyCode);
-                console.log('[PLOT INPUT] Key IPC sent - key:', event.key, 'code:', keyCode);
-              } catch (error) {
-                console.error('[PLOT INPUT] Failed to send key event:', error);
-              }
-            }
-          });
-          console.log('[PLOT INPUT] Keyboard handler attached');
-
-          console.log('[PLOT INPUT] Script initialization complete');
+          // Input event handlers injected by base class enableMouseInput()/enableKeyboardInput()
+          // This ensures consistent behavior across all window types
+          console.log('[PLOT INPUT] Initial script loaded - input handlers will be injected by base class');
         </script>
       </body>
     </html>
@@ -894,33 +731,6 @@ export class DebugPlotWindow extends DebugWindowBase {
       this.logMessage(`[RENDERER CONSOLE] ${message}`);
     });
 
-    // Set up IPC handlers for mouse events from renderer
-    // The renderer sends 'mouse-event' via ipcRenderer.send()
-    this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
-      if (channel === 'mouse-event') {
-        const [x, y, buttons, wheelDelta] = args;
-        this.logMessage(
-          `[PLOT MOUSE IPC] Received mouse event: x=${x}, y=${y}, buttons=${JSON.stringify(
-            buttons
-          )}, wheel=${wheelDelta}`
-        );
-
-        // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
-        this.vMouseX = x;
-        this.vMouseY = y;
-        this.vMouseButtons = {
-          left: buttons.left || false,
-          middle: buttons.middle || false,
-          right: buttons.right || false
-        };
-
-        // Handle wheel events
-        if (wheelDelta !== 0) {
-          this.vMouseWheel = wheelDelta;
-        }
-      }
-    });
-    this.logMessage('IPC mouse event handler registered');
     // Menu.setApplicationMenu(null); // DOESNT WORK!
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
@@ -929,6 +739,14 @@ export class DebugPlotWindow extends DebugWindowBase {
 
       // Initialize the canvas for drawing
       this.initializeCanvas();
+
+      // Enable mouse and keyboard input using base class implementation
+      // This ensures consistent input handling across all window types
+      this.enableMouseInput();
+      this.enableKeyboardInput();
+
+      // Set up Plot-specific coordinate display handler
+      this.setupCoordinateDisplayHandler();
     });
   }
 
@@ -1598,6 +1416,24 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
                 const y = yFixed / coordinateScale;
                 this.setCursorPosition(x, y);
               }
+            }
+          }
+          break;
+        }
+
+        case 'COLOR': {
+          // COLOR value - Set drawing color using numeric pixel value
+          // Value is interpreted according to current color mode (RGBI8, RGB24, etc.)
+          if (index + 1 < lineParts.length) {
+            const colorValue = this.parseNumber(lineParts[++index]);
+            if (colorValue !== null) {
+              // Use ColorTranslator to convert pixel value to RGB24
+              const rgb24 = this.colorTranslator.translateColor(colorValue);
+
+              // Convert RGB24 (0xRRGGBB) to CSS color string '#RRGGBB'
+              this.currFgColor = '#' + rgb24.toString(16).padStart(6, '0').toUpperCase();
+
+              this.logMessage(`COLOR: Set color to value ${colorValue} -> ${this.currFgColor}`);
             }
           }
           break;
@@ -2464,12 +2300,20 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     const debugWindow = this.debugWindow;
     if (!debugWindow) return;
 
-    let [x, y] = this.getCursorXY();
+    let [xc, yc] = this.getCursorXY();
 
     // Apply ydir transformation for canvas coordinates
     if (!this.cartesianConfig.ydir) {
-      y = this.displaySpec.size.height - y;
+      yc = this.displaySpec.size.height - yc;
     }
+
+    // Pascal centers the box on cursor position (DebugDisplayUnit.pas:3613-3616)
+    // xl := xc - xs shr 1;        // left = centerX - width/2
+    // xr := xc + (xs - xs shr 1); // right = centerX + (width - width/2)
+    // yt := yc - ys shr 1;        // top = centerY - height/2
+    // yb := yc + (ys - ys shr 1); // bottom = centerY + height/2
+    const xl = xc - Math.floor(width / 2);
+    const yt = yc - Math.floor(height / 2);
 
     const filled = lineSize === 0;
 
@@ -2481,11 +2325,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         if (${filled}) {
           window.plotCtx.fillStyle = '${this.currFgColor}';
-          window.plotCtx.fillRect(${x}, ${y}, ${width}, ${height});
+          window.plotCtx.fillRect(${xl}, ${yt}, ${width}, ${height});
         } else {
           window.plotCtx.strokeStyle = '${this.currFgColor}';
           window.plotCtx.lineWidth = ${lineSize};
-          window.plotCtx.strokeRect(${x}, ${y}, ${width}, ${height});
+          window.plotCtx.strokeRect(${xl}, ${yt}, ${width}, ${height});
         }
 
         window.plotCtx.globalAlpha = 1.0;
@@ -2507,15 +2351,19 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     const debugWindow = this.debugWindow;
     if (!debugWindow) return;
 
-    let [x, y] = this.getCursorXY();
+    let [xc, yc] = this.getCursorXY();
 
     // Apply ydir transformation for canvas coordinates
     if (!this.cartesianConfig.ydir) {
-      y = this.displaySpec.size.height - y;
+      yc = this.displaySpec.size.height - yc;
     }
 
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
+    // Pascal centers the oval on cursor position (DebugDisplayUnit.pas:2032)
+    // key_oval: SmoothShape(t1, t2, t3, t4, t3 shr 1, t4 shr 1, ...)
+    // where t1,t2 are center coordinates, t3 shr 1 and t4 shr 1 are x and y radii
+    // Cursor position IS the center, radii are width/2 and height/2
+    const radiusX = width / 2;
+    const radiusY = height / 2;
     const filled = lineSize === 0;
 
     const jsCode = `
@@ -2525,7 +2373,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         window.plotCtx.globalAlpha = ${opacity / 255};
 
         window.plotCtx.beginPath();
-        window.plotCtx.ellipse(${centerX}, ${centerY}, ${width / 2}, ${height / 2}, 0, 0, 2 * Math.PI);
+        window.plotCtx.ellipse(${xc}, ${yc}, ${radiusX}, ${radiusY}, 0, 0, 2 * Math.PI);
 
         if (${filled}) {
           window.plotCtx.fillStyle = '${this.currFgColor}';
@@ -3355,6 +3203,357 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     const x = Math.round(radius * Math.cos(angleRad));
     const y = Math.round(radius * Math.sin(angleRad));
     return [x, y];
+  }
+
+  /**
+   * Transform mouse coordinates for PC_MOUSE transmission
+   * Pascal: DebugDisplayUnit.pas:3550-3554
+   * Applies coordinate system transformation based on ydir
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    // Pascal: if not vDirY then p.y := ClientHeight - p.y;
+    // In Cartesian mode (ydir=false), invert Y coordinate
+    if (!this.cartesianConfig.ydir) {
+      y = this.displaySpec.size.height - y;
+    }
+
+    // Pascal: if vDirX then p.x := ClientWidth - p.x;
+    if (this.cartesianConfig.xdir) {
+      x = this.displaySpec.size.width - x;
+    }
+
+    return { x, y };
+  }
+
+  /**
+   * Get canvas dimensions for PC_MOUSE bounds checking
+   * Pascal: DebugDisplayUnit.pas:3535 - (p.x < 0) or (p.x >= ClientWidth) or (p.y < 0) or (p.y >= ClientHeight)
+   */
+  protected getCanvasDimensions(): { width: number; height: number } | null {
+    return {
+      width: this.displaySpec.size.width,
+      height: this.displaySpec.size.height
+    };
+  }
+
+  /**
+   * Set up Plot-specific coordinate display handler
+   * Hooks into base class mouse events to show coordinate flyout
+   * Respects HIDEXY keyword to suppress display
+   */
+  private setupCoordinateDisplayHandler(): void {
+    if (!this.debugWindow) return;
+
+    // Inject coordinate display update function and event handlers into renderer
+    this.debugWindow.webContents.executeJavaScript(`
+      (function() {
+        // Function to update coordinate display (Plot-specific functionality)
+        function updateCoordinateDisplay(x, y) {
+          const display = document.getElementById('coordinate-display');
+          if (!display) return;
+
+          const canvasWidth = ${this.displaySpec.size.width};
+          const canvasHeight = ${this.displaySpec.size.height};
+
+          // Calculate logical coordinates based on axis direction
+          let coordX = ${this.cartesianConfig.xdir} ? (canvasWidth - x) : x;
+          let coordY = ${this.cartesianConfig.ydir} ? y : (canvasHeight - y);
+
+          // Divide by dot size to get logical coordinates
+          coordX = Math.floor(coordX / ${this.displaySpec.dotSize.width});
+          coordY = Math.floor(coordY / ${this.displaySpec.dotSize.height});
+
+          // Update display text
+          display.textContent = coordX + ',' + coordY;
+
+          // Calculate display size for proper positioning
+          const displayRect = display.getBoundingClientRect();
+          const textWidth = displayRect.width;
+          const textHeight = displayRect.height;
+
+          // Position flyout based on quadrant
+          const quadrant = (x >= canvasWidth/2 ? 1 : 0) | (y >= canvasHeight/2 ? 2 : 0);
+
+          let displayX, displayY;
+          switch(quadrant) {
+            case 0: // Top-left
+              displayX = x + 9;
+              displayY = y + 9;
+              break;
+            case 1: // Top-right
+              displayX = x - textWidth - 9;
+              displayY = y + 9;
+              break;
+            case 2: // Bottom-left
+              displayX = x + 9;
+              displayY = y - textHeight - 9;
+              break;
+            case 3: // Bottom-right
+              displayX = x - textWidth - 9;
+              displayY = y - textHeight - 9;
+              break;
+          }
+
+          // Ensure display stays within canvas bounds
+          displayX = Math.max(0, Math.min(canvasWidth - textWidth, displayX));
+          displayY = Math.max(0, Math.min(canvasHeight - textHeight, displayY));
+
+          display.style.left = displayX + 'px';
+          display.style.top = displayY + 'px';
+          display.style.display = 'block';
+        }
+
+        // Hook into base class mouse event system
+        const canvas = document.getElementById('plot-area');
+        if (canvas) {
+          canvas.addEventListener('mousemove', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+
+            // Update coordinate display if not hidden
+            ${!this.displaySpec.hideXY ? 'updateCoordinateDisplay(x, y);' : '// HIDEXY is set, coordinate display suppressed'}
+          });
+
+          canvas.addEventListener('mouseleave', function() {
+            const display = document.getElementById('coordinate-display');
+            if (display) {
+              display.style.display = 'none';
+            }
+          });
+
+          console.log('[PLOT] Coordinate display handler initialized');
+        }
+      })();
+    `);
+
+    this.logMessage('Plot-specific coordinate display handler configured');
+  }
+
+  /**
+   * Override base class to use working IPC pattern for Plot window
+   * Base class uses window.electronAPI which doesn't exist in this codebase
+   * Plot window uses direct ipcRenderer.send() pattern
+   */
+  protected enableMouseInput(): void {
+    this.logMessage('Enabling mouse input forwarding (Plot override)');
+    this.inputForwarder.startPolling();
+
+    if (this.debugWindow) {
+      const canvasId = this.getCanvasId();
+
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          // Guard against multiple initialization
+          if (window.__mouseInputInitialized) {
+            console.log('[MOUSE INPUT] Already initialized, skipping');
+            return;
+          }
+          window.__mouseInputInitialized = true;
+
+          // Use direct IPC communication (working pattern from old Plot inline handlers)
+          const { ipcRenderer } = require('electron');
+
+          const canvas = document.getElementById('${canvasId}');
+          if (canvas) {
+            let mouseButtons = { left: false, middle: false, right: false };
+
+            // Mouse enter handler - DIAGNOSTIC
+            canvas.addEventListener('mouseenter', (event) => {
+              const rect = canvas.getBoundingClientRect();
+              const x = Math.floor(event.clientX - rect.left);
+              const y = Math.floor(event.clientY - rect.top);
+              console.log('[MOUSE DIAG] ENTER canvas at renderer coords (' + x + ',' + y + ')');
+              ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
+            });
+
+            // Mouse move handler
+            canvas.addEventListener('mousemove', (event) => {
+              const rect = canvas.getBoundingClientRect();
+              const x = Math.floor(event.clientX - rect.left);
+              const y = Math.floor(event.clientY - rect.top);
+              ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
+            });
+
+            // Mouse button handlers
+            canvas.addEventListener('mousedown', (event) => {
+              if (event.button === 0) mouseButtons.left = true;
+              else if (event.button === 1) mouseButtons.middle = true;
+              else if (event.button === 2) mouseButtons.right = true;
+
+              const rect = canvas.getBoundingClientRect();
+              const x = Math.floor(event.clientX - rect.left);
+              const y = Math.floor(event.clientY - rect.top);
+              console.log('[MOUSE DIAG] BUTTON DOWN (button=' + event.button + ') at (' + x + ',' + y + ')');
+              ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
+            });
+
+            canvas.addEventListener('mouseup', (event) => {
+              if (event.button === 0) mouseButtons.left = false;
+              else if (event.button === 1) mouseButtons.middle = false;
+              else if (event.button === 2) mouseButtons.right = false;
+
+              const rect = canvas.getBoundingClientRect();
+              const x = Math.floor(event.clientX - rect.left);
+              const y = Math.floor(event.clientY - rect.top);
+              console.log('[MOUSE DIAG] BUTTON UP (button=' + event.button + ') at (' + x + ',' + y + ')');
+              ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
+            });
+
+            // Mouse wheel handler
+            canvas.addEventListener('wheel', (event) => {
+              event.preventDefault();
+              const wheelDelta = -Math.sign(event.deltaY);
+
+              const rect = canvas.getBoundingClientRect();
+              const x = Math.floor(event.clientX - rect.left);
+              const y = Math.floor(event.clientY - rect.top);
+              console.log('[MOUSE DIAG] WHEEL delta=' + wheelDelta + ' at (' + x + ',' + y + ')');
+              ipcRenderer.send('mouse-event', x, y, mouseButtons, wheelDelta);
+            });
+
+            // Mouse leave handler - DIAGNOSTIC
+            canvas.addEventListener('mouseleave', (event) => {
+              console.log('[MOUSE DIAG] LEAVE canvas - sending (-1,-1)');
+              ipcRenderer.send('mouse-event', -1, -1, mouseButtons, 0);
+            });
+
+            // Prevent context menu
+            canvas.addEventListener('contextmenu', (event) => {
+              event.preventDefault();
+            });
+
+            console.log('[PLOT] Mouse input handlers initialized');
+          }
+        })();
+      `);
+
+      // Set up IPC handlers to receive events from renderer
+      this.setupPlotMouseEventHandlers();
+    }
+  }
+
+  /**
+   * Set up IPC handlers for mouse events (Plot-specific version)
+   * Cannot call base class private method, so Plot has its own
+   */
+  private setupPlotMouseEventHandlers(): void {
+    if (!this.debugWindow) return;
+
+    // Guard against duplicate handler registration (Plot-specific guard)
+    if (this.plotMouseEventHandlersSetup) {
+      this.logMessage('Mouse event handlers already set up, skipping');
+      return;
+    }
+    this.plotMouseEventHandlersSetup = true;
+
+    // Handle mouse and keyboard events from renderer
+    this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+      if (channel === 'mouse-event') {
+        const [x, y, buttons, wheelDelta] = args;
+
+        // DIAGNOSTIC: Log state transitions
+        const prevX = this.vMouseX;
+        const prevY = this.vMouseY;
+        const wasOutOfBounds = (prevX === -1 && prevY === -1);
+        const nowOutOfBounds = (x === -1 && y === -1);
+
+        if (!wasOutOfBounds && nowOutOfBounds) {
+          this.logMessage(`[MOUSE DIAG] TRANSITION: In-bounds (${prevX},${prevY}) -> OUT-OF-BOUNDS`);
+        } else if (wasOutOfBounds && !nowOutOfBounds) {
+          this.logMessage(`[MOUSE DIAG] TRANSITION: OUT-OF-BOUNDS -> In-bounds (${x},${y})`);
+        }
+
+        // Handle wheel events with 100ms timer (Pascal: DebugDisplayUnit.pas:811-822)
+        if (wheelDelta !== 0) {
+          this.lastWheelDelta = wheelDelta;
+          if (this.wheelTimer) {
+            clearTimeout(this.wheelTimer);
+          }
+          this.wheelTimer = setTimeout(() => {
+            this.lastWheelDelta = 0;
+          }, 100);
+        }
+
+        // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
+        // Store in canvas coordinates, transform at transmission time
+        this.vMouseX = x;
+        this.vMouseY = y;
+        this.vMouseButtons = {
+          left: buttons.left || false,
+          middle: buttons.middle || false,
+          right: buttons.right || false
+        };
+        // Store wheel delta for PC_MOUSE transmission (Pascal: DebugDisplayUnit.pas:813)
+        this.vMouseWheel = this.lastWheelDelta;
+
+        // Get pixel color at position
+        const pixelGetter = this.getPixelColorGetter();
+
+        // Queue the mouse event
+        this.inputForwarder.queueMouseEvent(
+          x,
+          y,
+          buttons,
+          this.lastWheelDelta,
+          pixelGetter
+        );
+      } else if (channel === 'key-event') {
+        const [key, keyCode] = args;
+        // Store keypress for PC_KEY command (Pascal behavior: stores last keypress)
+        this.vKeyPress = keyCode || 0;
+        this.logMessage(`Key captured: '${key}' (code: ${keyCode}) stored in vKeyPress`);
+        // Also forward to input forwarder for other uses
+        this.inputForwarder.queueKeyEvent(key);
+      }
+    });
+  }
+
+  /**
+   * Override base class to use working IPC pattern for Plot window
+   * Base class uses window.electronAPI which doesn't exist in this codebase
+   * Plot window uses direct ipcRenderer.send() pattern
+   */
+  protected enableKeyboardInput(): void {
+    this.logMessage('Enabling keyboard input forwarding (Plot override)');
+    this.inputForwarder.startPolling();
+
+    if (this.debugWindow) {
+      this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          // Use direct IPC communication (working pattern from old Plot inline handlers)
+          const { ipcRenderer } = require('electron');
+
+          document.addEventListener('keydown', (event) => {
+            // Map key to keyCode for PC_KEY transmission (matching Pascal behavior)
+            let keyCode = event.keyCode || 0;
+            if (event.key === 'ArrowLeft') keyCode = 1;
+            else if (event.key === 'ArrowRight') keyCode = 2;
+            else if (event.key === 'ArrowUp') keyCode = 3;
+            else if (event.key === 'ArrowDown') keyCode = 4;
+            else if (event.key === 'Home') keyCode = 5;
+            else if (event.key === 'End') keyCode = 6;
+            else if (event.key === 'Delete') keyCode = 7;
+            else if (event.key === 'Backspace') keyCode = 8;
+            else if (event.key === 'Tab') keyCode = 9;
+            else if (event.key === 'Insert') keyCode = 10;
+            else if (event.key === 'PageUp') keyCode = 11;
+            else if (event.key === 'PageDown') keyCode = 12;
+            else if (event.key === 'Enter') keyCode = 13;
+            else if (event.key === 'Escape') keyCode = 27;
+            else if (event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126) {
+              keyCode = event.key.charCodeAt(0); // ASCII 32-126 (Space to ~)
+            }
+
+            if (keyCode > 0) {
+              ipcRenderer.send('key-event', event.key, keyCode);
+            }
+          });
+
+          console.log('[PLOT] Keyboard input handler initialized');
+        })();
+      `);
+    }
   }
 
   /**

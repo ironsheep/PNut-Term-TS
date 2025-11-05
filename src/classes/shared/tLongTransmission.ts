@@ -75,7 +75,20 @@ export class TLongTransmission {
   }
 
   /**
-   * Utility method to encode mouse position data as done in Pascal SendMousePos.
+   * Utility method to encode mouse position data matching Pascal SendMousePos.
+   *
+   * The PC_MOUSE protocol sends 2 packed longs that the P2 firmware unpacks into 7 longs:
+   *
+   * Long 1 (packed position + buttons + wheel):
+   *   Bits 0-12:  X coordinate (13 bits, 0-8191)
+   *   Bits 13-25: Y coordinate (13 bits, 0-8191)
+   *   Bits 26-27: Wheel delta (2 bits, 0-3)
+   *   Bit 28:     Left button (1=pressed)
+   *   Bit 29:     Middle button (1=pressed)
+   *   Bit 30:     Right button (1=pressed)
+   *
+   * Long 2 (pixel color):
+   *   $00_RR_GG_BB format
    *
    * Pascal encoding:
    * v := vMouseWheel and 3 shl 26 or p.y and $1FFF shl 13 or p.x and $1FFF;
@@ -134,15 +147,49 @@ export class TLongTransmission {
   }
 
   /**
-   * Transmit mouse position and color data as done in Pascal SendMousePos.
-   * Sends two TLong values: position data and pixel color.
+   * Transmit mouse position and color data matching Pascal SendMousePos.
+   * Sends two TLong values: packed position data and pixel color.
    *
-   * @param positionValue - Encoded mouse position data
+   * The P2 firmware unpacks the position long into 7 separate longs in memory.
+   *
+   * IMPORTANT: Both longs are sent as a SINGLE 8-byte buffer to prevent timing
+   * issues that could cause the P2 to hang waiting for the second long.
+   *
+   * @param positionValue - Encoded mouse position data (includes x, y, buttons, wheel)
    * @param colorValue - Pixel color at mouse position
    */
   public transmitMouseData(positionValue: number, colorValue: number): void {
-    this.transmitTLong(positionValue);
-    this.transmitTLong(colorValue);
+    if (!this.sendSerialDataCallback) {
+      throw new Error('TLong transmission: Serial port not available - no send callback set');
+    }
+
+    // Ensure values are 32-bit signed integers
+    positionValue = positionValue | 0;
+    colorValue = colorValue | 0;
+
+    // Create single 8-byte buffer containing both longs in little-endian format
+    // This prevents timing issues where P2 might hang between receiving the two longs
+    const buffer = Buffer.alloc(8);
+
+    // Write position long (bytes 0-3) in little-endian
+    for (let i = 0; i < 4; i++) {
+      buffer[i] = (positionValue >> (i * 8)) & 0xFF;
+    }
+
+    // Write color long (bytes 4-7) in little-endian
+    for (let i = 0; i < 4; i++) {
+      buffer[4 + i] = (colorValue >> (i * 8)) & 0xFF;
+    }
+
+    // Log transmission for debugging
+    const posBytes = Array.from(buffer.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0'));
+    const colorBytes = Array.from(buffer.slice(4, 8)).map(b => '0x' + b.toString(16).padStart(2, '0'));
+    this.context.logger.forceLogMessage(
+      `[TLONG] Transmitting PC_MOUSE: position=0x${(positionValue >>> 0).toString(16).padStart(8, '0')} [${posBytes.join(', ')}], color=0x${(colorValue >>> 0).toString(16).padStart(8, '0')} [${colorBytes.join(', ')}]`
+    );
+
+    // Transmit both longs as single atomic operation
+    this.sendSerialDataCallback(buffer);
   }
 
   /**
