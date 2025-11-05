@@ -15,6 +15,7 @@ export interface BaseDisplaySpec {
   size: Size;
   nbrSamples: number;
   window: WindowColor;
+  hideXY?: boolean; // Optional - true if HIDEXY clause was present
 }
 
 export class DisplaySpecParser {

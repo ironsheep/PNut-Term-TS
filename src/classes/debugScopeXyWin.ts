@@ -135,7 +135,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private twopi: number = 0x100000000;
   private theta: number = 0;
   private logScale: boolean = false;
-  private hideXY: boolean = false;
+  protected hideXY: boolean = false;
   private radius: number = 128;
   private scale: number = 1;
   private backgroundColor: number = 0x000000;
