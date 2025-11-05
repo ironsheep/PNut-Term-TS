@@ -942,3 +942,68 @@ this.cogWindowManager.setMode(currentMode);  // Restore mode
 
 **UPDATE 2025-10-01**: Fix attempted but made worse - removing `reset()` causes show to NEVER work after first hide (previously worked every other time). Root cause still unknown. `reset()` was masking a deeper issue with show/hide state machine or window creation logic. Needs investigation into `cogWindowManager.showAllCOGs()` logic and COGDisplayMode state transitions.
 
+---
+
+### Duplicate Mouse Input Systems
+**Date Added**: 2025-11-04
+**Priority**: Medium - Post-First-Release Refactor
+**Category**: Code Consistency / Technical Debt
+
+**Current State**:
+Two completely separate mouse input systems exist that do identical things:
+
+1. **Base Class System** (`debugWindowBase.ts` - `enableMouseInput()`)
+   - Used by: ScopeXY, MIDI, Logic, Scope, FFT windows
+   - Injects JavaScript via `executeJavaScript()` after window loads
+   - Uses `window.electronAPI.sendMouseEvent()` (contextBridge/preload)
+   - Added: August 4, 2025 (commit f88a83d)
+
+2. **Plot Window Inline System** (`debugPlotWin.ts`)
+   - Used by: ONLY Plot window
+   - Embedded directly in HTML `<script>` tag at window creation time
+   - Uses direct `require('electron')` to get ipcRenderer
+   - Comment (lines 688-689): "must be in initial HTML, not injected code"
+   - Implemented before base class system existed
+
+**Technical Background**:
+- Electron's security model prevents `require('electron')` from working in injected JavaScript
+- Plot window was implemented first with inline approach
+- Later, cleaner reusable pattern developed using contextBridge (base class method)
+- Other windows used the new base class method
+- Plot was never migrated
+
+**Both Systems Do Identical Things**:
+- Listen to mouse events in renderer (move, click, wheel)
+- Send via IPC 'mouse-event' channel
+- Store in same base class variables (`vMouseX`, `vMouseY`, `vMouseButtons`, `vMouseWheel`)
+- PC_MOUSE command reads from those variables
+
+**Impact**:
+- Code duplication (~120 lines of nearly identical mouse handling)
+- Maintenance burden (fixes must be applied to both systems)
+- Inconsistency in architecture (one window different from all others)
+- Confusing for developers (why does plot window do this differently?)
+
+**Recommended Solution**:
+Migrate Plot window to use base class `enableMouseInput()`:
+1. Remove inline `<script>` mouse handling from Plot HTML (lines 687-792)
+2. Call `this.enableMouseInput()` in Plot window initialization
+3. Verify coordinate display and HIDEXY still work correctly
+4. Test all Plot window mouse features (coordinate hover, PC_MOUSE)
+
+**Benefits of Migration**:
+- Single consistent mouse input system across all windows
+- Easier maintenance (one place to fix bugs)
+- Cleaner architecture (all windows follow same pattern)
+- Less code to maintain
+
+**Risk Assessment**:
+- Medium risk: Plot's coordinate display is tightly integrated with inline system
+- HIDEXY keyword support might need adjustment
+- Cartesian coordinate transformation must work correctly
+- Performance monitoring overlay interaction must be preserved
+
+**Estimated Effort**: 3-4 hours (migration + testing)
+
+**Required for Release**: NO - Both systems work correctly, refactor for consistency
+
