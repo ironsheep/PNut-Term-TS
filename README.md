@@ -1,27 +1,27 @@
 <div align="center">
   <img src="assets/pnut-term-icon.png" alt="PNut-Term-TS Logo" width="128" height="128">
 
-  # PNut-Term-TS
+# PNut-Term-TS
 
-  **A Cross-Platform Debug Terminal for Parallax Propeller 2**
+**A Cross-Platform Debug Terminal for Parallax Propeller 2**
 
-  *Originally Chip's Debug listener, now available on all platforms*
+_Originally Chip's Debug listener, now available on all platforms_
 
-  ![Project Maintenance][maintenance-shield]
+![Project Maintenance][maintenance-shield]
 
-  [![License][license-shield]](LICENSE)
+[![License][license-shield]](LICENSE)
 
-  ![NodeJS][node-badge]
+![NodeJS][node-badge]
 
-  [![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
+[![Release][Release-shield]](https://github.com/ironsheep/PNut-Term-TS/releases)
 
-  [![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
+[![GitHub issues][Issues-shield]](https://github.com/ironsheep/PNut-Term-TS/issues)
 
 </div>
 
 ## PNut-Term-TS cross platform debug terminal
 
-This is our PNut Debug Windows and terminal ported to typescript and now available on all platforms.  The intent of this tool is to make build, download and run as simple as edit and save file from within vscode.
+This is our PNut Debug Windows and terminal ported to typescript and now available on all platforms. The intent of this tool is to make build, download and run as simple as edit and save file from within vscode.
 
 ### PNut Term TS
 
@@ -29,7 +29,7 @@ PNut Term TS is the 3rd component in the P2 Multi-platform Development Enviromen
 
 1. **VSCode Spin2 Extension** for editing P1 and P2 code - supports running external compilers/downloaders
 2. **PNut-TS** compiler which is the PNut compiler rewritten in trypescript for Multi-platform use
-3. **PNut\_Term_TS** (this tool) a terminal replacement for Propeller Serial Terminal with download and full debug display support.
+3. **PNut_Term_TS** (this tool) a terminal replacement for Propeller Serial Terminal with download and full debug display support.
 
 ## Table of Contents
 
@@ -44,8 +44,7 @@ Additional pages:
 - [PNut-Term-TS Command-line](CommandLine.md) - command line reference
 - [PNut-Term-TS ChangeLog](CHANGELOG.md) - history of releases (Including what's new in this release!)
 - [PNut_TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
-- [P2\_PNut_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
-
+- [P2_PNut_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
 
 ## Features of PNut Term TS
 
@@ -53,7 +52,7 @@ Additional pages:
 - Downloads a compiled file to the P2 RAM or FLASH
 - Switches to PST behavior after download
 - (Will have) Built-in support for all debug displays supported by PNut
-- Full logging support for all traffic tofrom P2
+- Full logging support for all traffic to/from P2
 - Automatic time-stamped log names for each new download
 - PropPlug can be selected from command-line or within terminal.
 - Last PropPlug used is remembered
@@ -63,41 +62,41 @@ Additional pages:
 
 We are implementing the Graphical Debug Display support over time. Here's a full list of the displays and the current support status of each:
 
-| Display | Status |
-| --- | --- |
-| Term | ✅ Implemented - 100% Pascal parity as of version 51a |
-| Plot | 🧪 Testing |
-| Logic | 🧪 Testing |
-| Scope | 🧪 Testing |
-| Scope_XY | 🧪 Testing |
-| FFT | 🧪 Testing |
-| Bitmap | 🧪 Testing |
-| MIDI | ✅ Implemented - 100% Pascal parity as of version 51a |
-| Spectro | 🧪 Testing |
-| Debugger | ⬜ Not started |
+| Display  | Status                                   |
+| -------- | ---------------------------------------- |
+| Term     | ✅ Implemented, v51a                     |
+| Plot     | ✅ Implemented, v51a                     |
+| Logic    | ✅ Implemented, v51a                     |
+| Scope    | ✅ Implemented, v51a                     |
+| Scope_XY | ✅ Implemented, v51a                     |
+| FFT      | ✅ Implemented (noise floor issue), v51a |
+| Bitmap   | ✅ Implemented, v51a                     |
+| MIDI     | ✅ Implemented, v51a                     |
+| Spectro  | ✅ Implemented, v51a                     |
+| Debugger | ⬜ Started, not ready for Use            |
 
 ## Installing PNut-Term-TS
 
 Install .zip files available for each release:
 
-| Archive Name | Operating System | Architecture | Unpack Leaves |
-| --- | --- | --- | --- |
-| linux-arm64-{MMmmpp}.zip | Linux, RPi | Arm 64 bit | pnut\_term_ts/ |
-| linux-x64-{MMmmpp}.zip| Linux | Intel x86-64 bit | pnut\_term_ts/ |
-| macos-arm64-{MMmmpp}.zip| MacOS | Apple Silicon | pnut\_term_ts/ |
-| macos-x64-{MMmmpp}.zip| MacOS | Intel x86-64 bit | pnut\_term_ts/ |
-| win-arm64-{MMmmpp}.zip| Windows | Arm 64 bit | pnut\_term_ts/ |
-| win-x64-{MMmmpp}.zip| Windows | Intel x86-64 bit | pnut\_term_ts/ |
+| Archive Name             | Operating System | Architecture     | Unpack Leaves |
+| ------------------------ | ---------------- | ---------------- | ------------- |
+| linux-arm64-{MMmmpp}.zip | Linux, RPi       | Arm 64 bit       | pnut_term_ts/ |
+| linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut_term_ts/ |
+| macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | pnut_term_ts/ |
+| macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | pnut_term_ts/ |
+| win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut_term_ts/ |
+| win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut_term_ts/ |
 
-**NOTE:** *where -MMmmpp is the release verison. (E.g., -010001.zip means v1.0.1.)*
+**NOTE:** _where -MMmmpp is the release verison. (E.g., -010001.zip means v1.0.1.)_
 
-Installation is pretty easy for PNut-Term-TS.  Here are the general steps: (*more specific instructions links are below.*)
+Installation is pretty easy for PNut-Term-TS. Here are the general steps: (_more specific instructions links are below._)
 
 - Identify and download the .zip file for your platform and architecture (from the latest release.)
 - unzip the file, creates a folder (or .dmg)
-- On **Windows**, **Linux** move the folder to the install location.<BR>On **macOS** move the folder to the /Applications folder. *(This is a signed application so it should run without unknown developer warnings.)*
-- Setup and enviroment variable (typically PATH) so that the **pnut\_term_ts** executable can be referenceed from anywhere.
-- Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut\_term_ts** was found.
+- On **Windows**, **Linux** move the folder to the install location.<BR>On **macOS** move the folder to the /Applications folder. _(This is a signed application so it should run without unknown developer warnings.)_
+- Setup and enviroment variable (typically PATH) so that the **pnut_term_ts** executable can be referenceed from anywhere.
+- Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut_term_ts** was found.
 
 ## Repository Configuration
 
@@ -133,11 +132,7 @@ Follow these links for more information:
 ### [Copyright](copyright) | [License](LICENSE)
 
 [maintenance-shield]: https://img.shields.io/badge/maintainer-stephen%40ironsheep%2ebiz-blue.svg?style=for-the-badge
-
 [license-shield]: https://img.shields.io/badge/License-MIT-yellow.svg
-
 [Release-shield]: https://img.shields.io/github/release/ironsheep/PNut-Term-TS/all.svg
-
 [Issues-shield]: https://img.shields.io/github/issues/ironsheep/PNut-Term-TS.svg
-
 [node-badge]: https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white
