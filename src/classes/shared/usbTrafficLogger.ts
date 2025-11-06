@@ -17,6 +17,9 @@ import * as path from 'path';
  *   0000: $43 $6F $67 $30 $20 $20 ...  Cog0  ...
  */
 
+// Console logging control
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class USBTrafficLogger {
   private logStream: fs.WriteStream | null = null;
   private enabled: boolean = false;
@@ -28,23 +31,23 @@ export class USBTrafficLogger {
    * @param logFilePath - Path to log file (will append if exists)
    */
   public enable(logFilePath: string): void {
-    console.log(`[USB LOGGER] Attempting to create log file: ${logFilePath}`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Attempting to create log file: ${logFilePath}`);
     try {
       // Ensure directory exists
       const logDir = path.dirname(logFilePath);
-      console.log(`[USB LOGGER] Log directory: ${logDir}`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Log directory: ${logDir}`);
 
       if (!fs.existsSync(logDir)) {
-        console.log(`[USB LOGGER] Directory doesn't exist, creating: ${logDir}`);
+        if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Directory doesn't exist, creating: ${logDir}`);
         fs.mkdirSync(logDir, { recursive: true });
       } else {
-        console.log(`[USB LOGGER] Directory exists: ${logDir}`);
+        if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Directory exists: ${logDir}`);
       }
 
       // Create write stream (append mode)
-      console.log(`[USB LOGGER] Creating write stream...`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Creating write stream...`);
       this.logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
-      console.log(`[USB LOGGER] Write stream created successfully`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Write stream created successfully`);
 
       // Write session header
       const header = `\n${'='.repeat(80)}\n` +
@@ -53,7 +56,7 @@ export class USBTrafficLogger {
       this.logStream.write(header);
 
       this.enabled = true;
-      console.log(`[USB LOGGER] Logging enabled to: ${logFilePath}`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Logging enabled to: ${logFilePath}`);
     } catch (error) {
       console.error(`[USB LOGGER] Failed to enable logging:`, error);
       this.enabled = false;
@@ -74,7 +77,7 @@ export class USBTrafficLogger {
       this.logStream = null;
     }
     this.enabled = false;
-    console.log(`[USB LOGGER] Logging disabled (${this.packetsLogged} packets, ${this.bytesLogged} bytes)`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Logging disabled (${this.packetsLogged} packets, ${this.bytesLogged} bytes)`);
   }
 
   /**
@@ -84,9 +87,9 @@ export class USBTrafficLogger {
    */
   public log(data: Uint8Array | Buffer, timestamp: number = Date.now()): void {
     if (!this.enabled || !this.logStream) {
-      if (!this.enabled) {
+      if (ENABLE_CONSOLE_LOG && !this.enabled) {
         console.log(`[USB LOGGER] log() called but logging not enabled (${data.length} bytes dropped)`);
-      } else if (!this.logStream) {
+      } else if (ENABLE_CONSOLE_LOG && !this.logStream) {
         console.log(`[USB LOGGER] log() called but no file handle (${data.length} bytes dropped)`);
       }
       return;

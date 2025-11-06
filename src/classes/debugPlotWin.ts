@@ -25,7 +25,7 @@ import { PlotPerformanceMonitor } from './shared/plotPerformanceMonitor';
 const ENABLE_PERFORMANCE_MONITORING = false;
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 import {
   DebugWindowBase,
@@ -688,7 +688,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         <script>
           // Input event handlers injected by base class enableMouseInput()/enableKeyboardInput()
           // This ensures consistent behavior across all window types
-          console.log('[PLOT INPUT] Initial script loaded - input handlers will be injected by base class');
+          if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT INPUT] Initial script loaded - input handlers will be injected by base class');
         </script>
       </body>
     </html>
@@ -793,11 +793,11 @@ export class DebugPlotWindow extends DebugWindowBase {
 
           // plotCtx points to offscreen buffer
           window.plotCtx = window.offscreenCanvas.getContext('2d');
-          console.log('[PLOT] UPDATE mode: Drawing to offscreen buffer');
+          if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] UPDATE mode: Drawing to offscreen buffer');
         } else {
           // plotCtx points directly to visible canvas
           window.plotCtx = window.displayCtx;
-          console.log('[PLOT] LIVE mode: Drawing directly to visible canvas');
+          if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] LIVE mode: Drawing directly to visible canvas');
         }
 
         // Function to flip buffer (copy offscreen to display)
@@ -810,10 +810,10 @@ export class DebugPlotWindow extends DebugWindowBase {
             // The buffer should only be cleared by explicit CLEAR commands
             // Clearing here causes flashing because the next frame starts empty
 
-            console.log('[PLOT] Buffer flipped');
+            if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Buffer flipped');
           } else if (!useBuffering) {
             // In live mode, no flip needed
-            console.log('[PLOT] Live mode - no buffer flip needed');
+            if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Live mode - no buffer flip needed');
           }
         };
 
@@ -831,7 +831,7 @@ export class DebugPlotWindow extends DebugWindowBase {
         // Don't flip immediately - display canvas already has background color
         // This prevents a potential flash during initialization
 
-        console.log('[PLOT] Canvas initialized with double buffering and default colors');
+        if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Canvas initialized with double buffering and default colors');
         return 'Canvas ready with double buffering';
       })()
     `;
@@ -996,11 +996,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
           if (keyCode > 0) {
             window.lastPressedKey = keyCode;
-            console.log('[PLOT INPUT] Key pressed:', event.key, 'Code:', keyCode);
+            if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT INPUT] Key pressed:', event.key, 'Code:', keyCode);
           }
         });
 
-        console.log('[PLOT INPUT] Keyboard event listeners setup complete');
+        if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT INPUT] Keyboard event listeners setup complete');
         return 'Keyboard handlers ready';
       })()
     `;
@@ -3082,7 +3082,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         const alignHCenter = ${alignHCenter};
         const alignHRight = ${alignHRight};
 
-        console.log('[PLOT] Drawing text with font:', fontSpec);
+        if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Drawing text with font:', fontSpec);
         window.plotCtx.save();
         window.plotCtx.font = fontSpec;
 
@@ -3322,7 +3322,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           });
 
-          console.log('[PLOT] Coordinate display handler initialized');
+          if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Coordinate display handler initialized');
         }
       })();
     `);
@@ -3346,7 +3346,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         (function() {
           // Guard against multiple initialization
           if (window.__mouseInputInitialized) {
-            console.log('[MOUSE INPUT] Already initialized, skipping');
+            if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE INPUT] Already initialized, skipping');
             return;
           }
           window.__mouseInputInitialized = true;
@@ -3363,7 +3363,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               const rect = canvas.getBoundingClientRect();
               const x = Math.floor(event.clientX - rect.left);
               const y = Math.floor(event.clientY - rect.top);
-              console.log('[MOUSE DIAG] ENTER canvas at renderer coords (' + x + ',' + y + ')');
+              if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE DIAG] ENTER canvas at renderer coords (' + x + ',' + y + ')');
               ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
             });
 
@@ -3384,7 +3384,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               const rect = canvas.getBoundingClientRect();
               const x = Math.floor(event.clientX - rect.left);
               const y = Math.floor(event.clientY - rect.top);
-              console.log('[MOUSE DIAG] BUTTON DOWN (button=' + event.button + ') at (' + x + ',' + y + ')');
+              if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE DIAG] BUTTON DOWN (button=' + event.button + ') at (' + x + ',' + y + ')');
               ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
             });
 
@@ -3396,7 +3396,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               const rect = canvas.getBoundingClientRect();
               const x = Math.floor(event.clientX - rect.left);
               const y = Math.floor(event.clientY - rect.top);
-              console.log('[MOUSE DIAG] BUTTON UP (button=' + event.button + ') at (' + x + ',' + y + ')');
+              if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE DIAG] BUTTON UP (button=' + event.button + ') at (' + x + ',' + y + ')');
               ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
             });
 
@@ -3408,13 +3408,13 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               const rect = canvas.getBoundingClientRect();
               const x = Math.floor(event.clientX - rect.left);
               const y = Math.floor(event.clientY - rect.top);
-              console.log('[MOUSE DIAG] WHEEL delta=' + wheelDelta + ' at (' + x + ',' + y + ')');
+              if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE DIAG] WHEEL delta=' + wheelDelta + ' at (' + x + ',' + y + ')');
               ipcRenderer.send('mouse-event', x, y, mouseButtons, wheelDelta);
             });
 
             // Mouse leave handler - DIAGNOSTIC
             canvas.addEventListener('mouseleave', (event) => {
-              console.log('[MOUSE DIAG] LEAVE canvas - sending (-1,-1)');
+              if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE DIAG] LEAVE canvas - sending (-1,-1)');
               ipcRenderer.send('mouse-event', -1, -1, mouseButtons, 0);
             });
 
@@ -3423,7 +3423,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               event.preventDefault();
             });
 
-            console.log('[PLOT] Mouse input handlers initialized');
+            if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Mouse input handlers initialized');
           }
         })();
       `);
@@ -3550,7 +3550,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           });
 
-          console.log('[PLOT] Keyboard input handler initialized');
+          if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Keyboard input handler initialized');
         })();
       `);
     }

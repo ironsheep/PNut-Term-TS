@@ -166,7 +166,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
     // Enable logging for SPECTRO window (both console and constructor logging)
     this.isLogging = false;
-    console.log(`[SPECTRO CONSTRUCTOR] Creating SPECTRO window with displayName: ${displaySpec.displayName}`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[SPECTRO CONSTRUCTOR] Creating SPECTRO window with displayName: ${displaySpec.displayName}`);
 
     // Initialize FFT processor and window functions
     this.fftProcessor = new FFTProcessor();

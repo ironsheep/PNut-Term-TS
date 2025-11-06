@@ -259,7 +259,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
               const rect = canvas.getBoundingClientRect();
               const x = e.clientX - rect.left;
               const y = e.clientY - rect.top;
-              console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
+              if (ENABLE_CONSOLE_LOG) console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
             }
           });
         `;

@@ -1617,7 +1617,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
             }
           }
 
-          console.log('[BITMAP_WINDOW] Mouse coordinate tracking initialized');
+          if (ENABLE_CONSOLE_LOG) console.log('[BITMAP_WINDOW] Mouse coordinate tracking initialized');
         })();
       `;
 

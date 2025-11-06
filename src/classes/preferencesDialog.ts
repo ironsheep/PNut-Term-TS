@@ -2,6 +2,9 @@ import { BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { Context } from '../utils/context';
 
+// Console logging control
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class PreferencesDialog {
   private window: BrowserWindow | null = null;
   private parent: BrowserWindow;
@@ -57,7 +60,7 @@ export class PreferencesDialog {
     });
 
     ipcMain.once('pref-apply-user', (event, newSettings) => {
-      console.log('[Preferences] User settings updated:', newSettings);
+      if (ENABLE_CONSOLE_LOG) console.log('[Preferences] User settings updated:', newSettings);
 
       // Save to user global file (delta-save)
       this.context.saveUserGlobalSettings(newSettings);
@@ -76,7 +79,7 @@ export class PreferencesDialog {
     });
 
     ipcMain.once('pref-apply-project', (event, projectOverrides) => {
-      console.log('[Preferences] Project settings updated:', projectOverrides);
+      if (ENABLE_CONSOLE_LOG) console.log('[Preferences] Project settings updated:', projectOverrides);
 
       // Save to project local file (only overrides)
       this.context.saveProjectLocalSettings(projectOverrides);

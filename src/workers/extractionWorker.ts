@@ -604,7 +604,7 @@ function extractMessages(): void {
       }
 
       // DIAGNOSTIC: Log length for large messages (SPRITEDEF debugging)
-      if (messageData.length > 1000) {
+      if (ENABLE_CONSOLE_LOG && messageData.length > 1000) {
         console.log(`[ExtractionWorker] DIAGNOSTIC: Writing large message poolId=${slot.poolId}, type=${messageType}, length=${messageData.length} bytes`);
       }
 

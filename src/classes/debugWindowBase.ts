@@ -1661,7 +1661,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         (function() {
           // Guard against multiple initialization
           if (window.__mouseInputInitialized) {
-            console.log('[MOUSE INPUT] Already initialized, skipping');
+            if (ENABLE_CONSOLE_LOG) console.log('[MOUSE INPUT] Already initialized, skipping');
             return;
           }
           window.__mouseInputInitialized = true;
