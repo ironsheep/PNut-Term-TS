@@ -98,6 +98,10 @@ class TestDebugWindow extends DebugWindowBase {
     this.windowLogPrefix = 'TestWin';
   }
 
+  get windowTitle(): string {
+    return 'Test Debug Window';
+  }
+
   closeDebugWindow(): void {
     // Test implementation
   }
@@ -132,7 +136,7 @@ class TestDebugWindow extends DebugWindowBase {
     }
   }
 
-  protected processMessageImmediate(lineParts: string[]): void {
+  protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Track processed messages for testing
     this.processedMessages.push(lineParts);
 

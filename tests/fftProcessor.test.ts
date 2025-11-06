@@ -68,9 +68,9 @@ describe('FFTProcessor', () => {
       
       // Verify first few values match expected fixed-point sine values
       // For size 8, the angles are bit-reversed multiples of 2π/8
-      expect(sinTable[0]).toBeCloseTo(0, 0); // sin(0) * 0x1000
-      expect(Math.abs(sinTable[1])).toBeCloseTo(4096, 50); // sin(π) * 0x1000 ≈ 0
-      expect(Math.abs(sinTable[2])).toBeCloseTo(2896, 50); // sin(π/2) * 0x1000 ≈ 2896
+      expect(Number(sinTable[0])).toBeCloseTo(0, 0); // sin(0) * 0x1000
+      expect(Math.abs(Number(sinTable[1]))).toBeCloseTo(4096, 50); // sin(π) * 0x1000 ≈ 0
+      expect(Math.abs(Number(sinTable[2]))).toBeCloseTo(2896, 50); // sin(π/2) * 0x1000 ≈ 2896
     });
 
     it('should generate correct cosine lookup table', () => {
@@ -80,15 +80,15 @@ describe('FFTProcessor', () => {
       expect(cosTable).toHaveLength(32);
       
       // Verify some basic properties of the cosine table
-      expect(cosTable[0]).toBeCloseTo(4096, 50); // cos(0) * 0x1000 = 4096
-      expect(cosTable.every(v => v >= -4096 && v <= 4096)).toBe(true); // All values in valid range
-      
+      expect(Number(cosTable[0])).toBeCloseTo(4096, 50); // cos(0) * 0x1000 = 4096
+      expect(cosTable.every(v => Number(v) >= -4096 && Number(v) <= 4096)).toBe(true); // All values in valid range
+
       // Check that we have variation in values (indicating various angles)
-      const uniqueValues = new Set(cosTable);
+      const uniqueValues = new Set(Array.from(cosTable, v => Number(v)));
       expect(uniqueValues.size).toBeGreaterThan(5); // Should have diverse values
-      
+
       // Should have some values that are not near maximum (indicating non-zero angles)
-      const nonMaxValues = cosTable.filter(v => v < 3000).length;
+      const nonMaxValues = Array.from(cosTable).filter(v => Number(v) < 3000).length;
       expect(nonMaxValues).toBeGreaterThan(0);
     });
 
@@ -99,9 +99,9 @@ describe('FFTProcessor', () => {
       expect(windowTable).toHaveLength(8);
       
       // Hanning window should be symmetric and start/end near zero
-      expect(windowTable[0]).toBeCloseTo(0, 50); // (1 - cos(0)) * 0x1000 = 0
-      expect(windowTable[4]).toBeCloseTo(8192, 50); // (1 - cos(π)) * 0x1000 = 8192
-      expect(windowTable[7]).toBeCloseTo(windowTable[1], 50); // Symmetry
+      expect(Number(windowTable[0])).toBeCloseTo(0, 50); // (1 - cos(0)) * 0x1000 = 0
+      expect(Number(windowTable[4])).toBeCloseTo(8192, 50); // (1 - cos(π)) * 0x1000 = 8192
+      expect(Number(windowTable[7])).toBeCloseTo(Number(windowTable[1]), 50); // Symmetry
     });
 
     it('should handle minimum FFT size (4)', () => {
