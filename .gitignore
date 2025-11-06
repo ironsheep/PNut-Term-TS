@@ -223,6 +223,7 @@ test-without-queue.log
 
 context-keys-to-restore.txt
 /scripts/claude
+/scripts/archive-old-builds
 AGENTS.md
 CLAUDE.md
 WE-ARE-HERE.txt
