@@ -16,7 +16,7 @@ describe('SharedCircularBuffer', () => {
       const stats = buffer.getStats();
       expect(stats.used === 0).toBe(true); // Buffer is empty
       expect(stats.used).toBe(0);
-      expect(stats.available).toBe(1048576);
+      expect(stats.available).toBe(1048575); // -1 for safety margin to prevent head==tail ambiguity
       expect(buffer.hasData()).toBe(false);
     });
 
@@ -196,9 +196,9 @@ describe('SharedCircularBuffer', () => {
         buffer.next();
       }
 
-      // Should have 2000 used, 1046576 available (1MB - 2000)
+      // Should have 2000 used, 1046575 available (1MB - 2000 - 1 for safety margin)
       expect(buffer.getUsedSpace()).toBe(2000);
-      expect(buffer.getAvailableSpace()).toBe(1046576);
+      expect(buffer.getAvailableSpace()).toBe(1046575);
 
       // Add more data
       const data2 = new Uint8Array(5000);
@@ -326,7 +326,7 @@ describe('SharedCircularBuffer', () => {
       const stats = buffer.getStats();
       expect(stats.size).toBe(1048576);
       expect(stats.used).toBe(2);
-      expect(stats.available).toBe(1048574);
+      expect(stats.available).toBe(1048573); // size - used - 1 for safety margin
       expect(stats.used > 0).toBe(true); // Buffer not empty
     });
   });
@@ -339,12 +339,13 @@ describe('SharedCircularBuffer', () => {
     });
 
     it('should handle full buffer correctly', () => {
-      const fullData = new Uint8Array(1048576);
+      // With -1 safety margin, max available is 1048575 bytes
+      const fullData = new Uint8Array(1048575);
       fullData.fill(42);
-      
+
       const result = buffer.appendAtTail(fullData);
       expect(result).toBe(true);
-      
+
       // Should reject any more data
       const moreData = new Uint8Array([1]);
       expect(buffer.appendAtTail(moreData)).toBe(false);
