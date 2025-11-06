@@ -1021,7 +1021,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   }
 
   private async performUpdate(): Promise<void> {
-    if (!this.debugWindow) return;
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) return;
 
     // Start frame monitoring for rendering operations (if enabled)
     if (ENABLE_PERFORMANCE_MONITORING && this.performanceMonitor) {

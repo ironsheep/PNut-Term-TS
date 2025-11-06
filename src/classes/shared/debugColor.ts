@@ -5,7 +5,7 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 // this is our common logging mechanism
 //  TODO: make it context/runtime option aware
 
-'use strict';
+('use strict');
 // src/classes/debugColor.ts
 
 import { Spin2NumericParser } from './spin2NumericParser';
@@ -41,23 +41,23 @@ export class DebugColor {
   static defaultGridBrightness: number = 6;
   // Chip's 10 basic colors from Pascal reference
   private static colorNameToHex: { [key: string]: string } = {
-    BLACK: '#000000',   // Color 0
-    WHITE: '#ffffff',   // Color 1
-    ORANGE: '#ff7f00',  // Color 2 (was #FFA500 in parser)
-    BLUE: '#7F7FFF',    // Color 3 (Pascal: $7F7FFF - Light Blue)
-    GREEN: '#00ff00',   // Color 4 (Pascal: $00FF00 - Lime)
-    CYAN: '#00ffff',    // Color 5 (Pascal: $00FFFF - Cyan)
-    RED: '#ff0000',     // Color 6 (Pascal: $FF0000 - Red)
+    BLACK: '#000000', // Color 0
+    WHITE: '#ffffff', // Color 1
+    ORANGE: '#ff7f00', // Color 2 (was #FFA500 in parser)
+    BLUE: '#7F7FFF', // Color 3 (Pascal: $7F7FFF - Light Blue)
+    GREEN: '#00ff00', // Color 4 (Pascal: $00FF00 - Lime)
+    CYAN: '#00ffff', // Color 5 (Pascal: $00FFFF - Cyan)
+    RED: '#ff0000', // Color 6 (Pascal: $FF0000 - Red)
     MAGENTA: '#ff00ff', // Color 7 (Pascal: $FF00FF - Magenta)
-    YELLOW: '#ffff00',  // Color 8 (Pascal: $FFFF00 - Yellow)
-    GRAY: '#404040',    // Color 9 (Pascal: $404040 - Dark Gray)
+    YELLOW: '#ffff00', // Color 8 (Pascal: $FFFF00 - Yellow)
+    GRAY: '#404040', // Color 9 (Pascal: $404040 - Dark Gray)
     // Alternative spellings and legacy colors
-    GREY: '#404040',    // Alternative spelling (matches GRAY)
-    OLIVE: '#7F7F00',   // Legacy (Pascal: $7F7F00)
-    LIME: '#00FF00',    // Legacy (Pascal: $00FF00 - same as GREEN)
-    BLUE2: '#7F7FFF',   // Legacy (matches corrected BLUE)
-    GRAY2: '#808080',   // Legacy (Pascal: $808080 - Medium Gray)
-    GRAY3: '#D0D0D0'    // Legacy (Pascal: $D0D0D0 - Light Gray)
+    GREY: '#404040', // Alternative spelling (matches GRAY)
+    OLIVE: '#7F7F00', // Legacy (Pascal: $7F7F00)
+    LIME: '#00FF00', // Legacy (Pascal: $00FF00 - same as GREEN)
+    BLUE2: '#7F7FFF', // Legacy (matches corrected BLUE)
+    GRAY2: '#808080', // Legacy (Pascal: $808080 - Medium Gray)
+    GRAY3: '#D0D0D0' // Legacy (Pascal: $D0D0D0 - Light Gray)
   };
 
   constructor(colorName: string, brightness: number = DebugColor.defaultBrightness) {
@@ -66,21 +66,21 @@ export class DebugColor {
       // console.log(` DC: WARNING: brightness ${brightness} out of range 0-15, using default ${DebugColor.defaultBrightness}`);
       brightness = DebugColor.defaultBrightness;
     }
-    
+
     this.name = colorName;
     this._colorValue = DebugColor.colorNameToNumber(colorName);
     this._colorHexValue = DebugColor.colorNameToHexString(colorName);
     this._calcBrightness = this.brightnessForHex(this._colorHexValue);
     this._brightness = brightness;
-    
+
     // Apply brightness to get the actual display color
     this._dimmedColorValue = this.adjustBrightness(this._colorValue, this._brightness);
     this.dimmedColor = this.hexColorString(this._dimmedColorValue);
-    
+
     // Grid and font colors use their own brightness levels
     this.gridBrightness = DebugColor.defaultGridBrightness;
     this.fontBrightness = DebugColor.defaultFontBrightness;
-    
+
     this.gridColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
     this.fontColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
   }
@@ -150,12 +150,12 @@ export class DebugColor {
     const parts = colorSpec.trim().split(/\s+/);
     if (parts.length >= 1) {
       const colorName = parts[0].toUpperCase();
-      
+
       // Check if it's a valid color name
       if (DebugColor.colorNameToHex[colorName]) {
         hexColor = DebugColor.colorNameToHex[colorName];
         isValid = true;
-        
+
         // Check for brightness value
         if (parts.length >= 2) {
           const brightnessValue = parseInt(parts[1], 10);
@@ -194,7 +194,7 @@ export class DebugColor {
     if (!isValid) {
       return null;
     }
-    
+
     // Find the color name that matches this hex value
     let colorName = 'CUSTOM';
     for (const [name, hex] of Object.entries(DebugColor.colorNameToHex)) {
@@ -203,7 +203,7 @@ export class DebugColor {
         break;
       }
     }
-    
+
     return new DebugColor(colorName, brightness);
   }
 
@@ -277,7 +277,7 @@ export class DebugColor {
 
         // At brightness 15, Pascal keeps exactly 16/255 (~6.27%) of the inverted color
         // This produces 0xEFFFEF for GREEN 15 (239, 255, 239)
-        const keepFactor = (16 / 255) + (1 - paleFactor) * (1 - 16 / 255); // At brightness 15: 16/255, at brightness 9: ~94%
+        const keepFactor = 16 / 255 + (1 - paleFactor) * (1 - 16 / 255); // At brightness 15: 16/255, at brightness 9: ~94%
 
         const paleR = Math.round(255 - invR * keepFactor);
         const paleG = Math.round(255 - invG * keepFactor);
@@ -287,11 +287,13 @@ export class DebugColor {
       }
     }
 
+    /*
     console.log(
       ` DC: * adjustBrightness(0x${color.toString(16).padStart(6, '0')}, brightness=${brightness}) -> 0x${adjustedColor
         .toString(16)
         .padStart(6, '0')} [${brightness === 15 ? 'PALE' : brightness === 0 ? 'BLACK' : 'GRADIENT'}]`
     );
+    */
 
     return adjustedColor;
   }
@@ -332,17 +334,17 @@ export class DebugColor {
 
     // Map color names to indices (matching Pascal key_orange..key_gray order)
     const colorIndices: { [key: string]: number } = {
-      ORANGE: 0,   // key_orange
-      BLUE: 1,     // key_blue
-      GREEN: 2,    // key_green (Pascal calls it LIME internally)
-      CYAN: 3,     // key_cyan
-      RED: 4,      // key_red
-      MAGENTA: 5,  // key_magenta
-      YELLOW: 6,   // key_yellow
-      GRAY: 7,     // key_gray
-      GREY: 7,     // Alternative spelling
-      LIME: 2,     // Alias for GREEN
-      OLIVE: 7     // Legacy - treat as GRAY
+      ORANGE: 0, // key_orange
+      BLUE: 1, // key_blue
+      GREEN: 2, // key_green (Pascal calls it LIME internally)
+      CYAN: 3, // key_cyan
+      RED: 4, // key_red
+      MAGENTA: 5, // key_magenta
+      YELLOW: 6, // key_yellow
+      GRAY: 7, // key_gray
+      GREY: 7, // Alternative spelling
+      LIME: 2, // Alias for GREEN
+      OLIVE: 7 // Legacy - treat as GRAY
     };
 
     const colorIndex = colorIndices[upperName];
@@ -359,8 +361,8 @@ export class DebugColor {
     let p = (colorIndex << 5) | (brightness << 1);
 
     // Decode for RGBI8X mode (matches Pascal TranslateColor)
-    let v = (p >> 5) & 7;  // Color index from bits 7-5
-    p = ((p & 0x1F) << 3) | ((p & 0x1C) >> 2);  // Intensity from bits 4-0, expanded to 8 bits
+    let v = (p >> 5) & 7; // Color index from bits 7-5
+    p = ((p & 0x1f) << 3) | ((p & 0x1c) >> 2); // Intensity from bits 4-0, expanded to 8 bits
 
     // RGBI8X mode: special intensity handling when v ≠ 7
     // Pascal: if (mode in [key_luma8x, key_rgbi8x]) and (v <> 7) then
@@ -368,7 +370,7 @@ export class DebugColor {
     if (v !== 7) {
       if (p >= 0x80) {
         // Bright colors: invert and scale
-        p = ((~p) & 0x7F) << 1;
+        p = (~p & 0x7f) << 1;
       } else {
         // Dark colors: double intensity
         p = p << 1;
@@ -381,14 +383,12 @@ export class DebugColor {
     if (v === 0) {
       // Orange special case: R=full, G=half, B=0
       // Pascal: p := p shl 16 or p shl 7 and $007F00
-      result = (p << 16) | ((p << 7) & 0x007F00);
+      result = (p << 16) | ((p << 7) & 0x007f00);
     } else {
       // Standard RGB bit expansion from color index
       // Bits of v control which components get intensity:
       // bit 2 (0x4) = Red, bit 1 (0x2) = Green, bit 0 (0x1) = Blue
-      result = (((v >> 2) & 1) * p << 16) |
-               (((v >> 1) & 1) * p << 8)  |
-               (((v >> 0) & 1) * p << 0);
+      result = ((((v >> 2) & 1) * p) << 16) | ((((v >> 1) & 1) * p) << 8) | ((((v >> 0) & 1) * p) << 0);
     }
 
     return `#${result.toString(16).padStart(6, '0')}`;
