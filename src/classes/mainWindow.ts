@@ -1308,33 +1308,6 @@ export class MainWindow {
       this.updateControlLineUI();
       this.logMessage(`🔧 Control line mode set to ${this.controlLineMode} for this device`);
 
-      // Conditional reset based on user preference
-      // Only reset if preference is enabled (default: true for traditional mode)
-      if (this.context.runEnvironment.resetOnConnection) {
-        this.logMessage(`[STARTUP] Reset on connection enabled - performing DTR/RTS reset`);
-
-        // Block traffic during reset
-        this._serialPort.setIgnoreFrontTraffic(true);
-
-        // Perform reset using appropriate control line
-        try {
-          if (this.context.runEnvironment.rtsOverride) {
-            await this._serialPort.toggleRTS();
-          } else {
-            await this._serialPort.toggleDTR();
-          }
-          this.logMessage(`[STARTUP] Reset pulse completed`);
-        } catch (resetErr) {
-          this.logMessage(`[STARTUP] Reset error (non-fatal): ${resetErr}`);
-        }
-
-        // Allow traffic after reset
-        this._serialPort.setIgnoreFrontTraffic(false);
-        this.logMessage(`[STARTUP] Traffic gate opened after reset`);
-      } else {
-        this.logMessage(`[STARTUP] Reset on connection disabled - passive monitoring mode`);
-      }
-
       // Initialize downloader with serial port
       if (!this.downloader && this._serialPort) {
         this.downloader = new Downloader(this.context, this._serialPort);
@@ -3343,6 +3316,9 @@ export class MainWindow {
       this.startPerformanceMonitoring();
       this.logConsoleMessage('[PERF DISPLAY] Performance monitoring started after DOM ready');
 
+      // Check if playback recordings exist and update playback controls state
+      this.updatePlaybackControlsState();
+
       // Initialize activity LEDs to OFF state
       this.safeExecuteJS(
         `
@@ -3364,7 +3340,6 @@ export class MainWindow {
 
       // Initialize serial connection after DOM is ready
       if (this._deviceNode.length > 0 && !this._serialPort) {
-        this.logMessage(`* Opening serial port after DOM ready: ${this._deviceNode}`);
         this.openSerialPort(this._deviceNode);
       }
 
@@ -5871,6 +5846,9 @@ export class MainWindow {
     this.windowRouter.stopRecording();
     this.updateRecordingStatus('Ready');
     this.updateToolbarButton('record-btn', '⏺ Record');
+
+    // Check if this was the first recording - enable playback controls if so
+    this.updatePlaybackControlsState();
   }
 
   private async playRecording(): Promise<void> {
@@ -5902,6 +5880,44 @@ export class MainWindow {
       this.binaryPlayer.play();
       this.updateRecordingStatus('Playing...');
     }
+  }
+
+  /**
+   * Update playback controls enabled/disabled state based on recordings availability
+   * Called on startup and when recordings are created
+   */
+  private updatePlaybackControlsState(): void {
+    const recordingsDir = this.context.getRecordingsDirectory();
+    let hasRecordings = false;
+
+    // Check if recordings directory exists and has any recording files
+    if (fs.existsSync(recordingsDir)) {
+      try {
+        const files = fs.readdirSync(recordingsDir);
+        const recordingFiles = files.filter((f) => f.endsWith('.p2rec') || f.endsWith('.jsonl'));
+        hasRecordings = recordingFiles.length > 0;
+      } catch (error) {
+        this.logConsoleMessage(`[PLAYBACK] Error checking recordings: ${error}`);
+        hasRecordings = false;
+      }
+    }
+
+    this.logConsoleMessage(`[PLAYBACK] Recordings available: ${hasRecordings}`);
+
+    // Update playback button state
+    this.safeExecuteJS(
+      `
+      (function() {
+        const playbackBtn = document.getElementById('playback-btn');
+        if (playbackBtn) {
+          playbackBtn.disabled = ${!hasRecordings};
+          playbackBtn.style.opacity = ${hasRecordings ? '1.0' : '0.5'};
+          playbackBtn.title = ${hasRecordings ? "'Play recording'" : "'No recordings available'"};
+        }
+      })();
+    `,
+      'update playback controls state'
+    );
   }
 
   private setupPlaybackListeners(): void {
@@ -6029,7 +6045,7 @@ export class MainWindow {
 
   private showPreferencesDialog(): void {
     if (!this.preferencesDialog) {
-      this.preferencesDialog = new PreferencesDialog(this.mainWindow, (settings) => {
+      this.preferencesDialog = new PreferencesDialog(this.mainWindow, this.context, (settings) => {
         this.applyPreferences(settings);
       });
     }
@@ -6067,14 +6083,6 @@ export class MainWindow {
       if (settings.serialPort.defaultBaud) {
         this._serialBaud = settings.serialPort.defaultBaud;
         this.logConsoleMessage(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
-      }
-
-      // Apply auto-reconnect setting
-      if (settings.serialPort.autoReconnect !== undefined) {
-        // Store for future use (implement auto-reconnect logic separately)
-        this.logConsoleMessage(
-          `[PREFERENCES] Auto-reconnect ${settings.serialPort.autoReconnect ? 'enabled' : 'disabled'}`
-        );
       }
 
       // Apply reset on connection setting

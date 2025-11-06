@@ -326,10 +326,14 @@ Cog2  Counter: 1234
 - Preserves timestamps and formatting
 
 **Preferences** (`Cmd/Ctrl+,`)
-- Configure application settings
-- Serial port defaults (baud rate, control line)
-- Debug logger scrollback limit
-- USB traffic logging
+- Configure application settings with two tabs:
+  - **User Settings**: Global preferences for all projects
+  - **Project Settings**: Project-specific overrides with checkboxes
+- Settings include: terminal mode, serial port, logging, recordings
+- Settings files:
+  - User global: `%APPDATA%\PNut-Term-TS\settings.json` (Win) or `~/.pnut-term-ts-settings.json` (Mac/Linux)
+  - Project local: `./.pnut-term-ts-settings.json` in project directory
+- See full documentation for detailed settings hierarchy
 
 **Quit** (`Cmd/Ctrl+Q`)
 - Exit application
@@ -385,7 +389,9 @@ Cog2  Counter: 1234
 
 **Quick Decision Guide**: Does your P2 need to reset when you connect?
 
-**How to Change**: File → Preferences (Ctrl/Cmd+,) → Serial Port → "Reset P2 on Connection"
+**How to Change**: File → Preferences (Ctrl/Cmd+,) → **User Settings** (or **Project Settings**) → Serial Port → "Reset P2 on Connection"
+
+**Note**: Use User Settings for global preference across all projects, or Project Settings to override for specific projects.
 
 #### ☑️ Enable "Reset on Connection" when:
 - You're actively developing and testing code

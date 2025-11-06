@@ -635,14 +635,20 @@ export class UsbSerial extends EventEmitter {
       this.logConsoleMessage(`[USB] handleSerialOpen() - Flush warning (non-fatal): ${flushErr.message}`);
     }
 
-    // DISABLED FOR TESTING: No DTR/RTS toggle on startup
-    // Testing whether we can connect without triggering hardware reset
-    // Use RTS instead of DTR if RTS override is enabled
-    // if (this.context.runEnvironment.rtsOverride) {
-    //   await this.toggleRTS();
-    // } else {
-    //   await this.toggleDTR();
-    // }
+    // Conditional reset based on user preference
+    // Only reset if preference is enabled (default: true for traditional mode)
+    if (this.context.runEnvironment.resetOnConnection) {
+      this.logConsoleMessage(`[USB] Reset on connection enabled - performing DTR/RTS reset`);
+      // Use RTS instead of DTR if RTS override is enabled
+      if (this.context.runEnvironment.rtsOverride) {
+        await this.toggleRTS();
+      } else {
+        await this.toggleDTR();
+      }
+      this.logConsoleMessage(`[USB] Reset pulse completed`);
+    } else {
+      this.logConsoleMessage(`[USB] Reset on connection disabled - passive monitoring mode`);
+    }
   }
 
   // Check raw data for P2 version response (no parser needed!)

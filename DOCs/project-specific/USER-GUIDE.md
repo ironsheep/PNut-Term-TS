@@ -4,22 +4,23 @@
 1. [Introduction](#introduction)
 2. [Installation & Setup](#installation--setup)
 3. [Getting Started](#getting-started)
-4. [Connection & Startup Behavior](#connection--startup-behavior)
-5. [Debug Windows Overview](#debug-windows-overview)
-6. [Terminal Window](#terminal-window)
-7. [Logic Analyzer](#logic-analyzer)
-8. [Oscilloscope](#oscilloscope)
-9. [XY Scope](#xy-scope)
-10. [Plot Window](#plot-window)
-11. [Bitmap Display](#bitmap-display)
-12. [MIDI Monitor](#midi-monitor)
-13. [FFT Analyzer](#fft-analyzer)
-14. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
-15. [P2 Debugger](#p2-debugger)
-16. [Recording & Playback](#recording--playback)
-17. [Keyboard Shortcuts](#keyboard-shortcuts)
-18. [Troubleshooting](#troubleshooting)
-19. [Advanced Topics](#advanced-topics)
+4. [Settings & Preferences](#settings--preferences)
+5. [Connection & Startup Behavior](#connection--startup-behavior)
+6. [Debug Windows Overview](#debug-windows-overview)
+7. [Terminal Window](#terminal-window)
+8. [Logic Analyzer](#logic-analyzer)
+9. [Oscilloscope](#oscilloscope)
+10. [XY Scope](#xy-scope)
+11. [Plot Window](#plot-window)
+12. [Bitmap Display](#bitmap-display)
+13. [MIDI Monitor](#midi-monitor)
+14. [FFT Analyzer](#fft-analyzer)
+15. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
+16. [P2 Debugger](#p2-debugger)
+17. [Recording & Playback](#recording--playback)
+18. [Keyboard Shortcuts](#keyboard-shortcuts)
+19. [Troubleshooting](#troubleshooting)
+20. [Advanced Topics](#advanced-topics)
     - [Custom Window Layouts](#custom-window-layouts)
     - [Scripting](#scripting)
     - [Serial Communication Architecture](#serial-communication-architecture)
@@ -111,6 +112,183 @@ debug(`plot MyPlot size 500 500 polar`)               ' Plot window
 debug(`bitmap MyBitmap size 320 240 lut8`)            ' Bitmap display
 ```
 
+## Settings & Preferences
+
+PNut-Term uses a hierarchical settings system that allows you to have global preferences for all projects while also overriding specific settings for individual projects.
+
+### Opening Preferences
+
+**Menu**: File → Preferences
+**Keyboard Shortcut**: Ctrl+, (Windows/Linux) or Cmd+, (Mac)
+
+The Preferences dialog has two tabs:
+- **User Settings**: Global settings that apply to all projects
+- **Project Settings**: Project-specific overrides
+
+### User Settings Tab
+
+User Settings are global preferences that apply across all your P2 projects. These settings are saved to a platform-specific location:
+
+**Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
+**Linux**: `~/.pnut-term-ts-settings.json`
+**Mac**: `~/.pnut-term-ts-settings.json`
+
+**Available Settings**:
+
+#### Terminal
+- **Terminal Mode**: PST (default) or ANSI
+- **Color Theme**: Green on Black, White on Black, or Amber on Black
+- **Font Size**: 10-24 pixels (default: 14)
+- **Font Family**: Default, Parallax, or IBM 3270 variants
+- **Show COG Prefixes**: Display COG numbers in debug output
+- **Local Echo**: Echo typed characters locally
+
+#### Serial Port
+- **Control Line**: DTR or RTS (for hardware reset)
+- **Default Baud Rate**: 115200 to 2000000 (default: 115200)
+- **Reset P2 on Connection**: Reset the P2 when opening serial port
+
+#### Logging
+- **Log Directory**: Where debug logs are saved (default: `./logs/`)
+- **Auto-Save Debug Output**: Automatically save debug output to files
+- **New Log on P2 Reset**: Create new log file when P2 resets
+- **Max Log Size**: File size limit (1MB, 10MB, 100MB, or Unlimited)
+- **Enable USB Traffic Logging**: Log low-level USB serial traffic
+- **USB Log Directory**: Where USB traffic logs are saved
+
+#### Recordings
+- **Recordings Directory**: Where playback recordings are saved (default: `./recordings/`)
+
+#### Debug Logger
+- **History Lines**: Number of lines to keep in debug logger scrollback (100-10000, default: 1000)
+
+**How User Settings Work**:
+- Settings are saved only if they differ from app defaults
+- If you reset all settings to defaults, the settings file is deleted
+- Changes apply immediately to the current session
+- Settings persist across app restarts
+
+### Project Settings Tab
+
+Project Settings allow you to override specific user settings for a particular project. This is useful when:
+- A specific project needs ANSI mode while others use PST
+- You want logs in a different location for one project
+- A project has specific serial port requirements
+
+**File Location**: `./.pnut-term-ts-settings.json` (in your project directory)
+
+**How Project Overrides Work**:
+
+1. **Override Checkboxes**: Each setting has a checkbox on the left
+   - **Unchecked**: Use global setting (control is disabled, shows "(Global: value)")
+   - **Checked**: Override for this project (control is enabled)
+
+2. **Saving Overrides**:
+   - Only checked settings are saved to the project file
+   - Unchecked settings are not included in the file
+   - If no overrides are checked, the project file is deleted
+
+3. **Example Workflow**:
+   ```
+   User Global Settings:
+   - Terminal Mode: PST
+   - Font Size: 14
+   - Log Directory: ./logs/
+
+   Project Override (for ANSI project):
+   - ☑ Terminal Mode: ANSI  (override checked)
+   - ☐ Font Size: 14        (using global)
+   - ☐ Log Directory: ./logs/ (using global)
+
+   Result: Project file contains only:
+   {
+     "terminal": {
+       "mode": "ANSI"
+     }
+   }
+   ```
+
+### Settings Hierarchy
+
+Settings are applied in this order (later layers override earlier ones):
+
+1. **App Defaults** (hardcoded in application)
+2. **User Global Settings** (from platform-specific location)
+3. **Project Local Settings** (from project directory)
+
+**Example**:
+```
+App Default: Terminal Mode = PST, Font Size = 14
+User Global: Font Size = 16
+Project Local: Terminal Mode = ANSI
+
+Effective Settings:
+- Terminal Mode: ANSI (from project local)
+- Font Size: 16 (from user global)
+- Color Theme: green-on-black (from app default)
+```
+
+### Settings Files
+
+You can manually edit settings files if needed. They use JSON format:
+
+**User Global Example**:
+```json
+{
+  "terminal": {
+    "fontSize": 16,
+    "colorTheme": "white-on-black"
+  },
+  "serialPort": {
+    "defaultBaud": 230400
+  }
+}
+```
+
+**Project Local Example**:
+```json
+{
+  "terminal": {
+    "mode": "ANSI"
+  },
+  "logging": {
+    "logDirectory": "/mnt/project-logs/"
+  }
+}
+```
+
+**Note**: The application saves only differences from defaults (delta-save), so settings files remain small and clean.
+
+### Finding Your Settings Files
+
+**User Global** (your personal preferences):
+- **Windows**: Press Win+R, type `%APPDATA%\PNut-Term-TS`, press Enter
+- **Linux/Mac**: Open terminal, type `ls ~/.pnut-term-ts-settings.json`
+
+**Project Local** (project-specific overrides):
+- Look in your project's root directory for `.pnut-term-ts-settings.json`
+- This file only exists if you've created project-specific overrides
+
+### Resetting Settings
+
+**Reset User Global to Defaults**:
+1. Open Preferences → User Settings tab
+2. Change all settings back to their default values
+3. Click Apply
+4. The user settings file will be automatically deleted
+
+**Reset Project Overrides**:
+1. Open Preferences → Project Settings tab
+2. Uncheck all override checkboxes
+3. Click Apply
+4. The project settings file will be automatically deleted
+
+**Complete Reset** (both user and project):
+1. Close PNut-Term
+2. Delete the user global settings file (see file locations above)
+3. Delete `.pnut-term-ts-settings.json` from project directories
+4. Restart PNut-Term (will use app defaults)
+
 ## Connection & Startup Behavior
 
 Understanding how the terminal handles connections and resets is important for effective debugging workflows. The P2 Debug Terminal supports two primary use cases, each requiring different startup behavior.
@@ -172,13 +350,16 @@ Understanding how the terminal handles connections and resets is important for e
 
 ### Understanding the "Reset P2 on Connection" Preference
 
-**Location**: File → Preferences → Serial Port → "Reset P2 on Connection"
+**Location**: File → Preferences → User Settings (or Project Settings) → Serial Port → "Reset P2 on Connection"
 
 **To Change This Setting**:
 1. Open the Preferences dialog (File → Preferences or Ctrl/Cmd+,)
-2. Look under the "Serial Port" section
-3. Check or uncheck "Reset P2 on Connection"
-4. Click "Apply" to save
+2. Choose either **User Settings** tab (for all projects) or **Project Settings** tab (for this project only)
+3. Look under the "Serial Port" section
+4. Check or uncheck "Reset P2 on Connection"
+5. Click "Apply" to save
+
+For more details about User Settings vs. Project Settings, see [Settings & Preferences](#settings--preferences).
 
 This single checkbox controls the fundamental behavior when connecting to your P2:
 
