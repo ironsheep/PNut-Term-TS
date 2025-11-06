@@ -283,7 +283,12 @@ export class SharedCircularBuffer extends EventEmitter {
     const head = Atomics.load(this.sharedState, HEAD_INDEX);
     const tail = Atomics.load(this.sharedState, TAIL_INDEX);
 
-    if (tail >= head) {
+    // When head == tail and not empty, buffer is FULL
+    if (head === tail) {
+      return this.bufferSize;
+    }
+
+    if (tail > head) {
       return tail - head;
     } else {
       return (this.bufferSize - head) + tail;
@@ -294,7 +299,8 @@ export class SharedCircularBuffer extends EventEmitter {
    * Get available space for writing
    */
   public getAvailableSpace(): number {
-    return this.bufferSize - this.getUsedSpace() - 1; // -1 to prevent head==tail ambiguity
+    // No need for -1 since we use IS_EMPTY_INDEX flag to distinguish full from empty
+    return this.bufferSize - this.getUsedSpace();
   }
 
   /**
