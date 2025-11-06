@@ -437,7 +437,7 @@ export class PlotWindowIntegrator {
 
     // Performance timing - end and log
     const perfDuration = performance.now() - perfStart;
-    console.log(
+    this.logConsoleMessage(
       `[OP TIMING] ${operation.type}: ${perfDuration.toFixed(2)}ms`,
       operation.parameters ? `params: ${JSON.stringify(operation.parameters).substring(0, 100)}` : ''
     );
@@ -491,7 +491,7 @@ export class PlotWindowIntegrator {
         const lineSize = params.lineSize ?? this.state.lineSize; // Use state lineSize as default
         const opacity = params.opacity ?? this.state.opacity;
 
-        console.log(
+        this.logConsoleMessage(
           `[INTEGRATOR] LINE: raw=(${params.x},${params.y}) converted=(${lineX},${lineY}) lineSize=${lineSize}, opacity=${opacity}`
         );
 
