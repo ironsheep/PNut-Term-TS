@@ -1,6 +1,6 @@
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * Integration Design for PLOT Parser with Existing Systems
@@ -11,19 +11,19 @@ import { CommandResult, CanvasOperation } from './plotCommandInterfaces';
 
 // 2D transformation matrix for sprite transformations
 export interface TransformationMatrix {
-  a: number;   // horizontal scaling / rotation
-  b: number;   // horizontal skewing
-  c: number;   // vertical skewing
-  d: number;   // vertical scaling / rotation
-  tx: number;  // horizontal translation
-  ty: number;  // vertical translation
+  a: number; // horizontal scaling / rotation
+  b: number; // horizontal skewing
+  c: number; // vertical skewing
+  d: number; // vertical scaling / rotation
+  tx: number; // horizontal translation
+  ty: number; // vertical translation
 }
 
 // Bitmap data structure for layer storage
 export interface BitmapData {
   width: number;
   height: number;
-  pixels: number[];    // RGB pixel values
+  pixels: number[]; // RGB pixel values
   bitsPerPixel: number;
 }
 
@@ -264,7 +264,10 @@ export class PlotWindowIntegrator {
 
     // Debug logging to trace color operations
     if (operation.parameters?.color) {
-      this.logConsoleMessage(`[INTEGRATOR] Processing operation with color: type=${operation.type}, params=`, operation.parameters);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Processing operation with color: type=${operation.type}, params=`,
+        operation.parameters
+      );
     }
 
     try {
@@ -344,7 +347,13 @@ export class PlotWindowIntegrator {
             // LineSize from device is in fixed-point format (256ths)
             // Like coordinates, we need to divide by 256 to get pixels
             const pixelLineSize = Math.max(1, Math.round(operation.parameters.size / 256.0));
-            this.logConsoleMessage('[INTEGRATOR] SET_LINESIZE direct: converting', operation.parameters.size, '/ 256 =', pixelLineSize, 'pixels');
+            this.logConsoleMessage(
+              '[INTEGRATOR] SET_LINESIZE direct: converting',
+              operation.parameters.size,
+              '/ 256 =',
+              pixelLineSize,
+              'pixels'
+            );
             this.state.lineSize = pixelLineSize;
             this.plotWindow.lineSize = pixelLineSize;
           }
@@ -392,18 +401,26 @@ export class PlotWindowIntegrator {
 
         default:
           // Log what's happening with operations that fall through
-          this.logConsoleMessage('[INTEGRATOR] Operation fell through to default:', operation.type, operation.parameters);
+          this.logConsoleMessage(
+            '[INTEGRATOR] Operation fell through to default:',
+            operation.type,
+            operation.parameters
+          );
           result.success = false;
           result.errors.push(`Unsupported operation type: ${operation.type}`);
       }
 
       // Update internal state if operation affects state
-      this.logConsoleMessage(`[INTEGRATOR] Checking affectsState for ${operation.type}: affectsState=${operation.affectsState}`);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Checking affectsState for ${operation.type}: affectsState=${operation.affectsState}`
+      );
       if (operation.affectsState) {
         this.logConsoleMessage(`[INTEGRATOR] Calling updateInternalState for ${operation.type}`);
         this.updateInternalState(operation);
       } else {
-        this.logConsoleMessage(`[INTEGRATOR] Skipping updateInternalState for ${operation.type} (affectsState=false/undefined)`);
+        this.logConsoleMessage(
+          `[INTEGRATOR] Skipping updateInternalState for ${operation.type} (affectsState=false/undefined)`
+        );
       }
 
       // Trigger display update if required and not in buffered mode
@@ -413,7 +430,6 @@ export class PlotWindowIntegrator {
 
       // Track the last operation type for color handling
       this.lastOperationType = operation.type;
-
     } catch (error) {
       result.success = false;
       result.errors.push(`Failed to execute operation: ${error}`);
@@ -421,8 +437,10 @@ export class PlotWindowIntegrator {
 
     // Performance timing - end and log
     const perfDuration = performance.now() - perfStart;
-    console.log(`[OP TIMING] ${operation.type}: ${perfDuration.toFixed(2)}ms`,
-                operation.parameters ? `params: ${JSON.stringify(operation.parameters).substring(0, 100)}` : '');
+    console.log(
+      `[OP TIMING] ${operation.type}: ${perfDuration.toFixed(2)}ms`,
+      operation.parameters ? `params: ${JSON.stringify(operation.parameters).substring(0, 100)}` : ''
+    );
 
     return result;
   }
@@ -470,10 +488,12 @@ export class PlotWindowIntegrator {
         // Round to integer pixels (no decimals needed for canvas operations)
         const lineX = Math.round((params.x ?? 0) * precisionMultiplier);
         const lineY = Math.round((params.y ?? 0) * precisionMultiplier);
-        const lineSize = params.lineSize ?? this.state.lineSize;  // Use state lineSize as default
+        const lineSize = params.lineSize ?? this.state.lineSize; // Use state lineSize as default
         const opacity = params.opacity ?? this.state.opacity;
 
-        console.log(`[INTEGRATOR] LINE: raw=(${params.x},${params.y}) converted=(${lineX},${lineY}) lineSize=${lineSize}, opacity=${opacity}`);
+        console.log(
+          `[INTEGRATOR] LINE: raw=(${params.x},${params.y}) converted=(${lineX},${lineY}) lineSize=${lineSize}, opacity=${opacity}`
+        );
 
         await this.plotWindow.drawLineToPlot(lineX, lineY, lineSize, opacity);
         break;
@@ -498,18 +518,12 @@ export class PlotWindowIntegrator {
           filled: circleFilled
         });
 
-        await this.plotWindow.drawCircleToPlot(
-          diameter,
-          circleLineSize,
-          params.opacity ?? this.state.opacity,
-          true,
-          {
-            centerX,
-            centerY,
-            color: circleColor,
-            filled: circleFilled
-          }
-        );
+        await this.plotWindow.drawCircleToPlot(diameter, circleLineSize, params.opacity ?? this.state.opacity, true, {
+          centerX,
+          centerY,
+          color: circleColor,
+          filled: circleFilled
+        });
         break;
 
       case 'BOX':
@@ -549,12 +563,7 @@ export class PlotWindowIntegrator {
         );
       }
 
-      await this.plotWindow.writeStringToPlotAt(
-        params.text,
-        params.x,
-        params.y,
-        params.color
-      );
+      await this.plotWindow.writeStringToPlotAt(params.text, params.x, params.y, params.color);
 
       this.plotWindow.font = savedFont;
       this.plotWindow.textStyle = savedTextStyle;
@@ -762,7 +771,9 @@ export class PlotWindowIntegrator {
             }
 
             this.plotWindow.displaySpec.window.background = backgroundColor;
-            this.logConsoleMessage(`[PLOT] Background color set to: ${backgroundColor} (brightness: ${params.brightness || 15})`);
+            this.logConsoleMessage(
+              `[PLOT] Background color set to: ${backgroundColor} (brightness: ${params.brightness || 15})`
+            );
           }
           break;
 
@@ -787,7 +798,9 @@ export class PlotWindowIntegrator {
             if (this.plotWindow.setUpdateInterval) {
               this.plotWindow.setUpdateInterval(updateInterval);
             }
-            this.logConsoleMessage(`[PLOT] Update rate set to: ${params.updateRate} Hz (${updateInterval.toFixed(1)}ms interval)`);
+            this.logConsoleMessage(
+              `[PLOT] Update rate set to: ${params.updateRate} Hz (${updateInterval.toFixed(1)}ms interval)`
+            );
           }
           break;
 
@@ -816,7 +829,6 @@ export class PlotWindowIntegrator {
           }
           console.warn(`[PLOT] Unknown CONFIGURE action: ${action || 'none'}, using legacy format`);
       }
-
     } catch (error) {
       console.error(`[PLOT] Error executing CONFIGURE command:`, error);
     }
@@ -933,7 +945,7 @@ export class PlotWindowIntegrator {
     // Implement Pascal's PRECISE behavior: vPrecise := vPrecise xor 8
     // Toggle between 0 (standard) and 8 (high precision)
     const currentPrecise = this.plotWindow.precise || 0;
-    const newPrecise = currentPrecise ^ 8;  // XOR with 8
+    const newPrecise = currentPrecise ^ 8; // XOR with 8
 
     // Update plot window state
     this.plotWindow.precise = newPrecise;
@@ -958,7 +970,9 @@ export class PlotWindowIntegrator {
       this.plotWindow.cartesianConfig.ydir = ydir === true || ydir === 1;
     }
 
-    this.logConsoleMessage(`[INTEGRATOR] Cartesian config set: xdir=${this.plotWindow.cartesianConfig.xdir}, ydir=${this.plotWindow.cartesianConfig.ydir}`);
+    this.logConsoleMessage(
+      `[INTEGRATOR] Cartesian config set: xdir=${this.plotWindow.cartesianConfig.xdir}, ydir=${this.plotWindow.cartesianConfig.ydir}`
+    );
   }
 
   private async executePcInput(params: Record<string, any>): Promise<void> {
@@ -973,7 +987,6 @@ export class PlotWindowIntegrator {
 
       // Send response back to P2 via debug protocol
       this.sendInputResponseToP2('KEY', keyCode);
-
     } else if (inputType === 'MOUSE') {
       // Handle PC_MOUSE - get current mouse state and encode as 32-bit value
       const mouseState = await this.getCurrentMouseState();
@@ -981,7 +994,6 @@ export class PlotWindowIntegrator {
 
       // Send response back to P2 via debug protocol
       this.sendInputResponseToP2('MOUSE', mouseState);
-
     } else {
       console.error(`[INTEGRATOR] Unknown PC_INPUT type: ${inputType}`);
     }
@@ -1018,7 +1030,9 @@ export class PlotWindowIntegrator {
         })()
       `);
 
-      this.logConsoleMessage(`[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`
+      );
       return mouseState || 0;
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to get mouse state from renderer:`, error);
@@ -1059,18 +1073,28 @@ export class PlotWindowIntegrator {
       }
 
       if (!Array.isArray(pixels) || pixels.length !== width * height) {
-        this.logError(`[PLOT ERROR] Invalid pixel data for SPRITEDEF ${spriteId}: expected ${width * height} pixels, got ${pixels ? pixels.length : 0}`);
+        this.logError(
+          `[PLOT ERROR] Invalid pixel data for SPRITEDEF ${spriteId}: expected ${width * height} pixels, got ${
+            pixels ? pixels.length : 0
+          }`
+        );
         throw new Error(`Invalid pixel data: expected ${width * height} pixels, got ${pixels ? pixels.length : 0}`);
       }
 
       if (!Array.isArray(colors) || colors.length !== 256) {
-        this.logError(`[PLOT ERROR] Invalid color palette for SPRITEDEF ${spriteId}: expected 256 colors, got ${colors ? colors.length : 0}`);
+        this.logError(
+          `[PLOT ERROR] Invalid color palette for SPRITEDEF ${spriteId}: expected 256 colors, got ${
+            colors ? colors.length : 0
+          }`
+        );
         throw new Error(`Invalid color palette: expected 256 colors, got ${colors ? colors.length : 0}`);
       }
 
       // Validate sprite dimensions are within Pascal bounds (1-32 x 1-32)
       if (width < 1 || width > 32 || height < 1 || height > 32) {
-        this.logError(`[PLOT ERROR] Sprite dimensions ${width}x${height} out of bounds for SPRITEDEF ${spriteId} (valid range: 1-32 x 1-32)`);
+        this.logError(
+          `[PLOT ERROR] Sprite dimensions ${width}x${height} out of bounds for SPRITEDEF ${spriteId} (valid range: 1-32 x 1-32)`
+        );
         throw new Error(`Sprite dimensions ${width}x${height} out of bounds (1-32 x 1-32)`);
       }
 
@@ -1083,23 +1107,36 @@ export class PlotWindowIntegrator {
       // Validate pixel indices are within palette range (0-255) with memory-safe checking
       for (let i = 0; i < pixels.length; i++) {
         if (pixels[i] < 0 || pixels[i] > 255) {
-          this.logError(`[PLOT ERROR] Pixel index ${pixels[i]} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0-255)`);
+          this.logError(
+            `[PLOT ERROR] Pixel index ${pixels[i]} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0-255)`
+          );
           throw new Error(`Pixel index ${pixels[i]} at position ${i} out of bounds (0-255)`);
         }
       }
 
       // Validate color values are 32-bit ARGB (0x00000000-0xFFFFFFFF) with memory-safe checking
       for (let i = 0; i < colors.length; i++) {
-        if (colors[i] < 0 || colors[i] > 0xFFFFFFFF) {
-          this.logError(`[PLOT ERROR] Color value 0x${colors[i].toString(16)} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0x00000000-0xFFFFFFFF)`);
-          throw new Error(`Color value 0x${colors[i].toString(16)} at position ${i} out of bounds (0x00000000-0xFFFFFFFF)`);
+        if (colors[i] < 0 || colors[i] > 0xffffffff) {
+          this.logError(
+            `[PLOT ERROR] Color value 0x${colors[i].toString(
+              16
+            )} at position ${i} out of bounds for SPRITEDEF ${spriteId} (valid range: 0x00000000-0xFFFFFFFF)`
+          );
+          throw new Error(
+            `Color value 0x${colors[i].toString(16)} at position ${i} out of bounds (0x00000000-0xFFFFFFFF)`
+          );
         }
       }
 
       // Check memory availability before large sprite allocation
-      const estimatedMemory = (pixels.length * 4) + (colors.length * 4); // Rough estimate in bytes
-      if (estimatedMemory > 50 * 1024 * 1024) { // 50MB threshold
-        this.logError(`[PLOT ERROR] SPRITEDEF ${spriteId} memory allocation too large: ${Math.round(estimatedMemory / 1024 / 1024)}MB (max 50MB)`);
+      const estimatedMemory = pixels.length * 4 + colors.length * 4; // Rough estimate in bytes
+      if (estimatedMemory > 50 * 1024 * 1024) {
+        // 50MB threshold
+        this.logError(
+          `[PLOT ERROR] SPRITEDEF ${spriteId} memory allocation too large: ${Math.round(
+            estimatedMemory / 1024 / 1024
+          )}MB (max 50MB)`
+        );
         throw new Error(`Sprite memory allocation too large: ${Math.round(estimatedMemory / 1024 / 1024)}MB`);
       }
 
@@ -1114,8 +1151,9 @@ export class PlotWindowIntegrator {
         throw new Error(`Memory allocation failed for sprite definition: ${memError}`);
       }
 
-      this.logConsoleMessage(`[INTEGRATOR] Sprite ${spriteId} defined: ${width}x${height} pixels, ${pixels.length} pixel indices, ${colors.length} palette colors`);
-
+      this.logConsoleMessage(
+        `[INTEGRATOR] Sprite ${spriteId} defined: ${width}x${height} pixels, ${pixels.length} pixel indices, ${colors.length} palette colors`
+      );
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to define sprite:`, error);
       // Ensure error is logged to debug logger
@@ -1168,7 +1206,9 @@ export class PlotWindowIntegrator {
         colors: sprite.colors
       };
 
-      this.logConsoleMessage(`[INTEGRATOR] Drawing sprite ${spriteId} at (${screenX}, ${screenY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Drawing sprite ${spriteId} at (${screenX}, ${screenY}) with orientation=${orientation}°, scale=${scale}, opacity=${opacity}`
+      );
 
       // Execute sprite rendering in the renderer
       const jsCode = `
@@ -1251,7 +1291,6 @@ export class PlotWindowIntegrator {
         console.error('[INTEGRATOR] Failed to execute sprite rendering:', error);
         throw error;
       }
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to draw sprite:`, error);
       throw error;
@@ -1326,11 +1365,12 @@ export class PlotWindowIntegrator {
           throw new Error(`Layer failed to load in LayerManager`);
         }
 
-        this.logConsoleMessage(`[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${layer.width}x${layer.height})`);
+        this.logConsoleMessage(
+          `[INTEGRATOR] Layer ${layerIndex} loaded from "${filename}" (${layer.width}x${layer.height})`
+        );
 
         // Transfer layer to renderer as offscreen canvas for fast cropping
         await this.transferLayerToRenderer(internalLayerIndex, filename);
-
       } catch (loadError) {
         // Enhanced error classification and logging
         if (loadError.message.includes('ENOENT') || loadError.message.includes('not found')) {
@@ -1346,11 +1386,12 @@ export class PlotWindowIntegrator {
           // Re-throw memory errors as-is
           throw loadError;
         } else {
-          this.logError(`[PLOT ERROR] Failed to load bitmap file for LAYER ${layerIndex}: ${filename} - ${loadError.message}`);
+          this.logError(
+            `[PLOT ERROR] Failed to load bitmap file for LAYER ${layerIndex}: ${filename} - ${loadError.message}`
+          );
           throw new Error(`Failed to load bitmap file: ${filename} - ${loadError.message}`);
         }
       }
-
     } catch (error) {
       // Ensure all errors are logged to debug logger
       console.error(`[INTEGRATOR] Failed to load layer:`, error);
@@ -1376,7 +1417,9 @@ export class PlotWindowIntegrator {
         throw new Error(`Layer ${layerIndex} not loaded in LayerManager`);
       }
 
-      this.logConsoleMessage(`[INTEGRATOR] Transferring layer ${layerIndex} to renderer: ${layer.bitmap.width}x${layer.bitmap.height}`);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Transferring layer ${layerIndex} to renderer: ${layer.bitmap.width}x${layer.bitmap.height}`
+      );
 
       // Convert Jimp image to PNG data URL (compressed, efficient transfer)
       // Note: getBase64() returns Promise<string>, no "Async" suffix in Jimp v1.x
@@ -1441,7 +1484,6 @@ export class PlotWindowIntegrator {
       // NOTE: We could release the Jimp image here to save memory since renderer has the data
       // For now, keeping it in case we need it for other operations (SAVE, etc.)
       // To release: this.plotWindow.layerManager.layers[layerIndex] = null;
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to transfer layer ${layerIndex} to renderer:`, error);
       throw new Error(`Failed to transfer layer to renderer: ${error}`);
@@ -1470,7 +1512,6 @@ export class PlotWindowIntegrator {
       `);
 
       this.logConsoleMessage(`[INTEGRATOR] Released layer ${layerIndex} cache in renderer`);
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to release layer ${layerIndex} in renderer:`, error);
     }
@@ -1498,7 +1539,6 @@ export class PlotWindowIntegrator {
       `);
 
       this.logConsoleMessage(`[INTEGRATOR] Released all layer caches in renderer`);
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to release all layers in renderer:`, error);
     }
@@ -1535,7 +1575,6 @@ export class PlotWindowIntegrator {
       this.logConsoleMessage(`[INTEGRATOR] BMP file loaded: ${filename} (${bitmapData.width}x${bitmapData.height})`);
 
       return bitmapData;
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to load BMP file: ${filename}`, error);
       throw error;
@@ -1553,7 +1592,7 @@ export class PlotWindowIntegrator {
       }
 
       // Check BMP signature ('BM')
-      if (fileData.readUInt16LE(0) !== 0x4D42) {
+      if (fileData.readUInt16LE(0) !== 0x4d42) {
         throw new Error(`Invalid BMP signature: ${filename}`);
       }
 
@@ -1583,7 +1622,7 @@ export class PlotWindowIntegrator {
       // Calculate row padding (BMP rows are padded to 4-byte boundaries)
       const bytesPerPixel = bitsPerPixel / 8;
       const rowSize = Math.floor((bitsPerPixel * width + 31) / 32) * 4;
-      const padding = rowSize - (width * bytesPerPixel);
+      const padding = rowSize - width * bytesPerPixel;
 
       // Extract pixel data
       const pixels: number[] = [];
@@ -1592,8 +1631,8 @@ export class PlotWindowIntegrator {
       for (let y = 0; y < absHeight; y++) {
         for (let x = 0; x < width; x++) {
           // BMP stores pixels bottom-to-top, so adjust y coordinate
-          const bmpY = height > 0 ? (absHeight - 1 - y) : y;
-          const pixelOffset = dataOffset + (bmpY * rowSize) + (x * bytesPerPixel);
+          const bmpY = height > 0 ? absHeight - 1 - y : y;
+          const pixelOffset = dataOffset + bmpY * rowSize + x * bytesPerPixel;
 
           if (pixelOffset + bytesPerPixel > fileData.length) {
             throw new Error(`BMP pixel data overflow: ${filename}`);
@@ -1617,7 +1656,6 @@ export class PlotWindowIntegrator {
         pixels: pixels,
         bitsPerPixel: bitsPerPixel
       };
-
     } catch (error) {
       throw new Error(`Failed to parse BMP file ${filename}: ${error.message}`);
     }
@@ -1646,10 +1684,10 @@ export class PlotWindowIntegrator {
       // DIAGNOSTIC: Log state before checking layer
       this.logConsoleMessage(
         `[INTEGRATOR] About to check layer: ` +
-        `layerIndex=${layerIndex}, ` +
-        `internalLayerIndex=${internalLayerIndex}, ` +
-        `layerManager exists=${!!this.plotWindow.layerManager}, ` +
-        `plotWindow exists=${!!this.plotWindow}`
+          `layerIndex=${layerIndex}, ` +
+          `internalLayerIndex=${internalLayerIndex}, ` +
+          `layerManager exists=${!!this.plotWindow.layerManager}, ` +
+          `plotWindow exists=${!!this.plotWindow}`
       );
 
       // Check if layer is loaded using LayerManager's method
@@ -1657,15 +1695,16 @@ export class PlotWindowIntegrator {
         // DIAGNOSTIC: Additional info when check fails
         this.logConsoleMessage(
           `[INTEGRATOR] Layer check FAILED! ` +
-          `Dumping state: ` +
-          `layerManager.layers.length=${this.plotWindow.layerManager.layers?.length}, ` +
-          `layerManager.layers[${internalLayerIndex}]=${this.plotWindow.layerManager.layers[internalLayerIndex] ? 'EXISTS' : 'NULL'}`
+            `Dumping state: ` +
+            `layerManager.layers.length=${this.plotWindow.layerManager.layers?.length}, ` +
+            `layerManager.layers[${internalLayerIndex}]=${
+              this.plotWindow.layerManager.layers[internalLayerIndex] ? 'EXISTS' : 'NULL'
+            }`
         );
         throw new Error(`Layer ${layerIndex} not loaded`);
       }
 
       this.logConsoleMessage(`[INTEGRATOR] Layer check passed for layer ${layerIndex}`);
-
 
       // Get layer dimensions
       const dimensions = this.plotWindow.layerManager.getLayerDimensions(internalLayerIndex);
@@ -1677,7 +1716,9 @@ export class PlotWindowIntegrator {
       if (mode === 'DEFAULT') {
         params.width = dimensions.width;
         params.height = dimensions.height;
-        this.logConsoleMessage(`[INTEGRATOR] DEFAULT mode: Updated params with layer dimensions: width=${params.width}, height=${params.height}`);
+        this.logConsoleMessage(
+          `[INTEGRATOR] DEFAULT mode: Updated params with layer dimensions: width=${params.width}, height=${params.height}`
+        );
       }
 
       // Handle different crop modes
@@ -1686,7 +1727,6 @@ export class PlotWindowIntegrator {
       } else {
         await this.executeCropExplicit(internalLayerIndex, dimensions, params);
       }
-
     } catch (error) {
       console.error(`[INTEGRATOR] Failed to crop layer:`, error);
       throw error;
@@ -1696,7 +1736,11 @@ export class PlotWindowIntegrator {
   /**
    * Execute AUTO crop mode - automatically determine source rectangle
    */
-  private async executeCropAuto(layerIndex: number, dimensions: { width: number; height: number }, params: Record<string, any>): Promise<void> {
+  private async executeCropAuto(
+    layerIndex: number,
+    dimensions: { width: number; height: number },
+    params: Record<string, any>
+  ): Promise<void> {
     const { destX, destY, mode } = params;
 
     // For AUTO mode, copy the entire layer to the destination position
@@ -1711,32 +1755,46 @@ export class PlotWindowIntegrator {
     // Special case: If this is a DEFAULT mode crop of the entire layer to (0,0),
     // and the layer dimensions match the canvas dimensions, this is likely
     // setting the base background layer
-    if (mode === 'DEFAULT' && destX === 0 && destY === 0 &&
-        dimensions.width === this.plotWindow.displaySpec.size.width &&
-        dimensions.height === this.plotWindow.displaySpec.size.height) {
+    if (
+      mode === 'DEFAULT' &&
+      destX === 0 &&
+      destY === 0 &&
+      dimensions.width === this.plotWindow.displaySpec.size.width &&
+      dimensions.height === this.plotWindow.displaySpec.size.height
+    ) {
       this.logConsoleMessage(`[INTEGRATOR] CROP DEFAULT: Setting base layer ${layerIndex} as background`);
     }
 
     await this.copyLayerToCanvas(layerIndex, sourceRect, destX, destY);
 
-    this.logConsoleMessage(`[INTEGRATOR] CROP AUTO: copied entire layer (${sourceRect.width}x${sourceRect.height}) to (${destX}, ${destY})`);
+    this.logConsoleMessage(
+      `[INTEGRATOR] CROP AUTO: copied entire layer (${sourceRect.width}x${sourceRect.height}) to (${destX}, ${destY})`
+    );
   }
 
   /**
    * Execute explicit crop mode - use specified source rectangle
    */
-  private async executeCropExplicit(layerIndex: number, dimensions: { width: number; height: number }, params: Record<string, any>): Promise<void> {
+  private async executeCropExplicit(
+    layerIndex: number,
+    dimensions: { width: number; height: number },
+    params: Record<string, any>
+  ): Promise<void> {
     const { left, top, width, height, destX, destY } = params;
 
     // Validate source rectangle bounds
     if (left < 0 || top < 0 || left + width > dimensions.width || top + height > dimensions.height) {
-      throw new Error(`Source rectangle (${left},${top}) ${width}x${height} exceeds layer bounds ${dimensions.width}x${dimensions.height}`);
+      throw new Error(
+        `Source rectangle (${left},${top}) ${width}x${height} exceeds layer bounds ${dimensions.width}x${dimensions.height}`
+      );
     }
 
     const sourceRect = { left, top, width, height };
     await this.copyLayerToCanvas(layerIndex, sourceRect, destX, destY);
 
-    this.logConsoleMessage(`[INTEGRATOR] CROP EXPLICIT: copied (${left},${top}) ${width}x${height} to (${destX}, ${destY})`);
+    this.logConsoleMessage(
+      `[INTEGRATOR] CROP EXPLICIT: copied (${left},${top}) ${width}x${height} to (${destX}, ${destY})`
+    );
   }
 
   /**
@@ -1764,7 +1822,9 @@ export class PlotWindowIntegrator {
       let canvasDestX = destX;
       let canvasDestY = destY;
 
-      this.logConsoleMessage(`[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to user(${destX}, ${destY}) -> canvas(${canvasDestX}, ${canvasDestY})`);
+      this.logConsoleMessage(
+        `[INTEGRATOR] Copying layer ${layerIndex} rect (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to user(${destX}, ${destY}) -> canvas(${canvasDestX}, ${canvasDestY})`
+      );
 
       // NEW APPROACH: Use cached offscreen canvas with drawImage
       // Just send coordinates - renderer has the bitmap cached
@@ -1816,7 +1876,6 @@ export class PlotWindowIntegrator {
 
       const result = await this.plotWindow.debugWindow.webContents.executeJavaScript(jsCode);
       this.logConsoleMessage(`[INTEGRATOR] Layer copy result: ${result}`);
-
     } catch (error) {
       console.error('[INTEGRATOR] Error during layer copying:', error);
       throw error;
@@ -1856,7 +1915,6 @@ export class PlotWindowIntegrator {
       }
 
       this.logConsoleMessage(`[INTEGRATOR] LUT palette[${index}] set to 0x${color.toString(16).padStart(6, '0')}`);
-
     } catch (error) {
       console.error('[INTEGRATOR] Error during LUT_SET operation:', error);
       throw error;
@@ -1896,7 +1954,6 @@ export class PlotWindowIntegrator {
       }
 
       this.logConsoleMessage(`[INTEGRATOR] LUTCOLORS loaded ${loadedCount} colors into palette`);
-
     } catch (error) {
       console.error('[INTEGRATOR] Error during LUT_COLORS operation:', error);
       throw error;
@@ -2204,12 +2261,20 @@ export class PlotWindowIntegrator {
 
       // Debug logging for operations
       this.logConsoleMessage('[INTEGRATOR BATCH] Processing operation:', operation.type, (operation as any).parameters);
-      this.logConsoleMessage('[INTEGRATOR BATCH] Operation has affectsState property?', 'affectsState' in operation, 'value=', (operation as any).affectsState);
+      this.logConsoleMessage(
+        '[INTEGRATOR BATCH] Operation has affectsState property?',
+        'affectsState' in operation,
+        'value=',
+        (operation as any).affectsState
+      );
 
       if ('affectsState' in operation) {
         // Already a PlotCanvasOperation
         plotOperation = operation as PlotCanvasOperation;
-        this.logConsoleMessage('[INTEGRATOR BATCH] Using PlotCanvasOperation directly, affectsState=', plotOperation.affectsState);
+        this.logConsoleMessage(
+          '[INTEGRATOR BATCH] Using PlotCanvasOperation directly, affectsState=',
+          plotOperation.affectsState
+        );
       } else {
         // Convert CanvasOperation to PlotCanvasOperation
         plotOperation = this.convertFromCanvasOperation(operation as CanvasOperation);
@@ -2286,7 +2351,9 @@ export class PlotWindowIntegrator {
         const internalLayerIndex = layerIndex - 1;
         if (this.plotWindow.layerManager.isLayerLoaded(internalLayerIndex)) {
           this.plotWindow.layerManager.clearLayer(internalLayerIndex);
-          this.logConsoleMessage(`[INTEGRATOR] Cleaned up failed layer operation for layer ${layerIndex} ("${filename}")`);
+          this.logConsoleMessage(
+            `[INTEGRATOR] Cleaned up failed layer operation for layer ${layerIndex} ("${filename}")`
+          );
         }
       }
     } catch (cleanupError) {
@@ -2362,7 +2429,7 @@ export class PlotOperationFactory {
       parameters: params,
       affectsState: this.isStateAffecting(type),
       requiresUpdate: this.requiresUpdate(type),
-      deferrable,
+      deferrable
     };
   }
 
@@ -2397,5 +2464,4 @@ export class PlotOperationFactory {
       CanvasOperationType.CROP_LAYER
     ].includes(type);
   }
-
 }
