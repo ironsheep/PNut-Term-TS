@@ -109,8 +109,21 @@ export class LoggerWindow extends DebugWindowBase {
     // Call parent with a fixed name since this is a singleton
     super(context, 'DebugLogger', 'logger');
 
-    // Default to green theme
-    this.theme = LoggerWindow.THEMES.green;
+    // Set theme from preferences BEFORE creating window (so HTML gets correct colors)
+    if (context.preferences?.terminal?.colorTheme) {
+      const themeValue = context.preferences.terminal.colorTheme;
+      if (themeValue.includes('amber')) {
+        this.theme = LoggerWindow.THEMES.amber;
+        if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] Setting amber theme from preferences');
+      } else {
+        this.theme = LoggerWindow.THEMES.green;
+        if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] Setting green theme from preferences');
+      }
+    } else {
+      // Default to green theme
+      this.theme = LoggerWindow.THEMES.green;
+      if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] No theme preference, defaulting to green');
+    }
 
     if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] Creating debug window...');
     // Create the window but DON'T show it yet

@@ -111,8 +111,23 @@ export class LoggerCOGWindow extends DebugWindowBase {
     // Log COG window creation
     if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] COG window created and initializing`);
 
-    // Start with dormant theme
-    this.theme = LoggerCOGWindow.THEMES.dormant;
+    // Set theme from preferences BEFORE creating window (so HTML gets correct colors)
+    if (params.context.preferences?.terminal?.colorTheme) {
+      const themeValue = params.context.preferences.terminal.colorTheme;
+      if (themeValue.includes('amber')) {
+        this.theme = LoggerCOGWindow.THEMES.activeAmber;
+        this.colorTheme = 'amber';
+        if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] Setting amber theme from preferences`);
+      } else {
+        this.theme = LoggerCOGWindow.THEMES.activeGreen;
+        this.colorTheme = 'green';
+        if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] Setting green theme from preferences`);
+      }
+    } else {
+      // Default to dormant theme if no preference
+      this.theme = LoggerCOGWindow.THEMES.dormant;
+      if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] No theme preference, using dormant`);
+    }
 
     // Load preferences
     this.loadPreferences();
@@ -1041,15 +1056,9 @@ export class LoggerCOGWindow extends DebugWindowBase {
   public setTheme(themeName: 'green' | 'amber'): void {
     this.colorTheme = themeName;
 
-    // Update theme based on current traffic state
-    // Dormant windows stay gray until first message, but we store the color preference
-    if (this.hasReceivedTraffic) {
-      // Window is active, apply the active color theme
-      this.theme = themeName === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
-    } else {
-      // Window is dormant, keep gray but update colorTheme for when it activates
-      this.theme = LoggerCOGWindow.THEMES.dormant;
-    }
+    // Apply the requested color theme immediately, regardless of traffic state
+    // User explicitly set a color preference, so honor it from window creation
+    this.theme = themeName === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
 
     // Send theme update to renderer only if renderer is ready
     if (this.debugWindow && !this.debugWindow.isDestroyed() && this.rendererReady) {
