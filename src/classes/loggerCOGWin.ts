@@ -12,7 +12,7 @@ import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 export interface COGTheme {
   name: string;
@@ -52,9 +52,9 @@ export class LoggerCOGWindow extends DebugWindowBase {
   // isLogging is inherited from DebugWindowBase
 
   // Performance optimizations
-  private renderQueue: Array<{message: string, timestamp: string, className?: string}> = [];
+  private renderQueue: Array<{ message: string; timestamp: string; className?: string }> = [];
   private batchTimer: NodeJS.Timeout | null = null;
-  private lastFullTimestamp: string | null = null;  // Track last full timestamp for abbreviation
+  private lastFullTimestamp: string | null = null; // Track last full timestamp for abbreviation
   private readonly BATCH_INTERVAL_MS = 16; // 60fps update rate
   private readonly BATCH_SIZE_LIMIT = 100;
   private writeBuffer: string[] = [];
@@ -72,17 +72,28 @@ export class LoggerCOGWindow extends DebugWindowBase {
       foregroundColor: '#888888',
       backgroundColor: '#2d2d30'
     },
-    active: {
-      name: 'active',
+    activeGreen: {
+      name: 'activeGreen',
       foregroundColor: '#00FF00',
+      backgroundColor: '#000000'
+    },
+    activeAmber: {
+      name: 'activeAmber',
+      foregroundColor: '#FFBF00',
       backgroundColor: '#000000'
     }
   };
 
-  constructor(cogId: number, params: {
-    context: Context;
-    windowId?: string;
-  }) {
+  // Current color theme (green or amber)
+  private colorTheme: 'green' | 'amber' = 'green';
+
+  constructor(
+    cogId: number,
+    params: {
+      context: Context;
+      windowId?: string;
+    }
+  ) {
     const windowId = params.windowId || `COG-${cogId}`;
     super(params.context, windowId, 'COG');
 
@@ -92,6 +103,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
     }
 
     this.cogId = cogId;
+    this.isLogging = true; // Initially not logging until export
 
     // Log COG window creation
     if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] COG window created and initializing`);
@@ -317,6 +329,19 @@ export class LoggerCOGWindow extends DebugWindowBase {
       color: #FF6B6B;
       font-weight: bold;
     }
+    .binary-message {
+      color: #00FFFF;  /* Cyan for binary hex dumps */
+      font-family: 'Courier New', monospace;
+    }
+    .debugger-formatted {
+      color: #FFD700;  /* Gold for formatted debugger messages */
+      font-family: 'Courier New', monospace;
+      white-space: pre;
+      background-color: #1a1a1a;
+      padding: 2px 4px;
+      margin: 2px 0;
+      border-left: 3px solid #FFD700;
+    }
     .timestamp {
       color: #606060;
       font-size: 10px;
@@ -344,7 +369,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
       background-color: #000000;
     }
     body.active .cog-message {
-      color: #00FF00;
+      color: ${this.colorTheme === 'amber' ? '#FFBF00' : '#00FF00'};
     }
     .cog-identifier {
       color: #FFD700;
@@ -517,6 +542,18 @@ export class LoggerCOGWindow extends DebugWindowBase {
       logFilenameEl.textContent = status.filename || 'None';
     });
 
+    // Theme updates
+    ipcRenderer.on('cog-' + cogId + '-set-theme', (event, theme) => {
+      // Update CSS custom properties or body classes based on theme
+      // Theme has foregroundColor and backgroundColor
+      const style = document.documentElement.style;
+      style.setProperty('--active-fg-color', theme.foregroundColor);
+      style.setProperty('--active-bg-color', theme.backgroundColor);
+
+      // Update active theme colors in CSS
+      document.body.style.setProperty('--cog-message-color', theme.foregroundColor);
+    });
+
     // Scroll handling
     output.addEventListener('scroll', function() {
       const scrollThreshold = 50;
@@ -531,18 +568,37 @@ export class LoggerCOGWindow extends DebugWindowBase {
   /**
    * Process incoming message for this COG
    */
-  public processMessage(message: string, timestamp?: string): void {
+  public processMessage(message: string | Uint8Array, timestamp?: string): void {
     // CRITICAL PERFORMANCE FIX: Early exit if window is destroyed
     // This prevents wasting CPU on closed/invisible windows
     if (!this.debugWindow || this.debugWindow.isDestroyed()) {
       return; // Don't waste CPU processing messages for closed windows
     }
 
+    let displayMessage: string;
+    let className = 'cog-message';
+
+    // DEFENSIVE: Check if we received binary data that should be text
+    if (message instanceof Uint8Array) {
+      if (ENABLE_CONSOLE_LOG) console.warn(`[COG${this.cogId}] WARNING: Received binary data instead of text`);
+
+      if (this.isASCIIData(message)) {
+        // Valid ASCII - decode as text
+        displayMessage = new TextDecoder().decode(message);
+      } else {
+        // Binary data misclassified - display defensively
+        displayMessage = this.formatBinaryAsHexFallback(message);
+        className = 'binary-message';
+      }
+    } else {
+      displayMessage = message;
+    }
+
     // Log message arrival for debugging
-    if (ENABLE_CONSOLE_LOG) console.log(`[COG${this.cogId}] Received message: "${message}"`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[COG${this.cogId}] Received message: "${displayMessage}"`);
 
     // Add to history buffer
-    this.historyBuffer.push(message);
+    this.historyBuffer.push(displayMessage);
     if (this.historyBuffer.length > this.maxLines) {
       // Remove oldest 10% when buffer is full
       const removeCount = Math.floor(this.maxLines * 0.1);
@@ -564,9 +620,9 @@ export class LoggerCOGWindow extends DebugWindowBase {
 
     // Add to render queue
     this.renderQueue.push({
-      message: message,
+      message: displayMessage,
       timestamp: displayTimestamp,
-      className: 'cog-message'
+      className: className
     });
 
     // Schedule batch render
@@ -576,7 +632,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
 
     // Write to log file if logging
     if (this.isLogging && this.logFile) {
-      this.writeToLog(`${timestamp || new Date().toISOString()} ${message}\n`);
+      this.writeToLog(`${timestamp || new Date().toISOString()} ${displayMessage}\n`);
     }
   }
 
@@ -592,30 +648,33 @@ export class LoggerCOGWindow extends DebugWindowBase {
     // Send batch to window
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       if (this.renderQueue.length === 1) {
-        // Single message
+        // Single message - send and remove from queue
         this.debugWindow.webContents.send(`cog-${this.cogId}-message`, this.renderQueue[0]);
+        this.renderQueue.shift(); // Remove the sent message
       } else {
-        // Batch of messages
+        // Batch of messages - splice removes them from queue as it returns them
         const batch = this.renderQueue.splice(0, this.BATCH_SIZE_LIMIT);
         this.debugWindow.webContents.send(`cog-${this.cogId}-messages-batch`, batch);
       }
+    } else {
+      // Window not available, clear queue to avoid memory buildup
+      this.renderQueue = [];
     }
 
-    // Clear queue
-    this.renderQueue = [];
+    // Clear timer
     this.batchTimer = null;
 
-    // Schedule next batch if needed
+    // Schedule next batch if there are remaining messages in queue
     if (this.renderQueue.length > 0) {
       this.batchTimer = setTimeout(() => this.flushRenderQueue(), this.BATCH_INTERVAL_MS);
     }
   }
 
   /**
-   * Switch window to active theme
+   * Switch window to active theme (uses current color theme: green or amber)
    */
   private switchToActiveTheme(): void {
-    this.theme = LoggerCOGWindow.THEMES.active;
+    this.theme = this.colorTheme === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
     // Theme switch happens in the renderer process based on first message
   }
 
@@ -660,15 +719,12 @@ export class LoggerCOGWindow extends DebugWindowBase {
   /**
    * Export log to file
    */
-  private async exportLog(): Promise<{success: boolean, filename?: string, error?: string}> {
+  private async exportLog(): Promise<{ success: boolean; filename?: string; error?: string }> {
     try {
       // Show save dialog
       const result = await dialog.showSaveDialog(this.debugWindow!, {
         title: `Export COG ${this.cogId} Log`,
-        defaultPath: path.join(
-          this.context.getLogDirectory(),
-          `debug_cog${this.cogId}_${getFormattedDateTime()}.log`
-        ),
+        defaultPath: path.join(this.context.getLogDirectory(), `debug_cog${this.cogId}_${getFormattedDateTime()}.log`),
         filters: [
           { name: 'Log Files', extensions: ['log'] },
           { name: 'Text Files', extensions: ['txt'] },
@@ -692,7 +748,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
         `=== COG ${this.cogId} Debug Log ===`,
         `Exported: ${new Date().toISOString()}`,
         `Total Messages: ${this.messageCount}`,
-        '=' .repeat(40),
+        '='.repeat(40),
         ''
       ].join('\n');
 
@@ -719,7 +775,6 @@ export class LoggerCOGWindow extends DebugWindowBase {
         success: true,
         filename: path.basename(this.logFilePath)
       };
-
     } catch (error) {
       console.error(`Failed to export COG ${this.cogId} log:`, error);
       return {
@@ -887,6 +942,63 @@ export class LoggerCOGWindow extends DebugWindowBase {
   }
 
   /**
+   * Check if binary data is valid ASCII (defensive display)
+   */
+  private isASCIIData(data: Uint8Array): boolean {
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      // Allow printable ASCII (32-126) and common whitespace (9, 10, 13)
+      if (!(byte >= 32 && byte <= 126) && byte !== 9 && byte !== 10 && byte !== 13) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Format binary data as hex fallback (when misclassified as COG message)
+   */
+  private formatBinaryAsHexFallback(data: Uint8Array): string {
+    if (data.length === 0) return '[BINARY: empty]';
+
+    const lines: string[] = [];
+    const bytesPerLine = 16;
+
+    lines.push(`[ROUTING ERROR: Binary data in COG ${this.cogId} message - ${data.length} bytes]`);
+
+    for (let offset = 0; offset < data.length; offset += bytesPerLine) {
+      const lineBytes: string[] = [];
+      const asciiBytes: string[] = [];
+      const endOffset = Math.min(offset + bytesPerLine, data.length);
+
+      for (let i = offset; i < endOffset; i++) {
+        const hex = data[i].toString(16).padStart(2, '0').toUpperCase();
+        lineBytes.push(hex);
+
+        const byte = data[i];
+        if (byte >= 32 && byte <= 126) {
+          asciiBytes.push(String.fromCharCode(byte));
+        } else {
+          asciiBytes.push('.');
+        }
+      }
+
+      while (lineBytes.length < bytesPerLine) {
+        lineBytes.push('  ');
+        asciiBytes.push(' ');
+      }
+
+      const hexPart = lineBytes.join(' ');
+      const asciiPart = asciiBytes.join('');
+      const offsetStr = offset.toString(16).padStart(4, '0').toUpperCase();
+
+      lines.push(`  ${offsetStr}: ${hexPart}  |${asciiPart}|`);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
    * Get statistics
    */
   public getStatistics(): any {
@@ -899,6 +1011,32 @@ export class LoggerCOGWindow extends DebugWindowBase {
       logFile: this.logFilePath ? path.basename(this.logFilePath) : null,
       isOpen: this.isOpen()
     };
+  }
+
+  /**
+   * Get history buffer (for export)
+   */
+  public getHistoryBuffer(): string[] {
+    return this.historyBuffer;
+  }
+
+  /**
+   * Set color theme (green or amber)
+   * Updates the active theme colors and sends to renderer if window is active
+   */
+  public setTheme(themeName: 'green' | 'amber'): void {
+    this.colorTheme = themeName;
+
+    // If window has received traffic (is active), update the active theme
+    if (this.hasReceivedTraffic) {
+      this.theme = themeName === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
+
+      // Send theme update to renderer if window exists
+      if (this.debugWindow && !this.debugWindow.isDestroyed()) {
+        this.debugWindow.webContents.send(`cog-${this.cogId}-set-theme`, this.theme);
+      }
+    }
+    // If dormant, theme will be applied when it becomes active (first message)
   }
 
   /**

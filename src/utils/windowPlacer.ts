@@ -1,6 +1,6 @@
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 // src/utils/windowPlacer.ts
 
@@ -14,26 +14,26 @@ import * as os from 'os';
  */
 export enum PlacementSlot {
   // Row 0 (Top)
-  R0_C0 = 'row0-col0',  // Top far left
-  R0_C1 = 'row0-col1',  // Top left-center
-  R0_C2 = 'row0-col2',  // Top center
-  R0_C3 = 'row0-col3',  // Top right-center
-  R0_C4 = 'row0-col4',  // Top far right
-  
+  R0_C0 = 'row0-col0', // Top far left
+  R0_C1 = 'row0-col1', // Top left-center
+  R0_C2 = 'row0-col2', // Top center
+  R0_C3 = 'row0-col3', // Top right-center
+  R0_C4 = 'row0-col4', // Top far right
+
   // Row 1 (Middle)
-  R1_C0 = 'row1-col0',  // Middle far left
-  R1_C1 = 'row1-col1',  // Middle left-center
-  R1_C2 = 'row1-col2',  // Middle center
-  R1_C3 = 'row1-col3',  // Middle right-center
-  R1_C4 = 'row1-col4',  // Middle far right
-  
+  R1_C0 = 'row1-col0', // Middle far left
+  R1_C1 = 'row1-col1', // Middle left-center
+  R1_C2 = 'row1-col2', // Middle center
+  R1_C3 = 'row1-col3', // Middle right-center
+  R1_C4 = 'row1-col4', // Middle far right
+
   // Row 2 (Bottom)
-  R2_C0 = 'row2-col0',  // Bottom far left
-  R2_C1 = 'row2-col1',  // Bottom left-center
-  R2_C2 = 'row2-col2',  // Bottom center (MainWindow)
-  R2_C3 = 'row2-col3',  // Bottom right-center
-  R2_C4 = 'row2-col4',  // Bottom far right (DebugLogger)
-  
+  R2_C0 = 'row2-col0', // Bottom far left
+  R2_C1 = 'row2-col1', // Bottom left-center
+  R2_C2 = 'row2-col2', // Bottom center (MainWindow)
+  R2_C3 = 'row2-col3', // Bottom right-center
+  R2_C4 = 'row2-col4', // Bottom far right (DebugLogger)
+
   // Legacy aliases for compatibility
   TOP_LEFT = R0_C0,
   TOP_CENTER = R0_C2,
@@ -41,7 +41,7 @@ export enum PlacementSlot {
   MIDDLE_LEFT = R1_C0,
   MIDDLE_CENTER = R1_C2,
   MIDDLE_RIGHT = R1_C4,
-  BOTTOM_LEFT = R2_C0,
+  BOTTOM_LEFT = R2_C0
   // BOTTOM_CENTER = R2_C2 reserved for MainWindow
   // BOTTOM_RIGHT = R2_C4 reserved for DebugLoggerWindow
 }
@@ -58,9 +58,9 @@ export interface WindowDimensions {
  * Placement strategy for special window types
  */
 export enum PlacementStrategy {
-  DEFAULT = 'default',      // Standard slot-based placement
-  DEBUGGER = 'debugger',    // Special placement for debugger windows
-  COG_GRID = 'cog_grid'     // 2x4 grid placement for COG windows
+  DEFAULT = 'default', // Standard slot-based placement
+  DEBUGGER = 'debugger', // Special placement for debugger windows
+  COG_GRID = 'cog_grid' // 2x4 grid placement for COG windows
 }
 
 /**
@@ -68,12 +68,12 @@ export enum PlacementStrategy {
  */
 export interface PlacementConfig {
   slot?: PlacementSlot;
-  preferredSlot?: PlacementSlot;  // Hint for system windows (MainWindow, DebugLogger)
+  preferredSlot?: PlacementSlot; // Hint for system windows (MainWindow, DebugLogger)
   dimensions: WindowDimensions;
   margin?: number;
   avoidOverlap?: boolean;
   cascadeIfFull?: boolean;
-  strategy?: PlacementStrategy;  // Special placement strategy
+  strategy?: PlacementStrategy; // Special placement strategy
 }
 
 /**
@@ -210,9 +210,9 @@ export class WindowPlacer {
   private cascadeOffset = { x: 30, y: 30 };
   private cascadeCounter = 0;
   private defaultMargin = 20;
-  private debuggerWindowCount = 0;  // Track number of debugger windows
-  private debuggerCascadeOffset = { x: 20, y: 20 };  // Smaller cascade for large windows
-  private isMacOS: boolean = os.platform() === 'darwin';  // macOS detection
+  private debuggerWindowCount = 0; // Track number of debugger windows
+  private debuggerCascadeOffset = { x: 20, y: 20 }; // Smaller cascade for large windows
+  private isMacOS: boolean = os.platform() === 'darwin'; // macOS detection
 
   private constructor() {
     this.screenManager = ScreenManager.getInstance();
@@ -240,7 +240,7 @@ export class WindowPlacer {
 
   /**
    * Get next available position for a window
-   * 
+   *
    * @param windowId Unique identifier for the window
    * @param config Placement configuration
    * @returns Calculated position and monitor info
@@ -249,7 +249,7 @@ export class WindowPlacer {
     this.logConsoleMessage(`[WINDOW PLACER] 🎯 getNextPosition requested for: ${windowId}`);
     this.logConsoleMessage(`[WINDOW PLACER] 📊 Current occupied slots:`, Array.from(this.occupiedSlots));
     this.logConsoleMessage(`[WINDOW PLACER] 🪟 Current tracked windows:`, Array.from(this.trackedWindows.keys()));
-    
+
     // If window already tracked, return its current position
     const tracked = this.trackedWindows.get(windowId);
     if (tracked) {
@@ -257,10 +257,7 @@ export class WindowPlacer {
       return {
         x: tracked.bounds.x,
         y: tracked.bounds.y,
-        monitor: this.screenManager.getMonitorAtPoint(
-          tracked.bounds.x, 
-          tracked.bounds.y
-        )
+        monitor: this.screenManager.getMonitorAtPoint(tracked.bounds.x, tracked.bounds.y)
       };
     }
 
@@ -298,7 +295,9 @@ export class WindowPlacer {
       const position = this.calculateSlotPosition(availableSlot, config.dimensions, config.margin);
       const correctedPosition = this.applyMacOSWorkaround(position, config.dimensions, windowId);
       this.markSlotOccupied(windowId, availableSlot, correctedPosition, config.dimensions);
-      this.logConsoleMessage(`[WINDOW PLACER] 🎯 Assigned position: ${correctedPosition.x},${correctedPosition.y} in slot: ${availableSlot}`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 🎯 Assigned position: ${correctedPosition.x},${correctedPosition.y} in slot: ${availableSlot}`
+      );
       return correctedPosition;
     }
 
@@ -321,7 +320,9 @@ export class WindowPlacer {
   public registerWindow(windowId: string, window: BrowserWindow, expectedPosition?: WindowPosition): void {
     const bounds = window.getBounds();
     this.logConsoleMessage(`[WINDOW PLACER] 📋 registerWindow called for: ${windowId}`);
-    this.logConsoleMessage(`[WINDOW PLACER] 📏 ACTUAL window bounds from getBounds(): ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`);
+    this.logConsoleMessage(
+      `[WINDOW PLACER] 📏 ACTUAL window bounds from getBounds(): ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`
+    );
 
     // Apply macOS position validation if expected position provided
     if (expectedPosition) {
@@ -331,7 +332,7 @@ export class WindowPlacer {
     const monitor = this.screenManager.getMonitorAtPoint(bounds.x, bounds.y);
     const slot = this.detectSlotFromPosition(bounds);
     this.logConsoleMessage(`[WINDOW PLACER] 🎯 ACTUAL detected slot: ${slot} (vs calculated slot)`);
-    
+
     this.trackedWindows.set(windowId, {
       id: windowId,
       slot,
@@ -362,18 +363,18 @@ export class WindowPlacer {
     const bounds = window.getBounds();
     const newMonitor = this.screenManager.getMonitorAtPoint(bounds.x, bounds.y);
     const tracked = this.trackedWindows.get(windowId);
-    
+
     if (tracked) {
       const oldMonitorId = tracked.monitorId;
       tracked.bounds = bounds;
       tracked.monitorId = newMonitor.id;
-      
+
       // Detect monitor change
       if (oldMonitorId !== newMonitor.id) {
         this.logConsoleMessage(`Window ${windowId} moved from monitor ${oldMonitorId} to ${newMonitor.id}`);
         // Could emit an event here for other components to react
       }
-      
+
       // Update slot detection
       const newSlot = this.detectSlotFromPosition(bounds);
       if (tracked.slot !== newSlot) {
@@ -397,7 +398,10 @@ export class WindowPlacer {
       this.logConsoleMessage(`[WINDOW PLACER] 🗑️  Unregistering window: ${windowId} from slot: ${tracked.slot}`);
       if (tracked.slot) {
         this.occupiedSlots.delete(tracked.slot);
-        this.logConsoleMessage(`[WINDOW PLACER] ♻️  Freed slot: ${tracked.slot}, remaining slots:`, Array.from(this.occupiedSlots));
+        this.logConsoleMessage(
+          `[WINDOW PLACER] ♻️  Freed slot: ${tracked.slot}, remaining slots:`,
+          Array.from(this.occupiedSlots)
+        );
       }
       this.trackedWindows.delete(windowId);
     } else {
@@ -451,7 +455,9 @@ export class WindowPlacer {
       return position; // No workaround needed for positive coordinates
     }
 
-    this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS workaround: ${windowId} has negative coords (${position.x}, ${position.y})`);
+    this.logConsoleMessage(
+      `[WINDOW PLACER] 🍎 macOS workaround: ${windowId} has negative coords (${position.x}, ${position.y})`
+    );
 
     // Strategy 1: Use monitor-relative positioning instead of absolute coordinates
     const targetMonitor = position.monitor;
@@ -475,7 +481,9 @@ export class WindowPlacer {
       monitor: targetMonitor
     };
 
-    this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS correction: ${windowId} moved from (${position.x}, ${position.y}) to (${correctedPosition.x}, ${correctedPosition.y})`);
+    this.logConsoleMessage(
+      `[WINDOW PLACER] 🍎 macOS correction: ${windowId} moved from (${position.x}, ${position.y}) to (${correctedPosition.x}, ${correctedPosition.y})`
+    );
 
     return correctedPosition;
   }
@@ -490,11 +498,7 @@ export class WindowPlacer {
    * @param expectedPosition The position we intended
    * @param windowId Window identifier for logging
    */
-  private validateMacOSPosition(
-    window: BrowserWindow,
-    expectedPosition: WindowPosition,
-    windowId: string
-  ): void {
+  private validateMacOSPosition(window: BrowserWindow, expectedPosition: WindowPosition, windowId: string): void {
     if (!this.isMacOS) {
       return; // Only needed on macOS
     }
@@ -539,7 +543,9 @@ export class WindowPlacer {
 
     // HYPOTHESIS 2 DEBUGGING: Monitor ID vs Array Index
     this.logConsoleMessage(`[WINDOW_PLACER] 🔍 HYPOTHESIS 2: Monitor Selection Analysis`);
-    this.logConsoleMessage(`[WINDOW_PLACER] 🔍 AVAILABLE MONITORS: [${monitors.map((m, i) => `Index:${i} ID:${m.id}`).join(', ')}]`);
+    this.logConsoleMessage(
+      `[WINDOW_PLACER] 🔍 AVAILABLE MONITORS: [${monitors.map((m, i) => `Index:${i} ID:${m.id}`).join(', ')}]`
+    );
     this.logConsoleMessage(`[WINDOW_PLACER] 🔍 PRIMARY MONITOR: ID:${primaryMonitor.id}`);
 
     if (!this.isMacOS) {
@@ -554,10 +560,12 @@ export class WindowPlacer {
     }
 
     // Otherwise, find a monitor with positive coordinates
-    const positiveMonitor = monitors.find(m => m.bounds.x >= 0 && m.bounds.y >= 0);
+    const positiveMonitor = monitors.find((m) => m.bounds.x >= 0 && m.bounds.y >= 0);
 
     if (positiveMonitor) {
-      this.logConsoleMessage(`[WINDOW PLACER] 🍎 macOS optimization: Using monitor ${positiveMonitor.id} with positive coords instead of primary`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 🍎 macOS optimization: Using monitor ${positiveMonitor.id} with positive coords instead of primary`
+      );
       this.logConsoleMessage(`[WINDOW_PLACER] 🔍 SELECTED: Monitor ID:${positiveMonitor.id} (macOS positive coords)`);
       return positiveMonitor;
     }
@@ -571,33 +579,31 @@ export class WindowPlacer {
   /**
    * Calculate position for a specific slot
    */
-  private calculateSlotPosition(
-    slot: PlacementSlot,
-    dimensions: WindowDimensions,
-    margin?: number
-  ): WindowPosition {
+  private calculateSlotPosition(slot: PlacementSlot, dimensions: WindowDimensions, margin?: number): WindowPosition {
     const m = margin ?? this.defaultMargin;
     const monitor = this.selectOptimalMonitor(); // Use smart monitor selection
-    this.logConsoleMessage(`[WINDOW PLACER] 🖥️  Using monitor: ID=${monitor.id} (${monitor.workArea.width}x${monitor.workArea.height} at ${monitor.workArea.x},${monitor.workArea.y})`);
+    this.logConsoleMessage(
+      `[WINDOW PLACER] 🖥️  Using monitor: ID=${monitor.id} (${monitor.workArea.width}x${monitor.workArea.height} at ${monitor.workArea.x},${monitor.workArea.y})`
+    );
     const workArea = monitor.workArea;
 
     // Calculate grid dimensions using shared logic
     const { COLS, ROWS } = this.calculateGridDimensions(workArea);
-    
+
     // Calculate column width and row height (rounded for integer positioning)
-    const colWidth = Math.round((workArea.width - (m * 2)) / COLS);
-    const rowHeight = Math.round((workArea.height - (m * 2)) / ROWS);
+    const colWidth = Math.round((workArea.width - m * 2) / COLS);
+    const rowHeight = Math.round((workArea.height - m * 2) / ROWS);
 
     // Parse slot to get row and column
     let row = 0;
     let col = 0;
-    
+
     // Extract row and column from slot enum
     const slotStr = slot.toString();
     if (slotStr.includes('row0')) row = 0;
     else if (slotStr.includes('row1')) row = 1;
     else if (slotStr.includes('row2')) row = 2;
-    
+
     if (slotStr.includes('col0')) col = 0;
     else if (slotStr.includes('col1')) col = 1;
     else if (slotStr.includes('col2')) col = 2;
@@ -608,7 +614,7 @@ export class WindowPlacer {
     const isWideWindow = dimensions.width > colWidth;
     let x: number;
     let y: number;
-    
+
     if (isWideWindow) {
       // Smart alignment for wide windows
       if (col <= 1) {
@@ -618,32 +624,38 @@ export class WindowPlacer {
         x = Math.round(joinedStartX + joinedWidth - dimensions.width); // Right-align
       } else if (col >= 3) {
         // Right side (cols 3-4): Join columns and left-align
-        const joinedStartX = workArea.x + m + (3 * colWidth);
+        const joinedStartX = workArea.x + m + 3 * colWidth;
         x = Math.round(joinedStartX); // Left-align
       } else {
         // Center column: Center the window
-        const cellCenterX = workArea.x + m + (col * colWidth) + (colWidth / 2);
-        x = Math.round(cellCenterX - (dimensions.width / 2));
+        const cellCenterX = workArea.x + m + col * colWidth + colWidth / 2;
+        x = Math.round(cellCenterX - dimensions.width / 2);
       }
     } else {
       // Normal centering for windows that fit in a column
-      const cellCenterX = workArea.x + m + (col * colWidth) + (colWidth / 2);
-      x = Math.round(cellCenterX - (dimensions.width / 2));
+      const cellCenterX = workArea.x + m + col * colWidth + colWidth / 2;
+      x = Math.round(cellCenterX - dimensions.width / 2);
     }
-    
+
     // Align title bars across row with safety margin from top of cell
     const safetyMargin = 20; // Fixed margin between windows
     const halfSafetyMargin = safetyMargin / 2;
-    y = Math.round(workArea.y + m + (row * rowHeight) + halfSafetyMargin);
+    y = Math.round(workArea.y + m + row * rowHeight + halfSafetyMargin);
 
     // Ensure window stays within work area and round to integer coordinates
-    const finalX = Math.round(Math.max(workArea.x + m, Math.min(x, workArea.x + workArea.width - dimensions.width - m)));
-    const finalY = Math.round(Math.max(workArea.y + m, Math.min(y, workArea.y + workArea.height - dimensions.height - m)));
+    const finalX = Math.round(
+      Math.max(workArea.x + m, Math.min(x, workArea.x + workArea.width - dimensions.width - m))
+    );
+    const finalY = Math.round(
+      Math.max(workArea.y + m, Math.min(y, workArea.y + workArea.height - dimensions.height - m))
+    );
 
     // HYPOTHESIS 1 DEBUGGING: Grid Math Calculations
     this.logConsoleMessage(`[WINDOW_PLACER] 🧮 HYPOTHESIS 1: Grid Math Analysis`);
     this.logConsoleMessage(`[WINDOW_PLACER] 🧮 SLOT: ${slot} -> grid(${col},${row}) on ${COLS}x${ROWS} grid`);
-    this.logConsoleMessage(`[WINDOW_PLACER] 🧮 WORK_AREA: ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height}`);
+    this.logConsoleMessage(
+      `[WINDOW_PLACER] 🧮 WORK_AREA: ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height}`
+    );
     this.logConsoleMessage(`[WINDOW_PLACER] 🧮 CELL_SIZE: ${colWidth}x${rowHeight} (margin:${m})`);
     this.logConsoleMessage(`[WINDOW_PLACER] 🧮 RAW_CALC: x=${x}, y=${y}`);
     this.logConsoleMessage(`[WINDOW_PLACER] 🧮 FINAL_POS: (${finalX}, ${finalY}) on Monitor ID:${monitor.id}`);
@@ -659,31 +671,31 @@ export class WindowPlacer {
     // Half-Moon Descending Pattern: Center-balanced expansion that slides down like a descending half-moon
     const preferredOrder: PlacementSlot[] = [
       // Phase 1: Start the half-moon - center point
-      PlacementSlot.R0_C2,         // 1st: Top center (balance: 0L,1C,0R)
+      PlacementSlot.R0_C2, // 1st: Top center (balance: 0L,1C,0R)
 
       // Phase 2: Expand horizontally from center - 3 columns wide
-      PlacementSlot.R0_C1,         // 2nd: Top left-center (1L,1C,0R - unbalanced)
-      PlacementSlot.R0_C3,         // 3rd: Top right-center (1L,1C,1R - balanced)
+      PlacementSlot.R0_C1, // 2nd: Top left-center (1L,1C,0R - unbalanced)
+      PlacementSlot.R0_C3, // 3rd: Top right-center (1L,1C,1R - balanced)
 
       // Phase 3: Descend one row, start with center - half-moon slides down
-      PlacementSlot.R1_C2,         // 4th: Middle center (1L,2C,1R - balanced)
+      PlacementSlot.R1_C2, // 4th: Middle center (1L,2C,1R - balanced)
 
       // Phase 4: Match the row above - fill row 1 to match row 0's 3 columns
-      PlacementSlot.R1_C1,         // 5th: Middle left-center (2L,2C,1R - unbalanced)
-      PlacementSlot.R1_C3,         // 6th: Middle right-center (2L,2C,2R - balanced)
+      PlacementSlot.R1_C1, // 5th: Middle left-center (2L,2C,1R - unbalanced)
+      PlacementSlot.R1_C3, // 6th: Middle right-center (2L,2C,2R - balanced)
 
       // Phase 5: Go wider - expand both rows to 5 columns (half-moon grows wider)
-      PlacementSlot.R0_C0,         // 7th: Top far left (3L,2C,2R - unbalanced)
-      PlacementSlot.R0_C4,         // 8th: Top far right (3L,2C,3R - balanced)
+      PlacementSlot.R0_C0, // 7th: Top far left (3L,2C,2R - unbalanced)
+      PlacementSlot.R0_C4, // 8th: Top far right (3L,2C,3R - balanced)
 
       // Phase 6: Match the wider pattern in row below
-      PlacementSlot.R1_C0,         // 9th: Middle far left (4L,2C,3R - unbalanced)
-      PlacementSlot.R1_C4,         // 10th: Middle far right (4L,2C,4R - balanced)
+      PlacementSlot.R1_C0, // 9th: Middle far left (4L,2C,3R - unbalanced)
+      PlacementSlot.R1_C4, // 10th: Middle far right (4L,2C,4R - balanced)
 
       // Phase 7: Descend to bottom row (avoiding R2_C2=MainWindow, R2_C4=DebugLogger)
-      PlacementSlot.R2_C1,         // 11th: Bottom left-center (left of MainWindow)
-      PlacementSlot.R2_C3,         // 12th: Bottom right-center (right of MainWindow)
-      PlacementSlot.R2_C0,         // 13th: Bottom far left (maintain left-right balance)
+      PlacementSlot.R2_C1, // 11th: Bottom left-center (left of MainWindow)
+      PlacementSlot.R2_C3, // 12th: Bottom right-center (right of MainWindow)
+      PlacementSlot.R2_C0 // 13th: Bottom far left (maintain left-right balance)
     ];
 
     for (const slot of preferredOrder) {
@@ -698,11 +710,7 @@ export class WindowPlacer {
   /**
    * Get cascade position when all slots are full
    */
-  private getCascadePosition(
-    windowId: string,
-    dimensions: WindowDimensions,
-    margin?: number
-  ): WindowPosition {
+  private getCascadePosition(windowId: string, dimensions: WindowDimensions, margin?: number): WindowPosition {
     const monitor = this.selectOptimalMonitor(); // Use smart monitor selection
     const workArea = monitor.workArea;
     const m = margin ?? this.defaultMargin;
@@ -717,8 +725,7 @@ export class WindowPlacer {
     let y = Math.round(baseY + offsetY);
 
     // Reset cascade if we go off screen
-    if (x + dimensions.width > workArea.x + workArea.width ||
-        y + dimensions.height > workArea.y + workArea.height) {
+    if (x + dimensions.width > workArea.x + workArea.width || y + dimensions.height > workArea.y + workArea.height) {
       this.cascadeCounter = 0;
       x = Math.round(baseX);
       y = Math.round(baseY);
@@ -758,14 +765,14 @@ export class WindowPlacer {
   private getDebuggerPosition(windowId: string, config: PlacementConfig): WindowPosition {
     const monitor = this.selectOptimalMonitor(); // Use smart monitor selection
     const workArea = monitor.workArea;
-    const margin = config.margin ?? 40;  // Larger margin for debugger windows
-    
+    const margin = config.margin ?? 40; // Larger margin for debugger windows
+
     // Track this as a debugger window
     this.debuggerWindowCount++;
-    
+
     let x: number;
     let y: number;
-    
+
     if (this.debuggerWindowCount === 1) {
       // First debugger: Left side with margin
       x = Math.round(workArea.x + margin);
@@ -777,37 +784,48 @@ export class WindowPlacer {
       y = Math.round(workArea.y + margin);
     } else {
       // 3+ debuggers: Cascade from top-left
-      const cascadeIndex = this.debuggerWindowCount - 1;  // 0-based for cascade
-      x = Math.round(workArea.x + margin + (this.debuggerCascadeOffset.x * cascadeIndex));
-      y = Math.round(workArea.y + margin + (this.debuggerCascadeOffset.y * cascadeIndex));
+      const cascadeIndex = this.debuggerWindowCount - 1; // 0-based for cascade
+      x = Math.round(workArea.x + margin + this.debuggerCascadeOffset.x * cascadeIndex);
+      y = Math.round(workArea.y + margin + this.debuggerCascadeOffset.y * cascadeIndex);
 
       // Reset cascade if we go off screen
-      if (x + config.dimensions.width > workArea.x + workArea.width - margin ||
-          y + config.dimensions.height > workArea.y + workArea.height - margin) {
+      if (
+        x + config.dimensions.width > workArea.x + workArea.width - margin ||
+        y + config.dimensions.height > workArea.y + workArea.height - margin
+      ) {
         // Reset to top-left
         x = Math.round(workArea.x + margin);
         y = Math.round(workArea.y + margin);
-        this.debuggerWindowCount = 1;  // Reset counter
+        this.debuggerWindowCount = 1; // Reset counter
       }
     }
-    
+
     // Track this window
     this.trackedWindows.set(windowId, {
       id: windowId,
       bounds: { x, y, width: config.dimensions.width, height: config.dimensions.height },
       monitorId: monitor.id
     });
-    
+
     return { x, y, monitor };
   }
 
   /**
-   * Get position for COG windows using 2x4 grid layout
-   * COG windows are numbered 0-7 and arranged as:
-   * 
-   *   COG 0  COG 1  COG 2  COG 3
-   *   COG 4  COG 5  COG 6  COG 7
-   * 
+   * Get position for COG windows using adaptive 4x2 grid layout
+   *
+   * COG windows are text terminals (80×24, 64×24, or 48×24 character grid)
+   * arranged in a 4×2 vertical grid optimized for laptop screens:
+   *
+   *   COG 0  COG 4
+   *   COG 1  COG 5
+   *   COG 2  COG 6
+   *   COG 3  COG 7
+   *
+   * Terminal sizing adapts to available screen width:
+   * - Large screens (≥1640px available): 80×24 terminal (820×442 window)
+   * - Medium screens (≥1320px available): 64×24 terminal (660×442 window)
+   * - Small screens (<1320px available): 48×24 terminal (540×442 window)
+   *
    * @param windowId - Window identifier (should include COG number)
    * @param config - Placement configuration
    * @returns Window position for the COG window
@@ -816,51 +834,105 @@ export class WindowPlacer {
     // Extract COG ID from windowId (expected format: "COG-0", "COG-1", etc.)
     const cogMatch = windowId.match(/COG[- ]?(\d)/i);
     const cogId = cogMatch ? parseInt(cogMatch[1], 10) : 0;
-    
+
     // Validate COG ID
     if (cogId < 0 || cogId > 7) {
       console.warn(`Invalid COG ID ${cogId} in windowId ${windowId}, defaulting to 0`);
     }
-    
+
     const monitor = this.selectOptimalMonitor(); // Use smart monitor selection
     const workArea = monitor.workArea;
-    const margin = config.margin ?? 20;  // Smaller margins for COG grid
-    
-    // Calculate grid dimensions (2 rows, 4 columns)
-    const GRID_COLS = 4;
-    const GRID_ROWS = 2;
-    
-    // Calculate available space for grid
-    const availableWidth = workArea.width - (margin * 2);
-    const availableHeight = workArea.height - (margin * 3) - 100; // Leave space for main window
-    
-    // Calculate cell dimensions with gaps between windows
-    const gapX = 10;  // Horizontal gap between COG windows
-    const gapY = 10;  // Vertical gap between COG windows
-    const cellWidth = (availableWidth - (gapX * (GRID_COLS - 1))) / GRID_COLS;
-    const cellHeight = (availableHeight - (gapY * (GRID_ROWS - 1))) / GRID_ROWS;
-    
-    // Ensure windows aren't too small
-    const minWidth = 400;
-    const minHeight = 300;
-    const windowWidth = Math.max(Math.min(cellWidth, config.dimensions.width), minWidth);
-    const windowHeight = Math.max(Math.min(cellHeight, config.dimensions.height), minHeight);
-    
-    // Calculate grid position (row and column)
-    const col = cogId % GRID_COLS;
-    const row = Math.floor(cogId / GRID_COLS);
-    
-    // Calculate actual position
-    const x = Math.round(workArea.x + margin + (col * (windowWidth + gapX)));
-    const y = Math.round(workArea.y + margin + (row * (windowHeight + gapY)));
-    
+    const margin = config.margin ?? 20;
+
+    // Adaptive grid layout based on screen dimensions
+    // Large monitors (wide): 2 rows × 4 columns (horizontal orientation)
+    // Laptop screens (narrow): 4 rows × 2 columns (vertical orientation)
+    let GRID_ROWS: number;
+    let GRID_COLS: number;
+
+    if (workArea.width >= 1920) {
+      // Large/desktop monitors: horizontal layout (2 rows × 4 columns)
+      GRID_ROWS = 2;
+      GRID_COLS = 4;
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 📺 Using 2×4 grid for large monitor (${workArea.width}×${workArea.height})`
+      );
+    } else {
+      // Laptop screens: vertical layout (4 rows × 2 columns)
+      GRID_ROWS = 4;
+      GRID_COLS = 2;
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 📺 Using 4×2 grid for laptop screen (${workArea.width}×${workArea.height})`
+      );
+    }
+
+    // Terminal character dimensions (monospace font rendering)
+    const CHAR_WIDTH = 10; // pixels per character
+    const LINE_HEIGHT = 18; // pixels per line
+    const PADDING_X = 20; // horizontal padding inside window
+    const PADDING_Y = 10; // vertical padding inside window
+
+    // Gaps between windows (COG windows need visible spacing)
+    const gapX = 20;  // Horizontal gap between COG windows
+    const gapY = 20;  // Vertical gap between COG windows
+
+    // Calculate available space for grid (leave room for main window at bottom)
+    const availableWidth = workArea.width - margin * 2;
+    const availableHeight = workArea.height - margin * 3 - 100;
+
+    // Use actual window dimensions from config (windows are created with fixed size)
+    // These are the ACTUAL dimensions that Electron will use
+    const windowWidth = config.dimensions.width;
+    const windowHeight = config.dimensions.height;
+
+    // Log which terminal size would theoretically fit (for information only)
+    const availableWidthPerWindow = (availableWidth - gapX * (GRID_COLS - 1)) / GRID_COLS;
+    let terminalCols: number;
+    const terminalRows: number = 24;
+
+    if (availableWidthPerWindow >= 820) {
+      terminalCols = 80;
+      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 80×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+    } else if (availableWidthPerWindow >= 660) {
+      terminalCols = 64;
+      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 64×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+    } else if (availableWidthPerWindow >= 540) {
+      terminalCols = 48;
+      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 48×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+    } else {
+      terminalCols = 48;
+      console.warn(
+        `[WINDOW PLACER] ⚠️  COG ${cogId}: Screen width ${availableWidthPerWindow}px is below recommended minimum (540px)`
+      );
+    }
+
+    // Calculate grid position
+    // For 2×4 grid: row = floor(id / 4), col = id % 4
+    // For 4×2 grid: row = id % 4, col = floor(id / 4)
+    const row = GRID_ROWS === 2 ? Math.floor(cogId / GRID_COLS) : cogId % GRID_ROWS;
+    const col = GRID_ROWS === 2 ? cogId % GRID_COLS : Math.floor(cogId / GRID_ROWS);
+
+    // Calculate column width (evenly distribute available space across screen)
+    const totalWindowsWidth = windowWidth * GRID_COLS;
+    const totalGapsWidth = gapX * (GRID_COLS - 1);
+    const remainingSpace = availableWidth - totalWindowsWidth - totalGapsWidth;
+    const extraMarginPerSide = remainingSpace / 2; // Center the grid horizontally
+
+    // Calculate actual position with centered, even distribution
+    const x = Math.round(workArea.x + margin + extraMarginPerSide + col * (windowWidth + gapX));
+    const y = Math.round(workArea.y + margin + row * (windowHeight + gapY));
+
+    this.logConsoleMessage(
+      `[WINDOW PLACER] 📍 COG ${cogId}: Positioned at grid(${row},${col}) = (${x},${y}) with ${terminalCols}×${terminalRows} terminal`
+    );
+
     // Track this window
     this.trackedWindows.set(windowId, {
       id: windowId,
       bounds: { x, y, width: windowWidth, height: windowHeight },
       monitorId: monitor.id
     });
-    
+
     return { x, y, monitor };
   }
 
@@ -884,17 +956,19 @@ export class WindowPlacer {
     const { COLS, ROWS } = this.calculateGridDimensions(workArea);
 
     const m = 20; // margin
-    const colWidth = Math.round((workArea.width - (m * 2)) / COLS);
-    const rowHeight = Math.round((workArea.height - (m * 2)) / ROWS);
+    const colWidth = Math.round((workArea.width - m * 2) / COLS);
+    const rowHeight = Math.round((workArea.height - m * 2) / ROWS);
     const safetyMargin = 20;
 
     // Parse current slot to get row and column
     const [row, col] = this.parseSlotToRowCol(slot);
 
     // Check for width overflow (marks cells left and right)
-    const widthOverflow = dimensions.width > (colWidth - safetyMargin);
+    const widthOverflow = dimensions.width > colWidth - safetyMargin;
     if (widthOverflow) {
-      this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.width}px) overflows column width (${colWidth}px)`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.width}px) overflows column width (${colWidth}px)`
+      );
 
       // Calculate how many additional columns are needed
       const additionalWidth = dimensions.width - colWidth;
@@ -928,9 +1002,11 @@ export class WindowPlacer {
     }
 
     // Check for height overflow (marks cells below only)
-    const heightOverflow = dimensions.height > (rowHeight - safetyMargin);
+    const heightOverflow = dimensions.height > rowHeight - safetyMargin;
     if (heightOverflow) {
-      this.logConsoleMessage(`[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.height}px) overflows row height (${rowHeight}px)`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 🔍 COLLISION: Window ${windowId} (${dimensions.height}px) overflows row height (${rowHeight}px)`
+      );
 
       // Calculate how many additional rows are needed
       const additionalHeight = dimensions.height - rowHeight;
@@ -1043,7 +1119,7 @@ export class WindowPlacer {
       [PlacementSlot.MIDDLE_LEFT]: [1, 0],
       [PlacementSlot.MIDDLE_CENTER]: [1, 2],
       [PlacementSlot.MIDDLE_RIGHT]: [1, 4],
-      [PlacementSlot.BOTTOM_LEFT]: [2, 0],
+      [PlacementSlot.BOTTOM_LEFT]: [2, 0]
     };
 
     return legacyMap[slot] || [0, 0];
@@ -1060,7 +1136,7 @@ export class WindowPlacer {
 
     // Check if this slot exists in our PlacementSlot enum
     const enumValues = Object.values(PlacementSlot);
-    const matchingSlot = enumValues.find(value => value === slotKey);
+    const matchingSlot = enumValues.find((value) => value === slotKey);
 
     if (matchingSlot) {
       return matchingSlot as PlacementSlot;
@@ -1077,11 +1153,16 @@ export class WindowPlacer {
   /**
    * Detect which slot a position corresponds to
    */
-  private detectSlotFromPosition(bounds: { x: number; y: number; width: number; height: number }): PlacementSlot | undefined {
+  private detectSlotFromPosition(bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): PlacementSlot | undefined {
     // This is a heuristic - improve as needed
     const monitor = this.screenManager.getMonitorAtPoint(bounds.x, bounds.y);
     const workArea = monitor.workArea;
-    
+
     const relX = bounds.x - workArea.x;
     const relY = bounds.y - workArea.y;
     const xRatio = relX / workArea.width;
@@ -1107,7 +1188,7 @@ export class WindowPlacer {
       'middle-left': PlacementSlot.MIDDLE_LEFT,
       'middle-center': PlacementSlot.MIDDLE_CENTER,
       'middle-right': PlacementSlot.MIDDLE_RIGHT,
-      'bottom-left': PlacementSlot.BOTTOM_LEFT,
+      'bottom-left': PlacementSlot.BOTTOM_LEFT
     };
 
     return slotMap[`${vertical}-${horizontal}`];
@@ -1120,10 +1201,7 @@ export class WindowPlacer {
     r1: { x: number; y: number; width: number; height: number },
     r2: { x: number; y: number; width: number; height: number }
   ): boolean {
-    return !(r1.x + r1.width < r2.x || 
-             r2.x + r2.width < r1.x || 
-             r1.y + r1.height < r2.y || 
-             r2.y + r2.height < r1.y);
+    return !(r1.x + r1.width < r2.x || r2.x + r2.width < r1.x || r1.y + r1.height < r2.y || r2.y + r2.height < r1.y);
   }
 
   /**

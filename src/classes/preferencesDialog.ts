@@ -55,8 +55,15 @@ export class PreferencesDialog {
 
   private setupIPCHandlers(): void {
     ipcMain.once('pref-get-settings', (event) => {
-      // Send current effective settings (after cascade)
-      event.reply('pref-settings', this.context.preferences);
+      // Send both user-only and effective (cascaded) settings
+      // User tab should show user-only settings, project tab shows effective settings
+      const userSettings = this.context.getUserGlobalSettings();
+      const effectiveSettings = this.context.preferences;
+
+      event.reply('pref-settings', {
+        user: userSettings,
+        effective: effectiveSettings
+      });
     });
 
     ipcMain.once('pref-apply-user', (event, newSettings) => {
@@ -556,14 +563,17 @@ export class PreferencesDialog {
   <script>
     const { ipcRenderer } = require('electron');
 
-    let settings = {};
+    let userSettings = {};
+    let effectiveSettings = {};
     let currentTab = 'user';
 
     // Request current settings
     ipcRenderer.send('pref-get-settings');
 
     ipcRenderer.on('pref-settings', (event, data) => {
-      settings = data;
+      // Data contains both user-only and effective (cascaded) settings
+      userSettings = data.user;
+      effectiveSettings = data.effective;
       loadSettings();
     });
 
@@ -593,6 +603,7 @@ export class PreferencesDialog {
 
     function loadUserSettings() {
       const prefix = 'user';
+      const settings = userSettings; // Use user-only settings for User tab
 
       // Terminal
       document.getElementById(prefix + '-terminal-mode').value = settings.terminal.mode;
@@ -624,6 +635,7 @@ export class PreferencesDialog {
 
     function loadProjectSettings() {
       const prefix = 'project';
+      const settings = effectiveSettings; // Use effective (cascaded) settings for Project tab
 
       // Note: Project settings tab shows current effective settings but all controls start disabled
       // User must check override checkbox to enable editing
@@ -661,6 +673,7 @@ export class PreferencesDialog {
 
     function updateGlobalValueLabels() {
       const prefix = 'project';
+      const settings = effectiveSettings; // Use effective settings for global value labels
 
       // Terminal
       setGlobalLabel(prefix, 'terminal-mode', settings.terminal.mode);

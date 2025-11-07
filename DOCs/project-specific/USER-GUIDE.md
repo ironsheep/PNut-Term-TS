@@ -2288,6 +2288,53 @@ The placement system uses a sophisticated "Half-Moon Descending Algorithm" that 
 - **Automatic sizing**: Each debugger window sized based on available space
 - **COG-specific placement**: COG0 takes priority position, others arrange around it
 
+**COG Logger Windows (Show All 8 COGs):**
+
+When you click "Show All 8 COGs" from the Debug Logger window, eight individual COG logger windows appear using an adaptive 4×2 grid layout optimized for laptop screens:
+
+**Grid Layout (4 rows × 2 columns):**
+```
+COG 0  COG 4
+COG 1  COG 5
+COG 2  COG 6
+COG 3  COG 7
+```
+
+**Adaptive Terminal Sizing:**
+
+COG logger windows are text terminals that automatically adapt to your screen size:
+
+- **Large screens (≥1640px available width):**
+  - **80×24 terminal** (820×442 window)
+  - Spacious layout with full 80-character lines
+  - Recommended for desktop monitors and high-resolution displays
+
+- **Medium screens (1320-1639px available width):**
+  - **64×24 terminal** (660×442 window)
+  - Comfortable layout for standard laptop screens (1440×900, 1920×1080)
+  - Maintains 24-row height for good readability
+
+- **Small screens (<1320px available width):**
+  - **48×24 terminal** (540×442 window)
+  - Compact layout for smaller laptops (1366×768)
+  - Minimal but still readable with 24-row height preserved
+
+**Design Rationale:**
+
+- **Vertical orientation**: 4 rows × 2 columns works better than 2 rows × 4 columns on laptop screens where width is more constrained than height
+- **24-row height preserved**: All size tiers maintain 24 visible lines for consistent readability
+- **Width reduction strategy**: When space is limited, reduce character columns (80→64→48) rather than reducing row count
+- **Terminal-based sizing**: Window dimensions are calculated from character grid size (chars × 10px, lines × 18px) plus padding for menu/status bars
+
+**Common Screen Sizes:**
+
+| Screen Resolution | COG Window Size | Terminal Size | Layout Quality |
+|-------------------|-----------------|---------------|----------------|
+| 2560×1440+ | 820×442 | 80×24 | Spacious ✅ |
+| 1920×1080 | 820×442 | 80×24 | Comfortable ✅ |
+| 1440×900 | 660×442 | 64×24 | Acceptable ✅ |
+| 1366×768 | 660×442 | 64×24 | Compact but workable ✅ |
+
 **Collision Detection & Oversized Windows:**
 - **Width overflow**: Large windows mark adjacent horizontal cells as occupied
 - **Height overflow**: Tall windows mark cells below as occupied

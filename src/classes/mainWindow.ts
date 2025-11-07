@@ -784,9 +784,31 @@ export class MainWindow {
       windowId: windowId
     });
 
+    // Apply current theme to newly created COG window
+    if (this.context.preferences?.terminal?.colorTheme) {
+      const themeValue = this.context.preferences.terminal.colorTheme;
+      this.logConsoleMessage(`[THEME] Applying theme to COG${cogId}: ${themeValue}`);
+      let colorName: 'green' | 'amber' = 'green';
+      if (themeValue.includes('amber')) {
+        colorName = 'amber';
+      } else if (themeValue.includes('green')) {
+        colorName = 'green';
+      }
+      this.logConsoleMessage(`[THEME] Parsed color name for COG${cogId}: ${colorName}`);
+      cogWindow.setTheme(colorName);
+    } else {
+      this.logConsoleMessage(`[THEME] No theme preference found for COG${cogId}, using default green`);
+    }
+
     // Register with WindowRouter for message routing
-    this.windowRouter.registerWindow(`COG${cogId}`, `COG${cogId}`, (message) => {
-      if (typeof message === 'string') {
+    this.windowRouter.registerWindow(`COG${cogId}`, `COG${cogId}`, (message: any) => {
+      // Router sends ExtractedMessage with data (Uint8Array), timestamp, and messageType
+      // Decode the Uint8Array to string for text messages
+      if (message.data && message.data instanceof Uint8Array) {
+        const text = new TextDecoder().decode(message.data);
+        cogWindow.processMessage(text, message.timestamp);
+      } else if (typeof message === 'string') {
+        // Fallback for direct string messages
         cogWindow.processMessage(message);
       }
     });
@@ -900,6 +922,97 @@ export class MainWindow {
   }
 
   /**
+   * Export all COG logs to individual files
+   */
+  private exportCOGLogs(): void {
+    this.logConsoleMessage('[COG EXPORT] Starting COG log export...');
+
+    const fs = require('fs');
+    const path = require('path');
+    const { getFormattedDateTime } = require('../utils/files');
+    const { dialog } = require('electron');
+
+    try {
+      // Get logs directory and debug logger filename base
+      const logsDir = this.context.getLogDirectory();
+
+      // Get current debug logger filename to match naming pattern
+      let debugLogBaseName = 'debug_log';
+      if (this.debugLoggerWindow && this.debugLoggerWindow.getLogFilePath()) {
+        const debugLogPath = this.debugLoggerWindow.getLogFilePath();
+        const debugLogFile = path.basename(debugLogPath, '.log');  // Remove .log extension
+        debugLogBaseName = debugLogFile;
+      } else {
+        // If no active debug log, create new basename with timestamp
+        const timestamp = getFormattedDateTime();
+        debugLogBaseName = `debug_log_${timestamp}`;
+      }
+
+      let exportedCount = 0;
+      const exportedFiles: string[] = [];
+
+      // Export each COG window's log
+      for (let cogId = 0; cogId < 8; cogId++) {
+        const windowKey = `COG-${cogId}`;
+        const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
+
+        if (cogWindow && cogWindow instanceof LoggerCOGWindow) {
+          const stats = cogWindow.getStatistics();
+
+          // Only export if window has messages
+          if (stats.messageCount > 0) {
+            // Use debug log basename + _cogN.log
+            const logFileName = `${debugLogBaseName}_cog${cogId}.log`;
+            const logFilePath = path.join(logsDir, logFileName);
+
+            // Get history buffer from window (need to add getter method)
+            const logContent = cogWindow.getHistoryBuffer().join('\n');
+
+            // Write log file
+            fs.writeFileSync(logFilePath, logContent, 'utf8');
+            exportedFiles.push(logFileName);
+            exportedCount++;
+
+            this.logConsoleMessage(`[COG EXPORT] Exported COG ${cogId} log to ${logFileName}`);
+          }
+        }
+      }
+
+      // Show confirmation dialog
+      if (exportedCount > 0) {
+        const message = `Exported ${exportedCount} COG log file(s) to:\n${logsDir}\n\nFiles:\n${exportedFiles.join('\n')}`;
+
+        dialog.showMessageBox(this.mainWindow, {
+          type: 'info',
+          title: 'COG Logs Exported',
+          message: message,
+          buttons: ['OK']
+        });
+
+        this.logConsoleMessage(`[COG EXPORT] Successfully exported ${exportedCount} COG logs`);
+      } else {
+        dialog.showMessageBox(this.mainWindow, {
+          type: 'info',
+          title: 'No COG Logs to Export',
+          message: 'No COG windows have received messages yet.',
+          buttons: ['OK']
+        });
+
+        this.logConsoleMessage('[COG EXPORT] No COG logs to export (no messages received)');
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[COG EXPORT] Error exporting COG logs: ${error}`);
+
+      dialog.showMessageBox(this.mainWindow, {
+        type: 'error',
+        title: 'Export Failed',
+        message: `Failed to export COG logs:\n${error}`,
+        buttons: ['OK']
+      });
+    }
+  }
+
+  /**
    * Handle COG export request
    */
   private handleCOGExportRequest(cogId: number): void {
@@ -925,6 +1038,22 @@ export class MainWindow {
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
+
+        // Apply current theme from preferences
+        if (this.context.preferences?.terminal?.colorTheme) {
+          const themeValue = this.context.preferences.terminal.colorTheme;
+          this.logConsoleMessage(`[THEME] Applying theme to debug logger: ${themeValue}`);
+          let colorName: 'green' | 'amber' = 'green';
+          if (themeValue.includes('amber')) {
+            colorName = 'amber';
+          } else if (themeValue.includes('green')) {
+            colorName = 'green';
+          }
+          this.logConsoleMessage(`[THEME] Parsed color name: ${colorName}`);
+          this.debugLoggerWindow.setTheme(colorName);
+        } else {
+          this.logConsoleMessage('[THEME] No theme preference found, using default green');
+        }
 
         // Register with WindowRouter for message routing
         this.windowRouter.registerWindow(
@@ -1449,6 +1578,22 @@ export class MainWindow {
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
       this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
 
+      // Apply current theme from preferences
+      if (this.context.preferences?.terminal?.colorTheme) {
+        const themeValue = this.context.preferences.terminal.colorTheme;
+        this.logConsoleMessage(`[THEME] Applying theme to auto-created debug logger: ${themeValue}`);
+        let colorName: 'green' | 'amber' = 'green';
+        if (themeValue.includes('amber')) {
+          colorName = 'amber';
+        } else if (themeValue.includes('green')) {
+          colorName = 'green';
+        }
+        this.logConsoleMessage(`[THEME] Parsed color name: ${colorName}`);
+        this.debugLoggerWindow.setTheme(colorName);
+      } else {
+        this.logConsoleMessage('[THEME] No theme preference found for auto-created logger, using default green');
+      }
+
       // Register with WindowRouter for message routing
       this.windowRouter.registerWindow(
         'logger',
@@ -1486,6 +1631,7 @@ export class MainWindow {
 
       this.debugLoggerWindow.on('export-cog-logs-requested', () => {
         this.logConsoleMessage('[MAIN] Export COG logs requested');
+        this.exportCOGLogs();
       });
 
       // Connect performance monitor for warnings
@@ -6126,8 +6272,31 @@ export class MainWindow {
 
       // Apply color theme
       if (settings.terminal.colorTheme) {
-        // Update theme for future terminal windows
-        this.logConsoleMessage(`[PREFERENCES] Terminal color theme set to ${settings.terminal.colorTheme}`);
+        // Parse theme name (e.g., "green-on-black" -> "green", "amber-on-black" -> "amber")
+        const themeValue = settings.terminal.colorTheme;
+        let colorName: 'green' | 'amber' = 'green'; // default
+
+        if (themeValue.includes('amber')) {
+          colorName = 'amber';
+        } else if (themeValue.includes('green')) {
+          colorName = 'green';
+        }
+        // white and other colors default to green for logger windows
+
+        // Update theme for debug logger window
+        this.logConsoleMessage(`[PREFERENCES] Terminal color theme set to ${themeValue} (using ${colorName} for logger)`);
+        if (this.debugLoggerWindow) {
+          this.debugLoggerWindow.setTheme(colorName);
+        }
+
+        // Update theme for all COG logger windows
+        for (let cogId = 0; cogId < 8; cogId++) {
+          const windowKey = `COG-${cogId}`;
+          const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
+          if (cogWindow && cogWindow instanceof LoggerCOGWindow) {
+            cogWindow.setTheme(colorName);
+          }
+        }
       }
 
       // Apply font settings

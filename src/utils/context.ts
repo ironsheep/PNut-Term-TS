@@ -263,6 +263,19 @@ export class Context {
   }
 
   /**
+   * Get user global settings (non-cascaded, user file only)
+   * Returns defaults merged with user settings, but NOT project overrides
+   */
+  public getUserGlobalSettings(): UserPreferences {
+    const userOnlySettings: UserPreferences = this.getAppDefaults();
+    const userGlobal = this.loadUserGlobalSettings();
+    if (userGlobal) {
+      this.deepMerge(userOnlySettings, userGlobal);
+    }
+    return userOnlySettings;
+  }
+
+  /**
    * Deep merge source into target, recursively
    */
   private deepMerge(target: any, source: any): void {
