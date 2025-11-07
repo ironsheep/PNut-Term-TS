@@ -28,7 +28,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * FFT Display Specification Interface
@@ -1591,14 +1591,9 @@ export class DebugFFTWindow extends DebugWindowBase {
     const power = this.fftPower;
     const color = this.displaySpec.spectrumColor || '#00FF00';
 
-    // Pascal requires channel config with appropriate 'high' value.
-    // Since combined mode has no channel config, calculate appropriate high from data
-    // to mimic what user would configure (prevents 0x7FFFFFFF causing flat display)
-    let maxPower = 0;
-    for (let i = 0; i < power.length; i++) {
-      if (power[i] > maxPower) maxPower = power[i];
-    }
-    const high = Math.max(maxPower, 100); // Use max with floor to prevent division issues
+    // Pascal default for vHigh[i] (lines 1193, 1610): $7FFFFFFF
+    // This large value ensures only significant signals are visible, suppressing noise
+    const high = 0x7FFFFFFF; // Pascal default: maximum Int32 value
 
     // Pascal default: tall = vHeight (line 1611)
     const tall = this.displayHeight;
