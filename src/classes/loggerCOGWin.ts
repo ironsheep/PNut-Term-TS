@@ -87,6 +87,9 @@ export class LoggerCOGWindow extends DebugWindowBase {
   // Current color theme (green or amber)
   private colorTheme: 'green' | 'amber' = 'green';
 
+  // Track when renderer is ready for IPC messages
+  private rendererReady: boolean = false;
+
   constructor(
     cogId: number,
     params: {
@@ -186,11 +189,18 @@ export class LoggerCOGWindow extends DebugWindowBase {
     const html = this.generateHTML();
     window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
-    // Show when ready
+    // Show when ready and mark renderer ready for IPC
     window.once('ready-to-show', () => {
       if (!window.isDestroyed()) {
         window.show();
-        this.logCOGMessage(`COG ${this.cogId} window opened`);
+        this.rendererReady = true;
+        this.logCOGMessage(`COG ${this.cogId} window opened and renderer ready`);
+
+        // Send current theme to renderer now that it's ready
+        if (this.theme) {
+          window.webContents.send(`cog-${this.cogId}-set-theme`, this.theme);
+          this.logCOGMessage(`COG ${this.cogId} theme sent to renderer: ${this.theme.name}`);
+        }
       }
     });
 
@@ -675,7 +685,11 @@ export class LoggerCOGWindow extends DebugWindowBase {
    */
   private switchToActiveTheme(): void {
     this.theme = this.colorTheme === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
-    // Theme switch happens in the renderer process based on first message
+
+    // Send theme update to renderer only if renderer is ready
+    if (this.debugWindow && !this.debugWindow.isDestroyed() && this.rendererReady) {
+      this.debugWindow.webContents.send(`cog-${this.cogId}-set-theme`, this.theme);
+    }
   }
 
   /**
@@ -1027,16 +1041,21 @@ export class LoggerCOGWindow extends DebugWindowBase {
   public setTheme(themeName: 'green' | 'amber'): void {
     this.colorTheme = themeName;
 
-    // If window has received traffic (is active), update the active theme
+    // Update theme based on current traffic state
+    // Dormant windows stay gray until first message, but we store the color preference
     if (this.hasReceivedTraffic) {
+      // Window is active, apply the active color theme
       this.theme = themeName === 'amber' ? LoggerCOGWindow.THEMES.activeAmber : LoggerCOGWindow.THEMES.activeGreen;
-
-      // Send theme update to renderer if window exists
-      if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-        this.debugWindow.webContents.send(`cog-${this.cogId}-set-theme`, this.theme);
-      }
+    } else {
+      // Window is dormant, keep gray but update colorTheme for when it activates
+      this.theme = LoggerCOGWindow.THEMES.dormant;
     }
-    // If dormant, theme will be applied when it becomes active (first message)
+
+    // Send theme update to renderer only if renderer is ready
+    if (this.debugWindow && !this.debugWindow.isDestroyed() && this.rendererReady) {
+      this.debugWindow.webContents.send(`cog-${this.cogId}-set-theme`, this.theme);
+    }
+    // If renderer not ready, theme will be sent when ready-to-show fires
   }
 
   /**

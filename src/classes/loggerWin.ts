@@ -362,6 +362,12 @@ export class LoggerWindow extends DebugWindowBase {
       this.rendererReady = true;
       if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] ✅ Renderer marked as ready for IPC');
 
+      // Send current theme to renderer now that it's ready
+      if (this.theme) {
+        window.webContents.send('set-theme', this.theme);
+        if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] ✅ Theme sent to renderer:', this.theme.name);
+      }
+
       // Process any pending batches that accumulated before renderer was ready
       if (this.renderQueue.length > 0) {
         if (ENABLE_CONSOLE_LOG) console.log(
@@ -1270,9 +1276,12 @@ export class LoggerWindow extends DebugWindowBase {
    */
   public setTheme(themeName: 'green' | 'amber'): void {
     this.theme = LoggerWindow.THEMES[themeName] || LoggerWindow.THEMES.green;
-    if (this.debugWindow) {
+
+    // Only send theme if renderer is ready, otherwise it will be sent when renderer becomes ready
+    if (this.debugWindow && this.rendererReady) {
       this.debugWindow.webContents.send('set-theme', this.theme);
     }
+    // If renderer not ready, theme is stored in this.theme and will be applied via CSS when HTML loads
   }
 
   /**
