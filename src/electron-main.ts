@@ -7,11 +7,48 @@
  * This file's job is simply to create the Electron UI with the given parameters.
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import { MainWindow } from './classes/mainWindow';
 import { Logger } from './classes/logger';
 import { Context } from './utils/context';
 import * as fs from 'fs';
+import * as os from 'os';
+
+// Main execution wrapper to handle early exit
+(function main() {
+    // Check if launched via double-click (GUI) vs command-line
+    // On macOS, when double-clicked, stdin won't be a TTY and we'll be in the app bundle
+    const isDoubleClicked = !process.stdin.isTTY && process.platform === 'darwin';
+    const launchedFromAppBundle = process.cwd().includes('PNut-Term-TS.app/Contents');
+
+    // If double-clicked, show informative dialog and exit
+    if (isDoubleClicked || launchedFromAppBundle) {
+        // Need to wait for app ready before showing dialog
+        app.whenReady().then(() => {
+            dialog.showMessageBoxSync({
+                type: 'info',
+                title: 'PNut-Term-TS - Command-Line Tool',
+                message: 'This application must be run from Terminal',
+                detail: 'PNut-Term-TS is a command-line tool that operates on files in your current directory.\n\n' +
+                        'To use PNut-Term-TS:\n' +
+                        '1. Open Terminal\n' +
+                        '2. Navigate to your project directory (or create a new one):\n' +
+                        '   cd ~/Documents/MyP2Project\n' +
+                        '3. Run the command:\n' +
+                        '   pnut-term-ts [options]\n\n' +
+                        'Examples:\n' +
+                        '  pnut-term-ts --ram program.binary    # Download to RAM\n' +
+                        '  pnut-term-ts --flash program.binary  # Download to Flash\n' +
+                        '  pnut-term-ts                          # Open debug terminal\n\n' +
+                        'For convenience, add to your PATH:\n' +
+                        '  export PATH="/Applications/PNut-Term-TS.app/Contents/Resources/bin:$PATH"',
+                buttons: ['OK']
+            });
+            app.quit();
+        });
+        // Prevent further execution
+        return;
+    }
 
 // GC PROFILING: Enable GC monitoring to detect pauses that delay serial receives
 if (global.gc) {
@@ -236,3 +273,5 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     logger.errorMsg(`Unhandled rejection at: ${promise}, reason: ${reason}`);
 });
+
+})(); // End of main function wrapper

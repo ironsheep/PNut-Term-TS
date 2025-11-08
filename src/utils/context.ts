@@ -68,6 +68,7 @@ export interface UserPreferences {
   debugLogger: {
     scrollbackLines: number;
   };
+  suppressedDirectoryWarnings?: string[];  // Directories to not warn about
 }
 
 export class Context {

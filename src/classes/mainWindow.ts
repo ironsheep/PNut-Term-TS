@@ -28,6 +28,7 @@ import { Context } from '../utils/context';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
+import * as os from 'os';
 import path from 'path';
 import { DebugScopeWindow } from './debugScopeWin';
 import { DebugScopeXyWindow } from './debugScopeXyWin';
@@ -3514,6 +3515,12 @@ export class MainWindow {
       // Data entry input handler now attached in initial HTML DOMContentLoaded
       // (removed hookTextInputControl call - executeJavaScript cannot access require('electron'))
 
+      // Check directory context after window is ready
+      // Delay slightly to ensure window is fully visible
+      setTimeout(() => {
+        this.checkDirectoryContext();
+      }, 1000);
+
       // Check serial port status after window loads - delayed to let async operations complete
       setTimeout(async () => {
         if (this._serialPort === undefined) {
@@ -6835,6 +6842,275 @@ export class MainWindow {
       this.logMessage('[SIGNAL] Graceful shutdown complete');
     } catch (error) {
       this.logMessage(`[SIGNAL] Error during shutdown: ${error}`);
+    }
+  }
+
+  /**
+   * Check if we're in a suspicious directory and warn the user
+   */
+  private checkDirectoryContext(): void {
+    const cwd = process.cwd();
+    const homeDir = os.homedir();
+
+    // Check if we're in a suspicious location
+    const suspiciousPatterns = this.getSuspiciousLocations();
+    const isSuspicious = suspiciousPatterns.some(pattern => pattern);
+
+    // Check for project files
+    const hasProjectFiles = this.detectProjectFiles();
+    const hasProjectConfig = fs.existsSync('.pnut-term-ts-settings.json');
+
+    // Check if this directory is in the suppressed list
+    const suppressedDirs = this.context.preferences?.suppressedDirectoryWarnings || [];
+    const isSupressed = suppressedDirs.includes(cwd);
+
+    // Show warning if:
+    // - In suspicious location AND
+    // - No project files AND
+    // - Not suppressed
+    if (isSuspicious && !hasProjectFiles && !hasProjectConfig && !isSupressed) {
+      // Don't show warnings for likely project directories
+      const safePatterns = this.getAlwaysAllowedPatterns();
+      const isSafeDir = safePatterns.some(pattern => pattern.test(cwd));
+
+      if (!isSafeDir) {
+        this.showLocationWarning(cwd);
+      }
+    }
+  }
+
+  /**
+   * Get platform-specific suspicious directory patterns
+   */
+  private getSuspiciousLocations(): boolean[] {
+    const cwd = process.cwd();
+    const homeDir = os.homedir();
+    const platform = process.platform;
+
+    // Common suspicious patterns for all platforms
+    const commonPatterns = [
+      cwd === homeDir,                          // Home directory root
+      cwd === '/',                              // Unix root
+      cwd.includes('node_modules'),             // Inside node_modules
+      cwd.includes('.git') && !cwd.endsWith('.git'), // Inside .git folder
+    ];
+
+    // Platform-specific patterns
+    let platformPatterns: boolean[] = [];
+
+    switch (platform) {
+      case 'darwin':  // macOS
+        platformPatterns = [
+          cwd === '/Applications',              // Applications folder
+          cwd === '/System',                     // System folder
+          cwd === '/Library',                    // Library folder
+          cwd === '/Users',                      // Users root
+          cwd === `${homeDir}/Desktop`,         // Desktop
+          cwd === `${homeDir}/Downloads`,       // Downloads
+          cwd === `${homeDir}/Documents`,       // Documents root (too broad)
+          cwd === `${homeDir}/Library`,         // User Library
+          cwd === `${homeDir}/.Trash`,          // Trash
+          cwd.includes('/Applications/') &&
+            cwd.includes('.app'),               // Inside an app bundle
+          cwd.includes('/Volumes/'),            // External volumes root
+        ];
+        break;
+
+      case 'win32':  // Windows
+        platformPatterns = [
+          /^[A-Z]:\\?$/i.test(cwd),            // Any drive root
+          cwd === `${homeDir}\\Desktop` ||
+            cwd === `${homeDir}/Desktop`,       // Desktop
+          cwd === `${homeDir}\\Downloads` ||
+            cwd === `${homeDir}/Downloads`,     // Downloads
+          cwd === `${homeDir}\\Documents` ||
+            cwd === `${homeDir}/Documents`,     // Documents root
+          cwd.includes('\\Windows\\') ||
+            cwd.includes('/Windows/'),          // Windows system
+          cwd.includes('\\Program Files') ||
+            cwd.includes('/Program Files'),     // Program Files
+          cwd.includes('\\ProgramData') ||
+            cwd.includes('/ProgramData'),       // ProgramData
+          cwd.includes('\\System32') ||
+            cwd.includes('/System32'),          // System32
+          cwd.includes('\\AppData\\') ||
+            cwd.includes('/AppData/'),          // AppData folders
+          cwd === `${homeDir}\\OneDrive` ||
+            cwd === `${homeDir}/OneDrive`,      // OneDrive root
+        ];
+        break;
+
+      case 'linux':  // Linux
+        platformPatterns = [
+          cwd === '/usr',                       // usr directory
+          cwd === '/bin',                       // bin directory
+          cwd === '/sbin',                      // sbin directory
+          cwd === '/etc',                       // etc directory
+          cwd === '/var',                       // var directory
+          cwd === '/opt',                       // opt directory
+          cwd === '/proc',                      // proc filesystem
+          cwd === '/sys',                       // sys filesystem
+          cwd === '/boot',                      // boot directory
+          cwd === `${homeDir}/Desktop`,        // Desktop
+          cwd === `${homeDir}/Downloads`,      // Downloads
+          cwd === `${homeDir}/Documents`,      // Documents root
+          cwd === `${homeDir}/.local`,         // .local directory
+          cwd === `${homeDir}/.config`,        // .config directory
+          cwd === `${homeDir}/snap`,           // Snap packages
+          cwd.includes('/.cache/'),            // Cache directories
+          cwd === '/mnt',                       // Mount point root
+          cwd === '/media',                     // Media mount root
+        ];
+        break;
+    }
+
+    return [...commonPatterns, ...platformPatterns];
+  }
+
+  /**
+   * Check for project files in current directory
+   */
+  private detectProjectFiles(): boolean {
+    try {
+      const files = fs.readdirSync('.');
+      return files.some(f =>
+        f.endsWith('.spin2') ||
+        f.endsWith('.spin') ||
+        f.endsWith('.binary') ||
+        f.endsWith('.bin') ||
+        f === '.pnut-term-ts-settings.json'
+      );
+    } catch (error) {
+      // If we can't read the directory, assume it's not a project
+      return false;
+    }
+  }
+
+  /**
+   * Get patterns for directories that are always allowed
+   */
+  private getAlwaysAllowedPatterns(): RegExp[] {
+    const platform = process.platform;
+
+    // Common safe patterns for all platforms
+    const common = [
+      /\/P2Projects?\//i,
+      /\/Propeller/i,
+      /\/spin2?\//i,
+      /\/projects?\//i,
+      /\/dev(elopment)?\//i,
+      /\/code\//i,
+      /\/workspace/i,
+      /\/src\//i,
+    ];
+
+    // Platform-specific safe patterns (Windows needs backslash patterns)
+    const platformSpecific = platform === 'win32' ? [
+      /\\P2Projects?\\/i,
+      /\\Propeller/i,
+      /\\spin2?\\/i,
+      /\\projects?\\/i,
+      /\\dev(elopment)?\\/i,
+      /\\code\\/i,
+      /\\workspace/i,
+      /\\src\\/i,
+    ] : [];
+
+    return [...common, ...platformSpecific];
+  }
+
+  /**
+   * Show warning dialog about suspicious directory
+   */
+  private async showLocationWarning(currentDir: string): Promise<void> {
+    if (!dialog) return; // No dialog available
+
+    const platform = process.platform;
+    let examplePaths: string[];
+
+    switch (platform) {
+      case 'darwin':
+        examplePaths = [
+          '~/Documents/P2Projects/',
+          '~/Development/Propeller/',
+          '~/Code/spin2-workspace/'
+        ];
+        break;
+
+      case 'win32':
+        examplePaths = [
+          'C:\\Users\\YourName\\Documents\\P2Projects\\',
+          'C:\\Development\\Propeller\\',
+          'D:\\Projects\\Spin2\\'
+        ];
+        break;
+
+      case 'linux':
+        examplePaths = [
+          '~/projects/propeller/',
+          '~/Documents/p2-development/',
+          '~/workspace/spin2/'
+        ];
+        break;
+
+      default:
+        examplePaths = ['~/YourProjectFolder/'];
+    }
+
+    const detail = `Current directory: ${currentDir}\n\n` +
+                   `PNut-Term-TS is running in a directory with no .spin2, .spin, ` +
+                   `or .binary files detected.\n\n` +
+                   `Did you mean to run it from a different location?\n\n` +
+                   `Common project locations:\n` +
+                   examplePaths.map(p => `  • ${p}`).join('\n');
+
+    const result = await dialog.showMessageBox(this.mainWindow!, {
+      type: 'warning',
+      title: 'Check Directory Location',
+      message: 'No Propeller 2 source files detected',
+      detail: detail,
+      buttons: ['Continue Anyway', 'Quit and Change Directory'],
+      defaultId: 0,
+      cancelId: 1,
+      checkboxLabel: "Don't warn me about this directory again",
+      checkboxChecked: false
+    });
+
+    if (result.checkboxChecked) {
+      // Save this directory to the skip list in user settings
+      this.addDirectoryToSkipList(currentDir);
+    }
+
+    if (result.response === 1) {
+      // User chose to quit
+      app.quit();
+    }
+    // Otherwise continue normally
+  }
+
+  /**
+   * Add directory to suppressed warnings list
+   */
+  private addDirectoryToSkipList(directory: string): void {
+    try {
+      // Get current settings (preferences)
+      const currentSettings = this.context.preferences || {};
+
+      // Initialize suppressed list if it doesn't exist
+      if (!currentSettings.suppressedDirectoryWarnings) {
+        currentSettings.suppressedDirectoryWarnings = [];
+      }
+
+      // Add directory if not already in list
+      if (!currentSettings.suppressedDirectoryWarnings.includes(directory)) {
+        currentSettings.suppressedDirectoryWarnings.push(directory);
+
+        // Save updated settings
+        this.context.saveUserGlobalSettings(currentSettings);
+        this.logMessage(`Added directory to suppressed warnings: ${directory}`);
+      }
+    } catch (error) {
+      this.logMessage(`Failed to add directory to skip list: ${error}`);
     }
   }
 }
