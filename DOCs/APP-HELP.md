@@ -25,7 +25,7 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 - **Routes messages** to appropriate debug windows based on content
 - **Visualizes data** through specialized windows (logic analyzer, scope, FFT, etc.)
 - **Logs all traffic** for analysis and troubleshooting
-- **Provides multiple COG monitors** for multi-core debugging
+- **Provides multiple COG debuggers** for multi-core debugging
 - **Supports binary downloads** to the P2 for program execution
 
 ---
@@ -39,8 +39,8 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 - **Message extraction** via autonomous worker thread
 
 ### Data Visualization
-- **12 window types** for different data formats
-- **Multi-COG monitoring** with 8 independent COG windows
+- **10 window types** for different data formats
+- **Multi-COG debugging** with 8 independent COG windows
 - **Live updates** at full USB speed (up to 2\_000\_000 baud)
 - **Synchronized displays** across multiple windows
 
@@ -53,8 +53,6 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 ### Binary Download
 - **Fast binary transfer** to P2 RAM or flash
 - **Automatic protocol handling** for download sequences
-- **Progress tracking** during downloads
-- **Error detection** and recovery
 
 ---
 
@@ -66,7 +64,6 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 - ✅ **Worker Thread Architecture**: Non-blocking USB processing
 - ✅ **Zero-Copy Buffers**: SharedArrayBuffer for peak performance
 - ✅ **DTR/RTS Control**: Hardware reset line support
-- ✅ **Auto-Reconnect**: Handles device disconnection gracefully
 
 ### Debug Windows
 - ✅ **Debug Logger**: All traffic with timestamps and TX/RX indicators
@@ -81,12 +78,6 @@ PNut-Term-TS serves as a **real-time debugging interface** between your computer
 - ✅ **Terminal Window**: Text-based debug output
 - ✅ **Bitmap Display**: Graphical bitmap rendering
 - ✅ **MIDI Display**: MIDI message visualization
-
-### Performance Tracking
-- ✅ **High Water Marks**: Buffer and pool usage peaks
-- ✅ **Rate Tracking**: USB bytes/sec and messages/sec
-- ✅ **Shutdown Statistics**: Complete session metrics
-- ✅ **Full Capacity Alerts**: Immediate notification of limits
 
 ---
 
@@ -131,7 +122,7 @@ Cog2  Counter: 1234
 ---
 
 ### 3. Debugger Windows (Debugger 0-7)
-**Status**:  **Pending Final Implementation**
+**Status**: 🔴 **NOT ready for Use!**
 
 **Purpose**: Display single-step debugger for each COG
 
@@ -199,7 +190,7 @@ Cog2  Counter: 1234
 ---
 
 ### 7. FFT Analyzer Window
-**Status**: ✅ **Fully Implemented**
+**Status**: ✅ **Fully Implemented** (*noise floor display issue*)
 
 **Purpose**: Frequency spectrum analysis
 
@@ -320,10 +311,6 @@ Cog2  Counter: 1234
 **Download to P2** (`Cmd/Ctrl+D`)
 - Send previously loaded binary to P2 RAM
 - Triggers download protocol sequence
-
-**Save Log File** (`Cmd/Ctrl+S`)
-- Save debug logger contents to file
-- Preserves timestamps and formatting
 
 **Preferences** (`Cmd/Ctrl+,`)
 - Configure application settings with two tabs:
@@ -684,8 +671,6 @@ Creates window named "SIGNAL_BUS" with 16 channels, 1000 samples
 - Increase scrollback limit if messages dropping
 
 ### Connection Lost
-- Auto-reconnect will attempt recovery
-- Manual reconnect: `Cmd/Ctrl+R`
 - Check for USB power issues
 - Verify P2 is powered and running
 
@@ -731,17 +716,19 @@ Creates window named "SIGNAL_BUS" with 16 channels, 1000 samples
 
 ### Online Resources
 - **GitHub Repository**: [PNut-Term-TS](https://github.com/parallaxinc/PNut-Term-TS)
-- **Issue Tracker**: Report bugs and request features
+- **Issue Tracker**: Report bugs and request features at our [issues](https://github.com/parallaxinc/PNut-Term-TS/issues) page
 - **Parallax Forums**: Community support and discussion
 
 ### Version Information
 Check **Help → About** for:
+
 - Current version number
 - Build date and commit
 - Platform and architecture
 
 ### Log Files
 Debug logs stored in:
+
 - **macOS**: `~/Library/Logs/PNut-Term-TS/`
 - **Windows**: `%APPDATA%\PNut-Term-TS\logs\`
 - **Linux**: `~/.config/PNut-Term-TS/logs/`
@@ -773,9 +760,10 @@ pnut-term-ts --ide -p P9cektn7
 pnut-term-ts -n
 ```
 
-See the **User Guide** (Help → Documentation) for detailed command-line reference and examples.
+See the **User Guide** for detailed command-line reference and examples.
 
 ---
 
-**Last Updated**: 2025-11-05
-**Version**: 0.5.0
+**Last Updated**: 2025-11-08
+
+**Version**: 0.9.0
