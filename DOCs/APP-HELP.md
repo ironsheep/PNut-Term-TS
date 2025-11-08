@@ -304,15 +304,57 @@ Cog2  Counter: 1234
 
 ### File Menu
 
-**Open Binary File** (`Cmd/Ctrl+O`)
-- Select .binary file for download to P2
+**New Recording**
+- Start a new recording session
+- Clears any existing recording buffer
+
+**Open Recording...**
+- Load a previously saved .p2rec recording file
 - Opens file picker dialog
 
-**Download to P2** (`Cmd/Ctrl+D`)
-- Send previously loaded binary to P2 RAM
-- Triggers download protocol sequence
+**Save Recording As...**
+- Save current recording buffer to .p2rec file
+- Opens file save dialog
 
-**Preferences** (`Cmd/Ctrl+,`)
+**Start Recording** (`Ctrl/Cmd+R`)
+- Begin capturing all serial traffic to recording buffer
+- Recording indicator shows "Recording..." status
+
+**Stop Recording**
+- End current recording session
+- Data remains in buffer until saved or cleared
+
+**Playback Recording** (`Ctrl/Cmd+P`)
+- Play back a loaded .p2rec recording
+- Simulates real serial traffic with accurate timing
+
+**Exit** (`Ctrl/Cmd+Q`)
+- Exit application
+- Logs final session statistics
+- Prompts to save unsaved recordings
+
+---
+
+### Edit Menu
+
+**Cut** (`Ctrl/Cmd+X`)
+- Cut selected text to clipboard
+
+**Copy** (`Ctrl/Cmd+C`)
+- Copy selected text from active window
+
+**Paste** (`Ctrl/Cmd+V`)
+- Paste clipboard contents
+
+**Find...** (`Ctrl/Cmd+F`)
+- Search within debug logger or terminal
+- Opens find dialog with search options
+
+**Clear Terminal**
+- Clear main window blue terminal area
+- Does not affect debug logger
+
+**Preferences...** (`Ctrl/Cmd+,`)
 - Configure application settings with two tabs:
   - **User Settings**: Global preferences for all projects
   - **Project Settings**: Project-specific overrides with checkboxes
@@ -320,131 +362,33 @@ Cog2  Counter: 1234
 - Settings files:
   - User global: `%APPDATA%\PNut-Term-TS\settings.json` (Win) or `~/.pnut-term-ts-settings.json` (Mac/Linux)
   - Project local: `./.pnut-term-ts-settings.json` in project directory
-- See full documentation for detailed settings hierarchy
-
-**Quit** (`Cmd/Ctrl+Q`)
-- Exit application
-- Logs final session statistics
-
----
-
-### Edit Menu
-
-**Copy** (`Cmd/Ctrl+C`)
-- Copy selected text from active window
-
-**Select All** (`Cmd/Ctrl+A`)
-- Select all text in active window
-
-**Find** (`Cmd/Ctrl+F`)
-- Search within debug logger or terminal
-
-**Clear Terminal** (`Cmd/Ctrl+K`)
-- Clear main window blue terminal area
-
----
-
-### Connection Menu
-
-**Select Serial Port**
-- Choose COM port / serial device
-- Displays list of available ports
-
-**Connect** (`Cmd/Ctrl+Shift+C`)
-- Open selected serial port
-- Start receiving debug data
-
-**Disconnect** (`Cmd/Ctrl+Shift+D`)
-- Close serial port connection
-- Stop data reception
-
-**Reconnect** (`Cmd/Ctrl+R`)
-- Close and reopen current port
-- Useful for recovering from errors
-
-**DTR Reset** (`Cmd/Ctrl+Shift+R`)
-- Toggle DTR line (hardware reset)
-- Reboots P2 if DTR wired to RES pin
-
-**RTS Reset**
-- Toggle RTS line (alternative reset)
-- Use if RTS wired to RES instead of DTR
-
----
-
-### Understanding Connection Behavior
-
-**Quick Decision Guide**: Does your P2 need to reset when you connect?
-
-**How to Change**: File → Preferences (Ctrl/Cmd+,) → **User Settings** (or **Project Settings**) → Serial Port → "Reset P2 on Connection"
-
-**Note**: Use User Settings for global preference across all projects, or Project Settings to override for specific projects.
-
-#### ☑️ Enable "Reset on Connection" when:
-- You're actively developing and testing code
-- You want a clean start every time
-- Previous P2 state doesn't matter
-- **Result**: DTR toggles immediately → P2 resets → capture fresh output
-
-#### ☐ Disable "Reset on Connection" when:
-- P2 is already running something you want to observe
-- You need to capture existing data stream
-- You don't want to disturb the running program
-- **Result**: No DTR toggle → P2 keeps running → capture immediately
-
-**Default**: Enabled (traditional development mode)
-
-**Note**: Setting persists - change it once for your preferred workflow.
-
-#### 💡 Command-Line Downloads (`-R` RAM / `-F` Flash)
-When launched from an IDE with download parameters:
-- Connection behavior is automatic (ignores preference)
-- DTR toggles only when download starts (not on port open)
-- Ensures clean download protocol
-
-**See Full User Guide** (Connection & Startup Behavior section) for detailed workflows and examples.
-
----
-
-### Debug Menu
-
-**Debug Logger** (`F2`)
-- Open central debug logging window
-- Shows all traffic with timestamps
-
-**COG Windows** (`F3`-`F10`)
-- F3: COG 0
-- F4: COG 1
-- F5: COG 2
-- F6: COG 3
-- F7: COG 4
-- F8: COG 5
-- F9: COG 6
-- F10: COG 7
-
-**Hide All Debug Windows** (`Cmd/Ctrl+Shift+H`)
-- Close all open debug windows
-- Clears window registry
+- See Preferences Settings section below for details
 
 ---
 
 ### Window Menu
 
-**Minimize** (`Cmd/Ctrl+M`)
-- Minimize active window
+**Performance Monitor**
+- Open performance monitoring window
+- Shows real-time metrics: throughput, buffer usage, queue depth
+- Live sparkline graphs and statistics
 
-**Zoom**
-- Toggle window zoom state
+**Cascade**
+- Arrange all debug windows in cascading layout
+- Overlapping windows with title bars visible
 
-**Bring All to Front**
-- Raise all application windows
+**Tile**
+- Arrange all debug windows in tiled grid layout
+- Non-overlapping, maximizes screen space
 
-**Main Window**
-- Focus main terminal window
+**Show All Windows**
+- Unhide and bring to front all debug windows
+- Restores hidden windows
 
-**Window List**
-- Shows all open windows
-- Click to focus specific window
+**Hide All Windows**
+- Hide all debug windows
+- Useful for decluttering workspace
+- Windows remain active, just not visible
 
 ---
 
@@ -455,14 +399,231 @@ When launched from an IDE with download parameters:
 - Clickable table of contents
 - Searchable content
 
-**Debug Command Reference**
-- Quick reference for backtick commands
-- Window type keywords
-
 **About PNut-Term-TS**
-- Application version
-- Build information
-- Credits
+- Application version information
+- Build date and commit hash
+- Platform and architecture details
+- Runtime versions (Node.js, Chromium, Electron)
+
+---
+
+## Preferences Settings
+
+Access via **Edit → Preferences** (`Ctrl/Cmd+,`)
+
+### Settings Hierarchy
+
+PNut-Term-TS uses a **3-tier cascading settings system**:
+
+1. **Application Defaults** - Built-in baseline settings
+2. **User Global Settings** - Your personal preferences across all projects
+3. **Project Local Settings** - Project-specific overrides (optional)
+
+**Effective Value** = Project Local **OR** User Global **OR** App Default (first non-empty value wins)
+
+### Two-Tab Interface
+
+#### User Settings Tab
+- **Global preferences** that apply to all projects
+- Saved to user profile directory
+- Changes affect all projects unless overridden
+
+#### Project Settings Tab
+- **Project-specific overrides** using checkboxes
+- Saved to `.pnut-term-ts-settings.json` in project directory
+- Each setting has a checkbox to enable override
+- Unchecked settings use User Global or App Default values
+- Only enabled overrides are saved (delta-save strategy)
+
+### Settings File Locations
+
+**User Global Settings**:
+- **Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
+- **macOS/Linux**: `~/.pnut-term-ts-settings.json`
+
+**Project Local Settings** (optional):
+- `./.pnut-term-ts-settings.json` in project directory
+- Only created when you enable project-specific overrides
+
+---
+
+### Terminal Display Settings
+
+**Terminal Mode**
+- **Options**: Classic Terminal, Split View, Debug Only
+- **Default**: Split View
+- **Description**: Controls main window layout
+  - **Classic Terminal**: Single terminal area (traditional mode)
+  - **Split View**: Terminal + status panels side-by-side
+  - **Debug Only**: Hides terminal, focuses on debug windows
+
+**Color Theme**
+- **Options**: Dark (Default), Light, High Contrast, Solarized
+- **Default**: Dark
+- **Description**: Color scheme for terminal and debug windows
+
+**Font Size**
+- **Range**: 10-24 pixels
+- **Default**: 14px
+- **Description**: Terminal and debug window text size
+
+**Font Family**
+- **Options**:
+  - Consolas (Default on Windows)
+  - Monaco (Default on macOS)
+  - Courier New
+  - Monospace
+  - Source Code Pro
+  - Fira Code
+- **Default**: Platform-dependent
+- **Description**: Monospace font for terminal output
+
+**Show COG Prefixes**
+- **Type**: Checkbox
+- **Default**: Enabled
+- **Description**: Display "Cog0", "Cog1" etc. prefixes in COG window messages
+
+**Local Echo**
+- **Type**: Checkbox
+- **Default**: Disabled
+- **Description**: Echo typed characters back to terminal (usually handled by P2)
+
+---
+
+### Serial Port Settings
+
+**Control Line**
+- **Options**: DTR (Default), RTS
+- **Default**: DTR
+- **Description**: Hardware control line used for P2 reset
+  - **DTR**: Used by Parallax PropPlug devices
+  - **RTS**: Used by some non-Parallax USB serial adapters
+
+**Default Baud Rate**
+- **Options**:
+  - 115200
+  - 230400
+  - 460800
+  - 921600
+  - 2000000 (Default)
+- **Default**: 2000000
+- **Description**: Serial communication speed (must match P2 program)
+
+**Reset P2 on Connection**
+- **Type**: Checkbox
+- **Default**: Enabled
+- **Description**: Automatically toggle DTR/RTS when connecting to port
+  - **Enabled**: P2 resets on connection (fresh start)
+  - **Disabled**: Connect without reset (capture existing output)
+
+---
+
+### Logging Settings
+
+**Log Directory**
+- **Type**: Text path
+- **Default**: `./logs/`
+- **Description**: Directory for debug logger output files
+  - Supports absolute paths or relative to project directory
+  - Timestamped log files created per session
+
+**Auto-Save Debug Logs**
+- **Type**: Checkbox
+- **Default**: Enabled
+- **Description**: Automatically save debug logger output to timestamped files
+
+**New Log File on DTR/RTS**
+- **Type**: Checkbox
+- **Default**: Enabled
+- **Description**: Rotate to new log file when DTR/RTS reset detected
+  - Creates session boundaries in log files
+  - Each P2 reboot starts fresh log file
+
+**Max Log File Size**
+- **Options**:
+  - 1 MB
+  - 5 MB (Default)
+  - 10 MB
+  - 50 MB
+  - Unlimited
+- **Default**: 5 MB
+- **Description**: Maximum size before log rotation
+  - When exceeded, creates new timestamped log file
+  - Prevents single files from growing indefinitely
+
+**Enable USB Traffic Logging**
+- **Type**: Checkbox
+- **Default**: Disabled
+- **Description**: Log raw USB serial traffic to separate file
+  - Low-level debugging tool
+  - Logs all bytes sent/received with timestamps
+  - Separate from debug logger window
+
+**USB Log Path**
+- **Type**: Text path
+- **Default**: `./logs/`
+- **Description**: Directory for USB traffic logs (if enabled)
+
+---
+
+### Recording Settings
+
+**Recordings Directory**
+- **Type**: Text path
+- **Default**: `./recordings/`
+- **Description**: Directory for .p2rec recording files
+  - Used by Save Recording As... dialog
+  - Used by Open Recording... dialog
+
+**Auto-Save Recordings**
+- **Type**: Checkbox
+- **Default**: Disabled
+- **Description**: Automatically save recordings when stopped
+  - Creates timestamped .p2rec files in recordings directory
+  - No prompt for filename
+
+**Recording Buffer Size**
+- **Options**: 10 MB, 50 MB, 100 MB (Default), 500 MB, 1 GB
+- **Default**: 100 MB
+- **Description**: Maximum memory for recording buffer
+  - When exceeded, oldest data is discarded (ring buffer)
+
+---
+
+### Using Project Settings Effectively
+
+**When to Use User Settings**:
+- Personal preferences (font, colors, theme)
+- Default baud rate for your hardware
+- Your preferred log directory structure
+- Global workflow preferences
+
+**When to Use Project Settings**:
+- Project-specific baud rate (if different from your usual)
+- Custom log directory for this project
+- Special control line (RTS instead of DTR)
+- Project-specific recording directory
+
+**Example Workflow**:
+
+1. **Set User Defaults** (one-time setup):
+   - Terminal Mode: Split View
+   - Font Size: 14px
+   - Default Baud: 2000000
+   - Log Directory: `~/Documents/P2Logs/`
+
+2. **Override for Specific Project** (as needed):
+   - Enable "Default Baud Rate" checkbox
+   - Set to 115200 (this project uses slower baud)
+   - Enable "Log Directory" checkbox
+   - Set to `./project-logs/` (keep logs with project)
+
+3. **Result**:
+   - This project uses 115200 baud and `./project-logs/`
+   - All other projects use 2000000 baud and `~/Documents/P2Logs/`
+   - Font and theme remain consistent across all projects
+
+**Delta-Save Strategy**: Only enabled checkboxes are saved to `.pnut-term-ts-settings.json`, keeping project files minimal and focused.
 
 ---
 
