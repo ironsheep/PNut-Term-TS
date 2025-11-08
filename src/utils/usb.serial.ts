@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 'use strict';
 
@@ -26,7 +26,9 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
-  static desiredCommsBaudRate: number = DEFAULT_DOWNLOAD_BAUD;
+  // This should be set by MainWindow before creating the port
+  // No hardcoded default - MainWindow owns the baud rate decision cascade
+  static desiredCommsBaudRate: number = 115200;  // Will be overridden by setCommBaudRate()
 
   private context: Context;
   private endOfLineStr: string = '\r\n';
@@ -58,9 +60,20 @@ export class UsbSerial extends EventEmitter {
       this.logMessage('Spin/Spin2 USB.Serial log started.');
     }
     this.logMessage(`* Connecting to ${this._deviceNode}`);
+
+    // WORKAROUND for macOS FTDI bug with high baud rates:
+    // Initialize at a standard rate, then immediately update to the desired rate
+    const initialBaudRate = (UsbSerial.desiredCommsBaudRate > 230400 && process.platform === 'darwin')
+      ? 115200  // Use standard rate first on macOS for high speeds
+      : UsbSerial.desiredCommsBaudRate;
+
+    if (initialBaudRate !== UsbSerial.desiredCommsBaudRate) {
+      this.logConsoleMessage(`[USB] macOS workaround: Opening at ${initialBaudRate}, will update to ${UsbSerial.desiredCommsBaudRate}`);
+    }
+
     this._serialPort = new SerialPort({
       path: this._deviceNode,
-      baudRate: UsbSerial.desiredCommsBaudRate,
+      baudRate: initialBaudRate,
       dataBits: 8,
       stopBits: 1,
       parity: 'none',
@@ -124,15 +137,227 @@ export class UsbSerial extends EventEmitter {
 
   /**
    * Change baud rate of active serial port
+   * Uses the update() method which is the proper way to change baud rate on an open port
    */
   public async changeBaudRate(newBaudRate: number): Promise<void> {
     if (this._serialPort && this._serialPort.isOpen) {
-      this.logMessage(`* Changing baud rate from ${this._serialPort.baudRate} to ${newBaudRate}`);
-      await this._serialPort.update({ baudRate: newBaudRate });
+      const oldBaudRate = this._serialPort.baudRate;
+      this.logMessage(`* Changing baud rate from ${oldBaudRate} to ${newBaudRate}`);
+      this.logConsoleMessage(`[USB BAUD] Attempting to change baud rate from ${oldBaudRate} to ${newBaudRate} using update()`);
+
+      try {
+        // Use the update() method - this is the proper way to change baud rate
+        // Note: Only baudRate can be changed on an open port
+        await new Promise<void>((resolve, reject) => {
+          this._serialPort.update({ baudRate: newBaudRate }, (err) => {
+            if (err) {
+              this.logConsoleMessage(`[USB BAUD] update() failed: ${err.message}`);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        // Verify the baud rate actually changed
+        const actualBaud = this._serialPort.baudRate;
+        if (actualBaud !== newBaudRate) {
+          this.logConsoleMessage(`[USB BAUD] WARNING: Baud rate is ${actualBaud}, expected ${newBaudRate}`);
+        } else {
+          this.logConsoleMessage(`[USB BAUD] Successfully updated to ${newBaudRate} using update()`);
+        }
+
+        // WORKAROUND for SerialPort v8.x.x bug: RTS gets cleared on update()
+        // Restore RTS if it was previously set
+        if (this._rtsValue) {
+          this.logConsoleMessage(`[USB BAUD] Restoring RTS after update() bug workaround`);
+          await this.setRts(true);
+        }
+
+        // Update the static desired baud rate
+        UsbSerial.desiredCommsBaudRate = newBaudRate;
+
+        this.logMessage(`* Baud rate changed successfully to ${newBaudRate}`);
+        this.logConsoleMessage(`[USB BAUD] Baud rate change complete`);
+        return;
+      } catch (updateError: any) {
+        this.logConsoleMessage(`[USB BAUD] update() method failed, falling back to close/reopen: ${updateError.message}`);
+      }
+
+      // FALLBACK: If update() fails, try the close/reopen method
+      // This shouldn't normally be needed, but kept as a backup
+      this.logConsoleMessage(`[USB BAUD] Falling back to close/reopen method`);
+      const portPath = this._serialPort.path;
+
+      // Remove listeners from old port before closing
+      this._serialPort.removeAllListeners();
+
+      // Close current port
+      await new Promise<void>((resolve, reject) => {
+        this._serialPort.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Reopen with new baud rate - MUST include all original settings!
+      this._serialPort = new SerialPort({
+        path: portPath,
+        baudRate: newBaudRate,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+        autoOpen: false,
+        hupcl: false,  // CRITICAL: Prevent automatic DTR/RTS assertion on port open
+        highWaterMark: 1024 * 1024  // CRITICAL: 1MB buffer to prevent USB data loss
+      });
+
+      // Re-attach all event listeners
+      this._serialPort.on('error', (err) => this.handleSerialError(err.message));
+      this._serialPort.on('open', () => {
+        // Don't call handleSerialOpen() here as it would trigger reset
+        this.logMessage(`* Port reopened at ${newBaudRate} baud`);
+      });
+
+      // CRITICAL: Re-attach data handler - this is what receives all serial data!
+      this._serialPort.on('data', (data: Buffer) => {
+        // GUARD: During shutdown, drop all incoming data immediately
+        if (this._isShuttingDown) {
+          return; // Silently ignore - prevents race conditions during app exit
+        }
+
+        // GUARD: During quiesce/startup control, drop incoming data
+        if (this._ignoreFrontTraffic) {
+          return; // Silently drop - system in quiesced state or awaiting reset
+        }
+
+        // FIRST: Check for P2 detection (sets _p2DeviceId)
+        // This MUST happen before emit so detection state is ready before any routing decisions
+        this.checkForP2Response(data);
+
+        // THEN: Emit raw data to MainWindow (preserves binary integrity)
+        this.emit('data', data);
+      });
+
+      // Open the port with new settings
+      await new Promise<void>((resolve, reject) => {
+        this._serialPort.open((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // CRITICAL: Only flush if switching TO download speed (clearing old debug data)
+      // When switching BACK to debug speed after download, we want to catch the first bytes immediately
+      if (newBaudRate === 2000000) {
+        // Switching TO download speed - flush old debug data
+        try {
+          await new Promise<void>((resolve, reject) => {
+            this._serialPort.flush((err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+          this.logMessage(`* Buffers flushed before download`);
+        } catch (flushErr: any) {
+          this.logMessage(`* Flush warning: ${flushErr.message}`);
+        }
+      }
+      // NO delay when switching back to debug baud - we need to catch the first bytes from the P2!
+
+      // Update the static desired baud rate
+      UsbSerial.desiredCommsBaudRate = newBaudRate;
+
       this.logMessage(`* Baud rate changed successfully to ${newBaudRate}`);
+      this.logConsoleMessage(`[USB BAUD] Baud rate changed successfully to ${newBaudRate}`);
     } else {
       throw new Error('Cannot change baud rate: serial port not open');
     }
+  }
+
+  public getCurrentBaudRate(): number {
+    if (this._serialPort && this._serialPort.isOpen) {
+      return this._serialPort.baudRate;
+    }
+    return 0;
+  }
+
+  /**
+   * Flush the receive buffer to clear any corrupted/stale data
+   * Useful after baud rate changes to prevent garbage bytes
+   *
+   * Note: The flush() method is unreliable on macOS/FTDI for clearing receive buffers.
+   * Consider using waitForCleanDataStream() instead for more reliable operation.
+   */
+  public async flushReceiveBuffer(): Promise<void> {
+    if (!this._serialPort || !this._serialPort.isOpen) {
+      throw new Error('Serial port is not open');
+    }
+
+    // Also clear our internal P2 detection buffer
+    this._p2DetectionBuffer = '';
+
+    return new Promise<void>((resolve, reject) => {
+      // Flush discards data in both receive and transmit buffers
+      // We only care about receive, but this is the only method available
+      this._serialPort.flush((err) => {
+        if (err) {
+          this.logMessage(`FlushRx: ERROR: ${err.message}`);
+          reject(err);
+        } else {
+          this.logMessage(`FlushRx: Receive buffer cleared`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * Clear garbage bytes from the receive stream using a simple time-based approach
+   * This is more reliable than flush() which doesn't work properly on macOS/FTDI.
+   *
+   * Strategy: Discard ALL data for a fixed time period after baud rate switch.
+   * Everything within this time window is considered garbage.
+   *
+   * @param discardMs Time to discard ALL incoming data (default 25ms)
+   * @returns Number of garbage bytes discarded
+   */
+  public async clearGarbageBytes(discardMs: number = 25): Promise<number> {
+    if (!this._serialPort || !this._serialPort.isOpen) {
+      throw new Error('Serial port is not open');
+    }
+
+    let garbageBytes = 0;
+
+    this.logMessage(`[GARBAGE_CLEAR] Discarding ALL data for ${discardMs}ms`);
+
+    // Temporarily store the original data handler
+    const originalHandlers = this._serialPort.listeners('data');
+
+    // Simple handler: discard everything within the time window
+    const garbageHandler = (data: Buffer) => {
+      garbageBytes += data.length;
+      this.logMessage(`[GARBAGE_CLEAR] Discarded ${data.length} bytes: ${Array.from(data.slice(0, Math.min(data.length, 20))).map(b => `$${b.toString(16).padStart(2, '0').toUpperCase()}`).join(' ')}`);
+    };
+
+    // Replace data handlers temporarily
+    this._serialPort.removeAllListeners('data');
+    this._serialPort.on('data', garbageHandler);
+
+    try {
+      // Wait for the discard period - everything within this window is garbage
+      await new Promise(resolve => setTimeout(resolve, discardMs));
+
+      this.logMessage(`[GARBAGE_CLEAR] Time window complete. Discarded ${garbageBytes} total bytes`);
+    } finally {
+      // Always restore original handlers
+      this._serialPort.removeAllListeners('data');
+      for (const handler of originalHandlers) {
+        this._serialPort.on('data', handler as any);
+      }
+    }
+
+    return garbageBytes;
   }
 
   static async serialDeviceList(ctx?: Context): Promise<string[]> {
@@ -614,12 +839,20 @@ export class UsbSerial extends EventEmitter {
   }
 
   private async handleSerialOpen() {
-    this.logConsoleMessage(`[USB] handleSerialOpen() - startup reset`);
-    //this.logMessage(`* handleSerialOpen() open...`);
-    //const myString: string = "Hello, World! 0123456789";
-    //const myBuffer: Buffer = Buffer.from(myString, "utf8");
-    //const myUint8Array: Uint8Array = new Uint8Array(myBuffer);
-    //this.downloadNew(myUint8Array);
+    this.logConsoleMessage(`[USB] handleSerialOpen() - port opened`);
+
+    // WORKAROUND for macOS high baud rates: If we opened at a standard rate,
+    // now update to the desired rate
+    const currentBaud = this._serialPort.baudRate;
+    if (currentBaud !== UsbSerial.desiredCommsBaudRate) {
+      this.logConsoleMessage(`[USB] macOS workaround: Updating from ${currentBaud} to ${UsbSerial.desiredCommsBaudRate}`);
+      try {
+        await this.changeBaudRate(UsbSerial.desiredCommsBaudRate);
+      } catch (updateErr: any) {
+        this.logConsoleMessage(`[USB] Failed to update to desired baud rate: ${updateErr.message}`);
+        // Continue anyway - we're at least connected
+      }
+    }
 
     // DEFENSIVE: Flush any stale data from buffers before reset
     // This prevents old data from previous session being picked up
@@ -821,7 +1054,7 @@ export class UsbSerial extends EventEmitter {
     return didCheck;
   }
 
-  private async waitForPortOpen(): Promise<boolean> {
+  public async waitForPortOpen(): Promise<boolean> {
     return new Promise((resolve, reject) => {
       let attempts = 0;
       const maxAttempts = 2000 / 30; // 2 seconds / 30 ms
@@ -899,7 +1132,7 @@ export class UsbSerial extends EventEmitter {
   }
   */
 
-  private async drain(): Promise<void> {
+  public async drain(): Promise<void> {
     this.logMessage(`--> Tx drain`);
     return new Promise((resolve, reject) => {
       this._serialPort.drain((err) => {

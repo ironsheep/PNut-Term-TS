@@ -83,8 +83,6 @@ export interface GlobalSettings {
   selectedDeviceIndex?: number;
 }
 
-const DEFAULT_SERIAL_BAUD = 2000000;
-
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = true;
 
@@ -92,7 +90,7 @@ export class MainWindow {
   private context: Context;
   private _deviceNode: string = '';
   private _serialPort: UsbSerial | undefined = undefined;
-  private _serialBaud: number = DEFAULT_SERIAL_BAUD;
+  private _serialBaud: number = 0; // Will be set from context or preferences in constructor
   private mainWindow: any = null;
   private mainWindowOpen: boolean = false;
   private waitingForINIT: boolean = true;
@@ -199,6 +197,9 @@ export class MainWindow {
     // Initialize device settings using context startup directory
     this.settingsFilePath = path.join(this.context.currentFolder, 'pnut-term-settings.json');
     this.loadGlobalSettings();
+
+    // Initialize serial baud rate from context or preferences
+    this.initializeSerialBaud();
 
     /*
     let filesFound: string[] = listFiles("./");
@@ -1390,8 +1391,17 @@ export class MainWindow {
   private async openSerialPort(deviceNode: string) {
     UsbSerial.setCommBaudRate(this._serialBaud);
     this.logMessage(`* openSerialPort() - ${deviceNode}`);
+
+    // Log baud rate and its source
+    const source = this.context.runEnvironment.debugBaudRateFromCLI ? 'command-line' : 'preferences/default';
+    this.logConsoleMessage(`[BAUD RATE] Setting debug baud rate to ${this._serialBaud} (from ${source})`);
+    if (this.debugLoggerWindow) {
+      this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_SET ${this._serialBaud} baud (${source})`);
+    }
     try {
-      this._serialPort = await new UsbSerial(this.context, deviceNode);
+      this._serialPort = new UsbSerial(this.context, deviceNode);
+      // Wait for port to actually open before proceeding
+      await this._serialPort.waitForPortOpen();
     } catch (error) {
       this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open. Error: ${error}`);
       // Notify user visually about connection failure
@@ -1410,6 +1420,10 @@ export class MainWindow {
     }
     if (this._serialPort !== undefined) {
       this.logMessage(`* openSerialPort() - IS OPEN`);
+
+      // Verify the port opened at the requested baud rate
+      const actualBaud = this._serialPort.getCurrentBaudRate();
+      this.logConsoleMessage(`[BAUD RATE] Port opened, actual baud rate: ${actualBaud}`);
 
       // Initialize DTR/RTS to known de-asserted state (HIGH) for hardware sync
       // This ensures our state variables match the actual hardware state
@@ -5837,20 +5851,40 @@ export class MainWindow {
     }
   }
 
+  // P2 download always happens at 2Mbps for reliability
+  private readonly DOWNLOAD_BAUD_RATE = 2000000;
+
   private async executeDownload(filePath: string, toFlash: boolean, target: string): Promise<void> {
     if (this._serialPort && this.downloader) {
       try {
         this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
         this.updateRecordingStatus(`Downloading to ${target}...`);
 
-        // Get current debug baud rate from context (command line setting)
-        const debugBaudRate = this.context.runEnvironment.debugBaudrate;
-        const downloadBaudRate = 2000000; // Fixed download baud rate
+        // Get current debug baud rate (from CLI, preferences, or app default)
+        const debugBaudRate = this._serialBaud;
+        const downloadBaudRate = this.DOWNLOAD_BAUD_RATE; // Fixed download baud rate for P2
 
-        // Switch to download baud rate if different from debug rate
-        if (debugBaudRate !== downloadBaudRate) {
+        // CRITICAL: Log current state before any changes
+        const currentBaud = this._serialPort.getCurrentBaudRate();
+        this.logConsoleMessage(`[DOWNLOAD] Current port baud rate: ${currentBaud}, debug rate: ${debugBaudRate}, download rate: ${downloadBaudRate}`);
+
+        // FORCE switch to download baud rate - don't trust the debug rate comparison
+        // The P2 needs 2Mbps for reliable download
+        if (currentBaud !== downloadBaudRate) {
           this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
+          this.logConsoleMessage(`[DOWNLOAD] MUST switch from ${debugBaudRate} to ${downloadBaudRate} for download`);
           await this._serialPort.changeBaudRate(downloadBaudRate);
+
+          // Verify the baud rate actually changed
+          const actualBaud = this._serialPort.getCurrentBaudRate();
+          this.logConsoleMessage(`[DOWNLOAD] After switch, actual baud rate is: ${actualBaud}`);
+
+          if (actualBaud !== downloadBaudRate) {
+            this.logConsoleMessage(`[DOWNLOAD] ERROR: Baud rate did not change! Still at ${actualBaud}`);
+            throw new Error(`Failed to switch to download baud rate: still at ${actualBaud}`);
+          }
+        } else {
+          this.logConsoleMessage(`[DOWNLOAD] Already at download baud rate ${downloadBaudRate}, no switch needed`);
         }
 
         // Rotate log before download
@@ -5866,14 +5900,11 @@ export class MainWindow {
         }
 
         // Download to target (RAM or Flash)
+        this.logConsoleMessage(`[DOWNLOAD] Starting download at ${this._serialPort.getCurrentBaudRate()} baud`);
         const downloadResult = await this.downloader.download(filePath, toFlash);
+        this.logConsoleMessage(`[DOWNLOAD] Download complete, port at ${this._serialPort.getCurrentBaudRate()} baud`);
 
-        // Switch back to debug baud rate if it was different
-        if (debugBaudRate !== downloadBaudRate) {
-          this.logMessage(`Switching baud rate back to ${debugBaudRate} for debug operations`);
-          await this._serialPort.changeBaudRate(debugBaudRate);
-        }
-
+        // Log download result FIRST (before switching baud rate back)
         if (downloadResult.success) {
           // Log download success to debug logger window
           const successMsg = `[DOWNLOAD SUCCESS] ${path.basename(filePath)} successfully downloaded to ${target}`;
@@ -5884,6 +5915,56 @@ export class MainWindow {
           } else {
             console.warn('[DOWNLOAD] Debug logger window not available for success message');
           }
+        }
+
+        // Switch back to debug baud rate IMMEDIATELY if it was different
+        // P2 code is already running, we need to be ready to receive!
+        const postDownloadBaud = this._serialPort.getCurrentBaudRate();
+        if (postDownloadBaud !== debugBaudRate) {
+          this.logConsoleMessage(`[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to debug baud rate ${debugBaudRate}`);
+
+          // Ensure TX buffer is empty before switching for a cleaner transition
+          try {
+            await this._serialPort.drain();
+            this.logConsoleMessage(`[BAUD RATE] TX buffer drained before switch`);
+          } catch (drainErr: any) {
+            this.logConsoleMessage(`[BAUD RATE] Warning: Could not drain TX: ${drainErr.message}`);
+          }
+
+          await this._serialPort.changeBaudRate(debugBaudRate);
+
+          // Verify the baud rate was actually changed
+          const actualBaud = this._serialPort.getCurrentBaudRate();
+          this.logConsoleMessage(`[BAUD RATE] Verified actual port baud rate: ${actualBaud}`);
+
+          // CRITICAL: Handle garbage bytes from baud rate transition
+          // Strategy: Read and discard garbage bytes with pattern detection
+          // This is more reliable than flush() which doesn't work on macOS/FTDI
+
+          // Use our new clearGarbageBytes method which actually removes bytes
+          // It will discard garbage for 25ms to ensure we catch any late-arriving garbage
+          // This preserves any clean data that arrives early
+          try {
+            const garbageCount = await this._serialPort.clearGarbageBytes(25);
+            this.logConsoleMessage(`[BAUD RATE] Cleared ${garbageCount} garbage bytes from stream`);
+          } catch (clearErr: any) {
+            this.logConsoleMessage(`[BAUD RATE] Warning: Error clearing garbage: ${clearErr.message}`);
+            // Fall back to the ignore approach if new method fails
+            this._serialPort.setIgnoreFrontTraffic(true);
+            await new Promise(resolve => setTimeout(resolve, 25));
+            this._serialPort.setIgnoreFrontTraffic(false);
+          }
+
+          this.logConsoleMessage(`[BAUD RATE] Ready to receive at ${actualBaud} baud`);
+
+
+          // Single log message to debug logger window
+          if (this.debugLoggerWindow) {
+            this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_RESTORED ${actualBaud} baud (after download)`);
+          }
+        }
+
+        if (downloadResult.success) {
 
           // Notify all COG windows about the download
           for (let cogId = 0; cogId < 8; cogId++) {
@@ -5947,8 +6028,16 @@ export class MainWindow {
 
         // Ensure we restore debug baud rate even on error
         try {
-          const debugBaudRate = this.context.runEnvironment.debugBaudrate;
+          const debugBaudRate = this._serialBaud;
+          this.logConsoleMessage(`[BAUD RATE] Restoring debug baud rate to ${debugBaudRate} after download error`);
           await this._serialPort.changeBaudRate(debugBaudRate);
+
+          // Verify and log single message to debug logger
+          const actualBaud = this._serialPort.getCurrentBaudRate();
+          this.logConsoleMessage(`[BAUD RATE] Verified actual port baud rate: ${actualBaud}`);
+          if (this.debugLoggerWindow) {
+            this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_RESTORED ${actualBaud} baud (after error)`);
+          }
         } catch (restoreError) {
           this.logMessage(`ERROR: Failed to restore debug baud rate: ${restoreError}`);
         }
@@ -6226,9 +6315,14 @@ export class MainWindow {
       }
 
       // Apply default baud rate (will be used for next connection)
-      if (settings.serialPort.defaultBaud) {
+      // BUT: Skip if baud rate was set from command line (CLI always wins)
+      if (settings.serialPort.defaultBaud && !this.context.runEnvironment.debugBaudRateFromCLI) {
         this._serialBaud = settings.serialPort.defaultBaud;
         this.logConsoleMessage(`[PREFERENCES] Default baud rate set to ${this._serialBaud}`);
+      } else if (this.context.runEnvironment.debugBaudRateFromCLI) {
+        this.logConsoleMessage(
+          `[PREFERENCES] Skipping baud rate preference (command-line override: ${this._serialBaud})`
+        );
       }
 
       // Apply reset on connection setting
@@ -6392,6 +6486,36 @@ export class MainWindow {
     } catch (error) {
       this.logMessage(`⚠️ Error saving settings: ${error}`);
     }
+  }
+
+  /**
+   * Initialize serial baud rate from command line or preferences
+   * Command line takes precedence over all preferences
+   */
+  private initializeSerialBaud(): void {
+    const APP_DEFAULT_BAUD = 115200;  // Default debug/terminal baud rate (NOT download rate!)
+
+    // Check if baud rate was specified on command line
+    if (this.context.runEnvironment.debugBaudRateFromCLI && this.context.runEnvironment.debugBaudrate) {
+      this._serialBaud = this.context.runEnvironment.debugBaudrate;
+      this.logConsoleMessage(`[SETTINGS] Using command-line baud rate: ${this._serialBaud}`);
+      return;
+    }
+
+    // Try to get from user preferences (already merged: app defaults -> user global -> project local)
+    try {
+      if (this.context.preferences.serialPort?.defaultBaud) {
+        this._serialBaud = this.context.preferences.serialPort.defaultBaud;
+        this.logConsoleMessage(`[SETTINGS] Using preference baud rate: ${this._serialBaud}`);
+        return;
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[SETTINGS] Error loading baud rate from preferences: ${error}`);
+    }
+
+    // Fall back to app default
+    this._serialBaud = APP_DEFAULT_BAUD;
+    this.logConsoleMessage(`[SETTINGS] Using app default baud rate: ${this._serialBaud}`);
   }
 
   /**

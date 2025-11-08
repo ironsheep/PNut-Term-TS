@@ -13,6 +13,9 @@ import * as fs from 'fs';
 // No Electron imports - this is pure Node.js CLI
 // Electron UI will be launched via electron-main.ts if needed
 
+// Console logging control for debugging
+const ENABLE_CONSOLE_LOG: boolean = true;
+
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
 
@@ -157,7 +160,7 @@ export class DebugTerminalInTypeScript {
       .description(`PNut Terminal TS - v${this.version}`)
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
-      .option('-b, --debug(b)aud {rate}', 'set debug baud rate (default 2000000)')
+      .option('-b, --debugbaud <rate>', 'set debug baud rate (default 2000000)')
       .option(
         '-p, --plug <dvcNode>',
         'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)'
@@ -290,6 +293,19 @@ export class DebugTerminalInTypeScript {
     if (options.logUsbTrfc) {
       this.context.runEnvironment.usbTrafficLogging = true;
       this.context.logger.verboseMsg(`USB traffic logging will be enabled in Electron process`);
+    }
+
+    // Store debug baud rate if specified on command line
+    if (options.debugbaud) {
+      const baudRate = parseInt(options.debugbaud);
+      if (isNaN(baudRate) || baudRate <= 0) {
+        this.context.logger.errorMsg(`Invalid baud rate: ${options.debugbaud}`);
+        this.shouldAbort = true;
+      } else {
+        this.context.runEnvironment.debugBaudrate = baudRate;
+        this.context.runEnvironment.debugBaudRateFromCLI = true;
+        this.context.logger.verboseMsg(`Debug baud rate set to ${baudRate}`);
+      }
     }
 
     if (!options.quiet) {
@@ -569,6 +585,7 @@ export class DebugTerminalInTypeScript {
       runEnvironment: {
         selectedPropPlug: this.context.runEnvironment.selectedPropPlug,
         debugBaudrate: this.context.runEnvironment.debugBaudrate,
+        debugBaudRateFromCLI: this.context.runEnvironment.debugBaudRateFromCLI,
         developerModeEnabled: this.context.runEnvironment.developerModeEnabled,
         verbose: this.context.runEnvironment.verbose,
         ideMode: this.context.runEnvironment.ideMode,

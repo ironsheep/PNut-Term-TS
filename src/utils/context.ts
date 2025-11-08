@@ -24,7 +24,8 @@ export interface RuntimeEnvironment {
   selectedPropPlug: string;
   logFilename: string;
   developerModeEnabled: boolean;
-  debugBaudrate: number;
+  debugBaudrate?: number;  // Optional - only set if specified on command line
+  debugBaudRateFromCLI: boolean;  // True if -b was provided on command line
   ideMode: boolean;
   rtsOverride: boolean;
   resetOnConnection: boolean;  // Control DTR/RTS reset on port open
@@ -124,7 +125,8 @@ export class Context {
       serialPortDevices: [],
       developerModeEnabled: false,
       logFilename: '',
-      debugBaudrate: 2000000,
+      debugBaudrate: undefined,  // No default - will be set from CLI or preferences
+      debugBaudRateFromCLI: false,  // Default: not specified on command line
       ideMode: false,
       rtsOverride: false,     // Default to DTR unless IDE specifies RTS
       resetOnConnection: true,  // Default to traditional mode (reset on connect)

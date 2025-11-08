@@ -12,10 +12,10 @@ import { UsbSerial } from '../utils/usb.serial';
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
 
-// Checksum control - set to false to disable P2 checksum validation for all downloads
+// Checksum control - set to true to enable P2 checksum validation for all downloads
 // When false: Downloads use '~' terminator (immediate execution, no response)
 // When true: RAM downloads use '?' terminator (checksum validation with '.' or '!' response)
-const USE_CHECKSUM: boolean = false;
+const USE_CHECKSUM: boolean = true;
 
 export class Downloader {
   private context: Context;

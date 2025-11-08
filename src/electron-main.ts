@@ -84,6 +84,7 @@ const electronContext = new Context();
 // Populate the context with validated data from CLI
 electronContext.runEnvironment.selectedPropPlug = config.selectedPropPlug || '';
 electronContext.runEnvironment.debugBaudrate = config.debugBaudrate || 2000000;
+electronContext.runEnvironment.debugBaudRateFromCLI = config.debugBaudRateFromCLI || false;
 electronContext.runEnvironment.developerModeEnabled = config.developerModeEnabled || false;
 electronContext.runEnvironment.verbose = config.verbose || false;
 electronContext.runEnvironment.ideMode = config.ideMode || false;
