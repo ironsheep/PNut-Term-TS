@@ -20,7 +20,9 @@
 17. [Recording & Playback](#recording--playback)
 18. [Keyboard Shortcuts](#keyboard-shortcuts)
 19. [Troubleshooting](#troubleshooting)
-20. [Advanced Topics](#advanced-topics)
+20. [Command-Line Reference](#command-line-reference)
+21. [Automation and External Control](#automation-and-external-control)
+22. [Advanced Topics](#advanced-topics)
     - [Custom Window Layouts](#custom-window-layouts)
     - [Scripting](#scripting)
     - [Serial Communication Architecture](#serial-communication-architecture)
@@ -2440,15 +2442,189 @@ Install the P2 Debug Terminal extension:
 4. Debug directly from editor
 
 #### Command Line
+See the comprehensive Command-Line Reference section below for all available options and examples.
+
+## Command-Line Reference
+
+### Overview
+
+PNut-Term-TS provides a full command-line interface for launching the GUI, downloading binaries, and integrating with IDEs like VSCode.
+
+### Getting Help
+
 ```bash
-# Open with specific settings
-pnut-term --port=/dev/ttyUSB0 --baud=2000000 --ide
+pnut-term-ts --help        # Show all options and examples
+pnut-term-ts --version     # Show version and startup directory
+```
 
-# Replay recording
-pnut-term --replay=session.jsonl --speed=2
+### Command-Line Options
 
-# Export data
-pnut-term --export=csv --input=recording.jsonl
+#### File Download Options
+- **`-r, --ram <fileSpec>`** - Download binary to RAM and run
+- **`-f, --flash <fileSpec>`** - Download binary to FLASH and run
+
+#### Serial Port Options
+- **`-p, --plug <dvcNode>`** - Specify serial device (e.g., P9cektn7, /dev/ttyUSB0, COM3)
+  - Auto-detects if only one USB device connected
+- **`-b, --debugbaud <rate>`** - Set debug baud rate (default: 2000000)
+  - Common rates: 115200, 230400, 460800, 921600, 2000000
+- **`-n, --dvcnodes`** - List all available USB PropPlug devices
+
+#### Mode Options
+- **`--ide`** - IDE mode (minimal UI for VSCode/IDE integration)
+- **`--rts`** - Use RTS instead of DTR for device reset
+  - Works in both standalone and IDE modes
+  - Required for some non-Parallax USB adapters
+
+#### Logging Options
+- **`-d, --debug`** - Output Term-TS debug messages
+- **`-v, --verbose`** - Output Term-TS verbose messages
+- **`-q, --quiet`** - Quiet mode (suppress banner and non-error text)
+- **`-u, --log-usb-trfc`** - Enable USB traffic logging (timestamped log file)
+
+#### Special Options
+- **`--console-mode`** - Running with console output (adds delay before close)
+- **`-V, --version`** - Display version number and startup directory
+
+### Usage Examples
+
+#### Basic Usage
+
+```bash
+# Launch GUI (auto-detects single USB device)
+pnut-term-ts
+
+# Launch with specific device
+pnut-term-ts -p P9cektn7
+
+# List available devices
+pnut-term-ts -n
+```
+
+#### Download to P2
+
+```bash
+# Download to RAM (auto-detects device)
+pnut-term-ts -r myprogram.bin
+
+# Download to RAM with specific device
+pnut-term-ts -r myprogram.bin -p /dev/ttyUSB0
+
+# Download to FLASH
+pnut-term-ts -f myprogram.bin -p COM3
+
+# Download with custom baud rate
+pnut-term-ts -r myprogram.bin -b 115200
+```
+
+#### IDE Integration
+
+```bash
+# IDE mode (for VSCode SPIN2 extension)
+pnut-term-ts --ide
+
+# IDE mode with specific device
+pnut-term-ts --ide -p P9cektn7
+
+# IDE mode with RTS control line
+pnut-term-ts --ide --rts -p P9cektn7
+```
+
+#### Debugging and Logging
+
+```bash
+# Enable verbose output
+pnut-term-ts -v
+
+# Enable debug messages
+pnut-term-ts -d
+
+# Enable USB traffic logging
+pnut-term-ts -u -p P9cektn7
+
+# Combine options
+pnut-term-ts -v -u -r test.bin
+```
+
+#### Advanced Usage
+
+```bash
+# Quiet mode (no banner)
+pnut-term-ts -q -r production.bin
+
+# Console mode with delay before close
+pnut-term-ts --console-mode -r test.bin
+
+# Multiple options combined
+pnut-term-ts -v -d -u -b 921600 -r debug.bin -p COM5
+```
+
+### Device Selection Behavior
+
+**Auto-Detection:**
+- If **only one** USB serial device is connected, it's automatically selected
+- No need to specify `-p` option in this case
+
+**Multiple Devices:**
+- Use `-n` to list all available devices
+- Use `-p` to specify which device to use
+
+**Device Name Formats:**
+- **macOS**: `/dev/tty.usbserial-P9cektn7` or just `P9cektn7`
+- **Linux**: `/dev/ttyUSB0` or `/dev/ttyACM0`
+- **Windows**: `COM3`, `COM4`, etc.
+
+### IDE Mode vs. Standalone Mode
+
+| Feature | Standalone Mode | IDE Mode (`--ide`) |
+|---------|----------------|-------------------|
+| **UI** | Full GUI with menus | Minimal UI |
+| **DTR/RTS Control** | Toolbar buttons | Controlled by IDE |
+| **File Downloads** | GUI file picker | Command-line only |
+| **Intended Use** | Interactive debugging | VSCode integration |
+
+### Understanding DTR and RTS
+
+**DTR (Data Terminal Ready):**
+- Used by **Parallax PropPlug** devices (default)
+- Standard control line for P2 reset
+
+**RTS (Request To Send):**
+- Used by some **non-Parallax** USB adapters
+- Use `--rts` flag when your adapter requires RTS
+
+**How to know which to use:**
+- If DTR reset doesn't work, try `--rts`
+- Check your USB adapter documentation
+- FTDI adapters usually use DTR
+- Generic CH340/CP2102 adapters may use RTS
+
+### Exit Codes
+
+- **0** - Success
+- **1** - Error (check error messages for details)
+
+### Platform-Specific Notes
+
+#### macOS
+
+Add to PATH for easy access:
+```bash
+export PATH="/Applications/PNut-Term-TS.app/Contents/Resources/bin:$PATH"
+```
+
+#### Windows
+
+Add installation directory to PATH environment variable, then use from any command prompt:
+```cmd
+pnut-term-ts -r myprogram.bin
+```
+
+#### Linux
+
+The executable is in the bin directory of the extracted package:
+```bash
+./pnut-term-ts -r myprogram.bin
 ```
 
 ## Automation and External Control
@@ -2459,11 +2635,11 @@ PNut-Term-TS can run in the background and be controlled externally, useful for 
 #### Starting in Background
 ```bash
 # Start terminal monitoring in background
-./pnut-term-ts --port /dev/ttyUSB0 &
+pnut-term-ts -p /dev/ttyUSB0 &
 PID=$!
 
 # Capture output to file
-./pnut-term-ts --port /dev/ttyUSB0 2>&1 | tee session.log &
+pnut-term-ts -p /dev/ttyUSB0 2>&1 | tee session.log &
 ```
 
 #### External Control Signals
@@ -2486,11 +2662,11 @@ kill -TERM $PID
 # Automated test script
 
 # Start terminal
-./pnut-term-ts --port /dev/ttyUSB0 &
+pnut-term-ts -p /dev/ttyUSB0 &
 PID=$!
 
 # Download and run test
-./pnut-term-ts --port /dev/ttyUSB0 -r test.binary
+pnut-term-ts -r test.bin -p /dev/ttyUSB0
 
 # Reset hardware
 kill -USR1 $PID

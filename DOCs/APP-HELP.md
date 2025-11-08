@@ -752,41 +752,28 @@ Attach relevant log files when reporting issues.
 
 ## Command-Line Usage
 
-PNut-Term-TS can also be run from the command line:
+PNut-Term-TS can be launched from the command line. For complete command-line documentation, run:
 
-### Installation
-**macOS**: Add to PATH after installing the app:
 ```bash
-export PATH="/Applications/PNut-Term-TS.app/Contents/Resources/bin:$PATH"
-```
-
-**Windows**: Add the installation directory to your PATH environment variable
-
-**Linux**: The executable is in the bin directory of the extracted package
-
-### Basic Commands
-```bash
-# Launch the GUI application
-pnut-term-ts
-
-# Connect to specific port at startup
-pnut-term-ts --port /dev/tty.usbserial-1420 --baud 921600
-
-# Enable verbose logging
-pnut-term-ts --verbose
-
-# Show help and available options
 pnut-term-ts --help
 ```
 
-### Advanced Options
-- `--port <path>`: Serial port to connect on startup
-- `--baud <rate>`: Baud rate (115200, 230400, 460800, 921600)
-- `--dtr`: Use DTR for reset (default)
-- `--rts`: Use RTS for reset instead of DTR
-- `--verbose`: Enable verbose logging output
-- `--quiet`: Suppress informational messages
-- `--file <path>`: Load binary file for P2 download
+### Quick Examples
+```bash
+# Launch GUI (auto-detects USB device if only one connected)
+pnut-term-ts
+
+# Download to RAM and run
+pnut-term-ts -r myprogram.bin
+
+# IDE mode for VSCode integration
+pnut-term-ts --ide -p P9cektn7
+
+# List available USB devices
+pnut-term-ts -n
+```
+
+See the **User Guide** (Help → Documentation) for detailed command-line reference and examples.
 
 ---
 
