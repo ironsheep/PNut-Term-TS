@@ -17,7 +17,7 @@ Our new PNut-Term-TS will show you the following when you specify `-h` or `--hel
 ```text
 PNut-Term-TS: Usage: pnut-term-ts [options]
 
-PNut Terminal TS - v0.5.0
+PNut Terminal TS - v0.9.0
 
 Options:
   -V, --version             Output the version number
@@ -58,29 +58,28 @@ Options:
          In IDE mode: VSCode SPIN2 extension controls DTR/RTS via --rts flag
 
 pnut-term-ts: * Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.
-pnut-term-ts: * Version 0.5.0, {buildDateHere}
+pnut-term-ts: * Version 0.9.0, {buildDateHere}
 ```
 
 These options should already make sense but here's a light-weight recap:
 
-| Option forms | Description |
-| --- | --- |
-| <pre>-V, -\-version</pre> | Shows the PNut Term TS version information |
-| <pre>-r, -\-ram {fileSpec}</pre> | Download binary file to RAM and run |
-| <pre>-f, -\-flash {fileSpec}</pre> | Download binary file to FLASH and run |
-| <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000) |
-| <pre>-p, -\-plug {dvcNode}</pre> | Specify USB serial device (auto-detects if only one connected) |
-| <pre>-n, -\-dvcnodes</pre> | List all available USB PropPlug devices |
-| <pre>-d, -\-debug</pre> | Enable debug-level messaging |
-| <pre>-v, -\-verbose</pre> | Enable verbose-level messaging |
-| <pre>-q, -\-quiet</pre> | Suppress banner and non-error messages |
-| <pre>-\-ide</pre> | Enable IDE mode for VSCode/IDE integration |
-| <pre>-\-rts</pre> | Use RTS instead of DTR for device reset (requires --ide) |
-| <pre>-u, -\-log-usb-trfc</pre> | Enable USB traffic logging to timestamped log file |
-| <pre>-\-console-mode</pre> | Add delay before close when running with console output |
+| Option forms                       | Description                                                    |
+| ---------------------------------- | -------------------------------------------------------------- |
+| <pre>-V, -\-version</pre>          | Shows the PNut Term TS version information                     |
+| <pre>-r, -\-ram {fileSpec}</pre>   | Download binary file to RAM and run                            |
+| <pre>-f, -\-flash {fileSpec}</pre> | Download binary file to FLASH and run                          |
+| <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000)                          |
+| <pre>-p, -\-plug {dvcNode}</pre>   | Specify USB serial device (auto-detects if only one connected) |
+| <pre>-n, -\-dvcnodes</pre>         | List all available USB PropPlug devices                        |
+| <pre>-d, -\-debug</pre>            | Enable debug-level messaging                                   |
+| <pre>-v, -\-verbose</pre>          | Enable verbose-level messaging                                 |
+| <pre>-q, -\-quiet</pre>            | Suppress banner and non-error messages                         |
+| <pre>-\-ide</pre>                  | Enable IDE mode for VSCode/IDE integration                     |
+| <pre>-\-rts</pre>                  | Use RTS instead of DTR for device reset (requires --ide)       |
+| <pre>-u, -\-log-usb-trfc</pre>     | Enable USB traffic logging to timestamped log file             |
+| <pre>-\-console-mode</pre>         | Add delay before close when running with console output        |
 
 And of course `-h` or `--help` produces the full help output as shown above.
-
 
 ---
 
@@ -99,11 +98,7 @@ Follow these links for more information:
 ### [Copyright](copyright) | [License](LICENSE)
 
 [maintenance-shield]: https://img.shields.io/badge/maintainer-stephen%40ironsheep%2ebiz-blue.svg?style=for-the-badge
-
 [license-shield]: https://img.shields.io/badge/License-MIT-yellow.svg
-
 [Release-shield]: https://img.shields.io/github/release/ironsheep/PNut-Term-TS/all.svg
-
 [Issues-shield]: https://img.shields.io/github/issues/ironsheep/PNut-Term-TS.svg
-
 [node-badge]: https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white
