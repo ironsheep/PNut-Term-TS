@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
-'use strict';
+('use strict');
 
 import { SerialPort } from 'serialport';
 // ReadlineParser REMOVED - was corrupting binary data and killing performance!
@@ -28,7 +28,7 @@ export class UsbSerial extends EventEmitter {
 
   // This should be set by MainWindow before creating the port
   // No hardcoded default - MainWindow owns the baud rate decision cascade
-  static desiredCommsBaudRate: number = 115200;  // Will be overridden by setCommBaudRate()
+  static desiredCommsBaudRate: number = 115200; // Will be overridden by setCommBaudRate()
 
   private context: Context;
   private endOfLineStr: string = '\r\n';
@@ -46,11 +46,11 @@ export class UsbSerial extends EventEmitter {
   private _downloadResponse: string = '';
   private _checksumVerified: boolean = false;
   private checkedForP2: boolean = false;
-  private _isDownloading: boolean = false;  // Track download state
+  private _isDownloading: boolean = false; // Track download state
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
   private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
-  private _isShuttingDown: boolean = false;  // Flag to stop processing data during shutdown
-  private _ignoreFrontTraffic: boolean = false;  // Flag to drop incoming data (quiesce/startup control)
+  private _isShuttingDown: boolean = false; // Flag to stop processing data during shutdown
+  private _ignoreFrontTraffic: boolean = false; // Flag to drop incoming data (quiesce/startup control)
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -63,12 +63,15 @@ export class UsbSerial extends EventEmitter {
 
     // WORKAROUND for macOS FTDI bug with high baud rates:
     // Initialize at a standard rate, then immediately update to the desired rate
-    const initialBaudRate = (UsbSerial.desiredCommsBaudRate > 230400 && process.platform === 'darwin')
-      ? 115200  // Use standard rate first on macOS for high speeds
-      : UsbSerial.desiredCommsBaudRate;
+    const initialBaudRate =
+      UsbSerial.desiredCommsBaudRate > 230400 && process.platform === 'darwin'
+        ? 115200 // Use standard rate first on macOS for high speeds
+        : UsbSerial.desiredCommsBaudRate;
 
     if (initialBaudRate !== UsbSerial.desiredCommsBaudRate) {
-      this.logConsoleMessage(`[USB] macOS workaround: Opening at ${initialBaudRate}, will update to ${UsbSerial.desiredCommsBaudRate}`);
+      this.logConsoleMessage(
+        `[USB] macOS workaround: Opening at ${initialBaudRate}, will update to ${UsbSerial.desiredCommsBaudRate}`
+      );
     }
 
     this._serialPort = new SerialPort({
@@ -78,8 +81,8 @@ export class UsbSerial extends EventEmitter {
       stopBits: 1,
       parity: 'none',
       autoOpen: false,
-      hupcl: false,  // Prevent automatic DTR/RTS assertion on port open
-      highWaterMark: 1024 * 1024  // 1MB buffer (up from 16KB default) to prevent USB data loss
+      hupcl: false, // Prevent automatic DTR/RTS assertion on port open
+      highWaterMark: 1024 * 1024 // 1MB buffer (up from 16KB default) to prevent USB data loss
     });
     // Open errors will be emitted as an error event
     this._serialPort.on('error', (err) => this.handleSerialError(err.message));
@@ -143,7 +146,9 @@ export class UsbSerial extends EventEmitter {
     if (this._serialPort && this._serialPort.isOpen) {
       const oldBaudRate = this._serialPort.baudRate;
       this.logMessage(`* Changing baud rate from ${oldBaudRate} to ${newBaudRate}`);
-      this.logConsoleMessage(`[USB BAUD] Attempting to change baud rate from ${oldBaudRate} to ${newBaudRate} using update()`);
+      this.logConsoleMessage(
+        `[USB BAUD] Attempting to change baud rate from ${oldBaudRate} to ${newBaudRate} using update()`
+      );
 
       try {
         // Use the update() method - this is the proper way to change baud rate
@@ -181,7 +186,9 @@ export class UsbSerial extends EventEmitter {
         this.logConsoleMessage(`[USB BAUD] Baud rate change complete`);
         return;
       } catch (updateError: any) {
-        this.logConsoleMessage(`[USB BAUD] update() method failed, falling back to close/reopen: ${updateError.message}`);
+        this.logConsoleMessage(
+          `[USB BAUD] update() method failed, falling back to close/reopen: ${updateError.message}`
+        );
       }
 
       // FALLBACK: If update() fails, try the close/reopen method
@@ -208,8 +215,8 @@ export class UsbSerial extends EventEmitter {
         stopBits: 1,
         parity: 'none',
         autoOpen: false,
-        hupcl: false,  // CRITICAL: Prevent automatic DTR/RTS assertion on port open
-        highWaterMark: 1024 * 1024  // CRITICAL: 1MB buffer to prevent USB data loss
+        hupcl: false, // CRITICAL: Prevent automatic DTR/RTS assertion on port open
+        highWaterMark: 1024 * 1024 // CRITICAL: 1MB buffer to prevent USB data loss
       });
 
       // Re-attach all event listeners
@@ -337,7 +344,11 @@ export class UsbSerial extends EventEmitter {
     // Simple handler: discard everything within the time window
     const garbageHandler = (data: Buffer) => {
       garbageBytes += data.length;
-      this.logMessage(`[GARBAGE_CLEAR] Discarded ${data.length} bytes: ${Array.from(data.slice(0, Math.min(data.length, 20))).map(b => `$${b.toString(16).padStart(2, '0').toUpperCase()}`).join(' ')}`);
+      this.logMessage(
+        `[GARBAGE_CLEAR] Discarded ${data.length} bytes: ${Array.from(data.slice(0, Math.min(data.length, 20)))
+          .map((b) => `$${b.toString(16).padStart(2, '0').toUpperCase()}`)
+          .join(' ')}`
+      );
     };
 
     // Replace data handlers temporarily
@@ -346,7 +357,7 @@ export class UsbSerial extends EventEmitter {
 
     try {
       // Wait for the discard period - everything within this window is garbage
-      await new Promise(resolve => setTimeout(resolve, discardMs));
+      await new Promise((resolve) => setTimeout(resolve, discardMs));
 
       this.logMessage(`[GARBAGE_CLEAR] Time window complete. Discarded ${garbageBytes} total bytes`);
     } finally {
@@ -377,10 +388,16 @@ export class UsbSerial extends EventEmitter {
         const deviceNode: string = port.path;
 
         // Log all ports for debugging
-        UsbSerial.logConsoleMessageStatic(`[USB] Port: ${deviceNode}, VID:${port.vendorId}, PID:${port.productId}, SN:${serialNumber}`);
+        UsbSerial.logConsoleMessageStatic(
+          `[USB] Port: ${deviceNode}, VID:${port.vendorId}, PID:${port.productId}, SN:${serialNumber}`
+        );
 
         if (ctx) {
-          ctx.logger.debugMsg(`*   Port: ${deviceNode}, VID:${port.vendorId || 'none'}, PID:${port.productId || 'none'}, SN:${serialNumber}`);
+          ctx.logger.debugMsg(
+            `*   Port: ${deviceNode}, VID:${port.vendorId || 'none'}, PID:${
+              port.productId || 'none'
+            }, SN:${serialNumber}`
+          );
         }
 
         if (port.vendorId == '0403' && port.productId == '6015') {
@@ -481,8 +498,8 @@ export class UsbSerial extends EventEmitter {
       // Even with hupcl:false, some platforms may toggle control lines on close
       // Explicitly ensure DTR/RTS stay de-asserted (HIGH) to keep P2 running
       try {
-        await this.setDtr(false);  // false = HIGH = de-asserted (no reset)
-        await this.setRts(false);  // false = HIGH = de-asserted (no reset)
+        await this.setDtr(false); // false = HIGH = de-asserted (no reset)
+        await this.setRts(false); // false = HIGH = de-asserted (no reset)
         this.logMessage(`  -- close() DTR/RTS preserved in de-asserted state`);
       } catch (controlLineErr: any) {
         this.logMessage(`  -- close() Control line warning (non-fatal): ${controlLineErr.message}`);
@@ -551,21 +568,29 @@ export class UsbSerial extends EventEmitter {
     // Check _p2DeviceId BEFORE trying to re-process buffer
     // The data handler should have already set this during the async wait above
     this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - After 200ms wait, _p2DeviceId: '${this._p2DeviceId}'`);
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - detection buffer after wait: '${this._p2DetectionBuffer}'`);
+    this.logConsoleMessage(
+      `[USB-P2] * deviceIsPropellerV2() - detection buffer after wait: '${this._p2DetectionBuffer}'`
+    );
 
     // Process any P2 response in the existing buffer
     // The buffer already has data from the serial port handler
     if (this._p2DetectionBuffer.length > 0) {
-      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Buffer has ${this._p2DetectionBuffer.length} chars, re-processing...`);
+      this.logConsoleMessage(
+        `[USB-P2] * deviceIsPropellerV2() - Buffer has ${this._p2DetectionBuffer.length} chars, re-processing...`
+      );
       // Convert buffer string back to Buffer for processing
       const bufferData = Buffer.from(this._p2DetectionBuffer, 'utf8');
       this.checkForP2Response(bufferData);
     } else {
-      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Buffer is empty (likely already processed by data handler)`);
+      this.logConsoleMessage(
+        `[USB-P2] * deviceIsPropellerV2() - Buffer is empty (likely already processed by data handler)`
+      );
     }
 
     const [deviceString, deviceErrorString] = this.getIdStringOrError();
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`);
+    this.logConsoleMessage(
+      `[USB-P2] * deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`
+    );
 
     if (deviceErrorString.length > 0) {
       this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() ERROR: ${deviceErrorString}`);
@@ -573,7 +598,9 @@ export class UsbSerial extends EventEmitter {
       foundPropellerStatus = true;
     }
 
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`);
+    this.logConsoleMessage(
+      `[USB-P2] * deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`
+    );
 
     // Clear flag after processing P2 response - resume normal data forwarding
     this._expectingP2Response = false;
@@ -604,21 +631,23 @@ export class UsbSerial extends EventEmitter {
       if (this.context.runEnvironment.rtsOverride) {
         this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using RTS reset`);
         // FTDI workaround: Toggle twice for proper pulse
-        await this.setRts(false);  // Ensure we start HIGH
-        await waitMSec(5);          // Let it settle
-        await this.setRts(true);    // Pull LOW (assert)
-        await waitMSec(10);         // Hold for 10ms
-        await this.setRts(false);   // Return HIGH (de-assert)
+        await this.setRts(false); // Ensure we start HIGH
+        await waitMSec(5); // Let it settle
+        await this.setRts(true); // Pull LOW (assert)
+        await waitMSec(10); // Hold for 10ms
+        await this.setRts(false); // Return HIGH (de-assert)
       } else {
         this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using DTR reset`);
         // The Prop Plug hardware generates a 17µs reset pulse automatically when DTR toggles
         // We just need to trigger it and time our Prop_Chk correctly
 
         // Toggle DTR to trigger the Prop Plug's built-in 17µs reset pulse
-        await this.setDtr(true);    // This triggers the hardware's 17µs reset pulse
-        await this.setDtr(false);   // Return DTR to idle state
+        await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
+        await this.setDtr(false); // Return DTR to idle state
 
-        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`);
+        this.logConsoleMessage(
+          `[USB-P2] * requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`
+        );
       }
 
       // Fm Silicon Doc:
@@ -636,14 +665,18 @@ export class UsbSerial extends EventEmitter {
       this._p2DetectionBuffer = '';
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Detection buffer cleared`);
 
-      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`);
+      this.logConsoleMessage(
+        `[USB-P2] * requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`
+      );
       // Use space terminator as observed in PNut v51, not CR
       await this.write(`> ${requestPropType} 0 0 0 0 `);
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Command sent, waiting for response`);
       // drain() now called inside write() for guaranteed delivery
       return true;
     } catch (error) {
-      this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() ERROR: ${JSON.stringify(error, null, 2)}`);
+      this.logConsoleMessage(
+        `[USB-P2] * requestPropellerVersionForDownload() ERROR: ${JSON.stringify(error, null, 2)}`
+      );
       return false;
     }
   }
@@ -658,7 +691,7 @@ export class UsbSerial extends EventEmitter {
     if (this.usbConnected && uint8Bytes.length > 0) {
       const dataBase64: string = Buffer.from(uint8Bytes).toString('base64');
       // Use space terminator as observed in PNut v51, not CR
-      await this.write(`> ${requestStartDownload} `);  // > triggers P2 autobaud
+      await this.write(`> ${requestStartDownload} `); // > triggers P2 autobaud
       //await this.write(dataBase64);
       // Break this up into lines with > sync chars starting each
       const LINE_LENGTH: number = 1024;
@@ -671,7 +704,7 @@ export class UsbSerial extends EventEmitter {
         await this.write('>' + singleLine);
       }
       // Send terminator - just ~ character as seen in PNut v51
-      await this.write('~');  // Terminator only, no > or CR needed
+      await this.write('~'); // Terminator only, no > or CR needed
     }
 
     // Clear download flag when done
@@ -720,9 +753,13 @@ export class UsbSerial extends EventEmitter {
 
         // * Now do the download
         // Log which command format we're using
-        this.logMessage(`* download() - Using command: > ${requestStartDownload} (${needsP2ChecksumVerify ? 'with response expected' : 'silent mode'})`);
+        this.logMessage(
+          `* download() - Using command: > ${requestStartDownload} (${
+            needsP2ChecksumVerify ? 'with response expected' : 'silent mode'
+          })`
+        );
         // Use space terminator as observed in PNut v51, not CR
-        await this.write(`> ${requestStartDownload} `);  // > triggers P2 autobaud
+        await this.write(`> ${requestStartDownload} `); // > triggers P2 autobaud
         for (let index = 0; index < lineCount; index++) {
           const lineLength = index == lineCount - 1 ? lastLineLength : LINE_LENGTH;
           const singleLine = dataBase64.substring(index * LINE_LENGTH, index * LINE_LENGTH + lineLength);
@@ -732,8 +769,12 @@ export class UsbSerial extends EventEmitter {
         // '~' = Execute immediately (silent, no response)
         // '?' = Validate checksum and respond ('.' = valid, '!' = invalid)
         const terminator = needsP2ChecksumVerify ? '?' : '~';
-        this.logMessage(`* download() - Sending terminator: '${terminator}' (${needsP2ChecksumVerify ? 'checksum validation mode' : 'immediate execution'})`);
-        await this.write(terminator);  // Terminator only, no > or CR needed
+        this.logMessage(
+          `* download() - Sending terminator: '${terminator}' (${
+            needsP2ChecksumVerify ? 'checksum validation mode' : 'immediate execution'
+          })`
+        );
+        await this.write(terminator); // Terminator only, no > or CR needed
 
         if (needsP2ChecksumVerify) {
           // After sending '?' terminator, P2 WILL respond with:
@@ -812,7 +853,9 @@ export class UsbSerial extends EventEmitter {
           if (err) {
             reject(err);
           } else {
-            const logValue = Buffer.isBuffer(value) ? `<Buffer ${value.length} bytes>` : value.split(/\r?\n/).filter(Boolean)[0];
+            const logValue = Buffer.isBuffer(value)
+              ? `<Buffer ${value.length} bytes>`
+              : value.split(/\r?\n/).filter(Boolean)[0];
             this.logMessage(`--> Tx [${logValue}]`);
             // Ensure data is fully transmitted before returning
             try {
@@ -845,7 +888,9 @@ export class UsbSerial extends EventEmitter {
     // now update to the desired rate
     const currentBaud = this._serialPort.baudRate;
     if (currentBaud !== UsbSerial.desiredCommsBaudRate) {
-      this.logConsoleMessage(`[USB] macOS workaround: Updating from ${currentBaud} to ${UsbSerial.desiredCommsBaudRate}`);
+      this.logConsoleMessage(
+        `[USB] macOS workaround: Updating from ${currentBaud} to ${UsbSerial.desiredCommsBaudRate}`
+      );
       try {
         await this.changeBaudRate(UsbSerial.desiredCommsBaudRate);
       } catch (updateErr: any) {
@@ -890,11 +935,15 @@ export class UsbSerial extends EventEmitter {
   private checkForP2Response(data: Buffer): void {
     // Convert to string for P2 detection only
     const text = data.toString('utf8', 0, data.length);
-    this.logConsoleMessage(`[P2-CHECK] Received ${data.length} bytes, _expectingP2Response=${this._expectingP2Response}`);
+    this.logConsoleMessage(
+      `[P2-CHECK] Received ${data.length} bytes, _expectingP2Response=${this._expectingP2Response}`
+    );
     this.logConsoleMessage(`[P2-CHECK] Text: '${text.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`);
 
     this._p2DetectionBuffer += text;
-    this.logConsoleMessage(`[P2-CHECK] Buffer now: '${this._p2DetectionBuffer.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`);
+    this.logConsoleMessage(
+      `[P2-CHECK] Buffer now: '${this._p2DetectionBuffer.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`
+    );
 
     // Look for complete lines
     const lines = this._p2DetectionBuffer.split(/\r?\n/);
@@ -924,7 +973,9 @@ export class UsbSerial extends EventEmitter {
         const idLetter = versionCode.charAt(0);
         this._p2DeviceId = this.descriptionForVerLetter(idLetter);
         this._p2loadLimit = this.limitForVerLetter(idLetter);
-        this.logConsoleMessage(`* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`);
+        this.logConsoleMessage(
+          `* FOUND Prop: [${this._p2DeviceId}] limit=${this._p2loadLimit} (version: ${versionCode})`
+        );
         this.logConsoleMessage(`[P2-CHECK] Set _p2DeviceId to: '${this._p2DeviceId}'`);
 
         // Clear buffer after successful detection
@@ -963,7 +1014,7 @@ export class UsbSerial extends EventEmitter {
     this.logConsoleMessage(`[USB] PUBLIC toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
     await this.setDtr(true);
-    await waitMSec(10);  // 10ms pulse is sufficient per spec
+    await waitMSec(10); // 10ms pulse is sufficient per spec
     await this.setDtr(false);
     this.logConsoleMessage(`[USB] PUBLIC toggleDTR() EXIT`);
   }
@@ -973,7 +1024,7 @@ export class UsbSerial extends EventEmitter {
     this.logConsoleMessage(`[USB] PUBLIC toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
     await this.setRts(true);
-    await waitMSec(10);  // 10ms pulse is sufficient per spec
+    await waitMSec(10); // 10ms pulse is sufficient per spec
     await this.setRts(false);
     this.logConsoleMessage(`[USB] PUBLIC toggleRTS() EXIT`);
   }
@@ -984,7 +1035,7 @@ export class UsbSerial extends EventEmitter {
   }
 
   private stopReadListener() {
-    // P2 detection now handled in checkForP2Response  
+    // P2 detection now handled in checkForP2Response
     // No separate listener needed - performance improvement!
   }
 
@@ -992,23 +1043,23 @@ export class UsbSerial extends EventEmitter {
     // request P2 ID-String
     const requestPropType: string = 'Prop_Chk';
     this.logMessage(`* requestP2IDString() - port open (${this._serialPort.isOpen})`);
-    await waitMSec(100);  // Brief delay for stabilization
-    
+    await waitMSec(100); // Brief delay for stabilization
+
     // Use RTS instead of DTR if RTS override is enabled
     if (this.context.runEnvironment.rtsOverride) {
       await this.setRts(true);
-      await waitMSec(10);  // 10ms pulse per spec
+      await waitMSec(10); // 10ms pulse per spec
       await this.setRts(false);
     } else {
       await this.setDtr(true);
-      await waitMSec(10);  // 10ms pulse per spec
+      await waitMSec(10); // 10ms pulse per spec
       await this.setDtr(false);
     }
     //this.logMessage(`  -- plug reset!`);
     // NO wait yields a 1.5 mSec delay on my mac Studio
     // NOTE: if nothing sent, and Edge Module default switch settings, the prop will boot in 142 mSec
     await waitMSec(15);
-    await this.write(`> ${requestPropType} 0 0 0 0\r`);  // > triggers P2 autobaud with zeros
+    await this.write(`> ${requestPropType} 0 0 0 0\r`); // > triggers P2 autobaud with zeros
     // drain() now called inside write() for guaranteed delivery
     /*return new Promise((resolve, reject) => {
       //this.logMessage(`* requestP2IDString() - EXIT`);
@@ -1026,7 +1077,7 @@ export class UsbSerial extends EventEmitter {
         await this.waitForPortOpen();
         // continue with ID effort...
         await waitMSec(250);
-        
+
         // Use RTS instead of DTR if RTS override is enabled
         if (this.context.runEnvironment.rtsOverride) {
           await this.setRts(true);
@@ -1045,7 +1096,7 @@ export class UsbSerial extends EventEmitter {
         //
         // NO wait yields a 102 mSec delay on my mac Studio
         await waitMSec(15); // at least a  15 mSec delay, yields a 230mSec delay when 2nd wait above is 100 mSec
-        await this.write(`> ${requestPropType}\r`);  // > triggers P2 autobaud
+        await this.write(`> ${requestPropType}\r`); // > triggers P2 autobaud
         // drain() now called inside write() for guaranteed delivery
       } catch (error) {
         this.logMessage(`* requestPropellerVersion() ERROR: ${JSON.stringify(error, null, 2)}`);

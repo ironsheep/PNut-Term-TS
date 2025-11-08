@@ -46,8 +46,8 @@ export class SharedCircularBuffer extends EventEmitter {
   }
 
   private readonly bufferSize: number;
-  private readonly buffer: Uint8Array;           // Data storage (shared)
-  private readonly sharedState: Int32Array;      // [head, tail, isEmpty] (shared)
+  private readonly buffer: Uint8Array; // Data storage (shared)
+  private readonly sharedState: Int32Array; // [head, tail, isEmpty] (shared)
 
   // Statistics (not shared - each thread tracks its own)
   private overflowCount: number = 0;
@@ -106,7 +106,9 @@ export class SharedCircularBuffer extends EventEmitter {
     instance.peakRateStartTime = 0;
     instance.peakRateDuration = 0;
 
-    SharedCircularBuffer.logConsoleMessage(`[SharedCircularBuffer] Attached to shared buffers (${transferables.size} bytes)`);
+    SharedCircularBuffer.logConsoleMessage(
+      `[SharedCircularBuffer] Attached to shared buffers (${transferables.size} bytes)`
+    );
 
     return instance;
   }
@@ -142,7 +144,9 @@ export class SharedCircularBuffer extends EventEmitter {
         attempted: dataLength,
         available: available
       });
-      SharedCircularBuffer.logConsoleMessage(`[SharedCircularBuffer] OVERFLOW: Attempted ${dataLength} bytes, only ${available} available`);
+      SharedCircularBuffer.logConsoleMessage(
+        `[SharedCircularBuffer] OVERFLOW: Attempted ${dataLength} bytes, only ${available} available`
+      );
       return false;
     }
     // Reset full capacity flag once space becomes available again
@@ -200,7 +204,10 @@ export class SharedCircularBuffer extends EventEmitter {
       const oldHighWater = this.highWaterMark;
       this.highWaterMark = used;
       const usagePercent = Math.round((used / this.bufferSize) * 1000) / 10;
-      console.log(`[CircularBuffer] 📈 NEW HIGH WATER MARK: ${used}/${this.bufferSize} bytes (${usagePercent}%) [was: ${oldHighWater}]`);
+      if (ENABLE_CONSOLE_LOG)
+        console.log(
+          `[CircularBuffer] 📈 NEW HIGH WATER MARK: ${used}/${this.bufferSize} bytes (${usagePercent}%) [was: ${oldHighWater}]`
+        );
     }
 
     return true;
@@ -286,7 +293,7 @@ export class SharedCircularBuffer extends EventEmitter {
     if (tail >= head) {
       return tail - head;
     } else {
-      return (this.bufferSize - head) + tail;
+      return this.bufferSize - head + tail;
     }
   }
 
@@ -403,14 +410,20 @@ export class SharedCircularBuffer extends EventEmitter {
    * Log final statistics (called on shutdown)
    */
   public logFinalStats(): void {
-    const stats = this.getStats();
-    console.log(`[CircularBuffer] 📊 FINAL STATISTICS:`);
-    console.log(`  Size: ${stats.size.toLocaleString()} bytes`);
-    console.log(`  High Water Mark: ${stats.highWaterMark.toLocaleString()} bytes (${Math.round((stats.highWaterMark / stats.size) * 1000) / 10}%)`);
-    console.log(`  Overflow Count: ${stats.overflowCount}`);
-    console.log(`  Peak USB Rate: ${stats.peakBytesPerSecond.toLocaleString()} bytes/sec`);
-    if (stats.peakRateDuration > 0) {
-      console.log(`  Peak Rate Duration: ${Math.round(stats.peakRateDuration / 1000)} seconds`);
+    if (ENABLE_CONSOLE_LOG) {
+      const stats = this.getStats();
+      console.log(`[CircularBuffer] 📊 FINAL STATISTICS:`);
+      console.log(`  Size: ${stats.size.toLocaleString()} bytes`);
+      console.log(
+        `  High Water Mark: ${stats.highWaterMark.toLocaleString()} bytes (${
+          Math.round((stats.highWaterMark / stats.size) * 1000) / 10
+        }%)`
+      );
+      console.log(`  Overflow Count: ${stats.overflowCount}`);
+      console.log(`  Peak USB Rate: ${stats.peakBytesPerSecond.toLocaleString()} bytes/sec`);
+      if (stats.peakRateDuration > 0) {
+        console.log(`  Peak Rate Duration: ${Math.round(stats.peakRateDuration / 1000)} seconds`);
+      }
     }
   }
 

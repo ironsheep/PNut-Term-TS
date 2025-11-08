@@ -185,12 +185,12 @@ export class DebugPlotWindow extends DebugWindowBase {
   private pendingOperations: PlotCanvasOperation[] = [];
 
   // Simple parser state variables
-  private vPixelX: number = 0;  // Raw cursor X value
-  private vPixelY: number = 0;  // Raw cursor Y value
-  private plotCoordX: number = 0;  // Converted plot X coordinate
-  private plotCoordY: number = 0;  // Converted plot Y coordinate
-  private isCartesian: boolean = true;  // True = Cartesian mode, False = Polar mode
-  private isPrecise: boolean = false;  // Precise coordinate mode
+  private vPixelX: number = 0; // Raw cursor X value
+  private vPixelY: number = 0; // Raw cursor Y value
+  private plotCoordX: number = 0; // Converted plot X coordinate
+  private plotCoordY: number = 0; // Converted plot Y coordinate
+  private isCartesian: boolean = true; // True = Cartesian mode, False = Polar mode
+  private isPrecise: boolean = false; // Precise coordinate mode
 
   private shouldWriteToCanvas: boolean = true;
   private canvasInitialized: boolean = false;
@@ -233,7 +233,7 @@ export class DebugPlotWindow extends DebugWindowBase {
     DebugColor.setDefaultBrightness(8); // Default to full saturated color (brightness 8 in RGBI8X), not pale (15)
 
     // Enable logging for PLOT window
-    this.isLogging = true;
+    this.isLogging = false;
 
     // record our Debug Plot Window Spec
     this.displaySpec = displaySpec;
@@ -463,7 +463,9 @@ export class DebugPlotWindow extends DebugWindowBase {
             case 'RGB16':
             case 'RGB24':
               displaySpec.colorMode = element.toUpperCase() as ColorMode;
-              DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Color mode set to ${element.toUpperCase()}`);
+              DebugPlotWindow.logConsoleMessageStatic(
+                `CL: PlotDisplaySpec: Color mode set to ${element.toUpperCase()}`
+              );
               break;
 
             default:
@@ -1286,7 +1288,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   private processLutCommandSync(commandString: string): void {
     try {
       // Use simple parser for LUT commands
-      const lineParts = commandString.split(' ').filter(part => part.length > 0);
+      const lineParts = commandString.split(' ').filter((part) => part.length > 0);
 
       // Process the LUT command directly
       for (let index = 0; index < lineParts.length; index++) {
@@ -1401,7 +1403,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       }
 
       // Parse commands
-      switch(upperCommand) {
+      switch (upperCommand) {
         case 'SET': {
           // SET x , y - Set cursor position (commas optional)
           // Values are in 8.8 fixed-point format (value * 256)
@@ -1441,7 +1443,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         case 'DOT': {
           // DOT [lineSize [opacity]]
-          let lineSize = this.lineSize;  // Use persistent line size as default
+          let lineSize = this.lineSize; // Use persistent line size as default
           let opacity = 255;
 
           if (index + 1 < lineParts.length) {
@@ -1476,8 +1478,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (index + 1 < lineParts.length) {
             const xFixed = this.parseNumber(lineParts[++index]);
             index = this.skipComma(lineParts, index); // Skip optional comma
-            const yFixed = (index < lineParts.length) ? this.parseNumber(lineParts[++index]) : null;
-            let lineSize = this.lineSize;  // Use persistent line size as default
+            const yFixed = index < lineParts.length ? this.parseNumber(lineParts[++index]) : null;
+            let lineSize = this.lineSize; // Use persistent line size as default
             let opacity = 255;
 
             if (index + 1 < lineParts.length) {
@@ -1881,7 +1883,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               // Validate we have the right amount of pixel data
               if (pixels.length === pixelCount) {
                 this.spriteManager.defineSprite(spriteId, width, height, pixels, colors);
-                this.logMessage(`SPRITEDEF: Defined sprite ${spriteId} (${width}x${height}) with ${providedColors} colors`);
+                this.logMessage(
+                  `SPRITEDEF: Defined sprite ${spriteId} (${width}x${height}) with ${providedColors} colors`
+                );
               } else {
                 this.logMessage(`SPRITEDEF ERROR: Expected ${pixelCount} pixels, got ${pixels.length} pixels`);
               }
@@ -2169,9 +2173,22 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    */
   private isColorCommand(token: string): boolean {
     const colorCommands = [
-      'BLACK', 'WHITE', 'ORANGE', 'BLUE', 'GREEN', 'CYAN',
-      'RED', 'MAGENTA', 'YELLOW', 'GRAY', 'GREY',
-      'OLIVE', 'LIME', 'BLUE2', 'GRAY2', 'GRAY3'
+      'BLACK',
+      'WHITE',
+      'ORANGE',
+      'BLUE',
+      'GREEN',
+      'CYAN',
+      'RED',
+      'MAGENTA',
+      'YELLOW',
+      'GRAY',
+      'GREY',
+      'OLIVE',
+      'LIME',
+      'BLUE2',
+      'GRAY2',
+      'GRAY3'
     ];
     return colorCommands.includes(token);
   }
@@ -2179,7 +2196,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   /**
    * Parse a number from a string token, handling Spin2 formats
    * Delegates to shared Spin2NumericParser for consistent parsing across all windows
-  */
+   */
   private parseNumber(token: string): number | null {
     if (!token) {
       return null;
@@ -2215,7 +2232,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // Otherwise, text color remains unchanged (stays white/default)
     if (textFollows) {
       this.currTextColor = color.rgbString;
-      this.logMessage(`Set color to ${colorName} brightness ${brightness}: ${color.rgbString} (TEXT follows - updating text color)`);
+      this.logMessage(
+        `Set color to ${colorName} brightness ${brightness}: ${color.rgbString} (TEXT follows - updating text color)`
+      );
     } else {
       this.logMessage(`Set color to ${colorName} brightness ${brightness}: ${color.rgbString}`);
     }
@@ -2287,7 +2306,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    */
   private processLutColorsCommand(colors: string[]): void {
     colors.forEach((colorSpec, index) => {
-      if (index < 8) { // Only first 8 colors
+      if (index < 8) {
+        // Only first 8 colors
         this.processLutCommand(index, index, colorSpec);
       }
     });
@@ -2807,7 +2827,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       plotX += Math.floor(scale / 2);
       plotY += Math.floor(scale / 2);
 
-      this.logMessage(`Drawing sprite ${spriteId} at (${plotX},${plotY}) orientation=${orientation} scale=${scale} opacity=${opacity}`);
+      this.logMessage(
+        `Drawing sprite ${spriteId} at (${plotX},${plotY}) orientation=${orientation} scale=${scale} opacity=${opacity}`
+      );
 
       // Convert orientation (0-7) to degrees: 0=0°, 1=90°, 2=180°, 3=270°, 4=90°+flip, etc.
       // Pascal orientations: 0-3 are rotations, 4-7 add horizontal flip
@@ -2939,11 +2961,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
       // Validate bounds
       if (srcLeft < 0 || srcTop < 0 || srcLeft + srcWidth > layer.width || srcTop + srcHeight > layer.height) {
-        this.logMessage(`CROP ERROR: Source rectangle out of bounds: (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`);
+        this.logMessage(
+          `CROP ERROR: Source rectangle out of bounds: (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`
+        );
         return;
       }
 
-      this.logMessage(`CROP: Drawing layer ${layerIndex + 1} region (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} to (${destX},${destY})`);
+      this.logMessage(
+        `CROP: Drawing layer ${
+          layerIndex + 1
+        } region (${srcLeft},${srcTop}) ${srcWidth}x${srcHeight} to (${destX},${destY})`
+      );
       this.logMessage(`DEBUG: shouldWriteToCanvas=${this.shouldWriteToCanvas}, debugWindow=${!!debugWindow}`);
 
       // Extract RGBA pixel data from source rectangle
@@ -2955,10 +2983,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (x >= 0 && x < layer.width && y >= 0 && y < layer.height) {
             const pixelColor = layer.getPixelColor(x, y);
             // Jimp stores colors as 32-bit integers: RRGGBBAA
-            pixels.push((pixelColor >> 24) & 0xFF);  // R
-            pixels.push((pixelColor >> 16) & 0xFF);  // G
-            pixels.push((pixelColor >> 8) & 0xFF);   // B
-            pixels.push(pixelColor & 0xFF);          // A
+            pixels.push((pixelColor >> 24) & 0xff); // R
+            pixels.push((pixelColor >> 16) & 0xff); // G
+            pixels.push((pixelColor >> 8) & 0xff); // B
+            pixels.push(pixelColor & 0xff); // A
           } else {
             // Out of bounds - push transparent black
             pixels.push(0, 0, 0, 0);
@@ -3199,7 +3227,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Convert polar coordinates to Cartesian
    */
   private polarToCartesian(radius: number, angle: number): [number, number] {
-    const angleRad = angle * Math.PI / 180;
+    const angleRad = (angle * Math.PI) / 180;
     const x = Math.round(radius * Math.cos(angleRad));
     const y = Math.round(radius * Math.sin(angleRad));
     return [x, y];
@@ -3312,7 +3340,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             const y = Math.floor(event.clientY - rect.top);
 
             // Update coordinate display if not hidden
-            ${!this.displaySpec.hideXY ? 'updateCoordinateDisplay(x, y);' : '// HIDEXY is set, coordinate display suppressed'}
+            ${
+              !this.displaySpec.hideXY
+                ? 'updateCoordinateDisplay(x, y);'
+                : '// HIDEXY is set, coordinate display suppressed'
+            }
           });
 
           canvas.addEventListener('mouseleave', function() {
@@ -3455,8 +3487,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         // DIAGNOSTIC: Log state transitions
         const prevX = this.vMouseX;
         const prevY = this.vMouseY;
-        const wasOutOfBounds = (prevX === -1 && prevY === -1);
-        const nowOutOfBounds = (x === -1 && y === -1);
+        const wasOutOfBounds = prevX === -1 && prevY === -1;
+        const nowOutOfBounds = x === -1 && y === -1;
 
         if (!wasOutOfBounds && nowOutOfBounds) {
           this.logMessage(`[MOUSE DIAG] TRANSITION: In-bounds (${prevX},${prevY}) -> OUT-OF-BOUNDS`);
@@ -3491,13 +3523,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         const pixelGetter = this.getPixelColorGetter();
 
         // Queue the mouse event
-        this.inputForwarder.queueMouseEvent(
-          x,
-          y,
-          buttons,
-          this.lastWheelDelta,
-          pixelGetter
-        );
+        this.inputForwarder.queueMouseEvent(x, y, buttons, this.lastWheelDelta, pixelGetter);
       } else if (channel === 'key-event') {
         const [key, keyCode] = args;
         // Store keypress for PC_KEY command (Pascal behavior: stores last keypress)
@@ -3562,5 +3588,4 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   protected getCanvasId(): string {
     return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
-
 }

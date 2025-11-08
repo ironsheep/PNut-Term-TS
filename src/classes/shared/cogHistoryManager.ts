@@ -8,23 +8,23 @@ import { EventEmitter } from 'events';
  * Message types to filter out when replaying history
  */
 const INJECTED_MESSAGE_PATTERNS = [
-  /^\[WINDOW\]/,           // Window position messages
-  /^\[ERROR\]/,            // Validation errors
-  /^\[WARNING\]/,          // Warnings
-  /^\[SYSTEM\]/,           // System messages
-  /^\[DTR\]/,              // DTR state changes (handle specially)
-  /^\[CONNECTION\]/,       // Connection status
+  /^\[WINDOW\]/, // Window position messages
+  /^\[ERROR\]/, // Validation errors
+  /^\[WARNING\]/, // Warnings
+  /^\[SYSTEM\]/, // System messages
+  /^\[DTR\]/, // DTR state changes (handle specially)
+  /^\[CONNECTION\]/ // Connection status
 ];
 
 /**
  * COGHistoryManager - Manages history replay for COG splitter windows
- * 
+ *
  * When user opens 8 COG windows, this manager:
  * 1. Snapshots the entire debug logger history
  * 2. Filters out injected system messages
  * 3. Routes COG-prefixed messages to appropriate windows
  * 4. Forwards DTR reset messages to windows that receive content
- * 
+ *
  * This ensures COG windows start with appropriate context
  */
 export class COGHistoryManager extends EventEmitter {
@@ -56,19 +56,19 @@ export class COGHistoryManager extends EventEmitter {
    */
   public replayHistoryToCOGs(history: string[]): void {
     this.debugLogHistory = [...history];
-    
+
     // First pass: Find DTR reset message if any
     this.dtrResetMessage = this.findDTRResetMessage(history);
-    
+
     // Second pass: Filter and route messages
     const cogMessages = new Map<number, string[]>();
-    
+
     for (const message of history) {
       // Skip injected system messages
       if (this.isInjectedMessage(message)) {
         continue;
       }
-      
+
       // Extract COG ID from message if present
       const cogId = this.extractCOGId(message);
       if (cogId !== null) {
@@ -78,20 +78,18 @@ export class COGHistoryManager extends EventEmitter {
         cogMessages.get(cogId)!.push(message);
       }
     }
-    
+
     // Third pass: Send filtered history to each COG window
     for (const [cogId, messages] of cogMessages) {
       const window = this.cogWindows.get(cogId);
       if (window) {
         // If we have a DTR reset message, prepend it
-        const replayMessages = this.dtrResetMessage 
-          ? [this.formatDTRMessageForCOG(cogId), ...messages]
-          : messages;
-          
+        const replayMessages = this.dtrResetMessage ? [this.formatDTRMessageForCOG(cogId), ...messages] : messages;
+
         this.sendHistoryToWindow(window, replayMessages);
       }
     }
-    
+
     // Notify completion
     this.emit('historyReplayed', {
       totalMessages: history.length,
@@ -106,7 +104,7 @@ export class COGHistoryManager extends EventEmitter {
    * Check if message is an injected system message
    */
   private isInjectedMessage(message: string): boolean {
-    return INJECTED_MESSAGE_PATTERNS.some(pattern => pattern.test(message));
+    return INJECTED_MESSAGE_PATTERNS.some((pattern) => pattern.test(message));
   }
 
   /**
@@ -117,12 +115,12 @@ export class COGHistoryManager extends EventEmitter {
   private extractCOGId(message: string): number | null {
     // COG prefix patterns - EXACT format: "CogN " (no space between Cog and number)
     const patterns = [
-      /^Cog(\d+)\s/i,            // "Cog0 ", "Cog1 " - EXACT required format
-      /^COG(\d+)\s/i,            // "COG0 ", "COG1 " - uppercase variant
-      /^\[COG(\d+)\]/i,          // "[COG0]" - bracketed variant
-      /^<(\d+)>/,                // "<0>" - shorthand variant
+      /^Cog(\d+)\s/i, // "Cog0 ", "Cog1 " - EXACT required format
+      /^COG(\d+)\s/i, // "COG0 ", "COG1 " - uppercase variant
+      /^\[COG(\d+)\]/i, // "[COG0]" - bracketed variant
+      /^<(\d+)>/ // "<0>" - shorthand variant
     ];
-    
+
     for (const pattern of patterns) {
       const match = message.match(pattern);
       if (match) {
@@ -132,7 +130,7 @@ export class COGHistoryManager extends EventEmitter {
         }
       }
     }
-    
+
     return null;
   }
 
@@ -142,9 +140,11 @@ export class COGHistoryManager extends EventEmitter {
   private findDTRResetMessage(history: string[]): string | null {
     // Look for most recent DTR reset
     for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].includes('DTR reset') || 
-          history[i].includes('Log started') ||
-          history[i].includes('Connection established')) {
+      if (
+        history[i].includes('DTR reset') ||
+        history[i].includes('Log started') ||
+        history[i].includes('Connection established')
+      ) {
         return history[i];
       }
     }
@@ -165,14 +165,14 @@ export class COGHistoryManager extends EventEmitter {
   private sendHistoryToWindow(window: any, messages: string[]): void {
     // Send in batches to avoid overwhelming the window
     const BATCH_SIZE = 100;
-    
+
     for (let i = 0; i < messages.length; i += BATCH_SIZE) {
       const batch = messages.slice(i, i + BATCH_SIZE);
-      
+
       // Use setTimeout to allow UI to update between batches
       setTimeout(() => {
         window.receiveHistoryBatch(batch);
-      }, i / BATCH_SIZE * 10); // Small delay between batches
+      }, (i / BATCH_SIZE) * 10); // Small delay between batches
     }
   }
 

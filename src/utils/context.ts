@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = true;  // Temporarily enabled for debugging settings
+const ENABLE_CONSOLE_LOG: boolean = false; // Temporarily enabled for debugging settings
 
 // Common runtime context shares by classes in Pnut-TS.
 
 // src/utils/context.ts
 
-'use strict';
+('use strict');
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -24,11 +24,11 @@ export interface RuntimeEnvironment {
   selectedPropPlug: string;
   logFilename: string;
   developerModeEnabled: boolean;
-  debugBaudrate?: number;  // Optional - only set if specified on command line
-  debugBaudRateFromCLI: boolean;  // True if -b was provided on command line
+  debugBaudrate?: number; // Optional - only set if specified on command line
+  debugBaudRateFromCLI: boolean; // True if -b was provided on command line
   ideMode: boolean;
   rtsOverride: boolean;
-  resetOnConnection: boolean;  // Control DTR/RTS reset on port open
+  resetOnConnection: boolean; // Control DTR/RTS reset on port open
   loggingEnabled: boolean;
   loggingLevel: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
   logToFile: boolean;
@@ -68,7 +68,7 @@ export interface UserPreferences {
   debugLogger: {
     scrollbackLines: number;
   };
-  suppressedDirectoryWarnings?: string[];  // Directories to not warn about
+  suppressedDirectoryWarnings?: string[]; // Directories to not warn about
 }
 
 export class Context {
@@ -126,19 +126,19 @@ export class Context {
       serialPortDevices: [],
       developerModeEnabled: false,
       logFilename: '',
-      debugBaudrate: undefined,  // No default - will be set from CLI or preferences
-      debugBaudRateFromCLI: false,  // Default: not specified on command line
+      debugBaudrate: undefined, // No default - will be set from CLI or preferences
+      debugBaudRateFromCLI: false, // Default: not specified on command line
       ideMode: false,
-      rtsOverride: false,     // Default to DTR unless IDE specifies RTS
-      resetOnConnection: true,  // Default to traditional mode (reset on connect)
-      loggingEnabled: false,  // Default to false for production
-      loggingLevel: 'INFO',   // Default log level
+      rtsOverride: false, // Default to DTR unless IDE specifies RTS
+      resetOnConnection: true, // Default to traditional mode (reset on connect)
+      loggingEnabled: false, // Default to false for production
+      loggingLevel: 'INFO', // Default log level
       logToFile: false,
       logToConsole: true,
       verbose: false,
       quiet: false,
-      consoleMode: false,     // Default to no console delay
-      usbTrafficLogging: false,  // Default USB logging off
+      consoleMode: false, // Default to no console delay
+      usbTrafficLogging: false, // Default USB logging off
       usbLogFilePath: undefined
     };
     this.actions = {
@@ -307,7 +307,9 @@ export class Context {
         `[SETTINGS] Synced resetOnConnection to runtime: ${this.runEnvironment.resetOnConnection}`
       );
     } else {
-      this.logConsoleMessage(`[SETTINGS] resetOnConnection not found in preferences, using default: ${this.runEnvironment.resetOnConnection}`);
+      this.logConsoleMessage(
+        `[SETTINGS] resetOnConnection not found in preferences, using default: ${this.runEnvironment.resetOnConnection}`
+      );
     }
   }
 

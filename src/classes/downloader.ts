@@ -64,7 +64,11 @@ export class Downloader {
         // Strip the checksum character and return the remaining app output for routing
         const appOutput = trimmed.substring(1); // Remove the checksum character
         const remainingBuffer = Buffer.from(appOutput, 'utf8');
-        this.logMessage(`[DOWNLOAD PROTOCOL] Checksum concatenated with ${appOutput.length} bytes of app output - routing app output: "${appOutput.substring(0, 40)}..."`);
+        this.logMessage(
+          `[DOWNLOAD PROTOCOL] Checksum concatenated with ${
+            appOutput.length
+          } bytes of app output - routing app output: "${appOutput.substring(0, 40)}..."`
+        );
         return { consumed: true, remainingData: remainingBuffer };
       }
 
@@ -75,7 +79,10 @@ export class Downloader {
     return { consumed: false };
   }
 
-  public async download(binaryFilespec: string, toFlash: boolean): Promise<{ success: boolean; errorMessage?: string }> {
+  public async download(
+    binaryFilespec: string,
+    toFlash: boolean
+  ): Promise<{ success: boolean; errorMessage?: string }> {
     this._isDownloading = true;
     this.logMessage(`[DOWNLOAD STATE] isDownloading = true (download starting)`);
 
@@ -83,151 +90,165 @@ export class Downloader {
       let binaryImage: Uint8Array = loadFileAsUint8Array(binaryFilespec);
       const failedToLoad: boolean = loadUint8ArrayFailed(binaryImage) ? true : false;
       if (failedToLoad == false) {
-      // Create ObjectImage to analyze the binary
-      const imageAnalyzer = new ObjectImage('analyzer');
-      imageAnalyzer.adopt(binaryImage);
-      
-      // Check if binary already has flash loader
-      const hasFlashLoader = imageAnalyzer.hasFlashLoader();
-      // Check if binary has debugger (indicates debug mode compilation)
-      const hasDebugger = imageAnalyzer.hasDebugger();
-      
-      const fileExt = binaryFilespec.toLowerCase().endsWith('.binf') ? '.binf' : '.bin';
-      this.logMessage(`  -- Loading ${fileExt} file: hasDebugger=${hasDebugger}, hasFlashLoader=${hasFlashLoader}`);
-      
-      let target: string = 'RAM';
-      let actuallyWriteToFlash: boolean = toFlash;
-      let needsP2ChecksumVerify: boolean = false;
-      
-      // If flash loader already present, don't add another one
-      if (hasFlashLoader && toFlash) {
-        this.logMessage(`  -- Flash loader already present in binary, using regular download`);
-        actuallyWriteToFlash = false;
-        target = 'FLASH (pre-loaded)';
-      }
-      
-      if (actuallyWriteToFlash) {
-        target = 'FLASH';
-        const originalSize = binaryImage.length;
-        binaryImage = await this.insertP2FlashLoader(binaryImage, hasDebugger);
-        this.logMessage(`  -- load image w/flasher = (${binaryImage.length}) bytes (original: ${originalSize} bytes), debug=${hasDebugger}`);
-        this.logMessage(`  -- Composite aligned? ${binaryImage.length % 4 === 0 ? 'YES' : `NO (mod 4 = ${binaryImage.length % 4})`}`);
-      }
+        // Create ObjectImage to analyze the binary
+        const imageAnalyzer = new ObjectImage('analyzer');
+        imageAnalyzer.adopt(binaryImage);
 
-      // Log binary info for diagnostics
-      const rawBytes = Array.from(binaryImage.slice(0, 16))
-        .map(b => '0x' + b.toString(16).padStart(2, '0'))
-        .join(' ');
-      this.logMessage(`  -- First 16 bytes: ${rawBytes}`);
-      this.logMessage(`  -- Binary size: ${binaryImage.length} bytes`);
+        // Check if binary already has flash loader
+        const hasFlashLoader = imageAnalyzer.hasFlashLoader();
+        // Check if binary has debugger (indicates debug mode compilation)
+        const hasDebugger = imageAnalyzer.hasDebugger();
 
-      // Checksum decision logic:
-      // 1. Flash downloads NEVER use P2 checksum (it interferes with the flash loader)
-      // 2. RAM downloads use checksum based on USE_CHECKSUM constant
-      if (actuallyWriteToFlash) {
-        needsP2ChecksumVerify = false;
-        this.logMessage(`  -- ${target} download WITHOUT P2 checksum (flash loader handles integrity)`);
-      } else {
-        needsP2ChecksumVerify = USE_CHECKSUM;
-        this.logMessage(`  -- ${target} download ${USE_CHECKSUM ? 'with checksum validation' : 'WITHOUT P2 checksum (USE_CHECKSUM=false)'}`);
-      }
+        const fileExt = binaryFilespec.toLowerCase().endsWith('.binf') ? '.binf' : '.bin';
+        this.logMessage(`  -- Loading ${fileExt} file: hasDebugger=${hasDebugger}, hasFlashLoader=${hasFlashLoader}`);
 
-      // Append checksum for P2 validation (RAM downloads only)
-      if (needsP2ChecksumVerify) {
-        // Pad to long boundary
-        const originalLength = binaryImage.length;
-        if (binaryImage.length % 4 !== 0) {
-          const padBytes = 4 - (binaryImage.length % 4);
-          const paddedImage = new Uint8Array(binaryImage.length + padBytes);
-          paddedImage.set(binaryImage);
-          // Padding bytes are already 0 by default
-          binaryImage = paddedImage;
-          this.logMessage(`  -- Padded with ${padBytes} zero bytes (${originalLength} -> ${binaryImage.length})`);
+        let target: string = 'RAM';
+        let actuallyWriteToFlash: boolean = toFlash;
+        let needsP2ChecksumVerify: boolean = false;
+
+        // If flash loader already present, don't add another one
+        if (hasFlashLoader && toFlash) {
+          this.logMessage(`  -- Flash loader already present in binary, using regular download`);
+          actuallyWriteToFlash = false;
+          target = 'FLASH (pre-loaded)';
+        }
+
+        if (actuallyWriteToFlash) {
+          target = 'FLASH';
+          const originalSize = binaryImage.length;
+          binaryImage = await this.insertP2FlashLoader(binaryImage, hasDebugger);
+          this.logMessage(
+            `  -- load image w/flasher = (${binaryImage.length}) bytes (original: ${originalSize} bytes), debug=${hasDebugger}`
+          );
+          this.logMessage(
+            `  -- Composite aligned? ${binaryImage.length % 4 === 0 ? 'YES' : `NO (mod 4 = ${binaryImage.length % 4})`}`
+          );
+        }
+
+        // Log binary info for diagnostics
+        const rawBytes = Array.from(binaryImage.slice(0, 16))
+          .map((b) => '0x' + b.toString(16).padStart(2, '0'))
+          .join(' ');
+        this.logMessage(`  -- First 16 bytes: ${rawBytes}`);
+        this.logMessage(`  -- Binary size: ${binaryImage.length} bytes`);
+
+        // Checksum decision logic:
+        // 1. Flash downloads NEVER use P2 checksum (it interferes with the flash loader)
+        // 2. RAM downloads use checksum based on USE_CHECKSUM constant
+        if (actuallyWriteToFlash) {
+          needsP2ChecksumVerify = false;
+          this.logMessage(`  -- ${target} download WITHOUT P2 checksum (flash loader handles integrity)`);
         } else {
-          this.logMessage(`  -- No padding needed, already aligned (${originalLength} bytes)`);
+          needsP2ChecksumVerify = USE_CHECKSUM;
+          this.logMessage(
+            `  -- ${target} download ${
+              USE_CHECKSUM ? 'with checksum validation' : 'WITHOUT P2 checksum (USE_CHECKSUM=false)'
+            }`
+          );
         }
 
-        // Calculate sum of all longs
-        let sum = 0;
-        for (let i = 0; i < binaryImage.length; i += 4) {
-          const long = binaryImage[i] |
-                      (binaryImage[i+1] << 8) |
-                      (binaryImage[i+2] << 16) |
-                      (binaryImage[i+3] << 24);
-          sum = (sum + long) >>> 0;
-        }
-
-        // Calculate checksum that makes sum = 'Prop' (0x706F7250)
-        const targetSum = 0x706F7250; // This is the magic value for P2 checksum validation
-        const checksum = (targetSum - sum) >>> 0;
-
-        // Append checksum as little-endian bytes
-        const checksumBytes = new Uint8Array(4);
-        checksumBytes[0] = checksum & 0xFF;
-        checksumBytes[1] = (checksum >> 8) & 0xFF;
-        checksumBytes[2] = (checksum >> 16) & 0xFF;
-        checksumBytes[3] = (checksum >> 24) & 0xFF;
-
-        const finalImage = new Uint8Array(binaryImage.length + 4);
-        finalImage.set(binaryImage);
-        finalImage.set(checksumBytes, binaryImage.length);
-        binaryImage = finalImage;
-
-        this.logMessage(`  -- Binary sum before checksum: 0x${sum.toString(16).padStart(8, '0')}`);
-        this.logMessage(`  -- Appended checksum: 0x${checksum.toString(16).padStart(8, '0')} (bytes: ${Array.from(checksumBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')})`);
-        this.logMessage(`  -- Final size with P2 checksum: ${binaryImage.length} bytes`);
-      } else {
-        this.logMessage(`  -- Final size (no P2 checksum, flash loader handles integrity): ${binaryImage.length} bytes`);
-      }
-      //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
-      // write to USB PropPlug
-      let usbPort: UsbSerial;
-      let errMsg: string = '';
-      let noDownloadError: boolean = true;
-      try {
-        const isP2 = await this.serialPort.deviceIsPropellerV2();
-        this.logMessage(`  -- Device check: P2 found = ${isP2}`);
-        if (isP2) {
-          const downloadResult = await this.serialPort.download(binaryImage, needsP2ChecksumVerify);
-          // Check if checksum verification was requested and handle result
-          if (needsP2ChecksumVerify) {
-            const checksumStatus = this.serialPort.getChecksumStatus();
-            this.logMessage(`  -- Checksum status: verified=${checksumStatus.verified}, valid=${checksumStatus.valid}`);
-            if (checksumStatus.verified) {
-              this.logMessage(`  -- Checksum verification: ${checksumStatus.valid ? 'PASSED' : 'FAILED'}`);
-              if (!checksumStatus.valid) {
-                // Checksum failed - P2 is there but download is corrupted
-                errMsg = 'P2 checksum verification FAILED (! received) - download corrupted';
-                noDownloadError = false;
-                // Don't throw, just set error and continue
-              }
-            } else {
-              this.logMessage(`  -- Checksum verification: No response from P2`);
-            }
+        // Append checksum for P2 validation (RAM downloads only)
+        if (needsP2ChecksumVerify) {
+          // Pad to long boundary
+          const originalLength = binaryImage.length;
+          if (binaryImage.length % 4 !== 0) {
+            const padBytes = 4 - (binaryImage.length % 4);
+            const paddedImage = new Uint8Array(binaryImage.length + padBytes);
+            paddedImage.set(binaryImage);
+            // Padding bytes are already 0 by default
+            binaryImage = paddedImage;
+            this.logMessage(`  -- Padded with ${padBytes} zero bytes (${originalLength} -> ${binaryImage.length})`);
+          } else {
+            this.logMessage(`  -- No padding needed, already aligned (${originalLength} bytes)`);
           }
+
+          // Calculate sum of all longs
+          let sum = 0;
+          for (let i = 0; i < binaryImage.length; i += 4) {
+            const long =
+              binaryImage[i] | (binaryImage[i + 1] << 8) | (binaryImage[i + 2] << 16) | (binaryImage[i + 3] << 24);
+            sum = (sum + long) >>> 0;
+          }
+
+          // Calculate checksum that makes sum = 'Prop' (0x706F7250)
+          const targetSum = 0x706f7250; // This is the magic value for P2 checksum validation
+          const checksum = (targetSum - sum) >>> 0;
+
+          // Append checksum as little-endian bytes
+          const checksumBytes = new Uint8Array(4);
+          checksumBytes[0] = checksum & 0xff;
+          checksumBytes[1] = (checksum >> 8) & 0xff;
+          checksumBytes[2] = (checksum >> 16) & 0xff;
+          checksumBytes[3] = (checksum >> 24) & 0xff;
+
+          const finalImage = new Uint8Array(binaryImage.length + 4);
+          finalImage.set(binaryImage);
+          finalImage.set(checksumBytes, binaryImage.length);
+          binaryImage = finalImage;
+
+          this.logMessage(`  -- Binary sum before checksum: 0x${sum.toString(16).padStart(8, '0')}`);
+          this.logMessage(
+            `  -- Appended checksum: 0x${checksum.toString(16).padStart(8, '0')} (bytes: ${Array.from(checksumBytes)
+              .map((b) => '0x' + b.toString(16).padStart(2, '0'))
+              .join(' ')})`
+          );
+          this.logMessage(`  -- Final size with P2 checksum: ${binaryImage.length} bytes`);
         } else {
-          //downloaderTerminal.sendText(`# ERROR: No Propller v2 found`);
-          errMsg = 'No Propeller v2 device found - check connection and try again';
+          this.logMessage(
+            `  -- Final size (no P2 checksum, flash loader handles integrity): ${binaryImage.length} bytes`
+          );
+        }
+        //downloaderTerminal.sendText(`# Downloading [${filenameToDownload}] ${binaryImage.length} bytes to ${target}`);
+        // write to USB PropPlug
+        let usbPort: UsbSerial;
+        let errMsg: string = '';
+        let noDownloadError: boolean = true;
+        try {
+          const isP2 = await this.serialPort.deviceIsPropellerV2();
+          this.logMessage(`  -- Device check: P2 found = ${isP2}`);
+          if (isP2) {
+            const downloadResult = await this.serialPort.download(binaryImage, needsP2ChecksumVerify);
+            // Check if checksum verification was requested and handle result
+            if (needsP2ChecksumVerify) {
+              const checksumStatus = this.serialPort.getChecksumStatus();
+              this.logMessage(
+                `  -- Checksum status: verified=${checksumStatus.verified}, valid=${checksumStatus.valid}`
+              );
+              if (checksumStatus.verified) {
+                this.logMessage(`  -- Checksum verification: ${checksumStatus.valid ? 'PASSED' : 'FAILED'}`);
+                if (!checksumStatus.valid) {
+                  // Checksum failed - P2 is there but download is corrupted
+                  errMsg = 'P2 checksum verification FAILED (! received) - download corrupted';
+                  noDownloadError = false;
+                  // Don't throw, just set error and continue
+                }
+              } else {
+                this.logMessage(`  -- Checksum verification: No response from P2`);
+              }
+            }
+          } else {
+            //downloaderTerminal.sendText(`# ERROR: No Propller v2 found`);
+            errMsg = 'No Propeller v2 device found - check connection and try again';
+            noDownloadError = false;
+          }
+          //this.testDownloadFile(usbPort);
+        } catch (error) {
           noDownloadError = false;
+          if (error instanceof Error) {
+            errMsg = `Dnld: Error thrown: ${error.toString()}`;
+          } else {
+            // Handle the case where error is not an Error object
+            errMsg = `Dnld: Non-error thrown: ${JSON.stringify(error)}`;
+          } // Re-throw the error if you want to fail
+        } finally {
+          if (errMsg.length > 0) {
+            this.logMessage(errMsg);
+            //downloaderTerminal.sendText(`# ERROR: ${errMsg}`);
+          }
+          // NOTE: Don't close serial port - MainWindow manages it and needs it for debug operations
+          // The port will be reused for debug communications after download completes
         }
-        //this.testDownloadFile(usbPort);
-      } catch (error) {
-        noDownloadError = false;
-        if (error instanceof Error) {
-          errMsg = `Dnld: Error thrown: ${error.toString()}`;
-        } else {
-          // Handle the case where error is not an Error object
-          errMsg = `Dnld: Non-error thrown: ${JSON.stringify(error)}`;
-        } // Re-throw the error if you want to fail
-      } finally {
-        if (errMsg.length > 0) {
-          this.logMessage(errMsg);
-          //downloaderTerminal.sendText(`# ERROR: ${errMsg}`);
-        }
-        // NOTE: Don't close serial port - MainWindow manages it and needs it for debug operations
-        // The port will be reused for debug communications after download completes
-      }
-      return { success: noDownloadError, errorMessage: noDownloadError ? undefined : errMsg };
+        return { success: noDownloadError, errorMessage: noDownloadError ? undefined : errMsg };
       }
       return { success: false, errorMessage: 'Failed to load binary file' };
     } finally {
@@ -311,7 +332,7 @@ export class Downloader {
   private logMessage(message: string): void {
     // ALWAYS log downloader messages - they're critical for debugging
     // Use console.log directly to ensure visibility
-    console.log(`[DOWNLOADER] ${message}`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[DOWNLOADER] ${message}`);
 
     // Also send to logger if enabled
     if (this.context.runEnvironment.loggingEnabled) {

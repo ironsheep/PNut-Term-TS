@@ -27,35 +27,35 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * TECH-DEBT: Critical Implementation Requirement - Preserve Unparsed Debug Strings
- * 
+ *
  * All debug window implementations that extend DebugWindowBase MUST preserve the original
  * unparsed debug command strings for enhanced error logging and debugging support.
- * 
+ *
  * Requirements:
  * 1. Store the raw, unparsed debug command string before any processing
  * 2. Include this string in all error log messages when parsing fails or invalid values are detected
  * 3. Pass the unparsed string to Logger when reporting warnings about defensive defaults
- * 
+ *
  * Example implementation pattern:
  * ```typescript
  * protected processMessageImmediate(lineParts: string[]): void {
  *   const unparsedCommand = lineParts.join(' '); // Preserve original command
- *   
+ *
  *   // ... parsing logic ...
- *   
+ *
  *   if (isNaN(parsedValue)) {
  *     this.logger.warn(`Debug command parsing error:\n${unparsedCommand}\nInvalid value '${valueStr}' for parameter X, using default: 0`);
  *     parsedValue = 0; // Defensive default
  *   }
  * }
  * ```
- * 
+ *
  * This requirement is critical for:
  * - Helping users debug their Spin2 DEBUG() statements
  * - Supporting product issues by seeing exact user input
  * - Maintaining consistency across all debug window types
  * - Providing clear error messages that show context
- * 
+ *
  * TODO: Audit all debug window implementations to ensure compliance
  * TODO: Add unparsedCommand parameter to common error logging methods
  */
@@ -148,7 +148,7 @@ export interface WindowColor {
 export abstract class DebugWindowBase extends EventEmitter {
   protected context: Context;
   protected windowLogPrefix: string = '?Base?'; // default if not overridden
-  protected isLogging: boolean = true; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
+  protected isLogging: boolean = false; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
   private _saveInProgress: boolean = false;
   private isClosing: boolean = false; // Prevent recursive close handling
@@ -161,7 +161,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   private captionStr: string = ''; // Original caption without position
   private captionPos: boolean = false; // True when showing position in title
   private moveEndTimer: NodeJS.Timeout | null = null; // Timer to detect end of drag
-  
+
   // WindowRouter integration
   protected windowRouter: WindowRouter;
   protected windowId: string;
@@ -174,17 +174,18 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   // Per-window input state variables for PC_KEY and PC_MOUSE commands
   // These match Pascal's per-window state management
-  protected vKeyPress: number = 0;         // Stores last keypress value for PC_KEY
-  protected vMouseX: number = -1;          // Mouse X coordinate (-1 = out of bounds)
-  protected vMouseY: number = -1;          // Mouse Y coordinate (-1 = out of bounds)
-  protected vMouseButtons: {               // Mouse button states
+  protected vKeyPress: number = 0; // Stores last keypress value for PC_KEY
+  protected vMouseX: number = -1; // Mouse X coordinate (-1 = out of bounds)
+  protected vMouseY: number = -1; // Mouse Y coordinate (-1 = out of bounds)
+  protected vMouseButtons: {
+    // Mouse button states
     left: boolean;
     middle: boolean;
     right: boolean;
   } = { left: false, middle: false, right: false };
-  protected vMouseWheel: number = 0;       // Mouse wheel delta (cleared after transmission)
-  private mouseInputEnabled: boolean = false;  // Flag to prevent duplicate mouse input initialization
-  private mouseEventHandlersSetup: boolean = false;  // Flag to prevent duplicate IPC handler registration
+  protected vMouseWheel: number = 0; // Mouse wheel delta (cleared after transmission)
+  private mouseInputEnabled: boolean = false; // Flag to prevent duplicate mouse input initialization
+  private mouseEventHandlersSetup: boolean = false; // Flag to prevent duplicate IPC handler registration
 
   // TLong transmission utility for P2 communication
   protected tLongTransmitter: TLongTransmission;
@@ -201,11 +202,11 @@ export abstract class DebugWindowBase extends EventEmitter {
 
     // Initialize TLong transmission utility
     this.tLongTransmitter = new TLongTransmission(ctx);
-    
-    // Initialize startup message queue 
+
+    // Initialize startup message queue
     // Will transition to BatchedMessageQueue when window is ready
     this.messageQueue = new MessageQueue<any>(1000, 5000);
-    
+
     // Phase 1: Register window instance immediately for early message routing
     this.windowRouter.registerWindowInstance(this.windowId, this.windowType, this);
   }
@@ -234,7 +235,9 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected clearDisplayContent(): void {
     // Default: This should never be called for windows that don't support CLEAR
     // If it is called, it's likely a routing error
-    this.logMessageBase(`WARNING: CLEAR command received by ${this.constructor.name} which doesn't support it - possible routing error`);
+    this.logMessageBase(
+      `WARNING: CLEAR command received by ${this.constructor.name} which doesn't support it - possible routing error`
+    );
   }
 
   /**
@@ -245,7 +248,9 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected forceDisplayUpdate(): void {
     // Default: This should never be called for windows that don't support UPDATE
     // If it is called, it's likely a routing error
-    this.logMessageBase(`WARNING: UPDATE command received by ${this.constructor.name} which doesn't support it - possible routing error`);
+    this.logMessageBase(
+      `WARNING: UPDATE command received by ${this.constructor.name} which doesn't support it - possible routing error`
+    );
   }
 
   /**
@@ -270,7 +275,6 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.tLongTransmitter.setSendCallback(callback);
     this.logMessageBase('TLong serial transmission callback configured');
   }
-
 
   /**
    * Handle common commands that all windows should support.
@@ -321,11 +325,13 @@ export abstract class DebugWindowBase extends EventEmitter {
         let saveIndex = 1;
         let saveWindow = false;
         let coordinateMode = false;
-        let left = 0, top = 0, width = 0, height = 0;
+        let left = 0,
+          top = 0,
+          width = 0,
+          height = 0;
 
         // Check for WINDOW modifier
-        if (commandParts.length > saveIndex &&
-            commandParts[saveIndex].toUpperCase() === 'WINDOW') {
+        if (commandParts.length > saveIndex && commandParts[saveIndex].toUpperCase() === 'WINDOW') {
           saveWindow = true;
           saveIndex++;
         }
@@ -378,8 +384,10 @@ export abstract class DebugWindowBase extends EventEmitter {
 
             // Join parts and remove quotes
             filename = parts.join(' ');
-            if ((filename.startsWith("'") && filename.endsWith("'")) ||
-                (filename.startsWith('"') && filename.endsWith('"'))) {
+            if (
+              (filename.startsWith("'") && filename.endsWith("'")) ||
+              (filename.startsWith('"') && filename.endsWith('"'))
+            ) {
               filename = filename.slice(1, -1);
             }
           } else {
@@ -431,15 +439,25 @@ export abstract class DebugWindowBase extends EventEmitter {
           const dimensions = this.getCanvasDimensions();
 
           // DIAGNOSTIC: Log current state before bounds check
-          this.logMessageBase(`[MOUSE DIAG] PC_MOUSE state: vMouseX=${this.vMouseX}, vMouseY=${this.vMouseY}, dims=${JSON.stringify(dimensions)}`);
+          this.logMessageBase(
+            `[MOUSE DIAG] PC_MOUSE state: vMouseX=${this.vMouseX}, vMouseY=${this.vMouseY}, dims=${JSON.stringify(
+              dimensions
+            )}`
+          );
 
           const inBounds = dimensions
-            ? (this.vMouseX >= 0 && this.vMouseX < dimensions.width &&
-               this.vMouseY >= 0 && this.vMouseY < dimensions.height)
-            : (this.vMouseX >= 0 && this.vMouseY >= 0); // Fallback for windows without canvases
+            ? this.vMouseX >= 0 &&
+              this.vMouseX < dimensions.width &&
+              this.vMouseY >= 0 &&
+              this.vMouseY < dimensions.height
+            : this.vMouseX >= 0 && this.vMouseY >= 0; // Fallback for windows without canvases
 
           // DIAGNOSTIC: Log bounds check result
-          this.logMessageBase(`[MOUSE DIAG] Bounds check: inBounds=${inBounds} (lower: x>=${0} y>=${0}, upper: x<${dimensions?.width} y<${dimensions?.height})`);
+          this.logMessageBase(
+            `[MOUSE DIAG] Bounds check: inBounds=${inBounds} (lower: x>=${0} y>=${0}, upper: x<${dimensions?.width} y<${
+              dimensions?.height
+            })`
+          );
 
           if (inBounds) {
             // Pascal: Transform coordinates for transmission (SendMousePos:3550-3554)
@@ -461,7 +479,11 @@ export abstract class DebugWindowBase extends EventEmitter {
 
             // Transmit position and color
             this.tLongTransmitter.transmitMouseData(positionValue, colorValue);
-            this.logMessageBase(`PC_MOUSE transmitted: pos=(${transformed.x},${transformed.y}) buttons=${JSON.stringify(this.vMouseButtons)} wheel=${this.vMouseWheel} color=0x${colorValue.toString(16)}`);
+            this.logMessageBase(
+              `PC_MOUSE transmitted: pos=(${transformed.x},${transformed.y}) buttons=${JSON.stringify(
+                this.vMouseButtons
+              )} wheel=${this.vMouseWheel} color=0x${colorValue.toString(16)}`
+            );
 
             // Clear wheel delta after transmission (Pascal: DebugDisplayUnit.pas:3568)
             // Pascal clears IMMEDIATELY after every transmission
@@ -470,7 +492,11 @@ export abstract class DebugWindowBase extends EventEmitter {
             // Mouse out of bounds - send Pascal's out-of-bounds values
             const outOfBounds = this.tLongTransmitter.createOutOfBoundsMouseData();
             this.tLongTransmitter.transmitMouseData(outOfBounds.position, outOfBounds.color);
-            this.logMessageBase(`PC_MOUSE transmitted out-of-bounds data (x=${this.vMouseX}, y=${this.vMouseY}, dims=${JSON.stringify(dimensions)})`);
+            this.logMessageBase(
+              `PC_MOUSE transmitted out-of-bounds data (x=${this.vMouseX}, y=${this.vMouseY}, dims=${JSON.stringify(
+                dimensions
+              )})`
+            );
           }
         } catch (error) {
           this.logMessageBase(`PC_MOUSE transmission error: ${error}`);
@@ -576,7 +602,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.logMessageBase(`- Closing ${this.windowType} window: ${this.windowId}`);
       // Reset window ready state and clear any pending messages
       this.isWindowReady = false;
-      
+
       // Stop batch processing if it's a BatchedMessageQueue
       if (this.messageQueue instanceof BatchedMessageQueue) {
         (this.messageQueue as BatchedMessageQueue<any>).stopBatchProcessing();
@@ -629,15 +655,15 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.logMessageBase(`- Window already marked as ready`);
       return;
     }
-    
+
     this.isWindowReady = true;
     this.logMessageBase(`- Window marked as ready for ${this.windowType}`);
-    
+
     // Process any queued messages
     if (!this.messageQueue.isEmpty) {
       const stats = this.messageQueue.getStats();
       this.logMessageBase(`- Processing ${stats.currentSize} queued messages`);
-      
+
       // Process all queued messages SEQUENTIALLY
       // CRITICAL: Await each message to ensure LAYER commands complete before CROP/UPDATE
       const queuedMessages = this.messageQueue.dequeueAll();
@@ -649,24 +675,24 @@ export abstract class DebugWindowBase extends EventEmitter {
           this.logMessageBase(`- Error processing queued message: ${error}`);
         }
       }
-      
+
       // Log stats if there were dropped messages
       if (stats.droppedCount > 0) {
         this.logMessageBase(`- WARNING: ${stats.droppedCount} messages were dropped from queue`);
       }
     }
-    
+
     // CRITICAL: Use immediate processing to prevent message reordering
     // P2 Architecture Rule: "There should never, never, never be any message reordering"
     this.logMessageBase(`- Transitioning to IMMEDIATE processing (no batching delays)`);
     const oldQueue = this.messageQueue;
-    
+
     // Use simple MessageQueue for immediate processing (no batching)
     this.messageQueue = new MessageQueue<any>(
-      1000,    // maxSize: 1000 messages  
-      5000     // maxAgeMs: 5 second expiry
+      1000, // maxSize: 1000 messages
+      5000 // maxAgeMs: 5 second expiry
     );
-    
+
     // Clean up old startup queue
     oldQueue.clear();
     this.logMessageBase(`- Immediate processing active (zero delay)`);
@@ -682,7 +708,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         this.windowRouter.registerWindow(this.windowId, this.windowType, this.handleRouterMessage.bind(this));
         this.isRegisteredWithRouter = true;
         this.logMessageBase(`- Registered with WindowRouter: ${this.windowId} (${this.windowType})`);
-        
+
         // Mark window as ready when registered with router
         this.onWindowReady();
       } catch (error) {
@@ -748,7 +774,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   static getValidRgb24(possColorValue: string): [boolean, string] {
     let rgbValue: string = '#a5a5a5'; // gray for unknown color
     let isValid: boolean = false;
-    
+
     // First try to parse as a color name using DebugColor
     const colorNameToHex: { [key: string]: string } = {
       BLACK: '#000000',
@@ -762,9 +788,9 @@ export abstract class DebugWindowBase extends EventEmitter {
       YELLOW: '#ffff00',
       BROWN: '#906020',
       GRAY: '#808080',
-      GREY: '#808080'  // Alternative spelling
+      GREY: '#808080' // Alternative spelling
     };
-    
+
     const upperColorName = possColorValue.toUpperCase();
     if (colorNameToHex[upperColorName]) {
       rgbValue = colorNameToHex[upperColorName];
@@ -773,14 +799,14 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Try to parse as numeric value using Spin2NumericParser
       // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
       const colorValue = Spin2NumericParser.parseColor(possColorValue);
-      
+
       if (colorValue !== null) {
         // Convert to hex string format #RRGGBB
         rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toLowerCase();
         isValid = true;
       }
     }
-    
+
     return [isValid, rgbValue];
   }
 
@@ -886,7 +912,9 @@ export abstract class DebugWindowBase extends EventEmitter {
           break;
       }
     } else {
-      DebugWindowBase.logConsoleMessageStatic(`Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`);
+      DebugWindowBase.logConsoleMessageStatic(
+        `Win: ERROR:: Invalid style string(8): [${styleStr}](${styleStr.length})`
+      );
     }
     DebugWindowBase.logConsoleMessageStatic(`Win: str=[${styleStr}] -> textStyle: ${JSON.stringify(textStyle)}`);
   }
@@ -905,8 +933,8 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected calculateWindowDimensions(contentWidth: number, contentHeight: number): { width: number; height: number } {
     // Standard chrome adjustments based on platform
     // These values match what the Logic window uses and ensures consistency
-    const TITLE_BAR_HEIGHT = 40;  // Height of the window title bar
-    const WINDOW_BORDER_WIDTH = 20;  // Additional width for window borders
+    const TITLE_BAR_HEIGHT = 40; // Height of the window title bar
+    const WINDOW_BORDER_WIDTH = 20; // Additional width for window borders
 
     return {
       width: contentWidth + WINDOW_BORDER_WIDTH,
@@ -921,16 +949,16 @@ export abstract class DebugWindowBase extends EventEmitter {
     let weightName: string = 'normal';
     switch (style.weight) {
       case eTextWeight.TW_LIGHT:
-        weightName = '300';  // CSS light weight
+        weightName = '300'; // CSS light weight
         break;
       case eTextWeight.TW_NORMAL:
-        weightName = 'normal';  // or '400'
+        weightName = 'normal'; // or '400'
         break;
       case eTextWeight.TW_BOLD:
-        weightName = 'bold';  // or '700'
+        weightName = 'bold'; // or '700'
         break;
       case eTextWeight.TW_HEAVY:
-        weightName = '900';  // CSS heavy/black weight
+        weightName = '900'; // CSS heavy/black weight
         break;
     }
     return weightName;
@@ -1389,7 +1417,6 @@ export abstract class DebugWindowBase extends EventEmitter {
           throw new Error('Desktop capture timed out or failed');
         }
         */
-
       } catch (error) {
         this.logMessageBase(`ERROR: Save window failed: ${error}`);
       }
@@ -1409,7 +1436,9 @@ export abstract class DebugWindowBase extends EventEmitter {
     height: number,
     filename: string
   ): Promise<void> {
-    this.logMessage(`  -- writing desktop coordinates BMP to [${filename}] at (${left},${top}) size ${width}x${height}`);
+    this.logMessage(
+      `  -- writing desktop coordinates BMP to [${filename}] at (${left},${top}) size ${width}x${height}`
+    );
     this.saveInProgress = true;
 
     try {
@@ -1564,7 +1593,6 @@ export abstract class DebugWindowBase extends EventEmitter {
       fs.writeFileSync(outputFSpec, bmpBuffer);
       this.logMessageBase(`- Desktop coordinates BMP image [${outputFSpec}] saved successfully`);
       */
-
     } catch (error) {
       this.logMessageBase(`ERROR: Save coordinates failed: ${error}`);
     }
@@ -1633,7 +1661,7 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected enableKeyboardInput(): void {
     this.logMessageBase('Enabling keyboard input forwarding');
     this.inputForwarder.startPolling();
-    
+
     if (this.debugWindow) {
       this.debugWindow.webContents.executeJavaScript(`
         document.addEventListener('keydown', (event) => {
@@ -1669,61 +1697,61 @@ export abstract class DebugWindowBase extends EventEmitter {
           const canvas = document.getElementById('${canvasId}');
           if (canvas) {
             let mouseButtons = { left: false, middle: false, right: false };
-          
+
           // Mouse move handler
           canvas.addEventListener('mousemove', (event) => {
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
+
             if (window.electronAPI && window.electronAPI.sendMouseEvent) {
               window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
             }
           });
-          
+
           // Mouse button handlers
           canvas.addEventListener('mousedown', (event) => {
             if (event.button === 0) mouseButtons.left = true;
             else if (event.button === 1) mouseButtons.middle = true;
             else if (event.button === 2) mouseButtons.right = true;
-            
+
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
+
             if (window.electronAPI && window.electronAPI.sendMouseEvent) {
               window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
             }
           });
-          
+
           canvas.addEventListener('mouseup', (event) => {
             if (event.button === 0) mouseButtons.left = false;
             else if (event.button === 1) mouseButtons.middle = false;
             else if (event.button === 2) mouseButtons.right = false;
-            
+
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
+
             if (window.electronAPI && window.electronAPI.sendMouseEvent) {
               window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
             }
           });
-          
+
           // Mouse wheel handler with 100ms debounce
           canvas.addEventListener('wheel', (event) => {
             event.preventDefault();
             const delta = Math.sign(event.deltaY) * -1; // Normalize to -1, 0, 1
-            
+
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
+
             if (window.electronAPI && window.electronAPI.sendMouseEvent) {
               window.electronAPI.sendMouseEvent(x, y, mouseButtons, delta);
             }
           });
-          
+
           // Mouse leave handler
           canvas.addEventListener('mouseleave', (event) => {
             if (window.electronAPI && window.electronAPI.sendMouseEvent) {
@@ -1733,7 +1761,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         }
         })(); // End IIFE
       `);
-      
+
       // Set up mouse event handlers
       this.setupMouseEventHandlers();
     }
@@ -1756,7 +1784,7 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.debugWindow.webContents.on('ipc-message', (event, channel, ...args) => {
       if (channel === 'mouse-event') {
         const [x, y, buttons, wheelDelta] = args;
-        
+
         // Handle wheel events with 100ms timer
         if (wheelDelta !== 0) {
           this.lastWheelDelta = wheelDelta;
@@ -1767,7 +1795,7 @@ export abstract class DebugWindowBase extends EventEmitter {
             this.lastWheelDelta = 0;
           }, 100);
         }
-        
+
         // Transform coordinates based on window type
         const transformed = this.transformMouseCoordinates(x, y);
 
@@ -1785,13 +1813,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         const pixelGetter = this.getPixelColorGetter();
 
         // Queue the mouse event
-        this.inputForwarder.queueMouseEvent(
-          transformed.x,
-          transformed.y,
-          buttons,
-          this.lastWheelDelta,
-          pixelGetter
-        );
+        this.inputForwarder.queueMouseEvent(transformed.x, transformed.y, buttons, this.lastWheelDelta, pixelGetter);
       } else if (channel === 'key-event') {
         const [key, keyCode] = args;
         // Store keypress for PC_KEY command (Pascal behavior: stores last keypress)

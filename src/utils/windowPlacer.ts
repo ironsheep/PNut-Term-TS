@@ -1,6 +1,6 @@
 /** @format */
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 // src/utils/windowPlacer.ts
 
@@ -873,8 +873,8 @@ export class WindowPlacer {
     const PADDING_Y = 10; // vertical padding inside window
 
     // Gaps between windows (COG windows need visible spacing)
-    const gapX = 20;  // Horizontal gap between COG windows
-    const gapY = 20;  // Vertical gap between COG windows
+    const gapX = 20; // Horizontal gap between COG windows
+    const gapY = 20; // Vertical gap between COG windows
 
     // Calculate available space for grid (leave room for main window at bottom)
     const availableWidth = workArea.width - margin * 2;
@@ -892,13 +892,19 @@ export class WindowPlacer {
 
     if (availableWidthPerWindow >= 820) {
       terminalCols = 80;
-      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 80×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 80×24 terminal (using ${windowWidth}×${windowHeight} window)`
+      );
     } else if (availableWidthPerWindow >= 660) {
       terminalCols = 64;
-      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 64×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 64×24 terminal (using ${windowWidth}×${windowHeight} window)`
+      );
     } else if (availableWidthPerWindow >= 540) {
       terminalCols = 48;
-      this.logConsoleMessage(`[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 48×24 terminal (using ${windowWidth}×${windowHeight} window)`);
+      this.logConsoleMessage(
+        `[WINDOW PLACER] 📺 COG ${cogId}: Screen can fit 48×24 terminal (using ${windowWidth}×${windowHeight} window)`
+      );
     } else {
       terminalCols = 48;
       console.warn(

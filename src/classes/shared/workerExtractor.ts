@@ -89,15 +89,15 @@ export class WorkerExtractor extends EventEmitter {
       path.join(process.cwd(), 'dist/workers/extractionWorker.js')
     ];
 
-    workerPath = candidatePaths.find(p => fs.existsSync(p)) || candidatePaths[0];
+    workerPath = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
 
-    console.log(`[WorkerExtractor] Attempting to create worker from: ${workerPath}`);
-    console.log(`[WorkerExtractor] __dirname is: ${__dirname}`);
-    console.log(`[WorkerExtractor] Tried paths: ${candidatePaths.join(', ')}`);
+    WorkerExtractor.logConsoleMessage(`[WorkerExtractor] Attempting to create worker from: ${workerPath}`);
+    WorkerExtractor.logConsoleMessage(`[WorkerExtractor] __dirname is: ${__dirname}`);
+    WorkerExtractor.logConsoleMessage(`[WorkerExtractor] Tried paths: ${candidatePaths.join(', ')}`);
 
     this.worker = new Worker(workerPath);
 
-    console.log(`[WorkerExtractor] Worker created successfully`);
+    WorkerExtractor.logConsoleMessage(`[WorkerExtractor] Worker created successfully`);
     WorkerExtractor.logConsoleMessage(`Worker created from: ${workerPath}`);
 
     // Handle worker messages
@@ -106,13 +106,13 @@ export class WorkerExtractor extends EventEmitter {
     });
 
     this.worker.on('error', (error: Error) => {
-      console.error('[WorkerExtractor] Worker error:', error);
+      WorkerExtractor.logConsoleMessage('[WorkerExtractor] Worker error:', error);
       this.emit('workerError', error);
     });
 
     this.worker.on('exit', (code: number) => {
       if (code !== 0) {
-        console.error(`[WorkerExtractor] Worker exited with code ${code}`);
+        WorkerExtractor.logConsoleMessage(`[WorkerExtractor] Worker exited with code ${code}`);
       }
     });
 
@@ -180,14 +180,16 @@ export class WorkerExtractor extends EventEmitter {
           this.lastMessageRateCheckTime = now;
         }
 
-        WorkerExtractor.logConsoleMessage(`Received poolId ${msg.poolId} from worker (total: ${this.totalMessagesExtracted})`);
+        WorkerExtractor.logConsoleMessage(
+          `Received poolId ${msg.poolId} from worker (total: ${this.totalMessagesExtracted})`
+        );
 
         // Emit poolId - router will read from SharedMessagePool and release
         this.emit('messageExtracted', msg.poolId);
         break;
 
       case 'error':
-        console.error('[WorkerExtractor] Worker reported error:', msg.error);
+        WorkerExtractor.logConsoleMessage('[WorkerExtractor] Worker reported error:', msg.error);
         this.emit('workerError', new Error(msg.error));
         break;
 
@@ -252,13 +254,17 @@ export class WorkerExtractor extends EventEmitter {
    * Log final statistics (called on shutdown)
    */
   public logFinalStats(): void {
-    console.log(`[WorkerExtractor] 📊 FINAL STATISTICS:`);
-    console.log(`  Total Bytes Received: ${this.totalBytesReceived.toLocaleString()} bytes`);
-    console.log(`  Total Messages Extracted: ${this.totalMessagesExtracted.toLocaleString()}`);
-    console.log(`  Buffer Overflows: ${this.bufferOverflows}`);
-    console.log(`  Peak Message Rate: ${this.peakMessagesPerSecond.toLocaleString()} messages/sec`);
+    WorkerExtractor.logConsoleMessage(`[WorkerExtractor] 📊 FINAL STATISTICS:`);
+    WorkerExtractor.logConsoleMessage(`  Total Bytes Received: ${this.totalBytesReceived.toLocaleString()} bytes`);
+    WorkerExtractor.logConsoleMessage(`  Total Messages Extracted: ${this.totalMessagesExtracted.toLocaleString()}`);
+    WorkerExtractor.logConsoleMessage(`  Buffer Overflows: ${this.bufferOverflows}`);
+    WorkerExtractor.logConsoleMessage(
+      `  Peak Message Rate: ${this.peakMessagesPerSecond.toLocaleString()} messages/sec`
+    );
     if (this.peakMessageRateDuration > 0) {
-      console.log(`  Peak Rate Duration: ${Math.round(this.peakMessageRateDuration / 1000)} seconds`);
+      WorkerExtractor.logConsoleMessage(
+        `  Peak Rate Duration: ${Math.round(this.peakMessageRateDuration / 1000)} seconds`
+      );
     }
 
     // Log component stats
@@ -320,7 +326,7 @@ export class WorkerExtractor extends EventEmitter {
     this.worker.postMessage({ type: 'shutdown' });
 
     // Give worker time to exit gracefully
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   /**

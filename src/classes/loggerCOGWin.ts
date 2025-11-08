@@ -12,7 +12,7 @@ import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export interface COGTheme {
   name: string;
@@ -106,7 +106,6 @@ export class LoggerCOGWindow extends DebugWindowBase {
     }
 
     this.cogId = cogId;
-    this.isLogging = true; // Initially not logging until export
 
     // Log COG window creation
     if (ENABLE_CONSOLE_LOG) console.log(`[COG${cogId}] COG window created and initializing`);
@@ -655,8 +654,8 @@ export class LoggerCOGWindow extends DebugWindowBase {
       this.batchTimer = setTimeout(() => this.flushRenderQueue(), this.BATCH_INTERVAL_MS);
     }
 
-    // Write to log file if logging
-    if (this.isLogging && this.logFile) {
+    // Write to log file
+    if (this.logFile) {
       this.writeToLog(`${timestamp || new Date().toISOString()} ${displayMessage}\n`);
     }
   }
@@ -714,7 +713,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
     this.clearDisplay('DTR Reset - Log restarted');
 
     // Write to log file if logging
-    if (this.isLogging && this.logFile) {
+    if (this.logFile) {
       this.writeToLog(`\n=== DTR Reset at ${new Date().toISOString()} ===\n\n`);
     }
   }
@@ -726,7 +725,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
     this.clearDisplay('Code downloaded - Log restarted');
 
     // Write to log file if logging
-    if (this.isLogging && this.logFile) {
+    if (this.logFile) {
       this.writeToLog(`\n=== Code Downloaded at ${new Date().toISOString()} ===\n\n`);
     }
   }
@@ -788,9 +787,6 @@ export class LoggerCOGWindow extends DebugWindowBase {
         this.logFile.write(message + '\n');
       }
 
-      // Now start continuous logging
-      this.isLogging = true;
-
       // Update status bar
       if (this.debugWindow && !this.debugWindow.isDestroyed()) {
         this.debugWindow.webContents.send(`cog-${this.cogId}-log-status`, {
@@ -817,7 +813,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
    * Write to log file with buffering
    */
   private writeToLog(data: string): void {
-    if (!this.logFile || !this.isLogging) return;
+    if (!this.logFile) return;
 
     this.writeBuffer.push(data);
 
@@ -870,7 +866,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
     }
 
     // Flush write buffer and close log file
-    if (this.isLogging && this.logFile) {
+    if (this.logFile) {
       this.flushWriteBuffer();
       this.logFile.close();
       this.logFile = null;
@@ -1036,7 +1032,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
       messageCount: this.messageCount,
       hasTraffic: this.hasReceivedTraffic,
       bufferSize: this.historyBuffer.length,
-      isLogging: this.isLogging,
+      isLogging: true,
       logFile: this.logFilePath ? path.basename(this.logFilePath) : null,
       isOpen: this.isOpen()
     };

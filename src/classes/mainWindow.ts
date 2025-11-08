@@ -85,7 +85,7 @@ export interface GlobalSettings {
 }
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 export class MainWindow {
   private context: Context;
@@ -462,7 +462,9 @@ export class MainWindow {
     // Tokenize with proper quote handling (preserves 'Binary LEDS' as single token)
     const lineParts: string[] = this.tokenizeCommand(data);
     this.logConsoleMessage(
-      `[TWO-TIER] handleWindowCommand() - [${data.trimEnd()}]: lineParts=[${lineParts.join(' | ')}](${lineParts.length})`
+      `[TWO-TIER] handleWindowCommand() - [${data.trimEnd()}]: lineParts=[${lineParts.join(' | ')}](${
+        lineParts.length
+      })`
     );
 
     if (lineParts.length === 0 || lineParts[0].charAt(0) !== '`') {
@@ -942,7 +944,7 @@ export class MainWindow {
       let debugLogBaseName = 'debug_log';
       if (this.debugLoggerWindow && this.debugLoggerWindow.getLogFilePath()) {
         const debugLogPath = this.debugLoggerWindow.getLogFilePath();
-        const debugLogFile = path.basename(debugLogPath, '.log');  // Remove .log extension
+        const debugLogFile = path.basename(debugLogPath, '.log'); // Remove .log extension
         debugLogBaseName = debugLogFile;
       } else {
         // If no active debug log, create new basename with timestamp
@@ -982,7 +984,9 @@ export class MainWindow {
 
       // Show confirmation dialog
       if (exportedCount > 0) {
-        const message = `Exported ${exportedCount} COG log file(s) to:\n${logsDir}\n\nFiles:\n${exportedFiles.join('\n')}`;
+        const message = `Exported ${exportedCount} COG log file(s) to:\n${logsDir}\n\nFiles:\n${exportedFiles.join(
+          '\n'
+        )}`;
 
         dialog.showMessageBox(this.mainWindow, {
           type: 'info',
@@ -1039,7 +1043,7 @@ export class MainWindow {
       // Auto-create debug logger if needed
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
-        this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
+        this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
 
         // Apply current theme from preferences
         if (this.context.preferences?.terminal?.colorTheme) {
@@ -1066,7 +1070,7 @@ export class MainWindow {
 
         this.debugLoggerWindow.on('close', () => {
           this.windowRouter.unregisterWindow('logger');
-          delete this.displays['DebugLogger'];  // Use original case
+          delete this.displays['DebugLogger']; // Use original case
           this.debugLoggerWindow = null;
         });
 
@@ -1167,7 +1171,7 @@ export class MainWindow {
   }
 
   public initialize() {
-    this.context.logger.forceLogMessage('* initialize()');
+    if (ENABLE_CONSOLE_LOG) this.context.logger.forceLogMessage('* initialize()');
     this.logConsoleMessage('[STARTUP] MainWindow.initialize() called');
     // app.on('ready', this.createAppWindow);
     // CRITICAL FIX: Don't open serial port until DOM is ready!
@@ -1229,17 +1233,13 @@ export class MainWindow {
 
         // STEP 4: Close serial port properly to prevent Napi::Error on shutdown
         if (this._serialPort) {
-          this.logConsoleMessage(
-            `[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`
-          );
+          this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`);
           try {
             // CRITICAL: Set shutdown flag to stop processing incoming data
             this._serialPort.setShuttingDown(true);
             // CRITICAL: Properly await async close() to ensure clean shutdown
             await this._serialPort.close();
-            this.logConsoleMessage(
-              `[SHUTDOWN ${new Date().toISOString()}] Serial port closed successfully`
-            );
+            this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Serial port closed successfully`);
           } catch (error) {
             this.logConsoleMessage(
               `[SHUTDOWN ${new Date().toISOString()}] Serial port close error (non-fatal): ${error}`
@@ -1591,7 +1591,7 @@ export class MainWindow {
     try {
       this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
-      this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
+      this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
 
       // Apply current theme from preferences
       if (this.context.preferences?.terminal?.colorTheme) {
@@ -1621,7 +1621,7 @@ export class MainWindow {
         this.logMessage('Debug Logger Window closed');
         this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
         this.windowRouter.unregisterWindow('logger');
-        delete this.displays['DebugLogger'];  // Use original case
+        delete this.displays['DebugLogger']; // Use original case
         this.debugLoggerWindow = null;
         this.updateLoggingStatus(false);
       });
@@ -1906,7 +1906,7 @@ export class MainWindow {
     // esure we get notifications of window close
     windowObject.on('close', () => {
       this.logMessage(`CallBack: Window ${windowName} is closing.`);
-      this.cleanupOnClose(windowName);  // Pass original case name
+      this.cleanupOnClose(windowName); // Pass original case name
     });
     windowObject.on('closed', () => {
       this.logMessage(`CallBack: Window ${windowName} has closed.`);
@@ -1938,7 +1938,7 @@ export class MainWindow {
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
-        this.displays['DebugLogger'] = this.debugLoggerWindow;  // Store with original case
+        this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
 
         // Register with WindowRouter for message routing
         this.windowRouter.registerWindow(
@@ -1952,7 +1952,7 @@ export class MainWindow {
           this.logMessage('Debug Logger Window closed');
           this.logConsoleMessage('[DEBUG LOGGER] Window closed by user');
           this.windowRouter.unregisterWindow('logger');
-          delete this.displays['DebugLogger'];  // Use original case
+          delete this.displays['DebugLogger']; // Use original case
           this.debugLoggerWindow = null;
         });
 
@@ -2057,7 +2057,7 @@ export class MainWindow {
 
   private async createAppWindow() {
     this.logConsoleMessage('[STARTUP] createAppWindow() called');
-    this.context.logger.forceLogMessage(`* create App Window()`);
+    this.context.logger.debugMsg(`* create App Window()`);
     this.mainWindowOpen = true;
 
     try {
@@ -4543,7 +4543,7 @@ export class MainWindow {
     } else {
       console.error('ERROR: getFontMetrics() NO Main Window!');
     }
-    console.error(`* getFontMetrics() -> (${charWidth}x${charHeight})`);
+    //console.error(`* getFontMetrics() -> (${charWidth}x${charHeight})`);
     return { charWidth, charHeight }; // Default values
   }
 
@@ -4673,8 +4673,8 @@ export class MainWindow {
 
   private pstBuffer: string[] = [];
   private pstBufferTimer: NodeJS.Timeout | null = null;
-  private readonly MAX_PST_BUFFER: number = 1000;  // Safety valve
-  private readonly PST_FLUSH_TIMEOUT_MS: number = 100;  // Flush partial lines after 100ms
+  private readonly MAX_PST_BUFFER: number = 1000; // Safety valve
+  private readonly PST_FLUSH_TIMEOUT_MS: number = 100; // Flush partial lines after 100ms
 
   /**
    * Append P2 terminal output to PST buffer
@@ -5547,7 +5547,7 @@ export class MainWindow {
 
           // 2. Flush and rotate logs while traffic is blocked
           if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleDTRReset();  // This flushes/rotates logs
+            this.debugLoggerWindow.handleDTRReset(); // This flushes/rotates logs
             this.logMessage(`[DTR TOGGLE] Logs flushed and rotated`);
           }
 
@@ -5639,7 +5639,7 @@ export class MainWindow {
 
           // 2. Flush and rotate logs while traffic is blocked
           if (this.debugLoggerWindow) {
-            this.debugLoggerWindow.handleRTSReset();  // This flushes/rotates logs
+            this.debugLoggerWindow.handleRTSReset(); // This flushes/rotates logs
             this.logMessage(`[RTS TOGGLE] Logs flushed and rotated`);
           }
 
@@ -5648,7 +5648,7 @@ export class MainWindow {
             const windowKey = `COG-${cogId}`;
             const cogWindow = this.displays[windowKey] as unknown as LoggerCOGWindow;
             if (cogWindow && cogWindow.isOpen()) {
-              cogWindow.handleDTRReset();  // Same handler for DTR/RTS
+              cogWindow.handleDTRReset(); // Same handler for DTR/RTS
             }
           }
 
@@ -5873,7 +5873,9 @@ export class MainWindow {
 
         // CRITICAL: Log current state before any changes
         const currentBaud = this._serialPort.getCurrentBaudRate();
-        this.logConsoleMessage(`[DOWNLOAD] Current port baud rate: ${currentBaud}, debug rate: ${debugBaudRate}, download rate: ${downloadBaudRate}`);
+        this.logConsoleMessage(
+          `[DOWNLOAD] Current port baud rate: ${currentBaud}, debug rate: ${debugBaudRate}, download rate: ${downloadBaudRate}`
+        );
 
         // FORCE switch to download baud rate - don't trust the debug rate comparison
         // The P2 needs 2Mbps for reliable download
@@ -5928,7 +5930,9 @@ export class MainWindow {
         // P2 code is already running, we need to be ready to receive!
         const postDownloadBaud = this._serialPort.getCurrentBaudRate();
         if (postDownloadBaud !== debugBaudRate) {
-          this.logConsoleMessage(`[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to debug baud rate ${debugBaudRate}`);
+          this.logConsoleMessage(
+            `[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to debug baud rate ${debugBaudRate}`
+          );
 
           // Ensure TX buffer is empty before switching for a cleaner transition
           try {
@@ -5958,12 +5962,11 @@ export class MainWindow {
             this.logConsoleMessage(`[BAUD RATE] Warning: Error clearing garbage: ${clearErr.message}`);
             // Fall back to the ignore approach if new method fails
             this._serialPort.setIgnoreFrontTraffic(true);
-            await new Promise(resolve => setTimeout(resolve, 25));
+            await new Promise((resolve) => setTimeout(resolve, 25));
             this._serialPort.setIgnoreFrontTraffic(false);
           }
 
           this.logConsoleMessage(`[BAUD RATE] Ready to receive at ${actualBaud} baud`);
-
 
           // Single log message to debug logger window
           if (this.debugLoggerWindow) {
@@ -5972,7 +5975,6 @@ export class MainWindow {
         }
 
         if (downloadResult.success) {
-
           // Notify all COG windows about the download
           for (let cogId = 0; cogId < 8; cogId++) {
             const windowKey = `COG-${cogId}`;
@@ -6385,7 +6387,9 @@ export class MainWindow {
         // white and other colors default to green for logger windows
 
         // Update theme for debug logger window
-        this.logConsoleMessage(`[PREFERENCES] Terminal color theme set to ${themeValue} (using ${colorName} for logger)`);
+        this.logConsoleMessage(
+          `[PREFERENCES] Terminal color theme set to ${themeValue} (using ${colorName} for logger)`
+        );
         if (this.debugLoggerWindow) {
           this.debugLoggerWindow.setTheme(colorName);
         }
@@ -6500,7 +6504,7 @@ export class MainWindow {
    * Command line takes precedence over all preferences
    */
   private initializeSerialBaud(): void {
-    const APP_DEFAULT_BAUD = 115200;  // Default debug/terminal baud rate (NOT download rate!)
+    const APP_DEFAULT_BAUD = 115200; // Default debug/terminal baud rate (NOT download rate!)
 
     // Check if baud rate was specified on command line
     if (this.context.runEnvironment.debugBaudRateFromCLI && this.context.runEnvironment.debugBaudrate) {
@@ -6854,7 +6858,7 @@ export class MainWindow {
 
     // Check if we're in a suspicious location
     const suspiciousPatterns = this.getSuspiciousLocations();
-    const isSuspicious = suspiciousPatterns.some(pattern => pattern);
+    const isSuspicious = suspiciousPatterns.some((pattern) => pattern);
 
     // Check for project files
     const hasProjectFiles = this.detectProjectFiles();
@@ -6871,7 +6875,7 @@ export class MainWindow {
     if (isSuspicious && !hasProjectFiles && !hasProjectConfig && !isSupressed) {
       // Don't show warnings for likely project directories
       const safePatterns = this.getAlwaysAllowedPatterns();
-      const isSafeDir = safePatterns.some(pattern => pattern.test(cwd));
+      const isSafeDir = safePatterns.some((pattern) => pattern.test(cwd));
 
       if (!isSafeDir) {
         this.showLocationWarning(cwd);
@@ -6889,77 +6893,67 @@ export class MainWindow {
 
     // Common suspicious patterns for all platforms
     const commonPatterns = [
-      cwd === homeDir,                          // Home directory root
-      cwd === '/',                              // Unix root
-      cwd.includes('node_modules'),             // Inside node_modules
-      cwd.includes('.git') && !cwd.endsWith('.git'), // Inside .git folder
+      cwd === homeDir, // Home directory root
+      cwd === '/', // Unix root
+      cwd.includes('node_modules'), // Inside node_modules
+      cwd.includes('.git') && !cwd.endsWith('.git') // Inside .git folder
     ];
 
     // Platform-specific patterns
     let platformPatterns: boolean[] = [];
 
     switch (platform) {
-      case 'darwin':  // macOS
+      case 'darwin': // macOS
         platformPatterns = [
-          cwd === '/Applications',              // Applications folder
-          cwd === '/System',                     // System folder
-          cwd === '/Library',                    // Library folder
-          cwd === '/Users',                      // Users root
-          cwd === `${homeDir}/Desktop`,         // Desktop
-          cwd === `${homeDir}/Downloads`,       // Downloads
-          cwd === `${homeDir}/Documents`,       // Documents root (too broad)
-          cwd === `${homeDir}/Library`,         // User Library
-          cwd === `${homeDir}/.Trash`,          // Trash
-          cwd.includes('/Applications/') &&
-            cwd.includes('.app'),               // Inside an app bundle
-          cwd.includes('/Volumes/'),            // External volumes root
+          cwd === '/Applications', // Applications folder
+          cwd === '/System', // System folder
+          cwd === '/Library', // Library folder
+          cwd === '/Users', // Users root
+          cwd === `${homeDir}/Desktop`, // Desktop
+          cwd === `${homeDir}/Downloads`, // Downloads
+          cwd === `${homeDir}/Documents`, // Documents root (too broad)
+          cwd === `${homeDir}/Library`, // User Library
+          cwd === `${homeDir}/.Trash`, // Trash
+          cwd.includes('/Applications/') && cwd.includes('.app'), // Inside an app bundle
+          cwd.includes('/Volumes/') // External volumes root
         ];
         break;
 
-      case 'win32':  // Windows
+      case 'win32': // Windows
         platformPatterns = [
-          /^[A-Z]:\\?$/i.test(cwd),            // Any drive root
-          cwd === `${homeDir}\\Desktop` ||
-            cwd === `${homeDir}/Desktop`,       // Desktop
-          cwd === `${homeDir}\\Downloads` ||
-            cwd === `${homeDir}/Downloads`,     // Downloads
-          cwd === `${homeDir}\\Documents` ||
-            cwd === `${homeDir}/Documents`,     // Documents root
-          cwd.includes('\\Windows\\') ||
-            cwd.includes('/Windows/'),          // Windows system
-          cwd.includes('\\Program Files') ||
-            cwd.includes('/Program Files'),     // Program Files
-          cwd.includes('\\ProgramData') ||
-            cwd.includes('/ProgramData'),       // ProgramData
-          cwd.includes('\\System32') ||
-            cwd.includes('/System32'),          // System32
-          cwd.includes('\\AppData\\') ||
-            cwd.includes('/AppData/'),          // AppData folders
-          cwd === `${homeDir}\\OneDrive` ||
-            cwd === `${homeDir}/OneDrive`,      // OneDrive root
+          /^[A-Z]:\\?$/i.test(cwd), // Any drive root
+          cwd === `${homeDir}\\Desktop` || cwd === `${homeDir}/Desktop`, // Desktop
+          cwd === `${homeDir}\\Downloads` || cwd === `${homeDir}/Downloads`, // Downloads
+          cwd === `${homeDir}\\Documents` || cwd === `${homeDir}/Documents`, // Documents root
+          cwd.includes('\\Windows\\') || cwd.includes('/Windows/'), // Windows system
+          cwd.includes('\\Program Files') || cwd.includes('/Program Files'), // Program Files
+          cwd.includes('\\ProgramData') || cwd.includes('/ProgramData'), // ProgramData
+          cwd.includes('\\System32') || cwd.includes('/System32'), // System32
+          cwd.includes('\\AppData\\') || cwd.includes('/AppData/'), // AppData folders
+          cwd === `${homeDir}\\OneDrive` || cwd === `${homeDir}/OneDrive` // OneDrive root
         ];
         break;
 
-      case 'linux':  // Linux
+      case 'linux': // Linux
         platformPatterns = [
-          cwd === '/usr',                       // usr directory
-          cwd === '/bin',                       // bin directory
-          cwd === '/sbin',                      // sbin directory
-          cwd === '/etc',                       // etc directory
-          cwd === '/var',                       // var directory
-          cwd === '/opt',                       // opt directory
-          cwd === '/proc',                      // proc filesystem
-          cwd === '/sys',                       // sys filesystem
-          cwd === '/boot',                      // boot directory
-          cwd === `${homeDir}/Desktop`,        // Desktop
-          cwd === `${homeDir}/Downloads`,      // Downloads
-          cwd === `${homeDir}/Documents`,      // Documents root
-          cwd === `${homeDir}/.local`,         // .local directory
-          cwd === `${homeDir}/.config`,        // .config directory
-          cwd === `${homeDir}/snap`,           // Snap packages
-          cwd.includes('/.cache/'),            // Cache directories
-          cwd === '/mnt',                       // Mount point root
-          cwd === '/media',                     // Media mount root
+          cwd === '/usr', // usr directory
+          cwd === '/bin', // bin directory
+          cwd === '/sbin', // sbin directory
+          cwd === '/etc', // etc directory
+          cwd === '/var', // var directory
+          cwd === '/opt', // opt directory
+          cwd === '/proc', // proc filesystem
+          cwd === '/sys', // sys filesystem
+          cwd === '/boot', // boot directory
+          cwd === `${homeDir}/Desktop`, // Desktop
+          cwd === `${homeDir}/Downloads`, // Downloads
+          cwd === `${homeDir}/Documents`, // Documents root
+          cwd === `${homeDir}/.local`, // .local directory
+          cwd === `${homeDir}/.config`, // .config directory
+          cwd === `${homeDir}/snap`, // Snap packages
+          cwd.includes('/.cache/'), // Cache directories
+          cwd === '/mnt', // Mount point root
+          cwd === '/media' // Media mount root
         ];
         break;
     }
@@ -6973,12 +6967,13 @@ export class MainWindow {
   private detectProjectFiles(): boolean {
     try {
       const files = fs.readdirSync('.');
-      return files.some(f =>
-        f.endsWith('.spin2') ||
-        f.endsWith('.spin') ||
-        f.endsWith('.binary') ||
-        f.endsWith('.bin') ||
-        f === '.pnut-term-ts-settings.json'
+      return files.some(
+        (f) =>
+          f.endsWith('.spin2') ||
+          f.endsWith('.spin') ||
+          f.endsWith('.binary') ||
+          f.endsWith('.bin') ||
+          f === '.pnut-term-ts-settings.json'
       );
     } catch (error) {
       // If we can't read the directory, assume it's not a project
@@ -7001,20 +6996,23 @@ export class MainWindow {
       /\/dev(elopment)?\//i,
       /\/code\//i,
       /\/workspace/i,
-      /\/src\//i,
+      /\/src\//i
     ];
 
     // Platform-specific safe patterns (Windows needs backslash patterns)
-    const platformSpecific = platform === 'win32' ? [
-      /\\P2Projects?\\/i,
-      /\\Propeller/i,
-      /\\spin2?\\/i,
-      /\\projects?\\/i,
-      /\\dev(elopment)?\\/i,
-      /\\code\\/i,
-      /\\workspace/i,
-      /\\src\\/i,
-    ] : [];
+    const platformSpecific =
+      platform === 'win32'
+        ? [
+            /\\P2Projects?\\/i,
+            /\\Propeller/i,
+            /\\spin2?\\/i,
+            /\\projects?\\/i,
+            /\\dev(elopment)?\\/i,
+            /\\code\\/i,
+            /\\workspace/i,
+            /\\src\\/i
+          ]
+        : [];
 
     return [...common, ...platformSpecific];
   }
@@ -7030,11 +7028,7 @@ export class MainWindow {
 
     switch (platform) {
       case 'darwin':
-        examplePaths = [
-          '~/Documents/P2Projects/',
-          '~/Development/Propeller/',
-          '~/Code/spin2-workspace/'
-        ];
+        examplePaths = ['~/Documents/P2Projects/', '~/Development/Propeller/', '~/Code/spin2-workspace/'];
         break;
 
       case 'win32':
@@ -7046,23 +7040,20 @@ export class MainWindow {
         break;
 
       case 'linux':
-        examplePaths = [
-          '~/projects/propeller/',
-          '~/Documents/p2-development/',
-          '~/workspace/spin2/'
-        ];
+        examplePaths = ['~/projects/propeller/', '~/Documents/p2-development/', '~/workspace/spin2/'];
         break;
 
       default:
         examplePaths = ['~/YourProjectFolder/'];
     }
 
-    const detail = `Current directory: ${currentDir}\n\n` +
-                   `PNut-Term-TS is running in a directory with no .spin2, .spin, ` +
-                   `or .binary files detected.\n\n` +
-                   `Did you mean to run it from a different location?\n\n` +
-                   `Common project locations:\n` +
-                   examplePaths.map(p => `  • ${p}`).join('\n');
+    const detail =
+      `Current directory: ${currentDir}\n\n` +
+      `PNut-Term-TS is running in a directory with no .spin2, .spin, ` +
+      `or .binary files detected.\n\n` +
+      `Did you mean to run it from a different location?\n\n` +
+      `Common project locations:\n` +
+      examplePaths.map((p) => `  • ${p}`).join('\n');
 
     const result = await dialog.showMessageBox(this.mainWindow!, {
       type: 'warning',

@@ -28,7 +28,7 @@ import {
 } from './debugWindowBase';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * FFT Display Specification Interface
@@ -1593,7 +1593,7 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     // Pascal default for vHigh[i] (lines 1193, 1610): $7FFFFFFF
     // This large value ensures only significant signals are visible, suppressing noise
-    const high = 0x7FFFFFFF; // Pascal default: maximum Int32 value
+    const high = 0x7fffffff; // Pascal default: maximum Int32 value
 
     // Pascal default: tall = vHeight (line 1611)
     const tall = this.displayHeight;

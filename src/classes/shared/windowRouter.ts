@@ -2,7 +2,7 @@
 
 // src/classes/shared/windowRouter.ts
 
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -101,7 +101,7 @@ export class WindowRouter extends EventEmitter {
 
   // Two-tiered registration: Track window instances even before they're ready
   private windowInstances: Map<string, { type: string; instance: any; isReady: boolean }> = new Map();
-  
+
   // Recording state
   private isRecording: boolean = false;
   private recordingMetadata: RecordingMetadata | null = null;
@@ -115,7 +115,7 @@ export class WindowRouter extends EventEmitter {
   private samplingSeed: number = 0;
   private binaryRecorder: BinaryRecorder | null = null;
   private useBinaryFormat: boolean = true; // Default to binary format
-  
+
   // Statistics
   private stats: RoutingStats = {
     messagesRouted: 0,
@@ -126,11 +126,11 @@ export class WindowRouter extends EventEmitter {
     windowsActive: 0,
     recordingActive: false
   };
-  
+
   // Performance tracking
   private routingTimes: number[] = [];
   private readonly MAX_ROUTING_SAMPLES = 1000;
-  
+
   // Logging
   private logger: RouterLogger;
 
@@ -143,17 +143,17 @@ export class WindowRouter extends EventEmitter {
 
   private constructor() {
     super();
-    
+
     // Initialize logger
     this.logger = new RouterLogger({
       level: process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.INFO,
       console: true,
       file: process.env.ROUTER_LOG_FILE === 'true'
     });
-    
-    this.logger.info('STARTUP', 'WindowRouter initialized');
+
+    this.logConsoleMessage('[ROUTER] STARTUP: WindowRouter initialized');
   }
-  
+
   /**
    * Get singleton instance of WindowRouter
    */
@@ -181,7 +181,7 @@ export class WindowRouter extends EventEmitter {
    */
   public setDisplaysMap(displaysMap: { [key: string]: any }): void {
     this.displaysMap = displaysMap;
-    this.logger.info('SETUP', 'Displays map reference set - routing by displayName enabled');
+    this.logConsoleMessage('[ROUTER] SETUP: Displays map reference set - routing by displayName enabled');
   }
 
   /**
@@ -189,7 +189,7 @@ export class WindowRouter extends EventEmitter {
    */
   public setMainWindow(mainWindow: any): void {
     this.mainWindowInstance = mainWindow;
-    this.logger.info('SETUP', 'Main window reference set - PST terminal routing enabled');
+    this.logConsoleMessage('[ROUTER] SETUP: Main window reference set - PST terminal routing enabled');
   }
 
   /**
@@ -198,64 +198,68 @@ export class WindowRouter extends EventEmitter {
   public setShuttingDown(shuttingDown: boolean): void {
     this.isShuttingDown = shuttingDown;
     if (shuttingDown) {
-      this.logger.info('SHUTDOWN', 'Router set to shutdown mode - blocking window creation');
+      this.logConsoleMessage('[ROUTER] SHUTDOWN: Router set to shutdown mode - blocking window creation');
     }
   }
-  
+
   /**
    * Phase 1: Register window instance (called during window construction)
    * This allows early message routing to window's internal queue
    */
   public registerWindowInstance(windowId: string, windowType: string, instance: any): void {
     this.logger.debug('REGISTER_INSTANCE', `Registering window instance: ${windowId} (${windowType})`);
-    
+
     this.windowInstances.set(windowId, {
       type: windowType,
       instance: instance,
       isReady: false
     });
-    
-    this.logger.info('REGISTER_INSTANCE', `Window instance registered: ${windowId} (${windowType}). Can receive messages to queue.`);
+
+    this.logConsoleMessage(
+      `[ROUTER] REGISTER_INSTANCE: Window instance registered: ${windowId} (${windowType}). Can receive messages to queue.`
+    );
   }
-  
+
   /**
    * Phase 2: Register window handler (called when window is ready)
    * This enables direct message processing
    */
   public registerWindow(windowId: string, windowType: string, handler: WindowHandler): void {
     this.logger.debug('REGISTER', `Registering window handler: ${windowId} (${windowType})`);
-    
+
     if (this.windows.has(windowId)) {
       const error = new Error(`Window ${windowId} is already registered`);
       this.logger.logError('REGISTER', error);
       throw error;
     }
-    
+
     // Mark instance as ready if it exists
     const instance = this.windowInstances.get(windowId);
     if (instance) {
       instance.isReady = true;
       this.logger.debug('REGISTER', `Marked window instance ${windowId} as ready`);
     }
-    
+
     const windowInfo: WindowInfo = {
       windowId,
       windowType,
       registeredAt: Date.now(),
       messagesReceived: 0
     };
-    
+
     this.windows.set(windowId, {
       type: windowType,
       handler,
       stats: windowInfo
     });
-    
+
     this.stats.windowsActive = this.windows.size;
-    this.logger.info('REGISTER', `Window registered: ${windowId} (${windowType}). Active windows: ${this.stats.windowsActive}`);
+    this.logConsoleMessage(
+      `[ROUTER] REGISTER: Window registered: ${windowId} (${windowType}). Active windows: ${this.stats.windowsActive}`
+    );
     this.emit('windowRegistered', { windowId, windowType });
   }
-  
+
   /**
    * Unregister a debug window
    */
@@ -264,7 +268,9 @@ export class WindowRouter extends EventEmitter {
 
     if (this.windows.delete(windowId)) {
       this.stats.windowsActive = this.windows.size;
-      this.logger.info('UNREGISTER', `Window unregistered: ${windowId}. Active windows: ${this.stats.windowsActive}`);
+      this.logConsoleMessage(
+        `[ROUTER] UNREGISTER: Window unregistered: ${windowId}. Active windows: ${this.stats.windowsActive}`
+      );
       this.emit('windowUnregistered', { windowId });
     } else {
       this.logger.warn('UNREGISTER', `Attempted to unregister non-existent window: ${windowId}`);
@@ -291,8 +297,7 @@ export class WindowRouter extends EventEmitter {
 
       // Determine binary vs text from SharedMessageType enum ranges
       const isBinaryMessage =
-        message.type >= SharedMessageType.DEBUGGER0_416BYTE &&
-        message.type <= SharedMessageType.DEBUGGER7_416BYTE;
+        message.type >= SharedMessageType.DEBUGGER0_416BYTE && message.type <= SharedMessageType.DEBUGGER7_416BYTE;
 
       if (isBinaryMessage) {
         // Binary debugger message - extract COG ID from SharedMessageType
@@ -309,16 +314,18 @@ export class WindowRouter extends EventEmitter {
 
       // Log performance if slow
       if (routingTime > 1.0) {
-        this.logger.warn('PERFORMANCE', `Slow routing detected: ${routingTime.toFixed(2)}ms (type=${message.type}, ${dataSize}B)`);
+        this.logger.warn(
+          'PERFORMANCE',
+          `Slow routing detected: ${routingTime.toFixed(2)}ms (type=${message.type}, ${dataSize}B)`
+        );
       }
-
     } catch (error) {
       this.stats.errors++;
       this.logger.logError('ROUTE', error as Error, { messageType: message.type });
       this.emit('routingError', { error, message });
     }
   }
-  
+
   /**
    * Route binary message (debugger protocol)
    * @param data Binary data to route
@@ -326,7 +333,7 @@ export class WindowRouter extends EventEmitter {
    */
   public routeBinaryMessage(data: Uint8Array, taggedCogId?: number): void {
     const startTime = performance.now();
-    
+
     // Use tagged COG ID if provided, otherwise extract from 32-bit little-endian word
     // P2 debugger protocol: COG ID is first 32-bit little-endian word (not just first byte!)
     let extractedCogId = 0;
@@ -338,45 +345,54 @@ export class WindowRouter extends EventEmitter {
       extractedCogId = data[0];
     }
     const cogId = taggedCogId !== undefined ? taggedCogId : extractedCogId;
-    
-    // Validate COG ID  
+
+    // Validate COG ID
     if (cogId > 0x07 && taggedCogId === undefined) {
-      this.logger.warn('ROUTE_BINARY', `Invalid COG ID extracted: 0x${extractedCogId.toString(16).toUpperCase()} (expected 0x00-0x07)`);
+      this.logger.warn(
+        'ROUTE_BINARY',
+        `Invalid COG ID extracted: 0x${extractedCogId.toString(16).toUpperCase()} (expected 0x00-0x07)`
+      );
     }
     const windowId = `debugger-${cogId}`;
-    
+
     this.logger.debug('ROUTE_BINARY', `Routing binary message to COG ${cogId} (${data.length}B)`);
-    
+
     // ALWAYS route binary messages to DebugLogger window for logging/analysis
     let loggerWindowFound = false;
     for (const [winId, window] of this.windows) {
-      if (window.type === 'logger') {  // DebugLoggerWindow registers as 'logger' type
-        window.handler(data);  // Send raw Uint8Array for hex formatting
+      if (window.type === 'logger') {
+        // DebugLoggerWindow registers as 'logger' type
+        window.handler(data); // Send raw Uint8Array for hex formatting
         window.stats.messagesReceived++;
         loggerWindowFound = true;
-        
+
         if (this.isRecording) {
           this.recordMessage(winId, window.type, 'binary', data);
         }
       }
     }
-    
+
     // Defensive error logging: warn if no logger window found for binary data
     if (!loggerWindowFound) {
-      this.logger.warn('ROUTE_ERROR', `No DebugLoggerWindow registered to receive binary message from COG ${cogId} (${data.length}B)`);
-      console.warn(`[ROUTING] ⚠️ Binary debugger message from COG ${cogId} received but no DebugLoggerWindow registered! Message will be lost.`);
+      this.logger.warn(
+        'ROUTE_ERROR',
+        `No DebugLoggerWindow registered to receive binary message from COG ${cogId} (${data.length}B)`
+      );
+      console.warn(
+        `[ROUTING] ⚠️ Binary debugger message from COG ${cogId} received but no DebugLoggerWindow registered! Message will be lost.`
+      );
       console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
     }
-    
+
     // Also route to specific debugger window if it exists
     const window = this.windows.get(windowId);
     if (window) {
       window.handler(data);
       window.stats.messagesReceived++;
-      
+
       const routingTime = performance.now() - startTime;
       this.logger.logRouting(windowId, 'binary', data.length, routingTime);
-      
+
       // Record if enabled
       if (this.isRecording) {
         this.recordMessage(windowId, window.type, 'binary', data);
@@ -386,12 +402,12 @@ export class WindowRouter extends EventEmitter {
       this.logger.debug('ROUTE_BINARY', `No window registered for COG ${cogId}, message unhandled`);
       this.emit('unhandledMessage', { type: 'binary', cogId, size: data.length });
     }
-    
+
     // Update statistics
     const routingTime = performance.now() - startTime;
     this.updateRoutingStats(routingTime, data);
   }
-  
+
   /**
    * Route text message (Cog messages, backtick commands, terminal output)
    *
@@ -443,8 +459,10 @@ export class WindowRouter extends EventEmitter {
       const loggerWindow = this.windows.get('logger');
       if (loggerWindow) {
         const commandType = isCreationCommand ? 'creation' : 'update';
-        this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes (backtick ${commandType}) to DebugLogger window`);
-        loggerWindow.handler(message);  // Pass full SerialMessage with timestamp and messageType
+        this.logConsoleMessage(
+          `[ROUTER->LOGGER] Sending ${text.length} bytes (backtick ${commandType}) to DebugLogger window`
+        );
+        loggerWindow.handler(message); // Pass full SerialMessage with timestamp and messageType
         loggerWindow.stats.messagesReceived++;
 
         if (this.isRecording) {
@@ -473,7 +491,7 @@ export class WindowRouter extends EventEmitter {
       const loggerWindow = this.windows.get('logger');
       if (loggerWindow) {
         this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
-        loggerWindow.handler(message);  // Pass full SerialMessage with timestamp and messageType
+        loggerWindow.handler(message); // Pass full SerialMessage with timestamp and messageType
         loggerWindow.stats.messagesReceived++;
         handled = true;
 
@@ -490,7 +508,7 @@ export class WindowRouter extends EventEmitter {
 
         if (cogWindow) {
           this.logConsoleMessage(`[ROUTER->COG${cogId}] Sending ${text.length} bytes to COG${cogId} window`);
-          cogWindow.handler(message);  // Pass full SerialMessage
+          cogWindow.handler(message); // Pass full SerialMessage
           cogWindow.stats.messagesReceived++;
           handled = true;
 
@@ -502,17 +520,14 @@ export class WindowRouter extends EventEmitter {
       }
     }
     // 3. TERMINAL OUTPUT and INVALID_COG - Route to DebugLogger AND blue terminal
-    else if (
-      messageType === SharedMessageType.TERMINAL_OUTPUT ||
-      messageType === SharedMessageType.INVALID_COG
-    ) {
+    else if (messageType === SharedMessageType.TERMINAL_OUTPUT || messageType === SharedMessageType.INVALID_COG) {
       this.logger.debug('ROUTE', `Routing terminal/invalid output: ${text.substring(0, 50)}...`);
 
       // Route to DebugLogger for record
       const loggerWindow = this.windows.get('logger');
       if (loggerWindow) {
         this.logConsoleMessage(`[ROUTER->LOGGER] Sending ${text.length} bytes to DebugLogger window`);
-        loggerWindow.handler(message);  // Pass full SerialMessage
+        loggerWindow.handler(message); // Pass full SerialMessage
         loggerWindow.stats.messagesReceived++;
         handled = true;
 
@@ -548,12 +563,12 @@ export class WindowRouter extends EventEmitter {
         this.logger.warn('ROUTE', 'Main window instance not set - cannot route fallback text');
       }
     }
-    
+
     // Update statistics
     const routingTime = performance.now() - startTime;
     this.updateRoutingStats(routingTime, text);
   }
-  
+
   /**
    * Parse and route backtick commands to appropriate debug windows
    *
@@ -626,7 +641,6 @@ export class WindowRouter extends EventEmitter {
     // CRITICAL: Never create COG-0 windows from backtick commands
     if (command.includes('COG-0') || command.includes('COG0')) {
       this.logConsoleMessage(`[ROUTER DEBUG] ⚠️ Ignoring COG-0 backtick command (system COG): "${command}"`);
-      this.logger.info('ROUTE', 'Ignoring COG-0 backtick command (system COG)');
       return;
     }
 
@@ -634,7 +648,11 @@ export class WindowRouter extends EventEmitter {
     const cleanCommand = command.substring(1).trim();
     const parts = this.tokenizeCommand(cleanCommand);
 
-    this.logConsoleMessage(`[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts.map(p => safeDisplayString(p)).join(', ')}]`);
+    this.logConsoleMessage(
+      `[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts
+        .map((p) => safeDisplayString(p))
+        .join(', ')}]`
+    );
 
     if (parts.length < 1) {
       this.logConsoleMessage(`[ROUTER DEBUG] ❌ Empty backtick command`);
@@ -651,7 +669,7 @@ export class WindowRouter extends EventEmitter {
       this.logger.error('ROUTE', 'Displays map not set - cannot route backtick commands');
       return;
     }
-    const registeredWindowNames = Object.keys(this.displaysMap).map(name => name.toUpperCase());
+    const registeredWindowNames = Object.keys(this.displaysMap).map((name) => name.toUpperCase());
 
     // STEP 1: First token MUST be a valid registered window
     if (!registeredWindowNames.includes(firstToken)) {
@@ -693,15 +711,15 @@ export class WindowRouter extends EventEmitter {
     const dataString = dataParts.join(' ');
 
     this.logConsoleMessage(
-      `[ROUTER DEBUG] Multi-window dispatch to ${targetWindows.length} window(s): [${targetWindows.join(', ')}], data: "${dataString}"`
+      `[ROUTER DEBUG] Multi-window dispatch to ${targetWindows.length} window(s): [${targetWindows.join(
+        ', '
+      )}], data: "${dataString}"`
     );
 
     // STEP 5: Route SAME data to all target windows
-    targetWindows.forEach(windowNameUpper => {
+    targetWindows.forEach((windowNameUpper) => {
       // Find window in displays map (case-insensitive match)
-      const displayEntry = Object.entries(this.displaysMap!).find(
-        ([name]) => name.toUpperCase() === windowNameUpper
-      );
+      const displayEntry = Object.entries(this.displaysMap!).find(([name]) => name.toUpperCase() === windowNameUpper);
 
       if (displayEntry) {
         const [displayName, window] = displayEntry;
@@ -711,7 +729,9 @@ export class WindowRouter extends EventEmitter {
 
         // Send dataParts directly - already properly tokenized by tokenizeCommand()
         // Commas are already separate tokens, quoted strings are intact
-        this.logConsoleMessage(`[ROUTER DEBUG]   📤 Sending dataParts array: [${dataParts.join(', ')}] (${dataParts.length} parts)`);
+        this.logConsoleMessage(
+          `[ROUTER DEBUG]   📤 Sending dataParts array: [${dataParts.join(', ')}] (${dataParts.length} parts)`
+        );
         debugWindow.updateContent(dataParts);
 
         if (this.isRecording) {
@@ -722,7 +742,7 @@ export class WindowRouter extends EventEmitter {
       }
     });
   }
-  
+
   /**
    * Check if recording is active
    */
@@ -746,23 +766,23 @@ export class WindowRouter extends EventEmitter {
       this.logger.logError('RECORDING', error);
       throw error;
     }
-    
-    this.logger.info('RECORDING', `Starting recording session: ${metadata.sessionName}`);
-    
+
+    this.logConsoleMessage(`[ROUTER] RECORDING: Starting recording session: ${metadata.sessionName}`);
+
     // Use context-based recordings directory for both formats
     const recordingsDir = this.context
       ? path.join(this.context.getRecordingsDirectory(), 'sessions')
       : path.join(process.cwd(), 'recordings', 'sessions'); // Fallback if context not set
-    
+
     if (this.useBinaryFormat) {
       // Use binary recorder for .p2rec format
       this.binaryRecorder = new BinaryRecorder();
       const filepath = this.binaryRecorder.startRecording(metadata);
-      
+
       // Extract session ID from filepath
       const filename = path.basename(filepath);
       this.recordingSessionId = filename.replace('.p2rec', '');
-      
+
       this.recordingMetadata = metadata;
       this.isRecording = true;
       this.stats.recordingActive = true;
@@ -773,13 +793,13 @@ export class WindowRouter extends EventEmitter {
       if (!fs.existsSync(recordingsDir)) {
         fs.mkdirSync(recordingsDir, { recursive: true });
       }
-      
+
       // Generate session ID and filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       this.recordingSessionId = `${timestamp}-${metadata.sessionName}`;
       const filename = `${this.recordingSessionId}.jsonl`;
       const filepath = path.join(recordingsDir, filename);
-      
+
       // Start recording
       this.recordingMetadata = metadata;
       this.recordingStream = fs.createWriteStream(filepath, { flags: 'w' });
@@ -789,11 +809,11 @@ export class WindowRouter extends EventEmitter {
       this.recordingStartTime = Date.now();
       this.samplingSeed = 0;
     }
-    
+
     if (!this.useBinaryFormat) {
       const filename = `${this.recordingSessionId}.jsonl`;
       const filepath = path.join(recordingsDir, filename);
-      
+
       // Add to catalog
       const catalogEntry: CatalogEntry = {
         sessionId: this.recordingSessionId,
@@ -812,19 +832,19 @@ export class WindowRouter extends EventEmitter {
         }
       };
       this.recordingCatalog.addRecording(catalogEntry);
-      
+
       // Write metadata as first line
       if (this.recordingStream) {
         this.recordingStream.write(JSON.stringify({ metadata }) + '\n');
       }
-      
+
       // Setup buffered write timer
       this.recordingTimer = setInterval(() => this.flushRecordingBuffer(), this.BUFFER_TIMEOUT);
-      
+
       this.emit('recordingStarted', { metadata, filepath, sessionId: this.recordingSessionId });
     }
   }
-  
+
   /**
    * Set recording format (binary or JSON)
    */
@@ -833,9 +853,11 @@ export class WindowRouter extends EventEmitter {
       throw new Error('Cannot change format while recording is in progress');
     }
     this.useBinaryFormat = useBinary;
-    this.logger.info('CONFIG', `Recording format set to ${useBinary ? 'binary (.p2rec)' : 'JSON (.jsonl)'}`);
+    this.logConsoleMessage(
+      `[ROUTER] CONFIG: Recording format set to ${useBinary ? 'binary (.p2rec)' : 'JSON (.jsonl)'}`
+    );
   }
-  
+
   /**
    * Stop recording debug session
    */
@@ -843,74 +865,86 @@ export class WindowRouter extends EventEmitter {
     if (!this.isRecording) {
       return;
     }
-    
+
     if (this.useBinaryFormat && this.binaryRecorder) {
       // Stop binary recording
       const finalMetadata = this.binaryRecorder.stopRecording();
-      
+
       // Update catalog with final stats
       if (this.recordingSessionId && finalMetadata) {
-        const filepath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `${this.recordingSessionId}.p2rec`);
+        const filepath = path.join(
+          process.cwd(),
+          'tests',
+          'recordings',
+          'sessions',
+          `${this.recordingSessionId}.p2rec`
+        );
         let fileSize = 0;
         if (fs.existsSync(filepath)) {
           fileSize = fs.statSync(filepath).size;
         }
-        
+
         this.recordingCatalog.updateRecording(this.recordingSessionId, {
           duration: finalMetadata.endTime! - finalMetadata.startTime,
           messageCount: finalMetadata.messageCount || 0,
           fileSize
         });
       }
-      
+
       this.binaryRecorder = null;
     } else {
       // Flush remaining buffer for JSON format
       this.flushRecordingBuffer();
-      
+
       // Update catalog with final stats
       if (this.recordingSessionId) {
         const duration = Date.now() - this.recordingStartTime;
-        const filepath = path.join(process.cwd(), 'tests', 'recordings', 'sessions', `${this.recordingSessionId}.jsonl`);
+        const filepath = path.join(
+          process.cwd(),
+          'tests',
+          'recordings',
+          'sessions',
+          `${this.recordingSessionId}.jsonl`
+        );
         let fileSize = 0;
         if (fs.existsSync(filepath)) {
           fileSize = fs.statSync(filepath).size;
         }
-        
+
         this.recordingCatalog.updateRecording(this.recordingSessionId, {
           duration,
           messageCount: this.recordingMessageCount,
           fileSize
         });
       }
-      
+
       // Clean up
       if (this.recordingTimer) {
         clearInterval(this.recordingTimer);
         this.recordingTimer = null;
       }
-      
+
       if (this.recordingStream) {
         this.recordingStream.end();
         this.recordingStream = null;
       }
     }
-    
+
     this.isRecording = false;
     this.stats.recordingActive = false;
     this.recordingMetadata = null;
     this.recordingSessionId = null;
-    
+
     this.emit('recordingStopped');
   }
-  
+
   /**
    * Get recording catalog
    */
   public getRecordingCatalog(): RecordingCatalog {
     return this.recordingCatalog;
   }
-  
+
   /**
    * Play back a recorded session
    */
@@ -918,37 +952,37 @@ export class WindowRouter extends EventEmitter {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Recording file not found: ${filePath}`);
     }
-    
+
     const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n').filter(line => line.trim());
-    
+    const lines = content.split('\n').filter((line) => line.trim());
+
     if (lines.length === 0) {
       throw new Error('Recording file is empty');
     }
-    
+
     // Parse metadata from first line
     const metadataLine = JSON.parse(lines[0]);
     if (!metadataLine.metadata) {
       throw new Error('Recording file missing metadata');
     }
-    
+
     this.emit('playbackStarted', { metadata: metadataLine.metadata, speed, headless });
-    
+
     // Play back messages
     let lastTimestamp = 0;
     let messagesPlayed = 0;
     let errors = 0;
-    
+
     for (let i = 1; i < lines.length; i++) {
       const message: RecordedMessage = JSON.parse(lines[i]);
-      
+
       // Calculate delay (skip delays in headless mode)
       if (!headless && lastTimestamp > 0) {
         const delay = (message.timestamp - lastTimestamp) / speed;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
       lastTimestamp = message.timestamp;
-      
+
       // Route message (or validate in headless mode)
       if (headless) {
         // In headless mode, just validate the message format
@@ -979,28 +1013,33 @@ export class WindowRouter extends EventEmitter {
         }
       }
     }
-    
+
     this.emit('playbackCompleted', { messagesPlayed, errors, headless });
   }
-  
+
   /**
    * Get list of active windows
    */
   public getActiveWindows(): WindowInfo[] {
-    return Array.from(this.windows.values()).map(w => ({ ...w.stats }));
+    return Array.from(this.windows.values()).map((w) => ({ ...w.stats }));
   }
-  
+
   /**
    * Get routing statistics
    */
   public getRoutingStats(): RoutingStats {
     return { ...this.stats };
   }
-  
+
   /**
    * Record a message to the buffer
    */
-  private recordMessage(windowId: string, windowType: string, messageType: 'binary' | 'text', data: Uint8Array | string): void {
+  private recordMessage(
+    windowId: string,
+    windowType: string,
+    messageType: 'binary' | 'text',
+    data: Uint8Array | string
+  ): void {
     // Check sampling mode
     if (this.recordingMetadata?.samplingMode?.enabled) {
       this.samplingSeed++;
@@ -1008,12 +1047,10 @@ export class WindowRouter extends EventEmitter {
         return; // Skip this message
       }
     }
-    
+
     if (this.useBinaryFormat && this.binaryRecorder) {
       // Record to binary format
-      const buffer = messageType === 'binary'
-        ? Buffer.from(data as Uint8Array)
-        : Buffer.from(data as string, 'latin1'); // Use latin1 to preserve binary bytes
+      const buffer = messageType === 'binary' ? Buffer.from(data as Uint8Array) : Buffer.from(data as string, 'latin1'); // Use latin1 to preserve binary bytes
       this.binaryRecorder.recordMessage(buffer);
       this.recordingMessageCount++;
     } else {
@@ -1023,24 +1060,20 @@ export class WindowRouter extends EventEmitter {
         windowId,
         windowType,
         messageType,
-        data: messageType === 'binary' 
-          ? Buffer.from(data as Uint8Array).toString('base64')
-          : data as string,
-        size: messageType === 'binary' 
-          ? (data as Uint8Array).length 
-          : (data as string).length
+        data: messageType === 'binary' ? Buffer.from(data as Uint8Array).toString('base64') : (data as string),
+        size: messageType === 'binary' ? (data as Uint8Array).length : (data as string).length
       };
-      
+
       this.recordingBuffer.push(recordedMessage);
       this.recordingMessageCount++;
-      
+
       // Flush if buffer is full
       if (this.recordingBuffer.length >= this.BUFFER_SIZE) {
         this.flushRecordingBuffer();
       }
     }
   }
-  
+
   /**
    * Flush recording buffer to disk
    */
@@ -1061,41 +1094,41 @@ export class WindowRouter extends EventEmitter {
   // REMOVED: extractCOGId() - Legacy text parsing method
   // COG IDs are now carried in message metadata from worker classification
   // No need to re-parse text that was already classified
-  
+
   /**
    * Update routing statistics
    */
   private updateRoutingStats(routingTime: number, data: Uint8Array | string): void {
     this.stats.messagesRouted++;
-    
+
     // Update bytes processed
     if (typeof data === 'string') {
       this.stats.bytesProcessed += data.length;
     } else {
       this.stats.bytesProcessed += data.length;
     }
-    
+
     // Track routing time
     this.routingTimes.push(routingTime);
     if (this.routingTimes.length > this.MAX_ROUTING_SAMPLES) {
       this.routingTimes.shift();
     }
-    
+
     // Update average
     const sum = this.routingTimes.reduce((a, b) => a + b, 0);
     this.stats.averageRoutingTime = sum / this.routingTimes.length;
-    
+
     // Update peak
     if (routingTime > this.stats.peakRoutingTime) {
       this.stats.peakRoutingTime = routingTime;
     }
-    
+
     // Emit warning if routing took too long
     if (routingTime > 1.0) {
       this.emit('slowRouting', { routingTime, threshold: 1.0 });
     }
   }
-  
+
   /**
    * Get logger statistics and diagnostic information
    */
@@ -1107,7 +1140,7 @@ export class WindowRouter extends EventEmitter {
    * Generate diagnostic dump for support
    */
   public generateDiagnosticDump(): string {
-    this.logger.info('DIAGNOSTIC', 'Generating diagnostic dump');
+    this.logConsoleMessage(`[ROUTER] DIAGNOSTIC: Generating diagnostic dump`);
     return this.logger.generateDiagnosticDump();
   }
 
@@ -1115,7 +1148,7 @@ export class WindowRouter extends EventEmitter {
    * Save diagnostic dump to file
    */
   public saveDiagnosticDump(filePath?: string): string {
-    this.logger.info('DIAGNOSTIC', 'Saving diagnostic dump to file');
+    this.logConsoleMessage(`[ROUTER] DIAGNOSTIC: Saving diagnostic dump to file`);
     return this.logger.saveDiagnosticDump(filePath);
   }
 
@@ -1123,7 +1156,7 @@ export class WindowRouter extends EventEmitter {
    * Update logger configuration
    */
   public updateLoggerConfig(config: any): void {
-    this.logger.info('CONFIG', 'Updating logger configuration', config);
+    this.logConsoleMessage(`[ROUTER] CONFIG: Updating logger configuration`, config);
     this.logger.updateConfig(config);
   }
 
@@ -1145,7 +1178,7 @@ export class WindowRouter extends EventEmitter {
       bytesPerSecond: this.stats.bytesProcessed,
       errorRate: this.stats.errors
     };
-    
+
     this.logger.logPerformance(metrics);
   }
 

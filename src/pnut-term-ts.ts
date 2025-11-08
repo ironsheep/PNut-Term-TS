@@ -14,7 +14,7 @@ import * as fs from 'fs';
 // Electron UI will be launched via electron-main.ts if needed
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 // NOTEs re-stdio in js/ts
 // REF https://blog.logrocket.com/using-stdout-stdin-stderr-node-js/
@@ -43,7 +43,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.5.0';
+  private version: string = '0.9.0';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -288,13 +288,6 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(`RTS control line enabled for ${modeText}`);
     }
 
-    // Store USB traffic logging flag
-    // NOTE: Path will be created in MainWindow (Electron process), not here (CLI process)
-    if (options.logUsbTrfc) {
-      this.context.runEnvironment.usbTrafficLogging = true;
-      this.context.logger.verboseMsg(`USB traffic logging will be enabled in Electron process`);
-    }
-
     // Store debug baud rate if specified on command line
     if (options.debugbaud) {
       const baudRate = parseInt(options.debugbaud);
@@ -354,6 +347,13 @@ export class DebugTerminalInTypeScript {
     if (options.flash && options.ram) {
       this.context.logger.errorMsg('Please use only one of FLASH or RAM options!');
       this.shouldAbort = true;
+    }
+
+    // Store USB traffic logging flag
+    // NOTE: Path will be created in MainWindow (Electron process), not here (CLI process)
+    if (options.logUsbTrfc) {
+      this.context.runEnvironment.usbTrafficLogging = true;
+      this.context.logger.progressMsg(`Logging USB traffic`);
     }
 
     if (options.flash && !options.ram) {
@@ -427,7 +427,9 @@ export class DebugTerminalInTypeScript {
       this.context.logger.debugMsg('* Enumerating USB serial devices...');
       try {
         await this.loadUsbPortsFound();
-        this.context.logger.debugMsg(`* Enumeration complete: ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s) found`);
+        this.context.logger.debugMsg(
+          `* Enumeration complete: ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s) found`
+        );
       } catch (error) {
         this.context.logger.errorMsg(`* loadUsbPortsFound() Exception: ${error}`);
         this.context.logger.debugMsg('* USB enumeration failed - check permissions or device drivers');
@@ -537,14 +539,16 @@ export class DebugTerminalInTypeScript {
       if (this.context.runEnvironment.serialPortDevices.length === 0) {
         this.context.logger.debugMsg('* No PropPlug devices found during enumeration');
       } else {
-        this.context.logger.debugMsg(`* Successfully enumerated ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s)`);
+        this.context.logger.debugMsg(
+          `* Successfully enumerated ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s)`
+        );
       }
     } catch (error: any) {
       // Re-throw to let caller handle with better context
       const errorMsg = error?.message || String(error);
       this.context.logger.debugMsg(`* USB enumeration error details: ${errorMsg}`);
       this.context.runEnvironment.serialPortDevices = [];
-      throw error;  // Re-throw so caller knows enumeration failed
+      throw error; // Re-throw so caller knows enumeration failed
     }
   }
 
