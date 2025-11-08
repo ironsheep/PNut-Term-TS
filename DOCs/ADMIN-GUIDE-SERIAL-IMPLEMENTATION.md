@@ -38,35 +38,2445 @@ async write(value: string): Promise<void> {
 }
 ```
 
-### 2. Message Extraction Layer (`src/classes/shared/messageExtractor.ts`)
+### 2. Message Extraction Layer (Worker Thread Architecture)
 
-**Two-Tier Pattern Matching System:**
+**Primary Components:**
+- `src/classes/shared/serialMessageProcessor.ts` - Coordinator and integration layer
+- `src/classes/shared/workerExtractor.ts` - Main thread interface
+- `src/workers/extractionWorker.ts` - Autonomous worker thread
+- `src/classes/shared/sharedCircularBuffer.ts` - Zero-copy buffer
+- `src/classes/shared/sharedMessagePool.ts` - Message storage
 
-**Tier 1: Hardware Pattern Recognition**
-- Sync bytes: `FE FF F0-FB` 
+**Architecture Overview:**
+
+The system uses an **Autonomous Worker Thread** architecture for high-performance, zero-copy message extraction:
+
+```
+Main Thread:
+  UsbSerial → SerialMessageProcessor.writeData()
+               ↓
+            SharedCircularBuffer.appendAtTail()
+               ↓ (SharedArrayBuffer - zero-copy)
+Worker Thread:
+            Autonomous extraction loop
+               ↓
+            Pattern matching & extraction
+               ↓
+            SharedMessagePool.allocate()
+               ↓ (Emits poolId only)
+Main Thread:
+            MessageRouter.processMessage()
+               ↓
+            WindowRouter.routeMessage()
+               ↓
+            Individual Debug Windows
+```
+
+**Key Design Principles:**
+
+**1. Autonomous Worker Thread**
+- Worker runs independently, no coordination messages required
+- Monitors SharedCircularBuffer continuously
+- Extracts messages when patterns detected
+- Writes to SharedMessagePool (not back to main thread)
+- Only emits poolId (4 bytes) for zero-copy efficiency
+
+**2. Zero-Copy Data Flow**
+- SharedArrayBuffer for buffer and message pool
+- Atomics for thread-safe pointer updates
+- No serialization/deserialization overhead
+- Data stays in shared memory throughout pipeline
+
+**3. Pattern Matching in Worker**
+- Sync bytes: `FE FF F0-FB`
 - Binary packet headers
 - Fixed-length structures
-- No string operations
-
-**Tier 2: Content Classification**
 - ASCII message parsing
-- Debug command routing
-- Variable-length handling
 - EOL detection with limits
+- All done autonomously in worker thread
+
+**4. Message Pool Design**
+- Pre-allocated message slots (default: 1000)
+- Each slot: metadata + data buffer (max 65KB)
+- PoolId references instead of copying data
+- Router acquires, processes, releases slots
 
 **Critical Rules:**
+- Worker is autonomous - never blocks or waits
 - NEVER consume bytes without accounting
 - Always validate boundaries before consumption
 - Preserve sync capability at all times
-- Binary data is never converted to strings
+- Binary data never converted to strings in buffer
+- Router MUST release poolId after processing
 
 ### 3. Message Processing Pipeline
 
 ```
-Serial Port → Raw Buffer → Message Extractor → Router → Debug Windows
-     ↓            ↓              ↓                ↓           ↓
-  No Parser   Binary Safe   Pattern Match    Classification  Display
+                    ┌─── Main Thread ───┐         ┌─── Worker Thread ───┐         ┌─── Main Thread ───┐
+                    │                   │         │                      │         │                    │
+Serial Port ────────→ UsbSerial         │         │                      │         │                    │
+                    │       ↓           │         │                      │         │                    │
+                    │ writeData()       │         │                      │         │                    │
+                    │       ↓           │         │                      │         │                    │
+                    │ SharedCircular────┼────────→│ Autonomous Loop      │         │                    │
+                    │ Buffer            │ (shared)│       ↓              │         │                    │
+                    │ (1MB ring)        │         │ Pattern Match        │         │                    │
+                    │                   │         │       ↓              │         │                    │
+                    │                   │         │ Extract Messages     │         │                    │
+                    │                   │         │       ↓              │         │                    │
+                    │ SharedMessage─────┼────────→│ allocate() slot      │────────→│ MessageRouter      │
+                    │ Pool              │ (shared)│       ↓              │ (poolId)│       ↓            │
+                    │ (1000 slots)      │         │ Write to pool        │         │ processMessage()   │
+                    │                   │         │       ↓              │         │       ↓            │
+                    │                   │         │ emit('poolId')       │────────→│ WindowRouter       │
+                    │                   │         │                      │         │       ↓            │
+                    └───────────────────┘         └──────────────────────┘         │ routeMessage()     │
+                                                                                    │       ↓            │
+                                                                                    │ Debug Windows      │
+                                                                                    │       ↓            │
+                                                                                    │ release(poolId)    │
+                                                                                    └────────────────────┘
+
+Key Benefits:
+  No Parser       Zero-Copy        Autonomous         Lock-Free          Message Pool
+  (raw binary)    (SharedArrays)   (no blocking)      (Atomics)         (reusable slots)
 ```
+
+### 4. Message Routing Architecture
+
+**Primary Components:**
+- `src/classes/shared/messageRouter.ts` - Type-based message routing
+- `src/classes/shared/windowRouter.ts` - Window-specific delivery and management
+
+**Architecture Philosophy:**
+
+The routing layer implements a **two-tier routing system** that separates message classification from window delivery:
+
+```
+MessageRouter (Type-Based Routing)
+  ↓
+WindowRouter (Window-Specific Delivery)
+  ↓
+Individual Debug Windows
+```
+
+#### MessageRouter - Classification-Based Routing
+
+**Purpose**: Route messages based on SharedMessageType to appropriate handlers
+
+**Key Design Principles:**
+- **Zero knowledge of window internals**: Only knows about message types and destinations
+- **SharedMessageType-based**: Uses enum values (COG0_MESSAGE, DEBUGGER0_416BYTE, etc.)
+- **SharedMessagePool integration**: Consumes poolId, routes message, releases slot
+- **Event emission**: Fires events for system-critical messages (P2_SYSTEM_INIT, debugger packets)
+
+**Core Routing Logic:**
+```typescript
+// Route from SharedMessagePool using poolId
+public routeFromPool(poolId: number): void {
+  // 1. Query message type (don't read data yet)
+  const sharedType = this.sharedMessagePool.getMessageType(poolId);
+
+  // 2. Determine destinations from routing config
+  const destinations = this.routingConfig[sharedType];
+
+  // 3. Read message data for processing
+  const slot = this.sharedMessagePool.get(poolId);
+  const data = slot.readData();
+
+  // 4. Create ExtractedMessage
+  const message: ExtractedMessage = {
+    type: sharedType,
+    data: data,
+    timestamp: Date.now(),
+    confidence: 'VERY_DISTINCTIVE'
+  };
+
+  // 5. Route to each destination
+  for (const destination of destinations) {
+    destination.handler(message);
+  }
+
+  // 6. Release SharedMessagePool slot
+  this.sharedMessagePool.release(poolId);
+}
+```
+
+**Standard Routing Configuration:**
+- `TERMINAL_OUTPUT` → Debug Logger
+- `COG0_MESSAGE` through `COG7_MESSAGE` → Debug Logger
+- `P2_SYSTEM_INIT` → Debug Logger (emits golden sync event)
+- `DEBUGGER0_416BYTE` through `DEBUGGER7_416BYTE` → Debugger Window + Debug Logger
+- `BACKTICK_*` commands → Window Creator
+- `INVALID_COG` → Debug Logger with warnings
+
+#### WindowRouter - Window Management and Delivery
+
+**Purpose**: Singleton router managing all debug window instances and message delivery
+
+**Key Responsibilities:**
+1. **Window Lifecycle Management**
+   - Two-phase registration (instance creation, then handler ready)
+   - Window type tracking and statistics
+   - Shutdown prevention during application exit
+
+2. **Message Routing**
+   - Binary messages → DebugLogger + specific debugger window
+   - Text messages → Classification-based routing to appropriate windows
+   - Backtick commands → Multi-window command parsing and dispatch
+
+3. **Recording and Playback**
+   - Session recording (binary .p2rec or JSON .jsonl format)
+   - Catalog management for recorded sessions
+   - Playback functionality for testing
+
+4. **Terminal Output Management**
+   - Blue terminal (PST) for TERMINAL_OUTPUT messages
+   - Main window reference for terminal display
+   - Fallback routing for unclassified messages
+
+**Two-Phase Window Registration:**
+
+Phase 1 - Instance registration (during window construction):
+```typescript
+public registerWindowInstance(windowId: string, windowType: string, instance: any): void {
+  this.windowInstances.set(windowId, {
+    type: windowType,
+    instance: instance,
+    isReady: false  // Not yet processing messages
+  });
+}
+```
+
+Phase 2 - Handler registration (when window is ready):
+```typescript
+public registerWindow(windowId: string, windowType: string, handler: WindowHandler): void {
+  // Mark instance as ready
+  const instance = this.windowInstances.get(windowId);
+  if (instance) {
+    instance.isReady = true;
+  }
+
+  // Register handler for message processing
+  this.windows.set(windowId, { type, handler, stats });
+}
+```
+
+**Binary Message Routing:**
+```typescript
+public routeBinaryMessage(data: Uint8Array, taggedCogId?: number): void {
+  // Extract COG ID from 32-bit little-endian header or use tagged ID
+  const cogId = taggedCogId !== undefined ? taggedCogId : extractCogId(data);
+
+  // ALWAYS route to DebugLogger for logging
+  const loggerWindow = this.windows.get('logger');
+  if (loggerWindow) {
+    loggerWindow.handler(data);  // Raw Uint8Array for hex display
+  }
+
+  // Also route to specific debugger window if it exists
+  const debuggerWindowId = `debugger-${cogId}`;
+  const debuggerWindow = this.windows.get(debuggerWindowId);
+  if (debuggerWindow) {
+    debuggerWindow.handler(data);
+  }
+}
+```
+
+**Text Message Routing:**
+```typescript
+public routeTextMessage(message: ExtractedMessage): void {
+  const text = new TextDecoder().decode(message.data);
+  const messageType = message.type;
+
+  // 1. BACKTICK COMMANDS - Window creation and update
+  if (isBacktickCommand(messageType)) {
+    // Send to DebugLogger for logging
+    loggerWindow.handler(message);
+
+    // For UPDATE commands: route to target windows
+    if (messageType === SharedMessageType.BACKTICK_UPDATE) {
+      this.routeBacktickCommand(text);
+    }
+  }
+
+  // 2. COG MESSAGES - DebugLogger + individual COG window
+  else if (isCogMessage(messageType)) {
+    loggerWindow.handler(message);
+
+    const cogId = extractCogIdFromType(messageType);
+    const cogWindow = this.windows.get(`COG${cogId}`);
+    if (cogWindow) {
+      cogWindow.handler(message);
+    }
+  }
+
+  // 3. TERMINAL OUTPUT - DebugLogger + blue terminal
+  else if (messageType === SharedMessageType.TERMINAL_OUTPUT) {
+    loggerWindow.handler(message);
+    this.mainWindowInstance.appendToTerminal(text);
+  }
+}
+```
+
+**Backtick Command Parsing:**
+
+Supports two formats:
+- Single window: `` `SCOPE data... ``
+- Multi-window: `` `SCOPE PLOT FFT data... `` (same data to multiple windows)
+
+Key features:
+- Quote-aware tokenization (preserves strings with spaces/commas)
+- Case-insensitive window name matching
+- Data extraction (window names removed before routing)
+- Multi-window dispatch (one command → multiple targets)
+
+```typescript
+private routeBacktickCommand(command: string): void {
+  // Parse with quote-aware tokenizer
+  const parts = this.tokenizeCommand(command.substring(1));
+
+  // Collect consecutive window names
+  const targetWindows: string[] = [];
+  let dataStartIndex = 1;
+  for (let i = 1; i < parts.length; i++) {
+    if (isRegisteredWindow(parts[i])) {
+      targetWindows.push(parts[i]);
+      dataStartIndex = i + 1;
+    } else {
+      break;  // First non-window token is start of data
+    }
+  }
+
+  // Extract data (window names removed)
+  const dataParts = parts.slice(dataStartIndex);
+
+  // Route SAME data to all target windows
+  targetWindows.forEach(windowName => {
+    const window = this.displaysMap[windowName];
+    window.updateContent(dataParts);
+  });
+}
+```
+
+#### Routing Data Flow
+
+**Complete routing sequence:**
+
+1. **Worker Thread**: Extracts message, allocates SharedMessagePool slot, emits poolId
+2. **MessageRouter**: Reads poolId, queries type, determines destinations, routes to handlers
+3. **WindowRouter**: Receives ExtractedMessage, decodes if needed, routes to specific windows
+4. **Debug Windows**: Process message via `updateContent()` or handler callback
+5. **MessageRouter**: Releases SharedMessagePool slot after routing complete
+
+**Performance Characteristics:**
+- Zero-copy from extraction to routing (SharedArrayBuffer)
+- Minimal string decoding (only when routing needs text inspection)
+- Lock-free coordination (Atomics for pool management)
+- Event-driven (no polling loops)
+- Async-ready (supports backpressure and queueing)
+
+**Error Handling:**
+- Missing window destinations → Warning logged, message dropped
+- Invalid COG IDs → Routed to DebugLogger with warnings
+- Routing errors → Caught per-destination, other destinations still receive message
+- Pool exhaustion → Handled by SharedMessagePool allocation logic
+
+### 5. Base Class Architecture (DebugWindowBase)
+
+**Primary Component:**
+- `src/classes/debugWindowBase.ts` - Abstract base class for all debug windows
+
+**Architecture Philosophy:**
+
+DebugWindowBase provides a **common foundation** for all debug windows, implementing shared functionality through delegation while allowing window-specific behavior through abstract methods and overrides.
+
+```
+DebugWindowBase (Abstract Base)
+  ↓
+  ├── DebugTermWin (Terminal)
+  ├── DebugPlotWin (Data plotting)
+  ├── DebugScopeWin (Oscilloscope)
+  ├── DebugScopeXyWin (XY scope)
+  ├── DebugFftWin (FFT spectrum)
+  ├── DebugSpectroWin (Spectrogram)
+  ├── DebugLogicWin (Logic analyzer)
+  ├── DebugBitmapWin (Bitmap display)
+  ├── DebugMidiWin (MIDI interface)
+  ├── DebugCOGWindow (COG logger)
+  ├── DebugLoggerWindow (Debug logger)
+  └── DebugDebuggerWindow (Debugger)
+```
+
+#### Core Responsibilities
+
+**1. Window Lifecycle Management**
+- Two-phase router registration (instance + handler)
+- Window creation and teardown
+- Event listener management
+- Resource cleanup on close
+
+**2. Message Queuing**
+- Pre-ready message queue (handles early messages during window construction)
+- Transition to BatchedMessageQueue when window ready
+- Automatic queue processing when window becomes ready
+
+**3. Common Command Processing**
+- CLEAR - Clear display content
+- CLOSE - Close the window
+- UPDATE - Force display update (deferred mode)
+- SAVE - Save screenshots (3 formats: canvas, window, coordinates)
+- PC_KEY - Keyboard input forwarding to P2
+- PC_MOUSE - Mouse input forwarding to P2
+
+**4. Input Management**
+- Keyboard event capture and forwarding
+- Mouse event capture (position, buttons, wheel)
+- Per-window input state variables (vKeyPress, vMouseX/Y, vMouseButtons, vMouseWheel)
+- TLong transmission protocol for P2 communication
+
+**5. Display Helpers**
+- Font metrics calculation
+- Text styling (alignment, weight, underline, italic, angle)
+- Canvas screenshot utilities
+- Desktop window capture
+
+#### Abstract Methods (Must Override)
+
+```typescript
+// Window lifecycle
+abstract closeDebugWindow(): void;
+
+// Window identification
+abstract get windowTitle(): string;
+
+// Message processing (async for LAYER command support)
+protected abstract processMessageImmediate(lineParts: string[] | any): Promise<void>;
+```
+
+#### Optional Override Methods
+
+```typescript
+// Clear display (only for windows supporting CLEAR command)
+protected clearDisplayContent(): void {
+  // Default: logs warning about routing error
+}
+
+// Force update (only for windows supporting deferred updates)
+protected forceDisplayUpdate(): void {
+  // Default: logs warning about routing error
+}
+```
+
+#### Two-Phase Window Registration
+
+Phase 1 - Constructor (early registration):
+```typescript
+constructor(ctx: Context, windowId: string, windowType: string) {
+  super();
+  this.context = ctx;
+  this.windowId = windowId.toLowerCase();  // Case-insensitive routing
+  this.windowType = windowType;
+
+  // Initialize message queue for early messages
+  this.messageQueue = new MessageQueue<any>(1000, 5000);
+
+  // Phase 1: Register instance immediately
+  this.windowRouter.registerWindowInstance(this.windowId, this.windowType, this);
+}
+```
+
+Phase 2 - When window HTML loaded:
+```typescript
+protected registerWithRouter(): void {
+  if (!this.isRegisteredWithRouter) {
+    // Phase 2: Register handler when ready
+    this.windowRouter.registerWindow(
+      this.windowId,
+      this.windowType,
+      this.handleRouterMessage.bind(this)
+    );
+    this.isRegisteredWithRouter = true;
+
+    // Mark window as ready, process queued messages
+    this.onWindowReady();
+  }
+}
+```
+
+#### Message Queue Processing
+
+```typescript
+// Public entry point (do not override!)
+async updateContent(lineParts: string[] | any): Promise<void> {
+  if (this.isWindowReady) {
+    // Window ready - process immediately (await for LAYER ordering)
+    await this.processMessageImmediate(lineParts);
+  } else {
+    // Window not ready - queue for later
+    this.messageQueue.enqueue(lineParts);
+  }
+}
+
+// Called when window becomes ready
+protected onWindowReady(): void {
+  this.isWindowReady = true;
+
+  // Transition to BatchedMessageQueue for performance
+  const oldQueue = this.messageQueue;
+  this.messageQueue = new BatchedMessageQueue<any>(
+    1000,              // Max queue size
+    5000,              // Timeout ms
+    async (batch) => { // Batch processor
+      for (const message of batch) {
+        await this.processMessageImmediate(message);
+      }
+    }
+  );
+
+  // Process all queued messages
+  while (oldQueue.size > 0) {
+    const message = oldQueue.dequeue();
+    if (message) {
+      this.processMessageImmediate(message);
+    }
+  }
+
+  // Start batch processing
+  this.messageQueue.startBatchProcessing();
+}
+```
+
+#### Common Command Handling
+
+```typescript
+protected async handleCommonCommand(commandParts: string[]): Promise<boolean> {
+  const command = commandParts[0].toUpperCase();
+
+  switch (command) {
+    case 'CLEAR':
+      this.clearDisplayContent();  // Override in derived class
+      return true;
+
+    case 'CLOSE':
+      this.debugWindow = null;     // Triggers full close sequence
+      return true;
+
+    case 'UPDATE':
+      this.forceDisplayUpdate();   // Override in derived class
+      return true;
+
+    case 'SAVE':
+      // Three formats: canvas, window, coordinates
+      // Handles quoted filenames, multi-word paths
+      await this.saveWindowToBMPFilename(filename);
+      return true;
+
+    case 'PC_KEY':
+      this.enableKeyboardInput();  // Start capturing
+      this.tLongTransmitter.transmitKeyPress(this.vKeyPress);
+      this.vKeyPress = 0;          // Clear after transmission
+      return true;
+
+    case 'PC_MOUSE':
+      this.enableMouseInput();     // Start capturing
+      // Transform coordinates, encode state, get pixel color
+      const posData = this.tLongTransmitter.encodeMouseData(...);
+      const colorData = this.getPixelColorAt(x, y);
+      this.tLongTransmitter.transmitMouseData(posData, colorData);
+      this.vMouseWheel = 0;        // Clear wheel after transmission
+      return true;
+
+    default:
+      return false;  // Not a common command
+  }
+}
+```
+
+#### Input State Management
+
+Per-window input state variables (matches Pascal architecture):
+```typescript
+protected vKeyPress: number = 0;          // Last keypress value
+protected vMouseX: number = -1;           // Mouse X (-1 = out of bounds)
+protected vMouseY: number = -1;           // Mouse Y (-1 = out of bounds)
+protected vMouseButtons: {                // Button states
+  left: boolean;
+  middle: boolean;
+  right: boolean;
+} = { left: false, middle: false, right: false };
+protected vMouseWheel: number = 0;        // Wheel delta (cleared after transmission)
+```
+
+Reset on DTR/RTS events (Pascal behavior):
+```typescript
+protected resetInputState(): void {
+  this.vKeyPress = 0;
+  this.vMouseX = -1;
+  this.vMouseY = -1;
+  this.vMouseButtons = { left: false, middle: false, right: false };
+  this.vMouseWheel = 0;
+}
+```
+
+#### TLong Transmission Protocol
+
+P2 communication uses TLong format:
+```typescript
+// Initialize in constructor
+this.tLongTransmitter = new TLongTransmission(ctx);
+
+// Set serial callback (from MainWindow)
+public setSerialTransmissionCallback(callback: (data: string | Buffer) => void): void {
+  this.tLongTransmitter.setSendCallback(callback);
+}
+
+// Transmit keypress (ASCII value)
+this.tLongTransmitter.transmitKeyPress(keyCode);
+
+// Transmit mouse data (position + color)
+const posData = this.tLongTransmitter.encodeMouseData(x, y, left, middle, right, wheel);
+const colorData = this.getPixelColorAt(x, y);
+this.tLongTransmitter.transmitMouseData(posData, colorData);
+```
+
+#### Window Drag Position Tracking
+
+Matches Pascal `FormMove` behavior:
+```typescript
+// Store original caption
+this.captionStr = this.windowTitle;
+
+// Update title during drag
+window.on('move', () => {
+  const bounds = this._debugWindow.getBounds();
+  this._debugWindow.setTitle(`${this.captionStr} (${bounds.x}, ${bounds.y})`);
+  this.captionPos = true;
+
+  // Restore caption 900ms after drag stops
+  this.moveEndTimer = setTimeout(() => {
+    this._debugWindow.setTitle(this.captionStr);
+    this.captionPos = false;
+  }, 900);
+});
+```
+
+#### Font Metrics Calculation
+
+Static method used across all windows:
+```typescript
+static calcMetricsForFontPtSize(fontSize: number, metrics: FontMetrics): void {
+  metrics.textSizePts = fontSize;
+  metrics.charHeight = Math.round(fontSize * 1.333);
+  metrics.charWidth = Math.round(metrics.charHeight * 0.6);
+  metrics.lineHeight = Math.round(metrics.charHeight * 1.3);
+  metrics.baseline = Math.round(metrics.charHeight * 0.7 + 0.5);
+}
+```
+
+#### Delegation Pattern Benefits
+
+**Separation of Concerns:**
+- Base class: Window lifecycle, input, common commands, routing integration
+- Derived classes: Window-specific rendering, data processing, display updates
+
+**Code Reuse:**
+- PC_KEY/PC_MOUSE implementation shared across 12 window types
+- SAVE command (3 formats) implemented once
+- Message queuing and batching universal
+- Input forwarding infrastructure common
+
+**Maintainability:**
+- Bug fixes in base class benefit all windows
+- New common features (e.g., HIDEXY) added once
+- Consistent behavior across window types
+- Pascal parity easier to verify
+
+**Type Safety:**
+- Abstract methods enforce implementation
+- TypeScript compile-time checks
+- Shared interfaces (Size, Position, FontMetrics, TextStyle)
+
+#### Critical Design Requirements
+
+**1. Preserve Unparsed Debug Strings**
+All derived classes must store raw command strings before parsing for error logging:
+```typescript
+protected processMessageImmediate(lineParts: string[]): void {
+  const unparsedCommand = lineParts.join(' '); // Preserve original
+
+  // ... parsing logic ...
+
+  if (isNaN(parsedValue)) {
+    this.logger.warn(
+      `Debug command parsing error:\n${unparsedCommand}\n` +
+      `Invalid value '${valueStr}' for parameter X, using default: 0`
+    );
+  }
+}
+```
+
+**2. Async Message Processing**
+`processMessageImmediate()` is async to support LAYER command ordering:
+- LAYER commands must complete before subsequent commands
+- Maintains proper render layering
+- Prevents race conditions in multi-command sequences
+
+**3. Window Type Guards**
+Only windows with Pascal equivalents should use `handleCommonCommand()`:
+- DebugLogger, COG, Debugger windows have specialized processing
+- No common command support for non-Pascal windows
+- Prevents routing errors and unexpected behavior
+
+**4. Input State Lifecycle**
+- Capture on event (store in vKeyPress, vMouse*)
+- Transmit on command (PC_KEY, PC_MOUSE)
+- Clear after transmission (one-shot consumption)
+- Reset on DTR/RTS (communication restart)
+
+### 6. Preferences System
+
+**Purpose**: Hierarchical settings management with three-tier cascade
+
+**Files**:
+- `src/utils/context.ts` - Settings hierarchy and management
+- `src/classes/preferencesDialog.ts` - Two-tab modal dialog
+
+**Architecture**:
+```
+Three-tier cascade:
+1. Application Defaults (hardcoded)
+    ↓ (overrides)
+2. User Global Settings (platform-specific location)
+    ↓ (overrides)
+3. Project Local Settings (project directory)
+    = Effective Settings (runtime)
+```
+
+#### Settings Storage Locations
+
+**Application Defaults** (hardcoded in `Context.getAppDefaults()`):
+- Fallback values when no settings files exist
+- Defined in code, never written to disk
+- Examples: DTR control line, 115200 baud, green-on-black theme
+
+**User Global Settings**:
+- **Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
+- **Linux/Mac**: `~/.pnut-term-ts-settings.json`
+- **Scope**: All projects for this user
+- **Storage**: Delta-save (only differences from defaults)
+- **Purpose**: User preferences that apply system-wide
+
+**Project Local Settings**:
+- **Location**: `.pnut-term-ts-settings.json` in project directory
+- **Scope**: This project only
+- **Storage**: Delta-save (only overrides)
+- **Purpose**: Project-specific settings (e.g., RTS for specific hardware)
+- **Version Control**: Typically gitignored (user-specific paths)
+
+#### Hierarchical Cascade Logic
+
+Settings are loaded and merged in sequence:
+```typescript
+// 1. Start with app defaults
+preferences = getAppDefaults();
+
+// 2. Load and merge user global
+const userGlobal = loadUserGlobalSettings();
+if (userGlobal) {
+  deepMerge(preferences, userGlobal);
+}
+
+// 3. Load and merge project local
+const projectLocal = loadProjectLocalSettings();
+if (projectLocal) {
+  deepMerge(preferences, projectLocal);
+}
+
+// Result: preferences contains effective cascaded settings
+```
+
+**Example Cascade**:
+```
+App Default: controlLine = "DTR"
+User Global: controlLine = "RTS"     // Override for all projects
+Project Local: (no override)
+→ Effective: controlLine = "RTS"
+
+App Default: defaultBaud = 115200
+User Global: (no override)
+Project Local: defaultBaud = 2000000 // High-speed project
+→ Effective: defaultBaud = 2000000
+```
+
+#### Delta-Save Strategy
+
+**Problem**: Full settings files duplicate defaults, bloat user data
+**Solution**: Only save differences from parent tier
+
+**User Global Delta-Save**:
+```typescript
+// Calculate delta between user settings and app defaults
+const delta = calculateDelta(userSettings, appDefaults);
+
+// Only save non-default values
+if (Object.keys(delta).length === 0) {
+  // All settings match defaults - delete file
+  fs.unlinkSync(userGlobalSettingsPath);
+} else {
+  // Write only differences
+  fs.writeFileSync(userGlobalSettingsPath, JSON.stringify(delta, null, 2));
+}
+```
+
+**Project Local Delta-Save**:
+```typescript
+// Only save project-specific overrides (not full settings)
+// Project settings file contains ONLY values different from user global
+saveProjectLocalSettings(projectOverrides);
+```
+
+**Benefits**:
+- Minimal file size (only changed values)
+- Clear intent (see what user customized)
+- Easy diff/review in version control
+- No duplication of defaults
+
+#### Two-Tab Preferences Dialog
+
+**Modal Dialog Pattern**:
+```typescript
+const dialog = new PreferencesDialog(
+  parentWindow,
+  context,
+  onSettingsChanged
+);
+dialog.show();  // Blocks parent, forces focus
+```
+
+**Tab 1: User Settings**
+- Edits user global settings (all projects)
+- No override checkboxes (direct editing)
+- Shows current user values merged with defaults
+- Apply button saves to user global file
+
+**Tab 2: Project Settings**
+- Edits project local overrides
+- Override checkboxes for each setting (initially unchecked)
+- Shows current effective values (user global + project local)
+- Displays "Global: <value>" labels for reference
+- Checkbox checked = enable project override for this setting
+- Checkbox unchecked = use global value (no project override)
+- Apply button saves only checked overrides to project local file
+
+**Override Checkbox Behavior**:
+```typescript
+// Initial state: All controls disabled, showing effective values
+// User checks override checkbox for "control line"
+toggleOverride('project', 'control-line') {
+  // Enable the control
+  field.disabled = false;
+  // Hide global value label
+  globalLabel.style.display = 'none';
+  // User can now edit the value
+}
+
+// When Apply clicked:
+// Only settings with checked overrides are saved to project file
+```
+
+#### IPC Communication Pattern
+
+**Request Settings** (`pref-get-settings`):
+```typescript
+// Renderer requests settings on dialog open
+ipcRenderer.send('pref-get-settings');
+
+// Main process responds with BOTH:
+event.reply('pref-settings', {
+  user: getUserGlobalSettings(),     // User tab needs this
+  effective: preferences              // Project tab needs this
+});
+```
+
+**Apply User Settings** (`pref-apply-user`):
+```typescript
+// Renderer sends updated user settings
+ipcRenderer.send('pref-apply-user', newSettings);
+
+// Main process:
+saveUserGlobalSettings(newSettings);  // Delta-save to user file
+updatePreferences(newSettings);       // Merge into runtime
+onSettingsChanged(preferences);       // Notify application
+```
+
+**Apply Project Settings** (`pref-apply-project`):
+```typescript
+// Renderer sends ONLY project overrides (checked boxes)
+ipcRenderer.send('pref-apply-project', projectOverrides);
+
+// Main process:
+saveProjectLocalSettings(projectOverrides);  // Delta-save overrides only
+reloadHierarchicalSettings();                // Re-cascade all tiers
+onSettingsChanged(preferences);              // Notify application
+```
+
+**Cancel** (`pref-cancel`):
+```typescript
+// User clicks Cancel - just close dialog, no save
+ipcRenderer.send('pref-cancel');
+```
+
+#### Settings Categories
+
+**Terminal**:
+- `terminal.mode` - PST or ANSI (default: PST)
+- `terminal.colorTheme` - green-on-black, white-on-black, amber-on-black
+- `terminal.fontSize` - 10-24pt (default: 14)
+- `terminal.fontFamily` - default, parallax, ibm3270 variants
+- `terminal.showCogPrefixes` - Boolean (default: true)
+- `terminal.localEcho` - Boolean (default: false)
+
+**Serial Port**:
+- `serialPort.controlLine` - DTR or RTS (default: DTR)
+- `serialPort.defaultBaud` - 115200-2000000 (default: 115200)
+- `serialPort.resetOnConnection` - Boolean (default: true)
+
+**Logging**:
+- `logging.logDirectory` - Path (default: './logs/')
+- `logging.autoSaveDebug` - Boolean (default: true)
+- `logging.newLogOnDtrReset` - Boolean (default: true)
+- `logging.maxLogSize` - 1MB, 10MB, 100MB, unlimited
+- `logging.enableUSBLogging` - Boolean (default: false)
+- `logging.usbLogFilePath` - Path (default: './logs/')
+
+**Recordings**:
+- `recordings.recordingsDirectory` - Path (default: './recordings/')
+
+**Debug Logger**:
+- `debugLogger.scrollbackLines` - 100-10000 (default: 1000)
+
+#### Runtime Synchronization
+
+Settings sync to runtime environment when changed:
+```typescript
+syncToRuntimeEnvironment(): void {
+  // Sync serial port reset behavior
+  runEnvironment.resetOnConnection = preferences.serialPort.resetOnConnection;
+
+  // Future: Sync other runtime-critical settings
+}
+```
+
+Called after:
+1. Initial hierarchical load (constructor)
+2. User global settings apply
+3. Project local settings apply
+4. Settings reload
+
+#### Deep Merge Algorithm
+
+Recursive merge preserves nested structure:
+```typescript
+deepMerge(target: any, source: any): void {
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      // Nested object - recurse
+      if (!target[key]) target[key] = {};
+      deepMerge(target[key], source[key]);
+    } else {
+      // Primitive value - direct assignment
+      target[key] = source[key];
+    }
+  }
+}
+```
+
+**Example**:
+```typescript
+target = {
+  terminal: { mode: 'PST', fontSize: 14 },
+  serialPort: { controlLine: 'DTR' }
+};
+
+source = {
+  terminal: { fontSize: 16 },  // Partial override
+  logging: { autoSaveDebug: false }  // New category
+};
+
+// After deepMerge(target, source):
+result = {
+  terminal: { mode: 'PST', fontSize: 16 },  // fontSize updated, mode preserved
+  serialPort: { controlLine: 'DTR' },       // Unchanged
+  logging: { autoSaveDebug: false }         // Added
+};
+```
+
+#### Settings Lifecycle
+
+**Application Startup**:
+1. Create Context with startup directory
+2. Load hierarchical settings (app defaults → user global → project local)
+3. Sync to runtime environment
+4. Settings available to all components
+
+**User Opens Preferences**:
+1. MainWindow creates PreferencesDialog
+2. Dialog requests current settings via IPC
+3. Main process sends user-only and effective settings
+4. Dialog populates both tabs
+
+**User Changes Settings**:
+1. User edits values in dialog
+2. User clicks Apply
+3. Dialog sends settings via IPC (user or project)
+4. Main process saves to appropriate file (delta-save)
+5. Main process reloads/merges settings
+6. Main process calls onSettingsChanged callback
+7. Application applies new settings
+
+**Settings File Changes**:
+- Detected on next application restart
+- No live file watching (by design - prevents race conditions)
+- Manual edit of settings files requires restart to take effect
+
+#### Error Handling
+
+**Missing Settings Files**:
+- No error - expected condition
+- Falls back to parent tier (app defaults if no files)
+- Delta-save removes files that match defaults
+
+**Corrupt Settings Files**:
+```typescript
+try {
+  const data = fs.readFileSync(settingsPath, 'utf8');
+  return JSON.parse(data);
+} catch (error) {
+  logConsoleMessage(`[SETTINGS] Error loading: ${error}`);
+  return null;  // Fall back to parent tier
+}
+```
+
+**Invalid Settings Values**:
+- Validation in dialog (min/max ranges, enums)
+- Invalid values clamped or rejected before save
+- Type mismatch handled by TypeScript interfaces
+
+#### Platform-Specific Paths
+
+**getUserGlobalSettingsPath()** handles platform differences:
+```typescript
+// Windows: Use %APPDATA% to avoid permissions issues
+// %APPDATA%\PNut-Term-TS\settings.json
+if (platform === 'win32') {
+  const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  const settingsDir = path.join(appData, 'PNut-Term-TS');
+  fs.mkdirSync(settingsDir, { recursive: true });
+  return path.join(settingsDir, 'settings.json');
+}
+
+// Linux/Mac: Use dotfile in home directory
+// ~/.pnut-term-ts-settings.json
+return path.join(os.homedir(), '.pnut-term-ts-settings.json');
+```
+
+**Directory Creation**:
+- Windows: Create `PNut-Term-TS` directory on first save
+- Linux/Mac: No directory needed (dotfile in home)
+- Project local: Uses project's current directory
+
+#### Design Benefits
+
+**Hierarchical Cascade**:
+- Users set preferences once (user global)
+- Projects override only when needed (project local)
+- Defaults provide complete fallback
+
+**Delta-Save**:
+- Minimal disk usage
+- Clear customization visibility
+- Easy to reset (delete file)
+
+**Two-Tab UI**:
+- User tab: "Set it and forget it" preferences
+- Project tab: Override only what differs for this project
+- Clear separation of concerns
+
+**IPC Pattern**:
+- Dialog isolated in renderer process
+- Main process owns settings files
+- Clean separation of UI and storage
+
+**Type Safety**:
+- TypeScript `UserPreferences` interface
+- Compile-time checking of settings structure
+- IntelliSense for settings access
+
+#### Common Use Cases
+
+**User wants RTS instead of DTR for all projects**:
+1. Open Preferences → User Settings tab
+2. Change Control Line to RTS
+3. Click Apply
+4. All future projects use RTS by default
+
+**Project needs 2Mbps baud for high-speed P2**:
+1. Open Preferences → Project Settings tab
+2. Check override box for "Default Baud Rate"
+3. Select 2000000
+4. Click Apply
+5. This project uses 2Mbps, others use user default (115200)
+
+**User wants to reset all preferences**:
+- Delete user global file (Windows: `%APPDATA%\PNut-Term-TS\settings.json`)
+- Delete project local file (`.pnut-term-ts-settings.json`)
+- Restart application - reverts to app defaults
+
+**Developer wants to inspect settings cascade**:
+```typescript
+// See effective settings
+console.log(context.preferences);
+
+// See user-only settings
+console.log(context.getUserGlobalSettings());
+
+// See app defaults
+console.log(context.getAppDefaults());
+```
+
+#### Critical Implementation Notes
+
+**DO NOT**:
+1. Save full settings to project files (breaks delta strategy)
+2. Watch settings files for live changes (race conditions)
+3. Modify settings without proper cascade reload
+4. Assume settings files exist (always check)
+
+**MUST**:
+1. Use delta-save for both user and project settings
+2. Reload hierarchical settings after project changes
+3. Call `syncToRuntimeEnvironment()` after all changes
+4. Provide visual feedback (Apply button, dialog close)
+
+#### Future Enhancements
+
+**Planned**:
+- Settings import/export (share configurations)
+- Settings validation with error messages
+- Settings reset to defaults button (per category)
+- Live preview of theme changes
+
+**Not Planned**:
+- Live file watching (complexity, race conditions)
+- Remote settings sync (local-only by design)
+- Encrypted settings (no sensitive data stored)
+
+### 7. DTR/RTS Reset Management
+
+**Purpose**: Synchronize application state with P2 hardware resets via control lines
+
+**Files**:
+- `src/classes/shared/dtrResetManager.ts` - Reset event coordination
+- `src/utils/usb.serial.ts` - Hardware control line toggling
+- `DOCs/project-specific/DTR-RTS-CONTROL-LINES.md` - Device compatibility guide
+
+**Critical Understanding**: DTR and RTS are **mutually exclusive** control lines - each device uses ONE, never both simultaneously.
+
+#### Device Types and Control Lines
+
+| Device Type | Control Line | Notes |
+|------------|--------------|-------|
+| Parallax Prop Plug (official) | **DTR** | Standard, always DTR |
+| FTDI USB-to-serial (non-vendor) | **DTR** | Usually DTR, configurable |
+| Chinese FTDI clones | **RTS** | Often require RTS instead |
+
+**Why Both Exist**:
+- DTR is the Parallax standard for official Prop Plugs
+- RTS support exists because many clone devices wire RTS for reset
+- Users may have either type, so both must be supported
+
+#### Hardware Toggle Implementation
+
+**Location**: `src/utils/usb.serial.ts`
+
+**DTR Toggle** (10ms pulse sequence):
+```typescript
+public async toggleDTR(): Promise<void> {
+  await this.setDtr(true);   // Assert DTR
+  await waitMSec(10);         // 10ms pulse (P2 spec)
+  await this.setDtr(false);   // Release DTR
+}
+
+private async setDtr(value: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    this._serialPort.set({ dtr: value }, (err) => {
+      if (err) reject(err);
+      else {
+        this._dtrValue = value;
+        this.logMessage(`DTR: ${value}`);
+        // Force drain to ensure command sent
+        this._serialPort.drain((drainErr) => {
+          resolve();
+        });
+      }
+    });
+  });
+}
+```
+
+**RTS Toggle** (identical pattern):
+```typescript
+public async toggleRTS(): Promise<void> {
+  await this.setRts(true);   // Assert RTS
+  await waitMSec(10);         // 10ms pulse (P2 spec)
+  await this.setRts(false);   // Release RTS
+}
+
+private async setRts(value: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    this._serialPort.set({ rts: value }, (err) => {
+      if (err) reject(err);
+      else {
+        this._rtsValue = value;
+        this.logMessage(`RTS: ${value}`);
+        resolve();
+      }
+    });
+  });
+}
+```
+
+**Pulse Timing**:
+- 10ms pulse duration per P2 specification
+- Drain after DTR to ensure command reaches hardware
+- Both methods are public for MainWindow access
+
+#### Reset Event Coordination
+
+**Location**: `src/classes/shared/dtrResetManager.ts`
+
+**Architecture**:
+```
+Hardware Toggle (USB Serial)
+    ↓
+Reset Event (DTRResetManager)
+    ↓
+Queue Drain (MessageRouter)
+    ↓
+Log Rotation (DebugLogger)
+    ↓
+Visual Separation (Debug Windows)
+```
+
+**Reset Event Structure**:
+```typescript
+interface ResetEvent {
+  type: 'DTR' | 'RTS';        // Which control line
+  timestamp: number;           // When reset occurred
+  sequenceNumber: number;      // Reset counter
+}
+```
+
+**Event Handling Flow**:
+```typescript
+// 1. MainWindow detects reset (user action or auto-reset)
+await usbSerial.toggleDTR();  // or toggleRTS()
+
+// 2. MainWindow calls reset manager
+await dtrResetManager.onDTRReset();  // or onRTSReset()
+
+// 3. Reset manager handles event
+private async handleReset(type: 'DTR' | 'RTS'): Promise<void> {
+  // Create reset event
+  const resetEvent: ResetEvent = {
+    type,
+    timestamp: Date.now(),
+    sequenceNumber: ++this.resetSequence
+  };
+
+  // Update statistics
+  this.totalResets++;
+  if (type === 'DTR') {
+    this.dtrResets++;
+    performanceMonitor?.recordDTRReset();
+  } else {
+    this.rtsResets++;
+    performanceMonitor?.recordRTSReset();
+  }
+
+  // Set flags
+  this.currentResetEvent = resetEvent;
+  this.resetPending = true;
+  this.isSynchronized = true;
+  this.syncSource = type;
+
+  // Mark boundary in stream
+  this.boundaryMarkers.set(resetEvent.sequenceNumber, resetEvent);
+
+  // Emit event for other components
+  this.emit('resetDetected', resetEvent);
+
+  // Wait for queues to drain
+  await this.drainQueues();
+
+  // Signal log rotation
+  this.emit('rotateLog', resetEvent);
+
+  // Clear pending flag
+  this.resetPending = false;
+}
+```
+
+#### Queue Draining Strategy
+
+**Critical Design**: Reset manager does NOT touch buffers, only waits for queues to empty
+
+**Drain Process**:
+```typescript
+private async drainQueues(): Promise<void> {
+  // Wait for router queue to empty (max 5 seconds)
+  const routerDrained = await this.router.waitForQueueDrain(5000);
+
+  if (!routerDrained) {
+    console.warn('[DTRResetManager] Router queue drain timeout');
+    this.emit('drainTimeout', { queue: 'router' });
+  }
+
+  // Additional delay for pending async operations
+  await this.delay(50);
+}
+```
+
+**Why Drain Before Log Rotation**:
+- Ensures all pre-reset messages reach debug logger
+- Prevents message loss during log file switch
+- Maintains clean separation between reset sessions
+- Avoids race conditions with message timestamps
+
+#### Synchronization Flags
+
+**Purpose**: Track whether parser is synchronized with P2 message stream
+
+**Synchronization States**:
+```typescript
+// After reset: synchronized
+isSynchronized = true;
+syncSource = 'DTR' | 'RTS';
+
+// Check sync status
+const status = dtrResetManager.getSyncStatus();
+// { synchronized: true, source: 'DTR' }
+
+// Manual sync from another source
+dtrResetManager.markSynchronized('BINARY_MESSAGE');
+
+// Clear sync
+dtrResetManager.clearSynchronization();
+```
+
+**Use Cases**:
+- DTR/RTS resets establish synchronization
+- Binary message headers can also sync
+- Helps parser recover from corrupted data
+- Diagnostic tool for debugging message flow
+
+#### Boundary Markers
+
+**Purpose**: Track message stream boundaries across reset events
+
+**Marker Storage**:
+```typescript
+// Map of sequence number → reset event
+private boundaryMarkers: Map<number, ResetEvent> = new Map();
+
+// Store boundary
+this.boundaryMarkers.set(resetEvent.sequenceNumber, resetEvent);
+
+// Retrieve specific boundary
+const marker = dtrResetManager.getBoundaryMarker(5);
+
+// Get all boundaries
+const allBoundaries = dtrResetManager.getAllBoundaries();
+```
+
+**Boundary Pruning**:
+```typescript
+// Keep only last N boundaries (default: 10)
+dtrResetManager.pruneOldBoundaries(10);
+
+// Prevents memory growth in long-running sessions
+```
+
+**Applications**:
+- Correlate messages with reset sessions
+- Debug timing issues across resets
+- Track message counts before/after reset
+- Performance analysis per session
+
+#### Message Timestamp Classification
+
+**Purpose**: Determine if message occurred before or after reset
+
+```typescript
+public isMessageBeforeReset(timestamp: number): boolean {
+  if (!this.currentResetEvent) {
+    return true; // No reset yet
+  }
+  return timestamp < this.currentResetEvent.timestamp;
+}
+
+// Usage in message processing
+if (dtrResetManager.isMessageBeforeReset(message.timestamp)) {
+  // Message from previous session
+  this.messagesBeforeReset++;
+} else {
+  // Message from current session
+  this.messagesAfterReset++;
+}
+```
+
+#### Statistics Tracking
+
+**Collected Metrics**:
+```typescript
+getStats() {
+  return {
+    totalResets: number;           // Total reset count
+    dtrResets: number;              // DTR-specific count
+    rtsResets: number;              // RTS-specific count
+    messagesBeforeReset: number;    // Pre-reset messages
+    messagesAfterReset: number;     // Post-reset messages
+    currentSequence: number;        // Latest sequence number
+    boundaryCount: number;          // Stored boundaries
+    resetPending: boolean;          // Reset in progress
+    synchronized: boolean;          // Sync status
+    syncSource: string;             // Sync method
+  };
+}
+```
+
+**Statistics Reset**:
+```typescript
+// Clear all counters (preserves boundaries)
+dtrResetManager.resetStats();
+```
+
+#### Event Emissions
+
+**Reset Detected** (`resetDetected`):
+```typescript
+// Emitted when reset starts
+this.emit('resetDetected', resetEvent);
+
+// Listeners can prepare for reset
+dtrResetManager.on('resetDetected', (event: ResetEvent) => {
+  console.log(`${event.type} reset #${event.sequenceNumber}`);
+});
+```
+
+**Log Rotation** (`rotateLog`):
+```typescript
+// Emitted after queues drain
+this.emit('rotateLog', resetEvent);
+
+// DebugLogger creates new log file
+dtrResetManager.on('rotateLog', (event: ResetEvent) => {
+  this.createNewLogFile(event);
+});
+```
+
+**Drain Timeout** (`drainTimeout`):
+```typescript
+// Emitted if queue drain times out
+this.emit('drainTimeout', { queue: 'router' });
+
+// Diagnostic event for troubleshooting
+dtrResetManager.on('drainTimeout', (info) => {
+  console.error(`Queue drain timeout: ${info.queue}`);
+});
+```
+
+**Sync Status Changed** (`syncStatusChanged`):
+```typescript
+// Emitted when sync state changes
+this.emit('syncStatusChanged', this.getSyncStatus());
+
+// UI can update sync indicator
+dtrResetManager.on('syncStatusChanged', (status) => {
+  updateSyncIndicator(status.synchronized, status.source);
+});
+```
+
+#### Performance Monitor Integration
+
+**Reset Recording**:
+```typescript
+// DTR reset recorded
+if (type === 'DTR') {
+  this.performanceMonitor?.recordDTRReset();
+}
+
+// RTS reset recorded
+if (type === 'RTS') {
+  this.performanceMonitor?.recordRTSReset();
+}
+```
+
+**Performance Metrics**:
+- Reset frequency tracking
+- DTR vs RTS usage patterns
+- Queue drain duration
+- Message throughput per session
+
+#### Control Line Selection
+
+**Configuration Hierarchy**:
+1. **Command Line Override**: `-r` or `--rts` flag forces RTS
+2. **User Preference**: `serialPort.controlLine` setting (DTR or RTS)
+3. **Default**: DTR (Parallax standard)
+
+**Runtime Selection**:
+```typescript
+// Check RTS override from preferences
+if (context.runEnvironment.rtsOverride) {
+  await this.toggleRTS();
+} else {
+  await this.toggleDTR();
+}
+```
+
+**Per-Device Settings** (future enhancement):
+- Store control line preference per USB device ID
+- Auto-select based on device detection
+- Override global setting for specific hardware
+
+#### Visual Feedback
+
+**Debug Logger Separation**:
+```
+[DTR RESET] Device reset via DTR at 14:30:00.123
+--- Debug log cleared, parser synchronized ---
+
+... new session messages ...
+
+[RTS RESET] Device reset via RTS at 14:35:15.456
+--- Debug log cleared, parser synchronized ---
+```
+
+**Visual Markers**:
+- Horizontal separator lines
+- Timestamp for correlation
+- Control line identification (DTR vs RTS)
+- Clear session boundaries
+
+#### Reset Lifecycle
+
+**User-Initiated Reset**:
+1. User clicks reset button in UI
+2. MainWindow calls `usbSerial.toggleDTR()` or `toggleRTS()`
+3. Hardware pulse sent to P2 (10ms)
+4. DTRResetManager handles event
+5. Queues drain
+6. Log rotation
+7. Visual separation in UI
+
+**Auto-Reset on Connection**:
+```typescript
+// If resetOnConnection enabled in preferences
+if (context.preferences.serialPort.resetOnConnection) {
+  await usbSerial.toggleDTR();  // or RTS based on setting
+}
+```
+
+**P2 Detection Reset**:
+```typescript
+// When requesting P2 version
+if (context.runEnvironment.rtsOverride) {
+  await this.setRts(true);
+  await waitMSec(10);
+  await this.setRts(false);
+} else {
+  await this.setDtr(true);
+  await waitMSec(10);
+  await this.setDtr(false);
+}
+await waitMSec(15);  // P2 serial loader active in 15ms
+await this.write(`> Prop_Chk\r`);  // Autobaud detection
+```
+
+#### Critical Implementation Notes
+
+**DO NOT**:
+1. Touch message buffers in DTRResetManager (separation of concerns)
+2. Skip queue draining (causes message loss)
+3. Assume DTR works for all devices (some need RTS)
+4. Mix DTR and RTS simultaneously (mutually exclusive)
+
+**MUST**:
+1. Wait for queues to drain before log rotation
+2. Emit events for component coordination
+3. Track reset boundaries for message correlation
+4. Provide timeout handling for queue drains
+5. Record statistics for diagnostics
+6. Maintain separation: DTRResetManager manages flags, not buffers
+
+#### Error Handling
+
+**Hardware Errors**:
+```typescript
+try {
+  await this.setDtr(true);
+} catch (err) {
+  this.logMessage(`DTR: ERROR:${err.name} - ${err.message}`);
+  throw err;  // Propagate to caller
+}
+```
+
+**Queue Drain Timeout**:
+```typescript
+const routerDrained = await this.router.waitForQueueDrain(5000);
+if (!routerDrained) {
+  console.warn('[DTRResetManager] Router queue drain timeout');
+  this.emit('drainTimeout', { queue: 'router' });
+  // Continue anyway - don't block user
+}
+```
+
+**Missing Serial Port**:
+- Toggle methods check `isOpen` before attempting control
+- Graceful degradation if port not available
+- Error logged but not thrown (non-fatal)
+
+#### Testing Support
+
+**Force Log Rotation** (testing only):
+```typescript
+// Trigger log rotation without hardware reset
+dtrResetManager.forceLogRotation();
+
+// Useful for:
+// - Testing log rotation logic
+// - Debugging file creation
+// - Simulating resets in unit tests
+```
+
+**Statistics Inspection**:
+```typescript
+const stats = dtrResetManager.getStats();
+console.log(`Total resets: ${stats.totalResets}`);
+console.log(`DTR: ${stats.dtrResets}, RTS: ${stats.rtsResets}`);
+console.log(`Messages before/after: ${stats.messagesBeforeReset}/${stats.messagesAfterReset}`);
+```
+
+#### Common Use Cases
+
+**Parallax Prop Plug User** (standard case):
+- Device uses DTR
+- Default settings work immediately
+- No configuration needed
+
+**Chinese Clone User** (requires RTS):
+1. Connect device
+2. Reset doesn't work with DTR
+3. Open Preferences → Serial Port
+4. Change Control Line to RTS
+5. Click Apply
+6. Reset now works
+
+**Developer Debugging Reset Issues**:
+```typescript
+// Check sync status
+const status = dtrResetManager.getSyncStatus();
+console.log('Synchronized:', status.synchronized, 'via', status.source);
+
+// Check reset history
+const boundaries = dtrResetManager.getAllBoundaries();
+console.log('Reset count:', boundaries.length);
+
+// Inspect statistics
+const stats = dtrResetManager.getStats();
+console.log('Reset stats:', stats);
+```
+
+**Multi-Device Developer**:
+- Some devices use DTR (Parallax)
+- Some devices use RTS (clones)
+- Use per-device settings (future) to auto-select
+- Or manually switch in preferences per project
+
+#### Design Benefits
+
+**Separation of Concerns**:
+- DTRResetManager: Flags and synchronization
+- SerialMessageProcessor: Buffer management
+- MessageRouter: Message queuing
+- DebugLogger: Log file rotation
+
+**Event-Driven Architecture**:
+- Loose coupling via EventEmitter
+- Components react to reset events
+- Easy to add new reset behaviors
+- Testable in isolation
+
+**Hardware Abstraction**:
+- UsbSerial handles low-level control
+- DTRResetManager handles coordination
+- Application code doesn't need hardware details
+- Same API for DTR and RTS
+
+**Diagnostic Support**:
+- Statistics for troubleshooting
+- Boundary markers for correlation
+- Performance monitoring integration
+- Comprehensive event logging
+
+#### Future Enhancements
+
+**Planned**:
+- Per-device control line memory (USB device ID → DTR/RTS)
+
+---
+
+### Performance Monitoring System
+
+The Performance Monitoring System provides real-time visibility into the serial communication pipeline's health and efficiency. It tracks metrics across all major subsystems and presents them in a live-updating dashboard window.
+
+#### Architecture Overview
+
+**Two-Tier System**:
+1. **PerformanceMonitor** (`src/classes/shared/performanceMonitor.ts`) - Deep subsystem monitoring with latency tracking, queue analysis, and comprehensive event logging
+2. **PerformanceMonitor UI** (`src/classes/performanceMonitor.ts`) - Live dashboard window displaying real-time metrics with sparkline graphs and status indicators
+
+**Data Flow**:
+```
+Component Updates → PerformanceMonitor.recordEvent()
+                  → Aggregation (100ms intervals)
+                  → IPC to UI Window
+                  → Live Display + Sparklines
+```
+
+#### Core Metrics
+
+**Buffer Metrics**:
+```typescript
+{
+  bufferUsagePercent: number;    // Circular buffer fill (0-100%)
+  bufferHighWaterMark: number;   // Peak buffer usage
+  bufferOverflows: number;       // Buffer overflow events
+}
+```
+
+**Queue Metrics** (per window):
+```typescript
+queues: {
+  [windowName: string]: {
+    currentDepth: number;        // Messages waiting
+    highWaterMark: number;       // Peak queue depth
+    totalEnqueued: number;       // Lifetime enqueues
+    totalDequeued: number;       // Lifetime dequeues
+    avgDepth: number;            // Average depth (rolling)
+  }
+}
+```
+
+**Message Latency** (percentiles):
+```typescript
+messageLatency: {
+  min: number;    // Fastest message (ms)
+  max: number;    // Slowest message (ms)
+  avg: number;    // Average latency (ms)
+  p50: number;    // 50th percentile (median)
+  p95: number;    // 95th percentile
+  p99: number;    // 99th percentile (tail latency)
+}
+```
+
+**Throughput Metrics**:
+```typescript
+throughput: {
+  bytesPerSecond: number;        // Raw byte rate
+  messagesPerSecond: number;     // Message routing rate
+  extractionsPerSecond: number;  // Extractor performance
+  routingsPerSecond: number;     // Router performance
+}
+```
+
+**Event Counts**:
+```typescript
+events: {
+  dtrResets: number;             // DTR reset events
+  rtsResets: number;             // RTS reset events
+  bufferOverflows: number;       // Buffer overflow count
+  queueOverflows: number;        // Queue overflow count
+  extractionErrors: number;      // Extractor errors
+  routingErrors: number;         // Router errors
+}
+```
+
+#### UI Window Features
+
+**Live Dashboard Sections**:
+
+1. **Live Metrics Panel**
+   - Throughput graph (50-sample sparkline, auto-scaling)
+   - Buffer usage (percentage + progress bar)
+   - Queue depth (total across all windows)
+   - Status indicator (✓/⚠/✗ with color coding)
+
+2. **Buffer Details Panel**
+   - Total buffer size (default 64KB)
+   - Current used/available space
+   - High water mark (peak usage)
+   - Overflow event count
+
+3. **Message Routing Panel**
+   - Total messages processed
+   - Messages per second
+   - Recording status (active/inactive + size)
+   - Parse error count
+
+4. **Active Windows Panel**
+   - List of all open debug windows
+   - Per-window queue depth
+   - Scrollable list (max 150px height)
+
+5. **Controls**
+   - Clear Stats button (resets counters, preserves high water marks)
+   - Auto-refresh toggle (100ms update interval)
+
+**Visual Design**:
+- Clean white background with monospace value displays
+- Color-coded status: Green (✓), Yellow (⚠), Red (✗)
+- Gradient progress bars for buffer usage
+- Real-time sparkline graphs for throughput trends
+- Responsive layout (500x600 default, resizable)
+
+#### Integration with Subsystems
+
+**DTRResetManager Integration**:
+```typescript
+// DTR/RTS reset events recorded
+dtrResetManager.on('reset', (event: ResetEvent) => {
+  if (event.type === 'DTR') {
+    performanceMonitor.recordEvent('dtrResets');
+  } else {
+    performanceMonitor.recordEvent('rtsResets');
+  }
+});
+```
+
+**MessageRouter Integration**:
+```typescript
+// Queue depth tracking per window
+messageRouter.on('message-routed', (target, queueDepth) => {
+  performanceMonitor.updateQueueMetric(target, queueDepth);
+});
+
+// Routing errors
+messageRouter.on('routing-error', (error) => {
+  performanceMonitor.recordEvent('routingErrors');
+});
+```
+
+**SerialMessageProcessor Integration**:
+```typescript
+// Buffer usage monitoring
+performanceMonitor.updateBufferMetrics({
+  usagePercent: (used / total) * 100,
+  currentUsed: used,
+  highWaterMark: Math.max(highWaterMark, used)
+});
+
+// Overflow detection
+if (overflow) {
+  performanceMonitor.recordEvent('bufferOverflows');
+}
+```
+
+**Latency Tracking**:
+```typescript
+// Message lifecycle tracking
+const startTime = Date.now();
+// ... message processing ...
+const latency = Date.now() - startTime;
+performanceMonitor.recordLatency(latency);
+```
+
+#### Implementation Details
+
+**Update Interval**:
+- UI updates every 100ms via IPC
+- Metrics aggregated in main process
+- Renderer receives snapshot via `perf-metrics` event
+
+**IPC Protocol**:
+```typescript
+// Request current metrics
+ipcRenderer.send('perf-get-metrics');
+
+// Receive metrics update
+ipcRenderer.on('perf-metrics', (event, metrics) => {
+  updateDisplay(metrics);
+});
+
+// Clear statistics
+ipcRenderer.send('perf-clear-stats');
+```
+
+**Sparkline Rendering**:
+- Canvas-based real-time graph
+- 50-sample rolling window
+- Auto-scaling Y-axis (min 10 kb/s)
+- Smooth line interpolation
+- Grid lines for readability
+
+**Memory Management**:
+- Latency samples capped at 1000 (rolling window)
+- Old samples dropped automatically
+- Queue metrics stored per-window (map-based)
+- Event counters reset on Clear Stats
+
+#### Statistics Reset Behavior
+
+**Clear Stats Button**:
+```typescript
+// Resets these counters
+overflowEvents = 0;
+parseErrors = 0;
+totalMessages = 0;
+
+// Preserves these values
+highWaterMark = currentBufferUsed;  // Snapshot, not reset
+bufferUsage = <current>;            // Live metric
+queueDepth = <current>;             // Live metric
+```
+
+**Design Rationale**: Clear Stats resets **cumulative counters** but preserves **current state** and **high water marks** for ongoing monitoring.
+
+#### Use Cases
+
+**Development Debugging**:
+- Identify buffer pressure during high-throughput scenarios
+- Monitor queue buildup in specific windows
+- Track message latency spikes
+- Detect overflow events in real-time
+
+**Performance Tuning**:
+- Measure throughput impact of code changes
+- Identify bottleneck components (queue depth)
+- Optimize buffer sizes based on high water marks
+- Validate extraction/routing performance targets
+
+**Production Monitoring**:
+- Continuous health check during testing
+- Early warning for resource exhaustion
+- Historical trend analysis via sparklines
+- Correlation with external hardware behavior
+
+**User Support**:
+- Capture metrics during bug reports
+- Diagnose communication issues
+- Verify hardware throughput capabilities
+- Validate buffer configuration adequacy
+
+#### Error Handling
+
+**Window Lifecycle**:
+```typescript
+window.on('closed', () => {
+  cleanup();  // Stop update interval, remove IPC handlers
+  window = null;
+});
+```
+
+**IPC Safety**:
+```typescript
+// Check window exists before sending
+if (window && !window.isDestroyed()) {
+  window.webContents.send('perf-metrics', metrics);
+}
+```
+
+**Graceful Degradation**:
+- If UI window closed, metrics still collected
+- Re-opening window shows current state
+- No data loss during window closure
+- Auto-refresh toggle survives window lifecycle
+
+#### Testing Strategies
+
+**Metrics Validation**:
+```typescript
+// Inject known workload
+sendTestMessages(1000);
+await waitForProcessing();
+const metrics = performanceMonitor.getSnapshot();
+expect(metrics.throughput.messagesPerSecond).toBeGreaterThan(900);
+```
+
+**Buffer Pressure Testing**:
+```typescript
+// Fill buffer to 90%
+fillBufferTo(90);
+const metrics = performanceMonitor.getSnapshot();
+expect(metrics.bufferUsagePercent).toBeCloseTo(90, 1);
+expect(metrics.status).toBe('⚠');  // Warning threshold
+```
+
+**Latency Percentile Testing**:
+```typescript
+// Record known latencies
+[5, 10, 15, 20, 100].forEach(ms => {
+  performanceMonitor.recordLatency(ms);
+});
+const stats = performanceMonitor.getLatencyStats();
+expect(stats.p95).toBeLessThan(stats.p99);
+expect(stats.avg).toBeGreaterThan(stats.min);
+```
+
+#### Design Benefits
+
+**Real-Time Visibility**:
+- Instant feedback on system health
+- Proactive problem detection
+- Live performance validation
+- Visual trend analysis
+
+**Diagnostic Power**:
+- Correlate metrics with user symptoms
+- Identify root causes faster
+- Historical context via sparklines
+- Per-component drill-down
+
+**Performance Validation**:
+- Measure optimization impact
+- Verify throughput targets
+- Track latency improvements
+- Validate buffer sizing
+
+**Low Overhead**:
+- Metrics collection < 1% CPU
+- No impact on message throughput
+- Efficient aggregation strategy
+- Lazy UI updates (100ms intervals)
+
+---
+
+### Binary Playback System
+
+The Binary Playback System enables deterministic replay of recorded serial communication sessions for testing, debugging, and demonstration purposes. It replays `.p2rec` files with precise timing fidelity, supporting variable playback speeds and full transport controls.
+
+#### Architecture Overview
+
+**Purpose**: Simulate real hardware by replaying previously recorded serial traffic with accurate timing.
+
+**Key Components**:
+- `BinaryPlayer` (`src/classes/binaryPlayer.ts`) - Core playback engine with timing control
+- `.p2rec` file format - Timestamped binary recording format
+- Event emitters for integration - Plugs into existing serial processing pipeline
+
+**Data Flow**:
+```
+.p2rec File → BinaryPlayer.loadRecording()
+           → play() triggers timed entry emission
+           → 'data' events → SerialMessageProcessor
+           → Normal message routing pipeline
+```
+
+#### File Format Specification
+
+**.p2rec File Structure**:
+
+**Header (64 bytes)**:
+```
+Offset | Size | Field            | Description
+-------|------|------------------|---------------------------
+0      | 4    | Magic            | 'P2RC' (ASCII)
+4      | 4    | Version          | File format version (LE uint32)
+8      | 8    | Start Timestamp  | Recording start time (LE uint64)
+12     | 4    | Metadata Length  | JSON metadata size (LE uint32)
+16     | 48   | Reserved         | Future use (zeros)
+```
+
+**Metadata Section** (variable length):
+```json
+{
+  "deviceName": "Propeller2",
+  "recordingDate": "2025-01-08T12:34:56.789Z",
+  "totalDuration": 45000,
+  "entryCount": 1234
+}
+```
+
+**Data Entries** (repeating structure):
+```
+Offset | Size     | Field      | Description
+-------|----------|------------|---------------------------
+0      | 4        | Delta Time | Time from start (ms, LE uint32)
+4      | 1        | Data Type  | 0=text, 1=binary
+5      | 4        | Length     | Data payload size (LE uint32)
+9      | <Length> | Data       | Actual payload bytes
+```
+
+**Design Rationale**:
+- Little-endian for x86/ARM compatibility
+- Cumulative timestamps (not deltas) for direct seeking
+- Type field enables future text/binary distinction
+- Magic bytes + version for forward compatibility
+- Reserved header space for future extensions
+
+#### Core API
+
+**Loading Recordings**:
+```typescript
+const player = new BinaryPlayer();
+await player.loadRecording('/path/to/session.p2rec');
+
+player.on('loaded', (info) => {
+  console.log(`Loaded ${info.entries} entries, ${info.duration}ms`);
+});
+```
+
+**Playback Control**:
+```typescript
+// Start/resume playback
+player.play();
+
+// Pause at current position
+player.pause();
+
+// Stop and reset to beginning
+player.stop();
+
+// Seek to position (0.0 to 1.0)
+player.seek(0.5);  // Jump to midpoint
+
+// Set playback speed (0.5x to 10x typical)
+player.setSpeed(2.0);  // 2x speed
+```
+
+**Progress Monitoring**:
+```typescript
+player.on('progress', (progress) => {
+  console.log(`${progress.current}ms / ${progress.total}ms (${progress.percentage}%)`);
+});
+
+// Or poll manually
+const { current, total, percentage } = player.getProgress();
+```
+
+**Event Integration**:
+```typescript
+// Data emission (plugs into serial pipeline)
+player.on('data', (buffer: Buffer) => {
+  serialProcessor.processReceivedData(buffer);
+});
+
+// Lifecycle events
+player.on('started', () => { /* Playback started */ });
+player.on('paused', (progress) => { /* Paused at position */ });
+player.on('stopped', () => { /* Stopped and reset */ });
+player.on('finished', () => { /* Reached end of recording */ });
+player.on('seeked', (progress) => { /* Seek completed */ });
+player.on('speedChanged', (speed) => { /* Speed changed */ });
+```
+
+#### Timing Accuracy
+
+**High-Resolution Timing**:
+```typescript
+// Use process.hrtime.bigint() for sub-millisecond accuracy
+const startTime = process.hrtime.bigint();
+// ... after timer fires ...
+const actualDelay = Number(process.hrtime.bigint() - startTime) / 1000000; // Convert to ms
+```
+
+**Drift Compensation**:
+```typescript
+// Compensate for timer drift > 5ms
+const drift = actualDelay - targetDelay;
+if (Math.abs(drift) > 5) {
+  this.startTime -= drift * this.playbackSpeed;
+}
+```
+
+**Speed Adjustment**:
+```typescript
+// Adjust delays for playback speed
+const targetDelay = (entryTime - currentTime) / this.playbackSpeed;
+
+// Re-anchor timing when speed changes
+this.startTime = Date.now() - (currentTime / this.playbackSpeed);
+```
+
+**Design Rationale**:
+- `setTimeout` scheduling (not setInterval) prevents compounding drift
+- High-resolution timestamps detect actual vs. expected timing
+- Drift compensation keeps long recordings synchronized
+- Speed scaling applies uniformly to all delays
+
+#### Playback State Management
+
+**State Variables**:
+```typescript
+private entries: PlaybackEntry[];      // Loaded recording data
+private currentIndex: number;          // Current playback position
+private startTime: number;             // Playback start timestamp
+private pausedTime: number;            // Pause position (ms from start)
+private isPaused: boolean;             // Pause state flag
+private isPlaying: boolean;            // Playing state flag
+private playbackSpeed: number;         // Speed multiplier (1.0 = normal)
+private totalDuration: number;         // Total recording length (ms)
+```
+
+**State Transitions**:
+```
+Initial → play() → Playing → pause() → Paused → play() → Playing
+                          → stop() → Initial
+Playing → finished → Initial
+Playing → seek() → Playing (new position)
+```
+
+**Seek Implementation**:
+```typescript
+// Binary search for entry closest to target time
+const targetTime = position * this.totalDuration;
+let newIndex = 0;
+for (let i = 0; i < this.entries.length; i++) {
+  if (this.entries[i].deltaMs <= targetTime) {
+    newIndex = i;
+  } else break;
+}
+
+// Adjust timing if playing
+this.startTime = Date.now() - targetTime;
+```
+
+#### Integration with Serial Pipeline
+
+**MainWindow Integration**:
+```typescript
+// Load recording
+this.binaryPlayer = new BinaryPlayer();
+await this.binaryPlayer.loadRecording(filepath);
+
+// Connect to serial processor
+this.binaryPlayer.on('data', (buffer) => {
+  // Inject into normal serial processing pipeline
+  this.context.serialProcessor.processReceivedData(buffer);
+});
+
+// UI controls trigger player methods
+this.binaryPlayer.play();
+this.binaryPlayer.pause();
+this.binaryPlayer.stop();
+```
+
+**UI Feedback**:
+```typescript
+// Update progress bar during playback
+player.on('progress', (progress) => {
+  mainWindow.updatePlaybackProgress(progress.percentage);
+});
+
+// Enable/disable controls based on state
+player.on('started', () => {
+  enablePauseButton();
+  disablePlayButton();
+});
+
+player.on('stopped', () => {
+  enablePlayButton();
+  disablePauseButton();
+  resetProgressBar();
+});
+```
+
+**Recording Creation** (complementary feature):
+```typescript
+// During live session, record to .p2rec
+const recorder = new BinaryRecorder();
+recorder.startRecording('/path/to/output.p2rec');
+
+// Capture serial data
+serialProcessor.on('data', (buffer) => {
+  recorder.recordData(buffer, Date.now() - sessionStart);
+});
+
+// Finalize recording
+recorder.stopRecording();
+```
+
+#### Use Cases
+
+**Regression Testing**:
+- Record known-good session with hardware
+- Replay recording after code changes
+- Verify identical window behavior (automated)
+- No hardware required for testing
+
+**Bug Reproduction**:
+- User reports issue with specific hardware sequence
+- Record session that triggers bug
+- Developers replay recording locally
+- Deterministic reproduction without hardware
+
+**Performance Benchmarking**:
+- Record high-throughput session (FFT, Scope)
+- Replay at 10x speed for stress testing
+- Measure buffer usage, queue depths, latency
+- Compare performance across code versions
+
+**Demonstration & Training**:
+- Create polished demo recordings
+- Replay during presentations (no live hardware risks)
+- Speed up slow portions (2x-5x)
+- Pause for explanations at key moments
+
+**Protocol Development**:
+- Record hardware sequences (P2 bootloader, debugger handshake)
+- Analyze byte-perfect timing
+- Test parser changes against exact sequences
+- Validate protocol implementations
+
+#### Error Handling
+
+**File Validation**:
+```typescript
+// Verify magic bytes
+const magic = fileBuffer.subarray(0, 4).toString();
+if (magic !== 'P2RC') {
+  throw new Error('Invalid .p2rec file: incorrect magic bytes');
+}
+
+// Check version compatibility
+const version = fileBuffer.readUInt32LE(4);
+if (version !== 1) {
+  throw new Error(`Unsupported .p2rec version: ${version}`);
+}
+```
+
+**Truncation Detection**:
+```typescript
+// Validate metadata length
+if (offset + metadataLength > fileBuffer.length) {
+  throw new Error('Invalid .p2rec file: metadata truncated');
+}
+
+// Validate each entry
+if (offset + dataLength > fileBuffer.length) break; // Stop gracefully
+```
+
+**Playback Safety**:
+```typescript
+// Check bounds before emission
+if (this.currentIndex >= this.entries.length) {
+  this.stop();
+  this.emit('finished');
+  return;
+}
+
+// Prevent negative delays
+const targetDelay = Math.max(0, (entryTime - currentTime) / this.playbackSpeed);
+```
+
+#### Testing Strategies
+
+**File Format Testing**:
+```typescript
+// Create minimal valid .p2rec file
+const header = Buffer.alloc(64);
+header.write('P2RC', 0);
+header.writeUInt32LE(1, 4); // Version 1
+// ... write test entries ...
+
+// Verify loading
+await player.loadRecording(testFile);
+expect(player.entries.length).toBe(expectedCount);
+```
+
+**Timing Accuracy Testing**:
+```typescript
+// Record emission timestamps
+const emissions: number[] = [];
+player.on('data', () => emissions.push(Date.now()));
+
+await player.play();
+await waitForFinish();
+
+// Verify timing accuracy (within ±10ms tolerance)
+for (let i = 1; i < emissions.length; i++) {
+  const expected = entries[i].deltaMs - entries[i-1].deltaMs;
+  const actual = emissions[i] - emissions[i-1];
+  expect(Math.abs(actual - expected)).toBeLessThan(10);
+}
+```
+
+**Speed Scaling Testing**:
+```typescript
+// Test 2x playback speed
+player.setSpeed(2.0);
+const start = Date.now();
+await player.play();
+await waitForFinish();
+const duration = Date.now() - start;
+
+// Should complete in ~half the time
+expect(duration).toBeCloseTo(player.totalDuration / 2, 100);
+```
+
+**Seek Testing**:
+```typescript
+// Seek to 75% position
+player.seek(0.75);
+const progress = player.getProgress();
+expect(progress.percentage).toBeCloseTo(75, 1);
+
+// Verify next emission matches expected entry
+player.on('data', (buffer) => {
+  expect(buffer).toEqual(expectedEntryAt75Percent);
+});
+```
+
+#### Design Benefits
+
+**Deterministic Testing**:
+- Identical byte sequences every playback
+- Reproducible timing (within drift compensation)
+- No hardware variability
+- Perfect for CI/CD regression testing
+
+**Development Efficiency**:
+- Test complex scenarios without hardware
+- Rapid iteration (no device reconnection)
+- Speed up slow sequences (10x+)
+- Isolate timing-sensitive bugs
+
+**Collaboration & Support**:
+- Share exact problem scenarios
+- Remote debugging without hardware access
+- Document complex sequences
+- Create regression test suites
+
+**Quality Assurance**:
+- Build test library of edge cases
+- Automated validation of window behavior
+- Performance regression detection
+- Protocol compliance verification
+
+#### Future Enhancements
+
+**Planned**:
+- Recording UI integrated into MainWindow
+- Automatic session recording option (preferences)
+- Playback control panel (seek bar, speed slider)
+- Recording library browser
+- Selective window playback (filter by message type)
+- Merge/edit recordings (cut/splice tool)
+- Export to other formats (CSV, JSON)
+
+---
 
 ## Performance Optimizations
 
