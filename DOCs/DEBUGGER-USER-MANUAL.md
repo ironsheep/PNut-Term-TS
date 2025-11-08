@@ -27,47 +27,34 @@ The Parallax Propeller 2 Single-Step Debugger provides comprehensive debugging c
 
 ## Invoking the Debugger
 
-### Method 1: Enable Debug Mode in PNut
+### Enable Debug Mode in PNut
 The debugger can be enabled through multiple methods in the PNut IDE:
 
-#### Via Menu Commands
-- **Run → Debug Enable (Ctrl+D)**: Enables debug mode for the current session
-- **Run → Debug Disable**: Disables debug mode
-- **Run → Debug Flash Enable**: Enables debug mode with flash programming
-- **Run → Debug Load RAM**: Loads program to RAM with debug enabled
-- **Run → Debug Load Flash**: Loads program to Flash with debug enabled
-
-#### Via Command Line
+#### with Command Line
 ```bash
 pnut.exe myprogram.spin2 -bd    # Compile with debug enabled
 pnut.exe myprogram.spin2 -cd    # Compile and download with debug enabled
 ```
 
-### Method 2: Using DEBUG Statements in Code
+### Instantiate with DEBUG Statement in Code
 
 The debugger is automatically invoked when the P2 executes a DEBUG statement in your Spin2 or PASM code:
 
 ```spin2
 PUB main()
-  DEBUG("Program starting")      ' Triggers debugger with message
-  DEBUG                          ' Triggers debugger without message (breakpoint)
-
-  ' Conditional debugging
-  DEBUG_IF(condition)("Value: ", DEC(value))
-
-  ' Various debug output formats
-  DEBUG("Binary: ", BIN(value))
-  DEBUG("Hex: ", HEX(value))
-  DEBUG("Decimal: ", DEC(value))
-  DEBUG("String: ", ZSTR(@mystring))
+  DEBUG                          ' Triggers debugger (breakpoint)
 ```
 
-### Method 3: COGINIT with Debug
+### Instantiate when COGINIT runs
 
 When starting a new COG with debug mode enabled, the debugger will break on COG initialization:
 
 ```spin2
-COGINIT(COGEXEC_NEW, @entry, @stack)  ' Will break at entry if debug enabled
+CON
+  DEBUG_COGINIT = 1  ' or DEBUG_MAIN = 1
+
+PUB/PRI ...
+  COGINIT(COGEXEC_NEW, @entry, @stack)  ' Will break at entry if debug enabled
 ```
 
 ## Debugger Window Interface

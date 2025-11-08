@@ -1,44 +1,55 @@
-# P2 Debug Terminal User Guide
+# PNut-Term-TS User Guide
+
+*Version 0.9.0 - November 2025*
 
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Installation & Setup](#installation--setup)
 3. [Getting Started](#getting-started)
-4. [Settings & Preferences](#settings--preferences)
-5. [Connection & Startup Behavior](#connection--startup-behavior)
-6. [Debug Windows Overview](#debug-windows-overview)
-7. [Terminal Window](#terminal-window)
-8. [Logic Analyzer](#logic-analyzer)
-9. [Oscilloscope](#oscilloscope)
-10. [XY Scope](#xy-scope)
-11. [Plot Window](#plot-window)
-12. [Bitmap Display](#bitmap-display)
-13. [MIDI Monitor](#midi-monitor)
-14. [FFT Analyzer](#fft-analyzer)
-15. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
-16. [P2 Debugger](#p2-debugger)
-17. [Recording & Playback](#recording--playback)
-18. [Keyboard Shortcuts](#keyboard-shortcuts)
-19. [Troubleshooting](#troubleshooting)
-20. [Command-Line Reference](#command-line-reference)
-21. [Automation and External Control](#automation-and-external-control)
-22. [Advanced Topics](#advanced-topics)
+4. [Menu Structure](#menu-structure)
+5. [Dialog Windows](#dialog-windows)
+6. [Settings & Preferences](#settings--preferences)
+7. [Connection & Startup Behavior](#connection--startup-behavior)
+8. [Recording & Playback](#recording--playback)
+9. [Debug Windows Overview](#debug-windows-overview)
+10. [Terminal Window](#terminal-window)
+11. [Logic Analyzer](#logic-analyzer)
+12. [Oscilloscope](#oscilloscope)
+13. [XY Scope](#xy-scope)
+14. [Plot Window](#plot-window)
+15. [Bitmap Display](#bitmap-display)
+16. [MIDI Monitor](#midi-monitor)
+17. [FFT Analyzer](#fft-analyzer)
+18. [SPECTRO (Spectrogram/Waterfall Display)](#spectro-spectrogramwaterfall-display)
+19. [P2 Debugger](#p2-debugger)
+20. [Keyboard Shortcuts](#keyboard-shortcuts)
+21. [Troubleshooting](#troubleshooting)
+22. [Command-Line Reference](#command-line-reference)
+23. [Automation and External Control](#automation-and-external-control)
+24. [Advanced Topics](#advanced-topics)
     - [Custom Window Layouts](#custom-window-layouts)
     - [Scripting](#scripting)
     - [Serial Communication Architecture](#serial-communication-architecture)
     - [Performance Tuning](#performance-tuning)
     - [Integration](#integration)
+25. [Tips & Best Practices](#tips--best-practices)
+
+---
 
 ## Introduction
 
-The P2 Debug Terminal is a comprehensive debugging environment for the Parallax Propeller 2 (P2) microcontroller. It provides real-time visualization and interactive debugging capabilities through specialized windows that interpret DEBUG commands from your P2 programs.
+PNut-Term-TS is a comprehensive debugging environment for the Parallax Propeller 2 (P2) microcontroller. It provides real-time visualization, interactive debugging, and session recording capabilities through specialized windows that interpret DEBUG commands from your P2 programs.
 
 ### Key Features
-- **11 specialized debug windows** for different data visualization needs
-- **Real-time data streaming** at up to 16 Mbps
-- **Interactive P2 debugger** with breakpoints and memory inspection
-- **Recording and playback** for regression testing
+- **9 specialized debug windows** for different data visualization needs
+- **Real-time data streaming** at up to 2 Mbps (2,000,000 baud)
+- **Binary recording system** for capturing and replaying debug sessions
+- **Performance monitoring** with live metrics and sparkline graphs
+- **Interactive P2 debugger** with breakpoints and memory inspection (future release)
+- **Customizable preferences** with user/project hierarchy
 - **Cross-platform support** (Windows, macOS, Linux)
+
+---
 
 ## Installation & Setup
 
@@ -53,38 +64,49 @@ The P2 Debug Terminal is a comprehensive debugging environment for the Parallax 
 #### Windows
 ```bash
 # Download the latest release
-curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-win.exe -o pnut-term.exe
+curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-win-x64.zip -o pnut-term-win.zip
 
-# Run the application
-./pnut-term.exe
+# Extract and run
+unzip pnut-term-win.zip
+cd pnut-term-win-x64
+./pnut-term-ts.exe
 ```
 
 #### macOS
 ```bash
 # Download the latest release
-curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-mac.dmg -o pnut-term.dmg
+curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-mac-x64.zip -o pnut-term-mac.zip
 
-# Mount and install
-hdiutil attach pnut-term.dmg
-cp -R /Volumes/PNut-Term/PNut-Term.app /Applications/
+# Extract and install
+unzip pnut-term-mac.zip
+# Run the SETUP.command script to add to PATH
+cd pnut-term-mac-x64
+./SETUP.command
+
+# Launch from Terminal
+pnut-term-ts
 ```
 
 #### Linux
 ```bash
 # Download the latest release
-curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-linux.AppImage -o pnut-term.AppImage
+curl -L https://github.com/parallaxinc/pnut-term-ts/releases/latest/download/pnut-term-linux-x64.zip -o pnut-term-linux.zip
 
-# Make executable and run
-chmod +x pnut-term.AppImage
-./pnut-term.AppImage
+# Extract and run
+unzip pnut-term-linux.zip
+cd pnut-term-linux-x64
+./pnut-term-ts
 ```
 
 ### First Run Setup
 
 1. **Connect your P2**: Plug in your Propeller 2 board via USB
-2. **Select COM port**: The terminal will auto-detect available ports
-3. **Set baud rate**: Default is 2,000,000 baud (2 Mbps)
-4. **Enable DTR**: Toggle DTR to reset the P2 if needed
+2. **Auto-detect port**: If only one USB serial device is connected, it will be auto-selected
+3. **Manual port selection**: Use `-p <device>` flag or `-n` to list available ports
+4. **Set baud rate**: Default is 2,000,000 baud (2 Mbps), change with `-b` flag or in Preferences
+5. **DTR/RTS control**: Toggle DTR or RTS to reset the P2 if needed (toolbar buttons)
+
+---
 
 ## Getting Started
 
@@ -95,7 +117,7 @@ Here's a simple P2 program that demonstrates debug output:
 ```spin2
 PUB main() | value
   debug(`term MyTerminal size 80 40 textsize 12`)  ' Create terminal window
-  
+
   repeat
     value++
     debug(`term MyTerminal print "Count: ", dec(value), 13`)
@@ -112,184 +134,201 @@ debug(`scope MyScope size 400 300 samples 1000`)      ' Oscilloscope
 debug(`logic MyLogic size 600 200 samples 8192`)      ' Logic analyzer
 debug(`plot MyPlot size 500 500 polar`)               ' Plot window
 debug(`bitmap MyBitmap size 320 240 lut8`)            ' Bitmap display
+debug(`fft MyFFT size 512 rate 44100`)                ' FFT analyzer
+debug(`midi MyMIDI`)                                  ' MIDI monitor
 ```
+
+**Important**: Debug windows cannot be opened manually from the application menu. They appear automatically when your P2 code sends matching DEBUG commands.
+
+---
+
+## Menu Structure
+
+The application menu provides access to recording, preferences, and window management:
+
+### File Menu
+- **New Recording** - Start a new debug session recording
+- **Open Recording...** - Load and playback a .p2rec file
+- **Save Recording As...** - Save current recording to disk
+- **─────────────**
+- **Start Recording** (Ctrl/Cmd+R) - Begin recording debug data
+- **Stop Recording** - End current recording session
+- **Playback Recording** (Ctrl/Cmd+P) - Play selected recording
+- **─────────────**
+- **Exit** (Ctrl/Cmd+Q) - Close the application
+
+### Edit Menu
+- **Cut** (Ctrl/Cmd+X) - Cut selected text
+- **Copy** (Ctrl/Cmd+C) - Copy selected text
+- **Paste** (Ctrl/Cmd+V) - Paste from clipboard
+- **─────────────**
+- **Find...** (Ctrl/Cmd+F) - Search in terminal output
+- **Clear Terminal** - Clear terminal display
+- **─────────────**
+- **Preferences...** (Ctrl/Cmd+,) - Open settings dialog
+
+### Window Menu
+- **Performance Monitor** - Open performance metrics window
+- **─────────────**
+- **Cascade** - Arrange windows in cascade layout
+- **Tile** - Tile all windows in grid layout
+- **─────────────**
+- **Show All Windows** - Make all windows visible
+- **Hide All Windows** - Hide all debug windows
+
+### Help Menu
+- **Documentation** (F1) - Open this user guide
+- **─────────────**
+- **About PNut-Term-TS** - Version and copyright information
+
+> **Note**: Debug windows (Terminal, Logic, Scope, etc.) are not in the menu. They open automatically from P2 DEBUG commands.
+
+---
+
+## Dialog Windows
+
+### Preferences Dialog (Edit → Preferences)
+
+The Preferences dialog provides comprehensive control over terminal behavior with a two-tab interface:
+
+#### User Settings Tab
+Global preferences that apply to all projects. Saved to:
+- **Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
+- **macOS/Linux**: `~/.pnut-term-ts-settings.json`
+
+#### Project Settings Tab
+Project-specific overrides using checkboxes. Saved to:
+- `./.pnut-term-ts-settings.json` in your project directory
+- Only enabled overrides are saved (delta-save strategy)
+
+#### Terminal Settings
+- **Terminal Mode**: Classic Terminal, Split View, or Debug Only
+- **Color Theme**: Dark (default), Light, High Contrast, Solarized
+- **Font Size**: 10-24 pixels (default: 14px)
+- **Font Family**: Consolas (Win), Monaco (Mac), Courier New, Monospace, Source Code Pro, Fira Code
+- **Show COG Prefixes**: Display "Cog0", "Cog1" etc. in messages
+- **Local Echo**: Echo typed characters locally (usually handled by P2)
+
+#### Serial Port Settings
+- **Control Line**: DTR (default for Parallax Prop Plug) or RTS (some USB adapters)
+- **Default Baud Rate**: 115200, 230400, 460800, 921600, or 2000000 (default: 2000000)
+- **Reset P2 on Connection**: Automatically toggle DTR/RTS when connecting
+  - **Enabled**: P2 resets on connection (fresh start for development)
+  - **Disabled**: Connect without reset (capture existing output)
+
+#### Logging Settings
+- **Log Directory**: Where debug logger files are saved (default: `./logs/`)
+- **Auto-Save Debug Logs**: Automatically save to timestamped files
+- **New Log on DTR/RTS**: Rotate to new file on reset (session boundaries)
+- **Max Log Size**: 1MB, 5MB (default), 10MB, 50MB, or Unlimited
+- **Enable USB Traffic Logging**: Log raw USB serial traffic (low-level debugging)
+- **USB Log Path**: Directory for USB traffic logs (default: `./logs/`)
+
+#### Recording Settings
+- **Recordings Directory**: Where .p2rec files are saved (default: `./recordings/`)
+- **Auto-Save Recordings**: Automatically save when stopped (no filename prompt)
+- **Recording Buffer Size**: 10MB, 50MB, 100MB (default), 500MB, 1GB
+
+### Performance Monitor (Window → Performance Monitor)
+
+The Performance Monitor provides real-time system metrics with visual feedback:
+
+#### Live Metrics Panel
+- **Throughput Graph**: 50-sample sparkline showing data rate over time (auto-scaling)
+- **Buffer Usage**: Visual percentage bar of circular buffer utilization
+- **Queue Depth**: Number of messages waiting for processing across all windows
+- **Status Indicator**: System health at a glance
+  - ✓ Normal operation (green)
+  - ⚠ Warning state (yellow)
+  - ✗ Error condition (red)
+
+#### Buffer Details
+- **Buffer Size**: Total buffer capacity (default: 64KB)
+- **Used/Available**: Current usage statistics in real-time
+- **High Water Mark**: Maximum usage reached this session
+- **Overflow Events**: Count of data loss events (buffer full)
+
+#### Message Routing
+- **Total Messages**: Cumulative message count processed
+- **Messages/sec**: Current throughput rate
+- **Recording Status**: Active/Inactive with current recording size
+- **Parse Errors**: Count of malformed messages
+
+#### Active Windows
+Lists all open debug windows with their individual queue depths. Scrollable list (max 150px height) helps identify processing bottlenecks.
+
+#### Controls
+- **Clear Stats**: Reset counters (preserves high water marks and current state)
+- **Auto-Refresh**: Toggle 100ms update interval
+
+---
 
 ## Settings & Preferences
 
 PNut-Term uses a hierarchical settings system that allows you to have global preferences for all projects while also overriding specific settings for individual projects.
 
+### Settings Hierarchy
+
+**3-Tier Cascading System**:
+1. **Application Defaults** - Built-in baseline settings
+2. **User Global Settings** - Your personal preferences across all projects
+3. **Project Local Settings** - Project-specific overrides (optional)
+
+**Effective Value** = Project Local **OR** User Global **OR** App Default (first non-empty value wins)
+
 ### Opening Preferences
 
-**Menu**: File → Preferences
-**Keyboard Shortcut**: Ctrl+, (Windows/Linux) or Cmd+, (Mac)
+**Menu**: Edit → Preferences
+**Keyboard Shortcut**: Ctrl/Cmd+,
 
 The Preferences dialog has two tabs:
 - **User Settings**: Global settings that apply to all projects
-- **Project Settings**: Project-specific overrides
+- **Project Settings**: Project-specific overrides with checkboxes
 
 ### User Settings Tab
 
-User Settings are global preferences that apply across all your P2 projects. These settings are saved to a platform-specific location:
+User Settings are global preferences that apply across all your P2 projects. Changes here affect all projects unless overridden.
 
-**Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
-**Linux**: `~/.pnut-term-ts-settings.json`
-**Mac**: `~/.pnut-term-ts-settings.json`
+**Available Settings** (see Dialog Windows section above for complete details):
 
-**Available Settings**:
-
-#### Terminal
-- **Terminal Mode**: PST (default) or ANSI
-- **Color Theme**: Green on Black, White on Black, or Amber on Black
-- **Font Size**: 10-24 pixels (default: 14)
-- **Font Family**: Default, Parallax, or IBM 3270 variants
-- **Show COG Prefixes**: Display COG numbers in debug output
-- **Local Echo**: Echo typed characters locally
-
-#### Serial Port
-- **Control Line**: DTR or RTS (for hardware reset)
-- **Default Baud Rate**: 115200 to 2000000 (default: 115200)
-- **Reset P2 on Connection**: Reset the P2 when opening serial port
-
-#### Logging
-- **Log Directory**: Where debug logs are saved (default: `./logs/`)
-- **Auto-Save Debug Output**: Automatically save debug output to files
-- **New Log on P2 Reset**: Create new log file when P2 resets
-- **Max Log Size**: File size limit (1MB, 10MB, 100MB, or Unlimited)
-- **Enable USB Traffic Logging**: Log low-level USB serial traffic
-- **USB Log Directory**: Where USB traffic logs are saved
-
-#### Recordings
-- **Recordings Directory**: Where playback recordings are saved (default: `./recordings/`)
-
-#### Debug Logger
-- **History Lines**: Number of lines to keep in debug logger scrollback (100-10000, default: 1000)
-
-**How User Settings Work**:
-- Settings are saved only if they differ from app defaults
-- If you reset all settings to defaults, the settings file is deleted
-- Changes apply immediately to the current session
-- Settings persist across app restarts
+- Terminal display (mode, theme, fonts)
+- Serial port configuration (baud, control line, reset behavior)
+- Logging paths and rotation settings
+- Recording directories and buffer sizes
 
 ### Project Settings Tab
 
-Project Settings allow you to override specific user settings for a particular project. This is useful when:
-- A specific project needs ANSI mode while others use PST
-- You want logs in a different location for one project
-- A project has specific serial port requirements
+Project Settings allow you to override specific settings for individual projects using checkboxes:
 
-**File Location**: `./.pnut-term-ts-settings.json` (in your project directory)
+- Each setting has a **checkbox to enable override**
+- Unchecked settings use User Global or App Default values
+- **Only enabled overrides are saved** (delta-save strategy)
+- Keeps project files minimal and focused
 
-**How Project Overrides Work**:
+**Example Use Case**:
+- **User Default**: 2000000 baud, `~/Documents/P2Logs/`
+- **Project Override**: Check "Default Baud Rate" → Set to 115200 (slower project)
+- **Project Override**: Check "Log Directory" → Set to `./project-logs/` (logs with project)
+- **Result**: This project uses 115200 and `./project-logs/`, all others use 2000000 and `~/Documents/P2Logs/`
 
-1. **Override Checkboxes**: Each setting has a checkbox on the left
-   - **Unchecked**: Use global setting (control is disabled, shows "(Global: value)")
-   - **Checked**: Override for this project (control is enabled)
+### Delta-Save Strategy
 
-2. **Saving Overrides**:
-   - Only checked settings are saved to the project file
-   - Unchecked settings are not included in the file
-   - If no overrides are checked, the project file is deleted
+Only enabled checkboxes are saved to `.pnut-term-ts-settings.json`, keeping project files minimal:
 
-3. **Example Workflow**:
-   ```
-   User Global Settings:
-   - Terminal Mode: PST
-   - Font Size: 14
-   - Log Directory: ./logs/
-
-   Project Override (for ANSI project):
-   - ☑ Terminal Mode: ANSI  (override checked)
-   - ☐ Font Size: 14        (using global)
-   - ☐ Log Directory: ./logs/ (using global)
-
-   Result: Project file contains only:
-   {
-     "terminal": {
-       "mode": "ANSI"
-     }
-   }
-   ```
-
-### Settings Hierarchy
-
-Settings are applied in this order (later layers override earlier ones):
-
-1. **App Defaults** (hardcoded in application)
-2. **User Global Settings** (from platform-specific location)
-3. **Project Local Settings** (from project directory)
-
-**Example**:
-```
-App Default: Terminal Mode = PST, Font Size = 14
-User Global: Font Size = 16
-Project Local: Terminal Mode = ANSI
-
-Effective Settings:
-- Terminal Mode: ANSI (from project local)
-- Font Size: 16 (from user global)
-- Color Theme: green-on-black (from app default)
-```
-
-### Settings Files
-
-You can manually edit settings files if needed. They use JSON format:
-
-**User Global Example**:
 ```json
 {
-  "terminal": {
-    "fontSize": 16,
-    "colorTheme": "white-on-black"
-  },
   "serialPort": {
-    "defaultBaud": 230400
-  }
-}
-```
-
-**Project Local Example**:
-```json
-{
-  "terminal": {
-    "mode": "ANSI"
+    "defaultBaud": 115200
   },
   "logging": {
-    "logDirectory": "/mnt/project-logs/"
+    "logDirectory": "./project-logs/"
   }
 }
 ```
 
-**Note**: The application saves only differences from defaults (delta-save), so settings files remain small and clean.
+All other settings cascade from User Global Settings.
 
-### Finding Your Settings Files
-
-**User Global** (your personal preferences):
-- **Windows**: Press Win+R, type `%APPDATA%\PNut-Term-TS`, press Enter
-- **Linux/Mac**: Open terminal, type `ls ~/.pnut-term-ts-settings.json`
-
-**Project Local** (project-specific overrides):
-- Look in your project's root directory for `.pnut-term-ts-settings.json`
-- This file only exists if you've created project-specific overrides
-
-### Resetting Settings
-
-**Reset User Global to Defaults**:
-1. Open Preferences → User Settings tab
-2. Change all settings back to their default values
-3. Click Apply
-4. The user settings file will be automatically deleted
-
-**Reset Project Overrides**:
-1. Open Preferences → Project Settings tab
-2. Uncheck all override checkboxes
-3. Click Apply
-4. The project settings file will be automatically deleted
-
-**Complete Reset** (both user and project):
-1. Close PNut-Term
-2. Delete the user global settings file (see file locations above)
-3. Delete `.pnut-term-ts-settings.json` from project directories
-4. Restart PNut-Term (will use app defaults)
+---
 
 ## Connection & Startup Behavior
 
@@ -352,10 +391,10 @@ Understanding how the terminal handles connections and resets is important for e
 
 ### Understanding the "Reset P2 on Connection" Preference
 
-**Location**: File → Preferences → User Settings (or Project Settings) → Serial Port → "Reset P2 on Connection"
+**Location**: Edit → Preferences → User Settings (or Project Settings) → Serial Port → "Reset P2 on Connection"
 
 **To Change This Setting**:
-1. Open the Preferences dialog (File → Preferences or Ctrl/Cmd+,)
+1. Open the Preferences dialog (Edit → Preferences or Ctrl/Cmd+,)
 2. Choose either **User Settings** tab (for all projects) or **Project Settings** tab (for this project only)
 3. Look under the "Serial Port" section
 4. Check or uncheck "Reset P2 on Connection"
@@ -378,14 +417,14 @@ This single checkbox controls the fundamental behavior when connecting to your P
 
 ### Command-Line Mode (IDE Integration)
 
-When the terminal is launched from an IDE (like Visual Studio Code) with download parameters (`-R` for RAM or `-F` for Flash), the startup behavior is **automatically controlled** regardless of your preference setting:
+When the terminal is launched from an IDE (like Visual Studio Code) with download parameters (`-r` for RAM or `-f` for Flash), the startup behavior is **automatically controlled** regardless of your preference setting:
 
 ```bash
 # Download to RAM
-pnut-term-ts -R myprogram.binary
+pnut-term-ts -r myprogram.binary
 
 # Download to Flash
-pnut-term-ts -F myprogram.binary
+pnut-term-ts -f myprogram.binary
 ```
 
 **Automatic Behavior**:
@@ -425,23 +464,123 @@ The P2 hardware reset is triggered by toggling the DTR (Data Terminal Ready) con
 - **Hardware Response**: The Parallax PropPlug or compatible adapter generates a 17µs reset pulse to the P2
 - **Result**: The P2 resets, and the bootloader becomes active for ~17ms
 
-Some USB-serial adapters use RTS (Request To Send) instead of DTR. The terminal automatically detects and uses the correct control line for your hardware.
+Some USB-serial adapters use RTS (Request To Send) instead of DTR. The terminal supports both via the "Control Line" preference setting.
 
 ---
 
 ### Troubleshooting Connection Issues
 
 **Problem**: "I enabled 'Reset on Connection' but my P2 doesn't reset"
-- **Solution**: Your adapter might use RTS instead of DTR. Check adapter documentation or try the RTS override setting.
+- **Solution**: Your adapter might use RTS instead of DTR. Change "Control Line" to RTS in Preferences → Serial Port.
 
 **Problem**: "My program keeps resetting when I just want to watch the output"
 - **Solution**: Disable "Reset on Connection" in preferences.
 
 **Problem**: "Command-line download doesn't work even though GUI download works"
-- **Solution**: Command-line mode uses different timing. Ensure you're using `-R` (RAM) or `-F` (Flash) flags correctly.
+- **Solution**: Command-line mode uses different timing. Ensure you're using `-r` (RAM) or `-f` (Flash) flags correctly.
 
 **Problem**: "I see garbage data briefly before my program starts"
 - **Solution**: This is normal with "Reset on Connection" disabled. The terminal captures whatever is on the serial line. Enable "Reset on Connection" for clean startup.
+
+---
+
+## Recording & Playback
+
+### Overview
+The recording system captures raw serial data with precise timing for later playback. This is invaluable for:
+- **Regression Testing**: Verify fixes don't break existing functionality
+- **Bug Reproduction**: Share exact debug sessions with team members
+- **Performance Analysis**: Study timing-critical behaviors offline
+- **Documentation**: Create reproducible examples
+
+### Binary Format (.p2rec)
+The recording format captures every byte with microsecond-precision timing:
+
+```
+Header (64 bytes):
+  [4 bytes] Magic: 'P2RC'
+  [4 bytes] Version (LE uint32)
+  [8 bytes] Start timestamp (LE uint64)
+  [4 bytes] Metadata length (LE uint32)
+  [48 bytes] Reserved (future use)
+
+Metadata (variable JSON):
+  {
+    "deviceName": "Propeller2",
+    "recordingDate": "2025-11-08T12:34:56.789Z",
+    "totalDuration": 45000,
+    "entryCount": 1234
+  }
+
+Data Entries (repeating):
+  [4 bytes] Delta time (ms since start, LE uint32)
+  [1 byte] Data type (0=text, 1=binary)
+  [4 bytes] Length (LE uint32)
+  [N bytes] Payload data
+```
+
+This format ensures perfect reproduction of the original debug session, including exact timing relationships.
+
+### Recording Workflow
+
+#### Starting a Recording
+1. **Toolbar Method**: Click ⏺ Record button
+2. **Menu Method**: File → Start Recording (Ctrl/Cmd+R)
+3. **New Recording Dialog**: File → New Recording
+
+The recordings folder (`./recordings/`) is created automatically on first use.
+
+#### During Recording
+- Status indicator shows "Recording..." with red dot
+- Record button changes to ⏹ Stop
+- All serial data is captured with high-resolution timestamps
+- Message count accumulates in real-time
+- Recording indicator shows current file size
+
+#### Stopping Recording
+- Click ⏹ Stop button or File → Stop Recording
+- File automatically saved with timestamp: `recording_YYYYMMDD_HHMMSS.p2rec`
+- Ready for immediate playback
+- No data loss - all buffered data is flushed to disk
+
+### Playback System
+
+#### Loading a Recording
+1. **Menu**: File → Open Recording...
+2. **Toolbar**: Click ▶ Play button
+3. Select .p2rec file from file dialog
+4. Playback controls appear automatically below toolbar
+
+#### Playback Controls Panel
+When playing a recording, an interactive control panel appears:
+
+- **▶ Play / ⏸ Pause**: Start or pause playback at any time
+- **⏹ Stop**: End playback, hide controls, reset to beginning
+- **Progress Bar**: Visual timeline - click anywhere to seek
+- **Time Display**: Shows `elapsed / total` time (MM:SS format)
+- **Speed Selector**: Choose 0.5x (slow), 1x (normal), or 2x (fast) playback
+
+#### During Playback
+- Data is injected into the serial processing pipeline as if arriving from hardware
+- All debug windows respond normally and update in real-time
+- Timing relationships are preserved (within drift compensation limits)
+- Can pause, seek, or change speed without stopping
+- Progress bar updates smoothly (100ms refresh rate)
+
+#### Playback Features
+- **High-Resolution Timing**: Uses `process.hrtime.bigint()` for sub-millisecond accuracy
+- **Drift Compensation**: Automatically corrects timer drift > 5ms for long recordings
+- **Speed Scaling**: Delays adjusted proportionally (0.5x = double time, 2x = half time)
+- **Seek Support**: Jump to any position instantly via progress bar click
+- **Pause/Resume**: State preserved, resume from exact position
+
+#### Use Cases
+- **Debugging**: Replay problematic sessions repeatedly to isolate issues
+- **Testing**: Verify debug windows handle edge cases correctly
+- **Training**: Create example sessions for documentation or learning
+- **Documentation**: Record demos of debug features with known-good data
+- **Regression**: Build test library of edge cases for automated validation
+- **Collaboration**: Share exact problem scenarios with remote team members
 
 ---
 
@@ -2074,6 +2213,7 @@ npm run test:recordings
 - Step through complex operations
 
 ## Keyboard Shortcuts
+## Keyboard Shortcuts
 
 ### Global Shortcuts
 
@@ -2692,11 +2832,79 @@ kill -TERM $PID
 
 ## Conclusion
 
-The P2 Debug Terminal provides powerful visualization and debugging capabilities for Propeller 2 development. Whether you're debugging protocols with the logic analyzer, visualizing sensor data with the oscilloscope, or stepping through code with the interactive debugger, the tool adapts to your debugging needs.
+---
 
-For additional help and updates:
-- Check for updates via **Help → Check for Updates**
-- Report issues on [GitHub](https://github.com/parallaxinc/pnut-term-ts/issues)
-- Join the community on [Parallax Forums](https://forums.parallax.com)
+## Tips & Best Practices
+
+### Recording Sessions
+1. **Name recordings descriptively** when saving manually
+2. **Document test conditions** in a companion text file or README
+3. **Keep recordings organized** in project-specific folders
+4. **Compress old recordings** to save disk space (.p2rec files compress well)
+5. **Build regression test library** of edge cases and known issues
+
+### Performance Optimization
+1. **Close unused windows** to reduce processing load and queue depth
+2. **Monitor Performance Monitor** regularly to track system health
+3. **Adjust buffer sizes** if you see frequent overflow events
+4. **Use appropriate baud rates** for your data volume (don't always use max)
+5. **Watch queue depths** in Performance Monitor to spot bottlenecks early
+
+### Debug Workflow
+1. **Start recording before debugging** complex issues to capture exact conditions
+2. **Use Performance Monitor** to track system health during testing
+3. **Save interesting sessions** for later analysis or sharing with team
+4. **Share recordings** instead of screenshots - exact reproduction beats description
+5. **Create regression tests** from recordings of fixed bugs
+
+### Settings Management
+1. **Set User Defaults** for your typical workflow once
+2. **Use Project Overrides** sparingly - only when truly project-specific
+3. **Document project-specific settings** in your project README
+4. **Test different baud rates** to find optimal balance of speed and reliability
+5. **Enable USB logging** only when debugging low-level communication issues
+
+### Connection Strategies
+1. **Development mode**: Enable "Reset on Connection" for clean starts
+2. **Monitoring mode**: Disable "Reset on Connection" to observe running programs
+3. **IDE integration**: Let command-line mode handle resets automatically
+4. **DTR vs RTS**: Know which your hardware uses, set preferences accordingly
+5. **Auto-reconnect**: Consider enabling for long-running sessions
+
+---
+
+## Support & Resources
+
+### Getting Help
+- **GitHub Issues**: Report bugs and request features at https://github.com/ironsheep/PNut-Term-TS/issues
+- **Documentation**: Complete guide at https://github.com/ironsheep/PNut-Term-TS/wiki
+- **Community Forum**: Parallax Forums P2 section for community support
+- **Email**: support@ironsheep.biz for direct technical support
+
+### Additional Resources
+- **Propeller 2 Documentation**: https://propeller.parallax.com/p2.html
+- **DEBUG Command Reference**: Built into P2 documentation
+- **Example Code**: See `examples/` directory in installation
+- **Video Tutorials**: Available on Parallax YouTube channel
+
+---
+
+## Conclusion
+
+PNut-Term-TS provides a comprehensive debugging environment for the Parallax Propeller 2, combining real-time visualization with powerful recording and playback capabilities. Whether you're developing new code, debugging complex issues, or documenting system behavior, the specialized debug windows and flexible preference system adapt to your workflow.
+
+Key takeaways:
+- Debug windows open automatically from P2 DEBUG commands
+- Recording system captures exact sessions for regression testing
+- Preferences hierarchy (App → User → Project) provides flexibility
+- Performance Monitor helps optimize your debug workflow
+- Connection behavior adapts to development vs monitoring use cases
 
 Happy debugging!
+
+---
+
+*© 2024-2025 Iron Sheep Productions LLC*  
+*Licensed under MIT License*  
+*Version 0.9.0 - November 2025*
+

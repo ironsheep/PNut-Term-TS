@@ -81,12 +81,12 @@ Install .zip files available for each release:
 
 | Archive Name             | Operating System | Architecture     | Unpack Leaves |
 | ------------------------ | ---------------- | ---------------- | ------------- |
-| linux-arm64-{MMmmpp}.zip | Linux, RPi       | Arm 64 bit       | pnut_term_ts/ |
-| linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut_term_ts/ |
-| macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | pnut_term_ts/ |
-| macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | pnut_term_ts/ |
-| win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut_term_ts/ |
-| win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut_term_ts/ |
+| linux-arm64-{MMmmpp}.zip | Linux, RPi       | Arm 64 bit       | pnut\_term\_ts/ |
+| linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut\_term\_ts/ |
+| macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | .dmg |
+| macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | .dmg |
+| win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
+| win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
 
 **NOTE:** _where -MMmmpp is the release verison. (E.g., -010001.zip means v1.0.1.)_
 
@@ -95,8 +95,12 @@ Installation is pretty easy for PNut-Term-TS. Here are the general steps: (_more
 - Identify and download the .zip file for your platform and architecture (from the latest release.)
 - unzip the file, creates a folder (or .dmg)
 - On **Windows**, **Linux** move the folder to the install location.<BR>On **macOS** move the folder to the /Applications folder. _(This is a signed application so it should run without unknown developer warnings.)_
-- Setup and enviroment variable (typically PATH) so that the **pnut_term_ts** executable can be referenceed from anywhere.
-- Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut_term_ts** was found.
+- Setup and enviroment variable (typically PATH) so that the **pnut\_term\_ts** executable can be referenceed from anywhere.
+- Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut\_term\_ts** was found.
+
+See detailed installation instructions for; **macOS**, **Windows**, and **Linux/RPi**. (*coming soon!*)
+
+That's really all there is to it!
 
 ## Repository Configuration
 
