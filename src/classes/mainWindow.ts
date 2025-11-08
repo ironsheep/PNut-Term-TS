@@ -24,7 +24,7 @@ if (process.versions && process.versions.electron) {
     console.warn('Failed to load Electron in mainWindow.ts:', error);
   }
 }
-import { Context } from '../utils/context';
+import { Context, FEATURE_FLAGS } from '../utils/context';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
 import { UsbSerial } from '../utils/usb.serial';
 import * as fs from 'fs';
@@ -310,6 +310,12 @@ export class MainWindow {
 
     // Listen for debugger packets to create/update debugger windows
     this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
+      // FEATURE FLAG: Skip debugger window creation if disabled (v0.9.0 release)
+      if (!FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS) {
+        this.logConsoleMessage(`[DEBUGGER] Debugger windows disabled - dropping 416-byte packet from COG${packet[0]}`);
+        return; // Early exit - packet is dropped, nothing else happens
+      }
+
       const cogId = packet[0];
       this.logConsoleMessage(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
 

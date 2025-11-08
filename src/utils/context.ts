@@ -2,6 +2,12 @@
 /** @format */
 
 const ENABLE_CONSOLE_LOG: boolean = false; // Temporarily enabled for debugging settings
+const ENABLE_DEBUGGER_WINDOWS: boolean = false; // Feature flag: Disable debugger windows for v0.9.0 release
+
+// Export feature flags for use throughout the application
+export const FEATURE_FLAGS = {
+  ENABLE_DEBUGGER_WINDOWS: ENABLE_DEBUGGER_WINDOWS
+} as const;
 
 // Common runtime context shares by classes in Pnut-TS.
 

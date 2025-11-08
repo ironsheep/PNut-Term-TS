@@ -11,7 +11,7 @@ import { RecordingCatalog, CatalogEntry } from './recordingCatalog';
 import { RouterLogger, LogLevel, PerformanceMetrics } from './routerLogger';
 import { safeDisplayString } from '../../utils/displayUtils';
 import { BinaryRecorder } from './binaryRecorder';
-import { Context } from '../../utils/context';
+import { Context, FEATURE_FLAGS } from '../../utils/context';
 import { SharedMessageType, ExtractedMessage } from './sharedMessagePool';
 
 /**
@@ -361,6 +361,13 @@ export class WindowRouter extends EventEmitter {
     let loggerWindowFound = false;
     for (const [winId, window] of this.windows) {
       if (window.type === 'logger') {
+        // FEATURE FLAG: Skip logging 416-byte debugger packets if feature disabled (v0.9.0 release)
+        if (!FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS && data.length === 416) {
+          this.logger.debug('ROUTE_BINARY', `Debugger windows disabled - skipping logger routing for COG ${cogId} (416-byte packet)`);
+          loggerWindowFound = true; // Set to true to avoid warning below
+          continue; // Skip this window, don't send the packet
+        }
+
         // DebugLoggerWindow registers as 'logger' type
         window.handler(data); // Send raw Uint8Array for hex formatting
         window.stats.messagesReceived++;
