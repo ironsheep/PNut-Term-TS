@@ -5446,6 +5446,11 @@ export class MainWindow {
 
   // Helper to safely execute JavaScript in renderer
   private async safeExecuteJS(script: string, errorContext: string = 'script'): Promise<any> {
+    // GUARD: Don't execute UI updates during shutdown
+    if (this.isShuttingDown) {
+      return undefined; // Silently skip - app is closing
+    }
+
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       console.warn(`[UI UPDATE] ⚠️ Cannot execute ${errorContext}: MainWindow is destroyed`);
       return undefined;
