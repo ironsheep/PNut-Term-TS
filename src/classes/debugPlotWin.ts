@@ -2196,6 +2196,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   /**
    * Parse a number from a string token, handling Spin2 formats
    * Delegates to shared Spin2NumericParser for consistent parsing across all windows
+   *
+   * This method is used speculatively to check if optional parameters are numeric.
+   * It must NOT log errors for non-numeric values - only attempt parsing if the value
+   * looks numeric to avoid flooding the console with "unknown format" errors.
    */
   private parseNumber(token: string): number | null {
     if (!token) {
@@ -2205,6 +2209,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // Pascal accepts optional commas immediately following numeric literals (e.g., 40_960,)
     // Trim trailing commas so Spin2NumericParser receives a clean token.
     const sanitizedToken = token.replace(/,+$/g, '');
+
+    // Pre-check if value looks numeric before attempting to parse
+    // This prevents error logging for non-numeric tokens (like 'text', color names, quoted strings)
+    if (!Spin2NumericParser.isNumeric(sanitizedToken)) {
+      return null;
+    }
 
     return Spin2NumericParser.parseValue(sanitizedToken);
   }
