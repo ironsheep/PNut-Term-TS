@@ -21,6 +21,8 @@
 
 import { Context } from '../../utils/context';
 
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class TLongTransmission {
   private context: Context;
   private sendSerialDataCallback: ((data: string | Buffer) => void) | null = null;
@@ -66,9 +68,11 @@ export class TLongTransmission {
     const buffer = Buffer.from(bytes);
 
     // Log transmission for debugging
-    this.context.logger.forceLogMessage(
-      `[TLONG] Transmitting value=${value} (0x${(value >>> 0).toString(16).padStart(8, '0')}) as bytes=[${bytes.map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`
-    );
+    if (ENABLE_CONSOLE_LOG) {
+      this.context.logger.forceLogMessage(
+        `[TLONG] Transmitting value=${value} (0x${(value >>> 0).toString(16).padStart(8, '0')}) as bytes=[${bytes.map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`
+      );
+    }
 
     // Transmit via serial port using Buffer for binary data
     this.sendSerialDataCallback(buffer);
@@ -182,11 +186,13 @@ export class TLongTransmission {
     }
 
     // Log transmission for debugging
-    const posBytes = Array.from(buffer.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0'));
-    const colorBytes = Array.from(buffer.slice(4, 8)).map(b => '0x' + b.toString(16).padStart(2, '0'));
-    this.context.logger.forceLogMessage(
-      `[TLONG] Transmitting PC_MOUSE: position=0x${(positionValue >>> 0).toString(16).padStart(8, '0')} [${posBytes.join(', ')}], color=0x${(colorValue >>> 0).toString(16).padStart(8, '0')} [${colorBytes.join(', ')}]`
-    );
+    if (ENABLE_CONSOLE_LOG) {
+      const posBytes = Array.from(buffer.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0'));
+      const colorBytes = Array.from(buffer.slice(4, 8)).map(b => '0x' + b.toString(16).padStart(2, '0'));
+      this.context.logger.forceLogMessage(
+        `[TLONG] Transmitting PC_MOUSE: position=0x${(positionValue >>> 0).toString(16).padStart(8, '0')} [${posBytes.join(', ')}], color=0x${(colorValue >>> 0).toString(16).padStart(8, '0')} [${colorBytes.join(', ')}]`
+      );
+    }
 
     // Transmit both longs as single atomic operation
     this.sendSerialDataCallback(buffer);
