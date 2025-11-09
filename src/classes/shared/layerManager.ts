@@ -2,7 +2,7 @@
 
 const ENABLE_CONSOLE_LOG: boolean = false;
 
-'use strict';
+('use strict');
 
 // src/classes/shared/layerManager.ts
 
@@ -39,11 +39,11 @@ export class LayerManager {
   private layerMetadata: Array<{ filename: string; loadTime: Date; size: number } | null> = [];
 
   constructor() {
-    console.log('[LAYER LIFECYCLE] LayerManager constructed');
+    this.logConsoleMessage('[LAYER LIFECYCLE] LayerManager constructed');
     // Initialize array with null values for 8 layers
     this.layers = new Array(LayerManager.MAX_LAYERS).fill(null);
     this.layerMetadata = new Array(LayerManager.MAX_LAYERS).fill(null);
-    console.log('[LAYER LIFECYCLE] Layers array initialized:', this.layers.length, 'elements');
+    this.logConsoleMessage('[LAYER LIFECYCLE] Layers array initialized:', this.layers.length, 'elements');
   }
 
   /**
@@ -93,9 +93,15 @@ export class LayerManager {
         size: layerMemory
       };
 
-      console.log(`[LAYER LIFECYCLE] Layer ${index} loaded successfully: "${filepath}" (${image.width}x${image.height})`);
-      console.log(`[LAYER LIFECYCLE] Layer reference type: ${typeof image}, has getPixelColor: ${typeof image?.getPixelColor}`);
-      this.logConsoleMessage(`[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${image.width}x${image.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(
+        `[LAYER LIFECYCLE] Layer ${index} loaded successfully: "${filepath}" (${image.width}x${image.height})`
+      );
+      this.logConsoleMessage(
+        `[LAYER LIFECYCLE] Layer reference type: ${typeof image}, has getPixelColor: ${typeof image?.getPixelColor}`
+      );
+      this.logConsoleMessage(
+        `[LAYER MANAGER] Layer ${index} loaded from "${filepath}": ${image.width}x${image.height}, memory: ${layerMemory} bytes, total: ${this.memoryUsage} bytes`
+      );
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('ENOENT')) {
@@ -143,7 +149,9 @@ export class LayerManager {
 
       // Validate source rectangle bounds
       if (srcX < 0 || srcY < 0 || srcX + srcWidth > layer.width || srcY + srcHeight > layer.height) {
-        throw new Error(`Source rectangle out of bounds: (${srcX},${srcY}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`);
+        throw new Error(
+          `Source rectangle out of bounds: (${srcX},${srcY}) ${srcWidth}x${srcHeight} exceeds layer ${layer.width}x${layer.height}`
+        );
       }
 
       // Extract pixel data from Jimp image
@@ -156,10 +164,10 @@ export class LayerManager {
         for (let x = srcX; x < srcX + srcWidth; x++) {
           const pixelColor = layer.getPixelColor(x, y);
           // Jimp stores colors as 32-bit integers: RRGGBBAA
-          imageData.data[dataIndex++] = (pixelColor >> 24) & 0xFF;  // R
-          imageData.data[dataIndex++] = (pixelColor >> 16) & 0xFF;  // G
-          imageData.data[dataIndex++] = (pixelColor >> 8) & 0xFF;   // B
-          imageData.data[dataIndex++] = pixelColor & 0xFF;          // A
+          imageData.data[dataIndex++] = (pixelColor >> 24) & 0xff; // R
+          imageData.data[dataIndex++] = (pixelColor >> 16) & 0xff; // G
+          imageData.data[dataIndex++] = (pixelColor >> 8) & 0xff; // B
+          imageData.data[dataIndex++] = pixelColor & 0xff; // A
         }
       }
 
@@ -225,7 +233,7 @@ export class LayerManager {
     const layer = this.layers[layerIndex];
     const metadata = this.layerMetadata[layerIndex];
 
-    console.log(`[LAYER LIFECYCLE] releaseLayer() called for index ${layerIndex}`);
+    this.logConsoleMessage(`[LAYER LIFECYCLE] releaseLayer() called for index ${layerIndex}`);
 
     const stack = new Error().stack
       ?.split('\n')
@@ -233,7 +241,7 @@ export class LayerManager {
       .map((line) => line.trim())
       .join(' -> ');
     if (stack) {
-      console.log(`[LAYER LIFECYCLE] Release initiated by: ${stack}`);
+      this.logConsoleMessage(`[LAYER LIFECYCLE] Release initiated by: ${stack}`);
     }
 
     if (layer !== null && metadata !== null) {
@@ -242,13 +250,15 @@ export class LayerManager {
       this.memoryUsage = Math.max(0, this.memoryUsage); // Ensure non-negative
 
       // Clear the layer and metadata
-      console.log(`[LAYER LIFECYCLE] Setting layers[${layerIndex}] = null (was: ${metadata.filename})`);
+      this.logConsoleMessage(`[LAYER LIFECYCLE] Setting layers[${layerIndex}] = null (was: ${metadata.filename})`);
       this.layers[layerIndex] = null;
       this.layerMetadata[layerIndex] = null;
 
-      this.logConsoleMessage(`[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`);
+      this.logConsoleMessage(
+        `[LAYER MANAGER] Layer ${layerIndex} released: ${metadata.size} bytes freed, total: ${this.memoryUsage} bytes`
+      );
     } else {
-      console.log(`[LAYER LIFECYCLE] releaseLayer() called but layer already null or no metadata`);
+      this.logConsoleMessage(`[LAYER LIFECYCLE] releaseLayer() called but layer already null or no metadata`);
     }
   }
 
@@ -263,7 +273,7 @@ export class LayerManager {
     // - OffscreenCanvas overhead: ~200 bytes
     // - RGBA pixel data: width * height * 4 bytes
     // - Additional canvas context overhead: ~100 bytes
-    return 300 + (width * height * 4);
+    return 300 + width * height * 4;
   }
 
   /**
@@ -274,22 +284,25 @@ export class LayerManager {
   isLayerLoaded(layerIndex: number): boolean {
     // DIAGNOSTIC: Log every check to understand the failure
     const outOfBounds = layerIndex < 0 || layerIndex >= LayerManager.MAX_LAYERS;
-    const layerValue = outOfBounds ? 'OUT_OF_BOUNDS' : (this.layers[layerIndex] ? 'LOADED' : 'NULL');
+    const layerValue = outOfBounds ? 'OUT_OF_BOUNDS' : this.layers[layerIndex] ? 'LOADED' : 'NULL';
     const result = !outOfBounds && this.layers[layerIndex] !== null;
 
-    console.log(`[LAYER CHECK] isLayerLoaded(${layerIndex}): ${result}`);
+    this.logConsoleMessage(`[LAYER CHECK] isLayerLoaded(${layerIndex}): ${result}`);
     if (!result && layerIndex >= 0 && layerIndex < LayerManager.MAX_LAYERS) {
-      console.log(`[LAYER CHECK] ⚠️ Layer is NULL at valid index ${layerIndex}!`);
-      console.log(`[LAYER CHECK] All layers state:`, this.layers.map((l: any, i: number) => `[${i}]: ${l ? 'EXISTS' : 'NULL'}`));
+      this.logConsoleMessage(`[LAYER CHECK] ⚠️ Layer is NULL at valid index ${layerIndex}!`);
+      this.logConsoleMessage(
+        `[LAYER CHECK] All layers state:`,
+        this.layers.map((l: any, i: number) => `[${i}]: ${l ? 'EXISTS' : 'NULL'}`)
+      );
     }
 
     this.logConsoleMessage(
       `[LAYER MANAGER] isLayerLoaded(${layerIndex}): ` +
-      `outOfBounds=${outOfBounds}, ` +
-      `MAX_LAYERS=${LayerManager.MAX_LAYERS}, ` +
-      `layerValue=${layerValue}, ` +
-      `layersArrayLength=${this.layers.length}, ` +
-      `result=${result}`
+        `outOfBounds=${outOfBounds}, ` +
+        `MAX_LAYERS=${LayerManager.MAX_LAYERS}, ` +
+        `layerValue=${layerValue}, ` +
+        `layersArrayLength=${this.layers.length}, ` +
+        `result=${result}`
     );
 
     if (layerIndex < 0 || layerIndex >= LayerManager.MAX_LAYERS) {
@@ -328,7 +341,9 @@ export class LayerManager {
 
     // For now, this is a placeholder - actual implementation would
     // need access to the target canvas context to draw the cropped region
-    this.logConsoleMessage(`[LAYER MANAGER] Crop operation: layer ${layerIndex} (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX},${destY})`);
+    this.logConsoleMessage(
+      `[LAYER MANAGER] Crop operation: layer ${layerIndex} (${sourceRect.left},${sourceRect.top}) ${sourceRect.width}x${sourceRect.height} to (${destX},${destY})`
+    );
 
     // TODO: Implement actual cropping when we have access to target canvas
     // This would typically be:
@@ -347,7 +362,7 @@ export class LayerManager {
     averageLayerSize: number;
     layersInfo: Array<{ index: number; filename: string; size: number; loadTime: Date } | null>;
   } {
-    const layerCount = this.layers.filter(layer => layer !== null).length;
+    const layerCount = this.layers.filter((layer) => layer !== null).length;
     const averageLayerSize = layerCount > 0 ? this.memoryUsage / layerCount : 0;
 
     const layersInfo = this.layerMetadata.map((metadata, index) => {
@@ -385,15 +400,16 @@ export class LayerManager {
     }
 
     // Check for very large average layer size
-    if (stats.averageLayerSize > 20 * 1024 * 1024) { // 20MB per layer
-      return `Large average layer size: ${Math.round(stats.averageLayerSize / 1024 / 1024)}MB. Consider using smaller bitmap files.`;
+    if (stats.averageLayerSize > 20 * 1024 * 1024) {
+      // 20MB per layer
+      return `Large average layer size: ${Math.round(
+        stats.averageLayerSize / 1024 / 1024
+      )}MB. Consider using smaller bitmap files.`;
     }
 
     // Check for very old layers (over 1 hour)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const oldLayers = stats.layersInfo.filter(info =>
-      info && info.loadTime < oneHourAgo
-    );
+    const oldLayers = stats.layersInfo.filter((info) => info && info.loadTime < oneHourAgo);
 
     if (oldLayers.length > 0) {
       return `${oldLayers.length} layer(s) loaded over 1 hour ago. Consider clearing if no longer needed.`;
