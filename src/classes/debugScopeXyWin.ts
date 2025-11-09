@@ -12,7 +12,7 @@ import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindow
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = true;
+const ENABLE_CONSOLE_LOG: boolean = false;
 
 /**
  * Scope XY display specification
@@ -175,7 +175,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.persistenceManager = new PersistenceManager();
 
     // Enable logging for SCOPE_XY window
-    this.isLogging = true;
+    this.isLogging = false;
 
     // Generate unique canvas ID
     this.idString = Date.now().toString();
