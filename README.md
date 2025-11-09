@@ -19,17 +19,17 @@ _Originally Chip's Debug listener, now available on all platforms_
 
 </div>
 
-## PNut-Term-TS cross platform debug terminal
+## PNut-Term-TS cross-platform debug terminal
 
-This is our PNut Debug Windows and terminal ported to typescript and now available on all platforms. The intent of this tool is to make build, download and run as simple as edit and save file from within vscode.
+This is our PNut Debug Windows and terminal ported to Typescript and now available on all platforms. This tool aims to make building, downloading, and running as simple as editing and saving a file in VS Code.
 
 ### PNut Term TS
 
-PNut Term TS is the 3rd component in the P2 Multi-platform Development Enviroment. The components are:
+PNut Term TS is the 3rd component in the P2 Multi-platform Development Environment. The components are:
 
 1. **VSCode Spin2 Extension** for editing P1 and P2 code - supports running external compilers/downloaders
-2. **PNut-TS** compiler which is the PNut compiler rewritten in trypescript for Multi-platform use
-3. **PNut_Term_TS** (this tool) a terminal replacement for Propeller Serial Terminal with download and full debug display support.
+2. **PNut-TS** compiler, which is the PNut compiler rewritten in Typescript for Multi-platform use
+3. **PNut-Term-TS** (this tool) is a terminal replacement for Propeller Serial Terminal with download and full debug display support.
 
 ## Table of Contents
 
@@ -70,15 +70,15 @@ The User Guide provides:
 
 ## Features of PNut Term TS
 
-- Replacement for Propeller Serial Termainal
+- Replacement for Propeller Serial Terminal
 - Downloads a compiled file to the P2 RAM or FLASH
 - Switches to PST behavior after download
 - (Will have) Built-in support for all debug displays supported by PNut
 - Full logging support for all traffic to/from P2
 - Automatic time-stamped log names for each new download
-- PropPlug can be selected from command-line or within terminal.
-- Last PropPlug used is remembered
-- "Only" PropPlug will automatically be used if none specified
+- PropPlug can be selected from the command line or within the application.
+- The last PropPlug used is remembered
+- "Only" PropPlug will automatically be used if none is specified
 
 ## Status of Debug Display Support
 
@@ -110,35 +110,35 @@ Install .zip files available for each release:
 | win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
 | win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
 
-**NOTE:** _where -MMmmpp is the release verison. (E.g., -010001.zip means v1.0.1.)_
+**NOTE:** _where -MMmmpp is the release version. (E.g., -010001.zip means v1.0.1.)_
 
 Installation is pretty easy for PNut-Term-TS. Here are the general steps: (_more specific instructions links are below._)
 
 - Identify and download the .zip file for your platform and architecture (from the latest release.)
-- unzip the file, creates a folder (or .dmg)
+- unzip the file, create a folder (or .dmg)
 - On **Windows**, **Linux** move the folder to the install location.<BR>On **macOS** move the folder to the /Applications folder. _(This is a signed application so it should run without unknown developer warnings.)_
-- Setup and enviroment variable (typically PATH) so that the **pnut\_term\_ts** executable can be referenceed from anywhere.
+- Set up an environment variable (typically PATH) so that the **pnut\_term\_ts** executable can be referenced from anywhere.
 - Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut\_term\_ts** was found.
 
-See detailed installation instructions for; **macOS**, **Windows**, and **Linux/RPi**. (*coming soon!*)
+See detailed installation instructions for **macOS**, **Windows**, and **Linux/RPi**. (*coming soon!*)
 
 That's really all there is to it!
 
 ## Repository Configuration
 
-This project is configured to run in a docker container. Docker is essentially a way to run stuff in a local sandboxed environment. The environment is specified by a docker image, and its main component is a snapshot of all files that are needed to run.
+This project is configured to run in a Docker container. Docker is essentially a way to run stuff in a local sandboxed environment. The environment is specified by a Docker image, and its main component is a snapshot of all files that are needed to run.
 
-Wanting to clone the PNut-Term-TS repository locally? Then start with Installing Docker Desktop to your machine. See [Overview of Docker Desktop](https://docs.docker.com/desktop/) at the Docker website.
+Wanting to clone the PNut-Term-TS repository locally? Then start by Installing Docker Desktop on your machine. See [Overview of Docker Desktop](https://docs.docker.com/desktop/) at the Docker website.
 
-In general if you've not used docker before you'll follow these steps to get up and running:
+In general, if you've not used Docker before, you'll follow these steps to get up and running:
 
 - Install [docker desktop](https://docs.docker.com/desktop/) - see install links on left panel
 - Clone our repository
 - Open the repo in VSCode
 
-VSCode will tell docker what image needs to be downloaded and then it will start the container and then ask you to [Reopen in Container]. Once you do reopen VSCode will then install the NPM packages to get your local copy ready to build and run.
+VSCode will tell Docker which image needs to be downloaded, start the container, and then ask you to [Reopen in Container]. Once you do reopen, VSCode will then install the NPM packages to get your local copy ready to build and run.
 
-Linting and formatting of TypeScript is setup using **Prettier** formatter and **ESLint**.
+Linting and formatting of TypeScript is set up using **Prettier** formatter and **ESLint**.
 See [How to use Prettier with ESLint and TypeScript in VSCode](https://khalilstemmler.com/blogs/tooling/prettier/)
 
 ---
