@@ -11,23 +11,25 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Version
-VERSION="000500"
-
-# Check for apps
+# Auto-detect version from existing package directories
+echo "🔍 Auto-detecting package version from directories..."
 X64_APP=""
 ARM64_APP=""
 
-if [ -d "pnut-term-ts-macos-x64-${VERSION}/PNut-Term-TS.app" ]; then
-    X64_APP="pnut-term-ts-macos-x64-${VERSION}/PNut-Term-TS.app"
-    echo "✅ Found x64 app: $X64_APP"
+# Find x64 app by pattern
+X64_DIR=$(find . -maxdepth 1 -type d -name "pnut-term-ts-macos-x64-*" | head -1)
+if [ -n "$X64_DIR" ] && [ -d "$X64_DIR/PNut-Term-TS.app" ]; then
+    X64_APP="$X64_DIR/PNut-Term-TS.app"
+    echo "✅ Found x64 app at: $X64_APP"
 else
     echo "⚠️  x64 app not found"
 fi
 
-if [ -d "pnut-term-ts-macos-arm64-${VERSION}/PNut-Term-TS.app" ]; then
-    ARM64_APP="pnut-term-ts-macos-arm64-${VERSION}/PNut-Term-TS.app"
-    echo "✅ Found arm64 app: $ARM64_APP"
+# Find arm64 app by pattern
+ARM64_DIR=$(find . -maxdepth 1 -type d -name "pnut-term-ts-macos-arm64-*" | head -1)
+if [ -n "$ARM64_DIR" ] && [ -d "$ARM64_DIR/PNut-Term-TS.app" ]; then
+    ARM64_APP="$ARM64_DIR/PNut-Term-TS.app"
+    echo "✅ Found arm64 app at: $ARM64_APP"
 else
     echo "⚠️  arm64 app not found"
 fi

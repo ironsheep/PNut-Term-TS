@@ -24,31 +24,38 @@ echo "📍 Script directory: $SCRIPT_DIR"
 cd "$SCRIPT_DIR" || error_exit "Failed to change to script directory"
 echo "   Current directory: $(pwd)"
 
-# Version info
-VERSION="000500"
-VERSION_DOT="0.5.0"
-
-# Check for apps
+# Auto-detect version from existing package directories
+echo "🔍 Auto-detecting package version from directories..."
 X64_APP=""
 ARM64_APP=""
+VERSION=""
 
-echo "🔍 Looking for app bundles..."
-if [ -d "pnut-term-ts-macos-x64-${VERSION}/PNut-Term-TS.app" ]; then
-    X64_APP="pnut-term-ts-macos-x64-${VERSION}/PNut-Term-TS.app"
+# Find x64 app by pattern
+X64_DIR=$(find . -maxdepth 1 -type d -name "pnut-term-ts-macos-x64-*" | head -1)
+if [ -n "$X64_DIR" ] && [ -d "$X64_DIR/PNut-Term-TS.app" ]; then
+    X64_APP="$X64_DIR/PNut-Term-TS.app"
+    # Extract version from directory name
+    VERSION=$(basename "$X64_DIR" | sed 's/pnut-term-ts-macos-x64-//')
     echo "✅ Found x64 app at: $X64_APP"
+    echo "   Detected version: $VERSION"
 else
-    echo "⚠️  x64 app not found at: pnut-term-ts-macos-x64-${VERSION}/PNut-Term-TS.app"
-    echo "   Checking directory contents:"
-    ls -la "pnut-term-ts-macos-x64-${VERSION}/" 2>/dev/null || echo "   Directory doesn't exist"
+    echo "⚠️  x64 app not found"
 fi
 
-if [ -d "pnut-term-ts-macos-arm64-${VERSION}/PNut-Term-TS.app" ]; then
-    ARM64_APP="pnut-term-ts-macos-arm64-${VERSION}/PNut-Term-TS.app"
-    echo "✅ Found arm64 app at: $ARM64_APP"
+# Find arm64 app by pattern
+ARM64_DIR=$(find . -maxdepth 1 -type d -name "pnut-term-ts-macos-arm64-*" | head -1)
+if [ -n "$ARM64_DIR" ] && [ -d "$ARM64_DIR/PNut-Term-TS.app" ]; then
+    ARM64_APP="$ARM64_DIR/PNut-Term-TS.app"
+    # If VERSION not set from x64, extract from arm64
+    if [ -z "$VERSION" ]; then
+        VERSION=$(basename "$ARM64_DIR" | sed 's/pnut-term-ts-macos-arm64-//')
+        echo "✅ Found arm64 app at: $ARM64_APP"
+        echo "   Detected version: $VERSION"
+    else
+        echo "✅ Found arm64 app at: $ARM64_APP"
+    fi
 else
-    echo "⚠️  arm64 app not found at: pnut-term-ts-macos-arm64-${VERSION}/PNut-Term-TS.app"
-    echo "   Checking directory contents:"
-    ls -la "pnut-term-ts-macos-arm64-${VERSION}/" 2>/dev/null || echo "   Directory doesn't exist"
+    echo "⚠️  arm64 app not found"
 fi
 
 if [ -z "$X64_APP" ] && [ -z "$ARM64_APP" ]; then

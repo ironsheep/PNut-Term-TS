@@ -11,22 +11,24 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Version
-VERSION="000500"
-
-# Look for DMG files
+# Auto-detect DMG files by pattern
+echo "🔍 Auto-detecting DMG files..."
 X64_DMG=""
 ARM64_DMG=""
 
-if [ -f "pnut-term-ts-macos-x64-${VERSION}.dmg" ]; then
-    X64_DMG="pnut-term-ts-macos-x64-${VERSION}.dmg"
+# Find x64 DMG by pattern
+X64_DMG=$(find . -maxdepth 1 -type f -name "pnut-term-ts-macos-x64-*.dmg" | head -1)
+if [ -n "$X64_DMG" ]; then
+    X64_DMG=$(basename "$X64_DMG")
     echo "✅ Found x64 DMG: $X64_DMG"
 else
     echo "⚠️  x64 DMG not found"
 fi
 
-if [ -f "pnut-term-ts-macos-arm64-${VERSION}.dmg" ]; then
-    ARM64_DMG="pnut-term-ts-macos-arm64-${VERSION}.dmg"
+# Find arm64 DMG by pattern
+ARM64_DMG=$(find . -maxdepth 1 -type f -name "pnut-term-ts-macos-arm64-*.dmg" | head -1)
+if [ -n "$ARM64_DMG" ]; then
+    ARM64_DMG=$(basename "$ARM64_DMG")
     echo "✅ Found arm64 DMG: $ARM64_DMG"
 else
     echo "⚠️  arm64 DMG not found"
