@@ -1170,6 +1170,11 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
 
     for (const part of dataParts) {
       // Parse value using Spin2NumericParser to handle all formats (hex, decimal, binary, etc.)
+      // Pre-check if value looks numeric to avoid error logging for non-numeric tokens
+      if (!Spin2NumericParser.isNumeric(part)) {
+        this.logMessage(`[BITMAP DATA] Skipping non-numeric token: ${part}`);
+        continue;
+      }
       const rawValue = Spin2NumericParser.parseValue(part);
       if (rawValue === null) {
         this.logMessage(`[BITMAP DATA] Failed to parse value: ${part}`);

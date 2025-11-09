@@ -12,7 +12,7 @@ import { PackedDataMode, ePackedDataMode, ePackedDataWidth } from './debugWindow
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 // Console logging control for debugging
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = true;
 
 /**
  * Scope XY display specification
@@ -175,7 +175,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.persistenceManager = new PersistenceManager();
 
     // Enable logging for SCOPE_XY window
-    this.isLogging = false;
+    this.isLogging = true;
 
     // Generate unique canvas ID
     this.idString = Date.now().toString();
@@ -584,30 +584,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         .executeJavaScript(wrappedClearScript)
         .then((result) => {
           this.logMessage(`initializeRenderer: Clear succeeded, result: ${result}`);
-
-          // Add a visible test rectangle to verify canvas is working
-          const testScript = `
-            const canvas = document.getElementById('${this.scopeXyCanvasId}');
-            if (canvas) {
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.fillStyle = 'red';
-                ctx.fillRect(10, 10, 50, 50);
-                'Test rectangle drawn';
-              } else {
-                'No context';
-              }
-            } else {
-              'No canvas';
-            }
-          `;
-          return this.debugWindow?.webContents.executeJavaScript(testScript);
-        })
-        .then((testResult) => {
-          this.logMessage(`initializeRenderer: Test rectangle result: ${testResult}`);
         })
         .catch((err) => {
-          console.error('Canvas clear error:', err);
+          console.error('Canvas clear script error:', err);
           console.error('Error details:', {
             message: err.message,
             stack: err.stack,
@@ -616,7 +595,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             code: err.code,
             fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
           });
-          this.logMessage(`initializeRenderer: Clear failed: ${err}`);
+          this.logMessage(`initializeRenderer: Canvas clear script failed: ${err}`);
         });
 
       // Draw initial grid for both polar and cartesian modes
@@ -643,26 +622,14 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         this.logMessage('ERROR: Grid script has invalid values');
       }
 
+      // Grid script with its own error handler
       this.debugWindow.webContents
         .executeJavaScript(gridScript)
         .then(() => {
           this.logMessage('initializeRenderer: Grid draw succeeded');
-
-          // Draw range indicator
-          const rangeScript = this.renderer!.drawRangeIndicator(
-            this.scopeXyCanvasId,
-            this.range,
-            this.logScale,
-            this.textSize,
-            canvasSize
-          );
-          return this.debugWindow?.webContents.executeJavaScript(rangeScript);
-        })
-        .then((rangeResult) => {
-          this.logMessage(`initializeRenderer: Range indicator result: ${rangeResult}`);
         })
         .catch((err) => {
-          console.error('Grid/Range render error:', err);
+          console.error('Grid script error:', err);
           console.error('Grid error details:', {
             message: err.message,
             stack: err.stack,
@@ -671,18 +638,34 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             code: err.code,
             fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
           });
-          this.logMessage(`initializeRenderer: Grid draw failed: ${err}`);
+          this.logMessage(`initializeRenderer: Grid script failed: ${err}`);
+        });
 
-          // Try a simpler test to see if ANY JavaScript works
-          const testScript = `console.log('Test from ScopeXY'); 'test-success';`;
-          this.debugWindow?.webContents
-            .executeJavaScript(testScript)
-            .then((result) => {
-              this.logMessage(`Simple test script result: ${result}`);
-            })
-            .catch((testErr) => {
-              this.logMessage(`Even simple test failed: ${testErr}`);
-            });
+      // Range indicator script with its own error handler (separate call)
+      const rangeScript = this.renderer!.drawRangeIndicator(
+        this.scopeXyCanvasId,
+        this.range,
+        this.logScale,
+        this.textSize,
+        canvasSize
+      );
+
+      this.debugWindow.webContents
+        .executeJavaScript(rangeScript)
+        .then((rangeResult) => {
+          this.logMessage(`initializeRenderer: Range indicator result: ${rangeResult}`);
+        })
+        .catch((err) => {
+          console.error('Range indicator script error:', err);
+          console.error('Range error details:', {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause,
+            code: err.code,
+            fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+          });
+          this.logMessage(`initializeRenderer: Range indicator script failed: ${err}`);
         });
     }
   }

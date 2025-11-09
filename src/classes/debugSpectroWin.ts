@@ -282,6 +282,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       return [1, tuneFromName];
     }
 
+    // Pre-check if value looks numeric to avoid error logging for non-numeric tokens
+    if (!Spin2NumericParser.isNumeric(token)) {
+      return [0, null];
+    }
+
     const numericValue = Spin2NumericParser.parseValue(token);
     if (numericValue === null || !Number.isFinite(numericValue)) {
       return [0, null];

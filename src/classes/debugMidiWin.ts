@@ -1,7 +1,7 @@
 /**
  * @file debugMidiWin.ts
  * @description MIDI keyboard debug window for viewing note-on/off status with velocity
- * 
+ *
  * This window displays a piano keyboard that visualizes MIDI note events in real-time.
  * It implements the exact behavior of the Pascal MIDI debug window including:
  * - Variable-size piano keyboard (SIZE 1-50)
@@ -9,11 +9,11 @@
  * - MIDI channel filtering (0-15)
  * - Velocity visualization as colored bars
  * - MIDI note numbers displayed on keys
- * 
+ *
  * MIDI Protocol:
  * - Note-on: 0x90 + channel, followed by note (0-127) and velocity (0-127)
  * - Note-off: 0x80 + channel, followed by note and velocity
- * 
+ *
  * Future enhancements (not in Pascal implementation):
  * - Mouse interaction: Click keys to send MIDI (mouse down = note-on velocity 64, mouse up = note-off)
  * - Multi-channel support: Monitor multiple channels with different colors per channel
@@ -46,10 +46,10 @@ export interface MidiDisplaySpec {
 
 /**
  * Debug MIDI Window - MIDI Keyboard Visualization
- * 
+ *
  * Displays a piano keyboard that visualizes MIDI note events in real-time with velocity indication.
  * Supports configurable keyboard size, key range, channel filtering, and mouse interaction for MIDI output.
- * 
+ *
  * ## Features
  * - **Piano Keyboard Display**: Variable-size keyboard (SIZE 1-50) with 88-key default range
  * - **MIDI Protocol Support**: Standard MIDI note-on/off message parsing (0x80-0x90)
@@ -57,7 +57,7 @@ export interface MidiDisplaySpec {
  * - **Velocity Visualization**: Colored velocity bars showing note intensity (0-127)
  * - **Key Labeling**: MIDI note numbers displayed on piano keys
  * - **Mouse Interaction**: Click keys to generate MIDI output (note-on/off)
- * 
+ *
  * ## Configuration Parameters
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
@@ -66,14 +66,14 @@ export interface MidiDisplaySpec {
  * - `CHANNEL ch` - Set MIDI channel to monitor (0-15, default: 0)
  * - `COLOR bg {key_color}` - Background and key colors
  * - `HIDEXY` - Hide coordinate display
- * 
+ *
  * ## Data Format
  * MIDI data is fed as standard MIDI protocol messages:
  * - Note-on: 0x90 + channel, followed by note (0-127) and velocity (0-127)
  * - Note-off: 0x80 + channel, followed by note and velocity (ignored)
  * - Data can be fed byte-by-byte or as complete MIDI messages
  * - Example: `debug(\`MyMIDI \`($90, note, velocity))  ' Note-on`
- * 
+ *
  * ## Commands
  * - `CLEAR` - Clear all active notes and reset keyboard display
  * - `UPDATE` - Force display update (when UPDATE directive is used)
@@ -84,33 +84,33 @@ export interface MidiDisplaySpec {
  * - `CHANNEL ch` - Change monitored MIDI channel during runtime
  * - `RANGE first last` - Change key range during runtime
  * - MIDI bytes: Direct MIDI protocol data (0x80-0x9F for note events)
- * 
+ *
  * ## Pascal Reference
  * Based on Pascal implementation in DebugDisplayUnit.pas:
  * - Configuration: `MIDI_Configure` procedure (line 2484)
- * - Update: `MIDI_Update` procedure (line 2582)  
+ * - Update: `MIDI_Update` procedure (line 2582)
  * - Note handling: `MIDI_Note_Process` procedures
  * - Keyboard rendering: `MIDI_Draw_Keyboard` procedures
- * 
+ *
  * ## Examples
  * ```spin2
  * ' Basic MIDI keyboard monitor
  * debug(`MIDI MyKeyboard SIZE 6 RANGE 36 84 CHANNEL 0)
- * 
+ *
  * ' Send note-on and note-off
  * note := 60  ' Middle C
  * velocity := 100
  * debug(`MyKeyboard \`($90, note, velocity))  ' Note-on
  * waitms(500)
  * debug(`MyKeyboard \`($80, note, 0))        ' Note-off
- * 
+ *
  * ' Monitor multiple notes
  * repeat
  *   debug(`MyKeyboard \`($90, 60, 100))  ' C
- *   debug(`MyKeyboard \`($90, 64, 80))   ' E  
+ *   debug(`MyKeyboard \`($90, 64, 80))   ' E
  *   debug(`MyKeyboard \`($90, 67, 90))   ' G
  * ```
- * 
+ *
  * ## Implementation Notes
  * - Implements exact Pascal MIDI debug window behavior including key layout
  * - MIDI state machine parses incoming bytes according to MIDI protocol
@@ -118,28 +118,28 @@ export interface MidiDisplaySpec {
  * - Piano keyboard layout handles both white and black key positioning
  * - Mouse coordinates are transformed to MIDI note numbers for interaction
  * - Supports future enhancements: multi-channel display with color coding
- * 
- * ## Deviations from Pascal  
+ *
+ * ## Deviations from Pascal
  * - Enhanced mouse interaction for bidirectional MIDI communication
  * - Additional velocity visualization options and color schemes
  * - Improved keyboard layout calculations for various screen resolutions
- * 
+ *
  * @see /pascal-source/P2_PNut_Public/DEBUG-TESTING/DEBUG_MIDI.spin2
  * @see /pascal-source/P2_PNut_Public/DebugDisplayUnit.pas
  */
 export class DebugMidiWindow extends DebugWindowBase {
   // Display specification
   private displaySpec: MidiDisplaySpec;
-  
+
   // Window properties
   protected midiWindowId: number = 0; // Rename to avoid conflict with base class
   protected _windowTitle: string = 'MIDI';
   protected vWidth: number = 256;
   protected vHeight: number = 256;
-  protected vColor: number[] = [0x00FFFF, 0xFF00FF, 0, 0, 0, 0, 0, 0]; // Cyan, Magenta
+  protected vColor: number[] = [0x00ffff, 0xff00ff, 0, 0, 0, 0, 0, 0]; // Cyan, Magenta
   protected pcKeyEnabled: boolean = false;
   protected pcMouseEnabled: boolean = false;
-  
+
   // MIDI-specific properties
   private midiSize: number = 4; // Keyboard size (1-50)
   private midiKeyFirst: number = 21; // First key to display (0-127)
@@ -148,14 +148,14 @@ export class DebugMidiWindow extends DebugWindowBase {
   private midiState: number = 0; // State machine for MIDI parsing
   private midiNote: number = 0; // Current note being processed
   private midiVelocity: number[] = new Array(128).fill(0); // Velocity for each key
-  
+
   // Keyboard layout
   private keySize: number = 0;
   private keyLayout: Map<number, KeyInfo> | null = null;
   private keyOffset: number = 0;
-  private whiteKeyColor: number = 0x00FFFF; // Cyan
-  private blackKeyColor: number = 0xFF00FF; // Magenta
-  
+  private whiteKeyColor: number = 0x00ffff; // Cyan
+  private blackKeyColor: number = 0xff00ff; // Magenta
+
   // Canvas properties (transitional - keeping old properties for compatibility)
   private canvas: HTMLCanvasElement | null = null;
   private canvasCtx: CanvasRenderingContext2D | null = null;
@@ -206,7 +206,7 @@ export class DebugMidiWindow extends DebugWindowBase {
   get windowTitle(): string {
     return this._windowTitle;
   }
-  
+
   // Setter for window title
   set windowTitle(title: string) {
     this._windowTitle = title;
@@ -218,10 +218,10 @@ export class DebugMidiWindow extends DebugWindowBase {
    */
   createDebugWindow(): void {
     this.logMessage(`Creating MIDI debug window: ${this._windowTitle}`);
-    
+
     let x = 0;
     let y = 0;
-    
+
     // Use WindowPlacer for intelligent positioning
     const windowPlacer = WindowPlacer.getInstance();
     const placementConfig: PlacementConfig = {
@@ -237,11 +237,13 @@ export class DebugMidiWindow extends DebugWindowBase {
       const LoggerWindow = require('./loggerWin').LoggerWindow;
       const debugLogger = LoggerWindow.getInstance(this.context);
       const monitorId = position.monitor ? position.monitor.id : '1';
-      debugLogger.logSystemMessage(`WINDOW_PLACED (${x},${y} ${this.vWidth}x${this.vHeight} Mon:${monitorId}) MIDI '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${this.vWidth} ${this.vHeight}`);
+      debugLogger.logSystemMessage(
+        `WINDOW_PLACED (${x},${y} ${this.vWidth}x${this.vHeight} Mon:${monitorId}) MIDI '${this.displaySpec.displayName}' POS ${x} ${y} SIZE ${this.vWidth} ${this.vHeight}`
+      );
     } catch (error) {
       console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
     }
-    
+
     // Use base class method for consistent chrome adjustments
     // Add status bar height (20px + 2px border) to ensure no scrollbar
     const STATUS_BAR_HEIGHT = 22;
@@ -302,7 +304,6 @@ export class DebugMidiWindow extends DebugWindowBase {
       this.logMessage('MIDI window closed');
       this.closeDebugWindow();
     });
-
   }
 
   /**
@@ -356,7 +357,9 @@ export class DebugMidiWindow extends DebugWindowBase {
   private initializeWindow(): void {
     // Keyboard layout already calculated in constructor
     // Initialize double buffering and canvas with verification
-    this.debugWindow?.webContents.executeJavaScript(`
+    this.debugWindow?.webContents
+      .executeJavaScript(
+        `
       (function() {
         // Get visible canvas
         const visibleCanvas = document.getElementById('midi-canvas');
@@ -393,30 +396,33 @@ export class DebugMidiWindow extends DebugWindowBase {
         console.log('[MIDI] Offscreen canvas:', window.offscreenCanvas.width, 'x', window.offscreenCanvas.height);
         return 'OK';
       })()
-    `).then((result) => {
-      if (result === 'OK') {
-        this.logMessage('MIDI: Canvas initialization successful with double buffering');
-        // Mark canvas as initialized
-        this.canvasInitialized = true;
+    `
+      )
+      .then((result) => {
+        if (result === 'OK') {
+          this.logMessage('MIDI: Canvas initialization successful with double buffering');
+          // Mark canvas as initialized
+          this.canvasInitialized = true;
 
-        // Process any pending draw request
-        if (this.pendingDrawRequest) {
-          this.logMessage('MIDI: Processing pending draw request');
-          this.drawKeyboard(this.pendingClear);
-          this.pendingDrawRequest = false;
-          this.pendingClear = false;
+          // Process any pending draw request
+          if (this.pendingDrawRequest) {
+            this.logMessage('MIDI: Processing pending draw request');
+            this.drawKeyboard(this.pendingClear);
+            this.pendingDrawRequest = false;
+            this.pendingClear = false;
+          } else {
+            // Initial draw if no pending request
+            this.drawKeyboard(true);
+          }
         } else {
-          // Initial draw if no pending request
-          this.drawKeyboard(true);
+          this.logMessage(`MIDI: ERROR during canvas initialization: ${result}`);
+          console.error('MIDI canvas initialization failed:', result);
         }
-      } else {
-        this.logMessage(`MIDI: ERROR during canvas initialization: ${result}`);
-        console.error('MIDI canvas initialization failed:', result);
-      }
-    }).catch((error) => {
-      this.logMessage(`MIDI: FATAL ERROR initializing canvas: ${error.message}`);
-      console.error('MIDI canvas initialization error:', error);
-    });
+      })
+      .catch((error) => {
+        this.logMessage(`MIDI: FATAL ERROR initializing canvas: ${error.message}`);
+        console.error('MIDI canvas initialization error:', error);
+      });
 
     // Enable input forwarding if requested
     if (this.pcKeyEnabled) {
@@ -431,11 +437,7 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Update keyboard layout based on current settings
    */
   private updateKeyboardLayout(): void {
-    const layout = PianoKeyboardLayout.calculateLayout(
-      this.keySize,
-      this.midiKeyFirst,
-      this.midiKeyLast
-    );
+    const layout = PianoKeyboardLayout.calculateLayout(this.keySize, this.midiKeyFirst, this.midiKeyLast);
 
     this.keyLayout = layout.keys;
     this.keyOffset = layout.offset;
@@ -494,7 +496,7 @@ export class DebugMidiWindow extends DebugWindowBase {
     for (let i = this.midiKeyFirst; i <= this.midiKeyLast; i++) {
       const key = this.keyLayout.get(i);
       if (key && !key.isBlack) {
-        drawingCode += this.generateKeyDrawingCode(i, key, 0xFFFFFF, this.vColor[0], r);
+        drawingCode += this.generateKeyDrawingCode(i, key, 0xffffff, this.vColor[0], r);
       }
     }
 
@@ -516,26 +518,37 @@ export class DebugMidiWindow extends DebugWindowBase {
     `;
 
     // Log first 500 chars of drawing code for debugging
-    this.logMessage(`MIDI: Executing drawing JavaScript (${drawingCode.length} chars total):\n${drawingCode.substring(0, 500)}...`);
+    this.logMessage(
+      `MIDI: Executing drawing JavaScript (${drawingCode.length} chars total):\n${drawingCode.substring(0, 500)}...`
+    );
 
     // Execute the complete drawing code
-    this.debugWindow.webContents.executeJavaScript(drawingCode).then((result) => {
-      if (result === 'OK') {
-        this.logMessage('MIDI: Keyboard drawn successfully');
-      } else {
-        this.logMessage(`MIDI: ERROR during drawing: ${result}`);
-      }
-    }).catch((error) => {
-      this.logMessage(`MIDI: ERROR executing drawing JavaScript: ${error.message}`);
-      console.error('MIDI drawing error:', error);
-      console.error('Failed JavaScript code:', drawingCode);
-    });
+    this.debugWindow.webContents
+      .executeJavaScript(drawingCode)
+      .then((result) => {
+        if (result === 'OK') {
+          this.logMessage('MIDI: Keyboard drawn successfully');
+        } else {
+          this.logMessage(`MIDI: ERROR during drawing: ${result}`);
+        }
+      })
+      .catch((error) => {
+        this.logMessage(`MIDI: ERROR executing drawing JavaScript: ${error.message}`);
+        console.error('MIDI drawing error:', error);
+        console.error('Failed JavaScript code:', drawingCode);
+      });
   }
 
   /**
    * Generate JavaScript code for drawing a single piano key
    */
-  private generateKeyDrawingCode(keyNum: number, key: KeyInfo, keyColor: number, velocityColor: number, radius: number): string {
+  private generateKeyDrawingCode(
+    keyNum: number,
+    key: KeyInfo,
+    keyColor: number,
+    velocityColor: number,
+    radius: number
+  ): string {
     // Calculate key coordinates relative to canvas
     const border = Math.floor(this.keySize / 6);
     const left = key.left - this.keyOffset;
@@ -549,9 +562,13 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     // Log velocity bar placement for debugging
     if (velocity > 0) {
-      const velocityHeight = Math.floor((bottom - top - radius) * velocity / 127);
+      const velocityHeight = Math.floor(((bottom - top - radius) * velocity) / 127);
       const velocityTop = bottom - radius - velocityHeight;
-      this.logMessage(`MIDI: Drawing velocity bar on key ${keyNum}: velocity=${velocity}, height=${velocityHeight}px, position Y=${velocityTop}-${velocityTop + velocityHeight}, color=${velocityColorHex}`);
+      this.logMessage(
+        `MIDI: Drawing velocity bar on key ${keyNum}: velocity=${velocity}, height=${velocityHeight}px, position Y=${velocityTop}-${
+          velocityTop + velocityHeight
+        }, color=${velocityColorHex}`
+      );
     }
 
     return `
@@ -571,12 +588,16 @@ export class DebugMidiWindow extends DebugWindowBase {
       ctx.fill();
 
       // Draw velocity bar if active
-      ${velocity > 0 ? `
+      ${
+        velocity > 0
+          ? `
         ctx.fillStyle = '${velocityColorHex}';
         const velocityHeight = Math.floor((${bottom} - ${top} - ${radius}) * ${velocity} / 127);
         const velocityTop = ${bottom} - ${radius} - velocityHeight;
         ctx.fillRect(${left + 1}, velocityTop, ${right - left - 2}, velocityHeight);
-      ` : ''}
+      `
+          : ''
+      }
 
       // Draw key outline
       ctx.strokeStyle = '${key.isBlack ? '#444' : '#888'}';
@@ -606,14 +627,13 @@ export class DebugMidiWindow extends DebugWindowBase {
     `;
   }
 
-
   /**
    * Convert RGB24 to hex string
    */
   private rgbToHex(rgb: number): string {
-    const r = (rgb >> 16) & 0xFF;
-    const g = (rgb >> 8) & 0xFF;
-    const b = rgb & 0xFF;
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = rgb & 0xff;
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
@@ -684,7 +704,11 @@ export class DebugMidiWindow extends DebugWindowBase {
           nbrSamples: 0, // Not used
           window: { background: '#000000', grid: '#808080' } // Not used
         };
-        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, i, compatibleSpec as BaseDisplaySpec);
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
+          lineParts,
+          i,
+          compatibleSpec as BaseDisplaySpec
+        );
         if (parsed) {
           // Copy parsed values back
           if (compatibleSpec.title) {
@@ -706,9 +730,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       if (part === 'RANGE' && i + 2 < lineParts.length) {
         const first = Spin2NumericParser.parseCount(lineParts[i + 1]);
         const last = Spin2NumericParser.parseCount(lineParts[i + 2]);
-        if (first !== null && last !== null && 
-            first >= 0 && first <= 127 && 
-            last >= first && last <= 127) {
+        if (first !== null && last !== null && first >= 0 && first <= 127 && last >= first && last <= 127) {
           this.midiKeyFirst = first;
           this.midiKeyLast = last;
           this.updateKeyboardLayout();
@@ -716,7 +738,7 @@ export class DebugMidiWindow extends DebugWindowBase {
         i += 3;
         continue;
       }
-      
+
       if (part === 'CHANNEL' && i + 1 < lineParts.length) {
         const channel = Spin2NumericParser.parseCount(lineParts[i + 1]);
         if (channel !== null && channel >= 0 && channel <= 15) {
@@ -729,11 +751,14 @@ export class DebugMidiWindow extends DebugWindowBase {
       // CLEAR, SAVE, PC_KEY, PC_MOUSE now handled by base class
 
       // Try to parse as MIDI data byte
-      const value = Spin2NumericParser.parseCount(part);
-      if (value !== null) {
-        this.processMidiByte(value & 0xFF);
+      // Pre-check if value looks numeric to avoid error logging for non-numeric tokens (like commas)
+      if (Spin2NumericParser.isNumeric(part)) {
+        const value = Spin2NumericParser.parseCount(part);
+        if (value !== null) {
+          this.processMidiByte(value & 0xff);
+        }
       }
-      
+
       i++;
     }
   }
@@ -749,12 +774,12 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     switch (this.midiState) {
       case 0: // Wait for note-on or note-off event
-        if ((byte & 0xF0) === 0x90 && (byte & 0x0F) === this.midiChannel) {
+        if ((byte & 0xf0) === 0x90 && (byte & 0x0f) === this.midiChannel) {
           this.midiState = 1; // Note-on event
-          this.logMessage(`MIDI: Note-on command received (channel ${byte & 0x0F})`);
-        } else if ((byte & 0xF0) === 0x80 && (byte & 0x0F) === this.midiChannel) {
+          this.logMessage(`MIDI: Note-on command received (channel ${byte & 0x0f})`);
+        } else if ((byte & 0xf0) === 0x80 && (byte & 0x0f) === this.midiChannel) {
           this.midiState = 3; // Note-off event
-          this.logMessage(`MIDI: Note-off command received (channel ${byte & 0x0F})`);
+          this.logMessage(`MIDI: Note-off command received (channel ${byte & 0x0f})`);
         }
         break;
 
@@ -767,7 +792,9 @@ export class DebugMidiWindow extends DebugWindowBase {
       case 2: // Note-on, get velocity
         this.midiVelocity[this.midiNote] = byte;
         this.midiState = 1;
-        this.logMessage(`MIDI: ✅ Note-ON: key=${this.midiNote}, velocity=${byte} → Highlight color will be placed on key`);
+        this.logMessage(
+          `MIDI: ✅ Note-ON: key=${this.midiNote}, velocity=${byte} → Highlight color will be placed on key`
+        );
         this.drawKeyboard(false);
         break;
 
@@ -792,7 +819,7 @@ export class DebugMidiWindow extends DebugWindowBase {
   protected getCanvasId(): string {
     return `midi-canvas-${this.midiWindowId}`;
   }
-  
+
   /**
    * Set window title
    */
@@ -802,7 +829,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       titleElement.textContent = title;
     }
   }
-  
+
   /**
    * Set window position
    */
@@ -846,7 +873,7 @@ export class DebugMidiWindow extends DebugWindowBase {
   /**
    * Parse MIDI window declaration from debug command
    * @param lineParts Array of command parts from debug statement
-   * @returns Tuple of [isValid, displaySpec] 
+   * @returns Tuple of [isValid, displaySpec]
    */
   static parseMidiDeclaration(lineParts: string[]): [boolean, MidiDisplaySpec] {
     const displaySpec: MidiDisplaySpec = {
@@ -858,7 +885,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       keySize: 4, // Default keyboard size
       keyRange: { first: 21, last: 108 }, // Default 88-key piano range
       channel: 0, // Default MIDI channel
-      keyColors: { white: 0x00FFFF, black: 0xFF00FF } // Cyan/Magenta
+      keyColors: { white: 0x00ffff, black: 0xff00ff } // Cyan/Magenta
     };
 
     if (lineParts.length > 1) {
