@@ -35,16 +35,38 @@ PNut Term TS is the 3rd component in the P2 Multi-platform Development Enviromen
 
 On this Page:
 
-- [PNut-Term-TS Features](#features-of-pnut-term-ts) - key faetures of this implementation
+- [Documentation](#documentation) - Quick start and user guides
+- [PNut-Term-TS Features](#features-of-pnut-term-ts) - key features of this implementation
 - [Installing PNut-Term-TS](#installing-pnut-term-ts) - installation notes for the supported platforms
 - [Repository Configuration](#repository-configuration) - more about this Repo.
 
 Additional pages:
 
+- [Quick Start Guide](DOCs/QUICK-START.md) - Get up and running in 2 minutes
+- [User Guide](DOCs/USER-GUIDE.md) - Complete reference documentation
 - [PNut-Term-TS Command-line](CommandLine.md) - command line reference
 - [PNut-Term-TS ChangeLog](CHANGELOG.md) - history of releases (Including what's new in this release!)
 - [PNut_TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
 - [P2_PNut_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
+
+## Documentation
+
+### Getting Started
+- **[Quick Start Guide](DOCs/QUICK-START.md)** - Get PNut-Term-TS running in 2 minutes
+- **[User Guide](DOCs/USER-GUIDE.md)** - Complete reference for all features
+
+The Quick Start Guide covers:
+- First session setup
+- Three operating modes (Interactive, Command-Line Download, IDE Integration)
+- Essential keyboard shortcuts
+- Recording and playback basics
+
+The User Guide provides:
+- Comprehensive feature documentation
+- Debug window reference
+- Settings and preferences
+- Troubleshooting guide
+- Tips and best practices
 
 ## Features of PNut Term TS
 

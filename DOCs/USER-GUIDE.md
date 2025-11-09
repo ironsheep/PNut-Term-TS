@@ -6,24 +6,23 @@
 
 ### Part 1: Getting Started
 1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [Operating Modes](#operating-modes)
-4. [Quick Start](#quick-start)
+2. [Operating Modes](#operating-modes)
+3. [Quick Start](#quick-start)
 
 ### Part 2: Core Features
-5. [Menu System](#menu-system)
-6. [Settings & Preferences](#settings--preferences)
-7. [Recording & Playback](#recording--playback)
-8. [Performance Monitoring](#performance-monitoring)
+4. [Menu System](#menu-system)
+5. [Settings & Preferences](#settings--preferences)
+6. [Recording & Playback](#recording--playback)
+7. [Performance Monitoring](#performance-monitoring)
 
 ### Part 3: Debug Windows
-9. [Debug Windows Reference](#debug-windows-reference)
+8. [Debug Windows Reference](#debug-windows-reference)
 
 ### Part 4: Reference
-10. [Command-Line Reference](#command-line-reference)
-11. [Keyboard Shortcuts](#keyboard-shortcuts)
-12. [Troubleshooting](#troubleshooting)
-13. [Tips & Best Practices](#tips--best-practices)
+9. [Command-Line Reference](#command-line-reference)
+10. [Keyboard Shortcuts](#keyboard-shortcuts)
+11. [Troubleshooting](#troubleshooting)
+12. [Tips & Best Practices](#tips--best-practices)
 
 ---
 
@@ -38,34 +37,6 @@ PNut-Term-TS provides a debugging environment for Parallax Propeller 2 (P2) micr
 - Live performance monitoring
 - Hierarchical settings (application/user/project)
 - Cross-platform support (Windows, macOS, Linux)
-
----
-
-## Installation
-
-### System Requirements
-- Operating System: Windows 10+, macOS 10.14+, or Linux (Ubuntu 20.04+)
-- RAM: 4GB minimum, 8GB recommended
-- Display: 1920x1080 minimum resolution
-- USB 2.0 or higher for P2 connection
-
-### Download and Install
-
-#### Windows
-1. Download latest release from https://github.com/ironsheep/PNut-Term-TS/releases
-2. Extract `pnut-term-win-x64.zip`
-3. Run `pnut-term-ts.exe` from extracted folder
-
-#### macOS
-1. Download latest release from https://github.com/ironsheep/PNut-Term-TS/releases
-2. Extract `pnut-term-mac-x64.zip`
-3. Run `SETUP.command` to add to PATH
-4. Launch with `pnut-term-ts` from Terminal
-
-#### Linux
-1. Download latest release from https://github.com/ironsheep/PNut-Term-TS/releases
-2. Extract `pnut-term-linux-x64.zip`
-3. Run `./pnut-term-ts` from extracted folder
 
 ---
 

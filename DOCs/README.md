@@ -6,10 +6,9 @@ This directory contains public-facing documentation for PNut-Term-TS, a cross-pl
 
 ### Primary Guides
 
-- **[USER-GUIDE.md](USER-GUIDE.md)** - Complete user guide covering all features and debug windows
-- **[USER-GUIDE-UPDATED.md](USER-GUIDE-UPDATED.md)** - Updated version with latest enhancements
+- **[QUICK-START.md](QUICK-START.md)** - Get up and running in 2 minutes
+- **[USER-GUIDE.md](USER-GUIDE.md)** - Complete reference covering all features
 - **[APP-HELP.md](APP-HELP.md)** - Built-in application help content (displayed in Help menu)
-- **[QUICK-START-NEW-FEATURES.md](QUICK-START-NEW-FEATURES.md)** - Quick reference for new features
 
 ### Specialized Guides
 
@@ -20,7 +19,7 @@ This directory contains public-facing documentation for PNut-Term-TS, a cross-pl
 
 ### System Architecture
 
-- **[ADMIN-GUIDE-SERIAL-IMPLEMENTATION.md](ADMIN-GUIDE-SERIAL-IMPLEMENTATION.md)** - Technical guide to serial implementation and architecture
+- **[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)** - Technical implementation details and architecture
 - **[WINDOW-PLACEMENT-ALGORITHM.md](WINDOW-PLACEMENT-ALGORITHM.md)** - Algorithm documentation for debug window positioning
 - **[REPOSITORY-ORGANIZATION.md](REPOSITORY-ORGANIZATION.md)** - Repository structure and organization guide
 
@@ -46,6 +45,7 @@ The `pascal-REF/` directory contains theory of operations documentation derived 
 
 - **images/** - Application icons, logos, and visual assets
 - **source/** - Source materials including font notes and layout files
+- **archive/** - Previous versions of documentation for reference
 
 ## Documentation Purpose
 
@@ -55,6 +55,16 @@ This documentation serves multiple audiences:
 2. **Developers** - Understand the architecture and implementation details
 3. **Contributors** - Reference materials for maintaining Pascal parity
 
+## Quick Reference
+
+### For New Users
+Start with **[QUICK-START.md](QUICK-START.md)** to get running in minutes, then refer to **[USER-GUIDE.md](USER-GUIDE.md)** for detailed information on specific features.
+
+### For Developers
+Review **[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)** for architecture overview and the theory-of-operations documents for window-specific implementation details.
+
 ## Version Information
 
 These documents are maintained alongside the codebase and reflect the current implementation status. For the most up-to-date information, always refer to the latest version in the repository.
+
+**Current Version**: 0.9.0
