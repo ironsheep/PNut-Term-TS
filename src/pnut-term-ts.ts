@@ -612,6 +612,7 @@ export class DebugTerminalInTypeScript {
     }
 
     // Pass the context file path to Electron
+    // FOR DEBUG  const electronArgs = [electronMainPath, '--context', contextFile, '--trace-warnings'];
     const electronArgs = [electronMainPath, '--context', contextFile];
 
     this.context.logger.debugMsg(`Launching Electron with context file: ${contextFile}`);

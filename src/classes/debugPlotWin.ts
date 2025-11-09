@@ -1424,18 +1424,32 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'COLOR': {
-          // COLOR value - Set drawing color using numeric pixel value
-          // Value is interpreted according to current color mode (RGBI8, RGB24, etc.)
+          // COLOR value - Set drawing color using color name or numeric pixel value
+          // Color names: BLACK, WHITE, ORANGE, BLUE, GREEN, CYAN, RED, MAGENTA, YELLOW, GRAY
+          // Numeric values are interpreted according to current color mode (RGBI8, RGB24, etc.)
           if (index + 1 < lineParts.length) {
-            const colorValue = this.parseNumber(lineParts[++index]);
-            if (colorValue !== null) {
-              // Use ColorTranslator to convert pixel value to RGB24
-              const rgb24 = this.colorTranslator.translateColor(colorValue);
+            const colorToken = lineParts[++index];
+            let rgb24: number;
 
-              // Convert RGB24 (0xRRGGBB) to CSS color string '#RRGGBB'
-              this.currFgColor = '#' + rgb24.toString(16).padStart(6, '0').toUpperCase();
+            // Check if it's a color name first (like processLutCommand does)
+            if (DebugColor.isValidColorName(colorToken)) {
+              // Handle color name with default brightness 8
+              const color = new DebugColor(colorToken, 8);
+              rgb24 = color.rgbValue;
+              this.currFgColor = color.rgbString;
+              this.logMessage(`COLOR: Set color to name '${colorToken}' -> ${this.currFgColor}`);
+            } else {
+              // Try parsing as numeric value
+              const colorValue = this.parseNumber(colorToken);
+              if (colorValue !== null) {
+                // Use ColorTranslator to convert pixel value to RGB24
+                rgb24 = this.colorTranslator.translateColor(colorValue);
 
-              this.logMessage(`COLOR: Set color to value ${colorValue} -> ${this.currFgColor}`);
+                // Convert RGB24 (0xRRGGBB) to CSS color string '#RRGGBB'
+                this.currFgColor = '#' + rgb24.toString(16).padStart(6, '0').toUpperCase();
+
+                this.logMessage(`COLOR: Set color to value ${colorValue} -> ${this.currFgColor}`);
+              }
             }
           }
           break;

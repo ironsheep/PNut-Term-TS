@@ -148,6 +148,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   // Rate control
   private rateCounter: number = 0;
 
+  // Render throttle control - prevents listener accumulation from concurrent executeJavaScript calls
+  private renderInProgress: boolean = false;
+  private renderPending: boolean = false;
+
   // Canvas margins - Pascal SetSize(ChrHeight*2, ChrHeight*2, ChrHeight*2, ChrHeight*2)
   private margin: number = 0; // Calculated as textSize * 2
 
@@ -1129,6 +1133,17 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       return;
     }
 
+    // Render throttle: If a render is already in progress, mark as pending and return
+    if (this.renderInProgress) {
+      this.renderPending = true;
+      this.logMessage('render: Render already in progress, marking as pending');
+      return;
+    }
+
+    // Mark render as in progress
+    this.renderInProgress = true;
+    this.renderPending = false;
+
     // Canvas size includes margins on all sides
     const canvasSize = this.radius * 2 + this.margin * 2;
 
@@ -1382,7 +1397,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     this.logMessage(`render: Executing batched script (${batchedScript.length} chars, ${plotCount} points)`);
 
-    // Execute the entire rendering operation atomically
+    // Execute the entire rendering operation atomically with await to prevent listener accumulation
     this.debugWindow.webContents
       .executeJavaScript(batchedScript)
       .then((result) => {
@@ -1398,6 +1413,16 @@ export class DebugScopeXyWindow extends DebugWindowBase {
           code: err.code,
           fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
         });
+      })
+      .finally(() => {
+        // Mark render as complete
+        this.renderInProgress = false;
+
+        // If another render was requested while this one was in progress, execute it now
+        if (this.renderPending) {
+          this.logMessage('render: Executing pending render');
+          this.render(forceClear);
+        }
       });
   }
 }
