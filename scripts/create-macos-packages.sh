@@ -7,9 +7,12 @@ echo "🎯 Creating Optimized macOS Packages"
 echo "====================================="
 echo ""
 
-# Get version
-VERSION="000500"
-VERSION_DOT="0.5.0"
+# Extract version from package.json and format
+VERSION_DOT=$(grep '"version"' package.json | sed -E 's/.*"version": "([0-9]+)\.([0-9]+)\.([0-9]+)".*/\1.\2.\3/')
+VERSION_MAJOR=$(echo $VERSION_DOT | cut -d'.' -f1)
+VERSION_MINOR=$(echo $VERSION_DOT | cut -d'.' -f2)
+VERSION_PATCH=$(echo $VERSION_DOT | cut -d'.' -f3)
+VERSION=$(printf "%02d%02d%02d" $VERSION_MAJOR $VERSION_MINOR $VERSION_PATCH)
 
 # Create package directory (preserve existing scripts!)
 PACKAGE_DIR="release/macos-package"
@@ -161,10 +164,10 @@ create_package() {
     fi
 
     # Create package.json for Electron (pointing to electron-main.js)
-    cat > "$APP_DIR/package.json" << 'PACKAGE_EOF'
+    cat > "$APP_DIR/package.json" << PACKAGE_EOF
 {
   "name": "pnut-term-ts",
-  "version": "0.5.0",
+  "version": "${VERSION_DOT}",
   "main": "dist/electron-main.js",
   "description": "Propeller 2 Debug Terminal",
   "author": "Iron Sheep Productions, LLC",

@@ -100,10 +100,10 @@ for arch in "${ARCHITECTURES[@]}"; do
     cp -r dist "$pkg_dir/resources/app/"
 
     # Create package.json for Electron (pointing to electron-main.js)
-    cat > "$pkg_dir/resources/app/package.json" << 'PACKAGE_EOF'
+    cat > "$pkg_dir/resources/app/package.json" << PACKAGE_EOF
 {
   "name": "pnut-term-ts",
-  "version": "0.5.0",
+  "version": "${VERSION}",
   "main": "dist/electron-main.js",
   "description": "Propeller 2 Debug Terminal",
   "author": "Iron Sheep Productions, LLC",
