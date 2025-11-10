@@ -46,8 +46,8 @@ Additional pages:
 - [User Guide](DOCs/USER-GUIDE.md) - Complete reference documentation
 - [PNut-Term-TS Command-line](CommandLine.md) - command line reference
 - [PNut-Term-TS ChangeLog](CHANGELOG.md) - history of releases (Including what's new in this release!)
-- [PNut_TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
-- [P2_PNut_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
+- [PNut-TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
+- [P2\_PNut\_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
 
 ## Documentation
 
@@ -103,12 +103,12 @@ Install .zip files available for each release:
 
 | Archive Name             | Operating System | Architecture     | Unpack Leaves |
 | ------------------------ | ---------------- | ---------------- | ------------- |
-| linux-arm64-{MMmmpp}.zip | Linux, RPi       | Arm 64 bit       | pnut\_term\_ts/ |
-| linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut\_term\_ts/ |
-| macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | .dmg |
-| macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | .dmg |
-| win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
-| win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
+| pnut-term-ts-linux-arm64-{MMmmpp}.zip | Linux, RPi       | Arm 64 bit       | pnut\_term\_ts/ |
+| pnut-term-ts-linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut\_term\_ts/ |
+| pnut-term-ts-macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | .dmg |
+| pnut-term-ts-macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | .dmg |
+| pnut-term-ts-win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
+| pnut-term-ts-win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
 
 **NOTE:** _where -MMmmpp is the release version. (E.g., -010001.zip means v1.0.1.)_
 
