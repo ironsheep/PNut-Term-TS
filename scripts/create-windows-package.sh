@@ -77,14 +77,15 @@ for arch in "${ARCHITECTURES[@]}"; do
     # Download Electron if needed
     download_electron "$arch"
 
-    # Set up package directory
+    # Set up package directory - always use pnut_term_ts folder
+    # ZIP file name will include arch and version
     if [ "$arch" = "win32-x64" ]; then
-        pkg_name="pnut-term-ts-windows-x64-${VERSION_FORMATTED}"
+        zip_name="pnut-term-ts-windows-x64-${VERSION_FORMATTED}"
     else
-        pkg_name="pnut-term-ts-windows-arm64-${VERSION_FORMATTED}"
+        zip_name="pnut-term-ts-windows-arm64-${VERSION_FORMATTED}"
     fi
 
-    pkg_dir="$PACKAGE_DIR/$pkg_name"
+    pkg_dir="$PACKAGE_DIR/pnut_term_ts"
     mkdir -p "$pkg_dir"
 
     echo "📦 Step 2: Copying Electron files..."
@@ -225,38 +226,39 @@ CMD_EOF
 PNut-Term-TS for Windows
 ========================
 
-Quick Start:
-1. Extract this folder to your preferred location (e.g., C:\Program Files\pnut-term-ts)
-2. Add the folder to your PATH environment variable
-3. Open a new Command Prompt or PowerShell
-4. Run: pnut-term-ts
+Cross-platform debug terminal for Parallax Propeller 2.
 
-Adding to PATH:
----------------
-Option A - Command Line (as Administrator):
-  setx /M PATH "%PATH%;C:\Program Files\pnut-term-ts"
-
-Option B - GUI:
-  1. Right-click "This PC" → Properties
-  2. Click "Advanced system settings"
-  3. Click "Environment Variables"
-  4. Under "System variables", select "Path" and click "Edit"
-  5. Click "New" and add the folder path
-  6. Click OK on all windows
-
-Usage:
-------
-Once in PATH, run from any Command Prompt or PowerShell:
-  pnut-term-ts [options]
-
-The pnut-term-ts.cmd file launches the application with all
-command-line arguments properly passed through.
-
-Troubleshooting:
+Package Contents
 ----------------
-- If "command not found", ensure the folder is in PATH
-- You may need to restart your terminal after adding to PATH
-- Run "echo %PATH%" to verify the path is included
+This package contains a complete, standalone installation of PNut-Term-TS
+with the Electron runtime included.
+
+Directory Structure
+-------------------
+pnut_term_ts/
+  - LICENSE.txt
+  - COPYRIGHT.txt
+  - CHANGELOG.md
+  - README.txt
+  - pnut-term-ts.cmd        (Command-line launcher)
+  - electron.exe            (Electron runtime)
+  - resources/
+      app/
+        dist/
+          pnut-term-ts.min.js  (Main application)
+  - [other electron files]
+
+Usage
+-----
+Run the launcher script:
+  pnut-term-ts.cmd [options]
+
+Or add the folder to your PATH for system-wide access.
+
+Documentation
+-------------
+For installation instructions, usage documentation, and support, please visit:
+https://github.com/ironsheep/PNut-Term-TS
 README_EOF
 
     echo "   ✅ Created README.txt"
@@ -265,10 +267,10 @@ README_EOF
     # Create the zip file
     cd "$PACKAGE_DIR"
     if command -v zip > /dev/null; then
-        zip -q -r "${pkg_name}.zip" "$pkg_name"
-        echo "   ✅ Created ${pkg_name}.zip"
+        zip -q -r "${zip_name}.zip" "pnut_term_ts"
+        echo "   ✅ Created ${zip_name}.zip"
         # Remove the uncompressed folder after successful ZIP creation
-        rm -rf "$pkg_name"
+        rm -rf "pnut_term_ts"
         echo "   🧹 Cleaned up uncompressed folder"
     else
         echo "   ⚠️  zip command not found. Package directory ready at: $pkg_dir"
@@ -288,11 +290,11 @@ echo ""
 echo "📦 Packages created:"
 for arch in "${ARCHITECTURES[@]}"; do
     if [ "$arch" = "win32-x64" ]; then
-        pkg_name="pnut-term-ts-windows-x64-${VERSION_FORMATTED}"
+        zip_name="pnut-term-ts-windows-x64-${VERSION_FORMATTED}"
     else
-        pkg_name="pnut-term-ts-windows-arm64-${VERSION_FORMATTED}"
+        zip_name="pnut-term-ts-windows-arm64-${VERSION_FORMATTED}"
     fi
-    echo "   - ${pkg_name}.zip"
+    echo "   - ${zip_name}.zip (unpacks to pnut_term_ts/)"
 done
 echo ""
 echo "📍 Location: $PACKAGE_DIR/"

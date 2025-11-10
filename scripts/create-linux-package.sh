@@ -80,14 +80,15 @@ for arch in "${ARCHITECTURES[@]}"; do
     # Download Electron if needed
     download_electron "$arch"
 
-    # Set up package directory structure
+    # Set up package directory structure - always use pnut_term_ts folder
+    # tar.gz file name will include arch and version
     if [ "$arch" = "linux-x64" ]; then
-        pkg_name="pnut-term-ts-linux-x64-${VERSION_FORMATTED}"
+        tar_name="pnut-term-ts-linux-x64-${VERSION_FORMATTED}"
     else
-        pkg_name="pnut-term-ts-linux-arm64-${VERSION_FORMATTED}"
+        tar_name="pnut-term-ts-linux-arm64-${VERSION_FORMATTED}"
     fi
 
-    pkg_dir="$PACKAGE_DIR/$pkg_name/opt/pnut-term-ts"
+    pkg_dir="$PACKAGE_DIR/pnut_term_ts"
     mkdir -p "$pkg_dir/bin"
 
     echo "📦 Step 2: Copying Electron files..."
@@ -197,9 +198,9 @@ PACKAGE_EOF
 
     echo "📄 Step 4: Adding documentation files..."
     # Copy LICENSE, COPYRIGHT, and CHANGELOG to package root
-    cp LICENSE "$PACKAGE_DIR/$pkg_name/LICENSE"
-    cp copyright "$PACKAGE_DIR/$pkg_name/COPYRIGHT"
-    cp CHANGELOG.md "$PACKAGE_DIR/$pkg_name/CHANGELOG.md"
+    cp LICENSE "$pkg_dir/LICENSE"
+    cp copyright "$pkg_dir/COPYRIGHT"
+    cp CHANGELOG.md "$pkg_dir/CHANGELOG.md"
     echo "   ✅ Added LICENSE, COPYRIGHT, and CHANGELOG"
 
     echo "🚀 Step 5: Creating command-line launcher..."
@@ -207,7 +208,7 @@ PACKAGE_EOF
     cat > "$pkg_dir/bin/pnut-term-ts" << 'LAUNCHER_EOF'
 #!/bin/bash
 # pnut-term-ts launcher script for Linux
-# Get the installation root (go up from bin/ to get to /opt/pnut-term-ts)
+# Get the directory where this script is located and go up one level
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Run the CLI directly with Node - it will launch Electron when needed
 exec node "$DIR/resources/app/dist/pnut-term-ts.min.js" "$@"
@@ -217,127 +218,65 @@ LAUNCHER_EOF
     chmod +x "$pkg_dir/bin/pnut-term-ts"
     echo "   ✅ Created launcher at bin/pnut-term-ts"
 
-    echo "📄 Step 6: Creating installation script..."
-    install_script="$PACKAGE_DIR/$pkg_name/install.sh"
-    cat > "$install_script" << 'INSTALL_EOF'
-#!/bin/bash
-# Installation script for PNut-Term-TS on Linux
-
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root (use sudo)"
-    exit 1
-fi
-
-echo "Installing PNut-Term-TS to /opt/pnut-term-ts..."
-
-# Remove old installation if exists
-if [ -d "/opt/pnut-term-ts" ]; then
-    echo "Removing old installation..."
-    rm -rf /opt/pnut-term-ts
-fi
-
-# Copy to /opt
-cp -r opt/pnut-term-ts /opt/
-echo "✅ Installed to /opt/pnut-term-ts"
-
-# Set permissions
-chmod -R 755 /opt/pnut-term-ts
-chmod +x /opt/pnut-term-ts/electron
-chmod +x /opt/pnut-term-ts/bin/pnut-term-ts
-
-echo ""
-echo "✅ Installation complete!"
-echo ""
-echo "To use pnut-term-ts from the command line, add to your PATH:"
-echo ""
-echo "  For bash (~/.bashrc):"
-echo "    export PATH=\"/opt/pnut-term-ts/bin:\$PATH\""
-echo ""
-echo "  For zsh (~/.zshrc):"
-echo "    export PATH=\"/opt/pnut-term-ts/bin:\$PATH\""
-echo ""
-echo "Then reload your shell or run: source ~/.bashrc"
-INSTALL_EOF
-
-    chmod +x "$install_script"
-    echo "   ✅ Created install.sh"
-
-    echo "📄 Step 7: Creating README..."
-    cat > "$PACKAGE_DIR/$pkg_name/README.md" << 'README_EOF'
+    echo "📄 Step 6: Creating README..."
+    cat > "$pkg_dir/README.md" << 'README_EOF'
 # PNut-Term-TS for Linux
 
-## Quick Start
+Cross-platform debug terminal for Parallax Propeller 2.
 
-1. Extract this archive
-2. Run the installer (as root):
-   ```bash
-   sudo ./install.sh
-   ```
-3. Add to PATH (in ~/.bashrc or ~/.zshrc):
-   ```bash
-   export PATH="/opt/pnut-term-ts/bin:$PATH"
-   ```
-4. Reload your shell:
-   ```bash
-   source ~/.bashrc
-   ```
-5. Run:
-   ```bash
-   pnut-term-ts
-   ```
+## Package Contents
 
-## Manual Installation
-
-If you prefer not to use the installer:
-
-1. Copy `opt/pnut-term-ts` to `/opt/`:
-   ```bash
-   sudo cp -r opt/pnut-term-ts /opt/
-   sudo chmod -R 755 /opt/pnut-term-ts
-   ```
-
-2. Add `/opt/pnut-term-ts/bin` to your PATH
+This package contains a complete, standalone installation of PNut-Term-TS with the Electron runtime included.
 
 ## Directory Structure
 
 ```
-/opt/pnut-term-ts/
-├── electron              # Electron runtime
+pnut_term_ts/
+├── LICENSE
+├── COPYRIGHT
+├── CHANGELOG.md
+├── README.md
+├── electron             # Electron runtime
 ├── resources/
 │   └── app/
 │       └── dist/
-│           └── pnut-term-ts.min.js
+│           └── pnut-term-ts.min.js  # Main application
 ├── bin/
-│   └── pnut-term-ts     # Command-line launcher
+│   └── pnut-term-ts    # Command-line launcher
 └── [other electron files]
 ```
 
-## Uninstall
+## Usage
 
-To remove PNut-Term-TS:
+Run the launcher script:
 ```bash
-sudo rm -rf /opt/pnut-term-ts
+./bin/pnut-term-ts [options]
 ```
-Then remove the PATH entry from your shell configuration.
 
-## Troubleshooting
+Or add the `bin` directory to your PATH for system-wide access.
 
-- If "command not found": Ensure `/opt/pnut-term-ts/bin` is in your PATH
-- Run `echo $PATH` to verify
-- Check permissions: `ls -la /opt/pnut-term-ts/bin/pnut-term-ts`
+## Documentation
+
+For installation instructions, usage documentation, and support, please visit:
+https://github.com/ironsheep/PNut-Term-TS
 README_EOF
 
     echo "   ✅ Created README.md"
 
-    echo "📦 Step 8: Creating tar.gz archive..."
-    # Create the tar.gz file
+    echo "📦 Step 8: Creating ZIP archive..."
+    # Create the zip file
     cd "$PACKAGE_DIR"
-    tar -czf "${pkg_name}.tar.gz" "$pkg_name"
-    echo "   ✅ Created ${pkg_name}.tar.gz"
+    if command -v zip > /dev/null; then
+        zip -q -r "${tar_name}.zip" "pnut_term_ts"
+        echo "   ✅ Created ${tar_name}.zip"
+        # Remove the uncompressed folder after successful ZIP creation
+        rm -rf "pnut_term_ts"
+        echo "   🧹 Cleaned up uncompressed folder"
+    else
+        echo "   ⚠️  zip command not found. Package directory ready at: $pkg_dir"
+        echo "   Install zip or manually create the archive"
+    fi
     cd - > /dev/null
-
-    # Clean up the uncompressed directory
-    rm -rf "$PACKAGE_DIR/$pkg_name"
 
     echo ""
     echo "✅ Package for $arch complete!"
@@ -351,11 +290,11 @@ echo ""
 echo "📦 Packages created:"
 for arch in "${ARCHITECTURES[@]}"; do
     if [ "$arch" = "linux-x64" ]; then
-        pkg_name="pnut-term-ts-linux-x64-${VERSION_FORMATTED}"
+        tar_name="pnut-term-ts-linux-x64-${VERSION_FORMATTED}"
     else
-        pkg_name="pnut-term-ts-linux-arm64-${VERSION_FORMATTED}"
+        tar_name="pnut-term-ts-linux-arm64-${VERSION_FORMATTED}"
     fi
-    echo "   - ${pkg_name}.tar.gz"
+    echo "   - ${tar_name}.zip (unpacks to pnut_term_ts/)"
 done
 echo ""
 echo "📍 Location: $PACKAGE_DIR/"
@@ -363,7 +302,6 @@ echo ""
 echo "These are complete, ready-to-run packages with Electron included!"
 echo ""
 echo "Users can:"
-echo "1. Extract the tar.gz file"
-echo "2. Run sudo ./install.sh"
-echo "3. Add /opt/pnut-term-ts/bin to PATH"
-echo "4. Run: pnut-term-ts"
+echo "1. Extract the zip file to their preferred location"
+echo "2. Add the pnut_term_ts/bin directory to PATH"
+echo "3. Run: pnut-term-ts"
