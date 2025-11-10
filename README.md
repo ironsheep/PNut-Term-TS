@@ -120,7 +120,7 @@ Installation is pretty easy for PNut-Term-TS. Here are the general steps: (_more
 - Set up an environment variable (typically PATH) so that the **pnut\_term\_ts** executable can be referenced from anywhere.
 - Run VSCode with the **Spin2 v2.5.0 extension** (when it's released) to ensure that the installed **pnut\_term\_ts** was found.
 
-See detailed installation instructions for **macOS**, **Windows**, and **Linux/RPi**. (*coming soon!*)
+See detailed installation instructions for; **[macOS](https://github.com/ironsheep/P2-vscode-langserv-extension/blob/main/TASKS-User-macOS.md#installing-pnut-term-ts-on-macos)**, **[Windows](https://github.com/ironsheep/P2-vscode-langserv-extension/blob/main/TASKS-User-win.md#installing-pnut-term-ts-on-windows)**, and **[Linux/RPi](https://github.com/ironsheep/P2-vscode-langserv-extension/blob/main/TASKS-User-RPi.md#installing-pnut-term-ts-on-rpilinux)**.
 
 That's really all there is to it!
 
