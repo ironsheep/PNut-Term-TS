@@ -618,10 +618,15 @@ export class DebugTerminalInTypeScript {
     this.context.logger.debugMsg(`Launching Electron with context file: ${contextFile}`);
 
     // Spawn Electron as a child process
+    // IMPORTANT: Remove ELECTRON_RUN_AS_NODE so child runs as Electron GUI, not Node
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+
     return new Promise((resolve) => {
       const electronProcess = spawn(electronPath, electronArgs, {
         stdio: 'inherit', // Pass through stdin/stdout/stderr
-        detached: false
+        detached: false,
+        env: env  // Use environment without ELECTRON_RUN_AS_NODE
       });
 
       electronProcess.on('close', (code) => {
@@ -673,18 +678,20 @@ export class DebugTerminalInTypeScript {
       path.join(__dirname, '..', '..', '..', '..', 'MacOS', 'Electron'),
       // Another macOS location if running from different path
       '/Applications/PNut-Term-TS.app/Contents/MacOS/Electron',
+      // Windows packaged - from resources/app/dist up to package root
+      // resources/app/dist -> resources/app -> resources -> root
+      path.join(__dirname, '..', '..', '..', 'electron.exe'),
+      // Linux packaged - from resources/app/dist up to package root
+      // resources/app/dist -> resources/app -> resources -> root
+      path.join(__dirname, '..', '..', '..', 'electron'),
       // Local node_modules
       path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
       path.join(__dirname, '..', '..', 'node_modules', '.bin', 'electron'),
       // Global installation
       '/usr/local/bin/electron',
       '/usr/bin/electron',
-      // Windows
-      path.join(process.env.APPDATA || '', 'npm', 'electron.cmd'),
-      // Windows packaged
-      path.join(__dirname, '..', 'electron.exe'),
-      // Linux packaged
-      path.join(__dirname, '..', 'electron')
+      // Windows global
+      path.join(process.env.APPDATA || '', 'npm', 'electron.cmd')
     );
 
     for (const electronPath of possiblePaths) {

@@ -149,6 +149,10 @@ import * as os from 'os';
   app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
   app.commandLine.appendSwitch('disable-blink-features', 'Autofill');
 
+  // Suppress Chromium's internal GPU warnings (harmless on Raspberry Pi)
+  // This only suppresses Chrome's logs, not our application logs
+  app.commandLine.appendSwitch('log-level', '3'); // 3 = FATAL only (suppresses ERROR and WARNING)
+
   // Prevent multiple instances
   const gotTheLock = app.requestSingleInstanceLock();
 

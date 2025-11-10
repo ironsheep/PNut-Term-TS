@@ -120,6 +120,12 @@ create_package() {
     echo "   📦 Copying native dependencies..."
     mkdir -p "$APP_DIR/node_modules"
 
+    # Electron module (required by electron-main.js for app, BrowserWindow, etc.)
+    if [ -d "node_modules/electron" ]; then
+        cp -r node_modules/electron "$APP_DIR/node_modules/"
+        echo "   ✅ Copied electron module"
+    fi
+
     # SerialPort bindings - use macOS universal binary
     if [ -d "node_modules/@serialport" ]; then
         mkdir -p "$APP_DIR/node_modules/@serialport"
@@ -162,6 +168,8 @@ create_package() {
     if [ -d "node_modules/ms" ]; then
         cp -r node_modules/ms "$APP_DIR/node_modules/"
     fi
+
+    # NOTE: commander, markdown-it, jimp are bundled by esbuild - no need to copy
 
     # Create package.json for Electron (pointing to electron-main.js)
     cat > "$APP_DIR/package.json" << PACKAGE_EOF
@@ -213,8 +221,9 @@ PLIST_EOF
 #!/bin/bash
 # pnut-term-ts launcher script
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# Run using the bundled Electron executable
-exec "$DIR/MacOS/Electron" "$DIR/Resources/app/dist/pnut-term-ts.min.js" "$@"
+# Use Electron's built-in Node.js to run the CLI
+# The CLI will launch Electron GUI only if needed (not for --help, --version, etc.)
+ELECTRON_RUN_AS_NODE=1 exec "$DIR/MacOS/Electron" "$DIR/Resources/app/dist/pnut-term-ts.min.js" "$@"
 LAUNCHER_EOF
     chmod +x "$PKG_DIR/PNut-Term-TS.app/Contents/Resources/bin/pnut-term-ts"
 

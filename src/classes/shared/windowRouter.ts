@@ -312,8 +312,8 @@ export class WindowRouter extends EventEmitter {
       const routingTime = performance.now() - startTime;
       this.updateRoutingStats(routingTime, message.data);
 
-      // Log performance if slow
-      if (routingTime > 1.0) {
+      // Log performance if slow (only when console logging enabled)
+      if (ENABLE_CONSOLE_LOG && routingTime > 1.0) {
         this.logger.warn(
           'PERFORMANCE',
           `Slow routing detected: ${routingTime.toFixed(2)}ms (type=${message.type}, ${dataSize}B)`

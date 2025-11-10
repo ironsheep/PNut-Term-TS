@@ -146,6 +146,12 @@ PACKAGE_EOF
     echo "   📦 Copying native dependencies..."
     mkdir -p "$pkg_dir/resources/app/node_modules"
 
+    # Electron module (required by electron-main.js for app, BrowserWindow, etc.)
+    if [ -d "node_modules/electron" ]; then
+        cp -r node_modules/electron "$pkg_dir/resources/app/node_modules/"
+        echo "   ✅ Copied electron module"
+    fi
+
     # SerialPort bindings - use Linux architecture-specific binary
     if [ -d "node_modules/@serialport" ]; then
         mkdir -p "$pkg_dir/resources/app/node_modules/@serialport"
@@ -191,6 +197,9 @@ PACKAGE_EOF
     if [ -d "node_modules/ms" ]; then
         cp -r node_modules/ms "$pkg_dir/resources/app/node_modules/"
     fi
+
+    # NOTE: commander, markdown-it, jimp are bundled by esbuild - no need to copy
+
     if [ -d "prebuilds" ]; then
         cp -r prebuilds "$pkg_dir/resources/app/"
         echo "   ✅ Copied prebuilds"
@@ -210,8 +219,9 @@ PACKAGE_EOF
 # pnut-term-ts launcher script for Linux
 # Get the directory where this script is located and go up one level
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Run using the bundled Electron executable
-exec "$DIR/electron" "$DIR/resources/app/dist/pnut-term-ts.min.js" "$@"
+# Use Electron's built-in Node.js to run the CLI
+# The CLI will launch Electron GUI only if needed (not for --help, --version, etc.)
+ELECTRON_RUN_AS_NODE=1 exec "$DIR/electron" "$DIR/resources/app/dist/pnut-term-ts.min.js" "$@"
 LAUNCHER_EOF
 
     # Make launcher executable
