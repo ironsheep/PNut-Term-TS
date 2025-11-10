@@ -204,19 +204,13 @@ PACKAGE_EOF
     # Create the batch launcher script
     cat > "$pkg_dir/pnut-term-ts.cmd" << 'CMD_EOF'
 @echo off
-REM pnut-term-ts launcher script for Windows - updated for new architecture
+REM pnut-term-ts launcher script for Windows
 REM Get the directory where this script is located
 set DIR=%~dp0
 REM Remove trailing backslash if present
 if "%DIR:~-1%"=="\" set DIR=%DIR:~0,-1%
-REM Run CLI entry point with node - it will spawn Electron if GUI is needed
-REM First try to use system node, fall back to electron's node if not available
-where node >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    node "%DIR%\resources\app\dist\pnut-term-ts.min.js" %*
-) else (
-    "%DIR%\electron.exe" "%DIR%\resources\app\dist\pnut-term-ts.min.js" %*
-)
+REM Run using the bundled Electron executable
+"%DIR%\electron.exe" "%DIR%\resources\app\dist\pnut-term-ts.min.js" %*
 CMD_EOF
 
     echo "   ✅ Created pnut-term-ts.cmd launcher"

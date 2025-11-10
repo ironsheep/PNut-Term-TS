@@ -310,7 +310,7 @@ export class MainWindow {
 
     // Listen for debugger packets to create/update debugger windows
     this.serialProcessor.on('debuggerPacketReceived', (packet: Uint8Array) => {
-      // FEATURE FLAG: Skip debugger window creation if disabled (v0.9.0 release)
+      // FEATURE FLAG: Skip debugger window creation if disabled (v0.9.x release)
       if (!FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS) {
         this.logConsoleMessage(`[DEBUGGER] Debugger windows disabled - dropping 416-byte packet from COG${packet[0]}`);
         return; // Early exit - packet is dropped, nothing else happens

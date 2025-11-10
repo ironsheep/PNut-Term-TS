@@ -213,8 +213,8 @@ PLIST_EOF
 #!/bin/bash
 # pnut-term-ts launcher script
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# Run the CLI directly with Node - it will launch Electron when needed
-exec node "$DIR/Resources/app/dist/pnut-term-ts.min.js" "$@"
+# Run using the bundled Electron executable
+exec "$DIR/MacOS/Electron" "$DIR/Resources/app/dist/pnut-term-ts.min.js" "$@"
 LAUNCHER_EOF
     chmod +x "$PKG_DIR/PNut-Term-TS.app/Contents/Resources/bin/pnut-term-ts"
 

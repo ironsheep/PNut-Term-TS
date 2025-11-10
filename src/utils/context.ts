@@ -2,7 +2,7 @@
 /** @format */
 
 const ENABLE_CONSOLE_LOG: boolean = false; // Temporarily enabled for debugging settings
-const ENABLE_DEBUGGER_WINDOWS: boolean = false; // Feature flag: Disable debugger windows for v0.9.0 release
+const ENABLE_DEBUGGER_WINDOWS: boolean = false; // Feature flag: Disable debugger windows for v0.9.x release
 
 // Export feature flags for use throughout the application
 export const FEATURE_FLAGS = {

@@ -105,10 +105,10 @@ for arch in "${ARCHITECTURES[@]}"; do
     cp -r dist "$pkg_dir/resources/app/"
 
     # Create package.json for Electron (pointing to electron-main.js)
-    cat > "$pkg_dir/resources/app/package.json" << 'PACKAGE_EOF'
+    cat > "$pkg_dir/resources/app/package.json" << PACKAGE_EOF
 {
   "name": "pnut-term-ts",
-  "version": "0.5.0",
+  "version": "${VERSION}",
   "main": "dist/electron-main.js",
   "description": "Propeller 2 Debug Terminal",
   "author": "Iron Sheep Productions, LLC",
@@ -210,8 +210,8 @@ PACKAGE_EOF
 # pnut-term-ts launcher script for Linux
 # Get the directory where this script is located and go up one level
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Run the CLI directly with Node - it will launch Electron when needed
-exec node "$DIR/resources/app/dist/pnut-term-ts.min.js" "$@"
+# Run using the bundled Electron executable
+exec "$DIR/electron" "$DIR/resources/app/dist/pnut-term-ts.min.js" "$@"
 LAUNCHER_EOF
 
     # Make launcher executable
