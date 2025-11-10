@@ -73,7 +73,8 @@ The User Guide provides:
 - Replacement for Propeller Serial Terminal
 - Downloads a compiled file to the P2 RAM or FLASH
 - Switches to PST behavior after download
-- (Will have) Built-in support for all debug displays supported by PNut
+- Built-in support for all debug displays supported by PNut
+- *Single-Step debugger support coming Soon!*
 - Full logging support for all traffic to/from P2
 - Automatic time-stamped log names for each new download
 - PropPlug can be selected from the command line or within the application.
@@ -95,7 +96,7 @@ We are implementing the Graphical Debug Display support over time. Here's a full
 | Bitmap   | ✅ Implemented, v51a                     |
 | MIDI     | ✅ Implemented, v51a                     |
 | Spectro  | ✅ Implemented, v51a                     |
-| Debugger | ⬜ Started, not ready for Use            |
+| Debugger | !!! **Started, not ready for Use**            |
 
 ## Installing PNut-Term-TS
 
