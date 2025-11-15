@@ -5,6 +5,15 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2025-11-14
+
+### Changes
+
+- Improve main window layout when --IDE mode (used by VSCode)
+- Use Local time within debug and USB log files, not UTC
+- Disable Chromium sandbox to prevent Linux runtime error requiring root permissions
+- Fixed macOS signing so that .dmg's can now be notarised
+
 ## [0.9.1] - 2025-11-09
 
 - Packaging cleanup

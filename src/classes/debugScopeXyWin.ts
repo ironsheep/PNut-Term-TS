@@ -455,7 +455,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       title: this.windowTitle,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

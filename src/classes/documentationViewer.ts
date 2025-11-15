@@ -41,7 +41,8 @@ export class DocumentationViewer {
       title: 'PNut-Term-TS Documentation',
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

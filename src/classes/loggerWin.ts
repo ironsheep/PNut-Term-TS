@@ -7,7 +7,7 @@ import { Context } from '../utils/context';
 import { DebugWindowBase } from './debugWindowBase';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ensureDirExists, getFormattedDateTime } from '../utils/files';
+import { ensureDirExists, getFormattedDateTime, getFormattedDateTimeISO } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
 import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool';
 import { PerformanceMonitor } from './shared/performanceMonitor';
@@ -221,7 +221,7 @@ export class LoggerWindow extends DebugWindowBase {
         this.logConsoleMessage('[DEBUG LOGGER] Write stream opened with fd:', fd);
 
         // Write header and force flush to ensure file is created
-        this.logFile!.write(`=== Debug Logger Session Started at ${new Date().toISOString()} ===\n`);
+        this.logFile!.write(`=== Debug Logger Session Started at ${getFormattedDateTimeISO()} ===\n`);
         this.logFile!.write(`Program: ${basename}\n`);
         this.logFile!.write(`=====================================\n\n`, (err) => {
           if (err) {
@@ -318,7 +318,8 @@ export class LoggerWindow extends DebugWindowBase {
       title: 'Debug Logger',
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       },
       backgroundColor: this.theme.backgroundColor,
       show: false, // Will show when ready
@@ -451,7 +452,7 @@ export class LoggerWindow extends DebugWindowBase {
 
       // Close log file
       if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-        this.logFile.write(`\n=== Debug Logger Session Ended at ${new Date().toISOString()} ===\n`);
+        this.logFile.write(`\n=== Debug Logger Session Ended at ${getFormattedDateTimeISO()} ===\n`);
         this.logFile.end();
         this.logFile = null;
       }
@@ -1167,7 +1168,7 @@ export class LoggerWindow extends DebugWindowBase {
    * RACE CONDITION FIX: Buffer messages if log file isn't ready yet
    */
   private writeToLog(message: string): void {
-    const timestamp = new Date().toISOString();
+    const timestamp = getFormattedDateTimeISO();
     // Strip trailing CR/LF from message before logging (messages arrive with line endings from P2)
     const cleanMessage = message.replace(/[\r\n]+$/, '');
     const logEntry = `[${timestamp}] ${cleanMessage}\n`;
@@ -1321,7 +1322,7 @@ export class LoggerWindow extends DebugWindowBase {
 
     // Write separator in log file only if stream is still writable
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      this.logFile.write(`\n=== Output Cleared at ${new Date().toISOString()} ===\n\n`);
+      this.logFile.write(`\n=== Output Cleared at ${getFormattedDateTimeISO()} ===\n\n`);
     }
   }
 
@@ -1348,7 +1349,7 @@ export class LoggerWindow extends DebugWindowBase {
     // Step 2: Close current log file with proper cleanup
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       // Write session end message to old log
-      this.logFile.write(`\n=== Session ended due to DTR Reset at ${new Date().toISOString()} ===\n`);
+      this.logFile.write(`\n=== Session ended due to DTR Reset at ${getFormattedDateTimeISO()} ===\n`);
 
       // End the old log file and wait for it to close
       const oldLogFile = this.logFile;
@@ -1410,7 +1411,7 @@ export class LoggerWindow extends DebugWindowBase {
     // Step 2: Close current log file with proper cleanup
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       // Write session end message to old log
-      this.logFile.write(`\n=== Session ended due to RTS Reset at ${new Date().toISOString()} ===\n`);
+      this.logFile.write(`\n=== Session ended due to RTS Reset at ${getFormattedDateTimeISO()} ===\n`);
 
       // End the old log file and wait for it to close
       const oldLogFile = this.logFile;
@@ -1474,7 +1475,7 @@ export class LoggerWindow extends DebugWindowBase {
     // Step 2: Close current log file with proper cleanup
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
       // Write session end message to old log
-      this.logFile.write(`\n=== Session ended - Download Started at ${new Date().toISOString()} ===\n`);
+      this.logFile.write(`\n=== Session ended - Download Started at ${getFormattedDateTimeISO()} ===\n`);
 
       // End the old log file and wait for it to close
       const oldLogFile = this.logFile;
@@ -1533,7 +1534,7 @@ export class LoggerWindow extends DebugWindowBase {
 
     // Close log file
     if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      this.logFile.write(`\n=== Debug Logger Session Ended at ${new Date().toISOString()} ===\n`);
+      this.logFile.write(`\n=== Debug Logger Session Ended at ${getFormattedDateTimeISO()} ===\n`);
       this.logFile.end();
       this.logFile = null;
       this.logConsoleMessage('[DEBUG LOGGER] Log file closed');

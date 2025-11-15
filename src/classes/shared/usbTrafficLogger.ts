@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { getFormattedDateTimeISO } from '../../utils/files';
 
 /**
  * USBTrafficLogger - Asynchronous USB packet hex dump logger
@@ -51,7 +52,7 @@ export class USBTrafficLogger {
 
       // Write session header
       const header = `\n${'='.repeat(80)}\n` +
-                    `USB Traffic Log Session Started: ${new Date().toISOString()}\n` +
+                    `USB Traffic Log Session Started: ${getFormattedDateTimeISO()}\n` +
                     `${'='.repeat(80)}\n`;
       this.logStream.write(header);
 
@@ -69,7 +70,7 @@ export class USBTrafficLogger {
   public disable(): void {
     if (this.logStream) {
       const footer = `\n${'='.repeat(80)}\n` +
-                    `USB Traffic Log Session Ended: ${new Date().toISOString()}\n` +
+                    `USB Traffic Log Session Ended: ${getFormattedDateTimeISO()}\n` +
                     `Packets Logged: ${this.packetsLogged}, Bytes Logged: ${this.bytesLogged}\n` +
                     `${'='.repeat(80)}\n\n`;
       this.logStream.write(footer);
@@ -154,8 +155,8 @@ export class USBTrafficLogger {
   private formatHexDump(data: Uint8Array, timestamp: number, direction: 'RECV' | 'SEND'): string {
     const lines: string[] = [];
 
-    // Header with timestamp
-    const timestampStr = new Date(timestamp).toISOString();
+    // Header with timestamp (convert millisecond timestamp to local time)
+    const timestampStr = getFormattedDateTimeISO();
     const verb = direction === 'RECV' ? 'Received' : 'Sent';
     lines.push(`[USB ${direction} ${timestampStr}] ${verb} ${data.length} bytes`);
     lines.push(`[USB ${direction} HEX/ASCII]:`);

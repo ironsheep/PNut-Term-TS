@@ -547,7 +547,8 @@ export class DebugPlotWindow extends DebugWindowBase {
       show: false, // Start hidden to prevent flashing
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

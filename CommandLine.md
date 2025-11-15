@@ -17,7 +17,7 @@ Our new PNut-Term-TS will show you the following when you specify `-h` or `--hel
 ```text
 PNut-Term-TS: Usage: pnut-term-ts [options]
 
-PNut Terminal TS - v0.9.0
+PNut Terminal TS - v0.9.x
 
 Options:
   -V, --version             Output the version number
@@ -58,7 +58,7 @@ Options:
          In IDE mode: VSCode SPIN2 extension controls DTR/RTS via --rts flag
 
 pnut-term-ts: * Propeller Debug Terminal 'pnut-term-ts' (c) 2025 Iron Sheep Productions, LLC., Parallax Inc.
-pnut-term-ts: * Version 0.9.0, {buildDateHere}
+pnut-term-ts: * Version 0.9.x, {buildDateHere}
 ```
 
 These options should already make sense but here's a light-weight recap:
@@ -68,7 +68,7 @@ These options should already make sense but here's a light-weight recap:
 | <pre>-V, -\-version</pre>          | Shows the PNut Term TS version information                     |
 | <pre>-r, -\-ram {fileSpec}</pre>   | Download binary file to RAM and run                            |
 | <pre>-f, -\-flash {fileSpec}</pre> | Download binary file to FLASH and run                          |
-| <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000)                          |
+| <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000)<br>Used for runtime DEBUG communication after download.<br>Downloads always use 2 Mbps (future: configurable).<br>Match this to your code's DEBUG_BAUD setting. |
 | <pre>-p, -\-plug {dvcNode}</pre>   | Specify USB serial device (auto-detects if only one connected) |
 | <pre>-n, -\-dvcnodes</pre>         | List all available USB PropPlug devices                        |
 | <pre>-d, -\-debug</pre>            | Enable debug-level messaging                                   |

@@ -452,7 +452,8 @@ export class DebugScopeWindow extends DebugWindowBase {
       y: windowY,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

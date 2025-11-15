@@ -2491,7 +2491,8 @@ export class DebugFFTWindow extends DebugWindowBase {
       useContentSize: true, // CRITICAL: Makes width/height refer to client area, not total window
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

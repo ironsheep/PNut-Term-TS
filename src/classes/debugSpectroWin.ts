@@ -1048,7 +1048,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
       title: this.displaySpec.windowTitle,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

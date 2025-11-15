@@ -258,7 +258,8 @@ export class DebugMidiWindow extends DebugWindowBase {
       title: this._windowTitle,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 

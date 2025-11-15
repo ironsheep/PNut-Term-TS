@@ -10,6 +10,8 @@ import { waitMSec, waitSec } from './timerUtils';
 import { Context } from './context';
 import { EventEmitter } from 'events';
 
+// Download baud rate: Fixed at 2 Mbps for fast, reliable binary transfers
+// Future: Will be configurable via preferences/CLI
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
 export class UsbSerial extends EventEmitter {
@@ -26,8 +28,8 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
-  // This should be set by MainWindow before creating the port
-  // No hardcoded default - MainWindow owns the baud rate decision cascade
+  // Communication baud rate: Used for runtime debug/terminal communication
+  // Set by MainWindow via setCommBaudRate() from CLI (-b flag), preferences, or default (115200)
   static desiredCommsBaudRate: number = 115200; // Will be overridden by setCommBaudRate()
 
   private context: Context;
@@ -36,6 +38,8 @@ export class UsbSerial extends EventEmitter {
   private _serialPort: SerialPort;
   // Parser removed - was corrupting binary data! Now using manual P2 detection
   private _p2DetectionBuffer: string = '';
+  // Download baud rate: Always 2 Mbps currently (future: user-configurable)
+  // Accessed via getDownloadBaudRate() by MainWindow during downloads
   private _downloadBaud: number = DEFAULT_DOWNLOAD_BAUD;
   private _p2DeviceId: string = '';
   private _p2loadLimit: number = 0;
@@ -287,6 +291,23 @@ export class UsbSerial extends EventEmitter {
       return this._serialPort.baudRate;
     }
     return 0;
+  }
+
+  /**
+   * Get the download baud rate used for binary transfers
+   * Currently hardcoded at 2 Mbps, future: user-configurable
+   */
+  public getDownloadBaudRate(): number {
+    return this._downloadBaud;
+  }
+
+  /**
+   * Set the download baud rate (for future configuration support)
+   * @param baudRate - Baud rate for downloads (typically 2000000)
+   */
+  public setDownloadBaudRate(baudRate: number): void {
+    this._downloadBaud = baudRate;
+    this.logConsoleMessage(`[DOWNLOAD BAUD] Set to ${baudRate}`);
   }
 
   /**

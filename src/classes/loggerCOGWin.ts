@@ -189,7 +189,8 @@ export class LoggerCOGWindow extends DebugWindowBase {
       title: `COG ${this.cogId} Debug`,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       },
       backgroundColor: this.theme.backgroundColor,
       show: false, // Will show when ready

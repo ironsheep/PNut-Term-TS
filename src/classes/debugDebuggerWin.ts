@@ -1764,10 +1764,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       title: `P2 Debugger - COG ${this.cogId}`,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
-    
+
     // Register with WindowPlacer for position tracking (only if using auto-placement)
     // Debugger uses windowDetails parameter, not displaySpec
     const usedAutoPlacement = (windowDetails?.x === undefined && windowDetails?.y === undefined);

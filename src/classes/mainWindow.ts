@@ -1470,7 +1470,7 @@ export class MainWindow {
   private syncBuffer: string = '';
   private lastSyncTime: number = 0;
   private readonly MAX_LINE_CHARS = 80; // Typical max line length
-  private readonly DEFAULT_BAUD_RATE = 115200; // Default P2 baud rate
+  private readonly DEFAULT_BAUD_RATE = 115200; // Fallback for debug/terminal communication
 
   /**
    * Calculate timeout based on baud rate - time to transmit MAX_LINE_CHARS
@@ -2082,7 +2082,8 @@ export class MainWindow {
       y: this.mainWindowGeometry.yOffset,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false // Disable sandbox - not needed for local dev tool with hardware access
       }
     });
 
@@ -2270,10 +2271,12 @@ export class MainWindow {
   }
 
   private createIDEModeHTML(): string {
+    const dataEntryBGColor: string = this.termColors.xmitBGColor;
+    const dataEntryFGColor: string = this.termColors.xmitFGColor;
     const logContentBGColor: string = this.termColors.rcvBGColor;
     const logContentFGColor: string = this.termColors.rcvFGColor;
 
-    // Minimal UI for IDE mode - just log content
+    // IDE mode with data entry and full status bar
     return `<!DOCTYPE html>
   <html>
     <head>
@@ -2291,16 +2294,37 @@ export class MainWindow {
           font-size: 12px;
           overflow: hidden;
         }
+        #dataEntry {
+          position: fixed;
+          top: 0;
+          left: 8px;
+          right: 8px;
+          padding: 8px;
+          margin: 4px;
+          background-color: ${dataEntryBGColor};
+          color: ${dataEntryFGColor};
+          height: 36px;
+          font-size: 14px;
+          border: 2px inset #c0c0c0;
+          border-radius: 2px;
+          box-shadow: inset 2px 2px 4px rgba(0,0,0,0.1);
+          font-family: 'Courier New', monospace;
+          z-index: 1;
+        }
         #pst-content {
           position: absolute;
-          top: 0;
-          bottom: 20px;
-          left: 0;
-          right: 0;
+          top: 60px;
+          bottom: 41px;
+          left: 8px;
+          right: 8px;
           overflow-y: auto;
-          padding: 5px;
+          padding: 10px;
           background-color: ${logContentBGColor};
           color: ${logContentFGColor};
+          border: 2px inset #c0c0c0;
+          border-radius: 2px;
+          box-shadow: inset 2px 2px 4px rgba(0,0,0,0.1);
+          margin: 4px;
           font-family: 'Parallax', Consolas, monospace;
           white-space: pre-wrap;
         }
@@ -2314,27 +2338,79 @@ export class MainWindow {
           bottom: 0;
           left: 0;
           right: 0;
-          height: 20px;
+          height: 41px;
           background-color: #f0f0f0;
           border-top: 1px solid #ccc;
           display: flex;
+          justify-content: space-between;
           align-items: center;
-          padding: 0 5px;
+          padding: 0 10px;
           font-size: 11px;
+          z-index: 100;
+        }
+        .status-left {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+        .status-right {
+          display: flex;
+          align-items: center;
+          gap: 15px;
         }
         .status-field {
-          margin-right: 15px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .status-label {
+          font-weight: normal;
+          color: #333;
+        }
+        .status-value {
+          padding: 2px 5px;
+          background-color: #e0e0e0;
+          border-radius: 3px;
+          font-family: monospace;
+          font-size: 11px;
         }
       </style>
     </head>
     <body>
+      <input type="text" id="dataEntry" placeholder="Enter text here">
       <div id="pst-content"></div>
       <div id="status-bar">
-        <div class="status-field">
-          <span id="connection-status">Disconnected</span>
+        <div class="status-left">
+          <div id="connection-status" class="status-field">
+            <span class="status-label">Connected</span>
+            <span id="conn-led" style="color: #808080; margin-left: 5px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
+          </div>
+          <div id="active-cogs" class="status-field">
+            <span class="status-label">Active COGs:</span>
+            <span class="status-value" id="cogs-status">None</span>
+          </div>
+          <div id="log-status" class="status-field">
+            <span class="status-label">Logging</span>
+            <span id="log-led" style="color: #FFBF00; margin-left: 5px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
+          </div>
         </div>
-        <div class="status-field">
-          <span id="port-info"></span>
+        <div class="status-right">
+          <div id="echo-control" class="status-field">
+            <label style="display: flex; align-items: center;" title="When checked, filters out echoed characters from receive display">
+              <span class="status-label">Echo</span>
+              <input type="checkbox" id="echo-checkbox" style="margin-left: 5px;">
+            </label>
+          </div>
+          <div id="activity-indicators" class="status-field">
+            <span class="status-label">TX</span>
+            <span id="tx-led" style="color: #333; margin-left: 3px; margin-right: 10px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
+            <span class="status-label">RX</span>
+            <span id="rx-led" style="color: #333; margin-left: 3px; font-size: 18px; text-shadow: 0 0 2px #000;">●</span>
+          </div>
+          <div id="propPlug" class="status-field">
+            <span class="status-label">Port:</span>
+            <span class="status-value"> </span>
+          </div>
         </div>
       </div>
     </body>
@@ -4143,7 +4219,8 @@ export class MainWindow {
           show: false,
           webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false
+            contextIsolation: false,
+            sandbox: false
           }
         });
 
@@ -5869,18 +5946,16 @@ export class MainWindow {
     }
   }
 
-  // P2 download always happens at 2Mbps for reliability
-  private readonly DOWNLOAD_BAUD_RATE = 2000000;
-
   private async executeDownload(filePath: string, toFlash: boolean, target: string): Promise<void> {
     if (this._serialPort && this.downloader) {
       try {
         this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
         this.updateRecordingStatus(`Downloading to ${target}...`);
 
-        // Get current debug baud rate (from CLI, preferences, or app default)
+        // Get debug baud rate for runtime communication (from CLI -b, preferences, or default 115200)
+        // Download baud rate is separate (from UsbSerial, currently hardcoded 2 Mbps, future: configurable)
         const debugBaudRate = this._serialBaud;
-        const downloadBaudRate = this.DOWNLOAD_BAUD_RATE; // Fixed download baud rate for P2
+        const downloadBaudRate = this._serialPort.getDownloadBaudRate();
 
         // CRITICAL: Log current state before any changes
         const currentBaud = this._serialPort.getCurrentBaudRate();
@@ -5937,8 +6012,8 @@ export class MainWindow {
           }
         }
 
-        // Switch back to debug baud rate IMMEDIATELY if it was different
-        // P2 code is already running, we need to be ready to receive!
+        // Switch back to debug baud rate for runtime DEBUG output from P2 code
+        // User's P2 code may be configured for different baud than download speed
         const postDownloadBaud = this._serialPort.getCurrentBaudRate();
         if (postDownloadBaud !== debugBaudRate) {
           this.logConsoleMessage(
@@ -5983,6 +6058,11 @@ export class MainWindow {
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_RESTORED ${actualBaud} baud (after download)`);
           }
+        } else {
+          // Optimization: Debug baud matches download baud, no switch needed
+          this.logConsoleMessage(
+            `[BAUD RATE] Debug baud matches download baud (${debugBaudRate}), no switch needed - ready to receive`
+          );
         }
 
         if (downloadResult.success) {
@@ -6515,7 +6595,7 @@ export class MainWindow {
    * Command line takes precedence over all preferences
    */
   private initializeSerialBaud(): void {
-    const APP_DEFAULT_BAUD = 115200; // Default debug/terminal baud rate (NOT download rate!)
+    const APP_DEFAULT_BAUD = 115200; // Default debug/terminal baud (runtime communication after download)
 
     // Check if baud rate was specified on command line
     if (this.context.runEnvironment.debugBaudRateFromCLI && this.context.runEnvironment.debugBaudrate) {

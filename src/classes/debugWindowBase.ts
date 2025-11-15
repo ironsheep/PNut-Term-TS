@@ -1320,7 +1320,8 @@ export abstract class DebugWindowBase extends EventEmitter {
           show: false,
           webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false
+            contextIsolation: false,
+            sandbox: false
           }
         });
 
@@ -1496,7 +1497,8 @@ export abstract class DebugWindowBase extends EventEmitter {
         show: false,
         webPreferences: {
           nodeIntegration: true,
-          contextIsolation: false
+          contextIsolation: false,
+          sandbox: false
         }
       });
 

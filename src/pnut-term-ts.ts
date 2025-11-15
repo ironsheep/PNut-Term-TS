@@ -43,7 +43,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.1';
+  private version: string = '0.9.2';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -160,7 +160,7 @@ export class DebugTerminalInTypeScript {
       .description(`PNut Terminal TS - v${this.version}`)
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
-      .option('-b, --debugbaud <rate>', 'set debug baud rate (default 2000000)')
+      .option('-b, --debugbaud <rate>', 'set debug baud rate for runtime communication (default 2000000)')
       .option(
         '-p, --plug <dvcNode>',
         'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)'
@@ -626,7 +626,7 @@ export class DebugTerminalInTypeScript {
       const electronProcess = spawn(electronPath, electronArgs, {
         stdio: 'inherit', // Pass through stdin/stdout/stderr
         detached: false,
-        env: env  // Use environment without ELECTRON_RUN_AS_NODE
+        env: env // Use environment without ELECTRON_RUN_AS_NODE
       });
 
       electronProcess.on('close', (code) => {

@@ -36,7 +36,8 @@ export class NewRecordingDialog {
       resizable: false,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 
@@ -182,7 +183,8 @@ export class NewRecordingDialog {
       resizable: false,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        sandbox: false
       }
     });
 
