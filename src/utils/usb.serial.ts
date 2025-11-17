@@ -421,18 +421,37 @@ export class UsbSerial extends EventEmitter {
           );
         }
 
-        if (port.vendorId == '0403' && port.productId == '6015') {
+        // Check if match-vendor-only mode is enabled
+        const vendorOnlyMode = ctx?.runEnvironment.matchVendorOnly ?? false;
+
+        // Apply filtering based on mode
+        // VID 0x0403 = FTDI (USB-to-serial chip manufacturer)
+        // PID 0x6015 = Parallax Prop Plug (specific FTDI-based product)
+        const isMatch = vendorOnlyMode
+          ? port.vendorId == '0403' // Match any FTDI device
+          : port.vendorId == '0403' && port.productId == '6015'; // Match exact Parallax Prop Plug
+
+        if (isMatch) {
           devicesFound.push(`${deviceNode},${serialNumber}`);
           if (ctx) {
-            ctx.logger.verboseMsg(`*   ✓ PropPlug device found: ${deviceNode} (SN: ${serialNumber})`);
+            const matchDesc = vendorOnlyMode
+              ? `FTDI device (VID:${port.vendorId}, PID:${port.productId})`
+              : 'Parallax Prop Plug';
+            ctx.logger.verboseMsg(`*   ✓ ${matchDesc} found: ${deviceNode} (SN: ${serialNumber})`);
           }
         }
       });
 
       if (devicesFound.length === 0 && ports.length > 0) {
         if (ctx) {
-          ctx.logger.debugMsg(`* No Parallax PropPlug devices (0403:6015) found among ${ports.length} serial port(s)`);
-          ctx.logger.verboseMsg(`* Hint: Looking specifically for VID:0403 PID:6015 (Parallax PropPlug)`);
+          const vendorOnlyMode = ctx.runEnvironment.matchVendorOnly ?? false;
+          if (vendorOnlyMode) {
+            ctx.logger.debugMsg(`* No FTDI devices (VID:0403) found among ${ports.length} serial port(s)`);
+            ctx.logger.verboseMsg(`* Hint: Match-vendor-only mode - looking for any VID:0403 device`);
+          } else {
+            ctx.logger.debugMsg(`* No Parallax PropPlug devices (0403:6015) found among ${ports.length} serial port(s)`);
+            ctx.logger.verboseMsg(`* Hint: Looking specifically for VID:0403 PID:6015 (Parallax PropPlug)`);
+          }
         }
       }
     } catch (error: any) {

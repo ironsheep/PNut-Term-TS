@@ -25,10 +25,11 @@ Options:
   -r, --ram <fileSpec>      Download to RAM and run
   -b, --debug(b)aud {rate}  set debug baud rate (default 2000000)
   -p, --plug <dvcNode>      Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)
-  -n, --dvcnodes            List available USB PropPlug device (n)odes
+  -n, --dvcnodes            List available USB serial device (n)odes (use with -m to list all FTDI devices)
   -d, --debug               Output Term-TS Debug messages
   -v, --verbose             Output Term-TS Verbose messages
   -q, --quiet               Quiet mode (suppress Term-TS banner and non-error text)
+  -m, --match-vendor-only   Match any FTDI device (VID 0x0403), ignore product ID
   --ide                     IDE mode - minimal UI for VSCode/IDE integration
   --rts                     Use RTS instead of DTR for device reset (requires --ide)
   -u, --log-usb-trfc        Enable USB traffic logging (timestamped log file)
@@ -40,6 +41,9 @@ Options:
          $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
          $ pnut-term-ts -r myTopfile.bin                         # download to RAM (auto-detects single USB device)
          $ pnut-term-ts -r myTopfile.bin -p P9cektn7             # download myTopfile.bin to RAM and run
+         $ pnut-term-ts -n                                       # list available Parallax Prop Plug devices
+         $ pnut-term-ts -n -m                                    # list all FTDI devices (any VID 0x0403)
+         $ pnut-term-ts -m -p /dev/ttyUSB0                       # connect to any FTDI device
          $ pnut-term-ts --ide                                    # IDE mode (auto-detects single USB device)
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
          $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
@@ -70,10 +74,11 @@ These options should already make sense but here's a light-weight recap:
 | <pre>-f, -\-flash {fileSpec}</pre> | Download binary file to FLASH and run                          |
 | <pre>-b, -\-debugbaud {rate}</pre> | Set debug baud rate (default 2000000)<br>Used for runtime DEBUG communication after download.<br>Downloads always use 2 Mbps (future: configurable).<br>Match this to your code's DEBUG_BAUD setting. |
 | <pre>-p, -\-plug {dvcNode}</pre>   | Specify USB serial device (auto-detects if only one connected) |
-| <pre>-n, -\-dvcnodes</pre>         | List all available USB PropPlug devices                        |
+| <pre>-n, -\-dvcnodes</pre>         | List all available USB serial devices (PropPlug by default)    |
 | <pre>-d, -\-debug</pre>            | Enable debug-level messaging                                   |
 | <pre>-v, -\-verbose</pre>          | Enable verbose-level messaging                                 |
 | <pre>-q, -\-quiet</pre>            | Suppress banner and non-error messages                         |
+| <pre>-m, -\-match-vendor-only</pre> | Match any FTDI device (VID 0x0403), ignore product ID<br>Useful for generic FTDI adapters or custom P2 boards |
 | <pre>-\-ide</pre>                  | Enable IDE mode for VSCode/IDE integration                     |
 | <pre>-\-rts</pre>                  | Use RTS instead of DTR for device reset (requires --ide)       |
 | <pre>-u, -\-log-usb-trfc</pre>     | Enable USB traffic logging to timestamped log file             |

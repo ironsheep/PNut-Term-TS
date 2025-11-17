@@ -43,7 +43,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.2';
+  private version: string = '0.9.3';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -165,10 +165,11 @@ export class DebugTerminalInTypeScript {
         '-p, --plug <dvcNode>',
         'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)'
       )
-      .option('-n, --dvcnodes', 'List available USB PropPlug device (n)odes')
+      .option('-n, --dvcnodes', 'List available USB serial device (n)odes (use with -m to list all FTDI devices)')
       .option('-d, --debug', 'Output Term-TS Debug messages')
       .option('-v, --verbose', 'Output Term-TS Verbose messages')
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
+      .option('-m, --match-vendor-only', 'Match any FTDI device (VID 0x0403), ignore product ID')
       .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
       .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)')
       .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
@@ -286,6 +287,12 @@ export class DebugTerminalInTypeScript {
       this.context.runEnvironment.rtsOverride = true;
       const modeText = options.ide ? 'IDE mode' : 'standalone mode';
       this.context.logger.verboseMsg(`RTS control line enabled for ${modeText}`);
+    }
+
+    // Store match-vendor-only flag for USB device filtering
+    if (options.matchVendorOnly) {
+      this.context.runEnvironment.matchVendorOnly = true;
+      this.context.logger.verboseMsg(`USB device matching: Any FTDI device (VID 0x0403), ignoring product ID`);
     }
 
     // Store debug baud rate if specified on command line
@@ -537,10 +544,12 @@ export class DebugTerminalInTypeScript {
       }
 
       if (this.context.runEnvironment.serialPortDevices.length === 0) {
-        this.context.logger.debugMsg('* No PropPlug devices found during enumeration');
+        const deviceType = this.context.runEnvironment.matchVendorOnly ? 'FTDI devices' : 'PropPlug devices';
+        this.context.logger.debugMsg(`* No ${deviceType} found during enumeration`);
       } else {
+        const deviceType = this.context.runEnvironment.matchVendorOnly ? 'FTDI device(s)' : 'PropPlug device(s)';
         this.context.logger.debugMsg(
-          `* Successfully enumerated ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s)`
+          `* Successfully enumerated ${this.context.runEnvironment.serialPortDevices.length} ${deviceType}`
         );
       }
     } catch (error: any) {

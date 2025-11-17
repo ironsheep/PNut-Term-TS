@@ -3614,7 +3614,7 @@ export class MainWindow {
             // No device specified - check what's available
             try {
               const { UsbSerial } = require('../utils/usb.serial');
-              const availableDevices = await UsbSerial.serialDeviceList();
+              const availableDevices = await UsbSerial.serialDeviceList(this.context);
 
               if (availableDevices.length === 0) {
                 this.appendLog(`⚠️ No PropPlug devices found`);

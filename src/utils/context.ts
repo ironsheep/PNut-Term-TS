@@ -35,6 +35,7 @@ export interface RuntimeEnvironment {
   ideMode: boolean;
   rtsOverride: boolean;
   resetOnConnection: boolean; // Control DTR/RTS reset on port open
+  matchVendorOnly: boolean; // Match any FTDI device (0x0403), ignore PID
   loggingEnabled: boolean;
   loggingLevel: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
   logToFile: boolean;
@@ -137,6 +138,7 @@ export class Context {
       ideMode: false,
       rtsOverride: false, // Default to DTR unless IDE specifies RTS
       resetOnConnection: true, // Default to traditional mode (reset on connect)
+      matchVendorOnly: false, // Default: require exact VID+PID match (0x0403:0x6015)
       loggingEnabled: false, // Default to false for production
       loggingLevel: 'INFO', // Default log level
       logToFile: false,
