@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sign application bundles for distribution
-# Strategy: Only sign components that electron-builder doesn't handle
+# CRITICAL: Sign in correct order (innermost → outermost) WITHOUT --deep flag
 
 set -e
 
@@ -66,53 +66,7 @@ else
     SKIP_SIGNING=false
 fi
 
-# Helper function: Check if a file is already validly signed
-is_signed() {
-    local file=$1
-    codesign -v "$file" 2>/dev/null
-    return $?
-}
-
-# Helper function: Sign a file only if not already signed
-sign_if_needed() {
-    local file=$1
-    local description=$2
-    local use_entitlements=$3
-
-    if [ ! -f "$file" ]; then
-        echo "      ⚠️  Not found: $description"
-        return 0
-    fi
-
-    if is_signed "$file"; then
-        echo "      ✓ Already signed: $description"
-        return 0
-    fi
-
-    echo "      → Signing: $description"
-    if [ "$use_entitlements" = "true" ]; then
-        if ! codesign --force --sign "$IDENTITY" \
-            --options runtime \
-            --timestamp \
-            --entitlements entitlements.plist \
-            "$file" 2>&1; then
-            echo "      ❌ Failed to sign: $description"
-            return 1
-        fi
-    else
-        if ! codesign --force --sign "$IDENTITY" \
-            --options runtime \
-            --timestamp \
-            "$file" 2>&1; then
-            echo "      ❌ Failed to sign: $description"
-            return 1
-        fi
-    fi
-    echo "      ✅ Signed: $description"
-    return 0
-}
-
-# Function to sign missing components in an app
+# Function to sign an app - COMPREHENSIVE, PROPER ORDER, NO --deep
 sign_app() {
     local APP_PATH=$1
     local ARCH=$2
@@ -125,73 +79,277 @@ sign_app() {
     echo "🔏 Signing $ARCH app..."
     echo "   Path: $APP_PATH"
     echo ""
-    echo "   Strategy: Sign only what electron-builder doesn't handle"
-    echo "   - electron-builder signs: Electron core, frameworks, helpers"
-    echo "   - This script signs: Native modules (.node), ShipIt executables"
+    echo "   Strategy: STRIP existing signatures, then sign EVERYTHING in correct nested order (NO --deep flag)"
+    echo "   Order: strip all → dylibs → helpers → framework binaries → frameworks → helper apps → main → bundle"
     echo ""
 
-    # Step 1: Sign SerialPort native modules in node_modules
-    echo "   📦 Step 1/3: Signing SerialPort native modules in node_modules..."
-    if [ -d "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release" ]; then
-        sign_if_needed \
-            "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node" \
-            "bindings.node (node_modules)" \
-            false
-    else
-        echo "      ℹ️  SerialPort node_modules directory not found"
+    # Step 0: Strip ALL existing signatures (Electron comes pre-signed, must remove first)
+    echo "   🧹 Step 0/9: Stripping existing signatures..."
+    echo "      Reason: Electron binaries come pre-signed. Re-signing without stripping breaks signature chains."
+    echo ""
+
+    # Strip main app bundle signature
+    codesign --remove-signature "$APP_PATH" 2>/dev/null || true
+
+    # Strip main executable signature
+    [ -f "$APP_PATH/Contents/MacOS/Electron" ] && codesign --remove-signature "$APP_PATH/Contents/MacOS/Electron" 2>/dev/null || true
+
+    # Strip all helper apps
+    find "$APP_PATH/Contents/Frameworks" -name "*.app" -type d -maxdepth 1 2>/dev/null | while read -r helper_app; do
+        codesign --remove-signature "$helper_app" 2>/dev/null || true
+        local app_name=$(basename "$helper_app" .app)
+        [ -f "$helper_app/Contents/MacOS/$app_name" ] && codesign --remove-signature "$helper_app/Contents/MacOS/$app_name" 2>/dev/null || true
+    done
+
+    # Strip all frameworks
+    for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
+        if [ -d "$framework" ]; then
+            codesign --remove-signature "$framework" 2>/dev/null || true
+            local framework_name=$(basename "$framework" .framework)
+            [ -f "$framework/Versions/A/$framework_name" ] && codesign --remove-signature "$framework/Versions/A/$framework_name" 2>/dev/null || true
+        fi
+    done
+
+    # Strip Electron Framework helpers
+    find "$APP_PATH/Contents/Frameworks/Electron Framework.framework" -type f -perm +111 \
+        -not -name "Electron Framework" -not -name "*.dylib" 2>/dev/null | while read -r helper; do
+        codesign --remove-signature "$helper" 2>/dev/null || true
+    done
+
+    # Strip all dylibs
+    find "$APP_PATH/Contents/Frameworks/Electron Framework.framework" -name "*.dylib" -type f 2>/dev/null | while read -r dylib; do
+        codesign --remove-signature "$dylib" 2>/dev/null || true
+    done
+
+    # Strip native modules
+    [ -f "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node" ] && \
+        codesign --remove-signature "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node" 2>/dev/null || true
+    [ -f "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node" ] && \
+        codesign --remove-signature "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node" 2>/dev/null || true
+
+    # Strip ShipIt executables
+    find "$APP_PATH/Contents/Frameworks/Squirrel.framework" -name "ShipIt" -type f 2>/dev/null | while read -r shipit; do
+        codesign --remove-signature "$shipit" 2>/dev/null || true
+    done
+
+    echo "      ✅ All existing signatures removed"
+    echo ""
+
+    # Verify everything is unsigned
+    echo "   🔍 Verifying all signatures removed..."
+    local unsigned_count=0
+    local still_signed_count=0
+
+    # Check a few key components
+    for component in \
+        "$APP_PATH" \
+        "$APP_PATH/Contents/MacOS/Electron" \
+        "$APP_PATH/Contents/Frameworks/Electron Framework.framework" \
+        "$APP_PATH/Contents/Frameworks/Mantle.framework" \
+        "$APP_PATH/Contents/Frameworks/ReactiveObjC.framework" \
+        "$APP_PATH/Contents/Frameworks/Squirrel.framework"; do
+
+        if [ -e "$component" ]; then
+            if codesign -v "$component" 2>/dev/null; then
+                echo "      ⚠️  Still signed: $(basename "$component")"
+                ((still_signed_count++))
+            else
+                ((unsigned_count++))
+            fi
+        fi
+    done
+
+    if [ $still_signed_count -gt 0 ]; then
+        echo "      ❌ ERROR: $still_signed_count component(s) still signed after stripping!"
+        echo "      Cannot proceed - signature removal failed"
+        return 1
+    fi
+
+    echo "      ✅ Verified: All checked components are unsigned"
+    echo ""
+
+    # Step 1: Sign all .dylib files (deepest level - inside Electron Framework)
+    echo "   📚 Step 1/9: Signing .dylib files..."
+    local dylib_count=0
+    find "$APP_PATH/Contents/Frameworks/Electron Framework.framework" -name "*.dylib" -type f 2>/dev/null | while read -r dylib; do
+        echo "      Signing: $(basename "$dylib")"
+        if ! codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$dylib" 2>&1; then
+            echo "      ⚠️  Warning: Failed to sign $(basename "$dylib")"
+        fi
+        ((dylib_count++))
+    done
+    echo "      ✅ Libraries signed"
+    echo ""
+
+    # Step 2: Sign helper executables inside Electron Framework (chrome_crashpad_handler, etc.)
+    echo "   🔧 Step 2/9: Signing Electron Framework helpers..."
+    find "$APP_PATH/Contents/Frameworks/Electron Framework.framework" -type f -perm +111 \
+        -not -name "Electron Framework" \
+        -not -name "*.dylib" \
+        -not -path "*/Versions/*/Resources/*" 2>/dev/null | while read -r helper; do
+        echo "      Signing: $(basename "$helper")"
+        if ! codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$helper" 2>&1; then
+            echo "      ⚠️  Warning: Failed to sign $(basename "$helper")"
+        fi
+    done
+    echo "      ✅ Framework helpers signed"
+    echo ""
+
+    # Step 3: Sign Electron Framework binary (not the bundle, just the binary)
+    echo "   📦 Step 3/9: Signing Electron Framework binary..."
+    if [ -f "$APP_PATH/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework" ]; then
+        if ! codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework" 2>&1; then
+            echo "      ⚠️  Warning: Failed to sign Electron Framework binary"
+        else
+            echo "      ✅ Electron Framework binary signed"
+        fi
     fi
     echo ""
 
-    # Step 2: Sign SerialPort native modules in prebuilds (darwin only)
-    echo "   📦 Step 2/3: Signing SerialPort native modules in prebuilds..."
-    if [ -d "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64" ]; then
-        sign_if_needed \
-            "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node" \
-            "@serialport+bindings-cpp.node (prebuilds)" \
-            false
-    else
-        echo "      ℹ️  SerialPort prebuilds directory not found"
+    # Step 4: Sign the Electron Framework.framework bundle
+    echo "   📦 Step 4/9: Signing Electron Framework.framework bundle..."
+    if [ -d "$APP_PATH/Contents/Frameworks/Electron Framework.framework" ]; then
+        if ! codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH/Contents/Frameworks/Electron Framework.framework" 2>&1; then
+            echo "      ⚠️  Warning: Failed to sign Electron Framework.framework"
+        else
+            echo "      ✅ Electron Framework.framework signed"
+        fi
     fi
     echo ""
 
-    # Step 3: Sign Squirrel ShipIt executables (with hardened runtime + entitlements)
-    echo "   📦 Step 3/3: Signing Squirrel ShipIt executables..."
-    local shipit_signed=0
+    # Step 5: Sign other frameworks (Mantle, ReactiveObjC, Squirrel)
+    # CRITICAL: Sign ShipIt executables BEFORE signing Squirrel.framework
+    echo "   📦 Step 5/9: Signing other frameworks..."
 
-    # ShipIt location 1: Resources/ShipIt
-    if sign_if_needed \
-        "$APP_PATH/Contents/Frameworks/Squirrel.framework/Resources/ShipIt" \
-        "ShipIt (Resources)" \
-        true; then
-        ((shipit_signed++))
+    # First, sign ShipIt executables inside Squirrel framework (before sealing the framework)
+    find "$APP_PATH/Contents/Frameworks/Squirrel.framework" -name "ShipIt" -type f 2>/dev/null | while read -r shipit; do
+        echo "      Signing ShipIt: $(dirname "$shipit" | xargs basename)"
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --entitlements entitlements.plist \
+            "$shipit" 2>&1 || true
+    done
+
+    # Now sign all frameworks (including Squirrel)
+    for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
+        if [ -d "$framework" ] && [ "$(basename "$framework")" != "Electron Framework.framework" ]; then
+            local framework_name=$(basename "$framework" .framework)
+            echo "      Signing framework: $framework_name"
+
+            # First sign the binary inside the framework
+            if [ -f "$framework/Versions/A/$framework_name" ]; then
+                codesign --force --sign "$IDENTITY" \
+                    --options runtime \
+                    --timestamp \
+                    "$framework/Versions/A/$framework_name" 2>&1 || true
+            fi
+
+            # Then sign the framework bundle itself
+            codesign --force --sign "$IDENTITY" \
+                --options runtime \
+                --timestamp \
+                "$framework" 2>&1 || true
+        fi
+    done
+    echo "      ✅ Other frameworks signed"
+    echo ""
+
+    # Step 6: Sign all helper .app bundles (GPU, Plugin, Renderer, Helper)
+    echo "   🎯 Step 6/9: Signing helper .app bundles..."
+    find "$APP_PATH/Contents/Frameworks" -name "*.app" -type d -maxdepth 1 2>/dev/null | while read -r helper_app; do
+        echo "      Signing: $(basename "$helper_app")"
+
+        # Sign the executable inside first
+        local app_name=$(basename "$helper_app" .app)
+        if [ -f "$helper_app/Contents/MacOS/$app_name" ]; then
+            codesign --force --sign "$IDENTITY" \
+                --options runtime \
+                --timestamp \
+                --entitlements entitlements.plist \
+                "$helper_app/Contents/MacOS/$app_name" 2>&1 || true
+        fi
+
+        # Then sign the .app bundle
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --entitlements entitlements.plist \
+            "$helper_app" 2>&1 || true
+    done
+    echo "      ✅ Helper apps signed"
+    echo ""
+
+    # Step 7: Sign native modules (.node files)
+    # NOTE: ShipIt is now signed in Step 5 (before Squirrel.framework is sealed)
+    echo "   📦 Step 7/9: Signing native modules..."
+
+    # SerialPort .node files in node_modules
+    if [ -f "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node" ]; then
+        echo "      Signing: bindings.node (node_modules)"
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH/Contents/Resources/app/node_modules/@serialport/bindings-cpp/build/Release/bindings.node" 2>&1 || true
     fi
 
-    # ShipIt location 2: Versions/A/Resources/ShipIt
-    if sign_if_needed \
-        "$APP_PATH/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt" \
-        "ShipIt (Versions/A/Resources)" \
-        true; then
-        ((shipit_signed++))
+    # SerialPort .node files in prebuilds
+    if [ -f "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node" ]; then
+        echo "      Signing: @serialport+bindings-cpp.node (prebuilds)"
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH/Contents/Resources/app/prebuilds/darwin-x64+arm64/@serialport+bindings-cpp.node" 2>&1 || true
     fi
 
-    # ShipIt location 3: Versions/Current/Resources/ShipIt
-    if sign_if_needed \
-        "$APP_PATH/Contents/Frameworks/Squirrel.framework/Versions/Current/Resources/ShipIt" \
-        "ShipIt (Versions/Current/Resources)" \
-        true; then
-        ((shipit_signed++))
-    fi
+    echo "      ✅ Native modules signed"
+    echo ""
 
-    if [ $shipit_signed -eq 0 ]; then
-        echo "      ⚠️  No ShipIt executables found or signed"
+    # Step 8: Sign the main Electron executable
+    echo "   🎯 Step 8/9: Signing main Electron executable..."
+    if [ -f "$APP_PATH/Contents/MacOS/Electron" ]; then
+        if ! codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --entitlements entitlements.plist \
+            "$APP_PATH/Contents/MacOS/Electron" 2>&1; then
+            echo "      ⚠️  Warning: Failed to sign main executable"
+        else
+            echo "      ✅ Main executable signed"
+        fi
     fi
     echo ""
 
-    # Final verification
-    echo "   🔍 Verifying overall app signature..."
+    # Step 9: Finally sign the app bundle itself (NEVER use --deep here!)
+    echo "   📱 Step 9/9: Signing app bundle..."
+    if ! codesign --force --sign "$IDENTITY" \
+        --options runtime \
+        --timestamp \
+        --entitlements entitlements.plist \
+        "$APP_PATH" 2>&1; then
+        echo "   ❌ Failed to sign app bundle"
+        return 1
+    fi
+    echo "      ✅ App bundle signed"
+    echo ""
+
+    # Verify the signature
+    echo "   🔍 Verifying signature..."
     if ! codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1; then
-        echo "   ⚠️  Signature verification reported issues (may be acceptable)"
-        echo "      Continuing - notarization service will do final validation"
+        echo "   ⚠️  Verification reported issues"
+        echo "      This may be acceptable - notarization service will do final validation"
     else
         echo "   ✅ Signature verification passed!"
     fi
@@ -249,13 +407,9 @@ if [ "$SKIP_SIGNING" = true ]; then
 else
     echo "✅ App signing complete!"
     echo ""
-    echo "📦 Processed apps:"
+    echo "📦 Signed apps:"
     [ -n "$X64_APP" ] && echo "   - $X64_APP"
     [ -n "$ARM64_APP" ] && echo "   - $ARM64_APP"
-    echo ""
-    echo "📋 Signing strategy used:"
-    echo "   - Skipped: Electron core components (already signed by electron-builder)"
-    echo "   - Signed: Native modules and ShipIt executables (if not already signed)"
     echo ""
     echo "🎯 Next step: Run CREATE-STANDARD-DMGS.command"
 fi
