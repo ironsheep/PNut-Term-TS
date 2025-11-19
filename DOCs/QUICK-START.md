@@ -185,7 +185,7 @@ pnut-term-ts -b 115200 -p /dev/ttyUSB0
 
 ## Next Steps
 
-- **Full Documentation**: See `USER-GUIDE.md` for comprehensive reference
+- **Full Documentation**: See `[USER-GUIDE.md](USER-GUIDE.md)` for comprehensive reference
 - **Report Issues**: https://github.com/ironsheep/PNut-Term-TS/issues
 - **Community Support**: Parallax Forums P2 section
 
