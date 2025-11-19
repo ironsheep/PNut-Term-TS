@@ -6848,8 +6848,8 @@ export class MainWindow {
   public async resetHardware(): Promise<void> {
     this.logMessage('[SIGNAL] Hardware reset requested via signal');
 
-    // Check which control line is configured
-    const useRTS = this.context.runEnvironment.rtsOverride;
+    // Check which control line is configured (per-device setting)
+    const useRTS = this.context.runEnvironment.controlLine === 'RTS';
 
     if (this._serialPort) {
       try {

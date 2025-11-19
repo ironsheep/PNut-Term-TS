@@ -316,6 +316,12 @@ Cog2  Counter: 1234
 - Save current recording buffer to .p2rec file
 - Opens file save dialog
 
+**Select PropPlug**
+- Quick device switching menu
+- Shows currently connected PropPlug devices
+- Checkmark indicates currently selected device
+- "Manage Devices..." opens Preferences to PropPlug Management tab
+
 **Start Recording** (`Ctrl/Cmd+R`)
 - Begin capturing all serial traffic to recording buffer
 - Recording indicator shows "Recording..." status
@@ -421,7 +427,7 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 
 **Effective Value** = Project Local **OR** User Global **OR** App Default (first non-empty value wins)
 
-### Two-Tab Interface
+### Three-Tab Interface
 
 #### User Settings Tab
 - **Global preferences** that apply to all projects
@@ -434,6 +440,14 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 - Each setting has a checkbox to enable override
 - Unchecked settings use User Global or App Default values
 - Only enabled overrides are saved (delta-save strategy)
+- **PropPlug Selection dropdown** for project device preference
+
+#### PropPlug Management Tab
+- **Device inventory** of all known PropPlug devices
+- Edit friendly names for easy identification
+- Configure per-device control line (DTR/RTS)
+- Delete stale or unused devices
+- Automatic discovery of new devices on connection
 
 ### Settings File Locations
 
@@ -490,14 +504,29 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 
 ---
 
+### PropPlug Management
+
+**Per-Device Configuration**
+- Each PropPlug device remembers its own settings
+- Friendly names for easy identification
+- Control line (DTR/RTS) stored per device
+- Automatic discovery of new devices
+
+**Device Selection Priority**
+1. Command-line `-p` flag (if specified)
+2. Project setting (selectedPropPlug)
+3. Auto-detect (if only one device connected)
+4. User selection via UI (multiple devices)
+
 ### Serial Port Settings
 
 **Control Line**
 - **Options**: DTR (Default), RTS
-- **Default**: DTR
+- **Default**: DTR per device (configurable in PropPlug Management)
 - **Description**: Hardware control line used for P2 reset
   - **DTR**: Used by Parallax PropPlug devices
   - **RTS**: Used by some non-Parallax USB serial adapters
+  - **Note**: Now configured per-device in PropPlug Management tab
 
 **Default Baud Rate**
 - **Options**:

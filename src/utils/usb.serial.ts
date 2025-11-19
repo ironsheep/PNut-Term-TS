@@ -14,6 +14,14 @@ import { EventEmitter } from 'events';
 // Future: Will be configurable via preferences/CLI
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
+// Device info returned during enumeration
+export interface DeviceInfo {
+  path: string;           // Device path (e.g., "/dev/ttyUSB0", "COM3")
+  serialNumber: string;   // Device serial number
+  vendorId: number;       // USB Vendor ID (numeric)
+  productId: number;      // USB Product ID (numeric)
+}
+
 export class UsbSerial extends EventEmitter {
   // Console logging control
   private static logConsoleMessageStatic(...args: any[]): void {
@@ -465,6 +473,46 @@ export class UsbSerial extends EventEmitter {
         }
       }
       // Re-throw to let caller handle
+      throw error;
+    }
+    return devicesFound;
+  }
+
+  /**
+   * Get detailed device information for all matching USB devices
+   * Returns full DeviceInfo including VID, PID for PropPlug tracking
+   */
+  static async getDeviceInfoList(ctx?: Context): Promise<DeviceInfo[]> {
+    const devicesFound: DeviceInfo[] = [];
+    try {
+      const ports = await SerialPort.list();
+
+      ports.forEach((port) => {
+        const tmpSerialNumber: string | undefined = port.serialNumber;
+        const serialNumber: string = tmpSerialNumber !== undefined ? tmpSerialNumber : '{unknownSN}';
+        const deviceNode: string = port.path;
+
+        // Check if match-vendor-only mode is enabled
+        const vendorOnlyMode = ctx?.runEnvironment.matchVendorOnly ?? false;
+
+        // Apply filtering based on mode
+        const isMatch = vendorOnlyMode
+          ? port.vendorId == '0403'
+          : port.vendorId == '0403' && port.productId == '6015';
+
+        if (isMatch) {
+          devicesFound.push({
+            path: deviceNode,
+            serialNumber: serialNumber,
+            vendorId: parseInt(port.vendorId || '0', 16),
+            productId: parseInt(port.productId || '0', 16)
+          });
+        }
+      });
+    } catch (error: any) {
+      if (ctx) {
+        ctx.logger.errorMsg(`* Failed to get device info: ${error?.message || error}`);
+      }
       throw error;
     }
     return devicesFound;

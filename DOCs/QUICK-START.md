@@ -10,14 +10,16 @@
    pnut-term-ts
    ```
 3. Terminal auto-connects if single USB device detected
-   - Multiple devices? Use `-p COM3` (Windows) or `-p /dev/ttyUSB0` (Linux/macOS)
+   - Multiple devices? Use `-p P9cektn7` (partial serial number)
    - List available ports: `pnut-term-ts -n`
+   - First-time device? Automatically discovered and remembered
 
 ### Verify Connection
 Watch for DTR/RTS indicators in toolbar:
-- **DTR** button highlighted = Parallax Prop Plug connected
-- **RTS** button highlighted = Some USB adapters
+- **DTR** button highlighted = Parallax Prop Plug connected (default)
+- **RTS** button highlighted = Some USB adapters require RTS
 - Click either button to reset P2
+- Wrong control line? Change it in Edit → Preferences → PropPlug Management
 
 [SCREENSHOT: Main window with DTR/RTS buttons highlighted]
 
@@ -73,13 +75,31 @@ Run your P2 program with DEBUG commands. Windows appear as needed - no menu inte
 **Quick Settings**:
 - **Baud Rate**: Serial Port → Default Baud Rate
 - **Color Theme**: Terminal → Color Theme
-- **Control Line**: Serial Port → DTR or RTS
+- **PropPlug Management**: Manage devices and control lines
 - **Auto-save Logs**: Logging → Auto-save Debug Logs
 
 **Settings Hierarchy**:
 1. Project settings (if present): `./.pnut-term-ts-settings.json`
 2. User settings: Platform-specific location
 3. Application defaults
+
+### Managing Multiple PropPlugs
+
+**Quick Switch Devices:**
+- File → Select PropPlug → Choose device
+- Devices show friendly name (if set) or serial number
+
+**Set Device Names:**
+1. Edit → Preferences → PropPlug Management tab
+2. Select device from list
+3. Enter friendly name (e.g., "Workbench Plug")
+4. Apply changes
+
+**Project-Specific Device:**
+1. Edit → Preferences → Project Settings tab
+2. Enable "PropPlug Selection" checkbox
+3. Select device from dropdown
+4. Project will always use this device
 
 ---
 
@@ -120,9 +140,10 @@ Run your P2 program with DEBUG commands. Windows appear as needed - no menu inte
 - List ports: `pnut-term-ts -n`
 
 **Wrong Control Line**
-- Parallax Prop Plug uses DTR
+- Parallax Prop Plug uses DTR (default)
 - Some adapters use RTS
-- Toggle in Preferences → Serial Port
+- Change per-device in Preferences → PropPlug Management
+- Select your device, toggle DTR/RTS, apply changes
 
 ### Performance Issues
 
@@ -168,17 +189,20 @@ pnut-term-ts [options] [file.binary]
 
 ### Examples
 ```bash
-# List ports
+# List available devices
 pnut-term-ts -n
 
-# Connect to specific port
-pnut-term-ts -p COM3
+# Connect to specific device (by serial number)
+pnut-term-ts -p P9cektn7
+
+# Connect using partial serial match
+pnut-term-ts -p P9c
 
 # Download to RAM
 pnut-term-ts -r program.binary
 
 # Custom baud rate
-pnut-term-ts -b 115200 -p /dev/ttyUSB0
+pnut-term-ts -b 115200 -p P9cektn7
 ```
 
 ---

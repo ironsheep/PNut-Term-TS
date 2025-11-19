@@ -25,9 +25,21 @@ export interface Actions {
   binFilename: string;
   binDirspec: string;
 }
+
+export interface PropPlugEntry {
+  serialNumber: string;       // Unique identifier (e.g., "P9cektn7")
+  vendorId: number;           // USB VID (0x0403 for FTDI)
+  productId: number;          // USB PID (0x6015 for PropPlug)
+  friendlyName: string;       // User-assigned label (e.g., "Workbench Plug")
+  controlLine: 'DTR' | 'RTS'; // Per-device reset control line
+  lastSeen: string;           // ISO timestamp of last enumeration
+  lastUsed: string;           // ISO timestamp of last connection
+}
 export interface RuntimeEnvironment {
   serialPortDevices: string[];
   selectedPropPlug: string;
+  selectedPropPlugSerial: string; // Serial number of selected PropPlug
+  controlLine: 'DTR' | 'RTS'; // Active control line for current device
   logFilename: string;
   developerModeEnabled: boolean;
   debugBaudrate?: number; // Optional - only set if specified on command line
@@ -130,6 +142,8 @@ export class Context {
   constructor(startupDirectory?: string) {
     this.runEnvironment = {
       selectedPropPlug: '',
+      selectedPropPlugSerial: '',
+      controlLine: 'DTR', // Default control line
       serialPortDevices: [],
       developerModeEnabled: false,
       logFilename: '',
@@ -516,5 +530,181 @@ export class Context {
    */
   public getScreenshotDirectory(): string {
     return path.join(this.currentFolder, this.preferences.screenshots.screenshotDirectory);
+  }
+
+  // ============================================================================
+  // PropPlug Management Methods
+  // ============================================================================
+
+  /**
+   * Get all known PropPlugs from user global settings
+   */
+  public getKnownPropPlugs(): PropPlugEntry[] {
+    try {
+      if (fs.existsSync(this.userGlobalSettingsPath)) {
+        const data = fs.readFileSync(this.userGlobalSettingsPath, 'utf8');
+        const settings = JSON.parse(data);
+        return settings.knownPropPlugs || [];
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[PROPPLUG] Error loading known PropPlugs: ${error}`);
+    }
+    return [];
+  }
+
+  /**
+   * Get a specific PropPlug by serial number
+   */
+  public getKnownPropPlug(serialNumber: string): PropPlugEntry | undefined {
+    const plugs = this.getKnownPropPlugs();
+    return plugs.find(p => p.serialNumber === serialNumber);
+  }
+
+  /**
+   * Add or update a PropPlug in the master list
+   */
+  public addOrUpdateKnownPropPlug(entry: PropPlugEntry): void {
+    try {
+      let settings: any = {};
+
+      // Load existing settings
+      if (fs.existsSync(this.userGlobalSettingsPath)) {
+        const data = fs.readFileSync(this.userGlobalSettingsPath, 'utf8');
+        settings = JSON.parse(data);
+      }
+
+      // Ensure knownPropPlugs array exists
+      if (!settings.knownPropPlugs) {
+        settings.knownPropPlugs = [];
+      }
+
+      // Find existing entry or add new one
+      const existingIndex = settings.knownPropPlugs.findIndex(
+        (p: PropPlugEntry) => p.serialNumber === entry.serialNumber
+      );
+
+      if (existingIndex >= 0) {
+        // Update existing entry
+        settings.knownPropPlugs[existingIndex] = entry;
+        this.logConsoleMessage(`[PROPPLUG] Updated PropPlug: ${entry.serialNumber}`);
+      } else {
+        // Add new entry
+        settings.knownPropPlugs.push(entry);
+        this.logConsoleMessage(`[PROPPLUG] Added new PropPlug: ${entry.serialNumber}`);
+      }
+
+      // Save back to file
+      const dir = path.dirname(this.userGlobalSettingsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.userGlobalSettingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    } catch (error) {
+      this.logConsoleMessage(`[PROPPLUG] Error saving PropPlug: ${error}`);
+    }
+  }
+
+  /**
+   * Update specific fields of a PropPlug entry
+   */
+  public updateKnownPropPlug(serialNumber: string, updates: Partial<PropPlugEntry>): void {
+    const existing = this.getKnownPropPlug(serialNumber);
+    if (existing) {
+      const updated: PropPlugEntry = { ...existing, ...updates };
+      this.addOrUpdateKnownPropPlug(updated);
+    }
+  }
+
+  /**
+   * Delete a PropPlug from the master list
+   */
+  public deleteKnownPropPlug(serialNumber: string): void {
+    try {
+      if (!fs.existsSync(this.userGlobalSettingsPath)) {
+        return;
+      }
+
+      const data = fs.readFileSync(this.userGlobalSettingsPath, 'utf8');
+      const settings = JSON.parse(data);
+
+      if (!settings.knownPropPlugs) {
+        return;
+      }
+
+      settings.knownPropPlugs = settings.knownPropPlugs.filter(
+        (p: PropPlugEntry) => p.serialNumber !== serialNumber
+      );
+
+      fs.writeFileSync(this.userGlobalSettingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      this.logConsoleMessage(`[PROPPLUG] Deleted PropPlug: ${serialNumber}`);
+    } catch (error) {
+      this.logConsoleMessage(`[PROPPLUG] Error deleting PropPlug: ${error}`);
+    }
+  }
+
+  /**
+   * Get default control line based on product ID
+   */
+  public static getDefaultControlLine(productId: number): 'DTR' | 'RTS' {
+    // Known PIDs that use DTR
+    const dtrProductIds = [
+      0x6015, // Parallax PropPlug
+      0x6001, // Standard FT232R
+      0x6010, // FT2232
+      0x6011, // FT4232
+      0x6014  // FT232H
+    ];
+
+    return dtrProductIds.includes(productId) ? 'DTR' : 'DTR'; // Default to DTR for unknown
+  }
+
+  /**
+   * Get selected PropPlug serial number from project settings
+   */
+  public getProjectSelectedPropPlug(): string | undefined {
+    try {
+      if (fs.existsSync(this.projectLocalSettingsPath)) {
+        const data = fs.readFileSync(this.projectLocalSettingsPath, 'utf8');
+        const settings = JSON.parse(data);
+        return settings.selectedPropPlug;
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[PROPPLUG] Error loading project PropPlug selection: ${error}`);
+    }
+    return undefined;
+  }
+
+  /**
+   * Save selected PropPlug serial number to project settings
+   */
+  public setProjectSelectedPropPlug(serialNumber: string | null): void {
+    try {
+      let settings: any = {};
+
+      // Load existing project settings
+      if (fs.existsSync(this.projectLocalSettingsPath)) {
+        const data = fs.readFileSync(this.projectLocalSettingsPath, 'utf8');
+        settings = JSON.parse(data);
+      }
+
+      if (serialNumber) {
+        settings.selectedPropPlug = serialNumber;
+      } else {
+        delete settings.selectedPropPlug;
+      }
+
+      // If no settings left, delete the file
+      if (Object.keys(settings).length === 0) {
+        if (fs.existsSync(this.projectLocalSettingsPath)) {
+          fs.unlinkSync(this.projectLocalSettingsPath);
+        }
+        return;
+      }
+
+      fs.writeFileSync(this.projectLocalSettingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      this.logConsoleMessage(`[PROPPLUG] Set project PropPlug: ${serialNumber}`);
+    } catch (error) {
+      this.logConsoleMessage(`[PROPPLUG] Error saving project PropPlug selection: ${error}`);
+    }
   }
 }

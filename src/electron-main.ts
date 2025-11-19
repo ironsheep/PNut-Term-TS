@@ -14,6 +14,10 @@ import { Context } from './utils/context';
 import * as fs from 'fs';
 import * as os from 'os';
 
+// Disable sandboxing - not needed for local-only content display
+// This prevents SUID sandbox permission issues on Linux
+app.commandLine.appendSwitch('no-sandbox');
+
 // Main execution wrapper to handle early exit
 (function main() {
   // Check if launched via double-click (GUI) vs command-line
@@ -127,6 +131,8 @@ import * as os from 'os';
 
   // Populate the context with validated data from CLI
   electronContext.runEnvironment.selectedPropPlug = config.selectedPropPlug || '';
+  electronContext.runEnvironment.selectedPropPlugSerial = config.selectedPropPlugSerial || '';
+  electronContext.runEnvironment.controlLine = config.controlLine || 'DTR';
   electronContext.runEnvironment.debugBaudrate = config.debugBaudrate || 2000000;
   electronContext.runEnvironment.debugBaudRateFromCLI = config.debugBaudRateFromCLI || false;
   electronContext.runEnvironment.developerModeEnabled = config.developerModeEnabled || false;

@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2025-11-19
+
+### Added
+
+- PropPlug device management system with persistent per-device settings
+- PropPlug Management tab in Preferences dialog for viewing/editing known devices
+- Per-device DTR/RTS control line settings (automatically determined by device type)
+- Project-level PropPlug selection in Preferences
+- Automatic discovery and tracking of new PropPlug devices
+- Friendly name support for PropPlug devices
+
+### Changed
+
+- Exit with error if `-p` specifies a device that is not found (previously would silently proceed to UI)
+- Control line (DTR/RTS) now determined per-device instead of global setting
+- Device selection now matches by serial number in addition to path
+
 ## [0.9.3] - 2025-11-17
 
 ### Added

@@ -8,7 +8,8 @@ import { Command, CommanderError, type OptionValues } from 'commander';
 import { Context } from './utils/context';
 import path from 'path';
 import { exec, spawn } from 'child_process';
-import { UsbSerial } from './utils/usb.serial';
+import { UsbSerial, DeviceInfo } from './utils/usb.serial';
+import { Context as ContextType, PropPlugEntry } from './utils/context';
 import * as fs from 'fs';
 // No Electron imports - this is pure Node.js CLI
 // Electron UI will be launched via electron-main.ts if needed
@@ -43,7 +44,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.3';
+  private version: string = '0.9.4';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -52,6 +53,7 @@ export class DebugTerminalInTypeScript {
   private initialCwd: string = '';
   private initialDirname: string = '';
   private startupDirectory: string = '';
+  private deviceInfoList: DeviceInfo[] = []; // Full device info for PropPlug tracking
 
   constructor(argsOverride?: string[]) {
     //console.log(`PNut-Term-TS: argsOverride=[${argsOverride}]`);
@@ -283,10 +285,12 @@ export class DebugTerminalInTypeScript {
     }
 
     // Store RTS override flag (works in both standalone and IDE modes)
+    // This overrides any per-device controlLine setting
     if (options.rts) {
       this.context.runEnvironment.rtsOverride = true;
+      this.context.runEnvironment.controlLine = 'RTS'; // Override per-device setting
       const modeText = options.ide ? 'IDE mode' : 'standalone mode';
-      this.context.logger.verboseMsg(`RTS control line enabled for ${modeText}`);
+      this.context.logger.verboseMsg(`RTS control line enabled for ${modeText} (overrides per-device setting)`);
     }
 
     // Store match-vendor-only flag for USB device filtering
@@ -465,18 +469,44 @@ export class DebugTerminalInTypeScript {
 
     if (options.plug) {
       // if port given on command line, use it!
-      const foundPlug: string | undefined = this.context.runEnvironment.serialPortDevices.find((propPlug) =>
-        propPlug.includes(options.plug)
+      const foundDevice = this.deviceInfoList.find((device) =>
+        device.path.includes(options.plug) || device.serialNumber.includes(options.plug)
       );
-      if (foundPlug !== undefined) {
-        this.context.runEnvironment.selectedPropPlug = foundPlug;
-        //this.context.logger.verboseMsg(`* MATCHED USB  - ${foundPlug}!`);
+      if (foundDevice !== undefined) {
+        this.context.runEnvironment.selectedPropPlug = foundDevice.path;
+        this.context.runEnvironment.selectedPropPlugSerial = foundDevice.serialNumber;
+        // Look up device settings and apply controlLine
+        const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
+        if (deviceEntry) {
+          this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+          this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+        }
+      } else {
+        // Device specified but not found - this is an error condition
+        this.context.logger.errorMsg(`Error: Device "${options.plug}" not found`);
+        if (this.context.runEnvironment.serialPortDevices.length > 0) {
+          this.context.logger.errorMsg(`Available devices:`);
+          for (const device of this.deviceInfoList) {
+            this.context.logger.errorMsg(`  ${device.path} (SN: ${device.serialNumber})`);
+          }
+        } else {
+          this.context.logger.errorMsg(`No USB serial devices detected`);
+        }
+        process.exit(1);
       }
     }
 
-    if (this.context.runEnvironment.serialPortDevices.length == 1) {
+    if (!this.context.runEnvironment.selectedPropPlug && this.deviceInfoList.length == 1) {
       // found only port, select it!
-      this.context.runEnvironment.selectedPropPlug = this.context.runEnvironment.serialPortDevices[0];
+      const singleDevice = this.deviceInfoList[0];
+      this.context.runEnvironment.selectedPropPlug = singleDevice.path;
+      this.context.runEnvironment.selectedPropPlugSerial = singleDevice.serialNumber;
+      // Look up device settings and apply controlLine
+      const deviceEntry = this.context.getKnownPropPlug(singleDevice.serialNumber);
+      if (deviceEntry) {
+        this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+        this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+      }
     }
 
     let havePropPlug: boolean = false;
@@ -529,18 +559,42 @@ export class DebugTerminalInTypeScript {
   }
 
   private async loadUsbPortsFound(): Promise<void> {
-    this.context.logger.verboseMsg('* Calling UsbSerial.serialDeviceList()...');
+    this.context.logger.verboseMsg('* Calling UsbSerial.getDeviceInfoList()...');
     try {
-      const deviceNodes: string[] = await UsbSerial.serialDeviceList(this.context);
+      // Get full device info for PropPlug tracking
+      this.deviceInfoList = await UsbSerial.getDeviceInfoList(this.context);
       this.context.runEnvironment.serialPortDevices = [];
 
-      this.context.logger.verboseMsg(`* Raw device list returned ${deviceNodes.length} item(s)`);
+      this.context.logger.verboseMsg(`* Device enumeration returned ${this.deviceInfoList.length} item(s)`);
 
-      for (let index = 0; index < deviceNodes.length; index++) {
-        const element: string = deviceNodes[index];
-        const lineParts: string[] = element.split(',');
-        this.context.runEnvironment.serialPortDevices.push(lineParts[0]);
-        this.context.logger.debugMsg(`*   Device ${index + 1}: ${lineParts[0]} (SN: ${lineParts[1] || 'unknown'})`);
+      const now = new Date().toISOString();
+
+      for (let index = 0; index < this.deviceInfoList.length; index++) {
+        const deviceInfo = this.deviceInfoList[index];
+        this.context.runEnvironment.serialPortDevices.push(deviceInfo.path);
+        this.context.logger.debugMsg(
+          `*   Device ${index + 1}: ${deviceInfo.path} (SN: ${deviceInfo.serialNumber}, VID:${deviceInfo.vendorId.toString(16)}, PID:${deviceInfo.productId.toString(16)})`
+        );
+
+        // Track this device in the master PropPlug list
+        const existingEntry = this.context.getKnownPropPlug(deviceInfo.serialNumber);
+        if (existingEntry) {
+          // Update lastSeen timestamp
+          this.context.updateKnownPropPlug(deviceInfo.serialNumber, { lastSeen: now });
+        } else {
+          // Add new device to master list with defaults
+          const newEntry: PropPlugEntry = {
+            serialNumber: deviceInfo.serialNumber,
+            vendorId: deviceInfo.vendorId,
+            productId: deviceInfo.productId,
+            friendlyName: '',
+            controlLine: Context.getDefaultControlLine(deviceInfo.productId),
+            lastSeen: now,
+            lastUsed: ''
+          };
+          this.context.addOrUpdateKnownPropPlug(newEntry);
+          this.context.logger.verboseMsg(`*   Added new PropPlug to master list: ${deviceInfo.serialNumber}`);
+        }
       }
 
       if (this.context.runEnvironment.serialPortDevices.length === 0) {
@@ -597,6 +651,8 @@ export class DebugTerminalInTypeScript {
     const contextData = {
       runEnvironment: {
         selectedPropPlug: this.context.runEnvironment.selectedPropPlug,
+        selectedPropPlugSerial: this.context.runEnvironment.selectedPropPlugSerial,
+        controlLine: this.context.runEnvironment.controlLine,
         debugBaudrate: this.context.runEnvironment.debugBaudrate,
         debugBaudRateFromCLI: this.context.runEnvironment.debugBaudRateFromCLI,
         developerModeEnabled: this.context.runEnvironment.developerModeEnabled,

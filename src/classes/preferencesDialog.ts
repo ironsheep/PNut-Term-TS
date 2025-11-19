@@ -24,8 +24,8 @@ export class PreferencesDialog {
     }
 
     this.window = new BrowserWindow({
-      width: 600,
-      height: 500,
+      width: 650,
+      height: 580,
       parent: this.parent,
       modal: true,
       resizable: false,
@@ -52,6 +52,10 @@ export class PreferencesDialog {
     ipcMain.removeAllListeners('pref-apply-project');
     ipcMain.removeAllListeners('pref-cancel');
     ipcMain.removeAllListeners('pref-get-settings');
+    ipcMain.removeAllListeners('pref-get-propplug-list');
+    ipcMain.removeAllListeners('pref-update-propplug');
+    ipcMain.removeAllListeners('pref-delete-propplug');
+    ipcMain.removeAllListeners('pref-set-project-propplug');
   }
 
   private setupIPCHandlers(): void {
@@ -110,6 +114,46 @@ export class PreferencesDialog {
       if (this.window) {
         this.window.close();
       }
+    });
+
+    // PropPlug management handlers
+    ipcMain.on('pref-get-propplug-list', (event) => {
+      const knownPlugs = this.context.getKnownPropPlugs();
+      const projectSelected = this.context.getProjectSelectedPropPlug();
+      const currentSerial = this.context.runEnvironment.selectedPropPlugSerial;
+      event.reply('pref-propplug-list', {
+        knownPlugs,
+        projectSelected,
+        currentSerial
+      });
+    });
+
+    ipcMain.on('pref-update-propplug', (event, data) => {
+      const { serialNumber, friendlyName, controlLine } = data;
+      this.context.updateKnownPropPlug(serialNumber, { friendlyName, controlLine });
+      // Send updated list back
+      const knownPlugs = this.context.getKnownPropPlugs();
+      event.reply('pref-propplug-list', {
+        knownPlugs,
+        projectSelected: this.context.getProjectSelectedPropPlug(),
+        currentSerial: this.context.runEnvironment.selectedPropPlugSerial
+      });
+    });
+
+    ipcMain.on('pref-delete-propplug', (event, serialNumber) => {
+      this.context.deleteKnownPropPlug(serialNumber);
+      // Send updated list back
+      const knownPlugs = this.context.getKnownPropPlugs();
+      event.reply('pref-propplug-list', {
+        knownPlugs,
+        projectSelected: this.context.getProjectSelectedPropPlug(),
+        currentSerial: this.context.runEnvironment.selectedPropPlugSerial
+      });
+    });
+
+    ipcMain.on('pref-set-project-propplug', (event, serialNumber) => {
+      this.context.setProjectSelectedPropPlug(serialNumber);
+      event.reply('pref-project-propplug-set', serialNumber);
     });
   }
 
@@ -544,6 +588,7 @@ export class PreferencesDialog {
   <div class="tabs">
     <button class="tab active" onclick="switchTab('user')">User Settings</button>
     <button class="tab" onclick="switchTab('project')">Project Settings</button>
+    <button class="tab" onclick="switchTab('propplug')">PropPlug Management</button>
   </div>
 
   <!-- USER SETTINGS TAB -->
@@ -554,6 +599,70 @@ export class PreferencesDialog {
   <!-- PROJECT SETTINGS TAB -->
   <div id="project-tab" class="tab-content">
     ${this.generateSettingsHTML('project')}
+  </div>
+
+  <!-- PROPPLUG MANAGEMENT TAB -->
+  <div id="propplug-tab" class="tab-content">
+    <div class="section">
+      <h2>Known PropPlug Devices</h2>
+      <div id="propplug-list-container">
+        <table id="propplug-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+          <thead>
+            <tr style="background: #f0f0f0;">
+              <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ccc;">Serial</th>
+              <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ccc;">Name</th>
+              <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ccc;">Control</th>
+              <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ccc;">Last Used</th>
+            </tr>
+          </thead>
+          <tbody id="propplug-list">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+        <p id="no-propplug-msg" style="color: #666; font-style: italic; display: none;">No PropPlug devices found. Connect a device to add it to this list.</p>
+      </div>
+    </div>
+
+    <div class="section" id="propplug-edit-section" style="display: none;">
+      <h2>Edit Device</h2>
+      <div class="form-group">
+        <label>Serial Number:</label>
+        <span id="edit-serial" style="flex: 1;"></span>
+      </div>
+      <div class="form-group">
+        <label>Friendly Name:</label>
+        <input type="text" id="edit-friendly-name" placeholder="e.g., Workbench Plug">
+      </div>
+      <div class="form-group">
+        <label>Control Line:</label>
+        <div class="radio-group">
+          <label><input type="radio" name="edit-control-line" value="DTR"> DTR</label>
+          <label><input type="radio" name="edit-control-line" value="RTS"> RTS</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Device Info:</label>
+        <span id="edit-device-info" style="flex: 1; font-size: 11px; color: #666;"></span>
+      </div>
+      <div style="margin-top: 15px;">
+        <button onclick="savePropplugedit()" style="margin-right: 10px;">Save Changes</button>
+        <button onclick="deleteCurrentPropplug()" class="cancel" style="background: #ff4444; color: white; border: none;">Delete Device</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Project PropPlug Selection</h2>
+      <div class="form-group">
+        <label>Use PropPlug:</label>
+        <select id="project-propplug-select" style="flex: 1; max-width: 300px;">
+          <option value="">Auto-detect (any available)</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <p style="font-size: 11px; color: #666; margin-top: 5px;">
+        Select a specific PropPlug for this project, or use auto-detect to connect to any available device.
+      </p>
+    </div>
   </div>
   
   <div class="button-area">
@@ -567,9 +676,24 @@ export class PreferencesDialog {
     let userSettings = {};
     let effectiveSettings = {};
     let currentTab = 'user';
+    let propplugList = [];
+    let selectedPropplug = null;
+    let projectSelectedPropplug = '';
 
     // Request current settings
     ipcRenderer.send('pref-get-settings');
+
+    // PropPlug list handler
+    ipcRenderer.on('pref-propplug-list', (event, data) => {
+      propplugList = data.knownPlugs || [];
+      projectSelectedPropplug = data.projectSelected || '';
+      populatePropplugList();
+      populateProjectPropplugSelect();
+    });
+
+    ipcRenderer.on('pref-project-propplug-set', (event, serialNumber) => {
+      projectSelectedPropplug = serialNumber;
+    });
 
     ipcRenderer.on('pref-settings', (event, data) => {
       // Data contains both user-only and effective (cascaded) settings
@@ -592,6 +716,118 @@ export class PreferencesDialog {
         content.classList.remove('active');
       });
       document.getElementById(tabName + '-tab').classList.add('active');
+
+      // Load PropPlug data when switching to that tab
+      if (tabName === 'propplug') {
+        ipcRenderer.send('pref-get-propplug-list');
+      }
+    }
+
+    function populatePropplugList() {
+      const tbody = document.getElementById('propplug-list');
+      const noMsg = document.getElementById('no-propplug-msg');
+      const table = document.getElementById('propplug-table');
+
+      tbody.innerHTML = '';
+
+      if (propplugList.length === 0) {
+        table.style.display = 'none';
+        noMsg.style.display = 'block';
+        return;
+      }
+
+      table.style.display = 'table';
+      noMsg.style.display = 'none';
+
+      propplugList.forEach(plug => {
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.onclick = () => selectPropplug(plug.serialNumber);
+
+        const lastUsed = plug.lastUsed ? new Date(plug.lastUsed).toLocaleDateString() : 'Never';
+        const name = plug.friendlyName || '(unnamed)';
+
+        row.innerHTML = \`
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">\${plug.serialNumber}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">\${name}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">\${plug.controlLine}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">\${lastUsed}</td>
+        \`;
+
+        if (selectedPropplug && selectedPropplug.serialNumber === plug.serialNumber) {
+          row.style.background = '#e0e8ff';
+        }
+
+        tbody.appendChild(row);
+      });
+    }
+
+    function selectPropplug(serialNumber) {
+      selectedPropplug = propplugList.find(p => p.serialNumber === serialNumber);
+      if (!selectedPropplug) return;
+
+      // Update list highlighting
+      populatePropplugList();
+
+      // Show edit section
+      const editSection = document.getElementById('propplug-edit-section');
+      editSection.style.display = 'block';
+
+      // Populate edit fields
+      document.getElementById('edit-serial').textContent = selectedPropplug.serialNumber;
+      document.getElementById('edit-friendly-name').value = selectedPropplug.friendlyName || '';
+      document.querySelector(\`input[name="edit-control-line"][value="\${selectedPropplug.controlLine}"]\`).checked = true;
+      document.getElementById('edit-device-info').textContent =
+        \`VID: 0x\${selectedPropplug.vendorId.toString(16).padStart(4, '0')} PID: 0x\${selectedPropplug.productId.toString(16).padStart(4, '0')}\`;
+    }
+
+    function savePropplugedit() {
+      if (!selectedPropplug) return;
+
+      const friendlyName = document.getElementById('edit-friendly-name').value;
+      const controlLine = document.querySelector('input[name="edit-control-line"]:checked').value;
+
+      ipcRenderer.send('pref-update-propplug', {
+        serialNumber: selectedPropplug.serialNumber,
+        friendlyName,
+        controlLine
+      });
+    }
+
+    function deleteCurrentPropplug() {
+      if (!selectedPropplug) return;
+
+      if (confirm(\`Delete PropPlug "\${selectedPropplug.serialNumber}"?\`)) {
+        ipcRenderer.send('pref-delete-propplug', selectedPropplug.serialNumber);
+        selectedPropplug = null;
+        document.getElementById('propplug-edit-section').style.display = 'none';
+      }
+    }
+
+    function populateProjectPropplugSelect() {
+      const select = document.getElementById('project-propplug-select');
+
+      // Clear existing options except the first (auto-detect)
+      while (select.options.length > 1) {
+        select.remove(1);
+      }
+
+      // Add options for each known PropPlug
+      propplugList.forEach(plug => {
+        const option = document.createElement('option');
+        option.value = plug.serialNumber;
+        const name = plug.friendlyName || plug.serialNumber;
+        option.textContent = \`\${name} (\${plug.serialNumber})\`;
+        select.appendChild(option);
+      });
+
+      // Set current selection
+      select.value = projectSelectedPropplug || '';
+
+      // Add change handler
+      select.onchange = () => {
+        ipcRenderer.send('pref-set-project-propplug', select.value || null);
+      };
     }
 
     function loadSettings() {

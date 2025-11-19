@@ -129,6 +129,7 @@ See `QUICK-START.md` for immediate startup instructions.
 | New Recording | | Start new debug session recording |
 | Open Recording... | | Load and playback .p2rec file |
 | Save Recording As... | | Save current recording to disk |
+| Select PropPlug | | Quick device switching and management |
 | Start Recording | Ctrl+R | Begin recording debug data |
 | Stop Recording | | End current recording session |
 | Playback Recording | Ctrl+P | Play selected recording |
@@ -186,6 +187,28 @@ Global preferences applying to all projects.
 #### Project Settings Tab
 Project-specific overrides with checkboxes. Only checked items override user settings (delta-save strategy).
 
+**PropPlug Selection:**
+- Dropdown to select default device for this project
+- Shows friendly name and serial number
+- Option to use auto-detect or specific device
+
+#### PropPlug Management Tab
+Manage your inventory of PropPlug devices.
+
+**Features:**
+- View all known PropPlug devices
+- Edit friendly names for easy identification
+- Configure control line (DTR/RTS) per device
+- Delete stale or unused devices
+- Automatic discovery of new devices
+
+**Device Information Displayed:**
+- Serial number (unique identifier)
+- Friendly name (user-editable)
+- Control line setting (DTR/RTS)
+- Last seen timestamp
+- Last used timestamp
+
 ### Configuration Categories
 
 #### Terminal Settings
@@ -201,13 +224,15 @@ Project-specific overrides with checkboxes. Only checked items override user set
 #### Serial Port Settings
 | Setting | Options | Default |
 |---------|---------|---------|
-| Control Line | DTR, RTS | DTR |
+| Control Line | DTR, RTS | Per-device (see PropPlug Management) |
 | Default Baud Rate | 115200 to 2000000 | 2000000 |
 | Reset P2 on Connection | Enabled/Disabled | Enabled |
 
 **Reset Behavior:**
 - Enabled: Resets P2 on connect (development mode)
 - Disabled: Connects without reset (monitoring mode)
+
+**Note:** Control line (DTR/RTS) is now configured per-device in the PropPlug Management tab.
 
 #### Logging Settings
 | Setting | Options | Default |
@@ -292,6 +317,89 @@ Select `.p2rec` file to begin playback.
 - **Seek Support**: Jump to any position via progress bar
 - **Speed Control**: Slow down or speed up playback
 - **Drift Compensation**: Automatic timing correction for long recordings
+
+---
+
+## PropPlug Management
+
+### Overview
+
+PNut-Term-TS automatically manages your PropPlug devices, remembering their settings and allowing quick switching between multiple devices.
+
+### Device Discovery
+
+**Automatic Discovery:**
+- New devices are detected on USB enumeration
+- Added to known devices list with default settings
+- Control line defaults to DTR (can be changed per device)
+
+### Device Selection
+
+**Priority Order:**
+1. Command-line flag: `-p <serial>` or `-p <device_path>`
+2. Project setting: Selected device in project preferences
+3. Auto-detect: Single connected device is used automatically
+4. User prompt: Multiple devices require selection
+
+### Managing Devices
+
+**Access PropPlug Management:**
+- Edit → Preferences → PropPlug Management tab
+- File → Select PropPlug → Manage Devices...
+
+**Device Settings:**
+| Setting | Description |
+|---------|-------------|
+| Friendly Name | User-defined label (e.g., "Workbench Plug") |
+| Control Line | DTR or RTS per device |
+| Serial Number | Unique device identifier (read-only) |
+| Last Seen | Timestamp of last enumeration |
+| Last Used | Timestamp of last connection |
+
+### Quick Device Switching
+
+**Via File Menu:**
+- File → Select PropPlug shows connected devices
+- Checkmark indicates current device
+- Select to switch immediately
+
+**Via Command Line:**
+```bash
+# Use specific device
+pnut-term-ts -p P9cektn7
+
+# Use partial match
+pnut-term-ts -p P9c
+```
+
+### Project Device Selection
+
+**Set Project Default:**
+1. Edit → Preferences → Project Settings tab
+2. Enable "PropPlug Selection" checkbox
+3. Choose device from dropdown
+4. Save to project settings file
+
+**Result:** This project always uses the selected device when available.
+
+### Troubleshooting Devices
+
+**Device Not Recognized:**
+- Check USB cable connection
+- Verify device appears in system device manager
+- Install FTDI drivers if needed
+- Try different USB port
+
+**Wrong Control Line (No Reset):**
+- Open PropPlug Management tab
+- Select device from list
+- Toggle DTR/RTS setting
+- Apply changes
+
+**Multiple Identical Devices:**
+- Assign unique friendly names in PropPlug Management
+- Use serial numbers for precise selection
+- Project settings can specify exact device
 
 ---
 
