@@ -209,7 +209,7 @@ pnut-term-ts -b 115200 -p P9cektn7
 
 ## Next Steps
 
-- **Full Documentation**: See `USER-GUIDE.md` for comprehensive reference
+- **Full Documentation**: See [USER-GUIDE](USER-GUIDE.md) for comprehensive reference
 - **Report Issues**: https://github.com/ironsheep/PNut-Term-TS/issues
 - **Community Support**: Parallax Forums P2 section
 
