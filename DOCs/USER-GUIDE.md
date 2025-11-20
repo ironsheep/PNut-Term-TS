@@ -119,6 +119,21 @@ See `QUICK-START.md` for immediate startup instructions.
 
 **Recording**: Capture entire debug sessions to `.p2rec` files for later playback and analysis.
 
+### Main Window Interface
+
+The main window provides a terminal display with a status bar showing connection and system information.
+
+**Status Bar (Left Side):**
+- **Connection LED**: Green when connected to P2, gray when disconnected
+- **Active COGs**: Shows which COG cores are running debug windows
+- **Logging LED**: Yellow when recording active
+
+**Status Bar (Right Side):**
+- **Echo Checkbox**: Enable to filter out echoed characters from display
+- **TX/RX LEDs**: Flash green during serial transmission/reception
+- **Port**: Shows connected PropPlug device path
+- **Baud**: Displays current debug communication baud rate
+
 ---
 
 ## Menu System

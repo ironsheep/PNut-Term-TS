@@ -44,7 +44,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.4';
+  private version: string = '0.9.5';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -469,8 +469,11 @@ export class DebugTerminalInTypeScript {
 
     if (options.plug) {
       // if port given on command line, use it!
-      const foundDevice = this.deviceInfoList.find((device) =>
-        device.path.includes(options.plug) || device.serialNumber.includes(options.plug)
+      // Case-insensitive matching for user-friendly serial number lookup
+      const searchTerm = options.plug.toLowerCase();
+      const foundDevice = this.deviceInfoList.find(
+        (device) =>
+          device.path.toLowerCase().includes(searchTerm) || device.serialNumber.toLowerCase().includes(searchTerm)
       );
       if (foundDevice !== undefined) {
         this.context.runEnvironment.selectedPropPlug = foundDevice.path;
@@ -482,10 +485,14 @@ export class DebugTerminalInTypeScript {
           const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
           if (deviceEntry) {
             this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-            this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+            this.context.logger.verboseMsg(
+              `* Device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`
+            );
           }
         } else {
-          this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
+          this.context.logger.verboseMsg(
+            `* Device ${foundDevice.serialNumber} using RTS control line (--rts session override)`
+          );
         }
       } else {
         // Device specified but not found - this is an error condition
@@ -515,13 +522,19 @@ export class DebugTerminalInTypeScript {
             const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
             if (deviceEntry) {
               this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-              this.context.logger.verboseMsg(`* Project-selected device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+              this.context.logger.verboseMsg(
+                `* Project-selected device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`
+              );
             }
           } else {
-            this.context.logger.verboseMsg(`* Project-selected device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
+            this.context.logger.verboseMsg(
+              `* Project-selected device ${foundDevice.serialNumber} using RTS control line (--rts session override)`
+            );
           }
         } else {
-          this.context.logger.warningMsg(`* Project-selected PropPlug "${projectPropPlug}" not found, will try other selection methods`);
+          this.context.logger.warningMsg(
+            `* Project-selected PropPlug "${projectPropPlug}" not found, will try other selection methods`
+          );
         }
       }
     }
@@ -539,13 +552,19 @@ export class DebugTerminalInTypeScript {
             const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
             if (deviceEntry) {
               this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-              this.context.logger.verboseMsg(`* User-default device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+              this.context.logger.verboseMsg(
+                `* User-default device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`
+              );
             }
           } else {
-            this.context.logger.verboseMsg(`* User-default device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
+            this.context.logger.verboseMsg(
+              `* User-default device ${foundDevice.serialNumber} using RTS control line (--rts session override)`
+            );
           }
         } else {
-          this.context.logger.warningMsg(`* User-default PropPlug "${userDefaultPropPlug}" not found, will try auto-detect`);
+          this.context.logger.warningMsg(
+            `* User-default PropPlug "${userDefaultPropPlug}" not found, will try auto-detect`
+          );
         }
       }
     }
@@ -558,7 +577,9 @@ export class DebugTerminalInTypeScript {
 
       // Auto-default: If no user default exists, set this as the default
       if (!this.context.preferences.serialPort.defaultPropPlug) {
-        this.context.logger.verboseMsg(`* Setting ${singleDevice.serialNumber} as user default (first and only device)`);
+        this.context.logger.verboseMsg(
+          `* Setting ${singleDevice.serialNumber} as user default (first and only device)`
+        );
         this.context.preferences.serialPort.defaultPropPlug = singleDevice.serialNumber;
         this.context.saveUserGlobalSettings(this.context.preferences);
       }
@@ -568,10 +589,14 @@ export class DebugTerminalInTypeScript {
         const deviceEntry = this.context.getKnownPropPlug(singleDevice.serialNumber);
         if (deviceEntry) {
           this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-          this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+          this.context.logger.verboseMsg(
+            `* Auto-selected device ${singleDevice.serialNumber} uses ${deviceEntry.controlLine} control line`
+          );
         }
       } else {
-        this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} using RTS control line (--rts session override)`);
+        this.context.logger.verboseMsg(
+          `* Auto-selected device ${singleDevice.serialNumber} using RTS control line (--rts session override)`
+        );
       }
     }
 
@@ -639,7 +664,9 @@ export class DebugTerminalInTypeScript {
         const deviceInfo = this.deviceInfoList[index];
         this.context.runEnvironment.serialPortDevices.push(deviceInfo.path);
         this.context.logger.debugMsg(
-          `*   Device ${index + 1}: ${deviceInfo.path} (SN: ${deviceInfo.serialNumber}, VID:${deviceInfo.vendorId.toString(16)}, PID:${deviceInfo.productId.toString(16)})`
+          `*   Device ${index + 1}: ${deviceInfo.path} (SN: ${
+            deviceInfo.serialNumber
+          }, VID:${deviceInfo.vendorId.toString(16)}, PID:${deviceInfo.productId.toString(16)})`
         );
 
         // Track this device in the master PropPlug list
@@ -665,7 +692,9 @@ export class DebugTerminalInTypeScript {
             lastUsed: ''
           };
           this.context.addOrUpdateKnownPropPlug(newEntry);
-          this.context.logger.verboseMsg(`*   Added new PropPlug to master list: ${deviceInfo.serialNumber} (control line: ${defaultControlLine})`);
+          this.context.logger.verboseMsg(
+            `*   Added new PropPlug to master list: ${deviceInfo.serialNumber} (control line: ${defaultControlLine})`
+          );
         }
       }
 

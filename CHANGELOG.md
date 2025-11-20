@@ -5,6 +5,17 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2025-11-20
+
+### Added
+
+- Baud rate status indicator in main window status bar (both IDE and Standard modes)
+
+### Fixed
+
+- Case-insensitive device serial number matching for `-p/--plug` option
+- Device selection now accepts serial numbers in any case (e.g., `p6yh4spg`, `P6yh4spg`, `P6YH4SPG`)
+
 ## [0.9.4] - 2025-11-19
 
 ### Added

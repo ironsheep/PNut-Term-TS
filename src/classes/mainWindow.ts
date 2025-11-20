@@ -2414,6 +2414,10 @@ export class MainWindow {
             <span class="status-label">Port:</span>
             <span class="status-value"> </span>
           </div>
+          <div id="baud-rate" class="status-field">
+            <span class="status-label">Baud:</span>
+            <span class="status-value" id="baud-value">0</span>
+          </div>
         </div>
       </div>
     </body>
@@ -2821,6 +2825,10 @@ export class MainWindow {
           <div id="propPlug" class="status-field">
             <span class="status-label">Port:</span>
             <span class="status-value"> </span>
+          </div>
+          <div id="baud-rate" class="status-field">
+            <span class="status-label">Baud:</span>
+            <span class="status-value" id="baud-value">0</span>
           </div>
         </div>
       </div>
@@ -3801,6 +3809,17 @@ export class MainWindow {
         this.updateStatusBarField('propPlug', this._deviceNode);
       }
 
+      // Initialize baud rate display
+      this.safeExecuteJS(
+        `
+        const baudRate = document.querySelector('#baud-value');
+        if (baudRate) {
+          baudRate.textContent = '${this._serialBaud}';
+        }
+      `,
+        'initialize-baud-rate-display'
+      );
+
       // Data entry input handler now attached in initial HTML DOMContentLoaded
       // (removed hookTextInputControl call - executeJavaScript cannot access require('electron'))
 
@@ -4180,6 +4199,10 @@ export class MainWindow {
           const propPlug = document.querySelector('#propPlug .status-value');
           if (propPlug) {
             propPlug.textContent = '${deviceNode}';
+          }
+          const baudRate = document.querySelector('#baud-value');
+          if (baudRate) {
+            baudRate.textContent = '${this._serialBaud}';
           }
         })();
       `,
