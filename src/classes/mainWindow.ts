@@ -1428,6 +1428,9 @@ export class MainWindow {
     if (this._serialPort !== undefined) {
       this.logMessage(`* openSerialPort() - IS OPEN`);
 
+      // Clear any previous error messages from the terminal
+      this.clearTerminal();
+
       // Verify the port opened at the requested baud rate
       const actualBaud = this._serialPort.getCurrentBaudRate();
       this.logConsoleMessage(`[BAUD RATE] Port opened, actual baud rate: ${actualBaud}`);
@@ -2504,6 +2507,42 @@ export class MainWindow {
         .menu-dropdown-item:hover {
           background: #e8e8e8; /* Light gray hover */
         }
+        .menu-has-submenu {
+          position: relative;
+        }
+        .menu-submenu {
+          display: none;
+          position: absolute;
+          left: 100%;
+          top: 0;
+          background: #ffffff;
+          border: 1px solid #ccc;
+          min-width: 200px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          z-index: 1001;
+        }
+        .menu-has-submenu:hover .menu-submenu {
+          display: block;
+        }
+        .menu-submenu-item {
+          padding: 8px 16px;
+          color: #333333;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .menu-submenu-item:hover {
+          background: #e8e8e8;
+        }
+        .menu-submenu-item.selected {
+          position: relative;
+          padding-left: 32px;
+        }
+        .menu-submenu-item.selected::before {
+          content: '✓';
+          position: absolute;
+          left: 12px;
+          font-weight: bold;
+        }
         #toolbar {
           position: fixed;
           top: 28px; /* Below menu bar (28px) */
@@ -2660,6 +2699,13 @@ export class MainWindow {
               <div class="menu-dropdown-item" data-action="menu-new-recording">New Recording</div>
               <div class="menu-dropdown-item" data-action="menu-open-recording">Open Recording...</div>
               <div class="menu-dropdown-item" data-action="menu-save-recording">Save Recording As...</div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
+              <div class="menu-dropdown-item menu-has-submenu" data-action="menu-select-propplug">
+                Select PropPlug <span style="float: right; color: #999;">▸</span>
+                <div class="menu-submenu" id="propplug-submenu">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-start-recording">Start Recording <span style="float: right; color: #999;">Ctrl+R</span></div>
               <div class="menu-dropdown-item" data-action="menu-stop-recording">Stop Recording</div>
@@ -3053,6 +3099,9 @@ export class MainWindow {
     ipcMain.removeAllListeners('menu-stop-recording');
     ipcMain.removeAllListeners('menu-playback-recording');
     ipcMain.removeAllListeners('menu-quit');
+    ipcMain.removeAllListeners('get-propplug-list');
+    ipcMain.removeAllListeners('select-propplug');
+    ipcMain.removeAllListeners('open-propplug-preferences');
 
     // Edit menu handlers
     ipcMain.removeAllListeners('menu-find');
@@ -3267,6 +3316,77 @@ export class MainWindow {
       app.quit();
     });
 
+    // PropPlug selection menu
+    ipcMain.on('get-propplug-list', (event: any) => {
+      const devices = this.context.getKnownPropPlugs();
+      const currentDevice = this.context.runEnvironment.selectedPropPlugSerial || '';
+      event.reply('propplug-list', { devices, currentDevice });
+    });
+
+    ipcMain.on('select-propplug', async (_event: any, serialNumber: string) => {
+      this.logConsoleMessage(`[PROPPLUG] User selected device: ${serialNumber}`);
+
+      try {
+        // Update user default setting first
+        this.context.preferences.serialPort.defaultPropPlug = serialNumber;
+        this.context.saveUserGlobalSettings(this.context.preferences);
+
+        // Re-enumerate devices to get current device path
+        const { UsbSerial } = require('../utils/usb.serial');
+        const availableDevices = await UsbSerial.serialDeviceList(this.context);
+
+        // Find the selected device
+        const selectedDevice = availableDevices.find((dev: any) => {
+          const parts = dev.split(',');
+          const sn = parts.length > 1 ? parts[1].trim() : '';
+          return sn === serialNumber;
+        });
+
+        if (!selectedDevice) {
+          this.appendLog(`⚠️ Device ${serialNumber} not currently connected`);
+          this.appendLog(`   Connect the device and try again`);
+          return;
+        }
+
+        const devicePath = selectedDevice.split(',')[0];
+
+        // Disconnect current device if any
+        if (this._serialPort) {
+          this.appendLog(`Disconnecting from current device...`);
+          await this._serialPort.close();
+          this._serialPort = undefined;
+          this.updateConnectionStatus(false);
+        }
+
+        // Connect to new device
+        this.appendLog(`Connecting to ${serialNumber}...`);
+        this._deviceNode = devicePath;
+        this.context.runEnvironment.selectedPropPlug = devicePath;
+        this.context.runEnvironment.selectedPropPlugSerial = serialNumber;
+
+        // Apply device's control line setting
+        const deviceEntry = this.context.getKnownPropPlug(serialNumber);
+        if (deviceEntry) {
+          this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+        }
+
+        // Open the new device
+        await this.openSerialPort(devicePath);
+
+        if (this._serialPort) {
+          this.appendLog(`✓ Connected to ${serialNumber}`);
+        }
+      } catch (error: any) {
+        this.appendLog(`⚠️ Failed to switch devices: ${error.message || error}`);
+        this.logConsoleMessage(`[PROPPLUG] Switch failed: ${error}`);
+      }
+    });
+
+    ipcMain.on('open-propplug-preferences', () => {
+      this.logConsoleMessage('[PROPPLUG] Opening preferences to PropPlug Management tab');
+      this.showPreferencesDialog();
+    });
+
     // Edit menu handlers
     ipcMain.on('menu-find', () => {
       this.logConsoleMessage('[IPC] Find');
@@ -3414,6 +3534,93 @@ export class MainWindow {
             document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
           }
         });
+
+        // PropPlug submenu population
+        function populatePropPlugSubmenu() {
+          try {
+            const { ipcRenderer } = require('electron');
+
+            // Request PropPlug list from main process
+            ipcRenderer.send('get-propplug-list');
+
+            // Handle response
+            ipcRenderer.once('propplug-list', (event, data) => {
+              const { devices, currentDevice } = data;
+              const submenu = document.getElementById('propplug-submenu');
+
+              if (!submenu) return;
+
+              // Clear existing items
+              submenu.innerHTML = '';
+
+              // Add device items
+              if (devices && devices.length > 0) {
+                devices.forEach(device => {
+                  const item = document.createElement('div');
+                  item.className = 'menu-submenu-item';
+                  if (currentDevice && device.serialNumber === currentDevice) {
+                    item.classList.add('selected');
+                  }
+
+                  const displayName = device.friendlyName || device.serialNumber;
+                  const serialHint = device.friendlyName ? \` (\${device.serialNumber})\` : '';
+                  item.textContent = displayName + serialHint;
+
+                  item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
+                    ipcRenderer.send('select-propplug', device.serialNumber);
+                  });
+
+                  submenu.appendChild(item);
+                });
+
+                // Add separator
+                const separator = document.createElement('hr');
+                separator.className = 'menu-separator';
+                separator.style.cssText = 'margin: 4px 0; border: none; border-top: 1px solid #555;';
+                submenu.appendChild(separator);
+              } else {
+                // No devices known yet
+                const noDevices = document.createElement('div');
+                noDevices.className = 'menu-submenu-item';
+                noDevices.style.cssText = 'color: #999; font-style: italic;';
+                noDevices.textContent = '(No devices detected yet)';
+                submenu.appendChild(noDevices);
+
+                const separator = document.createElement('hr');
+                separator.className = 'menu-separator';
+                separator.style.cssText = 'margin: 4px 0; border: none; border-top: 1px solid #555;';
+                submenu.appendChild(separator);
+              }
+
+              // Add "Manage Devices..." item
+              const manageItem = document.createElement('div');
+              manageItem.className = 'menu-submenu-item';
+              manageItem.textContent = 'Manage Devices...';
+              manageItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
+                ipcRenderer.send('open-propplug-preferences');
+              });
+              submenu.appendChild(manageItem);
+            });
+          } catch (err) {
+            console.error('[PROPPLUG MENU] Failed to populate submenu:', err);
+          }
+        }
+
+        // Populate submenu on first hover over the menu item
+        const propplugMenuItem = document.querySelector('[data-action="menu-select-propplug"]');
+        if (propplugMenuItem) {
+          let populated = false;
+          propplugMenuItem.addEventListener('mouseenter', () => {
+            if (!populated) {
+              populatePropPlugSubmenu();
+              populated = true;
+            }
+          });
+        }
 
         // console.log('[MENU] Menu initialization complete');
         return 'Menu initialized';
@@ -3609,7 +3816,7 @@ export class MainWindow {
           if (this._deviceNode.length > 0) {
             // Device was specified but connection failed
             this.appendLog(`⚠️ Waiting for serial port: ${this._deviceNode}`);
-            this.appendLog(`   Try: File > Select PropPlug to choose a different device`);
+            this.appendLog(`   Try: File > Select PropPlug or Preferences > User/Project Settings`);
           } else {
             // No device specified - check what's available
             try {
@@ -3619,7 +3826,7 @@ export class MainWindow {
               if (availableDevices.length === 0) {
                 this.appendLog(`⚠️ No PropPlug devices found`);
                 this.appendLog(`   • Connect your PropPlug device via USB`);
-                this.appendLog(`   • Use File > Select PropPlug after connecting a device`);
+                this.appendLog(`   • Use File > Select PropPlug or change default in Preferences`);
                 this.updateConnectionStatus(false);
                 this.updateStatusBarField('propPlug', 'No devices found');
               } else if (availableDevices.length === 1) {
@@ -3639,7 +3846,7 @@ export class MainWindow {
                   const devicePath = device.split(',')[0];
                   this.appendLog(`   ${index + 1}. ${devicePath}`);
                 });
-                this.appendLog(`   Use: File > Select PropPlug to choose a device`);
+                this.appendLog(`   Use: File > Select PropPlug or set default in Preferences`);
                 this.appendLog(`   Or restart with: -p <device_path>`);
                 this.updateConnectionStatus(false);
                 this.updateStatusBarField('propPlug', `${availableDevices.length} devices found`);

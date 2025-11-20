@@ -320,6 +320,7 @@ Cog2  Counter: 1234
 - Quick device switching menu
 - Shows currently connected PropPlug devices
 - Checkmark indicates currently selected device
+- Selected device becomes your default automatically
 - "Manage Devices..." opens Preferences to PropPlug Management tab
 
 **Start Recording** (`Ctrl/Cmd+R`)
@@ -525,6 +526,11 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 3. User default (Default PropPlug in User Settings)
 4. Auto-detect (if only one device connected)
 5. User selection via UI (multiple devices)
+
+**Automatic Default Setting:**
+- Single device detected (first time) → Automatically becomes user default
+- File → Select PropPlug → Selected device becomes user default
+- This ensures your device preference is remembered for future sessions
 
 ### Serial Port Settings
 

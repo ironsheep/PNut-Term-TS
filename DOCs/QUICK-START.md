@@ -88,6 +88,7 @@ Run your P2 program with DEBUG commands. Windows appear as needed - no menu inte
 **Quick Switch Devices:**
 - File → Select PropPlug → Choose device
 - Devices show friendly name (if set) or serial number
+- Selected device becomes your new default automatically
 
 **Set Device Names:**
 1. Edit → Preferences → PropPlug Management tab

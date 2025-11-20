@@ -216,6 +216,27 @@ Manage your inventory of PropPlug devices.
 - Last seen timestamp
 - Last used timestamp
 
+### Device Selection Behavior
+
+**Automatic Default Setting:**
+PNut-Term-TS automatically sets your default PropPlug device for convenience:
+
+- **Single Device Detected**: When you connect your first PropPlug (and no default exists), it becomes your user default automatically
+- **User Selection**: When you choose a device via File → Select PropPlug, it becomes your user default
+- **Manual Override**: You can change the default anytime in Preferences or by selecting a different device
+
+**Selection Priority (5 levels):**
+1. **Command-Line** (`-p` flag) - Highest priority
+2. **Project Setting** (if enabled in Project Settings tab)
+3. **User Default** (set in User Settings tab or auto-set)
+4. **Auto-detect** (if only one device connected)
+5. **User Prompt** (multiple devices, no default set)
+
+**Examples:**
+- First launch with one PropPlug → Automatically becomes default for future launches
+- File → Select PropPlug → Choose device → Becomes new default
+- Preferences → "Auto-detect" → Clears default, allows auto-detection each launch
+
 ### Configuration Categories
 
 #### Terminal Settings

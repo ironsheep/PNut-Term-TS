@@ -555,6 +555,14 @@ export class DebugTerminalInTypeScript {
       const singleDevice = this.deviceInfoList[0];
       this.context.runEnvironment.selectedPropPlug = singleDevice.path;
       this.context.runEnvironment.selectedPropPlugSerial = singleDevice.serialNumber;
+
+      // Auto-default: If no user default exists, set this as the default
+      if (!this.context.preferences.serialPort.defaultPropPlug) {
+        this.context.logger.verboseMsg(`* Setting ${singleDevice.serialNumber} as user default (first and only device)`);
+        this.context.preferences.serialPort.defaultPropPlug = singleDevice.serialNumber;
+        this.context.saveUserGlobalSettings(this.context.preferences);
+      }
+
       // Look up device settings and apply controlLine (unless --rts override active)
       if (!this.context.runEnvironment.rtsOverride) {
         const deviceEntry = this.context.getKnownPropPlug(singleDevice.serialNumber);
