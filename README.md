@@ -19,9 +19,17 @@ _Originally Chip's Debug listener, now available on all platforms_
 
 </div>
 
-## PNut-Term-TS cross-platform debug terminal
+## PNut-Term-TS a cross-platform debug terminal
 
 This is our PNut Debug Windows and terminal ported to Typescript and now available on all platforms. This tool aims to make building, downloading, and running as simple as editing and saving a file in VS Code.
+
+---
+
+**NOTE**: For now the **Windows arm64 build** is not correctly opening the seral port. This, so far, appears to be an [npm serialport](https://www.npmjs.com/package/serialport) issue.  We filed a bug report to get clarification and/or a fix.
+
+**SPECIAL REQUEST**: If you have a **native arm64 Windows machine** please test this build and let me know if it works.  I'm running Windows 11 Pro under Parallels on a macOS (Apple Silicon) machine and this problem may be limited to my context!
+
+---
 
 ### PNut Term TS
 

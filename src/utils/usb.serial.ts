@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-const ENABLE_CONSOLE_LOG: boolean = false;
+const ENABLE_CONSOLE_LOG: boolean = false; // DIAGNOSTIC: Enable for Windows ARM64 debugging
 
 ('use strict');
 
@@ -10,16 +10,38 @@ import { waitMSec, waitSec } from './timerUtils';
 import { Context } from './context';
 import { EventEmitter } from 'events';
 
+// DIAGNOSTIC: Check which native binding is actually loaded
+if (ENABLE_CONSOLE_LOG) {
+  try {
+    const bindings = require('@serialport/bindings-cpp');
+    console.log('[BINDING CHECK] Platform:', process.platform);
+    console.log('[BINDING CHECK] Architecture:', process.arch);
+    console.log('[BINDING CHECK] Bindings module keys:', Object.keys(bindings));
+
+    // Try to get the actual binding instance
+    const WindowsBinding = bindings.WindowsBinding;
+    console.log('[BINDING CHECK] WindowsBinding:', WindowsBinding);
+
+    // Check which .node file is actually loaded by checking require.cache
+    const loadedModules = Object.keys(require.cache).filter(
+      (key) => key.includes('bindings-cpp') && key.endsWith('.node')
+    );
+    console.log('[BINDING CHECK] Loaded .node files:', loadedModules);
+  } catch (e: any) {
+    console.error('[BINDING CHECK] Failed to load bindings:', e.message);
+  }
+}
+
 // Download baud rate: Fixed at 2 Mbps for fast, reliable binary transfers
 // Future: Will be configurable via preferences/CLI
 const DEFAULT_DOWNLOAD_BAUD = 2000000;
 
 // Device info returned during enumeration
 export interface DeviceInfo {
-  path: string;           // Device path (e.g., "/dev/ttyUSB0", "COM3")
-  serialNumber: string;   // Device serial number
-  vendorId: number;       // USB Vendor ID (numeric)
-  productId: number;      // USB Product ID (numeric)
+  path: string; // Device path (e.g., "/dev/ttyUSB0", "COM3")
+  serialNumber: string; // Device serial number
+  vendorId: number; // USB Vendor ID (numeric)
+  productId: number; // USB Product ID (numeric)
 }
 
 export class UsbSerial extends EventEmitter {
@@ -73,32 +95,52 @@ export class UsbSerial extends EventEmitter {
     }
     this.logMessage(`* Connecting to ${this._deviceNode}`);
 
-    // WORKAROUND for macOS FTDI bug with high baud rates:
+    // WORKAROUND for macOS/Windows ARM64 FTDI bug with high baud rates:
     // Initialize at a standard rate, then immediately update to the desired rate
     const initialBaudRate =
-      UsbSerial.desiredCommsBaudRate > 230400 && process.platform === 'darwin'
-        ? 115200 // Use standard rate first on macOS for high speeds
+      UsbSerial.desiredCommsBaudRate > 230400 &&
+      (process.platform === 'darwin' || (process.platform === 'win32' && process.arch === 'arm64'))
+        ? 115200 // Use standard rate first on macOS and Windows ARM64 for high speeds
         : UsbSerial.desiredCommsBaudRate;
 
     if (initialBaudRate !== UsbSerial.desiredCommsBaudRate) {
       this.logConsoleMessage(
-        `[USB] macOS workaround: Opening at ${initialBaudRate}, will update to ${UsbSerial.desiredCommsBaudRate}`
+        `[USB] Platform workaround (${process.platform}/${process.arch}): Opening at ${initialBaudRate}, will update to ${UsbSerial.desiredCommsBaudRate}`
       );
     }
 
-    this._serialPort = new SerialPort({
+    // TEST: Try enabling DTR on Windows ARM64 to see if that allows port to open
+    // Some USB-serial drivers may require DTR enabled for CreateFile to succeed
+    const portOptions: any = {
       path: this._deviceNode,
       baudRate: initialBaudRate,
       dataBits: 8,
       stopBits: 1,
       parity: 'none',
       autoOpen: false,
-      hupcl: false, // Prevent automatic DTR/RTS assertion on port open
       highWaterMark: 1024 * 1024 // 1MB buffer (up from 16KB default) to prevent USB data loss
-    });
+    };
+
+    // TEST for Windows ARM64: Try WITHOUT hupcl: false to enable DTR
+    // Hypothesis: DTR_CONTROL_DISABLE may prevent port opening on some Windows systems
+    if (process.platform !== 'win32') {
+      portOptions.hupcl = false; // POSIX only: Prevent automatic DTR/RTS assertion on port open
+    }
+    // Windows: Let DTR enable (default) to test if that allows port to open
+
+    this._serialPort = new SerialPort(portOptions);
+    this.logConsoleMessage(`[USB OPEN] SerialPort created for ${this._deviceNode}`);
+    this.logConsoleMessage(`[USB OPEN] Options: ${JSON.stringify(portOptions)}`);
+
     // Open errors will be emitted as an error event
-    this._serialPort.on('error', (err) => this.handleSerialError(err.message));
-    this._serialPort.on('open', () => this.handleSerialOpen());
+    this._serialPort.on('error', (err) => {
+      this.logConsoleMessage(`[USB OPEN] ERROR event received: ${err.message}`);
+      this.handleSerialError(err.message);
+    });
+    this._serialPort.on('open', () => {
+      this.logConsoleMessage(`[USB OPEN] OPEN event received - port is now open`);
+      this.handleSerialOpen();
+    });
 
     // Handle ALL data through raw handler - no parser interference!
     // Parser was corrupting binary data and destroying performance
@@ -122,9 +164,13 @@ export class UsbSerial extends EventEmitter {
     });
 
     // now open the port
+    this.logConsoleMessage(`[USB OPEN] Calling serialPort.open() for ${this._deviceNode}`);
     this._serialPort.open((err) => {
       if (err) {
+        this.logConsoleMessage(`[USB OPEN] open() callback received ERROR: ${err.message}`);
         this.handleSerialError(err.message);
+      } else {
+        this.logConsoleMessage(`[USB OPEN] open() callback received SUCCESS`);
       }
     });
   }
@@ -220,16 +266,22 @@ export class UsbSerial extends EventEmitter {
       });
 
       // Reopen with new baud rate - MUST include all original settings!
-      this._serialPort = new SerialPort({
+      const reopenOptions: any = {
         path: portPath,
         baudRate: newBaudRate,
         dataBits: 8,
         stopBits: 1,
         parity: 'none',
         autoOpen: false,
-        hupcl: false, // CRITICAL: Prevent automatic DTR/RTS assertion on port open
         highWaterMark: 1024 * 1024 // CRITICAL: 1MB buffer to prevent USB data loss
-      });
+      };
+
+      // TEST for Windows ARM64: Try WITHOUT hupcl: false to enable DTR
+      if (process.platform !== 'win32') {
+        reopenOptions.hupcl = false; // POSIX only: Prevent automatic DTR/RTS assertion on port open
+      }
+
+      this._serialPort = new SerialPort(reopenOptions);
 
       // Re-attach all event listeners
       this._serialPort.on('error', (err) => this.handleSerialError(err.message));
@@ -457,7 +509,9 @@ export class UsbSerial extends EventEmitter {
             ctx.logger.debugMsg(`* No FTDI devices (VID:0403) found among ${ports.length} serial port(s)`);
             ctx.logger.verboseMsg(`* Hint: Match-vendor-only mode - looking for any VID:0403 device`);
           } else {
-            ctx.logger.debugMsg(`* No Parallax PropPlug devices (0403:6015) found among ${ports.length} serial port(s)`);
+            ctx.logger.debugMsg(
+              `* No Parallax PropPlug devices (0403:6015) found among ${ports.length} serial port(s)`
+            );
             ctx.logger.verboseMsg(`* Hint: Looking specifically for VID:0403 PID:6015 (Parallax PropPlug)`);
           }
         }
@@ -496,9 +550,7 @@ export class UsbSerial extends EventEmitter {
         const vendorOnlyMode = ctx?.runEnvironment.matchVendorOnly ?? false;
 
         // Apply filtering based on mode
-        const isMatch = vendorOnlyMode
-          ? port.vendorId == '0403'
-          : port.vendorId == '0403' && port.productId == '6015';
+        const isMatch = vendorOnlyMode ? port.vendorId == '0403' : port.vendorId == '0403' && port.productId == '6015';
 
         if (isMatch) {
           devicesFound.push({
@@ -1194,15 +1246,24 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async waitForPortOpen(): Promise<boolean> {
+    this.logConsoleMessage(`[USB OPEN] waitForPortOpen() started - polling isOpen status`);
     return new Promise((resolve, reject) => {
       let attempts = 0;
       const maxAttempts = 2000 / 30; // 2 seconds / 30 ms
 
       const intervalId = setInterval(async () => {
-        if (this._serialPort.isOpen) {
+        const isOpen = this._serialPort.isOpen;
+        // Log every 10th attempt to avoid flooding
+        if (attempts % 10 === 0) {
+          this.logConsoleMessage(`[USB OPEN] Poll attempt ${attempts}/${maxAttempts}: isOpen = ${isOpen}`);
+        }
+
+        if (isOpen) {
+          this.logConsoleMessage(`[USB OPEN] Port is OPEN! Resolving waitForPortOpen()`);
           clearInterval(intervalId);
           resolve(true);
         } else if (attempts >= maxAttempts) {
+          this.logConsoleMessage(`[USB OPEN] TIMEOUT after ${attempts} attempts - port never opened`);
           clearInterval(intervalId);
           reject(new Error('Port did not open within 2 seconds'));
         } else {

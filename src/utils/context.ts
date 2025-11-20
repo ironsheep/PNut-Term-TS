@@ -80,7 +80,8 @@ export interface UserPreferences {
     localEcho: boolean;
   };
   serialPort: {
-    controlLine: string;
+    controlLine: string; // @deprecated Use per-device controlLine from PropPlugEntry
+    defaultPropPlug?: string; // Serial number of default PropPlug, or undefined for auto-detect
     defaultBaud: number;
     resetOnConnection: boolean;
   };

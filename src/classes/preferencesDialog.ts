@@ -254,19 +254,25 @@ export class PreferencesDialog {
     <div class="section">
       <h2>Serial Port</h2>
       ${isProject ? `<div class="form-group">
-        <input type="checkbox" class="override-checkbox" id="${prefix}-override-control-line" onchange="toggleOverride('${prefix}', 'control-line')">
-        <label>Control Line:</label>
-        <div class="radio-group">
-          <label><input type="radio" name="${prefix}-control-line" value="DTR" disabled> DTR</label>
-          <label><input type="radio" name="${prefix}-control-line" value="RTS" disabled> RTS</label>
-        </div>
-        <span class="global-value" id="${prefix}-global-control-line"></span>
+        <input type="checkbox" class="override-checkbox" id="${prefix}-override-default-propplug" onchange="toggleOverride('${prefix}', 'default-propplug')">
+        <label>PropPlug Device:</label>
+        <select id="${prefix}-default-propplug" disabled>
+          <option value="">Auto-detect (any available)</option>
+          <!-- Populated dynamically -->
+        </select>
+        <span class="global-value" id="${prefix}-global-default-propplug"></span>
+      </div>
+      <div style="font-size: 11px; color: #666; margin-left: 210px; margin-top: -8px; margin-bottom: 12px;">
+        Don't see your device? Connect it and relaunch. <a href="#" onclick="switchTab('propplug'); return false;" style="color: #007acc;">Manage devices...</a>
       </div>` : `<div class="form-group">
-        <label>Control Line:</label>
-        <div class="radio-group">
-          <label><input type="radio" name="${prefix}-control-line" value="DTR"> DTR</label>
-          <label><input type="radio" name="${prefix}-control-line" value="RTS"> RTS</label>
-        </div>
+        <label>Default PropPlug:</label>
+        <select id="${prefix}-default-propplug">
+          <option value="">Auto-detect (any available)</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div style="font-size: 11px; color: #666; margin-left: 210px; margin-top: -8px; margin-bottom: 12px;">
+        Don't see your device? Connect it and relaunch. <a href="#" onclick="switchTab('propplug'); return false;" style="color: #007acc;">Manage devices...</a>
       </div>`}
 
       ${isProject ? `<div class="form-group">
@@ -649,20 +655,6 @@ export class PreferencesDialog {
         <button onclick="deleteCurrentPropplug()" class="cancel" style="background: #ff4444; color: white; border: none;">Delete Device</button>
       </div>
     </div>
-
-    <div class="section">
-      <h2>Project PropPlug Selection</h2>
-      <div class="form-group">
-        <label>Use PropPlug:</label>
-        <select id="project-propplug-select" style="flex: 1; max-width: 300px;">
-          <option value="">Auto-detect (any available)</option>
-          <!-- Populated dynamically -->
-        </select>
-      </div>
-      <p style="font-size: 11px; color: #666; margin-top: 5px;">
-        Select a specific PropPlug for this project, or use auto-detect to connect to any available device.
-      </p>
-    </div>
   </div>
   
   <div class="button-area">
@@ -688,7 +680,7 @@ export class PreferencesDialog {
       propplugList = data.knownPlugs || [];
       projectSelectedPropplug = data.projectSelected || '';
       populatePropplugList();
-      populateProjectPropplugSelect();
+      populatePropplugDropdowns();
     });
 
     ipcRenderer.on('pref-project-propplug-set', (event, serialNumber) => {
@@ -804,30 +796,42 @@ export class PreferencesDialog {
       }
     }
 
-    function populateProjectPropplugSelect() {
-      const select = document.getElementById('project-propplug-select');
+    function populatePropplugDropdowns() {
+      // Populate User Settings PropPlug dropdown
+      const userSelect = document.getElementById('user-default-propplug');
+      if (userSelect) {
+        // Clear existing options except the first (auto-detect)
+        while (userSelect.options.length > 1) {
+          userSelect.remove(1);
+        }
 
-      // Clear existing options except the first (auto-detect)
-      while (select.options.length > 1) {
-        select.remove(1);
+        // Add options for each known PropPlug
+        propplugList.forEach(plug => {
+          const option = document.createElement('option');
+          option.value = plug.serialNumber;
+          const name = plug.friendlyName || plug.serialNumber;
+          option.textContent = \`\${name} (\${plug.serialNumber})\`;
+          userSelect.appendChild(option);
+        });
       }
 
-      // Add options for each known PropPlug
-      propplugList.forEach(plug => {
-        const option = document.createElement('option');
-        option.value = plug.serialNumber;
-        const name = plug.friendlyName || plug.serialNumber;
-        option.textContent = \`\${name} (\${plug.serialNumber})\`;
-        select.appendChild(option);
-      });
+      // Populate Project Settings PropPlug dropdown
+      const projectSelect = document.getElementById('project-default-propplug');
+      if (projectSelect) {
+        // Clear existing options except the first (auto-detect)
+        while (projectSelect.options.length > 1) {
+          projectSelect.remove(1);
+        }
 
-      // Set current selection
-      select.value = projectSelectedPropplug || '';
-
-      // Add change handler
-      select.onchange = () => {
-        ipcRenderer.send('pref-set-project-propplug', select.value || null);
-      };
+        // Add options for each known PropPlug
+        propplugList.forEach(plug => {
+          const option = document.createElement('option');
+          option.value = plug.serialNumber;
+          const name = plug.friendlyName || plug.serialNumber;
+          option.textContent = \`\${name} (\${plug.serialNumber})\`;
+          projectSelect.appendChild(option);
+        });
+      }
     }
 
     function loadSettings() {
@@ -850,8 +854,9 @@ export class PreferencesDialog {
       document.getElementById(prefix + '-show-cog-prefixes').checked = settings.terminal.showCogPrefixes;
       document.getElementById(prefix + '-local-echo').checked = settings.terminal.localEcho;
 
-      // Serial Port
-      document.querySelector(\`input[name="\${prefix}-control-line"][value="\${settings.serialPort.controlLine}"]\`).checked = true;
+      // Serial Port - Request PropPlug list and populate dropdowns
+      ipcRenderer.send('pref-get-propplug-list');
+      document.getElementById(prefix + '-default-propplug').value = settings.serialPort.defaultPropPlug || '';
       document.getElementById(prefix + '-default-baud').value = settings.serialPort.defaultBaud;
       document.getElementById(prefix + '-reset-on-connection').checked = settings.serialPort.resetOnConnection;
 
@@ -886,7 +891,9 @@ export class PreferencesDialog {
       document.getElementById(prefix + '-local-echo').checked = settings.terminal.localEcho;
 
       // Serial Port
-      document.querySelector(\`input[name="\${prefix}-control-line"][value="\${settings.serialPort.controlLine}"]\`).checked = true;
+      // For project settings, check root-level selectedPropPlug first (old location), fall back to serialPort.defaultPropPlug
+      const projectPropPlug = effectiveSettings.selectedPropPlug || settings.serialPort.defaultPropPlug || '';
+      document.getElementById(prefix + '-default-propplug').value = projectPropPlug;
       document.getElementById(prefix + '-default-baud').value = settings.serialPort.defaultBaud;
       document.getElementById(prefix + '-reset-on-connection').checked = settings.serialPort.resetOnConnection;
 
@@ -921,7 +928,8 @@ export class PreferencesDialog {
       setGlobalLabel(prefix, 'local-echo', settings.terminal.localEcho ? 'Yes' : 'No');
 
       // Serial Port
-      setGlobalLabel(prefix, 'control-line', settings.serialPort.controlLine);
+      const defaultPropplugLabel = settings.serialPort.defaultPropPlug || 'Auto-detect';
+      setGlobalLabel(prefix, 'default-propplug', defaultPropplugLabel);
       setGlobalLabel(prefix, 'default-baud', settings.serialPort.defaultBaud);
       setGlobalLabel(prefix, 'reset-on-connection', settings.serialPort.resetOnConnection ? 'Yes' : 'No');
 
@@ -956,13 +964,6 @@ export class PreferencesDialog {
         // Enable override
         field.disabled = false;
         if (globalLabel) globalLabel.style.display = 'none';
-
-        // For radio buttons
-        if (fieldId === 'control-line') {
-          document.querySelectorAll(\`input[name="\${prefix}-control-line"]\`).forEach(radio => {
-            radio.disabled = false;
-          });
-        }
       } else {
         // Disable override (reset to global value)
         field.disabled = true;
@@ -970,13 +971,6 @@ export class PreferencesDialog {
 
         // Reset to current effective (global) value
         loadProjectSettings();
-
-        // For radio buttons
-        if (fieldId === 'control-line') {
-          document.querySelectorAll(\`input[name="\${prefix}-control-line"]\`).forEach(radio => {
-            radio.disabled = true;
-          });
-        }
       }
     }
 
@@ -1000,7 +994,7 @@ export class PreferencesDialog {
           localEcho: document.getElementById(prefix + '-local-echo').checked
         },
         serialPort: {
-          controlLine: document.querySelector(\`input[name="\${prefix}-control-line"]:checked\`).value,
+          defaultPropPlug: document.getElementById(prefix + '-default-propplug').value || undefined,
           defaultBaud: parseInt(document.getElementById(prefix + '-default-baud').value),
           resetOnConnection: document.getElementById(prefix + '-reset-on-connection').checked
         },
@@ -1035,7 +1029,7 @@ export class PreferencesDialog {
         { category: 'terminal', id: 'font-family', key: 'fontFamily', parser: (v) => v },
         { category: 'terminal', id: 'show-cog-prefixes', key: 'showCogPrefixes', parser: (v) => v },
         { category: 'terminal', id: 'local-echo', key: 'localEcho', parser: (v) => v },
-        { category: 'serialPort', id: 'control-line', key: 'controlLine', parser: (v) => v, isRadio: true },
+        { category: 'serialPort', id: 'default-propplug', key: 'defaultPropPlug', parser: (v) => v || undefined },
         { category: 'serialPort', id: 'default-baud', key: 'defaultBaud', parser: (v) => parseInt(v) },
         { category: 'serialPort', id: 'reset-on-connection', key: 'resetOnConnection', parser: (v) => v },
         { category: 'logging', id: 'log-directory', key: 'logDirectory', parser: (v) => v },
@@ -1052,18 +1046,19 @@ export class PreferencesDialog {
         const checkbox = document.getElementById(\`\${prefix}-override-\${override.id}\`);
         if (checkbox && checkbox.checked) {
           let value;
-          if (override.isRadio) {
-            value = document.querySelector(\`input[name="\${prefix}-\${override.id}"]:checked\`)?.value;
-          } else {
-            const field = document.getElementById(\`\${prefix}-\${override.id}\`);
-            value = field.type === 'checkbox' ? field.checked : field.value;
-          }
+          const field = document.getElementById(\`\${prefix}-\${override.id}\`);
+          value = field.type === 'checkbox' ? field.checked : field.value;
 
           if (value !== undefined) {
-            if (!projectOverrides[override.category]) {
-              projectOverrides[override.category] = {};
+            // Special handling for PropPlug - save as root-level selectedPropPlug
+            if (override.id === 'default-propplug') {
+              projectOverrides['selectedPropPlug'] = value || null;
+            } else {
+              if (!projectOverrides[override.category]) {
+                projectOverrides[override.category] = {};
+              }
+              projectOverrides[override.category][override.key] = override.parser(value);
             }
-            projectOverrides[override.category][override.key] = override.parser(value);
           }
         }
       });

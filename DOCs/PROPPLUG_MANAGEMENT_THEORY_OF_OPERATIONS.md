@@ -95,13 +95,17 @@ For each device found:
   │  Update lastSeen timestamp  │
   └─────────────────────────────┘
        ↓
-  ┌─ Unknown device ────────────────────────┐
-  │  Add to master list with:               │
-  │  - Default controlLine based on PID     │
-  │  - Empty friendlyName                   │
-  │  - Current timestamp for lastSeen       │
-  └─────────────────────────────────────────┘
+  ┌─ Unknown device ────────────────────────────────┐
+  │  Add to master list with:                       │
+  │  - controlLine:                                 │
+  │    • If --rts flag active → 'RTS'              │
+  │    • Otherwise → PID-based default (DTR)       │
+  │  - Empty friendlyName                           │
+  │  - Current timestamp for lastSeen               │
+  └─────────────────────────────────────────────────┘
 ```
+
+**Note**: The `--rts` flag affects NEW device registration. This allows users to configure the correct control line during initial device discovery.
 
 ### 2. Device Selection
 
@@ -126,17 +130,26 @@ Check selection sources (in priority order):
 ```
 Device selected (serial number known)
        ↓
-Look up in master list
+Check for --rts override flag
        ↓
-Extract device-specific settings:
-  - controlLine (DTR/RTS)
-  - friendlyName (for display)
+  ┌─ --rts flag active ────────────────────────────┐
+  │  Use RTS for this session (don't read device)  │
+  │  context.runEnvironment.controlLine = 'RTS'    │
+  └─────────────────────────────────────────────────┘
        ↓
-Apply to runtime context:
-  context.runEnvironment.controlLine = entry.controlLine
+  ┌─ No --rts flag ─────────────────────────────────┐
+  │  Look up in master list                         │
+  │  Extract device-specific settings:              │
+  │    - controlLine (DTR/RTS)                      │
+  │    - friendlyName (for display)                 │
+  │  Apply to runtime context:                      │
+  │    context.runEnvironment.controlLine = entry.controlLine │
+  └─────────────────────────────────────────────────┘
        ↓
-Serial connection uses correct control line
+Serial connection uses determined control line
 ```
+
+**Priority**: CLI `--rts` flag takes precedence over stored device settings (session-only override).
 
 ### 4. Runtime Usage
 
@@ -285,14 +298,38 @@ Available devices:
 
 1. Match device by serial number substring
 2. Look up in master list
-3. Apply device-specific controlLine
+3. Apply device-specific controlLine (unless `--rts` override active)
 4. Proceed with connection
+
+### --rts Flag Behavior
+
+The `--rts` flag provides session-level control line override:
+
+**For NEW devices** (never seen before):
+- Device is added to master list with `controlLine: 'RTS'`
+- This becomes the device's permanent default
+- Example: `pnut-term-ts -p P9abc123 --rts`
+  - If P9abc123 is new → saved with RTS control line
+  - Future sessions use RTS by default (unless overridden)
+
+**For KNOWN devices** (already in master list):
+- Device's stored `controlLine` is NOT modified
+- RTS is used for THIS SESSION ONLY
+- Example: `pnut-term-ts -p P9abc123 --rts`
+  - If P9abc123 exists with DTR → DTR setting preserved in master list
+  - Current session uses RTS
+  - Next session without `--rts` uses stored DTR
+
+**Rationale**: The `--rts` flag serves dual purposes:
+1. Initial configuration: Set control line for new devices during first discovery
+2. Temporary override: Test different control lines without modifying saved settings
 
 ### No -p Flag
 
 1. Check project settings for selectedPropPlug
 2. If found and device connected → use it
 3. If not found or device not connected:
+   - Check user default PropPlug (User Settings)
    - Single device → auto-select
    - Multiple devices → prompt in UI
    - No devices → show guidance

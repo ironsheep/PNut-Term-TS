@@ -184,13 +184,20 @@ Global preferences applying to all projects.
 - Windows: `%APPDATA%\PNut-Term-TS\settings.json`
 - macOS/Linux: `~/.pnut-term-ts-settings.json`
 
+**PropPlug Selection:**
+- Default PropPlug dropdown in Serial Port section
+- Sets your preferred device when no project override exists
+- Choose "Auto-detect" or select a specific device
+- Shows friendly name and serial number for each device
+
 #### Project Settings Tab
 Project-specific overrides with checkboxes. Only checked items override user settings (delta-save strategy).
 
 **PropPlug Selection:**
-- Dropdown to select default device for this project
-- Shows friendly name and serial number
-- Option to use auto-detect or specific device
+- PropPlug Device override in Serial Port section
+- Check the override box to enable project-specific device selection
+- Overrides the user default when this project is active
+- Choose "Auto-detect" or select a specific device
 
 #### PropPlug Management Tab
 Manage your inventory of PropPlug devices.
@@ -222,17 +229,24 @@ Manage your inventory of PropPlug devices.
 | Local Echo | On/Off | Off |
 
 #### Serial Port Settings
-| Setting | Options | Default |
-|---------|---------|---------|
-| Control Line | DTR, RTS | Per-device (see PropPlug Management) |
-| Default Baud Rate | 115200 to 2000000 | 2000000 |
-| Reset P2 on Connection | Enabled/Disabled | Enabled |
+| Setting | Options | Default | Location |
+|---------|---------|---------|----------|
+| Default PropPlug (User) | Auto-detect or specific device | Auto-detect | User Settings Tab |
+| PropPlug Device (Project) | Auto-detect or specific device | (use user default) | Project Settings Tab |
+| Default Baud Rate | 115200 to 2000000 | 115200 | User/Project Settings |
+| Reset P2 on App Startup | Enabled/Disabled | Enabled | User/Project Settings |
+
+**PropPlug Selection:**
+- **User Settings**: Sets your default device for all projects
+- **Project Settings**: Override for specific project (optional)
+- Device list populated from PropPlug Management tab
+- Click "Manage devices..." link to configure device properties
 
 **Reset Behavior:**
 - Enabled: Resets P2 on connect (development mode)
 - Disabled: Connects without reset (monitoring mode)
 
-**Note:** Control line (DTR/RTS) is now configured per-device in the PropPlug Management tab.
+**Note:** Control line (DTR/RTS) is configured per-device in the PropPlug Management tab, not in User/Project Settings.
 
 #### Logging Settings
 | Setting | Options | Default |
@@ -337,9 +351,10 @@ PNut-Term-TS automatically manages your PropPlug devices, remembering their sett
 
 **Priority Order:**
 1. Command-line flag: `-p <serial>` or `-p <device_path>`
-2. Project setting: Selected device in project preferences
-3. Auto-detect: Single connected device is used automatically
-4. User prompt: Multiple devices require selection
+2. Project setting: PropPlug Device in Project Settings tab
+3. User default: Default PropPlug in User Settings tab
+4. Auto-detect: Single connected device is used automatically
+5. User prompt: Multiple devices require selection
 
 ### Managing Devices
 
@@ -372,15 +387,23 @@ pnut-term-ts -p P9cektn7
 pnut-term-ts -p P9c
 ```
 
-### Project Device Selection
+### Setting PropPlug Preferences
 
-**Set Project Default:**
+**User Default (all projects):**
+1. Edit → Preferences → User Settings tab
+2. Serial Port section → Default PropPlug dropdown
+3. Choose "Auto-detect" or select a specific device
+4. Click Apply
+
+**Result:** This device is used by default unless overridden by a project.
+
+**Project Override (specific project):**
 1. Edit → Preferences → Project Settings tab
-2. Enable "PropPlug Selection" checkbox
+2. Serial Port section → Check "PropPlug Device" override box
 3. Choose device from dropdown
-4. Save to project settings file
+4. Click Apply
 
-**Result:** This project always uses the selected device when available.
+**Result:** This project always uses the selected device when available, overriding the user default.
 
 ### Troubleshooting Devices
 

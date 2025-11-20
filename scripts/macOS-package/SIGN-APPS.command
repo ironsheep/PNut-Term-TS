@@ -4,8 +4,10 @@
 
 set -e
 
-echo "🔐 PNut-Term-TS App Signing"
-echo "============================"
+SCRIPT_VERSION="2.0.2"
+
+echo "🔐 PNut-Term-TS App Signing v${SCRIPT_VERSION}"
+echo "============================================"
 echo ""
 
 # Get the directory where this script is located
@@ -88,6 +90,16 @@ sign_app() {
     echo "      Reason: Electron binaries come pre-signed. Re-signing without stripping breaks signature chains."
     echo ""
 
+    # FIRST: Remove ALL _CodeSignature directories (codesign --remove-signature doesn't remove nested ones)
+    echo "      Removing all _CodeSignature directories..."
+    local sig_count=$(find "$APP_PATH" -name "_CodeSignature" -type d 2>/dev/null | wc -l)
+    if [ "$sig_count" -gt 0 ]; then
+        find "$APP_PATH" -name "_CodeSignature" -type d -exec rm -rf {} +
+        echo "      Removed $sig_count _CodeSignature directories"
+    else
+        echo "      No _CodeSignature directories found"
+    fi
+
     # Strip main app bundle signature
     codesign --remove-signature "$APP_PATH" 2>/dev/null || true
 
@@ -104,9 +116,11 @@ sign_app() {
     # Strip all frameworks
     for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
         if [ -d "$framework" ]; then
-            codesign --remove-signature "$framework" 2>/dev/null || true
             local framework_name=$(basename "$framework" .framework)
+            # Strip binary inside
             [ -f "$framework/Versions/A/$framework_name" ] && codesign --remove-signature "$framework/Versions/A/$framework_name" 2>/dev/null || true
+            # Strip framework bundle
+            codesign --remove-signature "$framework" 2>/dev/null || true
         fi
     done
 
@@ -140,14 +154,18 @@ sign_app() {
     local unsigned_count=0
     local still_signed_count=0
 
-    # Check a few key components
+    # Check key components - include the actual binaries that fail notarization
     for component in \
         "$APP_PATH" \
         "$APP_PATH/Contents/MacOS/Electron" \
         "$APP_PATH/Contents/Frameworks/Electron Framework.framework" \
+        "$APP_PATH/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework" \
         "$APP_PATH/Contents/Frameworks/Mantle.framework" \
+        "$APP_PATH/Contents/Frameworks/Mantle.framework/Versions/A/Mantle" \
         "$APP_PATH/Contents/Frameworks/ReactiveObjC.framework" \
-        "$APP_PATH/Contents/Frameworks/Squirrel.framework"; do
+        "$APP_PATH/Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC" \
+        "$APP_PATH/Contents/Frameworks/Squirrel.framework" \
+        "$APP_PATH/Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel"; do
 
         if [ -e "$component" ]; then
             if codesign -v "$component" 2>/dev/null; then

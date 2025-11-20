@@ -433,6 +433,9 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 - **Global preferences** that apply to all projects
 - Saved to user profile directory
 - Changes affect all projects unless overridden
+- **Default PropPlug dropdown** in Serial Port section
+  - Sets your preferred device for all projects
+  - Choose "Auto-detect" or select a specific device
 
 #### Project Settings Tab
 - **Project-specific overrides** using checkboxes
@@ -440,7 +443,9 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 - Each setting has a checkbox to enable override
 - Unchecked settings use User Global or App Default values
 - Only enabled overrides are saved (delta-save strategy)
-- **PropPlug Selection dropdown** for project device preference
+- **PropPlug Device override** in Serial Port section
+  - Check override box to enable project-specific device
+  - Overrides user default when this project is active
 
 #### PropPlug Management Tab
 - **Device inventory** of all known PropPlug devices
@@ -448,6 +453,8 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 - Configure per-device control line (DTR/RTS)
 - Delete stale or unused devices
 - Automatic discovery of new devices on connection
+- **Note**: This tab manages device properties, not selection
+- Use User/Project Settings tabs to choose which device to use
 
 ### Settings File Locations
 
@@ -514,19 +521,37 @@ PNut-Term-TS uses a **3-tier cascading settings system**:
 
 **Device Selection Priority**
 1. Command-line `-p` flag (if specified)
-2. Project setting (selectedPropPlug)
-3. Auto-detect (if only one device connected)
-4. User selection via UI (multiple devices)
+2. Project setting (PropPlug Device in Project Settings)
+3. User default (Default PropPlug in User Settings)
+4. Auto-detect (if only one device connected)
+5. User selection via UI (multiple devices)
 
 ### Serial Port Settings
 
-**Control Line**
+**Default PropPlug (User Settings)**
+- **Location**: User Settings Tab → Serial Port section
+- **Options**: Auto-detect or list of known devices
+- **Default**: Auto-detect (any available)
+- **Description**: Your preferred PropPlug device for all projects
+  - Shows friendly name and serial number
+  - Click "Manage devices..." link to configure device properties
+
+**PropPlug Device (Project Settings)**
+- **Location**: Project Settings Tab → Serial Port section
+- **Options**: Auto-detect or list of known devices
+- **Default**: (use user default)
+- **Description**: Project-specific PropPlug override
+  - Check override box to enable
+  - Overrides user default when this project is active
+
+**Control Line (per device)**
+- **Location**: PropPlug Management Tab
 - **Options**: DTR (Default), RTS
-- **Default**: DTR per device (configurable in PropPlug Management)
 - **Description**: Hardware control line used for P2 reset
   - **DTR**: Used by Parallax PropPlug devices
   - **RTS**: Used by some non-Parallax USB serial adapters
-  - **Note**: Now configured per-device in PropPlug Management tab
+  - **Note**: Configured per-device, not globally
+  - Each PropPlug remembers its own control line setting
 
 **Default Baud Rate**
 - **Options**:

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - PropPlug device management system with persistent per-device settings
 - PropPlug Management tab in Preferences dialog for viewing/editing known devices
-- Per-device DTR/RTS control line settings (automatically determined by device type)
+- Per-device DTR/RTS control line settings (automatically determined by device type with manual override)
 - Project-level PropPlug selection in Preferences
 - Automatic discovery and tracking of new PropPlug devices
 - Friendly name support for PropPlug devices
@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exit with error if `-p` specifies a device that is not found (previously would silently proceed to UI)
 - Control line (DTR/RTS) now determined per-device instead of global setting
 - Device selection now matches by serial number in addition to path
+
+### Known Issues
+
+- The **Windows arm64 build** is having issues. It is not opening the serial port. This, so far, appears to be an [npm serialport](https://www.npmjs.com/package/serialport) issue.  We filed a bug report to get clarification and/or a fix.
+
+- **SPECIAL REQUEST**: If you have a **native arm64 Windows machine** please test this build and let me know if it works.  I'm running Windows 11 Pro under Parallels on a macOS (Apple Silicon) machine and this problem may be limited to my context!
 
 ## [0.9.3] - 2025-11-17
 

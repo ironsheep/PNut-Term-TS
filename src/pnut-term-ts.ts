@@ -476,10 +476,16 @@ export class DebugTerminalInTypeScript {
         this.context.runEnvironment.selectedPropPlug = foundDevice.path;
         this.context.runEnvironment.selectedPropPlugSerial = foundDevice.serialNumber;
         // Look up device settings and apply controlLine
-        const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
-        if (deviceEntry) {
-          this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-          this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+        // If --rts override is active, use RTS for this session (don't overwrite)
+        // Otherwise, use the device's stored control line preference
+        if (!this.context.runEnvironment.rtsOverride) {
+          const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
+          if (deviceEntry) {
+            this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+            this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+          }
+        } else {
+          this.context.logger.verboseMsg(`* Device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
         }
       } else {
         // Device specified but not found - this is an error condition
@@ -496,16 +502,68 @@ export class DebugTerminalInTypeScript {
       }
     }
 
+    // Check for project-level PropPlug selection
+    if (!this.context.runEnvironment.selectedPropPlug) {
+      const projectPropPlug = this.context.getProjectSelectedPropPlug();
+      if (projectPropPlug) {
+        const foundDevice = this.deviceInfoList.find((device) => device.serialNumber === projectPropPlug);
+        if (foundDevice) {
+          this.context.runEnvironment.selectedPropPlug = foundDevice.path;
+          this.context.runEnvironment.selectedPropPlugSerial = foundDevice.serialNumber;
+          // Look up device settings and apply controlLine (unless --rts override active)
+          if (!this.context.runEnvironment.rtsOverride) {
+            const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
+            if (deviceEntry) {
+              this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+              this.context.logger.verboseMsg(`* Project-selected device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+            }
+          } else {
+            this.context.logger.verboseMsg(`* Project-selected device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
+          }
+        } else {
+          this.context.logger.warningMsg(`* Project-selected PropPlug "${projectPropPlug}" not found, will try other selection methods`);
+        }
+      }
+    }
+
+    // Check for user-default PropPlug selection
+    if (!this.context.runEnvironment.selectedPropPlug) {
+      const userDefaultPropPlug = this.context.preferences.serialPort.defaultPropPlug;
+      if (userDefaultPropPlug) {
+        const foundDevice = this.deviceInfoList.find((device) => device.serialNumber === userDefaultPropPlug);
+        if (foundDevice) {
+          this.context.runEnvironment.selectedPropPlug = foundDevice.path;
+          this.context.runEnvironment.selectedPropPlugSerial = foundDevice.serialNumber;
+          // Look up device settings and apply controlLine (unless --rts override active)
+          if (!this.context.runEnvironment.rtsOverride) {
+            const deviceEntry = this.context.getKnownPropPlug(foundDevice.serialNumber);
+            if (deviceEntry) {
+              this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+              this.context.logger.verboseMsg(`* User-default device ${foundDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+            }
+          } else {
+            this.context.logger.verboseMsg(`* User-default device ${foundDevice.serialNumber} using RTS control line (--rts session override)`);
+          }
+        } else {
+          this.context.logger.warningMsg(`* User-default PropPlug "${userDefaultPropPlug}" not found, will try auto-detect`);
+        }
+      }
+    }
+
     if (!this.context.runEnvironment.selectedPropPlug && this.deviceInfoList.length == 1) {
       // found only port, select it!
       const singleDevice = this.deviceInfoList[0];
       this.context.runEnvironment.selectedPropPlug = singleDevice.path;
       this.context.runEnvironment.selectedPropPlugSerial = singleDevice.serialNumber;
-      // Look up device settings and apply controlLine
-      const deviceEntry = this.context.getKnownPropPlug(singleDevice.serialNumber);
-      if (deviceEntry) {
-        this.context.runEnvironment.controlLine = deviceEntry.controlLine;
-        this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+      // Look up device settings and apply controlLine (unless --rts override active)
+      if (!this.context.runEnvironment.rtsOverride) {
+        const deviceEntry = this.context.getKnownPropPlug(singleDevice.serialNumber);
+        if (deviceEntry) {
+          this.context.runEnvironment.controlLine = deviceEntry.controlLine;
+          this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} uses ${deviceEntry.controlLine} control line`);
+        }
+      } else {
+        this.context.logger.verboseMsg(`* Auto-selected device ${singleDevice.serialNumber} using RTS control line (--rts session override)`);
       }
     }
 
@@ -582,18 +640,24 @@ export class DebugTerminalInTypeScript {
           // Update lastSeen timestamp
           this.context.updateKnownPropPlug(deviceInfo.serialNumber, { lastSeen: now });
         } else {
-          // Add new device to master list with defaults
+          // Add new device to master list
+          // If --rts flag was specified on command line, use RTS for new devices
+          // Otherwise use PID-based default (usually DTR)
+          const defaultControlLine = this.context.runEnvironment.rtsOverride
+            ? 'RTS'
+            : Context.getDefaultControlLine(deviceInfo.productId);
+
           const newEntry: PropPlugEntry = {
             serialNumber: deviceInfo.serialNumber,
             vendorId: deviceInfo.vendorId,
             productId: deviceInfo.productId,
             friendlyName: '',
-            controlLine: Context.getDefaultControlLine(deviceInfo.productId),
+            controlLine: defaultControlLine,
             lastSeen: now,
             lastUsed: ''
           };
           this.context.addOrUpdateKnownPropPlug(newEntry);
-          this.context.logger.verboseMsg(`*   Added new PropPlug to master list: ${deviceInfo.serialNumber}`);
+          this.context.logger.verboseMsg(`*   Added new PropPlug to master list: ${deviceInfo.serialNumber} (control line: ${defaultControlLine})`);
         }
       }
 
