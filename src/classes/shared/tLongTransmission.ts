@@ -79,6 +79,25 @@ export class TLongTransmission {
   }
 
   /**
+   * Transmit raw bytes via serial.
+   * Used for sending debugger response packets where we need byte-level control.
+   *
+   * @param data - Uint8Array or Buffer to transmit
+   * @throws Error if serial port is not available
+   */
+  public transmitBuffer(data: Uint8Array | Buffer): void {
+    if (!this.sendSerialDataCallback) {
+      throw new Error('Buffer transmission: Serial port not available - no send callback set');
+    }
+
+    // Convert Uint8Array to Buffer if needed
+    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+
+    // Transmit via serial port
+    this.sendSerialDataCallback(buffer);
+  }
+
+  /**
    * Utility method to encode mouse position data matching Pascal SendMousePos.
    *
    * The PC_MOUSE protocol sends 2 packed longs that the P2 firmware unpacks into 7 longs:

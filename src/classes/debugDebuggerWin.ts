@@ -9,9 +9,11 @@ import { WindowRouter } from './shared/windowRouter';
 import { WindowPlacer, PlacementConfig, PlacementStrategy } from '../utils/windowPlacer';
 import {
   DebuggerInitialMessage,
+  DebuggerMessageIndex,
   COGDebugState,
   LAYOUT_CONSTANTS,
   DEBUG_COLORS,
+  DEBUG_COMMANDS,
   PASCAL_COLOR_SCHEME,
   PASCAL_LAYOUT_CONSTANTS,
   parseInitialMessage,
@@ -22,6 +24,8 @@ import { CanvasRenderer } from './shared/canvasRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
 import { DebuggerInteraction } from './shared/debuggerInteraction';
+import { DebuggerResponse } from './shared/debuggerResponse';
+import { DebuggerPhase3Receiver, Phase3Expectations, Phase3Data } from './shared/debuggerPhase3Receiver';
 import { ExtractedMessage } from './shared/sharedMessagePool';
 
 // Console logging control for debugging
@@ -83,7 +87,10 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private protocol: DebuggerProtocol | null = null;
   private dataManager: DebuggerDataManager | null = null;
   private interaction: DebuggerInteraction | null = null;
-  
+  private responseGenerator: DebuggerResponse;  // Phase 2 response generator
+  private phase3Receiver: DebuggerPhase3Receiver;  // Phase 3 data receiver
+  private awaitingPhase3: boolean = false;  // Flag for expecting Phase 3 data
+
   // Deferred messages queue for when components aren't ready
   private deferredMessages: any[] = [];
   private componentsReady: boolean = false;
@@ -97,7 +104,15 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private lastRenderTime: number = 0;
   private renderCount: number = 0;
   // No timer needed - using event-driven approach
-  
+
+  // Debug command state (Pascal: StallBrk, BreakValue)
+  // breakValue holds the break condition bits that control when/how debugger breaks
+  // stallBrk is either STALL_CMD (hold) or breakValue (continue)
+  private breakValue: number = DEBUG_COMMANDS.BREAK_DEBUG;  // Default: break on DEBUG opcode
+  private stallBrk: number = DEBUG_COMMANDS.STALL_CMD;      // Start in stalled state
+  private firstBreak: boolean = true;                        // First breakpoint flag
+  private repeatMode: boolean = false;                       // Continuous run mode
+
   // Remove redundant queue - base class handles this via messageQueue
   // private initialMessageQueue: Uint8Array[] = [];  // REMOVED: Base class handles queuing
   // private isDebuggerReady: boolean = false;  // REMOVED: Use base class isWindowReady
@@ -131,6 +146,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.dataManager = new DebuggerDataManager();
     this.canvasRenderer = new CanvasRenderer();
     this.protocol = new DebuggerProtocol();
+    this.responseGenerator = new DebuggerResponse();
+    this.phase3Receiver = new DebuggerPhase3Receiver();
     
     // Mark components as ready since we've created everything needed
     // for message processing (dataManager and protocol)
@@ -160,7 +177,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       breakpoints: new Set(),
       cogMemory: new Map(),
       lutMemory: new Map(),
-      lastMessage: null
+      lastMessage: null,
+      lastUpdateTime: 0
     };
     
     // Initialize memory blocks
@@ -681,102 +699,69 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Base class handles this automatically when window becomes ready
     this.logConsoleMessage(`[DEBUGGER] processQueuedMessages called but base class handles this now`);
   }
-  
+
+  /**
+   * Handle DOM ready - called when did-finish-load fires
+   * This is where we initialize canvas-dependent components
+   */
+  private handleDomReady(): void {
+    this.logConsoleMessage(`[DEBUGGER] handleDomReady for COG ${this.cogId}`);
+    this.logConsoleMessage(`[DEBUGGER] componentsReady = ${this.componentsReady}`);
+    this.logConsoleMessage(`[DEBUGGER] deferred messages = ${this.deferredMessages.length}`);
+
+    // Process any deferred messages
+    if (this.deferredMessages.length > 0) {
+      this.logConsoleMessage(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
+      this.processDeferredMessages();
+    }
+
+    // Verify canvas exists and start rendering
+    this.debugWindow?.webContents.executeJavaScript(`
+      const canvas = document.getElementById('canvas');
+      if (canvas) {
+        { id: 'canvas', width: canvas.width, height: canvas.height }
+      } else {
+        null
+      }
+    `).then((canvasInfo) => {
+      if (canvasInfo) {
+        this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
+
+        // Create interaction handler
+        if (this.protocol && this.dataManager) {
+          this.interaction = new DebuggerInteraction(
+            null as any, // Renderer handled by main process executeJavaScript
+            this.protocol,
+            this.dataManager,
+            this.cogId
+          );
+        }
+
+        // Start the render loop
+        this.startUpdateLoop();
+        this.logConsoleMessage(`[DEBUGGER] Render loop started for COG ${this.cogId}`);
+
+        // Trigger immediate render to show the UI
+        this.renderDebuggerDisplay();
+      } else {
+        console.error(`[DEBUGGER] Canvas element not found for COG ${this.cogId}`);
+      }
+    }).catch((error) => {
+      console.error(`[DEBUGGER] Failed to verify canvas for COG ${this.cogId}:`, error);
+    });
+  }
+
   /**
    * Initialize window after creation
+   * NOTE: No longer used - initialization now happens via:
+   *   - did-finish-load -> handleDomReady() (canvas init, render loop)
+   *   - ready-to-show -> registerWithRouter(), setupIPCHandlers()
+   * Kept for interface compatibility with base class
    */
   protected async initializeWindow(): Promise<void> {
-    // Core components already initialized in constructor
-    // Just register with WindowRouter
-    this.registerWithRouter();
-    
-    // Wait for DOM to be ready, then create canvas-dependent components
-    this.debugWindow?.webContents.once('did-finish-load', () => {
-      this.logConsoleMessage(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
-      this.logConsoleMessage(`[DEBUGGER] componentsReady already = ${this.componentsReady}`);
-      this.logConsoleMessage(`[DEBUGGER] deferred messages count = ${this.deferredMessages.length}`);
-      
-      // Process any deferred messages if there are any
-      // (components are already ready from constructor)
-      if (this.deferredMessages.length > 0) {
-        this.logConsoleMessage(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
-        this.processDeferredMessages();
-      }
-      
-      // Now try to get the canvas and create the renderer
-      this.debugWindow?.webContents.executeJavaScript(`
-        const canvas = document.getElementById('canvas');
-        if (canvas) {
-          // Return canvas for verification
-          { id: 'canvas', width: canvas.width, height: canvas.height }
-        } else {
-          null
-        }
-      `).then((canvasInfo) => {
-        if (canvasInfo) {
-          this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
-          
-          // IMMEDIATE TEST RENDERING - Show that canvas works
-          this.debugWindow?.webContents.executeJavaScript(`
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              // Clear canvas with dark background
-              ctx.fillStyle = '#1e1e1e';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              
-              // Show initialization message
-              ctx.font = '16px monospace';
-              ctx.fillStyle = '#00ff00';
-              ctx.fillText('P2 Debugger - COG ${this.cogId}', 20, 30);
-              ctx.fillStyle = '#ffffff';
-              ctx.fillText('Canvas initialized successfully!', 20, 60);
-              ctx.fillStyle = '#ffff00';  
-              ctx.fillText('Waiting for debugger data...', 20, 90);
-            }
-          `).catch((err) => {
-            console.error('[DEBUGGER] Initial rendering failed:', err);
-          });
-          
-          // Create a proxy canvas that will delegate to the real canvas
-          // For now, we'll need to handle rendering differently
-          // The renderer needs to be refactored to work with remote canvas
-          
-          // For now, skip renderer creation to avoid the error
-          // TODO: Refactor DebuggerRenderer to work with Electron's remote canvas
-          
-          // TODO: Create renderer proxy that works with remote canvas via IPC
-          // For now, skip renderer creation due to Electron main/renderer process separation
-          // this.renderer = new DebuggerRenderer needs HTMLCanvasElement which isn't available in main process
-          
-          // Only create interaction if protocol and dataManager are initialized
-          if (this.protocol && this.dataManager) {
-            // Note: Passing null for renderer temporarily until we implement IPC-based rendering
-            this.interaction = new DebuggerInteraction(
-              null as any, // TODO: Implement IPC-based renderer proxy
-              this.protocol,
-              this.dataManager,
-              this.cogId
-            );
-            
-            // Mark basic components as ready (renderer will be added later)
-            this.startUpdateLoop();
-            
-            // Components already marked ready above
-            this.logConsoleMessage(`[DEBUGGER] Core components initialized and ready for COG ${this.cogId}`);
-          } else {
-            console.warn('[DEBUGGER] Cannot create interaction - missing required components');
-          }
-        } else {
-          console.error(`[DEBUGGER] Canvas element not found for COG ${this.cogId}`);
-        }
-      }).catch((error) => {
-        console.error(`[DEBUGGER] Failed to get canvas for COG ${this.cogId}:`, error);
-      });
-    });
-    
-    // Set up IPC handlers for keyboard/mouse
-    this.setupIPCHandlers();
+    // All initialization now happens in proper event handlers
+    // See createDebugWindow() for the correct event wiring
+    this.logConsoleMessage(`[DEBUGGER] initializeWindow called (legacy - no action needed)`);
   }
 
   /**
@@ -842,32 +827,87 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Send debug command to P2
+   * Send debug command to P2 using TLong protocol (Pascal: TLong(StallBrk))
+   *
+   * Pascal Protocol (DebuggerUnit.pas lines 1330-1345):
+   * - STALL_CMD ($800): Hold execution at current breakpoint
+   * - BreakValue: Continue to next breakpoint matching these conditions
+   *
+   * Commands:
+   * - GO: Set stallBrk = breakValue, send TLong(stallBrk)
+   * - STALL/BREAK: Send TLong(STALL_CMD) to hold
+   * - STEP: Send TLong(breakValue) to execute until next break
    */
   private sendDebugCommand(command: string): void {
-    if (!this.protocol) return;
-    
-    // Route command through protocol handler
-    switch (command) {
-      case 'GO':
-        this.protocol.sendGo(this.cogId);
-        break;
-      case 'BREAK':
-        this.protocol.sendBreak(this.cogId);
-        break;
-      case 'DEBUG':
-        // Debug mode not implemented
-        this.logConsoleMessage('Debug toggle');
-        break;
-      case 'INIT':
-        this.protocol.sendStall(this.cogId);
-        break;
-      case 'STEP_INTO':
-        this.protocol.sendBreak(this.cogId);
-        break;
-      case 'STEP_OVER':
-        this.protocol.sendBreak(this.cogId);
-        break;
+    try {
+      switch (command) {
+        case 'GO':
+          // Continue to next breakpoint
+          // Pascal: StallBrk := BreakValue; then after sending: StallBrk := StallCmd
+          this.stallBrk = this.breakValue;
+          this.tLongTransmitter.transmitTLong(this.stallBrk);
+          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;  // Reset for next time
+          this.logConsoleMessage(`[DEBUGGER] GO command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
+          break;
+
+        case 'BREAK':
+        case 'STALL':
+          // Hold execution at current breakpoint
+          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          this.tLongTransmitter.transmitTLong(this.stallBrk);
+          this.repeatMode = false;
+          this.logConsoleMessage(`[DEBUGGER] STALL command sent: $${DEBUG_COMMANDS.STALL_CMD.toString(16).padStart(8, '0')}`);
+          break;
+
+        case 'STEP_INTO':
+        case 'STEP':
+          // Single step - send breakValue then stall
+          this.stallBrk = this.breakValue;
+          this.tLongTransmitter.transmitTLong(this.stallBrk);
+          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          this.logConsoleMessage(`[DEBUGGER] STEP command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
+          break;
+
+        case 'STEP_OVER':
+          // Step over - same as step for now (full implementation needs call depth tracking)
+          this.stallBrk = this.breakValue;
+          this.tLongTransmitter.transmitTLong(this.stallBrk);
+          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          this.logConsoleMessage(`[DEBUGGER] STEP_OVER command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
+          break;
+
+        case 'INIT':
+          // Reset/initialize - enable COGINIT break
+          this.breakValue = this.breakValue | DEBUG_COMMANDS.BREAK_INIT;
+          this.tLongTransmitter.transmitTLong(this.breakValue);
+          this.logConsoleMessage(`[DEBUGGER] INIT command sent with BREAK_INIT enabled`);
+          break;
+
+        case 'DEBUG':
+          // Toggle DEBUG break condition
+          if (this.breakValue & DEBUG_COMMANDS.BREAK_DEBUG) {
+            // Currently enabled, disable it
+            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_KEEP_INIT) ^ DEBUG_COMMANDS.BREAK_DEBUG;
+          } else {
+            // Currently disabled, enable it
+            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_KEEP_INIT) | DEBUG_COMMANDS.BREAK_DEBUG;
+          }
+          this.logConsoleMessage(`[DEBUGGER] DEBUG toggle: now $${this.breakValue.toString(16).padStart(8, '0')}`);
+          break;
+
+        case 'RUN':
+          // Continuous run mode (Pascal: RepeatMode = True)
+          this.repeatMode = true;
+          this.stallBrk = this.breakValue;
+          this.tLongTransmitter.transmitTLong(this.stallBrk);
+          this.logConsoleMessage(`[DEBUGGER] RUN (repeat mode) command sent`);
+          break;
+
+        default:
+          this.logConsoleMessage(`[DEBUGGER] Unknown command: ${command}`);
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[DEBUGGER] Error sending command ${command}: ${error}`);
     }
   }
 
@@ -888,12 +928,23 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Handle binary debugger message
    */
   private handleBinaryMessage(data: Uint8Array): void {
-    // Check if this is a 416-byte debugger packet
-    if (data.length === 416) {
+    // If we're awaiting Phase 3 data, accumulate it
+    if (this.awaitingPhase3) {
+      const complete = this.phase3Receiver.addData(data);
+      if (complete) {
+        this.processPhase3Data();
+      }
+      return; // Don't process as Phase 1 while awaiting Phase 3
+    }
+
+    // Check if this is a 456-byte debugger packet (Phase 1 protocol)
+    // Structure: 20 longs (80) + 64 words CRC (128) + 124 words Hub checksums (248) = 456
+    if (data.length === 456) {
       this.processDebuggerPacket(data);
     }
     // Check if this is a 20-long initial message
-    else if (data.length >= 80) { // 20 longs * 4 bytes
+    else if (data.length >= 80) {
+      // 20 longs * 4 bytes
       const longs = new Uint32Array(data.buffer, data.byteOffset, 20);
       try {
         const message = parseInitialMessage(longs);
@@ -904,6 +955,61 @@ export class DebugDebuggerWindow extends DebugWindowBase {
         this.logMessage(`Error parsing message: ${error}`);
       }
     }
+  }
+
+  /**
+   * Process received Phase 3 data
+   */
+  private processPhase3Data(): void {
+    const phase3Data = this.phase3Receiver.parse();
+    if (!phase3Data) {
+      this.logConsoleMessage('[DEBUGGER] Failed to parse Phase 3 data');
+      this.awaitingPhase3 = false;
+      this.phase3Receiver.reset();
+      return;
+    }
+
+    this.logConsoleMessage(
+      `[DEBUGGER] Phase 3 received: ${phase3Data.cogMemory.size} COG blocks, ` +
+        `${phase3Data.hubSubBlocks.size} Hub blocks`
+    );
+
+    // Update COG/LUT memory in data manager
+    if (this.dataManager) {
+      for (const [blockIndex, blockData] of phase3Data.cogMemory) {
+        // Determine if this is COG (0-31) or LUT (32-63)
+        if (blockIndex < 32) {
+          // COG memory
+          for (let i = 0; i < blockData.length; i++) {
+            const regIndex = blockIndex * 16 + i;
+            this.dataManager.updateCogRegister(regIndex, blockData[i]);
+          }
+        } else {
+          // LUT memory
+          for (let i = 0; i < blockData.length; i++) {
+            const regIndex = (blockIndex - 32) * 16 + i;
+            this.dataManager.updateLutRegister(regIndex, blockData[i]);
+          }
+        }
+      }
+
+      // Phase 3 additional data processing (future enhancement):
+      // - Hub sub-blocks: phase3Data.hubSubBlocks
+      // - Disassembly: phase3Data.disassemblyData
+      // - Pointer windows: phase3Data.fptrWindow, ptraWindow, ptrbWindow
+      // - Hub memory: phase3Data.hubWindow
+      // - Smart pins: phase3Data.smartPinFlags, smartPinData
+    }
+
+    // Clear dirty flags on received blocks
+    // This would be done in the data manager
+
+    // Reset Phase 3 state
+    this.awaitingPhase3 = false;
+    this.phase3Receiver.reset();
+
+    // Trigger UI update
+    this.renderDebuggerDisplay();
   }
   
   /**
@@ -930,102 +1036,206 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
   
   /**
-   * Process a 416-byte debugger packet
-   * Packet structure:
-   * - Bytes 0-79: 20 longs containing DebuggerMsg array
-   * - Bytes 80-415: COG/LUT memory snapshots
+   * Process a 456-byte debugger packet (Phase 1 Protocol)
+   * Packet structure from Pascal DebuggerUnit.pas:
+   * - Bytes 0-79: 20 longs containing DebuggerMsg array (RLong reads)
+   * - Bytes 80-207: 64 words for COG/LUT CRC values (RWord reads)
+   * - Bytes 208-455: 124 words for Hub checksum values (RWord reads)
+   *
+   * Note: This packet does NOT contain actual memory data!
+   * The CRC/checksum values are used to detect which blocks changed.
+   * The PC then requests actual block data in Phase 2/3.
    */
   private processDebuggerPacket(data: Uint8Array): void {
-    if (data.length !== 416) {
-      this.logMessage(`Invalid packet size: ${data.length} (expected 416)`);
+    // Packet should be exactly 456 bytes for Phase 1 protocol
+    if (data.length < 456) {
+      this.logMessage(`Invalid packet size: ${data.length} (expected 456 bytes for Phase 1 protocol)`);
       return;
     }
-    
+
     // Create DataView for proper little-endian reading
     const view = new DataView(data.buffer, data.byteOffset, data.length);
-    
-    // Parse the 20 initial longs (indices from DebuggerMessageIndex enum)
+
+    // Parse the 20 longs using CORRECT Pascal indices from DebuggerUnit.pas
+    // Each index is byte offset = index * 4 (little-endian 32-bit values)
+    const breakC = view.getUint32(DebuggerMessageIndex.mBRKC * 4, true);
+    const iret = view.getUint32(DebuggerMessageIndex.mIRET * 4, true);
+
+    // Build stack array
+    const stack: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      stack.push(view.getUint32((DebuggerMessageIndex.mSTK0 + i) * 4, true));
+    }
+
     const debugMsg = {
-      cogNumber: view.getUint32(0, true),      // mCOGN
-      breakStatus: view.getUint32(4, true),    // mBRKS
-      stackAStart: view.getUint32(8, true),    // mSTAS
-      stackBStart: view.getUint32(12, true),   // mSTBS
-      callDepth: view.getUint32(16, true),     // mCALL
-      programCounter: view.getUint32(20, true), // mPC
-      skipPattern: view.getUint32(24, true),   // mSKIP
-      registerA: view.getUint32(28, true),     // mREGA
-      registerB: view.getUint32(32, true),     // mREGB
-      pointerA: view.getUint32(36, true),      // mPTRA
-      pointerB: view.getUint32(40, true),      // mPTRB
-      directionA: view.getUint32(44, true),    // mDIRA
-      directionB: view.getUint32(48, true),    // mDIRB
-      outputA: view.getUint32(52, true),       // mOUTA
-      outputB: view.getUint32(56, true),       // mOUTB
-      inputA: view.getUint32(60, true),        // mINA
-      inputB: view.getUint32(64, true),        // mINB
-      flags: view.getUint32(68, true),         // mFLAG
-      interruptJump: view.getUint32(72, true), // mIJMP
-      conditionCodes: view.getUint32(76, true) // mCOND
+      cogNumber: view.getUint32(DebuggerMessageIndex.mCOGN * 4, true),
+      breakCZ: view.getUint32(DebuggerMessageIndex.mBRKCZ * 4, true),
+      breakC: breakC,
+      breakZ: view.getUint32(DebuggerMessageIndex.mBRKZ * 4, true),
+      ctHigh: view.getUint32(DebuggerMessageIndex.mCTH2 * 4, true),
+      ctLow: view.getUint32(DebuggerMessageIndex.mCTL2 * 4, true),
+      stack: stack,
+      iret: iret,
+      fifoPtr: view.getUint32(DebuggerMessageIndex.mFPTR * 4, true),
+      ptrA: view.getUint32(DebuggerMessageIndex.mPTRA * 4, true),
+      ptrB: view.getUint32(DebuggerMessageIndex.mPTRB * 4, true),
+      freq: view.getUint32(DebuggerMessageIndex.mFREQ * 4, true),
+      cond: view.getUint32(DebuggerMessageIndex.mCOND * 4, true),
+      // Derived values
+      programCounter: iret & 0xFFFFF,
+      callDepth: (breakC >>> 28) & 0xF,
+      skipPattern: view.getUint32(DebuggerMessageIndex.mBRKZ * 4, true),
+      events: breakC & 0xFFFF,
+      xbyte: (breakC >>> 16) & 0x1FF
     };
-    
+
     // Check if this packet is for our COG
     if (debugMsg.cogNumber !== this.cogId) {
       this.logMessage(`Packet for wrong COG: ${debugMsg.cogNumber} (expected ${this.cogId})`);
       return;
     }
-    
-    // Update COG state
+
+    // Initialize breakValue from first message (Pascal: BreakValue := DebuggerMsg[mCOND])
+    if (this.firstBreak) {
+      this.breakValue = debugMsg.cond;
+      this.firstBreak = false;
+      this.logConsoleMessage(`[DEBUGGER] First break - initialized breakValue from cond: $${debugMsg.cond.toString(16).padStart(8, '0')}`);
+    }
+
+    // Update COG state with correctly parsed values
     this.cogState.programCounter = debugMsg.programCounter;
     this.cogState.isActive = true;
-    this.cogState.isBreaked = (debugMsg.breakStatus & 0x01) !== 0;
+    this.cogState.isBreaked = (debugMsg.breakCZ & 0x01) !== 0;  // Check STALLI bit
     this.cogState.skipPattern = debugMsg.skipPattern;
     this.cogState.callDepth = debugMsg.callDepth;
-    
+
     // Store parsed data in dataManager
     if (this.dataManager) {
-      // Store status data
+      // Store status data with correct structure
       this.dataManager.updateStatusData({
         cogId: debugMsg.cogNumber,
-        breakStatus: debugMsg.breakStatus,
+        breakCZ: debugMsg.breakCZ,
+        breakC: debugMsg.breakC,
+        breakZ: debugMsg.breakZ,
+        ctHigh: debugMsg.ctHigh,
+        ctLow: debugMsg.ctLow,
+        stack: debugMsg.stack,
         programCounter: debugMsg.programCounter,
+        callDepth: debugMsg.callDepth,
         skipPattern: debugMsg.skipPattern,
-        flags: debugMsg.flags,
-        pointerA: debugMsg.pointerA,
-        pointerB: debugMsg.pointerB,
-        directionA: debugMsg.directionA,
-        directionB: debugMsg.directionB,
-        outputA: debugMsg.outputA,
-        outputB: debugMsg.outputB,
-        inputA: debugMsg.inputA,
-        inputB: debugMsg.inputB
+        ptrA: debugMsg.ptrA,
+        ptrB: debugMsg.ptrB
       });
-      
-      // Parse and store COG registers (bytes 80-335, 64 longs)
+
+      // Parse 64 COG/LUT CRC words (bytes 80-207, little-endian)
+      // These are NOT register values - they're checksums for change detection
+      const cogCRCs: number[] = [];
       for (let i = 0; i < 64; i++) {
-        const offset = 80 + i * 4;
-        if (offset + 4 <= data.length) {
-          const value = view.getUint32(offset, true);
-          this.dataManager.updateCogRegister(i, value);
-        }
+        const offset = 80 + i * 2;  // Words, not longs!
+        cogCRCs.push(view.getUint16(offset, true));
       }
-      
-      // Parse and store LUT registers (bytes 336-415, 20 longs)
-      // Note: 416-byte packet structure limits LUT data to 20 longs, not 64
-      const lutLongCount = Math.min(64, (data.length - 336) / 4);
-      for (let i = 0; i < lutLongCount; i++) {
-        const offset = 336 + i * 4;
-        if (offset + 4 <= data.length) {
-          const value = view.getUint32(offset, true);
-          this.dataManager.updateLutRegister(i, value);
-        }
+
+      // Parse 124 Hub checksum words (bytes 208-455, little-endian)
+      const hubChecksums: number[] = [];
+      for (let i = 0; i < 124; i++) {
+        const offset = 208 + i * 2;  // Words, not longs!
+        hubChecksums.push(view.getUint16(offset, true));
+      }
+
+      // Process Phase 1 CRCs - triggers change detection for dirty blocks
+      this.dataManager.processPhase1CRCs(debugMsg.cogNumber, cogCRCs, hubChecksums);
+
+      // Log changed blocks for debugging
+      const changedCogBlocks = this.dataManager.getChangedCogBlocks();
+      const changedHubBlocks = this.dataManager.getChangedHubBlocks();
+      if (changedCogBlocks.length > 0 || changedHubBlocks.length > 0) {
+        this.logConsoleMessage(`[DEBUGGER] Changed blocks - COG: [${changedCogBlocks.join(',')}], HUB: [${changedHubBlocks.join(',')}]`);
       }
     }
-    
+
     // Store the packet for reference
     this.currentDebuggerPacket = data;
-    
+
+    // Generate and send Phase 2 response to P2
+    // CRITICAL: The P2 is waiting for this response before releasing lock #15!
+    this.sendPhase2Response(data);
+
     // Trigger immediate display update
     this.renderDebuggerDisplay();
+  }
+
+  /**
+   * Send Phase 2 response to P2 debugger
+   *
+   * After receiving Phase 1 data (456 bytes), we must respond with:
+   * - 8 bytes: COG/LUT change request bits
+   * - 16 bytes: Hub change request bits
+   * - 20 bytes: Hub read requests (5 longs)
+   * - 4 bytes: COGBRK request
+   * - 4 bytes: Stall/Break command
+   * Total: 52 bytes
+   *
+   * Reference: Pascal DebuggerUnit.pas lines 1304-1345
+   */
+  private sendPhase2Response(phase1Packet: Uint8Array): void {
+    // Configure response generator with current state
+    this.responseGenerator.setStallBreak(this.stallBrk);
+
+    // Get breakpoint mask from data manager if available
+    const breakpointMask = this.dataManager?.getBreakpointMask() ?? 0;
+    this.responseGenerator.setRequestCogBrk(breakpointMask);
+
+    // Set hub memory view address (for now, start at 0)
+    this.responseGenerator.setHubAddress(0);
+
+    // Determine if we need hub code for disassembly
+    // PC in hub means we need to fetch instructions from hub memory
+    const pc = this.cogState.programCounter;
+    const pcInHub = pc >= 0x400; // PC >= $400 means code is in hub
+    this.responseGenerator.setGetHubCode(pcInHub);
+    if (pcInHub) {
+      this.responseGenerator.setDisassemblyAddress(pc, 16);
+    }
+
+    // Generate the 52-byte response
+    const response = this.responseGenerator.generateResponse(phase1Packet);
+
+    // Set up Phase 3 expectations based on what we're requesting
+    const changedCogBlocks = this.responseGenerator.getChangedCogBlocks();
+    const changedHubBlocks = this.responseGenerator.getChangedHubBlocks();
+    const expectations: Phase3Expectations = {
+      changedCogBlocks,
+      changedHubBlocks,
+      getHubCode: pcInHub,
+      disLines: pcInHub ? 16 : 0
+    };
+    this.phase3Receiver.setExpectations(expectations);
+    this.awaitingPhase3 = true;
+
+    // Log expected Phase 3 size
+    this.logConsoleMessage(
+      `[DEBUGGER] Expecting Phase 3: ${this.phase3Receiver.getExpectedSize()} bytes ` +
+        `(${changedCogBlocks.length} COG blocks, ${changedHubBlocks.length} Hub blocks)`
+    );
+
+    // Send response via serial (tLongTransmitter handles byte-by-byte sending)
+    this.sendResponseBytes(response);
+
+    // After sending response, reset stallBrk to STALL_CMD
+    this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+  }
+
+  /**
+   * Send response bytes to P2 via serial callback
+   */
+  private sendResponseBytes(response: Uint8Array): void {
+    try {
+      // Use tLongTransmitter's transmitBuffer for binary data
+      this.tLongTransmitter.transmitBuffer(response);
+      this.logConsoleMessage(`[DEBUGGER] Sent Phase 2 response: ${response.length} bytes`);
+    } catch (error) {
+      this.logConsoleMessage(`[DEBUGGER] Error sending Phase 2 response: ${error}`);
+    }
   }
 
   /**
@@ -1038,25 +1248,33 @@ export class DebugDebuggerWindow extends DebugWindowBase {
 
   /**
    * Update COG state from message
+   * Pascal reference: DebuggerUnit.pas lines 1199-1206
    */
   private updateCogState(message: DebuggerInitialMessage): void {
     if (!this.dataManager) return;
-    
+
+    // Initialize breakValue from first message (Pascal: BreakValue := DebuggerMsg[mCOND])
+    if (this.firstBreak) {
+      this.breakValue = message.cond;
+      this.firstBreak = false;
+      this.logConsoleMessage(`[DEBUGGER] First break - initialized breakValue from mCOND: $${message.cond.toString(16).padStart(8, '0')}`);
+    }
+
     // Update data manager with new state
     // Process initial message - store in state
     // processInitialMessage not implemented
-    
+
     // Update local state copy
     this.cogState.lastMessage = message;
     this.cogState.programCounter = message.programCounter;
     this.cogState.skipPattern = message.skipPattern;
     this.cogState.callDepth = message.callDepth;
     this.cogState.isActive = true;
-    this.cogState.isBreaked = (message.breakStatus & 0x01) !== 0;
-    
+    this.cogState.isBreaked = (message.breakCZ & 0x02) !== 0; // Check bit 1 (STALLI) in breakCZ
+
     // Update status display
     this.updateStatusDisplay();
-    
+
     // Trigger render update
     this.renderDebuggerDisplay();
   }
@@ -1780,13 +1998,21 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Set up window content
     const html = this.getHTML();
     this.debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    
+
+    // CRITICAL: Register did-finish-load IMMEDIATELY after loadURL, before ready-to-show
+    // This ensures we catch the event since did-finish-load fires BEFORE ready-to-show
+    this.debugWindow.webContents.once('did-finish-load', () => {
+      this.logConsoleMessage(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
+      this.handleDomReady();
+    });
+
     // Hook window events
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage(`Debugger window for COG ${this.cogId} ready to show`);
       this.debugWindow?.show();
-      // Initialize window after it's shown
-      this.initializeWindow();
+      // Register with router and set up IPC handlers (DOM already ready at this point)
+      this.registerWithRouter();
+      this.setupIPCHandlers();
     });
     
     this.debugWindow.on('closed', () => {

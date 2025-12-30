@@ -12,31 +12,62 @@
 // ============================================================================
 
 /**
- * Initial 20-long message indices from P2 to Debugger
- * Reference: DEBUGGER_IMPLEMENTATION.md lines 81-102
+ * 20-Long Debugger Message Structure (P2 → PC)
+ * Source: DebuggerUnit.pas lines 10-29
+ *
+ * This is the 80-byte (20 longs) message sent from P2 during debug break.
+ * Each index represents a 32-bit long value at that offset.
  */
 export const enum DebuggerMessageIndex {
-  mCOGN = 0,  // COG number
-  mBRKS = 1,  // Break status
-  mSTAS = 2,  // Stack A start
-  mSTBS = 3,  // Stack B start
-  mCALL = 4,  // Call depth
-  mPC = 5,    // Program Counter
-  mSKIP = 6,  // Skip pattern
-  mREGA = 7,  // Register A
-  mREGB = 8,  // Register B
-  mPTRA = 9,  // Pointer A
-  mPTRB = 10, // Pointer B
-  mDIRA = 11, // Direction A
-  mDIRB = 12, // Direction B
-  mOUTA = 13, // Output A
-  mOUTB = 14, // Output B
-  mINA = 15,  // Input A
-  mINB = 16,  // Input B
-  mFLAG = 17, // Flags
-  mIJMP = 18, // Interrupt jump
-  mCOND = 19  // Condition codes
+  mCOGN = 0,   // COG number (0-7)
+  mBRKCZ = 1,  // Break CZ flags + status bits (see BRKCZ_* constants)
+  mBRKC = 2,   // Break C flags: events[15:0], xbyte[24:16], skipf[27], call_depth[31:28]
+  mBRKZ = 3,   // Break Z flags: skip pattern (32 bits - which instructions to skip)
+  mCTH2 = 4,   // CT counter high word
+  mCTL2 = 5,   // CT counter low word
+  mSTK0 = 6,   // Stack level 0 (most recent)
+  mSTK1 = 7,   // Stack level 1
+  mSTK2 = 8,   // Stack level 2
+  mSTK3 = 9,   // Stack level 3
+  mSTK4 = 10,  // Stack level 4
+  mSTK5 = 11,  // Stack level 5
+  mSTK6 = 12,  // Stack level 6
+  mSTK7 = 13,  // Stack level 7 (oldest)
+  mIRET = 14,  // Interrupt return address = PROGRAM COUNTER (PC & $FFFFF)
+  mFPTR = 15,  // FIFO pointer for RD/WR file operations
+  mPTRA = 16,  // PTRA pointer value
+  mPTRB = 17,  // PTRB pointer value
+  mFREQ = 18,  // Frequency/timing value
+  mCOND = 19   // Condition codes
 }
+
+/**
+ * Bit field constants for mBRKCZ (index 1)
+ * Source: DebuggerUnit.pas usage patterns
+ */
+export const BRKCZ_BITS = {
+  STALLI: 1,        // Bit 1: STALLI indicator
+  EXEC_MODE_SHIFT: 2, // Bits 2-3, 4-5, 6-7: Execution mode (ExecMode = bits>>2 & 3, or >>4 & 3, or >>6 & 3)
+  RFWF: 20,         // Bit 20: RFxx/WFxx mode (1=write, 0=read)
+  STR: 21,          // Bit 21: STR indicator
+  MOD: 22,          // Bit 22: MOD indicator
+  INIT: 23          // Bit 23: INIT indicator
+} as const;
+
+/**
+ * Bit field constants for mBRKC (index 2)
+ * Source: DebuggerUnit.pas line 1417, 1427, 1434, 1458
+ */
+export const BRKC_BITS = {
+  EVENTS_MASK: 0xFFFF,    // Bits 0-15: Event flags (16 events)
+  XBYTE_SHIFT: 16,        // Bits 16-24: XBYTE value (9 bits)
+  XBYTE_MASK: 0x1FF,
+  XBYTE_ACTIVE: 25,       // Bit 25: XBYTE active indicator
+  LUTS: 26,               // Bit 26: LUTS indicator
+  SKIPF: 27,              // Bit 27: SKIPF mode (vs SKIP)
+  CALL_DEPTH_SHIFT: 28,   // Bits 28-31: Call depth (4 bits)
+  CALL_DEPTH_MASK: 0xF
+} as const;
 
 // ============================================================================
 // Memory Block Sizes
@@ -44,23 +75,40 @@ export const enum DebuggerMessageIndex {
 
 /**
  * Memory block sizes for caching and transfer
+ * Based on Pascal DebuggerUnit.pas lines 188-197
+ *
+ * Pascal uses combined COG+LUT (CogSize = $400 = 1024 longs total):
+ * - CogBlockSize = $10 (16 longs per block)
+ * - CogBlocks = 64 (covering $000-$3FF)
+ * - CogImage[0..$3FF] is one contiguous array
+ *
+ * For TypeScript, we keep COG and LUT conceptually separate but
+ * the CRC system uses 64 combined blocks for both.
  */
 export const MEMORY_CONSTANTS = {
-  // COG/LUT memory
-  COG_BLOCK_SIZE: 16,     // 16 longs per block
-  COG_BLOCKS: 64,         // 64 blocks total (1024 longs / 16)
-  LUT_BLOCK_SIZE: 16,     // 16 longs per block
-  LUT_BLOCKS: 64,         // 64 blocks total (1024 longs / 16)
-  
-  // HUB memory
-  HUB_BLOCK_SIZE: 4096,   // 4KB blocks
-  HUB_BLOCKS: 124,        // 124 blocks for 496KB
-  HUB_SUB_BLOCK_SIZE: 128, // 128-byte sub-blocks for granular updates
-  
-  // Total memory sizes
-  COG_MEMORY_SIZE: 1024,  // 1024 longs (4KB)
-  LUT_MEMORY_SIZE: 1024,  // 1024 longs (4KB)
-  HUB_MEMORY_SIZE: 507904 // 496KB
+  // Combined COG+LUT memory (Pascal: CogSize, CogBlockSize, CogBlocks)
+  // The CRC system treats COG($000-$1FF) + LUT($200-$3FF) as one array
+  COG_LUT_SIZE: 0x400,        // $400 = 1024 longs (combined COG + LUT)
+  COG_BLOCK_SIZE: 0x10,       // $10 = 16 longs per CRC block (used for both COG and LUT)
+  COG_BLOCKS: 64,             // 64 blocks total covering both COG and LUT (1024 / 16)
+
+  // Individual region sizes (for display and separate iteration)
+  COG_MEMORY_SIZE: 512,       // $000-$1FF = 512 longs (COG registers only)
+  LUT_MEMORY_SIZE: 512,       // $200-$3FF = 512 longs (LUT RAM only)
+  COG_ONLY_BLOCKS: 32,        // First 32 blocks for COG ($000-$1FF)
+  LUT_ONLY_BLOCKS: 32,        // Last 32 blocks for LUT ($200-$3FF)
+
+  // HUB memory (Pascal: HubSize, HubBlockSize, HubBlocks, HubSubBlockSize)
+  HUB_SIZE: 0x7C000,          // $7C000 = 507,904 bytes (non-protected region)
+  HUB_BLOCK_SIZE: 0x1000,     // $1000 = 4096 bytes per checksum block
+  HUB_BLOCKS: 124,            // 124 blocks (507904 / 4096)
+  HUB_SUB_BLOCK_SIZE: 0x80,   // $80 = 128 bytes per sub-block
+  HUB_SUB_BLOCKS: 3968,       // 507904 / 128 = 3968 sub-blocks
+  HUB_BLOCK_RATIO: 32,        // 4096 / 128 = 32 sub-blocks per block
+
+  // Hub map display dimensions
+  HUB_MAP_WIDTH: 64,          // 64 columns in mini-map
+  HUB_MAP_HEIGHT: 62          // 3968 / 64 = 62 rows
 } as const;
 
 // ============================================================================
@@ -68,21 +116,40 @@ export const MEMORY_CONSTANTS = {
 // ============================================================================
 
 /**
- * Debugger command constants
+ * Debugger command constants - matching Pascal DebuggerUnit.pas
+ * StallCmd ($800) is sent to hold at current breakpoint
+ * BreakValue is built from bits below and sent to continue/step
  */
 export const DEBUG_COMMANDS = {
-  STALL_CMD: 0x00000800,  // Stall command
-  BREAK_CMD: 0x00001000,  // Break command
-  INIT_CMD: 0x00002000,   // Initialize command
-  GO_CMD: 0x00004000,     // Go/Resume command
-  
-  // Request types
+  // Primary command value - holds execution at breakpoint
+  STALL_CMD: 0x00000800,  // StallCmd = $00000800 (Pascal line 181)
+
+  // BreakValue bits (Pascal lines 757-856)
+  // Low 4 bits select break condition
+  BREAK_MAIN: 0x00000001,   // Break on DEBUG statement (bit 0)
+  BREAK_INT1: 0x00000002,   // Break on INT1 (bit 1)
+  BREAK_INT2: 0x00000004,   // Break on INT2 (bit 2)
+  BREAK_INT3: 0x00000008,   // Break on INT3 (bit 3)
+  BREAK_DEBUG: 0x00000010,  // Break on DEBUG opcode (bit 4)
+  BREAK_INT1E: 0x00000020,  // Break on INT1 event (bit 5)
+  BREAK_INT2E: 0x00000040,  // Break on INT2 event (bit 6)
+  BREAK_INT3E: 0x00000080,  // Break on INT3 event (bit 7)
+  BREAK_INIT: 0x00000100,   // Break on COGINIT (bit 8) - also enables async break
+  BREAK_EVENT: 0x00000200,  // Break on specific event (bit 9), event ID in bits 12-15
+  BREAK_ADDR: 0x00000400,   // Break on address match (bit 10), address in bits 12-31
+
+  // Masks for BreakValue manipulation
+  BREAK_KEEP_INIT: 0x00000100,  // Mask to preserve INIT bit
+  BREAK_CLEAR_ADDR: 0x00000BFF, // Mask to clear address break
+  BREAK_CLEAR_EVENT: 0x00000DEF, // Mask to clear event break
+
+  // Request types (not used in basic protocol)
   REQUEST_COG: 0x01,      // Request COG memory block
   REQUEST_LUT: 0x02,      // Request LUT memory block
   REQUEST_HUB: 0x03,      // Request HUB memory block
   REQUEST_COGBRK: 0x04,   // Request COG break status
-  
-  // Response markers
+
+  // Response markers (not used in basic protocol)
   RESPONSE_DATA: 0x80,    // Data response marker
   RESPONSE_ACK: 0x81,     // Acknowledge marker
   RESPONSE_NAK: 0x82      // Not acknowledge marker
@@ -91,6 +158,31 @@ export const DEBUG_COMMANDS = {
 // ============================================================================
 // Display Layout Constants
 // ============================================================================
+
+/**
+ * Special Function Register names (addresses $1F0-$1FF)
+ * From DebuggerUnit.pas lines 168-171
+ */
+export const SFR_NAMES = [
+  'IJMP3', 'IRET3', 'IJMP2', 'IRET2', 'IJMP1', 'IRET1',  // Interrupt vectors
+  '   PA', '   PB', ' PTRA', ' PTRB',                    // Pointer registers
+  ' DIRA', ' DIRB', ' OUTA', ' OUTB', '  INA', '  INB'   // I/O port registers
+] as const;
+
+/**
+ * Event names (16 events from mBRKC bits 0-15)
+ * From DebuggerUnit.pas lines 165-166
+ */
+export const EVENT_NAMES = [
+  'INT', 'CT1', 'CT2', 'CT3', 'SE1', 'SE2', 'SE3', 'SE4',
+  'PAT', 'FBW', 'XMT', 'XFI', 'XRO', 'XRL', 'ATN', 'QMT'
+] as const;
+
+/**
+ * Execution mode names
+ * From DebuggerUnit.pas context
+ */
+export const MODE_NAMES = ['MAIN', 'INT1', 'INT2', 'INT3'] as const;
 
 /**
  * Pascal Layout Constants from DebuggerUnit.pas lines 114-134
@@ -178,14 +270,18 @@ export const DEBUG_COLORS = {
   BG_ACTIVE: 0x002040,    // Dark blue for active elements
   BG_BREAK: 0x400000,     // Dark red for breakpoints
   BG_CHANGED: 0x404000,   // Dark yellow for changed values
-  
+
   // Foreground colors
   FG_DEFAULT: 0xC0C0C0,   // Silver
   FG_ACTIVE: 0x00FF00,    // Green
   FG_BREAK: 0xFF0000,     // Red
   FG_CHANGED: 0xFFFF00,   // Yellow
   FG_DIM: 0x808080,       // Gray
-  
+  FG_LABEL: 0xFFFF00,     // Yellow - for labels (cName from Pascal)
+  FG_DATA: 0xFFFFFF,      // White - for data values (cData from Pascal)
+  FG_WARNING: 0xFF7F00,   // Orange - for warnings/indicators
+  FG_INDICATOR: 0xFF7F00, // Orange - for active indicators (cIndicator from Pascal)
+
   // Heat map colors (intensity levels)
   HEAT_0: 0x000000,       // Black (cold)
   HEAT_1: 0x000040,       // Very dark blue
@@ -235,27 +331,42 @@ export const PASCAL_COLOR_SCHEME = {
 /**
  * Initial 20-long message from P2 to Debugger
  */
+/**
+ * 20-long debugger message structure received from P2
+ * This matches the exact layout from DebuggerUnit.pas lines 10-29
+ */
 export interface DebuggerInitialMessage {
-  cogNumber: number;      // COG ID (0-7)
-  breakStatus: number;    // Break/stall status
-  stackAStart: number;    // Stack A start address
-  stackBStart: number;    // Stack B start address
-  callDepth: number;      // Call stack depth
-  programCounter: number; // Current PC
-  skipPattern: number;    // SKIP instruction pattern
-  registerA: number;      // REGA value
-  registerB: number;      // REGB value
-  pointerA: number;       // PTRA value
-  pointerB: number;       // PTRB value
-  directionA: number;     // DIRA value
-  directionB: number;     // DIRB value
-  outputA: number;        // OUTA value
-  outputB: number;        // OUTB value
-  inputA: number;         // INA value
-  inputB: number;         // INB value
-  flags: number;          // Status flags
-  interruptJump: number;  // Interrupt jump address
-  conditionCodes: number; // Condition code flags
+  // Index 0: COG identification
+  cogNumber: number;      // mCOGN - COG ID (0-7)
+
+  // Indices 1-3: Break status flags (complex bit fields)
+  breakCZ: number;        // mBRKCZ - Break CZ flags + status bits
+  breakC: number;         // mBRKC - Events[15:0], XBYTE[24:16], CallDepth[31:28]
+  breakZ: number;         // mBRKZ - Skip pattern (32 bits)
+
+  // Indices 4-5: CT counter (64-bit value split into two 32-bit words)
+  ctHigh: number;         // mCTH2 - CT counter high word
+  ctLow: number;          // mCTL2 - CT counter low word
+
+  // Indices 6-13: Stack (8 levels)
+  stack: number[];        // mSTK0-7 - Stack levels 0-7 (array of 8)
+
+  // Indices 14-17: Pointers and addresses
+  iret: number;           // mIRET - Interrupt return = PROGRAM COUNTER (PC & $FFFFF)
+  fifoPtr: number;        // mFPTR - FIFO pointer for RD/WR file operations
+  ptrA: number;           // mPTRA - Pointer A value
+  ptrB: number;           // mPTRB - Pointer B value
+
+  // Indices 18-19: Frequency and condition
+  freq: number;           // mFREQ - Frequency/timing value
+  cond: number;           // mCOND - Condition codes
+
+  // Derived values (extracted from bit fields for convenience)
+  programCounter: number; // Extracted from iret & $FFFFF
+  callDepth: number;      // Extracted from breakC >> 28 & $F
+  skipPattern: number;    // Same as breakZ
+  events: number;         // Extracted from breakC & $FFFF
+  xbyte: number;          // Extracted from breakC >> 16 & $1FF
 }
 
 /**
@@ -308,6 +419,7 @@ export interface COGDebugState {
   cogMemory: Map<number, MemoryBlock>; // COG memory cache
   lutMemory: Map<number, MemoryBlock>; // LUT memory cache
   lastMessage: DebuggerInitialMessage | null; // Last received message
+  lastUpdateTime: number;             // Last update timestamp for this COG
 }
 
 /**
@@ -341,32 +453,47 @@ export function calculateChecksum(data: Uint32Array): number {
 /**
  * Parse initial 20-long message
  */
+/**
+ * Parse the 20-long debugger message from P2
+ * Source: DebuggerUnit.pas message handling
+ */
 export function parseInitialMessage(data: Uint32Array): DebuggerInitialMessage {
   if (data.length < 20) {
-    throw new Error('Invalid message length');
+    throw new Error(`Invalid message length: expected 20 longs, got ${data.length}`);
   }
-  
+
+  // Extract raw values using correct indices
+  const breakC = data[DebuggerMessageIndex.mBRKC];
+  const iret = data[DebuggerMessageIndex.mIRET];
+
+  // Build stack array from mSTK0-7
+  const stack: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    stack.push(data[DebuggerMessageIndex.mSTK0 + i]);
+  }
+
   return {
+    // Raw message fields
     cogNumber: data[DebuggerMessageIndex.mCOGN],
-    breakStatus: data[DebuggerMessageIndex.mBRKS],
-    stackAStart: data[DebuggerMessageIndex.mSTAS],
-    stackBStart: data[DebuggerMessageIndex.mSTBS],
-    callDepth: data[DebuggerMessageIndex.mCALL],
-    programCounter: data[DebuggerMessageIndex.mPC],
-    skipPattern: data[DebuggerMessageIndex.mSKIP],
-    registerA: data[DebuggerMessageIndex.mREGA],
-    registerB: data[DebuggerMessageIndex.mREGB],
-    pointerA: data[DebuggerMessageIndex.mPTRA],
-    pointerB: data[DebuggerMessageIndex.mPTRB],
-    directionA: data[DebuggerMessageIndex.mDIRA],
-    directionB: data[DebuggerMessageIndex.mDIRB],
-    outputA: data[DebuggerMessageIndex.mOUTA],
-    outputB: data[DebuggerMessageIndex.mOUTB],
-    inputA: data[DebuggerMessageIndex.mINA],
-    inputB: data[DebuggerMessageIndex.mINB],
-    flags: data[DebuggerMessageIndex.mFLAG],
-    interruptJump: data[DebuggerMessageIndex.mIJMP],
-    conditionCodes: data[DebuggerMessageIndex.mCOND]
+    breakCZ: data[DebuggerMessageIndex.mBRKCZ],
+    breakC: breakC,
+    breakZ: data[DebuggerMessageIndex.mBRKZ],
+    ctHigh: data[DebuggerMessageIndex.mCTH2],
+    ctLow: data[DebuggerMessageIndex.mCTL2],
+    stack: stack,
+    iret: iret,
+    fifoPtr: data[DebuggerMessageIndex.mFPTR],
+    ptrA: data[DebuggerMessageIndex.mPTRA],
+    ptrB: data[DebuggerMessageIndex.mPTRB],
+    freq: data[DebuggerMessageIndex.mFREQ],
+    cond: data[DebuggerMessageIndex.mCOND],
+
+    // Derived convenience values
+    programCounter: iret & 0xFFFFF,  // PC is in lower 20 bits of IRET
+    callDepth: (breakC >>> BRKC_BITS.CALL_DEPTH_SHIFT) & BRKC_BITS.CALL_DEPTH_MASK,
+    skipPattern: data[DebuggerMessageIndex.mBRKZ],
+    events: breakC & BRKC_BITS.EVENTS_MASK,
+    xbyte: (breakC >>> BRKC_BITS.XBYTE_SHIFT) & BRKC_BITS.XBYTE_MASK
   };
 }
 
@@ -412,4 +539,48 @@ export function getHeatColor(hitCount: number): number {
  */
 export function decayHeat(hitCount: number): number {
   return Math.max(0, hitCount - LAYOUT_CONSTANTS.HIT_DECAY_RATE);
+}
+
+/**
+ * Blend two colors based on alpha value
+ * Pascal BlendPixel algorithm: result = (a * (255-alpha) + b * alpha) / 255
+ * @param colorA First color (shown when alpha=0)
+ * @param colorB Second color (shown when alpha=255)
+ * @param alpha Blend factor 0-255 (0=colorA, 255=colorB)
+ * @returns Blended color as 0xRRGGBB
+ */
+export function blendColors(colorA: number, colorB: number, alpha: number): number {
+  const notAlpha = 255 - alpha;
+
+  // Extract and blend each channel
+  const rA = (colorA >> 16) & 0xFF;
+  const gA = (colorA >> 8) & 0xFF;
+  const bA = colorA & 0xFF;
+
+  const rB = (colorB >> 16) & 0xFF;
+  const gB = (colorB >> 8) & 0xFF;
+  const bB = colorB & 0xFF;
+
+  const r = Math.min(255, ((rA * notAlpha + rB * alpha + 127) / 255) | 0);
+  const g = Math.min(255, ((gA * notAlpha + gB * alpha + 127) / 255) | 0);
+  const b = Math.min(255, ((bA * notAlpha + bB * alpha + 127) / 255) | 0);
+
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * Get heat-based color for COG/LUT register visualization
+ * Pascal uses cHighSame/cLowSame (when no change) vs cHighDiff/cLowDiff (when changed)
+ * blended based on heat value
+ * @param bitSet Whether the bit is set (1) or clear (0)
+ * @param heat Heat value 0-255 (higher = more recently changed)
+ * @returns Color value as 0xRRGGBB
+ */
+export function getRegisterHeatColor(bitSet: boolean, heat: number): number {
+  // Select base colors based on bit state
+  const cSame = bitSet ? PASCAL_COLOR_SCHEME.cHighSame : PASCAL_COLOR_SCHEME.cLowSame;
+  const cDiff = bitSet ? PASCAL_COLOR_SCHEME.cHighDiff : PASCAL_COLOR_SCHEME.cLowDiff;
+
+  // Blend between same and diff colors based on heat
+  return blendColors(cSame, cDiff, heat);
 }

@@ -342,9 +342,8 @@ export class DebuggerProtocol extends EventEmitter {
         this.writeUint32(packet, offset, request.address || 0);
         break;
       case DEBUG_COMMANDS.STALL_CMD:
-      case DEBUG_COMMANDS.BREAK_CMD:
-      case DEBUG_COMMANDS.GO_CMD:
-        // No additional data
+        // No additional data - STALL_CMD is the only valid control command
+        // Note: BREAK and GO now use breakValue bits, not separate commands
         break;
     }
     
@@ -363,20 +362,26 @@ export class DebuggerProtocol extends EventEmitter {
 
   /**
    * Send BREAK command
+   * @deprecated Use TLongTransmitter with STALL_CMD instead
    */
   public sendBreak(cogId: number): void {
+    // In Pascal protocol, BREAK = STALL (hold at current position)
     this.sendRequest({
-      command: DEBUG_COMMANDS.BREAK_CMD,
+      command: DEBUG_COMMANDS.STALL_CMD,
       cogId
     });
   }
 
   /**
    * Send GO command
+   * @deprecated Use TLongTransmitter with breakValue instead
    */
   public sendGo(cogId: number): void {
+    // In Pascal protocol, GO = send breakValue (continue until next break)
+    // This method cannot implement that correctly without breakValue state
+    // Use TLongTransmitter.transmitTLong(breakValue) directly
     this.sendRequest({
-      command: DEBUG_COMMANDS.GO_CMD,
+      command: DEBUG_COMMANDS.STALL_CMD, // Fallback to STALL
       cogId
     });
   }
