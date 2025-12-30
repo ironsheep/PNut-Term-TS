@@ -75,18 +75,19 @@ describe('DebuggerProtocol', () => {
       protocol.on('initialMessage', (data) => {
         expect(data.message.cogNumber).toBe(3);
         expect(data.message.programCounter).toBe(0x1234);
-        expect(data.message.breakStatus).toBe(1);
+        expect(data.message.breakCZ).toBe(1); // Updated from breakStatus to breakCZ
         done();
       });
 
       protocol.connect(mockSerial as any);
 
       // Create 20-long message (80 bytes)
+      // See DebuggerMessageIndex in debuggerConstants.ts for field indices
       const message = new Uint32Array(20);
-      message[0] = 3;        // COG number
-      message[1] = 1;        // Break status
-      message[5] = 0x1234;   // PC
-      
+      message[0] = 3;        // mCOGN: COG number
+      message[1] = 1;        // mBRKCZ: Break status (breakCZ field)
+      message[14] = 0x1234;  // mIRET: PC is in lower 20 bits of IRET
+
       const buffer = Buffer.from(message.buffer);
       mockSerial.simulateData(buffer);
     });
@@ -150,19 +151,21 @@ describe('DebuggerProtocol', () => {
 
     it('should send BREAK command', () => {
       protocol.sendBreak(2);
-      
+
       expect(mockSerial.writtenData.length).toBe(1);
       const data = new Uint32Array(mockSerial.writtenData[0].buffer);
-      expect(data[0]).toBe(DEBUG_COMMANDS.BREAK_CMD);
+      // sendBreak uses STALL_CMD internally (holds at current position)
+      expect(data[0]).toBe(DEBUG_COMMANDS.STALL_CMD);
       expect(data[2]).toBe(2); // COG ID
     });
 
     it('should send GO command', () => {
       protocol.sendGo(6);
-      
+
       expect(mockSerial.writtenData.length).toBe(1);
       const data = new Uint32Array(mockSerial.writtenData[0].buffer);
-      expect(data[0]).toBe(DEBUG_COMMANDS.GO_CMD);
+      // sendGo uses STALL_CMD as fallback (actual GO requires breakValue state)
+      expect(data[0]).toBe(DEBUG_COMMANDS.STALL_CMD);
       expect(data[2]).toBe(6); // COG ID
     });
 

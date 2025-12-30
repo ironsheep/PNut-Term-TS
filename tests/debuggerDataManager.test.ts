@@ -50,6 +50,34 @@ class MockProtocol extends EventEmitter {
   }
 }
 
+/**
+ * Create a valid DebuggerInitialMessage with default values
+ * Updated to match the current interface from debuggerConstants.ts
+ */
+function createMockMessage(overrides: Partial<DebuggerInitialMessage> = {}): DebuggerInitialMessage {
+  return {
+    cogNumber: 0,
+    breakCZ: 0,
+    breakC: 0,
+    breakZ: 0,
+    ctHigh: 0,
+    ctLow: 0,
+    stack: [0, 0, 0, 0, 0, 0, 0, 0],
+    iret: 0,
+    fifoPtr: 0,
+    ptrA: 0,
+    ptrB: 0,
+    freq: 0,
+    cond: 0,
+    programCounter: 0,
+    callDepth: 0,
+    skipPattern: 0,
+    events: 0,
+    xbyte: 0,
+    ...overrides
+  };
+}
+
 describe('DebuggerDataManager', () => {
   let manager: DebuggerDataManager;
   let mockProtocol: MockProtocol;
@@ -75,8 +103,8 @@ describe('DebuggerDataManager', () => {
       expect(state.isBreaked).toBe(false);
       expect(state.programCounter).toBe(0);
       expect(state.breakpoints.size).toBe(0);
-      expect(state.cogMemory.size).toBe(MEMORY_CONSTANTS.COG_BLOCKS);
-      expect(state.lutMemory.size).toBe(MEMORY_CONSTANTS.LUT_BLOCKS);
+      expect(state.cogMemory.size).toBe(MEMORY_CONSTANTS.COG_ONLY_BLOCKS);
+      expect(state.lutMemory.size).toBe(MEMORY_CONSTANTS.LUT_ONLY_BLOCKS);
     });
 
     it('should reject invalid COG IDs', () => {
@@ -124,8 +152,8 @@ describe('DebuggerDataManager', () => {
 
     it('should initialize COG memory blocks', () => {
       const state = manager.getCogState(0);
-      expect(state?.cogMemory.size).toBe(64);
-      
+      expect(state?.cogMemory.size).toBe(MEMORY_CONSTANTS.COG_ONLY_BLOCKS); // 32 blocks for COG
+
       const block = state?.cogMemory.get(0);
       expect(block).toBeDefined();
       expect(block?.size).toBe(MEMORY_CONSTANTS.COG_BLOCK_SIZE);
@@ -134,8 +162,8 @@ describe('DebuggerDataManager', () => {
 
     it('should initialize LUT memory blocks', () => {
       const state = manager.getCogState(0);
-      expect(state?.lutMemory.size).toBe(64);
-      
+      expect(state?.lutMemory.size).toBe(MEMORY_CONSTANTS.LUT_ONLY_BLOCKS); // 32 blocks for LUT
+
       const block = state?.lutMemory.get(0);
       expect(block).toBeDefined();
       expect(block?.baseAddress).toBeGreaterThanOrEqual(0x800);
@@ -178,31 +206,10 @@ describe('DebuggerDataManager', () => {
       const cogCRCs = new Uint32Array(64);
       cogCRCs[5] = 0x12345678; // Different CRC for block 5
       
-      const message: DebuggerInitialMessage = {
-        cogNumber: 1,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0x100,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+      const message = createMockMessage({ cogNumber: 1, programCounter: 0x100 });
+
       mockProtocol.simulateInitialMessage(message, cogCRCs);
-      
+
       // Should have scheduled request for block 5
       jest.advanceTimersByTime(100);
       
@@ -215,30 +222,9 @@ describe('DebuggerDataManager', () => {
     it('should detect changed LUT blocks from CRCs', () => {
       const lutCRCs = new Uint32Array(64);
       lutCRCs[10] = 0xABCDEF00; // Different CRC for block 10
-      
-      const message: DebuggerInitialMessage = {
-        cogNumber: 1,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+
+      const message = createMockMessage({ cogNumber: 1 });
+
       mockProtocol.simulateInitialMessage(message, undefined, lutCRCs);
       
       jest.advanceTimersByTime(100);
@@ -252,30 +238,9 @@ describe('DebuggerDataManager', () => {
     it('should detect changed HUB blocks from checksums', () => {
       const hubChecksums = new Uint32Array(124);
       hubChecksums[20] = 0x55555555; // Different checksum for block 20
-      
-      const message: DebuggerInitialMessage = {
-        cogNumber: 1,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+
+      const message = createMockMessage({ cogNumber: 1 });
+
       mockProtocol.simulateInitialMessage(message, undefined, undefined, hubChecksums);
       
       jest.advanceTimersByTime(100);
@@ -346,31 +311,10 @@ describe('DebuggerDataManager', () => {
 
     it('should detect when at breakpoint', () => {
       manager.setBreakpoint(2, 0x100);
-      
+
       // Update PC via initial message
-      const message: DebuggerInitialMessage = {
-        cogNumber: 2,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0x100,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+      const message = createMockMessage({ cogNumber: 2, programCounter: 0x100 });
+
       manager.connect(mockProtocol as any);
       mockProtocol.simulateInitialMessage(message);
       
@@ -391,30 +335,9 @@ describe('DebuggerDataManager', () => {
       for (let i = 0; i < 5; i++) {
         cogCRCs[i] = 0x11111111 * (i + 1);
       }
-      
-      const message: DebuggerInitialMessage = {
-        cogNumber: 0,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+
+      const message = createMockMessage({ cogNumber: 0 });
+
       mockProtocol.requests = [];
       mockProtocol.simulateInitialMessage(message, cogCRCs);
       
@@ -435,30 +358,9 @@ describe('DebuggerDataManager', () => {
       for (let i = 0; i < 64; i++) {
         cogCRCs[i] = 0x11111111 * (i + 1);
       }
-      
-      const message: DebuggerInitialMessage = {
-        cogNumber: 0,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
+
+      const message = createMockMessage({ cogNumber: 0 });
+
       mockProtocol.simulateInitialMessage(message, cogCRCs);
       
       jest.advanceTimersByTime(100);
@@ -549,37 +451,13 @@ describe('DebuggerDataManager', () => {
     it('should handle communication lost', () => {
       manager.initializeCogState(0);
       manager.initializeCogState(1);
-      
+
       const state0 = manager.getCogState(0);
       const state1 = manager.getCogState(1);
-      
+
       // Activate COGs
-      const message: DebuggerInitialMessage = {
-        cogNumber: 0,
-        breakStatus: 0,
-        stackAStart: 0,
-        stackBStart: 0,
-        callDepth: 0,
-        programCounter: 0,
-        skipPattern: 0,
-        registerA: 0,
-        registerB: 0,
-        pointerA: 0,
-        pointerB: 0,
-        directionA: 0,
-        directionB: 0,
-        outputA: 0,
-        outputB: 0,
-        inputA: 0,
-        inputB: 0,
-        flags: 0,
-        interruptJump: 0,
-        conditionCodes: 0
-      };
-      
-      mockProtocol.simulateInitialMessage(message);
-      message.cogNumber = 1;
-      mockProtocol.simulateInitialMessage(message);
+      mockProtocol.simulateInitialMessage(createMockMessage({ cogNumber: 0 }));
+      mockProtocol.simulateInitialMessage(createMockMessage({ cogNumber: 1 }));
       
       expect(state0?.isActive).toBe(true);
       expect(state1?.isActive).toBe(true);
