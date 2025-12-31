@@ -5,6 +5,25 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2025-12-31
+
+### Added
+
+- Single-Step Debugger window - fully functional debug interface for P2 programs
+- GitHub Actions CI/CD workflows for automated builds and releases
+
+### Fixed
+
+- FFT window noise floor display - now matches Pascal reference implementation
+  - Fixed display scaling to use Pascal's default high value (0x7FFFFFFF) for log scale
+  - Noise floor is now properly suppressed, showing clean bell-curve peaks
+  - Both combined spectrum and channel-based rendering now display correctly
+
+### Changed
+
+- Reorganized assets folder structure for DMG creation
+- Updated workflow secret names to match PNut-TS conventions
+
 ## [0.9.5] - 2025-11-20
 
 ### Added
@@ -80,13 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Command-line launcher `pnut-term-ts` for all platforms
 - Electron v33.3.1 runtime bundled in all packages
 
-### Known Issues
-
-- Single Step debugger is not yet ready for use
-
 ## [Unreleased]
 
 ### Planned
 
-- Complete implementation of remaining debug windows:
-  - Single Step debugger
+- Additional debug window improvements

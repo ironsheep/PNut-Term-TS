@@ -1,0 +1,744 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip release creation)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # Build Windows packages
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Get version from package.json
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Convert to packed format (0.9.6 -> 000906)
+          PACKED_VERSION=$(echo "$VERSION" | awk -F. '{printf "%02d%02d%02d", $1, $2, $3}')
+          echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
+          echo "Package version: ${VERSION}, Packed: ${PACKED_VERSION}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package Windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run packageWin
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-windows
+          path: release/windows-package/*.zip
+          retention-days: 5
+
+  # Build Linux packages
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Convert to packed format (0.9.6 -> 000906)
+          PACKED_VERSION=$(echo "$VERSION" | awk -F. '{printf "%02d%02d%02d", $1, $2, $3}')
+          echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
+          echo "Package version: ${VERSION}, Packed: ${PACKED_VERSION}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package Linux
+        run: npm run packageLinux
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-linux
+          path: release/linux-package/*.zip
+          retention-days: 5
+
+  # Build macOS packages (unsigned)
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Convert to packed format (0.9.6 -> 000906)
+          PACKED_VERSION=$(echo "$VERSION" | awk -F. '{printf "%02d%02d%02d", $1, $2, $3}')
+          echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
+          echo "Package version: ${VERSION}, Packed: ${PACKED_VERSION}"
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install Pillow --break-system-packages
+
+      - name: Install Python and setuptools/distutils
+        run: |
+          brew reinstall python@3.13
+          brew install python-setuptools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+        run: |
+          # Skip if no certificate configured
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No signing certificate configured, skipping signing"
+            echo "SIGNING_ENABLED=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "SIGNING_ENABLED=true" >> $GITHUB_ENV
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$MACOS_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          echo "Certificate imported successfully"
+
+      - name: Build and package macOS (with signing if available)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELECTRON_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run packageMac
+
+      - name: List built packages
+        run: |
+          echo "macOS packages built:"
+          ls -la release/macos-package/*.tar.gz 2>/dev/null || echo "No tar.gz files"
+          ls -la release/macos-package/*.dmg 2>/dev/null || echo "No DMG files yet"
+
+      - name: Upload macOS x64 package directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64-pkg
+          path: release/macos-package/pnut-term-ts-macos-x64-*/
+          retention-days: 1
+
+      - name: Upload macOS arm64 package directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-pkg
+          path: release/macos-package/pnut-term-ts-macos-arm64-*/
+          retention-days: 1
+
+      - name: Upload version info
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-info
+          path: package.json
+          retention-days: 1
+
+  # Sign macOS apps and create DMGs
+  macos-sign:
+    name: Sign & Package macOS DMGs
+    runs-on: macos-latest
+    needs: build-macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download macOS x64 package
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-x64-pkg
+          path: packages/
+
+      - name: Download macOS arm64 package
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64-pkg
+          path: packages/
+
+      - name: Download version info
+        uses: actions/download-artifact@v4
+        with:
+          name: version-info
+          path: .
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Convert to packed format (0.9.6 -> 000906)
+          PACKED_VERSION=$(echo "$VERSION" | awk -F. '{printf "%02d%02d%02d", $1, $2, $3}')
+          echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
+          echo "Semantic: ${VERSION}, Packed: ${PACKED_VERSION}"
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install Pillow --break-system-packages
+
+      - name: List downloaded packages
+        run: |
+          echo "Package directories:"
+          ls -la packages/
+          echo ""
+          echo "Contents:"
+          find packages -type f | head -50
+
+      - name: Restore executable permissions
+        run: |
+          # GitHub Actions artifacts don't preserve Unix permissions
+          find packages -name "pnut-term-ts" -type f -exec chmod +x {} \;
+          find packages -name "*.app" -type d -exec chmod -R +x {} \;
+          echo "Permissions restored"
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+        run: |
+          # Skip if no certificate configured
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No signing certificate configured, skipping signing"
+            echo "SIGNING_ENABLED=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "SIGNING_ENABLED=true" >> $GITHUB_ENV
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$MACOS_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PWD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          echo "Certificate imported successfully"
+
+      - name: Create entitlements.plist
+        run: |
+          cat > entitlements.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.cs.allow-jit</key>
+              <true/>
+              <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+              <true/>
+              <key>com.apple.security.cs.disable-library-validation</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Sign macOS app bundles
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_DEVELOPER_NAME: ${{ secrets.APPLE_DEVELOPER_NAME }}
+        run: |
+          PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
+
+          for arch in x64 arm64; do
+            # Find the .app bundle
+            APP_PATH=$(find packages -name "*.app" -path "*${arch}*" -type d 2>/dev/null | head -1)
+
+            if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
+              echo "Signing ${arch} app bundle: $APP_PATH"
+
+              # Sign all frameworks and helpers first
+              find "$APP_PATH" -name "*.framework" -o -name "*.dylib" | while read framework; do
+                codesign --force --sign "Developer ID Application: ${APPLE_DEVELOPER_NAME} (${APPLE_TEAM_ID})" \
+                  --options runtime \
+                  --timestamp \
+                  "$framework" 2>/dev/null || true
+              done
+
+              # Sign the main app bundle
+              codesign --force --deep --sign "Developer ID Application: ${APPLE_DEVELOPER_NAME} (${APPLE_TEAM_ID})" \
+                --options runtime \
+                --timestamp \
+                --entitlements entitlements.plist \
+                "$APP_PATH"
+
+              echo "Verifying signature..."
+              codesign --verify --verbose=2 "$APP_PATH"
+              echo "${arch} app bundle signed successfully"
+            else
+              echo "WARNING: App bundle not found for ${arch}"
+            fi
+          done
+
+      - name: Create DMG background
+        run: |
+          cat > create_dmg_bg.py << 'PYTHON_SCRIPT'
+          from PIL import Image, ImageDraw, ImageFont
+          import os
+
+          width, height = 500, 300
+          img = Image.new('RGB', (width, height), color='white')
+          draw = ImageDraw.Draw(img)
+
+          try:
+              font_title = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
+              font_subtitle = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
+              font_instruction = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 18)
+          except:
+              font_title = ImageFont.load_default()
+              font_subtitle = font_title
+              font_instruction = font_title
+
+          title = "PNut-Term-TS"
+          title_color = (128, 0, 0)
+          bbox = draw.textbbox((0, 0), title, font=font_title)
+          x = (width - (bbox[2] - bbox[0])) // 2
+          draw.text((x, 25), title, fill=title_color, font=font_title)
+
+          subtitle = "Debug Terminal for Parallax Propeller 2"
+          bbox = draw.textbbox((0, 0), subtitle, font=font_subtitle)
+          x = (width - (bbox[2] - bbox[0])) // 2
+          draw.text((x, 58), subtitle, fill=(80, 80, 80), font=font_subtitle)
+
+          arrow_y, arrow_left, arrow_right = 150, 200, 290
+          arrow_color = (128, 0, 0)
+          draw.rectangle([(arrow_left, arrow_y - 2), (arrow_right - 12, arrow_y + 2)], fill=arrow_color)
+          draw.polygon([(arrow_right, arrow_y), (arrow_right - 12, arrow_y - 12), (arrow_right - 12, arrow_y + 12)], fill=arrow_color)
+
+          instruction = "Drag to Applications Folder to Install"
+          bbox = draw.textbbox((0, 0), instruction, font=font_instruction)
+          x = (width - (bbox[2] - bbox[0])) // 2
+          draw.text((x, 255), instruction, fill=(80, 80, 80), font=font_instruction)
+
+          logo_path = "assets/logo.png"
+          if os.path.exists(logo_path):
+              try:
+                  logo = Image.open(logo_path).convert("RGBA")
+                  logo_h = 45
+                  scale = logo_h / logo.size[1]
+                  logo = logo.resize((int(logo.size[0] * scale), logo_h), Image.LANCZOS)
+                  x = width - logo.size[0] - 20
+                  img.paste(logo, (x, 25), logo)
+              except:
+                  pass
+
+          img.save('dmg-background.png')
+          print("Created dmg-background.png (500x300)")
+          PYTHON_SCRIPT
+          python3 create_dmg_bg.py
+          rm -f create_dmg_bg.py
+
+      - name: Create DMGs
+        run: |
+          PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
+
+          # Define AppleScript for DMG styling
+          cat > /tmp/dmg-style.scpt << 'APPLESCRIPT'
+          tell application "Finder"
+            tell disk "PNut-Term-TS"
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set the bounds of container window to {400, 100, 900, 400}
+              set theViewOptions to the icon view options of container window
+              set arrangement of theViewOptions to not arranged
+              set icon size of theViewOptions to 72
+              set background picture of theViewOptions to file ".background:background.png"
+              set position of item "PNut-Term-TS.app" of container window to {125, 150}
+              set position of item "Applications" of container window to {375, 150}
+              close
+              open
+              update without registering applications
+              delay 2
+              close
+            end tell
+          end tell
+          APPLESCRIPT
+
+          for arch in x64 arm64; do
+            # Find the app bundle for this arch
+            APP_PATH=$(find packages -name "*.app" -path "*${arch}*" -type d 2>/dev/null | head -1)
+            DMG_NAME="pnut-term-ts-macos-${arch}-${PACKED_VERSION}.dmg"
+
+            if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
+              echo "Creating DMG for ${arch} from $APP_PATH..."
+
+              # Create staging directory
+              STAGING="dmg-staging-${arch}"
+              rm -rf "$STAGING"
+              mkdir -p "$STAGING"
+
+              # Copy app bundle
+              cp -r "$APP_PATH" "$STAGING/"
+
+              # Set app icon if available
+              if [ -f "assets/app-icon.icns" ]; then
+                APP_NAME=$(basename "$APP_PATH")
+                cp assets/app-icon.icns "$STAGING/$APP_NAME/Contents/Resources/electron.icns" 2>/dev/null || true
+              fi
+
+              # Create Applications symlink
+              ln -s /Applications "$STAGING/Applications"
+
+              # Copy background if exists
+              if [ -f "dmg-background.png" ]; then
+                mkdir -p "$STAGING/.background"
+                cp dmg-background.png "$STAGING/.background/background.png"
+              fi
+
+              # Copy volume icon if exists
+              if [ -f "assets/volume-icon.icns" ]; then
+                cp assets/volume-icon.icns "$STAGING/.VolumeIcon.icns"
+              fi
+
+              # Calculate DMG size
+              FOLDER_SIZE_KB=$(du -sk "$STAGING" | cut -f1)
+              DMG_SIZE=$(( (FOLDER_SIZE_KB / 1024) + 50 ))
+
+              # Create temporary read-write DMG with HFS+
+              echo "Building DMG (${DMG_SIZE}MB)..."
+              hdiutil create -volname "PNut-Term-TS" \
+                -srcfolder "$STAGING" \
+                -fs HFS+ \
+                -ov -format UDRW \
+                -size ${DMG_SIZE}m \
+                "temp-$DMG_NAME"
+
+              # Mount and customize
+              MOUNT_OUTPUT=$(hdiutil attach -readwrite -noverify -noautoopen "temp-$DMG_NAME" 2>&1)
+              DEVICE=$(echo "$MOUNT_OUTPUT" | egrep '^/dev/' | sed 1q | awk '{print $1}')
+              sleep 2
+
+              # Apply window styling with AppleScript
+              echo "Applying window styling..."
+              osascript /tmp/dmg-style.scpt || true
+              sleep 1
+
+              # Set volume icon
+              if [ -f "assets/volume-icon.icns" ]; then
+                echo "Setting volume icon..."
+                cp assets/volume-icon.icns "/Volumes/PNut-Term-TS/.VolumeIcon.icns"
+                SetFile -c icnC "/Volumes/PNut-Term-TS/.VolumeIcon.icns" 2>/dev/null || true
+                SetFile -a C "/Volumes/PNut-Term-TS" 2>/dev/null || true
+              fi
+
+              sync
+              sleep 2
+
+              # Unmount with retry loop
+              echo "Unmounting disk..."
+              DETACH_ATTEMPTS=0
+              MAX_DETACH_ATTEMPTS=5
+              while [ $DETACH_ATTEMPTS -lt $MAX_DETACH_ATTEMPTS ]; do
+                if hdiutil detach "${DEVICE}" 2>/dev/null; then
+                  echo "Disk unmounted successfully"
+                  break
+                fi
+                DETACH_ATTEMPTS=$((DETACH_ATTEMPTS + 1))
+                echo "Unmount attempt $DETACH_ATTEMPTS failed, waiting..."
+                sleep 3
+              done
+
+              if [ $DETACH_ATTEMPTS -eq $MAX_DETACH_ATTEMPTS ]; then
+                echo "Force unmounting..."
+                hdiutil detach "${DEVICE}" -force || true
+                sleep 2
+              fi
+
+              sleep 3
+
+              # Convert to compressed read-only
+              echo "Compressing DMG..."
+              hdiutil convert "temp-$DMG_NAME" -format UDZO -imagekey zlib-level=9 -o "$DMG_NAME"
+              rm -f "temp-$DMG_NAME"
+
+              echo "Created: $DMG_NAME"
+              rm -rf "$STAGING"
+            else
+              echo "WARNING: App bundle not found for ${arch}"
+            fi
+          done
+
+          rm -f /tmp/dmg-style.scpt
+
+      - name: Sign DMGs
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_DEVELOPER_NAME: ${{ secrets.APPLE_DEVELOPER_NAME }}
+        run: |
+          for dmg in pnut-term-ts-macos-*.dmg; do
+            if [ -f "$dmg" ]; then
+              echo "Signing DMG: $dmg"
+              codesign --force --sign "Developer ID Application: ${APPLE_DEVELOPER_NAME} (${APPLE_TEAM_ID})" \
+                --options runtime \
+                --timestamp \
+                "$dmg"
+              codesign --verify --verbose=2 "$dmg"
+            fi
+          done
+
+      - name: Notarize DMGs
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for dmg in pnut-term-ts-macos-*.dmg; do
+            if [ -f "$dmg" ]; then
+              echo "Notarizing: $dmg"
+
+              xcrun notarytool submit "$dmg" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_ID_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --wait
+
+              echo "Stapling notarization ticket..."
+              xcrun stapler staple "$dmg"
+
+              echo "Validating..."
+              xcrun stapler validate "$dmg"
+
+              echo "$dmg notarized and stapled successfully"
+            fi
+          done
+
+      - name: Create macOS ZIP packages (containing DMGs)
+        run: |
+          PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
+
+          for arch in x64 arm64; do
+            DMG_FILE="pnut-term-ts-macos-${arch}-${PACKED_VERSION}.dmg"
+            ZIP_FILE="pnut-term-ts-macos-${arch}-${PACKED_VERSION}.zip"
+            if [ -f "$DMG_FILE" ]; then
+              echo "Creating ZIP containing DMG for macOS ${arch}..."
+              zip "$ZIP_FILE" "$DMG_FILE"
+              echo "Created: $ZIP_FILE (containing $DMG_FILE)"
+            else
+              echo "WARNING: DMG not found: $DMG_FILE"
+            fi
+          done
+
+      - name: Upload macOS ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-macos
+          path: pnut-term-ts-macos-*.zip
+          retention-days: 5
+
+  # Create GitHub Release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux, macos-sign]
+    if: ${{ !inputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-windows
+          path: release/
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-linux
+          path: release/
+
+      - name: Download macOS packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-macos
+          path: release/
+
+      - name: Download version info
+        uses: actions/download-artifact@v4
+        with:
+          name: version-info
+          path: .
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Convert to packed format
+          PACKED_VERSION=$(echo "$VERSION" | awk -F. '{printf "%02d%02d%02d", $1, $2, $3}')
+          echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: List release artifacts
+        run: |
+          echo "Release artifacts:"
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          echo ""
+          echo "Checksums:"
+          cat checksums.txt
+
+      - name: Determine release type
+        id: release_type
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION="${{ steps.version.outputs.VERSION }}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+            echo "RELEASE_NAME=PNut-Term-TS v${TAG_VERSION} (Test Release)" >> $GITHUB_OUTPUT
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            echo "RELEASE_NAME=PNut-Term-TS v${TAG_VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate release body
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
+          TAG="${{ github.ref_name }}"
+
+          # Extract changelog section for this version
+          CHANGELOG_CONTENT=$(awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md | sed '/^$/N;/^\n$/d')
+
+          # Extract one-line summary
+          SUMMARY_LINE=$(echo "${CHANGELOG_CONTENT}" | grep -m1 '^\- ' | sed 's/^- //' | sed 's/\*\*[^*]*\*\*: //')
+
+          # Generate release body file
+          cat > release_body.md << RELEASE_EOF
+          ## PNut-Term-TS ${TAG}
+
+          Cross-Platform Debug Terminal for Parallax Propeller 2
+
+          **This release:** ${SUMMARY_LINE:-Bug fixes and improvements}
+
+          ---
+
+          ### What's New in This Release
+
+          ${CHANGELOG_CONTENT}
+
+          See [CHANGELOG.md](https://github.com/ironsheep/PNut-Term-TS/blob/main/CHANGELOG.md) for complete history.
+
+          ---
+
+          ### Downloads
+
+          | Platform | Architecture | Download |
+          |----------|--------------|----------|
+          | **macOS** | Apple Silicon (M1 and later) | \`pnut-term-ts-macos-arm64-${PACKED_VERSION}.zip\` |
+          | **macOS** | Intel x64 | \`pnut-term-ts-macos-x64-${PACKED_VERSION}.zip\` |
+          | **Windows** | x64 | \`pnut-term-ts-windows-x64-${PACKED_VERSION}.zip\` |
+          | **Windows** | ARM64 | \`pnut-term-ts-windows-arm64-${PACKED_VERSION}.zip\` |
+          | **Linux** | x64 | \`pnut-term-ts-linux-x64-${PACKED_VERSION}.zip\` |
+          | **Linux** | ARM64 | \`pnut-term-ts-linux-arm64-${PACKED_VERSION}.zip\` |
+
+          ---
+
+          ### Installing
+
+          **macOS**: Download the ZIP, extract the DMG, and drag the app to Applications.
+
+          **Windows/Linux**: Download the ZIP, extract to your preferred location, and run the executable.
+
+          ---
+
+          ### Checksums
+
+          See \`checksums.txt\` for SHA256 checksums of all files.
+          RELEASE_EOF
+
+          echo "Generated release body:"
+          cat release_body.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ steps.release_type.outputs.RELEASE_NAME }}
+          draft: false
+          prerelease: ${{ steps.release_type.outputs.IS_PRERELEASE == 'true' }}
+          files: |
+            release/*
+          body_path: release_body.md

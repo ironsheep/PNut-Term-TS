@@ -1666,10 +1666,18 @@ export class DebugFFTWindow extends DebugWindowBase {
     // Pascal formula (line 1699): v := Round(Log2(Int64(v) + 1) / Log2(Int64(vHigh[j]) + 1) * vHigh[j])
     const powerData: number[] = [];
 
+    // FIX: When LOGSCALE is enabled, use Pascal's default vHigh ($7FFFFFFF) instead of channel's high
+    // This suppresses noise floor by using a much larger denominator in the log scale formula.
+    // Pascal defaults vHigh[i] := $7FFFFFFF (lines 1193, 1610) which ensures only significant
+    // signals are visible. When a smaller high is specified, noise becomes visible.
+    // By using the large default for log scale, we match Pascal's clean display behavior.
+    const effectiveHigh = this.displaySpec.logScale ? 0x7fffffff : high;
+
     // DIAGNOSTIC: Check what bins we're extracting
     if (ENABLE_CONSOLE_LOG) {
       console.log(`[FFT DRAW] Extracting bins ${firstBin} to ${lastBin} from power array length ${power.length}`);
       console.log(`[FFT DRAW] Raw power array first 10: ${Array.from(power.slice(0, 10)).join(', ')}`);
+      console.log(`[FFT DRAW] Using effectiveHigh=${effectiveHigh} (logScale=${this.displaySpec.logScale}, channel high=${high})`);
     }
 
     for (let i = firstBin; i <= lastBin; i++) {
@@ -1679,8 +1687,8 @@ export class DebugFFTWindow extends DebugWindowBase {
       if (this.displaySpec.logScale) {
         const oldValue = value;
 
-        // Pascal formula - exact parity with Pascal implementation
-        value = Math.round((Math.log2(value + 1) / Math.log2(high + 1)) * high);
+        // Pascal formula using large default high to suppress noise
+        value = Math.round((Math.log2(value + 1) / Math.log2(effectiveHigh + 1)) * effectiveHigh);
 
         // DIAGNOSTIC: Show first few transformations
         if (ENABLE_CONSOLE_LOG && i < firstBin + 5) {
@@ -1720,10 +1728,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Line/Dot mode (lineSize >= 0)
       // Pascal: DrawLineDot handles both line and dot based on sizes
       if (this.displaySpec.lineSize > 0) {
-        // Line mode
+        // Line mode - use effectiveHigh for normalization to match log scale
         drawCommands = this.generateLineDrawCommands(
           powerData,
-          high,
+          effectiveHigh,
           width,
           height,
           base,
@@ -1736,7 +1744,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         // Dot only mode (lineSize = 0, dotSize > 0)
         drawCommands = this.generateDotDrawCommands(
           powerData,
-          high,
+          effectiveHigh,
           width,
           height,
           base,
@@ -1750,7 +1758,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Width of bar = abs(lineSize), plus optional dot on top
       drawCommands = this.generateBarDrawCommands(
         powerData,
-        high,
+        effectiveHigh,
         width,
         height,
         base,
