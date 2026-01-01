@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "sessionId": "2026-01-01T04-49-03-160Z-test-session",
+    "filename": "2026-01-01T04-49-03-160Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1767242943160,
+      "duration": 0,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2026-01-01T04-47-08-220Z-test-session",
+    "filename": "2026-01-01T04-47-08-220Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1767242828219,
+      "duration": 2,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  }
+]

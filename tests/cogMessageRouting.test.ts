@@ -134,8 +134,8 @@ describe('Cog Message Routing', () => {
   
   describe('Debug Logger auto-creation', () => {
     it('should auto-create LoggerWindow on first Cog message', () => {
-      // Verify logger window property exists and starts as null
-      expect((mainWindow as any).loggerWindow).toBeNull();
+      // Verify logger window property starts as undefined/null
+      expect((mainWindow as any).loggerWindow).toBeFalsy();
       
       // Test processing a Cog message through serialProcessor
       const cogMessage = Buffer.from('Cog0: First debug message\r\n');

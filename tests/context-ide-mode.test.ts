@@ -24,12 +24,13 @@ describe('Context IDE Mode', () => {
   it('should preserve other RuntimeEnvironment properties when setting ideMode', () => {
     const context = new Context();
     context.runEnvironment.ideMode = true;
-    
+
     // Verify other properties are still present and have their defaults
     expect(context.runEnvironment.selectedPropPlug).toBe('');
     expect(context.runEnvironment.serialPortDevices).toEqual([]);
     expect(context.runEnvironment.developerModeEnabled).toBe(false);
     expect(context.runEnvironment.logFilename).toBe('');
-    expect(context.runEnvironment.debugBaudrate).toBe(2000000);
+    // debugBaudrate is optional and defaults to undefined (set from CLI or preferences)
+    expect(context.runEnvironment.debugBaudrate).toBeUndefined();
   });
 });

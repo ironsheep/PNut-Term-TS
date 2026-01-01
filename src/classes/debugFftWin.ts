@@ -426,38 +426,6 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Extract samples from the circular buffer for FFT processing
-   *
-   * @param startPtr Starting position in the circular buffer
-   * @param length Number of samples to extract
-   * @returns Array of samples ready for FFT
-   */
-  private extractSamplesForFFT(startPtr: number, length: number): Int32Array {
-    const samples = new Int32Array(length);
-
-    // Sum enabled channels for each sample position
-    for (let i = 0; i < length; i++) {
-      const bufferPos = ((startPtr + i) & (this.BUFFER_SIZE - 1)) * this.MAX_CHANNELS;
-      let sum = 0;
-      let channelCount = 0;
-
-      // Sum all enabled channels at this sample position
-      for (let ch = 0; ch < this.MAX_CHANNELS; ch++) {
-        if ((this.channelMask & (1 << ch)) !== 0) {
-          sum += this.sampleBuffer[bufferPos + ch];
-          channelCount++;
-        }
-      }
-
-      // Average the channels (or just use sum for Pascal compatibility)
-      // Pascal appears to sum channels without averaging
-      samples[i] = sum;
-    }
-
-    return samples;
-  }
-
-  /**
    * Trigger FFT processing when enough samples are collected
    *
    * CRITICAL: This must match Pascal's synchronous blocking behavior (line 1674)
@@ -474,14 +442,14 @@ export class DebugFFTWindow extends DebugWindowBase {
     // This enables headless testing and prevents data loss if window creation fails
     // Only skip DRAWING if window doesn't exist, not the calculations
 
-    // Process FFT calculations (always, regardless of window state)
+    // Process FFT calculations - Pascal: only if channels are configured (vIndex > 0)
+    // Pascal: for j := vIndex - 1 downto 0 - if vIndex = 0, loop never executes
     if (this.channels.length > 0) {
       this.logMessage(`  -> Processing ${this.channels.length} channel FFTs`);
       this.processChannelFFTs();
     } else {
-      this.logMessage('  -> Processing combined FFT (no channels configured)');
-      // No channels configured - process combined FFT with default settings
-      this.processCombinedFFT(0);
+      this.logMessage('  -> No channels configured, skipping FFT (Pascal parity)');
+      return; // Nothing to process or draw
     }
 
     // Update read pointer to match where we just processed
@@ -586,24 +554,6 @@ export class DebugFFTWindow extends DebugWindowBase {
       this.fftPower = result.power;
       this.fftAngle = result.angle;
     }
-  }
-
-  /**
-   * Process combined FFT from all enabled channels
-   */
-  private processCombinedFFT(magnitude: number): void {
-    // Calculate starting position for FFT samples
-    const startPtr = (this.sampleWritePtr - this.displaySpec.samples) & (this.BUFFER_SIZE - 1);
-
-    // Extract combined samples from all enabled channels
-    const samples = this.extractSamplesForFFT(startPtr, this.displaySpec.samples);
-
-    // Perform FFT on the combined samples
-    const result = this.fftProcessor.performFFT(samples, magnitude);
-
-    // Store results for rendering
-    this.fftPower = result.power;
-    this.fftAngle = result.angle;
   }
 
   /**
@@ -1377,16 +1327,15 @@ export class DebugFFTWindow extends DebugWindowBase {
       this.drawFrequencyGrid();
     }
 
-    // Draw FFT spectrum based on mode (synchronous like Pascal)
+    // Draw FFT spectrum - Pascal: for j := vIndex - 1 downto 0 (line 1688)
+    // Pascal only draws if channels are configured (vIndex > 0)
+    // If no channels configured, loop is empty and nothing is drawn
+    // CRITICAL FIX: Must await async drawing operations to prevent race conditions
     if (this.channels.length > 0) {
       this.logMessage(`  -> Drawing ${this.channels.length} channel spectrums`);
-      // Draw individual channels (in reverse order for proper overlay)
-      // Pascal: for j := vIndex - 1 downto 0 (line 1688)
-      this.drawChannelSpectrums();
+      await this.drawChannelSpectrums();
     } else {
-      this.logMessage('  -> Drawing combined spectrum');
-      // Draw combined spectrum
-      this.drawCombinedSpectrum();
+      this.logMessage('  -> No channels configured, nothing to draw (Pascal parity)');
     }
 
     // Copy offscreen to visible canvas FIRST (Pascal: BitmapToCanvas)
@@ -1583,39 +1532,21 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Draw the combined FFT spectrum (when no channels configured)
-   */
-  private drawCombinedSpectrum(): void {
-    if (!this.fftPower || !this.debugWindow) return;
-
-    const power = this.fftPower;
-    const color = this.displaySpec.spectrumColor || '#00FF00';
-
-    // Pascal default for vHigh[i] (lines 1193, 1610): $7FFFFFFF
-    // This large value ensures only significant signals are visible, suppressing noise
-    const high = 0x7fffffff; // Pascal default: maximum Int32 value
-
-    // Pascal default: tall = vHeight (line 1611)
-    const tall = this.displayHeight;
-    const base = 0; // Pascal default (line 1612)
-
-    this.drawSpectrum(power, color, base, high, tall, 0);
-  }
-
-  /**
    * Draw individual channel spectrums
    * Pascal: draws in reverse order (vIndex - 1 downto 0) so last channel is on top
    */
-  private drawChannelSpectrums(): void {
+  private async drawChannelSpectrums(): Promise<void> {
     if (!this.debugWindow) return;
 
     // Draw in reverse order so last channel is on top (Pascal: line 1688)
+    // CRITICAL FIX: Must await each drawSpectrum to ensure sequential drawing
+    // and completion before copyOffscreenToVisible is called
     for (let i = this.channels.length - 1; i >= 0; i--) {
       if (i < this.channelFFTResults.length && this.channelFFTResults[i]) {
         const channel = this.channels[i];
         const { power } = this.channelFFTResults[i];
 
-        this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
+        await this.drawSpectrum(power, channel.color, channel.base, channel.high, channel.tall, channel.grid);
       }
     }
   }
@@ -1664,31 +1595,28 @@ export class DebugFFTWindow extends DebugWindowBase {
 
     // Prepare power data with log scale if needed
     // Pascal formula (line 1699): v := Round(Log2(Int64(v) + 1) / Log2(Int64(vHigh[j]) + 1) * vHigh[j])
+    // Pascal uses vHigh[j] (channel's configured high) for BOTH log scale AND normalization
+    // Pascal defaults vHigh[i] := $7FFFFFFF (line 1610), but respects channel configuration
     const powerData: number[] = [];
-
-    // FIX: When LOGSCALE is enabled, use Pascal's default vHigh ($7FFFFFFF) instead of channel's high
-    // This suppresses noise floor by using a much larger denominator in the log scale formula.
-    // Pascal defaults vHigh[i] := $7FFFFFFF (lines 1193, 1610) which ensures only significant
-    // signals are visible. When a smaller high is specified, noise becomes visible.
-    // By using the large default for log scale, we match Pascal's clean display behavior.
-    const effectiveHigh = this.displaySpec.logScale ? 0x7fffffff : high;
 
     // DIAGNOSTIC: Check what bins we're extracting
     if (ENABLE_CONSOLE_LOG) {
       console.log(`[FFT DRAW] Extracting bins ${firstBin} to ${lastBin} from power array length ${power.length}`);
       console.log(`[FFT DRAW] Raw power array first 10: ${Array.from(power.slice(0, 10)).join(', ')}`);
-      console.log(`[FFT DRAW] Using effectiveHigh=${effectiveHigh} (logScale=${this.displaySpec.logScale}, channel high=${high})`);
+      console.log(`[FFT DRAW] Using high=${high} (logScale=${this.displaySpec.logScale})`);
     }
 
     for (let i = firstBin; i <= lastBin; i++) {
       let value = power[i];
 
       // Apply Pascal's log scale formula if enabled
+      // Pascal (line 1699): v := Round(Log2(Int64(v) + 1) / Log2(Int64(vHigh[j]) + 1) * vHigh[j])
+      // Uses channel's 'high' value, NOT a hardcoded 0x7FFFFFFF
       if (this.displaySpec.logScale) {
         const oldValue = value;
 
-        // Pascal formula using large default high to suppress noise
-        value = Math.round((Math.log2(value + 1) / Math.log2(effectiveHigh + 1)) * effectiveHigh);
+        // Pascal-exact formula using channel's configured high value
+        value = Math.round((Math.log2(value + 1) / Math.log2(high + 1)) * high);
 
         // DIAGNOSTIC: Show first few transformations
         if (ENABLE_CONSOLE_LOG && i < firstBin + 5) {
@@ -1728,10 +1656,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Line/Dot mode (lineSize >= 0)
       // Pascal: DrawLineDot handles both line and dot based on sizes
       if (this.displaySpec.lineSize > 0) {
-        // Line mode - use effectiveHigh for normalization to match log scale
+        // Line mode - use channel's high for normalization (Pascal parity)
         drawCommands = this.generateLineDrawCommands(
           powerData,
-          effectiveHigh,
+          high,
           width,
           height,
           base,
@@ -1744,7 +1672,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         // Dot only mode (lineSize = 0, dotSize > 0)
         drawCommands = this.generateDotDrawCommands(
           powerData,
-          effectiveHigh,
+          high,
           width,
           height,
           base,
@@ -1758,7 +1686,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Width of bar = abs(lineSize), plus optional dot on top
       drawCommands = this.generateBarDrawCommands(
         powerData,
-        effectiveHigh,
+        high,
         width,
         height,
         base,

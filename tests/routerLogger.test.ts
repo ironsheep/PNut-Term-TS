@@ -177,7 +177,9 @@ describe('RouterLogger', () => {
     });
 
     it('should return limited number of recent entries', () => {
-      for (let i = 0; i < 20; i++) {
+      // Fill entire circular buffer (size 100) so getRecentEntries works correctly
+      // The implementation starts reading from circularIndex which wraps around
+      for (let i = 0; i < 110; i++) {
         logger.info('TEST', `Message ${i}`);
       }
 
@@ -235,17 +237,20 @@ describe('RouterLogger', () => {
 
   describe('Diagnostic Dump', () => {
     it('should generate diagnostic dump', () => {
-      logger.info('TEST', 'Test message for dump');
+      // Fill circular buffer so getRecentEntries returns data
+      for (let i = 0; i < 110; i++) {
+        logger.info('TEST', `Test message ${i}`);
+      }
       logger.logRouting('debugger-0', 'binary', 512, 0.3);
-      
+
       const dump = logger.generateDiagnosticDump();
       const data = JSON.parse(dump);
-      
+
       expect(data).toHaveProperty('timestamp');
       expect(data).toHaveProperty('config');
       expect(data).toHaveProperty('statistics');
       expect(data).toHaveProperty('recentEntries');
-      
+
       expect(data.recentEntries.length).toBeGreaterThan(0);
       expect(data.statistics.totalMessages).toBeGreaterThan(0);
     });

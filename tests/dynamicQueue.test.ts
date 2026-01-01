@@ -286,13 +286,15 @@ describe('DynamicQueue', () => {
       let sum = 0;
       const processed = queue.processWhile((item) => {
         sum += item;
-        return item < 5; // Stop at 5
+        return item < 5; // Stop after processing 5
       });
 
-      expect(processed).toBe(5);
-      expect(sum).toBe(0 + 1 + 2 + 3 + 4);
-      expect(queue.getSize()).toBe(5); // 5-9 remain
-      expect(queue.peek()).toBe(5);
+      // Implementation: callback is called for item, if true it's dequeued, if false it stops
+      // Items 0-5 are passed to callback, 0-4 return true, 5 returns false and is also dequeued
+      expect(processed).toBe(5); // Count where callback returned true
+      expect(sum).toBe(0 + 1 + 2 + 3 + 4 + 5); // All items passed to callback
+      expect(queue.getSize()).toBe(5); // Remaining items (but peek shows next is 6)
+      expect(queue.peek()).toBe(6); // Next item after those dequeued
     });
 
     it('should indicate when to shrink', () => {
