@@ -42,7 +42,7 @@ PNut-Term-TS provides a debugging environment for Parallax Propeller 2 (P2) micr
 
 ## Operating Modes
 
-PNut-Term-TS operates in three distinct modes depending on how it's launched:
+PNut-Term-TS operates in four distinct modes depending on how it's launched:
 
 ### 1. Interactive Mode
 Launch in project directory for manual control of downloads and debugging.
@@ -102,6 +102,25 @@ pnut-term-ts --ide -r myprogram.binary
 - VS Code integration
 - IDE build/run commands
 - Automated build systems
+
+### 4. Headless Mode
+Launched with `--headless` for AI agents and CI/CD automation.
+
+```bash
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker --timeout 60
+```
+
+**Behavior:**
+- No GUI windows created (no display server required)
+- Serial data captured to timestamped log file
+- Downloads binary, monitors output, exits on condition
+- Three exit modes: signal, timeout, or end-marker detection
+
+**Use Cases:**
+- AI coding assistants (Claude Code, Cursor) running regression tests
+- CI/CD pipelines with hardware-in-the-loop verification
+- Docker containers and headless servers
+- Automated test scripting
 
 ---
 
@@ -841,6 +860,9 @@ pnut-term-ts --ide -r program.binary
 | Option | Long Form | Description |
 |--------|-----------|-------------|
 | --ide | | IDE integration mode |
+| --headless | | Run without GUI (CI/AI agent mode) |
+| --timeout | `<seconds>` | Auto-exit after duration (headless only) |
+| --end-marker | `[phrase]` | Auto-exit when phrase detected (default: END_SESSION) |
 | --help | | Show help text |
 | --version | | Show version info |
 
@@ -848,6 +870,43 @@ pnut-term-ts --ide -r program.binary
 1. Command-line `-p` option
 2. Single USB device auto-detection
 3. Interactive selection from list
+
+### Headless Mode (CI/AI Agents)
+
+Run without GUI windows for automated testing and CI/CD pipelines. This mode is specifically designed for **AI coding assistants like Claude Code and Cursor** to run their own regression test sequences against real P2 hardware.
+
+```bash
+# Monitor until Ctrl+C
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin
+
+# Auto-exit after 60 seconds
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --timeout 60
+
+# Exit when P2 outputs "END_SESSION"
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker
+
+# Exit on custom phrase "TEST_COMPLETE"
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker "TEST_COMPLETE"
+
+# Combined: marker with timeout safety net
+pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker --timeout 120
+```
+
+**Termination Modes:**
+- **Signal**: SIGTERM/SIGINT (Ctrl+C, kill command)
+- **Timeout**: `--timeout <seconds>` auto-exits after duration
+- **End Marker**: `--end-marker [phrase]` exits when phrase detected in serial output (case-sensitive substring match)
+
+**Output:**
+- All serial data logged to timestamped file in `./logs/`
+- Log path printed on exit for script consumption
+- AI agents can parse logs to verify test results
+
+**Use Cases:**
+- **AI-Driven Development**: Claude Code, Cursor, and other AI coding assistants can compile code, download to P2, capture output, and verify results - all without human intervention
+- **Hardware-in-the-Loop Testing**: AI agents run regression tests against real hardware, parsing log files to detect pass/fail conditions
+- **CI/CD Pipelines**: Automated test verification in Jenkins, GitHub Actions, or other CI systems
+- **Headless Servers**: Run on Docker containers or SSH sessions without display servers
 
 ### Exit Codes
 | Code | Meaning |
@@ -857,6 +916,7 @@ pnut-term-ts --ide -r program.binary
 | 2 | Port not found |
 | 3 | Download failed |
 | 4 | Connection lost |
+| 124 | Timeout expired (headless mode) |
 
 ---
 

@@ -175,7 +175,10 @@ export class DebugTerminalInTypeScript {
       .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
       .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)')
       .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
-      .option('--console-mode', 'Running with console output - adds delay before close');
+      .option('--console-mode', 'Running with console output - adds delay before close')
+      .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
+      .option('--timeout <seconds>', 'Exit after specified seconds (headless mode only)', parseInt)
+      .option('--end-marker [phrase]', 'Exit when phrase seen in serial output (default: END_SESSION)');
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -191,6 +194,12 @@ export class DebugTerminalInTypeScript {
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
          $ pnut-term-ts --ide --rts -p P9cektn7                  # IDE mode using RTS instead of DTR for device reset
          $ pnut-term-ts -u -p P9cektn7                           # Enable USB traffic logging (timestamped log file)
+
+      Headless Mode (for CI/AI agents):
+         $ pnut-term-ts --headless -p P9cektn7                   # Run without GUI, log to file, exit on Ctrl+C
+         $ pnut-term-ts --headless -r test.bin --end-marker      # Download, run until END_SESSION in output
+         $ pnut-term-ts --headless -r test.bin --timeout 60      # Download, run for 60 seconds then exit
+         $ pnut-term-ts --headless --end-marker "TEST_DONE"      # Exit when custom phrase seen in output
 
       Device Selection:
          When only one USB serial device is connected, it will be automatically selected.
@@ -309,6 +318,41 @@ export class DebugTerminalInTypeScript {
         this.context.runEnvironment.debugBaudrate = baudRate;
         this.context.runEnvironment.debugBaudRateFromCLI = true;
         this.context.logger.verboseMsg(`Debug baud rate set to ${baudRate}`);
+      }
+    }
+
+    // Store headless mode options (for CI/AI agent automation)
+    if (options.headless) {
+      this.context.runEnvironment.headlessMode = true;
+      this.context.logger.verboseMsg('Headless mode enabled (no GUI windows)');
+
+      // Timeout option (only valid with --headless)
+      if (options.timeout !== undefined) {
+        if (options.timeout <= 0) {
+          this.context.logger.errorMsg(`Invalid timeout: ${options.timeout} (must be positive)`);
+          this.shouldAbort = true;
+        } else {
+          this.context.runEnvironment.headlessTimeout = options.timeout;
+          this.context.logger.verboseMsg(`Headless timeout set to ${options.timeout} seconds`);
+        }
+      }
+
+      // End-marker option (only valid with --headless)
+      if (options.endMarker !== undefined) {
+        // If --end-marker is used without a value, use default "END_SESSION"
+        const marker = options.endMarker === true ? 'END_SESSION' : options.endMarker;
+        this.context.runEnvironment.headlessEndMarker = marker;
+        this.context.logger.verboseMsg(`Headless end-marker set to "${marker}"`);
+      }
+    } else {
+      // Validate that headless-only options aren't used without --headless
+      if (options.timeout !== undefined) {
+        this.context.logger.errorMsg('--timeout requires --headless');
+        this.shouldAbort = true;
+      }
+      if (options.endMarker !== undefined) {
+        this.context.logger.errorMsg('--end-marker requires --headless');
+        this.shouldAbort = true;
       }
     }
 
@@ -628,6 +672,27 @@ export class DebugTerminalInTypeScript {
       if (havePropPlug) {
         const propPlug: string = this.context.runEnvironment.selectedPropPlug;
         this.context.logger.debugMsg(`* Will launch Electron UI attached to [${propPlug}]`);
+      }
+
+      // Check for headless mode - run without Electron GUI
+      if (this.context.runEnvironment.headlessMode) {
+        this.context.logger.debugMsg('🤖 Running in headless mode (no GUI)...');
+
+        // Import HeadlessController dynamically to avoid loading Electron-dependent code
+        const { HeadlessController } = await import('./classes/headlessController');
+
+        // Determine if download is needed
+        const ramFileSpec = options.ram;
+        const flashFileSpec = options.flash;
+        const downloadPath = ramFileSpec || flashFileSpec || undefined;
+        const downloadToFlash = !!flashFileSpec;
+
+        const controller = new HeadlessController(this.context, downloadPath, downloadToFlash);
+
+        // Start the headless controller (blocks until termination)
+        const exitCode = await controller.run();
+
+        return Promise.resolve(exitCode);
       }
 
       // All parameters are validated and stored in context

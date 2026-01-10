@@ -5,12 +5,18 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.6] - 2025-12-31
+## [0.9.6] - 2025-01-10
 
 ### Added
 
 - Single-Step Debugger window - fully functional debug interface for P2 programs
 - GitHub Actions CI/CD workflows for automated builds and releases
+- **Headless mode** (`--headless`) for AI agents and CI/CD automation
+  - Run without GUI windows, output to log files only
+  - `--timeout <seconds>` - Auto-exit after specified duration
+  - `--end-marker [phrase]` - Auto-exit when phrase detected in serial output (default: "END_SESSION")
+  - Enables Claude Code, Cursor, and other AI agents to do hardware-in-the-loop testing
+  - Three termination modes: signal (Ctrl+C), timeout, or end-marker detection
 
 ### Fixed
 

@@ -979,6 +979,9 @@ pnut-term-ts --ide -p P9cektn7
 
 # List available USB devices
 pnut-term-ts -n
+
+# Headless mode - ideal for Claude Code and AI agent regression testing
+pnut-term-ts --headless -p P9cektn7 -r test.bin --end-marker --timeout 60
 ```
 
 See the **User Guide** for detailed command-line reference and examples.

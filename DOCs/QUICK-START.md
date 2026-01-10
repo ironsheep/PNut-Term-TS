@@ -186,6 +186,9 @@ pnut-term-ts [options] [file.binary]
 - `-n` - List available serial ports
 - `-r <file>` - Download to P2 RAM
 - `-f <file>` - Download to P2 Flash
+- `--headless` - Run without GUI (ideal for Claude Code and AI agents)
+- `--timeout <sec>` - Auto-exit after duration (headless only)
+- `--end-marker [phrase]` - Auto-exit on phrase (default: END_SESSION)
 - `--help` - Show all options
 
 ### Examples
@@ -204,6 +207,9 @@ pnut-term-ts -r program.binary
 
 # Custom baud rate
 pnut-term-ts -b 115200 -p P9cektn7
+
+# Headless mode - perfect for Claude Code and AI agent regression testing
+pnut-term-ts --headless -p P9cektn7 -r test.bin --end-marker --timeout 60
 ```
 
 ---

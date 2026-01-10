@@ -57,6 +57,10 @@ export interface RuntimeEnvironment {
   quiet: boolean;
   usbTrafficLogging: boolean;
   usbLogFilePath?: string;
+  // Headless mode options (for CI/AI agents)
+  headlessMode?: boolean;
+  headlessTimeout?: number; // seconds
+  headlessEndMarker?: string; // termination phrase (default: "END_SESSION")
 }
 export interface UserPreferences {
   logging: {
