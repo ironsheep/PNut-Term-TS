@@ -45,13 +45,23 @@ export const mockBrowserWindow = jest.fn().mockImplementation(() => ({
   once: jest.fn(),
   webContents: {
     send: jest.fn(),
-    on: jest.fn()
+    on: jest.fn(),
+    once: jest.fn((event: string, callback: Function) => {
+      // Immediately call did-finish-load callback to simulate window ready
+      if (event === 'did-finish-load') {
+        setImmediate(() => callback());
+      }
+    }),
+    setMaxListeners: jest.fn(),
+    removeListener: jest.fn(),
+    removeAllListeners: jest.fn()
   },
   show: jest.fn(),
   hide: jest.fn(),
   close: jest.fn(),
   destroy: jest.fn(),
-  isDestroyed: jest.fn().mockReturnValue(false)
+  isDestroyed: jest.fn().mockReturnValue(false),
+  setMaxListeners: jest.fn()
 }));
 
 // Mock Menu
