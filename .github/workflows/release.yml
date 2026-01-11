@@ -324,80 +324,93 @@ jobs:
               echo "Signing ${arch} app bundle: $APP_PATH"
               echo "Using identity: $IDENTITY"
 
+              # Step 0: Remove nested Electron.app from node_modules (dev dependency, not needed at runtime)
+              echo "Step 0: Cleaning up dev dependencies..."
+              NESTED_ELECTRON="$APP_PATH/Contents/Resources/app/node_modules/electron"
+              if [ -d "$NESTED_ELECTRON" ]; then
+                echo "  Removing nested electron module (dev dependency)..."
+                rm -rf "$NESTED_ELECTRON"
+              fi
+
               # Electron apps require signing from inside-out in specific order
               # Reference: https://github.com/electron/electron-osx-sign
 
-              # Step 1: Sign all .dylib files first
+              # Step 1: Sign all .dylib files first (excluding symlinks)
               echo "Step 1: Signing dylib files..."
-              find "$APP_PATH" -name "*.dylib" -type f | while read dylib; do
+              find "$APP_PATH" -name "*.dylib" -type f ! -type l | while read dylib; do
                 echo "  Signing: $dylib"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$dylib" || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$dylib" 2>&1 || true
               done
 
               # Step 2: Sign all .so files (native modules)
               echo "Step 2: Signing native modules..."
-              find "$APP_PATH" -name "*.so" -type f | while read so; do
+              find "$APP_PATH" -name "*.so" -type f ! -type l | while read so; do
                 echo "  Signing: $so"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$so" || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$so" 2>&1 || true
               done
 
               # Step 3: Sign all .node files (Node.js native addons)
               echo "Step 3: Signing Node.js addons..."
-              find "$APP_PATH" -name "*.node" -type f | while read node; do
-                echo "  Signing: $node"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$node" || true
+              find "$APP_PATH" -name "*.node" -type f ! -type l | while read node_file; do
+                echo "  Signing: $node_file"
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$node_file" 2>&1 || true
               done
 
-              # Step 4: Sign nested frameworks from deepest to shallowest
-              # Sign Electron Framework internals first
-              echo "Step 4: Signing Electron Framework internals..."
+              # Step 4: Sign Electron Framework - must sign Versions/A path for versioned frameworks
+              echo "Step 4: Signing Electron Framework..."
               FRAMEWORK_PATH="$APP_PATH/Contents/Frameworks/Electron Framework.framework"
-              if [ -d "$FRAMEWORK_PATH" ]; then
-                # Sign the framework's Libraries
-                if [ -d "$FRAMEWORK_PATH/Libraries" ]; then
-                  find "$FRAMEWORK_PATH/Libraries" -type f -perm +111 | while read lib; do
-                    echo "  Signing library: $lib"
-                    codesign --force --sign "$IDENTITY" --options runtime --timestamp "$lib" || true
-                  done
+              if [ -d "$FRAMEWORK_PATH/Versions/A" ]; then
+                # Sign the main framework binary inside Versions/A
+                FRAMEWORK_BINARY="$FRAMEWORK_PATH/Versions/A/Electron Framework"
+                if [ -f "$FRAMEWORK_BINARY" ]; then
+                  echo "  Signing framework binary: $FRAMEWORK_BINARY"
+                  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$FRAMEWORK_BINARY"
                 fi
 
-                # Sign the framework's Helpers
-                find "$FRAMEWORK_PATH" -name "*.app" -type d | while read helper; do
-                  echo "  Signing helper app: $helper"
-                  codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$helper" || true
+                # Sign helper apps inside the framework
+                find "$FRAMEWORK_PATH/Versions/A" -name "*.app" -type d | while read helper; do
+                  echo "  Signing helper: $helper"
+                  codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$helper" 2>&1 || true
                 done
 
-                # Sign the Electron Framework itself
-                echo "  Signing Electron Framework..."
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$FRAMEWORK_PATH"
+                # Sign the versioned framework bundle (Versions/A, not the symlinked root)
+                echo "  Signing framework version: $FRAMEWORK_PATH/Versions/A"
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$FRAMEWORK_PATH/Versions/A"
               fi
 
               # Step 5: Sign other frameworks in Contents/Frameworks
               echo "Step 5: Signing other frameworks..."
-              find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d | while read framework; do
-                # Skip Electron Framework (already signed)
-                if [[ "$framework" != *"Electron Framework.framework" ]]; then
-                  echo "  Signing: $framework"
-                  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$framework" || true
+              for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
+                if [ -d "$framework" ] && [[ "$framework" != *"Electron Framework.framework" ]]; then
+                  # Check if it's a versioned framework
+                  if [ -d "$framework/Versions/A" ]; then
+                    echo "  Signing versioned framework: $framework/Versions/A"
+                    codesign --force --sign "$IDENTITY" --options runtime --timestamp "$framework/Versions/A" 2>&1 || true
+                  else
+                    echo "  Signing framework: $framework"
+                    codesign --force --sign "$IDENTITY" --options runtime --timestamp "$framework" 2>&1 || true
+                  fi
                 fi
               done
 
               # Step 6: Sign helper apps in Contents/Frameworks
               echo "Step 6: Signing helper apps..."
-              find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.app" -type d | while read helper; do
-                echo "  Signing: $helper"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$helper" || true
+              for helper in "$APP_PATH/Contents/Frameworks"/*.app; do
+                if [ -d "$helper" ]; then
+                  echo "  Signing: $helper"
+                  codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$helper" 2>&1 || true
+                fi
               done
 
               # Step 7: Sign the main executable
               echo "Step 7: Signing main executable..."
-              MAIN_EXEC="$APP_PATH/Contents/MacOS/$(ls "$APP_PATH/Contents/MacOS/" | head -1)"
+              MAIN_EXEC=$(find "$APP_PATH/Contents/MacOS" -type f ! -type l | head -1)
               if [ -f "$MAIN_EXEC" ]; then
                 echo "  Signing: $MAIN_EXEC"
                 codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$MAIN_EXEC"
               fi
 
-              # Step 8: Sign the main app bundle (without --deep since components are already signed)
+              # Step 8: Sign the main app bundle
               echo "Step 8: Signing main app bundle..."
               codesign --force --sign "$IDENTITY" \
                 --options runtime \
