@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install zip utility
+        run: choco install zip -y
+
       - name: Build and package Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,6 +60,7 @@ jobs:
         with:
           name: packages-windows
           path: release/windows-package/*.zip
+          if-no-files-found: error
           retention-days: 5
 
   # Build Linux packages
