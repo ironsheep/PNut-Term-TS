@@ -183,10 +183,12 @@ create_package() {
 }
 PACKAGE_EOF
 
-    # Copy app icon if it exists
-    if [ -f "assets/icon.icns" ]; then
-        cp assets/icon.icns "$PKG_DIR/PNut-Term-TS.app/Contents/Resources/"
+    # Copy app icon if it exists (must match CFBundleIconFile in Info.plist)
+    if [ -f "assets/app-icon.icns" ]; then
+        cp assets/app-icon.icns "$PKG_DIR/PNut-Term-TS.app/Contents/Resources/icon.icns"
         echo "   ✅ Copied app icon"
+    else
+        echo "   ⚠️  App icon not found at assets/app-icon.icns"
     fi
 
     # Update Info.plist

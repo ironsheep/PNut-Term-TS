@@ -96,19 +96,35 @@ create_standard_dmg() {
 
     # Replace generic Electron icon with our custom PNut-Term-TS icon
     echo "   🎨 Replacing app icon..."
-    CUSTOM_ICON="$SCRIPT_DIR/../../assets/icon.icns"
-    if [ -f "$CUSTOM_ICON" ]; then
-        cp "$CUSTOM_ICON" "$STAGING/PNut-Term-TS.app/Contents/Resources/electron.icns" || error_exit "Failed to replace app icon"
-        echo "   ✅ Custom PNut-Term-TS icon applied"
+    CUSTOM_APP_ICON="$SCRIPT_DIR/../../assets/app-icon.icns"
+    if [ -f "$CUSTOM_APP_ICON" ]; then
+        # Copy as icon.icns to match CFBundleIconFile in Info.plist
+        cp "$CUSTOM_APP_ICON" "$STAGING/PNut-Term-TS.app/Contents/Resources/icon.icns" || error_exit "Failed to copy app icon"
+        echo "   ✅ Custom PNut-Term-TS app icon applied"
     else
-        echo "   ⚠️  Custom icon not found at: $CUSTOM_ICON"
+        echo "   ⚠️  Custom app icon not found at: $CUSTOM_APP_ICON"
         echo "   ℹ️  Using default Electron icon"
     fi
 
-    # Calculate size needed for DMG (app size + 50MB padding)
+    # Set DMG volume icon
+    echo "   🎨 Setting DMG volume icon..."
+    VOLUME_ICON="$SCRIPT_DIR/../../assets/volume-icon.icns"
+    if [ -f "$VOLUME_ICON" ]; then
+        cp "$VOLUME_ICON" "$STAGING/.VolumeIcon.icns" || error_exit "Failed to copy volume icon"
+        echo "   ✅ DMG volume icon staged"
+    else
+        echo "   ⚠️  Volume icon not found at: $VOLUME_ICON"
+    fi
+
+    # Calculate size needed for DMG (app size + 25% padding for HFS+ overhead)
     APP_SIZE_KB=$(du -sk "$STAGING" | cut -f1)
     APP_SIZE_MB=$((APP_SIZE_KB / 1024))
-    DMG_SIZE=$((APP_SIZE_MB + 50))
+    PADDING=$((APP_SIZE_MB * 25 / 100))
+    # Ensure minimum 200MB padding
+    if [ $PADDING -lt 200 ]; then
+        PADDING=200
+    fi
+    DMG_SIZE=$((APP_SIZE_MB + PADDING))
     echo "   📊 App size: ${APP_SIZE_MB}MB, DMG size: ${DMG_SIZE}MB"
 
     # Create Applications symlink
@@ -133,10 +149,11 @@ create_standard_dmg() {
         mkdir -p "$STAGING/.background"
         cp "$SCRIPT_DIR/dmg-background.png" "$STAGING/.background/background.png"
 
-        # Create temporary DMG with calculated size
+        # Create temporary DMG with calculated size (use HFS+ for custom icon support)
         echo "   📦 Building DMG with custom background (${DMG_SIZE}MB)..."
         hdiutil create -volname "PNut-Term-TS" \
             -srcfolder "$STAGING" \
+            -fs HFS+ \
             -ov -format UDRW \
             -size ${DMG_SIZE}m \
             "temp-$DMG_NAME" || error_exit "Failed to create temporary DMG"
@@ -179,6 +196,24 @@ create_standard_dmg() {
         sync
         sync
 
+        sleep 1
+
+        # Set custom volume icon AFTER AppleScript (AppleScript can delete the icon file)
+        if [ -f "$VOLUME_ICON" ]; then
+            echo "   🎨 Setting volume icon (after AppleScript)..."
+            # Re-copy the icon in case AppleScript deleted it
+            cp "$VOLUME_ICON" "/Volumes/PNut-Term-TS/.VolumeIcon.icns"
+            # Set icon file creator code
+            SetFile -c icnC "/Volumes/PNut-Term-TS/.VolumeIcon.icns" 2>/dev/null || true
+            # Set custom icon flag on volume
+            SetFile -a C "/Volumes/PNut-Term-TS" 2>/dev/null || true
+            echo "   ✅ Volume icon set"
+        fi
+
+        sync
+        sync
+        sleep 1
+
         # Unmount
         hdiutil detach "${DEVICE}" || {
             echo "   ⚠️  Normal unmount failed, forcing..."
@@ -194,7 +229,7 @@ create_standard_dmg() {
         echo "   📦 Building standard DMG (no background image found)..."
         echo "   💡 Tip: Run create-dmg-background.sh to create a background"
 
-        # Create the DMG directly with proper settings
+        # Create the DMG directly with proper settings (no custom icon without background workflow)
         hdiutil create \
             -volname "PNut-Term-TS" \
             -srcfolder "$STAGING" \

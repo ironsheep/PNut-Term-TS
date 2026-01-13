@@ -576,9 +576,12 @@ export class DebugTerminalInTypeScript {
             );
           }
         } else {
-          this.context.logger.warningMsg(
-            `* Project-selected PropPlug "${projectPropPlug}" not found, will try other selection methods`
-          );
+          // Only warn if not showing help AND auto-detect won't find a device
+          if (!showingHelp && this.deviceInfoList.length !== 1) {
+            this.context.logger.warningMsg(
+              `* Project-selected PropPlug "${projectPropPlug}" not found, will try other selection methods`
+            );
+          }
         }
       }
     }
@@ -606,9 +609,13 @@ export class DebugTerminalInTypeScript {
             );
           }
         } else {
-          this.context.logger.warningMsg(
-            `* User-default PropPlug "${userDefaultPropPlug}" not found, will try auto-detect`
-          );
+          // Only warn if not showing help AND auto-detect won't find a device
+          // (auto-detect succeeds when exactly 1 device is connected)
+          if (!showingHelp && this.deviceInfoList.length !== 1) {
+            this.context.logger.warningMsg(
+              `* User-default PropPlug "${userDefaultPropPlug}" not found, will try auto-detect`
+            );
+          }
         }
       }
     }
