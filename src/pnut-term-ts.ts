@@ -44,7 +44,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.5';
+  private version: string = '0.9.6';
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
@@ -85,19 +85,22 @@ export class DebugTerminalInTypeScript {
     // Capture startup directory BEFORE Electron initialization
     // For packaged Electron apps, __dirname points to .../app/dist
     // We need to go up to the directory containing the .app bundle
+    // For CLI/headless mode, use process.cwd() (user's current working directory)
     this.startupDirectory = process.cwd();
     this.initialCwd = this.startupDirectory;
     this.initialDirname = __dirname;
 
-    // If running from packaged app, calculate proper working directory
-    if (__dirname.includes('PNut-Term-TS.app')) {
-      // Strip PNut-Term-TS.app and everything after to get bundle parent directory
+    // If running from packaged app IN GUI MODE, use bundle parent directory
+    // GUI mode: process.cwd() is unreliable (could be / or ~ when launched via Finder)
+    // CLI mode (ELECTRON_RUN_AS_NODE=1): process.cwd() is correct (user's directory)
+    const isRunningAsNodeCLI = process.env.ELECTRON_RUN_AS_NODE === '1';
+    if (__dirname.includes('PNut-Term-TS.app') && !isRunningAsNodeCLI) {
+      // GUI mode from packaged app - use bundle parent directory
       const appIndex = __dirname.indexOf('PNut-Term-TS.app');
       this.startupDirectory = __dirname.substring(0, appIndex);
-    } else {
-      // Default to __dirname if not packaged
-      this.startupDirectory = __dirname;
     }
+    // Otherwise, keep process.cwd() - the user's launch directory
+    // This is correct for CLI, headless mode, and development
 
     this.context = new Context(this.startupDirectory);
 

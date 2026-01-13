@@ -181,18 +181,20 @@ jobs:
           ls -la release/macos-package/*.tar.gz 2>/dev/null || echo "No tar.gz files"
           ls -la release/macos-package/*.dmg 2>/dev/null || echo "No DMG files yet"
 
-      - name: Upload macOS x64 package directory
+      # Upload tar.gz archives (NOT directories) to preserve symlinks
+      # GitHub Actions artifacts do not preserve symlinks in directories
+      - name: Upload macOS x64 package archive
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64-pkg
-          path: release/macos-package/pnut-term-ts-macos-x64-*/
+          path: release/macos-package/pnut-term-ts-macos-x64-*.tar.gz
           retention-days: 1
 
-      - name: Upload macOS arm64 package directory
+      - name: Upload macOS arm64 package archive
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64-pkg
-          path: release/macos-package/pnut-term-ts-macos-arm64-*/
+          path: release/macos-package/pnut-term-ts-macos-arm64-*.tar.gz
           retention-days: 1
 
       - name: Upload version info
@@ -211,23 +213,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download macOS x64 package
+      - name: Download macOS x64 package archive
         uses: actions/download-artifact@v4
         with:
           name: macos-x64-pkg
-          path: packages/
+          path: archives/
 
-      - name: Download macOS arm64 package
+      - name: Download macOS arm64 package archive
         uses: actions/download-artifact@v4
         with:
           name: macos-arm64-pkg
-          path: packages/
+          path: archives/
 
       - name: Download version info
         uses: actions/download-artifact@v4
         with:
           name: version-info
           path: .
+
+      # Extract tar.gz archives to preserve symlinks (critical for macOS code signing)
+      - name: Extract package archives
+        run: |
+          mkdir -p packages
+          echo "Extracting archives to preserve symlinks..."
+          for archive in archives/*.tar.gz; do
+            echo "Extracting: $archive"
+            tar -xzf "$archive" -C packages/
+          done
+          echo ""
+          echo "Extracted packages:"
+          ls -la packages/
 
       - name: Get version
         id: version
@@ -255,10 +270,11 @@ jobs:
 
       - name: Restore executable permissions
         run: |
-          # GitHub Actions artifacts don't preserve Unix permissions
+          # tar extraction should preserve permissions, but ensure executables are set as fallback
           find packages -name "pnut-term-ts" -type f -exec chmod +x {} \;
-          find packages -name "*.app" -type d -exec chmod -R +x {} \;
-          echo "Permissions restored"
+          find packages -name "Electron" -type f -exec chmod +x {} \;
+          find packages -name "chrome_crashpad_handler" -type f -exec chmod +x {} \;
+          echo "Executable permissions verified"
 
       - name: Import signing certificate
         env:
