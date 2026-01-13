@@ -9,26 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Single-Step Debugger window - fully functional debug interface for P2 programs
-- GitHub Actions CI/CD workflows for automated builds and releases
 - **Headless mode** (`--headless`) for AI agents and CI/CD automation
   - Run without GUI windows, output to log files only
   - `--timeout <seconds>` - Auto-exit after specified duration
-  - `--end-marker [phrase]` - Auto-exit when phrase detected in serial output (default: "END_SESSION")
+  - `--end-marker [phrase]` - Auto-exit when phrase detected in serial output
+    - Default recognizes both `END_SESSION` and `DEBUG_END_SESSION` (PNut compatibility)
+    - Custom phrases supported: `--end-marker "MY_PHRASE"`
   - Enables Claude Code, Cursor, and other AI agents to do hardware-in-the-loop testing
   - Three termination modes: signal (Ctrl+C), timeout, or end-marker detection
 
 ### Fixed
 
-- FFT window noise floor display - now matches Pascal reference implementation
-  - Fixed display scaling to use Pascal's default high value (0x7FFFFFFF) for log scale
-  - Noise floor is now properly suppressed, showing clean bell-curve peaks
-  - Both combined spectrum and channel-based rendering now display correctly
-
-### Changed
-
-- Reorganized assets folder structure for DMG creation
-- Updated workflow secret names to match PNut-TS conventions
+- macOS code signing in GitHub Actions release workflow
+  - Proper inside-out signing order for Electron frameworks
+  - Added USB/serial device entitlements for hardware access
+  - Fixed DMG volume icon and app icon paths
+- Suppress PropPlug "not found" warning when showing help or when auto-detect succeeds
 
 ## [0.9.5] - 2025-11-20
 
@@ -60,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Issues
 
-- The **Windows arm64 build** is having issues. It is not opening the serial port. This, so far, appears to be an [npm serialport](https://www.npmjs.com/package/serialport) issue.  We filed a bug report to get clarification and/or a fix.
+- The **Windows arm64 build** is having issues. It is not opening the serial port. This, so far, appears to be an [npm serialport](https://www.npmjs.com/package/serialport) issue. We filed a bug report to get clarification and/or a fix.
 
-- **SPECIAL REQUEST**: If you have a **native arm64 Windows machine** please test this build and let me know if it works.  I'm running Windows 11 Pro under Parallels on a macOS (Apple Silicon) machine and this problem may be limited to my context!
+- **SPECIAL REQUEST**: If you have a **native arm64 Windows machine** please test this build and let me know if it works. I'm running Windows 11 Pro under Parallels on a macOS (Apple Silicon) machine and this problem may be limited to my context!
 
 ## [0.9.3] - 2025-11-17
 

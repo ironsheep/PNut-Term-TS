@@ -32,14 +32,14 @@ export class HeadlessFileLogger {
 
   // Callback for end-marker detection
   private onEndMarkerDetected: (() => void) | null = null;
-  private endMarker: string | null = null;
+  private endMarkers: string[] = [];
 
   constructor(context: Context) {
     this.context = context;
 
-    // Set up end-marker if configured
+    // Set up end-markers if configured
     if (context.runEnvironment.headlessEndMarker) {
-      this.endMarker = context.runEnvironment.headlessEndMarker;
+      this.endMarkers = context.runEnvironment.headlessEndMarker;
     }
   }
 
@@ -81,8 +81,8 @@ export class HeadlessFileLogger {
         // Write header
         this.logFile!.write(`=== Headless Mode Session Started at ${getFormattedDateTimeISO()} ===\n`);
         this.logFile!.write(`Mode: Headless (no GUI)\n`);
-        if (this.endMarker) {
-          this.logFile!.write(`End Marker: "${this.endMarker}"\n`);
+        if (this.endMarkers.length > 0) {
+          this.logFile!.write(`End Markers: ${this.endMarkers.map((m) => `"${m}"`).join(', ')}\n`);
         }
         if (this.context.runEnvironment.headlessTimeout) {
           this.logFile!.write(`Timeout: ${this.context.runEnvironment.headlessTimeout} seconds\n`);
@@ -129,12 +129,15 @@ export class HeadlessFileLogger {
   public logMessage(message: string): void {
     this.writeToLog(message);
 
-    // Check for end-marker (case-sensitive substring match)
-    if (this.endMarker && message.includes(this.endMarker)) {
-      console.log(`[HEADLESS] End marker "${this.endMarker}" detected!`);
-      this.logSystem(`End marker "${this.endMarker}" detected - initiating shutdown`);
-      if (this.onEndMarkerDetected) {
-        this.onEndMarkerDetected();
+    // Check for end-markers (case-sensitive substring match)
+    for (const marker of this.endMarkers) {
+      if (message.includes(marker)) {
+        console.log(`[HEADLESS] End marker "${marker}" detected!`);
+        this.logSystem(`End marker "${marker}" detected - initiating shutdown`);
+        if (this.onEndMarkerDetected) {
+          this.onEndMarkerDetected();
+        }
+        break; // Only trigger once
       }
     }
   }

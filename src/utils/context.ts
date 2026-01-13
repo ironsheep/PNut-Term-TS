@@ -60,7 +60,7 @@ export interface RuntimeEnvironment {
   // Headless mode options (for CI/AI agents)
   headlessMode?: boolean;
   headlessTimeout?: number; // seconds
-  headlessEndMarker?: string; // termination phrase (default: "END_SESSION")
+  headlessEndMarker?: string[]; // termination phrases (default: ["END_SESSION", "DEBUG_END_SESSION"])
 }
 export interface UserPreferences {
   logging: {

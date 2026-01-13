@@ -862,7 +862,7 @@ pnut-term-ts --ide -r program.binary
 | --ide | | IDE integration mode |
 | --headless | | Run without GUI (CI/AI agent mode) |
 | --timeout | `<seconds>` | Auto-exit after duration (headless only) |
-| --end-marker | `[phrase]` | Auto-exit when phrase detected (default: END_SESSION) |
+| --end-marker | `[phrase]` | Auto-exit when phrase detected (default: END_SESSION or DEBUG_END_SESSION) |
 | --help | | Show help text |
 | --version | | Show version info |
 
@@ -882,7 +882,7 @@ pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin
 # Auto-exit after 60 seconds
 pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --timeout 60
 
-# Exit when P2 outputs "END_SESSION"
+# Exit when P2 outputs "END_SESSION" or "DEBUG_END_SESSION"
 pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker
 
 # Exit on custom phrase "TEST_COMPLETE"
@@ -895,7 +895,7 @@ pnut-term-ts --headless -p /dev/ttyUSB0 --ram test.bin --end-marker --timeout 12
 **Termination Modes:**
 - **Signal**: SIGTERM/SIGINT (Ctrl+C, kill command)
 - **Timeout**: `--timeout <seconds>` auto-exits after duration
-- **End Marker**: `--end-marker [phrase]` exits when phrase detected in serial output (case-sensitive substring match)
+- **End Marker**: `--end-marker [phrase]` exits when phrase detected in serial output (case-sensitive substring match). Default recognizes both `END_SESSION` and `DEBUG_END_SESSION` for PNut compatibility.
 
 **Output:**
 - All serial data logged to timestamped file in `./logs/`

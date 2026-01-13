@@ -188,7 +188,7 @@ pnut-term-ts [options] [file.binary]
 - `-f <file>` - Download to P2 Flash
 - `--headless` - Run without GUI (ideal for Claude Code and AI agents)
 - `--timeout <sec>` - Auto-exit after duration (headless only)
-- `--end-marker [phrase]` - Auto-exit on phrase (default: END_SESSION)
+- `--end-marker [phrase]` - Auto-exit on phrase (default: END_SESSION or DEBUG_END_SESSION)
 - `--help` - Show all options
 
 ### Examples

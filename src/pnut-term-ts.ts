@@ -178,7 +178,7 @@ export class DebugTerminalInTypeScript {
       .option('--console-mode', 'Running with console output - adds delay before close')
       .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
       .option('--timeout <seconds>', 'Exit after specified seconds (headless mode only)', parseInt)
-      .option('--end-marker [phrase]', 'Exit when phrase seen in serial output (default: END_SESSION)');
+      .option('--end-marker [phrase]', 'Exit when phrase seen in output (default: END_SESSION or DEBUG_END_SESSION)');
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -197,7 +197,7 @@ export class DebugTerminalInTypeScript {
 
       Headless Mode (for CI/AI agents):
          $ pnut-term-ts --headless -p P9cektn7                   # Run without GUI, log to file, exit on Ctrl+C
-         $ pnut-term-ts --headless -r test.bin --end-marker      # Download, run until END_SESSION in output
+         $ pnut-term-ts --headless -r test.bin --end-marker      # Download, run until END_SESSION or DEBUG_END_SESSION
          $ pnut-term-ts --headless -r test.bin --timeout 60      # Download, run for 60 seconds then exit
          $ pnut-term-ts --headless --end-marker "TEST_DONE"      # Exit when custom phrase seen in output
 
@@ -339,10 +339,12 @@ export class DebugTerminalInTypeScript {
 
       // End-marker option (only valid with --headless)
       if (options.endMarker !== undefined) {
-        // If --end-marker is used without a value, use default "END_SESSION"
-        const marker = options.endMarker === true ? 'END_SESSION' : options.endMarker;
-        this.context.runEnvironment.headlessEndMarker = marker;
-        this.context.logger.verboseMsg(`Headless end-marker set to "${marker}"`);
+        // If --end-marker is used without a value, use both defaults
+        // DEBUG_END_SESSION is used by PNut (Windows), END_SESSION by other tools
+        const markers =
+          options.endMarker === true ? ['END_SESSION', 'DEBUG_END_SESSION'] : [options.endMarker as string];
+        this.context.runEnvironment.headlessEndMarker = markers;
+        this.context.logger.verboseMsg(`Headless end-marker(s) set to: ${markers.map((m) => `"${m}"`).join(', ')}`);
       }
     } else {
       // Validate that headless-only options aren't used without --headless
