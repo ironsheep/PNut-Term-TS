@@ -933,8 +933,21 @@ jobs:
       - name: Determine release type
         id: release_type
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           PKG_VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Check if triggered by tag or workflow_dispatch
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            RELEASE_TAG="v${TAG_VERSION}"
+          else
+            # workflow_dispatch - use package.json version
+            TAG_VERSION="$PKG_VERSION"
+            RELEASE_TAG="v${PKG_VERSION}"
+          fi
+
+          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
             echo "RELEASE_NAME=PNut-Term-TS v${TAG_VERSION} (Test Release)" >> $GITHUB_OUTPUT
@@ -947,7 +960,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.release_type.outputs.RELEASE_TAG }}"
 
           # Extract changelog section for this version
           CHANGELOG_CONTENT=$(awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md | sed '/^$/N;/^\n$/d')
@@ -1005,6 +1018,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.release_type.outputs.RELEASE_TAG }}
           name: ${{ steps.release_type.outputs.RELEASE_NAME }}
           draft: false
           prerelease: ${{ steps.release_type.outputs.IS_PRERELEASE == 'true' }}
