@@ -1,5 +1,53 @@
 [
   {
+    "sessionId": "2026-01-10T20-51-58-274Z-test-session",
+    "filename": "2026-01-10T20-51-58-274Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1768078318274,
+      "duration": 1,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2026-01-10T20-48-54-861Z-test-session",
+    "filename": "2026-01-10T20-48-54-861Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1768078134861,
+      "duration": 1,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2026-01-10T20-45-56-108Z-test-session",
+    "filename": "2026-01-10T20-45-56-108Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1768077956108,
+      "duration": 0,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
+    "sessionId": "2026-01-10T20-42-58-281Z-test-session",
+    "filename": "2026-01-10T20-42-58-281Z-test-session.jsonl",
+    "metadata": {
+      "sessionName": "test-session",
+      "description": "Test recording",
+      "timestamp": 1768077778281,
+      "duration": 2,
+      "messageCount": 0,
+      "fileSize": 0
+    }
+  },
+  {
     "sessionId": "2026-01-01T04-49-03-160Z-test-session",
     "filename": "2026-01-01T04-49-03-160Z-test-session.jsonl",
     "metadata": {

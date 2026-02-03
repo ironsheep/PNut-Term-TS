@@ -126,15 +126,13 @@ jobs:
           echo "PACKED_VERSION=${PACKED_VERSION}" >> $GITHUB_OUTPUT
           echo "Package version: ${VERSION}, Packed: ${PACKED_VERSION}"
 
-      - name: Install Python dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install Pillow --break-system-packages
-
       - name: Install Python and setuptools/distutils
         run: |
-          brew reinstall python@3.13
-          brew install python-setuptools
+          brew install python-setuptools || true
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install Pillow --break-system-packages
 
       - name: Install dependencies
         run: npm ci
@@ -261,7 +259,6 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
           python3 -m pip install Pillow --break-system-packages
 
       - name: List downloaded packages
