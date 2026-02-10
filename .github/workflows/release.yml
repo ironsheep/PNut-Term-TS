@@ -786,66 +786,61 @@ jobs:
             fi
           done
 
-      # TODO: Notarization disabled - will be activated at a later time
-      # Apple notarization requires additional signing configuration to pass validation.
-      # For now, DMGs are code-signed but not notarized. Users on macOS may need to
-      # right-click and select "Open" to bypass Gatekeeper warnings.
-      #
-      # - name: Notarize DMGs
-      #   if: env.SIGNING_ENABLED == 'true'
-      #   env:
-      #     APPLE_ID: ${{ secrets.APPLE_ID }}
-      #     APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      #   run: |
-      #     for dmg in pnut-term-ts-macos-*.dmg; do
-      #       if [ -f "$dmg" ]; then
-      #         echo "Notarizing: $dmg"
-      #
-      #         # Submit and capture output to get submission ID
-      #         SUBMIT_OUTPUT=$(xcrun notarytool submit "$dmg" \
-      #           --apple-id "$APPLE_ID" \
-      #           --password "$APPLE_ID_PASSWORD" \
-      #           --team-id "$APPLE_TEAM_ID" \
-      #           --output-format json \
-      #           --wait 2>&1) || true
-      #
-      #         echo "Notarytool output:"
-      #         echo "$SUBMIT_OUTPUT"
-      #
-      #         # Extract submission ID and status from JSON
-      #         SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-      #         STATUS=$(echo "$SUBMIT_OUTPUT" | grep -o '"status":"[^"]*"' | tail -1 | cut -d'"' -f4)
-      #
-      #         echo "Submission ID: $SUBMISSION_ID"
-      #         echo "Status: $STATUS"
-      #
-      #         # If notarization failed, fetch and display the log
-      #         if [ "$STATUS" != "Accepted" ]; then
-      #           echo "::error::Notarization failed with status: $STATUS"
-      #           echo ""
-      #           echo "========== NOTARIZATION LOG =========="
-      #           if [ -n "$SUBMISSION_ID" ]; then
-      #             xcrun notarytool log "$SUBMISSION_ID" \
-      #               --apple-id "$APPLE_ID" \
-      #               --password "$APPLE_ID_PASSWORD" \
-      #               --team-id "$APPLE_TEAM_ID" || echo "Failed to fetch log"
-      #           else
-      #             echo "No submission ID available to fetch log"
-      #           fi
-      #           echo "======================================"
-      #           exit 1
-      #         fi
-      #
-      #         echo "Stapling notarization ticket..."
-      #         xcrun stapler staple "$dmg"
-      #
-      #         echo "Validating..."
-      #         xcrun stapler validate "$dmg"
-      #
-      #         echo "$dmg notarized and stapled successfully"
-      #       fi
-      #     done
+      - name: Notarize DMGs
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for dmg in pnut-term-ts-macos-*.dmg; do
+            if [ -f "$dmg" ]; then
+              echo "Notarizing: $dmg"
+
+              # Submit and capture output to get submission ID
+              SUBMIT_OUTPUT=$(xcrun notarytool submit "$dmg" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --output-format json \
+                --wait 2>&1) || true
+
+              echo "Notarytool output:"
+              echo "$SUBMIT_OUTPUT"
+
+              # Extract submission ID and status from JSON
+              SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+              STATUS=$(echo "$SUBMIT_OUTPUT" | grep -o '"status":"[^"]*"' | tail -1 | cut -d'"' -f4)
+
+              echo "Submission ID: $SUBMISSION_ID"
+              echo "Status: $STATUS"
+
+              # If notarization failed, fetch and display the log
+              if [ "$STATUS" != "Accepted" ]; then
+                echo "::error::Notarization failed with status: $STATUS"
+                echo ""
+                echo "========== NOTARIZATION LOG =========="
+                if [ -n "$SUBMISSION_ID" ]; then
+                  xcrun notarytool log "$SUBMISSION_ID" \
+                    --apple-id "$APPLE_ID" \
+                    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                    --team-id "$APPLE_TEAM_ID" || echo "Failed to fetch log"
+                else
+                  echo "No submission ID available to fetch log"
+                fi
+                echo "======================================"
+                exit 1
+              fi
+
+              echo "Stapling notarization ticket..."
+              xcrun stapler staple "$dmg"
+
+              echo "Validating..."
+              xcrun stapler validate "$dmg"
+
+              echo "$dmg notarized and stapled successfully"
+            fi
+          done
 
       - name: Create macOS ZIP packages (containing DMGs)
         run: |
