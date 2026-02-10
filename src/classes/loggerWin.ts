@@ -1594,6 +1594,12 @@ export class LoggerWindow extends DebugWindowBase {
         continue;
       }
 
+      // NUL (0x00) — ignored by real terminals, not binary data
+      if (byte === 0x00) {
+        hasPST = true; // flag as non-pure-ASCII
+        continue;
+      }
+
       // PST control codes 0x01-0x10 — OK, but flag as PST content
       if (byte >= 0x01 && byte <= 0x10) {
         hasPST = true;
@@ -1631,6 +1637,9 @@ export class LoggerWindow extends DebugWindowBase {
       const byte = data[i];
 
       switch (byte) {
+        case 0x00:
+          // NUL — silently discard (ignored by real terminals)
+          break;
         case 0x01:
           chars.push('<HOME>');
           break;

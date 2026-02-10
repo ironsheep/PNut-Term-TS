@@ -5,6 +5,15 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2025-02-10
+
+### Fixed
+
+- **NUL byte tolerance** - NUL bytes (0x00) in P2 serial data no longer trigger binary misclassification
+  - Logger classifier treats NUL as non-binary (flagged as PST-class, silently discarded in display)
+  - Blue terminal PST parser silently discards NUL bytes, matching real terminal behavior
+  - Real terminals (VT100, PST) ignore NUL — now PNut-Term-TS does the same
+
 ## [0.9.9] - 2025-02-09
 
 ### Added

@@ -5096,7 +5096,7 @@ export class MainWindow {
       //   0x10 - CS: Clear Screen
 
       // Check if any string in the pstBuffer contains control characters
-      const hasControlChars = this.pstBuffer.some((currString) => /[\x01-\x10]/.test(currString));
+      const hasControlChars = this.pstBuffer.some((currString) => /[\x00-\x10]/.test(currString));
       if (hasControlChars) {
         // Handle each string individually, processing control codes
         for (let index = 0; index < this.pstBuffer.length; index++) {
@@ -5109,6 +5109,11 @@ export class MainWindow {
             const charCode = currLine.charCodeAt(i);
             let x: number = 0;
             let y: number = 0;
+            // NUL (0x00) — silently discard
+            if (charCode === 0) {
+              i++;
+              continue;
+            }
             // Check if the character is a PST control character
             if (charCode >= 1 && charCode <= 16) {
               // First, emit any accumulated non-control characters
