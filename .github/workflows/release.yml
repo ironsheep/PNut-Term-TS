@@ -663,8 +663,9 @@ jobs:
               rm -rf "$STAGING"
               mkdir -p "$STAGING"
 
-              # Copy app bundle
-              cp -r "$APP_PATH" "$STAGING/"
+              # Copy app bundle using ditto (preserves xattrs, symlinks, and code signatures)
+              # CRITICAL: cp -r strips extended attributes that codesign adds, invalidating signatures
+              ditto "$APP_PATH" "$STAGING/$(basename "$APP_PATH")"
 
               # NOTE: App icon is already set during packaging (create-macos-packages.sh).
               # Do NOT copy it here — modifying the app bundle after signing invalidates the code signature.
