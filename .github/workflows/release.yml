@@ -172,7 +172,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELECTRON_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run packageMac
@@ -790,7 +790,7 @@ jobs:
         if: env.SIGNING_ENABLED == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           for dmg in pnut-term-ts-macos-*.dmg; do
@@ -800,7 +800,7 @@ jobs:
               # Submit and capture output to get submission ID
               SUBMIT_OUTPUT=$(xcrun notarytool submit "$dmg" \
                 --apple-id "$APPLE_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --password "$APPLE_ID_PASSWORD" \
                 --team-id "$APPLE_TEAM_ID" \
                 --output-format json \
                 --wait 2>&1) || true
@@ -823,7 +823,7 @@ jobs:
                 if [ -n "$SUBMISSION_ID" ]; then
                   xcrun notarytool log "$SUBMISSION_ID" \
                     --apple-id "$APPLE_ID" \
-                    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                    --password "$APPLE_ID_PASSWORD" \
                     --team-id "$APPLE_TEAM_ID" || echo "Failed to fetch log"
                 else
                   echo "No submission ID available to fetch log"
