@@ -1,42 +1,36 @@
 // See https://aka.ms/vscode-remote/devcontainer.json for format details.
 {
   "name": "Pnut TermDebug TypeScript Development",
-  "image": "node:22",
-  "build": {
-    "context": ".."
-  },
-  "appPort": ["5002:5002", "9123:8123"],
-  "postCreateCommand": "npm install && npm install -g @anthropic-ai/claude-code && echo 'Claude Code installed. Run: claude auth login' to authenticate",
-  "mounts": [
-    "source=/Users/stephen/.claude,target=/root/.claude,type=bind",
-    "source=/Users/stephen/container-tools,target=/opt/container-tools,type=bind",
-    "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/tmp/.ssh,type=bind",
-    "source=/Users/stephen/Projects/Projects-ExtGit/IronSheepProductionsLLC/Propeller2/PNut-TypeScript/PNut-TS Support/PNut-REF,target=/pascal-source,type=bind"
-  ],
-  "extensions": [
-    "github.vscode-pull-request-github",
-    "eamodio.gitlens",
-    "pflannery.vscode-versionlens",
-    "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
-    "auchenberg.vscode-browser-preview",
-    "davidanson.vscode-markdownlint",
-    "redhat.vscode-yaml",
-    "johnnywong.vscode-ts-whitespace-converter",
-    "sj0000e.hexdiff",
-    "ms-azuretools.vscode-docker",
-    "github.vscode-github-actions"
-  ],
-  "settings": {
-    "files.eol": "\n",
-    "editor.tabSize": 2,
-    "terminal.integrated.shell.linux": "/bin/bash",
-    "editor.formatOnPaste": false,
-    "editor.formatOnSave": true,
-    "editor.formatOnType": true,
-    "files.trimTrailingWhitespace": true
-  },
-  "containerEnv": {
-    "IS_SANDBOX": "1"
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.local.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspaces/PNut-Term-TS",
+  "initializeCommand": "test -f .devcontainer/docker-compose.local.yml || echo 'services: {}' > .devcontainer/docker-compose.local.yml",
+  "postCreateCommand": "npm install && if [ -f .devcontainer/install-claude-local.sh ]; then bash .devcontainer/install-claude-local.sh; fi",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "pflannery.vscode-versionlens",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "auchenberg.vscode-browser-preview",
+        "davidanson.vscode-markdownlint",
+        "redhat.vscode-yaml",
+        "johnnywong.vscode-ts-whitespace-converter",
+        "sj0000e.hexdiff",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.tabSize": 2,
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "editor.formatOnPaste": false,
+        "editor.formatOnSave": true,
+        "editor.formatOnType": true,
+        "files.trimTrailingWhitespace": true
+      }
+    }
   }
 }

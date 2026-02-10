@@ -2,6 +2,8 @@
 .claude/
 .todo-mcp/
 CLAUDE-EXPORTS/
+.devcontainer/install-claude-local.sh
+.devcontainer/docker-compose.local.yml
 
 # Build assets
 dmg-assets/

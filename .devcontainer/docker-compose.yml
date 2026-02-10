@@ -1,0 +1,11 @@
+services:
+  dev:
+    image: node:22
+    ports:
+      - "5002:5002"
+      - "9123:8123"
+    environment:
+      IS_SANDBOX: "1"
+    volumes:
+      - ..:/workspaces/PNut-Term-TS:cached
+    command: sleep infinity

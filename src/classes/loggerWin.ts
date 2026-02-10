@@ -930,11 +930,16 @@ export class LoggerWindow extends DebugWindowBase {
         this.writeToLog(actualData);
       } else if (actualData instanceof Uint8Array) {
         // DEFENSIVE: COG messages should be text - verify before decoding
-        if (this.isASCIIData(actualData)) {
-          // Valid ASCII text - decode as plain text (no PST formatting for COG messages)
+        const cogClassification = this.classifyData(actualData);
+        if (cogClassification === 'ascii') {
           const message = new TextDecoder().decode(actualData);
           this.appendMessage(message, 'cog-message');
           this.writeToLog(message);
+        } else if (cogClassification === 'ascii-pst') {
+          // ASCII with embedded PST control codes — render them as visible tags
+          const formatted = this.formatPSTControlCodes(actualData);
+          this.appendMessage(formatted, 'cog-message');
+          this.writeToLog(formatted);
         } else {
           // Binary data misclassified as COG - display defensively with hex fallback
           const hexFallback = this.formatBinaryAsHexFallback(actualData);
@@ -945,15 +950,21 @@ export class LoggerWindow extends DebugWindowBase {
     }
     // Handle TERMINAL_OUTPUT
     else if (messageType === SharedMessageType.TERMINAL_OUTPUT) {
-      // DEFENSIVE: Check if data is actually ASCII before displaying
+      // Classify data to determine display format
       if (actualData instanceof Uint8Array) {
-        if (this.isASCIIData(actualData)) {
-          // Format with PST control code symbols visible
+        const termClassification = this.classifyData(actualData);
+        if (termClassification === 'ascii') {
+          // Pure ASCII — display as plain text
+          const message = new TextDecoder().decode(actualData);
+          this.appendMessage(message, 'cog-message');
+          this.writeToLog(message);
+        } else if (termClassification === 'ascii-pst') {
+          // ASCII with PST control codes — render them as visible tags
           const formatted = this.formatPSTControlCodes(actualData);
           this.appendMessage(formatted, 'cog-message');
           this.writeToLog(formatted);
         } else {
-          // Binary data misclassified as terminal - display as hex fallback
+          // True binary — display as hex fallback
           const hexFallback = this.formatBinaryAsHexFallback(actualData);
           this.appendMessage(hexFallback, 'binary-message');
           this.writeToLog(hexFallback);
@@ -980,16 +991,18 @@ export class LoggerWindow extends DebugWindowBase {
     }
     // Fallback for unknown types
     else {
-      // Fallback - use safe display with defensive binary check
+      // Fallback - use safe display with three-tier classification
       if (actualData instanceof Uint8Array) {
-        if (this.isASCIIData(actualData)) {
-          const textData = new TextDecoder().decode(actualData);
-          this.appendMessage(textData, 'generic-message');
-          this.writeToLog(textData);
-        } else {
+        const fallbackClassification = this.classifyData(actualData);
+        if (fallbackClassification === 'binary') {
           const hexData = this.formatBinaryAsHexFallback(actualData);
           this.appendMessage(hexData, 'binary-message');
           this.writeToLog(hexData);
+        } else {
+          // 'ascii' or 'ascii-pst' — format with PST tags (harmless for pure ASCII)
+          const formatted = this.formatPSTControlCodes(actualData);
+          this.appendMessage(formatted, 'generic-message');
+          this.writeToLog(formatted);
         }
       } else {
         const displayData = Array.isArray(actualData) ? actualData.join(' ') : String(actualData);
@@ -1560,20 +1573,47 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Check if binary data is valid ASCII (defensive display)
-   * Includes PST control codes for terminal messages
+   * Three-tier data classification for display decisions.
+   *
+   * Returns:
+   *   'ascii'     - Pure printable ASCII (0x20-0x7E) plus CR/LF only
+   *   'ascii-pst' - Printable ASCII mixed with valid PST control codes (0x01-0x10).
+   *                 Parameter bytes following multi-byte PST commands (0x02: 2 params,
+   *                 0x0E/0x0F: 1 param each) are skipped — they can be any value 0x00-0xFF.
+   *   'binary'    - Contains bytes that are neither printable ASCII nor valid PST sequences
+   *                 (0x00, 0x11-0x1F, 0x7F, 0x80-0xFF outside of PST parameter positions)
    */
-  private isASCIIData(data: Uint8Array): boolean {
+  private classifyData(data: Uint8Array): 'ascii' | 'ascii-pst' | 'binary' {
+    let hasPST = false;
+
     for (let i = 0; i < data.length; i++) {
       const byte = data[i];
-      // Allow PST control codes (1-16) and printable ASCII (32-126)
-      // PST codes: 0x01-0x10 (Home, Position, Cursor, Tab, LF, Clear, CR, etc.)
-      // Note: 0x09 (Tab), 0x0A (LF), 0x0D (CR) are covered by 1-16 range
-      if (!(byte >= 1 && byte <= 16) && !(byte >= 32 && byte <= 126)) {
-        return false;
+
+      // Printable ASCII — always OK
+      if (byte >= 0x20 && byte <= 0x7E) {
+        continue;
       }
+
+      // PST control codes 0x01-0x10 — OK, but flag as PST content
+      if (byte >= 0x01 && byte <= 0x10) {
+        hasPST = true;
+
+        // Skip parameter bytes for multi-byte PST commands
+        if (byte === 0x02) {
+          // POS: 2 parameter bytes (x, y) — can be any value
+          i += 2;
+        } else if (byte === 0x0E || byte === 0x0F) {
+          // SETX / SETY: 1 parameter byte — can be any value
+          i += 1;
+        }
+        continue;
+      }
+
+      // Anything else is true binary
+      return 'binary';
     }
-    return true;
+
+    return hasPST ? 'ascii-pst' : 'ascii';
   }
 
   /**
@@ -1613,6 +1653,9 @@ export class LoggerWindow extends DebugWindowBase {
           break;
         case 0x06:
           chars.push('<DOWN>');
+          break;
+        case 0x07:
+          chars.push('<BELL>');
           break;
         case 0x08:
           chars.push('<BS>');

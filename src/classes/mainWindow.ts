@@ -2094,6 +2094,14 @@ export class MainWindow {
     // Multiple debug windows + IPC handlers can exceed default limit of 10
     this.mainWindow.webContents.setMaxListeners(20);
 
+    // Recalculate PST grid when window is resized (debounced)
+    this.mainWindow.on('resize', () => {
+      if (this.resizeTimer) clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => {
+        this.recalculateGridSize();
+      }, 200);
+    });
+
     this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');
 
     const dataEntryBGColor: string = this.termColors.xmitBGColor;
@@ -3653,20 +3661,7 @@ export class MainWindow {
           const mode = args[0] as 'PST' | 'ANSI';
           this.terminalMode = mode;
           this.logMessage(`Terminal mode set to ${mode}`);
-          // Clear terminal when switching modes
-          this.safeExecuteJS(
-            `
-            (function() {
-              const terminal = document.getElementById('pst-content');
-              if (terminal) {
-                terminal.innerHTML = '';
-                terminal.dataset.cursorX = '0';
-                terminal.dataset.cursorY = '0';
-              }
-            })();
-          `,
-            'clear terminal on mode switch'
-          );
+          this.clearTerminal();
           break;
         case 'set-cog-display-mode':
           const cogMode = args[0] as 'show_all' | 'on_demand';
@@ -4584,19 +4579,8 @@ export class MainWindow {
   }
 
   private clearTerminal(): void {
-    this.safeExecuteJS(
-      `
-      (function() {
-        const terminal = document.getElementById('pst-content');
-        if (terminal) {
-          terminal.innerHTML = '';
-          terminal.dataset.cursorX = '0';
-          terminal.dataset.cursorY = '0';
-        }
-      })();
-    `,
-      'clear terminal'
-    );
+    this.initPSTGrid();
+    this.renderPSTGrid();
   }
 
   private saveLogFile(): void {
@@ -4864,13 +4848,76 @@ export class MainWindow {
     try {
       const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
       this.logConsoleMessage(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
+      this.charWidth = charWidth;
+      this.charHeight = charHeight;
 
-      // Store for future use - could be used for dynamic window sizing
-      // For now, just log the actual measurements
-      // TODO: Could implement window resize if metrics differ significantly from defaults
+      // Now that we know the real character size, size the grid to fit the window
+      await this.recalculateGridSize();
     } catch (error) {
       console.error('[FONT METRICS] Error measuring fonts after window load:', error);
     }
+  }
+
+  /**
+   * Measure the pst-content element and resize the grid to fill it.
+   * Called after font metrics are known and on window resize.
+   */
+  private async recalculateGridSize(): Promise<void> {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+
+    const dims = await this.safeExecuteJS(
+      `
+      (function() {
+        const el = document.getElementById('pst-content');
+        if (!el) return null;
+        const style = getComputedStyle(el);
+        const w = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const h = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        return { width: w, height: h };
+      })();
+    `,
+      'measure pst-content'
+    );
+
+    if (!dims) return;
+
+    const newCols = Math.max(1, Math.floor(dims.width / this.charWidth));
+    const newRows = Math.max(1, Math.floor(dims.height / this.charHeight));
+
+    if (newCols !== this.terminalWidth || newRows !== this.terminalHeight) {
+      this.logConsoleMessage(`[PST GRID] Resizing ${this.terminalWidth}x${this.terminalHeight} -> ${newCols}x${newRows}`);
+      this.resizePSTGrid(newCols, newRows);
+      this.renderPSTGrid();
+    }
+  }
+
+  /**
+   * Resize the grid, preserving existing content where it fits.
+   */
+  private resizePSTGrid(newWidth: number, newHeight: number): void {
+    const oldGrid = this.pstGrid;
+    const oldWidth = this.terminalWidth;
+    const oldHeight = oldGrid.length;
+
+    this.terminalWidth = newWidth;
+    this.terminalHeight = newHeight;
+
+    this.pstGrid = [];
+    for (let row = 0; row < newHeight; row++) {
+      const newRow = new Array(newWidth).fill(' ');
+      if (row < oldHeight) {
+        // Copy existing content up to the smaller of old/new width
+        const copyLen = Math.min(newWidth, oldWidth);
+        for (let col = 0; col < copyLen; col++) {
+          newRow[col] = oldGrid[row][col];
+        }
+      }
+      this.pstGrid.push(newRow);
+    }
+
+    // Clamp cursor to new bounds
+    this.cursorX = Math.min(this.cursorX, newWidth - 1);
+    this.cursorY = Math.min(this.cursorY, newHeight - 1);
   }
 
   private hookTextInputControl(inputId: string): void {
@@ -4988,6 +5035,9 @@ export class MainWindow {
   private pstBufferTimer: NodeJS.Timeout | null = null;
   private readonly MAX_PST_BUFFER: number = 1000; // Safety valve
   private readonly PST_FLUSH_TIMEOUT_MS: number = 100; // Flush partial lines after 100ms
+
+  // Character grid for cursor-addressed PST terminal (rows x cols, each cell is one character)
+  private pstGrid: string[][] = [];
 
   /**
    * Append P2 terminal output to PST buffer
@@ -5154,6 +5204,9 @@ export class MainWindow {
       }
       // Clear buffer after processing
       this.pstBuffer = [];
+
+      // Single render pass after all grid writes and PST commands
+      this.renderPSTGrid();
     }
   }
 
@@ -5191,53 +5244,90 @@ export class MainWindow {
       // PST control codes are only processed in flushPSTBuffer() for P2 terminal output
       this.emitDiagnosticStrings(this.logBuffer);
       this.logBuffer = [];
+      this.renderPSTGrid();
       this.updateStatus();
     }
   }
 
+  // ---- PST Character Grid Management ----
+
+  private initPSTGrid(): void {
+    this.pstGrid = [];
+    for (let row = 0; row < this.terminalHeight; row++) {
+      this.pstGrid.push(new Array(this.terminalWidth).fill(' '));
+    }
+    this.cursorX = 0;
+    this.cursorY = 0;
+  }
+
+  private scrollGridUp(): void {
+    this.pstGrid.shift();
+    this.pstGrid.push(new Array(this.terminalWidth).fill(' '));
+  }
+
+  private ensureCursorInBounds(): void {
+    while (this.cursorY >= this.terminalHeight) {
+      this.scrollGridUp();
+      this.cursorY--;
+    }
+  }
+
+  private writeCharToGrid(ch: string): void {
+    if (this.pstGrid.length === 0) this.initPSTGrid();
+
+    // Auto-wrap at end of line
+    if (this.cursorX >= this.terminalWidth) {
+      this.cursorX = 0;
+      this.cursorY++;
+    }
+    this.ensureCursorInBounds();
+    this.pstGrid[this.cursorY][this.cursorX] = ch;
+    this.cursorX++;
+  }
+
+  private renderPSTGrid(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    if (this.pstGrid.length === 0) return;
+
+    const rows = this.pstGrid.map(row => row.join(''));
+    const gridJSON = JSON.stringify(rows);
+
+    this.safeExecuteJS(
+      `
+      (function() {
+        const el = document.getElementById('pst-content');
+        if (!el) return;
+        const rows = ${gridJSON};
+        while (el.children.length < rows.length) {
+          el.appendChild(document.createElement('p'));
+        }
+        while (el.children.length > rows.length) {
+          el.removeChild(el.lastChild);
+        }
+        for (let i = 0; i < rows.length; i++) {
+          if (el.children[i].textContent !== rows[i]) {
+            el.children[i].textContent = rows[i];
+          }
+        }
+      })();
+    `,
+      'render PST grid'
+    );
+  }
+
+  // ---- PST String Emission (writes to grid) ----
+
   private emitDiagnosticStrings(buffer: string[]) {
     this.logConsoleMessage(`[DIAG EMIT] 📤 emitDiagnosticStrings called with ${buffer.length} messages`);
-    if (buffer.length > 0) {
-      this.logConsoleMessage(`[DIAG EMIT] Diagnostic messages to display: ${JSON.stringify(buffer)}`);
-      const messages = JSON.stringify(buffer);
-      this.safeExecuteJS(
-        `
-        (function() {
-          const pstContent = document.getElementById('pst-content');
-          const messagesArray = ${messages};  // Parse the JSON string to get the array
-          messagesArray.forEach(message => {
-            const p = document.createElement('p');
-            p.textContent = message;
-            pstContent.appendChild(p);
-          });
-          pstContent.scrollTop = pstContent.scrollHeight;
-        })();
-      `,
-        'emit diagnostic strings to terminal'
-      );
-    }
+    this.emitPSTStrings(buffer);
   }
 
   private emitPSTStrings(buffer: string[]) {
     this.logConsoleMessage(`[PST EMIT] 📤 emitPSTStrings called with ${buffer.length} messages`);
-    if (buffer.length > 0) {
-      this.logConsoleMessage(`[PST EMIT] Messages to display: ${JSON.stringify(buffer)}`);
-      const messages = JSON.stringify(buffer);
-      this.safeExecuteJS(
-        `
-        (function() {
-          const pstContent = document.getElementById('pst-content');
-          const messagesArray = ${messages};  // Parse the JSON string to get the array
-          messagesArray.forEach(message => {
-            const p = document.createElement('p');
-            p.textContent = message;
-            pstContent.appendChild(p);
-          });
-          pstContent.scrollTop = pstContent.scrollHeight;
-        })();
-      `,
-        'emit PST strings to terminal'
-      );
+    for (const str of buffer) {
+      for (let i = 0; i < str.length; i++) {
+        this.writeCharToGrid(str[i]);
+      }
     }
   }
 
@@ -5452,6 +5542,9 @@ export class MainWindow {
   private cursorY: number = 0;
   private terminalWidth: number = 80;
   private terminalHeight: number = 25;
+  private charWidth: number = 12; // Measured after window ready
+  private charHeight: number = 18; // Measured after window ready
+  private resizeTimer: NodeJS.Timeout | null = null;
 
   private loadTerminalMode(): void {
     // Pass the current terminal mode values directly from the main process
@@ -5500,255 +5593,102 @@ export class MainWindow {
 
   // Execute PST control commands
   private executePSTCommand(command: string, arg1?: number, arg2?: number): void {
-    if (this.terminalMode !== 'PST') {
-      return; // Only execute PST commands in PST mode
-    }
+    if (this.terminalMode !== 'PST') return;
+    if (this.pstGrid.length === 0) this.initPSTGrid();
 
     switch (command) {
       case 'home':
         this.cursorX = 0;
         this.cursorY = 0;
-        this.safeExecuteJS(
-          `
-          (function() {
-            const terminal = document.getElementById('pst-content');
-            if (terminal) {
-              terminal.dataset.cursorX = '0';
-              terminal.dataset.cursorY = '0';
-              // Move cursor to home position
-              const cursor = document.getElementById('terminal-cursor');
-              if (cursor) {
-                cursor.style.left = '0px';
-                cursor.style.top = '0px';
-              }
-            }
-          })();
-        `,
-          'PST home command'
-        );
         break;
 
       case 'position':
         if (arg1 !== undefined && arg2 !== undefined) {
           this.cursorX = Math.min(arg1, this.terminalWidth - 1);
           this.cursorY = Math.min(arg2, this.terminalHeight - 1);
-          this.safeExecuteJS(
-            `
-            (function() {
-              const terminal = document.getElementById('pst-content');
-              if (terminal) {
-                terminal.dataset.cursorX = '${this.cursorX}';
-                terminal.dataset.cursorY = '${this.cursorY}';
-                // Position cursor at x,y
-                const cursor = document.getElementById('terminal-cursor');
-                if (cursor) {
-                  const charWidth = 9; // Approximate character width
-                  const lineHeight = 20; // Approximate line height
-                  cursor.style.left = (${this.cursorX} * charWidth) + 'px';
-                  cursor.style.top = (${this.cursorY} * lineHeight) + 'px';
-                }
-              }
-            })();
-          `,
-            'PST position command'
-          );
         }
         break;
 
       case 'clearScreen':
-        this.safeExecuteJS(
-          `
-          (function() {
-            const terminal = document.getElementById('pst-content');
-            if (terminal) {
-              terminal.innerHTML = '';
-              terminal.dataset.cursorX = '0';
-              terminal.dataset.cursorY = '0';
-            }
-          })();
-        `,
-          'PST clear screen'
-        );
-        this.cursorX = 0;
-        this.cursorY = 0;
+        this.initPSTGrid();
         break;
 
       case 'clearEOL':
-        this.safeExecuteJS(
-          `
-          (function() {
-            const terminal = document.getElementById('pst-content');
-            if (terminal) {
-              const lines = terminal.querySelectorAll('p');
-              const cursorY = parseInt(terminal.dataset.cursorY || '0');
-              const cursorX = parseInt(terminal.dataset.cursorX || '0');
-              if (lines[cursorY]) {
-                const text = lines[cursorY].textContent || '';
-                lines[cursorY].textContent = text.substring(0, cursorX);
-              }
-            }
-          })();
-        `,
-          'PST clear to EOL'
-        );
+        if (this.cursorY < this.terminalHeight) {
+          for (let x = this.cursorX; x < this.terminalWidth; x++) {
+            this.pstGrid[this.cursorY][x] = ' ';
+          }
+        }
         break;
 
       case 'clearBelow':
-        this.safeExecuteJS(
-          `
-          (function() {
-            const terminal = document.getElementById('pst-content');
-            if (terminal) {
-              const lines = terminal.querySelectorAll('p');
-              const cursorY = parseInt(terminal.dataset.cursorY || '0');
-              for (let i = cursorY + 1; i < lines.length; i++) {
-                lines[i].remove();
-              }
-            }
-          })();
-        `,
-          'PST clear below'
-        );
+        for (let y = this.cursorY + 1; y < this.terminalHeight; y++) {
+          this.pstGrid[y].fill(' ');
+        }
         break;
 
       case 'left':
-        if (this.cursorX > 0) {
-          this.cursorX--;
-          this.updateCursorPosition();
-        }
+        if (this.cursorX > 0) this.cursorX--;
         break;
 
       case 'right':
-        if (this.cursorX < this.terminalWidth - 1) {
-          this.cursorX++;
-          this.updateCursorPosition();
-        }
+        if (this.cursorX < this.terminalWidth - 1) this.cursorX++;
         break;
 
       case 'up':
-        if (this.cursorY > 0) {
-          this.cursorY--;
-          this.updateCursorPosition();
-        }
+        if (this.cursorY > 0) this.cursorY--;
         break;
 
       case 'down':
-        if (this.cursorY < this.terminalHeight - 1) {
-          this.cursorY++;
-          this.updateCursorPosition();
-        }
+        if (this.cursorY < this.terminalHeight - 1) this.cursorY++;
         break;
 
       case 'backspace':
-        if (this.cursorX > 0) {
-          this.cursorX--;
-          this.safeExecuteJS(
-            `
-            (function() {
-              const terminal = document.getElementById('pst-content');
-              if (terminal) {
-                const lines = terminal.querySelectorAll('p');
-                const cursorY = parseInt(terminal.dataset.cursorY || '0');
-                const cursorX = ${this.cursorX};
-                if (lines[cursorY]) {
-                  const text = lines[cursorY].textContent || '';
-                  lines[cursorY].textContent = text.substring(0, cursorX) + text.substring(cursorX + 1);
-                }
-                terminal.dataset.cursorX = '${this.cursorX}';
-              }
-            })();
-          `,
-            'PST backspace'
-          );
-        }
+        // Non-destructive: just moves cursor left (matches PST behavior)
+        if (this.cursorX > 0) this.cursorX--;
         break;
 
       case 'tab':
-        // Move to next tab stop (every 8 characters)
         this.cursorX = Math.min(Math.floor((this.cursorX + 8) / 8) * 8, this.terminalWidth - 1);
-        this.updateCursorPosition();
         break;
 
       case 'linefeed':
         this.cursorY++;
-        if (this.cursorY >= this.terminalHeight) {
-          this.cursorY = this.terminalHeight - 1;
-          // Scroll the terminal
-          this.safeExecuteJS(
-            `
-            (function() {
-              const terminal = document.getElementById('pst-content');
-              if (terminal) {
-                const lines = terminal.querySelectorAll('p');
-                if (lines.length > 0) {
-                  lines[0].remove();
-                }
-                const newLine = document.createElement('p');
-                terminal.appendChild(newLine);
-              }
-            })();
-          `,
-            'PST linefeed scroll'
-          );
-        }
-        this.updateCursorPosition();
+        this.ensureCursorInBounds();
         break;
 
       case 'newline':
         this.cursorX = 0;
-        this.executePSTCommand('linefeed');
+        this.cursorY++;
+        this.ensureCursorInBounds();
         break;
 
       case 'positionX':
         if (arg1 !== undefined) {
           this.cursorX = Math.min(arg1, this.terminalWidth - 1);
-          this.updateCursorPosition();
         }
         break;
 
       case 'positionY':
         if (arg1 !== undefined) {
           this.cursorY = Math.min(arg1, this.terminalHeight - 1);
-          this.updateCursorPosition();
         }
         break;
 
       case 'bell':
-        // Play a beep sound or visual bell
         this.safeExecuteJS(
           `
           (function() {
-            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjGH0fPTgjMGHm7A7+OZURE');
-            audio.play();
+            try {
+              const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjGH0fPTgjMGHm7A7+OZURE');
+              audio.play();
+            } catch(e) {}
           })();
         `,
           'PST bell'
         );
         break;
     }
-  }
-
-  // Update cursor position in the terminal
-  private updateCursorPosition(): void {
-    this.safeExecuteJS(
-      `
-      (function() {
-        const terminal = document.getElementById('pst-content');
-        if (terminal) {
-          terminal.dataset.cursorX = '${this.cursorX}';
-          terminal.dataset.cursorY = '${this.cursorY}';
-          const cursor = document.getElementById('terminal-cursor');
-          if (cursor) {
-            const charWidth = 9; // Approximate character width
-            const lineHeight = 20; // Approximate line height
-            cursor.style.left = (${this.cursorX} * charWidth) + 'px';
-            cursor.style.top = (${this.cursorY} * lineHeight) + 'px';
-          }
-        }
-      })();
-    `,
-      'update cursor position'
-    );
   }
 
   // Helper to safely execute JavaScript in renderer

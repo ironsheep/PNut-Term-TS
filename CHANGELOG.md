@@ -5,6 +5,36 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2025-02-09
+
+### Added
+
+- **Blue terminal PST character grid** - Replaced append-only DOM rendering with a proper cursor-addressed character grid model (80x25 default)
+  - PST control codes (Home, Position, Clear Screen, cursor movement, etc.) now work correctly
+  - Text is written at the cursor position, not appended to the bottom
+  - Grid auto-scrolls when cursor moves past the last row
+  - Backspace is now non-destructive (moves cursor only, matches PST specification)
+- **Dynamic terminal grid sizing** - Grid automatically resizes when the window is resized
+  - Measures actual font metrics via canvas after window load
+  - Recalculates rows and columns based on available space (debounced 200ms)
+  - Preserves existing grid content during resize
+
+### Fixed
+
+- **Logger ASCII/binary misclassification** - Messages containing PST control codes with parameter bytes (e.g., Position x,y) were incorrectly classified as binary and displayed as hex dumps
+  - New three-tier classifier: pure ASCII, ASCII with PST codes, or true binary
+  - PST parameter bytes (0x02: 2 params, 0x0E/0x0F: 1 param each) are properly skipped during classification
+  - Added missing Bell (0x07) to PST control code formatter
+- Removed dead code: non-existent `terminal-cursor` DOM element references, unused `dataset.cursorX/Y` attributes
+
+### Changed
+
+- **Devcontainer modernization** - Switched to docker-compose for optional local mounts
+  - User-specific bind mounts moved to git-ignored `docker-compose.local.yml`
+  - Claude Code installation moved to optional git-ignored `install-claude-local.sh`
+  - New users get a working container without user-specific paths or Claude license
+  - VS Code extensions/settings moved to `customizations.vscode` (fixes deprecation warnings)
+
 ## [0.9.8] - 2025-02-03
 
 ### Fixed
