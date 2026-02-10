@@ -172,7 +172,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELECTRON_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run packageMac
