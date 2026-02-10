@@ -120,11 +120,9 @@ create_package() {
     echo "   📦 Copying native dependencies..."
     mkdir -p "$APP_DIR/node_modules"
 
-    # Electron module (required by electron-main.js for app, BrowserWindow, etc.)
-    if [ -d "node_modules/electron" ]; then
-        cp -r node_modules/electron "$APP_DIR/node_modules/"
-        echo "   ✅ Copied electron module"
-    fi
+    # NOTE: node_modules/electron is NOT copied — it's a dev dependency only.
+    # At runtime, require('electron') resolves to Electron's built-in module.
+    # Including it would bundle a second unsigned Electron.app, breaking notarization.
 
     # SerialPort bindings - use macOS universal binary
     if [ -d "node_modules/@serialport" ]; then

@@ -666,12 +666,8 @@ jobs:
               # Copy app bundle
               cp -r "$APP_PATH" "$STAGING/"
 
-              # Set app icon if available (must be icon.icns to match CFBundleIconFile in Info.plist)
-              if [ -f "assets/app-icon.icns" ]; then
-                APP_NAME=$(basename "$APP_PATH")
-                cp assets/app-icon.icns "$STAGING/$APP_NAME/Contents/Resources/icon.icns" 2>/dev/null || true
-                echo "  Applied custom app icon"
-              fi
+              # NOTE: App icon is already set during packaging (create-macos-packages.sh).
+              # Do NOT copy it here — modifying the app bundle after signing invalidates the code signature.
 
               # Create Applications symlink
               ln -s /Applications "$STAGING/Applications"
