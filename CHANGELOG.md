@@ -5,7 +5,7 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.10] - 2025-02-10
+## [0.9.11] - 2025-02-10
 
 ### Fixed
 
@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Real terminals (VT100, PST) ignore NUL — now PNut-Term-TS does the same
 - **Carriage return (CR) behavior** - CR (0x0D) now only returns cursor to column 0 without advancing the row
   - Previously CR acted as CR+LF, causing double line advance when paired with LF
+- **macOS notarization** - Enabled Apple notarization and stapling in release workflow
+  - Removed nested `node_modules/electron` from app bundle (dev dependency, not needed at runtime)
+  - Fixed post-signing icon copy that was invalidating code signatures
 
 ## [0.9.9] - 2025-02-09
 
