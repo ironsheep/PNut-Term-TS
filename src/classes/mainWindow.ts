@@ -5663,9 +5663,8 @@ export class MainWindow {
         break;
 
       case 'newline':
+        // CR: carriage return only — move cursor to left edge, no row advance
         this.cursorX = 0;
-        this.cursorY++;
-        this.ensureCursorInBounds();
         break;
 
       case 'positionX':

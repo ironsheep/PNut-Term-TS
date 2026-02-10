@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Logger classifier treats NUL as non-binary (flagged as PST-class, silently discarded in display)
   - Blue terminal PST parser silently discards NUL bytes, matching real terminal behavior
   - Real terminals (VT100, PST) ignore NUL — now PNut-Term-TS does the same
+- **Carriage return (CR) behavior** - CR (0x0D) now only returns cursor to column 0 without advancing the row
+  - Previously CR acted as CR+LF, causing double line advance when paired with LF
 
 ## [0.9.9] - 2025-02-09
 
