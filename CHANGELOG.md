@@ -13,7 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `classifyMessage()` in the worker thread now validates bytes 1-3 are 0x00 (32-bit little-endian COG ID) before classifying as debugger, matching the existing `find416ByteBoundary()` validation
   - NUL bytes (0x00) in PST terminal text no longer produce spurious "Cog 0:" hex dump entries in the debug logger
   - PST POS command (0x02) and other control codes no longer produce spurious "Cog 2:" entries
-  - Eliminates duplicated log entries caused by misclassified messages being routed through debugger paths
+- **False message boundary splits on NUL bytes** - `looksLikeMessageStart()` treated NUL (0x00) as a valid message start, causing PST terminal text to fragment at CR+NUL sequences
+  - NUL removed from message-start detection; 416-byte debugger packets are found by `find416ByteBoundary()` with proper 4-byte validation instead
+- **Duplicate debugger log entries** - 416-byte debugger packets were registered to two routing destinations, both calling `routeBinaryMessage()` which already routes to all logger windows
+  - DEBUGGER0-7 messages now registered to a single destination, eliminating 2x delivery to the debug logger
+- **COG window PST misclassification** - Legacy `isASCIIData()` in COG logger rejected PST control codes (0x00-0x10), causing hex dump display for PST-containing data
+  - Now uses 3-tier classification matching the main logger, with proper PST parameter byte skipping
 
 ## [0.9.11] - 2025-02-10
 

@@ -968,15 +968,31 @@ export class LoggerCOGWindow extends DebugWindowBase {
   }
 
   /**
-   * Check if binary data is valid ASCII (defensive display)
+   * Check if binary data is valid ASCII or ASCII+PST (defensive display)
+   * Matches the 3-tier classification from loggerWin.ts — PST control codes
+   * (0x00-0x10) are valid terminal data, not binary.
    */
   private isASCIIData(data: Uint8Array): boolean {
-    for (let i = 0; i < data.length; i++) {
+    let i = 0;
+    while (i < data.length) {
       const byte = data[i];
       // Allow printable ASCII (32-126) and common whitespace (9, 10, 13)
-      if (!(byte >= 32 && byte <= 126) && byte !== 9 && byte !== 10 && byte !== 13) {
-        return false;
+      if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13) {
+        i++;
+        continue;
       }
+      // Allow PST control codes (0x00-0x10) and skip their parameter bytes
+      if (byte <= 0x10) {
+        i++;
+        // Skip parameter bytes for multi-byte PST commands
+        if (byte === 0x02 && i + 2 <= data.length) {
+          i += 2; // POS: x, y
+        } else if ((byte === 0x0e || byte === 0x0f) && i + 1 <= data.length) {
+          i += 1; // SETX/SETY: coordinate
+        }
+        continue;
+      }
+      return false;
     }
     return true;
   }

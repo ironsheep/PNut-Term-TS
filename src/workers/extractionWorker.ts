@@ -56,8 +56,9 @@ let hadDataLastCheck: boolean = false; // Track if buffer had data in last check
  * - Backtick (0x60) - window command
  * - "Cog" (0x43 0x6F 0x67) - COG message
  * - 0xDB - debugger packet
- * - 0x00-0x07 - 416-byte debugger packet (COG ID)
  * - 0x01-0x10 - PST control sequences (terminal output)
+ * Note: 0x00 (NUL) excluded — common in PST text, not a valid message start.
+ * 416-byte debugger packets (0x00-0x07) are found by find416ByteBoundary() instead.
  */
 function looksLikeMessageStart(firstByte: number | undefined): boolean {
   if (firstByte === undefined) {
@@ -80,17 +81,14 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
     return true;
   }
 
-  // 0x00-0x07 - 416-byte debugger packet (COG ID)
-  // Note: Enhanced validation in find416ByteBoundary() checks bytes 1-3 are 0x00
-  if (firstByte >= 0x00 && firstByte <= 0x07) {
-    return true;
-  }
-
   // PST control sequences - terminal output with control codes
   // 0x01 - Home, 0x02 - Position (multi-byte), 0x03-0x06 - Cursor move,
   // 0x08 - Backspace, 0x09 - Tab, 0x0A - LF, 0x0B - Clear EOL,
   // 0x0C - Clear below, 0x0D - CR, 0x0E-0x0F - Position X/Y (multi-byte),
   // 0x10 - Clear Screen
+  // Note: 0x00 (NUL) intentionally excluded - NUL is common in PST text and should
+  // NOT trigger message boundary splits. 416-byte debugger packets starting with
+  // 0x00-0x07 are found by find416ByteBoundary() with proper 4-byte validation.
   if (firstByte >= 0x01 && firstByte <= 0x10) {
     return true;
   }

@@ -290,14 +290,18 @@ export class MessageRouter extends EventEmitter {
       this.registerDestination(SharedMessageType.DB_PACKET, debuggerWindow);
     }
 
-    // 416-byte debugger packets (DEBUGGER0-DEBUGGER7) to debugger window and debug logger
+    // 416-byte debugger packets (DEBUGGER0-DEBUGGER7) to debugger window
+    // Note: Only register ONE destination — WindowRouter.routeBinaryMessage() already
+    // sends to all logger-type windows AND the specific debugger window in a single call.
+    // Registering both debuggerWindow and debugLogger caused 2x delivery to the logger.
     for (let cogId = 0; cogId <= 7; cogId++) {
       const debuggerType = SharedMessageType.DEBUGGER0_416BYTE + cogId;
       if (debuggerWindow) {
         this.registerDestination(debuggerType, debuggerWindow);
+      } else {
+        // No debugger window — route to debug logger so messages aren't lost
+        this.registerDestination(debuggerType, debugLogger);
       }
-      // Also send to debug logger so user can see the binary debug data
-      this.registerDestination(debuggerType, debugLogger);
     }
 
     // Backtick window commands to window creator
