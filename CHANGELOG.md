@@ -5,6 +5,16 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.12] - 2026-02-12
+
+### Fixed
+
+- **Worker extractor PST misclassification** - Terminal text containing PST control codes (0x00-0x07) was misclassified as debugger packets by the extraction worker
+  - `classifyMessage()` in the worker thread now validates bytes 1-3 are 0x00 (32-bit little-endian COG ID) before classifying as debugger, matching the existing `find416ByteBoundary()` validation
+  - NUL bytes (0x00) in PST terminal text no longer produce spurious "Cog 0:" hex dump entries in the debug logger
+  - PST POS command (0x02) and other control codes no longer produce spurious "Cog 2:" entries
+  - Eliminates duplicated log entries caused by misclassified messages being routed through debugger paths
+
 ## [0.9.11] - 2025-02-10
 
 ### Fixed

@@ -474,8 +474,12 @@ function classifyMessage(data: Uint8Array): SharedMessageType | null {
     return SharedMessageType.DB_PACKET;
   }
 
-  // 416-byte debugger packet: 0x00-0x07 (COG ID)
-  if (firstByte >= 0x00 && firstByte <= 0x07) {
+  // 416-byte debugger packet: 0x00-0x07 (COG ID) with 32-bit LE validation
+  // Real debugger packets use a 32-bit little-endian COG ID, so bytes 1-3 must be 0x00.
+  // Without this check, NUL bytes (0x00) and PST control codes (0x01-0x07) in terminal
+  // text get misclassified as debugger packets. This matches find416ByteBoundary() validation.
+  if (firstByte >= 0x00 && firstByte <= 0x07 &&
+      data.length >= 4 && data[1] === 0x00 && data[2] === 0x00 && data[3] === 0x00) {
     // DEBUGGER0-7_416BYTE
     return (SharedMessageType.DEBUGGER0_416BYTE + firstByte) as SharedMessageType;
   }
