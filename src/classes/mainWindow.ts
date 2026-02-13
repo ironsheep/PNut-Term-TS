@@ -4847,46 +4847,76 @@ export class MainWindow {
 
   private async measureAndStoreFontMetrics(): Promise<void> {
     try {
-      const { charWidth, charHeight } = await this.getFontMetrics('12pt Consolas, sans-serif', 12, 18);
-      this.logConsoleMessage(`[FONT METRICS] Measured after window ready: ${charWidth} x ${charHeight}`);
-      this.charWidth = charWidth;
-      this.charHeight = charHeight;
-
-      // Now that we know the real character size, size the grid to fit the window
       await this.recalculateGridSize();
     } catch (error) {
-      console.error('[FONT METRICS] Error measuring fonts after window load:', error);
+      console.error('[PST GRID] Error measuring font metrics:', error);
     }
   }
 
   /**
-   * Measure the pst-content element and resize the grid to fill it.
-   * Called after font metrics are known and on window resize.
+   * Measure font metrics and pst-content container, then resize grid to fill the window.
+   * Uses in-element measurement (not canvas) for accuracy — measures the exact font
+   * the browser renders in #pst-content, including line-height for row calculation.
+   * Called after window ready and on window resize.
    */
   private async recalculateGridSize(): Promise<void> {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
 
-    const dims = await this.safeExecuteJS(
+    const metrics = await this.safeExecuteJS(
       `
       (function() {
         const el = document.getElementById('pst-content');
         if (!el) return null;
+
+        // Measure character width by inserting a test span with 20 chars
+        // Using multiple chars averages out any sub-pixel rounding
+        const span = document.createElement('span');
+        span.textContent = 'MMMMMMMMMMMMMMMMMMMM';
+        span.style.position = 'absolute';
+        span.style.visibility = 'hidden';
+        el.appendChild(span);
+        const charWidth = span.getBoundingClientRect().width / 20;
+        el.removeChild(span);
+
+        // Measure line height using a <p> element (same tag type as grid rows)
+        // This captures actual line-height, not just font ascent+descent
+        const p = document.createElement('p');
+        p.textContent = 'M';
+        p.style.margin = '0';
+        p.style.padding = '0';
+        p.style.visibility = 'hidden';
+        el.appendChild(p);
+        const lineHeight = p.getBoundingClientRect().height;
+        el.removeChild(p);
+
+        // Measure container inner dimensions (excluding padding)
         const style = getComputedStyle(el);
-        const w = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-        const h = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-        return { width: w, height: h };
+        const contentWidth = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const contentHeight = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+
+        return { charWidth, lineHeight, contentWidth, contentHeight };
       })();
     `,
-      'measure pst-content'
+      'measure pst-content and font'
     );
 
-    if (!dims) return;
+    if (!metrics) return;
 
-    const newCols = Math.max(1, Math.floor(dims.width / this.charWidth));
-    const newRows = Math.max(1, Math.floor(dims.height / this.charHeight));
+    // Store font metrics
+    this.charWidth = metrics.charWidth;
+    this.charHeight = metrics.lineHeight;
+
+    const newCols = Math.max(1, Math.floor(metrics.contentWidth / metrics.charWidth));
+    const newRows = Math.max(1, Math.floor(metrics.contentHeight / metrics.lineHeight));
+
+    // Always log grid metrics so the user can verify sizing
+    console.log(
+      `[PST GRID] Font: ${metrics.charWidth.toFixed(2)}×${metrics.lineHeight.toFixed(2)}px, ` +
+      `Container: ${Math.round(metrics.contentWidth)}×${Math.round(metrics.contentHeight)}px → ` +
+      `${newCols} cols × ${newRows} rows`
+    );
 
     if (newCols !== this.terminalWidth || newRows !== this.terminalHeight) {
-      this.logConsoleMessage(`[PST GRID] Resizing ${this.terminalWidth}x${this.terminalHeight} -> ${newCols}x${newRows}`);
       this.resizePSTGrid(newCols, newRows);
       this.renderPSTGrid();
     }

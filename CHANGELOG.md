@@ -5,7 +5,7 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.15] - 2026-02-12
+## [0.9.16] - 2026-02-12
 
 ### Fixed
 
@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Non-backtick messages use the relaxed check; backtick messages retain strict validation to protect SPRITEDEF bitmap data with embedded CR/LF
 - **Blue terminal line wrapping 1 character early** - PST grid rows used `white-space: pre-wrap` CSS, causing the browser to wrap the last character when sub-pixel font metric differences accumulated over 80 columns
   - Changed to `white-space: pre` (no wrapping) with `overflow-x: hidden` — each `<p>` row element is one grid line that never wraps
+- **Blue terminal grid not using full window width** - Grid was initialized at 80×25 and font metrics were measured via canvas (could differ from actual rendered font). Dynamic resizing existed but used potentially inaccurate measurements
+  - Switched from canvas `measureText()` to in-element measurement: inserts a test `<span>` (20 chars) and `<p>` into the actual `#pst-content` element to measure the real rendered character width and line height
+  - Grid now fills the full window: cols = floor(containerWidth / charWidth), rows = floor(containerHeight / lineHeight)
+  - Always-on diagnostic logging reports font metrics, container dimensions, and calculated grid size: `[PST GRID] Font: W×H px, Container: W×H px → C cols × R rows`
 
 ## [0.9.11] - 2025-02-10
 
