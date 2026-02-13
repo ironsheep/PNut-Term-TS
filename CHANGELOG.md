@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - DEBUGGER0-7 messages now registered to a single destination, eliminating 2x delivery to the debug logger
 - **COG window PST misclassification** - Legacy `isASCIIData()` in COG logger rejected PST control codes (0x00-0x10), causing hex dump display for PST-containing data
   - Now uses 3-tier classification matching the main logger, with proper PST parameter byte skipping
+- **Stale idle timeout causing message fragmentation** - The extraction worker's idle timeout tracker only updated when the buffer transitioned from empty to non-empty, so unterminated data (e.g., a prompt with no CR/LF) kept the timestamp stale for seconds
+  - Now tracks the buffer's write position via `getTailPosition()` to detect new data arriving even when old data remains in the buffer
+  - Prevents aggressive CR/LF splitting that fragmented help text output and disrupted blue terminal cursor positioning
 
 ## [0.9.11] - 2025-02-10
 

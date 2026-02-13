@@ -47,8 +47,8 @@ let extractionCount: number = 0;
 // When CR/LF appears at buffer end, wait for this timeout before extracting
 // to distinguish "waiting for next USB packet" from "transmission complete"
 const IDLE_TIMEOUT_MS = 50; // 50ms idle time means transmission is complete
-let lastBufferActivity: number = 0; // Timestamp of last buffer read activity
-let hadDataLastCheck: boolean = false; // Track if buffer had data in last check
+let lastBufferActivity: number = 0; // Timestamp of last new data written to buffer
+let lastKnownTailPosition: number = -1; // Track buffer write position to detect new data
 
 /**
  * Helper: Check if byte sequence looks like start of valid P2 message
@@ -647,17 +647,19 @@ function extractMessages(): void {
  * Self-managing with isExtracting flag to prevent re-entry
  */
 function autonomousLoop(): void {
-  // Track buffer activity for idle timeout detection
-  const hasData = buffer && buffer.hasData();
-  const now = Date.now();
-
-  // Update lastBufferActivity when buffer transitions from empty to has-data
-  // This tracks when NEW data arrives
-  if (hasData && !hadDataLastCheck) {
-    lastBufferActivity = now;
+  // Track buffer activity by watching the write (tail) position.
+  // When the main thread writes new USB data, the tail advances.
+  // This correctly detects new data even when old data sits in the buffer
+  // (e.g., unterminated prompt text with no CR/LF).
+  if (buffer) {
+    const currentTail = buffer.getTailPosition();
+    if (currentTail !== lastKnownTailPosition) {
+      lastBufferActivity = Date.now();
+      lastKnownTailPosition = currentTail;
+    }
   }
 
-  hadDataLastCheck = hasData || false;
+  const hasData = buffer && buffer.hasData();
 
   // Check if buffer has data and we're not already extracting
   if (buffer && hasData && !isExtracting) {
