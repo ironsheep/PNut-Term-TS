@@ -2593,6 +2593,7 @@ export class MainWindow {
           right: 8px;
           flex-grow: 1;
           overflow-y: auto;
+          overflow-x: hidden;
           padding: 10px;
           background-color: ${logContentBGColor};
           color: ${logContentFGColor};
@@ -2601,12 +2602,12 @@ export class MainWindow {
           box-shadow: inset 2px 2px 4px rgba(0,0,0,0.1); /* Lighter shadow effect */
           margin: 4px;
           font-family: Consolas, 'Courier New', monospace;
-          white-space: pre-wrap;
+          white-space: pre;
         }
         #pst-content p {
           margin: 0;
           padding: 0;
-          white-space: pre-wrap;
+          white-space: pre;
         }
         /* Font styles for terminal */
         #pst-content.font-default {

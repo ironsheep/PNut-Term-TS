@@ -5,7 +5,7 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.14] - 2026-02-12
+## [0.9.15] - 2026-02-12
 
 ### Fixed
 
@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-line text output swallowed by overly strict boundary validation** - `looksLikeMessageStart()` only recognized protocol-specific bytes (backtick, 'C', 0xDB, PST 0x01-0x10) as valid starts after CR/LF, causing all text lines starting with spaces or regular ASCII (e.g., `help` command output) to be merged into a single giant message
   - Added `looksLikeTextLineStart()` relaxed validator that also accepts printable ASCII (0x20-0x7E)
   - Non-backtick messages use the relaxed check; backtick messages retain strict validation to protect SPRITEDEF bitmap data with embedded CR/LF
+- **Blue terminal line wrapping 1 character early** - PST grid rows used `white-space: pre-wrap` CSS, causing the browser to wrap the last character when sub-pixel font metric differences accumulated over 80 columns
+  - Changed to `white-space: pre` (no wrapping) with `overflow-x: hidden` — each `<p>` row element is one grid line that never wraps
 
 ## [0.9.11] - 2025-02-10
 
