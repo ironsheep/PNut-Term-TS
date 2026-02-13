@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now uses 3-tier classification matching the main logger, with proper PST parameter byte skipping
 - **Stale idle timeout causing message fragmentation** - The extraction worker's idle timeout tracker only updated when the buffer transitioned from empty to non-empty, so unterminated data (e.g., a prompt with no CR/LF) kept the timestamp stale for seconds
   - Now tracks the buffer's write position via `getTailPosition()` to detect new data arriving even when old data remains in the buffer
-  - Prevents aggressive CR/LF splitting that fragmented help text output and disrupted blue terminal cursor positioning
+- **Multi-line text output swallowed by overly strict boundary validation** - `looksLikeMessageStart()` only recognized protocol-specific bytes (backtick, 'C', 0xDB, PST 0x01-0x10) as valid starts after CR/LF, causing all text lines starting with spaces or regular ASCII (e.g., `help` command output) to be merged into a single giant message
+  - Added `looksLikeTextLineStart()` relaxed validator that also accepts printable ASCII (0x20-0x7E)
+  - Non-backtick messages use the relaxed check; backtick messages retain strict validation to protect SPRITEDEF bitmap data with embedded CR/LF
 
 ## [0.9.11] - 2025-02-10
 
@@ -58,14 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - PST parameter bytes (0x02: 2 params, 0x0E/0x0F: 1 param each) are properly skipped during classification
   - Added missing Bell (0x07) to PST control code formatter
 - Removed dead code: non-existent `terminal-cursor` DOM element references, unused `dataset.cursorX/Y` attributes
-
-### Changed
-
-- **Devcontainer modernization** - Switched to docker-compose for optional local mounts
-  - User-specific bind mounts moved to git-ignored `docker-compose.local.yml`
-  - Claude Code installation moved to optional git-ignored `install-claude-local.sh`
-  - New users get a working container without user-specific paths or Claude license
-  - VS Code extensions/settings moved to `customizations.vscode` (fixes deprecation warnings)
 
 ## [0.9.8] - 2025-02-03
 

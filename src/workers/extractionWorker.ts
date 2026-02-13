@@ -51,14 +51,16 @@ let lastBufferActivity: number = 0; // Timestamp of last new data written to buf
 let lastKnownTailPosition: number = -1; // Track buffer write position to detect new data
 
 /**
- * Helper: Check if byte sequence looks like start of valid P2 message
- * Returns true if data starts with:
+ * Helper: STRICT check if byte looks like start of valid P2 message
+ * Used only for backtick messages (SPRITEDEF protection) where binary data
+ * may contain embedded CR/LF that should NOT be treated as message boundaries.
+ *
+ * Returns true for:
  * - Backtick (0x60) - window command
- * - "Cog" (0x43 0x6F 0x67) - COG message
+ * - "C" (0x43) - potential COG message
  * - 0xDB - debugger packet
- * - 0x01-0x10 - PST control sequences (terminal output)
+ * - 0x01-0x10 - PST control sequences
  * Note: 0x00 (NUL) excluded — common in PST text, not a valid message start.
- * 416-byte debugger packets (0x00-0x07) are found by find416ByteBoundary() instead.
  */
 function looksLikeMessageStart(firstByte: number | undefined): boolean {
   if (firstByte === undefined) {
@@ -71,7 +73,6 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
   }
 
   // "C" - potential start of "Cog" message
-  // Note: We can't peek further without complicating buffer state, so we accept "C" as valid
   if (firstByte === 0x43) {
     return true;
   }
@@ -81,15 +82,39 @@ function looksLikeMessageStart(firstByte: number | undefined): boolean {
     return true;
   }
 
-  // PST control sequences - terminal output with control codes
-  // 0x01 - Home, 0x02 - Position (multi-byte), 0x03-0x06 - Cursor move,
-  // 0x08 - Backspace, 0x09 - Tab, 0x0A - LF, 0x0B - Clear EOL,
-  // 0x0C - Clear below, 0x0D - CR, 0x0E-0x0F - Position X/Y (multi-byte),
-  // 0x10 - Clear Screen
-  // Note: 0x00 (NUL) intentionally excluded - NUL is common in PST text and should
-  // NOT trigger message boundary splits. 416-byte debugger packets starting with
-  // 0x00-0x07 are found by find416ByteBoundary() with proper 4-byte validation.
+  // PST control sequences (0x01-0x10)
   if (firstByte >= 0x01 && firstByte <= 0x10) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Helper: RELAXED check if byte looks like start of a new text line
+ * Used for non-backtick messages (terminal output, COG messages, etc.)
+ * where CR/LF is always a real line terminator.
+ *
+ * Includes everything from looksLikeMessageStart() PLUS printable ASCII (0x20-0x7E),
+ * since text lines commonly start with spaces, letters, digits, punctuation, etc.
+ */
+function looksLikeTextLineStart(firstByte: number | undefined): boolean {
+  if (firstByte === undefined) {
+    return true; // End of buffer - treat as valid boundary
+  }
+
+  // Printable ASCII (space through tilde) - covers most text line starts
+  if (firstByte >= 0x20 && firstByte <= 0x7E) {
+    return true;
+  }
+
+  // PST control sequences (0x01-0x10)
+  if (firstByte >= 0x01 && firstByte <= 0x10) {
+    return true;
+  }
+
+  // 0xDB - debugger protocol packet
+  if (firstByte === 0xDB) {
     return true;
   }
 
@@ -124,6 +149,7 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
   buffer.savePosition();
   const messageBytes: number[] = [];
   const MAX_TEXT_LENGTH = 65536; // 64KB - matches max message size, supports large SPRITEDEF commands
+  let isBacktickMessage = false; // Track for SPRITEDEF binary data protection
 
   while (messageBytes.length < MAX_TEXT_LENGTH) {
     const result = buffer.next();
@@ -134,6 +160,16 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
     }
 
     messageBytes.push(result.value!);
+
+    // After first byte, determine boundary validation mode:
+    // - Backtick messages use STRICT check (protects SPRITEDEF binary data with embedded CR/LF)
+    // - All other messages use RELAXED check (printable ASCII is a valid line start)
+    if (messageBytes.length === 1) {
+      isBacktickMessage = result.value === 0x60;
+    }
+
+    // Select boundary validator based on message type
+    const isValidBoundary = isBacktickMessage ? looksLikeMessageStart : looksLikeTextLineStart;
 
     // Check for CR (0x0D)
     if (result.value === 0x0D) {
@@ -151,13 +187,13 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
       }
 
       if (lfResult.value === 0x0A) {
-        // CRLF pattern (0x0D 0x0A) - check if followed by valid message start
+        // CRLF pattern (0x0D 0x0A) - check if followed by valid message/line start
         // Save position before peeking at next byte
         const positionBeforePeek = buffer.savePosition();
         const nextByteResult = buffer.next();
         const nextByte = nextByteResult.status === NextStatus.EMPTY ? undefined : nextByteResult.value;
 
-        if (looksLikeMessageStart(nextByte)) {
+        if (isValidBoundary(nextByte)) {
           // Valid EOL - restore position to put back the peeked byte, then return message
           buffer.restorePosition();
           messageBytes.push(0x0A);
@@ -173,7 +209,7 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
         }
       } else {
         // CR not followed by LF - check if CR alone is valid EOL
-        if (looksLikeMessageStart(lfResult.value)) {
+        if (isValidBoundary(lfResult.value)) {
           // CR only is valid EOL - restore to put back the peeked byte
           buffer.restorePosition();
           // Re-advance to include CR we found
@@ -204,13 +240,13 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
       }
 
       if (crResult.value === 0x0D) {
-        // LFCR pattern (0x0A 0x0D) - check if followed by valid message start
+        // LFCR pattern (0x0A 0x0D) - check if followed by valid message/line start
         // Save position before peeking at next byte
         const positionBeforePeek = buffer.savePosition();
         const nextByteResult = buffer.next();
         const nextByte = nextByteResult.status === NextStatus.EMPTY ? undefined : nextByteResult.value;
 
-        if (looksLikeMessageStart(nextByte)) {
+        if (isValidBoundary(nextByte)) {
           // Valid EOL - restore position to put back the peeked byte, then return message
           buffer.restorePosition();
           messageBytes.push(0x0D);
@@ -226,7 +262,7 @@ function findTextBoundary(idleTimeoutExpired: boolean): Uint8Array | null {
         }
       } else {
         // LF not followed by CR - check if LF alone is valid EOL
-        if (looksLikeMessageStart(crResult.value)) {
+        if (isValidBoundary(crResult.value)) {
           // LF only is valid EOL - restore to put back the peeked byte
           buffer.restorePosition();
           // Re-advance to include LF we found
