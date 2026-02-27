@@ -604,7 +604,7 @@ jobs:
           x = (width - (bbox[2] - bbox[0])) // 2
           draw.text((x, 255), instruction, fill=(80, 80, 80), font=font_instruction)
 
-          logo_path = "assets/logo.png"
+          logo_path = "assets/company-logo.png"
           if os.path.exists(logo_path):
               try:
                   logo = Image.open(logo_path).convert("RGBA")
