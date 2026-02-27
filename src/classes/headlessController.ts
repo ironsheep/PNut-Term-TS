@@ -99,8 +99,10 @@ export class HeadlessController {
     if (this.downloadPath) {
       const downloadSuccess = await this.downloadFile(this.downloadPath, this.downloadToFlash);
       if (!downloadSuccess) {
-        this.logger.logError('Download failed - continuing to monitor serial output');
-        // Don't exit on download failure - continue monitoring
+        // Download failed - abort immediately (exit code 3 = Download failed)
+        this.logger.logError('Download failed - aborting');
+        this.initiateShutdown(3, 'Download failed');
+        return this.exitCode;
       }
     }
 

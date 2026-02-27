@@ -2102,6 +2102,14 @@ export class MainWindow {
       }, 200);
     });
 
+    // Auto-focus yellow data entry field when window is activated
+    this.mainWindow.on('focus', () => {
+      this.safeExecuteJS(
+        `const de = document.getElementById('dataEntry'); if (de) de.focus();`,
+        'focus-data-entry-on-activate'
+      );
+    });
+
     this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');
 
     const dataEntryBGColor: string = this.termColors.xmitBGColor;

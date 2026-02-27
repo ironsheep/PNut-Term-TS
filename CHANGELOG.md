@@ -5,6 +5,19 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.17] - 2026-02-27
+
+### Fixed
+
+- **Data entry field not focused on window activation** - Clicking the title bar to return to the main window did not place the cursor in the yellow `#dataEntry` input field, requiring a second click
+  - Added a `focus` event handler on the main window that auto-focuses `#dataEntry` whenever the window is activated
+- **Headless mode continued after download failure** - When a binary download failed in headless/CLI mode, the process continued to monitor serial output instead of reporting the failure
+  - Download failure now aborts immediately with exit code 3, allowing CI/CD pipelines and scripts to detect the failure
+
+### Changed
+
+- **Devcontainer configuration** - Renamed `docker-compose.local.yml` to `docker-compose.override.yml` (Docker Compose native convention), updated port mappings, added OCR library dependencies for container tooling
+
 ## [0.9.16] - 2026-02-12
 
 ### Fixed

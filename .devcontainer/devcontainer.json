@@ -1,11 +1,11 @@
 // See https://aka.ms/vscode-remote/devcontainer.json for format details.
 {
   "name": "Pnut TermDebug TypeScript Development",
-  "dockerComposeFile": ["docker-compose.yml", "docker-compose.local.yml"],
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
   "service": "dev",
   "workspaceFolder": "/workspaces/PNut-Term-TS",
-  "initializeCommand": "test -f .devcontainer/docker-compose.local.yml || echo 'services: {}' > .devcontainer/docker-compose.local.yml",
-  "postCreateCommand": "npm install && if [ -f .devcontainer/install-claude-local.sh ]; then bash .devcontainer/install-claude-local.sh; fi",
+  "initializeCommand": "test -f .devcontainer/docker-compose.override.yml || echo 'services: {}' > .devcontainer/docker-compose.override.yml",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y liblept5 libtesseract5 || true; sudo mkdir -p /Users/stephen && sudo ln -sfn /opt/container-tools /Users/stephen/container-tools; npm install && if [ -f .devcontainer/install-claude-local.sh ]; then bash .devcontainer/install-claude-local.sh; fi",
   "customizations": {
     "vscode": {
       "extensions": [
