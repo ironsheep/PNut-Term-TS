@@ -5,6 +5,16 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.18] - 2026-02-28
+
+### Fixed
+
+- **Headless end-marker detection fails on split USB chunks** - The `END_SESSION` / `DEBUG_END_SESSION` marker string frequently arrives split across two serial data events (e.g., `END_` then `SESSION`), causing detection to fail and the session to reach timeout
+  - Added a rolling search buffer that accumulates text across chunk boundaries, keeping enough tail from the previous chunk to detect any marker split at any point
+- **USB traffic logging not available in headless mode** - The `-u` / `--log-usb-trfc` flag was parsed but never acted on in headless mode; no `usb-traffic_*.log` file was created
+  - HeadlessController now creates and manages its own `USBTrafficLogger`, logging raw serial data with hex dumps identical to GUI mode
+  - USB log is properly closed (with session footer and statistics) on all exit paths: end-marker, timeout, signal, and download failure
+
 ## [0.9.17] - 2026-02-27
 
 ### Fixed

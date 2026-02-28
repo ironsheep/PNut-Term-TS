@@ -12,15 +12,19 @@
  * as it runs in Node.js mode (ELECTRON_RUN_AS_NODE=1) without Chromium.
  */
 
+import * as path from 'path';
 import { Context } from '../utils/context';
 import { UsbSerial } from '../utils/usb.serial';
+import { getFormattedDateTime } from '../utils/files';
 import { HeadlessFileLogger } from './shared/headlessFileLogger';
+import { USBTrafficLogger } from './shared/usbTrafficLogger';
 import { Downloader } from './downloader';
 
 export class HeadlessController {
   private context: Context;
   private serialPort: UsbSerial | null = null;
   private logger: HeadlessFileLogger;
+  private usbLogger: USBTrafficLogger | null = null;
   private downloader: Downloader | null = null;
 
   // Termination control
@@ -60,6 +64,17 @@ export class HeadlessController {
     // Initialize logger
     this.logger.initialize();
     this.logger.logSystem('Headless mode started');
+
+    // Initialize USB traffic logger if requested
+    if (this.context.runEnvironment.usbTrafficLogging) {
+      const logsDir = this.context.getLogDirectory();
+      const timestamp = getFormattedDateTime();
+      const usbLogPath = path.join(logsDir, `usb-traffic_${timestamp}.log`);
+      this.usbLogger = new USBTrafficLogger();
+      this.usbLogger.enable(usbLogPath);
+      console.log(`[HEADLESS] USB traffic logging enabled: ${usbLogPath}`);
+      this.logger.logSystem(`USB traffic logging enabled: ${usbLogPath}`);
+    }
 
     // Set up end-marker callback
     this.logger.setEndMarkerCallback(() => {
@@ -155,6 +170,11 @@ export class HeadlessController {
   private handleSerialData(data: Buffer): void {
     if (this.isShuttingDown) {
       return; // Ignore data during shutdown
+    }
+
+    // Log raw USB traffic if enabled
+    if (this.usbLogger) {
+      this.usbLogger.log(data);
     }
 
     // Convert buffer to string for logging
@@ -283,6 +303,12 @@ export class HeadlessController {
         console.error(`[HEADLESS] Error closing serial port: ${error}`);
       }
       this.serialPort = null;
+    }
+
+    // Close USB traffic logger
+    if (this.usbLogger) {
+      this.usbLogger.disable();
+      this.usbLogger = null;
     }
 
     // Close logger

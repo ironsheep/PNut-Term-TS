@@ -33,6 +33,8 @@ export class HeadlessFileLogger {
   // Callback for end-marker detection
   private onEndMarkerDetected: (() => void) | null = null;
   private endMarkers: string[] = [];
+  private markerSearchBuffer: string = ''; // Rolling buffer for cross-chunk marker detection
+  private maxMarkerLength: number = 0;
 
   constructor(context: Context) {
     this.context = context;
@@ -40,6 +42,7 @@ export class HeadlessFileLogger {
     // Set up end-markers if configured
     if (context.runEnvironment.headlessEndMarker) {
       this.endMarkers = context.runEnvironment.headlessEndMarker;
+      this.maxMarkerLength = Math.max(...this.endMarkers.map((m) => m.length));
     }
   }
 
@@ -129,15 +132,23 @@ export class HeadlessFileLogger {
   public logMessage(message: string): void {
     this.writeToLog(message);
 
-    // Check for end-markers (case-sensitive substring match)
-    for (const marker of this.endMarkers) {
-      if (message.includes(marker)) {
-        console.log(`[HEADLESS] End marker "${marker}" detected!`);
-        this.logSystem(`End marker "${marker}" detected - initiating shutdown`);
-        if (this.onEndMarkerDetected) {
+    // Check for end-markers using rolling buffer to handle markers split across chunks
+    // (serial data arrives in arbitrary-sized chunks that can split marker strings)
+    if (this.endMarkers.length > 0 && this.onEndMarkerDetected) {
+      this.markerSearchBuffer += message;
+
+      for (const marker of this.endMarkers) {
+        if (this.markerSearchBuffer.includes(marker)) {
+          console.log(`[HEADLESS] End marker "${marker}" detected!`);
+          this.logSystem(`End marker "${marker}" detected - initiating shutdown`);
           this.onEndMarkerDetected();
+          return;
         }
-        break; // Only trigger once
+      }
+
+      // Keep only enough tail to detect markers split across the next chunk boundary
+      if (this.markerSearchBuffer.length > this.maxMarkerLength * 2) {
+        this.markerSearchBuffer = this.markerSearchBuffer.slice(-(this.maxMarkerLength - 1));
       }
     }
   }
