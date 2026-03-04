@@ -941,10 +941,17 @@ export class LoggerWindow extends DebugWindowBase {
           this.appendMessage(formatted, 'cog-message');
           this.writeToLog(formatted);
         } else {
-          // Binary data misclassified as COG - display defensively with hex fallback
-          const hexFallback = this.formatBinaryAsHexFallback(actualData);
-          this.appendMessage(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`, 'binary-message');
-          this.writeToLog(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`);
+          // Check for DEBUG_END_SESSION sentinel (0x1B) before treating as routing error
+          if (actualData.includes(0x1b)) {
+            const endMsg = '[DEBUG_END_SESSION]';
+            this.appendMessage(endMsg, 'cog-message');
+            this.writeToLog(endMsg);
+          } else {
+            // Binary data misclassified as COG - display defensively with hex fallback
+            const hexFallback = this.formatBinaryAsHexFallback(actualData);
+            this.appendMessage(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`, 'binary-message');
+            this.writeToLog(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`);
+          }
         }
       }
     }

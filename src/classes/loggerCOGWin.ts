@@ -610,6 +610,9 @@ export class LoggerCOGWindow extends DebugWindowBase {
       if (this.isASCIIData(message)) {
         // Valid ASCII - decode as text
         displayMessage = new TextDecoder().decode(message);
+      } else if (message.includes(0x1b)) {
+        // DEBUG_END_SESSION sentinel (0x1B) - display as session end
+        displayMessage = '[DEBUG_END_SESSION]';
       } else {
         // Binary data misclassified - display defensively
         displayMessage = this.formatBinaryAsHexFallback(message);

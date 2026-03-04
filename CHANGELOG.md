@@ -5,6 +5,17 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.19] - 2026-03-04
+
+### Added
+
+- **DEBUG_END_SESSION support** - The P2 compiler's `DEBUG(DEBUG_END_SESSION)` command now cleanly ends the debug session, disconnecting the serial port automatically
+  - The 0x1B sentinel byte is displayed as `[DEBUG_END_SESSION]` in the debug logger and COG windows instead of a binary routing error
+
+### Fixed
+
+- **Window focus error on startup** - Auto-focus of the data entry field fired before the DOM was loaded, producing a script execution error in the console on every launch
+
 ## [0.9.18] - 2026-02-28
 
 ### Fixed

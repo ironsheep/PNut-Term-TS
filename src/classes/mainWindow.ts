@@ -262,6 +262,12 @@ export class MainWindow {
       this.handleP2SystemReboot(eventData);
     });
 
+    // Listen for DEBUG_END_SESSION sentinel (0x1B byte in COG message)
+    this.windowRouter.on('debugEndSession', (eventData: { cogId: number; timestamp: number }) => {
+      this.logConsoleMessage(`[SESSION] DEBUG_END_SESSION received from COG${eventData.cogId} - disconnecting serial port`);
+      this.disconnectSerialPort();
+    });
+
     this.logConsoleMessage(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
   }
 
@@ -2103,7 +2109,13 @@ export class MainWindow {
     });
 
     // Auto-focus yellow data entry field when window is activated
+    // Only after DOM is loaded (focus fires before did-finish-load on first show)
+    let domReady = false;
+    this.mainWindow.webContents.once('did-finish-load', () => {
+      domReady = true;
+    });
     this.mainWindow.on('focus', () => {
+      if (!domReady) return;
       this.safeExecuteJS(
         `const de = document.getElementById('dataEntry'); if (de) de.focus();`,
         'focus-data-entry-on-activate'
@@ -4916,13 +4928,6 @@ export class MainWindow {
 
     const newCols = Math.max(1, Math.floor(metrics.contentWidth / metrics.charWidth));
     const newRows = Math.max(1, Math.floor(metrics.contentHeight / metrics.lineHeight));
-
-    // Always log grid metrics so the user can verify sizing
-    console.log(
-      `[PST GRID] Font: ${metrics.charWidth.toFixed(2)}×${metrics.lineHeight.toFixed(2)}px, ` +
-      `Container: ${Math.round(metrics.contentWidth)}×${Math.round(metrics.contentHeight)}px → ` +
-      `${newCols} cols × ${newRows} rows`
-    );
 
     if (newCols !== this.terminalWidth || newRows !== this.terminalHeight) {
       this.resizePSTGrid(newCols, newRows);

@@ -497,6 +497,13 @@ export class WindowRouter extends EventEmitter {
     ) {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
 
+      // Check for DEBUG_END_SESSION sentinel (0x1B / ESC byte) in COG message data
+      // The P2 compiler's DEBUG(DEBUG_END_SESSION) emits 0x1B as a single-byte sentinel
+      if (message.data instanceof Uint8Array && message.data.includes(0x1b)) {
+        this.logConsoleMessage(`[ROUTER] DEBUG_END_SESSION sentinel (0x1B) detected in COG${cogId ?? '?'} message`);
+        this.emit('debugEndSession', { cogId: cogId ?? 0, timestamp: Date.now() });
+      }
+
       // Always route to DebugLogger window for logging (ONE place - no duplicates)
       const loggerWindow = this.windows.get('logger');
       if (loggerWindow) {
