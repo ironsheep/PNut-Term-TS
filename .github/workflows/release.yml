@@ -608,11 +608,12 @@ jobs:
           if os.path.exists(logo_path):
               try:
                   logo = Image.open(logo_path).convert("RGBA")
-                  logo_h = 45
+                  logo_h = 55
                   scale = logo_h / logo.size[1]
                   logo = logo.resize((int(logo.size[0] * scale), logo_h), Image.LANCZOS)
-                  x = width - logo.size[0] - 20
-                  img.paste(logo, (x, 25), logo)
+                  # Position with generous margins from edges to avoid Finder titlebar/corner clipping
+                  x = width - logo.size[0] - 30
+                  img.paste(logo, (x, 10), logo)
               except:
                   pass
 
