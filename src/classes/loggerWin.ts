@@ -1191,7 +1191,9 @@ export class LoggerWindow extends DebugWindowBase {
     const timestamp = getFormattedDateTimeISO();
     // Strip trailing CR/LF from message before logging (messages arrive with line endings from P2)
     const cleanMessage = message.replace(/[\r\n]+$/, '');
-    const logEntry = `[${timestamp}] ${cleanMessage}\n`;
+    // Timestamp every line individually to prevent mid-line timestamps in log output
+    const lines = cleanMessage.split(/\r?\n/);
+    const logEntry = lines.map((line) => `[${timestamp}] ${line}\n`).join('');
 
     if (this.logFileReady && this.logFile) {
       // Log file is ready - write normally

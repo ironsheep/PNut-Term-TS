@@ -5,6 +5,13 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.20] - 2026-03-06
+
+### Fixed
+
+- **Mid-line timestamps in log files** - Multi-line messages from the P2 were written with a single timestamp on the first line, leaving subsequent lines un-timestamped and producing mid-line timestamp collisions when interleaved with other entries
+  - Both the debug logger and headless file logger now split on embedded newlines and timestamp every line individually, making log output consistently parseable
+
 ## [0.9.19] - 2026-03-04
 
 ### Added
