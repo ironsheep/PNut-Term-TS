@@ -82,6 +82,11 @@ export class LoggerWindow extends DebugWindowBase {
   private logFileReady: boolean = false;
   private rendererReady: boolean = false; // Track when renderer DOM is ready for IPC
 
+  // Line reassembly: accumulate partial chunks until CR/LF confirms a complete line
+  private logLineAccumulator: string = '';
+  private logLineFlushTimer: NodeJS.Timeout | null = null;
+  private readonly LOG_LINE_FLUSH_TIMEOUT_MS = 50; // Flush partial lines after 50ms idle
+
   // Performance warning tracking
   private performanceMonitor: PerformanceMonitor | null = null;
   private warningHistory: PerformanceWarning[] = [];
@@ -1184,16 +1189,56 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Write message to log file (buffered for performance)
+   * Write message to log file with line reassembly.
+   * Accumulates partial chunks until CR/LF confirms a complete line,
+   * so each log entry corresponds to a logical line — no mid-word splits.
    * RACE CONDITION FIX: Buffer messages if log file isn't ready yet
    */
   private writeToLog(message: string): void {
+    // Accumulate text and extract complete lines (terminated by \n or \r\n)
+    this.logLineAccumulator += message;
+
+    // Reset idle timer on every chunk
+    if (this.logLineFlushTimer) {
+      clearTimeout(this.logLineFlushTimer);
+    }
+
+    // Extract and write all complete lines
+    let newlineIdx: number;
+    while ((newlineIdx = this.logLineAccumulator.indexOf('\n')) !== -1) {
+      const line = this.logLineAccumulator.substring(0, newlineIdx + 1);
+      this.logLineAccumulator = this.logLineAccumulator.substring(newlineIdx + 1);
+      this.writeLogEntry(line);
+    }
+
+    // If there's remaining text without a newline, start idle timer to flush it
+    if (this.logLineAccumulator.length > 0) {
+      this.logLineFlushTimer = setTimeout(() => this.flushLogLineAccumulator(), this.LOG_LINE_FLUSH_TIMEOUT_MS);
+    }
+  }
+
+  /**
+   * Flush any partial line remaining in the accumulator (on idle timeout or shutdown)
+   */
+  private flushLogLineAccumulator(): void {
+    if (this.logLineFlushTimer) {
+      clearTimeout(this.logLineFlushTimer);
+      this.logLineFlushTimer = null;
+    }
+    if (this.logLineAccumulator.length > 0) {
+      this.writeLogEntry(this.logLineAccumulator);
+      this.logLineAccumulator = '';
+    }
+  }
+
+  /**
+   * Write a single reassembled line to the log file with timestamp.
+   */
+  private writeLogEntry(message: string): void {
     const timestamp = getFormattedDateTimeISO();
-    // Strip trailing CR/LF from message before logging (messages arrive with line endings from P2)
+    // Strip trailing CR/LF from the reassembled line
     const cleanMessage = message.replace(/[\r\n]+$/, '');
-    // Timestamp every line individually to prevent mid-line timestamps in log output
-    const lines = cleanMessage.split(/\r?\n/);
-    const logEntry = lines.map((line) => `[${timestamp}] ${line}\n`).join('');
+    const logEntry = `[${timestamp}] ${cleanMessage}\n`;
 
     if (this.logFileReady && this.logFile) {
       // Log file is ready - write normally
@@ -1201,7 +1246,7 @@ export class LoggerWindow extends DebugWindowBase {
 
       // Log first few writes to confirm it's working
       if (this.writeBuffer.length <= 3) {
-        const truncated = message.length > 80 ? message.substring(0, 80) + '...' : message;
+        const truncated = cleanMessage.length > 80 ? cleanMessage.substring(0, 80) + '...' : cleanMessage;
         this.logConsoleMessage('[DEBUG LOGGER] Added to write buffer:', truncated);
       }
 
@@ -1211,7 +1256,6 @@ export class LoggerWindow extends DebugWindowBase {
       }
 
       // Force flush only if buffer is getting large (4KB)
-      // Removed the "|| this.writeBuffer.length === 1" condition that was causing every message to flush immediately
       if (this.writeBuffer.join('').length > 4096) {
         this.flushWriteBuffer();
       }
@@ -1219,14 +1263,14 @@ export class LoggerWindow extends DebugWindowBase {
       // Log file not ready yet - buffer the message for later
       this.pendingLogMessages.push(logEntry);
       this.logConsoleMessage(
-        `[DEBUG LOGGER] 📦 Buffered message (log file not ready): ${message.substring(0, 50)}${
-          message.length > 50 ? '...' : ''
+        `[DEBUG LOGGER] Buffered message (log file not ready): ${cleanMessage.substring(0, 50)}${
+          cleanMessage.length > 50 ? '...' : ''
         }`
       );
 
       // Limit buffer size to prevent memory issues
       if (this.pendingLogMessages.length > 1000) {
-        console.warn('[DEBUG LOGGER] ⚠️ Pending message buffer full, dropping oldest messages');
+        console.warn('[DEBUG LOGGER] Pending message buffer full, dropping oldest messages');
         this.pendingLogMessages.splice(0, 100); // Remove oldest 100 messages
       }
     }
@@ -1547,6 +1591,9 @@ export class LoggerWindow extends DebugWindowBase {
       clearTimeout(this.batchTimer);
       this.processBatch();
     }
+
+    // Flush any partial line waiting for more data
+    this.flushLogLineAccumulator();
 
     // Flush any pending writes
     if (this.writeTimer) {

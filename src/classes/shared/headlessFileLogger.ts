@@ -30,6 +30,11 @@ export class HeadlessFileLogger {
   private readonly WRITE_INTERVAL_MS = 100; // Flush every 100ms
   private readonly MAX_BUFFER_SIZE = 4096; // Force flush at 4KB
 
+  // Line reassembly: accumulate partial USB chunks until CR/LF confirms a complete line
+  private lineAccumulator: string = '';
+  private lineFlushTimer: NodeJS.Timeout | null = null;
+  private readonly LINE_FLUSH_TIMEOUT_MS = 50; // Flush partial lines after 50ms idle
+
   // Callback for end-marker detection
   private onEndMarkerDetected: (() => void) | null = null;
   private endMarkers: string[] = [];
@@ -127,11 +132,11 @@ export class HeadlessFileLogger {
   }
 
   /**
-   * Log a message from serial data
+   * Log a message from serial data.
+   * Reassembles arbitrary USB chunks into complete lines before writing,
+   * so each log entry corresponds to a logical line (CR/LF terminated).
    */
   public logMessage(message: string): void {
-    this.writeToLog(message);
-
     // Check for end-markers using rolling buffer to handle markers split across chunks
     // (serial data arrives in arbitrary-sized chunks that can split marker strings)
     if (this.endMarkers.length > 0 && this.onEndMarkerDetected) {
@@ -140,6 +145,8 @@ export class HeadlessFileLogger {
       for (const marker of this.endMarkers) {
         if (this.markerSearchBuffer.includes(marker)) {
           console.log(`[HEADLESS] End marker "${marker}" detected!`);
+          // Flush any accumulated partial line before shutdown
+          this.flushLineAccumulator();
           this.logSystem(`End marker "${marker}" detected - initiating shutdown`);
           this.onEndMarkerDetected();
           return;
@@ -150,6 +157,42 @@ export class HeadlessFileLogger {
       if (this.markerSearchBuffer.length > this.maxMarkerLength * 2) {
         this.markerSearchBuffer = this.markerSearchBuffer.slice(-(this.maxMarkerLength - 1));
       }
+    }
+
+    // Accumulate text and extract complete lines (terminated by \n or \r\n)
+    this.lineAccumulator += message;
+
+    // Reset idle timer on every chunk
+    if (this.lineFlushTimer) {
+      clearTimeout(this.lineFlushTimer);
+    }
+
+    // Extract and write all complete lines
+    let newlineIdx: number;
+    while ((newlineIdx = this.lineAccumulator.indexOf('\n')) !== -1) {
+      // Extract line including the \n
+      let line = this.lineAccumulator.substring(0, newlineIdx + 1);
+      this.lineAccumulator = this.lineAccumulator.substring(newlineIdx + 1);
+      this.writeToLog(line);
+    }
+
+    // If there's remaining text without a newline, start idle timer to flush it
+    if (this.lineAccumulator.length > 0) {
+      this.lineFlushTimer = setTimeout(() => this.flushLineAccumulator(), this.LINE_FLUSH_TIMEOUT_MS);
+    }
+  }
+
+  /**
+   * Flush any partial line remaining in the accumulator (on idle timeout or shutdown)
+   */
+  private flushLineAccumulator(): void {
+    if (this.lineFlushTimer) {
+      clearTimeout(this.lineFlushTimer);
+      this.lineFlushTimer = null;
+    }
+    if (this.lineAccumulator.length > 0) {
+      this.writeToLog(this.lineAccumulator);
+      this.lineAccumulator = '';
     }
   }
 
@@ -198,11 +241,9 @@ export class HeadlessFileLogger {
    */
   private writeToLog(message: string): void {
     const timestamp = getFormattedDateTimeISO();
-    // Strip trailing CR/LF from message before logging
+    // Strip trailing CR/LF — line reassembly in logMessage() ensures single logical lines
     const cleanMessage = message.replace(/[\r\n]+$/, '');
-    // Timestamp every line individually to prevent mid-line timestamps in log output
-    const lines = cleanMessage.split(/\r?\n/);
-    const logEntry = lines.map((line) => `[${timestamp}] ${line}\n`).join('');
+    const logEntry = `[${timestamp}] ${cleanMessage}\n`;
 
     if (this.logFileReady && this.logFile) {
       // Log file is ready - write normally
@@ -273,6 +314,9 @@ export class HeadlessFileLogger {
    * Close the log file gracefully
    */
   public close(): void {
+    // Flush any partial line waiting for more data
+    this.flushLineAccumulator();
+
     // Flush any remaining data
     this.flushWriteBuffer();
 

@@ -5,6 +5,14 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.21] - 2026-03-06
+
+### Fixed
+
+- **Mid-word line splits in log files** - Raw USB chunks were logged individually, causing lines to break at arbitrary byte boundaries (mid-word, mid-number) wherever the FTDI chip's 16ms latency timer flushed its buffer
+  - Both the debug logger and headless file logger now reassemble USB chunks into complete logical lines before writing, holding partial data until a CR/LF boundary is confirmed or a 50ms idle timeout expires
+  - Each reassembled line is individually timestamped, eliminating both mid-word splits and mid-line timestamp collisions
+
 ## [0.9.20] - 2026-03-06
 
 ### Fixed
