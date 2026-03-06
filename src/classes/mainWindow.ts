@@ -2110,16 +2110,21 @@ export class MainWindow {
 
     // Auto-focus yellow data entry field when window is activated
     // Only after DOM is loaded (focus fires before did-finish-load on first show)
+    // NOTE: This is best-effort — silently ignore failures since focus is non-critical
+    //   and Electron can fire 'focus' during renderer transitions where executeJavaScript
+    //   fails at the IPC level (not a script error, but a context-unavailable error).
     let domReady = false;
     this.mainWindow.webContents.once('did-finish-load', () => {
       domReady = true;
     });
     this.mainWindow.on('focus', () => {
-      if (!domReady) return;
-      this.safeExecuteJS(
-        `const de = document.getElementById('dataEntry'); if (de) de.focus();`,
-        'focus-data-entry-on-activate'
-      );
+      if (!domReady || this.isShuttingDown) return;
+      if (this.mainWindow.isDestroyed() || this.mainWindow.webContents.isLoading()) return;
+      this.mainWindow.webContents
+        .executeJavaScript(`const de = document.getElementById('dataEntry'); if (de) de.focus();`)
+        .catch(() => {
+          // Silently ignore — focus is non-critical, renderer may not be ready
+        });
     });
 
     this.logConsoleMessage('[WINDOW] BrowserWindow created successfully');

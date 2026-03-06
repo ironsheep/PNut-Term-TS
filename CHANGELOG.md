@@ -5,6 +5,13 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.22] - 2026-03-06
+
+### Fixed
+
+- **Window focus error on activate** - Focusing the data entry field via `executeJavaScript` failed with renderer errors when the window received focus while the page was still loading, producing noisy error logs on every activation
+  - Added a `webContents.isLoading()` guard to skip the focus attempt when the renderer context is unavailable
+
 ## [0.9.21] - 2026-03-06
 
 ### Fixed
