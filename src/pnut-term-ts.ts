@@ -44,7 +44,7 @@ function findMatch(array: string[], substring: string): boolean {
 export class DebugTerminalInTypeScript {
   private readonly program = new Command();
   //static isTesting: boolean = false;
-  private version: string = '0.9.6';
+  private version: string = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8')).version;
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
