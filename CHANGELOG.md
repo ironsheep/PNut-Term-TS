@@ -5,6 +5,16 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.23] - 2026-03-09
+
+### Fixed
+
+- **Application process not exiting on Fedora Linux** - Closing all windows left the Electron process running invisibly in the background, holding the serial port open and requiring `kill -9` to free it for the next session
+  - Removed a duplicate `window-all-closed` handler that raced with serial port cleanup, calling `app.quit()` before the port was properly closed
+  - Added a 5-second safety timeout so the process exits even if serial port cleanup hangs
+- **CR-only line endings overwrite lines in PST terminal** - Programs written for Parallax Serial Terminal that terminate lines with CR only (no LF) had every line overwritten in place, because CR was treated as carriage return without line feed
+  - CR now implies LF in PST mode, matching Parallax Serial Terminal behavior; programs sending CR+LF are not double-spaced
+
 ## [0.9.22] - 2026-03-06
 
 ### Fixed

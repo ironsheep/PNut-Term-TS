@@ -179,11 +179,9 @@ app.commandLine.appendSwitch('no-sandbox');
     });
 
     // App event handlers
-    app.on('window-all-closed', () => {
-      if (process.platform !== 'darwin') {
-        app.quit();
-      }
-    });
+    // NOTE: window-all-closed is handled in mainWindow.ts which owns serial port cleanup.
+    // A duplicate handler here would race with the async cleanup and quit before
+    // the serial port is properly closed — leaving /dev/ttyUSB0 held open on Linux.
 
     app.on('activate', () => {
       // On macOS, re-create window when dock icon is clicked

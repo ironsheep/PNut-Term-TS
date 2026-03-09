@@ -1230,6 +1230,12 @@ export class MainWindow {
           `[SHUTDOWN ${new Date().toISOString()}] All windows closed, initiating shutdown sequence`
         );
 
+        // Safety timeout: force quit if cleanup takes too long (e.g. serial port hangs)
+        const forceQuitTimer = setTimeout(() => {
+          this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Force quit - cleanup timeout exceeded`);
+          app.quit();
+        }, 5000);
+
         // STEP 3: Close all debug windows (clean up references)
         this.closeAllDebugWindows();
 
@@ -1243,7 +1249,7 @@ export class MainWindow {
           this.rxActivityTimer = null;
         }
 
-        // STEP 4: Close serial port properly to prevent Napi::Error on shutdown
+        // STEP 4: Close serial port properly to release /dev/ttyUSB0 on Linux
         if (this._serialPort) {
           this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Closing serial port before app exit`);
           try {
@@ -1261,6 +1267,7 @@ export class MainWindow {
         }
 
         // STEP 5: Quit app
+        clearTimeout(forceQuitTimer);
         this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Quitting app`);
         app.quit();
         this.mainWindowOpen = false;
@@ -4759,10 +4766,6 @@ export class MainWindow {
       this.logMessage('* Main window [closed]');
       this.mainWindow = null;
       this.mainWindowOpen = false;
-      // Force quit on macOS when main window is closed
-      if (process.platform === 'darwin') {
-        app.quit();
-      }
     });
   }
 
@@ -5224,7 +5227,12 @@ export class MainWindow {
                   break;
                 case 13:
                   // NL: New Line (Carriage Return)
+                  // PST treats CR as CR+LF. If next char is already LF, skip the
+                  // implicit LF so CR+LF programs don't get double-spaced.
                   this.executePSTCommand('newline');
+                  if (i + 1 >= currLine.length || currLine.charCodeAt(i + 1) !== 10) {
+                    this.executePSTCommand('linefeed');
+                  }
                   break;
                 case 14:
                   // PX: Position cursor X (next byte)

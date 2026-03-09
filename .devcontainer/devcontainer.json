@@ -4,8 +4,9 @@
   "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
   "service": "dev",
   "workspaceFolder": "/workspaces/PNut-Term-TS",
+  "remoteUser": "node",
   "initializeCommand": "test -f .devcontainer/docker-compose.override.yml || echo 'services: {}' > .devcontainer/docker-compose.override.yml",
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y liblept5 libtesseract5 || true; sudo mkdir -p /Users/stephen && sudo ln -sfn /opt/container-tools /Users/stephen/container-tools; npm install && if [ -f .devcontainer/install-claude-local.sh ]; then bash .devcontainer/install-claude-local.sh; fi",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libleptonica6 libtesseract5 && LEPLIB=$(find /lib -name 'libleptonica.so.*' -not -name '*.so.*.*' | head -1) && sudo ln -sf \"$LEPLIB\" \"$(dirname $LEPLIB)/liblept.so.5\" && sudo ldconfig || true; sudo mkdir -p /Users/stephen && sudo ln -sfn /opt/container-tools /Users/stephen/container-tools; npm install && if [ -f .devcontainer/install-claude-local.sh ]; then bash .devcontainer/install-claude-local.sh; fi",
   "customizations": {
     "vscode": {
       "extensions": [
