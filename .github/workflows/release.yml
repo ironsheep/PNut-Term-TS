@@ -47,9 +47,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install zip utility
-        run: choco install zip -y
-
       - name: Build and package Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

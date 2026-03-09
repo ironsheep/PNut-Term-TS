@@ -273,14 +273,17 @@ README_EOF
     cd "$PACKAGE_DIR"
     if command -v zip > /dev/null; then
         zip -q -r "${zip_name}.zip" "pnut_term_ts"
-        echo "   ✅ Created ${zip_name}.zip"
-        # Remove the uncompressed folder after successful ZIP creation
-        rm -rf "pnut_term_ts"
-        echo "   🧹 Cleaned up uncompressed folder"
+        echo "   ✅ Created ${zip_name}.zip (using zip)"
+    elif command -v 7z > /dev/null; then
+        7z a -tzip "${zip_name}.zip" "pnut_term_ts" > /dev/null
+        echo "   ✅ Created ${zip_name}.zip (using 7z)"
     else
-        echo "   ⚠️  zip command not found. Package directory ready at: $pkg_dir"
-        echo "   Install zip or manually create the archive"
+        echo "   ❌ No zip utility found (tried zip, 7z). Cannot create package."
+        exit 1
     fi
+    # Remove the uncompressed folder after successful ZIP creation
+    rm -rf "pnut_term_ts"
+    echo "   🧹 Cleaned up uncompressed folder"
     cd - > /dev/null
 
     echo ""
