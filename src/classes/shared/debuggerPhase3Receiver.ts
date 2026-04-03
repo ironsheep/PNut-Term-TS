@@ -46,7 +46,7 @@ export interface Phase3Data {
   ptraWindow: Uint8Array; // 14 bytes PTRA window
   ptrbWindow: Uint8Array; // 14 bytes PTRB window
   hubWindow: Uint8Array; // 128 bytes Hub memory window
-  smartPinFlags: number; // 64 bits packed into 8 bytes
+  smartPinFlags: Uint8Array; // 8 mask bytes (one per group of 8 pins)
   smartPinData: Uint32Array; // Pin values where flags set
 }
 
@@ -133,7 +133,7 @@ export class DebuggerPhase3Receiver {
       ptraWindow: new Uint8Array(PTR_BYTES),
       ptrbWindow: new Uint8Array(PTR_BYTES),
       hubWindow: new Uint8Array(HUB_SUB_BLOCK_SIZE),
-      smartPinFlags: 0,
+      smartPinFlags: new Uint8Array(8),
       smartPinData: new Uint32Array(SMART_PINS)
     };
 
@@ -186,22 +186,27 @@ export class DebuggerPhase3Receiver {
       result.hubWindow[i] = data[offset++];
     }
 
-    // 4. Parse smart pin data
-    // First 8 bytes contain presence flags
-    result.smartPinFlags = 0;
-    for (let i = 0; i < 8; i++) {
-      result.smartPinFlags |= (data[offset++] << (i * 8));
-    }
+    // 4. Parse smart pin data — INTERLEAVED format from P2
+    // For each group of 8 pins (8 groups total):
+    //   1 byte: bitmask of pins with non-zero RQPIN values
+    //   For each set bit: 1 long (RQPIN value) via txlong
+    // Reference: Spin2_debugger.spin2 lines 1077-1090
+    result.smartPinFlags = new Uint8Array(8);
+    for (let group = 0; group < 8; group++) {
+      if (offset >= data.length) break;
+      const mask = data[offset++];
+      result.smartPinFlags[group] = mask;
 
-    // Read pin values where flags are set
-    for (let i = 0; i < SMART_PINS; i++) {
-      if ((result.smartPinFlags >> i) & 1) {
-        if (offset + 4 <= data.length) {
-          result.smartPinData[i] = view.getUint32(offset, true);
-          offset += 4;
+      for (let bit = 0; bit < 8; bit++) {
+        const pinIndex = group * 8 + bit;
+        if (mask & (1 << bit)) {
+          if (offset + 4 <= data.length) {
+            result.smartPinData[pinIndex] = view.getUint32(offset, true);
+            offset += 4;
+          }
+        } else {
+          result.smartPinData[pinIndex] = 0;
         }
-      } else {
-        result.smartPinData[i] = 0;
       }
     }
 

@@ -4,46 +4,49 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 
 // src/classes/shared/debuggerInteraction.ts
 
+import { EventEmitter } from 'events';
 import { DebuggerRenderer } from './debuggerRenderer';
 import { DebuggerProtocol } from './debuggerProtocol';
 import { DebuggerDataManager } from './debuggerDataManager';
 import { LAYOUT_CONSTANTS, DEBUG_COLORS } from './debuggerConstants';
 
 /**
- * Keyboard shortcuts matching Pascal debugger
+ * Keyboard shortcuts matching Pascal DebuggerUnit.pas Section 8.1 exactly.
+ *
+ * Pascal debugger shortcuts:
+ *   SPACE       Single-step (left-click Go) — send BreakValue once then StallCmd
+ *   ENTER       Continuous run/stop (right-click Go) — toggle repeat mode
+ *   B           Click BREAK button — set async break mode, clear all conditions except INIT
+ *   I           Toggle INIT break (right-click INIT button)
+ *   D           Toggle DEBUG break (right-click DEBUG button)
+ *   M           Toggle MAIN single-step (right-click MAIN button)
+ *   R           Reset register watch list (clear all watch entries)
+ *   UP          Hub viewer scroll up one row (HubAddr -= $10)
+ *   DOWN        Hub viewer scroll down one row (HubAddr += $10)
+ *   PAGEUP      Hub viewer page up ($80 normal, $1000 with Ctrl, $10000 with Shift)
+ *   PAGEDOWN    Hub viewer page down (same modifiers)
+ *
+ * All letter keys are uppercased before processing.
+ * Tab key is captured to prevent dialog focus changes.
  */
-export const KEYBOARD_SHORTCUTS = {
-  // Execution control
-  SPACE: 'go',           // Resume execution
-  B: 'break',            // Break execution
-  D: 'debug',            // Toggle debug mode
-  I: 'init',             // Initialize
-  R: 'reset',            // Reset COG
-  S: 'step',             // Single step
-  O: 'stepover',         // Step over
-  U: 'stepout',          // Step out
-  
-  // Navigation
-  ARROW_UP: 'nav-up',
-  ARROW_DOWN: 'nav-down',
-  ARROW_LEFT: 'nav-left',
-  ARROW_RIGHT: 'nav-right',
-  PAGE_UP: 'page-up',
-  PAGE_DOWN: 'page-down',
-  HOME: 'home',
-  END: 'end',
-  
-  // Memory views
-  TAB: 'next-view',      // Cycle through memory views
-  SHIFT_TAB: 'prev-view',
-  
-  // Breakpoints
-  F9: 'toggle-breakpoint',
-  SHIFT_F9: 'clear-all-breakpoints',
-  
-  // Window management
-  ESC: 'close',
-  F1: 'help'
+export const KEYBOARD_SHORTCUTS: Record<string, string> = {
+  // Execution control (Pascal Section 8.1)
+  SPACE: 'single-go',       // Single-step: send BreakValue once, then StallCmd
+  ENTER: 'repeat-toggle',   // Toggle repeat mode (continuous run/stop)
+  B: 'break',               // BREAK button: clear all conditions except INIT
+  I: 'toggle-init',         // Toggle INIT break (bit 8)
+  D: 'toggle-debug',        // Toggle DEBUG break (bit 4)
+  M: 'toggle-main',         // Toggle MAIN single-step (bit 0)
+  R: 'reset-watch',         // Reset register watch list
+
+  // Hub viewer navigation (Pascal Section 8.1)
+  ARROW_UP: 'hub-up',       // HubAddr -= $10
+  ARROW_DOWN: 'hub-down',   // HubAddr += $10
+  PAGE_UP: 'hub-pageup',    // $80 normal, $1000 Ctrl, $10000 Shift
+  PAGE_DOWN: 'hub-pagedown', // same modifiers
+
+  // Tab captured to prevent focus changes (Pascal: DLGC_WANTTAB)
+  TAB: 'capture-tab',
 } as const;
 
 /**
@@ -59,7 +62,7 @@ export interface HitTestResult {
 /**
  * Manages mouse and keyboard interaction for the debugger window
  */
-export class DebuggerInteraction {
+export class DebuggerInteraction extends EventEmitter {
   // Console logging control
   private static logConsoleMessageStatic(...args: any[]): void {
     if (ENABLE_CONSOLE_LOG) {
@@ -99,6 +102,7 @@ export class DebuggerInteraction {
     dataManager: DebuggerDataManager,
     cogId: number
   ) {
+    super();
     this.renderer = renderer;
     this.protocol = protocol;
     this.dataManager = dataManager;
@@ -109,135 +113,107 @@ export class DebuggerInteraction {
    * Handle keyboard input
    */
   public handleKeyboard(event: KeyboardEvent): boolean {
-    const key = event.key.toUpperCase();
     const code = event.code;
     const shift = event.shiftKey;
     const ctrl = event.ctrlKey;
-    const alt = event.altKey;
-    
-    // Build shortcut key
+
+    // Map code to shortcut key — Pascal uppercases all letter keys
     let shortcut = '';
-    if (shift && key !== 'TAB') shortcut = 'SHIFT_';
-    if (ctrl) shortcut = 'CTRL_';
-    if (alt) shortcut = 'ALT_';
-    
-    // Special keys
     if (code === 'Space') {
       shortcut = 'SPACE';
+    } else if (code === 'Enter' || code === 'NumpadEnter') {
+      shortcut = 'ENTER';
     } else if (code.startsWith('Arrow')) {
       shortcut = code.replace('Arrow', 'ARROW_').toUpperCase();
     } else if (code.startsWith('Page')) {
       shortcut = code.replace('Page', 'PAGE_').toUpperCase();
     } else if (code === 'Tab') {
-      shortcut = shift ? 'SHIFT_TAB' : 'TAB';
-    } else if (code.startsWith('F') && code.length <= 3) {
-      shortcut += code.toUpperCase();
-    } else if (code === 'Home' || code === 'End' || code === 'Escape') {
-      shortcut = code === 'Escape' ? 'ESC' : code.toUpperCase();
+      shortcut = 'TAB';
+    } else if (code.length === 4 && code.startsWith('Key')) {
+      // Letter keys — uppercase (Pascal: all letter keys uppercased)
+      shortcut = code.charAt(3).toUpperCase();
     } else {
-      shortcut += key;
+      return false; // Not a key we handle
     }
-    
+
     // Look up action
-    const action = (KEYBOARD_SHORTCUTS as any)[shortcut];
+    const action = KEYBOARD_SHORTCUTS[shortcut];
     if (!action) {
       return false; // Not handled
     }
-    
+
     // Prevent default browser behavior
     event.preventDefault();
-    
-    // Execute action
-    this.executeKeyboardAction(action);
+
+    // Execute action with modifier state for page keys
+    this.executeKeyboardAction(action, shift, ctrl);
     return true;
   }
   
   /**
    * Execute keyboard action
    */
-  private executeKeyboardAction(action: string): void {
+  /**
+   * Execute keyboard action matching Pascal DebuggerUnit.pas Section 8.1.
+   * Actions are routed to the debugger window via events.
+   */
+  private executeKeyboardAction(action: string, shift: boolean = false, ctrl: boolean = false): void {
     switch (action) {
-      // Execution control
-      case 'go':
-        this.protocol.sendGo(this.cogId);
+      // Execution control — routed to debugger window state machine
+      case 'single-go':
+        // SPACE = single-step (left-click Go equivalent)
+        this.emit('command', 'GO');
+        break;
+      case 'repeat-toggle':
+        // ENTER = toggle repeat mode (right-click Go equivalent)
+        this.emit('command', 'RUN');
         break;
       case 'break':
-        this.protocol.sendBreak(this.cogId);
+        // B = click BREAK button (clear all conditions except INIT)
+        this.emit('command', 'BREAK');
         break;
-      case 'debug':
-        // Debug mode toggle not implemented in protocol
-        this.logConsoleMessage('Debug mode toggle');
+      case 'toggle-init':
+        // I = toggle INIT break (right-click INIT button)
+        this.emit('command', 'INIT');
         break;
-      case 'init':
-        // Init command not implemented in protocol
-        this.protocol.sendStall(this.cogId);
+      case 'toggle-debug':
+        // D = toggle DEBUG break (right-click DEBUG button)
+        this.emit('command', 'DEBUG');
         break;
-      case 'reset':
-        // Reset implemented as stall + go
-        this.protocol.sendStall(this.cogId);
-        this.protocol.sendGo(this.cogId);
+      case 'toggle-main':
+        // M = toggle MAIN single-step (right-click MAIN button)
+        this.emit('command', 'MAIN');
         break;
-      case 'step':
-        // Step not directly implemented, use break
-        this.protocol.sendBreak(this.cogId);
+      case 'reset-watch':
+        // R = reset register watch list
+        this.emit('command', 'RESET_WATCH');
         break;
-      case 'stepover':
-        // Step over not directly implemented
-        this.protocol.sendBreak(this.cogId);
+
+      // Hub viewer navigation (Pascal Section 8.1)
+      case 'hub-up':
+        // UP arrow = HubAddr -= $10
+        this.emit('hubNavigate', -0x10);
         break;
-      case 'stepout':
-        // Step out not directly implemented
-        this.protocol.sendBreak(this.cogId);
+      case 'hub-down':
+        // DOWN arrow = HubAddr += $10
+        this.emit('hubNavigate', 0x10);
         break;
-        
-      // Navigation
-      case 'nav-up':
-        this.navigateUp();
+      case 'hub-pageup':
+        // PAGEUP: $80 normal, $1000 Ctrl, $10000 Shift
+        if (shift) this.emit('hubNavigate', -0x10000);
+        else if (ctrl) this.emit('hubNavigate', -0x1000);
+        else this.emit('hubNavigate', -0x80);
         break;
-      case 'nav-down':
-        this.navigateDown();
+      case 'hub-pagedown':
+        // PAGEDOWN: same modifiers
+        if (shift) this.emit('hubNavigate', 0x10000);
+        else if (ctrl) this.emit('hubNavigate', 0x1000);
+        else this.emit('hubNavigate', 0x80);
         break;
-      case 'nav-left':
-        this.navigateLeft();
-        break;
-      case 'nav-right':
-        this.navigateRight();
-        break;
-      case 'page-up':
-        this.pageUp();
-        break;
-      case 'page-down':
-        this.pageDown();
-        break;
-      case 'home':
-        this.navigateHome();
-        break;
-      case 'end':
-        this.navigateEnd();
-        break;
-        
-      // View switching
-      case 'next-view':
-        this.cycleView(1);
-        break;
-      case 'prev-view':
-        this.cycleView(-1);
-        break;
-        
-      // Breakpoints
-      case 'toggle-breakpoint':
-        this.toggleBreakpoint();
-        break;
-      case 'clear-all-breakpoints':
-        this.clearAllBreakpoints();
-        break;
-        
-      // Window management
-      case 'close':
-        this.requestClose();
-        break;
-      case 'help':
-        this.showHelp();
+
+      // Tab captured to prevent focus change (Pascal: DLGC_WANTTAB)
+      case 'capture-tab':
+        // Do nothing — just prevent default (already done by event.preventDefault)
         break;
     }
   }

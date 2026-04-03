@@ -73,8 +73,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private currentDebuggerPacket: Uint8Array | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
-  private charWidth: number = 8;
-  private charHeight: number = 16;
+  private charWidth: number = 8;      // Character width in pixels
+  private charHeight: number = 16;    // Full character height in pixels
+  private halfRowHeight: number = 8;  // Half-row height (charHeight/2) — grid Y unit
   private gridWidth: number = LAYOUT_CONSTANTS.GRID_WIDTH;
   private gridHeight: number = LAYOUT_CONSTANTS.GRID_HEIGHT;
   private isConnected: boolean = false;
@@ -105,13 +106,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private renderCount: number = 0;
   // No timer needed - using event-driven approach
 
-  // Debug command state (Pascal: StallBrk, BreakValue)
+  // Debug command state (Pascal: StallBrk, BreakValue, RepeatMode)
   // breakValue holds the break condition bits that control when/how debugger breaks
   // stallBrk is either STALL_CMD (hold) or breakValue (continue)
   private breakValue: number = DEBUG_COMMANDS.BREAK_DEBUG;  // Default: break on DEBUG opcode
   private stallBrk: number = DEBUG_COMMANDS.STALL_CMD;      // Start in stalled state
   private firstBreak: boolean = true;                        // First breakpoint flag
-  private repeatMode: boolean = false;                       // Continuous run mode
+  private repeatMode: boolean = false;                       // Continuous run mode (Pascal: RepeatMode)
+  private oldTickCount: number = 0;                          // Last Go command timestamp for repeat throttling
+  private breakpointTimerHandle: NodeJS.Timeout | null = null; // 250ms breakpoint timeout (Pascal: BreakpointTimer)
+  private isDimmed: boolean = false;                         // Display is dimmed (no breakpoint in 250ms)
 
   // Remove redundant queue - base class handles this via messageQueue
   // private initialMessageQueue: Uint8Array[] = [];  // REMOVED: Base class handles queuing
@@ -130,7 +134,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   ) {
     // Calculate window size based on character grid
     const width = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8 + 20;
-    const height = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16 + 40;
+    const height = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 8 + 40; // half-rows * 8px
     
     // Call super with windowId and windowType
     const windowId = `debugger-${cogId}`;
@@ -398,9 +402,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Convert grid coordinates to pixel coordinates
    */
   private gridToPixel(gridX: number, gridY: number): {x: number, y: number} {
+    // Pascal grid: columns (charWidth=8px) × half-rows (charHeight/2=8px)
+    // Both X and Y use 8px units, giving uniform grid cells
     return {
-      x: gridX * this.charWidth,  // charWidth = 8
-      y: gridY * this.charHeight  // charHeight = 16
+      x: gridX * this.charWidth,      // column → pixels (8px per column)
+      y: gridY * this.halfRowHeight    // half-row → pixels (8px per half-row)
     };
   }
 
@@ -455,15 +461,15 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       const shadowHex = this.colorToHex(shadowColor);
       const {x: px, y: py} = this.gridToPixel(x + 1, y + 1);
       commands.push(`ctx.fillStyle='${shadowHex}';`);
-      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 16});`);
+      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 8});`);
     }
-    
+
     // Draw filled background for thicker borders
     if (rim > 3) {
       const bgHex = this.colorToHex(color);
       const {x: px, y: py} = this.gridToPixel(x, y);
       commands.push(`ctx.fillStyle='${bgHex}';`);
-      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 16});`);
+      commands.push(`ctx.fillRect(${px},${py},${width * 8},${height * 8});`);
     }
     
     // Top line
@@ -495,7 +501,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private clearRegionJs(region: {x: number, y: number, width: number, height: number}): string {
     const {x, y} = this.gridToPixel(region.x, region.y);
     const width = region.width * this.charWidth;
-    const height = region.height * this.charHeight;
+    const height = region.height * this.halfRowHeight; // height is in half-rows
     const bgHex = this.colorToHex(PASCAL_COLOR_SCHEME.cBackground);
     return `ctx.fillStyle='${bgHex}';ctx.fillRect(${x},${y},${width},${height});`;
   }
@@ -511,7 +517,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Get window title
    */
   protected getWindowTitle(): string {
-    return `P2 Debugger - COG ${this.cogId}`;
+    return `Debugger - Cog ${this.cogId}`;
   }
 
   /**
@@ -626,8 +632,8 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Handle mouse input
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
-      const x = Math.floor((e.clientX - rect.left) / 8);
-      const y = Math.floor((e.clientY - rect.top) / 16);
+      const x = Math.floor((e.clientX - rect.left) / 8);  // column
+      const y = Math.floor((e.clientY - rect.top) / 8);   // half-row
       
       ipcRenderer.send('debugger-click', {
         cogId: ${this.cogId},
@@ -838,77 +844,153 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * - STALL/BREAK: Send TLong(STALL_CMD) to hold
    * - STEP: Send TLong(breakValue) to execute until next break
    */
+  /**
+   * Three-state debugger state machine matching Pascal DebuggerUnit.pas Section 4:
+   *
+   * HALTED (A): Cog stopped at breakpoint. StallBrk = StallCmd ($800).
+   *   Host continuously sends StallCmd on each poll (~15/sec from P2 stall loop).
+   *
+   * SINGLE GO (B): User pressed SPACE or left-clicked Go.
+   *   StallBrk = BreakValue for ONE exchange, then immediately StallBrk = StallCmd.
+   *   P2 resumes, hits break condition, re-enters ISR -> back to HALTED.
+   *
+   * REPEAT MODE (C): User pressed ENTER or right-clicked Go.
+   *   Host alternates: if < 50ms since last Go, send StallCmd (throttle).
+   *   Otherwise send BreakValue. Limits to ~20 breaks/sec for visual tracking.
+   *   Any SPACE/ENTER/Go click -> back to HALTED.
+   */
   private sendDebugCommand(command: string): void {
     try {
       switch (command) {
         case 'GO':
-          // Continue to next breakpoint
-          // Pascal: StallBrk := BreakValue; then after sending: StallBrk := StallCmd
-          this.stallBrk = this.breakValue;
-          this.tLongTransmitter.transmitTLong(this.stallBrk);
-          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;  // Reset for next time
-          this.logConsoleMessage(`[DEBUGGER] GO command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
+        case 'STEP':
+        case 'STEP_INTO':
+          // SINGLE GO — send BreakValue once, then revert to StallCmd
+          // Pascal: StallBrk := BreakValue; (sent in next Phase 2); StallBrk := StallCmd
+          if (this.repeatMode) {
+            // If in repeat mode, SPACE/Go stops it (transition C -> A)
+            this.repeatMode = false;
+            this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          } else {
+            // Single Go (transition A -> B)
+            this.stallBrk = this.breakValue;
+            this.oldTickCount = Date.now();
+            // stallBrk will be reset to STALL_CMD after the next Phase 2 send
+            // (handled in getStallBrkForExchange)
+          }
+          break;
+
+        case 'RUN':
+          // REPEAT MODE — continuous execution with throttled updates
+          if (this.repeatMode) {
+            // Already in repeat mode, stop it (transition C -> A)
+            this.repeatMode = false;
+            this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          } else {
+            // Enter repeat mode (transition A -> C)
+            this.repeatMode = true;
+            this.stallBrk = this.breakValue;
+            this.oldTickCount = Date.now();
+          }
           break;
 
         case 'BREAK':
         case 'STALL':
-          // Hold execution at current breakpoint
+          // HALT — clear all conditions except INIT, stop repeat mode
           this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
-          this.tLongTransmitter.transmitTLong(this.stallBrk);
           this.repeatMode = false;
-          this.logConsoleMessage(`[DEBUGGER] STALL command sent: $${DEBUG_COMMANDS.STALL_CMD.toString(16).padStart(8, '0')}`);
-          break;
-
-        case 'STEP_INTO':
-        case 'STEP':
-          // Single step - send breakValue then stall
-          this.stallBrk = this.breakValue;
-          this.tLongTransmitter.transmitTLong(this.stallBrk);
-          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
-          this.logConsoleMessage(`[DEBUGGER] STEP command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
-          break;
-
-        case 'STEP_OVER':
-          // Step over - same as step for now (full implementation needs call depth tracking)
-          this.stallBrk = this.breakValue;
-          this.tLongTransmitter.transmitTLong(this.stallBrk);
-          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
-          this.logConsoleMessage(`[DEBUGGER] STEP_OVER command sent: $${this.breakValue.toString(16).padStart(8, '0')}`);
           break;
 
         case 'INIT':
-          // Reset/initialize - enable COGINIT break
-          this.breakValue = this.breakValue | DEBUG_COMMANDS.BREAK_INIT;
-          this.tLongTransmitter.transmitTLong(this.breakValue);
-          this.logConsoleMessage(`[DEBUGGER] INIT command sent with BREAK_INIT enabled`);
+          // Toggle INIT break (bit 8) — always independent, additive
+          this.breakValue ^= DEBUG_COMMANDS.BREAK_INIT;
           break;
 
         case 'DEBUG':
-          // Toggle DEBUG break condition
+          // Toggle DEBUG break condition (bit 4)
+          // Mutual exclusion: clear single-step bits 0-3 and entry bits 5-7
           if (this.breakValue & DEBUG_COMMANDS.BREAK_DEBUG) {
-            // Currently enabled, disable it
-            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_KEEP_INIT) ^ DEBUG_COMMANDS.BREAK_DEBUG;
+            this.breakValue &= ~DEBUG_COMMANDS.BREAK_DEBUG;
           } else {
-            // Currently disabled, enable it
-            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_KEEP_INIT) | DEBUG_COMMANDS.BREAK_DEBUG;
+            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_INIT) | DEBUG_COMMANDS.BREAK_DEBUG;
           }
-          this.logConsoleMessage(`[DEBUGGER] DEBUG toggle: now $${this.breakValue.toString(16).padStart(8, '0')}`);
           break;
 
-        case 'RUN':
-          // Continuous run mode (Pascal: RepeatMode = True)
-          this.repeatMode = true;
-          this.stallBrk = this.breakValue;
-          this.tLongTransmitter.transmitTLong(this.stallBrk);
-          this.logConsoleMessage(`[DEBUGGER] RUN (repeat mode) command sent`);
+        case 'MAIN':
+          // Toggle MAIN single-step (bit 0) — right-click behavior
+          this.breakValue ^= DEBUG_COMMANDS.BREAK_MAIN;
+          this.breakValue &= ~DEBUG_COMMANDS.BREAK_DEBUG; // Clear DEBUG (mutual exclusion)
           break;
 
         default:
           this.logConsoleMessage(`[DEBUGGER] Unknown command: ${command}`);
       }
+
+      // Update the protocol's response generator with current stallBrk
+      if (this.protocol) {
+        this.protocol.setStallBreak(this.cogState.cogId, this.stallBrk);
+      }
     } catch (error) {
       this.logConsoleMessage(`[DEBUGGER] Error sending command ${command}: ${error}`);
     }
+  }
+
+  /**
+   * Get the stallBrk value for the next Phase 2 exchange.
+   * Implements repeat mode throttling (50ms) and single-go auto-reset.
+   * Called by the protocol before each breakpoint exchange.
+   */
+  public getStallBrkForExchange(): number {
+    if (this.repeatMode) {
+      // Repeat mode throttling: if < 50ms since last Go, send StallCmd instead
+      const now = Date.now();
+      if (now - this.oldTickCount < 50) {
+        return DEBUG_COMMANDS.STALL_CMD; // Throttle — too soon
+      }
+      this.oldTickCount = now;
+      return this.breakValue; // Allow execution
+    }
+
+    // Single Go: send stallBrk (which is breakValue), then auto-reset to StallCmd
+    const value = this.stallBrk;
+    this.stallBrk = DEBUG_COMMANDS.STALL_CMD; // Reset after sending
+    return value;
+  }
+
+  /**
+   * Called when a breakpoint is received from the P2.
+   * Resets the 250ms breakpoint timeout and clears dimming.
+   */
+  public onBreakpointReceived(): void {
+    this.isDimmed = false;
+    this.resetBreakpointTimer();
+  }
+
+  /**
+   * Start/reset the 250ms breakpoint timeout timer.
+   * If no breakpoint arrives within 250ms, the display is dimmed.
+   */
+  private resetBreakpointTimer(): void {
+    if (this.breakpointTimerHandle) {
+      clearTimeout(this.breakpointTimerHandle);
+    }
+    this.breakpointTimerHandle = setTimeout(() => {
+      this.onBreakpointTimeout();
+    }, 250);
+  }
+
+  /**
+   * Called when 250ms pass without a new breakpoint.
+   * Dims the display and changes Go button to "Break".
+   */
+  private onBreakpointTimeout(): void {
+    this.isDimmed = true;
+    this.breakpointTimerHandle = null;
+    // Re-render with dimming overlay applied
+    // Go button caption changes from "Go"/"Stop" to "Break" — handled by renderer
+    this.markAllDirty();
+    this.render();
+    this.emit('breakpointTimeout');
   }
 
   /**
@@ -1027,7 +1109,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       .join(' ');
     
     return {
-      title: `P2 Debugger - COG ${cogId}`,
+      title: `Debugger - Cog ${cogId}`,
       pc: `$${pc.toString(16).padStart(8, '0').toUpperCase()}`,
       state: `$${cogState.toString(16).padStart(8, '0').toUpperCase()}`,
       instruction: `$${instruction.toString(16).padStart(8, '0').toUpperCase()}`,
@@ -1786,7 +1868,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     if (this.tooltipText) {
       allJsCommands.push(this.drawTextJs(this.tooltipText, this.tooltipX, this.tooltipY, 0xffff00, 0x333333));
     }
-    
+
+    // Apply dimming overlay when no breakpoint received in 250ms
+    // Pascal: right-shift each R,G,B byte by 1 (halve brightness)
+    // Canvas equivalent: semi-transparent black overlay at 50% opacity
+    if (this.isDimmed) {
+      allJsCommands.push(`ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,canvas.width,canvas.height);`);
+    }
+
     // Execute all commands in single call
     if (allJsCommands.length > 0) {
       this.debugWindow.webContents.executeJavaScript(
@@ -1851,7 +1940,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     return `<!DOCTYPE html>
 <html>
 <head>
-    <title>P2 Debugger - COG ${this.cogId}</title>
+    <title>Debugger - Cog ${this.cogId}</title>
     <style>
         body {
             margin: 0;
@@ -1938,7 +2027,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private createDebugWindow(windowDetails?: any): void {
     // Calculate content dimensions
     const contentWidth = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8;
-    const contentHeight = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 16;
+    const contentHeight = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 8; // half-rows * 8px
 
     // Use base class method for consistent chrome adjustments
     const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
@@ -1979,7 +2068,7 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       height,
       x,
       y,
-      title: `P2 Debugger - COG ${this.cogId}`,
+      title: `Debugger - Cog ${this.cogId}`,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
@@ -2130,6 +2219,27 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   public getCogState(): COGDebugState {
     return { ...this.cogState };
+  }
+
+  /**
+   * Get Go button state for rendering.
+   * Pascal: "Go" when halted, "Stop" when in repeat mode, "Break" when dimmed/timeout.
+   */
+  public getGoButtonState(): { caption: string; isDimmed: boolean; isRepeatMode: boolean } {
+    if (this.isDimmed) {
+      return { caption: 'Break', isDimmed: true, isRepeatMode: false };
+    }
+    if (this.repeatMode) {
+      return { caption: 'Stop', isDimmed: false, isRepeatMode: true };
+    }
+    return { caption: 'Go', isDimmed: false, isRepeatMode: false };
+  }
+
+  /**
+   * Get current break condition value for button highlight rendering.
+   */
+  public getBreakValue(): number {
+    return this.breakValue;
   }
 
   /**

@@ -21,6 +21,21 @@ import { DebuggerDataManager } from './debuggerDataManager';
 import { Disassembler } from './disassembler';
 
 /**
+ * Hardcoded disassembly text for ROM debug entry/exit at $1F8-$1FF
+ * Reference: Pascal DebuggerUnit.pas Section 11.5
+ */
+const ROM_DEBUG_STRINGS: Record<number, string> = {
+  0x1F8: "[ROM] setq    #$F     'DEBUG Entry",
+  0x1F9: '[ROM] wrlong  0,#$FFF80-cog<<7',
+  0x1FA: '[ROM] setq    #$F',
+  0x1FB: '[ROM] rdlong  0,#$FFFC0-cog<<7',
+  0x1FC: '[ROM] jmp     #\\0',
+  0x1FD: "[ROM] setq    #$F     'DEBUG Exit",
+  0x1FE: '[ROM] rdlong  0,#$FFF80-cog<<7',
+  0x1FF: '[ROM] reti0'
+};
+
+/**
  * Layout regions for the debugger UI
  * Based on Pascal's 123x77 character grid layout
  */
@@ -74,7 +89,8 @@ export class DebuggerRenderer {
   private readonly GRID_WIDTH = LAYOUT_CONSTANTS.GRID_WIDTH;
   private readonly GRID_HEIGHT = LAYOUT_CONSTANTS.GRID_HEIGHT;
   private readonly CHAR_WIDTH = 8;
-  private readonly CHAR_HEIGHT = 16;
+  private readonly CHAR_HEIGHT = 16;   // Full character height
+  private readonly HALF_ROW = 8;       // Half-row height (charHeight/2) — grid Y unit
   
   // Layout regions
   private regions: Map<string, LayoutRegion>;
@@ -87,6 +103,10 @@ export class DebuggerRenderer {
   private tooltipY: number = 0;
   private hoveredButton: string | null = null;
   private selectedAddress: number = -1;
+
+  // Base template (Pascal: Bitmap[2] — static elements drawn once)
+  private baseTemplate: OffscreenCanvas | null = null;
+  private baseTemplateRendered: boolean = false;
 
   // Break control state (Pascal: BreakValue, BreakAddr, BreakEvent)
   // BreakValue bits: 0=MAIN, 1=INT1, 2=INT2, 3=INT3, 4=DEBUG, 5=INT1E, 6=INT2E, 7=INT3E
@@ -112,6 +132,14 @@ export class DebuggerRenderer {
   private disMode: 'pc' | 'cog' | 'hub' = 'pc';
   private cogAddr: number = 0;
   private disAddr: number = 0;
+
+  // Auto-scroll state (Pascal: DisScrollCounter, DisLineIdeal, DisScrollThreshold)
+  private disScrollCounter: number = 0;    // Consecutive breaks without PC jump
+  private disTopAddr: number = 0;          // Address of top visible line
+  private lastPC: number = -1;            // PC from previous break (for jump detection)
+  private readonly DIS_LINE_IDEAL = 3;     // Target line for PC (4th from top, 0-indexed)
+  private readonly DIS_SCROLL_THRESHOLD = 8; // Breaks before auto-scroll kicks in
+  private readonly DIS_LINES = 16;         // Number of disassembly lines
 
   // Navigation history for back/forward
   private addressHistory: number[] = [];
@@ -144,7 +172,7 @@ export class DebuggerRenderer {
     
     // Set canvas size
     this.canvas.width = this.GRID_WIDTH * this.CHAR_WIDTH;
-    this.canvas.height = this.GRID_HEIGHT * this.CHAR_HEIGHT;
+    this.canvas.height = this.GRID_HEIGHT * this.HALF_ROW; // 77 half-rows × 8px = 616px
     
     // Set up font
     this.ctx.font = this.font;
@@ -492,37 +520,116 @@ export class DebuggerRenderer {
   /**
    * Main render method - only renders dirty regions
    */
+  /**
+   * Render the static base template (Pascal: Bitmap[2]).
+   * Drawn once at window creation with all static elements: box outlines, labels, panel borders.
+   * Restored at the start of each breakpoint render to clear dynamic content.
+   */
+  private renderBaseTemplate(): void {
+    // OffscreenCanvas may not be available in test environments (jsdom)
+    if (typeof OffscreenCanvas === 'undefined') {
+      this.baseTemplateRendered = true;
+      return;
+    }
+    this.baseTemplate = new OffscreenCanvas(this.canvas.width, this.canvas.height);
+    const baseCtx = this.baseTemplate.getContext('2d');
+    if (!baseCtx) return;
+
+    // Fill background
+    baseCtx.fillStyle = this.colorToHex(PASCAL_COLOR_SCHEME.cBackground);
+    baseCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Draw box outlines for all regions
+    const boxRegions: Array<{ name: string; color: number }> = [
+      { name: 'cogRegisters', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'lutRegisters', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'disassembly', color: PASCAL_COLOR_SCHEME.cBox2 },
+      { name: 'registerWatch', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'sfr', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'events', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'stack', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'interrupts', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'pointers', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'status', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'pins', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'smartPins', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'hubMemory', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'hint', color: PASCAL_COLOR_SCHEME.cBox2 },
+      { name: 'controls', color: PASCAL_COLOR_SCHEME.cBox },
+      { name: 'ct', color: PASCAL_COLOR_SCHEME.cBox3 },
+    ];
+
+    for (const { name, color } of boxRegions) {
+      const region = this.regions.get(name);
+      if (region) {
+        const x = region.x * this.CHAR_WIDTH;
+        const y = region.y * this.HALF_ROW;
+        const w = region.width * this.CHAR_WIDTH;
+        const h = region.height * this.HALF_ROW;
+        baseCtx.strokeStyle = this.colorToHex(color);
+        baseCtx.lineWidth = 1;
+        baseCtx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      }
+    }
+
+    this.baseTemplateRendered = true;
+  }
+
+  /**
+   * Main render method.
+   * Pascal: On each breakpoint:
+   *   1. Restore from base template (static elements)
+   *   2. Draw all dynamic content in the order from Section 5.8
+   *   3. Copy to display
+   */
   public render(): void {
     const startTime = performance.now();
-    
-    // Clear dirty regions
+
+    // Ensure base template is rendered
+    if (!this.baseTemplateRendered) {
+      this.renderBaseTemplate();
+    }
+
+    // Restore from base template if doing a full redraw
+    if (this.baseTemplate && this.dirtyRegions.size > 5) {
+      // Full breakpoint redraw — restore from base
+      this.ctx.drawImage(this.baseTemplate, 0, 0);
+    } else {
+      // Partial update — just clear dirty regions
+      for (const regionName of this.dirtyRegions) {
+        const region = this.regions.get(regionName);
+        if (region) {
+          this.clearRegion(region);
+        }
+      }
+    }
+
+    // Draw dynamic content for dirty regions (Pascal Section 5.8 order)
     for (const regionName of this.dirtyRegions) {
       const region = this.regions.get(regionName);
       if (region) {
-        this.clearRegion(region);
         this.renderRegion(regionName, region);
       }
     }
-    
+
     // Render buttons (always on top)
     if (this.dirtyRegions.has('controls')) {
       this.renderButtons();
     }
-    
+
     // Render tooltip if present
     if (this.tooltipText) {
       this.renderTooltip();
     }
-    
+
     // Clear dirty flags
     this.dirtyRegions.clear();
-    
+
     // Track performance
     const renderTime = performance.now() - startTime;
     this.lastRenderTime = renderTime;
     this.renderCount++;
-    
-    // Log slow renders
+
     if (renderTime > 50) {
       console.warn(`Slow render: ${renderTime.toFixed(1)}ms`);
     }
@@ -533,9 +640,9 @@ export class DebuggerRenderer {
    */
   private clearRegion(region: LayoutRegion): void {
     const x = region.x * this.CHAR_WIDTH;
-    const y = region.y * this.CHAR_HEIGHT;
+    const y = region.y * this.HALF_ROW;          // Y is in half-rows
     const width = region.width * this.CHAR_WIDTH;
-    const height = region.height * this.CHAR_HEIGHT;
+    const height = region.height * this.HALF_ROW; // height is in half-rows
     
     this.ctx.fillStyle = this.colorToHex(this.bgColor);
     this.ctx.fillRect(x, y, width, height);
@@ -612,57 +719,20 @@ export class DebuggerRenderer {
    * - If bit set: use cHighSame/cHighDiff, else cLowSame/cLowDiff
    * - BlendPixel blends between colors based on heat
    */
+  /**
+   * Render COG register heatmap bitmap.
+   * Pascal Section 6.1: 32 pixels wide × 512 pixels tall bitmap.
+   * Each row = one register ($000-$1FF), each column = one bit (MSB left, LSB right).
+   * Color blends between same/diff colors based on CogImageHit[] heat value.
+   * Hit=254 = just changed (bright), decays by 2 per break toward 0 (cold).
+   * Rendered as ImageData then stretched to fill the region.
+   */
   private renderCogRegisters(region: LayoutRegion): void {
-    const state = this.dataManager.getCogState(this.cogId);
+    // Title
+    this.drawText('REG', region.x + 3, region.y, PASCAL_COLOR_SCHEME.cName);
 
-    // Title - Pascal: DrawText(REGMAPl + 3, REGMAPt, cName, [fsBold, fsItalic], 'REG')
-    this.drawText('REG', region.x + 3, region.y, DEBUG_COLORS.FG_LABEL);
-
-    // Calculate how many registers fit per row
-    // Pascal uses 512 registers displayed in 75 rows = ~7 per row
-    const regsPerRow = Math.ceil(512 / (region.height - 3));
-    const displayHeight = region.height - 3;
-
-    // Render heat-map style display
-    for (let row = 0; row < displayHeight && row < 72; row++) {
-      const baseReg = row * regsPerRow;
-
-      for (let col = 0; col < region.width - 2 && col < 7; col++) {
-        const regAddr = baseReg + col;
-        if (regAddr >= 512) break;
-
-        // Get register value and per-address heat (Pascal: CogImageHit[addr])
-        const value = state ? this.dataManager.getCogMemory(this.cogId, regAddr) || 0 : 0;
-        const heat = this.dataManager.getCogLutHeat(regAddr);
-
-        // Determine display character based on value (set bits)
-        const setBits = this.countBits(value);
-        let char: string;
-        if (setBits === 0) char = ' ';
-        else if (setBits <= 4) char = '░';
-        else if (setBits <= 12) char = '▒';
-        else if (setBits <= 24) char = '▓';
-        else char = '█';
-
-        // Color using Pascal-style blend based on bit count and heat
-        // High bit count uses cHighSame/cHighDiff, low uses cLowSame/cLowDiff
-        const highBits = setBits > 16;
-        const color = getRegisterHeatColor(highBits, heat);
-
-        this.drawText(char, region.x + 1 + col, region.y + 3 + row, color);
-      }
-    }
-
-    // Show PC marker if in COG range
-    if (state?.lastMessage) {
-      const pc = state.lastMessage.programCounter;
-      if (pc < 0x200) {
-        const pcRow = Math.floor(pc / regsPerRow);
-        if (pcRow >= 0 && pcRow < displayHeight) {
-          this.drawText('▸', region.x, region.y + 3 + pcRow, DEBUG_COLORS.FG_ACTIVE);
-        }
-      }
-    }
+    // Build 32×512 pixel bitmap
+    this.renderRegisterBitmap(region, 0, 512); // COG: $000-$1FF
   }
 
   /**
@@ -685,58 +755,72 @@ export class DebuggerRenderer {
    *
    * Pascal algorithm uses combined CogImageHit[0..$3FF] where LUT is $200-$3FF
    */
+  /**
+   * Render LUT register heatmap bitmap.
+   * Same as COG but for addresses $200-$3FF.
+   */
   private renderLutRegisters(region: LayoutRegion): void {
-    const state = this.dataManager.getCogState(this.cogId);
+    this.drawText('LUT', region.x + 3, region.y, PASCAL_COLOR_SCHEME.cName);
+    this.renderRegisterBitmap(region, 0x200, 512); // LUT: $200-$3FF
+  }
 
-    // Title - Pascal: DrawText(LUTMAPl + 3, LUTMAPt, cName, [fsBold, fsItalic], 'LUT')
-    this.drawText('LUT', region.x + 3, region.y, DEBUG_COLORS.FG_LABEL);
+  /**
+   * Render a register heatmap bitmap for a range of addresses.
+   * Pascal Section 6.1: 32 pixels wide × N rows tall.
+   * Each row = one register, each column = one bit (MSB=left, LSB=right).
+   * Color = blend(cSame, cDiff, heat) where Same/Diff depends on bit value.
+   * Hit=254 = just changed, decays by HitDecayRate(2) per break.
+   * Disassembly address range highlighted with shade=$40.
+   * Rendered via canvas ImageData + drawImage with scaling.
+   */
+  private renderRegisterBitmap(region: LayoutRegion, baseAddr: number, count: number): void {
+    const BMP_W = 32; // 32 bits per register
+    const BMP_H = count; // One row per register
 
-    // Calculate how many registers fit per row
-    const regsPerRow = Math.ceil(512 / (region.height - 3));
-    const displayHeight = region.height - 3;
+    // createImageData may not work in test environments (jsdom mock canvas)
+    let imgData: ImageData;
+    try {
+      imgData = this.ctx.createImageData(BMP_W, BMP_H);
+    } catch {
+      return; // Skip bitmap rendering in test env
+    }
+    const pixels = imgData.data;
 
-    // Render heat-map style display
-    for (let row = 0; row < displayHeight && row < 72; row++) {
-      const baseReg = row * regsPerRow;
+    for (let row = 0; row < count; row++) {
+      const addr = baseAddr + row;
+      const value = this.dataManager.getCogMemory(this.cogId, addr) || 0;
+      const heat = this.dataManager.getCogLutHeat(addr);
 
-      for (let col = 0; col < region.width - 2 && col < 7; col++) {
-        const regIdx = baseReg + col;
-        if (regIdx >= 512) break;
+      for (let col = 0; col < 32; col++) {
+        // MSB on left: bit (31-col)
+        const bitSet = ((value >>> (31 - col)) & 1) !== 0;
+        const color = getRegisterHeatColor(bitSet, heat);
 
-        // LUT address is $200-$3FF (512-1023 in decimal)
-        const regAddr = 0x200 + regIdx;
-
-        // Get register value and per-address heat (Pascal: CogImageHit[addr])
-        const value = state ? this.dataManager.getLutMemory(this.cogId, regAddr) || 0 : 0;
-        const heat = this.dataManager.getCogLutHeat(regAddr);
-
-        // Determine display character based on value (set bits)
-        const setBits = this.countBits(value);
-        let char: string;
-        if (setBits === 0) char = ' ';
-        else if (setBits <= 4) char = '░';
-        else if (setBits <= 12) char = '▒';
-        else if (setBits <= 24) char = '▓';
-        else char = '█';
-
-        // Color using Pascal-style blend based on bit count and heat
-        const highBits = setBits > 16;
-        const color = getRegisterHeatColor(highBits, heat);
-
-        this.drawText(char, region.x + 1 + col, region.y + 3 + row, color);
+        const pixIdx = (row * BMP_W + col) * 4;
+        pixels[pixIdx] = (color >> 16) & 0xFF;     // R
+        pixels[pixIdx + 1] = (color >> 8) & 0xFF;  // G
+        pixels[pixIdx + 2] = color & 0xFF;          // B
+        pixels[pixIdx + 3] = 255;                    // A
       }
     }
 
-    // Show PC marker if in LUT range
-    if (state?.lastMessage) {
-      const pc = state.lastMessage.programCounter;
-      if (pc >= 0x200 && pc < 0x400) {
-        const lutOffset = pc - 0x200;
-        const pcRow = Math.floor(lutOffset / regsPerRow);
-        if (pcRow >= 0 && pcRow < displayHeight) {
-          this.drawText('▸', region.x, region.y + 3 + pcRow, DEBUG_COLORS.FG_ACTIVE);
-        }
-      }
+    // Draw bitmap into the region area (scaled to fit)
+    // Region starts at row+2 (below title), spans remaining height
+    const destX = region.x * this.CHAR_WIDTH;
+    const destY = (region.y + 2) * this.HALF_ROW;
+    const destW = region.width * this.CHAR_WIDTH;
+    const destH = (region.height - 2) * this.HALF_ROW;
+
+    // Use a temporary canvas to scale the ImageData
+    if (typeof OffscreenCanvas === 'undefined') return; // Not available in test env
+    const tmpCanvas = new OffscreenCanvas(BMP_W, BMP_H);
+    const tmpCtx = tmpCanvas.getContext('2d');
+    if (tmpCtx) {
+      tmpCtx.putImageData(imgData, 0, 0);
+      // Stretch-draw the bitmap into the region (Pascal: StretchDraw)
+      this.ctx.imageSmoothingEnabled = false; // Nearest-neighbor for crisp pixels
+      this.ctx.drawImage(tmpCanvas, destX, destY, destW, destH);
+      this.ctx.imageSmoothingEnabled = true;
     }
   }
 
@@ -768,166 +852,229 @@ export class DebuggerRenderer {
             ? 3
             : 0;
 
-    // C flag - from mIRET bit 31 (Pascal: Chr(DebuggerMsg[mIRET] shr 31 and 1 + Byte('0')))
+    // C flag — mIRET bit 31, displayed as '0' or '1'
     const cFlag = (msg.iret >>> 31) & 1;
-    this.drawText('C:', layout.CF.l, region.y, DEBUG_COLORS.FG_LABEL);
-    this.drawText(`${cFlag}`, layout.CF.l + 2, region.y,
-      cFlag ? DEBUG_COLORS.FG_ACTIVE : DEBUG_COLORS.FG_DATA);
+    this.drawText('C', layout.CF.l, region.y, PASCAL_COLOR_SCHEME.cName);
+    this.drawText(`${cFlag}`, layout.CF.l + 2, region.y, PASCAL_COLOR_SCHEME.cData);
 
-    // Z flag - from mIRET bit 30 (Pascal: Chr(DebuggerMsg[mIRET] shr 30 and 1 + Byte('0')))
+    // Z flag — mIRET bit 30
     const zFlag = (msg.iret >>> 30) & 1;
-    this.drawText('Z:', layout.ZF.l, region.y, DEBUG_COLORS.FG_LABEL);
-    this.drawText(`${zFlag}`, layout.ZF.l + 2, region.y,
-      zFlag ? DEBUG_COLORS.FG_ACTIVE : DEBUG_COLORS.FG_DATA);
+    this.drawText('Z', layout.ZF.l, region.y, PASCAL_COLOR_SCHEME.cName);
+    this.drawText(`${zFlag}`, layout.ZF.l + 2, region.y, PASCAL_COLOR_SCHEME.cData);
 
-    // PC - from mIRET low 20 bits (Pascal: IntToHex(DebuggerMsg[mIRET] and $FFFFF, 5))
-    const pc = msg.iret & 0xfffff;
-    this.drawText('PC:', layout.PC.l, region.y, DEBUG_COLORS.FG_LABEL);
+    // PC — mIRET AND $FFFFF (20-bit), 5 hex digits
+    const pc = msg.iret & 0xFFFFF;
+    this.drawText('PC', layout.PC.l, region.y, PASCAL_COLOR_SCHEME.cName);
     this.drawText(pc.toString(16).toUpperCase().padStart(5, '0'),
-      layout.PC.l + 3, region.y, DEBUG_COLORS.FG_DATA);
+      layout.PC.l + 3, region.y, PASCAL_COLOR_SCHEME.cData);
 
-    // SKIP/SKIPF pattern (Pascal: DrawRegBin at SKIPl + 6)
-    // mBRKC bit 27 = 0 means SKIPF mode
+    // SKIP/SKIPF — mBRKZ (32-bit pattern), label depends on mBRKC bit 27
     const skipfMode = ((msg.breakC >>> 27) & 1) === 0;
-    const callDepth = (msg.breakC >>> 28) & 0xf;
-    const skipOn = execMode === 0 && callDepth === 0;
+    const callDepth = (msg.breakC >>> 28) & 0xF;
+    const skipActive = execMode === 0 && callDepth === 0;
+    const skipLabel = skipfMode ? 'SKIPF' : 'SKIP';
 
-    this.drawText(skipfMode ? 'SKIPF:' : 'SKIP:', layout.SKIP.l, region.y, DEBUG_COLORS.FG_LABEL);
-    const skipColor = skipOn ? DEBUG_COLORS.FG_DATA : DEBUG_COLORS.FG_DIM;
-    this.drawText(msg.breakZ.toString(2).padStart(8, '0'),
-      layout.SKIP.l + 6, region.y, skipColor);
+    this.drawText(skipLabel, layout.SKIP.l, region.y, PASCAL_COLOR_SCHEME.cName);
 
-    // Show execution suspension message if not in normal mode
-    if (!skipOn) {
-      let suspendMsg: string;
-      if (execMode === 0 && callDepth !== 0) {
-        suspendMsg = `CALL(${callDepth})`;
-      } else {
-        const modeNames = ['MAIN', 'INT1', 'INT2', 'INT3'];
-        suspendMsg = modeNames[execMode] || 'MAIN';
-      }
-      this.drawText(`Suspended: ${suspendMsg}`,
-        layout.SKIP.l + 15, region.y, DEBUG_COLORS.FG_WARNING);
+    if (skipActive) {
+      // Show 32 binary bits
+      const skipBin = (msg.breakZ >>> 0).toString(2).padStart(32, '0');
+      this.drawText(skipBin, layout.SKIP.l + 6, region.y, PASCAL_COLOR_SCHEME.cData);
+    } else if (callDepth > 0) {
+      this.drawText(`Suspended during CALL(${callDepth})`,
+        layout.SKIP.l + 6, region.y, PASCAL_COLOR_SCHEME.cDataDim);
+    } else {
+      this.drawText('Suspended during MODE',
+        layout.SKIP.l + 6, region.y, PASCAL_COLOR_SCHEME.cDataDim);
     }
 
-    // XBYTE - from mBRKC bits 16-24 (Pascal: IntToHex(DebuggerMsg[mBRKC] shr 16 and $1FF, 3))
-    const xbyte = (msg.breakC >>> 16) & 0x1ff;
+    // XBYTE — mBRKC >> 16 AND $1FF (9-bit), displayed as 3 hex digits
+    const xbyte = (msg.breakC >>> 16) & 0x1FF;
     const xbyteActive = ((msg.breakC >>> 25) & 1) !== 0;
-    this.drawText('XBYTE:', layout.XBYTE.l, region.y, DEBUG_COLORS.FG_LABEL);
+    this.drawText('XBYTE', layout.XBYTE.l, region.y, PASCAL_COLOR_SCHEME.cName);
     this.drawText(xbyte.toString(16).toUpperCase().padStart(3, '0'),
-      layout.XBYTE.l + 6, region.y, DEBUG_COLORS.FG_DATA);
+      layout.XBYTE.l + 6, region.y, PASCAL_COLOR_SCHEME.cData);
     if (xbyteActive) {
-      this.drawText('*', layout.XBYTE.l + 10, region.y, DEBUG_COLORS.FG_INDICATOR);
+      this.drawText('✓', layout.XBYTE.l + 10, region.y, PASCAL_COLOR_SCHEME.cIndicator);
     }
 
-    // CT counter - from mCTH2 and mCTL2 (Pascal: IntToHex(mCTH2, 8) + ' ' + IntToHex(mCTL2, 8))
-    this.drawText('CT:', layout.CT.l, region.y, DEBUG_COLORS.FG_LABEL);
+    // CT — 64-bit from mCTH2:mCTL2, 16 hex digits in two 8-digit groups
+    this.drawText('CT', layout.CT.l, region.y, PASCAL_COLOR_SCHEME.cName);
     const ctHigh = msg.ctHigh.toString(16).toUpperCase().padStart(8, '0');
     const ctLow = msg.ctLow.toString(16).toUpperCase().padStart(8, '0');
-    this.drawText(`${ctHigh} ${ctLow}`, layout.CT.l + 3, region.y, DEBUG_COLORS.FG_DATA);
-
-    // Second row: Execution mode
-    this.drawText('Mode:', region.x + 1, region.y + 1, DEBUG_COLORS.FG_LABEL);
-    const modeNames = ['MAIN', 'INT1', 'INT2', 'INT3'];
-    this.drawText(modeNames[execMode], region.x + 7, region.y + 1, DEBUG_COLORS.FG_DATA);
-
-    // COG number with multi-COG indicator
-    const activeCogs = this.dataManager.getActiveCogIds();
-    const cogDisplay = `COG:${this.cogId}`;
-    this.drawText(cogDisplay, region.x + 15, region.y + 1, DEBUG_COLORS.FG_LABEL);
-
-    // Show other active COGs as small indicators
-    if (activeCogs.length > 1) {
-      let cogIndicators = ' [';
-      for (const cog of activeCogs) {
-        if (cog !== this.cogId) {
-          cogIndicators += cog.toString();
-        }
-      }
-      cogIndicators += ']';
-      this.drawText(cogIndicators, region.x + 21, region.y + 1, DEBUG_COLORS.FG_DIM);
-    }
+    this.drawText(`${ctHigh} ${ctLow}`, layout.CT.l + 3, region.y, PASCAL_COLOR_SCHEME.cData);
   }
 
   /**
    * Render disassembly window with actual P2 instruction decoding
    */
+  /**
+   * Render disassembly view with auto-scroll algorithm.
+   * Pascal: DebuggerUnit.pas Section 6.6
+   *
+   * Three modes:
+   *   dmPC  — follow PC with auto-scroll (ideal line = 3, threshold = 8)
+   *   dmCog — locked to cog/LUT address, user scroll
+   *   dmHub — locked to hub address, user scroll
+   *
+   * Auto-scroll (dmPC):
+   *   - Large jump (>8 cog, >32 hub): snap PC to ideal line
+   *   - PC out of range: snap to edge
+   *   - Otherwise: after 8 consecutive breaks, auto-scroll 1 line/break toward ideal
+   *   - Scroll counter resets on Go/Repeat
+   */
   private renderDisassembly(region: LayoutRegion): void {
     const state = this.dataManager.getCogState(this.cogId);
     if (!state) return;
-    
-    // Title bar
-    this.drawText('Disassembly', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT);
-    this.drawText(`PC: ${state.programCounter.toString(16).padStart(5, '0')}`, 
-      region.x + 20, region.y, DEBUG_COLORS.FG_ACTIVE);
-    
-    // Update disassembler state
-    this.disassembler.setProgramCounter(state.programCounter);
-    this.disassembler.setSkipPattern(state.skipPattern);
-    
-    // Calculate window around PC (show PC in middle if possible)
+
     const pc = state.programCounter;
-    const halfWindow = Math.floor((LAYOUT_CONSTANTS.DIS_LINES - 1) / 2);
-    const startAddr = Math.max(0, pc - halfWindow * 4);
-    
-    // Collect instructions for disassembly
-    const instructions: number[] = [];
-    for (let i = 0; i < LAYOUT_CONSTANTS.DIS_LINES - 1; i++) {
-      const addr = startAddr + i * 4;
-      const value = this.dataManager.getCogMemory(this.cogId, addr) || 0;
-      instructions.push(value);
+    const isCogExec = pc < 0x400; // Cog/LUT execute vs hub execute
+    const addrStep = isCogExec ? 1 : 4; // 1 register per line (cog) or 4 bytes (hub)
+
+    // Update disassembler state
+    this.disassembler.setProgramCounter(pc);
+    this.disassembler.setSkipPattern(state.skipPattern);
+
+    // ---- Determine top address based on disMode ----
+    if (this.disMode === 'pc') {
+      this.updateAutoScroll(pc, isCogExec, addrStep);
     }
-    
-    // Disassemble the block
-    const decoded = this.disassembler.disassembleBlock(startAddr, instructions, LAYOUT_CONSTANTS.DIS_LINES - 1);
-    
-    // Render each line
-    for (let i = 0; i < decoded.length; i++) {
-      const instruction = decoded[i];
-      const addr = instruction.address;
-      
-      // Highlight current PC
+    // For 'cog' and 'hub' modes, disTopAddr is set by user scrolling
+
+    const startAddr = this.disTopAddr;
+
+    // ---- Render 16 lines ----
+    for (let i = 0; i < this.DIS_LINES; i++) {
+      const addr = startAddr + i * addrStep;
+      const lineY = region.y + 2 + i * 2; // 2 half-rows per line, offset by header
+
+      // Format address
+      let addrStr: string;
+      if (isCogExec) {
+        if (addr < 0x200) addrStr = `R-${(addr & 0x1FF).toString(16).padStart(3, '0')}`;
+        else addrStr = `L-${(addr & 0x1FF).toString(16).padStart(3, '0')}`;
+      } else {
+        addrStr = addr.toString(16).padStart(5, '0');
+      }
+
+      // Get instruction value and disassembly text
+      let rawHex: string;
+      let disText: string;
+
+      if (ROM_DEBUG_STRINGS[addr]) {
+        // ROM debug entry/exit strings ($1F8-$1FF)
+        rawHex = '        '; // No raw hex for ROM
+        disText = ROM_DEBUG_STRINGS[addr];
+      } else {
+        const value = this.dataManager.getCogMemory(this.cogId, addr) || 0;
+        rawHex = value.toString(16).padStart(8, '0').toUpperCase();
+        const instruction = this.disassembler.decodeInstruction(addr, value);
+        disText = this.disassembler.formatDisassemblyLine(instruction, false);
+      }
+
+      // Determine colors
       const isCurrent = addr === pc;
-      const bgColor = isCurrent ? DEBUG_COLORS.BG_ACTIVE : DEBUG_COLORS.BG_DEFAULT;
-      const fgColor = isCurrent ? DEBUG_COLORS.FG_ACTIVE : 
-                     instruction.isSkipped ? DEBUG_COLORS.FG_DIM : DEBUG_COLORS.FG_DEFAULT;
-      
-      // Check for breakpoint using data manager method
+      let fgColor: number;
+      let bgColor: number;
+
+      if (isCurrent) {
+        // PC line: inverse highlight (Pascal: rounded rect in cData, text in cBox2)
+        bgColor = PASCAL_COLOR_SCHEME.cData;
+        fgColor = PASCAL_COLOR_SCHEME.cBox2;
+      } else {
+        bgColor = PASCAL_COLOR_SCHEME.cBackground;
+        fgColor = PASCAL_COLOR_SCHEME.cData;
+      }
+
+      // Check breakpoint markers
       const hasBreakpoint = this.dataManager.hasBreakpoint(this.cogId, addr);
-      // Also check if this is the ADDR breakpoint address
       const isAddrBreakpoint = (this.breakValue & 0x400) !== 0 && this.breakAddr === addr;
 
-      // Breakpoint marker: ● for set, ◌ for ADDR target, space otherwise
-      let bpMarker: string;
-      let bpColor: number;
+      // Breakpoint marker column
+      let bpMarker = ' ';
+      let bpColor: number = PASCAL_COLOR_SCHEME.cDataDim;
       if (hasBreakpoint) {
-        bpMarker = '●';  // Filled circle for set breakpoint
-        bpColor = 0xFF0000;  // Red
+        bpMarker = '●';
+        bpColor = 0xFF0000;
       } else if (isAddrBreakpoint) {
-        bpMarker = '◌';  // Empty circle for ADDR breakpoint target
-        bpColor = 0xFFFF00;  // Yellow
-      } else {
-        bpMarker = ' ';
-        bpColor = DEBUG_COLORS.FG_DIM;
+        bpMarker = '◌';
+        bpColor = PASCAL_COLOR_SCHEME.cName;
       }
 
-      // Format the line using Disassembler
-      let line = this.disassembler.formatDisassemblyLine(instruction, true);
+      // Build complete line: marker + address + raw + disassembly
+      const line = `${addrStr}  ${rawHex}  ${disText}`;
+      const truncLine = line.length > region.width - 2 ? line.substring(0, region.width - 2) : line;
 
-      // Draw breakpoint marker separately with its own color
-      this.drawText(bpMarker, region.x, region.y + i + 1, bpColor, bgColor);
+      // Draw
+      this.drawText(bpMarker, region.x, lineY, bpColor, bgColor);
+      this.drawText(truncLine, region.x + 1, lineY, fgColor, bgColor);
 
-      // Adjust line to skip the first character (breakpoint column)
-      line = line.substring(1);
-      
-      // Ensure line fits in window (truncate if needed, accounting for bp column)
-      if (line.length > region.width - 1) {
-        line = line.substring(0, region.width - 1);
-      }
-
-      // Draw the rest of the line after the breakpoint marker
-      this.drawText(line, region.x + 1, region.y + i + 1, fgColor, bgColor);
+      // SKIP strikethrough (semi-transparent at opacity 160)
+      // TODO: Implement when canvas overlay drawing is available
     }
+
+    // Save lastPC for next break's jump detection
+    this.lastPC = pc;
+  }
+
+  /**
+   * Auto-scroll algorithm for dmPC mode.
+   * Pascal: DebuggerUnit.pas disassembly auto-scroll logic.
+   */
+  private updateAutoScroll(pc: number, isCogExec: boolean, addrStep: number): void {
+    const jumpThreshold = isCogExec ? 8 : 32; // instructions (cog) or bytes (hub)
+    const idealAddr = pc - this.DIS_LINE_IDEAL * addrStep; // PC at line 3
+
+    if (this.lastPC < 0) {
+      // First break — snap to ideal
+      this.disTopAddr = Math.max(0, idealAddr);
+      this.disScrollCounter = 0;
+      return;
+    }
+
+    const pcDelta = Math.abs(pc - this.lastPC);
+
+    if (pcDelta > jumpThreshold * addrStep) {
+      // Large jump — snap PC to ideal line
+      this.disTopAddr = Math.max(0, idealAddr);
+      this.disScrollCounter = 0;
+      return;
+    }
+
+    // Check if PC is within visible range
+    const topAddr = this.disTopAddr;
+    const bottomAddr = topAddr + (this.DIS_LINES - 1) * addrStep;
+
+    if (pc < topAddr) {
+      // PC above visible — snap to top
+      this.disTopAddr = pc;
+      this.disScrollCounter = 0;
+    } else if (pc > bottomAddr) {
+      // PC below visible — snap to bottom
+      this.disTopAddr = pc - (this.DIS_LINES - 1) * addrStep;
+      this.disScrollCounter = 0;
+    } else {
+      // PC is visible — auto-scroll toward ideal after threshold
+      this.disScrollCounter++;
+      if (this.disScrollCounter >= this.DIS_SCROLL_THRESHOLD) {
+        const currentLine = Math.floor((pc - topAddr) / addrStep);
+        if (currentLine > this.DIS_LINE_IDEAL) {
+          // PC is below ideal — scroll down (increase topAddr)
+          this.disTopAddr += addrStep;
+        } else if (currentLine < this.DIS_LINE_IDEAL) {
+          // PC is above ideal — scroll up (decrease topAddr)
+          this.disTopAddr = Math.max(0, this.disTopAddr - addrStep);
+        }
+      }
+    }
+  }
+
+  /**
+   * Reset disassembly scroll counter (called on Go/Repeat).
+   * Pascal: DisScrollCounter resets when user resumes execution.
+   */
+  public resetDisScrollCounter(): void {
+    this.disScrollCounter = 0;
   }
 
   /**
@@ -982,11 +1129,9 @@ export class DebuggerRenderer {
 
       // Draw: address (col 0), name (col 4), value (col 10)
       // Pascal: DrawText(SFRl, SFRt + i * 2, cData2, [fsBold], IntToHex($1F0 + i, 3))
-      this.drawText(addrHex, region.x, row, DEBUG_COLORS.FG_DIM);
-      // Pascal: DrawText(SFRl + 4, SFRt + i * 2, cName, [fsBold, fsItalic], RegName[i])
-      this.drawText(regName, region.x + 4, row, DEBUG_COLORS.FG_LABEL);
-      // Pascal: DrawText(SFRl + 10, SFRt + i * 2, cData, [], IntToHex(CogImage[$1F0 + i], 8))
-      this.drawText(valueHex, region.x + 10, row, valueColor);
+      this.drawText(addrHex, region.x, row, PASCAL_COLOR_SCHEME.cData2);
+      this.drawText(regName, region.x + 4, row, PASCAL_COLOR_SCHEME.cName);
+      this.drawText(valueHex, region.x + 10, row, PASCAL_COLOR_SCHEME.cData);
     }
   }
 
@@ -1073,50 +1218,89 @@ export class DebuggerRenderer {
    * Render interrupts area
    * IRET (interrupt return address) is actually the PC in mIRET
    */
+  /**
+   * Render interrupt status panel.
+   * Pascal: Three levels INT1/INT2/INT3, each showing:
+   *   - Event name (4-bit field from mBRKCZ: INT1 bits 11..8, INT2 bits 15..12, INT3 bits 19..16)
+   *   - State (2-bit: INT1 bits 1..0, INT2 bits 3..2, INT3 bits 5..4)
+   *     0 or 1 = 'idle' (or 'off' if event = 0), 2 = 'wait', 3 = 'busy'
+   */
   private renderInterrupts(region: LayoutRegion): void {
-    this.drawText('Interrupts', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT);
-
     const state = this.dataManager.getCogState(this.cogId);
     if (!state || !state.lastMessage) return;
 
     const msg = state.lastMessage;
-    // IRET contains the interrupt return address (same as PC display)
-    this.drawText(`IRET: ${msg.iret.toString(16).padStart(8, '0')}`,
-      region.x + 1, region.y + 2, DEBUG_COLORS.FG_DEFAULT);
-    // Execution mode from breakCZ
-    const execMode = ((msg.breakCZ >>> 2) & 3) === 3 ? 'INT1' :
-                     ((msg.breakCZ >>> 4) & 3) === 3 ? 'INT2' :
-                     ((msg.breakCZ >>> 6) & 3) === 3 ? 'INT3' : 'MAIN';
-    this.drawText(`Mode: ${execMode}`,
-      region.x + 1, region.y + 3, DEBUG_COLORS.FG_DEFAULT);
+    const brkcz = msg.breakCZ;
+
+    const intLevels = [
+      { label: 'INT1', eventShift: 8,  stateShift: 0 },
+      { label: 'INT2', eventShift: 12, stateShift: 2 },
+      { label: 'INT3', eventShift: 16, stateShift: 4 }
+    ];
+
+    for (let i = 0; i < 3; i++) {
+      const level = intLevels[i];
+      const row = region.y + i * 2;
+
+      const eventIdx = (brkcz >>> level.eventShift) & 0xF;
+      const stateVal = (brkcz >>> level.stateShift) & 3;
+      const eventName = EVENT_NAMES[eventIdx] || '---';
+      const stateName = stateVal === 3 ? 'busy' : stateVal === 2 ? 'wait' : eventIdx === 0 ? 'off' : 'idle';
+
+      this.drawText(level.label, region.x, row, PASCAL_COLOR_SCHEME.cName);
+      this.drawText(eventName, region.x + 5, row, PASCAL_COLOR_SCHEME.cData);
+      this.drawText(stateName, region.x + 9, row, stateVal === 3 ? PASCAL_COLOR_SCHEME.cIndicator : PASCAL_COLOR_SCHEME.cData2);
+    }
   }
 
   /**
    * Render pointers area
    * Shows memory at PTRA/PTRB locations
    */
+  /**
+   * Render pointer data display (FPTR, PTRA, PTRB).
+   * Pascal Section 6.13: Three rows with prefix + 5-hex address + 14 bytes as hex and ASCII.
+   * FPTR prefix is 'R' or 'W' based on bit 20 of mBRKCZ. Center byte (index 6) highlighted.
+   * Data comes from Phase 3 hub read requests 1-3.
+   */
   private renderPointers(region: LayoutRegion): void {
-    this.drawText('Pointers', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT);
-
     const state = this.dataManager.getCogState(this.cogId);
     if (!state || !state.lastMessage) return;
 
     const msg = state.lastMessage;
-    // Display first PTR_BYTES of memory at PTRA
-    let ptrDisplay = 'PTRA: ';
-    for (let i = 0; i < Math.min(LAYOUT_CONSTANTS.PTR_BYTES, 8); i++) {
-      const value = this.dataManager.getHubMemory(msg.ptrA + i) || 0;
-      ptrDisplay += ((value >>> 0) & 0xFF).toString(16).padStart(2, '0') + ' ';
-    }
-    this.drawText(ptrDisplay, region.x + 1, region.y + 2, DEBUG_COLORS.FG_DEFAULT);
+    const PTR_BYTES = LAYOUT_CONSTANTS.PTR_BYTES; // 14
+    const PTR_CENTER = 6;
 
-    // Display memory at PTRB
-    let ptrBDisplay = 'PTRB: ';
-    for (let i = 0; i < Math.min(LAYOUT_CONSTANTS.PTR_BYTES, 8); i++) {
-      const value = this.dataManager.getHubMemory(msg.ptrB + i) || 0;
-      ptrBDisplay += ((value >>> 0) & 0xFF).toString(16).padStart(2, '0') + ' ';
+    // FPTR prefix: 'R' (read) or 'W' (write) based on bit 20 of mBRKCZ
+    const fptrPrefix = ((msg.breakCZ >>> 20) & 1) ? 'W' : 'R';
+
+    const pointers = [
+      { prefix: fptrPrefix, addr: msg.fifoPtr, row: 0 },
+      { prefix: 'PTRA', addr: msg.ptrA, row: 2 },
+      { prefix: 'PTRB', addr: msg.ptrB, row: 4 }
+    ];
+
+    for (const ptr of pointers) {
+      const row = region.y + ptr.row;
+      const baseAddr = (ptr.addr - PTR_CENTER) & 0xFFFFF;
+
+      // Prefix and address
+      this.drawText(ptr.prefix, region.x, row, PASCAL_COLOR_SCHEME.cName);
+      this.drawText(ptr.addr.toString(16).padStart(5, '0'), region.x + 5, row, PASCAL_COLOR_SCHEME.cData2);
+
+      // 14 hex bytes
+      let hexStr = '';
+      let asciiStr = '';
+      for (let i = 0; i < PTR_BYTES; i++) {
+        const byteAddr = (baseAddr + i) & 0xFFFFF;
+        const b = this.dataManager.getHubMemory(byteAddr) || 0;
+        const byteVal = (b >>> 0) & 0xFF;
+        hexStr += byteVal.toString(16).padStart(2, '0') + ' ';
+        asciiStr += (byteVal >= 0x20 && byteVal <= 0x7E) ? String.fromCharCode(byteVal) : '.';
+      }
+      this.drawText(hexStr.trim(), region.x + 11, row, PASCAL_COLOR_SCHEME.cData);
+      this.drawText(asciiStr, region.x + 11 + PTR_BYTES * 3, row, PASCAL_COLOR_SCHEME.cData2);
     }
-    this.drawText(ptrBDisplay, region.x + 1, region.y + 3, DEBUG_COLORS.FG_DEFAULT);
   }
 
   /**
@@ -1126,45 +1310,50 @@ export class DebuggerRenderer {
    * - OUTA = $1FC, OUTB = $1FD
    * - INA = $1FA, INB = $1FB
    */
+  /**
+   * Render pin registers as 64-bit binary values.
+   * Pascal Section 6.15: Three rows (DIR/OUT/IN), each showing 64 binary digits
+   * split into two 32-bit halves with byte separators.
+   * DIR = DIRB:DIRA ($1FB:$1FA), OUT = OUTB:OUTA ($1FD:$1FC), IN = INB:INA ($1FF:$1FE)
+   */
   private renderPins(region: LayoutRegion): void {
-    this.drawText('Pin States', region.x + 1, region.y, DEBUG_COLORS.FG_DEFAULT);
-
-    // Get pin values from COG memory SFR area
-    // These are special function registers at $1F0-$1FF
-    const dira = this.dataManager.getCogRegister(this.cogId, 0x1FE) || 0;
-    const dirb = this.dataManager.getCogRegister(this.cogId, 0x1FF) || 0;
+    // SFR addresses: note Pascal order is DIRA=$1FA, DIRB=$1FB, etc.
+    const dira = this.dataManager.getCogRegister(this.cogId, 0x1FA) || 0;
+    const dirb = this.dataManager.getCogRegister(this.cogId, 0x1FB) || 0;
     const outa = this.dataManager.getCogRegister(this.cogId, 0x1FC) || 0;
     const outb = this.dataManager.getCogRegister(this.cogId, 0x1FD) || 0;
-    const ina = this.dataManager.getCogRegister(this.cogId, 0x1FA) || 0;
-    const inb = this.dataManager.getCogRegister(this.cogId, 0x1FB) || 0;
+    const ina = this.dataManager.getCogRegister(this.cogId, 0x1FE) || 0;
+    const inb = this.dataManager.getCogRegister(this.cogId, 0x1FF) || 0;
 
-    // Display 32 pins per row
-    for (let row = 0; row < 2; row++) {
-      const dirVal = row === 0 ? dira : dirb;
-      const outVal = row === 0 ? outa : outb;
-      const inVal = row === 0 ? ina : inb;
+    const rows = [
+      { label: 'DIR', valB: dirb, valA: dira },
+      { label: 'OUT', valB: outb, valA: outa },
+      { label: 'IN ', valB: inb, valA: ina }
+    ];
 
-      const label = row === 0 ? 'P0-31: ' : 'P32-63:';
-      this.drawText(label, region.x + 1, region.y + 2 + row * 2, DEBUG_COLORS.FG_DEFAULT);
+    for (let r = 0; r < 3; r++) {
+      const row = rows[r];
+      const y = region.y + r * 2;
 
-      // Show pin states as colored dots
-      for (let bit = 0; bit < 32; bit++) {
-        const dir = (dirVal >>> bit) & 1;
-        const out = (outVal >>> bit) & 1;
-        const inp = (inVal >>> bit) & 1;
-        
-        // Color based on state
-        let color: number = DEBUG_COLORS.FG_DIM;
-        if (dir) {
-          color = out ? DEBUG_COLORS.FG_ACTIVE : DEBUG_COLORS.FG_CHANGED;
-        } else if (inp) {
-          color = DEBUG_COLORS.FG_DEFAULT;
-        }
-        
-        const x = region.x + 8 + bit;
-        const y = region.y + 2 + row * 2;
-        this.drawText(dir ? (out ? '●' : '○') : (inp ? '▪' : '·'), x, y, color);
+      // Label
+      this.drawText(row.label, region.x, y, PASCAL_COLOR_SCHEME.cName);
+
+      // 64 binary digits: B[31..0] A[31..0] with byte separators
+      // Display MSB first (bit 31 on left), split by bytes with spaces
+      let binStr = '';
+      // Upper 32 bits (B register)
+      for (let bit = 31; bit >= 0; bit--) {
+        binStr += ((row.valB >>> bit) & 1).toString();
+        if (bit > 0 && bit % 8 === 0) binStr += ' ';
       }
+      binStr += '  '; // Double space between halves
+      // Lower 32 bits (A register)
+      for (let bit = 31; bit >= 0; bit--) {
+        binStr += ((row.valA >>> bit) & 1).toString();
+        if (bit > 0 && bit % 8 === 0) binStr += ' ';
+      }
+
+      this.drawText(binStr, region.x + 5, y, PASCAL_COLOR_SCHEME.cData);
     }
   }
 
@@ -1233,41 +1422,78 @@ export class DebuggerRenderer {
     const q1 = 0.25;
     const q3 = 0.75;
 
+    // Five status indicators — highlighted in cIndicator when active, dimmed when inactive
+    // Pascal: cIndicator=$FF7F00 (bright orange), cDataDim=$0F0F00 (dimmed)
+    const on = PASCAL_COLOR_SCHEME.cIndicator;
+    const off = PASCAL_COLOR_SCHEME.cDataDim;
+
     // INIT - bit 23 of mBRKCZ
-    const initActive = ((breakCZ >>> 23) & 1) !== 0;
-    this.drawText('INIT', region.x + 1, region.y,
-      initActive ? DEBUG_COLORS.FG_INDICATOR : DEBUG_COLORS.FG_DIM);
-
+    this.drawText('INIT', region.x, region.y, ((breakCZ >>> 23) & 1) ? on : off);
     // STALLI - bit 1 of mBRKCZ
-    const stalliActive = ((breakCZ >>> 1) & 1) !== 0;
-    this.drawText('STALLI', region.x, region.y + 2,
-      stalliActive ? DEBUG_COLORS.FG_INDICATOR : DEBUG_COLORS.FG_DIM);
-
+    this.drawText('STALLI', region.x, region.y + 2, ((breakCZ >>> 1) & 1) ? on : off);
     // STR - bit 21 of mBRKCZ
-    const strActive = ((breakCZ >>> 21) & 1) !== 0;
-    this.drawText('STR', region.x, region.y + 3,
-      strActive ? DEBUG_COLORS.FG_INDICATOR : DEBUG_COLORS.FG_DIM);
-
+    this.drawText('STR', region.x, region.y + 4, ((breakCZ >>> 21) & 1) ? on : off);
     // MOD - bit 22 of mBRKCZ
-    const modActive = ((breakCZ >>> 22) & 1) !== 0;
-    this.drawText('MOD', region.x + 4, region.y + 3,
-      modActive ? DEBUG_COLORS.FG_INDICATOR : DEBUG_COLORS.FG_DIM);
-
+    this.drawText('MOD', region.x + 4, region.y + 4, ((breakCZ >>> 22) & 1) ? on : off);
     // LUTS - bit 26 of mBRKC
-    const lutsActive = ((breakC >>> 26) & 1) !== 0;
-    this.drawText('LUTS', region.x + 1, region.y + 5,
-      lutsActive ? DEBUG_COLORS.FG_INDICATOR : DEBUG_COLORS.FG_DIM);
+    this.drawText('LUTS', region.x, region.y + 5, ((breakC >>> 26) & 1) ? on : off);
   }
 
   /**
    * Render hint line (help text at bottom)
    * Pascal keyboard shortcuts from DebuggerUnit.pas lines 1044-1087 plus additions
    */
+  /**
+   * Render context-sensitive hint bar.
+   * Pascal Section 6.19: Shows information about whatever the mouse is hovering over.
+   * Content varies by region (disassembly, registers, events, buttons, CT, hub data, etc.)
+   */
   private renderHint(region: LayoutRegion): void {
-    // Display keyboard shortcuts matching Pascal behavior plus our additions
-    // Row 1: Core commands
-    this.drawText('SPACE=Step  ENTER=Repeat  B=Break  I/D/M=Toggle  G=GoTo  P=GoPC  ↑↓=Navigate',
-      region.x, region.y, DEBUG_COLORS.FG_DIM);
+    const hint = this.getContextHint();
+    this.drawText(hint, region.x, region.y,
+      hint.length > 0 ? PASCAL_COLOR_SCHEME.cData : PASCAL_COLOR_SCHEME.cDataDim);
+  }
+
+  /**
+   * Generate context-sensitive hint text based on current mouse position.
+   * Pascal: MouseWithin tests cursor against each region.
+   */
+  private getContextHint(): string {
+    if (!this.mouseRegion) return '';
+
+    const state = this.dataManager.getCogState(this.cogId);
+    const msg = state?.lastMessage;
+
+    switch (this.mouseRegion) {
+      case 'cogRegisters':
+      case 'lutRegisters': {
+        // Register address and value
+        const addr = this.mouseRegion === 'cogRegisters' ? this.mouseY : 0x200 + this.mouseY;
+        const val = this.dataManager.getCogMemory(this.cogId, addr) || 0;
+        return `Register $${addr.toString(16).padStart(3, '0')} = $${val.toString(16).padStart(8, '0').toUpperCase()}`;
+      }
+      case 'events': {
+        const eventIdx = Math.floor(this.mouseY / 2);
+        if (eventIdx >= 0 && eventIdx < 16) {
+          return `Event ${EVENT_NAMES[eventIdx]} (${eventIdx})`;
+        }
+        return '';
+      }
+      case 'ct':
+        if (msg && msg.freq > 0) {
+          const ct = (msg.ctHigh * 0x100000000 + msg.ctLow) / msg.freq;
+          return `Elapsed: ${ct.toFixed(6)} seconds at ${(msg.freq / 1e6).toFixed(1)} MHz`;
+        }
+        return '';
+      case 'controls':
+        return this.hoveredButton ? `Break condition: ${this.hoveredButton}` : '';
+      case 'disassembly':
+        return `Disassembly ${this.disMode === 'pc' ? '(follow PC)' : this.disMode === 'cog' ? '(cog locked)' : '(hub locked)'}`;
+      case 'hubMemory':
+        return `Hub address: $${(this.selectedAddress >= 0 ? this.selectedAddress : 0).toString(16).padStart(5, '0').toUpperCase()}`;
+      default:
+        return '';
+    }
   }
 
   /**
@@ -1292,39 +1518,29 @@ export class DebuggerRenderer {
       const rowAddr = (baseAddr + row * 16) & 0xFFFFF;
       const rowY = region.y + row * 2;
 
-      // Address column - Pascal: DrawText(HUBl, HUBt + j * 2, cData, [], IntToHex(addr, 5))
+      // Address column (5 hex digits)
       this.drawText(
         rowAddr.toString(16).toUpperCase().padStart(5, '0'),
-        region.x, rowY, DEBUG_COLORS.FG_DATA
+        region.x, rowY, PASCAL_COLOR_SCHEME.cData
       );
 
-      // 16 hex byte values - Pascal: DrawText(HUBl + 6 + k * 3, ...)
+      // 16 hex byte values (space-separated, split 8+8 with extra gap)
       for (let col = 0; col < 16; col++) {
         const byteAddr = rowAddr + col;
         const byteValue = this.dataManager.getHubMemory(byteAddr) || 0;
         const byteHex = (byteValue & 0xFF).toString(16).toUpperCase().padStart(2, '0');
 
-        // Get heat for this byte
-        const heat = this.dataManager.getMemoryHeat('HUB', this.cogId, byteAddr);
-        const color = heat > 0 ? getHeatColor(heat) : 0x007F00; // cData2 = green
-
-        this.drawText(byteHex, region.x + 6 + col * 3, rowY, color);
+        // Offset: 6 + col*3, with extra space after col 7 for 8+8 split
+        const xOff = col < 8 ? col * 3 : col * 3 + 1;
+        this.drawText(byteHex, region.x + 6 + xOff, rowY, PASCAL_COLOR_SCHEME.cData2);
       }
 
-      // ASCII representation - Pascal: DrawText(HUBl + 55 + k, ...)
+      // ASCII representation (16 chars)
       for (let col = 0; col < 16; col++) {
         const byteAddr = rowAddr + col;
         const byteValue = this.dataManager.getHubMemory(byteAddr) || 0;
-
-        // Show printable ASCII or dot for non-printable
-        let asciiChar: string;
-        if (byteValue >= 0x20 && byteValue <= 0x7E) {
-          asciiChar = String.fromCharCode(byteValue);
-        } else {
-          asciiChar = '.';
-        }
-
-        this.drawText(asciiChar, region.x + 55 + col, rowY, 0x007F00); // cData2
+        const asciiChar = (byteValue >= 0x20 && byteValue <= 0x7E) ? String.fromCharCode(byteValue) : '.';
+        this.drawText(asciiChar, region.x + 56 + col, rowY, PASCAL_COLOR_SCHEME.cData2);
       }
     }
   }
@@ -1437,28 +1653,38 @@ export class DebuggerRenderer {
   /**
    * Render a single button
    */
+  /**
+   * Render a single button with Pascal color scheme.
+   * Pascal: Mode buttons use cModeButton/cModeButtonDim, GO uses cCmdButton/cCmdButtonDim.
+   * Active conditions are highlighted; inactive are dimmed.
+   */
   private renderButton(button: DebugButton, hovered: boolean): void {
-    const bgColor = button.active ? DEBUG_COLORS.BG_ACTIVE :
-                   hovered ? DEBUG_COLORS.BG_CHANGED :
-                   DEBUG_COLORS.BG_DEFAULT;
-    const fgColor = button.active ? DEBUG_COLORS.FG_ACTIVE :
-                   hovered ? DEBUG_COLORS.FG_CHANGED :
-                   DEBUG_COLORS.FG_DEFAULT;
-    
-    // Draw button background
-    for (let y = 0; y < button.height; y++) {
-      for (let x = 0; x < button.width; x++) {
-        this.drawChar(' ', button.x + x, button.y + y, fgColor, bgColor);
-      }
+    const isGoButton = button.command === 'go';
+    let bgColor: number;
+    let fgColor: number;
+
+    if (isGoButton) {
+      // GO button: cCmdButton (active/hovered) or cCmdButtonDim (inactive)
+      bgColor = button.active || hovered ? PASCAL_COLOR_SCHEME.cCmdButton : PASCAL_COLOR_SCHEME.cCmdButtonDim;
+      fgColor = button.active || hovered ? PASCAL_COLOR_SCHEME.cCmdText : PASCAL_COLOR_SCHEME.cCmdTextDim;
+    } else {
+      // Mode/condition buttons: cModeButton (active) or cModeButtonDim (inactive)
+      bgColor = button.active ? PASCAL_COLOR_SCHEME.cModeButton : PASCAL_COLOR_SCHEME.cModeButtonDim;
+      fgColor = button.active ? PASCAL_COLOR_SCHEME.cModeText : PASCAL_COLOR_SCHEME.cModeTextDim;
     }
-    
-    // Draw button border
-    this.drawBox(button.x, button.y, button.width, button.height, fgColor);
-    
+
+    // Draw button filled background
+    const px = button.x * this.CHAR_WIDTH;
+    const py = button.y * this.HALF_ROW;
+    const pw = button.width * this.CHAR_WIDTH;
+    const ph = button.height * this.HALF_ROW;
+    this.ctx.fillStyle = this.colorToHex(bgColor);
+    this.ctx.fillRect(px, py, pw, ph);
+
     // Draw button label (centered)
     const labelX = button.x + Math.floor((button.width - button.label.length) / 2);
     const labelY = button.y + Math.floor(button.height / 2);
-    this.drawText(button.label, labelX, labelY, fgColor, bgColor);
+    this.drawText(button.label, labelX, labelY, fgColor);
   }
 
   /**
@@ -1504,9 +1730,9 @@ export class DebuggerRenderer {
   private drawText(text: string, gridX: number, gridY: number, 
                    fgColor: number, bgColor: number = DEBUG_COLORS.BG_DEFAULT): void {
     const x = gridX * this.CHAR_WIDTH;
-    const y = gridY * this.CHAR_HEIGHT;
-    
-    // Draw background
+    const y = gridY * this.HALF_ROW;  // Y is in half-rows
+
+    // Draw background (full character height for text readability)
     if (bgColor !== DEBUG_COLORS.BG_DEFAULT) {
       this.ctx.fillStyle = this.colorToHex(bgColor);
       this.ctx.fillRect(x, y, text.length * this.CHAR_WIDTH, this.CHAR_HEIGHT);
@@ -1866,7 +2092,7 @@ export class DebuggerRenderer {
           return 'navigateHubMap';
 
         case 'smartPins':
-          // Reset smart pin watch
+          // Left-click: reset smart pin watch; Right-click: toggle DIR filter
           if (RB) {
             if (this.onCommand) {
               this.onCommand('toggleSmartWatchAll', {});
@@ -1877,6 +2103,32 @@ export class DebuggerRenderer {
             }
           }
           return 'smartPinAction';
+
+        case 'flags':
+          // Click on PC area locks disassembly to follow PC
+          if (gridX >= PASCAL_LAYOUT_CONSTANTS.PC.l && gridX < PASCAL_LAYOUT_CONSTANTS.PC.l + PASCAL_LAYOUT_CONSTANTS.PC.w) {
+            this.disMode = 'pc';
+            this.markRegionDirty('disassembly');
+            return 'lockToPC';
+          }
+          break;
+
+        case 'pointers':
+          // Click on pointer data navigates hub viewer and disassembly to that address
+          {
+            const state2 = this.dataManager.getCogState(this.cogId);
+            if (state2?.lastMessage) {
+              const relRow = Math.floor((gridY - region.y) / 2);
+              let targetAddr = 0;
+              if (relRow === 0) targetAddr = state2.lastMessage.fifoPtr;
+              else if (relRow === 1) targetAddr = state2.lastMessage.ptrA;
+              else if (relRow === 2) targetAddr = state2.lastMessage.ptrB;
+              this.selectedAddress = targetAddr & 0xFFFFF;
+              this.markRegionDirty('hubMemory');
+              this.markRegionDirty('hubMiniMap');
+            }
+          }
+          return 'navigatePointer';
       }
     }
 
@@ -1928,13 +2180,11 @@ export class DebuggerRenderer {
         }
       }
 
-      // Scroll based on mode
+      // Scroll disassembly via disTopAddr (used by the auto-scroll system from Task #13)
       if (this.disMode === 'cog') {
-        // COG mode: scroll COG address
-        this.cogAddr = Math.max(0, Math.min(0x400 - LAYOUT_CONSTANTS.DIS_LINES, this.cogAddr + disStep));
+        this.disTopAddr = Math.max(0, Math.min(0x400 - this.DIS_LINES, this.disTopAddr + disStep));
       } else {
-        // HUB mode: scroll hub address by 4 bytes per step
-        this.selectedAddress = (this.getSelectedAddress() + disStep * 4) & 0xFFFFF;
+        this.disTopAddr = (this.disTopAddr + disStep * 4) & 0xFFFFF;
       }
 
       this.markRegionDirty('disassembly');
@@ -2018,11 +2268,12 @@ export class DebuggerRenderer {
         break;
 
       case 'DEBUG':
-        // Left: set DEBUG mode, Right: toggle DEBUG bit
+        // Left: set DEBUG exclusively (clear bits 0-3, 5-7; keep bit 8)
+        // Right: toggle bit 4; clear bits 0-3, 5-7 (mutual exclusion with single-step)
         if (LB) {
           this.breakValue = (this.breakValue & 0x100) | 0x10;
         } else if (RB) {
-          this.breakValue = (this.breakValue & 0x110) ^ 0x10;
+          this.breakValue = (this.breakValue & ~0xFF) ^ 0x10; // Preserve 8,9,10; clear 0-7; toggle 4
         }
         this.updateButtonStates();
         break;
@@ -2068,28 +2319,30 @@ export class DebuggerRenderer {
         break;
 
       case 'EVENT':
-        // Event breakpoint with event ID
+        // Left: set EVENT exclusively (bit 9 + event ID in bits 15..12; keep bit 8)
+        // Right: toggle EVENT — if set, clear bits 9,12-15; if not set, add EVENT+event
         if (LB) {
           this.breakValue = (this.breakValue & 0x100) | 0x200 | (this.breakEvent << 12);
         } else if (RB) {
           if ((this.breakValue & 0x200) !== 0) {
-            this.breakValue = this.breakValue & 0xDEF;
+            this.breakValue = this.breakValue & ~0xF200; // Clear EVENT bit and event ID
           } else {
-            this.breakValue = (this.breakValue & 0xBEF) | 0x200 | (this.breakEvent << 12);
+            this.breakValue = (this.breakValue & ~0xF600) | 0x200 | (this.breakEvent << 12); // Clear ADDR, set EVENT
           }
         }
         this.updateButtonStates();
         break;
 
       case 'ADDR':
-        // Address breakpoint
+        // Left: set ADDR exclusively (bit 10 + address in bits 31..12; keep bit 8)
+        // Right: toggle ADDR — if set, clear bit 10 and address bits; if not set, add ADDR+address
         if (LB) {
           this.breakValue = (this.breakValue & 0x100) | 0x400 | (this.breakAddr << 12);
         } else if (RB) {
           if ((this.breakValue & 0x400) !== 0) {
-            this.breakValue = this.breakValue & 0xBEF;
+            this.breakValue = this.breakValue & 0x00000BFF; // Clear ADDR bit and address
           } else {
-            this.breakValue = (this.breakValue & 0xDEF) | 0x400 | (this.breakAddr << 12);
+            this.breakValue = (this.breakValue & ~0xF200) | 0x400 | (this.breakAddr << 12); // Clear EVENT, set ADDR
           }
         }
         this.updateButtonStates();

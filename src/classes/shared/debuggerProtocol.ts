@@ -6,47 +6,60 @@ import { EventEmitter } from 'events';
 import { UsbSerial } from '../../utils/usb.serial';
 import {
   DebuggerInitialMessage,
-  DebuggerRequest,
-  DebuggerResponse,
   DEBUG_COMMANDS,
   MEMORY_CONSTANTS,
-  parseInitialMessage,
-  calculateChecksum
+  LAYOUT_CONSTANTS,
+  parseInitialMessage
 } from './debuggerConstants';
+import { DebuggerResponse } from './debuggerResponse';
+import { DebuggerPhase3Receiver, Phase3Data } from './debuggerPhase3Receiver';
 
 /**
- * DebuggerProtocol - Handles bidirectional P2 serial communication for debugging
- * 
- * Manages the dual protocol system where binary debugger messages coexist with
- * text DEBUG commands. Implements the complete P2 debugger protocol including:
- * - Initial 20-long message reception
- * - Memory block requests/responses
- * - Breakpoint and control commands
- * - Flow control and timing
- * - Lost communication detection
- * 
- * Reference: DEBUGGER_IMPLEMENTATION.md lines 105-123
+ * DebuggerProtocol - Raw lockstep serial protocol for P2 single-step debugger
+ *
+ * Implements the Pascal DebuggerUnit.pas protocol exactly:
+ * - Byte dispatch (ChrIn): bytes 0-7 = debugger breakpoint, 27 = ESC/end, $60 = display string
+ * - Synchronous 3-phase breakpoint exchange per cog
+ * - No framing, no sequence numbers, no ACK/NAK — raw bytes on serial
+ *
+ * Protocol flow per breakpoint:
+ *   Phase 1: P2 sends 20 longs (80 bytes) + 64 CRC words (128 bytes) + 124 hub checksums (248 bytes) = 456 bytes
+ *   Phase 2: Host sends 52 bytes (8 reg request + 16 hub request + 20 hub reads + 4 COGBRK + 4 STALL/BRK)
+ *   Phase 3: P2 sends variable-length data (changed blocks, sub-CRCs, hub reads, smart pins)
+ *
+ * Reference: Pascal DebuggerUnit.pas, DebugUnit.pas, Spin2_debugger.spin2
  */
 export class DebuggerProtocol extends EventEmitter {
   private serial: UsbSerial | null = null;
   private isConnected: boolean = false;
-  private messageBuffer: Uint8Array = new Uint8Array(4096);
-  private bufferPosition: number = 0;
-  private expectedMessageSize: number = 0;
-  private currentSequence: number = 0;
-  private pendingRequests: Map<number, DebuggerRequest> = new Map();
-  private responseTimeouts: Map<number, NodeJS.Timeout> = new Map();
-  private communicationTimeout: NodeJS.Timeout | null = null;
   private lastActivityTime: number = 0;
-  private readonly TIMEOUT_MS = 1000; // 1 second timeout
-  private readonly COMM_TIMEOUT_MS = 5000; // 5 second communication timeout
+  private communicationTimeout: NodeJS.Timeout | null = null;
+  private readonly COMM_TIMEOUT_MS = 5000;
+
+  // Receive buffer for accumulating serial data
+  private rxBuffer: Uint8Array = new Uint8Array(65536);
+  private rxHead: number = 0;
+  private rxTail: number = 0;
+
+  // Per-cog response generators (maintain CRC state across breakpoints)
+  private cogResponses: Map<number, DebuggerResponse> = new Map();
+
+  // Display string accumulation (Pascal: started by $60, ended by CR)
+  private displayStringActive: boolean = false;
+  private displayStringBuffer: number[] = [];
+
+  // Flag: waiting for more Phase 1 data (prevents re-dispatch of cog byte)
+  private waitingForPhase1: boolean = false;
+
+  // Phase 3 receiver
+  private phase3Receiver: DebuggerPhase3Receiver = new DebuggerPhase3Receiver();
 
   constructor() {
     super();
   }
 
   /**
-   * Connect to serial port
+   * Connect to serial port for debug session
    */
   public connect(serial: UsbSerial): void {
     if (this.serial) {
@@ -56,15 +69,15 @@ export class DebuggerProtocol extends EventEmitter {
     this.serial = serial;
     this.isConnected = true;
     this.lastActivityTime = Date.now();
+    this.rxHead = 0;
+    this.rxTail = 0;
 
-    // Set up data handler
+    // Set up data handler — incoming bytes go into ring buffer
     this.serial.on('data', (data: Buffer) => {
-      this.handleSerialData(data);
+      this.onSerialData(data);
     });
 
-    // Start communication timeout monitor
     this.startCommunicationMonitor();
-
     this.emit('connected');
   }
 
@@ -78,391 +91,388 @@ export class DebuggerProtocol extends EventEmitter {
     }
 
     this.isConnected = false;
-    this.clearAllTimeouts();
     this.stopCommunicationMonitor();
-
+    this.cogResponses.clear();
     this.emit('disconnected');
   }
 
   /**
-   * Handle incoming serial data
+   * Buffer incoming serial data
    */
-  private handleSerialData(data: Buffer): void {
+  private onSerialData(data: Buffer): void {
     this.lastActivityTime = Date.now();
-
-    // Add to buffer
-    // CRITICAL FIX: Properly convert Buffer to Uint8Array to avoid data corruption
     const uint8Data = new Uint8Array(data.buffer, data.byteOffset, data.length);
     for (let i = 0; i < uint8Data.length; i++) {
-      if (this.bufferPosition < this.messageBuffer.length) {
-        this.messageBuffer[this.bufferPosition++] = uint8Data[i];
-      }
+      this.rxBuffer[this.rxHead] = uint8Data[i];
+      this.rxHead = (this.rxHead + 1) & 0xFFFF;
     }
-
-    // Try to parse messages
-    this.parseMessages();
+    // Process available bytes
+    this.processIncomingBytes();
   }
 
   /**
-   * Parse messages from buffer
+   * Number of bytes available in RX buffer
    */
-  private parseMessages(): void {
-    // Check for complete messages
-    while (this.bufferPosition >= 4) {
-      // Check message header
-      const header = this.readUint32(0);
-      
-      // Check if this is a debugger message (starts with marker)
-      // Header is read as little-endian, so 0xDB is in the high byte (bits 24-31)
-      if ((header >>> 24) === 0xDB) {
-        const messageType = (header >> 16) & 0xFF;
-        const payloadSize = header & 0xFFFF;
-        const totalSize = 4 + payloadSize;
+  private rxAvailable(): number {
+    return (this.rxHead - this.rxTail) & 0xFFFF;
+  }
 
-        if (this.bufferPosition >= totalSize) {
-          // Extract complete message
-          const message = this.messageBuffer.slice(4, totalSize);
-          this.processDebuggerMessage(messageType, message);
+  /**
+   * Read one byte from RX buffer (blocking-like, returns -1 if empty)
+   */
+  private rxByte(): number {
+    if (this.rxHead === this.rxTail) return -1;
+    const b = this.rxBuffer[this.rxTail];
+    this.rxTail = (this.rxTail + 1) & 0xFFFF;
+    return b;
+  }
 
-          // Remove message from buffer
-          this.messageBuffer.copyWithin(0, totalSize, this.bufferPosition);
-          this.bufferPosition -= totalSize;
+  /**
+   * Push back one byte (Pascal: ReturnRByte)
+   */
+  private returnRxByte(b: number): void {
+    this.rxTail = (this.rxTail - 1) & 0xFFFF;
+    this.rxBuffer[this.rxTail] = b;
+  }
+
+  /**
+   * Read N bytes from RX buffer into a Uint8Array. Returns null if not enough data.
+   */
+  private rxBytes(count: number): Uint8Array | null {
+    if (this.rxAvailable() < count) return null;
+    const result = new Uint8Array(count);
+    for (let i = 0; i < count; i++) {
+      result[i] = this.rxBuffer[this.rxTail];
+      this.rxTail = (this.rxTail + 1) & 0xFFFF;
+    }
+    return result;
+  }
+
+  /**
+   * Read a 32-bit long from RX buffer (4 bytes, LSB-first). Returns null if not enough data.
+   */
+  private rxLong(): number | null {
+    const bytes = this.rxBytes(4);
+    if (!bytes) return null;
+    return (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
+  }
+
+  /**
+   * Read a 16-bit word from RX buffer (2 bytes, LSB-first). Returns null if not enough data.
+   */
+  private rxWord(): number | null {
+    const bytes = this.rxBytes(2);
+    if (!bytes) return null;
+    return bytes[0] | (bytes[1] << 8);
+  }
+
+  /**
+   * Write raw bytes to serial port
+   */
+  private txBytes(data: Uint8Array): void {
+    if (this.serial) {
+      this.serial.write(Buffer.from(data) as any);
+    }
+  }
+
+  /**
+   * Write a 32-bit long to serial (4 bytes, LSB-first) — Pascal TLong
+   */
+  private txLong(value: number): void {
+    const buf = new Uint8Array(4);
+    buf[0] = value & 0xFF;
+    buf[1] = (value >> 8) & 0xFF;
+    buf[2] = (value >> 16) & 0xFF;
+    buf[3] = (value >> 24) & 0xFF;
+    this.txBytes(buf);
+  }
+
+  // ==========================================================================
+  // Byte Dispatch (Pascal: DebugForm.ChrIn)
+  // ==========================================================================
+
+  /**
+   * Process available bytes from the RX buffer.
+   * This is the main byte dispatcher matching Pascal DebugForm.ChrIn.
+   *
+   * Byte values:
+   *   0-7:    Debugger breakpoint for cog N — trigger full protocol exchange
+   *   27:     ESC — end debug session
+   *   $60:    Start display string (backtick)
+   *   13 (CR): End display string (if active) or newline (if not)
+   *   9 (TAB): Tab to next 8-column boundary
+   *   $20-$7F: Printable character to text console
+   */
+  private processIncomingBytes(): void {
+    while (this.rxAvailable() > 0) {
+      // If we're waiting for more Phase 1 data, check if we have enough now
+      if (this.waitingForPhase1) {
+        const PHASE1_SIZE = 80 + 128 + 248; // 456 bytes
+        // Need cog byte (already pushed back) + 456 bytes
+        if (this.rxAvailable() < 1 + PHASE1_SIZE) {
+          break; // Still not enough data
+        }
+        this.waitingForPhase1 = false;
+      }
+
+      const b = this.rxByte();
+      if (b < 0) break;
+
+      if (this.displayStringActive) {
+        // Inside a display string — accumulate until CR
+        if (b === 13) {
+          // End display string — emit for parsing
+          this.displayStringActive = false;
+          this.emit('displayString', this.displayStringBuffer);
+          this.displayStringBuffer = [];
         } else {
-          // Wait for more data
+          this.displayStringBuffer.push(b);
+        }
+        continue;
+      }
+
+      if (b <= 7) {
+        // Debugger breakpoint for cog N
+        // Push byte back (Pascal: ReturnRByte) — the breakpoint handler re-reads it
+        // Actually in Pascal, the cog byte is consumed and passed to Breakpoint method.
+        // We handle it directly here.
+        this.handleBreakpoint(b);
+        // After the breakpoint exchange completes, continue dispatching
+        continue;
+      }
+
+      switch (b) {
+        case 27: // ESC — end debug session
+          this.emit('endSession');
+          return;
+
+        case 0x60: // Backtick — start display string
+          this.displayStringActive = true;
+          this.displayStringBuffer = [];
           break;
-        }
-      } else if (this.bufferPosition >= 80) {
-        // Check for 20-long initial message (80 bytes)
-        const possibleInitial = new Uint32Array(
-          this.messageBuffer.buffer,
-          this.messageBuffer.byteOffset,
-          20
-        );
-        
-        // Validate it looks like an initial message
-        if (this.isValidInitialMessage(possibleInitial)) {
-          this.processInitialMessage(possibleInitial);
-          
-          // Remove from buffer
-          this.messageBuffer.copyWithin(0, 80, this.bufferPosition);
-          this.bufferPosition -= 80;
-        } else {
-          // Not a valid message, skip first byte and try again
-          this.messageBuffer.copyWithin(0, 1, this.bufferPosition);
-          this.bufferPosition--;
-        }
-      } else {
-        // Need more data
-        break;
+
+        case 13: // CR — newline in text console
+          this.emit('textConsole', { type: 'newline' });
+          break;
+
+        case 9: // TAB
+          this.emit('textConsole', { type: 'tab' });
+          break;
+
+        default:
+          if (b >= 0x20 && b <= 0x7F) {
+            // Printable character
+            this.emit('textConsole', { type: 'char', value: b });
+          }
+          // Other bytes silently ignored
+          break;
       }
     }
   }
 
-  /**
-   * Check if data looks like a valid initial message
-   */
-  private isValidInitialMessage(data: Uint32Array): boolean {
-    if (data.length < 20) return false;
-    
-    // COG number should be 0-7
-    const cogNum = data[0];
-    if (cogNum > 7) return false;
-    
-    // PC should be reasonable
-    const pc = data[5];
-    if (pc > 0x80000) return false; // 512KB max
-    
-    return true;
-  }
+  // ==========================================================================
+  // Breakpoint Exchange (Pascal: TDebuggerForm.Breakpoint)
+  // ==========================================================================
 
   /**
-   * Process initial 20-long message
+   * Handle a complete breakpoint exchange for a cog.
+   * This implements the full synchronous 3-phase lockstep protocol.
+   *
+   * In the Pascal implementation, this is a blocking call that reads all Phase 1 data,
+   * sends Phase 2, reads all Phase 3 data, then returns. In our async/event-driven
+   * environment, we attempt to process as much as available and defer if data is
+   * incomplete (the P2 stall loop will re-send at ~15Hz).
+   *
+   * @param cogId The cog number (0-7)
    */
-  private processInitialMessage(data: Uint32Array): void {
-    try {
-      const message = parseInitialMessage(data);
-      
-      // Also includes COG/LUT CRCs and HUB checksums after the 20 longs
-      const cogCRCs = new Uint32Array(64);
-      const lutCRCs = new Uint32Array(64);
-      const hubChecksums = new Uint32Array(124);
-      
-      // These would follow the initial message in the full protocol
-      // For now, emit the basic message
-      this.emit('initialMessage', {
+  private handleBreakpoint(cogId: number): void {
+    // Ensure we have a response generator for this cog
+    if (!this.cogResponses.has(cogId)) {
+      this.cogResponses.set(cogId, new DebuggerResponse());
+    }
+
+    // ---- Phase 1: Read 456 bytes from P2 ----
+    // 20 longs (80 bytes) + 64 CRC words (128 bytes) + 124 hub checksum words (248 bytes)
+    const PHASE1_SIZE = 80 + 128 + 248; // 456 bytes
+    if (this.rxAvailable() < PHASE1_SIZE) {
+      // Not enough data yet — push the cog byte back and stop processing
+      // (more data will arrive and re-trigger processIncomingBytes)
+      this.returnRxByte(cogId);
+      this.waitingForPhase1 = true;
+      return;
+    }
+    this.waitingForPhase1 = false;
+    const phase1Data = this.rxBytes(PHASE1_SIZE)!;
+
+    // Parse the 20-long debugger message
+    const msgData = new Uint32Array(20);
+    const view = new DataView(phase1Data.buffer, phase1Data.byteOffset, phase1Data.byteLength);
+    for (let i = 0; i < 20; i++) {
+      msgData[i] = view.getUint32(i * 4, true); // LSB-first
+    }
+    const message = parseInitialMessage(msgData);
+
+    // Emit the parsed message for display rendering
+    this.emit('breakpointMessage', { cogId, message, rawPacket: phase1Data });
+
+    // ---- Phase 2: Send 52-byte response ----
+    // Allow listeners to update state before Phase 2 (e.g., set COGBRK mask)
+    this.emit('beforePhase2', { cogId });
+    const responseGen = this.cogResponses.get(cogId)!;
+    const response = responseGen.generateResponse(phase1Data);
+    this.txBytes(response);
+
+    // Get changed block info for Phase 3 expectations
+    const changedCogBlocks = responseGen.getChangedCogBlocks();
+    const changedHubBlocks = responseGen.getChangedHubBlocks();
+
+    // ---- Phase 3: Read variable-length data ----
+    // Calculate expected Phase 3 data size
+    this.phase3Receiver.setExpectations({
+      changedCogBlocks,
+      changedHubBlocks,
+      getHubCode: this.getHubCodeForCog(cogId),
+      disLines: LAYOUT_CONSTANTS.DIS_LINES
+    });
+
+    // Try to read Phase 3 data — it may not all be available yet
+    const expectedSize = this.phase3Receiver.getExpectedSize();
+    const phase3Raw = this.rxBytes(expectedSize);
+
+    if (phase3Raw) {
+      this.phase3Receiver.addData(phase3Raw);
+      try {
+        const phase3Data = this.phase3Receiver.parse();
+        this.emit('breakpointData', {
+          cogId,
+          message,
+          phase3: phase3Data,
+          changedCogBlocks,
+          changedHubBlocks
+        });
+      } catch (error) {
+        this.emit('error', { type: 'phase3Parse', cogId, error });
+      }
+      this.phase3Receiver.reset();
+    } else {
+      // Partial Phase 3 data — consume what we can, emit partial result
+      // The P2 stall loop will reconnect and we'll get full data next time
+      const available = this.rxAvailable();
+      if (available > 0) {
+        const partial = this.rxBytes(available);
+        if (partial) {
+          this.phase3Receiver.addData(partial);
+        }
+      }
+
+      // Emit breakpoint with whatever Phase 1 data we have
+      this.emit('breakpointData', {
+        cogId,
         message,
-        cogCRCs,
-        lutCRCs,
-        hubChecksums
+        phase3: null,
+        changedCogBlocks,
+        changedHubBlocks
       });
-      
-    } catch (error) {
-      this.emit('error', { type: 'parse', error });
+      this.phase3Receiver.reset();
+    }
+
+    // Emit breakpoint completion for state machine tracking
+    this.emit('breakpointComplete', { cogId });
+  }
+
+  // ==========================================================================
+  // State Control (called by debugger window / interaction handler)
+  // ==========================================================================
+
+  /**
+   * Set the stall/break command for a cog's next Phase 2 response.
+   * Call this BEFORE the next breakpoint exchange.
+   *
+   * @param cogId Cog number (0-7)
+   * @param command STALL_CMD ($800) to hold, or breakValue to continue
+   */
+  public setStallBreak(cogId: number, command: number): void {
+    const resp = this.getOrCreateResponse(cogId);
+    resp.setStallBreak(command);
+  }
+
+  /**
+   * Set COGBRK request mask for a specific cog's next Phase 2 response.
+   * Bit N = 1 forces an async break in cog N.
+   */
+  public setRequestCogBrk(cogId: number, mask: number): void {
+    const resp = this.getOrCreateResponse(cogId);
+    resp.setRequestCogBrk(mask);
+  }
+
+  /**
+   * Set COGBRK request mask on ALL cog response generators.
+   * Pascal: RequestCOGBRK is a global mask sent in whichever cog's exchange happens next.
+   * The mask is cleared after sending (by the response generator).
+   */
+  public setGlobalCogBrk(mask: number): void {
+    for (const resp of this.cogResponses.values()) {
+      resp.setRequestCogBrk(mask);
     }
   }
 
   /**
-   * Process debugger protocol message
+   * Set disassembly address for hub code reading
    */
-  private processDebuggerMessage(messageType: number, data: Uint8Array): void {
-    switch (messageType) {
-      case DEBUG_COMMANDS.RESPONSE_DATA:
-        this.processDataResponse(data);
-        break;
-      case DEBUG_COMMANDS.RESPONSE_ACK:
-        this.processAckResponse(data);
-        break;
-      case DEBUG_COMMANDS.RESPONSE_NAK:
-        this.processNakResponse(data);
-        break;
-      default:
-        this.emit('unknownMessage', { type: messageType, data });
+  public setDisassemblyAddress(cogId: number, address: number, lines: number = 16): void {
+    const resp = this.getOrCreateResponse(cogId);
+    resp.setDisassemblyAddress(address, lines);
+  }
+
+  /**
+   * Set whether to request hub code for disassembly
+   */
+  public setGetHubCode(cogId: number, enabled: boolean): void {
+    const resp = this.getOrCreateResponse(cogId);
+    resp.setGetHubCode(enabled);
+  }
+
+  /**
+   * Set hub memory viewer address
+   */
+  public setHubAddress(cogId: number, address: number): void {
+    const resp = this.getOrCreateResponse(cogId);
+    resp.setHubAddress(address);
+  }
+
+  /**
+   * Reset a cog's protocol state (e.g., after DTR reset)
+   */
+  public resetCog(cogId: number): void {
+    const resp = this.cogResponses.get(cogId);
+    if (resp) {
+      resp.reset();
     }
   }
 
-  /**
-   * Process data response
-   */
-  private processDataResponse(data: Uint8Array): void {
-    if (data.length < 8) return;
-    
-    const sequence = this.readUint32FromData(data, 0);
-    const address = this.readUint32FromData(data, 4);
-    const payload = data.slice(8);
-    
-    // Match with pending request
-    const request = this.pendingRequests.get(sequence);
-    if (request) {
-      // Clear timeout
-      const timeout = this.responseTimeouts.get(sequence);
-      if (timeout) {
-        clearTimeout(timeout);
-        this.responseTimeouts.delete(sequence);
-      }
-      
-      // Create response
-      const response: DebuggerResponse = {
-        responseType: DEBUG_COMMANDS.RESPONSE_DATA,
-        cogId: request.cogId,
-        address,
-        data: new Uint32Array(payload.buffer, payload.byteOffset, payload.length / 4)
-      };
-      
-      this.emit('response', response);
-      this.pendingRequests.delete(sequence);
+  // ==========================================================================
+  // Helpers
+  // ==========================================================================
+
+  private getOrCreateResponse(cogId: number): DebuggerResponse {
+    if (!this.cogResponses.has(cogId)) {
+      this.cogResponses.set(cogId, new DebuggerResponse());
     }
+    return this.cogResponses.get(cogId)!;
   }
 
   /**
-   * Process ACK response
+   * Check if hub code should be requested for this cog
+   * (hub-execute mode = PC >= $400)
    */
-  private processAckResponse(data: Uint8Array): void {
-    if (data.length < 4) return;
-    
-    const sequence = this.readUint32FromData(data, 0);
-    const request = this.pendingRequests.get(sequence);
-    
-    if (request) {
-      this.emit('ack', { sequence, request });
-      this.clearRequestTimeout(sequence);
-    }
+  private getHubCodeForCog(_cogId: number): boolean {
+    // This will be set by the debugger window based on PC address
+    // For now, return the state from the response generator
+    return false;
   }
 
   /**
-   * Process NAK response
-   */
-  private processNakResponse(data: Uint8Array): void {
-    if (data.length < 4) return;
-    
-    const sequence = this.readUint32FromData(data, 0);
-    const request = this.pendingRequests.get(sequence);
-    
-    if (request) {
-      this.emit('nak', { sequence, request });
-      this.clearRequestTimeout(sequence);
-    }
-  }
-
-  /**
-   * Send request to P2
-   */
-  public sendRequest(request: DebuggerRequest): number {
-    if (!this.serial || !this.isConnected) {
-      throw new Error('Not connected');
-    }
-
-    const sequence = this.getNextSequence();
-    
-    // Build request packet
-    const packet = this.buildRequestPacket(request, sequence);
-    
-    // Store pending request
-    this.pendingRequests.set(sequence, request);
-    
-    // Set timeout
-    const timeout = setTimeout(() => {
-      this.handleRequestTimeout(sequence);
-    }, this.TIMEOUT_MS);
-    this.responseTimeouts.set(sequence, timeout);
-    
-    // Send packet
-    this.serial.write(packet as any);
-    
-    return sequence;
-  }
-
-  /**
-   * Build request packet
-   */
-  private buildRequestPacket(request: DebuggerRequest, sequence: number): Uint8Array {
-    const packet = new Uint8Array(16); // Base packet size
-    let offset = 0;
-    
-    // Header: command type
-    this.writeUint32(packet, offset, request.command);
-    offset += 4;
-    
-    // Sequence number
-    this.writeUint32(packet, offset, sequence);
-    offset += 4;
-    
-    // COG ID
-    this.writeUint32(packet, offset, request.cogId);
-    offset += 4;
-    
-    // Command-specific data
-    switch (request.command) {
-      case DEBUG_COMMANDS.REQUEST_COG:
-      case DEBUG_COMMANDS.REQUEST_LUT:
-        // Block index
-        this.writeUint32(packet, offset, request.blockIndex || 0);
-        break;
-      case DEBUG_COMMANDS.REQUEST_HUB:
-        // Address
-        this.writeUint32(packet, offset, request.address || 0);
-        break;
-      case DEBUG_COMMANDS.STALL_CMD:
-        // No additional data - STALL_CMD is the only valid control command
-        // Note: BREAK and GO now use breakValue bits, not separate commands
-        break;
-    }
-    
-    return packet;
-  }
-
-  /**
-   * Send STALL command
-   */
-  public sendStall(cogId: number): void {
-    this.sendRequest({
-      command: DEBUG_COMMANDS.STALL_CMD,
-      cogId
-    });
-  }
-
-  /**
-   * Send BREAK command
-   * @deprecated Use TLongTransmitter with STALL_CMD instead
-   */
-  public sendBreak(cogId: number): void {
-    // In Pascal protocol, BREAK = STALL (hold at current position)
-    this.sendRequest({
-      command: DEBUG_COMMANDS.STALL_CMD,
-      cogId
-    });
-  }
-
-  /**
-   * Send GO command
-   * @deprecated Use TLongTransmitter with breakValue instead
-   */
-  public sendGo(cogId: number): void {
-    // In Pascal protocol, GO = send breakValue (continue until next break)
-    // This method cannot implement that correctly without breakValue state
-    // Use TLongTransmitter.transmitTLong(breakValue) directly
-    this.sendRequest({
-      command: DEBUG_COMMANDS.STALL_CMD, // Fallback to STALL
-      cogId
-    });
-  }
-
-  /**
-   * Request COG memory block
-   */
-  public requestCogBlock(cogId: number, blockIndex: number): void {
-    this.sendRequest({
-      command: DEBUG_COMMANDS.REQUEST_COG,
-      cogId,
-      blockIndex
-    });
-  }
-
-  /**
-   * Request LUT memory block
-   */
-  public requestLutBlock(cogId: number, blockIndex: number): void {
-    this.sendRequest({
-      command: DEBUG_COMMANDS.REQUEST_LUT,
-      cogId,
-      blockIndex
-    });
-  }
-
-  /**
-   * Request HUB memory
-   */
-  public requestHubMemory(address: number, size: number = 128): void {
-    this.sendRequest({
-      command: DEBUG_COMMANDS.REQUEST_HUB,
-      cogId: 0, // HUB is shared
-      address
-    });
-  }
-
-  /**
-   * Handle request timeout
-   */
-  private handleRequestTimeout(sequence: number): void {
-    const request = this.pendingRequests.get(sequence);
-    if (request) {
-      this.emit('timeout', { sequence, request });
-      this.pendingRequests.delete(sequence);
-      this.responseTimeouts.delete(sequence);
-    }
-  }
-
-  /**
-   * Clear request timeout
-   */
-  private clearRequestTimeout(sequence: number): void {
-    const timeout = this.responseTimeouts.get(sequence);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.responseTimeouts.delete(sequence);
-    }
-    this.pendingRequests.delete(sequence);
-  }
-
-  /**
-   * Clear all timeouts
-   */
-  private clearAllTimeouts(): void {
-    for (const timeout of this.responseTimeouts.values()) {
-      clearTimeout(timeout);
-    }
-    this.responseTimeouts.clear();
-    this.pendingRequests.clear();
-  }
-
-  /**
-   * Get next sequence number
-   */
-  private getNextSequence(): number {
-    return ++this.currentSequence & 0xFFFF;
-  }
-
-  /**
-   * Start communication monitor
+   * Start communication timeout monitor
    */
   private startCommunicationMonitor(): void {
     this.communicationTimeout = setInterval(() => {
@@ -474,7 +484,7 @@ export class DebuggerProtocol extends EventEmitter {
   }
 
   /**
-   * Stop communication monitor
+   * Stop communication timeout monitor
    */
   private stopCommunicationMonitor(): void {
     if (this.communicationTimeout) {
@@ -484,46 +494,33 @@ export class DebuggerProtocol extends EventEmitter {
   }
 
   /**
-   * Utility: Read uint32 from buffer
-   */
-  private readUint32(offset: number): number {
-    return (this.messageBuffer[offset] |
-            (this.messageBuffer[offset + 1] << 8) |
-            (this.messageBuffer[offset + 2] << 16) |
-            (this.messageBuffer[offset + 3] << 24)) >>> 0;
-  }
-
-  /**
-   * Utility: Write uint32 to buffer
-   */
-  private writeUint32(buffer: Uint8Array, offset: number, value: number): void {
-    buffer[offset] = value & 0xFF;
-    buffer[offset + 1] = (value >> 8) & 0xFF;
-    buffer[offset + 2] = (value >> 16) & 0xFF;
-    buffer[offset + 3] = (value >> 24) & 0xFF;
-  }
-
-  /**
-   * Utility: Read uint32 from specific data array
-   */
-  private readUint32FromData(data: Uint8Array, offset: number): number {
-    return (data[offset] |
-            (data[offset + 1] << 8) |
-            (data[offset + 2] << 16) |
-            (data[offset + 3] << 24)) >>> 0;
-  }
-
-  /**
    * Get connection status
    */
   public isActive(): boolean {
     return this.isConnected;
   }
 
-  /**
-   * Get pending request count
-   */
-  public getPendingCount(): number {
-    return this.pendingRequests.size;
+  // Deprecated methods — kept for compilation compatibility during transition
+  /** @deprecated Use setStallBreak() instead */
+  public sendStall(cogId: number): void {
+    this.setStallBreak(cogId, DEBUG_COMMANDS.STALL_CMD);
   }
+  /** @deprecated Use setStallBreak() with breakValue instead */
+  public sendBreak(cogId: number): void {
+    this.setStallBreak(cogId, DEBUG_COMMANDS.STALL_CMD);
+  }
+  /** @deprecated Use setStallBreak() with breakValue instead */
+  public sendGo(cogId: number): void {
+    this.setStallBreak(cogId, DEBUG_COMMANDS.STALL_CMD);
+  }
+  /** @deprecated No longer used — protocol handles block requests automatically */
+  public sendRequest(_request: any): number { return 0; }
+  /** @deprecated No longer used */
+  public requestCogBlock(_cogId: number, _blockIndex: number): void {}
+  /** @deprecated No longer used */
+  public requestLutBlock(_cogId: number, _blockIndex: number): void {}
+  /** @deprecated No longer used */
+  public requestHubMemory(_address: number, _size?: number): void {}
+  /** @deprecated No longer used */
+  public getPendingCount(): number { return 0; }
 }

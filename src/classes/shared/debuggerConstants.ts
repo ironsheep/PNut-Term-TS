@@ -126,7 +126,7 @@ export const DEBUG_COMMANDS = {
 
   // BreakValue bits (Pascal lines 757-856)
   // Low 4 bits select break condition
-  BREAK_MAIN: 0x00000001,   // Break on DEBUG statement (bit 0)
+  BREAK_MAIN: 0x00000001,   // Break on MAIN instructions - single-step main code (bit 0)
   BREAK_INT1: 0x00000002,   // Break on INT1 (bit 1)
   BREAK_INT2: 0x00000004,   // Break on INT2 (bit 2)
   BREAK_INT3: 0x00000008,   // Break on INT3 (bit 3)
@@ -143,16 +143,17 @@ export const DEBUG_COMMANDS = {
   BREAK_CLEAR_ADDR: 0x00000BFF, // Mask to clear address break
   BREAK_CLEAR_EVENT: 0x00000DEF, // Mask to clear event break
 
-  // Request types (not used in basic protocol)
-  REQUEST_COG: 0x01,      // Request COG memory block
-  REQUEST_LUT: 0x02,      // Request LUT memory block
-  REQUEST_HUB: 0x03,      // Request HUB memory block
-  REQUEST_COGBRK: 0x04,   // Request COG break status
-
-  // Response markers (not used in basic protocol)
-  RESPONSE_DATA: 0x80,    // Data response marker
-  RESPONSE_ACK: 0x81,     // Acknowledge marker
-  RESPONSE_NAK: 0x82      // Not acknowledge marker
+  // DEPRECATED: These request/response types were part of an incorrect framed protocol.
+  // The Pascal protocol uses a raw lockstep serial exchange with NO framing, NO command types,
+  // and NO ACK/NAK. These are kept temporarily for compilation but will be removed
+  // when debuggerProtocol.ts is redesigned (Task #3).
+  /** @deprecated Not part of Pascal protocol */ REQUEST_COG: 0x01,
+  /** @deprecated Not part of Pascal protocol */ REQUEST_LUT: 0x02,
+  /** @deprecated Not part of Pascal protocol */ REQUEST_HUB: 0x03,
+  /** @deprecated Not part of Pascal protocol */ REQUEST_COGBRK: 0x04,
+  /** @deprecated Not part of Pascal protocol */ RESPONSE_DATA: 0x80,
+  /** @deprecated Not part of Pascal protocol */ RESPONSE_ACK: 0x81,
+  /** @deprecated Not part of Pascal protocol */ RESPONSE_NAK: 0x82
 } as const;
 
 // ============================================================================
@@ -233,28 +234,37 @@ export const PASCAL_LAYOUT_CONSTANTS = {
  * Debugger window layout constants
  */
 export const LAYOUT_CONSTANTS = {
-  // Character grid
-  GRID_WIDTH: 123,        // Characters wide
-  GRID_HEIGHT: 77,        // Characters tall
-  
-  // Disassembly window
-  DIS_LINES: 16,          // Number of disassembly lines
-  DIS_START_Y: 20,        // Starting Y position
-  
-  // Register display
-  REG_COLS: 16,           // Registers per row
-  REG_ROWS: 4,            // Number of register rows
-  
-  // Memory display
-  PTR_BYTES: 14,          // Bytes displayed for pointers
-  STACK_DEPTH: 8,         // Stack display depth
-  
-  // Button dimensions
-  BUTTON_WIDTH: 8,        // Button width in characters
-  BUTTON_HEIGHT: 3,       // Button height in characters
-  
-  // Heat map decay
-  HIT_DECAY_RATE: 2       // Heat visualization decay rate
+  // Character grid (Pascal: ChrWidth * 123 wide x ChrHeight * 77 / 2 tall)
+  GRID_WIDTH: 123,              // Columns wide
+  GRID_HEIGHT: 77,              // Half-rows tall (each half-row = ChrHeight/2 pixels)
+
+  // Debugger message size (Pascal: DebuggerMsgSize = 20)
+  DEBUGGER_MSG_SIZE: 20,        // 20 longs per breakpoint message
+
+  // Disassembly window (Pascal: DebuggerUnit.pas)
+  DIS_LINES: 16,                // Number of disassembly lines displayed
+  DIS_LINE_IDEAL: 3,            // Target line for PC (4th from top, 0-indexed)
+  DIS_SCROLL_THRESHOLD: 8,     // Consecutive breaks before auto-scroll kicks in
+
+  // Register watch (Pascal: RegWatchSize, RegWatchListSize)
+  REG_WATCH_SIZE: 0x1F0,       // $1F0 = 496 watchable cog registers ($000-$1EF)
+  REG_WATCH_LIST_SIZE: 16,     // Visible register watch entries
+
+  // Smart pin watch (Pascal: SmartPins, SmartWatchListSize)
+  SMART_PINS: 64,              // Number of smart pins tracked
+  SMART_WATCH_LIST_SIZE: 7,    // Visible smart pin watch entries
+
+  // Memory display (Pascal: PtrBytes, PtrCenter)
+  PTR_BYTES: 14,               // Bytes displayed per pointer (FPTR/PTRA/PTRB)
+  PTR_CENTER: 6,               // Center byte index in pointer display
+  STACK_DEPTH: 8,              // Stack display depth (8 hardware stack levels)
+
+  // Heat map (Pascal: HitDecayRate)
+  HIT_DECAY_RATE: 2,           // Heatmap decay per break
+  HIT_INITIAL: 254,            // Initial hit value on change (max brightness)
+
+  // Rendering limit (Pascal: SmoothFillMax)
+  SMOOTH_FILL_MAX: 4096        // Max bitmap width in pixels
 } as const;
 
 // ============================================================================
@@ -439,7 +449,38 @@ export interface DebuggerGlobalState {
 // ============================================================================
 
 /**
- * Calculate checksum for memory block
+ * Pascal sub-character fractional positioning constants.
+ * Grid coordinates can include 7-bit fractional offsets for sub-character positioning:
+ *   q1 = 1 << 7 = 128 (1/4 character offset)
+ *   q2 = 2 << 7 = 256 (1/2 character offset)
+ *   q3 = 3 << 7 = 384 (3/4 character offset)
+ */
+export const FRAC_OFFSETS = {
+  Q1: 128,  // 1/4 character offset
+  Q2: 256,  // 1/2 character offset
+  Q3: 384   // 3/4 character offset
+} as const;
+
+/**
+ * Convert Pascal grid coordinate with fractional offset to pixels.
+ * Pascal: Frac(x, y) = ((x AND $7F) * 4 + (x >> 7)) * y / 4
+ * where y is ChrWidth or ChrHeight depending on axis.
+ * @param coord Grid coordinate (may include 7-bit fractional offset)
+ * @param cellSize Pixel size of one grid cell (ChrWidth=8 or halfRowHeight=8)
+ * @returns Pixel position
+ */
+export function fracToPixel(coord: number, cellSize: number): number {
+  const frac = coord & 0x7F;  // Fractional part (0-127)
+  const whole = coord >> 7;    // Whole grid units
+  return Math.round(((frac * 4 + whole) * cellSize) / 4);
+}
+
+/**
+ * @deprecated The host does NOT compute CRCs or checksums. The P2 sends 16-bit CRC words
+ * (polynomial $8005 via CRCNIB) for COG/LUT blocks and SEUSSF-hashed checksums for HUB blocks.
+ * The host simply stores these values and compares old vs new to detect changes.
+ * This function used an incorrect rotational add algorithm and is no longer needed.
+ * See debuggerResponse.ts for the correct store-and-compare approach.
  */
 export function calculateChecksum(data: Uint32Array): number {
   let checksum = 0;
@@ -542,17 +583,21 @@ export function decayHeat(hitCount: number): number {
 }
 
 /**
- * Blend two colors based on alpha value
- * Pascal BlendPixel algorithm: result = (a * (255-alpha) + b * alpha) / 255
- * @param colorA First color (shown when alpha=0)
- * @param colorB Second color (shown when alpha=255)
+ * Blend two colors using gamma-corrected compositing (gamma 2.0).
+ * Pascal SmoothPixel algorithm from DebuggerUnit.pas Section 5.7:
+ *   Result = Round(Power((Power(dst, 2.0) * (255 - opacity) + Power(src, 2.0) * opacity) / 256, 0.5))
+ *
+ * Gamma 2.0 blending provides more natural visual results than linear blending,
+ * especially for heatmap color transitions and overlay effects.
+ *
+ * @param colorA Background color (dst, shown when alpha=0)
+ * @param colorB Foreground color (src, shown when alpha=255)
  * @param alpha Blend factor 0-255 (0=colorA, 255=colorB)
  * @returns Blended color as 0xRRGGBB
  */
 export function blendColors(colorA: number, colorB: number, alpha: number): number {
   const notAlpha = 255 - alpha;
 
-  // Extract and blend each channel
   const rA = (colorA >> 16) & 0xFF;
   const gA = (colorA >> 8) & 0xFF;
   const bA = colorA & 0xFF;
@@ -561,11 +606,12 @@ export function blendColors(colorA: number, colorB: number, alpha: number): numb
   const gB = (colorB >> 8) & 0xFF;
   const bB = colorB & 0xFF;
 
-  const r = Math.min(255, ((rA * notAlpha + rB * alpha + 127) / 255) | 0);
-  const g = Math.min(255, ((gA * notAlpha + gB * alpha + 127) / 255) | 0);
-  const b = Math.min(255, ((bA * notAlpha + bB * alpha + 127) / 255) | 0);
+  // Gamma 2.0 blending: square, blend in linear space, then sqrt
+  const r = Math.round(Math.sqrt((rA * rA * notAlpha + rB * rB * alpha) / 256));
+  const g = Math.round(Math.sqrt((gA * gA * notAlpha + gB * gB * alpha) / 256));
+  const b = Math.round(Math.sqrt((bA * bA * notAlpha + bB * bB * alpha) / 256));
 
-  return (r << 16) | (g << 8) | b;
+  return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
 }
 
 /**

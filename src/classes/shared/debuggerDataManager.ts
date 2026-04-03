@@ -9,7 +9,6 @@ import {
   DebuggerGlobalState,
   DebuggerInitialMessage,
   MEMORY_CONSTANTS,
-  calculateChecksum,
   createMemoryBlock,
   decayHeat
 } from './debuggerConstants';
@@ -53,6 +52,22 @@ export class DebuggerDataManager extends EventEmitter {
 
   // Heat decay rate (Pascal: HitDecayRate, typically 2-4)
   private readonly HIT_DECAY_RATE = 2;
+
+  // Register watch list (Pascal: RegWatch[0..RegWatchSize-1], RegWatchList[0..RegWatchListSize-1])
+  // Tracks which of the 496 general registers ($000-$1EF) have changed
+  private readonly REG_WATCH_SIZE = 0x1F0; // 496 watchable registers
+  private readonly REG_WATCH_LIST_SIZE = 16; // Visible entries
+  private regWatchCounters: Uint16Array = new Uint16Array(0x1F0); // Per-register change counters
+  private regWatchPrevValues: Int32Array = new Int32Array(0x1F0); // Previous register values
+  private regWatchList: Array<{ address: number; value: number; counter: number }> = [];
+  private regWatchFirstBreak: boolean = true; // First break flag ($FFFF detection)
+
+  // Smart pin watch list (Pascal: SmartWatch, SmartWatchList)
+  private readonly SMART_WATCH_LIST_SIZE = 7;
+  private smartWatchCounters: Uint16Array = new Uint16Array(64);
+  private smartWatchPrevValues: Int32Array = new Int32Array(64);
+  private smartWatchList: Array<{ pin: number; value: number; counter: number }> = [];
+  private smartWatchDirOnly: boolean = true; // Only show pins with DIR bit set
 
   constructor() {
     super();
@@ -796,6 +811,219 @@ export class DebuggerDataManager extends EventEmitter {
         this.cogImageHit[i] = Math.max(0, h - this.HIT_DECAY_RATE);
       }
     }
+  }
+
+  // ==========================================================================
+  // Register Watch List (Pascal: DebuggerUnit.pas Section 6.7)
+  // ==========================================================================
+
+  /**
+   * Update register watch list on each breakpoint.
+   * Pascal algorithm:
+   * 1. For each register: if value changed, set counter=1000; else if counter>1, decrement by 1
+   * 2. For each register with counter>0: find in visible list or replace oldest entry
+   * 3. On first break ($FFFF counters), reset all to 0 to avoid false positives
+   *
+   * @param cogMemory Map of block index -> Uint32Array (16 longs each) from Phase 3
+   */
+  public updateRegisterWatch(cogMemory: Map<number, Uint32Array>): void {
+    // First break detection — all counters start as 0, prevValues as 0
+    if (this.regWatchFirstBreak) {
+      this.regWatchFirstBreak = false;
+      // Store current values as "previous" without triggering watches
+      for (const [blockIndex, blockData] of cogMemory) {
+        const baseAddr = blockIndex * 16;
+        for (let j = 0; j < blockData.length && baseAddr + j < this.REG_WATCH_SIZE; j++) {
+          this.regWatchPrevValues[baseAddr + j] = blockData[j];
+        }
+      }
+      return;
+    }
+
+    // Step 1: Update counters for all watchable registers
+    for (const [blockIndex, blockData] of cogMemory) {
+      const baseAddr = blockIndex * 16;
+      for (let j = 0; j < blockData.length; j++) {
+        const addr = baseAddr + j;
+        if (addr >= this.REG_WATCH_SIZE) continue;
+
+        const newValue = blockData[j];
+        const oldValue = this.regWatchPrevValues[addr];
+
+        if (newValue !== oldValue) {
+          // Value changed — set counter to 1000
+          this.regWatchCounters[addr] = 1000;
+          this.regWatchPrevValues[addr] = newValue;
+        } else if (this.regWatchCounters[addr] > 1) {
+          // No change — decay counter
+          this.regWatchCounters[addr]--;
+        }
+      }
+    }
+
+    // Step 2: Update visible list (16 entries max)
+    for (let addr = 0; addr < this.REG_WATCH_SIZE; addr++) {
+      if (this.regWatchCounters[addr] === 0) continue;
+
+      // Find this address in the visible list
+      const existingIdx = this.regWatchList.findIndex(e => e.address === addr);
+      if (existingIdx >= 0) {
+        // Update existing entry
+        this.regWatchList[existingIdx].value = this.regWatchPrevValues[addr];
+        this.regWatchList[existingIdx].counter = this.regWatchCounters[addr];
+      } else if (this.regWatchList.length < this.REG_WATCH_LIST_SIZE) {
+        // Add new entry
+        this.regWatchList.push({
+          address: addr,
+          value: this.regWatchPrevValues[addr],
+          counter: this.regWatchCounters[addr]
+        });
+      } else {
+        // Replace oldest entry (lowest counter)
+        let oldestIdx = 0;
+        let oldestCounter = this.regWatchList[0].counter;
+        for (let i = 1; i < this.regWatchList.length; i++) {
+          if (this.regWatchList[i].counter < oldestCounter) {
+            oldestCounter = this.regWatchList[i].counter;
+            oldestIdx = i;
+          }
+        }
+        if (this.regWatchCounters[addr] > oldestCounter) {
+          this.regWatchList[oldestIdx] = {
+            address: addr,
+            value: this.regWatchPrevValues[addr],
+            counter: this.regWatchCounters[addr]
+          };
+        }
+      }
+    }
+  }
+
+  /**
+   * Reset register watch list (Pascal: R key or click on watch box)
+   */
+  public resetRegisterWatch(): void {
+    this.regWatchCounters.fill(0);
+    this.regWatchList = [];
+    this.regWatchFirstBreak = true;
+  }
+
+  /**
+   * Get the visible register watch list for rendering.
+   * Returns up to 16 entries: { address, value, counter }
+   */
+  public getRegisterWatchList(): ReadonlyArray<{ address: number; value: number; counter: number }> {
+    return this.regWatchList;
+  }
+
+  // ==========================================================================
+  // Smart Pin Watch List (Pascal: DebuggerUnit.pas Section 6.16)
+  // ==========================================================================
+
+  /**
+   * Update smart pin watch list on each breakpoint.
+   * Same delta algorithm as register watch but with 7 visible entries.
+   * Only pins 0-61 are tracked (62/63 are TX/RX).
+   *
+   * @param pinData 64-element array of RQPIN values from Phase 3
+   * @param pinFlags 8-byte mask array indicating which pins had non-zero RQPIN
+   */
+  public updateSmartPinWatch(pinData: Uint32Array, pinFlags: Uint8Array): void {
+    for (let pin = 0; pin < 62; pin++) {
+      // Check if this pin had a non-zero RQPIN value
+      const group = Math.floor(pin / 8);
+      const bit = pin % 8;
+      const hasValue = (pinFlags[group] & (1 << bit)) !== 0;
+
+      if (!hasValue) {
+        // No RQPIN value — decay counter
+        if (this.smartWatchCounters[pin] > 1) {
+          this.smartWatchCounters[pin]--;
+        }
+        continue;
+      }
+
+      const newValue = pinData[pin];
+      const oldValue = this.smartWatchPrevValues[pin];
+
+      if (newValue !== oldValue) {
+        this.smartWatchCounters[pin] = 1000;
+        this.smartWatchPrevValues[pin] = newValue;
+      } else if (this.smartWatchCounters[pin] > 1) {
+        this.smartWatchCounters[pin]--;
+      }
+    }
+
+    // Update visible list (7 entries max)
+    for (let pin = 0; pin < 62; pin++) {
+      if (this.smartWatchCounters[pin] === 0) continue;
+
+      // DIR filter: if smartWatchDirOnly, skip pins without DIR bit
+      if (this.smartWatchDirOnly) {
+        const dirA = this.getCogMemoryValue(0x1FA) || 0;
+        const dirB = this.getCogMemoryValue(0x1FB) || 0;
+        const dirBit = pin < 32 ? ((dirA >>> pin) & 1) : ((dirB >>> (pin - 32)) & 1);
+        if (!dirBit) continue;
+      }
+
+      const existingIdx = this.smartWatchList.findIndex(e => e.pin === pin);
+      if (existingIdx >= 0) {
+        this.smartWatchList[existingIdx].value = this.smartWatchPrevValues[pin];
+        this.smartWatchList[existingIdx].counter = this.smartWatchCounters[pin];
+      } else if (this.smartWatchList.length < this.SMART_WATCH_LIST_SIZE) {
+        this.smartWatchList.push({
+          pin,
+          value: this.smartWatchPrevValues[pin],
+          counter: this.smartWatchCounters[pin]
+        });
+      } else {
+        // Replace oldest entry
+        let oldestIdx = 0;
+        let oldestCounter = this.smartWatchList[0].counter;
+        for (let i = 1; i < this.smartWatchList.length; i++) {
+          if (this.smartWatchList[i].counter < oldestCounter) {
+            oldestCounter = this.smartWatchList[i].counter;
+            oldestIdx = i;
+          }
+        }
+        if (this.smartWatchCounters[pin] > oldestCounter) {
+          this.smartWatchList[oldestIdx] = {
+            pin,
+            value: this.smartWatchPrevValues[pin],
+            counter: this.smartWatchCounters[pin]
+          };
+        }
+      }
+    }
+  }
+
+  /** Reset smart pin watch list (Pascal: left-click on smart pin box) */
+  public resetSmartPinWatch(): void {
+    this.smartWatchCounters.fill(0);
+    this.smartWatchList = [];
+  }
+
+  /** Toggle DIR-only filter (Pascal: right-click on smart pin box) */
+  public toggleSmartPinDirFilter(): void {
+    this.smartWatchDirOnly = !this.smartWatchDirOnly;
+  }
+
+  /** Get visible smart pin watch list for rendering */
+  public getSmartPinWatchList(): ReadonlyArray<{ pin: number; value: number; counter: number }> {
+    return this.smartWatchList;
+  }
+
+  /** Helper: get a single COG memory value by address */
+  private getCogMemoryValue(addr: number): number {
+    // Look through COG states for any active COG's memory
+    for (const [, cogState] of this.globalState.cogStates) {
+      const blockIdx = Math.floor(addr / 16);
+      const block = cogState.cogMemory.get(blockIdx);
+      if (block && block.data) {
+        return block.data[addr % 16] || 0;
+      }
+    }
+    return 0;
   }
 
   /**
