@@ -1132,9 +1132,9 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // Handle packed data if processor is configured
       if (this.packedDataProcessor && this.displaySpec.packedMode !== undefined) {
-        // Try to parse as numeric value for packed data
-        const numValue = Number(part);
-        if (!isNaN(numValue)) {
+        // Spin2 output uses '_' as digit separator (e.g. "1_000"); Number() returns NaN for those.
+        const [isValidNumber, numValue] = this.isSpinNumber(part);
+        if (isValidNumber) {
           // Create PackedDataMode structure for unpacking
           const mode: PackedDataMode = {
             mode: this.displaySpec.packedMode,
@@ -1154,9 +1154,9 @@ export class DebugFFTWindow extends DebugWindowBase {
           }
         }
       } else {
-        // Try to parse as raw numeric value
-        const numValue = Number(part);
-        if (!isNaN(numValue)) {
+        // Spin2 output uses '_' as digit separator (e.g. "1_000"); Number() returns NaN for those.
+        const [isValidNumber, numValue] = this.isSpinNumber(part);
+        if (isValidNumber) {
           // CREATE WINDOW on first numeric data arrival (deferred creation pattern)
           if (!this.windowCreated) {
             try {
@@ -1257,10 +1257,10 @@ export class DebugFFTWindow extends DebugWindowBase {
    */
   private parseDataValue(expr: string): number | null {
     try {
-      // For now, just try to parse as number
-      // In the future, this could evaluate expressions
-      const value = Number(expr);
-      return isNaN(value) ? null : value;
+      // Spin2 output uses '_' as digit separator (e.g. "1_000") and accepts
+      // '$', '%', '%%' base prefixes; Number() doesn't. Delegate to isSpinNumber.
+      const [isValid, value] = this.isSpinNumber(expr);
+      return isValid ? value : null;
     } catch (error) {
       this.logMessage(`Failed to parse data value: ${expr}`);
       return null;

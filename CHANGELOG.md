@@ -5,6 +5,15 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.24] - 2026-04-16
+
+### Fixed
+
+- **FFT window shows noisy baseline instead of a clean peak** - The FFT spectrum rendered a carpet of small spikes across the entire display, obscuring what should have been a clean sweeping peak, even though the underlying FFT math was correct
+  - Sample parsing used `Number()` directly, which returns `NaN` for Spin2's underscore-separated numeric format (e.g. `1_000`, `-1_000`); every such sample was silently dropped from the FFT buffer
+  - For a ±1000 amplitude sine, the peaks of every cycle were dropped, cutting a notch into the waveform and producing broadband harmonics across the spectrum
+  - `debugFftWin.ts` now uses the shared `isSpinNumber()` parser from `DebugWindowBase` (the same one the Scope window was already using correctly) for all three sample-parsing sites: raw numeric values, packed-data values, and backtick-enclosed expressions
+
 ## [0.9.23] - 2026-03-09
 
 ### Fixed
