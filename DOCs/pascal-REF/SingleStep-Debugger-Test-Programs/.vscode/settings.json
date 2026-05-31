@@ -1,0 +1,30 @@
+{
+        "files.exclude": {
+                "**/.git": true,
+                "**/.svn": true,
+                "**/.hg": true,
+                "**/.DS_Store": true,
+                "**/Thumbs.db": true,
+                "**/.history": true,
+                "**/*.bin": true
+        },
+        "explorerExclude.backup": {},
+        "spin2.localIncludes": {
+                ".": {
+                        "auto": true,
+                        "dirs": []
+                }
+        },
+        "spin2.fDirSource": "/Users/stephen/Projects/Projects-ExtGit/IronSheepProductionsLLC/Propeller2/PNut-Term-TypeScript/PNut-Term-TS/DOCs/pascal-REF/SingleStep-Debugger-Test-Programs",
+        "spin2.optionsBinaryFname": "test01_basic_spin.bin",
+        "spin2.serialPort": "Parw7ukt",
+        "spin2.fSpecCompiler": "/Applications/pnut_ts/pnut-ts",
+        "spin2.optionsBuild": [
+                "-l"
+        ],
+        "spin2.fSpecLoader": "/Applications/PNut-Term-TS.app/Contents/Resources/bin/pnut-term-ts",
+        "spin2.optionsLoader": [
+                "--ide",
+                "-r"
+        ]
+}

@@ -1,0 +1,28 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 12 — Multi-COG debugging
+''
+'' Covers Test Plan test:
+''   Test 12 — Per-cog debugger windows, independent stepping, COGBRK
+''
+'' Behavior: Cog 0 launches cog 1 via cogspin(). Both cogs hit a break on
+'' startup (DEBUG_COGINIT = 1) — two debugger windows open: "Debugger - Cog 0"
+'' and "Debugger - Cog 1". Each increments its own local counter in a repeat.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+  DEBUG_COGINIT = 1
+
+VAR
+  long stack1[64]
+
+PUB main() | x
+  cogspin(NEWCOG, cog1_task(), @stack1)
+  x := 0
+  repeat
+    x++
+
+PUB cog1_task() | y
+  y := 0
+  repeat
+    y++

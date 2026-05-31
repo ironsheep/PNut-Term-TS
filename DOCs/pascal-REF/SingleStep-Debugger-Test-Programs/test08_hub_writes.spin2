@@ -1,0 +1,26 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 08 — Hub memory viewer & heatmap
+''
+'' Covers Test Plan test:
+''   Test 8 — Hub data display, scrolling (arrows/PageUp/PageDown/wheel),
+''            nibble editing, heatmap click-to-navigate
+''
+'' Behavior: Writes each long value N at hub address N for N=0..$FF (one long
+'' at a time), then loops. Hub heatmap should light up the low hub range
+'' ($000-$100). Stepping or repeat mode makes changes visible.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+
+PUB main()
+  coginit(0, @entry, 0)
+
+DAT
+                org
+entry           mov     ptra, #0
+.loop           wrlong  ptra, ptra               ' hub[ptra] := ptra
+                add     ptra, #4
+                cmp     ptra, ##$100    wz
+      if_nz     jmp     #.loop
+                jmp     #entry

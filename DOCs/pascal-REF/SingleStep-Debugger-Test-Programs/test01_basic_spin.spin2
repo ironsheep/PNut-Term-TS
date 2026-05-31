@@ -1,0 +1,20 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 01 — Basic Spin2 single-step
+''
+'' Covers Test Plan tests:
+''   Test 1  — Basic connection, SPACE single-step, dim-on-timeout
+''   Test 2  — Repeat mode (ENTER), throttling, Stop
+''   Test 5  — Breakpoint control buttons (BreakValue matrix)
+''   Test 14 — Hint bar (works with any program)
+''
+'' Behavior: Cog 0 increments x forever. DEBUG_MAIN=1 breaks on first MAIN
+'' instruction so the debugger opens at startup.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+
+PUB main() | x
+  x := 0
+  repeat
+    x++

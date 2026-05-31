@@ -1,0 +1,30 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 11 — Interrupt entry / exec mode
+''
+'' Covers Test Plan tests:
+''   Test 11 — INT1 fires via CT1 event; EXEC panel flips MAIN -> INT1;
+''             SKIP panel shows "Suspended during MODE" while in INT1
+''   Test 13 — Event breakpoints (uses CT1 event for INT1)
+''
+'' Behavior: Arms INT1 to fire every 1000 clock ticks on the CT1 event.
+'' MAIN loop is a JMP #$-1 idle; the ISR re-arms CT1 and returns.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+
+PUB main()
+  coginit(0, @entry, 0)
+
+DAT
+                org
+entry           mov     ijmp1, ##int1_handler
+                getct   pa
+                addct1  pa, ##1000               ' CT1 fires in 1000 ticks
+                mov     pa, #1                   ' 1 = CT1 event source
+                setint1 pa
+.idle           jmp     #.idle
+
+int1_handler    getct   pa
+                addct1  pa, ##1000               ' rearm CT1
+                reti1

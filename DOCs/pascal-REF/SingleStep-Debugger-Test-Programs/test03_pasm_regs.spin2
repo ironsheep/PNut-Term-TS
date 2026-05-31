@@ -1,0 +1,24 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 03 — PASM register watch
+''
+'' Covers Test Plan tests:
+''   Test 3 — Register watch tracks changed registers; R key / click resets
+''   Test 4 — Disassembly navigation, scroll, address breakpoints
+''
+'' Behavior: Tight PASM loop that increments PA and decrements PB.
+'' Expected register watch: PA ($1F6) and PB ($1F7) update on every pass.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+
+PUB main()
+  coginit(0, @entry, 0)
+
+DAT
+                org
+entry           mov     pa, #0
+                mov     pb, #100
+.loop           add     pa, #1
+                sub     pb, #1
+                jmp     #.loop
