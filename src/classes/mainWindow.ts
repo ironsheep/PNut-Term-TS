@@ -367,11 +367,12 @@ export class MainWindow {
       this.handleP2SystemReboot(eventData);
     });
 
-    // Reset debugger response state on DTR/RTS reset — both the legacy
-    // main-side response generator AND every renderer-side bundle.
+    // Reset debugger state on DTR/RTS reset. The live debugger is the
+    // renderer bundle (one per cog); broadcastReset() clears each. The old
+    // main-side DebuggerResponse generator no longer participates (the bundle
+    // owns Phase 2), so there is nothing to reset on the main side.
     const resetAllDebuggers = (source: string): void => {
       this.logConsoleMessage(`[DEBUGGER] ${source} reset detected — clearing all debugger state`);
-      debuggerResponse.reset();
       for (const key of Object.keys(this.displays)) {
         const w = this.displays[key];
         if (w instanceof DebugDebuggerWindow) w.broadcastReset();
