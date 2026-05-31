@@ -1,0 +1,148 @@
+/** @format */
+
+/**
+ * IPC contract between the main process and the renderer-side debugger bundle.
+ *
+ * Rules:
+ *   - Data-only. No JS source code is ever shipped across the IPC boundary.
+ *   - Envelope is a discriminated union on `kind`; every new message adds a new
+ *     variant. Both sides must switch-case exhaustively.
+ *   - Binary payloads travel as `Uint8Array`; Electron's structured clone
+ *     handles these without a JSON round-trip.
+ */
+
+// ============================================================================
+// Main → Renderer
+// ============================================================================
+
+/**
+ * Sent once per window, right after did-finish-load. Tells the renderer
+ * which cog it is rendering and gives it a stable window ID for logging.
+ */
+export interface MainToRendererInitialize {
+  kind: 'initialize';
+  cogId: number;                 // 0..7
+  windowId: string;              // e.g. "debugger-0-1766700245078"
+  initialBreakCond: number;      // _brkcond_ patched into the binary (0x001 or 0x110)
+  debugBaud: number;             // for CT elapsed-time calculation
+}
+
+/**
+ * Phase 1 packet from the P2 — 416 bytes (pnut_ts firmware):
+ *   80 bytes : 20-long debugger message (mCOGN..mCOND)
+ *  128 bytes : 64 16-bit CRC words (cog + LUT, 16 registers per block)
+ *  208 bytes : 104 16-bit hub checksum words (4 KB per block)
+ */
+export interface MainToRendererPhase1 {
+  kind: 'phase1';
+  bytes: Uint8Array;             // length === 416 (pnut_ts) or 456 (Pascal)
+}
+
+/**
+ * Phase 3 data from the P2. Variable length, parsed by the renderer
+ * based on which blocks it had requested in Phase 2.
+ */
+export interface MainToRendererPhase3 {
+  kind: 'phase3';
+  bytes: Uint8Array;
+}
+
+/**
+ * DTR or RTS reset fired. All per-cog state should be invalidated so the
+ * next Phase 1 is treated as a "first break".
+ */
+export interface MainToRendererReset {
+  kind: 'reset';
+}
+
+/**
+ * Another debugger window asked for a COGBRK. The main process broadcasts
+ * the combined mask to every renderer so each can include it in its next
+ * Phase 2 reply (whoever sends next wins the serial line).
+ */
+export interface MainToRendererCogBrkBroadcast {
+  kind: 'cogBrkBroadcast';
+  mask: number;                  // bit N = break cog N
+}
+
+export type MainToRendererMessage =
+  | MainToRendererInitialize
+  | MainToRendererPhase1
+  | MainToRendererPhase3
+  | MainToRendererReset
+  | MainToRendererCogBrkBroadcast;
+
+// ============================================================================
+// Renderer → Main
+// ============================================================================
+
+/**
+ * Phase 2 reply — exactly 52 bytes:
+ *    8 bytes : COG/LUT block-request bitmap (64 bits packed LSB-first)
+ *   16 bytes : Hub block-request bitmap (128 bits, only 124 used)
+ *    4 bytes : Disassembly read (size<<20 | address); zero if none
+ *    4 bytes : FPTR pointer window read
+ *    4 bytes : PTRA pointer window read
+ *    4 bytes : PTRB pointer window read
+ *    4 bytes : Hub data viewer read
+ *    4 bytes : COGBRK mask
+ *    4 bytes : STALL/BRK command (0x800 to hold, or BreakValue to run)
+ */
+export interface RendererToMainPhase2 {
+  kind: 'phase2';
+  bytes: Uint8Array;             // length === 52
+}
+
+/**
+ * User in this cog's window requested an async break on some set of cogs.
+ * Main process ORs this into the global mask and broadcasts it to all
+ * open debugger windows.
+ */
+export interface RendererToMainSetCogBrk {
+  kind: 'setCogBrk';
+  mask: number;
+}
+
+/**
+ * Pass a log line through to the main-process logger (so it shows up in
+ * the same debug_*.log file that everyone else uses).
+ */
+export interface RendererToMainLog {
+  kind: 'log';
+  level: 'debug' | 'info' | 'warn' | 'error';
+  msg: string;
+}
+
+/**
+ * Renderer declares it is fully wired up and ready to receive data. The
+ * main process can now drain any buffered Phase 1/3 packets.
+ */
+export interface RendererToMainReady {
+  kind: 'ready';
+}
+
+/**
+ * Renderer has finished parsing all Phase 3 bytes. Main can now expect
+ * the next 456-byte chunk to be a new Phase 1 (not a Phase 3 continuation).
+ */
+export interface RendererToMainPhase3Complete {
+  kind: 'phase3Complete';
+}
+
+export type RendererToMainMessage =
+  | RendererToMainPhase2
+  | RendererToMainSetCogBrk
+  | RendererToMainLog
+  | RendererToMainReady
+  | RendererToMainPhase3Complete;
+
+// ============================================================================
+// IPC channel names — single source of truth
+// ============================================================================
+
+export const IPC_CHANNELS = {
+  /** Main → Renderer: any MainToRendererMessage */
+  mainToRenderer: 'debugger:m2r',
+  /** Renderer → Main: any RendererToMainMessage */
+  rendererToMain: 'debugger:r2m'
+} as const;

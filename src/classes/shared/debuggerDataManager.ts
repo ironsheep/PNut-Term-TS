@@ -997,6 +997,17 @@ export class DebuggerDataManager extends EventEmitter {
     }
   }
 
+  /**
+   * Reset register watch list — Pascal: <R> key or left-click on WATCH box.
+   * Clears all counters and the visible list so the user can start fresh.
+   */
+  public resetRegWatch(): void {
+    this.regWatchCounters.fill(0);
+    this.regWatchList = [];
+    // Keep regWatchPrevValues so we don't trigger a flood of false positives
+    // on the next update — the Pascal behavior (DebuggerUnit.pas ResetRegWatch).
+  }
+
   /** Reset smart pin watch list (Pascal: left-click on smart pin box) */
   public resetSmartPinWatch(): void {
     this.smartWatchCounters.fill(0);

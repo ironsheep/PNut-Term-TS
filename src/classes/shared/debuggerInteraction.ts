@@ -159,53 +159,51 @@ export class DebuggerInteraction extends EventEmitter {
    */
   private executeKeyboardAction(action: string, shift: boolean = false, ctrl: boolean = false): void {
     switch (action) {
-      // Execution control — routed to debugger window state machine
+      // Execution control — Pascal FormKeyPress routes each key through FormMouseDown
+      // with a specific button type (mbLeft or mbRight). We replicate by emitting
+      // 'command' with the rightClick flag set appropriately.
       case 'single-go':
-        // SPACE = single-step (left-click Go equivalent)
-        this.emit('command', 'GO');
+        // SPACE = left-click Go (single-step)
+        this.emit('command', { cmd: 'GO', rightClick: false });
         break;
       case 'repeat-toggle':
-        // ENTER = toggle repeat mode (right-click Go equivalent)
-        this.emit('command', 'RUN');
+        // ENTER = right-click Go (toggle repeat mode)
+        this.emit('command', { cmd: 'GO', rightClick: true });
         break;
       case 'break':
-        // B = click BREAK button (clear all conditions except INIT)
-        this.emit('command', 'BREAK');
+        // B = left-click BREAK (clear all conditions except INIT — async break mode)
+        this.emit('command', { cmd: 'BREAK', rightClick: false });
         break;
       case 'toggle-init':
-        // I = toggle INIT break (right-click INIT button)
-        this.emit('command', 'INIT');
+        // I = right-click INIT (toggle bit 8)
+        this.emit('command', { cmd: 'INIT', rightClick: true });
         break;
       case 'toggle-debug':
-        // D = toggle DEBUG break (right-click DEBUG button)
-        this.emit('command', 'DEBUG');
+        // D = right-click DEBUG (toggle bit 4 with mutual-exclusion mask)
+        this.emit('command', { cmd: 'DEBUG', rightClick: true });
         break;
       case 'toggle-main':
-        // M = toggle MAIN single-step (right-click MAIN button)
-        this.emit('command', 'MAIN');
+        // M = right-click MAIN (toggle bit 0, clear DEBUG bit 4)
+        this.emit('command', { cmd: 'MAIN', rightClick: true });
         break;
       case 'reset-watch':
-        // R = reset register watch list
-        this.emit('command', 'RESET_WATCH');
+        // R = left-click register watch (reset the watch list)
+        this.emit('command', { cmd: 'RESET_WATCH', rightClick: false });
         break;
 
       // Hub viewer navigation (Pascal Section 8.1)
       case 'hub-up':
-        // UP arrow = HubAddr -= $10
         this.emit('hubNavigate', -0x10);
         break;
       case 'hub-down':
-        // DOWN arrow = HubAddr += $10
         this.emit('hubNavigate', 0x10);
         break;
       case 'hub-pageup':
-        // PAGEUP: $80 normal, $1000 Ctrl, $10000 Shift
         if (shift) this.emit('hubNavigate', -0x10000);
         else if (ctrl) this.emit('hubNavigate', -0x1000);
         else this.emit('hubNavigate', -0x80);
         break;
       case 'hub-pagedown':
-        // PAGEDOWN: same modifiers
         if (shift) this.emit('hubNavigate', 0x10000);
         else if (ctrl) this.emit('hubNavigate', 0x1000);
         else this.emit('hubNavigate', 0x80);
@@ -213,7 +211,6 @@ export class DebuggerInteraction extends EventEmitter {
 
       // Tab captured to prevent focus change (Pascal: DLGC_WANTTAB)
       case 'capture-tab':
-        // Do nothing — just prevent default (already done by event.preventDefault)
         break;
     }
   }
@@ -231,11 +228,13 @@ export class DebuggerInteraction extends EventEmitter {
     const hit = this.hitTest(x, y);
     if (!hit) return;
     
+    const rightClick = button === 2;
+
     switch (hit.type) {
       case 'button':
-        this.handleButtonClick(hit.data.command);
+        this.handleButtonClick(hit.data.command, rightClick);
         break;
-        
+
       case 'memory':
         if (isDoubleClick) {
           this.editMemory(hit.data.address);
@@ -243,7 +242,7 @@ export class DebuggerInteraction extends EventEmitter {
           this.selectMemory(hit.data.address);
         }
         break;
-        
+
       case 'register':
         if (isDoubleClick) {
           this.editRegister(hit.data.register);
@@ -251,19 +250,19 @@ export class DebuggerInteraction extends EventEmitter {
           this.selectRegister(hit.data.register);
         }
         break;
-        
+
       case 'disassembly':
-        if (button === 0) { // Left click
-          if (isDoubleClick) {
-            this.toggleBreakpointAt(hit.data.address);
-          } else {
-            this.selectDisassemblyLine(hit.data.address);
-          }
-        } else if (button === 2) { // Right click
-          this.showContextMenu(hit);
+        if (rightClick) {
+          // Pascal: R-click in disassembly toggles an address breakpoint at the clicked line
+          // (DebuggerUnit.pas FormMouseDown InDis branch, lines 872-888)
+          this.toggleBreakpointAt(hit.data.address);
+        } else {
+          // L-click: lock disassembly to follow PC (Pascal: DisMode := dmPC)
+          this.emit('command', { cmd: 'FOLLOW_PC', rightClick: false });
+          this.selectDisassemblyLine(hit.data.address);
         }
         break;
-        
+
       case 'pin':
         this.togglePin(hit.data.pin);
         break;
@@ -296,26 +295,43 @@ export class DebuggerInteraction extends EventEmitter {
   }
   
   /**
-   * Handle mouse wheel for scrolling
+   * Handle mouse wheel for scrolling — Pascal Section 8.3.
+   *
+   * Disassembly (cog / hub) scroll deltas by modifier:
+   *   | Modifier    | Cog delta | Hub delta |
+   *   | None        | 1         | 16        |
+   *   | Ctrl        | 4         | 1         |
+   *   | Shift       | 16        | 4         |
+   *   | Ctrl+Shift  | 32        | 128       |
+   *
+   * Hub viewer box uses the hub-delta column above.
    */
-  public handleMouseWheel(deltaY: number): void {
+  public handleMouseWheel(deltaY: number, ctrl: boolean = false, shift: boolean = false): void {
     // Debounce scroll events
     if (this.scrollDebounceTimer) {
       clearTimeout(this.scrollDebounceTimer);
     }
-    
+
     this.scrollDebounceTimer = setTimeout(() => {
-      const scrollAmount = Math.sign(deltaY) * 3; // 3 lines per tick
-      
+      const direction = Math.sign(deltaY); // +1 = down, -1 = up
+
+      let cogDelta: number;
+      let hubDelta: number;
+      if (ctrl && shift) { cogDelta = 32;  hubDelta = 128; }
+      else if (shift)    { cogDelta = 16;  hubDelta = 4;   }
+      else if (ctrl)     { cogDelta = 4;   hubDelta = 1;   }
+      else               { cogDelta = 1;   hubDelta = 16;  }
+
       switch (this.currentFocus) {
         case 'disassembly':
-          this.scrollDisassembly(scrollAmount);
+          // Emit both possible deltas; the window chooses cog vs hub based on disMode
+          this.emit('disassemblyScroll', { direction, cogDelta, hubDelta });
           break;
         case 'hubMemory':
-          this.scrollHubMemory(scrollAmount);
+          this.emit('hubNavigate', direction * hubDelta);
           break;
         case 'stack':
-          this.scrollStack(scrollAmount);
+          this.scrollStack(direction * 3);
           break;
       }
     }, 50);
@@ -349,35 +365,49 @@ export class DebuggerInteraction extends EventEmitter {
   }
   
   /**
-   * Hit test buttons
+   * Hit test buttons — Pascal DebuggerUnit.pas lines 137-149.
+   * Panel B is at col 109, half-row 37, 12×16. Layout:
+   *   Left column  (6 mode buttons, w=5, h=2):
+   *     BREAK, ADDR, INT3E, INT2E, INT1E, DEBUG
+   *   Right column (6 mode buttons, w=4, h=2):
+   *     INIT, EVENT, INT3, INT2, INT1, MAIN
+   *   GO (w=10, h=2) spans both columns at the bottom (t=Bt+13=50).
+   *
+   * Pascal uses sub-character fractional offsets (q1=1/4, q3=3/4 char). For hit
+   * testing at grid-cell granularity that's near enough — we match on whole cells.
    */
   private hitTestButtons(x: number, y: number): HitTestResult | null {
-    // Button area is in top right
-    if (x >= 88 && x < 123 && y >= 2 && y < 11) {
-      // Determine which button
-      const relX = x - 88;
-      const relY = y - 2;
-      const row = Math.floor(relY / 3);
-      const col = Math.floor(relX / 12);
-      
-      const buttons = [
-        ['BREAK', 'ADDR', 'GO'],
-        ['DEBUG', 'INIT', 'EVENT'],
-        ['INT1', 'INT2', 'INT3', 'MAIN']
-      ];
-      
-      if (row < buttons.length && col < buttons[row].length) {
-        const button = buttons[row][col];
-        return {
-          region: 'controls',
-          type: 'button',
-          data: { command: button.toLowerCase() },
-          tooltip: `Click to ${button}`
-        };
-      }
+    const Bl = 109, Bt = 37, Bw = 12, Bh = 16;
+    if (x < Bl || x >= Bl + Bw || y < Bt || y >= Bt + Bh) return null;
+
+    const relY = y - Bt;
+
+    // GO button spans the full width at rows 13-14 of the panel
+    if (relY >= 13 && relY < 15) {
+      return {
+        region: 'controls',
+        type: 'button',
+        data: { command: 'go' },
+        tooltip: 'L-Click or SPACE to step | R-Click or ENTER for repeat'
+      };
     }
-    
-    return null;
+
+    // Mode buttons are at rows 0,2,4,6,8,10 of the panel (each 2 half-rows tall)
+    if (relY >= 12) return null;
+    const rowPair = Math.floor(relY / 2);  // 0..5
+    if (rowPair > 5) return null;
+
+    // Left column: x in [Bl, Bl+7); right column: x in [Bl+7, Bl+12)
+    const isLeft = x < Bl + 7;
+    const leftCol = ['break', 'addr', 'int3e', 'int2e', 'int1e', 'debug'];
+    const rightCol = ['init', 'event', 'int3', 'int2', 'int1', 'main'];
+    const command = isLeft ? leftCol[rowPair] : rightCol[rowPair];
+    return {
+      region: 'controls',
+      type: 'button',
+      data: { command },
+      tooltip: `L-Click sets exclusively | R-Click toggles ${command.toUpperCase()}`
+    };
   }
   
   /**
@@ -605,40 +635,20 @@ export class DebuggerInteraction extends EventEmitter {
   
   // Button handlers
   
-  private handleButtonClick(command: string): void {
-    switch (command) {
-      case 'break':
-        this.protocol.sendBreak(this.cogId);
-        break;
-      case 'addr':
-        this.showAddressDialog();
-        break;
-      case 'go':
-        this.protocol.sendGo(this.cogId);
-        break;
-      case 'debug':
-        // Debug mode toggle not implemented in protocol
-        this.logConsoleMessage('Debug mode toggle');
-        break;
-      case 'init':
-        // Init command not implemented in protocol
-        this.protocol.sendStall(this.cogId);
-        break;
-      case 'event':
-        // Event command not implemented
-        this.logConsoleMessage('Event command');
-        break;
-      case 'int1':
-      case 'int2':
-      case 'int3':
-        // Interrupt command not implemented
-        this.logConsoleMessage('Interrupt', command);
-        break;
-      case 'main':
-        // Main command not implemented
-        this.logConsoleMessage('Main command');
-        break;
-    }
+  /**
+   * Button click dispatcher — emits 'command' events that the window owner
+   * handles via sendDebugCommand(). The window owns BreakValue and knows
+   * how to implement left-click-exclusive-set vs right-click-toggle semantics
+   * per Pascal DebuggerUnit.pas FormMouseDown (lines 716-856).
+   *
+   * All 13 buttons route through the same path. The command string is the
+   * uppercased button name; rightClick distinguishes L vs R click.
+   */
+  private handleButtonClick(command: string, rightClick: boolean): void {
+    const cmd = command.toUpperCase();
+    // Known buttons: GO, BREAK, ADDR, INT3E, INT2E, INT1E, DEBUG,
+    //                INIT, EVENT, INT3, INT2, INT1, MAIN
+    this.emit('command', { cmd, rightClick });
   }
   
   // Selection methods

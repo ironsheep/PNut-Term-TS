@@ -2,9 +2,16 @@
 
 // src/classes/debugDebuggerWin.ts
 
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Context } from '../utils/context';
 import { DebugWindowBase } from './debugWindowBase';
+import {
+  IPC_CHANNELS,
+  MainToRendererMessage,
+  RendererToMainMessage
+} from './debugger/shared/ipc';
 import { WindowRouter } from './shared/windowRouter';
 import { WindowPlacer, PlacementConfig, PlacementStrategy } from '../utils/windowPlacer';
 import {
@@ -116,6 +123,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private oldTickCount: number = 0;                          // Last Go command timestamp for repeat throttling
   private breakpointTimerHandle: NodeJS.Timeout | null = null; // 250ms breakpoint timeout (Pascal: BreakpointTimer)
   private isDimmed: boolean = false;                         // Display is dimmed (no breakpoint in 250ms)
+  private breakAddr: number = 0;                             // Address-breakpoint target (Pascal: BreakAddr)
+  private breakEvent: number = 1;                            // Event-breakpoint target 1..15 (Pascal: BreakEvent)
+  private hubAddr: number = 0;                               // Hub viewer address (Pascal: HubAddr)
 
   // Remove redundant queue - base class handles this via messageQueue
   // private initialMessageQueue: Uint8Array[] = [];  // REMOVED: Base class handles queuing
@@ -648,7 +658,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       e.preventDefault();
       ipcRenderer.send('debugger-wheel', {
         cogId: ${this.cogId},
-        deltaY: e.deltaY
+        deltaY: e.deltaY,
+        shift: e.shiftKey,
+        ctrl: e.ctrlKey
       });
     });
     
@@ -721,14 +733,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       this.processDeferredMessages();
     }
 
-    // Verify canvas exists and start rendering
+    // Verify canvas exists and start rendering. The inline script must
+    // return a VALUE, so the object literal has to be in expression
+    // position — wrapping in an IIFE is the cleanest way.
     this.debugWindow?.webContents.executeJavaScript(`
-      const canvas = document.getElementById('canvas');
-      if (canvas) {
-        { id: 'canvas', width: canvas.width, height: canvas.height }
-      } else {
-        null
-      }
+      (() => {
+        const canvas = document.getElementById('canvas');
+        return canvas ? { id: 'canvas', width: canvas.width, height: canvas.height } : null;
+      })()
     `).then((canvasInfo) => {
       if (canvasInfo) {
         this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
@@ -741,6 +753,22 @@ export class DebugDebuggerWindow extends DebugWindowBase {
             this.dataManager,
             this.cogId
           );
+
+          // Route keyboard/mouse commands into the window's state machine.
+          // DebuggerInteraction emits high-level events; sendDebugCommand
+          // owns BreakValue, StallBrk, and RepeatMode per Pascal semantics.
+          this.interaction.on('command', (data: { cmd: string; rightClick: boolean }) => {
+            this.sendDebugCommand(data.cmd, data.rightClick);
+          });
+          this.interaction.on('hubNavigate', (delta: number) => {
+            this.handleHubNavigate(delta);
+          });
+          this.interaction.on('disassemblyScroll', (_data: { direction: number; cogDelta: number; hubDelta: number }) => {
+            // TODO: Wire to disassembly mode switching + scroll when that state
+            // machine moves from the renderer into the window. For now, use
+            // hub-delta as a reasonable default so scrolling has an effect.
+            // this.handleDisassemblyScroll(_data);
+          });
         }
 
         // Start the render loop
@@ -827,9 +855,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   private handleMouseWheel(data: any): void {
     if (!this.interaction) return;
-    
-    const { deltaY } = data;
-    this.interaction.handleMouseWheel(deltaY);
+
+    const { deltaY, ctrl = false, shift = false } = data;
+    this.interaction.handleMouseWheel(deltaY, ctrl, shift);
   }
 
   /**
@@ -859,35 +887,51 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    *   Otherwise send BreakValue. Limits to ~20 breaks/sec for visual tracking.
    *   Any SPACE/ENTER/Go click -> back to HALTED.
    */
-  private sendDebugCommand(command: string): void {
+  private sendDebugCommand(command: string, rightClick: boolean = false): void {
     try {
+      // Pascal FormMouseDown (DebuggerUnit.pas lines 716-889). Each condition
+      // button has distinct L-click (exclusive set, keeping INIT bit 8) and
+      // R-click (toggle, with mutual-exclusion masking) semantics:
+      //
+      //   L-click XXX:  BreakValue := BreakValue and $100 or <xxx>
+      //   R-click XXX:  BreakValue := BreakValue and $FFFFFFEF xor <xxx>
+      //
+      // DEBUG is special — both variants honor the "DEBUG is exclusive to all
+      // but INIT" rule (mask $110 instead of $FFFFFFEF).
+      const KEEP_INIT = DEBUG_COMMANDS.BREAK_INIT;           // $100
+      const CLEAR_DBG = ~DEBUG_COMMANDS.BREAK_DEBUG >>> 0;   // $FFFFFFEF (bit 4)
+      const KEEP_INIT_OR_DBG = (DEBUG_COMMANDS.BREAK_INIT | DEBUG_COMMANDS.BREAK_DEBUG) >>> 0; // $110
+
       switch (command) {
         case 'GO':
         case 'STEP':
         case 'STEP_INTO':
-          // SINGLE GO — send BreakValue once, then revert to StallCmd
-          // Pascal: StallBrk := BreakValue; (sent in next Phase 2); StallBrk := StallCmd
+          // GO button: L-click = single-step, R-click (or ENTER) = repeat mode.
+          // Pascal InButtonGo block (lines 724-753).
           if (this.repeatMode) {
-            // If in repeat mode, SPACE/Go stops it (transition C -> A)
+            // Already in repeat mode: any click stops it (C -> A)
             this.repeatMode = false;
             this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
-          } else {
-            // Single Go (transition A -> B)
+          } else if (rightClick) {
+            // R-click Go (or ENTER): enter repeat mode (A -> C)
+            this.repeatMode = true;
             this.stallBrk = this.breakValue;
             this.oldTickCount = Date.now();
-            // stallBrk will be reset to STALL_CMD after the next Phase 2 send
-            // (handled in getStallBrkForExchange)
+          } else {
+            // L-click Go (or SPACE): single step (A -> B)
+            this.stallBrk = this.breakValue;
+            this.oldTickCount = Date.now();
+            // stallBrk will auto-revert to STALL_CMD after next Phase 2
+            // (getStallBrkForExchange handles that)
           }
           break;
 
         case 'RUN':
-          // REPEAT MODE — continuous execution with throttled updates
+          // Legacy alias for R-click Go (repeat-mode toggle)
           if (this.repeatMode) {
-            // Already in repeat mode, stop it (transition C -> A)
             this.repeatMode = false;
             this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
           } else {
-            // Enter repeat mode (transition A -> C)
             this.repeatMode = true;
             this.stallBrk = this.breakValue;
             this.oldTickCount = Date.now();
@@ -895,36 +939,100 @@ export class DebugDebuggerWindow extends DebugWindowBase {
           break;
 
         case 'BREAK':
-        case 'STALL':
-          // HALT — clear all conditions except INIT, stop repeat mode
+          // BREAK button (Pascal line 856): BreakValue := BreakValue and $100
+          // Clears all conditions except INIT — async break mode.
+          // Also stops repeat mode and re-arms stall.
+          this.breakValue &= KEEP_INIT;
           this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
           this.repeatMode = false;
           break;
 
-        case 'INIT':
-          // Toggle INIT break (bit 8) — always independent, additive
-          this.breakValue ^= DEBUG_COMMANDS.BREAK_INIT;
+        case 'STALL':
+          // Explicit stall (not a Pascal button, but used internally)
+          this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
+          this.repeatMode = false;
           break;
 
-        case 'DEBUG':
-          // Toggle DEBUG break condition (bit 4)
-          // Mutual exclusion: clear single-step bits 0-3 and entry bits 5-7
-          if (this.breakValue & DEBUG_COMMANDS.BREAK_DEBUG) {
-            this.breakValue &= ~DEBUG_COMMANDS.BREAK_DEBUG;
+        case 'MAIN':  // bit 0
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_MAIN;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_MAIN;
+          break;
+        case 'INT1':  // bit 1
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT1;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT1;
+          break;
+        case 'INT2':  // bit 2
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT2;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT2;
+          break;
+        case 'INT3':  // bit 3
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT3;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT3;
+          break;
+        case 'DEBUG': // bit 4 — DEBUG is exclusive to all but INIT (Pascal lines 787-793)
+          if (rightClick) this.breakValue = (this.breakValue & KEEP_INIT_OR_DBG) ^ DEBUG_COMMANDS.BREAK_DEBUG;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_DEBUG;
+          break;
+        case 'INT1E': // bit 5
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT1E;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT1E;
+          break;
+        case 'INT2E': // bit 6
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT2E;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT2E;
+          break;
+        case 'INT3E': // bit 7
+          if (rightClick) this.breakValue = (this.breakValue & CLEAR_DBG) ^ DEBUG_COMMANDS.BREAK_INT3E;
+          else            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_INT3E;
+          break;
+
+        case 'INIT':  // bit 8 — always independent (Pascal lines 819-825)
+          if (rightClick) this.breakValue ^= DEBUG_COMMANDS.BREAK_INIT;
+          else            this.breakValue |= DEBUG_COMMANDS.BREAK_INIT;
+          break;
+
+        case 'EVENT': // bit 9 + event ID in bits 15..12 (Pascal lines 827-840)
+          if (rightClick) {
+            if (this.breakValue & DEBUG_COMMANDS.BREAK_EVENT) {
+              this.breakValue &= 0x00000DEF; // clear bit 9 + bit 4
+            } else {
+              this.breakValue = (this.breakValue & 0x00000BEF) | DEBUG_COMMANDS.BREAK_EVENT | ((this.breakEvent & 0xF) << 12);
+            }
           } else {
-            this.breakValue = (this.breakValue & DEBUG_COMMANDS.BREAK_INIT) | DEBUG_COMMANDS.BREAK_DEBUG;
+            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_EVENT | ((this.breakEvent & 0xF) << 12);
           }
           break;
 
-        case 'MAIN':
-          // Toggle MAIN single-step (bit 0) — right-click behavior
-          this.breakValue ^= DEBUG_COMMANDS.BREAK_MAIN;
-          this.breakValue &= ~DEBUG_COMMANDS.BREAK_DEBUG; // Clear DEBUG (mutual exclusion)
+        case 'ADDR':  // bit 10 + address in bits 31..12 (Pascal lines 842-853)
+          if (rightClick) {
+            if (this.breakValue & DEBUG_COMMANDS.BREAK_ADDR) {
+              this.breakValue &= 0x00000BEF; // clear bit 10 + bit 4
+            } else {
+              this.breakValue = (this.breakValue & 0x00000DEF) | DEBUG_COMMANDS.BREAK_ADDR | ((this.breakAddr & 0xFFFFF) << 12);
+            }
+          } else {
+            this.breakValue = (this.breakValue & KEEP_INIT) | DEBUG_COMMANDS.BREAK_ADDR | ((this.breakAddr & 0xFFFFF) << 12);
+          }
+          break;
+
+        case 'FOLLOW_PC':
+          // L-click on disassembly/PC box: snap disassembly to follow PC.
+          // TODO: drive DisMode = dmPC when that state moves into the window.
+          break;
+
+        case 'RESET_WATCH':
+          // Pascal: L-click on register watch box = reset watch list.
+          if (this.dataManager && typeof (this.dataManager as any).resetRegWatch === 'function') {
+            (this.dataManager as any).resetRegWatch();
+          }
           break;
 
         default:
           this.logConsoleMessage(`[DEBUGGER] Unknown command: ${command}`);
       }
+
+      // Force unsigned (TS bitwise ops return signed int32)
+      this.breakValue = this.breakValue >>> 0;
 
       // Update the protocol's response generator with current stallBrk
       if (this.protocol) {
@@ -932,6 +1040,17 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       }
     } catch (error) {
       this.logConsoleMessage(`[DEBUGGER] Error sending command ${command}: ${error}`);
+    }
+  }
+
+  /**
+   * Handle hub-viewer navigation (UP/DOWN/PAGEUP/PAGEDOWN, wheel).
+   * Delta is in bytes; address wraps at $FFFFF (Pascal: HubAddr).
+   */
+  private handleHubNavigate(delta: number): void {
+    this.hubAddr = (this.hubAddr + delta) & 0xFFFFF;
+    if (this.protocol) {
+      this.protocol.setHubAddress(this.cogState.cogId, this.hubAddr);
     }
   }
 
@@ -1016,13 +1135,21 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       if (complete) {
         this.processPhase3Data();
       }
-      return; // Don't process as Phase 1 while awaiting Phase 3
+      // Also forward to the renderer bundle so the new architecture receives it.
+      // (Harmless duplication during the transition; the old path will be removed
+      // in Phase 7 after the bundle is self-sufficient.)
+      this.forwardPhase3ToRenderer(data);
+      return;
     }
 
-    // Check if this is a 456-byte debugger packet (Phase 1 protocol)
-    // Structure: 20 longs (80) + 64 words CRC (128) + 124 words Hub checksums (248) = 456
-    if (data.length === 456) {
+    // Check if this is a Phase 1 debugger packet. pnut_ts emits 416 bytes:
+    //   20 longs (80) + 64 words CRC (128) + 104 words hub checksums (208) = 416
+    // Pascal documents 456 for 124 hub blocks. We accept either so a future
+    // host or firmware variant doesn't silently get dropped here.
+    if (data.length === 416 || data.length === 456) {
       this.processDebuggerPacket(data);
+      // Forward to renderer bundle in parallel with the legacy path.
+      this.forwardPhase1ToRenderer(data);
     }
     // Check if this is a 20-long initial message
     else if (data.length >= 80) {
@@ -1129,9 +1256,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * The PC then requests actual block data in Phase 2/3.
    */
   private processDebuggerPacket(data: Uint8Array): void {
-    // Packet should be exactly 456 bytes for Phase 1 protocol
-    if (data.length < 456) {
-      this.logMessage(`Invalid packet size: ${data.length} (expected 456 bytes for Phase 1 protocol)`);
+    // pnut_ts: 416 bytes. Pascal: 456 bytes. Either is a valid Phase 1.
+    if (data.length !== 416 && data.length !== 456) {
+      this.logMessage(`Invalid Phase 1 packet size: ${data.length} (expected 416 or 456 bytes)`);
       return;
     }
 
@@ -1238,11 +1365,15 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Store the packet for reference
     this.currentDebuggerPacket = data;
 
-    // Generate and send Phase 2 response to P2
-    // CRITICAL: The P2 is waiting for this response before releasing lock #15!
-    this.sendPhase2Response(data);
+    // NOTE: Phase 2 transmission is now owned by the renderer bundle. It
+    // parses Phase 1, builds the 52-byte reply, and sends bytes back via
+    // IPC (handled in handleRendererMessage→kind:'phase2' below). The old
+    // sendPhase2Response() is retained on disk for reference but no longer
+    // called; see Phase 7 cleanup task to delete.
 
-    // Trigger immediate display update
+    // Display update still triggered here for the legacy stub renderer, which
+    // runs in parallel to the bundle but produces nothing visible since the
+    // bundle owns the canvas. Safe to leave until Phase 7 cleanup.
     this.renderDebuggerDisplay();
   }
 
@@ -1847,61 +1978,12 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Main render method - batches all dirty regions
    */
   public render(): void {
-    if (!this.debugWindow) return;
-    
-    const startTime = performance.now();
-    const allJsCommands = [];
-    
-    // Add canvas clear at the beginning
-    allJsCommands.push(`ctx.fillStyle='#1e1e1e';ctx.fillRect(0,0,canvas.width,canvas.height);`);
-    
-    // Collect commands for all dirty regions
-    for (const regionName of this.dirtyRegions) {
-      const region = this.regions.get(regionName);
-      if (region) {
-        const commands = this.getRenderCommands(regionName, region);
-        allJsCommands.push(...commands);
-      }
-    }
-    
-    // Render tooltip if visible
-    if (this.tooltipText) {
-      allJsCommands.push(this.drawTextJs(this.tooltipText, this.tooltipX, this.tooltipY, 0xffff00, 0x333333));
-    }
-
-    // Apply dimming overlay when no breakpoint received in 250ms
-    // Pascal: right-shift each R,G,B byte by 1 (halve brightness)
-    // Canvas equivalent: semi-transparent black overlay at 50% opacity
-    if (this.isDimmed) {
-      allJsCommands.push(`ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,canvas.width,canvas.height);`);
-    }
-
-    // Execute all commands in single call
-    if (allJsCommands.length > 0) {
-      this.debugWindow.webContents.executeJavaScript(
-        `(function() {
-          const canvas = document.getElementById('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          ctx.textBaseline = 'top';
-          ${allJsCommands.join('')}
-        })()`
-      ).catch(error => {
-        this.logMessage(`Render error: ${error}`);
-      });
-    }
-    
-    // Clear dirty regions
+    // The renderer-side bundle (src/classes/debugger/renderer/index.ts) now
+    // owns the canvas. Every per-panel paint happens locally in Chromium,
+    // not via executeJavaScript from main. This no-op prevents the legacy
+    // stub renderers from stomping on the bundle's output. The helper
+    // methods below remain only to keep test-harness mocks compiling.
     this.dirtyRegions.clear();
-    
-    // Track performance
-    const renderTime = performance.now() - startTime;
-    this.lastRenderTime = renderTime;
-    this.renderCount++;
-    
-    if (renderTime > 50) {
-      console.warn(`Slow render: ${renderTime.toFixed(1)}ms`);
-    }
   }
   
   /**
@@ -1934,91 +2016,267 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Generate HTML content for the debugger window
+   * Generate HTML content for the debugger window.
+   *
+   * The page is minimal: a canvas + status bar + the inlined renderer
+   * bundle (`dist/debugger-renderer.js`). All logic — state machine,
+   * rendering, keyboard/mouse handling, Phase 1/2/3 protocol — lives in
+   * the bundle. Main process only forwards data via IPC.
+   *
+   * See `src/classes/debugger/renderer/index.ts` for the bundle entry.
    */
   public getHTML(): string {
+    const bundleJs = this.readRendererBundle();
+    const bg = `#${PASCAL_COLOR_SCHEME.cBackground.toString(16).padStart(6, '0')}`;
+    const fg = `#${PASCAL_COLOR_SCHEME.cData.toString(16).padStart(6, '0')}`;
     return `<!DOCTYPE html>
 <html>
 <head>
-    <title>Debugger - Cog ${this.cogId}</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #${PASCAL_COLOR_SCHEME.cBackground.toString(16).padStart(6, '0')};
-            color: #${PASCAL_COLOR_SCHEME.cData.toString(16).padStart(6, '0')};
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            overflow: hidden;
-        }
-        #canvas {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-        .status-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 20px;
-            background-color: #222;
-            color: #0F0;
-            padding: 2px 5px;
-            font-size: 12px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Debugger - Cog ${this.cogId}</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; }
+    body {
+      background-color: ${bg};
+      color: ${fg};
+      font-family: 'Parallax', 'Courier New', monospace;
+      font-size: 14px;
+      user-select: none;
+    }
+    #canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #status-bar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      height: 20px;
+      padding: 2px 8px;
+      background-color: #222;
+      color: #888;
+      font-size: 12px;
+      border-top: 1px solid #444;
+    }
+  </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <div class="status-bar">
-        COG ${this.cogId} - Ready
-    </div>
-    <script>
-        const { ipcRenderer } = require('electron');
-        
-        // Initialize canvas
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Set canvas size
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight - 24; // Account for status bar
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        
-        // Handle keyboard input
-        document.addEventListener('keydown', (e) => {
-            ipcRenderer.send('debugger-key', { 
-                cogId: ${this.cogId},
-                key: e.key,
-                code: e.code,
-                shift: e.shiftKey,
-                ctrl: e.ctrlKey,
-                alt: e.altKey
-            });
-        });
-        
-        // Handle mouse input
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            ipcRenderer.send('debugger-click', {
-                cogId: ${this.cogId},
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            });
-        });
-        
-        // Handle render updates from main process
-        ipcRenderer.on('render-update', (event, data) => {
-            // Render logic will go here
-            console.log('Render update for COG ${this.cogId}:', data);
-        });
-    </script>
+  <canvas id="canvas" width="984" height="616"></canvas>
+  <div id="status-bar">Cog ${this.cogId} — bundle:loading</div>
+  <pre id="bundle-error" style="position:fixed;top:0;left:0;right:0;padding:8px;margin:0;background:#400;color:#fbb;font:12px/1.3 monospace;white-space:pre-wrap;display:none;z-index:10"></pre>
+  <script>
+    (function () {
+      var err = document.getElementById('bundle-error');
+      var status = document.getElementById('status-bar');
+      function show(msg) {
+        if (err) { err.style.display = 'block'; err.textContent = msg; }
+        if (status) { status.textContent = 'Cog ${this.cogId} — bundle ERROR (see overlay/devtools)'; }
+      }
+      window.addEventListener('error', function (e) {
+        show((e && e.message) + '\\n' + (e && e.error && e.error.stack ? e.error.stack : ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        show('UnhandledRejection: ' + (r && r.message ? r.message : r) + '\\n' + (r && r.stack ? r.stack : ''));
+      });
+    })();
+  </script>
+  <script>
+${bundleJs}
+  </script>
 </body>
 </html>`;
+  }
+
+  /**
+   * Read the renderer bundle JS from disk and return its contents for
+   * inlining into the window's HTML. Works in both dev (dist/ in repo)
+   * and packaged modes (dist/ in app Resources) because __dirname always
+   * resolves to the dist directory containing the compiled main bundle.
+   */
+  private readRendererBundle(): string {
+    const bundlePath = path.join(__dirname, 'debugger-renderer.js');
+    try {
+      return fs.readFileSync(bundlePath, 'utf8');
+    } catch (error) {
+      this.logConsoleMessage(`[DEBUGGER] FATAL: renderer bundle not found at ${bundlePath}: ${error}`);
+      // Fall back to a loud placeholder so the window isn't silently blank
+      return `
+        document.body.style.background = '#400';
+        document.body.style.color = '#f88';
+        document.body.innerHTML = '<h2 style="padding:20px">Debugger bundle missing at ${bundlePath.replace(/\\/g, '/')}.<br>Build did not produce dist/debugger-renderer.js.</h2>';
+      `;
+    }
+  }
+
+  // ============================================================================
+  // Bundle ↔ main IPC
+  //
+  // The renderer bundle owns the window UI. Main forwards Phase 1/3 packet
+  // bytes in and receives Phase 2 bytes (plus COGBRK requests, log lines)
+  // back out. See src/classes/debugger/shared/ipc.ts for the full contract.
+  // ============================================================================
+
+  /** Whether the renderer bundle has reported DOMContentLoaded + initialize. */
+  private rendererReady: boolean = false;
+  /** Buffered incoming packets while the renderer is still starting up. */
+  private pendingPhase1: Uint8Array[] = [];
+  private pendingPhase3: Uint8Array[] = [];
+  /** Listener handle so we can remove it on window close. */
+  private ipcListener: ((event: Electron.IpcMainEvent, message: RendererToMainMessage) => void) | null = null;
+
+  /**
+   * Wire up the main-side IPC listener for messages from the renderer bundle.
+   * Called once after the BrowserWindow is created.
+   */
+  private installBundleIpc(): void {
+    const listener = (event: Electron.IpcMainEvent, message: RendererToMainMessage): void => {
+      // Only respond to messages from our own window — multiple debugger
+      // windows share the ipcMain dispatcher, so we must filter by sender.
+      if (!this.debugWindow || event.sender.id !== this.debugWindow.webContents.id) {
+        return;
+      }
+      this.handleRendererMessage(message);
+    };
+    ipcMain.on(IPC_CHANNELS.rendererToMain, listener);
+    this.ipcListener = listener;
+  }
+
+  /** Tear down the IPC listener when the window closes. */
+  private removeBundleIpc(): void {
+    if (this.ipcListener) {
+      ipcMain.removeListener(IPC_CHANNELS.rendererToMain, this.ipcListener);
+      this.ipcListener = null;
+    }
+  }
+
+  /**
+   * Route a diagnostic line into the shared debug log file via LoggerWindow so
+   * renderer-bundle lifecycle events are visible alongside WINDOW_PLACED and
+   * formatted packet dumps. Avoids the silent-stdout dead-end of logMessage/
+   * logConsoleMessage in packaged builds.
+   */
+  private debugLog(msg: string): void {
+    try {
+      const LoggerWindow = require('./loggerWin').LoggerWindow;
+      const debugLogger = LoggerWindow.getInstance(this.context);
+      debugLogger.logSystemMessage(`[DEBUGGER COG${this.cogId}] ${msg}`);
+    } catch {
+      // Logger not yet available — swallow rather than crash the debugger window.
+    }
+  }
+
+  private handleRendererMessage(message: RendererToMainMessage): void {
+    switch (message.kind) {
+      case 'ready': {
+        this.rendererReady = true;
+        this.debugLog(`renderer 'ready' received (pending ph1=${this.pendingPhase1.length} ph3=${this.pendingPhase3.length})`);
+        // Drain any buffered packets that arrived before the bundle was ready.
+        for (const bytes of this.pendingPhase1) this.sendToRenderer({ kind: 'phase1', bytes });
+        for (const bytes of this.pendingPhase3) this.sendToRenderer({ kind: 'phase3', bytes });
+        this.pendingPhase1 = [];
+        this.pendingPhase3 = [];
+        break;
+      }
+      case 'phase2':
+        // Renderer bundle built the 52-byte reply; push it onto the TX ring
+        // via the same TLongTransmitter the old path used. The base class
+        // exposes tLongTransmitter from DebugWindowBase — both transmit
+        // paths land on the same sendSerialData callback wired by
+        // mainWindow.setSerialTransmissionCallback().
+        try {
+          this.tLongTransmitter.transmitBuffer(message.bytes);
+          // With the cut-over complete, we expect Phase 3 next.
+          this.awaitingPhase3 = true;
+        } catch (error) {
+          this.logConsoleMessage(`[DEBUGGER] Error transmitting Phase 2 from bundle: ${error}`);
+        }
+        break;
+      case 'setCogBrk':
+        // Forward the user's COGBRK request to the main-process broadcast
+        // so every open debugger window includes it in its next Phase 2.
+        this.emit('setGlobalCogBrk', { mask: message.mask, originCogId: this.cogId });
+        break;
+      case 'phase3Complete':
+        // Bundle finished parsing Phase 3. The next 456-byte chunk is a
+        // new Phase 1 (not a Phase 3 continuation).
+        this.awaitingPhase3 = false;
+        break;
+      case 'log':
+        this.debugLog(`[R/${message.level}] ${message.msg}`);
+        break;
+      default: {
+        const _exhaustive: never = message;
+        void _exhaustive;
+        break;
+      }
+    }
+  }
+
+  /** Send a typed message to the renderer bundle. Safe to call before 'ready'. */
+  private sendToRenderer(message: MainToRendererMessage): void {
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) return;
+    this.debugWindow.webContents.send(IPC_CHANNELS.mainToRenderer, message);
+  }
+
+  /**
+   * Forward a Phase 1 packet (456 bytes) to the renderer bundle. If the
+   * bundle hasn't finished initializing yet, buffer and replay on 'ready'.
+   */
+  private forwardPhase1ToRenderer(bytes: Uint8Array): void {
+    if (!this.rendererReady) {
+      this.pendingPhase1.push(bytes);
+      return;
+    }
+    this.sendToRenderer({ kind: 'phase1', bytes });
+  }
+
+  /** Forward Phase 3 data to the renderer bundle. */
+  private forwardPhase3ToRenderer(bytes: Uint8Array): void {
+    if (!this.rendererReady) {
+      this.pendingPhase3.push(bytes);
+      return;
+    }
+    this.sendToRenderer({ kind: 'phase3', bytes });
+  }
+
+  /**
+   * Broadcast a COGBRK mask into this window's renderer. Called by the
+   * main-process coordinator when ANY other debugger window requests a
+   * cross-cog async break (§3.9). The mask is OR'd into the renderer's
+   * pending requestCogBrk and included in its next Phase 2 reply.
+   */
+  public broadcastCogBrk(mask: number): void {
+    this.sendToRenderer({ kind: 'cogBrkBroadcast', mask });
+  }
+
+  /**
+   * Tell the renderer bundle to invalidate all per-cog state. Called on
+   * DTR/RTS reset so the next Phase 1 is treated as a fresh first-break.
+   */
+  public broadcastReset(): void {
+    this.sendToRenderer({ kind: 'reset' });
+    this.awaitingPhase3 = false;
+    this.rendererReady = true; // bundle stays alive; just its state is reset
+    this.pendingPhase1 = [];
+    this.pendingPhase3 = [];
+  }
+
+  /**
+   * Send the one-shot 'initialize' message to the renderer bundle. Called
+   * from did-finish-load. The renderer won't render anything until it has
+   * received this.
+   */
+  private initializeRenderer(): void {
+    this.sendToRenderer({
+      kind: 'initialize',
+      cogId: this.cogId,
+      windowId: `debugger-${this.cogId}-${Date.now()}`,
+      // Initial BRK condition matches what the compiler patched into _brkcond_.
+      // We'll get the authoritative value from the first breakpoint's mCOND.
+      initialBreakCond: 0x001,
+      debugBaud: 2_000_000
+    });
   }
   
   /**
@@ -2072,9 +2330,14 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
-        sandbox: false
+        sandbox: false,
+        devTools: true
       }
     });
+
+    // Diagnostic: auto-open DevTools while validating the bundle rendering path.
+    // TODO: put behind a preference once renderer is proven stable.
+    this.debugWindow.webContents.openDevTools({ mode: 'detach' });
 
     // Register with WindowPlacer for position tracking (only if using auto-placement)
     // Debugger uses windowDetails parameter, not displaySpec
@@ -2091,8 +2354,12 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // CRITICAL: Register did-finish-load IMMEDIATELY after loadURL, before ready-to-show
     // This ensures we catch the event since did-finish-load fires BEFORE ready-to-show
     this.debugWindow.webContents.once('did-finish-load', () => {
-      this.logConsoleMessage(`[DEBUGGER] did-finish-load event fired for COG ${this.cogId}`);
+      this.debugLog(`did-finish-load — sending 'initialize' to bundle`);
       this.handleDomReady();
+      // Kick the renderer bundle — it's been waiting for `initialize` since
+      // DOMContentLoaded. After this the bundle will paint its placeholder
+      // and start accepting Phase 1/3 packets.
+      this.initializeRenderer();
     });
 
     // Hook window events
@@ -2103,11 +2370,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
       this.registerWithRouter();
       this.setupIPCHandlers();
     });
-    
+
     this.debugWindow.on('closed', () => {
       this.logMessage(`Debugger window for COG ${this.cogId} closed`);
+      this.removeBundleIpc();
       this.closeDebugWindow();
     });
+
+    // Listen for messages from the renderer bundle. Install BEFORE the page
+    // loads so we don't miss the bundle's DOMContentLoaded log line.
+    this.installBundleIpc();
   }
   
   /**
