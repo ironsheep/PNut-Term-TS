@@ -275,9 +275,6 @@ export class MainWindow {
    * Setup event handlers for debugger message parser
    */
   private setupSerialProcessorEvents(): void {
-    // CRITICAL: Import and setup debugger response handler
-    const { DebuggerResponse } = require('./shared/debuggerResponse');
-    const debuggerResponse = new DebuggerResponse();
     // Create routing destinations for Two-Tier Pattern Matching
     // ALL routing goes through WindowRouter - one class, one responsibility
     const debugLoggerDestination: RouteDestination = {
@@ -336,6 +333,18 @@ export class MainWindow {
         const debuggerDisplay = new DebugDebuggerWindow(this.context, cogId);
         debuggerDisplay.setSerialTransmissionCallback(this.sendSerialData.bind(this));
         this.hookNotifcationsAndRememberWindow(windowName, debuggerDisplay);
+
+        // Cross-window COGBRK broadcast (§3.9). When the user clicks "break
+        // cog N" in any debugger window, the mask must reach EVERY open
+        // debugger so whichever cog is next in its debug ISR performs the
+        // COGBRK. Pascal: RequestCOGBRK is a global var read by every cog.
+        debuggerDisplay.on('setGlobalCogBrk', (info: { mask: number; originCogId: number }) => {
+          for (const key of Object.keys(this.displays)) {
+            const w = this.displays[key];
+            if (w instanceof DebugDebuggerWindow) w.broadcastCogBrk(info.mask);
+          }
+        });
+
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
 
@@ -358,16 +367,18 @@ export class MainWindow {
       this.handleP2SystemReboot(eventData);
     });
 
-    // Reset debugger response state on DTR/RTS reset
-    this.serialProcessor.on('dtrReset', () => {
-      this.logConsoleMessage('[DEBUGGER RESPONSE] DTR reset detected, clearing response state');
+    // Reset debugger response state on DTR/RTS reset — both the legacy
+    // main-side response generator AND every renderer-side bundle.
+    const resetAllDebuggers = (source: string): void => {
+      this.logConsoleMessage(`[DEBUGGER] ${source} reset detected — clearing all debugger state`);
       debuggerResponse.reset();
-    });
-
-    this.serialProcessor.on('rtsReset', () => {
-      this.logConsoleMessage('[DEBUGGER RESPONSE] RTS reset detected, clearing response state');
-      debuggerResponse.reset();
-    });
+      for (const key of Object.keys(this.displays)) {
+        const w = this.displays[key];
+        if (w instanceof DebugDebuggerWindow) w.broadcastReset();
+      }
+    };
+    this.serialProcessor.on('dtrReset', () => resetAllDebuggers('DTR'));
+    this.serialProcessor.on('rtsReset', () => resetAllDebuggers('RTS'));
 
     // Start the processor
     this.logConsoleMessage('[TWO-TIER] 🚀 Starting SerialMessageProcessor...');
