@@ -42,6 +42,17 @@ run_test "tests/context-ide-mode.test.ts"
 run_test "tests/debugBitmapWin.encoding.test.ts"
 run_test "tests/debugScopeXyWin.test.ts"
 run_test "tests/debuggerFixture.test.ts"
+# §5a sweep (2026-06-01): of 110 unregistered tests/*.test.ts, only these 7 still
+# pass — the other 103 fail at suite-load (import refactored-away/renamed modules,
+# e.g. shared/serialReceiver, shared/circularBuffer). Those are stale-test debt,
+# tracked separately (NOT added here so the runner stays a true green baseline).
+run_test "tests/cogMessageRouting.test.ts"
+run_test "tests/debuggerPacketTest.test.ts"
+run_test "tests/dynamicQueue.test.ts"
+run_test "tests/messageRouter.test.ts"
+run_test "tests/sharedCircularBuffer.test.ts"
+run_test "tests/spin2NumericParser.test.ts"
+run_test "tests/windowRouter.test.ts"
 run_test "tests/disassembler.test.ts"
 run_test "tests/displaySpecParser.test.ts"
 run_test "tests/fft2048.test.ts"
