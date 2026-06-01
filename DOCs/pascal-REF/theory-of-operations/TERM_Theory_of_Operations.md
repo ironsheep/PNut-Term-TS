@@ -210,7 +210,7 @@ opens.
 | `TITLE 'str'` | `key_title` | string | Free string · window title bar text |
 | `POS left top` | `key_pos` | 2 integers | left, top · offset from base window position |
 | `SIZE cols rows` | `key_size` | 2 integers | **Columns × rows** (not pixels); cols int **1..256** · default 40; rows int **1..256** · default 20. Clamped by `KeySize(…, term_colmin, term_colmax, term_rowmin, term_rowmax)` (`2199-2200`; constants `term_colmin/_rowmin`=1, `term_colmax/_rowmax`=256, lines 224-227) |
-| `TEXTSIZE n` | `key_textsize` | integer | Font point size · int **6..200** · default 10 (`FontSize` constant); applied via `KeyTextSize` |
+| `TEXTSIZE n` | `key_textsize` | integer | Font point size · int **6..200** · default 10 (global `FontSize` user preference); applied via `KeyTextSize` |
 | `COLOR c0 c1 … c7` | `key_color` | up to 8 RGB24 values | Fills `vColor[0..7]` — 4 text/background pairs; reads up to 8, stops early if a value is absent (`2203-2204`). Each value is a named color (§7.1, optional 0–15 brightness nibble) or numeric. Default: `ORANGE/BLACK, BLACK/ORANGE, LIME/BLACK, BLACK/LIME` |
 | `BACKCOLOR color` | `key_backcolor` | 1 RGB24 value | Window canvas background (used for clear/scroll fill), not character background (`2205-2206`) |
 | `UPDATE` | `key_update` | *(flag)* | Enables buffered mode — screen only updates on explicit `UPDATE` directive (`2207-2208`) |
@@ -342,7 +342,7 @@ end;
 | **title** | key_title | string | - | "TERM" | Window title text |
 | **pos** | key_pos | x, y, width, height | - | auto | Window position and size |
 | **size** | key_size | columns, rows | 1-256 | 40×20 | Terminal grid size |
-| **textsize** | key_textsize | integer | 4-50 | FontSize | Font size in points |
+| **textsize** | key_textsize | integer | 6-200 | `FontSize` (default 10) | Font size in points (`KeyTextSize` clamp) |
 | **color** | key_color | 8 integers | RGB24 | DefaultTermColors | 8 color values (4 pairs) |
 | **backcolor** | key_backcolor | integer | RGB24 | clBlack | Window background color |
 | **update** | key_update | boolean | - | false | Enable buffered update mode |
@@ -922,11 +922,14 @@ Pair 3: vColor[6] (foreground), vColor[7] (background)
 **Default Colors** (DebugDisplayUnit.pas:242):
 ```pascal
 DefaultTermColors: array[0..7] of integer =
-  (clOrange, clBlack,    // Pair 0: Orange on black
-   clBlack, clOrange,    // Pair 1: Black on orange
-   clLime, clBlack,      // Pair 2: Lime on black
-   clBlack, clLime);     // Pair 3: Black on lime
+  (clOrange, clBlack,    // Pair 0: Orange ($FF7F00) on black ($000000)
+   clBlack, clOrange,    // Pair 1: Black ($000000) on orange ($FF7F00)
+   clLime, clBlack,      // Pair 2: Lime ($00FF00) on black ($000000)
+   clBlack, clLime);     // Pair 3: Black ($000000) on lime ($00FF00)
 ```
+The `clXxx` constants are literal RGB24 values (`DebugDisplayUnit.pas` 179–191):
+`clOrange = $FF7F00` (note: **NOT** web `$FF8000`/`$FFA500`), `clLime = $00FF00`,
+`clBlack = $000000`. `WinRGB` swaps R↔B to BGR only at GDI draw time.
 
 ### 10.3 Color Selection
 
@@ -1146,9 +1149,9 @@ debug(`TERM "Positioned text")
 
 **Configuration**:
 ```
-TERM SIZE 40 20 COLOR $FF8000 $000000 $000000 $FF8000 $00FF00 $000000 $FF0000 $000000
+TERM SIZE 40 20 COLOR $FF7F00 $000000 $000000 $FF7F00 $00FF00 $000000 $FF0000 $000000
 ```
-Pairs: Orange/Black, Black/Orange, Green/Black, Red/Black
+Pairs: Orange/Black, Black/Orange, Green/Black, Red/Black (here Orange = `clOrange` `$FF7F00`)
 
 **Propeller 2 Code**:
 ```spin2

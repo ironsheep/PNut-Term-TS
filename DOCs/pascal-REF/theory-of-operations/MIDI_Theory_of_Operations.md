@@ -953,13 +953,19 @@ key_color:
 
 ### 10.2 Default Colors
 
-**Pre-defined Constants**:
+**Pre-defined Constants** (all from `DebugDisplayUnit.pas` 179–191) — every fixed
+color MIDI uses:
 ```pascal
-clCyan    = $00FFFF;  // Cyan (R=0, G=255, B=255)
-clMagenta = $FF00FF;  // Magenta (R=255, G=0, B=255)
-clWhite   = $FFFFFF;  // White (R=255, G=255, B=255)
-clBlack   = $000000;  // Black (R=0, G=0, B=0)
+clCyan    = $00FFFF;  // vColor[0] default — active white-key tint (2502)
+clMagenta = $FF00FF;  // vColor[1] default — active black-key tint (2503)
+clWhite   = $FFFFFF;  // white-key fill (2658)
+clBlack   = $000000;  // black-key fill (2662)
+clGray2   = $808080;  // keyboard outline pen + black-key labels (2651, 2660)
+clGray3   = $D0D0D0;  // white-key labels (2656)
 ```
+The keyboard background is the Windows system color `clInactiveCaption` (2650) — a
+GDI palette color, **not** a fixed RGB24 literal. All other colors above are literal
+RGB24 values; `WinRGB` swaps R↔B to BGR only at GDI draw time.
 
 **Default Scheme**:
 - White keys: White → Cyan (inactive → active)
@@ -991,7 +997,7 @@ Brush.Color := WinRGB(OnColor);
 
 **Example 1** (warm colors):
 ```
-COLOR $FF8000 $FFFF00  // Orange, Yellow
+COLOR $FF7F00 $FFFF00  // Orange (clOrange), Yellow (clYellow)
 ```
 
 **Example 2** (cool colors):

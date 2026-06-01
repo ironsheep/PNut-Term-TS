@@ -212,21 +212,35 @@ Transmits **two LONGs**:
 
 ### 4.4 Per-window coordinate mapping (the only input difference)
 
-The cursor coordinate reported by **both** the live measurement cursor
-(`FormMouseMove`) and `PC_MOUSE` (`SendMousePos`) is transformed per display type:
+⚠️ **Two different coordinate systems** — the on-screen measurement readout and the
+`PC_MOUSE` wire value are computed by *different code* and do **not** agree for every
+window. Do not assume the P2 receives what the readout shows.
 
-| Window | Reported coordinate basis |
+**(a) On-screen measurement readout** (`FormMouseMove`, `656-740`) — full per-window
+transform, shown only as the live cursor text (suppressed by `HIDEXY`):
+
+| Window | On-screen coordinate basis |
 |---|---|
-| LOGIC | sample index (−) × channel row; origin bottom-right (`660-667`) |
+| LOGIC | sample index (−) , channel row; origin bottom-right (`660-667`) |
 | SCOPE, FFT | pixel offset from plot origin, Y inverted (`668-675`) |
 | SCOPE_XY | scaled data value; Cartesian *or* polar (rho,theta) per `POLAR`/`LOGSCALE` (`676-718`) |
-| PLOT | `pixel ÷ DOTSIZE`, honoring `CARTESIAN` flip flags `vDirX`/`vDirY` (`719-724`, `3558-3561`) |
-| TERM | character **column,row** (`÷ ChrWidth/ChrHeight`); off-text-area = sentinel (`725-732`, `3563-3567`) |
-| SPECTRO, BITMAP | `pixel ÷ DOTSIZE`, honoring direction flags (`733-734`, `3556-3562`) |
-| MIDI | *(no coordinate readout / no special mapping)* |
+| PLOT | `pixel ÷ DOTSIZE`, honoring `CARTESIAN` flip flags `vDirX`/`vDirY` (`719-724`) |
+| TERM | character **column,row** (`÷ ChrWidth/ChrHeight`); off-text-area = blank (`725-732`) |
+| SPECTRO, BITMAP | `pixel ÷ DOTSIZE` (no direction flip in the readout) (`733-734`) |
+| MIDI | *(no coordinate readout)* |
 
-`HIDEXY` (config directive) suppresses the on-screen measurement-cursor readout;
-it does **not** disable `PC_MOUSE` reporting back to the P2.
+**(b) `PC_MOUSE` wire value** (`SendMousePos`, `3537-3577`) — only **two** transforms
+exist; everything else is sent as **raw client pixels**:
+
+| Window(s) | `PC_MOUSE` x,y transform |
+|---|---|
+| SPECTRO, PLOT, BITMAP | `÷ DOTSIZE`, with `if vDirX: x:=ClientWidth−x` and `if not vDirY: y:=ClientHeight−y` (`3556-3562`) — note this **Y-inverts SPECTRO/BITMAP**, which the on-screen readout does **not** |
+| TERM | character column,row, `÷ ChrWidth/ChrHeight` from the text origin (`3563-3567`) |
+| LOGIC, SCOPE, SCOPE_XY, FFT | **none — raw client pixel x,y** (the sample-index / Y-inversion / scaled-value transforms in (a) are *not* applied on the wire) |
+| MIDI | raw client pixel x,y |
+
+`HIDEXY` suppresses only the (a) on-screen readout; it does **not** disable (b)
+`PC_MOUSE` reporting back to the P2.
 
 ---
 
@@ -349,7 +363,46 @@ defaults" then override some of these.
 | update mode | off | hideXY | off |
 | rate | 0 | holdOff | 0 |
 | polar | off | twoPi / theta | `$100000000` / 0 |
-| sparse | −1 (off) | plotColor | `clCyan` |
+| sparse | −1 (off) | plotColor | `clCyan` `$00FFFF` |
+| textColor | `clWhite` `$FFFFFF` | channel colors | `DefaultScopeColors[0..7]` (see §7.1 palette) |
+
+### 7.0a Per-window font size & default window size
+
+**Font size.** The global `FontSize` preference (set in `EditorUnit`, default **10**,
+user-adjustable 1–72) and the `DefaultTextSize = 10` constant both default to **10**, so
+every display window starts at **10 pt** except MIDI. The `TEXTSIZE` directive (where
+accepted) clamps to **6..200** via `KeyTextSize` (2834-2837).
+
+| Window | Default font size | Set in | `TEXTSIZE` directive? |
+|---|---|---|---|
+| LOGIC    | `FontSize` = **10** | 939 | yes — config (961) |
+| SCOPE    | `FontSize` = **10** | 1159 | yes — config (1178) |
+| SCOPE_XY | `FontSize` = **10** | 1392 | yes — config (1416) |
+| FFT      | `FontSize` = **10** | 1563 | yes — config (1590) |
+| TERM     | `FontSize` = **10** | 2186 | yes — config (2202) |
+| PLOT     | `DefaultTextSize` = **10** | inherits `SetDefaults` 2894 | yes — **update phase** only (2037; also inline `TEXT`) |
+| SPECTRO  | `DefaultTextSize` = **10** (no text drawn) | inherits 2894 | **no** |
+| BITMAP   | `DefaultTextSize` = **10** (no text drawn) | inherits 2894 | **no** |
+| MIDI     | `MidiKeySize div 3` = **8** | 2528 | no — scales with `SIZE` (`MidiSize` 1..50 ⇒ font 4..69) |
+| *Debugger (single-step)* | `FontSize` ≈ **10**, auto-shrunk so 123 cols ≤ 4096 px | `DebuggerUnit` 597-604 | no |
+
+**Default window size.** All sizes are before user `SIZE`/`POS`. SCOPE/SCOPE_XY/FFT
+inherit `vWidth=vHeight=256` from `SetDefaults`; PLOT/SPECTRO/BITMAP draw a `vWidth ×
+vHeight` (× dotsize) client with zero margins; LOGIC/TERM/MIDI compute size from
+content; the debugger is a fixed character grid.
+
+| Window | Default size (pre-`SIZE`) | `SIZE` directive | Notes |
+|---|---|---|---|
+| LOGIC    | `vSamples·vSpacing × channels·ChrHeight` = `32·8 × 32·ChrHeight` = **256 px** wide × 32-channel tall | — (driven by `SAMPLES`/`SPACING`/channel count) | + label-width left margin, `ChrHeight` top/bottom |
+| SCOPE    | **256 × 256** (plot area) | `w h`, 32..2048 each | + `ChrWidth`/`ChrHeight·2` margins |
+| SCOPE_XY | **256 × 256** (square) | `w` → `w·2` clamped 32..2048; height = width | square; + `ChrHeight·2` margins all sides |
+| FFT      | **256 × 256** (plot area) | `w h`, 32..2048 each | + `ChrWidth`/`ChrHeight·2` margins |
+| SPECTRO  | **256 × 256** (depth 256 × bins 256; `vTrace=$F` → no swap) | `DEPTH` 1..2048 + `SAMPLES` (bins) | zero margins; ×`vDotSize`/`vDotSizeY` (1×1) |
+| PLOT     | **256 × 256** | `w h`, 32..2048 each | zero margins; ×dotsize (1×1) |
+| TERM     | **40 × 20 chars** (`DefaultCols × DefaultRows`) → `40·ChrWidth × 20·ChrHeight` px | `cols rows`, 1..256 each | + `ChrWidth div 2` margins |
+| BITMAP   | **256 × 256** | `w h`, 1..2048 each | zero margins; ×dotsize (1×1) |
+| MIDI     | computed: `MidiKeySize·whiteKeys + border·2 × MidiKeySize·6 + border`; default 88-key (`RANGE` 21..108), `MidiSize=4` ⇒ ≈ **1256 × 148 px** | `SIZE` = `MidiSize` 1..50 | also `RANGE` changes key span |
+| *Debugger* | `ChrWidth·123 × (ChrHeight·77)÷2` (fixed `123 × 77`-half-row grid) ⇒ ≈ **985 × 655 px** @ 10 pt | none (not resizable) | `DebuggerUnit.SmoothFillMax = 4096` |
 
 ### 7.1 Enumerated keyword value sets — the "legal strings"
 
@@ -358,15 +411,42 @@ These are the fixed keyword vocabularies a parameter may take. A color parameter
 interpreted through the current color mode.
 
 **Named colors** (`key_black..key_gray`, ids 0-9) — optional trailing brightness
-nibble `0..15` for all except BLACK/WHITE (`2764-2775`):
+nibble `0..15` (default `8`) for all except BLACK/WHITE (`KeyColor`, `2756-2783`).
 
-| Keyword | id | RGB | Keyword | id | RGB |
-|---|--:|---|---|--:|---|
-| `BLACK`   | 0 | `$000000` | `CYAN`    | 5 | `$00FFFF` |
-| `WHITE`   | 1 | `$FFFFFF` | `RED`     | 6 | `$FF0000` |
-| `ORANGE`  | 2 | `$FF7F00` | `MAGENTA` | 7 | `$FF00FF` |
-| `BLUE`    | 3 | `$7F7FFF` | `YELLOW`  | 8 | `$FFFF00` |
-| `GREEN`   | 4 | `$00FF00` | `GRAY`    | 9 | `$404040` |
+⚠️ **These named-directive colors are NOT the `clXxx` palette constants** (see
+the palette table below). Only `BLACK` and `WHITE` are returned as fixed literals
+(`$000000`/`$FFFFFF`, special-cased at `2764-2767`). The other eight are *computed*
+through the **RGBI8X** color space: `c := TranslateColor(h shl 5 or p shl 1,
+key_rgbi8x)` where `h = id − key_orange` (the hue 0-7) and `p` is the brightness
+nibble. The resolved RGB therefore depends on brightness and only *approximates*
+the similarly-named palette constant. Values below are at the **default brightness
+8** (verified by executing the Pascal `TranslateColor`/`KeyColor` math):
+
+| Keyword | id | RGB @ bri 8 | RGB @ bri 15 | Keyword | id | RGB @ bri 8 | RGB @ bri 15 |
+|---|--:|---|---|---|--:|---|---|
+| `BLACK`   | 0 | `$000000` (fixed) | `$000000` | `CYAN`    | 5 | `$09FFFF` | `$EFFFFF` |
+| `WHITE`   | 1 | `$FFFFFF` (fixed) | `$FFFFFF` | `RED`     | 6 | `$FF0909` | `$FFEFEF` |
+| `ORANGE`  | 2 | `$FF8409` | `$FFF7EF` | `MAGENTA` | 7 | `$FF09FF` | `$FFEFFF` |
+| `BLUE`    | 3 | `$0909FF` | `$EFEFFF` | `YELLOW`  | 8 | `$FFFF09` | `$FFFFEF` |
+| `GREEN`   | 4 | `$09FF09` | `$EFFFEF` | `GRAY`    | 9 | `$848484` | `$F7F7F7` |
+
+Higher brightness nibbles blend the hue toward white; lower nibbles toward black.
+A numeric value (no keyword) is instead interpreted through the *current* color
+mode (`vColorMode`), not RGBI8X.
+
+**Palette constants** (`clXxx`, `DebugDisplayUnit.pas` 179-191) — these are the
+**fixed literal RGB24 values** used for window/channel *defaults* (e.g.
+`DefaultScopeColors`, `DefaultTermColors`, grid/back/plot/text defaults). They are
+locally-defined literals, **not** VCL `TColor`s and **not** the named-directive
+colors above:
+
+| Constant | Hex | Constant | Hex | Constant | Hex |
+|---|---|---|---|---|---|
+| `clRed`    | `$FF0000` | `clCyan`    | `$00FFFF` | `clWhite` | `$FFFFFF` |
+| `clLime`   | `$00FF00` | `clOrange`  | `$FF7F00` | `clBlack` | `$000000` |
+| `clBlue`   | `$7F7FFF` | `clOlive`   | `$7F7F00` | `clGray`  | `$404040` |
+| `clYellow` | `$FFFF00` | `clMagenta` | `$FF00FF` | `clGray2` | `$808080` |
+|            |           |             |           | `clGray3` | `$D0D0D0` |
 
 **Color modes** (`key_lut1..key_rgb24`, ids 10-28; `KeyColorMode`, 2785-2804).
 LUMA/HSV/RGBI variants take a tune parameter (`W`/`X` suffixes select tuning
@@ -409,7 +489,7 @@ region).
 
 | Symbol | Value | Symbol | Value |
 |---|--:|---|--:|
-| `DataSets` (`LogicSets`,`Y_Sets`,`XY_Sets`,`FFTmax`,`SmoothFillMax`) | 2048 | `Channels` | 8 |
+| `DataSets` (`LogicSets`,`Y_Sets`,`XY_Sets`,`FFTmax`,`SmoothFillMax`) | 2048 ¹ | `Channels` | 8 |
 | `LogicChannels` | 32 | `FFTexpMax` | 11 |
 | `fft_default` | 512 | `DefaultCols` × `DefaultRows` | 40 × 20 |
 | `scope/scope_xy/plot _wmin/_hmin` | 32 | `…_wmax/_hmax` | 2048 |
@@ -417,6 +497,11 @@ region).
 | `term_colmin/_rowmin` | 1 | `term_colmax/_rowmax` | 256 |
 | `plot_layermax` | 8 | `SpriteMax` | 256 |
 | `SpriteMaxX/Y` | 32 | `DefaultTextSize` | 10 |
+
+¹ These five are all `DataSets = 1 shl 11 = 2048` in **`DebugDisplayUnit.pas`** (the nine
+debug-display windows). ⚠️ The single-step debugger is a separate unit: **`DebuggerUnit.pas`
+redefines `SmoothFillMax = 4096`** (`DataSets`/`LogicSets`/etc. do not exist there). Don't
+carry the 2048 value across to the debugger window.
 
 ### 7.3 Per-window parameter value tables
 

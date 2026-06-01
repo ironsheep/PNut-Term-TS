@@ -468,7 +468,7 @@ end;
 | Rate | `RATE divisor` | 1 | 1-2048 | Display update rate divisor |
 | Dot Size | `DOTSIZE pixels` | 0 | 0-32 | Dot diameter (0 = no dots) |
 | Line Size | `LINESIZE pixels` | 3 | 1-32 | Line thickness |
-| Text Size | `TEXTSIZE size` | 9 | 6-200 | Label font size |
+| Text Size | `TEXTSIZE size` | 10 (`FontSize`) | 6-200 | Label font size |
 | Colors | `COLOR back grid` | Black/Gray | RGB24 | Background and grid colors |
 | Hide XY | `HIDEXY` | Show | - | Hide mouse coordinates |
 | Packing | `LONGS_1BIT` etc. | LONGS_1BIT | 12 modes | Data packing format |
@@ -833,8 +833,8 @@ DefaultScopeColors: array[0..7] of integer = (
   clYellow,    // $FFFF00 - Yellow
   clMagenta,   // $FF00FF - Magenta
   clBlue,      // $7F7FFF - Blue
-  clOrange,    // $FFA500 - Orange
-  clOlive      // $808000 - Olive
+  clOrange,    // $FF7F00 - Orange
+  clOlive      // $7F7F00 - Olive
 );
 ```
 
@@ -2602,9 +2602,19 @@ literally via `KeyColor` or the `DefaultScopeColors` cycle below.)
 
 **Default Colors** (`DebugDisplayUnit.pas`, line 241) — actual v55 values:
 ```pascal
-DefaultScopeColors: array[0..7] of integer =
-  (clLime, clRed, clCyan, clYellow, clMagenta, clBlue, clOrange, clOlive);
+DefaultScopeColors: array[0..7] of integer = (
+  clLime,     // $00FF00 — Lime green
+  clRed,      // $FF0000 — Red
+  clCyan,     // $00FFFF — Cyan
+  clYellow,   // $FFFF00 — Yellow
+  clMagenta,  // $FF00FF — Magenta
+  clBlue,     // $7F7FFF — Blue   (note: NOT pure $0000FF)
+  clOrange,   // $FF7F00 — Orange (note: NOT web $FFA500)
+  clOlive);   // $7F7F00 — Olive  (note: NOT web $808000)
 ```
+The `clXxx` constants are defined as literal RGB24 values at `DebugDisplayUnit.pas`
+179–191 — they are **not** VCL palette `TColor`s and do not depend on the Windows
+palette. `WinRGB` only swaps R↔B at GDI draw time.
 
 **LOGIC Color Usage** (see also §7.4):
 - Background color: `vBackColor` (global default black `$000000`).

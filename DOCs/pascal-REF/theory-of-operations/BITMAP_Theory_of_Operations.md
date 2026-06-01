@@ -164,6 +164,15 @@ Parsed in `BITMAP_Configure` (lines 2372–2414) during window creation.
 
 > After `BITMAP_Configure` completes: `SetSize(0,0,0,0)` (zero margins), `SetTrace(vTrace, vRate=0)` (initialise pixel position), then `if vRate = -1 then vRate := vWidth * vHeight` (`2411–2413`).
 
+> **Default window size:** `vWidth × vHeight = 256 × 256` (from global `SetDefaults`,
+> `2880–2884`; overridable by `SIZE`, range 1..2048 each). With `vDotSize = vDotSizeY = 1`
+> the client area is `256 × 256` px; sparse mode multiplies by dot size (`vWidth·vDotSize ×
+> vHeight·vDotSizeY`).
+>
+> **Font size:** BITMAP draws **no text** — `BITMAP_Configure` does not touch `vTextSize`,
+> so it remains at `DefaultTextSize = 10` (`SetDefaults`, 2894), and BITMAP exposes **no
+> `TEXTSIZE` directive**. The value is effectively unused.
+
 ### Display / data directives
 
 Parsed in `BITMAP_Update` (lines 2416–2485) on every subsequent debug message.
@@ -198,7 +207,11 @@ Implemented via the **shared input model** — identical form-level handlers for
 - LONG 1: `x` bits 0–12, `y` bits 13–25, `vMouseWheel` bits 26–27, L/M/R buttons bits 28–30. Sentinel `$03FFFFFF` / `$FFFFFFFF` when cursor is outside the client area.
 - LONG 2: RGB color of pixel under cursor.
 
-**BITMAP coordinate mapping** (lines 733–734, 3556–3562): reported `(x, y)` = `pixel ÷ DOTSIZE`, honoring direction flags (same as SPECTRO and PLOT). `HIDEXY` suppresses the on-screen readout but does **not** disable `PC_MOUSE` reporting.
+**BITMAP coordinate mapping** — ⚠️ **on-screen readout and `PC_MOUSE` wire value differ in Y origin** (same situation as SPECTRO):
+- **On-screen readout** (`FormMouseMove`, 733–734): `x = X ÷ DOTSIZE`, `y = Y ÷ DOTSIZEY` — top-origin, **no** direction flip.
+- **`PC_MOUSE` wire value** (`SendMousePos`, 3556–3562, shared `dis_spectro, dis_plot, dis_bitmap` branch): applies `if not vDirY then y := ClientHeight − y` before dividing. `vDirY` is always `False` for BITMAP (only PLOT's `CARTESIAN` sets it), so the wire value is **Y-inverted** (bottom-origin): `y = (ClientHeight − Y) ÷ DOTSIZEY`.
+
+`HIDEXY` suppresses the on-screen readout but does **not** disable `PC_MOUSE` reporting.
 
 ---
 
@@ -2072,6 +2085,20 @@ end;
 ```pascal
 p := vLut[p and $FF];    // Index into 256-color palette
 ```
+
+**Color constants**: BITMAP has **no fixed channel/trace palette** (the
+`DefaultScopeColors` table does not apply) — every pixel color is produced by
+`TranslateColor` from the active color mode/LUT. The only fixed color constants are
+the **background** values returned by `GetBackground` (`DebugDisplayUnit.pas`
+3180–3205), selected by color mode:
+
+| Color mode | Background | Hex |
+|---|---|---|
+| LUT1/2/4/8 | `vLut[0]` | (first palette entry) |
+| LUMA8/8X, HSV8/8X, RGBI8/8X, RGB8, HSV16/16X, RGB16, RGB24 | `clBlack` | `$000000` |
+| LUMA8W, HSV8W, RGBI8W, HSV16W (white-base "W" modes) | `clWhite` | `$FFFFFF` |
+
+`clBlack`/`clWhite` are literal RGB24 values (`DebugDisplayUnit.pas` 187–188).
 
 ### 22.2 Data Packing System
 

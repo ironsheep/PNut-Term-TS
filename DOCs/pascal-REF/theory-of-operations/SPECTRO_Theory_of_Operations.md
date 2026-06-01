@@ -287,9 +287,14 @@ mouse handling logic beyond coordinate mapping.
 - LONG 1: bits 0-12 = x, bits 13-25 = y, bits 26-27 = wheel, bits 28-30 = L/M/R buttons. `$03FFFFFF`/`$FFFFFFFF` sentinel when cursor is outside the window.
 - LONG 2: RGB color of pixel under cursor (byte-swapped to `$RRGGBB`).
 
-SPECTRO cursor coordinates: `x = pixel ÷ vDotSize`, `y = pixel ÷ vDotSizeY`
-(lines 733-734) — direction flags are *not* applied here; the raw pixel position
-divided by dot size is reported regardless of trace direction.
+⚠️ SPECTRO's **on-screen readout** and **`PC_MOUSE` wire value differ in Y origin**:
+- **On-screen readout** (`FormMouseMove`, lines 733-734): `x = X ÷ vDotSize`, `y = Y ÷
+  vDotSizeY` — top-origin, no direction flip.
+- **`PC_MOUSE` wire value** (`SendMousePos`, in the shared `dis_spectro, dis_plot,
+  dis_bitmap` branch): applies `if not vDirY then y := ClientHeight − y` *before* dividing.
+  Since `vDirY` is always `False` for SPECTRO (only PLOT's `CARTESIAN` sets it), the wire
+  value is **Y-inverted** (bottom-origin): `x = X ÷ vDotSize`, `y = (ClientHeight − Y) ÷
+  vDotSizeY`. So the P2 receives a bottom-origin Y, opposite the on-screen readout.
 
 `HIDEXY` suppresses the on-screen readout only; `PC_MOUSE` still reports to the P2.
 
@@ -1307,6 +1312,16 @@ if x = FFTlast then BitmapToCanvas(0);  // Capture just before scroll
 SetSize(0, 0, 0, 0);
 ```
 
+**Default window size**: with all defaults (depth `vWidth = 256` from `SetDefaults`,
+FFT 512 → bins `vHeight = FFTlast − FFTfirst + 1 = 256`, `vTrace = $F` so bit 2 is set
+→ **no** width/height swap, `vDotSize = vDotSizeY = 1`), the client area is **256 × 256
+px**. (The §4 example uses `depth=300, trace=0`, which *does* swap — that is an example,
+not the default.)
+
+**Font size**: SPECTRO renders **no text labels** — `SPECTRO_Configure` does not set
+`vTextSize`, so it stays at `DefaultTextSize = 10` (`SetDefaults`, 2894), and SPECTRO
+exposes **no `TEXTSIZE` directive**. The value is effectively unused.
+
 **Actual Size Determined By**:
 - **vWidth**: Frequency bins (after swap) or time depth
 - **vHeight**: Time depth (after swap) or frequency bins
@@ -1865,6 +1880,20 @@ lines 3207-3228). There is no `DefaultSpectrumColors` array in v55 —
 `PolarColors` is the only precomputed color table, and it serves the HSV color
 modes (red→yellow→green→cyan→blue→magenta hue wheel). Luminance modes are
 computed arithmetically in `TranslateColor` from `vColorTune` (see §7.2).
+
+Like BITMAP, SPECTRO has **no fixed channel/trace palette** (`DefaultScopeColors`
+does not apply). The only fixed color constants are the **background** values
+returned by `GetBackground` (`DebugDisplayUnit.pas` 3180–3205), selected by color
+mode:
+
+| Color mode | Background | Hex |
+|---|---|---|
+| LUT1/2/4/8 | `vLut[0]` | (first palette entry) |
+| LUMA8/8X, HSV16/16X (and other non-"W" modes) | `clBlack` | `$000000` |
+| LUMA8W, HSV16W (white-base "W" modes) | `clWhite` | `$FFFFFF` |
+
+`clBlack`/`clWhite` are literal RGB24 values (`DebugDisplayUnit.pas` 187–188).
+(SPECTRO restricts its config color mode to the LUMA8/HSV16 families — see §17.4.)
 
 ### 21.3 Data Packing
 

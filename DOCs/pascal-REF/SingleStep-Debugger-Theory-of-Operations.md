@@ -86,6 +86,7 @@
     - [Debug Receive Loop](#102-debug-receive-loop)
     - [Debug Session Shutdown](#103-debug-session-shutdown)
 11. [Appendix: Constants Reference](#11-appendix-constants-reference)
+12. [Usage Examples and Debugging Strategies](#12-usage-examples-and-debugging-strategies)
     - [Debugger Message Indices](#111-debugger-message-indices)
     - [Memory Size Constants](#112-memory-size-constants)
     - [SFR Register Names](#113-sfr-register-names)
@@ -266,8 +267,10 @@ The `rdreg`/`rwreg` routines handle reading/writing any cog register address, ac
 
 The debugger uses an overlay strategy to fit its code within the cog's 496-register program space (`$004`-`$1F7`):
 
-- **Static portion**: Core debug entry, exit, serial TX/RX, state capture
-- **Overlay portions**: Breakpoint handler, normal DEBUG message handler — loaded from hub as needed via `RDLONG` with `SETQ`
+- **Static portion**: Core debug entry, exit, serial TX/RX, state capture (~200 longs)
+- **Overlay portions**: Breakpoint handler (~256 longs), normal DEBUG message handler (~256 longs) — loaded from hub as needed via `RDLONG` with `SETQ`
+
+**Why overlays are necessary**: The cog has only 512 longs (`$000`-`$1FF`), of which the ISR occupies `$000`-`$00F` and SFRs occupy `$1F8`-`$1FF`, leaving ~496 usable. The total debugger code is ~712 longs (base + message handler + breakpoint handler), which exceeds the 496-register limit. Since the message handler (for `DEBUG()` output) and breakpoint handler (for state transmission) never need to run simultaneously, they share the same cog memory region (`$100`-`$1F7`) and are swapped in from hub RAM on demand.
 
 When a breakpoint occurs, the breakpoint handler overlay is loaded into the overlay area, overwriting the normal-message handler.
 
@@ -550,9 +553,10 @@ When 250ms pass without a new breakpoint (`BreakpointTimer` fires):
 
 ### 5.1 Window Setup
 
-- **Font**: Configurable via `FontName` (global). Size auto-reduced until bitmap width fits within 4096 pixels (`SmoothFillMax`).
-- **Character metrics**: `ChrWidth` = width of character 'X', `ChrHeight` = height of character 'X'
-- **Bitmap dimensions**: `ChrWidth * 123` wide x `ChrHeight * 77 / 2` tall
+- **Font name**: the global `FontName` preference (`'Consolas'`, falling back to `'Courier New'`).
+- **Font size**: `TextSize := FontSize + 1`, then the setup loop decrements once before measuring, so it effectively **starts at `FontSize` (default 10)** and keeps shrinking only while `ChrWidth * 123 > SmoothFillMax` (`DebuggerUnit.SmoothFillMax = 4096` — note this is **double** the `2048` used by the nine debug-display windows). At the default 10 pt Consolas the 123-column row fits on the first try, so the **default debugger font size is 10 pt** (`DebuggerUnit.pas` 596-604).
+- **Character metrics**: `ChrWidth` = width of character 'X', `ChrHeight` = height of character 'X' (re-measured at the chosen font size).
+- **Bitmap / client dimensions**: `BitmapWidth := ChrWidth * 123`, `BitmapHeight := (ChrHeight * 77) shr 1` (i.e. `ChrHeight × 38.5`) — a **fixed `123 columns × 77 half-rows` grid** (`Cols = 123`, `Rows = 77`, the height counted in half-character rows, line 603-604). `ClientWidth := BitmapWidth; ClientHeight := BitmapHeight` (618-621). At 10 pt Consolas (`ChrWidth ≈ 8`, `ChrHeight ≈ 17`) this is roughly **985 × 655 px**. The window is **not user-resizable** — there is no `SIZE` directive; size follows only from the font.
 - **Window title**: `'Debugger - Cog N'` (N = cog number 0-7)
 - **Window position**: Cascaded by `DebuggerID * ChrHeight * 2` from the debug display origin
 
@@ -664,15 +668,25 @@ The debugger uses a dark color scheme with 21 configurable color slots:
 | 11 | `cHighDiff` | Bright yellow (`$FFFF00`) | Heatmap: high bit, changed |
 | 12 | `cLowDiff` | Medium yellow (`$7F7F00`) | Heatmap: low bit, changed |
 | 13 | `cModeButton` | Medium yellow (`$7F7F00`) | Active mode button background |
-| 14 | `cModeText` | White | Active mode button text |
+| 14 | `cModeText` | White (`$FFFFFF`) | Active mode button text |
 | 15 | `cModeButtonDim` | Dark yellow (`$3F3F00`) | Inactive mode button background |
 | 16 | `cModeTextDim` | Very dark yellow (`$0F0F00`) | Inactive mode button text |
 | 17 | `cCmdButton` | Bright orange (`$BF5F00`) | Command button (Go) background |
-| 18 | `cCmdText` | White | Command button text |
+| 18 | `cCmdText` | White (`$FFFFFF`) | Command button text |
 | 19 | `cCmdButtonDim` | Dark orange (`$3F1F00`) | Dimmed command button |
 | 20 | `cCmdTextDim` | Very dark orange (`$1F0F00`) | Dimmed command button text |
 
 Color values are in `$RRGGBB` format. The `WinRGB` function swaps R and B channels for Windows GDI (`$BBGGRR`).
+
+The `ColorScheme[0..20]` slots above are populated from the debugger's own
+brightness-ramp palette defined in `DebuggerUnit.pas` 32-80 (`cRed/cRed1..cRed5`,
+`cGreen…`, `cBlue…`, `cYellow…`, `cMagenta…`, `cCyan…`, `cOrange…`, `cGray1..cGray5`,
+`cWhite`, `cBlack` — each hue has 5 progressively dimmer steps). **This `cXxx`
+palette is independent of the debug-display `clXxx` palette** (`DebugDisplayUnit.pas`
+179-191) and the two disagree where names collide — e.g. debugger `cBlue = $0000FF`
+(pure blue) vs display `clBlue = $7F7FFF`, and debugger `cGray2 = $7F7F7F` vs display
+`clGray2 = $808080`. The single-step debugger window uses only the `cXxx` ramp; the
+nine debug-display windows use only `clXxx`.
 
 ### 5.7 Anti-Aliased Rendering System
 
@@ -1375,6 +1389,122 @@ $1FD: setq    #$F     'DEBUG Exit
 $1FE: rdlong  0,#$FFF80-cog<<7
 $1FF: reti0
 ```
+
+---
+
+## 12. Usage Examples and Debugging Strategies
+
+### 12.1 Single-Stepping Through PASM Code
+
+**Scenario**: Debug a PASM loop that increments a counter.
+
+```spin2
+PUB main()
+  coginit(0, @loop, 0)
+
+DAT
+loop
+  mov     PA, #0
+.repeat
+  add     PA, #1
+  waitx   ##20_000_000  ' Wait 1 second at 20MHz
+  debug(`udec(PA))      ' Print PA value
+  jmp     #.repeat
+```
+
+**Session flow**:
+1. Compile and download — debugger opens at first `DEBUG` statement
+2. Disassembly shows loop at cog `$000`; PA = `$00000001`
+3. Press SPACE to single-step — PA cell in heatmap flashes bright (just changed)
+4. Register watch shows: `$1F6 (PA): $00000001 → $00000002 (+1)`
+5. Press ENTER for continuous run — `DEBUG` output streams to terminal
+6. Press D to break on next `DEBUG` — observe PA has incremented multiple times
+
+### 12.2 Finding Memory Corruption
+
+**Scenario**: Hub memory is being unexpectedly modified.
+
+**Strategy**:
+1. Set BRK = DEBUG, place `DEBUG` statements in suspicious code sections
+2. Run until breakpoint
+3. Examine **hub heatmap** for unexpected hot spots (bright areas = recently written)
+4. Click hot region to jump hex dump to that address
+5. Examine memory contents — note the corrupted address
+6. Switch disassembly to dmHub mode, navigate to suspect code
+7. Single-step through the code while watching the hub heatmap
+8. Catch the exact instruction causing corruption
+
+### 12.3 Multi-Cog Synchronization Bug
+
+**Scenario**: Two cogs share a hub variable; a race condition is suspected.
+
+```spin2
+VAR long shared_counter
+
+PUB main()
+  shared_counter := 0
+  coginit(0, @cog0_code, @shared_counter)
+  coginit(1, @cog1_code, @shared_counter)
+
+DAT
+cog0_code
+  mov     ptra, par
+.loop
+  rdlong  temp, ptra
+  add     temp, #1
+  wrlong  temp, ptra
+  debug(`udec(temp))
+  cogbrk  #1             ' Break into cog 1 to inspect its state
+  waitx   ##1_000_000
+  jmp     #.loop
+
+cog1_code
+  mov     ptra, par
+.loop
+  rdlong  temp, ptra
+  add     temp, #1
+  wrlong  temp, ptra
+  debug(`udec(temp))
+  waitx   ##1_000_000
+  jmp     #.loop
+```
+
+**Session flow**:
+1. COG 0 hits `DEBUG`, shows counter = 1
+2. COG 0 executes `COGBRK #1` — debugger switches to COG 1 display
+3. Examine COG 1's `temp` and `ptra` registers
+4. Verify COG 1 sees the same `shared_counter` value
+5. Observe the race: if COG 1 read before COG 0 wrote, values desync
+6. Fix: use P2 atomic operations (`LOCKTRY`/`LOCKREL`)
+
+### 12.4 Smart Pin PWM Debugging
+
+**Scenario**: PWM output not producing the expected waveform.
+
+```spin2
+PUB main()
+  dirh(16)
+  wrpin(16, P_PWM_SAWTOOTH)
+  wxpin(16, 1000)          ' Period
+  wypin(16, 500)           ' Duty (50%)
+  debug()                  ' Enter debugger
+```
+
+**Session flow**:
+1. Debugger opens at `DEBUG` statement
+2. Check Smart Pin display — select P16
+3. Verify pin mode, period (1000), and duty (500)
+4. Use RQPIN readback to check the current counter value
+5. Press SPACE repeatedly — observe counter incrementing in the smart pin watch
+6. If waveform is wrong, check DIRA (pin direction) and WRPIN mode value
+
+### 12.5 General Debugging Tips
+
+- **Watch the heatmaps**: Unexpected hot spots in the register or hub heatmaps often reveal bugs — writes to wrong addresses, unintended side effects
+- **Use COGBRK for multi-cog inspection**: When one cog is halted at a breakpoint, use COGBRK to inspect other cogs' state at that same moment
+- **Choose the right break condition**: Use MAIN for single-stepping, DEBUG for breakpoint-at-statement, BREAK (async) for free-running code
+- **Disassembly modes matter**: Use dmPC for stepping, dmCog for examining cog-resident code, dmHub for hub-execute code
+- **Delta watches persist**: Register watches accumulate across breakpoints until manually reset with R — useful for tracking a variable over many steps
 
 ---
 

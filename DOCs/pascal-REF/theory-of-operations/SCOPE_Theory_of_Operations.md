@@ -402,16 +402,22 @@ The 100 ms latch means a key/wheel event not polled within that window is silent
 - LONG 1: `x` bits 0–12, `y` bits 13–25, `wheel` bits 26–27, L/M/R buttons bits 28/29/30. If cursor is outside the client area, LONG 1 = `$03FFFFFF`.
 - LONG 2: RGB color of pixel under cursor (`$RRGGBB`). If off-window, `$FFFFFFFF`.
 
-**SCOPE coordinate mapping** (`FormMouseMove` lines 668–675; `SendMousePos` lines 3555–3568):
+**SCOPE coordinate mapping** — ⚠️ the **on-screen readout** and the **`PC_MOUSE` wire
+value use different coordinates**:
 
-SCOPE and FFT share the same branch. The cursor is reported as pixel offset from the plot origin with **Y inverted**:
+- **On-screen readout** (`FormMouseMove` lines 668–675): SCOPE and FFT share this branch.
+  The cursor is shown as a pixel offset from the plot origin with **Y inverted**:
+  ```
+  x = cursor_x − vMarginLeft               (0 = left edge of plot)
+  y = vMarginTop + vHeight − 1 − cursor_y  (0 = bottom of plot, increasing upward)
+  ```
+  Outside the plot rectangle the readout string is empty (no overlay drawn).
+- **`PC_MOUSE` wire value** (`SendMousePos`, 3537–3577): `SendMousePos` has **no `dis_scope`
+  branch** — it only transforms SPECTRO/PLOT/BITMAP (÷dotsize) and TERM (char cells). For
+  SCOPE it transmits the **raw client-pixel** `x,y` (no margin offset, no Y inversion). The
+  P2 therefore receives raw pixels, *not* the inverted plot-origin coordinate shown on screen.
 
-```
-x = cursor_x − vMarginLeft          (0 = left edge of plot)
-y = vMarginTop + vHeight − 1 − cursor_y   (0 = bottom of plot, increasing upward)
-```
-
-If the cursor is outside the plot rectangle, the coordinate string is empty (no overlay drawn). `HIDEXY` suppresses the on-screen readout but does **not** disable `PC_MOUSE` reporting.
+`HIDEXY` suppresses the on-screen readout but does **not** disable `PC_MOUSE` reporting.
 
 **TRIGGER form** (SCOPE-specific, `SCOPE_Update` lines 1236–1249):
 ```

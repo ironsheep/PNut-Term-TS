@@ -186,7 +186,7 @@ scope_xy_wmax = SmoothFillMax;           // Maximum size (2048)
 vRange       := $7FFFFFFF;       // Default range (max 32-bit signed)
 vRate        := 1;               // Default rate divisor
 vDotSize     := 6;               // Default dot diameter (larger than SCOPE)
-vTextSize    := FontSize;        // Default label font size (9)
+vTextSize    := FontSize;        // Default label font size (global FontSize, default 10)
 // NOTE: vSamples is NOT reset here; it inherits 256 from SetDefaults (line 2886).
 // Effective default: 256-sample fading trail (NOT persistent/0).
 ```
@@ -303,7 +303,7 @@ Accepted during `SCOPE_XY_Configure` (lines 1386–1441).
 | `SAMPLES` | `SAMPLES n` | `256` (from `SetDefaults` line 2886) | 0..2048 | `1409-1410` | `0` = persistent (no buffer); `>0` = fading trail depth; SCOPE_XY_Configure does NOT reset this |
 | `RATE` | `RATE n` | `1` | 1..2048 | `1411-1412` | Display update divisor |
 | `DOTSIZE` | `DOTSIZE n` | `6` | 2..20 | `1413-1414` | Dot diameter in pixels |
-| `TEXTSIZE` | `TEXTSIZE n` | `FontSize` (9) | 6..200 | `1415-1416` | Label font size |
+| `TEXTSIZE` | `TEXTSIZE n` | `FontSize` (default 10) | 6..200 | `1415-1416` | Label font size |
 | `COLOR` | `COLOR back grid` | Black / Gray | RGB24 | `1417-1419` | Background then grid color |
 | `POLAR` | `POLAR {twopi {theta}}` | Off | — | `1420-1421` | Enables polar (rho, theta) mode; see §6.2 |
 | `LOGSCALE` | `LOGSCALE` | Off (linear) | — | `1422-1423` | Logarithmic scale on both axes |
@@ -351,13 +351,17 @@ All input handling is **shared across all nine display windows** — SCOPE_XY ha
 | `SendKeyPress` | 3579–3583 | Transmits 1 LONG = `vKeyPress` byte (0 if none), then clears it |
 | `SendMousePos` | 3537–3577 | Transmits 2 LONGs: position+buttons+wheel, then pixel color |
 
-**SCOPE_XY cursor coordinate mapping** (`FormMouseMove` lines 676–718 / `SendMousePos` 3537–3577):
+**SCOPE_XY cursor coordinate mapping** — ⚠️ the scaled/polar transform below is the
+**on-screen readout** (`FormMouseMove` lines 676–718) only. `SendMousePos` (3537–3577)
+has **no `dis_scope_xy` branch**, so `PC_MOUSE` transmits the **raw client-pixel** `x,y`
+to the P2 — *not* the scaled data value or polar `(rho,theta)` shown on screen.
 
+On-screen readout (`FormMouseMove`):
 - **Cartesian mode** (linear): cursor pixel offset from center is divided by `vScale` to recover data units → reported as `x,y`.
   - A centering bias (`Round(vWidth / vRange / 4)`) is applied to center multi-pixel spans (line 691–695).
 - **Cartesian mode** (log scale): inverse log transform applied to pixel radius before reporting.
 - **Polar mode**: pixel offset from center converted to `(rho, theta)` → reported as `rho,theta*` (trailing `*` indicates polar). Theta is displayed as hex (`$XXXXXXXX*`) when `vTwoPi` is `±$100000000`.
-- Off-window: `SendMousePos` returns sentinel `($03FFFFFF, $FFFFFFFF)`.
+- Off-window: `SendMousePos` returns sentinel `($03FFFFFF, $FFFFFFFF)` (this part *is* shared by both paths).
 - `HIDEXY` suppresses the on-screen readout but does **not** prevent `PC_MOUSE` from reporting to the P2.
 
 ---
@@ -428,7 +432,7 @@ end;
 | Samples | `SAMPLES count` | 256 (from `SetDefaults`) | 0-2048 | Fade buffer depth (0=persistent, >0=fading); SCOPE_XY_Configure does not reset this |
 | Rate | `RATE divisor` | 1 | 1-2048 | Display update rate divisor |
 | Dot Size | `DOTSIZE pixels` | 6 | 2-20 | Dot diameter |
-| Text Size | `TEXTSIZE size` | 9 | 6-200 | Label font size |
+| Text Size | `TEXTSIZE size` | 10 (`FontSize`) | 6-200 | Label font size |
 | Colors | `COLOR back grid` | Black/Gray | RGB24 | Background and grid colors |
 | Polar | `POLAR {twopi {theta}}` | - | - | Enable polar coordinates |
 | Log Scale | `LOGSCALE` | Linear | - | Enable logarithmic scaling |
@@ -1910,16 +1914,27 @@ This function takes a raw pixel value `p` and a color-mode key (`mode`), then co
 
 **Default Scope Colors** (8 colors, line 241):
 ```pascal
-DefaultScopeColors: array[0..7] of integer =
-  (clLime, clRed, clCyan, clYellow, clMagenta, clBlue, clOrange, clOlive);
+DefaultScopeColors: array[0..7] of integer = (
+  clLime,     // $00FF00 — Lime green
+  clRed,      // $FF0000 — Red
+  clCyan,     // $00FFFF — Cyan
+  clYellow,   // $FFFF00 — Yellow
+  clMagenta,  // $FF00FF — Magenta
+  clBlue,     // $7F7FFF — Blue   (note: NOT pure $0000FF)
+  clOrange,   // $FF7F00 — Orange (note: NOT web $FFA500)
+  clOlive);   // $7F7F00 — Olive  (note: NOT web $808000)
 ```
 
-These are VCL `TColor` constants; their BGR-encoded integer values depend on the Windows palette. The order (Lime, Red, Cyan, Yellow, Magenta, Blue, Orange, Olive) cycles through traces 0–7 when no explicit color is given.
+These `clXxx` constants are **locally defined as literal RGB24 values** at
+`DebugDisplayUnit.pas` 179–191 — they are *not* VCL palette `TColor`s and do **not**
+depend on the Windows palette. The stored `vColor[]` values are these RGB24 integers;
+`WinRGB` swaps R↔B to BGR only at GDI draw time. The order (Lime, Red, Cyan, Yellow,
+Magenta, Blue, Orange, Olive) cycles through traces 0–7 when no explicit color is given.
 
 **SCOPE_XY Color Usage**:
-- Trace colors: vColor[0..7]
-- Background color: vBackColor (default black)
-- Grid color: vGridColor (default gray)
+- Trace colors: `vColor[0..7]` (RGB24 from `DefaultScopeColors`, or per-trace `COLOR`)
+- Background color: `vBackColor` (global default `clBlack` `$000000`)
+- Grid color: `vGridColor` (global default `clGray` `$404040`)
 
 ### 19.3 Fixed-Point Arithmetic
 

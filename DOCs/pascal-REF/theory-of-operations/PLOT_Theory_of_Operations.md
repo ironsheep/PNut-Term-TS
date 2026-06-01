@@ -266,7 +266,9 @@ vLineSize    : integer;     // Line/dot size in pixels
 ### 4.3 Text Rendering Variables
 
 ```pascal
-vTextSize    : integer;     // Font size in points
+vTextSize    : integer;     // Font size in points — default DefaultTextSize = 10
+                            //   (PLOT_Configure does not set it; changed at runtime
+                            //   via TEXTSIZE or the inline size of TEXT, clamp 6..200)
 vTextStyle   : integer;     // Style encoding (weight, italic, underline, alignment)
 vTextAngle   : integer;     // Text rotation angle (tenths of degrees: 0-3600)
 ```
@@ -355,7 +357,7 @@ Accepted by `PLOT_Configure` only (window-creation phase). Line refs: 1882–190
 |---|---|---|---|
 | `TITLE` | `'string'` | — | Window title |
 | `POS` | `left top` | Screen coords | Window screen position |
-| `SIZE` | `width height` | 32–2048 each; no default (system default applied by `SetSize`) | Canvas dimensions |
+| `SIZE` | `width height` | 32–2048 each; **default 256 × 256** (from global `SetDefaults` 2880–2884; `PLOT_Configure` does not override) | Canvas dimensions (client = `vWidth·vDotSize × vHeight·vDotSizeY`; with default dotsize 1×1 → 256 × 256 px, zero margins) |
 | `DOTSIZE` | `x {y}` | **1–256** each; default **1×1** | Pixel-scaling factor; if only x given, y copies x (`1891-1894`) |
 | color-mode | `LUT1`…`RGB24` | Keyword token | Initial color mode (`KeyColorMode`; `1896-1897`) |
 | `LUTCOLORS` | `rgb24…` | 256 color longs | 256-entry LUT palette (`1898-1899`) |
@@ -3121,7 +3123,20 @@ Drawing colors (`vPlotColor`, `vTextColor`, `vBackColor`) are stored internally 
 Bitmap[0].Canvas.Font.Color := WinRGB(vTextColor);
 ```
 
-There is no `TranslateColor` function in PLOT, no `vGridColor` variable, and no default scope-color table relevant to PLOT. Named colors (`BLACK`…`GRAY`) are resolved by the shared `KeyColor` helper.
+**Default color constants** (assigned in `PLOT_Configure`, 1877–1878, and global
+`SetDefaults`, 2891) — `clXxx` are literal RGB24 values from `DebugDisplayUnit.pas`
+179–196:
+
+| Variable | Default constant | Hex | Source |
+|---|---|---|---|
+| `vPlotColor` | `DefaultPlotColor` = `clCyan` | `$00FFFF` | 1877 |
+| `vTextColor` | `DefaultTextColor` = `clWhite` | `$FFFFFF` | 1878 |
+| `vBackColor` | `DefaultBackColor` = `clBlack` | `$000000` | 2891 (global) |
+
+There is no `TranslateColor` function in PLOT and no `vGridColor` variable (PLOT draws
+no grid), and no default scope-color table relevant to PLOT. Named colors
+(`BLACK`…`GRAY`) are resolved by the shared `KeyColor` helper; per-element colors and
+sprite palettes are taken as literal RGB24/RGBA values.
 
 ### 21.2 Fixed-Point Arithmetic
 

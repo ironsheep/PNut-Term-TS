@@ -172,7 +172,7 @@ FFT uses the **shared form-level input model** — identical to all other displa
 
 **`PC_MOUSE` → `SendMousePos`** (3537–3577): transmits two LONGs.
 - **LONG 1**: `x` = bits 0–12, `y` = bits 13–25, `wheel` = bits 26–27, L/M/R buttons = bits 28/29/30.
-  For FFT: `x` = pixel offset from `vMarginLeft`; `y` = `vMarginTop + vHeight − 1 − mouseY` (inverted, same branch as SCOPE, line 668–675).
+  ⚠️ For FFT, `SendMousePos` has **no transform branch** (it only special-cases SPECTRO/PLOT/BITMAP and TERM), so it transmits the **raw client-pixel** `x,y`. The `x = cursor − vMarginLeft`, `y = vMarginTop + vHeight − 1 − mouseY` inversion (line 668–675) is the **on-screen readout** (`FormMouseMove`) only — it is *not* what the P2 receives via `PC_MOUSE`.
   If cursor is outside the client area: LONG 1 = `$03FFFFFF`.
 - **LONG 2**: RGB color of the pixel under the cursor (byte-swapped to `$RRGGBB`).
   If outside: LONG 2 = `$FFFFFFFF`.
@@ -2060,9 +2060,14 @@ vSamples := 1 shl FFTexp;
 
 ### 14.2 Display Resolution
 
-**Window Size Constraints**:
+**Default window size**: `vWidth × vHeight = 256 × 256` (from global `SetDefaults`,
+2880–2884 — `FFT_Configure` does not override them). Overridable by `SIZE w h`. The
+plot bitmap is `256 × 256`; the client window adds margins (`ChrWidth` left/right/bottom,
+`ChrHeight × 2` top — `SetSize` at 1617).
+
+**Window Size Constraints** (`SIZE` directive, `KeySize`):
 ```pascal
-scope_wmin = 32
+scope_wmin = 32     // FFT reuses the SCOPE size limits
 scope_wmax = 2048
 scope_hmin = 32
 scope_hmax = 2048
@@ -2756,6 +2761,34 @@ Unpack 4: $12 (extract bits 0-7,  shift right 8)  → result=$12
 **Modes**: LUT (palette), LUMA8, HSV8/16, RGBI8, RGB8/16/24.
 
 **Shared By**: FFT, SPECTRO, BITMAP, PLOT (color-based displays).
+
+FFT itself does **not** call `TranslateColor` for its channel curves — trace colors are
+stored pre-resolved as RGB24 in `vColor[]` (set by `KeyColor` at configure, or from the
+default palette below).
+
+#### 19.2.1 Default Channel Colors
+
+FFT uses the shared `DefaultScopeColors` palette for its up-to-8 channel curves; the
+global `SetDefaults` assigns `vColor[0..7] := DefaultScopeColors` before
+`FFT_Configure` runs (`DebugDisplayUnit.pas` 2888).
+
+```pascal
+DefaultScopeColors: array[0..7] of integer = (   // DebugDisplayUnit.pas line 241
+  clLime,     // $00FF00 — Lime green   (channel 0)
+  clRed,      // $FF0000 — Red          (channel 1)
+  clCyan,     // $00FFFF — Cyan         (channel 2)
+  clYellow,   // $FFFF00 — Yellow       (channel 3)
+  clMagenta,  // $FF00FF — Magenta      (channel 4)
+  clBlue,     // $7F7FFF — Blue         (channel 5; note: NOT pure $0000FF)
+  clOrange,   // $FF7F00 — Orange       (channel 6; note: NOT web $FFA500)
+  clOlive);   // $7F7F00 — Olive        (channel 7; note: NOT web $808000)
+```
+
+- Background color: `vBackColor` (global default `clBlack` `$000000`).
+- Grid color: `vGridColor` (global default `clGray` `$404040`).
+
+The `clXxx` constants are literal RGB24 values defined at `DebugDisplayUnit.pas` 179–191;
+they are not VCL palette `TColor`s. `WinRGB` swaps R↔B to BGR only at GDI draw time.
 
 ### 19.3 Fixed-Point Arithmetic
 
