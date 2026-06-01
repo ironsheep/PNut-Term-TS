@@ -29,7 +29,6 @@ import {
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
-import { DebuggerResponse } from './shared/debuggerResponse';
 import { DebuggerPhase3Receiver, Phase3Expectations, Phase3Data } from './shared/debuggerPhase3Receiver';
 import { ExtractedMessage } from './shared/sharedMessagePool';
 
@@ -91,7 +90,6 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private canvasRenderer: CanvasRenderer;
   private protocol: DebuggerProtocol | null = null;
   private dataManager: DebuggerDataManager | null = null;
-  private responseGenerator: DebuggerResponse;  // Phase 2 response generator
   private phase3Receiver: DebuggerPhase3Receiver;  // Phase 3 data receiver
   private awaitingPhase3: boolean = false;  // Flag for expecting Phase 3 data
 
@@ -156,7 +154,6 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.dataManager = new DebuggerDataManager();
     this.canvasRenderer = new CanvasRenderer();
     this.protocol = new DebuggerProtocol();
-    this.responseGenerator = new DebuggerResponse();
     this.phase3Receiver = new DebuggerPhase3Receiver();
     
     // Mark components as ready since we've created everything needed
@@ -1232,90 +1229,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // Store the packet for reference
     this.currentDebuggerPacket = data;
 
-    // NOTE: Phase 2 transmission is now owned by the renderer bundle. It
-    // parses Phase 1, builds the 52-byte reply, and sends bytes back via
-    // IPC (handled in handleRendererMessage→kind:'phase2' below). The old
-    // sendPhase2Response() is retained on disk for reference but no longer
-    // called; see Phase 7 cleanup task to delete.
+    // NOTE: Phase 2 transmission is owned by the renderer bundle. It parses
+    // Phase 1, builds the 52-byte reply, and sends bytes back via IPC (handled
+    // in handleRendererMessage→kind:'phase2', which transmits and sets
+    // awaitingPhase3). The legacy main-process sendPhase2Response() has been
+    // removed (§1a dead-code removal).
 
     // Display update still triggered here for the legacy stub renderer, which
     // runs in parallel to the bundle but produces nothing visible since the
     // bundle owns the canvas. Safe to leave until Phase 7 cleanup.
     this.renderDebuggerDisplay();
-  }
-
-  /**
-   * Send Phase 2 response to P2 debugger
-   *
-   * After receiving Phase 1 data (456 bytes), we must respond with:
-   * - 8 bytes: COG/LUT change request bits
-   * - 16 bytes: Hub change request bits
-   * - 20 bytes: Hub read requests (5 longs)
-   * - 4 bytes: COGBRK request
-   * - 4 bytes: Stall/Break command
-   * Total: 52 bytes
-   *
-   * Reference: Pascal DebuggerUnit.pas lines 1304-1345
-   */
-  private sendPhase2Response(phase1Packet: Uint8Array): void {
-    // Configure response generator with current state
-    this.responseGenerator.setStallBreak(this.stallBrk);
-
-    // Get breakpoint mask from data manager if available
-    const breakpointMask = this.dataManager?.getBreakpointMask() ?? 0;
-    this.responseGenerator.setRequestCogBrk(breakpointMask);
-
-    // Set hub memory view address (for now, start at 0)
-    this.responseGenerator.setHubAddress(0);
-
-    // Determine if we need hub code for disassembly
-    // PC in hub means we need to fetch instructions from hub memory
-    const pc = this.cogState.programCounter;
-    const pcInHub = pc >= 0x400; // PC >= $400 means code is in hub
-    this.responseGenerator.setGetHubCode(pcInHub);
-    if (pcInHub) {
-      this.responseGenerator.setDisassemblyAddress(pc, 16);
-    }
-
-    // Generate the 52-byte response
-    const response = this.responseGenerator.generateResponse(phase1Packet);
-
-    // Set up Phase 3 expectations based on what we're requesting
-    const changedCogBlocks = this.responseGenerator.getChangedCogBlocks();
-    const changedHubBlocks = this.responseGenerator.getChangedHubBlocks();
-    const expectations: Phase3Expectations = {
-      changedCogBlocks,
-      changedHubBlocks,
-      getHubCode: pcInHub,
-      disLines: pcInHub ? 16 : 0
-    };
-    this.phase3Receiver.setExpectations(expectations);
-    this.awaitingPhase3 = true;
-
-    // Log expected Phase 3 size
-    this.logConsoleMessage(
-      `[DEBUGGER] Expecting Phase 3: ${this.phase3Receiver.getExpectedSize()} bytes ` +
-        `(${changedCogBlocks.length} COG blocks, ${changedHubBlocks.length} Hub blocks)`
-    );
-
-    // Send response via serial (tLongTransmitter handles byte-by-byte sending)
-    this.sendResponseBytes(response);
-
-    // After sending response, reset stallBrk to STALL_CMD
-    this.stallBrk = DEBUG_COMMANDS.STALL_CMD;
-  }
-
-  /**
-   * Send response bytes to P2 via serial callback
-   */
-  private sendResponseBytes(response: Uint8Array): void {
-    try {
-      // Use tLongTransmitter's transmitBuffer for binary data
-      this.tLongTransmitter.transmitBuffer(response);
-      this.logConsoleMessage(`[DEBUGGER] Sent Phase 2 response: ${response.length} bytes`);
-    } catch (error) {
-      this.logConsoleMessage(`[DEBUGGER] Error sending Phase 2 response: ${error}`);
-    }
   }
 
   /**
