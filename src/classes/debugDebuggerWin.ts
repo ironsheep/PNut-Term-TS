@@ -26,11 +26,9 @@ import {
   parseInitialMessage,
   createMemoryBlock
 } from './shared/debuggerConstants';
-import { DebuggerRenderer } from './shared/debuggerRenderer';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { DebuggerProtocol } from './shared/debuggerProtocol';
 import { DebuggerDataManager } from './shared/debuggerDataManager';
-import { DebuggerInteraction } from './shared/debuggerInteraction';
 import { DebuggerResponse } from './shared/debuggerResponse';
 import { DebuggerPhase3Receiver, Phase3Expectations, Phase3Data } from './shared/debuggerPhase3Receiver';
 import { ExtractedMessage } from './shared/sharedMessagePool';
@@ -90,11 +88,9 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   private updateTimer: NodeJS.Timeout | null = null;
   
   // Core debugger components
-  private renderer: DebuggerRenderer | null = null;
   private canvasRenderer: CanvasRenderer;
   private protocol: DebuggerProtocol | null = null;
   private dataManager: DebuggerDataManager | null = null;
-  private interaction: DebuggerInteraction | null = null;
   private responseGenerator: DebuggerResponse;  // Phase 2 response generator
   private phase3Receiver: DebuggerPhase3Receiver;  // Phase 3 data receiver
   private awaitingPhase3: boolean = false;  // Flag for expecting Phase 3 data
@@ -719,145 +715,16 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Handle DOM ready - called when did-finish-load fires
-   * This is where we initialize canvas-dependent components
-   */
-  private handleDomReady(): void {
-    this.logConsoleMessage(`[DEBUGGER] handleDomReady for COG ${this.cogId}`);
-    this.logConsoleMessage(`[DEBUGGER] componentsReady = ${this.componentsReady}`);
-    this.logConsoleMessage(`[DEBUGGER] deferred messages = ${this.deferredMessages.length}`);
-
-    // Process any deferred messages
-    if (this.deferredMessages.length > 0) {
-      this.logConsoleMessage(`[DEBUGGER] Processing ${this.deferredMessages.length} deferred messages now`);
-      this.processDeferredMessages();
-    }
-
-    // Verify canvas exists and start rendering. The inline script must
-    // return a VALUE, so the object literal has to be in expression
-    // position — wrapping in an IIFE is the cleanest way.
-    this.debugWindow?.webContents.executeJavaScript(`
-      (() => {
-        const canvas = document.getElementById('canvas');
-        return canvas ? { id: 'canvas', width: canvas.width, height: canvas.height } : null;
-      })()
-    `).then((canvasInfo) => {
-      if (canvasInfo) {
-        this.logMessage(`Canvas found: ${canvasInfo.width}x${canvasInfo.height}`);
-
-        // Create interaction handler
-        if (this.protocol && this.dataManager) {
-          this.interaction = new DebuggerInteraction(
-            null as any, // Renderer handled by main process executeJavaScript
-            this.protocol,
-            this.dataManager,
-            this.cogId
-          );
-
-          // Route keyboard/mouse commands into the window's state machine.
-          // DebuggerInteraction emits high-level events; sendDebugCommand
-          // owns BreakValue, StallBrk, and RepeatMode per Pascal semantics.
-          this.interaction.on('command', (data: { cmd: string; rightClick: boolean }) => {
-            this.sendDebugCommand(data.cmd, data.rightClick);
-          });
-          this.interaction.on('hubNavigate', (delta: number) => {
-            this.handleHubNavigate(delta);
-          });
-          this.interaction.on('disassemblyScroll', (_data: { direction: number; cogDelta: number; hubDelta: number }) => {
-            // TODO: Wire to disassembly mode switching + scroll when that state
-            // machine moves from the renderer into the window. For now, use
-            // hub-delta as a reasonable default so scrolling has an effect.
-            // this.handleDisassemblyScroll(_data);
-          });
-        }
-
-        // Start the render loop
-        this.startUpdateLoop();
-        this.logConsoleMessage(`[DEBUGGER] Render loop started for COG ${this.cogId}`);
-
-        // Trigger immediate render to show the UI
-        this.renderDebuggerDisplay();
-      } else {
-        console.error(`[DEBUGGER] Canvas element not found for COG ${this.cogId}`);
-      }
-    }).catch((error) => {
-      console.error(`[DEBUGGER] Failed to verify canvas for COG ${this.cogId}:`, error);
-    });
-  }
-
-  /**
    * Initialize window after creation
    * NOTE: No longer used - initialization now happens via:
-   *   - did-finish-load -> handleDomReady() (canvas init, render loop)
-   *   - ready-to-show -> registerWithRouter(), setupIPCHandlers()
+   *   - did-finish-load -> initializeRenderer() (sends 'initialize' to the bundle)
+   *   - ready-to-show -> registerWithRouter()
    * Kept for interface compatibility with base class
    */
   protected async initializeWindow(): Promise<void> {
     // All initialization now happens in proper event handlers
     // See createDebugWindow() for the correct event wiring
     this.logConsoleMessage(`[DEBUGGER] initializeWindow called (legacy - no action needed)`);
-  }
-
-  /**
-   * Set up IPC handlers for user input
-   */
-  private setupIPCHandlers(): void {
-    if (!this.debugWindow) return;
-    
-    // Keyboard handler
-    this.debugWindow.webContents.on('ipc-message', (event, channel, data) => {
-      switch (channel) {
-        case 'debugger-key':
-          this.handleKeyPress(data);
-          break;
-        case 'debugger-click':
-          this.handleMouseClick(data);
-          break;
-        case 'debugger-wheel':
-          this.handleMouseWheel(data);
-          break;
-      }
-    });
-  }
-
-  /**
-   * Handle keyboard input
-   */
-  private handleKeyPress(data: any): void {
-    if (!this.interaction) return;
-    
-    // Create a synthetic KeyboardEvent-like object
-    const event = {
-      key: data.key,
-      code: data.code,
-      shiftKey: data.shift,
-      ctrlKey: data.ctrl,
-      altKey: data.alt,
-      preventDefault: () => {} // Mock preventDefault
-    } as KeyboardEvent;
-    
-    // Let the interaction handler process it
-    this.interaction.handleKeyboard(event);
-  }
-
-  /**
-   * Handle mouse click
-   */
-  private handleMouseClick(data: any): void {
-    if (!this.interaction) return;
-    
-    const { x, y, button } = data;
-    this.interaction.handleMouseClick(x, y, button);
-  }
-
-  /**
-   * Handle mouse wheel
-   */
-  private handleMouseWheel(data: any): void {
-    if (!this.interaction) return;
-
-    const { deltaY, ctrl = false, shift = false } = data;
-    this.interaction.handleMouseWheel(deltaY, ctrl, shift);
   }
 
   /**
@@ -2355,7 +2222,6 @@ ${bundleJs}
     // This ensures we catch the event since did-finish-load fires BEFORE ready-to-show
     this.debugWindow.webContents.once('did-finish-load', () => {
       this.debugLog(`did-finish-load — sending 'initialize' to bundle`);
-      this.handleDomReady();
       // Kick the renderer bundle — it's been waiting for `initialize` since
       // DOMContentLoaded. After this the bundle will paint its placeholder
       // and start accepting Phase 1/3 packets.
@@ -2366,9 +2232,9 @@ ${bundleJs}
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage(`Debugger window for COG ${this.cogId} ready to show`);
       this.debugWindow?.show();
-      // Register with router and set up IPC handlers (DOM already ready at this point)
+      // Register with router. Keyboard/mouse are owned by the renderer bundle
+      // (typed IPC); no main-process input handlers needed.
       this.registerWithRouter();
-      this.setupIPCHandlers();
     });
 
     this.debugWindow.on('closed', () => {
@@ -2393,16 +2259,6 @@ ${bundleJs}
     this.componentsReady = false;
     
     // Clean up components
-    if (this.interaction) {
-      this.interaction.cleanup();
-      this.interaction = null;
-    }
-    
-    if (this.renderer) {
-      // Renderer cleanup not implemented
-      this.renderer = null;
-    }
-    
     if (this.protocol) {
       // Protocol cleanup not implemented
       this.protocol = null;
@@ -2578,11 +2434,6 @@ ${bundleJs}
       // Assuming the data manager handles raw debugger protocol messages
       // For now, just log that we received data
       this.logMessage(`[DEBUGGER] Received ${rawData.length} bytes of data for COG ${this.cogId}`);
-      
-      // Update the display
-      if (this.renderer) {
-        this.renderer.render();
-      }
     } catch (error) {
       this.logMessage(`[DEBUGGER] Error processing data for COG ${this.cogId}: ${error}`);
     }
