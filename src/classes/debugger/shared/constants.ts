@@ -71,6 +71,9 @@ export const HUB_BLOCKS        = 104;    // pnut_ts firmware sends 104 checksum 
 export const HUB_SIZE          = HUB_BLOCKS * HUB_BLOCK_SIZE; // 425,984 bytes
 export const HUB_SUB_BLOCK_SIZE = 0x80;  // 128 bytes per sub-block
 export const HUB_BLOCK_RATIO   = 32;     // sub-blocks per block
+export const HUB_SUB_BLOCKS    = HUB_BLOCKS * HUB_BLOCK_RATIO; // 3328 sub-blocks (heat-map cells)
+export const HUB_MAP_WIDTH      = 64;    // hub heat-map bitmap width (px), §6.18
+export const HUB_MAP_HEIGHT     = 62;    // hub heat-map bitmap height (px)
 
 export const REG_WATCH_SIZE       = 0x1F0; // 496 watchable cog registers
 export const REG_WATCH_LIST_SIZE  = 16;

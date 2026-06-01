@@ -49,6 +49,8 @@ import {
   DIS_LINES,
   DIS_LINE_IDEAL,
   DIS_SCROLL_THRESHOLD,
+  HUB_MAP_WIDTH,
+  HUB_MAP_HEIGHT,
   BUTTONS
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
@@ -78,6 +80,29 @@ function blendGamma2(dst: number, src: number, alpha: number): number {
 /** ASCII-or-dot for pointer / hub bytes. */
 function ascii(byte: number): string {
   return byte >= 0x20 && byte <= 0x7E ? String.fromCharCode(byte) : '.';
+}
+
+/**
+ * Decide whether a disassembly line should be drawn with a SKIP strikethrough
+ * (§6.6). True when SKIP is active and this instruction's offset from the PC
+ * (0..31, where each cog long is 1 step and each hub long is 4 bytes) has its
+ * bit set in the SKIP pattern (mBRKZ). Lines drawn for cog addresses while the
+ * window is in hub mode (`hiddenPC`) are never struck.
+ * Mirrors Pascal DebuggerUnit.pas L1530-1532. Pure + exported for §3 tests.
+ *
+ * @param skipOn  ExecMode == 0 && CallDepth == 0 (SKIP genuinely in effect).
+ */
+export function shouldStrikeSkipped(
+  addr: number,
+  pc: number,
+  skipOn: boolean,
+  skipPattern: number,
+  hiddenPC: boolean
+): boolean {
+  if (!skipOn || hiddenPC) return false;
+  const j = addr < 0x400 ? addr - pc : Math.trunc((addr - pc) / 4);
+  if (j < 0 || j > 31) return false;
+  return ((skipPattern >>> j) & 1) !== 0;
 }
 
 export class DebuggerRenderer {
@@ -616,16 +641,17 @@ export class DebuggerRenderer {
   // ──────────────────────────────────────────────────────────────────────
 
   private renderHubMap(): void {
-    // For now, blend between cDataDim and cName based on whether we've
-    // seen a change in the corresponding hub block. A full implementation
-    // would track per-sub-block heat as Pascal does; we approximate by
-    // checking the top-level hubSum delta.
+    // One pixel per 128-byte sub-block. Each cell's heat (0..254) flashes to
+    // 254 when that sub-block's checksum changes and decays each break — same
+    // graded gamma-2 blend (cDataDim→cName/cYellow) the REG/LUT maps use.
+    // Heat is computed in DebuggerController; here we only paint it. Pascal
+    // DebuggerUnit.pas L1679-1688. Cells past the firmware's sub-block count
+    // stay dim (heat 0).
     const pixels = this.hubMapBmp.data;
-    for (let i = 0; i < 64 * 62; i++) {
-      const blockIdx = Math.floor(i / 32); // 32 sub-blocks per 4 KB block
-      const hit = blockIdx < this.state.hubSum.length &&
-                  this.state.hubSum[blockIdx] !== this.state.hubSumOld[blockIdx];
-      const c = hit ? COLOR.cName : COLOR.cDataDim;
+    const hit = this.state.hubSubBlockHit;
+    for (let i = 0; i < HUB_MAP_WIDTH * HUB_MAP_HEIGHT; i++) {
+      const h = i < hit.length ? hit[i] : 0;
+      const c = blendGamma2(COLOR.cDataDim, COLOR.cName, h);
       const idx = i * 4;
       pixels[idx]     = (c >> 16) & 0xFF;
       pixels[idx + 1] = (c >> 8) & 0xFF;
@@ -652,6 +678,11 @@ export class DebuggerRenderer {
     // else if visible, gradually scroll toward ideal after threshold breaks.
     this.updateDisTopAddr();
     const top = this.state.disTopAddr;
+
+    // SKIP is only in effect at the top execution level (no active CALL, not
+    // mid-XBYTE/streamer). §6.6 / Pascal SkipOn.
+    const skipOn = this.state.execMode === 0 && this.state.callDepth === 0;
+    const skipPattern = this.state.skipPattern;
 
     for (let i = 0; i < DIS_LINES; i++) {
       const row = p.t + 2 + i * 2;
@@ -693,6 +724,18 @@ export class DebuggerRenderer {
         this.drawText(this.ctx, disText, p.l + 18, row, COLOR.cBox2);
       } else {
         this.drawText(this.ctx, disText, p.l + 18, row, COLOR.cData);
+      }
+
+      // SKIP strikethrough: a translucent bar over instructions whose SKIP
+      // bit is set (will be skipped on resume). §6.6 / Pascal L1530-1532
+      // (SmoothShape over the line, half height, cData2, alpha 160).
+      const hiddenPC = addr < 0x400 && this.state.disMode === DisMode.dmHub;
+      if (shouldStrikeSkipped(addr, pc, skipOn, skipPattern, hiddenPC)) {
+        this.ctx.save();
+        this.ctx.globalAlpha = 160 / 255;
+        this.ctx.fillStyle = rgb(COLOR.cData2);
+        this.ctx.fillRect(this.px(p.l + 1), this.py(row) + HALF_ROW_PX - 1, (p.w - 2) * CHAR_WIDTH_PX, 2);
+        this.ctx.restore();
       }
 
       // Address breakpoint marker

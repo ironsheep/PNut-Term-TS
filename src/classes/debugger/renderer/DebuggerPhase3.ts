@@ -161,11 +161,24 @@ export class DebuggerPhase3Parser {
             break;
           }
           if (this.available() < HUB_BLOCK_RATIO * 2) return;
-          // We don't yet store the 32 sub-block checksums; that feeds the
-          // hub heatmap in Phase 4. For now read-and-discard to keep the
-          // byte stream in sync.
-          for (let j = 0; j < HUB_BLOCK_RATIO; j++) this.readU16LE();
-          this.hubBlockIdx++;
+          // Each changed 4 KB hub block carries 32 per-128-byte sub-block
+          // checksums. Capture them into hubSubBlock[] (shifting old→current)
+          // so the §6.18 heat map can flash + decay per sub-block. Mirrors
+          // Pascal DebuggerUnit.pas L1357-1365.
+          {
+            const blockIdx = this.state.pendingHubBlocks[this.hubBlockIdx++];
+            const base = blockIdx * HUB_BLOCK_RATIO;
+            for (let j = 0; j < HUB_BLOCK_RATIO; j++) {
+              const k = base + j;
+              const word = this.readU16LE();
+              if (k < this.state.hubSubBlock.length) {
+                this.state.hubSubBlockOld[k] = this.state.hubSubBlock[k];
+                this.state.hubSubBlock[k] = word;
+                // First-ever receipt: no diff (old = current).
+                if (this.state.hubSubBlockOld[k] === -1) this.state.hubSubBlockOld[k] = word;
+              }
+            }
+          }
           break;
         }
         case Section.HubReads:

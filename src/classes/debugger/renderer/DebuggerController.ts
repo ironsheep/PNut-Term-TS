@@ -20,6 +20,22 @@ import { DebuggerState, DisMode } from './DebuggerState';
 import { DebuggerPhase3Parser } from './DebuggerPhase3';
 
 /**
+ * Per-sub-block hub heat state machine (§6.18). Given the current sub-block
+ * checksum `cur`, the previous snapshot `old`, the current heat `hit`, and the
+ * decay rate, return the next heat value (0..254):
+ *   • 255 is the never-initialized sentinel → resolve to 0 (no flash).
+ *   • checksum changed since last break → flash to 254.
+ *   • unchanged → decay toward 0 by `decayRate`.
+ * Mirrors Pascal DebuggerUnit.pas L1680-1686 ("Update hub bitmap" loop).
+ * Pure + exported so the §3 display tests can exercise the decision directly.
+ */
+export function nextHubHeat(cur: number, old: number, hit: number, decayRate: number): number {
+  if (hit === 255) return 0;
+  if (cur !== old) return 254;
+  return hit - Math.min(decayRate, hit);
+}
+
+/**
  * Callbacks the controller uses to talk back to main (Phase 2 bytes) and
  * to the renderer (request a repaint).
  */
@@ -73,6 +89,17 @@ export class DebuggerController {
         } else {
           this.state.cogHit[i] = 0;
         }
+      }
+      // Hub heat (§6.18): flash sub-blocks whose checksum changed this break,
+      // decay the rest. The parser already shifted old→current for changed
+      // 4 KB blocks; this loop runs the flash/decay state machine for every
+      // sub-block and re-syncs old=current. Pascal DebuggerUnit.pas L1679-1687.
+      for (let y = 0; y < this.state.hubSubBlockHit.length; y++) {
+        const cur = this.state.hubSubBlock[y];
+        this.state.hubSubBlockHit[y] = nextHubHeat(
+          cur, this.state.hubSubBlockOld[y], this.state.hubSubBlockHit[y], HIT_DECAY_RATE
+        );
+        this.state.hubSubBlockOld[y] = cur;
       }
       // Update register watch list (§6.7) — deferred to the renderer update
       // pass that owns the list data.

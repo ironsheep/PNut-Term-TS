@@ -9,6 +9,7 @@ import {
   SMART_WATCH_LIST_SIZE,
   COG_LUT_SIZE,
   HUB_SUB_BLOCK_SIZE,
+  HUB_SUB_BLOCKS,
   BREAK_DEBUG,
   STALL_CMD
 } from '../shared/constants';
@@ -52,6 +53,15 @@ export class DebuggerState {
   public cogCrcOld: Uint16Array = new Uint16Array(COG_BLOCKS);
   public hubSum:    Uint16Array = new Uint16Array(HUB_BLOCKS);
   public hubSumOld: Uint16Array = new Uint16Array(HUB_BLOCKS);
+
+  // ─── Hub sub-block heat (§6.18) ────────────────────────────────────────
+  // Per-128-byte-sub-block checksums received in Phase 3, plus the previous
+  // snapshot and a 0..254 heat value that flashes to 254 on change and decays
+  // by HIT_DECAY_RATE each break — exactly like cogHit drives REG/LUT maps.
+  // Pascal: HubSubBlock / HubSubBlockOld / HubSubBlockHit (init -1/-1/255).
+  public hubSubBlock:    Int32Array = new Int32Array(HUB_SUB_BLOCKS).fill(-1);
+  public hubSubBlockOld: Int32Array = new Int32Array(HUB_SUB_BLOCKS).fill(-1);
+  public hubSubBlockHit: Uint8Array = new Uint8Array(HUB_SUB_BLOCKS).fill(255);
 
   // ─── Register + LUT memory (lazily filled from Phase 3) ────────────────
   /** COG[0..0x1FF] + LUT[0x200..0x3FF] = 1024 longs. */
@@ -144,6 +154,9 @@ export class DebuggerState {
     this.cogCrcOld.fill(0xFFFF);
     this.hubSum.fill(0);
     this.hubSumOld.fill(0xFFFF);
+    this.hubSubBlock.fill(-1);
+    this.hubSubBlockOld.fill(-1);
+    this.hubSubBlockHit.fill(255);
     this.cogImage.fill(0);
     this.cogHit.fill(0);
     this.hubWindow.fill(0);

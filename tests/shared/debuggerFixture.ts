@@ -25,7 +25,12 @@ import {
 import {
   PHASE1_SIZE,
   COG_BLOCKS,
-  HUB_BLOCKS
+  HUB_BLOCKS,
+  COG_BLOCK_SIZE,
+  HUB_BLOCK_RATIO,
+  HUB_SUB_BLOCK_SIZE,
+  DIS_LINES,
+  PTR_BYTES
 } from '../../src/classes/debugger/shared/constants';
 import { createMockCanvas } from './mockHelpers';
 
@@ -81,6 +86,43 @@ export function buildPhase1Packet(opts: Phase1Opts = {}): Uint8Array {
     });
   }
   return buf;
+}
+
+export interface Phase3Opts {
+  /** 16-long value for each pending COG/LUT block (default 0). */
+  cogLong?: (blockIdx: number, longIdx: number) => number;
+  /** 16-bit sub-block checksum for each pending hub block (default 0). */
+  hubSubWord?: (blockIdx: number, subIdx: number) => number;
+}
+
+/**
+ * Build a Phase-3 byte stream matching DebuggerPhase3Parser's layout for the
+ * blocks the controller requested in its last Phase-2 reply. Must be called
+ * AFTER processPhase1 (which populates state.pendingCogBlocks / .pendingHubBlocks
+ * / .pendingHubCode via buildPhase2). Hub reads and smart-pin masks are emitted
+ * as zeros — enough to drive the parser to completion. The sub-block checksum
+ * section is the part the §6.18 heat map consumes.
+ */
+export function buildPhase3Packet(state: DebuggerState, opts: Phase3Opts = {}): Uint8Array {
+  const bytes: number[] = [];
+  const pushU16 = (w: number) => { bytes.push(w & 0xff, (w >>> 8) & 0xff); };
+  const pushU32 = (v: number) => {
+    bytes.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
+  };
+
+  for (const blockIdx of state.pendingCogBlocks) {
+    for (let j = 0; j < COG_BLOCK_SIZE; j++) pushU32(opts.cogLong ? opts.cogLong(blockIdx, j) >>> 0 : 0);
+  }
+  for (const blockIdx of state.pendingHubBlocks) {
+    for (let j = 0; j < HUB_BLOCK_RATIO; j++) pushU16(opts.hubSubWord ? opts.hubSubWord(blockIdx, j) : 0);
+  }
+  // Hub reads: optional disassembly longs + 3 pointer windows + hub viewer.
+  if (state.pendingHubCode) for (let j = 0; j < DIS_LINES; j++) pushU32(0);
+  for (let j = 0; j < PTR_BYTES * 3 + HUB_SUB_BLOCK_SIZE; j++) bytes.push(0);
+  // Smart pins: 8 group masks, all zero → no following longs.
+  for (let g = 0; g < 8; g++) bytes.push(0);
+
+  return new Uint8Array(bytes);
 }
 
 /** Captured controller callback activity, for assertions. */
