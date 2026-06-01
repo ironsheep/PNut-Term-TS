@@ -155,12 +155,11 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.canvasRenderer = new CanvasRenderer();
     this.protocol = new DebuggerProtocol();
     this.phase3Receiver = new DebuggerPhase3Receiver();
-    
+
     // Mark components as ready since we've created everything needed
-    // for message processing (dataManager and protocol)
     this.componentsReady = true;
     this.logConsoleMessage(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
-    
+
     // Initialize layout regions (based on LAYOUT_CONSTANTS)
     this.initializeRegions();
     
@@ -993,40 +992,17 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    * Handle binary debugger message
    */
   private handleBinaryMessage(data: Uint8Array): void {
-    // If we're awaiting Phase 3 data, accumulate it
+    // The renderer bundle owns all parsing, state, and rendering. Main only
+    // routes raw packets to it: Phase 3 continuations while awaitingPhase3 (set
+    // by the bundle's phase2 reply in handleRendererMessage, cleared on
+    // phase3Complete), otherwise Phase 1 packets (pnut_ts emits 416 bytes;
+    // Pascal documents 456 — accept either).
     if (this.awaitingPhase3) {
-      const complete = this.phase3Receiver.addData(data);
-      if (complete) {
-        this.processPhase3Data();
-      }
-      // Also forward to the renderer bundle so the new architecture receives it.
-      // (Harmless duplication during the transition; the old path will be removed
-      // in Phase 7 after the bundle is self-sufficient.)
       this.forwardPhase3ToRenderer(data);
       return;
     }
-
-    // Check if this is a Phase 1 debugger packet. pnut_ts emits 416 bytes:
-    //   20 longs (80) + 64 words CRC (128) + 104 words hub checksums (208) = 416
-    // Pascal documents 456 for 124 hub blocks. We accept either so a future
-    // host or firmware variant doesn't silently get dropped here.
     if (data.length === 416 || data.length === 456) {
-      this.processDebuggerPacket(data);
-      // Forward to renderer bundle in parallel with the legacy path.
       this.forwardPhase1ToRenderer(data);
-    }
-    // Check if this is a 20-long initial message
-    else if (data.length >= 80) {
-      // 20 longs * 4 bytes
-      const longs = new Uint32Array(data.buffer, data.byteOffset, 20);
-      try {
-        const message = parseInitialMessage(longs);
-        if (message.cogNumber === this.cogId) {
-          this.updateCogState(message);
-        }
-      } catch (error) {
-        this.logMessage(`Error parsing message: ${error}`);
-      }
     }
   }
 
