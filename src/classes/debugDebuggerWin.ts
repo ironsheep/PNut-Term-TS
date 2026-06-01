@@ -15,15 +15,9 @@ import {
 import { WindowRouter } from './shared/windowRouter';
 import { WindowPlacer, PlacementConfig, PlacementStrategy } from '../utils/windowPlacer';
 import {
-  DebuggerInitialMessage,
-  DebuggerMessageIndex,
   COGDebugState,
   LAYOUT_CONSTANTS,
-  DEBUG_COLORS,
-  DEBUG_COMMANDS,
   PASCAL_COLOR_SCHEME,
-  PASCAL_LAYOUT_CONSTANTS,
-  parseInitialMessage,
   createMemoryBlock
 } from './shared/debuggerConstants';
 import { CanvasRenderer } from './shared/canvasRenderer';
@@ -35,14 +29,6 @@ const ENABLE_CONSOLE_LOG: boolean = false;
 /**
  * Layout region definition
  */
-interface LayoutRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  type: string;
-}
-
 /**
  * DebugDebuggerWindow - Interactive debugger window for Parallax Propeller 2 COGs
  * 
@@ -71,53 +57,14 @@ interface LayoutRegion {
 export class DebugDebuggerWindow extends DebugWindowBase {
   private cogId: number;
   private cogState: COGDebugState;
-  private currentDebuggerPacket: Uint8Array | null = null;
-  private canvas: HTMLCanvasElement | null = null;
-  private ctx: CanvasRenderingContext2D | null = null;
-  private charWidth: number = 8;      // Character width in pixels
-  private charHeight: number = 16;    // Full character height in pixels
-  private halfRowHeight: number = 8;  // Half-row height (charHeight/2) — grid Y unit
-  private gridWidth: number = LAYOUT_CONSTANTS.GRID_WIDTH;
-  private gridHeight: number = LAYOUT_CONSTANTS.GRID_HEIGHT;
-  private isConnected: boolean = false;
-  private lastUpdateTime: number = 0;
-  private updateTimer: NodeJS.Timeout | null = null;
-  
-  // Core debugger components
+  // Core debugger components. The renderer bundle (debugger/renderer/) owns all
+  // state, parsing, and rendering; this window is just the main-process bridge.
   private canvasRenderer: CanvasRenderer;
   private awaitingPhase3: boolean = false;  // Flag for expecting Phase 3 data
 
   // Deferred messages queue for when components aren't ready
   private deferredMessages: any[] = [];
   private componentsReady: boolean = false;
-  
-  // Rendering state management
-  private dirtyRegions: Set<string> = new Set();
-  private regions: Map<string, LayoutRegion> = new Map();
-  private tooltipText: string | null = null;
-  private tooltipX: number = 0;
-  private tooltipY: number = 0;
-  private lastRenderTime: number = 0;
-  private renderCount: number = 0;
-  // No timer needed - using event-driven approach
-
-  // Debug command state (Pascal: StallBrk, BreakValue, RepeatMode)
-  // breakValue holds the break condition bits that control when/how debugger breaks
-  // stallBrk is either STALL_CMD (hold) or breakValue (continue)
-  private breakValue: number = DEBUG_COMMANDS.BREAK_DEBUG;  // Default: break on DEBUG opcode
-  private stallBrk: number = DEBUG_COMMANDS.STALL_CMD;      // Start in stalled state
-  private firstBreak: boolean = true;                        // First breakpoint flag
-  private repeatMode: boolean = false;                       // Continuous run mode (Pascal: RepeatMode)
-  private oldTickCount: number = 0;                          // Last Go command timestamp for repeat throttling
-  private breakpointTimerHandle: NodeJS.Timeout | null = null; // 250ms breakpoint timeout (Pascal: BreakpointTimer)
-  private isDimmed: boolean = false;                         // Display is dimmed (no breakpoint in 250ms)
-  private breakAddr: number = 0;                             // Address-breakpoint target (Pascal: BreakAddr)
-  private breakEvent: number = 1;                            // Event-breakpoint target 1..15 (Pascal: BreakEvent)
-  private hubAddr: number = 0;                               // Hub viewer address (Pascal: HubAddr)
-
-  // Remove redundant queue - base class handles this via messageQueue
-  // private initialMessageQueue: Uint8Array[] = [];  // REMOVED: Base class handles queuing
-  // private isDebuggerReady: boolean = false;  // REMOVED: Use base class isWindowReady
 
   constructor(
     context: Context,
