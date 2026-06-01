@@ -62,4 +62,33 @@ describe('Pasm2Disassembler (§4/§5)', () => {
     const drvh = (((ALWAYS << 28) | (0x6b << 21) | (0 << 18) | (0x10 << 9) | 0b001011001) >>> 0);
     expect(dis.decode(drvh).mnemonic).toBe('drvh');
   });
+
+  // Full-coverage cross-class check: a representative encoding from each major
+  // class must decode to a named instruction (not the raw-hex fallback). Builds
+  // each word from its authoritative bit pattern.
+  it('decodes a representative instruction from every class (no class absent)', () => {
+    const M = 0x6b; // 1101011 misc group opcode
+    // event J* (op7=0x5E '1011110', czi=01x, S-subfield in D)
+    const jint = (((ALWAYS << 28) | (0x5e << 21) | (0b010 << 18) | (0b000000000 << 9) | 0x10) >>> 0);
+    expect(dis.decode(jint).mnemonic).toBe('jint');
+    // POLL/WAIT event (misc group, D-subfield = event id, S=000100100)
+    const waitint = (((ALWAYS << 28) | (M << 21) | (0b000 << 18) | (0b000010000 << 9) | 0b000100100) >>> 0);
+    expect(dis.decode(waitint).mnemonic).toBe('waitint');
+    // AUGS = EEEE 11110SS ...  (op[27:23]=11110)
+    const augs = (((ALWAYS << 28) | (0b11110 << 23) | 0x123) >>> 0);
+    expect(dis.decode(augs).mnemonic).toBe('augs');
+    expect(dis.decode(augs).operands.startsWith('#$')).toBe(true);
+    // SETQ = misc D-op 000101000
+    const setq = (((ALWAYS << 28) | (M << 21) | (0 << 18) | (1 << 9) | 0b000101000) >>> 0);
+    expect(dis.decode(setq).mnemonic).toBe('setq');
+    // COGINIT = EEEE 1100111 CLI ...  (op7=0x67)
+    expect(dis.decode(enc(ALWAYS, 0x67, 0, 1, 2)).mnemonic).toBe('coginit');
+    // ALTI = EEEE 1001101 00I ...  (op7=0x4D, czi top2=00)
+    expect(dis.decode(enc(ALWAYS, 0x4d, 0b000, 1, 2)).mnemonic).toBe('alti');
+    // hub-RAM RDLONG = EEEE 1011000 CZI ... (op7=0x58)
+    expect(dis.decode(enc(ALWAYS, 0x58, 0, 1, 2)).mnemonic).toBe('rdlong');
+    // pin variant DRVNOT = misc 001011111
+    const drvnot = (((ALWAYS << 28) | (M << 21) | 0 | (0x10 << 9) | 0b001011111) >>> 0);
+    expect(dis.decode(drvnot).mnemonic).toBe('drvnot');
+  });
 });
