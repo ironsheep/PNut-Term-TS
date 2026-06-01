@@ -52,6 +52,7 @@ import {
   BUTTONS
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
+import { Pasm2Disassembler } from './pasm2Disassembler';
 
 /** Bitwise helper — pad hex with leading zeros, optional uppercase. */
 function hex(value: number, digits: number): string {
@@ -85,6 +86,7 @@ export class DebuggerRenderer {
   private state: DebuggerState;
   private base: OffscreenCanvas | null = null;
   private baseCtx: OffscreenCanvasRenderingContext2D | null = null;
+  private disasm = new Pasm2Disassembler();   // full PASM2 decoder (§4/§5)
 
   // Pre-rendered 32×512 RGBA bitmaps for REG and LUT heat maps. We mutate
   // these per frame in-place and StretchDraw them into the panel region.
@@ -681,7 +683,7 @@ export class DebuggerRenderer {
       if (addr >= 0x1F8 && addr <= 0x1FF) {
         disText = '[ROM] ' + ROM_DEBUG_STRINGS[addr - 0x1F8];
       } else {
-        disText = this.simpleDisassemble(rawValue);
+        disText = this.disasm.decode(rawValue, addr).text;
       }
       // PC line: inverse highlight
       if (addr === pc) {
@@ -704,32 +706,6 @@ export class DebuggerRenderer {
         this.ctx.fill();
       }
     }
-  }
-
-  /**
-   * Minimal disassembly — just identifies common instructions by opcode
-   * prefix. The Pascal implementation uses a full disassembler; a real
-   * port is beyond this file's scope. For validation, rendering the raw
-   * hex + opcode class is enough to identify the instruction at a glance.
-   */
-  private simpleDisassemble(word: number): string {
-    if (word === 0) return 'nop';
-    // P2 instruction format: bits 31..21 = opcode
-    const opcode = (word >>> 21) & 0x7FF;
-    // A very small subset of common opcodes — enough to see control flow.
-    const known: Record<number, string> = {
-      0b00011111110: 'jmp    #$-',
-      0b00011111101: 'call   #$-',
-      0b00000111010: 'mov',
-      0b00010000000: 'add',
-      0b00010000010: 'sub',
-      0b00011111000: 'drvh',
-      0b00011111001: 'drvl',
-      0b00011011000: 'getct',
-      0b00011111111: 'brk'
-    };
-    const instr = known[opcode] || `op$${hex(opcode, 3)}`;
-    return `${instr} ($${hex(word, 8)})`;
   }
 
   /** Update disTopAddr per the auto-scroll algorithm (§6.6). */
