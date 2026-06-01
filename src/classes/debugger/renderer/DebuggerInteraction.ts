@@ -17,7 +17,7 @@ import {
   KEEP_INIT_MASK, CLEAR_DEBUG_MASK, KEEP_INIT_OR_DEBUG_MASK,
   STALL_CMD,
   CHAR_WIDTH_PX, HALF_ROW_PX, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX,
-  EVENT_NAMES
+  EVENT_NAMES, PTR_BYTES, PTR_CENTER
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
 import { DebuggerController } from './DebuggerController';
@@ -105,6 +105,10 @@ export class DebuggerInteraction {
     const code = e.code;
     const shift = e.shiftKey;
     const ctrl = e.ctrlKey;
+
+    // Tab capture (Pascal WMGetDlgCode + DLGC_WANTTAB, DebuggerUnit.pas ~L533):
+    // swallow Tab so it cannot move keyboard focus off the debugger window.
+    if (code === 'Tab') { e.preventDefault(); return; }
 
     // Letter / execution keys (Pascal uppercases all letter keys)
     let letter: string | null = null;
@@ -211,10 +215,20 @@ export class DebuggerInteraction {
       return;
     }
 
-    // In HUB panel → hub scroll
+    // In HUB panel
     const hubBounds = this.renderer.panelBoundsPx('HUB');
     if (px >= hubBounds.x && px < hubBounds.x + hubBounds.w &&
         py >= hubBounds.y && py < hubBounds.y + hubBounds.h) {
+      // Over the 5-digit hub-address column (cols 0..4) → nibble wheel
+      // (Pascal L1005: HubAddr += dir << (4*(4-digit))). Digit 0 = MS nibble.
+      const col = Math.floor((px - hubBounds.x) / CHAR_WIDTH_PX);
+      if (col >= 0 && col <= 4) {
+        const shift = 4 * (4 - col);
+        this.state.hubAddr = (this.state.hubAddr + (direction << shift)) & 0xFFFFF;
+        this.renderer.render();
+        return;
+      }
+      // Otherwise scroll the hub view.
       this.navHub(direction * hubMag * 16);
       return;
     }
@@ -288,7 +302,22 @@ export class DebuggerInteraction {
   // Go button semantics (§7.3)
   // ============================================================================
 
+  /**
+   * Go when the cog is NOT halted at a breakpoint (Pascal DebuggerUnit.pas
+   * L732-737: BreakpointTimer disabled ⇒ dimmed/free-running). Request an async
+   * COGBRK for this cog instead of stepping. Returns true if it handled the click.
+   */
+  private goWhileRunning(): boolean {
+    if (!this.state.isDimmed) return false;
+    this.cb.onCogBrkRequest(1 << (this.state.cogId & 7));
+    this.controller.setStallBrk(STALL_CMD);
+    this.controller.setRepeatMode(false);
+    this.renderer.render();
+    return true;
+  }
+
   private onGoLeftClick(): void {
+    if (this.goWhileRunning()) return;
     if (this.state.repeatMode) {
       // Stop repeat → halted
       this.controller.setRepeatMode(false);
@@ -300,6 +329,7 @@ export class DebuggerInteraction {
   }
 
   private onGoRightClick(): void {
+    if (this.goWhileRunning()) return;
     if (this.state.repeatMode) {
       this.controller.setRepeatMode(false);
     } else {
@@ -396,10 +426,26 @@ export class DebuggerInteraction {
 
   private onPointerClick(relX: number, relY: number): void {
     const row = Math.floor(relY / (2 * HALF_ROW_PX));
-    const addrs = [this.state.message[15], this.state.message[16], this.state.message[17]];
     if (row < 0 || row > 2) return;
-    void relX; // could differentiate per-byte click, not implemented
-    this.state.hubAddr = addrs[row] & 0xFFFFF;
+    const ptrAddr = [this.state.message[15], this.state.message[16], this.state.message[17]][row] & 0xFFFFF;
+    this.state.disMode = DisMode.dmHub;
+    // Panel columns (mirror renderPointers): label@0, addr@5, 14 data bytes
+    // ("XX ") @11, ascii @ 11 + 14*3 + 1. Clicking a data byte or its char
+    // navigates to that byte's hub address, centered on PTR_CENTER
+    // (Pascal L931-946: HubAddr := (ptr - PtrCenter) + byteIndex).
+    const col = Math.floor(relX / CHAR_WIDTH_PX);
+    const DATA_COL = 11;
+    const CHR_COL = 11 + PTR_BYTES * 3 + 1;
+    if (col >= DATA_COL && col < DATA_COL + PTR_BYTES * 3) {
+      const byteIdx = Math.floor((col - DATA_COL) / 3);
+      this.state.hubAddr = (ptrAddr - PTR_CENTER + byteIdx) & 0xFFFFF;
+    } else if (col >= CHR_COL && col < CHR_COL + PTR_BYTES) {
+      const charIdx = col - CHR_COL;
+      this.state.hubAddr = (ptrAddr - PTR_CENTER + charIdx) & 0xFFFFF;
+    } else {
+      // Address column → navigate to the pointer address itself.
+      this.state.hubAddr = ptrAddr;
+    }
   }
 
   private onHubClick(relX: number, relY: number): void {
