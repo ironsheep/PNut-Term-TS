@@ -8,12 +8,21 @@
 > - **Pascal (the specification)**: `/pascal-source/P2_PNut_Public/DebuggerUnit.pas`
 >   — handlers `FormKeyDown` (L1012), `FormKeyPress` (L1033), `FormMouseDown`
 >   (L716), `FormMouseWheel` (L972), `FormMouseMove` (L632).
-> - **TypeScript (the reimplementation)**: `src/classes/debugDebuggerWin.ts`,
->   `src/classes/shared/debuggerInteraction.ts`,
->   `src/classes/shared/debuggerProtocol.ts`.
+> - **TypeScript (the reimplementation)** — the **live renderer bundle**
+>   `src/classes/debugger/renderer/` (`DebuggerInteraction.ts`,
+>   `DebuggerRenderer.ts`, `DebuggerController.ts`, `DebuggerPhase3.ts`,
+>   `DebuggerState.ts`) plus the typed-IPC serial bridge
+>   `src/classes/debugDebuggerWin.ts`. The former `src/classes/shared/debugger*`
+>   main-process implementation was **dead code and was deleted** in the
+>   ssdbg-parity sprint (§1); the renderer bundle is now the single source of
+>   truth.
 >
 > Where the two differ, the Pascal behavior is correct (per project policy) and
-> the discrepancy is flagged in **Part B** as work to do.
+> the discrepancy is flagged in **Part B**.
+>
+> **Status (ssdbg-parity sprint, v0.9.26):** the Part B punch list that was open
+> at the 2026-05-31 audit is now essentially closed — see the verified scorecard
+> below. One minor navigation convenience (hub-heatmap click) remains.
 
 ---
 
@@ -180,116 +189,68 @@ once. Left-click = exclusive set (keeps INIT); right-click = toggle.
 
 Scope: only the **operator-facing** behaviors above. Rendering/protocol internals
 are out of scope here. Legend: ✅ implemented & matches · ⚠️ partial/incorrect ·
-❌ missing · ➕ TS-only behavior not in Pascal (should be removed).
+❌ missing · ➕ TS-only behavior not in Pascal (removed).
 
-## B.1 Keyboard — ✅ full parity
+> **All file/line references below are to the LIVE bundle**
+> `src/classes/debugger/renderer/DebuggerInteraction.ts` unless noted. The
+> 2026-05-31 edition of this audit referenced the now-deleted
+> `src/classes/shared/debugger*` files; those line numbers no longer apply and
+> the gaps they described have been closed (see the scorecard).
 
-All keys (`SPACE, ENTER, B, I, D, M, R, ↑, ↓, PgUp, PgDn` + modifiers, `Tab`
-captured) are present and behave as Pascal does.
-(`debuggerInteraction.ts` `KEYBOARD_SHORTCUTS` L32–50, `executeKeyboardAction`
-L160–216.) **No action needed.**
+## B.0 Verified scorecard (ssdbg-parity sprint, v0.9.26)
 
-## B.2 Execution control & buttons — ✅ parity
+Re-audited 2026-06-02 against the live bundle. Every row was confirmed by reading
+the cited handler.
 
-- Single Go / Repeat / Stall state machine matches Pascal §4
-  (`sendDebugCommand`, L875–1044).
-- All 13 buttons, with left-exclusive / right-toggle semantics and the DEBUG
-  mutual-exclusion mask, match `FormMouseDown` L716–790. **No action needed.**
-
-## B.3 Wheel scrolling — ⚠️ partial
-
-- The **hub box** wheel works: it routes through `hubNavigate` with the correct
-  Pascal deltas (none 16 / Ctrl 1 / Shift 4). (`handleMouseWheel` L309–338,
-  `handleHubNavigate` L1050.)
-- ❌ The **disassembly** wheel does **nothing**: the window's `disassemblyScroll`
-  listener is an empty TODO (`debugDebuggerWin.ts` L766: "Wire to disassembly
-  mode switching + scroll … For now [no-op]"). So mouse-wheel over the
-  disassembly (which should auto-unlock `dmPC→dmCog/dmHub` and scroll, per
-  `FormMouseWheel` L984–1003) has no effect.
-- ❌ The **address-digit** nibble wheel is also unhandled (see B.4 note).
-
-(The `command`/`hubNavigate`/`disassemblyScroll` listeners are each registered
-once — `debugDebuggerWin.ts` L760/763/766 — so there is no double-fire.)
-
-## B.4 Mouse-click navigation — ❌ largely missing
-
-Pascal's `FormMouseDown` makes most panels clickable for navigation. The TS hit
-tester (`debuggerInteraction.ts` `hitTest` L343–538) only recognizes: buttons,
-COG/LUT register cells, hub-memory cells, disassembly lines, a 4-row "register
-watch", and pin cells. The following Pascal click behaviors are **not
-implemented** (clicking does nothing):
-
-| # | Pascal click behavior | Pascal ref | TS status |
+| Area | 2026-05-31 status | **Now** | Evidence (live `DebuggerInteraction.ts`) |
 |---|---|---|---|
-| 1 | **REG heatmap** → lock disassembly to cog addr (`dmCog`) | FMD L857–862 | ❌ treated as a "memory" cell instead |
-| 2 | **LUT heatmap** → lock disassembly to lut addr (`dmCog`) | FMD L857–862 | ❌ treated as a "memory" cell instead |
-| 3 | **PC box** → return to follow-PC (`dmPC`) | FMD L863–865 | ❌ no PC hit region |
-| 4 | **SFR value** → nav disasm (IJMP3..IRET1) / hub (PA/PB/PTRA/PTRB) | FMD L893–908 | ❌ no SFR hit region |
-| 5 | **Stack value** → nav disasm/hub from the value as a pointer | FMD L909–924 | ❌ no stack hit region |
-| 6 | **Event name** → set EVENT-break target (`BreakEvent`) | FMD L826–840 | ❌ no event hit region (makes EVENT breakpoints hard to aim) |
-| 7 | **Pointer box** (FPTR/PTRA/PTRB addr/data/chr) → jump hub | FMD L925–946 | ❌ no ptr hit region |
-| 8 | **Hub data / ASCII** click → jump hub viewer to addr | FMD L955–966 | ⚠️ hit region exists but only sets an internal `selectedAddress`; does not move the hub viewer base (`HubAddr`) |
-| 9 | **Hub heatmap** click → jump hub viewer | FMD L967–969 | ❌ no hub-map hit region |
-| 10 | **SMART pin watch** box: L=reset, R=toggle DIR filter | FMD L947–954 | ❌ no smart-watch hit region |
-| 11 | **WATCH box** click → reset reg-watch list | FMD L890–892 | ⚠️ hit region returns fabricated names and only marks dirty; **does not reset** (only the `R` key resets) |
+| Keyboard (incl. Tab capture) | ✅ | ✅ | `handleKey` L104–148 (Tab swallow L111) |
+| Execution / 13 buttons | ✅ | ✅ | `onButtonClick` L241, L/R semantics L254–299 |
+| **COGBRK when free-running** (Go ⇒ async break) | — | ✅ **new** | `goWhileRunning` L310–317 → `onCogBrkRequest` |
+| Disassembly wheel (auto-unlock + scroll) | ❌ | ✅ **fixed** | `handleWheel` L203–216 |
+| Hub-box wheel (16/1/4 + ctrl+shift) | ⚠️ | ✅ | `handleWheel` L219–234 |
+| **Hub-address nibble wheel** | ❌ | ✅ **new** | `handleWheel` L224–230 (`dir << 4*(4-col)`) |
+| REG map → lock `dmCog` | ❌ | ✅ | `onRegMapClick` L358 |
+| LUT map → lock `dmCog` (`$200+`) | ❌ | ✅ | `onLutMapClick` L365 |
+| PC box → `dmPC` | ❌ | ✅ | `onPCClick` L354 |
+| SFR value → disasm / hub nav | ❌ | ✅ | `onSFRClick` L392 |
+| Stack value → disasm / hub nav | ❌ | ✅ | `onStackClick` L409 |
+| Event name → set `BreakEvent` | ❌ | ✅ | `onEventClick` L421 |
+| Pointer box (addr / **data / chr offset**) → hub | ❌ | ✅ | `onPointerClick` L427–449 |
+| Hub data/ASCII click → move `HubAddr` | ⚠️ no move | ✅ | `onHubClick` L451–461 |
+| SMART watch box (L reset / R DIR filter) | ❌ | ✅ | panels `SMART` L175 |
+| WATCH box click → **reset** reg-watch | ⚠️ no reset | ✅ | `onResetWatch` L472 → `controller.resetRegisterWatch` |
+| Disassembly L/R click (`dmPC` / addr-bp toggle) | ✅ | ✅ | `onDisassemblyClick` L371 |
+| Hover hint bar | ❌ not wired | ✅ **fixed** | `mousemove` listener L75 → `updateHint` L485 |
+| TS-only edit-dialog / pin-toggle / stack-wheel | ➕ remove | ✅ **removed** | absent from live bundle (dead files deleted §1) |
+| **Disassembly SKIP strikethrough** (draw) | ⚠️ | ✅ **new** | `DebuggerRenderer.shouldStrikeSkipped` + `renderDisassembly` |
+| **Hub heat-map graded decay** (draw) | ⚠️ binary | ✅ **new** | `DebuggerPhase3` sub-block capture + `nextHubHeat` + `renderHubMap` |
+| Hub-heatmap **click** → jump viewer | ❌ | ❌ **open** | no `HUBMAP` hit region (see B.1) |
 
-Also note **the address-digit wheel** (`FormMouseWheel` InHubAddr, L1004–1006): wheeling
-over the hub address digits changes the individual hex nibble under the cursor.
-TS `handleMouseWheel` only handles disassembly/hub-box/stack focus — ❌ nibble
-editing is missing.
+## B.1 Remaining gap — hub-heatmap click
 
-## B.5 Hover hint bar — ❌ not wired
+The one Pascal click behavior still unimplemented: clicking the **hub heat-map**
+(Pascal `FormMouseDown` InHubMap, L967–969) should jump the hub viewer to the
+clicked sub-block's address. The heat-map is drawn in the top-right corner of the
+`HUB` panel (`renderHubMap`) and has no dedicated hit region — `onHubClick` only
+covers the hex-byte columns, so a click on the map does nothing. This is a minor
+navigation convenience (every target it reaches is also reachable via the hub
+wheel / pointer / SFR clicks). Tracked in `TECHNICAL-DEBT.md`.
 
-Pascal updates the hint bar on **every** `FormMouseMove`. In TS,
-`handleMouseMove` exists (`debuggerInteraction.ts` L278–295) but **no
-`mousemove` listener is attached to the canvas** (the renderer only wires
-`resize`, `keydown`, `click`, `wheel`). Result: the context-sensitive hint bar
-described in A.5/A.7 is effectively **non-functional**. **Fix**: add a
-`mousemove` IPC bridge and route it to `handleMouseMove`.
+## B.2 How the gaps were closed
 
-## B.6 Disassembly left/right-click — ✅ parity (verified)
-
-Initially suspected inverted, but the Pascal source confirms TS is correct:
-`FormMouseDown` InDis branch is `if LB then DisMode := dmPC` (left-click =
-follow-PC) and right-click toggles an address breakpoint at the clicked line
-(L866–889). TS matches exactly (`debuggerInteraction.ts` L254–263). The `dmCog`
-lock comes from the separate REG/LUT **map** regions (B.4 #1/#2), and the PC box
-also forces `dmPC` (B.4 #3) — both still to be wired, but the disassembly click
-itself needs no change.
-
-## B.7 TS-only inventions not in Pascal — ➕ should be removed
-
-These exist in TS but have **no counterpart** in Pascal, and are stubs that only
-log. They also contradict the read-only nature of the debugger and would mislead
-users:
-
-| TS behavior | Where | Issue |
-|---|---|---|
-| Double-click register/memory → "edit dialog" | `handleMouseClick` L239–251, `editMemory`/`editRegister` L673–681 | Pascal has no editing; debugger is read-only. Remove. |
-| Click pin → `togglePin` | L266–268, L712–716 | Pascal pins are display-only; no pin hit region exists there. Remove. |
-| Stack **wheel** scroll | `handleMouseWheel` `case 'stack'` L333–335 | Pascal has no stack wheel behavior. Remove. |
-
-## B.8 Documentation note
-
-The existing `DOCs/DEBUGGER-USER-MANUAL.md` describes the full Pascal mouse model
-(REG/LUT/PC/SFR/stack/event/ptr/hub-map clicks, hover hints) as if present. Per
-B.4–B.5 most of that is **not yet implemented in TypeScript**. Until the gaps are
-closed, that manual reads as a spec, not as current behavior. **Part A above is
-written to the Pascal spec** (the target); treat **Part B** as the punch list of
-what must be built for Part A to be fully true of the TS build.
-
-## B.9 Suggested work order (smallest → largest)
-
-1. Wire `disassemblyScroll`, currently a no-op TODO at `debugDebuggerWin.ts` L766
-   — wheel-scrolling the disassembly does nothing yet (B.3).
-2. Add the REG/LUT-map → `dmCog` lock and the PC-box → `dmPC` regions (B.4 #1,2,3).
-3. Add the remaining click hit-regions (B.4 #4,5,6,7,9,10) — pure hit-test plus a
-   `HubAddr`/`CogAddr`/`BreakEvent` setter each; the protocol fields already exist.
-4. Correct WATCH-box reset and hub-data click; add the address-nibble wheel (B.4 #8,11 + nibble note).
-5. Wire `mousemove` → hint bar (B.5).
-6. Remove the non-Pascal edit/pin/stack-wheel stubs (B.7).
+- The interaction, render, protocol, and Phase-3 logic now live entirely in the
+  renderer bundle (`src/classes/debugger/renderer/`); `debugDebuggerWin.ts` is a
+  thin typed-IPC bridge that forwards raw serial bytes to the bundle. The old
+  main-process `shared/debugger*` files — which the 2026-05-31 audit measured —
+  were confirmed dead and deleted (sprint §1/§2). The `disassemblyScroll`
+  no-op TODO that B.3 flagged no longer exists; wheel handling is native in the
+  bundle's `handleWheel`.
+- The TS-only inventions (register-edit dialog, pin toggle, stack wheel) went
+  away with the dead files; the live bundle is faithfully read-only.
 
 ---
 
-*Verified against `DebuggerUnit.pas` (v51a tree) and the current TypeScript
-sources, 2026-05-31. Pascal references use `FMD` = `FormMouseDown`.*
+*Re-verified against the live `src/classes/debugger/renderer/` bundle and
+`DebuggerUnit.pas` (v51a tree), 2026-06-02. Pascal references use `FMD` =
+`FormMouseDown`. Prior audit edition: 2026-05-31.*

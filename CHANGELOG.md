@@ -5,6 +5,68 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.26] - 2026-06-02
+
+The single-step debugger reaches **full Pascal parity and is ready for hardware testing**. This build finishes the debugger that the 0.9.25 architecture rewrite set up: a real disassembler, the remaining display behaviors, and the last interaction gaps.
+
+### Added
+
+- **Real, complete PASM2 disassembler in the debugger.** The disassembly panel now decodes the full PASM2 instruction set — CORDIC, smart-pin, pin control, hub-FIFO, LUT, streamer, ALT, bit-manipulation, cog/lock control, events/interrupts, and augmentation — instead of the previous partial/placeholder decoder. Every encoding is taken from the authoritative P2 instruction data, and a golden test pins the output against real compiled code. You will now see correct mnemonics and operands for any code the cog is running, including ROM debug entry/exit.
+- **Skipped instructions are now struck through.** When a SKIP/SKIPF pattern is active, the instructions that will be skipped show a translucent strikethrough in the disassembly, so you can see at a glance what the cog will and won't execute on resume.
+- **Hub heat-map now shows graded change intensity.** Each 128-byte hub sub-block flashes bright when it changes and fades over subsequent breaks (matching the register/LUT heat maps), instead of the old on/off coloring. Recently-written regions stand out, making memory-corruption hunting much easier.
+- **"Go" while the cog is free-running now forces an async break.** If the display has dimmed (the cog is running, no recent breakpoint), pressing Go / Space requests a COGBRK for that cog instead of doing nothing — provided another cog is halted in its debugger to carry the request.
+- **Mouse wheel over the hub address digits** now adjusts the individual hex nibble under the cursor, for fast hub-address targeting.
+- **Clicking a pointer's data/character bytes** (FPTR / PTRA / PTRB rows) now jumps the hub viewer to that exact byte, not just the pointer's base address.
+- **Tab no longer escapes the debugger window** — it is captured so keyboard focus stays put.
+
+### Changed
+
+- Internal cleanup: the old, unused main-process debugger implementation (~12k lines that had been superseded by the 0.9.25 renderer-process bundle) was removed. No user-visible change; the debugger you interact with is unchanged except for the additions above.
+
+### Known issues / not yet verified
+
+- **Not yet exercised on external P2 hardware** — this build is verified against the local test suite and recorded sessions only. Hardware bring-up is the next step.
+- **Clicking the hub heat-map to jump the viewer is not wired yet.** The heat-map is display-only for now; use a hub-data click, the address-nibble wheel, or a pointer/SFR click to navigate. (Tracked in technical debt.)
+- **Byte-exact disassembly operand text** has not been diffed against `pnut-ts` output, because `pnut-ts` is not available in the build container; the golden test pins our own decoder, not a third-party comparison.
+
+## [0.9.25] - 2026-04-17
+
+### Changed
+
+- **Single-step debugger rewritten with a proper renderer-process architecture** (a week of implementation effort). The debugger UI now runs entirely in Electron's renderer process where `HTMLCanvasElement` lives, shipped as a new `dist/debugger-renderer.js` bundle (esbuild, browser target). Main process is now thin: it dispatches cog bytes 0-7 to the correct window, forwards Phase 1 and Phase 3 bytes to the bundle via typed IPC, and pushes the bundle's Phase 2 reply onto the TX ring. Everything else — Phase 1/2/3 parsing, CRC-diff detection, state machine (Halted/SingleGo/Repeat with Pascal-exact thresholds), register/smart-pin watch-list delta tracking, disassembly auto-scroll, heat-map bitmaps with gamma-2.0 blending, all 22 panel renderers, keyboard and mouse handlers with the full Pascal L/R-click matrix — lives renderer-side. Prior implementation used main-process `executeJavaScript()` string generation which was limited to placeholder stubs; this architectural move was required to achieve Pascal parity.
+  - New directory tree: `src/classes/debugger/{shared,renderer}/`
+  - Typed IPC contract in `shared/ipc.ts` (6 message kinds main→renderer, 5 renderer→main)
+  - Every constant traceable to Pascal line numbers in `shared/constants.ts`
+  - `renderer/DebuggerState.ts`: all per-cog state in one class
+  - `renderer/DebuggerController.ts`: Phase 1 parser, Phase 2 builder (bit-packing verified equivalent to Pascal's shift-MSB), repeat-mode 50 ms throttle, 250 ms breakpoint-timeout dim
+  - `renderer/DebuggerPhase3.ts`: streaming parser for variable-size Phase 3 packets (changed cog blocks, hub sub-checksums, pointer windows, hub viewer, interleaved smart-pin mask/longs)
+  - `renderer/DebuggerRenderer.ts`: 22 panel renderers painting directly to canvas; triple-buffer pattern with OffscreenCanvas base template; 32×512 REG/LUT heatmap bitmaps stretch-drawn into their panels
+  - `renderer/DebuggerInteraction.ts`: DOM keyboard/mouse handlers with Pascal-exact button semantics (exclusive set on left-click, mutual-exclusion toggle on right-click, DEBUG's special mask, EVENT/ADDR composite masks), SPACE/ENTER/B/I/D/M/R keybindings, arrows + PageUp/Down with Ctrl/Shift modifiers for hub navigation, disassembly wheel with cog/hub delta matrix from Theory §8.3
+  - Cross-window COGBRK broadcast: when any debugger window requests async break, main routes the mask to every open window so whichever cog is next in its debug ISR performs the break
+  - DTR/RTS reset invalidates all per-cog state (each bundle receives a `reset` IPC)
+  - Legacy main-process stubs (`renderCogRegisters`, `renderStack`, etc.) remain on disk only to keep test mocks compiling; they are never called now that `render()` is a no-op, and will be pruned in a follow-up
+
+### Fixed
+
+- **Single-step debugger window never opened despite correct compilation** - Downloading a debug-enabled `.bin` produced no debugger window on first break, even though the P2 was correctly transmitting 416-byte breakpoint packets and the host byte dispatcher was receiving cog ID bytes 0-7
+  - Root cause: a hard-coded feature flag `FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS` set to `false` in `src/utils/context.ts:5` with the comment "Disable debugger windows for v0.9.x release"
+  - Both gates (`mainWindow.ts:320` auto-create path and `windowRouter.ts:365` route path) silently dropped every 416-byte packet with a "Debugger windows disabled - dropping" log line
+  - Flipped the flag to `true`; the debugger window now opens automatically on first breakpoint from any debug-enabled cog
+- **Single-step debugger user interaction was non-functional** - Pressing SPACE, ENTER, B, I, D, M, R, or clicking any button in the debugger window had no effect, blocking all interactive testing of the debugger
+  - The interaction layer emitted high-level command events (`'command'`, `'hubNavigate'`) but nothing in the window class subscribed to them; the window's correct `sendDebugCommand()` state machine was never reached from keyboard or mouse input
+  - Button click handler routed most buttons through `logConsoleMessage()` stubs and the two real handlers (`BREAK`, `GO`) called deprecated protocol methods that sent `STALL_CMD` in both directions
+  - Button hit-test coordinates were at grid (88..123, 2..11) but Pascal puts the button panel at (109..120, 37..52) with a 2-column × 6-row mode matrix plus GO spanning both columns
+  - No differentiation between left-click (exclusive-set per Pascal mask `$100`) and right-click (toggle with mutual-exclusion mask `$FFFFFFEF`) semantics
+  - Mouse wheel on disassembly or hub viewer ignored Ctrl/Shift modifiers (Theory of Operations §8.3 scroll-delta matrix)
+  - Right-click on disassembly lines routed to a stubbed `showContextMenu()` instead of toggling an address breakpoint
+- **Fixes applied** in `debuggerInteraction.ts`, `debugDebuggerWin.ts`, and `debuggerDataManager.ts`:
+  - Wire `interaction.on('command', ...)` and `interaction.on('hubNavigate', ...)` to the window's state machine
+  - Rewrite `hitTestButtons()` to use `PASCAL_LAYOUT_CONSTANTS.B` and the 13-button Pascal layout (6 left / 6 right / GO)
+  - Rewrite `sendDebugCommand()` to accept `rightClick` and implement every button's exact BreakValue manipulation from Pascal's `FormMouseDown` (lines 716-856): MAIN/INT1-3/INT1-3E all use `$FFFFFFEF xor bit`, DEBUG uses special `$110 xor` for mutual exclusion, INIT uses plain `xor $100`, EVENT/ADDR use the $200/$400 composite masks
+  - Add `handleHubNavigate()` on the window + `resetRegWatch()` on the data manager for UP/DOWN/PAGEUP/PAGEDOWN/R key
+  - Extend wheel handler with ctrl/shift modifiers through IPC and honor the Theory §8.3 delta matrix (cog: 1/4/16/32, hub: 16/1/4/128)
+  - Right-click on disassembly line now toggles an address breakpoint via `toggleBreakpointAt()`
+
 ## [0.9.24] - 2026-04-16
 
 ### Fixed

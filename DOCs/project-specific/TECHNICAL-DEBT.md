@@ -2,6 +2,48 @@
 
 This document tracks technical debt items in the PNut-Term-TS project.
 
+## ssdbg-parity Sprint — Deferred Items (v0.9.26, 2026-06-02)
+
+The single-step debugger reached parity-complete / hardware-test-ready in the
+ssdbg-parity sprint. Four items were deliberately deferred (none block the
+hardware test):
+
+### 1. Hub-heatmap click navigation (LOW)
+**Where:** `src/classes/debugger/renderer/DebuggerInteraction.ts` (no `HUBMAP` hit region); heat-map painted in `DebuggerRenderer.renderHubMap`.
+Pascal `FormMouseDown` InHubMap (L967–969) jumps the hub viewer to the clicked
+sub-block's address. The TS heat-map is display-only — `onHubClick` covers only
+the hex-byte columns. **Impact:** minor convenience; every target it would reach
+is also reachable via the hub data click, the address-nibble wheel, or a
+pointer/SFR click. **Fix:** add a hit region over the map rect and set
+`state.hubAddr` from the cell. ~1h.
+
+### 2. Disassembler cross-instruction block annotation + byte-exact operand parity (LOW/MEDIUM)
+**Where:** `src/classes/debugger/renderer/pasm2Disassembler.ts`.
+The decoder is silicon-exact per-instruction (mask/match, 347 mnemonics from
+p2kb), with a golden test over real pnut-ts output. Two refinements remain:
+(a) **cross-instruction annotation** — `SETQ`/`SETQ2` block-move counts and
+`AUGS`/`AUGD` augmentation of the *next* instruction's operand are decoded
+per-instruction but not rendered as multi-line annotations the way Pascal's
+`P2Disassemble` threads them; (b) **byte-exact operand-text parity** with
+pnut-ts/Pascal cannot be fully asserted in-container because `pnut-ts` is not
+available here — the golden test pins our own output, not a third-party diff.
+**Fix when** `pnut-ts` is available in CI, or on hardware-test feedback.
+
+### 3. Stale unregistered test files (~103) (MEDIUM)
+**Where:** `tests/*.test.ts` not listed in `scripts/claude/run_tests_sequentially.sh`.
+Of ~110 historically-unregistered test files, only 7 still pass; ~103 fail at
+suite-load because they import refactored-away / deleted modules (e.g. the
+deleted `shared/debugger*`, `shared/serialReceiver`, `shared/circularBuffer`).
+They are NOT in the runner, so they don't affect the green baseline, but they
+are dead weight. **Fix:** triage each — repoint to the live module or delete.
+
+### 4. `workerSpritedefBug.test.ts` Docker-saturation flake (LOW)
+**Where:** `tests/workerSpritedefBug.test.ts` (worker threads + `SharedMessagePool`).
+Fails intermittently only inside the full sequential run under Docker (resource
+pressure / "Jest did not exit … async operations weren't stopped"); passes 7/7
+standalone. **Fix:** ensure the worker + pool are torn down in `afterEach`/`afterAll`
+so the test releases handles deterministically.
+
 ## ⚠️ CRITICAL - DO NOT SHIP
 
 ### WindowRouter Array Copy Performance Issue
