@@ -181,7 +181,11 @@ export class DebugTerminalInTypeScript {
       .option('--console-mode', 'Running with console output - adds delay before close')
       .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
       .option('--timeout <seconds>', 'Exit after specified seconds (headless mode only)', parseInt)
-      .option('--end-marker [phrase]', 'Exit when phrase seen in output (default: END_SESSION or DEBUG_END_SESSION)');
+      .option('--end-marker [phrase]', 'Exit when phrase seen in output (default: END_SESSION or DEBUG_END_SESSION)')
+      .option(
+        '--exit-on-end-session',
+        'Headed batch mode: exit the app (draining in-flight saves/logs) on the end-session marker / DEBUG_END_SESSION'
+      );
 
     this.program.addHelpText('beforeAll', `$-`);
 
@@ -203,6 +207,10 @@ export class DebugTerminalInTypeScript {
          $ pnut-term-ts --headless -r test.bin --end-marker      # Download, run until END_SESSION or DEBUG_END_SESSION
          $ pnut-term-ts --headless -r test.bin --timeout 60      # Download, run for 60 seconds then exit
          $ pnut-term-ts --headless --end-marker "TEST_DONE"      # Exit when custom phrase seen in output
+
+      Headed batch mode (render windows, then auto-exit — e.g. dump bitmaps per file):
+         $ pnut-term-ts -r gen.bin --exit-on-end-session         # Open windows, exit on DEBUG_END_SESSION (drains saves first)
+         $ pnut-term-ts -r gen.bin --exit-on-end-session --end-marker "BATCH_DONE"  # ...exit on a custom phrase
 
       Device Selection:
          When only one USB serial device is connected, it will be automatically selected.
@@ -340,23 +348,34 @@ export class DebugTerminalInTypeScript {
         }
       }
 
-      // End-marker option (only valid with --headless)
+      // End-marker option. In headless, end-marker detection always exits.
       if (options.endMarker !== undefined) {
-        // If --end-marker is used without a value, use both defaults
-        // DEBUG_END_SESSION is used by PNut (Windows), END_SESSION by other tools
+        // No value → both defaults (DEBUG_END_SESSION = PNut/Windows, END_SESSION = other tools).
         const markers =
           options.endMarker === true ? ['END_SESSION', 'DEBUG_END_SESSION'] : [options.endMarker as string];
         this.context.runEnvironment.headlessEndMarker = markers;
         this.context.logger.verboseMsg(`Headless end-marker(s) set to: ${markers.map((m) => `"${m}"`).join(', ')}`);
       }
     } else {
-      // Validate that headless-only options aren't used without --headless
+      // ── Headed mode ──
+      // --timeout remains headless-only.
       if (options.timeout !== undefined) {
         this.context.logger.errorMsg('--timeout requires --headless');
         this.shouldAbort = true;
       }
-      if (options.endMarker !== undefined) {
-        this.context.logger.errorMsg('--end-marker requires --headless');
+      // --exit-on-end-session enables headed batch termination on the
+      // end-session marker / DEBUG_END_SESSION sentinel. It also unlocks
+      // --end-marker in headed mode (shared marker list with headless).
+      if (options.exitOnEndSession) {
+        const em = options.endMarker;
+        const markers = em === undefined || em === true ? ['END_SESSION', 'DEBUG_END_SESSION'] : [em as string];
+        this.context.runEnvironment.exitOnEndSession = true;
+        this.context.runEnvironment.headlessEndMarker = markers;
+        this.context.logger.verboseMsg(
+          `Exit-on-end-session enabled; marker(s): ${markers.map((m) => `"${m}"`).join(', ')}`
+        );
+      } else if (options.endMarker !== undefined) {
+        this.context.logger.errorMsg('--end-marker requires --headless or --exit-on-end-session');
         this.shouldAbort = true;
       }
     }

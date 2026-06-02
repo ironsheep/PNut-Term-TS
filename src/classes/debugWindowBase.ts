@@ -151,6 +151,12 @@ export abstract class DebugWindowBase extends EventEmitter {
   protected isLogging: boolean = false; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
   private _debugWindow: BrowserWindow | null = null;
   private _saveInProgress: boolean = false;
+  /**
+   * In-flight async operations (chiefly SAVE) that must complete before this
+   * window is torn down or the app shuts down. Awaiting these prevents
+   * truncated bitmap/log output. See flushPending().
+   */
+  private pendingOps: Set<Promise<unknown>> = new Set();
   private isClosing: boolean = false; // Prevent recursive close handling
   protected inputForwarder: InputForwarder;
   protected wheelTimer: NodeJS.Timeout | null = null;
@@ -307,6 +313,10 @@ export abstract class DebugWindowBase extends EventEmitter {
 
       case 'CLOSE':
         this.logMessageBase('Executing CLOSE command');
+        // A SAVE may still be in flight (the router dispatches messages
+        // fire-and-forget, so SAVE and a following CLOSE can overlap). Wait for
+        // it before tearing the window down, or the bitmap is truncated.
+        await this.flushPending();
         // Setting debugWindow to null triggers the full close sequence
         this.debugWindow = null;
         return true;
@@ -395,15 +405,17 @@ export abstract class DebugWindowBase extends EventEmitter {
             filename = commandParts[saveIndex];
           }
 
+          // Track each SAVE so a following CLOSE — or an app shutdown — awaits
+          // its completion before tearing the window down (no truncated files).
           if (coordinateMode) {
             this.logMessageBase(`Executing SAVE coordinates: ${left},${top},${width},${height} -> ${filename}`);
-            await this.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
+            await this.trackPending(this.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename));
           } else if (saveWindow) {
             this.logMessageBase(`Executing SAVE WINDOW: ${filename}`);
-            await this.saveDesktopWindowToBMPFilename(filename);
+            await this.trackPending(this.saveDesktopWindowToBMPFilename(filename));
           } else {
             this.logMessageBase(`Executing SAVE canvas: ${filename}`);
-            await this.saveWindowToBMPFilename(filename);
+            await this.trackPending(this.saveWindowToBMPFilename(filename));
           }
           return true;
         }
@@ -543,6 +555,48 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   protected get saveInProgress(): boolean {
     return this._saveInProgress;
+  }
+
+  /**
+   * Register an in-flight async op (e.g. a SAVE) so window-close and app
+   * shutdown can await its completion before tearing anything down. Returns
+   * the original promise so callers still observe its result/rejection.
+   */
+  protected trackPending<T>(op: Promise<T>): Promise<T> {
+    this.pendingOps.add(op);
+    // Separate cleanup chain so an op rejection can't become an unhandled
+    // rejection here; the caller still awaits the original `op`.
+    void Promise.resolve(op)
+      .catch(() => undefined)
+      .finally(() => this.pendingOps.delete(op));
+    return op;
+  }
+
+  /** True while any tracked async op (SAVE) is still in flight. */
+  public hasPendingOps(): boolean {
+    return this.pendingOps.size > 0;
+  }
+
+  /**
+   * Await all in-flight async ops (SAVEs) for this window, up to `timeoutMs`.
+   * Returns true if everything drained, false if the timeout elapsed first
+   * (in which case output may be incomplete). Best-effort: precious data is
+   * given every chance to finish — we never abort a write early.
+   */
+  public async flushPending(timeoutMs: number = 10000): Promise<boolean> {
+    if (this.pendingOps.size === 0) return true;
+    this.logMessageBase(`flushPending: awaiting ${this.pendingOps.size} in-flight op(s) (<= ${timeoutMs}ms)`);
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    const drained = Promise.allSettled([...this.pendingOps]).then(() => true);
+    const ok = await Promise.race([drained, timedOut]);
+    if (timer) clearTimeout(timer);
+    if (!ok) {
+      this.logMessageBase(`flushPending: TIMEOUT — ${this.pendingOps.size} op(s) still pending (output may be incomplete)`);
+    }
+    return ok;
   }
 
   // Setter for debugWindow property

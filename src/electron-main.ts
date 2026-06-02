@@ -11,6 +11,7 @@ import { app, BrowserWindow, dialog } from 'electron';
 import { MainWindow } from './classes/mainWindow';
 import { Logger } from './classes/logger';
 import { Context } from './utils/context';
+import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from './utils/exitCodes';
 import * as fs from 'fs';
 import * as os from 'os';
 
@@ -202,17 +203,20 @@ app.commandLine.appendSwitch('no-sandbox');
       }
     });
 
-    // SIGTERM - Graceful shutdown
+    // SIGTERM - Graceful shutdown (drains in-flight saves/logs first)
     process.on('SIGTERM', () => {
       logger.infoMsg('[SIGNAL] Received SIGTERM - Initiating graceful shutdown');
       const mainWindow = (global as any).mainWindowInstance;
+      // gracefulShutdown drains precious data, then closes the main window,
+      // which triggers window-all-closed → app.exit(<resolved code>).
       if (mainWindow) {
-        mainWindow.gracefulShutdown();
+        void mainWindow.gracefulShutdown('SIGTERM');
+      } else {
+        app.exit(ExitCode.OK);
       }
-      // Give time for cleanup, then quit
-      setTimeout(() => {
-        app.quit();
-      }, 1000);
+      // Backstop only — must outlast the drain window so we never kill an
+      // in-flight save. If we ever reach it, the drain hung → FlushTimeout.
+      setTimeout(() => app.exit(ExitCode.FlushTimeout), SHUTDOWN_DRAIN_TIMEOUT_MS + 6000);
     });
 
     // SIGINT - Handle Ctrl+C gracefully
@@ -220,11 +224,11 @@ app.commandLine.appendSwitch('no-sandbox');
       logger.infoMsg('[SIGNAL] Received SIGINT - Initiating graceful shutdown');
       const mainWindow = (global as any).mainWindowInstance;
       if (mainWindow) {
-        mainWindow.gracefulShutdown();
+        void mainWindow.gracefulShutdown('SIGINT');
+      } else {
+        app.exit(ExitCode.OK);
       }
-      setTimeout(() => {
-        app.quit();
-      }, 1000);
+      setTimeout(() => app.exit(ExitCode.FlushTimeout), SHUTDOWN_DRAIN_TIMEOUT_MS + 6000);
     });
 
     // Create main window when Electron is ready

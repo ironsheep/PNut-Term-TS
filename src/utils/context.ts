@@ -2,7 +2,7 @@
 /** @format */
 
 const ENABLE_CONSOLE_LOG: boolean = false; // Temporarily enabled for debugging settings
-const ENABLE_DEBUGGER_WINDOWS: boolean = false; // Feature flag: Disable debugger windows for v0.9.x release
+const ENABLE_DEBUGGER_WINDOWS: boolean = true; // Single-step debugger ready for testing (v0.9.26+)
 
 // Export feature flags for use throughout the application
 export const FEATURE_FLAGS = {
@@ -61,6 +61,10 @@ export interface RuntimeEnvironment {
   headlessMode?: boolean;
   headlessTimeout?: number; // seconds
   headlessEndMarker?: string[]; // termination phrases (default: ["END_SESSION", "DEBUG_END_SESSION"])
+  // Headed batch mode: exit the whole app (after draining in-flight saves/logs)
+  // when the end-session marker / DEBUG_END_SESSION sentinel is seen. The marker
+  // phrases are shared with headlessEndMarker so both modes behave identically.
+  exitOnEndSession?: boolean;
 }
 export interface UserPreferences {
   logging: {

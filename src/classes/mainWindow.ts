@@ -57,6 +57,7 @@ import { COGHistoryManager } from './shared/cogHistoryManager';
 import { PlacementStrategy } from '../utils/windowPlacer';
 import { COGLogExporter } from './shared/cogLogExporter';
 import { Downloader } from './downloader';
+import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -125,6 +126,8 @@ export class MainWindow {
   private knownClosedBy: boolean = false; // compilicated determine if closed by app:quit or [x] close
   private immediateLog: boolean = true;
   private isShuttingDown: boolean = false; // Flag to prevent serial processing during shutdown
+  private isDraining: boolean = false; // Guard so the pending-data drain runs at most once
+  private shutdownExitCode: ExitCode = ExitCode.OK; // Final process exit code (escalated to FlushTimeout on drain timeout)
   private termColors: TerminalColor = {
     xmitBGColor: '#FFF8E7', // hex string '#RRGGBB' yellowish pastel
     rcvBGColor: '#8AB3E9', // cyan pastel
@@ -262,10 +265,21 @@ export class MainWindow {
       this.handleP2SystemReboot(eventData);
     });
 
-    // Listen for DEBUG_END_SESSION sentinel (0x1B byte in COG message)
+    // Listen for end-of-session (0x1B DEBUG_END_SESSION sentinel, or a
+    // configured end-marker phrase in headed batch mode).
     this.windowRouter.on('debugEndSession', (eventData: { cogId: number; timestamp: number }) => {
-      this.logConsoleMessage(`[SESSION] DEBUG_END_SESSION received from COG${eventData.cogId} - disconnecting serial port`);
-      this.disconnectSerialPort();
+      if (this.context.runEnvironment.exitOnEndSession) {
+        // Batch mode: drain in-flight saves/logs, then exit the whole app with
+        // the resolved exit code. gracefulShutdown is idempotent.
+        this.logConsoleMessage(
+          `[SESSION] end-session from COG${eventData.cogId} + --exit-on-end-session → graceful shutdown (draining first)`
+        );
+        void this.gracefulShutdown('end-session');
+      } else {
+        // Default interactive behavior: just disconnect the serial port.
+        this.logConsoleMessage(`[SESSION] DEBUG_END_SESSION received from COG${eventData.cogId} - disconnecting serial port`);
+        this.disconnectSerialPort();
+      }
     });
 
     this.logConsoleMessage(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
@@ -1242,11 +1256,17 @@ export class MainWindow {
           `[SHUTDOWN ${new Date().toISOString()}] All windows closed, initiating shutdown sequence`
         );
 
-        // Safety timeout: force quit if cleanup takes too long (e.g. serial port hangs)
+        // Safety timeout: force quit if cleanup hangs. Must exceed the drain
+        // window so a legitimate in-flight save isn't killed by the backstop.
         const forceQuitTimer = setTimeout(() => {
           this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Force quit - cleanup timeout exceeded`);
-          app.quit();
-        }, 5000);
+          app.exit(this.shutdownExitCode);
+        }, SHUTDOWN_DRAIN_TIMEOUT_MS + 5000);
+
+        // STEP 2.5: Drain in-flight precious data (window SAVEs + recording)
+        // before destroying anything. Idempotent — if gracefulShutdown already
+        // drained, this returns immediately. Prevents truncated output files.
+        await this.drainPendingData();
 
         // STEP 3: Close all debug windows (clean up references)
         this.closeAllDebugWindows();
@@ -1278,11 +1298,12 @@ export class MainWindow {
           this._serialPort = undefined; // Release reference
         }
 
-        // STEP 5: Quit app
+        // STEP 5: Quit app with the resolved exit code (0 clean, 125 if a
+        // save/log flush timed out — see ExitCode).
         clearTimeout(forceQuitTimer);
-        this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Quitting app`);
-        app.quit();
+        this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Quitting app (exit code ${this.shutdownExitCode})`);
         this.mainWindowOpen = false;
+        app.exit(this.shutdownExitCode);
       });
     }
 
@@ -7146,15 +7167,62 @@ export class MainWindow {
    * Perform graceful shutdown
    * Called by external signal handler (SIGTERM/SIGINT)
    */
-  public gracefulShutdown(): void {
-    this.logMessage('[SIGNAL] Graceful shutdown initiated');
+  /**
+   * Await all in-flight precious-data writes before any teardown: every debug
+   * window's pending SAVE(s) (DebugWindowBase.flushPending) plus a final
+   * recording flush (the log is the product — equally precious). Best-effort
+   * with SHUTDOWN_DRAIN_TIMEOUT_MS; if a flush overruns we escalate the exit
+   * code to FlushTimeout so the launcher learns output may be incomplete.
+   * Idempotent — safe to call from more than one shutdown path.
+   */
+  private async drainPendingData(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
+    if (this.isDraining) return;
+    this.isDraining = true;
+
+    // Stop ingest first so no NEW save/log work can start mid-drain.
+    this.isShuttingDown = true;
+    if (this._serialPort) {
+      try {
+        this._serialPort.setShuttingDown(true);
+      } catch {
+        /* non-fatal */
+      }
+    }
+
+    // Flush every debug window's in-flight SAVE(s) concurrently.
+    const flushes: Promise<boolean>[] = [];
+    for (const key in this.displays) {
+      const display = this.displays[key];
+      if (display && typeof display.flushPending === 'function') {
+        flushes.push(display.flushPending(timeoutMs).catch(() => false));
+      }
+    }
+    if (flushes.length > 0) {
+      this.logMessage(`[SHUTDOWN] Draining ${flushes.length} window(s) for in-flight saves (<= ${timeoutMs}ms)`);
+      const results = await Promise.all(flushes);
+      if (results.some((ok) => !ok)) {
+        this.logMessage('[SHUTDOWN] One or more saves did not finish flushing — output may be incomplete');
+        this.shutdownExitCode = ExitCode.FlushTimeout;
+      }
+    }
+
+    // Flush any active recording (precious logs).
+    if (this.windowRouter) {
+      try {
+        this.logMessage('[SHUTDOWN] Stopping/flushing active recording');
+        this.windowRouter.stopRecording();
+      } catch (e) {
+        this.logMessage(`[SHUTDOWN] Recording flush error (non-fatal): ${e}`);
+      }
+    }
+  }
+
+  public async gracefulShutdown(reason: string = 'signal'): Promise<void> {
+    this.logMessage(`[SIGNAL] Graceful shutdown initiated: ${reason}`);
 
     try {
-      // Stop recording if active
-      if (this.windowRouter) {
-        this.logMessage('[SIGNAL] Stopping active recording if in progress');
-        this.windowRouter.stopRecording();
-      }
+      // Drain all precious data BEFORE tearing anything down (no truncation).
+      await this.drainPendingData();
 
       // Close all debug windows
       this.logMessage('[SIGNAL] Closing all debug windows');
@@ -7171,7 +7239,8 @@ export class MainWindow {
         this._serialPort.close();
       }
 
-      // Close main window
+      // Close main window — triggers window-all-closed, which performs the
+      // final app.exit() with this.shutdownExitCode.
       if (this.mainWindow) {
         this.logMessage('[SIGNAL] Closing main window');
         this.mainWindow.close();

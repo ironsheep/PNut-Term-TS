@@ -503,6 +503,16 @@ export class WindowRouter extends EventEmitter {
         this.logConsoleMessage(`[ROUTER] DEBUG_END_SESSION sentinel (0x1B) detected in COG${cogId ?? '?'} message`);
         this.emit('debugEndSession', { cogId: cogId ?? 0, timestamp: Date.now() });
       }
+      // Headed batch mode: also honor a configurable end-session STRING marker
+      // (shared with headless). Per-message substring scan — the canonical
+      // signal remains the 0x1B sentinel above; this catches custom phrases.
+      else if (this.context?.runEnvironment.exitOnEndSession) {
+        const markers = this.context.runEnvironment.headlessEndMarker;
+        if (markers && markers.some((m) => text.includes(m))) {
+          this.logConsoleMessage(`[ROUTER] end-session marker phrase detected in COG${cogId ?? '?'} message`);
+          this.emit('debugEndSession', { cogId: cogId ?? 0, timestamp: Date.now() });
+        }
+      }
 
       // Always route to DebugLogger window for logging (ONE place - no duplicates)
       const loggerWindow = this.windows.get('logger');

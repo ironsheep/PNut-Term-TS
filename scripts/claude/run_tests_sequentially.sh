@@ -44,6 +44,8 @@ run_test "tests/debugScopeXyWin.test.ts"
 run_test "tests/debuggerFixture.test.ts"
 run_test "tests/debuggerInteraction.test.ts"
 run_test "tests/debuggerDisplay.test.ts"
+run_test "tests/exitCodes.test.ts"
+run_test "tests/headedExitDrain.test.ts"
 # §5a sweep (2026-06-01): of 110 unregistered tests/*.test.ts, only these 7 still
 # pass — the other 103 fail at suite-load (import refactored-away/renamed modules,
 # e.g. shared/serialReceiver, shared/circularBuffer). Those are stale-test debt,

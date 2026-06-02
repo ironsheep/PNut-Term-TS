@@ -311,26 +311,33 @@ export class HeadlessFileLogger {
   }
 
   /**
-   * Close the log file gracefully
+   * Close the log file gracefully. Returns a promise that resolves only after
+   * the write stream has fully flushed and closed — the log is the product, so
+   * callers must await this before exiting or the tail of the log is truncated.
    */
-  public close(): void {
+  public close(): Promise<void> {
     // Flush any partial line waiting for more data
     this.flushLineAccumulator();
 
-    // Flush any remaining data
+    // Flush any remaining buffered data
     this.flushWriteBuffer();
 
-    if (this.logFile) {
-      // Write session footer
-      this.logFile.write(`\n=== Headless Mode Session Ended at ${getFormattedDateTimeISO()} ===\n`);
+    return new Promise<void>((resolve) => {
+      if (this.logFile) {
+        // Write session footer
+        this.logFile.write(`\n=== Headless Mode Session Ended at ${getFormattedDateTimeISO()} ===\n`);
 
-      // Close the stream
-      this.logFile.end(() => {
-        console.log('[HEADLESS] Log file closed:', this.logFilePath);
-      });
-
-      this.logFile = null;
-      this.logFileReady = false;
-    }
+        // Close the stream; end() flushes all pending writes before 'finish'.
+        const stream = this.logFile;
+        this.logFile = null;
+        this.logFileReady = false;
+        stream.end(() => {
+          console.log('[HEADLESS] Log file closed:', this.logFilePath);
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
   }
 }

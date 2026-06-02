@@ -18,6 +18,12 @@ The single-step debugger reaches **full Pascal parity and is ready for hardware 
 - **Mouse wheel over the hub address digits** now adjusts the individual hex nibble under the cursor, for fast hub-address targeting.
 - **Clicking a pointer's data/character bytes** (FPTR / PTRA / PTRB rows) now jumps the hub viewer to that exact byte, not just the pointer's base address.
 - **Tab no longer escapes the debugger window** — it is captured so keyboard focus stays put.
+- **Headed batch mode — auto-exit on end of session (`--exit-on-end-session`).** A windowed run can now shut itself down when your code signals it's done — ideal for scripting a render farm (open windows, `SAVE` a bitmap, exit, repeat per file). Enable with `--exit-on-end-session`; the app exits when it sees the `DEBUG(DEBUG_END_SESSION)` sentinel, or a phrase you supply with `--end-marker "YOUR_PHRASE"` (now valid in headed mode, not just headless). It exits even in interactive mode once the flag is set. Before exiting it **drains all in-flight saves, logs, and recordings** so nothing is truncated.
+- **Documented, consistent exit codes (headed == headless).** `0` clean (all data flushed), `1` serial-port error, `3` download failed, `124` run timeout (`--timeout`), and a new `125` = a save/log/recording flush didn't finish in time (your output may be incomplete). A launching script can branch on `$?` identically regardless of mode, and can now tell a clean shutdown from a truncation-risk timeout.
+
+### Fixed
+
+- **Truncated bitmap/log files on shutdown.** Previously, quitting the app (or an end-of-session) could tear down a window or the process while a `SAVE` was still writing — or while the log stream was still flushing — producing a truncated or missing file. Shutdown now **drains all in-flight saves, the debug log, and any active recording before tearing anything down**, on every exit path (window close, Ctrl+C/terminate, and end-of-session). This applies to headless too (the log is its product). Best-effort with a 10-second window; if a flush overruns, the app still exits but returns code `125` so you know the output may be incomplete rather than failing silently.
 
 ### Changed
 

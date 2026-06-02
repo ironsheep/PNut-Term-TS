@@ -19,6 +19,7 @@ import { getFormattedDateTime } from '../utils/files';
 import { HeadlessFileLogger } from './shared/headlessFileLogger';
 import { USBTrafficLogger } from './shared/usbTrafficLogger';
 import { Downloader } from './downloader';
+import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
 
 export class HeadlessController {
   private context: Context;
@@ -28,7 +29,7 @@ export class HeadlessController {
   private downloader: Downloader | null = null;
 
   // Termination control
-  private exitCode: number = 0;
+  private exitCode: number = ExitCode.OK;
   private isShuttingDown: boolean = false;
   private timeoutTimer: NodeJS.Timeout | null = null;
   private resolveRun: ((code: number) => void) | null = null;
@@ -78,7 +79,7 @@ export class HeadlessController {
 
     // Set up end-marker callback
     this.logger.setEndMarkerCallback(() => {
-      this.initiateShutdown(0, 'End marker detected');
+      void this.initiateShutdown(ExitCode.OK, 'End marker detected');
     });
 
     // Set up signal handlers
@@ -93,7 +94,7 @@ export class HeadlessController {
       this.timeoutTimer = setTimeout(() => {
         console.log('[HEADLESS] Timeout expired');
         this.logger.logSystem('Timeout expired');
-        this.initiateShutdown(124, 'Timeout'); // Exit code 124 = timeout (Unix convention)
+        void this.initiateShutdown(ExitCode.RunTimeout, 'Timeout');
       }, timeoutSeconds * 1000);
     }
 
@@ -116,7 +117,7 @@ export class HeadlessController {
       if (!downloadSuccess) {
         // Download failed - abort immediately (exit code 3 = Download failed)
         this.logger.logError('Download failed - aborting');
-        this.initiateShutdown(3, 'Download failed');
+        void this.initiateShutdown(ExitCode.DownloadFailed, 'Download failed');
         return this.exitCode;
       }
     }
@@ -225,14 +226,14 @@ export class HeadlessController {
     process.on('SIGTERM', () => {
       console.log('[HEADLESS] Received SIGTERM');
       this.logger.logSystem('Received SIGTERM signal');
-      this.initiateShutdown(0, 'SIGTERM');
+      void this.initiateShutdown(ExitCode.OK, 'SIGTERM');
     });
 
     // SIGINT - Ctrl+C
     process.on('SIGINT', () => {
       console.log('[HEADLESS] Received SIGINT (Ctrl+C)');
       this.logger.logSystem('Received SIGINT signal (Ctrl+C)');
-      this.initiateShutdown(0, 'SIGINT');
+      void this.initiateShutdown(ExitCode.OK, 'SIGINT');
     });
 
     // SIGUSR1 - Reset hardware (Linux/macOS only)
@@ -277,7 +278,7 @@ export class HeadlessController {
   /**
    * Initiate graceful shutdown
    */
-  private initiateShutdown(code: number, reason: string): void {
+  private async initiateShutdown(code: number, reason: string): Promise<void> {
     if (this.isShuttingDown) {
       return; // Already shutting down
     }
@@ -294,7 +295,7 @@ export class HeadlessController {
       this.timeoutTimer = null;
     }
 
-    // Close serial port
+    // Stop ingest first so no new log data can arrive mid-flush.
     if (this.serialPort) {
       try {
         this.serialPort.setShuttingDown(true);
@@ -311,8 +312,14 @@ export class HeadlessController {
       this.usbLogger = null;
     }
 
-    // Close logger
-    this.logger.close();
+    // Flush + close the log stream — the log is the product, so AWAIT it (the
+    // stream end() is async; resolving the run before it finishes truncates the
+    // tail). Best-effort with the shared drain timeout; on overrun, escalate to
+    // FlushTimeout so the launcher knows the log may be incomplete.
+    const flushed = await this.drainLog(SHUTDOWN_DRAIN_TIMEOUT_MS);
+    if (!flushed && this.exitCode === ExitCode.OK) {
+      this.exitCode = ExitCode.FlushTimeout;
+    }
 
     console.log(`[HEADLESS] Log file: ${this.logger.getLogFilePath()}`);
 
@@ -320,6 +327,21 @@ export class HeadlessController {
     if (this.resolveRun) {
       this.resolveRun(this.exitCode);
     }
+  }
+
+  /**
+   * Await the log flush/close up to timeoutMs. Returns true if it finished,
+   * false on timeout (log tail may be incomplete).
+   */
+  private async drainLog(timeoutMs: number): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    const done = this.logger.close().then(() => true);
+    const ok = await Promise.race([done, timedOut]);
+    if (timer) clearTimeout(timer);
+    return ok;
   }
 
   /**
