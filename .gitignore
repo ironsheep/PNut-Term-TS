@@ -251,3 +251,7 @@ DOCs/USER-GUIDE-UPDATED.md
 /electron-darwin-arm64
 /recordings
 /tests/recordings
+
+# PASM2 disassembler corpus — regenerable from .spin2 via gen-disasm-corpus.mjs
+tests/fixtures/*.bin
+tests/fixtures/*.lst

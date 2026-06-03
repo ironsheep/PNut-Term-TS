@@ -1,0 +1,221 @@
+'' =============================================================================
+''  PASM2 disassembler regression corpus
+''
+''  Authored as the single source of truth for the decoder's golden corpus.
+''  Each instruction below is compiled by the REAL pnut-ts into its authoritative
+''  encoding; scripts/claude/gen-disasm-corpus.mjs extracts the encoded longs
+''  between the two sentinels and pairs each with the source mnemonic (first
+''  token on the line). tests/disassemblerCorpus.test.ts then asserts our
+''  Pasm2Disassembler names every authoritative encoding correctly.
+''
+''  RULES for this region (enforced by the generator's parser):
+''    - one instruction per line, mnemonic is the FIRST token
+''    - NO leading label, NO leading condition (if_z ...) — would shift the token
+''    - blank lines and ' full-line comments are allowed (skipped)
+''    - org / fit are allowed (skipped); no other data-emitting directives
+''    - branch targets are #immediates (no labels) so encodings are deterministic
+'' =============================================================================
+
+PUB main()
+  repeat
+
+DAT
+        org     0
+
+        long    $DEAD_BEEF          ' >>> CORPUS START sentinel <<<
+
+' ---- ALU, register and immediate forms ----
+        mov     0, 1
+        mov     0, #1
+        add     0, 1
+        add     0, #1
+        adds    0, 1
+        addx    0, 1
+        addsx   0, 1
+        sub     0, 1
+        subs    0, 1
+        subx    0, 1
+        cmp     0, 1
+        cmps    0, 1
+        cmpx    0, 1
+        cmpr    0, 1
+        cmpsub  0, 1
+        and     0, 1
+        andn    0, 1
+        or      0, 1
+        xor     0, 1
+        muxc    0, 1
+        muxnc   0, 1
+        muxz    0, 1
+        muxnz   0, 1
+        not     0, 1
+        not     0
+        neg     0, 1
+        negc    0, 1
+        negnc   0, 1
+        negz    0, 1
+        negnz   0, 1
+        abs     0, 1
+        test    0, 1
+        testn   0, 1
+        fge     0, 1
+        fle     0, 1
+        fges    0, 1
+        fles    0, 1
+        sumc    0, 1
+        sumnc   0, 1
+        incmod  0, 1
+        decmod  0, 1
+        mul     0, 1
+        muls    0, 1
+        sca     0, 1
+        scas    0, 1
+
+' ---- shifts / rotates ----
+        shr     0, #1
+        shl     0, #1
+        sar     0, #1
+        sal     0, #1
+        ror     0, #1
+        rol     0, #1
+        rcl     0, #1
+        rcr     0, #1
+        zerox   0, #15
+        signx   0, #15
+
+' ---- bit field / manipulation ----
+        decod   0, #5
+        encod   0, 1
+        ones    0, 1
+        bmask   0, #5
+        bitl    0, #3
+        bith    0, #3
+        rev     0
+        mergeb  0
+        splitb  0
+        mergew  0
+        splitw  0
+
+' ---- pin control ----
+        drvh    #0
+        drvl    #1
+        drvnot  #2
+        drvz    #3
+        fltl    #4
+        flth    #5
+        fltnot  #6
+        outh    #7
+        outl    #8
+        dirh    #9
+        dirl    #10
+        dirnot  #11
+
+' ---- smart pins ----
+        wrpin   0, #0
+        wxpin   0, #0
+        wypin   0, #0
+        rdpin   0, #0
+        rqpin   0, #0
+        akpin   #0
+        testp   #0 wc
+
+' ---- hub read / write ----
+        rdbyte  0, #0
+        rdword  0, #0
+        rdlong  0, #0
+        wrbyte  0, #0
+        wrword  0, #0
+        wrlong  0, #0
+        rdfast  0, 1
+        wrfast  0, 1
+        getptr  0
+
+' ---- hub-FIFO block setup ----
+        setq    #1
+        setq2   #1
+
+' ---- CORDIC ----
+        qmul    0, 1
+        qdiv    0, 1
+        qfrac   0, 1
+        qsqrt   0, 1
+        qrotate 0, 1
+        qvector 0, 1
+        qlog    0
+        qexp    0
+        getqx   0
+        getqy   0
+
+' ---- branches (immediate targets only) ----
+        jmp     #0
+        call    #0
+        calla   #0
+        callb   #0
+        ret
+        reta
+        retb
+        djnz    0, #0
+        djnf    0, #0
+        tjz     0, #0
+        tjnz    0, #0
+        tjf     0, #0
+        tjnf    0, #0
+        tjs     0, #0
+        tjns    0, #0
+
+' ---- skip / exec ----
+        skip    0
+        skipf   0
+        execf   0
+
+' ---- locks / cog control ----
+        locknew 0
+        lockret 0
+        locktry 0
+        lockrel 0
+        cogid   0
+        cogstop 0
+        coginit 0, 1
+        hubset  0
+
+' ---- events / interrupts ----
+        pollint
+        pollct1
+        pollse1
+        waitint
+        waitse1
+        waitct1
+        setse1  #1
+        cogatn  #1
+        pollatn
+        waitatn
+
+' ---- ALT prefixes ----
+        altr    0, 1
+        altd    0, 1
+        alts    0, 1
+        altb    0, 1
+        altsn   0, 1
+        altgn   0, 1
+        altsb   0, 1
+        altgb   0, 1
+        alti    0, 1
+
+' ---- augment ----
+        augs    #$100
+        augd    #$100
+
+' ---- streamer ----
+        xinit   0, 1
+        xcont   0, 1
+        xzero   0, 1
+        setxfrq 0
+        getxacc 0
+
+' ---- misc ----
+        nop
+        waitx   #1
+        getct   0
+        getrnd  0
+
+        long    $FEED_FACE          ' >>> CORPUS END sentinel <<<
