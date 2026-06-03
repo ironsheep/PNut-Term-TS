@@ -38,45 +38,57 @@ export class Downloader {
    *   - remainingData: if checksum was concatenated with app output, this contains the app output to route
    */
   public handleProtocolData(data: Buffer): { consumed: boolean; remainingData?: Buffer } {
-    const text = data.toString('utf8');
+    // latin1 preserves a 1:1 byte↔char mapping. Using utf8 here would replace
+    // any non-ASCII byte with U+FFFD and, after re-encoding, expand each one to
+    // three bytes (EF BF BD) — silently corrupting binary app output routed
+    // downstream (e.g., debugger phase-1 packets concatenated with the checksum).
+    const text = data.toString('latin1');
 
-    // Check for Prop_Ver response (P2 identification)
     if (text.includes('Prop_Ver')) {
       this.logMessage(`[DOWNLOAD PROTOCOL] P2 identification response consumed: ${text.trim()}`);
-      return { consumed: true }; // Consumed - don't route to displays
+      return { consumed: true };
     }
 
-    // Check for download checksum responses (. or !) - only if checksums are enabled
-    // NOTE: P2 sends checksum then immediately starts user code, so checksum
-    // often arrives concatenated with app output (e.g., ".Cog0  INIT")
-    const trimmed = text.trim();
-    if (USE_CHECKSUM && (trimmed.startsWith('.') || trimmed.startsWith('!'))) {
-      const checksumChar = trimmed[0];
-      this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${checksumChar}`);
-
-      // CRITICAL: End download mode immediately - P2 has the code and is now executing it
-      // Any subsequent messages are from the running user application and should route normally
-      this._isDownloading = false;
-      this.logMessage(`[DOWNLOAD STATE] isDownloading = false (checksum received, P2 now executing user code)`);
-
-      // Check if checksum was concatenated with app output (expected P2 behavior)
-      if (trimmed.length > 1) {
-        // Strip the checksum character and return the remaining app output for routing
-        const appOutput = trimmed.substring(1); // Remove the checksum character
-        const remainingBuffer = Buffer.from(appOutput, 'utf8');
-        this.logMessage(
-          `[DOWNLOAD PROTOCOL] Checksum concatenated with ${
-            appOutput.length
-          } bytes of app output - routing app output: "${appOutput.substring(0, 40)}..."`
-        );
-        return { consumed: true, remainingData: remainingBuffer };
-      }
-
-      return { consumed: true }; // Checksum only, no app output
+    if (!USE_CHECKSUM) {
+      return { consumed: false };
     }
 
-    // Not a protocol message - let it route normally
-    return { consumed: false };
+    // P2 sends checksum then immediately starts user code, so '!' / '.' often
+    // arrive as the first byte of a packet whose tail is binary app output.
+    // Locate the checksum byte in the Buffer itself and slice with subarray —
+    // any string round-trip would destroy the binary tail.
+    let i = 0;
+    while (
+      i < data.length &&
+      (data[i] === 0x20 || data[i] === 0x09 || data[i] === 0x0D || data[i] === 0x0A)
+    ) {
+      i++;
+    }
+    if (i >= data.length) {
+      return { consumed: false };
+    }
+
+    const first = data[i];
+    if (first !== 0x2E /* '.' */ && first !== 0x21 /* '!' */) {
+      return { consumed: false };
+    }
+
+    const checksumChar = String.fromCharCode(first);
+    this.logMessage(`[DOWNLOAD PROTOCOL] Checksum response consumed: ${checksumChar}`);
+
+    this._isDownloading = false;
+    this.logMessage(`[DOWNLOAD STATE] isDownloading = false (checksum received, P2 now executing user code)`);
+
+    if (i + 1 < data.length) {
+      const remainingBuffer = data.subarray(i + 1);
+      const preview = remainingBuffer.toString('latin1', 0, Math.min(40, remainingBuffer.length));
+      this.logMessage(
+        `[DOWNLOAD PROTOCOL] Checksum concatenated with ${remainingBuffer.length} bytes of app output - routing app output: "${preview}..."`
+      );
+      return { consumed: true, remainingData: remainingBuffer };
+    }
+
+    return { consumed: true };
   }
 
   public async download(
