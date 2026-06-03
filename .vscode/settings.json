@@ -1,0 +1,45 @@
+{
+        "spin2.localIncludes": {
+                "DOCs/pascal-REF/SingleStep-Debugger-Test-Programs": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "EXT-REF/BINs/PNut-Term-TS.app/Contents/Resources/app/dist/ext": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "reference/debugger-pnut/v51": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "reference": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "release/macos-package/pnut-term-ts-macos-arm64-000925/PNut-Term-TS.app/Contents/Resources/app/dist/ext": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "release/macos-package/pnut-term-ts-macos-x64-000925/PNut-Term-TS.app/Contents/Resources/app/dist/ext": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "src/ext": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "test-external/ISSUES/pnut-term-ts-routing-issue": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "test-external": {
+                        "auto": true,
+                        "dirs": []
+                },
+                "test-results/external-results/src": {
+                        "auto": true,
+                        "dirs": []
+                }
+        },
+        "spin2.serialPort": "Parw7ukt"
+}

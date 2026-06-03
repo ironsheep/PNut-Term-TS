@@ -1,6 +1,6 @@
 services:
   dev:
-    image: node:22
+    image: mcr.microsoft.com/devcontainers/javascript-node:22
     ports:
       - "5003:5002"
       - "9124:8123"

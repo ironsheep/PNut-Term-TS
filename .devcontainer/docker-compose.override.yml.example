@@ -11,10 +11,11 @@ services:
   dev:
     volumes:
       # Claude Code configuration (authentication, settings, history)
-      - ${HOME}/.claude:/root/.claude
+      # NOTE: target must match remoteUser (devcontainer.json -> remoteUser: "node")
+      - ${HOME}/.claude:/home/node/.claude
       # Container tools (MCP servers: todo-mcp, p2kb-mcp, image-tools-mcp)
       - /path/to/container-tools:/opt/container-tools
-      # SSH keys for git operations inside the container
-      - ${HOME}/.ssh:/tmp/.ssh
+      # SSH keys for git operations inside the container (read-only — keys should never be writable from inside the container)
+      - ${HOME}/.ssh:/tmp/.ssh:ro
       # Pascal reference source (adjust to your local copy)
       # - /path/to/PNut-REF:/pascal-source

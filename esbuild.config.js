@@ -34,5 +34,17 @@ Promise.all([
     minify: true,
     sourcemap: true,
     format: 'cjs' // CommonJS format for worker threads
+  }),
+  // Build the renderer-side debugger bundle (loaded by the debugger window HTML)
+  esbuild.build({
+    entryPoints: ['src/classes/debugger/renderer/index.ts'],
+    bundle: true,
+    outfile: 'dist/debugger-renderer.js',
+    platform: 'browser',    // runs in Electron's Chromium renderer, not Node
+    target: 'chrome120',
+    external: ['electron'], // ipcRenderer is available via Electron when nodeIntegration=true
+    minify: false,
+    sourcemap: true,
+    format: 'iife'          // self-contained <script> inclusion
   })
 ]).catch(() => process.exit(1));

@@ -224,6 +224,10 @@ test-performance.log
 test-with-queue.log
 test-without-queue.log
 
+# Local export / devcontainer binary archives — never track (throwaway export + 35MB blob)
+claude-pnut-term-ts.tar.gz
+.devcontainer/*.zip
+
 context-keys-to-restore.txt
 /scripts/claude
 /scripts/archive-old-builds

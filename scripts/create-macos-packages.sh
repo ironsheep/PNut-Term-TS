@@ -85,10 +85,11 @@ create_package() {
 
     echo "📦 Copying optimized application files..."
 
-    # Copy the bundled files (CLI and Electron entry points)
+    # Copy the bundled files (CLI, Electron entry, debugger-renderer bundle)
     cp dist/pnut-term-ts.min.js "$APP_DIR/dist/"
     cp dist/electron-main.js "$APP_DIR/dist/"
-    echo "   ✅ Copied bundled application files (CLI and Electron entry points)"
+    cp dist/debugger-renderer.js "$APP_DIR/dist/"
+    echo "   ✅ Copied bundled application files (CLI, Electron, debugger renderer)"
 
     # Copy workers directory
     if [ -d "dist/workers" ]; then

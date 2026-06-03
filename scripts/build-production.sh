@@ -77,6 +77,22 @@ esbuild.build({
 }).then(() => console.log('   ✅ Worker bundle created'));
 "
 
+# Build the renderer-side debugger bundle (loaded by the debugger window HTML)
+echo "   Building debugger renderer bundle..."
+node -e "
+const esbuild = require('esbuild');
+esbuild.build({
+  entryPoints: ['src/classes/debugger/renderer/index.ts'],
+  bundle: true,
+  outfile: 'dist/debugger-renderer.js',
+  platform: 'browser',
+  target: 'chrome120',
+  external: ['electron'],
+  minify: false,
+  format: 'iife'
+}).then(() => console.log('   ✅ Debugger renderer bundle created'));
+"
+
 # Insert build date into non-minified version
 echo "📅 Inserting build date..."
 node -e "
