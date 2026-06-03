@@ -17,36 +17,38 @@ is also reachable via the hub data click, the address-nibble wheel, or a
 pointer/SFR click. **Fix:** add a hit region over the map rect and set
 `state.hubAddr` from the cell. ~1h.
 
-### 2. Disassembler cross-instruction block annotation + byte-exact operand parity (LOW/MEDIUM)
+### 2. Disassembler — byte-exact operand-text parity (LOW)
 **Where:** `src/classes/debugger/renderer/pasm2Disassembler.ts`.
 The decoder is silicon-exact per-instruction (mask/match, 347 mnemonics from
-p2kb). Mnemonic naming is now regression-tested against authoritative pnut-ts
+p2kb). Mnemonic naming is regression-tested against authoritative pnut-ts
 encodings: `pnut-ts` v1.55.0 is installed (compile-only, no hardware) and
-`tests/disassemblerCorpus.test.ts` decodes 162 source-driven longs compiled by
+`tests/disassemblerCorpus.test.ts` decodes 174 source-driven longs compiled by
 the real tool (`tests/fixtures/pasm2_corpus.spin2` →
 `scripts/claude/gen-disasm-corpus.mjs` → `pasm2_corpus.json`). **This closed the
-old "no third-party diff in-container" gap for mnemonics.** Refinements remain:
+old "no third-party diff in-container" gap for mnemonics.**
 
-(a) **cross-instruction annotation** — `SETQ`/`SETQ2` block-move counts and
-`AUGS`/`AUGD` augmentation of the *next* instruction's operand are decoded
-per-instruction but not rendered as multi-line annotations the way Pascal's
-`P2Disassemble` threads them.
-
-(b) **byte-exact operand-TEXT parity** — still cannot be auto-verified, but for a
-newly-understood reason: **`pnut-ts` is a compiler, not a disassembler** — its
-`-l` listing is a symbol table + hex object dump with no mnemonics/operand text.
-So the only authoritative operand-text reference is the original Pascal PNut
+**The only remaining residue is byte-exact operand-TEXT parity** — and it cannot
+be auto-verified: **`pnut-ts` is a compiler, not a disassembler** — its `-l`
+listing is a symbol table + hex object dump with no mnemonics/operand text. So the
+only authoritative operand-text reference is the original Pascal PNut
 disassembler (unavailable here). The corpus test asserts mnemonic + operand
 *structure*, not byte-exact operand formatting/alignment. **Fix on Pascal-PNut or
 hardware-test feedback**, not via pnut-ts.
 
-(c) **TESTP/TESTPN AND/OR/XOR-effect variants** (S=`001000010/100/110`, the
-`ANDC/ANDZ/ORC/ORZ/XORC/XORZ` forms) overlap `DIRC/DIRZ/DIRRND` exactly as the
-base `WC/WZ` forms overlapped `DIRL/DIRH` (fixed 2026-06-03 via C≠Z
-disambiguation). The base collision is fixed and corpus-covered; the AND/OR/XOR
-variants are not yet disambiguated (decode as the `DIR*` sibling) and not in the
-corpus. Low priority — rare in practice. Apply the same C≠Z split at those S
-sub-codes when needed.
+**Resolved 2026-06-03 (no longer debt):**
+- *Cross-instruction annotation* — earlier editions flagged `SETQ`/`SETQ2` block
+  counts and `AUGS`/`AUGD` next-operand augmentation as un-rendered "threading."
+  Verified against `DebuggerUnit.pas` L1490-1535 + `p2com.asm` `P2Disassemble`:
+  the Pascal debugger disassembles **each long standalone**, feeding one inst word
+  + addr to a stateless `P2Disassemble` with no previous-instruction context. Our
+  per-instruction `decode()` already matches this exactly; adding threading would
+  *diverge* from Pascal. Locked by a context-free-disassembly test in
+  `pasm2Disassembler.test.ts`. **This was never a real gap.**
+- *TESTP/TESTPN AND/OR/XOR-effect variants* (S=`0x42/44/46` etc.) — overlapped
+  `DIRC/DIRZ/DIRRND` the same way the base forms overlapped `DIRL/DIRH`. Fixed by
+  loosening the testp/testpn rows' S-mask to `0x1F9` (the AND/OR/XOR selector in
+  S[2:1] is don't-care for the mnemonic), so the four C≠Z rows cover all variants.
+  Corpus-covered (12 variants) + unit-tested.
 
 ### 3. Stale unregistered test files (~103) (MEDIUM)
 **Where:** `tests/*.test.ts` not listed in `scripts/claude/run_tests_sequentially.sh`.

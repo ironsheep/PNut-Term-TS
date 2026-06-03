@@ -179,14 +179,17 @@ const TABLE: Row[] = [
   [0x0FE401FF, 0x0D600035, 'getbrk', 'operand_getbrk'], // EEEE 1101011 CZ0 DDDDDDDDD 000110101
   [0x0FE401FF, 0x0D60001B, 'getrnd', 'operand_d'], // EEEE 1101011 CZ0 DDDDDDDDD 000011011
   [0x0FE401FF, 0x0D60002B, 'pop', 'operand_d'], // EEEE 1101011 CZ0 DDDDDDDDD 000101011
-  // TESTP/TESTPN share their base encoding with DIRL/DIRH (S=001000000/001000001).
+  // TESTP/TESTPN share their base encoding with the DIR* pin group (S=001000xxx).
   // Silicon disambiguates by effect: exactly one of WC/WZ (C XOR Z) -> TESTP/TESTPN,
-  // while WCZ or no-effect (C == Z) -> DIRL/DIRH. These tighter masks (which pin C,Z)
-  // MUST precede the looser DIRL/DIRH rows below. (p2kb: p2kbPasm2Testp/p2kbPasm2Dirl)
-  [0x0FF801FF, 0x0D700040, 'testp', 'operand_testp'], // EEEE 1101011 C=1 Z=0 L DDDDDDDDD 001000000 (WC)
-  [0x0FF801FF, 0x0D680040, 'testp', 'operand_testp'], // EEEE 1101011 C=0 Z=1 L DDDDDDDDD 001000000 (WZ)
-  [0x0FF801FF, 0x0D700041, 'testpn', 'operand_testp'], // EEEE 1101011 C=1 Z=0 L DDDDDDDDD 001000001 (WC)
-  [0x0FF801FF, 0x0D680041, 'testpn', 'operand_testp'], // EEEE 1101011 C=0 Z=1 L DDDDDDDDD 001000001 (WZ)
+  // while WCZ or no-effect (C == Z) -> DIR*. These tighter masks (which pin C,Z) MUST
+  // precede the looser DIR* rows below. The S mask is 0x1F9 (NOT 0x1FF): S bits [2:1]
+  // select the WC/WZ vs ANDx/ORx/XORx effect and are don't-care for the mnemonic, so
+  // these four rows also cover the ANDC/ANDZ/ORC/ORZ/XORC/XORZ variants (S=0x42/44/46
+  // -> testp, 0x43/45/47 -> testpn). (p2kb: p2kbPasm2Testp/p2kbPasm2Dirl)
+  [0x0FF801F9, 0x0D700040, 'testp', 'operand_testp'], // EEEE 1101011 C=1 Z=0 L DDDDDDDDD 001000xx0 (WC/ANDC/ORC/XORC)
+  [0x0FF801F9, 0x0D680040, 'testp', 'operand_testp'], // EEEE 1101011 C=0 Z=1 L DDDDDDDDD 001000xx0 (WZ/ANDZ/ORZ/XORZ)
+  [0x0FF801F9, 0x0D700041, 'testpn', 'operand_testp'], // EEEE 1101011 C=1 Z=0 L DDDDDDDDD 001000xx1 (WC/ANDC/ORC/XORC)
+  [0x0FF801F9, 0x0D680041, 'testpn', 'operand_testp'], // EEEE 1101011 C=0 Z=1 L DDDDDDDDD 001000xx1 (WZ/ANDZ/ORZ/XORZ)
   [0x0FE001FF, 0x0D600042, 'dirc', 'operand_pinop'], // EEEE 1101011 CZL DDDDDDDDD 001000010
   [0x0FE001FF, 0x0D600041, 'dirh', 'operand_pinop'], // EEEE 1101011 CZL DDDDDDDDD 001000001
   [0x0FE001FF, 0x0D600040, 'dirl', 'operand_pinop'], // EEEE 1101011 CZL DDDDDDDDD 001000000

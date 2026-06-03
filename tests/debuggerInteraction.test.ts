@@ -6,7 +6,10 @@
  */
 
 import { makeInteraction, makeDebuggerState, MSG } from './shared/debuggerFixture';
-import { STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER } from '../src/classes/debugger/shared/constants';
+import {
+  STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER,
+  HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS
+} from '../src/classes/debugger/shared/constants';
 import { DisMode } from '../src/classes/debugger/renderer/DebuggerState';
 
 describe('DebuggerInteraction §2 parity gaps (#7)', () => {
@@ -69,5 +72,48 @@ describe('DebuggerInteraction §2 parity gaps (#7)', () => {
     const ev = new KeyboardEvent('keydown', { code: 'Tab', cancelable: true });
     document.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+  });
+});
+
+describe('DebuggerInteraction — hub heat-map click (B.1)', () => {
+  // Map at (200,50), 64x62 px, 1:1 with sub-blocks (Pascal InHubMap, L968).
+  const MAP = { x: 200, y: 50, w: HUB_MAP_WIDTH, h: HUB_MAP_HEIGHT };
+
+  function harness() {
+    const h = makeInteraction();
+    h.renderer.hubMapBoundsPx.mockReturnValue(MAP);
+    // No button and no panel under the map → click reaches the map branch.
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.panelBoundsPx.mockReturnValue({ x: -10, y: -10, w: 0, h: 0 });
+    return h;
+  }
+
+  it('jumps the hub viewer to the clicked sub-block address (row*64+col)*128', () => {
+    const h = harness();
+    // top-left pixel → sub-block 0 → hub $00000
+    (h.interaction as any).handleMouseDown(MAP.x, MAP.y, 0);
+    expect(h.state.hubAddr).toBe(0x00000);
+    // col 3, row 2 → sub-block 2*64+3 = 131 → $131 * 128 = 0x4180
+    (h.interaction as any).handleMouseDown(MAP.x + 3, MAP.y + 2, 0);
+    expect(h.state.hubAddr).toBe(((2 * HUB_MAP_WIDTH + 3) * HUB_SUB_BLOCK_SIZE) & 0xFFFFF);
+    expect(h.renderer.render).toHaveBeenCalled();
+  });
+
+  it('ignores clicks on the dim region beyond the firmware sub-block count', () => {
+    const h = harness();
+    h.state.hubAddr = 0xABCDE;
+    // last row (61) is past sub-block 3327 (3328 sub-blocks ⇒ rows 0..51 used);
+    // col 63, row 61 → sub-block 3967 ≥ HUB_SUB_BLOCKS → no jump
+    const subBlock = 61 * HUB_MAP_WIDTH + 63;
+    expect(subBlock).toBeGreaterThanOrEqual(HUB_SUB_BLOCKS);
+    (h.interaction as any).handleMouseDown(MAP.x + 63, MAP.y + 61, 0);
+    expect(h.state.hubAddr).toBe(0xABCDE); // unchanged
+  });
+
+  it('does not treat a click outside the map rect as a map jump', () => {
+    const h = harness();
+    h.state.hubAddr = 0x12345;
+    (h.interaction as any).handleMouseDown(MAP.x - 1, MAP.y, 0); // just left of the map
+    expect(h.state.hubAddr).toBe(0x12345);
   });
 });

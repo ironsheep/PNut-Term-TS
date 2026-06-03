@@ -91,4 +91,49 @@ describe('Pasm2Disassembler (§4/§5)', () => {
     const drvnot = (((ALWAYS << 28) | (M << 21) | 0 | (0x10 << 9) | 0b001011111) >>> 0);
     expect(dis.decode(drvnot).mnemonic).toBe('drvnot');
   });
+
+  // Item 2 (B-audit §2a): the debugger disassembles each long STANDALONE —
+  // Pascal DebuggerUnit.pas L1490-1535 feeds P2Disassemble one inst word + addr
+  // with no previous-instruction context (P2Disassemble is a pure fn, p2com.asm).
+  // So decode() must be context-free: NO AUGS/AUGD augmentation of the next line,
+  // NO SETQ block-count appended downstream. Adding such threading would DIVERGE
+  // from Pascal, so this locks the parity-correct behavior.
+  it('disassembles each long context-free (no AUG/SETQ threading — Pascal parity)', () => {
+    const augs = (((ALWAYS << 28) | (0b11110 << 23) | 0x123) >>> 0);
+    const movImm = enc(ALWAYS, 0x30, 0b001, 0x101, 0x05); // mov $101, #5
+    // Decoding the MOV is identical whether or not an AUGS was "just" decoded.
+    const before = dis.decode(movImm);
+    dis.decode(augs); // a preceding AUGS must leave no residual state
+    const after = dis.decode(movImm);
+    expect(after).toEqual(before);
+    expect(after.operands).toBe('$101, #$5'); // bare 9-bit imm, not augmented
+    // A SETQ followed by a block RDLONG: the RDLONG names itself only, no count.
+    const rdlong = dis.decode(enc(ALWAYS, 0x58, 0, 1, 2));
+    expect(rdlong.mnemonic).toBe('rdlong');
+    expect(rdlong.text).not.toMatch(/block|longs/i);
+  });
+
+  // Item 4 (TECH-DEBT §2c): TESTP/TESTPN overlap the DIR* pin group at S=0x40-0x47;
+  // silicon disambiguates by effect — C XOR Z (one of WC/WZ/ANDx/ORx/XORx) → TESTP/
+  // TESTPN, while C == Z (WCZ or none) → DIR*. p2kb p2kbPasm2Testp / p2kbPasm2Dirl.
+  it('disambiguates TESTP/TESTPN from DIR* by C≠Z across all effect variants', () => {
+    const pin = (c: number, z: number, s: number) =>
+      enc(ALWAYS, 0x6b, (c << 2) | (z << 1) | 0, 0, s); // L=0 (register pin), D=0
+    // Base S=0x40 (dirl) / 0x41 (dirh)
+    expect(dis.decode(pin(0, 0, 0x40)).mnemonic).toBe('dirl');   // no effect → DIR
+    expect(dis.decode(pin(1, 1, 0x40)).mnemonic).toBe('dirl');   // WCZ      → DIR
+    expect(dis.decode(pin(1, 0, 0x40)).mnemonic).toBe('testp');  // WC       → TESTP
+    expect(dis.decode(pin(0, 1, 0x40)).mnemonic).toBe('testp');  // WZ       → TESTP
+    expect(dis.decode(pin(0, 0, 0x41)).mnemonic).toBe('dirh');
+    expect(dis.decode(pin(1, 0, 0x41)).mnemonic).toBe('testpn');
+    // AND/OR/XOR variants (S bits [2:1]) keep the same C≠Z rule
+    expect(dis.decode(pin(1, 0, 0x42)).mnemonic).toBe('testp');  // ANDC
+    expect(dis.decode(pin(0, 1, 0x44)).mnemonic).toBe('testp');  // ORZ
+    expect(dis.decode(pin(1, 0, 0x46)).mnemonic).toBe('testp');  // XORC
+    expect(dis.decode(pin(1, 0, 0x43)).mnemonic).toBe('testpn'); // ANDC (testpn)
+    // …and the DIR* siblings at those S sub-codes still resolve when C == Z
+    expect(dis.decode(pin(0, 0, 0x42)).mnemonic).toBe('dirc');
+    expect(dis.decode(pin(0, 0, 0x44)).mnemonic).toBe('dirz');
+    expect(dis.decode(pin(0, 0, 0x46)).mnemonic).toBe('dirrnd');
+  });
 });

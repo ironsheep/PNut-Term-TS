@@ -164,12 +164,16 @@ export function makeController(
 export interface MockRenderer {
   hitTestButton: jest.Mock;
   panelBoundsPx: jest.Mock;
+  hubMapBoundsPx: jest.Mock;
   render: jest.Mock;
 }
 export function makeMockRenderer(): MockRenderer {
   return {
     hitTestButton: jest.fn().mockReturnValue(null),
     panelBoundsPx: jest.fn().mockReturnValue(null),
+    // Zero-size rect never matches a click; tests that exercise the hub map
+    // override this with a real rect.
+    hubMapBoundsPx: jest.fn().mockReturnValue({ x: -1, y: -1, w: 0, h: 0 }),
     render: jest.fn()
   };
 }

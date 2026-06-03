@@ -659,11 +659,25 @@ export class DebuggerRenderer {
       pixels[idx + 3] = 0xFF;
     }
     this.hubMapCtx.putImageData(this.hubMapBmp, 0, 0);
-    // Draw in the top-right of the HUB panel
+    // Draw in the top-right of the HUB panel (rect is the single source of truth
+    // for both the draw and the click hit-test — see hubMapBoundsPx).
+    const b = this.hubMapBoundsPx();
+    this.ctx.drawImage(this.hubMapCanvas, b.x, b.y);
+  }
+
+  /**
+   * Pixel rect of the hub heat-map (top-right of the HUB panel), 1:1 with the
+   * HUB_MAP_WIDTH×HUB_MAP_HEIGHT bitmap. Each pixel is one 128-byte sub-block;
+   * the interaction layer hit-tests clicks against this rect (Pascal InHubMap).
+   */
+  public hubMapBoundsPx(): { x: number; y: number; w: number; h: number } {
     const p = PANEL.HUB;
-    const x = this.px(p.l + p.w) - 64 - 4;
-    const y = this.py(p.t) + 4;
-    this.ctx.drawImage(this.hubMapCanvas, x, y);
+    return {
+      x: this.px(p.l + p.w) - HUB_MAP_WIDTH - 4,
+      y: this.py(p.t) + 4,
+      w: HUB_MAP_WIDTH,
+      h: HUB_MAP_HEIGHT
+    };
   }
 
   // ──────────────────────────────────────────────────────────────────────

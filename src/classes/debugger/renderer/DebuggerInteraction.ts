@@ -17,7 +17,8 @@ import {
   KEEP_INIT_MASK, CLEAR_DEBUG_MASK, KEEP_INIT_OR_DEBUG_MASK,
   STALL_CMD,
   CHAR_WIDTH_PX, HALF_ROW_PX, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX,
-  EVENT_NAMES, PTR_BYTES, PTR_CENTER
+  EVENT_NAMES, PTR_BYTES, PTR_CENTER,
+  HUB_MAP_WIDTH, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
 import { DebuggerController } from './DebuggerController';
@@ -158,6 +159,24 @@ export class DebuggerInteraction {
     const btnName = this.renderer.hitTestButton(px, py);
     if (btnName) {
       this.onButtonClick(btnName, !rightClick);
+      return;
+    }
+
+    // 1b. Hub heat-map → jump the hub viewer to the clicked sub-block's address
+    // (Pascal FormMouseDown InHubMap, DebuggerUnit.pas L968: HubAddr := MapHubAddr).
+    // The map sits in the HUB panel's top-right; checked before the panel loop so a
+    // map click isn't consumed by the HUB hex-column handler. Each pixel is one
+    // 128-byte sub-block, row-major; cells past the firmware's sub-block count are
+    // dim/unmapped and ignored.
+    const map = this.renderer.hubMapBoundsPx();
+    if (px >= map.x && px < map.x + map.w && py >= map.y && py < map.y + map.h) {
+      const col = Math.floor(px - map.x);
+      const row = Math.floor(py - map.y);
+      const subBlock = row * HUB_MAP_WIDTH + col;
+      if (subBlock < HUB_SUB_BLOCKS) {
+        this.state.hubAddr = (subBlock * HUB_SUB_BLOCK_SIZE) & 0xFFFFF;
+        this.renderer.render();
+      }
       return;
     }
 

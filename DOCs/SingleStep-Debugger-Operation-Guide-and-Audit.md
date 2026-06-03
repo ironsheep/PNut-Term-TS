@@ -225,17 +225,22 @@ the cited handler.
 | TS-only edit-dialog / pin-toggle / stack-wheel | ➕ remove | ✅ **removed** | absent from live bundle (dead files deleted §1) |
 | **Disassembly SKIP strikethrough** (draw) | ⚠️ | ✅ **new** | `DebuggerRenderer.shouldStrikeSkipped` + `renderDisassembly` |
 | **Hub heat-map graded decay** (draw) | ⚠️ binary | ✅ **new** | `DebuggerPhase3` sub-block capture + `nextHubHeat` + `renderHubMap` |
-| Hub-heatmap **click** → jump viewer | ❌ | ❌ **open** | no `HUBMAP` hit region (see B.1) |
+| Hub-heatmap **click** → jump viewer | ❌ | ✅ **new** | `handleMouseDown` hub-map branch → `renderer.hubMapBoundsPx()` → `hubAddr = subBlock*128` (Pascal L968) |
+| Disassembler mnemonics vs real pnut-ts | ⚠️ untested | ✅ **new** | `disassemblerCorpus.test.ts` (174 longs, authoritative pnut-ts encodings) |
 
-## B.1 Remaining gap — hub-heatmap click
+## B.1 Hub-heatmap click — RESOLVED (2026-06-03)
 
-The one Pascal click behavior still unimplemented: clicking the **hub heat-map**
-(Pascal `FormMouseDown` InHubMap, L967–969) should jump the hub viewer to the
-clicked sub-block's address. The heat-map is drawn in the top-right corner of the
-`HUB` panel (`renderHubMap`) and has no dedicated hit region — `onHubClick` only
-covers the hex-byte columns, so a click on the map does nothing. This is a minor
-navigation convenience (every target it reaches is also reachable via the hub
-wheel / pointer / SFR clicks). Tracked in `TECHNICAL-DEBT.md`.
+Clicking the **hub heat-map** (Pascal `FormMouseDown` InHubMap, L968:
+`HubAddr := MapHubAddr`) now jumps the hub viewer to the clicked sub-block's
+address. Implemented in `DebuggerInteraction.handleMouseDown` as a dedicated
+branch *before* the panel loop (mirroring Pascal's separate InHubMap test), using
+`renderer.hubMapBoundsPx()` — the single source of truth shared with
+`renderHubMap` for the map's pixel rect. Each pixel is one 128-byte sub-block,
+row-major: `hubAddr = (row*HUB_MAP_WIDTH + col) * HUB_SUB_BLOCK_SIZE`. Clicks on
+the dim region past this firmware's sub-block count (`≥ HUB_SUB_BLOCKS`, since
+pnut_ts reports 104 hub blocks ⇒ 3328 sub-blocks) are ignored. Tested in
+`debuggerInteraction.test.ts` ("hub heat-map click (B.1)"). **No interaction gaps
+remain.**
 
 ## B.2 How the gaps were closed
 

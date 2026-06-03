@@ -118,6 +118,18 @@ DAT
         rqpin   0, #0
         akpin   #0
         testp   #0 wc
+        testp   #1 wz
+        testp   #2 andc
+        testp   #3 andz
+        testp   #4 orc
+        testp   #5 orz
+        testp   #6 xorc
+        testp   #7 xorz
+        testpn  #8 wc
+        testpn  #9 wz
+        testpn  #10 andc
+        testpn  #11 orz
+        testpn  #12 xorc
 
 ' ---- hub read / write ----
         rdbyte  0, #0
