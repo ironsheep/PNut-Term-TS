@@ -102,6 +102,27 @@ correctly; LONG2 samples from `text-area`. **Still owned by §14:** the in-margi
 off-window sentinel edge (Pascal `:3544-3546`) and verifying the margin VALUE
 (`contentInset` vs Pascal `ChrWidth div 2`) against TERM's actual text origin.
 
+### LD-5 — RGBI8X COLOR-directive math dropped the white-to-color path (fixed in §4b-1, fe8bcfa)
+`DebugColor.colorNameToRGB24UsingRGBI8X` implemented only Pascal's black-to-color
+branch and omitted the white-to-color XOR path (`TranslateColor` rgbi8x,
+DebugDisplayUnit.pas:3124-3133). For chromatic names at the default brightness 8
+the `w` (white) path is taken, so e.g. `COLOR BLUE` resolved to `#0000f6` instead
+of the correct `#0909ff`. No test covered this function (the gap that hid it).
+**Fix:** `translateRgbi8x()` — full faithful port, verified against the Pascal
+source for all 10 names + brightness nibble (memory `rgbi8x-directive-color-values`),
+locked by `tests/rgbi8xDirectiveColor.test.ts`. It is the RGBI8X entry point used
+by PLOT, so PLOT COLOR directives are now correct.
+
+**§4 split status:** §4a (SCOPE_XY default channel colors → clXxx, `235e8f9`) and
+§4b-1 (RGBI8X math) are done. **§4b remainder** (open): route the `DebugColor`
+*instance* path (`new DebugColor(name,b)`, used for COLOR directives across
+LOGIC/SCOPE/TERM/MIDI) through `translateRgbi8x` and reconcile it against the clXxx
+DEFAULT path and the grid/font-colour derivation; update the ~22 pre-existing stale
+colour tests (`colorCommand`/`debugColor` `.test.ts`, not in the runner); remove
+PLOT's over-accepted non-keyword colour names (`debugPlotWin.ts:2197-2208`); FFT
+default palette (with §11). This is the broad/visible-rendering part — the two real
+systems (clXxx defaults vs RGBI8X directives) must stay distinct, not be unified.
+
 ---
 
 ## PART A — Shared-root fixes (base / shared code)
