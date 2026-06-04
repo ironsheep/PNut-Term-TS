@@ -10,6 +10,7 @@
  * the channels the base IPC receiver already listens for.
  */
 import { DebugWindowBase } from '../src/classes/debugWindowBase';
+import { DebugTermWindow } from '../src/classes/debugTermWin';
 
 const proto = DebugWindowBase.prototype as any;
 
@@ -75,5 +76,15 @@ describe('PC input capture wiring [9win LD-2]', () => {
     it('guards against duplicate keydown listeners', () => {
       expect(js).toContain('__keyboardInputInitialized');
     });
+  });
+});
+
+describe('TERM canvas id [9win LD-4]', () => {
+  it('getCanvasId() returns the real visible-canvas element id, not a phantom', () => {
+    // The base mouse injection does getElementById(getCanvasId()); it must match
+    // the rendered <canvas id="text-area"> or TERM captures no mouse events.
+    const id = (DebugTermWindow.prototype as any).getCanvasId.call({});
+    expect(id).toBe('text-area');
+    expect(id).not.toBe('terminal-canvas');
   });
 });

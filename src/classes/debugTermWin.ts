@@ -1226,7 +1226,12 @@ export class DebugTermWindow extends DebugWindowBase {
    * Get the canvas element ID for this window
    */
   protected getCanvasId(): string {
-    return 'terminal-canvas'; // Terminal window uses a different approach, but we need to provide an ID
+    // Must match the visible canvas element id in the rendered HTML
+    // (<canvas id="text-area">, set as window.visibleCanvas). The old
+    // 'terminal-canvas' id existed nowhere in the DOM, so the base mouse-input
+    // injection's getElementById(...) returned null and TERM captured no mouse
+    // events at all (PC_MOUSE always out-of-bounds). [9win LD-4]
+    return 'text-area';
   }
 
   /**

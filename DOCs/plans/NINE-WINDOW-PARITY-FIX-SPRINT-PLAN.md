@@ -89,6 +89,19 @@ attaches any mouse handlers, so PC_MOUSE never works for FFT (independent of LD-
 FFT is `dis_fft` → raw client pixels (no transform). **Fix:** FFT uses the (now-working)
 base path. Requires LD-2.
 
+### LD-4 — TERM `getCanvasId()` returns a phantom element id
+`debugTermWin.ts` rendered its visible canvas as `<canvas id="text-area">` (also
+captured as `window.visibleCanvas`), but `getCanvasId()` returned `'terminal-canvas'`
+— an id present nowhere in the DOM. So the base mouse injection's
+`getElementById('terminal-canvas')` was null, the `if (canvas)` guard skipped, and
+TERM captured **no** mouse events (PC_MOUSE always out-of-bounds), independent of
+LD-2. PC_KEY was unaffected (document-level keydown listener). **Fix:** return
+`'text-area'`. TERM's char-cell `transformMouseCoordinates` (`:1307`) already exists
+and — after LD-1 (raw coords stored, single transform at send) — now applies once
+correctly; LONG2 samples from `text-area`. **Still owned by §14:** the in-margin →
+off-window sentinel edge (Pascal `:3544-3546`) and verifying the margin VALUE
+(`contentInset` vs Pascal `ChrWidth div 2`) against TERM's actual text origin.
+
 ---
 
 ## PART A — Shared-root fixes (base / shared code)
