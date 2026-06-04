@@ -155,16 +155,19 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   // Canvas margins - Pascal SetSize(ChrHeight*2, ChrHeight*2, ChrHeight*2, ChrHeight*2)
   private margin: number = 0; // Calculated as textSize * 2
 
-  // Colors - exact from Pascal DefaultScopeColors
+  // Pascal DefaultScopeColors = (clLime, clRed, clCyan, clYellow, clMagenta,
+  // clBlue, clOrange, clOlive) — DebugDisplayUnit.pas:241 with the clXxx values at
+  // :179-186. clBlue/clOrange/clOlive were previously wrong (0x0000ff / 0xffa500 /
+  // 0x808000 — pure blue / CSS-orange / VCL-olive). [9win §4]
   private readonly defaultColors = [
-    0x00ff00, // clLime
-    0xff0000, // clRed
-    0x00ffff, // clCyan
-    0xffff00, // clYellow
-    0xff00ff, // clMagenta
-    0x0000ff, // clBlue
-    0xffa500, // clOrange
-    0x808000 // clOlive
+    0x00ff00, // clLime    $00FF00
+    0xff0000, // clRed     $FF0000
+    0x00ffff, // clCyan    $00FFFF
+    0xffff00, // clYellow  $FFFF00
+    0xff00ff, // clMagenta $FF00FF
+    0x7f7fff, // clBlue    $7F7FFF (light blue, NOT pure blue)
+    0xff7f00, // clOrange  $FF7F00 (NOT CSS 0xFFA500)
+    0x7f7f00 // clOlive   $7F7F00 (NOT 0x808000)
   ];
 
   constructor(ctx: Context, displaySpec: ScopeXyDisplaySpec, windowId: string = `scopexy-${Date.now()}`) {

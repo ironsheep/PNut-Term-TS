@@ -94,6 +94,16 @@ describe('DebugScopeXyWindow', () => {
       expect(mockWindow.loadURL).toHaveBeenCalled();
     });
 
+    it('should use the exact Pascal DefaultScopeColors palette [9win §4]', () => {
+      window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
+      // Pascal DefaultScopeColors (DebugDisplayUnit.pas:241) with clXxx values (:179-186):
+      // clLime, clRed, clCyan, clYellow, clMagenta, clBlue, clOrange, clOlive.
+      // clBlue/clOrange/clOlive were previously wrong (0x0000ff / 0xffa500 / 0x808000).
+      expect((window as any).defaultColors).toEqual([
+        0x00ff00, 0xff0000, 0x00ffff, 0xffff00, 0xff00ff, 0x7f7fff, 0xff7f00, 0x7f7f00
+      ]);
+    });
+
     it('should parse SIZE parameter', () => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
       window.createDebugWindow(['SCOPE_XY', 'test', 'SIZE', '100']);
