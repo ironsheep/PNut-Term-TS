@@ -486,8 +486,9 @@ export abstract class DebugWindowBase extends EventEmitter {
               this.vMouseWheel
             );
 
-            // Get pixel color at mouse position (use original canvas coordinates)
-            const colorValue = this.getPixelColorAt(this.vMouseX, this.vMouseY);
+            // Get pixel color at mouse position (raw client coordinates, matching
+            // Pascal Canvas.Pixels[p.x,p.y] sampled BEFORE the wire transform, :3553)
+            const colorValue = await this.getPixelColorAt(this.vMouseX, this.vMouseY);
 
             // Transmit position and color
             this.tLongTransmitter.transmitMouseData(positionValue, colorValue);
@@ -1855,9 +1856,16 @@ export abstract class DebugWindowBase extends EventEmitter {
         // Transform coordinates based on window type
         const transformed = this.transformMouseCoordinates(x, y);
 
-        // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
-        this.vMouseX = transformed.x;
-        this.vMouseY = transformed.y;
+        // Store the RAW client pixel position. Pascal SendMousePos uses the raw
+        // p.x/p.y both for the bounds check (:3543) and for sampling the pixel
+        // colour (Canvas.Pixels[p.x,p.y], :3553); the per-display-type wire
+        // transform is applied ONCE, at PC_MOUSE send time (see the PC_MOUSE case
+        // in handleCommonCommand, which calls transformMouseCoordinates there).
+        // Storing the transformed value here double-applied the SPECTRO/BITMAP
+        // overrides added in §1 and fed getPixelColorAt the wrong coordinate.
+        // Storing raw matches PLOT's own handler. [9win §1/§2]
+        this.vMouseX = x;
+        this.vMouseY = y;
         this.vMouseButtons = {
           left: buttons.left || false,
           middle: buttons.middle || false,
@@ -1941,14 +1949,55 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   /**
-   * Get pixel color at specific coordinates.
-   * Override in derived classes to provide actual pixel color sampling.
-   * Default implementation returns 0 (black).
+   * Sample the pixel colour under the cursor for the PC_MOUSE LONG2 value.
+   *
+   * Pascal SendMousePos reads the on-screen canvas pixel at the raw client
+   * position for EVERY on-window case (DebugDisplayUnit.pas:3553-3554):
+   *   c := Canvas.Pixels[p.x, p.y];
+   *   c := c and $0000FF shl 16 or c and $00FF00 or c and $FF0000 shr 16;
+   * The swap is needed in Pascal only because Win32 Canvas.Pixels yields a
+   * COLORREF in $00BBGGRR order; the renderer's getImageData already returns
+   * channels in R,G,B order, so we assemble $00RRGGBB directly.
+   *
+   * The read is performed on the committed (displayed) canvas via getCanvasId()
+   * — the hook every window already exposes — at PC_MOUSE poll time so it
+   * reflects the current frame, matching Pascal's on-demand Canvas.Pixels read.
+   *
+   * @param x raw client X (relative to the window's canvas element)
+   * @param y raw client Y
+   * @returns 0x00RRGGBB, or 0 (black) if the canvas/context is unavailable
    */
-  protected getPixelColorAt(x: number, y: number): number {
-    // Default implementation - return black
-    // Derived classes should override this to provide actual pixel color sampling
-    return 0x000000;
+  protected async getPixelColorAt(x: number, y: number): Promise<number> {
+    if (!this.debugWindow) {
+      return 0x000000;
+    }
+    const canvasId = this.getCanvasId();
+    try {
+      const result = await this.debugWindow.webContents.executeJavaScript(`
+        (function() {
+          const c = document.getElementById(${JSON.stringify(canvasId)});
+          if (!c || typeof c.getContext !== 'function') return 0;
+          const ctx = c.getContext('2d');
+          if (!ctx) return 0;
+          const rect = c.getBoundingClientRect();
+          // The cursor x,y are CSS pixels inside the canvas element. Map them to
+          // the backing-store resolution (canvas.width/height) so we sample the
+          // right source pixel even when the canvas is CSS-scaled (dotSize stretch).
+          const bx = rect.width  ? Math.floor(${x} * c.width  / rect.width)  : ${x};
+          const by = rect.height ? Math.floor(${y} * c.height / rect.height) : ${y};
+          if (bx < 0 || by < 0 || bx >= c.width || by >= c.height) return 0;
+          try {
+            const d = ctx.getImageData(bx, by, 1, 1).data;
+            // $00RRGGBB (getImageData is already R,G,B; see Pascal :3554)
+            return ((d[0] & 0xFF) << 16) | ((d[1] & 0xFF) << 8) | (d[2] & 0xFF);
+          } catch (e) { return 0; }
+        })();
+      `);
+      return (typeof result === 'number' ? result : 0) & 0xFFFFFF;
+    } catch (error) {
+      this.logMessageBase(`getPixelColorAt sample error: ${error}`);
+      return 0x000000;
+    }
   }
 
   // ----------------------------------------------------------------------
