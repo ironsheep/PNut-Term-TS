@@ -2627,7 +2627,10 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Enable mouse input forwarding
    */
   protected enableMouseInput(): void {
-    this.logMessage('Mouse input forwarding enabled');
+    // FFT is dis_fft → raw client pixels (no transform), so the shared base path
+    // is correct as-is. The previous body was a no-op stub that attached no
+    // handlers, so PC_MOUSE never captured anything for FFT. [9win LD-3]
+    super.enableMouseInput();
   }
 
   /**

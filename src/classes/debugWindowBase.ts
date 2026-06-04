@@ -1719,13 +1719,49 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.logMessageBase('Enabling keyboard input forwarding');
     this.inputForwarder.startPolling();
 
+    // Register the IPC receiver here too: PC_KEY can be used without PC_MOUSE, and
+    // the receiver (setupMouseEventHandlers, deduped) handles both channels.
+    this.setupMouseEventHandlers();
+
     if (this.debugWindow) {
+      // Forward via ipcRenderer.send('key-event', …) — window.electronAPI is
+      // undefined in these windows (no preload, nodeIntegration:true), so the old
+      // guarded electronAPI path never fired and PC_KEY captured nothing. The base
+      // 'key-event' receiver reads [key, keyCode]. KeyCode map + guard mirror PLOT.
+      // [9win LD-2]
       this.debugWindow.webContents.executeJavaScript(`
-        document.addEventListener('keydown', (event) => {
-          if (window.electronAPI && window.electronAPI.sendKeyEvent) {
-            window.electronAPI.sendKeyEvent(event.key, event.keyCode, event.shiftKey, event.ctrlKey, event.altKey);
-          }
-        });
+        (function() {
+          if (window.__keyboardInputInitialized) return;
+          window.__keyboardInputInitialized = true;
+
+          const { ipcRenderer } = require('electron');
+
+          document.addEventListener('keydown', (event) => {
+            // Map key to keyCode for PC_KEY transmission (matching Pascal behavior)
+            let keyCode = event.keyCode || 0;
+            if (event.key === 'ArrowLeft') keyCode = 1;
+            else if (event.key === 'ArrowRight') keyCode = 2;
+            else if (event.key === 'ArrowUp') keyCode = 3;
+            else if (event.key === 'ArrowDown') keyCode = 4;
+            else if (event.key === 'Home') keyCode = 5;
+            else if (event.key === 'End') keyCode = 6;
+            else if (event.key === 'Delete') keyCode = 7;
+            else if (event.key === 'Backspace') keyCode = 8;
+            else if (event.key === 'Tab') keyCode = 9;
+            else if (event.key === 'Insert') keyCode = 10;
+            else if (event.key === 'PageUp') keyCode = 11;
+            else if (event.key === 'PageDown') keyCode = 12;
+            else if (event.key === 'Enter') keyCode = 13;
+            else if (event.key === 'Escape') keyCode = 27;
+            else if (event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126) {
+              keyCode = event.key.charCodeAt(0); // ASCII 32-126 (Space to ~)
+            }
+
+            if (keyCode > 0) {
+              ipcRenderer.send('key-event', event.key, keyCode);
+            }
+          });
+        })();
       `);
     }
   }
@@ -1742,14 +1778,22 @@ export abstract class DebugWindowBase extends EventEmitter {
       // Get canvas ID from derived class
       const canvasId = this.getCanvasId();
 
+      // Forward via ipcRenderer.send('mouse-event', …), NOT window.electronAPI:
+      // there is no preload and every debug window runs nodeIntegration:true /
+      // contextIsolation:false, so window.electronAPI is undefined and the old
+      // guarded electronAPI path silently no-op'd — PC_MOUSE capture never fired
+      // for any base-path window. The base IPC receiver (setupMouseEventHandlers)
+      // already listens on the 'mouse-event' channel. Mirrors PLOT's handler. [9win LD-2]
       this.debugWindow.webContents.executeJavaScript(`
         (function() {
           // Guard against multiple initialization
           if (window.__mouseInputInitialized) {
-            if (ENABLE_CONSOLE_LOG) console.log('[MOUSE INPUT] Already initialized, skipping');
+            if (${ENABLE_CONSOLE_LOG}) console.log('[MOUSE INPUT] Already initialized, skipping');
             return;
           }
           window.__mouseInputInitialized = true;
+
+          const { ipcRenderer } = require('electron');
 
           const canvas = document.getElementById('${canvasId}');
           if (canvas) {
@@ -1758,12 +1802,9 @@ export abstract class DebugWindowBase extends EventEmitter {
           // Mouse move handler
           canvas.addEventListener('mousemove', (event) => {
             const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
-            }
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+            ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
           });
 
           // Mouse button handlers
@@ -1773,12 +1814,9 @@ export abstract class DebugWindowBase extends EventEmitter {
             else if (event.button === 2) mouseButtons.right = true;
 
             const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
-            }
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+            ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
           });
 
           canvas.addEventListener('mouseup', (event) => {
@@ -1787,12 +1825,9 @@ export abstract class DebugWindowBase extends EventEmitter {
             else if (event.button === 2) mouseButtons.right = false;
 
             const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, mouseButtons, 0);
-            }
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+            ipcRenderer.send('mouse-event', x, y, mouseButtons, 0);
           });
 
           // Mouse wheel handler with 100ms debounce
@@ -1801,19 +1836,19 @@ export abstract class DebugWindowBase extends EventEmitter {
             const delta = Math.sign(event.deltaY) * -1; // Normalize to -1, 0, 1
 
             const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(x, y, mouseButtons, delta);
-            }
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+            ipcRenderer.send('mouse-event', x, y, mouseButtons, delta);
           });
 
           // Mouse leave handler
           canvas.addEventListener('mouseleave', (event) => {
-            if (window.electronAPI && window.electronAPI.sendMouseEvent) {
-              window.electronAPI.sendMouseEvent(-1, -1, mouseButtons, 0);
-            }
+            ipcRenderer.send('mouse-event', -1, -1, mouseButtons, 0);
+          });
+
+          // Prevent the OS context menu so right-button state is reportable
+          canvas.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
           });
         }
         })(); // End IIFE

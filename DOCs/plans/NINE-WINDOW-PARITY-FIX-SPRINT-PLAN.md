@@ -47,6 +47,50 @@ planning (research gate met):
 
 ---
 
+## Late discoveries (during Phase B implementation)
+
+> Parity-affecting issues uncovered while implementing the planned sections.
+> Per Stephen (2026-06-04): **any issue affecting 100% functional parity is
+> automatically in scope** — these are fixed in this sprint, not deferred.
+
+### LD-1 — §1 capture-time double-transform (fixed in §2, commit `4a7d3cb`)
+The base mouse handler (`setupMouseEventHandlers`) stored the **already-transformed**
+position in `vMouseX/vMouseY` at capture time, then the PC_MOUSE handler transformed
+**again** at send time. Harmless while `transformMouseCoordinates` was identity, but
+§1 added SPECTRO/BITMAP overrides → the transform was applied twice, and the
+bounds-check (Pascal `:3543`) and pixel-sample (`:3553`) ran against the wrong
+coordinate. **Fix:** base handler now stores **raw** client coords (matching PLOT's
+own handler and Pascal, which uses raw `p.x/p.y` for both the bounds check and
+`Canvas.Pixels`); the wire transform is applied once, at PC_MOUSE send time. §1's
+unit tests passed because they exercised the pure helpers in isolation, not the full
+capture→send path.
+
+### LD-2 — PC_MOUSE / PC_KEY capture is dead in 7 of 9 windows (root: `window.electronAPI` never defined)
+The base `enableMouseInput` / `enableKeyboardInput` renderer injections forward input
+via `window.electronAPI.sendMouseEvent` / `.sendKeyEvent`, **guarded by
+`if (window.electronAPI …)`**. But `electronAPI` is **never defined** anywhere — there
+is no preload and every debug window runs `nodeIntegration:true, contextIsolation:false`
+(PLOT's own code comments say as much). So the guard is always false and the injected
+handlers **silently no-op**: `vMouseX/vMouseY/vKeyPress` are never updated, and PC_MOUSE
+always returns the off-window sentinel for SPECTRO, BITMAP, MIDI, LOGIC, SCOPE, SCOPE_XY.
+Only **PLOT** works, because it uses `require('electron').ipcRenderer.send('mouse-event'…)`
+directly. **This makes the §1/§2 transform + pixel-color code dead on hardware for those
+7 windows.** **Fix:** rewrite the base injections to use `ipcRenderer.send('mouse-event'…)`
+/ `ipcRenderer.send('key-event'…)` mirroring PLOT (the base IPC receiver in
+`setupMouseEventHandlers` already listens for both channels); register the receiver from
+the keyboard path too so PC_KEY-only windows are covered. (§2's `getPixelColorAt` reads
+the canvas on-demand at PC_MOUSE-poll time, so it needs no injection change — once
+mouse-move events flow again, `vMouseX/vMouseY` track the cursor and the on-demand read
+samples the right pixel.)
+
+### LD-3 — FFT `enableMouseInput` is a no-op stub
+`debugFftWin.ts` overrides `enableMouseInput` with a body that only logs — FFT never
+attaches any mouse handlers, so PC_MOUSE never works for FFT (independent of LD-2).
+FFT is `dis_fft` → raw client pixels (no transform). **Fix:** FFT uses the (now-working)
+base path. Requires LD-2.
+
+---
+
 ## PART A — Shared-root fixes (base / shared code)
 
 ### 1. PC_MOUSE wire-coordinate transform (SR-1)
