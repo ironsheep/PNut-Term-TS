@@ -357,11 +357,14 @@ export class DebugSpectroWindow extends DebugWindowBase {
         if (index < lineParts.length - 1) {
           const samplesValue = Number(lineParts[++index]);
 
-          // Round to nearest power of 2 between 4 and 2048
-          // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax)))
-          const clamped = Math.max(4, Math.min(FFT_MAX, samplesValue));
-          const fftExp = Math.round(Math.log2(clamped));
-          spec.samples = Math.pow(2, fftExp);
+          // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax))); vSamples := 1 shl FFTexp.
+          // FLOOR of log2 (largest power of two <= clamped), NOT round-to-nearest
+          // (e.g. 768 -> 512). Shared helper, same path as FFT. [9win §3]
+          spec.samples = DisplaySpecParser.floorPowerOfTwoWithin(samplesValue, 4, FFT_MAX);
+          // Keep the BaseDisplaySpec mirror in sync (interface: "same as samples").
+          // Was left at the FFT_DEFAULT init, which only matched while samples
+          // happened to round to 512. [9win §3]
+          spec.nbrSamples = spec.samples;
 
           // Default first and last bins
           spec.firstBin = 0;

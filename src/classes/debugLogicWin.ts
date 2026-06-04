@@ -397,7 +397,15 @@ export class DebugLogicWindow extends DebugWindowBase {
           );
         } else {
           // Try to parse common keywords first
-          const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
+          // LOGIC: SAMPLES 4..LogicSets-1 (2047); SIZE scope_wmin..wmax 32..2048. [9win §3]
+          const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec, {
+            sizeWMin: 32,
+            sizeWMax: 2048,
+            sizeHMin: 32,
+            sizeHMax: 2048,
+            samplesMin: 4,
+            samplesMax: 2047
+          });
           if (parsed) {
             index = index + consumed - 1; // Adjust for loop increment
             // Special handling for TEXTSIZE

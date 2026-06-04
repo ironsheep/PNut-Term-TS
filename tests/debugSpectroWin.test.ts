@@ -172,9 +172,9 @@ describe('DebugSpectroWindow', () => {
       const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '500']; // Not power of 2
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
 
-      // Should round to nearest power of 2
-      expect(displaySpec.samples).toBe(512);
-      expect(displaySpec.nbrSamples).toBe(512); // Should match samples
+      // Pascal: FFTexp := Trunc(Log2(500)) = 8 -> 1 shl 8 = 256 (FLOOR, not nearest). [9win §3]
+      expect(displaySpec.samples).toBe(256);
+      expect(displaySpec.nbrSamples).toBe(256); // Should match samples
     });
 
     it('should handle samples outside valid range (4-2048)', () => {

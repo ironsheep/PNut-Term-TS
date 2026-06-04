@@ -145,10 +145,11 @@ describe('DebugFFTWindow', () => {
       
       const lineParts = ['FFT', 'TestFFT', 'SAMPLES', '500']; // Not power of 2
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', lineParts);
-      
-      expect(displaySpec.samples).toBe(512); // Should round to nearest power of 2
-      expect(displaySpec.nbrSamples).toBe(512); // Should match samples
-      expect(displaySpec.lastBin).toBe(255); // Should be samples/2 - 1
+
+      // Pascal: FFTexp := Trunc(Log2(500)) = 8 -> 1 shl 8 = 256 (FLOOR, not nearest). [9win §3]
+      expect(displaySpec.samples).toBe(256);
+      expect(displaySpec.nbrSamples).toBe(256); // Should match samples
+      expect(displaySpec.lastBin).toBe(127); // Should be samples/2 - 1
     });
 
     it('should handle samples outside valid range (4-2048)', () => {

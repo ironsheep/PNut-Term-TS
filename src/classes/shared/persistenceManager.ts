@@ -22,10 +22,12 @@ export class PersistenceManager {
 
   /**
    * Set the persistence level (number of samples to keep)
-   * @param samples Number of samples (0 for infinite, 1-512 for fading)
+   * @param samples Number of samples (0 for infinite, 1-2048 for fading)
    */
   public setPersistence(samples: number): void {
-    this.persistence = Math.max(0, Math.min(512, samples));
+    // Pascal: KeyValWithin(vSamples, 0, XY_Sets) — XY_Sets = 2048 (= BUFFER_SIZE),
+    // not 512. The circular buffer is already sized for 2048. [9win §3]
+    this.persistence = Math.max(0, Math.min(PersistenceManager.BUFFER_SIZE, samples));
     
     // If reducing persistence, adjust population
     if (this.persistence > 0 && this.samplePop > this.persistence) {

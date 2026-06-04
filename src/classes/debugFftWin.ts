@@ -967,11 +967,10 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Find the nearest power of two within range
    */
   private static nearestPowerOfTwo(value: number, min: number, max: number): number {
-    // Pascal uses Trunc(Log2(Within(val, 4, FFTmax)))
-    const clamped = Math.max(min, Math.min(max, value));
-    const exp = Math.round(Math.log2(clamped));
-    const result = Math.pow(2, exp);
-    return Math.max(min, Math.min(max, result));
+    // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax))); vSamples := 1 shl FFTexp.
+    // FLOOR of log2 (largest power of two <= clamped), NOT round-to-nearest:
+    // e.g. SAMPLES 768 -> 512. Shared with SPECTRO. [9win §3]
+    return DisplaySpecParser.floorPowerOfTwoWithin(value, min, max);
   }
 
   /**

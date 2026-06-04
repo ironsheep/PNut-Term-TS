@@ -18,12 +18,65 @@ export interface BaseDisplaySpec {
   hideXY?: boolean; // Optional - true if HIDEXY clause was present
 }
 
+/**
+ * Per-window clamp bounds for the shared SIZE / SAMPLES directives, mirroring the
+ * Pascal constants (DebugDisplayUnit.pas:210-232) and KeyValWithin ranges. All
+ * Pascal windows cap at SmoothFillMax = 2048; SIZE min is 32 except BITMAP (1);
+ * SAMPLES lower bound is per-window (LOGIC 4, SCOPE 16). Pascal CLAMPS
+ * (Within / KeyValWithin), never aborts, on out-of-range.
+ */
+export interface CommonKeywordBounds {
+  sizeWMin: number;
+  sizeWMax: number;
+  sizeHMin: number;
+  sizeHMax: number;
+  samplesMin: number;
+  samplesMax: number;
+}
+
+// Default = the common SmoothFillMax window bounds (scope_wmin..scope_wmax etc).
+export const DEFAULT_COMMON_BOUNDS: CommonKeywordBounds = {
+  sizeWMin: 32,
+  sizeWMax: 2048,
+  sizeHMin: 32,
+  sizeHMax: 2048,
+  samplesMin: 0,
+  samplesMax: 2048
+};
+
 export class DisplaySpecParser {
+  /**
+   * Pascal FFT/SPECTRO sample-count selection (DebugDisplayUnit.pas:1576,1744):
+   *   FFTexp := Trunc(Log2(Within(val, min, max)));  vSamples := 1 shl FFTexp;
+   * i.e. clamp to [min,max], then take the LARGEST power of two <= the clamped
+   * value (FLOOR of log2 — NOT round-to-nearest). e.g. 768 -> 512, 2048 -> 2048.
+   * Uses integer doubling rather than Math.log2 to stay exact at the octave
+   * boundaries (no floating-point undershoot).
+   */
+  /** Pascal Within(value, min, max): clamp to [min,max] (GlobalUnit.pas:222). */
+  static clamp(value: number, min: number, max: number): number {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+  }
+
+  static floorPowerOfTwoWithin(value: number, min: number, max: number): number {
+    const clamped = Math.max(min, Math.min(max, Math.floor(value)));
+    let p = 1;
+    while (p * 2 <= clamped) p *= 2;
+    return p;
+  }
+
   /**
    * Parse common keywords that are shared between Logic and Scope windows
    * Returns true if a keyword was parsed, false otherwise
    */
-  static parseCommonKeywords(lineParts: string[], index: number, spec: BaseDisplaySpec): [boolean, number] {
+  static parseCommonKeywords(
+    lineParts: string[],
+    index: number,
+    spec: BaseDisplaySpec,
+    bounds: CommonKeywordBounds = DEFAULT_COMMON_BOUNDS
+  ): [boolean, number] {
     const keyword = lineParts[index].toUpperCase();
     let consumed = 1; // number of parts consumed
 
@@ -53,11 +106,20 @@ export class DisplaySpecParser {
         break;
 
       case 'SIZE':
+        // Two-arg pixel SIZE (width height). Windows whose SIZE is single-arg
+        // (SCOPE_XY radius, TERM cols, MIDI) supply <2 numbers here and fall
+        // through to their own handler. Pascal KeySize CLAMPS to the per-window
+        // bounds (Within), it does NOT abort on out-of-range. [9win §3]
         if (this.validateParameterCount(lineParts, index, 2)) {
-          const width = Spin2NumericParser.parsePixel(lineParts[index + 1]);
-          const height = Spin2NumericParser.parsePixel(lineParts[index + 2]);
-          if (width !== null && height !== null && width > 0 && height > 0) {
-            spec.size = { width, height };
+          // Parse SIGNED (Pascal NextNum is signed) then clamp, so 0 / negative /
+          // oversized all clamp into range rather than aborting the directive.
+          const width = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+          const height = Spin2NumericParser.parseInteger(lineParts[index + 2], true);
+          if (width !== null && height !== null) {
+            spec.size = {
+              width: this.clamp(width, bounds.sizeWMin, bounds.sizeWMax),
+              height: this.clamp(height, bounds.sizeHMin, bounds.sizeHMax)
+            };
             consumed = 3;
             return [true, consumed];
           }
@@ -66,9 +128,11 @@ export class DisplaySpecParser {
 
       case 'SAMPLES':
         if (this.validateParameterCount(lineParts, index, 1)) {
-          const samples = Spin2NumericParser.parseCount(lineParts[index + 1]);
-          if (samples !== null && samples >= 0) { // Changed > to >= to allow 0 (infinite persistence)
-            spec.nbrSamples = samples;
+          const samples = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+          if (samples !== null) {
+            // Pascal KeyValWithin CLAMPS to [min,max] (e.g. LOGIC 4..2047,
+            // SCOPE 16..2048); never aborts on out-of-range. [9win §3]
+            spec.nbrSamples = this.clamp(samples, bounds.samplesMin, bounds.samplesMax);
             consumed = 2;
             return [true, consumed];
           }

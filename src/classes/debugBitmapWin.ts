@@ -218,7 +218,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
         const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
           lineParts,
           i,
-          compatibleSpec as BaseDisplaySpec
+          compatibleSpec as BaseDisplaySpec,
+          // BITMAP: bitmap_wmin/hmin = 1 (not 32), max = SmoothFillMax 2048. [9win §3]
+          { sizeWMin: 1, sizeWMax: 2048, sizeHMin: 1, sizeHMax: 2048, samplesMin: 0, samplesMax: 2048 }
         );
         if (parsed) {
           // Copy parsed values back to displaySpec

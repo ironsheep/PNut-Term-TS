@@ -27,9 +27,12 @@ describe('PersistenceManager', () => {
       expect(manager.getPersistence()).toBe(100);
     });
 
-    it('should clamp persistence to maximum 512', () => {
+    it('should clamp persistence to maximum 2048 (XY_Sets, not 512) [9win §3]', () => {
+      // Pascal: KeyValWithin(vSamples, 0, XY_Sets) with XY_Sets = 2048.
       manager.setPersistence(1000);
-      expect(manager.getPersistence()).toBe(512);
+      expect(manager.getPersistence()).toBe(1000);
+      manager.setPersistence(5000);
+      expect(manager.getPersistence()).toBe(2048);
     });
 
     it('should allow persistence of 0 for infinite', () => {

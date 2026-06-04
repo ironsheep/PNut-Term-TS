@@ -78,12 +78,35 @@ describe('DisplaySpecParser', () => {
       expect(spec.size).toEqual({ width: 640, height: 480 });
     });
 
-    test('should reject SIZE with zero or negative dimensions', () => {
+    test('should CLAMP zero/under-min SIZE to the window minimum (Pascal Within, not abort) [9win §3]', () => {
+      // Pascal KeySize/Within clamps; it never aborts. Default bounds: 32..2048.
       const lineParts = ['SIZE', '640', '0'];
       const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, 0, spec);
-      
-      expect(parsed).toBe(false);
-      expect(consumed).toBe(0);
+
+      expect(parsed).toBe(true);
+      expect(consumed).toBe(3);
+      expect(spec.size).toEqual({ width: 640, height: 32 });
+    });
+
+    test('should CLAMP SIZE 1..31 up to 32 and oversize down to 2048 [9win §3]', () => {
+      const lineParts = ['SIZE', '16', '5000'];
+      const [parsed] = DisplaySpecParser.parseCommonKeywords(lineParts, 0, spec);
+      expect(parsed).toBe(true);
+      expect(spec.size).toEqual({ width: 32, height: 2048 });
+    });
+
+    test('should honor per-window SIZE bounds (BITMAP min 1) [9win §3]', () => {
+      const lineParts = ['SIZE', '16', '16'];
+      const [parsed] = DisplaySpecParser.parseCommonKeywords(lineParts, 0, spec, {
+        sizeWMin: 1,
+        sizeWMax: 2048,
+        sizeHMin: 1,
+        sizeHMax: 2048,
+        samplesMin: 0,
+        samplesMax: 2048
+      });
+      expect(parsed).toBe(true);
+      expect(spec.size).toEqual({ width: 16, height: 16 });
     });
 
     test('should parse SAMPLES keyword', () => {
@@ -95,12 +118,29 @@ describe('DisplaySpecParser', () => {
       expect(spec.nbrSamples).toBe(128);
     });
 
-    test('should reject invalid SAMPLES value', () => {
+    test('should CLAMP negative SAMPLES to the minimum (Pascal Within, not abort) [9win §3]', () => {
+      // Default samplesMin = 0; signed parse + clamp, never abort.
       const lineParts = ['SAMPLES', '-10'];
       const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, 0, spec);
-      
-      expect(parsed).toBe(false);
-      expect(consumed).toBe(0);
+
+      expect(parsed).toBe(true);
+      expect(consumed).toBe(2);
+      expect(spec.nbrSamples).toBe(0);
+    });
+
+    test('should CLAMP SAMPLES to per-window lower bound (LOGIC min 4) and cap (2047) [9win §3]', () => {
+      const logicBounds = {
+        sizeWMin: 32,
+        sizeWMax: 2048,
+        sizeHMin: 32,
+        sizeHMax: 2048,
+        samplesMin: 4,
+        samplesMax: 2047
+      };
+      DisplaySpecParser.parseCommonKeywords(['SAMPLES', '2'], 0, spec, logicBounds);
+      expect(spec.nbrSamples).toBe(4);
+      DisplaySpecParser.parseCommonKeywords(['SAMPLES', '9999'], 0, spec, logicBounds);
+      expect(spec.nbrSamples).toBe(2047);
     });
 
     // NOTE: COLOR tests removed - COLOR is not handled in parseCommonKeywords
@@ -275,6 +315,33 @@ describe('DisplaySpecParser', () => {
       expect(DisplaySpecParser.validateParameterCount(lineParts, 1, 1)).toBe(true);
       expect(DisplaySpecParser.validateParameterCount(lineParts, 1, 2)).toBe(true);
       expect(DisplaySpecParser.validateParameterCount(lineParts, 1, 3)).toBe(false);
+    });
+  });
+
+  describe('floorPowerOfTwoWithin (FFT/SPECTRO sample-count) [9win §3]', () => {
+    test('takes the largest power of two <= clamped value (FLOOR, not nearest)', () => {
+      // The headline regression: 768 must floor to 512, not round to 1024.
+      expect(DisplaySpecParser.floorPowerOfTwoWithin(768, 4, 2048)).toBe(512);
+    });
+
+    test('leaves exact powers of two unchanged', () => {
+      for (const p of [4, 8, 16, 256, 1024, 2048]) {
+        expect(DisplaySpecParser.floorPowerOfTwoWithin(p, 4, 2048)).toBe(p);
+      }
+    });
+
+    test('clamps to [min,max] before flooring', () => {
+      expect(DisplaySpecParser.floorPowerOfTwoWithin(5000, 4, 2048)).toBe(2048);
+      expect(DisplaySpecParser.floorPowerOfTwoWithin(1, 4, 2048)).toBe(4);
+      expect(DisplaySpecParser.floorPowerOfTwoWithin(-99, 4, 2048)).toBe(4);
+    });
+  });
+
+  describe('clamp (Pascal Within) [9win §3]', () => {
+    test('clamps below/above and passes through in-range', () => {
+      expect(DisplaySpecParser.clamp(5, 10, 20)).toBe(10);
+      expect(DisplaySpecParser.clamp(25, 10, 20)).toBe(20);
+      expect(DisplaySpecParser.clamp(15, 10, 20)).toBe(15);
     });
   });
 

@@ -763,7 +763,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         case 'RATE':
           if (i + 1 < lineParts.length) {
             const rate = parseInt(lineParts[++i]);
-            this.rate = Math.max(1, Math.min(512, rate));
+            // Pascal: KeyValWithin(vRate, 1, XY_Sets) — XY_Sets = 2048, not 512. [9win §3]
+            this.rate = Math.max(1, Math.min(2048, rate));
           }
           break;
 

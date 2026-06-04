@@ -283,7 +283,15 @@ export class DebugScopeWindow extends DebugWindowBase {
         const element = lineParts[index];
 
         // Try to parse common keywords first
-        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec);
+        // SCOPE: SAMPLES 16..Y_Sets (2048); SIZE scope_wmin..wmax 32..2048. [9win §3]
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, displaySpec, {
+          sizeWMin: 32,
+          sizeWMax: 2048,
+          sizeHMin: 32,
+          sizeHMax: 2048,
+          samplesMin: 16,
+          samplesMax: 2048
+        });
         if (parsed) {
           index = index + consumed - 1; // Adjust for loop increment
         } else {
