@@ -582,6 +582,27 @@ export class DebugSpectroWindow extends DebugWindowBase {
   }
 
   /**
+   * PC_MOUSE wire value: Pascal SendMousePos dis_spectro branch
+   * (DebugDisplayUnit.pas:3556-3561). vDirY is always False for SPECTRO, so Y is
+   * inverted (bottom-origin on the wire), then x/y divided by dotSize. Previously
+   * SPECTRO had no override and sent raw top-origin pixels — wrong. [9win §1]
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    return this.transformPixelDotsize(x, y, {
+      dirX: false,
+      dirY: false,
+      dotSizeX: this.displaySpec.dotSize,
+      dotSizeY: this.displaySpec.dotSizeY,
+      clientWidth: this.canvasWidth,
+      clientHeight: this.canvasHeight
+    });
+  }
+
+  protected getCanvasDimensions(): { width: number; height: number } | null {
+    return { width: this.canvasWidth, height: this.canvasHeight };
+  }
+
+  /**
    * Entry point for message processing from WindowRouter
    * Called by router's updateContent(dataParts)
    */

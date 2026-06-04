@@ -1547,32 +1547,11 @@ export class DebugLogicWindow extends DebugWindowBase {
     return 'canvas'; // Logic window uses 'canvas' as the ID
   }
 
-  /**
-   * Transform mouse coordinates to logic-specific coordinates
-   * X: negative sample index from current position
-   * Y: channel number
-   */
-  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
-    // Calculate margins and dimensions
-    const marginLeft = this.contentInset + this.labelWidth;
-    const marginTop = this.channelVInset;
-    const width = this.displaySpec.size.width - this.contentInset - this.labelWidth;
-    const height = this.displaySpec.size.height - 2 * this.channelVInset;
-
-    // Check if mouse is within the display area
-    if (x >= marginLeft && x < marginLeft + width && y >= marginTop && y < marginTop + height) {
-      // Transform to logic coordinates
-      // X: negative sample number (samples back from current)
-      const sampleX = -Math.floor((marginLeft + width - 1 - x) / this.displaySpec.spacing);
-      // Y: channel number (0-based from top)
-      const channelY = Math.floor((y - marginTop) / this.displaySpec.font.charHeight);
-
-      return { x: sampleX, y: channelY };
-    } else {
-      // Mouse is outside display area
-      return { x: -1, y: -1 };
-    }
-  }
+  // PC_MOUSE wire value: Pascal sends RAW client pixels for dis_logic
+  // (SendMousePos:3555-3568 has no dis_logic case). The previous override here
+  // transmitted the sample-index/channel readout — the on-screen FormMouseMove
+  // value, NOT the wire value — which is wrong. Inherit the raw base transform.
+  // [9win §1]
 
   /**
    * Get pixel color getter for mouse events

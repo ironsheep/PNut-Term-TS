@@ -3264,18 +3264,17 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Applies coordinate system transformation based on ydir
    */
   protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
-    // Pascal: if not vDirY then p.y := ClientHeight - p.y;
-    // In Cartesian mode (ydir=false), invert Y coordinate
-    if (!this.cartesianConfig.ydir) {
-      y = this.displaySpec.size.height - y;
-    }
-
-    // Pascal: if vDirX then p.x := ClientWidth - p.x;
-    if (this.cartesianConfig.xdir) {
-      x = this.displaySpec.size.width - x;
-    }
-
-    return { x, y };
+    // Pascal SendMousePos dis_plot branch (DebugDisplayUnit.pas:3556-3561):
+    // vDirX/vDirY flip, THEN divide by dotSize. The dir-flip was present but the
+    // /dotSize step was missing. Route through the shared base helper. [9win §1]
+    return this.transformPixelDotsize(x, y, {
+      dirX: this.cartesianConfig.xdir,
+      dirY: this.cartesianConfig.ydir,
+      dotSizeX: this.displaySpec.dotSize.width,
+      dotSizeY: this.displaySpec.dotSize.height,
+      clientWidth: this.displaySpec.size.width,
+      clientHeight: this.displaySpec.size.height
+    });
   }
 
   /**

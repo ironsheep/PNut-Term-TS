@@ -1657,4 +1657,28 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
   protected getCanvasId(): string {
     return this.bitmapCanvasId; // Bitmap window uses bitmapCanvasId
   }
+
+  /**
+   * PC_MOUSE wire value: Pascal SendMousePos dis_bitmap branch
+   * (DebugDisplayUnit.pas:3556-3561). vDirY is always False for BITMAP, so Y is
+   * inverted (bottom-origin on the wire), then x/y divided by dotSize. Previously
+   * BITMAP had no override and sent raw top-origin pixels — wrong. [9win §1]
+   */
+  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
+    return this.transformPixelDotsize(x, y, {
+      dirX: false,
+      dirY: false,
+      dotSizeX: this.state.dotSizeX,
+      dotSizeY: this.state.dotSizeY,
+      clientWidth: this.state.width * this.state.dotSizeX,
+      clientHeight: this.state.height * this.state.dotSizeY
+    });
+  }
+
+  protected getCanvasDimensions(): { width: number; height: number } | null {
+    return {
+      width: this.state.width * this.state.dotSizeX,
+      height: this.state.height * this.state.dotSizeY
+    };
+  }
 }

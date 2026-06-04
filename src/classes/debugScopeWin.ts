@@ -2262,32 +2262,10 @@ export class DebugScopeWindow extends DebugWindowBase {
     return 'canvas'; // Scope window uses 'canvas' as the ID
   }
 
-  /**
-   * Transform mouse coordinates to scope-specific coordinates
-   * X: pixel position within display area (0 to width-1)
-   * Y: inverted pixel position (bottom = 0)
-   */
-  protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
-    // Calculate margins and dimensions
-    const marginLeft = this.contentInset;
-    const marginTop = this.channelInset;
-    const width = this.displaySpec.size.width - 2 * this.contentInset;
-    const height = this.displaySpec.size.height - 2 * this.channelInset;
-
-    // Check if mouse is within the display area
-    if (x >= marginLeft && x < marginLeft + width && y >= marginTop && y < marginTop + height) {
-      // Transform to scope coordinates
-      // X: relative to left margin
-      const scopeX = x - marginLeft;
-      // Y: inverted with bottom = 0
-      const scopeY = marginTop + height - 1 - y;
-
-      return { x: scopeX, y: scopeY };
-    } else {
-      // Mouse is outside display area
-      return { x: -1, y: -1 };
-    }
-  }
+  // PC_MOUSE wire value: Pascal sends RAW client pixels for dis_scope
+  // (SendMousePos:3555-3568 has no dis_scope case). The previous override applied
+  // the Y-inverted plot-origin readout transform — that is the on-screen
+  // FormMouseMove value, NOT the wire value. Inherit the raw base transform. [9win §1]
 
   /**
    * Get pixel color getter for mouse events

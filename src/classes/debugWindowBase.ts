@@ -1886,8 +1886,33 @@ export abstract class DebugWindowBase extends EventEmitter {
    * Override this in derived classes for window-specific transformations
    */
   protected transformMouseCoordinates(x: number, y: number): { x: number; y: number } {
-    // Default implementation - no transformation
+    // Default implementation - no transformation.
+    // Pascal SendMousePos (DebugDisplayUnit.pas:3555-3568) sends RAW client pixels
+    // for dis_logic/dis_scope/dis_scope_xy/dis_fft/dis_midi (no case branch). Those
+    // windows must NOT override this; only dis_spectro/dis_plot/dis_bitmap (pixel/
+    // dotsize, via transformPixelDotsize) and dis_term (char cells) transform.
     return { x, y };
+  }
+
+  /**
+   * Pascal SendMousePos pixel-mode transform (DebugDisplayUnit.pas:3556-3561),
+   * shared by the dis_spectro / dis_plot / dis_bitmap windows:
+   *   if vDirX then p.x := ClientWidth - p.x;
+   *   if not vDirY then p.y := ClientHeight - p.y;
+   *   p.x := p.x div vDotSize; p.y := p.y div vDotSizeY;
+   * clientWidth/clientHeight are the PIXEL canvas dimensions (logical * dotSize).
+   */
+  protected transformPixelDotsize(
+    x: number,
+    y: number,
+    opts: { dirX: boolean; dirY: boolean; dotSizeX: number; dotSizeY: number; clientWidth: number; clientHeight: number }
+  ): { x: number; y: number } {
+    if (opts.dirX) x = opts.clientWidth - x;
+    if (!opts.dirY) y = opts.clientHeight - y;
+    return {
+      x: Math.floor(x / Math.max(1, opts.dotSizeX)),
+      y: Math.floor(y / Math.max(1, opts.dotSizeY))
+    };
   }
 
   /**
