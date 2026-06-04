@@ -356,42 +356,55 @@ export class DebugColor {
     // Clamp brightness to 0-15
     brightness = Math.max(0, Math.min(15, brightness));
 
-    // Encode pixel value: (h << 5) | (p << 1)
-    // This matches Pascal: h shl 5 or p shl 1
-    let p = (colorIndex << 5) | (brightness << 1);
+    // Encode pixel value: (h << 5) | (p << 1) — Pascal: h shl 5 or p shl 1.
+    const pIn = (colorIndex << 5) | (brightness << 1);
+    const result = DebugColor.translateRgbi8x(pIn);
+    return `#${((result >>> 0) & 0xffffff).toString(16).padStart(6, '0')}`;
+  }
 
-    // Decode for RGBI8X mode (matches Pascal TranslateColor)
-    let v = (p >> 5) & 7; // Color index from bits 7-5
-    p = ((p & 0x1f) << 3) | ((p & 0x1c) >> 2); // Intensity from bits 4-0, expanded to 8 bits
+  /**
+   * Faithful port of Pascal TranslateColor(p, key_rgbi8x) — the RGBI8X branch of
+   * DebugDisplayUnit.pas:3110-3141. Returns RGB24 (0x00RRGGBB).
+   *
+   * The previous inline decode implemented ONLY the black-to-color branch and
+   * dropped the white-to-color (`w`) XOR path, so chromatic colors at the default
+   * brightness 8 came out wrong (e.g. BLUE -> 0x0000F6 instead of 0x0909FF). `w`
+   * is decided from the intensity BEFORE the key_*8x p-transform.
+   */
+  private static translateRgbi8x(pIn: number): number {
+    let v = (pIn >> 5) & 7; // color group (0..7); 0 = orange, 7 = gray
+    let p = ((pIn & 0x1f) << 3) | ((pIn & 0x1c) >> 2); // 5-bit intensity -> 8-bit
 
-    // RGBI8X mode: special intensity handling when v ≠ 7
-    // Pascal: if (mode in [key_luma8x, key_rgbi8x]) and (v <> 7) then
-    //   if (p >= $80) then p := not p and $7F shl 1 else p := p shl 1;
+    // rgbi8x: w (white-to-color) when v<>7 and the pre-transform intensity >= $80.
+    const w = v !== 7 && p >= 0x80;
     if (v !== 7) {
-      if (p >= 0x80) {
-        // Bright colors: invert and scale
-        p = (~p & 0x7f) << 1;
+      p = p >= 0x80 ? (~p & 0x7f) << 1 : p << 1;
+    }
+
+    if (w) {
+      // from white to color (Pascal :3124-3133)
+      if (v === 0) {
+        p = (((p << 7) & 0x007f00) | p) ^ 0xffffff; // orange
       } else {
-        // Dark colors: double intensity
-        p = p << 1;
+        const vv = v !== 7 ? v ^ 7 : v;
+        p =
+          ((((vv >> 2) & 1) * p) << 16) |
+          ((((vv >> 1) & 1) * p) << 8) |
+          ((((vv >> 0) & 1) * p) << 0);
+        p = p ^ 0xffffff;
+      }
+    } else {
+      // from black to color (Pascal :3135-3141)
+      if (v === 0) {
+        p = (p << 16) | ((p << 7) & 0x007f00); // orange
+      } else {
+        p =
+          ((((v >> 2) & 1) * p) << 16) |
+          ((((v >> 1) & 1) * p) << 8) |
+          ((((v >> 0) & 1) * p) << 0);
       }
     }
-
-    // Calculate RGB value
-    let result: number;
-
-    if (v === 0) {
-      // Orange special case: R=full, G=half, B=0
-      // Pascal: p := p shl 16 or p shl 7 and $007F00
-      result = (p << 16) | ((p << 7) & 0x007f00);
-    } else {
-      // Standard RGB bit expansion from color index
-      // Bits of v control which components get intensity:
-      // bit 2 (0x4) = Red, bit 1 (0x2) = Green, bit 0 (0x1) = Blue
-      result = ((((v >> 2) & 1) * p) << 16) | ((((v >> 1) & 1) * p) << 8) | ((((v >> 0) & 1) * p) << 0);
-    }
-
-    return `#${result.toString(16).padStart(6, '0')}`;
+    return (p >>> 0) & 0xffffff;
   }
 
   // ----------------------------------------------------------------------
