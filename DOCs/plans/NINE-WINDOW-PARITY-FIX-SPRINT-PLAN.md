@@ -14,6 +14,23 @@
 > `window-porting` sign-off. Pascal is the spec; every divergence found is an
 > IMPL-BUG or TS over-acceptance — no Pascal source-quirk is in play.
 
+## Sprint start (2026-06-04)
+
+- **Build number:** `0.9.27` (bumped rightmost digit from 0.9.26; `package.json`).
+- **Working-tree audit:** clean — fully committed, no untracked source in the blast
+  radius (`src/`, `tests/`, `scripts/`, `DOCs/`). Protection point confirmed.
+- **Backup:** `tasks/backups/project_dump_20260604_063156.json` (tasks + context).
+- **Tracking-readiness:** READY — 0 context keys, MEMORY.md 68 lines, no completed
+  tasks to archive. Parked: `#1` (debugger tail, pending HW). `#2` audit umbrella
+  in_progress — dispose (complete vs keep) before starting `#3`.
+- **Entry baseline (baseline-health):** Build **clean** (`tsc` 0 warnings; one
+  pre-existing esbuild direct-eval bundler notice at `mainWindow.ts:14`, out of scope).
+  Tests **80/80 pass, 0 failed, 0 skipped** via `scripts/claude/run_tests_sequentially.sh`.
+  **Caveat:** runner exercises 80 of 183 `tests/*.test.ts` files (103 not run by the
+  maintained runner) — "runner green" ≠ "all 183 green"; §17/§18 register tests added
+  this sprint. No regression vs the v0.9.26 green baseline. **This is the entry baseline
+  closeout compares the exit baseline against.**
+
 ## Open questions — RESOLVED at plan time
 
 All Phase-A "verify before fixing" items were confirmed against live code during
