@@ -806,8 +806,10 @@ export class DebugTermWindow extends DebugWindowBase {
   }
 
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // Await the async dispatch so updateContent() honors its documented "process
+    // immediately and await for proper ordering" contract (DebugWindowBase) — a
+    // fire-and-forget here let a later message's draw race an earlier one. [9win §14]
+    await this.processMessageAsync(lineParts);
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
