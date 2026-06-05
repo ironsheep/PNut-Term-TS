@@ -258,9 +258,10 @@ describe('ScopeXyRenderer', () => {
       expect(script).toContain('const circleCount = 4');
       expect(script).toContain('for (let i = 1; i < circleCount; i++)');  // Changed to < from <=
 
-      // Should have distinct outer perimeter circle with higher opacity
+      // Should have distinct outer perimeter circle at FULL opacity (Pascal draws the
+      // graticule solid in vGridColor at opacity 255 — [9win §10] corrected the old 0.5).
       expect(script).toContain('// Draw distinct outer perimeter circle');
-      expect(script).toContain('ctx.globalAlpha = 0.5;  // More visible than grid circles');
+      expect(script).toContain('ctx.globalAlpha = 1.0;');
       expect(script).toContain('ctx.arc(100, 100, 50, 0, Math.PI * 2)');  // Outer circle at full radius
     });
 

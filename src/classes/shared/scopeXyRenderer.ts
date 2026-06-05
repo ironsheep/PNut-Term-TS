@@ -22,6 +22,14 @@ export class ScopeXyRenderer {
   }
 
   /**
+   * Get the current grid color (Pascal vGridColor, default DefaultGridColor=clGray=0x404040).
+   * Source of truth for the graticule color so callers don't hardcode it. [9win §10]
+   */
+  public getGridColor(): number {
+    return this.gridColor;
+  }
+
+  /**
    * Transform cartesian coordinates with optional log scaling
    * Based on Pascal SCOPE_XY_Plot procedure
    * 
@@ -195,9 +203,10 @@ export class ScopeXyRenderer {
         ctx.stroke();
       }
 
-      // Draw distinct outer perimeter circle (Pascal SmoothShape equivalent)
-      // This is more prominent than the grid circles
-      ctx.globalAlpha = 0.5;  // More visible than grid circles
+      // Draw distinct outer perimeter circle (Pascal SmoothShape, opacity 255 -> full).
+      // Pascal draws the perimeter solid in vGridColor (DebugDisplayUnit.pas:3388); the
+      // faint 0.5 alpha was a non-Pascal deviation. [9win §10]
+      ctx.globalAlpha = 1.0;
       ctx.beginPath();
       ctx.arc(${centerX}, ${centerY}, ${radius}, 0, Math.PI * 2);
       ctx.stroke();

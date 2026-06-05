@@ -266,7 +266,11 @@ export class DebugScopeXyWindow extends DebugWindowBase {
               const rect = canvas.getBoundingClientRect();
               const x = e.clientX - rect.left;
               const y = e.clientY - rect.top;
-              if (ENABLE_CONSOLE_LOG) console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
+              // This console.log IS the wire that feeds the 'console-message' listener above,
+              // which transforms the pixel coords and updates the on-screen readout. It must
+              // always fire — the old if(ENABLE_CONSOLE_LOG) guard referenced a TS-only constant
+              // that doesn't exist in the renderer, so the readout never updated. [9win §10]
+              console.log('MOUSE:' + Math.floor(x) + ',' + Math.floor(y));
             }
           });
         `;
@@ -716,7 +720,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       if (element === 'SIZE') {
         if (i + 1 < lineParts.length) {
           const size = parseInt(lineParts[++i]);
-          this.radius = Math.max(32, Math.min(2048, size));
+          // Pascal key_size: vWidth := Within(val*2, scope_xy_wmin=32, scope_xy_wmax=2048),
+          // radius = vWidth/2 (DebugDisplayUnit.pas:1404). So the *diameter* is clamped, making
+          // valid radius input 16..1024 — e.g. SIZE 1025 -> 1024, SIZE 10 -> 16. [9win §10]
+          this.radius = Math.max(32, Math.min(2048, size * 2)) / 2;
         }
         i++;
         continue;
@@ -813,7 +820,17 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             const nextElement = lineParts[i + 1];
             // Only parse as twopi if it's not a quoted string
             if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
-              this.twopi = parseInt(lineParts[++i]) || 0x100000000;
+              // Pascal KeyTwoPi (DebugDisplayUnit.pas:2736): -1 wraps the angle the other way
+              // via vTwoPi := -$100000000; 0 (or absent) restores the default +$100000000;
+              // any other value is taken literally. parseInt('-1')||default lost the -1 case. [9win §10]
+              const polarVal = parseInt(lineParts[++i]);
+              if (polarVal === -1) {
+                this.twopi = -0x100000000;
+              } else if (polarVal === 0 || isNaN(polarVal)) {
+                this.twopi = 0x100000000;
+              } else {
+                this.twopi = polarVal;
+              }
               // Check for theta parameter
               if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
                 const nextNextElement = lineParts[i + 1];
@@ -893,11 +910,19 @@ export class DebugScopeXyWindow extends DebugWindowBase {
               }
             }
 
-            this.channels.push({ name: channelName, color });
-            this.channelIndex++;
-            this.logMessage(
-              `  Added channel ${this.channelIndex - 1}: '${channelName}' with color 0x${color.toString(16)}`
-            );
+            // Pascal SCOPE_XY_Configure (DebugDisplayUnit.pas:1431): `if vIndex <> Channels
+            // then Inc(vIndex)` — vIndex saturates at Channels(=8). A 9th+ label does NOT add
+            // a channel; it overwrites the last slot's label/color. [9win §10]
+            if (this.channels.length < 8) {
+              this.channels.push({ name: channelName, color });
+              this.channelIndex++;
+              this.logMessage(
+                `  Added channel ${this.channelIndex - 1}: '${channelName}' with color 0x${color.toString(16)}`
+              );
+            } else {
+              this.channels[7] = { name: channelName, color };
+              this.logMessage(`  Channel cap (8) reached — overwrote slot 7: '${channelName}'`);
+            }
           } else {
             this.logMessage(`  Skipping non-channel element: ${originalElement}`);
           }
@@ -1270,7 +1295,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // Generate all rendering scripts (but don't execute yet)
     const bgColorStr = `#${this.backgroundColor.toString(16).padStart(6, '0')}`;
-    const gridColorStr = `#${(0x808080).toString(16).padStart(6, '0')}`; // Medium gray grid for better visibility
+    // Pascal graticule is drawn in vGridColor (default 0x404040, overridable via the COLOR
+    // directive). Use the renderer's grid color as the source of truth rather than a
+    // hardcoded gray. [9win §10]
+    const gridColorStr = `#${this.renderer.getGridColor().toString(16).padStart(6, '0')}`;
 
     // Generate range indicator text
     // Pascal: TextOut(vBitmapWidth div 2 + ChrWidth * 2, ChrHeight div 2, s)
@@ -1380,9 +1408,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
       ctx.restore();
 
-      // 3. Draw range indicator
+      // 3. Draw range indicator (Pascal draws this text in vGridColor, DebugDisplayUnit.pas:3395)
       ctx.save();
-      ctx.fillStyle = '#808080';
+      ctx.fillStyle = '${gridColorStr}';
       ctx.font = '${this.textSize}px monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
