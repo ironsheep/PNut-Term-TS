@@ -107,6 +107,7 @@ describe('DebugLogicWindow', () => {
       spacing: 8,
       rate: 1000,
       lineSize: 1,
+      dotSize: 0,
       textSize: 12,
       font: { 
         textSizePts: 12,
@@ -172,11 +173,16 @@ describe('DebugLogicWindow', () => {
       expect(spec.nbrSamples).toBe(32);
       expect(spec.spacing).toBe(8);
       expect(spec.rate).toBe(1);
-      expect(spec.lineSize).toBe(1);
+      expect(spec.lineSize).toBe(3); // Pascal vLineSize := 3 (DebugDisplayUnit.pas:938) [9win §8]
+      expect(spec.dotSize).toBe(0); // Pascal vDotSize := 0 (:937) [9win §8]
       expect(spec.textSize).toBe(12);
       expect(spec.window.background).toBe('#000000');
-      expect(spec.window.grid).toBe('#373737'); // GRAY 4
+      expect(spec.window.grid).toBe('#404040'); // Pascal DefaultGridColor = clGray = $404040 [9win §8]
       expect(spec.hideXY).toBe(false);
+      // No channel labels given -> default 32 channels '0'..'31', all clLime [9win §8]
+      expect(spec.channelSpecs).toHaveLength(32);
+      expect(spec.channelSpecs[0]).toEqual({ name: '0', color: '#00ff00', nbrBits: 1, isRange: false });
+      expect(spec.channelSpecs[31]).toEqual({ name: '31', color: '#00ff00', nbrBits: 1, isRange: false });
     });
 
     it('should parse TITLE directive', () => {
@@ -232,10 +238,12 @@ describe('DebugLogicWindow', () => {
       
       expect(isValid).toBe(true);
       expect(spec.channelSpecs).toHaveLength(2);
+      // Channel color names resolve via the RGBI8X directive path (Pascal KeyColor):
+      // GREEN 8 -> 0x09FF09; a numeric ($FF0000) is taken verbatim. [9win §4/§8]
       expect(spec.channelSpecs[0]).toEqual({
         name: 'Channel0',
         nbrBits: 8,
-        color: '#00ff00'
+        color: '#09ff09'
       });
       expect(spec.channelSpecs[1]).toEqual({
         name: 'Data Bus',

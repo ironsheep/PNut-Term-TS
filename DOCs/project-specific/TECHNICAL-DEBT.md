@@ -2,6 +2,19 @@
 
 This document tracks technical debt items in the PNut-Term-TS project.
 
+## 9win-parity Sprint — Deferred Items
+
+### LOGIC RANGE bus-waveform rendering (LOW)
+
+§8 added full **parse-time** parity for the `'name' N RANGE {color}` bus variant
+(DebugDisplayUnit.pas:980-993): the group is flagged `isRange`, each expanded bit
+carries `busWidth`, the bit-count label sits on bit+1 in a quarter-intensity tint
+(`DebugLogicWindow.dimColor`, Pascal `color shr 2 and $3F3F3F`). The **renderer**
+(`drawAllChannelsFromBuffer` / `drawChannelFromSamples`) still draws each bus bit as
+an independent trace rather than as a single multi-bit value waveform. Labels and
+colors are correct; only the combined-waveform draw is outstanding. Verify against
+Pascal in the §18 visual/hardware pass; promote to a fix if the bus display is wrong.
+
 ## ssdbg-parity Sprint — Deferred Items (v0.9.26, 2026-06-02)
 
 The single-step debugger reached parity-complete / hardware-test-ready in the

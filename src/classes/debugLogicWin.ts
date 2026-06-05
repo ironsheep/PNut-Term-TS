@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { LogicTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { RateCycle } from './shared/rateCycle';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
@@ -45,6 +46,7 @@ export interface LogicDisplaySpec {
   spacing: number;
   rate: number;
   lineSize: number;
+  dotSize: number; // Pascal vDotSize (DebugDisplayUnit.pas:937, key_dotsize 0..32)
   textSize: number;
   font: FontMetrics;
   window: WindowColor;
@@ -60,6 +62,7 @@ export interface LogicChannelSpec {
   name: string;
   color: string;
   nbrBits: number;
+  isRange?: boolean; // RANGE bus-waveform variant (Pascal isRange := KeyIs(key_range), :984)
 }
 
 export interface LogicChannelBitSpec {
@@ -68,6 +71,7 @@ export interface LogicChannelBitSpec {
   chanNbr: number;
   height: number;
   base: number;
+  busWidth?: number; // >1 when this bit belongs to a RANGE bus group (Pascal vLogicBits := v, :987)
 }
 
 interface LogicChannelSamples {
@@ -213,8 +217,8 @@ export class DebugLogicWindow extends DebugWindowBase {
       trigEnabled: false,
       trigMask: 0,
       trigMatch: 1,
-      trigSampOffset: displaySpec.nbrSamples / 2,
-      trigHoldoff: 0
+      trigSampOffset: Math.floor(displaySpec.nbrSamples / 2), // Pascal vTriggerOffset := vSamples div 2 (:1022)
+      trigHoldoff: displaySpec.nbrSamples // Pascal vHoldOff := vSamples (:1023)
     };
     // Initialize the trigger processor
     this.triggerProcessor = new LogicTriggerProcessor();
@@ -242,6 +246,22 @@ export class DebugLogicWindow extends DebugWindowBase {
     const defaultColorNames: string[] = ['LIME', 'RED', 'CYAN', 'YELLOW', 'MAGENTA', 'BLUE', 'ORANGE', 'OLIVE'];
     const desiredName = defaultColorNames[chanNumber % defaultColorNames.length];
     return desiredName;
+  }
+
+  /**
+   * Dim a #rrggbb color to one-quarter intensity, matching Pascal's RANGE
+   * bus bit-count label color: `vLogicColor shr 2 and $3F3F3F`
+   * (DebugDisplayUnit.pas:991). Shifting the packed 24-bit value right by 2 then
+   * masking $3F3F3F divides each 8-bit channel by 4. [9win §8]
+   */
+  public static dimColor(rgbHexString: string): string {
+    const hex = rgbHexString.startsWith('#') ? rgbHexString.substring(1) : rgbHexString;
+    const value = parseInt(hex, 16);
+    if (Number.isNaN(value)) {
+      return rgbHexString; // leave untouched if not a parseable hex color
+    }
+    const dimmed = (value >> 2) & 0x3f3f3f;
+    return `#${dimmed.toString(16).padStart(6, '0')}`;
   }
 
   get windowTitle(): string {
@@ -278,16 +298,18 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // set defaults
     const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK');
-    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY3', 4);
     DebugLogicWindow.logConsoleMessageStatic(`CL: at parseLogicDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.nbrSamples = 32;
     displaySpec.spacing = 8;
     displaySpec.rate = 1;
-    displaySpec.lineSize = 1;
+    displaySpec.lineSize = 3; // Pascal vLineSize := 3 (DebugDisplayUnit.pas:938) [9win §8]
+    displaySpec.dotSize = 0; // Pascal vDotSize := 0 (DebugDisplayUnit.pas:937) [9win §8]
     displaySpec.window.background = bkgndColor.rgbString;
-    displaySpec.window.grid = gridColor.rgbString;
+    // Pascal DefaultGridColor = clGray = $404040 (DebugDisplayUnit.pas:189,194) — a literal,
+    // applied with no brightness gradient (key_color only overrides via KeyColor). [9win §8]
+    displaySpec.window.grid = '#404040';
     displaySpec.isPackedData = false;
     displaySpec.hideXY = false;
     displaySpec.textSize = 12;
@@ -353,40 +375,48 @@ export class DebugLogicWindow extends DebugWindowBase {
           if (displayString !== undefined) {
             // have name
             newChannelSpec.name = displayString;
-            // have name, now process rest of channel spec
-            //  ensure we have one more value (nbr-bits) and lineParts[++index] is decimal number
+            // have name, now process the optional tail: {bit-count {RANGE} {color}}
+            // Pascal grammar (DebugDisplayUnit.pas:974-1003): name, then optional
+            // KeyValWithin(v,1,LogicChannels), then optional KeyIs(key_range), then
+            // optional KeyColor — each independent. [9win §8]
+            // Optional bit-count (default 1; Pascal clamps 1..LogicChannels=32)
             if (index < lineParts.length - 1 && /^[0-9]+$/.test(lineParts[index + 1])) {
-              // if have nbrBits, grab it
-              newChannelSpec.nbrBits = Number(lineParts[++index]);
-              if (index < lineParts.length - 1 && lineParts[index + 1].includes("'") == false) {
-                // if have color, grab it
-                const colorOrColorName = lineParts[++index];
-                // if color is a number, then it is a rgb24 value
-                // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
-                const [isValidRgb24, colorHexRgb24] = this.getValidRgb24(colorOrColorName);
-                DebugLogicWindow.logConsoleMessageStatic(
-                  `CL: LogicDisplaySpec - colorOrColorName: [${colorOrColorName}], isValidRgb24=(${isValidRgb24})`
-                );
-                if (isValidRgb24) {
-                  // color is a number and is converted to #rrbbgg string
-                  newChannelSpec.color = colorHexRgb24;
-                } else {
-                  // color is a name, so grab possible brightness
-                  let brightness: number = 8; // default brightness
-                  if (index < lineParts.length - 1) {
-                    // let's ensure lineParts[++index] is a string of decimal digits or hex digits (hex prefix is $)
-                    const brightnessStr = lineParts[++index].replace(/_/g, '');
-                    if (brightnessStr.startsWith('$') && /^[0-9A-Fa-f]+$/.test(brightnessStr.substring(1))) {
-                      brightness = parseInt(brightnessStr.substring(1), 16);
-                    } else if (/^[0-9]+$/.test(brightnessStr)) {
-                      brightness = parseInt(brightnessStr, 10);
-                    } else {
-                      index--; // back up to allow reprocess of this... (not part of color spec!)
-                    }
+              newChannelSpec.nbrBits = Math.max(1, Math.min(32, Number(lineParts[++index])));
+            }
+            // Optional RANGE keyword -> bus-waveform variant (Pascal isRange := KeyIs(key_range), :984)
+            if (index < lineParts.length - 1 && lineParts[index + 1].toUpperCase() === 'RANGE') {
+              newChannelSpec.isRange = true;
+              index++; // consume RANGE
+            }
+            // Optional color (rgb24 number, or name + optional 0..15 brightness)
+            if (index < lineParts.length - 1 && lineParts[index + 1].includes("'") == false) {
+              // if have color, grab it
+              const colorOrColorName = lineParts[++index];
+              // if color is a number, then it is a rgb24 value
+              // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
+              const [isValidRgb24, colorHexRgb24] = this.getValidRgb24(colorOrColorName);
+              DebugLogicWindow.logConsoleMessageStatic(
+                `CL: LogicDisplaySpec - colorOrColorName: [${colorOrColorName}], isValidRgb24=(${isValidRgb24})`
+              );
+              if (isValidRgb24) {
+                // color is a number and is converted to #rrbbgg string
+                newChannelSpec.color = colorHexRgb24;
+              } else {
+                // color is a name, so grab possible brightness
+                let brightness: number = 8; // default brightness
+                if (index < lineParts.length - 1) {
+                  // let's ensure lineParts[++index] is a string of decimal digits or hex digits (hex prefix is $)
+                  const brightnessStr = lineParts[++index].replace(/_/g, '');
+                  if (brightnessStr.startsWith('$') && /^[0-9A-Fa-f]+$/.test(brightnessStr.substring(1))) {
+                    brightness = parseInt(brightnessStr.substring(1), 16);
+                  } else if (/^[0-9]+$/.test(brightnessStr)) {
+                    brightness = parseInt(brightnessStr, 10);
+                  } else {
+                    index--; // back up to allow reprocess of this... (not part of color spec!)
                   }
-                  const channelColor = new DebugColor(colorOrColorName, brightness);
-                  newChannelSpec.color = channelColor.rgbString;
                 }
+                const channelColor = new DebugColor(colorOrColorName, brightness);
+                newChannelSpec.color = channelColor.rgbString;
               }
             }
             //console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
@@ -455,6 +485,56 @@ export class DebugLogicWindow extends DebugWindowBase {
                 }
                 break;
 
+              case 'RATE': {
+                // Pascal key_rate: KeyValWithin(vRate, 1, LogicSets=2048) (:955). Clamp,
+                // never abort — dropping this used to silently kill all later directives. [9win §8]
+                if (index < lineParts.length - 1) {
+                  const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                  if (v !== null) {
+                    displaySpec.rate = DisplaySpecParser.clamp(v, 1, 2048);
+                    index++;
+                  }
+                }
+                break;
+              }
+
+              case 'DOTSIZE': {
+                // Pascal key_dotsize: KeyValWithin(vDotSize, 0, 32) (:956) [9win §8]
+                if (index < lineParts.length - 1) {
+                  const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                  if (v !== null) {
+                    displaySpec.dotSize = DisplaySpecParser.clamp(v, 0, 32);
+                    index++;
+                  }
+                }
+                break;
+              }
+
+              case 'LINESIZE': {
+                // Pascal key_linesize: KeyValWithin(vLineSize, 1, 32) (:957) [9win §8]
+                if (index < lineParts.length - 1) {
+                  const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                  if (v !== null) {
+                    displaySpec.lineSize = DisplaySpecParser.clamp(v, 1, 32);
+                    index++;
+                  }
+                }
+                break;
+              }
+
+              case 'TEXTSIZE': {
+                // Pascal key_textsize: KeyTextSize -> KeyValWithin(vTextSize, 6, 200) (:958) [9win §8]
+                if (index < lineParts.length - 1) {
+                  const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                  if (v !== null) {
+                    displaySpec.textSize = DisplaySpecParser.clamp(v, 6, 200);
+                    DebugLogicWindow.calcMetricsForFontPtSize(displaySpec.textSize, displaySpec.font);
+                    index++;
+                  }
+                }
+                break;
+              }
+
               case 'HIDEXY':
                 // just set it!
                 displaySpec.hideXY = true;
@@ -477,6 +557,15 @@ export class DebugLogicWindow extends DebugWindowBase {
         if (!isValid) {
           break;
         }
+      }
+    }
+    // Pascal: if no channel labels were given, default to 32 channels labeled '0'..'31',
+    // each 1 bit, all colored DefaultScopeColors[0]=clLime (DebugDisplayUnit.pas:1008-1017).
+    // The prior TS made 0 channels here -> empty LOGIC window. [9win §8]
+    if (isValid && displaySpec.channelSpecs.length === 0) {
+      const limeColor: string = DebugColor.fromDefaultName('LIME', 8).rgbString;
+      for (let chan = 0; chan < 32; chan++) {
+        displaySpec.channelSpecs.push({ name: `${chan}`, color: limeColor, nbrBits: 1, isRange: false });
       }
     }
     DebugLogicWindow.logConsoleMessageStatic(
@@ -510,7 +599,19 @@ export class DebugLogicWindow extends DebugWindowBase {
       for (let activeIdx = 0; activeIdx < bitsInGroup; activeIdx++) {
         const bitIdx: number = activeBitChannels + activeIdx;
         let chanLabel: string;
-        if (bitsInGroup == 1) {
+        let bitColor: string = groupColor;
+        if (channelSpec.isRange) {
+          // RANGE bus-waveform variant (Pascal :985-993): label[0]=name, label[1]=bit-count
+          // (in a dimmed color), label[>1]=''. Each bit carries the bus width.
+          if (activeIdx == 0) {
+            chanLabel = `${channelSpec.name}`;
+          } else if (activeIdx == 1) {
+            chanLabel = `${bitsInGroup}`; // Pascal vLogicLabel[+1] := IntToStr(v)
+            bitColor = DebugLogicWindow.dimColor(groupColor); // Pascal: color shr 2 and $3F3F3F
+          } else {
+            chanLabel = ``; // Pascal vLogicLabel[+i>1] := ''
+          }
+        } else if (bitsInGroup == 1) {
           chanLabel = `${channelSpec.name}`;
         } else {
           if (activeIdx == 0) {
@@ -522,10 +623,13 @@ export class DebugLogicWindow extends DebugWindowBase {
         // fill in our channel bit spec
         let newSpec: LogicChannelBitSpec = {} as LogicChannelBitSpec;
         newSpec.name = chanLabel;
-        newSpec.color = groupColor;
+        newSpec.color = bitColor;
         newSpec.chanNbr = bitIdx;
         newSpec.height = canvasHeight;
         newSpec.base = channelBase;
+        if (channelSpec.isRange) {
+          newSpec.busWidth = bitsInGroup; // Pascal vLogicBits[+i] := v
+        }
         // and update to next base
         channelBase += canvasHeight;
         // record the new bit spec
@@ -1095,8 +1199,10 @@ export class DebugLogicWindow extends DebugWindowBase {
           // parse trigger spec update
           //   TRIGGER1 mask2 match3 {sample_offset4}
           this.triggerSpec.trigEnabled = true;
-          // Arm the trigger when enabled
-          this.triggerArmed = true;
+          // Pascal key_trigger: vArmed := False (DebugDisplayUnit.pas:1045). The trigger
+          // arms only after a NON-matching sample is seen (edge detect), not on the
+          // directive itself — arming here defeated the mask/match logic. [9win §8]
+          this.triggerArmed = false;
           this.triggerFired = false;
           this.holdoffCounter = 0;
           // Update trigger status when first enabled
@@ -1133,10 +1239,14 @@ export class DebugLogicWindow extends DebugWindowBase {
         } else if (lineParts[index].toUpperCase() == 'HOLDOFF') {
           // parse trigger spec update
           //   HOLDOFF1 <2-2048>2
-          if (lineParts.length > 2) {
+          // Pascal key_holdoff: if KeyValWithin(vHoldOff, 2, LogicSets=2048) then
+          // vHoldOffCount := 0 (DebugDisplayUnit.pas:1051) — clamp into range and reset
+          // the running counter only when a value was actually supplied. [9win §8]
+          if (index + 1 < lineParts.length) {
             const [isValidNumber, holdoff] = this.isSpinNumber(lineParts[index + 1]);
             if (isValidNumber) {
-              this.triggerSpec.trigHoldoff = holdoff;
+              this.triggerSpec.trigHoldoff = DisplaySpecParser.clamp(holdoff, 2, 2048);
+              this.holdoffCounter = 0; // Pascal vHoldOffCount := 0
               index++; // show we consumed the holdoff value
             }
           } else {
