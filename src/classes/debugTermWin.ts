@@ -139,6 +139,11 @@ export class DebugTermWindow extends DebugWindowBase {
   private deferredCommands: string[] = [];
   private cursorPosition: Position = { x: 0, y: 0 };
   private selectedCombo: number = 0;
+  // Runtime text-color overrides (Pascal vTextColor / vTextBackColor). A named color
+  // (BLACK..GRAY) or BACKCOLOR at run time sets these; a combo-select (codes 4-7) clears
+  // them so the selected combo applies. null => use colorCombos[selectedCombo]. [9win §14]
+  private currentFgOverride: string | null = null;
+  private currentBgOverride: string | null = null;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
   private offscreenCanvasInitialized: boolean = false;
 
@@ -229,7 +234,7 @@ export class DebugTermWindow extends DebugWindowBase {
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
     displaySpec.size = { columns: 40, rows: 20 };
-    DebugWindowBase.calcMetricsForFontPtSize(12, displaySpec.font);
+    DebugWindowBase.calcMetricsForFontPtSize(10, displaySpec.font); // Pascal FontSize = 10 [9win §14]
     displaySpec.window.background = bkgndColor.rgbString;
     displaySpec.window.grid = gridColor.rgbString;
     displaySpec.textColor = textColor.rgbString;
@@ -286,11 +291,12 @@ export class DebugTermWindow extends DebugWindowBase {
             if (index < lineParts.length - 2) {
               const columns = Spin2NumericParser.parseCount(lineParts[++index]);
               const rows = Spin2NumericParser.parseCount(lineParts[++index]);
-              if (columns !== null && rows !== null && columns >= 1 && rows >= 1) {
-                displaySpec.size.columns = Math.min(columns, 256);
-                displaySpec.size.rows = Math.min(rows, 256);
+              if (columns !== null && rows !== null) {
+                // Pascal KeyValWithin CLAMPS rather than aborting the parse. [9win §14]
+                displaySpec.size.columns = Math.max(1, Math.min(columns, 256));
+                displaySpec.size.rows = Math.max(1, Math.min(rows, 256));
               } else {
-                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid size values (must be 1-256)`);
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing size values`);
                 isValid = false;
               }
             } else {
@@ -302,12 +308,14 @@ export class DebugTermWindow extends DebugWindowBase {
             // ensure we have one more value
             if (index < lineParts.length - 1) {
               const textSize = Spin2NumericParser.parseCount(lineParts[++index]);
-              if (textSize !== null && textSize >= 6 && textSize <= 200) {
+              if (textSize !== null) {
+                // Pascal KeyTextSize = KeyValWithin(vTextSize, 6, 200) — CLAMPS, never aborts. [9win §14]
+                const clamped = Math.max(6, Math.min(textSize, 200));
                 // For TERM windows, TEXTSIZE represents the full row height
                 // This is different from other windows which use standard font metrics
-                DebugTermWindow.calcTerminalFontMetrics(textSize, displaySpec.font);
+                DebugTermWindow.calcTerminalFontMetrics(clamped, displaySpec.font);
               } else {
-                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid text size (must be 6-200)`);
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing text size value`);
                 isValid = false;
               }
             } else {
@@ -871,23 +879,35 @@ export class DebugTermWindow extends DebugWindowBase {
         // numeric data (actions, mostly)
         const action: number = parseInt(lineParts[index], 10);
         if (action == 2 || action == 3) {
-          // pass param value with goto line, goto column
+          // SET column (2) / row (3): consumes the FOLLOWING parameter token (Pascal
+          // KeyValWithin). Previously the action also fell through to the generic branch
+          // below (double-dispatch) and the param was re-processed as its own action. [9win §14]
           if (index + 1 < lineParts.length) {
             this.updateTermDisplay(`${action} ${lineParts[index + 1]}`);
+            index++; // consume the parameter so it is not re-dispatched
           } else {
             this.logMessage(`* UPD-ERROR  missing value for action ${action}`);
           }
-        }
-        if (action >= 32 && action <= 255) {
+        } else if (action >= 32 && action <= 255) {
           // printable character
           this.updateTermDisplay(`'${String.fromCharCode(action)}'`);
         } else {
-          // all other actions
+          // all other control codes
           this.updateTermDisplay(`${action}`);
+          // Pascal :2298-2302: CR (13) swallows an immediately-following LF (10) so the
+          // pair 13 10 yields a SINGLE newline, not two. [9win §14]
+          if (action === 13 && index + 1 < lineParts.length && parseInt(lineParts[index + 1], 10) === 10) {
+            index++;
+          }
         }
       } else {
-        // Unknown directive - base class didn't handle it, and it's not a TERM-specific code
-        this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]}\nCommand: ${unparsedCommand}`);
+        // Runtime named color (BLACK..GRAY) or BACKCOLOR (Pascal :2232-2239), else unknown. [9win §14]
+        const consumed = this.handleRuntimeColorToken(lineParts, index);
+        if (consumed >= 0) {
+          index += consumed;
+        } else {
+          this.logMessage(`* UPD-ERROR  unknown directive: ${lineParts[index]}\nCommand: ${unparsedCommand}`);
+        }
       }
     }
   }
@@ -906,6 +926,64 @@ export class DebugTermWindow extends DebugWindowBase {
    */
   protected forceDisplayUpdate(): void {
     this.updateVisibleCanvas();
+  }
+
+  /**
+   * Handle a runtime color token in the TERM update stream. A directive color name
+   * (BLACK..GRAY) sets the text foreground (and, if a second color follows, the
+   * background); BACKCOLOR sets only the background. Mirrors Pascal TERM_Update
+   * key_black..key_gray / key_backcolor (:2232-2239) and KeyColor's optional-brightness
+   * consumption (:2752+). Returns the number of EXTRA tokens consumed beyond
+   * lineParts[index], or -1 if the token is not a color directive. [9win §14]
+   */
+  private handleRuntimeColorToken(lineParts: string[], index: number): number {
+    const token = lineParts[index];
+    const isBrightness = (t: string | undefined): boolean => t !== undefined && /^\d+$/.test(t);
+    const isBlackOrWhite = (name: string): boolean => {
+      const u = name.toUpperCase();
+      return u === 'BLACK' || u === 'WHITE';
+    };
+
+    if (token.toUpperCase() === 'BACKCOLOR') {
+      // BACKCOLOR color {brightness} -> text background only (Pascal :2238-2239)
+      if (index + 1 < lineParts.length && DebugColor.isValidDirectiveColorName(lineParts[index + 1])) {
+        const name = lineParts[index + 1];
+        let consumed = 1;
+        let brightness = 8;
+        if (!isBlackOrWhite(name) && isBrightness(lineParts[index + 2])) {
+          brightness = Number(lineParts[index + 2]) & 15;
+          consumed = 2;
+        }
+        this.currentBgOverride = new DebugColor(name, brightness).rgbString;
+        return consumed;
+      }
+      return 0; // BACKCOLOR with no following color: recognized but nothing to set
+    }
+
+    if (DebugColor.isValidDirectiveColorName(token)) {
+      // foreground color (+ optional brightness) — Pascal Dec(ptr); KeyColor(vTextColor)
+      let consumed = 0;
+      let fgBright = 8;
+      if (!isBlackOrWhite(token) && isBrightness(lineParts[index + 1])) {
+        fgBright = Number(lineParts[index + 1]) & 15;
+        consumed = 1;
+      }
+      this.currentFgOverride = new DebugColor(token, fgBright).rgbString;
+      // optional second color -> background — Pascal KeyColor(vTextBackColor)
+      const bgIdx = index + 1 + consumed;
+      if (bgIdx < lineParts.length && DebugColor.isValidDirectiveColorName(lineParts[bgIdx])) {
+        const bgName = lineParts[bgIdx];
+        consumed += 1;
+        let bgBright = 8;
+        if (!isBlackOrWhite(bgName) && isBrightness(lineParts[bgIdx + 1])) {
+          bgBright = Number(lineParts[bgIdx + 1]) & 15;
+          consumed += 1;
+        }
+        this.currentBgOverride = new DebugColor(bgName, bgBright).rgbString;
+      }
+      return consumed;
+    }
+    return -1;
   }
 
   private updateTermDisplay(text: string): void {
@@ -995,8 +1073,11 @@ export class DebugTermWindow extends DebugWindowBase {
         case 5:
         case 6:
         case 7:
-          // select color combo #0-3
+          // select color combo #0-3 — Pascal copies the combo pair into vTextColor/
+          // vTextBackColor (:2276-2280), so clear any runtime named-color override. [9win §14]
           this.selectedCombo = action - 4;
+          this.currentFgOverride = null;
+          this.currentBgOverride = null;
           break;
         case 8:
           // backspace - matches Pascal implementation
@@ -1178,8 +1259,8 @@ export class DebugTermWindow extends DebugWindowBase {
       // Push down by about 20% of charHeight to center better
       const verticalAdjust: number = Math.round(this.displaySpec.font.charHeight * 0.2);
       const textYbaseline: number = textYOffset + verticalAdjust;
-      const fgColor: string = this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
-      const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
+      const fgColor: string = this.currentFgOverride ?? this.displaySpec.colorCombos[this.selectedCombo].fgcolor;
+      const bgcolor: string = this.currentBgOverride ?? this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
       const fontSpec: string = `normal ${textSizePts}pt Consolas, monospace`;
 
       // Draw to offscreen canvas (Pascal's Bitmap[0])
