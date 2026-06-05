@@ -3,189 +3,172 @@
 'use strict';
 
 // tests/debugColor.test.ts
+//
+// [9win §4b] DebugColor — the TWO distinct color systems (do NOT unify):
+//   1. DIRECTIVE (RGBI8X): the COLOR / BLACK..GRAY {brightness} directive.
+//      `new DebugColor(name, b)` resolves a NAME via Pascal's RGBI8X
+//      TranslateColor(h shl 5 or p shl 1, key_rgbi8x). e.g. BLUE 8 -> #0909ff.
+//   2. DEFAULT (clXxx): per-window default colors (DefaultScopeColors / Default*Color).
+//      `DebugColor.fromDefaultName(name, b)` resolves a NAME via the clXxx table
+//      with a brightness gradient. e.g. clBlue -> #7f7fff.
+// The canonical RGBI8X directive values are locked in rgbi8xDirectiveColor.test.ts.
 
 import { DebugColor } from '../src/classes/shared/debugColor';
 
-describe('DebugColor', () => {
-  describe('Color Names', () => {
-    it('should validate all 10 basic color names', () => {
-      const basicColors = ['BLACK', 'WHITE', 'ORANGE', 'BLUE', 'GREEN', 'CYAN', 'RED', 'MAGENTA', 'YELLOW', 'GRAY'];
-      
-      basicColors.forEach(color => {
-        expect(DebugColor.isValidColorName(color)).toBe(true);
-        expect(DebugColor.isValidColorName(color.toLowerCase())).toBe(true); // Test case insensitivity
+describe('DebugColor [9win §4b]', () => {
+  describe('Directive color-name validity (10-name set)', () => {
+    const tenNames = ['BLACK', 'WHITE', 'ORANGE', 'BLUE', 'GREEN', 'CYAN', 'RED', 'MAGENTA', 'YELLOW', 'GRAY'];
+
+    it('accepts the 10 directive names (case-insensitive)', () => {
+      tenNames.forEach((color) => {
+        expect(DebugColor.isValidDirectiveColorName(color)).toBe(true);
+        expect(DebugColor.isValidDirectiveColorName(color.toLowerCase())).toBe(true);
+        expect(DebugColor.isValidColorName(color)).toBe(true); // alias of the directive check
       });
     });
 
-    it('should validate alternative spellings', () => {
-      expect(DebugColor.isValidColorName('GREY')).toBe(true); // Alternative spelling for GRAY
+    it('rejects aliases that are NOT directive colors', () => {
+      // These exist only as clXxx DEFAULT/legacy names — never valid for the directive path.
+      ['GREY', 'LIME', 'OLIVE', 'BLUE2', 'GRAY2', 'GRAY3'].forEach((name) => {
+        expect(DebugColor.isValidDirectiveColorName(name)).toBe(false);
+        expect(DebugColor.isValidColorName(name)).toBe(false);
+      });
     });
 
-    it('should reject invalid color names', () => {
-      expect(DebugColor.isValidColorName('PURPLE')).toBe(false);
-      expect(DebugColor.isValidColorName('PINK')).toBe(false);
-      expect(DebugColor.isValidColorName('')).toBe(false);
-    });
-  });
-
-  describe('Brightness Levels', () => {
-    it('should handle brightness level 0 (black)', () => {
-      const redZero = new DebugColor('RED', 0);
-      expect(redZero.rgbString).toBe('#000000'); // Brightness 0 is always black
-      
-      const whiteZero = new DebugColor('WHITE', 0);
-      expect(whiteZero.rgbString).toBe('#000000'); // Even white becomes black at brightness 0
-    });
-
-    it('should handle brightness level 15 (full color)', () => {
-      const redFull = new DebugColor('RED', 15);
-      expect(redFull.rgbString).toBe('#ff0000'); // Full red
-      
-      const blueFull = new DebugColor('BLUE', 15);
-      expect(blueFull.rgbString).toBe('#0000ff'); // Full blue
-    });
-
-    it('should handle intermediate brightness levels', () => {
-      const redHalf = new DebugColor('RED', 8);
-      expect(redHalf.rgbString).toBe('#880000'); // Approximately half brightness
-      
-      const greenQuarter = new DebugColor('GREEN', 4);
-      expect(greenQuarter.rgbString).toBe('#004400'); // Approximately quarter brightness
-    });
-
-    it('should clamp invalid brightness values', () => {
-      const redNegative = new DebugColor('RED', -5);
-      expect(redNegative.rgbString).toBe('#880000'); // Should use default brightness (8)
-      
-      const redTooHigh = new DebugColor('RED', 20);
-      expect(redTooHigh.rgbString).toBe('#880000'); // Should use default brightness (8)
+    it('rejects unknown color names', () => {
+      ['PURPLE', 'PINK', ''].forEach((name) => {
+        expect(DebugColor.isValidColorName(name)).toBe(false);
+      });
     });
   });
 
-  describe('parseColorSpec', () => {
-    it('should parse color names', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED');
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#ff0000');
-      expect(brightness).toBe(8); // Default brightness
+  describe('DIRECTIVE system — new DebugColor(name, brightness) is RGBI8X', () => {
+    it('resolves the 10 names at default brightness 8 to RGBI8X values', () => {
+      expect(new DebugColor('BLACK', 8).rgbString).toBe('#000000');
+      expect(new DebugColor('WHITE', 8).rgbString).toBe('#ffffff');
+      expect(new DebugColor('ORANGE', 8).rgbString).toBe('#ff8409');
+      expect(new DebugColor('BLUE', 8).rgbString).toBe('#0909ff');
+      expect(new DebugColor('GREEN', 8).rgbString).toBe('#09ff09');
+      expect(new DebugColor('CYAN', 8).rgbString).toBe('#09ffff');
+      expect(new DebugColor('RED', 8).rgbString).toBe('#ff0909');
+      expect(new DebugColor('MAGENTA', 8).rgbString).toBe('#ff09ff');
+      expect(new DebugColor('YELLOW', 8).rgbString).toBe('#ffff09');
+      expect(new DebugColor('GRAY', 8).rgbString).toBe('#848484');
     });
 
-    it('should parse color names with brightness', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED 12');
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#ff0000');
-      expect(brightness).toBe(12);
+    it('scales chromatic colors across the 0..15 brightness nibble', () => {
+      expect(new DebugColor('BLUE', 0).rgbString).toBe('#000000'); // toward black
+      expect(new DebugColor('BLUE', 4).rgbString).toBe('#000084');
+      expect(new DebugColor('BLUE', 8).rgbString).toBe('#0909ff'); // saturated
+      expect(new DebugColor('BLUE', 12).rgbString).toBe('#8d8dff'); // toward white
+      expect(new DebugColor('BLUE', 15).rgbString).toBe('#efefff');
+      expect(new DebugColor('RED', 0).rgbString).toBe('#000000');
     });
 
-    it('should parse hex colors with $ prefix', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('$FF00FF');
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#ff00ff');
-      expect(brightness).toBe(8); // Default brightness
+    it('WHITE ignores brightness (Pascal KeyColor sets $FFFFFF directly)', () => {
+      expect(new DebugColor('WHITE', 0).rgbString).toBe('#ffffff');
+      expect(new DebugColor('WHITE', 15).rgbString).toBe('#ffffff');
     });
 
-    it('should parse hex colors with # prefix', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('#00FF00');
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#00ff00');
-      expect(brightness).toBe(8); // Default brightness
+    it('clamps out-of-range brightness to the default (8)', () => {
+      expect(new DebugColor('RED', -5).rgbString).toBe('#ff0909'); // == RED 8
+      expect(new DebugColor('RED', 20).rgbString).toBe('#ff0909');
     });
 
-    it('should parse decimal color values', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('16711680'); // Red in decimal
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#ff0000');
-      expect(brightness).toBe(8); // Default brightness
-    });
-
-    it('should handle invalid color specs', () => {
-      const [isValid1] = DebugColor.parseColorSpec('INVALID');
-      expect(isValid1).toBe(false);
-      
-      const [isValid2] = DebugColor.parseColorSpec('$GGGGGG'); // Invalid hex
-      expect(isValid2).toBe(false);
-      
-      const [isValid3, hex3] = DebugColor.parseColorSpec('999999999'); // Too large decimal - should cap at 0xFFFFFF
-      expect(isValid3).toBe(true);
-      expect(hex3).toBe('#ffffff'); // Capped at max RGB value
-    });
-
-    it('should ignore invalid brightness values', () => {
-      const [isValid, hex, brightness] = DebugColor.parseColorSpec('RED 20');
-      expect(isValid).toBe(true);
-      expect(hex.toLowerCase()).toBe('#ff0000');
-      expect(brightness).toBe(8); // Should fall back to default, not 20
+    it('derives grid (brightness 6) and font (brightness 12) shades from the RGBI8X color', () => {
+      const red = new DebugColor('RED', 8);
+      expect(red.gridRgbString).toBe('#c60000');
+      expect(red.fontRgbString).toBe('#ff8d8d');
+      const blue = new DebugColor('BLUE', 8);
+      expect(blue.gridRgbString).toBe('#0000c6');
+      expect(blue.fontRgbString).toBe('#8d8dff');
     });
   });
 
-  describe('fromColorSpec', () => {
-    it('should create DebugColor from color name', () => {
-      const color = DebugColor.fromColorSpec('CYAN');
-      expect(color).not.toBeNull();
-      expect(color!.colorName).toBe('CYAN');
-      expect(color!.rgbString).toBe('#008888'); // Cyan at default brightness 8
+  describe('DEFAULT system — DebugColor.fromDefaultName(name, brightness) is clXxx', () => {
+    it('resolves names to clXxx values at full brightness (8)', () => {
+      expect(DebugColor.fromDefaultName('BLACK', 8).rgbString).toBe('#000000');
+      expect(DebugColor.fromDefaultName('WHITE', 8).rgbString).toBe('#ffffff');
+      expect(DebugColor.fromDefaultName('ORANGE', 8).rgbString).toBe('#ff7f00'); // clOrange
+      expect(DebugColor.fromDefaultName('BLUE', 8).rgbString).toBe('#7f7fff'); // clBlue
+      expect(DebugColor.fromDefaultName('LIME', 8).rgbString).toBe('#00ff00'); // clLime
+      expect(DebugColor.fromDefaultName('GREEN', 8).rgbString).toBe('#00ff00'); // == clLime
+      expect(DebugColor.fromDefaultName('CYAN', 8).rgbString).toBe('#00ffff');
+      expect(DebugColor.fromDefaultName('RED', 8).rgbString).toBe('#ff0000');
+      expect(DebugColor.fromDefaultName('MAGENTA', 8).rgbString).toBe('#ff00ff');
+      expect(DebugColor.fromDefaultName('YELLOW', 8).rgbString).toBe('#ffff00');
+      expect(DebugColor.fromDefaultName('OLIVE', 8).rgbString).toBe('#7f7f00'); // clOlive
     });
 
-    it('should create DebugColor from color name with brightness', () => {
-      const color = DebugColor.fromColorSpec('YELLOW 12');
-      expect(color).not.toBeNull();
-      expect(color!.colorName).toBe('YELLOW');
-      expect(color!.rgbString).toBe('#cccc00'); // Yellow at brightness 12
-    });
-
-    it('should create DebugColor from hex value', () => {
-      const color = DebugColor.fromColorSpec('$FF7F00');
-      expect(color).not.toBeNull();
-      expect(color!.colorName).toBe('ORANGE'); // Should match to ORANGE
-      expect(color!.rgbString).toBe('#884400'); // Orange at default brightness 8
-    });
-
-    it('should return null for invalid color specs', () => {
-      expect(DebugColor.fromColorSpec('INVALID')).toBeNull();
-      expect(DebugColor.fromColorSpec('')).toBeNull();
+    it('applies a brightness gradient to the clXxx base', () => {
+      expect(DebugColor.fromDefaultName('RED', 4).rgbString).toBe('#800000');
+      expect(DebugColor.fromDefaultName('RED', 0).rgbString).toBe('#000000');
+      expect(DebugColor.fromDefaultName('GRAY3', 4).rgbString).toBe('#686868');
     });
   });
 
-  describe('Grid and Font Colors', () => {
-    it('should generate correct grid color', () => {
-      const red = new DebugColor('RED', 10);
-      expect(red.gridRgbString).toBe('#660000'); // Red at grid brightness 6
+  describe('The two systems are distinct (must NOT be unified)', () => {
+    it('directive BLUE (RGBI8X) differs from default clBlue', () => {
+      expect(new DebugColor('BLUE', 8).rgbString).toBe('#0909ff');
+      expect(DebugColor.fromDefaultName('BLUE', 8).rgbString).toBe('#7f7fff');
+      expect(new DebugColor('BLUE', 8).rgbString).not.toBe(DebugColor.fromDefaultName('BLUE', 8).rgbString);
     });
 
-    it('should generate correct font color', () => {
-      const blue = new DebugColor('BLUE', 10);
-      expect(blue.fontRgbString).toBe('#0000cc'); // Blue at font brightness 12
+    it('directive ORANGE/RED also differ from their clXxx defaults', () => {
+      expect(new DebugColor('ORANGE', 8).rgbString).toBe('#ff8409');
+      expect(DebugColor.fromDefaultName('ORANGE', 8).rgbString).toBe('#ff7f00');
+      expect(new DebugColor('RED', 8).rgbString).toBe('#ff0909');
+      expect(DebugColor.fromDefaultName('RED', 8).rgbString).toBe('#ff0000');
+    });
+  });
+
+  describe('parseDirectiveColor (canonical COLOR-directive resolver)', () => {
+    it('resolves directive names via RGBI8X, with optional brightness', () => {
+      expect(DebugColor.parseDirectiveColor('BLUE')).toBe('#0909ff');
+      expect(DebugColor.parseDirectiveColor('BLUE 12')).toBe('#8d8dff');
+      expect(DebugColor.parseDirectiveColor('blue')).toBe('#0909ff'); // case-insensitive
+    });
+
+    it('resolves numeric color literals ($hex / decimal / #rrggbb)', () => {
+      expect(DebugColor.parseDirectiveColor('$FF00FF')).toBe('#ff00ff');
+      expect(DebugColor.parseDirectiveColor('255')).toBe('#0000ff');
+      expect(DebugColor.parseDirectiveColor('16711680')).toBe('#ff0000');
+      expect(DebugColor.parseDirectiveColor('#00ff00')).toBe('#00ff00');
+    });
+
+    it('returns null for non-directive names and garbage (Pascal KeyColor -> False)', () => {
+      expect(DebugColor.parseDirectiveColor('PURPLE')).toBeNull();
+      expect(DebugColor.parseDirectiveColor('GREY')).toBeNull(); // not a directive name
+      expect(DebugColor.parseDirectiveColor('NONSENSE')).toBeNull();
+    });
+  });
+
+  describe('parseColorSpec (clXxx table lookup, brightness reported separately)', () => {
+    it('parses color names to the clXxx base hex', () => {
+      expect(DebugColor.parseColorSpec('RED')).toEqual([true, '#ff0000', 8]);
+      expect(DebugColor.parseColorSpec('RED 12')).toEqual([true, '#ff0000', 12]);
+    });
+
+    it('parses numeric color values', () => {
+      const [v1, hex1] = DebugColor.parseColorSpec('$FF00FF');
+      expect(v1).toBe(true);
+      expect(hex1.toLowerCase()).toBe('#ff00ff');
+      const [v2, hex2] = DebugColor.parseColorSpec('16711680'); // red in decimal
+      expect(v2).toBe(true);
+      expect(hex2.toLowerCase()).toBe('#ff0000');
+    });
+
+    it('handles invalid specs and ignores out-of-range brightness', () => {
+      expect(DebugColor.parseColorSpec('INVALID')[0]).toBe(false);
+      expect(DebugColor.parseColorSpec('$GGGGGG')[0]).toBe(false);
+      expect(DebugColor.parseColorSpec('RED 20')).toEqual([true, '#ff0000', 8]); // brightness falls back
     });
   });
 
   describe('rgbStringWithBrightness', () => {
-    it('should return color at specified brightness', () => {
+    it('returns the directive base color at a specified brightness', () => {
       const green = new DebugColor('GREEN', 8);
-      expect(green.rgbStringWithBrightness(0)).toBe('#000000'); // Black
-      expect(green.rgbStringWithBrightness(4)).toBe('#004400'); // Quarter brightness
-      expect(green.rgbStringWithBrightness(8)).toBe('#008800'); // Half brightness
-      expect(green.rgbStringWithBrightness(15)).toBe('#00ff00'); // Full brightness
-    });
-  });
-
-  describe('Default Brightness Settings', () => {
-    it('should allow changing default brightness values', () => {
-      // Save original defaults
-      const originalBrightness = 8;
-      const originalFontBrightness = 12;
-      const originalGridBrightness = 6;
-      
-      // Change defaults
-      DebugColor.setDefaultBrightness(10, 14, 4);
-      
-      // Create new color with new defaults
-      const color = new DebugColor('MAGENTA');
-      expect(color.rgbString).toBe('#aa00aa'); // Magenta at brightness 10
-      expect(color.gridRgbString).toBe('#440044'); // Magenta at grid brightness 4
-      expect(color.fontRgbString).toBe('#ee00ee'); // Magenta at font brightness 14
-      
-      // Restore original defaults
-      DebugColor.setDefaultBrightness(originalBrightness, originalFontBrightness, originalGridBrightness);
+      expect(green.rgbStringWithBrightness(0)).toBe('#000000');
     });
   });
 });

@@ -182,7 +182,7 @@ describe('DisplaySpecParser', () => {
       
       expect(isValid).toBe(true);
       expect(consumed).toBe(2);
-      expect(windowColor.background).toBe('#00FF00');
+      expect(windowColor.background).toBe('#00ff00');
     });
 
     test('should parse decimal color value', () => {
@@ -194,21 +194,20 @@ describe('DisplaySpecParser', () => {
       expect(windowColor.background).toBe('#ff0000');
     });
 
-    test('should parse color names', () => {
-      // Note: Colors are returned as-is from DebugColor (full brightness, lowercase)
-      // except BLUE which uses uppercase format
+    test('should parse color names via the RGBI8X directive system [9win §4b]', () => {
+      // The window COLOR directive resolves names through Pascal KeyColor -> RGBI8X
+      // (NOT the clXxx default table). Verified values: rgbi8xDirectiveColor.test.ts.
       const colorTests = [
         { name: 'BLACK', hex: '#000000' },
         { name: 'WHITE', hex: '#ffffff' },
-        { name: 'RED', hex: '#ff0000' },
-        { name: 'GREEN', hex: '#00ff00' },
-        { name: 'BLUE', hex: '#7F7FFF' },     // Note: uppercase
-        { name: 'CYAN', hex: '#00ffff' },
-        { name: 'MAGENTA', hex: '#ff00ff' },
-        { name: 'YELLOW', hex: '#ffff00' },
-        { name: 'ORANGE', hex: '#ff7f00' },
-        { name: 'GRAY', hex: '#404040' },
-        { name: 'GREY', hex: '#404040' }
+        { name: 'RED', hex: '#ff0909' },
+        { name: 'GREEN', hex: '#09ff09' },
+        { name: 'BLUE', hex: '#0909ff' },
+        { name: 'CYAN', hex: '#09ffff' },
+        { name: 'MAGENTA', hex: '#ff09ff' },
+        { name: 'YELLOW', hex: '#ffff09' },
+        { name: 'ORANGE', hex: '#ff8409' },
+        { name: 'GRAY', hex: '#848484' }
       ];
 
       for (const test of colorTests) {
@@ -217,7 +216,15 @@ describe('DisplaySpecParser', () => {
 
         expect(isValid).toBe(true);
         expect(consumed).toBe(2);
-        expect(windowColor.background).toBe(test.hex); // Don't lowercase - BLUE returns uppercase
+        expect(windowColor.background).toBe(test.hex);
+      }
+    });
+
+    test('should reject alias names that are not the 10 directive colors [9win §4b]', () => {
+      // GREY/LIME/OLIVE etc. are clXxx/legacy names, not directive colors -> KeyColor fails.
+      for (const name of ['GREY', 'LIME', 'OLIVE']) {
+        const [isValid] = DisplaySpecParser.parseColorKeyword(['COLOR', name], 0);
+        expect(isValid).toBe(false);
       }
     });
 
@@ -228,7 +235,7 @@ describe('DisplaySpecParser', () => {
       expect(isValid).toBe(true);
       expect(consumed).toBe(3);
       expect(windowColor.background).toBe('#000000');
-      expect(windowColor.grid).toBe('#00ffff'); // CYAN full brightness
+      expect(windowColor.grid).toBe('#09ffff'); // CYAN via RGBI8X directive
     });
 
     test('should handle mixed color formats', () => {
@@ -238,7 +245,7 @@ describe('DisplaySpecParser', () => {
       expect(isValid).toBe(true);
       expect(consumed).toBe(3);
       expect(windowColor.background).toBe('#ff0000');
-      expect(windowColor.grid).toBe('#7F7FFF'); // BLUE (note: uppercase)
+      expect(windowColor.grid).toBe('#0909ff'); // BLUE via RGBI8X directive
     });
 
     test('should reject invalid color values', () => {
@@ -369,7 +376,7 @@ describe('DisplaySpecParser', () => {
       let [parsedColor, windowColor, colorConsumed] = DisplaySpecParser.parseColorKeyword(lineParts, index);
       expect(parsedColor).toBe(true);
       expect(windowColor.background).toBe('#000000');
-      expect(windowColor.grid).toBe('#404040'); // GRAY at default brightness
+      expect(windowColor.grid).toBe('#848484'); // GRAY via RGBI8X directive [9win §4b]
       index += colorConsumed;
 
       // Parse SAMPLES

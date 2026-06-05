@@ -219,27 +219,17 @@ describe('DebugWindowBase', () => {
 
   describe('Color Validation', () => {
     describe('getValidRgb24', () => {
-      it('should recognize color names', () => {
-        const colorTests = [
-          { input: 'BLACK', expected: '#000000' },
-          { input: 'WHITE', expected: '#ffffff' },
-          { input: 'ORANGE', expected: '#ff6600' },
-          { input: 'BLUE', expected: '#0080ff' },
-          { input: 'GREEN', expected: '#00ff00' },
-          { input: 'CYAN', expected: '#00ffff' },
-          { input: 'RED', expected: '#ff0000' },
-          { input: 'MAGENTA', expected: '#ff00ff' },
-          { input: 'YELLOW', expected: '#ffff00' },
-          { input: 'BROWN', expected: '#906020' },
-          { input: 'gray', expected: '#808080' },  // Case insensitive
-          { input: 'GRAY', expected: '#808080' }
-        ];
-
-        colorTests.forEach(test => {
-          const [isValid, color] = DebugWindowBase.getValidRgb24(test.input);
-          expect(isValid).toBe(true);
-          expect(color).toBe(test.expected);
-        });
+      it('should NOT resolve color names — numeric-only [9win §4b]', () => {
+        // getValidRgb24 is the "is this a numeric rgb24?" test. Color NAMES are
+        // intentionally rejected here so callers route them through the RGBI8X
+        // directive path (DebugColor) instead of a divergent local name map.
+        ['BLACK', 'WHITE', 'ORANGE', 'BLUE', 'GREEN', 'CYAN', 'RED', 'MAGENTA', 'YELLOW', 'GRAY', 'gray'].forEach(
+          (name) => {
+            const [isValid, color] = DebugWindowBase.getValidRgb24(name);
+            expect(isValid).toBe(false);
+            expect(color).toBe('#a5a5a5');
+          }
+        );
       });
 
       it('should parse numeric color values', () => {

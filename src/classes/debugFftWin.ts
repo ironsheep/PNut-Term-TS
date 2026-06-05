@@ -1247,8 +1247,9 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Parse a color string and return hex color
    */
   private parseChannelColor(colorStr: string): string {
-    const [isValid, hexColor] = DebugColor.parseColorSpec(colorStr);
-    return isValid ? hexColor : '#FFFFFF';
+    // FFT channel COLOR directive: name -> RGBI8X, number -> literal (Pascal KeyColor).
+    const resolved = DebugColor.parseDirectiveColor(colorStr);
+    return resolved ?? '#FFFFFF';
   }
 
   /**

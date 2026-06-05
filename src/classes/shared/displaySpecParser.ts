@@ -274,21 +274,9 @@ export class DisplaySpecParser {
    * - Color names with brightness: RED 12
    */
   private static parseColorValue(colorStr: string): string | null {
-    // Use DebugColor's comprehensive color parsing
-    const [isValid, hexColor, brightness] = DebugColor.parseColorSpec(colorStr);
-    
-    if (isValid) {
-      // If brightness is not default, apply it to the color
-      if (brightness !== DebugColor.defaultBrightness) {
-        const debugColor = DebugColor.fromColorSpec(colorStr);
-        if (debugColor) {
-          return debugColor.rgbString; // This already has brightness applied
-        }
-      }
-      return hexColor;
-    }
-    
-    return null;
+    // Window COLOR directive (Pascal key_color -> KeyColor): a color NAME resolves
+    // through RGBI8X, a number through the color mode. NOT the clXxx default table.
+    return DebugColor.parseDirectiveColor(colorStr);
   }
 
   /**

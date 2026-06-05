@@ -273,8 +273,8 @@ export class DebugLogicWindow extends DebugWindowBase {
     let isValid: boolean = false;
 
     // set defaults
-    const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY3', 4);
+    const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK');
+    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY3', 4);
     DebugLogicWindow.logConsoleMessageStatic(`CL: at parseLogicDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -314,7 +314,7 @@ export class DebugLogicWindow extends DebugWindowBase {
           const thisGroupNbr: number = displaySpec.channelSpecs.length;
           // Pascal DefaultScopeColors: [clLime=$00FF00, clRed=$FF0000, clCyan=$00FFFF, etc.] - full RGB values
           // Use brightness 8 for full saturated color matching Pascal's defaults
-          const defaultChannelColor = new DebugColor(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 8);
+          const defaultChannelColor = DebugColor.fromDefaultName(DebugLogicWindow.colorNameFmChanNumber(thisGroupNbr), 8);
           newChannelSpec.color = defaultChannelColor.rgbString; // might be overridden below
           newChannelSpec.nbrBits = 1; // default to 1 bit (may be overridden below)
           //console.log(`CL: LogicDisplaySpec - new default: ${JSON.stringify(newChannelSpec, null, 2)}`);

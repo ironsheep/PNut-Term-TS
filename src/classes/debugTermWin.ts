@@ -222,9 +222,9 @@ export class DebugTermWindow extends DebugWindowBase {
     let isValid: boolean = false;
 
     // set defaults
-    const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY', 4);
-    const textColor: DebugColor = new DebugColor('ORANGE', 8); // Pascal defaults use full color RGB values
+    const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK');
+    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY', 4);
+    const textColor: DebugColor = DebugColor.fromDefaultName('ORANGE', 8); // Pascal defaults use full color RGB values
     DebugTermWindow.logConsoleMessageStatic(`CL: at parseTermDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -239,9 +239,9 @@ export class DebugTermWindow extends DebugWindowBase {
     // Initialize default color combos to match Pascal DefaultTermColors
     // Pascal: (clOrange=$FF7F00, clBlack=$000000, clLime=$00FF00) - direct RGB values
     // Using brightness 8 gives full saturated color matching Pascal's defaults
-    const orangeColor = new DebugColor('ORANGE', 8).rgbString;
-    const blackColor = new DebugColor('BLACK', 0).rgbString; // Black is always black
-    const limeColor = new DebugColor('LIME', 8).rgbString;
+    const orangeColor = DebugColor.fromDefaultName('ORANGE', 8).rgbString;
+    const blackColor = DebugColor.fromDefaultName('BLACK', 0).rgbString; // Black is always black
+    const limeColor = DebugColor.fromDefaultName('LIME', 8).rgbString;
 
     displaySpec.colorCombos.push({ fgcolor: orangeColor, bgcolor: blackColor }); // Combo 0
     displaySpec.colorCombos.push({ fgcolor: blackColor, bgcolor: orangeColor }); // Combo 1

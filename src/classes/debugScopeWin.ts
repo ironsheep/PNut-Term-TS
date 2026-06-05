@@ -257,8 +257,8 @@ export class DebugScopeWindow extends DebugWindowBase {
     let isValid: boolean = false;
 
     // set defaults
-    const bkgndColor: DebugColor = new DebugColor('BLACK');
-    const gridColor: DebugColor = new DebugColor('GRAY3', 4);
+    const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK');
+    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY3', 4);
     // console.log(`CL: at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -807,6 +807,10 @@ export class DebugScopeWindow extends DebugWindowBase {
         const channelIndex = this.channelSpecs.length; // Current channel being added
         let colorName = defaultScopeColors[channelIndex % 8]; // Cycle through default colors like Pascal
         let colorBrightness = 8; // Default to full saturated color (brightness 8), not pale (15)
+        // Pascal: `if not KeyColor(color) then color := DefaultScopeColors[i]` — a
+        // channel color is the RGBI8X DIRECTIVE only when explicitly given; otherwise
+        // it falls back to the clXxx DefaultScopeColors. Track which path applies.
+        let colorExplicit = false;
         if (lineParts.length > 1 && lineParts[1].toUpperCase().startsWith('AUTO')) {
           // parse AUTO spec - set trigger auto mode for this channel
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
@@ -829,6 +833,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
           if (lineParts.length > 5) {
             colorName = lineParts[5];
+            colorExplicit = true;
           }
           if (lineParts.length > 6) {
             colorBrightness = Number(lineParts[6]);
@@ -872,6 +877,7 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
           if (lineParts.length > 6) {
             colorName = lineParts[6];
+            colorExplicit = true;
           }
           if (lineParts.length > 7) {
             colorBrightness = Number(lineParts[7]);
@@ -880,7 +886,10 @@ export class DebugScopeWindow extends DebugWindowBase {
             `DEBUG MANUAL PARSE: colorName='${colorName}' (from index 6), brightness=${colorBrightness} (from index 7)`
           );
         }
-        const channelColor = new DebugColor(colorName, colorBrightness);
+        // Explicit color -> RGBI8X directive system; default -> clXxx DefaultScopeColors.
+        const channelColor = colorExplicit
+          ? new DebugColor(colorName, colorBrightness)
+          : DebugColor.fromDefaultName(colorName, colorBrightness);
         channelSpec.color = channelColor.rgbString;
         channelSpec.gridColor = channelColor.gridRgbString;
         channelSpec.textColor = channelColor.fontRgbString;
@@ -1062,7 +1071,7 @@ export class DebugScopeWindow extends DebugWindowBase {
               this.isFirstNumericData = false;
               // Create default channel if none exist
               if (this.channelSpecs.length == 0) {
-                const defaultColor: DebugColor = new DebugColor('GREEN', 15);
+                const defaultColor: DebugColor = DebugColor.fromDefaultName('GREEN', 15);
                 // Pascal: vTall[i] := vHeight (SIZE directive IS the drawing area height)
                 this.channelSpecs.push({
                   name: 'Channel 0',

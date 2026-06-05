@@ -826,43 +826,24 @@ export abstract class DebugWindowBase extends EventEmitter {
   // CLASS (static) methods
   //   NOTE: static since used by derived class static methods
 
+  /**
+   * Validate/normalize a NUMERIC rgb24 color value (the "is this a number?" test
+   * at directive call sites). Color NAMES are intentionally NOT handled here so
+   * callers route them through the RGBI8X directive path (DebugColor) instead of
+   * a divergent local name map. Supports hex ($RRGGBB), decimal, binary (%),
+   * and quaternary (%%) formats.
+   */
   static getValidRgb24(possColorValue: string): [boolean, string] {
-    let rgbValue: string = '#a5a5a5'; // gray for unknown color
-    let isValid: boolean = false;
-
-    // First try to parse as a color name using DebugColor
-    const colorNameToHex: { [key: string]: string } = {
-      BLACK: '#000000',
-      WHITE: '#ffffff',
-      ORANGE: '#ff6600',
-      BLUE: '#0080ff',
-      GREEN: '#00ff00',
-      CYAN: '#00ffff',
-      RED: '#ff0000',
-      MAGENTA: '#ff00ff',
-      YELLOW: '#ffff00',
-      BROWN: '#906020',
-      GRAY: '#808080',
-      GREY: '#808080' // Alternative spelling
-    };
-
-    const upperColorName = possColorValue.toUpperCase();
-    if (colorNameToHex[upperColorName]) {
-      rgbValue = colorNameToHex[upperColorName];
-      isValid = true;
-    } else {
-      // Try to parse as numeric value using Spin2NumericParser
-      // This supports hex ($RRGGBB), decimal, binary (%), and quaternary (%%) formats
+    // NUMERIC only. Guard with isNumeric() so color NAMES are NOT matched here
+    // (Spin2NumericParser.parseColor has its own divergent named-color table);
+    // callers must route names through the RGBI8X directive path (DebugColor).
+    if (Spin2NumericParser.isNumeric(possColorValue)) {
       const colorValue = Spin2NumericParser.parseColor(possColorValue);
-
       if (colorValue !== null) {
-        // Convert to hex string format #RRGGBB
-        rgbValue = '#' + colorValue.toString(16).padStart(6, '0').toLowerCase();
-        isValid = true;
+        return [true, '#' + ((colorValue >>> 0) & 0xffffff).toString(16).padStart(6, '0').toLowerCase()];
       }
     }
-
-    return [isValid, rgbValue];
+    return [false, '#a5a5a5']; // gray for unknown / non-numeric color
   }
 
   static calcStyleFrom(

@@ -60,7 +60,25 @@ export class DebugColor {
     GRAY3: '#D0D0D0' // Legacy (Pascal: $D0D0D0 - Light Gray)
   };
 
-  constructor(colorName: string, brightness: number = DebugColor.defaultBrightness) {
+  /**
+   * Construct a color.
+   *
+   * THE TWO COLOR SYSTEMS (kept deliberately distinct — see Pascal KeyColor,
+   * DebugDisplayUnit.pas:2752):
+   *  - 'directive' (DEFAULT for this constructor): the COLOR / BLACK..GRAY {brightness}
+   *    DIRECTIVE system. A color NAME resolves through Pascal's RGBI8X
+   *    TranslateColor(h shl 5 or p shl 1, key_rgbi8x) — e.g. BLUE 8 -> 0x0909FF.
+   *  - 'default': the per-window DEFAULT-color system (Pascal DefaultScopeColors /
+   *    Default*Color). A color NAME resolves through the clXxx table — e.g.
+   *    clBlue -> 0x7F7FFF — with a brightness gradient applied. Use
+   *    DebugColor.fromDefaultName() for these; never the directive path.
+   * The two systems must NOT be unified: directive BLUE != default clBlue.
+   */
+  constructor(
+    colorName: string,
+    brightness: number = DebugColor.defaultBrightness,
+    system: 'directive' | 'default' = 'directive'
+  ) {
     // Validate brightness is 0-15
     if (brightness < 0 || brightness > 15) {
       // console.log(` DC: WARNING: brightness ${brightness} out of range 0-15, using default ${DebugColor.defaultBrightness}`);
@@ -68,21 +86,37 @@ export class DebugColor {
     }
 
     this.name = colorName;
-    this._colorValue = DebugColor.colorNameToNumber(colorName);
-    this._colorHexValue = DebugColor.colorNameToHexString(colorName);
-    this._calcBrightness = this.brightnessForHex(this._colorHexValue);
     this._brightness = brightness;
-
-    // Apply brightness to get the actual display color
-    this._dimmedColorValue = this.adjustBrightness(this._colorValue, this._brightness);
-    this.dimmedColor = this.hexColorString(this._dimmedColorValue);
 
     // Grid and font colors use their own brightness levels
     this.gridBrightness = DebugColor.defaultGridBrightness;
     this.fontBrightness = DebugColor.defaultFontBrightness;
 
-    this.gridColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.gridBrightness));
-    this.fontColor = this.hexColorString(this.adjustBrightness(this._colorValue, this.fontBrightness));
+    if (system === 'default') {
+      // clXxx DEFAULT system: base table value + brightness gradient
+      this._colorValue = DebugColor.colorNameToNumber(colorName);
+      this._dimmedColorValue = DebugColor.adjustBrightness(this._colorValue, this._brightness);
+      this.gridColor = this.hexColorString(DebugColor.adjustBrightness(this._colorValue, this.gridBrightness));
+      this.fontColor = this.hexColorString(DebugColor.adjustBrightness(this._colorValue, this.fontBrightness));
+    } else {
+      // RGBI8X DIRECTIVE system (Pascal KeyColor): name -> TranslateColor(...key_rgbi8x)
+      this._colorValue = DebugColor.directiveValue(colorName, DebugColor.defaultBrightness);
+      this._dimmedColorValue = DebugColor.directiveValue(colorName, this._brightness);
+      this.gridColor = this.hexColorString(DebugColor.directiveValue(colorName, this.gridBrightness));
+      this.fontColor = this.hexColorString(DebugColor.directiveValue(colorName, this.fontBrightness));
+    }
+    this.dimmedColor = this.hexColorString(this._dimmedColorValue);
+    this._colorHexValue = this.hexColorString(this._colorValue);
+    this._calcBrightness = this.brightnessForHex(this._colorHexValue);
+  }
+
+  /**
+   * Create a DEFAULT-color (clXxx) instance — for per-window default colors
+   * (DefaultScopeColors, Default*Color). NEVER use the directive constructor for
+   * defaults: directive BLUE (RGBI8X 0x0909FF) != default clBlue (0x7F7FFF).
+   */
+  public static fromDefaultName(colorName: string, brightness: number = DebugColor.defaultBrightness): DebugColor {
+    return new DebugColor(colorName, brightness, 'default');
   }
 
   public static setDefaultBrightness(
@@ -124,13 +158,92 @@ export class DebugColor {
     return this.fontColor;
   }
 
+  // The 10 COLOR-directive names (Pascal key_black..key_gray). Only these are
+  // valid for the COLOR / BLACK..GRAY directive path; aliases (GREY, LIME, OLIVE,
+  // GRAY2/3, BLUE2) are NOT directive colors and must be rejected there.
+  private static readonly directiveColorNames: string[] = [
+    'BLACK',
+    'WHITE',
+    'ORANGE',
+    'BLUE',
+    'GREEN',
+    'CYAN',
+    'RED',
+    'MAGENTA',
+    'YELLOW',
+    'GRAY'
+  ];
+
   /**
-   * Check if a color name is valid (case-insensitive)
+   * Is this one of the 10 valid COLOR-directive color names? (case-insensitive)
+   * Mirrors Pascal KeyColor's `val in [key_black..key_gray]` check.
+   */
+  public static isValidDirectiveColorName(colorName: string): boolean {
+    return colorName !== undefined && DebugColor.directiveColorNames.includes(colorName.toUpperCase());
+  }
+
+  /**
+   * Check if a color name is a valid COLOR-directive name (case-insensitive).
+   * Directive-path validity == the 10-name set (NOT the clXxx alias table).
    */
   public static isValidColorName(colorName: string): boolean {
-    const foundColor = DebugColor.colorNameToHex[colorName.toUpperCase()];
-    // console.log(` DC: * isValidColorName: ${colorName} -> ${foundColor}`);
-    return foundColor !== undefined;
+    return DebugColor.isValidDirectiveColorName(colorName);
+  }
+
+  /**
+   * Resolve a COLOR-directive RGBI8X numeric value for a name+brightness.
+   * Valid directive names use Pascal's RGBI8X path; anything else falls back
+   * gracefully to the clXxx table (with brightness gradient) so a stray default
+   * name passed here still renders sanely, then gray for truly unknown names.
+   */
+  private static directiveValue(colorName: string, brightness: number): number {
+    const upper = colorName.toUpperCase();
+    if (DebugColor.isValidDirectiveColorName(upper)) {
+      return DebugColor.rgbHexStringToNumber(DebugColor.colorNameToRGB24UsingRGBI8X(upper, brightness));
+    }
+    if (DebugColor.colorNameToHex[upper] !== undefined) {
+      return DebugColor.adjustBrightness(DebugColor.colorNameToNumber(upper), brightness);
+    }
+    return 0x5a5a5a; // unknown color name
+  }
+
+  /**
+   * Canonical COLOR-directive resolver. Accepts "NAME {brightness}" (RGBI8X) or a
+   * numeric color literal ($hex / decimal / %binary / #rrggbb). Returns a
+   * '#rrggbb' string, or null when the spec is neither a directive name nor a
+   * number (Pascal KeyColor returns False -> caller keeps its default).
+   */
+  public static parseDirectiveColor(colorSpec: string): string | null {
+    const parts = colorSpec.trim().split(/\s+/);
+    if (parts.length === 0 || parts[0] === '') {
+      return null;
+    }
+    const name = parts[0].toUpperCase();
+    if (DebugColor.isValidDirectiveColorName(name)) {
+      let brightness = DebugColor.defaultBrightness;
+      if (parts.length >= 2) {
+        const b = parseInt(parts[1], 10);
+        if (!isNaN(b) && b >= 0 && b <= 15) {
+          brightness = b;
+        }
+      }
+      return DebugColor.colorNameToRGB24UsingRGBI8X(name, brightness).toLowerCase();
+    }
+    // Web-style #rrggbb literal.
+    if (colorSpec.startsWith('#') && /^[0-9A-Fa-f]{6}$/.test(colorSpec.slice(1))) {
+      return colorSpec.toLowerCase();
+    }
+    // Numeric literal color (Pascal: TranslateColor(val, vColorMode); RGB24 here).
+    // Only attempt a numeric parse when the spec is actually numeric — Spin2NumericParser
+    // .parseColor() has its own (non-directive) named-color table that would otherwise
+    // wrongly accept names like PURPLE/GREY that are NOT valid directive colors.
+    if (Spin2NumericParser.isNumeric(colorSpec)) {
+      const colorValue = Spin2NumericParser.parseColor(colorSpec);
+      if (colorValue !== null) {
+        return '#' + ((colorValue >>> 0) & 0xffffff).toString(16).padStart(6, '0');
+      }
+    }
+    return null;
   }
 
   /**
@@ -236,7 +349,7 @@ export class DebugColor {
    * Brightness 9-15: Mix from WHITE to color (pale shades)
    * This matches Pascal's TranslateColor function for key_rgbi8x mode
    */
-  private adjustBrightness(color: number, brightness: number): number {
+  private static adjustBrightness(color: number, brightness: number): number {
     let adjustedColor: number = 0x000000;
 
     // Ensure brightness is in valid range 0-15
@@ -302,7 +415,7 @@ export class DebugColor {
    * Get the RGB hex string with brightness applied
    */
   public rgbStringWithBrightness(brightness: number): string {
-    const adjustedColor = this.adjustBrightness(this._colorValue, brightness);
+    const adjustedColor = DebugColor.adjustBrightness(this._colorValue, brightness);
     return this.hexColorString(adjustedColor);
   }
 
@@ -341,10 +454,7 @@ export class DebugColor {
       RED: 4, // key_red
       MAGENTA: 5, // key_magenta
       YELLOW: 6, // key_yellow
-      GRAY: 7, // key_gray
-      GREY: 7, // Alternative spelling
-      LIME: 2, // Alias for GREEN
-      OLIVE: 7 // Legacy - treat as GRAY
+      GRAY: 7 // key_gray
     };
 
     const colorIndex = colorIndices[upperName];

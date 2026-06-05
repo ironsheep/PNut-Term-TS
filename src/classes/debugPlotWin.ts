@@ -364,9 +364,9 @@ export class DebugPlotWindow extends DebugWindowBase {
     let isValid: boolean = false;
 
     // set defaults (use brightness 8 for full saturated colors in RGBI8X system)
-    const bkgndColor: DebugColor = new DebugColor('BLACK', 8); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
-    const gridColor: DebugColor = new DebugColor('GRAY', 4); // Dim gray for grid
-    const textColor: DebugColor = new DebugColor('WHITE', 8); // Pascal: DefaultTextColor = clWhite (full saturated white)
+    const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK', 8); // Pascal: DefaultBackColor = clBlack (brightness doesn't affect black)
+    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY', 4); // Dim gray for grid
+    const textColor: DebugColor = DebugColor.fromDefaultName('WHITE', 8); // Pascal: DefaultTextColor = clWhite (full saturated white)
     DebugPlotWindow.logConsoleMessageStatic(`CL: at parsePlotDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -2187,25 +2187,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Check if a token is a color command
    */
   private isColorCommand(token: string): boolean {
-    const colorCommands = [
-      'BLACK',
-      'WHITE',
-      'ORANGE',
-      'BLUE',
-      'GREEN',
-      'CYAN',
-      'RED',
-      'MAGENTA',
-      'YELLOW',
-      'GRAY',
-      'GREY',
-      'OLIVE',
-      'LIME',
-      'BLUE2',
-      'GRAY2',
-      'GRAY3'
-    ];
-    return colorCommands.includes(token);
+    // Only the 10 COLOR-directive names are valid (Pascal key_black..key_gray);
+    // aliases (GREY/OLIVE/LIME/BLUE2/GRAY2/GRAY3) are NOT directive colors.
+    return DebugColor.isValidDirectiveColorName(token);
   }
 
   /**
