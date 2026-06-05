@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ScopeTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { RateCycle } from './shared/rateCycle';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
@@ -59,6 +60,10 @@ export interface ScopeChannelSpec {
   lgndShowMin: boolean;
   lgndShowMaxLine: boolean;
   lgndShowMinLine: boolean;
+  // Per-channel autoscale (Pascal vAuto[i], DebugDisplayUnit.pas:1191,1222). When true,
+  // min/max are recomputed from the displayed sample buffer at draw time (SCOPE_Range,
+  // :1346) — this is SEPARATE from auto-trigger (TRIGGER ch AUTO). [9win §9]
+  autoScale: boolean;
 }
 
 interface ScopeChannelSamples {
@@ -262,7 +267,6 @@ export class DebugScopeWindow extends DebugWindowBase {
 
     // set defaults
     const bkgndColor: DebugColor = DebugColor.fromDefaultName('BLACK');
-    const gridColor: DebugColor = DebugColor.fromDefaultName('GRAY3', 4);
     // console.log(`CL: at parseScopeDeclaration() with colors...`);
     displaySpec.position = { x: 0, y: 0 };
     displaySpec.hasExplicitPosition = false; // Default: use auto-placement
@@ -273,7 +277,9 @@ export class DebugScopeWindow extends DebugWindowBase {
     displaySpec.lineSize = 3; // Default from comment
     displaySpec.textSize = 12; // Default editor font size - will be adjusted if needed
     displaySpec.window.background = bkgndColor.rgbString;
-    displaySpec.window.grid = gridColor.rgbString;
+    // Pascal DefaultGridColor = clGray = $404040 — a literal, applied with no brightness
+    // gradient (key_color only overrides via KeyColor). Matches LOGIC §8. [9win §9]
+    displaySpec.window.grid = '#404040';
     displaySpec.hideXY = false; // Default to showing coordinates
 
     // now parse overrides to defaults
@@ -323,15 +329,55 @@ export class DebugScopeWindow extends DebugWindowBase {
 
             // POS is now handled by parseCommonKeywords - remove duplicate handling
 
-            case 'RATE':
-              // ensure we have one more value
+            case 'RATE': {
+              // Pascal key_rate: KeyValWithin(vRate, 1, Y_Sets=2048) (DebugDisplayUnit.pas:1172).
+              // Clamp, never abort — dropping this used to silently kill later directives. [9win §9]
               if (index < lineParts.length - 1) {
-                displaySpec.rate = Number(lineParts[++index]);
-              } else {
-                // console.log(`CL: ScopeDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
+                const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                if (v !== null) {
+                  displaySpec.rate = DisplaySpecParser.clamp(v, 1, 2048);
+                  index++;
+                }
               }
               break;
+            }
+
+            case 'DOTSIZE': {
+              // Pascal key_dotsize: KeyValWithin(vDotSize, 0, 32) (DebugDisplayUnit.pas:1174) [9win §9]
+              if (index < lineParts.length - 1) {
+                const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                if (v !== null) {
+                  displaySpec.dotSize = DisplaySpecParser.clamp(v, 0, 32);
+                  index++;
+                }
+              }
+              break;
+            }
+
+            case 'LINESIZE': {
+              // Pascal key_linesize: KeyValWithin(vLineSize, 0, 32) (DebugDisplayUnit.pas:1176).
+              // NOTE 0 IS allowed for SCOPE (unlike LOGIC's 1..32). [9win §9]
+              if (index < lineParts.length - 1) {
+                const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                if (v !== null) {
+                  displaySpec.lineSize = DisplaySpecParser.clamp(v, 0, 32);
+                  index++;
+                }
+              }
+              break;
+            }
+
+            case 'TEXTSIZE': {
+              // Pascal key_textsize: KeyTextSize -> KeyValWithin(vTextSize, 6, 200) (DebugDisplayUnit.pas:1177) [9win §9]
+              if (index < lineParts.length - 1) {
+                const v = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+                if (v !== null) {
+                  displaySpec.textSize = DisplaySpecParser.clamp(v, 6, 200);
+                  index++;
+                }
+              }
+              break;
+            }
 
             case 'HIDEXY':
               displaySpec.hideXY = true;
@@ -371,6 +417,10 @@ export class DebugScopeWindow extends DebugWindowBase {
           break;
         }
       }
+    }
+    // Pascal :1188 — if both are zero, force a 1-pixel dot so something is drawn. [9win §9]
+    if (displaySpec.dotSize === 0 && displaySpec.lineSize === 0) {
+      displaySpec.dotSize = 1;
     }
     // console.log(`CL: at end of parseScopeDeclaration(): isValid=(${isValid}), ${JSON.stringify(displaySpec, null, 2)}`);
     return [isValid, displaySpec];
@@ -806,6 +856,7 @@ export class DebugScopeWindow extends DebugWindowBase {
         channelSpec.lgndShowMin = true;
         channelSpec.lgndShowMaxLine = true;
         channelSpec.lgndShowMinLine = true;
+        channelSpec.autoScale = false; // Pascal vAuto[i] := False (DebugDisplayUnit.pas:1191)
         // Pascal DefaultScopeColors: (clLime, clRed, clCyan, clYellow, clMagenta, clBlue, clOrange, clOlive)
         const defaultScopeColors = ['LIME', 'RED', 'CYAN', 'YELLOW', 'MAGENTA', 'BLUE', 'ORANGE', 'OLIVE'];
         const channelIndex = this.channelSpecs.length; // Current channel being added
@@ -816,12 +867,14 @@ export class DebugScopeWindow extends DebugWindowBase {
         // it falls back to the clXxx DefaultScopeColors. Track which path applies.
         let colorExplicit = false;
         if (lineParts.length > 1 && lineParts[1].toUpperCase().startsWith('AUTO')) {
-          // parse AUTO spec - set trigger auto mode for this channel
+          // parse channel AUTO spec — per-channel AUTOSCALE, NOT auto-trigger.
           //   '{NAME1}' AUTO2 {y-size3 {y-base4 {legend5} {color6 {bright7}}}} // legend is %abcd
-          // Auto means we should use auto trigger for this channel
-          this.triggerSpec.trigAuto = true;
-          this.triggerSpec.trigChannel = this.channelSpecs.length; // Current channel being added
-          // AUTO channels default to 0-255 range
+          // Pascal SCOPE_Update (DebugDisplayUnit.pas:1221-1222): `if KeyIs(key_auto) then
+          // vAuto[vIndex-1] := True` — channel AUTO skips the low/high values and flags the
+          // channel for data-min/max autoscale at draw time. Auto-TRIGGER is the separate
+          // `TRIGGER ch AUTO` directive (:1240). [9win §9]
+          channelSpec.autoScale = true;
+          // min/max start at defaults; recomputed from the buffer each draw (SCOPE_Range).
           channelSpec.minValue = 0;
           channelSpec.maxValue = 255;
           if (lineParts.length > 2) {
@@ -1002,23 +1055,6 @@ export class DebugScopeWindow extends DebugWindowBase {
         }
         this.logMessage(`at updateContent() w/[${lineParts.join(' ')}]`);
         this.logMessage(`at updateContent() with triggerSpec: ${JSON.stringify(this.triggerSpec, null, 2)}`);
-      } else if (lineParts[0].toUpperCase() == 'LINE') {
-        // CLEAR, CLOSE, SAVE, PC_KEY, PC_MOUSE now handled by base class
-        // Update line width
-        if (lineParts.length > 2) {
-          const lineSize = Number(lineParts[0]);
-          if (!isNaN(lineSize) && lineSize >= 0 && lineSize <= 32) {
-            this.displaySpec.lineSize = lineSize;
-          }
-        }
-      } else if (lineParts[0].toUpperCase() == 'DOT') {
-        // Update dot size
-        if (lineParts.length > 2) {
-          const dotSize = Number(lineParts[0]);
-          if (!isNaN(dotSize) && dotSize >= 0 && dotSize <= 32) {
-            this.displaySpec.dotSize = dotSize;
-          }
-        }
       } else {
         // do we have packed data spec?
         // ORIGINAL CODE COMMENTED OUT - Using PackedDataProcessor instead
@@ -1089,7 +1125,8 @@ export class DebugScopeWindow extends DebugWindowBase {
                   lgndShowMax: true,
                   lgndShowMin: true,
                   lgndShowMaxLine: true,
-                  lgndShowMinLine: true
+                  lgndShowMinLine: true,
+                  autoScale: false
                 });
               }
               this.calculateAutoTriggerAndScale();
@@ -1160,14 +1197,18 @@ export class DebugScopeWindow extends DebugWindowBase {
               for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
                 let nextSample: number = Number(scopeSamples[chanIdx]);
 
-                // Clamp sample to channel's min/max
+                // Clamp sample to channel's min/max — but NOT for autoscale channels:
+                // Pascal stores raw samples and derives the range from them (SCOPE_Range),
+                // so clamping to the placeholder 0..255 would defeat autoscale. [9win §9]
                 const channelSpec = this.channelSpecs[chanIdx];
-                if (nextSample < channelSpec.minValue) {
-                  nextSample = channelSpec.minValue;
-                  this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
-                } else if (nextSample > channelSpec.maxValue) {
-                  nextSample = channelSpec.maxValue;
-                  this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+                if (!channelSpec.autoScale) {
+                  if (nextSample < channelSpec.minValue) {
+                    nextSample = channelSpec.minValue;
+                    this.logMessage(`* UPD-WARNING sample below min: ${nextSample} of [${lineParts.join(',')}]`);
+                  } else if (nextSample > channelSpec.maxValue) {
+                    nextSample = channelSpec.maxValue;
+                    this.logMessage(`* UPD-WARNING sample above max: ${nextSample} of [${lineParts.join(',')}]`);
+                  }
                 }
 
                 // Store clamped sample for later trigger evaluation
@@ -1483,10 +1524,15 @@ export class DebugScopeWindow extends DebugWindowBase {
       // get integer value of legend and ensure it is within range 0-15
       const legendValue = Number(legend);
       if (legendValue >= 0 && legendValue <= 15) {
-        channelSpec.lgndShowMax = (legendValue & 0x1) == 0x1 ? true : false;
-        channelSpec.lgndShowMin = (legendValue & 0x2) == 0x2 ? true : false;
-        channelSpec.lgndShowMaxLine = (legendValue & 0x4) == 0x4 ? true : false;
-        channelSpec.lgndShowMinLine = (legendValue & 0x8) == 0x8 ? true : false;
+        // Pascal vGrid bit assignment (DebugDisplayUnit.pas:3298-3322):
+        //   bit0(1)=min/base LINE, bit1(2)=max/top LINE,
+        //   bit2(4)=min VALUE text, bit3(8)=max VALUE text.
+        // (The %abcd string form above is MSB-first, so a=bit3=maxLegend ... d=bit0=minLine —
+        //  it already agrees with this; the numeric path was previously reversed.) [9win §9]
+        channelSpec.lgndShowMax = (legendValue & 0x8) == 0x8;
+        channelSpec.lgndShowMin = (legendValue & 0x4) == 0x4;
+        channelSpec.lgndShowMaxLine = (legendValue & 0x2) == 0x2;
+        channelSpec.lgndShowMinLine = (legendValue & 0x1) == 0x1;
         validLegend = true;
       }
     }
@@ -1517,6 +1563,19 @@ export class DebugScopeWindow extends DebugWindowBase {
         );
       }
       try {
+        // Autoscale channels: recompute min/max from the displayed buffer before scaling,
+        // matching Pascal SCOPE_Draw (:1346) `if vAuto[j] then SCOPE_Range(j, vLow[j], vHigh[j])`.
+        // The legend min/max values then track the live data range too. [9win §9]
+        if (channelSpec.autoScale && samples.length > 0) {
+          let lo = samples[0];
+          let hi = samples[0];
+          for (let s = 1; s < samples.length; s++) {
+            if (samples[s] < lo) lo = samples[s];
+            if (samples[s] > hi) hi = samples[s];
+          }
+          channelSpec.minValue = lo;
+          channelSpec.maxValue = hi;
+        }
         // Draw region dimensions
         // Pascal: drawWidth comes from SIZE directive (vWidth), not calculated from samples
         const drawWidth: number = this.displaySpec.size.width;
@@ -1550,35 +1609,52 @@ export class DebugScopeWindow extends DebugWindowBase {
 
         // 3. Draw all samples from buffer at calculated positions (Pascal algorithm)
         // Pascal: x := (vMarginLeft + vWidth - 1) shl 8 - Round(k / vSamples * vWidth * $100);
-        // We draw from newest (index 0) to oldest, with newest at the right edge
-        jsCode += `
-          // Draw all samples from circular buffer
-          ctx.strokeStyle = '${channelColor}';
-          ctx.lineWidth = ${this.channelLineWidth};
-          ctx.setLineDash([]); // Solid line
-          ctx.beginPath();
-        `;
+        // We draw from newest (index 0) to oldest, with newest at the right edge.
+        //
+        // Trace geometry mirrors Pascal DrawLineDot/SmoothLine/SmoothDot (DebugDisplayUnit.pas:3423):
+        //   line: `if vLineSize > 0` -> SmoothLine(.., vLineSize shl 6, ..). The radius is in the
+        //         x256 fixed-point space, so stroke width(px) = (vLineSize<<6)/256 * 2 = vLineSize/2.
+        //   dot:  `if vDotSize  > 0` -> SmoothDot(.., vDotSize shl 7, ..) -> diameter(px) = vDotSize.
+        // channelLineWidth stays the fixed layout/graticule constant; the trace itself honors
+        // LINESIZE/DOTSIZE. [9win §9]
+        const lineSize: number = this.displaySpec.lineSize;
+        const dotSize: number = this.displaySpec.dotSize;
+        const traceLineWidth: number = lineSize / 2;
 
-        let firstSample = true;
+        // Pre-compute pixel positions once; reused by both the line and the per-sample dots.
+        const points: Array<{ x: number; y: number }> = [];
         for (let k = 0; k < samples.length; k++) {
           const sample = samples[k];
           const invertedY = this.scaleAndInvertValue(sample, channelSpec);
-
           // Calculate X position: samples[0] is oldest (left), samples[length-1] is newest (right)
-          // Array structure: shift() removes oldest from front, push() adds newest to end
           const normalizedPos = k / (this.displaySpec.nbrSamples - 1);
           const x = drawXOffset + Math.round(normalizedPos * (drawWidth - this.channelLineWidth));
           const y = drawYOffset + invertedY + this.channelLineWidth / 2;
-
-          if (firstSample) {
-            jsCode += `ctx.moveTo(${x}, ${y});\n`;
-            firstSample = false;
-          } else {
-            jsCode += `ctx.lineTo(${x}, ${y});\n`;
-          }
+          points.push({ x, y });
         }
 
-        jsCode += `ctx.stroke();\n`;
+        // Line: only when vLineSize > 0 (Pascal :3425)
+        if (lineSize > 0 && points.length > 0) {
+          jsCode += `
+          ctx.strokeStyle = '${channelColor}';
+          ctx.lineWidth = ${traceLineWidth};
+          ctx.setLineDash([]); // Solid line
+          ctx.beginPath();
+        `;
+          for (let k = 0; k < points.length; k++) {
+            jsCode += k === 0 ? `ctx.moveTo(${points[k].x}, ${points[k].y});\n` : `ctx.lineTo(${points[k].x}, ${points[k].y});\n`;
+          }
+          jsCode += `ctx.stroke();\n`;
+        }
+
+        // Dots: only when vDotSize > 0 (Pascal :3427). Filled circle of diameter vDotSize.
+        if (dotSize > 0 && points.length > 0) {
+          const dotRadius: number = dotSize / 2;
+          jsCode += `ctx.fillStyle = '${channelColor}';\n`;
+          for (let k = 0; k < points.length; k++) {
+            jsCode += `ctx.beginPath();\nctx.arc(${points[k].x}, ${points[k].y}, ${dotRadius}, 0, 2 * Math.PI);\nctx.fill();\n`;
+          }
+        }
 
         // Execute all the JavaScript at once
         this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
