@@ -13,6 +13,10 @@ jest.mock('electron', () => ({
       executeJavaScript: jest.fn().mockResolvedValue(undefined),
       send: jest.fn(),
       on: jest.fn(),
+      once: jest.fn(),
+      removeAllListeners: jest.fn(),
+      setMaxListeners: jest.fn(),
+      isDestroyed: jest.fn().mockReturnValue(false),
       capturePage: jest.fn().mockResolvedValue({
         toPNG: jest.fn().mockResolvedValue(Buffer.from('mock-png-data'))
       })
@@ -904,7 +908,7 @@ describe('DebugWindowBase', () => {
       expect(() => testWindow.updateContent(['UPDATE'])).not.toThrow();
     });
 
-    it('should handle webContents.send failures', () => {
+    it('should handle webContents.send failures', async () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
       testWindow['onWindowReady']();
@@ -914,8 +918,16 @@ describe('DebugWindowBase', () => {
         throw new Error('Send failed');
       });
 
-      // Should not crash
-      expect(() => testWindow.updateContent(['CLEAR'])).not.toThrow();
+      // Should not crash — updateContent is async, so a synchronous .toThrow() would let
+      // a rejected promise escape as an unhandled rejection (crashing the worker). Await it
+      // and assert it neither throws nor rejects. [9win pile-repair]
+      let threw = false;
+      try {
+        await testWindow.updateContent(['CLEAR']);
+      } catch {
+        threw = true;
+      }
+      expect(threw).toBe(false);
     });
   });
 
