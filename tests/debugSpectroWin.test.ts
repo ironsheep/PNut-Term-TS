@@ -1018,7 +1018,7 @@ describe('DebugSpectroWindow', () => {
 
       // The invented noiseFloor field (8%-of-full-scale gate that silenced low-amplitude
       // bins) was removed in §12 — Pascal SPECTRO_Draw plots every bin's scaled value.
-      expect(debugSpectroWindow['noiseFloor']).toBeUndefined();
+      expect((debugSpectroWindow as any).noiseFloor).toBeUndefined();
       expect((debugSpectroWindow as any).computeNoiseFloor).toBeUndefined();
     });
 

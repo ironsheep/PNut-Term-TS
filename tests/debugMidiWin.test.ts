@@ -26,6 +26,7 @@ describe('DebugMidiWindow', () => {
     displayName: 'test-midi',
     windowTitle: 'Test MIDI',
     position: { x: 100, y: 100 },
+    hasExplicitPosition: false,
     size: { width: 400, height: 200 },
     keySize: 20,
     keyRange: { first: 60, last: 72 }, // One octave around middle C

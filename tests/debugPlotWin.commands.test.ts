@@ -45,6 +45,7 @@ describe('DebugPlotWindow Commands', () => {
       displayName: 'TestPlot',
       windowTitle: 'Test Plot Window',
       position: { x: 0, y: 0 },
+      hasExplicitPosition: false,
       size: { width: 256, height: 256 },
       dotSize: { width: 1, height: 1 },
       window: { background: '#000000', grid: '#808080' },

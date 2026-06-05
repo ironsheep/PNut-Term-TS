@@ -44,7 +44,11 @@ jest.mock('os', () => ({
 
 // Mock path module
 jest.mock('path', () => ({
-  join: jest.fn((...args) => args.join('/'))
+  join: jest.fn((...args) => args.join('/')),
+  dirname: jest.fn((p: string) => p.replace(/\/[^/]*$/, '') || '/'),
+  basename: jest.fn((p: string) => p.split('/').pop()),
+  resolve: jest.fn((...args) => args.join('/')),
+  extname: jest.fn((p: string) => { const m = p.match(/\.[^./]+$/); return m ? m[0] : ''; })
 }));
 
 // Mock USB serial for InputForwarder

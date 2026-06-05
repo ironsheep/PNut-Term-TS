@@ -20,9 +20,35 @@ jest.mock('electron', () => ({
     loadURL: jest.fn(),
     show: jest.fn(),
     on: jest.fn(),
+    once: jest.fn(),
+    removeAllListeners: jest.fn(),
+    focus: jest.fn(),
+    close: jest.fn(),
+    destroy: jest.fn(),
+    isDestroyed: jest.fn().mockReturnValue(false),
+    isVisible: jest.fn().mockReturnValue(true),
+    setTitle: jest.fn(),
+    getTitle: jest.fn().mockReturnValue('Test Window'),
+    setBounds: jest.fn(),
+    getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+    getContentBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+    setSize: jest.fn(),
+    getSize: jest.fn().mockReturnValue([800, 600]),
+    setContentSize: jest.fn(),
+    getContentSize: jest.fn().mockReturnValue([800, 600]),
+    setPosition: jest.fn(),
+    getPosition: jest.fn().mockReturnValue([0, 0]),
+    removeMenu: jest.fn(),
+    setMenuBarVisibility: jest.fn(),
     webContents: {
       executeJavaScript: jest.fn().mockResolvedValue(undefined),
-      on: jest.fn()
+      on: jest.fn(),
+      once: jest.fn(),
+      send: jest.fn(),
+      removeAllListeners: jest.fn(),
+      setMaxListeners: jest.fn(),
+      isDestroyed: jest.fn().mockReturnValue(false),
+      capturePage: jest.fn().mockResolvedValue({ toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data')) })
     }
   }))
 }));
@@ -66,9 +92,35 @@ describe('DebugBitmapWindow Command Tests', () => {
       loadURL: jest.fn(),
       show: jest.fn(),
       on: jest.fn(),
+      once: jest.fn(),
+      removeAllListeners: jest.fn(),
+      focus: jest.fn(),
+      close: jest.fn(),
+      destroy: jest.fn(),
+      isDestroyed: jest.fn().mockReturnValue(false),
+      isVisible: jest.fn().mockReturnValue(true),
+      setTitle: jest.fn(),
+      getTitle: jest.fn().mockReturnValue('Test Window'),
+      setBounds: jest.fn(),
+      getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+      getContentBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+      setSize: jest.fn(),
+      getSize: jest.fn().mockReturnValue([800, 600]),
+      setContentSize: jest.fn(),
+      getContentSize: jest.fn().mockReturnValue([800, 600]),
+      setPosition: jest.fn(),
+      getPosition: jest.fn().mockReturnValue([0, 0]),
+      removeMenu: jest.fn(),
+      setMenuBarVisibility: jest.fn(),
       webContents: {
         executeJavaScript: jest.fn().mockResolvedValue(undefined),
-        on: jest.fn()
+        on: jest.fn(),
+        once: jest.fn(),
+        send: jest.fn(),
+        removeAllListeners: jest.fn(),
+        setMaxListeners: jest.fn(),
+        isDestroyed: jest.fn().mockReturnValue(false),
+        capturePage: jest.fn().mockResolvedValue({ toPNG: jest.fn().mockReturnValue(Buffer.from('mock-png-data')) })
       }
     };
     (BrowserWindow as jest.MockedClass<typeof BrowserWindow>).mockImplementation(() => mockBrowserWindow);
