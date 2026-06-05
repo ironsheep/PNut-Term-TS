@@ -113,15 +113,29 @@ source for all 10 names + brightness nibble (memory `rgbi8x-directive-color-valu
 locked by `tests/rgbi8xDirectiveColor.test.ts`. It is the RGBI8X entry point used
 by PLOT, so PLOT COLOR directives are now correct.
 
-**§4 split status:** §4a (SCOPE_XY default channel colors → clXxx, `235e8f9`) and
-§4b-1 (RGBI8X math) are done. **§4b remainder** (open): route the `DebugColor`
-*instance* path (`new DebugColor(name,b)`, used for COLOR directives across
-LOGIC/SCOPE/TERM/MIDI) through `translateRgbi8x` and reconcile it against the clXxx
-DEFAULT path and the grid/font-colour derivation; update the ~22 pre-existing stale
-colour tests (`colorCommand`/`debugColor` `.test.ts`, not in the runner); remove
-PLOT's over-accepted non-keyword colour names (`debugPlotWin.ts:2197-2208`); FFT
-default palette (with §11). This is the broad/visible-rendering part — the two real
-systems (clXxx defaults vs RGBI8X directives) must stay distinct, not be unified.
+**§4 split status:** **§4 COMPLETE.** §4a (SCOPE_XY default channel colors → clXxx,
+`235e8f9`), §4b-1 (RGBI8X math, `fe8bcfa`), and §4b-remainder (`d2fa45f`) are done.
+§4b-remainder split the two systems cleanly:
+- The `DebugColor` *instance* (`new DebugColor(name,b)`) is now the **RGBI8X
+  DIRECTIVE** system (COLOR / BLACK..GRAY {brightness}); a new
+  `DebugColor.fromDefaultName(name,b)` factory is the **clXxx DEFAULT** system.
+  Grid/font shades derive from each color in its own system.
+- Centralized resolvers: `isValidDirectiveColorName` (10-name set) +
+  `parseDirectiveColor`; `colorNameToRGB24UsingRGBI8X` restricted to the 10
+  (GREY/LIME/OLIVE aliases removed from the directive path).
+- `displaySpecParser.parseColorValue` → `parseDirectiveColor` (window COLOR
+  bg/grid = RGBI8X). `debugWindowBase.getValidRgb24` is now numeric-only
+  (its divergent name map removed) so LOGIC channel names reach RGBI8X.
+- Default sites in LOGIC/SCOPE/TERM/PLOT → `fromDefaultName`; SCOPE channel
+  parse split (explicit color → directive, else clXxx DefaultScopeColors).
+  PLOT `isColorCommand` + FFT `parseChannelColor` use the directive set.
+- Removed PLOT's over-accepted alias names; rewrote `colorCommand`/`debugColor`
+  tests around the two-systems model and registered both in the runner (86/86).
+
+  **Deferred (with reason):** final grid default value `0x404040` → §8/§9 (kept the
+  current clXxx+brightness default to avoid a premature value change); FFT
+  `spectrumColor` default `#00FF00` → §11 (entangled with the FFT channel model).
+  The two systems (clXxx defaults vs RGBI8X directives) stay distinct, not unified.
 
 ---
 
