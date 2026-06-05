@@ -1636,6 +1636,42 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           break;
         }
 
+        case 'OBOX': {
+          // OBOX width height xradius yradius [lineSize [opacity]]
+          // Rounded rectangle centered on cursor. Pascal key_obox
+          // (DebugDisplayUnit.pas:2015,2034):
+          //   SmoothShape(cx, cy, width, height, xradius, yradius, linesize, color, opacity)
+          if (index + 4 < lineParts.length) {
+            const width = this.parseNumber(lineParts[++index]);
+            const height = this.parseNumber(lineParts[++index]);
+            const xRadius = this.parseNumber(lineParts[++index]);
+            const yRadius = this.parseNumber(lineParts[++index]);
+            let lineSize = 0; // 0 = filled
+            let opacity = 255;
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                lineSize = val;
+                index++;
+              }
+            }
+
+            if (index + 1 < lineParts.length) {
+              const val = this.parseNumber(lineParts[index + 1]);
+              if (val !== null) {
+                opacity = val;
+                index++;
+              }
+            }
+
+            if (width !== null && height !== null && xRadius !== null && yRadius !== null) {
+              await this.drawOBoxToPlot(width, height, xRadius, yRadius, lineSize, opacity);
+            }
+          }
+          break;
+        }
+
         case 'TEXT': {
           // TEXT [size [style [angle]]] 'string'
           let textSize = 10;
@@ -2387,6 +2423,71 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   }
 
   /**
+   * Draw a rounded rectangle (OBOX) on the plot, centered on the cursor.
+   * Pascal key_obox (DebugDisplayUnit.pas:2034):
+   *   SmoothShape(cx, cy, width, height, xradius, yradius, linesize, color, opacity)
+   * The shape is centered on the cursor (same as BOX); xradius/yradius give the
+   * elliptical corner radii. Canvas2D's roundRect + fill/stroke supplies the
+   * anti-aliased edge that Pascal's SmoothShape renders by hand. [9win §13b]
+   */
+  private async drawOBoxToPlot(
+    width: number,
+    height: number,
+    xRadius: number,
+    yRadius: number,
+    lineSize: number,
+    opacity: number
+  ): Promise<void> {
+    const debugWindow = this.debugWindow;
+    if (!debugWindow) return;
+
+    let [xc, yc] = this.getCursorXY();
+
+    // Apply ydir transformation for canvas coordinates (matches BOX)
+    if (!this.cartesianConfig.ydir) {
+      yc = this.displaySpec.size.height - yc;
+    }
+
+    // Centered on cursor, like BOX (Pascal centers via SmoothShape cx,cy).
+    const xl = xc - Math.floor(width / 2);
+    const yt = yc - Math.floor(height / 2);
+    // Corner radii cannot exceed half the box extent (Canvas clamps internally, but
+    // negatives would throw — guard them here).
+    const rx = Math.max(0, Math.min(xRadius, width / 2));
+    const ry = Math.max(0, Math.min(yRadius, height / 2));
+    const filled = lineSize === 0;
+
+    const jsCode = `
+      (function() {
+        if (!window.plotCtx) return 'Context not ready';
+
+        window.plotCtx.globalAlpha = ${opacity / 255};
+
+        window.plotCtx.beginPath();
+        window.plotCtx.roundRect(${xl}, ${yt}, ${width}, ${height}, [{x: ${rx}, y: ${ry}}]);
+
+        if (${filled}) {
+          window.plotCtx.fillStyle = '${this.currFgColor}';
+          window.plotCtx.fill();
+        } else {
+          window.plotCtx.strokeStyle = '${this.currFgColor}';
+          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.stroke();
+        }
+
+        window.plotCtx.globalAlpha = 1.0;
+        return 'OBox drawn';
+      })()
+    `;
+
+    try {
+      await debugWindow.webContents.executeJavaScript(jsCode);
+    } catch (error) {
+      this.logMessage(`Failed to draw obox: ${error}`);
+    }
+  }
+
+  /**
    * Draw an oval on the plot
    */
   private async drawOvalToPlot(width: number, height: number, lineSize: number, opacity: number): Promise<void> {
@@ -2817,6 +2918,100 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     }
   }
 
+  /**
+   * Map a source sprite pixel to its destination cell offset under a given
+   * orientation. Mirrors Pascal DebugDisplayUnit.pas:2123-2133 EXACTLY — the
+   * eight orientations are flips/transposes, NOT 90-degree rotations:
+   *   0: identity            1: flip-X            2: flip-Y          3: flip-X+Y (180)
+   *   4: transpose           5: transpose+flip    6: transpose+flip  7: transpose+flip-X+Y
+   * `col`/`row` are 0-indexed (Pascal's loop is 1-based; (x-1)->col, (t7-x)->sizeX-1-col).
+   * Returns the canvas-pixel offset (dx,dy) to add to the sprite's base draw
+   * position; each source pixel occupies a `scale`x`scale` cell. [9win §13b]
+   */
+  public static spritePixelOffset(
+    orientation: number,
+    col: number,
+    row: number,
+    sizeX: number,
+    sizeY: number,
+    scale: number
+  ): { dx: number; dy: number } {
+    const i = col; //            Pascal (x - 1)
+    const ri = sizeX - 1 - col; // Pascal (t7 - x)
+    const j = row; //            Pascal (y - 1)
+    const rj = sizeY - 1 - row; // Pascal (t8 - y)
+    let ox: number;
+    let oy: number;
+    switch (orientation & 7) {
+      case 1:
+        ox = ri;
+        oy = j;
+        break;
+      case 2:
+        ox = i;
+        oy = rj;
+        break;
+      case 3:
+        ox = ri;
+        oy = rj;
+        break;
+      case 4:
+        ox = j;
+        oy = i;
+        break;
+      case 5:
+        ox = j;
+        oy = ri;
+        break;
+      case 6:
+        ox = rj;
+        oy = i;
+        break;
+      case 7:
+        ox = rj;
+        oy = ri;
+        break;
+      case 0:
+      default:
+        ox = i;
+        oy = j;
+        break;
+    }
+    return { dx: ox * scale, dy: oy * scale };
+  }
+
+  /**
+   * Build the per-pixel draw list for a sprite, combining the sprite-color's own
+   * alpha with the SPRITE opacity exactly as Pascal does
+   * (DebugDisplayUnit.pas:2120-2122): opa := ((c shr 24 and $FF) * t6 + $FF) shr 8.
+   * Pixels whose combined alpha is 0 are dropped (Pascal `if opa <> 0`). Each
+   * entry's (dx,dy) is the offset from the sprite's base draw position; the pixel
+   * is rendered as a `scale`x`scale` cell. Pure + deterministic for unit tests. [9win §13b]
+   */
+  public static buildSpritePixels(
+    width: number,
+    height: number,
+    pixels: number[],
+    colors: number[],
+    orientation: number,
+    scale: number,
+    opacity: number
+  ): Array<{ dx: number; dy: number; r: number; g: number; b: number; a: number }> {
+    const out: Array<{ dx: number; dy: number; r: number; g: number; b: number; a: number }> = [];
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        const colorIndex = pixels[row * width + col] ?? 0;
+        const c = (colors[colorIndex] ?? 0) >>> 0;
+        const pixelAlpha = (c >>> 24) & 0xff;
+        const a = ((pixelAlpha * opacity + 0xff) >> 8) & 0xff; // Pascal :2121
+        if (a === 0) continue; // Pascal :2122 (if opa <> 0)
+        const { dx, dy } = DebugPlotWindow.spritePixelOffset(orientation, col, row, width, height, scale);
+        out.push({ dx, dy, r: (c >>> 16) & 0xff, g: (c >>> 8) & 0xff, b: c & 0xff, a });
+      }
+    }
+    return out;
+  }
+
   public async drawSpriteToPlot(spriteId: number, orientation: number, scale: number, opacity: number): Promise<void> {
     const debugWindow = this.debugWindow;
     if (!debugWindow || !this.shouldWriteToCanvas) return;
@@ -2829,31 +3024,27 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         return;
       }
 
-      // Get current cursor position (set by SET command)
-      let [plotX, plotY] = this.getCursorXY();
-
-      // Pascal: Inc(t1, t5 shr 1); Inc(t2, t5 shr 1); - offset by half scale for centering
-      plotX += Math.floor(scale / 2);
-      plotY += Math.floor(scale / 2);
+      // Base draw position is the current cursor (Pascal PLOT_GetXY -> t1,t2). Pascal's
+      // Inc(t1, t5 shr 1) + center-based SmoothShape is equivalent to a top-left cell at
+      // the cursor for even scale, so we draw each cell top-left at base + offset. [9win §13b]
+      const [plotX, plotY] = this.getCursorXY();
 
       this.logMessage(
         `Drawing sprite ${spriteId} at (${plotX},${plotY}) orientation=${orientation} scale=${scale} opacity=${opacity}`
       );
 
-      // Convert orientation (0-7) to degrees: 0=0°, 1=90°, 2=180°, 3=270°, 4=90°+flip, etc.
-      // Pascal orientations: 0-3 are rotations, 4-7 add horizontal flip
-      const orientationDegrees = (orientation & 0x03) * 90; // 0,90,180,270
-      const flipHorizontal = (orientation & 0x04) !== 0; // Bit 2 indicates flip
+      // Precompute the orientation-mapped, opacity-combined draw list in Node so the
+      // flip/transpose math is the single tested source of truth (no trig, no rotation).
+      const drawList = DebugPlotWindow.buildSpritePixels(
+        sprite.width,
+        sprite.height,
+        sprite.pixels,
+        sprite.colors,
+        orientation,
+        scale,
+        opacity
+      );
 
-      // Convert sprite data to JSON-safe format for passing to renderer
-      const spriteData = {
-        width: sprite.width,
-        height: sprite.height,
-        pixels: sprite.pixels,
-        colors: sprite.colors
-      };
-
-      // Use tested implementation with Canvas2D transformations (more efficient than per-pixel calculations)
       const jsCode = `
         (function() {
           if (!window.plotCtx) {
@@ -2861,71 +3052,19 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             return 'Context not ready';
           }
 
-          const sprite = ${JSON.stringify(spriteData)};
-          const centerX = ${plotX};
-          const centerY = ${plotY};
-          const orientationDeg = ${orientationDegrees};
-          const flipH = ${flipHorizontal};
-          const scale = ${scale};
-          const opacity = ${opacity};
+          const list = ${JSON.stringify(drawList)};
+          const baseX = ${plotX};
+          const baseY = ${plotY};
+          const s = ${scale};
 
-          // Save current context state
           window.plotCtx.save();
-
-          // Set global alpha for opacity
-          window.plotCtx.globalAlpha = opacity / 255;
-
-          // Calculate transformation matrix
-          const angleRad = (orientationDeg * Math.PI) / 180;
-          const cos = Math.cos(angleRad) * scale;
-          const sin = Math.sin(angleRad) * scale;
-
-          // Apply horizontal flip if needed
-          const flipScale = flipH ? -1 : 1;
-
-          // Apply transformation matrix for rotation and scaling
-          window.plotCtx.setTransform(
-            cos * flipScale,  // m11: horizontal scaling / rotation
-            sin,              // m12: horizontal skewing
-            -sin * flipScale, // m21: vertical skewing
-            cos,              // m22: vertical scaling / rotation
-            centerX,          // dx: horizontal translation
-            centerY           // dy: vertical translation
-          );
-
-          // Calculate sprite center offset for proper rotation around center
-          const centerOffsetX = -sprite.width / 2;
-          const centerOffsetY = -sprite.height / 2;
-
-          // Render each pixel
-          for (let y = 0; y < sprite.height; y++) {
-            for (let x = 0; x < sprite.width; x++) {
-              const pixelIndex = y * sprite.width + x;
-              const colorIndex = sprite.pixels[pixelIndex];
-
-              // Get color from palette (ARGB format)
-              const color32 = sprite.colors[colorIndex] || 0x00000000;
-              const alpha = (color32 >>> 24) & 0xFF;
-              const r = (color32 >>> 16) & 0xFF;
-              const g = (color32 >>> 8) & 0xFF;
-              const b = color32 & 0xFF;
-
-              // Skip fully transparent pixels
-              if (alpha === 0) continue;
-
-              // Set pixel color (alpha handled by globalAlpha)
-              window.plotCtx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-
-              // Draw pixel at transformed position (relative to sprite center)
-              window.plotCtx.fillRect(
-                centerOffsetX + x,
-                centerOffsetY + y,
-                1, 1
-              );
-            }
+          for (let k = 0; k < list.length; k++) {
+            const p = list[k];
+            window.plotCtx.globalAlpha = p.a / 255;
+            window.plotCtx.fillStyle = 'rgb(' + p.r + ',' + p.g + ',' + p.b + ')';
+            window.plotCtx.fillRect(baseX + p.dx, baseY + p.dy, s, s);
           }
-
-          // Restore context state
+          window.plotCtx.globalAlpha = 1.0;
           window.plotCtx.restore();
 
           return 'Sprite drawn';
