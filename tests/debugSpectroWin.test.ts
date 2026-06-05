@@ -724,11 +724,12 @@ describe('DebugSpectroWindow', () => {
       const background = backgroundValues.reduce((sum, entry) => sum + entry.value, 0) / backgroundValues.length;
       expect(background).toBeLessThan(topBin.value / 4);
 
-      const noiseFloor = (debugSpectroWindow as any).noiseFloor;
-      expect(drawnPixels.length).toBeGreaterThan(0);
+      // [9win §12] Pascal SPECTRO_Draw plots EVERY bin with no noise floor — every bin
+      // in the display range produces a pixel and low-amplitude bins are NOT zeroed by an
+      // artificial floor. (The old noiseFloor field + 8%-of-full-scale gate were removed.)
+      expect(drawnPixels.length).toBe(displaySpec.lastBin - displaySpec.firstBin + 1);
       const activePixels = drawnPixels.filter((value) => (value & 0xff) > 0);
       expect(activePixels.length).toBeGreaterThan(0);
-      expect(activePixels.every((value) => (value & 0xff) >= noiseFloor)).toBe(true);
 
       updateSpy.mockRestore();
       scrollSpy.mockRestore();
@@ -1010,21 +1011,15 @@ describe('DebugSpectroWindow', () => {
       fftSpy.mockRestore();
     });
 
-    it('should apply noise floor suppression correctly', () => {
+    it('should NOT suppress low-amplitude bins (no noise floor — Pascal plots all bins) [9win §12]', () => {
       const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '64', 'RANGE', '1000'];
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
 
-      // Access private noiseFloor property
-      const noiseFloor = debugSpectroWindow['noiseFloor'];
-
-      // Noise floor should be approximately 8% of 255 = 20
-      expect(noiseFloor).toBeGreaterThan(15);
-      expect(noiseFloor).toBeLessThan(25);
-
-      // Verify it's reasonable (not 0, not 255)
-      expect(noiseFloor).toBeGreaterThan(0);
-      expect(noiseFloor).toBeLessThan(255);
+      // The invented noiseFloor field (8%-of-full-scale gate that silenced low-amplitude
+      // bins) was removed in §12 — Pascal SPECTRO_Draw plots every bin's scaled value.
+      expect(debugSpectroWindow['noiseFloor']).toBeUndefined();
+      expect((debugSpectroWindow as any).computeNoiseFloor).toBeUndefined();
     });
 
     it('should maintain perfect Pascal parity in FFT processing', () => {

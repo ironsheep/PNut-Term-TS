@@ -130,7 +130,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private traceProcessor: TracePatternProcessor;
   private traceWidth: number = 0;
   private traceHeight: number = 0;
-  private noiseFloor: number = 0;
 
   // Sample buffer management (circular buffer)
   private readonly BUFFER_SIZE = 2048; // SPECTRO_Samples = DataSets
@@ -197,8 +196,6 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Calculate window dimensions based on trace pattern and bins
     this.calculateSpectroWindowDimensions();
 
-    this.noiseFloor = this.computeNoiseFloor();
-
     // Initialize canvas ID immediately (don't wait for data)
     this.bitmapCanvasId = `spectro-canvas-${this.displaySpec.displayName}`;
 
@@ -258,28 +255,26 @@ export class DebugSpectroWindow extends DebugWindowBase {
   }
 
   /**
-   * Compute an intensity floor in pixel units to suppress noise.
-   * Empirically, values below roughly 8% of full scale map to near-black
-   * in the Pascal implementation, so we treat them as zero.
+   * Attempt to parse a color tune token.
+   *
+   * Pascal KeyColorMode (DebugDisplayUnit.pas:2785-2804): LUMA modes accept a tune
+   * that is EITHER a named color (orange..gray → 0..7) OR a numeric value; HSV modes
+   * accept a numeric tune ONLY (KeyVal → NextNum). `allowNamed` selects which path:
+   * true for LUMA8/8W/8X, false for HSV16/16W/16X. [9win §12]
    */
-  private computeNoiseFloor(): number {
-    const noiseFraction = 0.08; // 8% of 255
-    const floor = Math.round(255 * noiseFraction);
-    return Math.max(2, Math.min(254, floor));
-  }
-
-  /**
-   * Attempt to parse a color tune token (named color or numeric value)
-   */
-  private static extractColorTune(lineParts: string[], startIndex: number): [number, number | null] {
+  private static extractColorTune(lineParts: string[], startIndex: number, allowNamed: boolean): [number, number | null] {
     if (startIndex >= lineParts.length) {
       return [0, null];
     }
 
     const token = lineParts[startIndex];
-    const tuneFromName = DebugSpectroWindow.parseColorTuneName(token);
-    if (tuneFromName !== null) {
-      return [1, tuneFromName];
+    // Named-color tune (orange..gray) is only legal for LUMA modes. HSV modes read a
+    // numeric tune only (Pascal KeyVal), so don't consume a color name there. [9win §12]
+    if (allowNamed) {
+      const tuneFromName = DebugSpectroWindow.parseColorTuneName(token);
+      if (tuneFromName !== null) {
+        return [1, tuneFromName];
+      }
     }
 
     // Pre-check if value looks numeric to avoid error logging for non-numeric tokens
@@ -370,26 +365,37 @@ export class DebugSpectroWindow extends DebugWindowBase {
           spec.firstBin = 0;
           spec.lastBin = spec.samples / 2 - 1;
 
-          // Optional first bin parameter
+          // Optional first/last bin parameters.
+          // Pascal (DebugDisplayUnit.pas:1748-1749):
+          //   if KeyValWithin(FFTfirst, 0, vSamples div 2 - 2) then
+          //     KeyValWithin(FFTlast, FFTfirst + 1, vSamples div 2 - 1);
+          // KeyValWithin CLAMPS the value into [bottom, top] (INCLUSIVE) — it never
+          // rejects an out-of-range value. The old TS used a strict `<` upper bound
+          // (off-by-one — excluded samples/2-2) and DISCARDED out-of-range firsts
+          // instead of clamping. [9win §12]
           if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-            const first = Number(lineParts[++index]);
-            if (first >= 0 && first < spec.samples / 2 - 2) {
-              spec.firstBin = first;
+            const firstRaw = Math.trunc(Number(lineParts[++index]));
+            spec.firstBin = Math.max(0, Math.min(spec.samples / 2 - 2, firstRaw));
 
-              // Optional last bin parameter
-              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-                const last = Number(lineParts[++index]);
-                if (last > spec.firstBin && last <= spec.samples / 2 - 1) {
-                  spec.lastBin = last;
-                }
-              }
+            // Optional last bin parameter — clamped into [firstBin + 1, samples/2 - 1]
+            if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+              const lastRaw = Math.trunc(Number(lineParts[++index]));
+              spec.lastBin = Math.max(spec.firstBin + 1, Math.min(spec.samples / 2 - 1, lastRaw));
             }
           }
         }
         continue;
       }
 
-      // Try to parse common keywords (TITLE, POS, SIZE, etc.)
+      // Pascal SPECTRO_Configure (DebugDisplayUnit.pas:1735-1775) has NO key_size case —
+      // SIZE is not a SPECTRO directive (the window size derives from the bin count and
+      // DEPTH). Don't let the shared parser consume SIZE for SPECTRO. The trailing
+      // width/height numbers fall through and are ignored (not numeric directives). [9win §12]
+      if (element === 'SIZE') {
+        continue;
+      }
+
+      // Try to parse common keywords (TITLE, POS — SPECTRO's only shared directives)
       const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(lineParts, index, spec);
       if (parsed) {
         index = index + consumed - 1;
@@ -470,7 +476,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
         // Color modes
         case 'LUMA8':
           spec.colorMode = ColorMode.LUMA8;
-          const [consumedLuma8, tuneLuma8] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedLuma8, tuneLuma8] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, true);
           if (consumedLuma8 > 0 && tuneLuma8 !== null) {
             spec.colorTune = tuneLuma8;
             index += consumedLuma8;
@@ -478,7 +484,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           break;
         case 'LUMA8W':
           spec.colorMode = ColorMode.LUMA8W;
-          const [consumedLuma8W, tuneLuma8W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedLuma8W, tuneLuma8W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, true);
           if (consumedLuma8W > 0 && tuneLuma8W !== null) {
             spec.colorTune = tuneLuma8W;
             index += consumedLuma8W;
@@ -486,7 +492,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           break;
         case 'LUMA8X':
           spec.colorMode = ColorMode.LUMA8X;
-          const [consumedLuma8X, tuneLuma8X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedLuma8X, tuneLuma8X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, true);
           if (consumedLuma8X > 0 && tuneLuma8X !== null) {
             spec.colorTune = tuneLuma8X;
             index += consumedLuma8X;
@@ -494,7 +500,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           break;
         case 'HSV16':
           spec.colorMode = ColorMode.HSV16;
-          const [consumedHsv16, tuneHsv16] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedHsv16, tuneHsv16] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, false);
           if (consumedHsv16 > 0 && tuneHsv16 !== null) {
             spec.colorTune = tuneHsv16;
             index += consumedHsv16;
@@ -502,7 +508,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           break;
         case 'HSV16W':
           spec.colorMode = ColorMode.HSV16W;
-          const [consumedHsv16W, tuneHsv16W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedHsv16W, tuneHsv16W] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, false);
           if (consumedHsv16W > 0 && tuneHsv16W !== null) {
             spec.colorTune = tuneHsv16W;
             index += consumedHsv16W;
@@ -510,7 +516,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
           break;
         case 'HSV16X':
           spec.colorMode = ColorMode.HSV16X;
-          const [consumedHsv16X, tuneHsv16X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1);
+          const [consumedHsv16X, tuneHsv16X] = DebugSpectroWindow.extractColorTune(lineParts, index + 1, false);
           if (consumedHsv16X > 0 && tuneHsv16X !== null) {
             spec.colorTune = tuneHsv16X;
             index += consumedHsv16X;
@@ -788,13 +794,18 @@ export class DebugSpectroWindow extends DebugWindowBase {
       }
 
       // Scale to 0-255 using arithmetic rounding (matches Pascal's Round function)
-      let magnitudePixel = Math.round(v * fScale);
-      if (magnitudePixel > 0xff) magnitudePixel = 0xff;
+      // Pascal SPECTRO_Draw (DebugDisplayUnit.pas:1850-1853):
+      //   p := Round(v * fScale); if p > $FF then p := $FF;
+      //   if vColorMode in [key_hsv16..key_hsv16x] then p := p or FFTangle[x] shr 16 and $FF00;
+      // Pascal plots EVERY bin with no noise floor — low-amplitude bins must stay
+      // visible. The previous TS zeroed any pixel below an invented 8%-of-full-scale
+      // floor (silencing low-amplitude bins) and only OR'd in the HSV phase bits when
+      // above that floor. Both removed: plot the raw scaled value; for HSV modes OR in
+      // the phase bits unconditionally. [9win §12]
+      let pixelValue = Math.round(v * fScale);
+      if (pixelValue > 0xff) pixelValue = 0xff;
 
-      let pixelValue = magnitudePixel;
-      if (pixelValue < this.noiseFloor) {
-        pixelValue = 0;
-      } else if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
+      if (this.displaySpec.colorMode >= ColorMode.HSV16 && this.displaySpec.colorMode <= ColorMode.HSV16X) {
         pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
       }
 
@@ -966,6 +977,54 @@ export class DebugSpectroWindow extends DebugWindowBase {
     } catch (error) {
       this.logMessage(`Failed to update display: ${error}`);
     }
+  }
+
+  /**
+   * Inject the renderer-side coordinate readout.
+   *
+   * Pascal FormMouseMove dis_spectro (DebugDisplayUnit.pas:733-734):
+   *   Str := IntToStr(X div vDotSize) + ',' + IntToStr(Y div vDotSizeY);
+   * The on-screen readout uses the RAW client pixel (top-origin, NO Y inversion —
+   * unlike the PC_MOUSE wire value, which inverts Y), divided by the dot size, and is
+   * shown for the whole window (no inside-plot gate). HIDEXY blanks it (the
+   * `#coordinate-display` div is already `display:none` in that case). The div had no
+   * updater before this — it was a static element that never showed coordinates.
+   * The readout box follows the cursor, flipping to the opposite side near the right/
+   * bottom edges so it stays on screen. [9win §12]
+   */
+  private injectCoordinateReadout(): void {
+    if (!this.debugWindow) return;
+    if (this.displaySpec.hideXY) return; // div is hidden; nothing to update
+
+    const dotSizeX = this.displaySpec.dotSize;
+    const dotSizeY = this.displaySpec.dotSizeY;
+
+    const trackingScript = `
+      (function() {
+        const canvas = document.getElementById('${this.bitmapCanvasId}');
+        const readout = document.getElementById('coordinate-display');
+        if (!canvas || !readout) return;
+        document.addEventListener('mousemove', (e) => {
+          const rect = canvas.getBoundingClientRect();
+          const x = Math.floor(e.clientX - rect.left);
+          const y = Math.floor(e.clientY - rect.top);
+          // Pascal: X div vDotSize , Y div vDotSizeY (top-origin, no Y invert)
+          readout.textContent = Math.floor(x / ${dotSizeX}) + ',' + Math.floor(y / ${dotSizeY});
+          // Position the box near the cursor, flipping near the right/bottom edges
+          const offset = 14;
+          let left = e.clientX + offset;
+          let top = e.clientY + offset;
+          if (left + readout.offsetWidth > window.innerWidth) left = e.clientX - offset - readout.offsetWidth;
+          if (top + readout.offsetHeight > window.innerHeight) top = e.clientY - offset - readout.offsetHeight;
+          readout.style.left = left + 'px';
+          readout.style.top = top + 'px';
+        });
+      })();
+    `;
+
+    this.debugWindow.webContents.executeJavaScript(trackingScript).catch((error) => {
+      this.logMessage(`Failed to inject coordinate readout: ${error}`);
+    });
   }
 
   /**
@@ -1167,6 +1226,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Initialize canvas after load and clean up temp file
     this.debugWindow.webContents.once('did-finish-load', () => {
       this.clearCanvas();
+      this.injectCoordinateReadout();
 
       // Clean up temp file after a delay to ensure it's fully loaded
       setTimeout(() => {

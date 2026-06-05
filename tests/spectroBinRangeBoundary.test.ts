@@ -168,9 +168,9 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
     });
   });
 
-  describe('Test 2: Single bin (firstBin=lastBin=100) - BUG FOUND', () => {
-    it('should iterate exactly 1 time when firstBin equals lastBin (CURRENTLY FAILS DUE TO BUG)', () => {
-      // Create SPECTRO with single bin attempt
+  describe('Test 2: firstBin == lastBin clamps lastBin up to firstBin+1 (Pascal) [9win §12]', () => {
+    it('should clamp lastBin to firstBin+1 when given last <= first', () => {
+      // Create SPECTRO with single-bin attempt (first == last == 100)
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
         'BinTest',
@@ -180,10 +180,13 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
         '100'
       ]);
 
-      // BUG FOUND: createDisplaySpec rejects firstBin==lastBin
-      // Line 390 of debugSpectroWin.ts: "if (last > spec.firstBin && ...)"
-      // Should be: "if (last >= spec.firstBin && ...)"
-      // When lastBin=100 is rejected, it falls back to default: samples/2 - 1 = 255
+      // Pascal SPECTRO_Configure (DebugDisplayUnit.pas:1748-1749):
+      //   if KeyValWithin(FFTfirst, 0, vSamples div 2 - 2) then
+      //     KeyValWithin(FFTlast, FFTfirst + 1, vSamples div 2 - 1);
+      // KeyValWithin CLAMPS — FFTlast's bottom is FFTfirst+1, so a `last <= first` value
+      // is raised to firstBin+1 (a single-bin range is impossible). The old TS instead
+      // REJECTED last == first and let lastBin fall back to the default samples/2-1 (255).
+      // §12 replaced that reject with the Pascal inclusive clamp.
 
       const window = new DebugSpectroWindow(mockContext, displaySpec);
 
@@ -202,15 +205,13 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
       }
       // Note: performFFTAndDraw is called automatically when buffer fills
 
-      // Verify the loop DOES work correctly with whatever range was configured
-      // (even though the range is wrong due to the parsing bug)
       const expectedIterations = displaySpec.lastBin - displaySpec.firstBin + 1;
       expect(plotCount).toBe(expectedIterations);
 
-      // Document actual vs expected values due to bug:
-      expect(displaySpec.firstBin).toBe(100); // This part works
-      expect(displaySpec.lastBin).toBe(255); // Bug: should be 100, but falls back to default
-      expect(expectedIterations).toBe(156); // 255 - 100 + 1 = 156 (not the intended 1)
+      // Finalized Pascal-parity values:
+      expect(displaySpec.firstBin).toBe(100); // first clamps into [0, 254]
+      expect(displaySpec.lastBin).toBe(101); // last clamps up to firstBin + 1 = 101
+      expect(expectedIterations).toBe(2); // 101 - 100 + 1 = 2 (minimum two-bin range)
     });
   });
 
