@@ -94,7 +94,7 @@ export interface CartesianSpec {
  * - `TITLE 'string'` - Set window caption
  * - `POS left top` - Set window position (default: 0, 0)
  * - `SIZE width height` - Set window size (32-2048, default: 256x256)
- * - `DOTSIZE x y` - Set dot dimensions (1-32, default: 1x1)
+ * - `DOTSIZE x y` - Set dot dimensions (1-256, default: 1x1)
  * - `CARTESIAN xdir ydir` - Set Cartesian axis directions (0=normal, 1=inverted)
  * - `POLAR twopi offset` - Set polar coordinate system parameters
  * - `COLOR bg {grid}` - Window and grid colors (default: BLACK)
@@ -185,10 +185,10 @@ export class DebugPlotWindow extends DebugWindowBase {
   private pendingOperations: PlotCanvasOperation[] = [];
 
   // Simple parser state variables
-  private vPixelX: number = 0; // Raw cursor X value
-  private vPixelY: number = 0; // Raw cursor Y value
-  private plotCoordX: number = 0; // Converted plot X coordinate
-  private plotCoordY: number = 0; // Converted plot Y coordinate
+  private vPixelX: number = 0; // Raw cursor X value (Pascal vPixelX — pre-origin)
+  private vPixelY: number = 0; // Raw cursor Y value (Pascal vPixelY — pre-origin)
+  // NOTE: the origin-inclusive draw coordinate is computed live in getCursorXY() at draw
+  // time (Pascal PLOT_GetXY), not cached here — so an ORIGIN change after SET is honored. [9win §13a]
   private isCartesian: boolean = true; // True = Cartesian mode, False = Polar mode
   private isPrecise: boolean = false; // Precise coordinate mode
 
@@ -414,6 +414,22 @@ export class DebugPlotWindow extends DebugWindowBase {
         } else {
           // Handle PLOT-specific keywords
           switch (element.toUpperCase()) {
+            case 'DOTSIZE': {
+              // DOTSIZE x {y} — Pascal PLOT_Configure key_dotsize (DebugDisplayUnit.pas:1890-1895):
+              // KeyValWithin(vDotSize,1,256); if present, vDotSizeY := vDotSize then
+              // KeyValWithin(vDotSizeY,1,256). Was unhandled (fell to default → stayed 1×1),
+              // so a config-time DOTSIZE never applied (e.g. PC_MOUSE ÷dotSize stayed ÷1). [9win §13a]
+              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+                const w = Math.max(1, Math.min(256, Math.trunc(Number(lineParts[++index]))));
+                displaySpec.dotSize.width = w;
+                displaySpec.dotSize.height = w; // y defaults to x
+                if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
+                  const h = Math.max(1, Math.min(256, Math.trunc(Number(lineParts[++index]))));
+                  displaySpec.dotSize.height = h;
+                }
+              }
+              break;
+            }
             case 'BACKCOLOR':
               // ensure we have one more value
               if (index < lineParts.length - 1) {
@@ -1477,9 +1493,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           }
 
-          // Pascal applies thickness differently in precise mode - use 3 as visual match
-          const adjustedDotSize = this.isPrecise ? Math.max(3, lineSize) : lineSize;
-          await this.drawDotToPlot(adjustedDotSize, opacity);
+          // Use the requested line size directly. (The old code force-bumped dots to a
+          // minimum of 3px in precise mode — a cosmetic fudge faking sub-pixel rendering;
+          // true Smooth* thickness scaling is §13b, not a coordinate concern.) [9win §13a]
+          await this.drawDotToPlot(lineSize, opacity);
           break;
         }
 
@@ -1487,8 +1504,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           // LINE x y [lineSize [opacity]]
           // Values are in 8.8 fixed-point format (value * 256)
           // Capture current cursor position immediately for this line's starting point
-          const fromX = this.plotCoordX;
-          const fromY = this.plotCoordY;
+          // (origin-inclusive, computed live so a mid-sequence ORIGIN change is honored). [9win §13a]
+          const [fromX, fromY] = this.getCursorXY();
 
           if (index + 1 < lineParts.length) {
             const xFixed = this.parseNumber(lineParts[++index]);
@@ -1517,10 +1534,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               const coordinateScale = this.isPrecise ? 256 : 1;
               const x = xFixed / coordinateScale;
               const y = yFixed / coordinateScale;
-              // Pascal applies thickness differently in precise mode - use 3 as visual match
-              const adjustedLineSize = this.isPrecise ? Math.max(3, lineSize) : lineSize;
-              this.logMessage(`LINE: from (${fromX}, ${fromY}) to (${x}, ${y}) with thickness ${adjustedLineSize}`);
-              await this.drawLineToPlotFrom(fromX, fromY, x, y, adjustedLineSize, opacity);
+              // Use the requested line size directly (no precise-mode thickness fudge). [9win §13a]
+              this.logMessage(`LINE: from (${fromX}, ${fromY}) to (${x}, ${y}) with thickness ${lineSize}`);
+              await this.drawLineToPlotFrom(fromX, fromY, x, y, lineSize, opacity);
             } else {
               this.logMessage(`LINE: Failed to parse coordinates - xFixed=${xFixed}, yFixed=${yFixed}`);
             }
@@ -1628,8 +1644,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           let text = '';
 
           // Capture current cursor position and color immediately for this text command
-          const textX = this.plotCoordX;
-          const textY = this.plotCoordY;
+          // (origin-inclusive, computed live at draw time). [9win §13a]
+          const [textX, textY] = this.getCursorXY();
           // Pascal: Color commands check if TEXT follows and update vTextColor accordingly
           // TEXT always uses vTextColor (set by color lookahead or remains white)
           const textColor = this.currTextColor;
@@ -1787,11 +1803,16 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'CARTESIAN': {
-          // CARTESIAN {flipy {flipx}} [PRECISE] - Match Pascal behavior
+          // CARTESIAN {flipy {flipx}} - Pascal key_cartesian (DebugDisplayUnit.pas:2137-2142):
+          // sets cartesian mode and reads optional flipY (vDirY) / flipX (vDirX). It does
+          // NOT touch vPrecise — PRECISE is an independent directive (handled below), so a
+          // trailing `PRECISE` is left in the stream for the standalone case to toggle.
+          // Previously this reset isPrecise and consumed a trailing PRECISE itself, which
+          // diverged from Pascal (a PRECISE issued before CARTESIAN got cleared). [9win §13a]
           this.isCartesian = true;
-          this.isPrecise = false;
 
-          // Optional flip parameters (0 = false, non-zero = true)
+          // Optional flip parameters (0 = false, non-zero = true). A PRECISE token here is
+          // not a flip value — leave it for the standalone PRECISE case.
           let nextIndex = index + 1;
           if (nextIndex < lineParts.length) {
             const nextToken = lineParts[nextIndex].toUpperCase();
@@ -1818,11 +1839,18 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           }
 
-          if (index + 1 < lineParts.length && lineParts[index + 1].toUpperCase() === 'PRECISE') {
-            this.isPrecise = true;
-            index++;
-          }
+          break;
+        }
 
+        case 'PRECISE': {
+          // PRECISE — standalone update directive. Pascal key_precise
+          // (DebugDisplayUnit.pas:1946-1947): vPrecise := vPrecise xor 8, i.e. a TOGGLE
+          // between whole-pixel (default) and sub-pixel (÷256) coordinate input. This was
+          // previously only recognized when appended to CARTESIAN, so a program that sent
+          // `PRECISE` on its own line was silently ignored and its ×256 sub-pixel
+          // coordinates were taken raw (256× off). [9win §13a]
+          this.isPrecise = !this.isPrecise;
+          this.logMessage(`PRECISE toggled -> ${this.isPrecise ? 'sub-pixel (÷256)' : 'whole-pixel'}`);
           break;
         }
 
@@ -2253,33 +2281,18 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * Set cursor position
    */
   private setCursorPosition(x: number, y: number): void {
-    // Store raw values like Pascal does
+    // Store the RAW cursor value only (Pascal SET: vPixelX := t1; vPixelY := t2,
+    // DebugDisplayUnit.pas:1962-1963). The ORIGIN offset and the polar→Cartesian
+    // conversion are applied at DRAW time in getCursorXY() (Pascal PLOT_GetXY :2157-2167),
+    // so an ORIGIN/POLAR change issued after SET — but before the draw — is honored.
+    // Previously the origin was baked in here, freezing it at SET time. [9win §13a]
     this.vPixelX = x;
     this.vPixelY = y;
 
     // Update public cursor position for external access (used by sprite renderer)
     this.cursorPosition = { x, y };
 
-    // Convert based on coordinate mode
-    if (this.isCartesian) {
-      // Apply origin offset for Cartesian mode
-      this.plotCoordX = x + this.origin.x;
-      this.plotCoordY = y + this.origin.y;
-    } else {
-      // Polar mode: x=radius (rho), y=angle (theta)
-      // Match Pascal's PolarToCartesian exactly:
-      // Tf := (Int64(theta_y) + Int64(vTheta)) / vTwoPi * Pi * 2;
-      const angleRad = ((y + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
-
-      // Pascal: SinCos(Tf, Yf, Xf); theta_y := Round(Yf * rho_x); rho_x := Round(Xf * rho_x);
-      const newX = Math.round(x * Math.cos(angleRad));
-      const newY = Math.round(x * Math.sin(angleRad));
-
-      this.plotCoordX = this.origin.x + newX;
-      this.plotCoordY = this.origin.y + newY;
-    }
-
-    this.logMessage(`SET cursor to (${x}, ${y}) -> plot coords (${this.plotCoordX}, ${this.plotCoordY})`);
+    this.logMessage(`SET cursor to raw (${x}, ${y})`);
   }
 
   /**
@@ -2610,12 +2623,10 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
     try {
       await debugWindow.webContents.executeJavaScript(jsCode);
-      // Update cursor position after successful draw
+      // Update cursor to the raw endpoint (origin applied live by getCursorXY). [9win §13a]
       this.cursorPosition = { x, y };
       this.vPixelX = x;
       this.vPixelY = y;
-      this.plotCoordX = targetX;
-      this.plotCoordY = targetY;
       // Buffer updates are handled in performUpdate() now
     } catch (error) {
       this.logMessage(`Failed to draw line: ${error}`);
@@ -2665,22 +2676,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       `LINE buffered (update mode): from (${fromX}, ${fromY}) to (${x}, ${y}) thickness ${lineSize}, opacity ${opacity}`
     );
 
-    // Mirror immediate mode behavior: update cursor position and cached plot coordinates
+    // Mirror immediate mode behavior: update cursor to the raw endpoint (origin applied
+    // live by getCursorXY at draw time). [9win §13a]
     this.cursorPosition = { x, y };
     this.vPixelX = x;
     this.vPixelY = y;
-
-    let targetPlotX = x + this.origin.x;
-    let targetPlotY = y + this.origin.y;
-
-    if (!this.isCartesian) {
-      const angleRad = ((y + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
-      targetPlotX = this.origin.x + Math.round(x * Math.cos(angleRad));
-      targetPlotY = this.origin.y + Math.round(x * Math.sin(angleRad));
-    }
-
-    this.plotCoordX = targetPlotX;
-    this.plotCoordY = targetPlotY;
   }
 
   private queueDeferredCircle(
@@ -3170,10 +3170,20 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   //  ----------------- Utility Routines -----------------------
   //
   private getCursorXY(): [number, number] {
-    // Return the current plot coordinates
-    // These are already calculated and stored by setCursorPosition
-    this.logMessage(`getCursorXY() returning (${this.plotCoordX}, ${this.plotCoordY})`);
-    return [this.plotCoordX, this.plotCoordY];
+    // Apply the current ORIGIN offset (and polar conversion) at DRAW time, not baked at
+    // SET — Pascal PLOT_GetXY (DebugDisplayUnit.pas:2157-2167) recomputes from
+    // vPixelX/vPixelY + vOffset on every draw, so an ORIGIN change after SET takes effect.
+    // The X/Y direction flips (vDirX/vDirY) are applied per-draw by each draw helper, as
+    // before — this returns the origin-inclusive, pre-flip plot coordinate. [9win §13a]
+    if (this.isCartesian) {
+      return [this.vPixelX + this.origin.x, this.vPixelY + this.origin.y];
+    }
+    // Polar: vPixelX = rho, vPixelY = theta — convert to a Cartesian offset from origin
+    // (matches the prior SET-time conversion: newX = rho*cos, newY = rho*sin).
+    const angleRad = ((this.vPixelY + this.polarConfig.theta) / this.polarConfig.twopi) * Math.PI * 2;
+    const newX = Math.round(this.vPixelX * Math.cos(angleRad));
+    const newY = Math.round(this.vPixelX * Math.sin(angleRad));
+    return [this.origin.x + newX, this.origin.y + newY];
   }
 
   public getXY(x: number, y: number): [number, number] {

@@ -287,8 +287,11 @@ none); HSV16 tune numeric-only; populate the `#coordinate-display` readout on mo
 Pascal intensities; edge low-amplitude bins now visible; error none.
 
 ### 13. PLOT residuals
-**`PRECISE` default = 8** + standalone `PRECISE` toggle (`:1946-1947`) — handle the ×256
-coordinate scaling end-to-end and regression-test simple plots; **SPRITE orientation 0–7 =
+Standalone `PRECISE` toggle (`:1946-1947`, `vPrecise xor 8`) — **do not change the precise
+default**: Pascal `vPrecise=8` is whole-pixel input, which already equals TS `isPrecise=false`
+(TS *divides* by `coordinateScale=isPrecise?256:1` where Pascal *shifts*, so the defaults
+already agree; flipping the TS default would treat plain `SET 100` as `0.39px` and 256×-break
+every non-precise plot). Add the standalone toggle and regression-test simple plots; **SPRITE orientation 0–7 =
 flip/transpose** matrix, not 90° rotations (`:2859-2910` vs `:2123-2133`); add `OPACITY`
 (`:1944`), `OBOX` (`:2015,2034`), update-phase `BACKCOLOR` (`:1932`) + standalone
 `TEXTANGLE` (`:2041`) + color-mode directives (wire `isColorModeCommand`, `:3226`);
