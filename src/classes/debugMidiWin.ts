@@ -181,6 +181,10 @@ export class DebugMidiWindow extends DebugWindowBase {
     this.midiChannel = displaySpec.channel;
     this.whiteKeyColor = displaySpec.keyColors.white;
     this.blackKeyColor = displaySpec.keyColors.black;
+    // The draw reads vColor[0]/[1]; seed them from the spec so a create-time COLOR
+    // directive (Pascal vColor[0]/vColor[1]) actually colors the keys. [9win §7]
+    this.vColor[0] = displaySpec.keyColors.white;
+    this.vColor[1] = displaySpec.keyColors.black;
     this._windowTitle = displaySpec.windowTitle;
     this.vWidth = displaySpec.size.width;
     this.vHeight = displaySpec.size.height;
@@ -672,10 +676,11 @@ export class DebugMidiWindow extends DebugWindowBase {
       const part = lineParts[i];
 
       // Custom SIZE override (1 parameter for midiSize, not 2 like shared parser)
+      // Pascal KeyValWithin(MidiSize, 1, 50): clamp into range. [9win §7]
       if (part === 'SIZE' && i + 1 < lineParts.length) {
         const size = Spin2NumericParser.parseCount(lineParts[i + 1]);
-        if (size !== null && size >= 1 && size <= 50) {
-          this.midiSize = size;
+        if (size !== null) {
+          this.midiSize = DebugMidiWindow.within(size, 1, 50);
           this.keySize = 8 + this.midiSize * 4;
           this.updateKeyboardLayout();
         }
@@ -728,22 +733,30 @@ export class DebugMidiWindow extends DebugWindowBase {
       }
 
       // MIDI-specific keywords
-      if (part === 'RANGE' && i + 2 < lineParts.length) {
+      // Pascal: first := Within(val,0,127); last := Within(val,first,127). Clamp. [9win §7]
+      if (part === 'RANGE' && i + 1 < lineParts.length) {
         const first = Spin2NumericParser.parseCount(lineParts[i + 1]);
-        const last = Spin2NumericParser.parseCount(lineParts[i + 2]);
-        if (first !== null && last !== null && first >= 0 && first <= 127 && last >= first && last <= 127) {
-          this.midiKeyFirst = first;
-          this.midiKeyLast = last;
+        if (first !== null) {
+          const f = DebugMidiWindow.within(first, 0, 127);
+          let l = f;
+          const last = i + 2 < lineParts.length ? Spin2NumericParser.parseCount(lineParts[i + 2]) : null;
+          if (last !== null) {
+            l = DebugMidiWindow.within(last, f, 127);
+            i += 1;
+          }
+          this.midiKeyFirst = f;
+          this.midiKeyLast = l;
           this.updateKeyboardLayout();
         }
-        i += 3;
+        i += 2;
         continue;
       }
 
+      // Pascal KeyValWithin(MidiChannel, 0, 15): clamp into range. [9win §7]
       if (part === 'CHANNEL' && i + 1 < lineParts.length) {
         const channel = Spin2NumericParser.parseCount(lineParts[i + 1]);
-        if (channel !== null && channel >= 0 && channel <= 15) {
-          this.midiChannel = channel;
+        if (channel !== null) {
+          this.midiChannel = DebugMidiWindow.within(channel, 0, 15);
         }
         i += 2;
         continue;
@@ -876,6 +889,11 @@ export class DebugMidiWindow extends DebugWindowBase {
    * @param lineParts Array of command parts from debug statement
    * @returns Tuple of [isValid, displaySpec]
    */
+  /** Pascal GlobalUnit.Within — clamp value into [min, max]. */
+  private static within(value: number, min: number, max: number): number {
+    return value < min ? min : value > max ? max : value;
+  }
+
   static parseMidiDeclaration(lineParts: string[]): [boolean, MidiDisplaySpec] {
     const displaySpec: MidiDisplaySpec = {
       displayName: 'MIDI',
@@ -894,9 +912,88 @@ export class DebugMidiWindow extends DebugWindowBase {
       displaySpec.windowTitle = `MIDI - ${lineParts[1]}`;
     }
 
-    // TODO: Parse additional MIDI-specific parameters from remaining lineParts
-    // - TITLE, POS, SIZE, RANGE, CHANNEL parameters
-    // For now, using defaults compatible with existing implementation
+    // Parse create-time config directives (Pascal MIDI_Configure, DebugDisplayUnit.pas:2492).
+    // Previously a stub: TITLE/POS/SIZE/RANGE/CHANNEL/COLOR given on the creation line were
+    // dropped and only took effect if re-sent during the update phase. Mirror the update-phase
+    // parser here so they apply at window construction. [9win §7]
+    let i = 2;
+    while (i < lineParts.length) {
+      const part = lineParts[i];
+
+      // SIZE keysize — Pascal KeyValWithin(MidiSize, 1, 50): clamp into range
+      if (part === 'SIZE' && i + 1 < lineParts.length) {
+        const size = Spin2NumericParser.parseCount(lineParts[i + 1]);
+        if (size !== null) {
+          displaySpec.keySize = DebugMidiWindow.within(size, 1, 50);
+        }
+        i += 2;
+        continue;
+      }
+
+      // RANGE first last — Pascal: first := Within(val,0,127); last := Within(val,first,127)
+      if (part === 'RANGE' && i + 1 < lineParts.length) {
+        const first = Spin2NumericParser.parseCount(lineParts[i + 1]);
+        if (first !== null) {
+          const f = DebugMidiWindow.within(first, 0, 127);
+          let l = f; // Pascal: MidiKeyLast := MidiKeyFirst before reading the 2nd value
+          const last = i + 2 < lineParts.length ? Spin2NumericParser.parseCount(lineParts[i + 2]) : null;
+          if (last !== null) {
+            l = DebugMidiWindow.within(last, f, 127);
+            i += 1; // consumed the 2nd value
+          }
+          displaySpec.keyRange = { first: f, last: l };
+        }
+        i += 2;
+        continue;
+      }
+
+      // CHANNEL ch — Pascal KeyValWithin(MidiChannel, 0, 15): clamp into range
+      if (part === 'CHANNEL' && i + 1 < lineParts.length) {
+        const channel = Spin2NumericParser.parseCount(lineParts[i + 1]);
+        if (channel !== null) {
+          displaySpec.channel = DebugMidiWindow.within(channel, 0, 15);
+        }
+        i += 2;
+        continue;
+      }
+
+      // COLOR white-key black-key — Pascal KeyColor(vColor[0]) then KeyColor(vColor[1]) (RGBI8X)
+      if (part === 'COLOR' && i + 2 < lineParts.length) {
+        displaySpec.keyColors = {
+          white: new DebugColor(lineParts[i + 1]).rgbValue,
+          black: new DebugColor(lineParts[i + 2]).rgbValue
+        };
+        i += 3;
+        continue;
+      }
+
+      // TITLE 'caption' / POS left top — shared parser (sets hasExplicitPosition for POS)
+      if (part === 'TITLE' || part === 'POS') {
+        const compatibleSpec: Partial<BaseDisplaySpec> = {
+          title: displaySpec.windowTitle,
+          position: displaySpec.position,
+          hasExplicitPosition: displaySpec.hasExplicitPosition,
+          size: { width: 0, height: 0 }, // not used by MIDI
+          nbrSamples: 0, // not used
+          window: { background: '#000000', grid: '#808080' } // not used
+        };
+        const [parsed, consumed] = DisplaySpecParser.parseCommonKeywords(
+          lineParts,
+          i,
+          compatibleSpec as BaseDisplaySpec
+        );
+        if (parsed) {
+          if (compatibleSpec.title) displaySpec.windowTitle = compatibleSpec.title;
+          if (compatibleSpec.position) displaySpec.position = compatibleSpec.position;
+          if (compatibleSpec.hasExplicitPosition) displaySpec.hasExplicitPosition = compatibleSpec.hasExplicitPosition;
+          i += consumed;
+          continue;
+        }
+      }
+
+      // Unknown / non-config token at creation — skip it (data bytes only arrive in update phase)
+      i += 1;
+    }
 
     return [true, displaySpec];
   }
