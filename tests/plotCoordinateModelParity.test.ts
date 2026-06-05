@@ -49,9 +49,12 @@ function makeStub(overrides: Record<string, any> = {}): any {
     displaySpec: { size: { width: 256, height: 256 }, dotSize: { width: 1, height: 1 }, delayedUpdate: true },
     logMessage: () => {},
     // --- real methods borrowed from the prototype ---
+    colorMode: 'RGB24',
+    colorTranslator: { setColorMode: () => {} },
     parseNumber: proto.parseNumber,
     skipComma: proto.skipComma,
     isColorCommand: proto.isColorCommand,
+    isColorModeCommand: proto.isColorModeCommand,
     setPlotColor: proto.setPlotColor,
     setCursorPosition: proto.setCursorPosition,
     getCursorXY: proto.getCursorXY,

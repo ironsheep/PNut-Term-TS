@@ -210,7 +210,7 @@ export class DebugPlotWindow extends DebugWindowBase {
 
   // State for new features
   private opacity: number = 255; // 0-255
-  private textAngle: number = 0; // degrees
+  public textAngle: number = 0; // degrees (persistent; the renderer reads this) [9win §13c]
   private colorMode: ColorMode = ColorMode.RGB24;
   private updateMode: boolean = false; // True = buffered mode (wait for UPDATE), False = live mode (immediate display)
 
@@ -1004,7 +1004,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
               case 'ArrowDown': keyCode = 40; break;
               case 'ArrowLeft': keyCode = 37; break;
               case 'ArrowRight': keyCode = 39; break;
-              case 'Delete': keyCode = 46; break;
+              case 'Delete': keyCode = 7; break; // Pascal kDelete -> Chr(7) (:844); matches enableKeyboardInput()
               case 'Home': keyCode = 36; break;
               case 'End': keyCode = 35; break;
               case 'PageUp': keyCode = 33; break;
@@ -1324,7 +1324,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         } else if (command === 'LUTCOLORS') {
           // LUTCOLORS color0 color1 ... color7
           const colors = [];
-          for (let i = 0; i < 8 && index + 1 < lineParts.length; i++) {
+          for (let i = 0; i < 256 && index + 1 < lineParts.length; i++) {
             colors.push(lineParts[++index]);
           }
           if (colors.length > 0) {
@@ -1512,7 +1512,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             index = this.skipComma(lineParts, index); // Skip optional comma
             const yFixed = index < lineParts.length ? this.parseNumber(lineParts[++index]) : null;
             let lineSize = this.lineSize; // Use persistent line size as default
-            let opacity = 255;
+            let opacity = this.opacity;
 
             if (index + 1 < lineParts.length) {
               const val = this.parseNumber(lineParts[index + 1]);
@@ -1549,7 +1549,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (index + 1 < lineParts.length) {
             const diameter = this.parseNumber(lineParts[++index]);
             let lineSize = 0; // 0 = filled
-            let opacity = 255;
+            let opacity = this.opacity;
 
             if (index + 1 < lineParts.length) {
               const val = this.parseNumber(lineParts[index + 1]);
@@ -1580,7 +1580,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             const width = this.parseNumber(lineParts[++index]);
             const height = this.parseNumber(lineParts[++index]);
             let lineSize = 0; // 0 = filled
-            let opacity = 255;
+            let opacity = this.opacity;
 
             if (index + 1 < lineParts.length) {
               const val = this.parseNumber(lineParts[index + 1]);
@@ -1611,7 +1611,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             const width = this.parseNumber(lineParts[++index]);
             const height = this.parseNumber(lineParts[++index]);
             let lineSize = 0; // 0 = filled
-            let opacity = 255;
+            let opacity = this.opacity;
 
             if (index + 1 < lineParts.length) {
               const val = this.parseNumber(lineParts[index + 1]);
@@ -1647,7 +1647,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             const xRadius = this.parseNumber(lineParts[++index]);
             const yRadius = this.parseNumber(lineParts[++index]);
             let lineSize = 0; // 0 = filled
-            let opacity = 255;
+            let opacity = this.opacity;
 
             if (index + 1 < lineParts.length) {
               const val = this.parseNumber(lineParts[index + 1]);
@@ -1676,7 +1676,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           // TEXT [size [style [angle]]] 'string'
           let textSize = 10;
           let textStyleValue = 1;
-          let textAngle = 0;
+          let textAngle = this.textAngle; // Pascal a[2] := vTextAngle (:2047) — default to persistent
           let text = '';
 
           // Capture current cursor position and color immediately for this text command
@@ -1711,12 +1711,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             }
           }
 
-          // Check for angle
+          // Check for angle — Pascal MakeTextAngle(a[2]) when an explicit angle is given
+          // (:2048). An explicit TEXT angle is transient (does NOT update vTextAngle).
           if (paramIndex < lineParts.length) {
             const val = this.parseNumber(lineParts[paramIndex]);
             if (val !== null) {
-              textAngle = val % 360;
-              if (textAngle < 0) textAngle += 360;
+              textAngle = this.makeTextAngle(val);
               paramIndex++;
             }
           }
@@ -1776,22 +1776,27 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
                 `TEXT buffered (update mode): "${text}" at (${textX}, ${textY}) size=${textSize} angle=${textAngle}`
               );
             } else {
-              // Immediate mode - render text now using per-command metrics
+              // Immediate mode - render text now using per-command metrics. writeStringToPlotAt
+              // reads this.textAngle, so apply the effective (possibly transient) angle around
+              // the draw and restore the persistent value afterward. [9win §13c]
+              const savedAngle = this.textAngle;
               this.font = workingFont;
               this.textStyle = workingTextStyle;
+              this.textAngle = textAngle;
               await this.writeStringToPlotAt(text, textX, textY, textColor);
               this.font = savedFont;
               this.textStyle = savedTextStyle;
+              this.textAngle = savedAngle;
             }
           }
           break;
         }
 
         case 'TEXTSIZE': {
-          // TEXTSIZE size
+          // TEXTSIZE size — Pascal KeyTextSize = KeyValWithin(vTextSize, 6, 200) (:2834-2837)
           if (index + 1 < lineParts.length) {
             const size = this.parseNumber(lineParts[++index]);
-            if (size !== null && size >= 1 && size <= 100) {
+            if (size !== null && size >= 6 && size <= 200) {
               this.font.textSizePts = size;
               this.font.charHeight = Math.round(size * 1.33); // Convert points to pixels
             }
@@ -1825,15 +1830,64 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           break;
         }
 
-        case 'ORIGIN': {
-          // ORIGIN x y
-          if (index + 2 < lineParts.length) {
-            const x = this.parseNumber(lineParts[++index]);
-            const y = this.parseNumber(lineParts[++index]);
-            if (x !== null && y !== null) {
-              this.origin.x = x;
-              this.origin.y = y;
+        case 'OPACITY': {
+          // OPACITY byte — Pascal key_opacity (:1944): set the persistent opacity used as the
+          // default for subsequent DOT/LINE/CIRCLE/OVAL/BOX/OBOX/SPRITE draws.
+          if (index + 1 < lineParts.length) {
+            const val = this.parseNumber(lineParts[++index]);
+            if (val !== null) {
+              this.opacity = Math.max(0, Math.min(255, val));
+              this.logMessage(`Set persistent opacity to ${this.opacity}`);
             }
+          }
+          break;
+        }
+
+        case 'BACKCOLOR': {
+          // BACKCOLOR color — Pascal key_backcolor (:1932): set the background color (used by
+          // CLEAR) at runtime, mirroring the config-time BACKCOLOR handling.
+          if (index + 1 < lineParts.length) {
+            const colorName = lineParts[++index];
+            let brightness = 8; // full-saturated default (matches config-time BACKCOLOR)
+            if (index + 1 < lineParts.length && /^-?\d/.test(lineParts[index + 1])) {
+              brightness = Number(lineParts[++index]);
+            }
+            const bg = new DebugColor(colorName, brightness);
+            this.displaySpec.window.background = bg.rgbString;
+            this.logMessage(`Set background color to ${bg.rgbString}`);
+          }
+          break;
+        }
+
+        case 'TEXTANGLE': {
+          // TEXTANGLE angle — Pascal key_textangle (:2041): if KeyVal then MakeTextAngle.
+          // Sets the PERSISTENT text angle that TEXT defaults to.
+          if (index + 1 < lineParts.length) {
+            const val = this.parseNumber(lineParts[++index]);
+            if (val !== null) {
+              this.textAngle = this.makeTextAngle(val);
+              this.logMessage(`Set persistent text angle to ${this.textAngle} deg`);
+            }
+          }
+          break;
+        }
+
+        case 'ORIGIN': {
+          // ORIGIN {x y} — Pascal key_origin (:1950-1956): with x y, set the offset; with
+          // NO args, set the offset to the CURRENT pixel (vOffset := vPixel).
+          const xVal = index + 1 < lineParts.length ? this.parseNumber(lineParts[index + 1]) : null;
+          if (xVal !== null) {
+            index++;
+            const yVal = index + 1 < lineParts.length ? this.parseNumber(lineParts[index + 1]) : null;
+            if (yVal !== null) {
+              index++;
+              this.origin.x = xVal;
+              this.origin.y = yVal;
+            }
+          } else {
+            // No (numeric) argument — origin becomes the current cursor pixel.
+            this.origin.x = this.vPixelX;
+            this.origin.y = this.vPixelY;
           }
           break;
         }
@@ -2028,7 +2082,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
             const layerIndex = this.parseNumber(lineParts[++index]);
             const filename = DebugPlotWindow.removeQuotes(lineParts[++index]);
 
-            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 16) {
+            // Pascal plot_layermax = 8 (:222); KeyValWithin(layer, 1, plot_layermax)
+            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 8) {
               // Validate .bmp extension
               if (filename.toLowerCase().endsWith('.bmp')) {
                 try {
@@ -2072,7 +2127,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (index + 1 < lineParts.length) {
             const layerIndex = this.parseNumber(lineParts[++index]);
 
-            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 16) {
+            // Pascal plot_layermax = 8 (:222); KeyValWithin(layer, 1, plot_layermax)
+            if (layerIndex !== null && layerIndex >= 1 && layerIndex <= 8) {
               // Do NOT check if layer is loaded at parse time
               // Layer loading is async, check happens at execution time in integrator
 
@@ -2205,7 +2261,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         case 'LUTCOLORS': {
           // LUTCOLORS color0 color1 ... color7
           const colors = [];
-          for (let i = 0; i < 8 && index + 1 < lineParts.length; i++) {
+          for (let i = 0; i < 256 && index + 1 < lineParts.length; i++) {
             colors.push(lineParts[++index]);
           }
           if (colors.length > 0) {
@@ -2228,6 +2284,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           break;
 
         default:
+          // Color-mode directive at runtime — Pascal key_lut1..key_rgb24 -> KeyColorMode
+          // (:1928-1929). Sets the active color mode used by subsequent LUT/pixel data. [9win §13c]
+          if (this.isColorModeCommand(command)) {
+            const mode = command.toUpperCase() as ColorMode;
+            this.colorMode = mode;
+            this.colorTranslator.setColorMode(mode);
+            this.logMessage(`PLOT: color mode set to ${mode}`);
+            break;
+          }
           // Check if it's a number (could be direct pixel data or other numeric command)
           const numValue = this.parseNumber(command);
           if (numValue !== null) {
@@ -2364,8 +2429,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    */
   private processLutColorsCommand(colors: string[]): void {
     colors.forEach((colorSpec, index) => {
-      if (index < 8) {
-        // Only first 8 colors
+      if (index < 256) {
+        // Pascal KeyLutColors loads up to 256 LUT entries (vLut[0..$FF], :2806-2815)
         this.processLutCommand(index, index, colorSpec);
       }
     });
@@ -3354,6 +3419,25 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     newY = Math.round(newY);
     this.logMessage(`* getXY(${x},${y}) -> (${newX},${newY})`);
     return [newX, newY];
+  }
+
+  /**
+   * Normalize a text-angle argument the way Pascal MakeTextAngle does (:3073-3077):
+   *   Cartesian: a := val mod 360 * 10   (tenths-of-degree for the Win32 lfEscapement)
+   *   Polar:     a := round(val mod vTwoPi / vTwoPi * 3600)
+   * Canvas rotates in radians (writeStringToPlotAt divides by 180/PI), so we keep WHOLE
+   * DEGREES — behaviorally identical to Pascal's tenths-of-degree escapement encoding —
+   * and normalize to 0..359. [9win §13c]
+   */
+  private makeTextAngle(val: number): number {
+    let deg: number;
+    if (this.isCartesian) {
+      deg = val % 360;
+    } else {
+      const twopi = this.polarConfig.twopi || 0x100000000;
+      deg = Math.round((((val % twopi) + twopi) % twopi / twopi) * 360);
+    }
+    return ((deg % 360) + 360) % 360;
   }
 
   private isColorModeCommand(command: string): boolean {

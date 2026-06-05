@@ -596,9 +596,13 @@ export class PlotWindowIntegrator {
     // Set font metrics
     this.plotWindow.setFontMetrics(size, styleNum, angle, this.plotWindow.font, this.plotWindow.textStyle);
 
-    // Draw the text
+    // Draw the text. writeStringToPlotAt reads plotWindow.textAngle, so apply this op's
+    // (transient) angle around the draw and restore the persistent value. [9win §13c]
     if (params.text) {
+      const savedAngle = this.plotWindow.textAngle;
+      this.plotWindow.textAngle = angle;
       await this.plotWindow.writeStringToPlot(params.text);
+      this.plotWindow.textAngle = savedAngle;
     }
   }
 
