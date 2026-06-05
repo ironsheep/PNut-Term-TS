@@ -696,6 +696,13 @@ export class DebugBitmapWindow extends DebugWindowBase {
    */
   protected clearDisplayContent(): void {
     this.clearBitmap();
+    // Pascal key_clear: SetTrace(vTrace, True) (DebugDisplayUnit.pas:2447, :2973-2980).
+    // Restart the trace pixel position at the pattern's origin AND (ModifyRate=True)
+    // reset vRate to a full scan — width for horizontal patterns (0-3), height for
+    // vertical patterns (4-7). Without this, new data after CLEAR resumes from the
+    // stale mid-bitmap trace position. [9win §6]
+    this.traceProcessor.setPattern(this.state.tracePattern, true);
+    this.state.rate = (this.state.tracePattern & 0x7) <= 3 ? this.state.width : this.state.height;
   }
 
   /**

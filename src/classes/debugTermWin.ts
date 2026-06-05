@@ -1102,8 +1102,12 @@ export class DebugTermWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at clearTextArea()`);
       try {
-        const bgcolor: string = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
-        this.logMessage(`  -- bgcolor=[${bgcolor}]`);
+        // Pascal ClearBitmap fills with GetBackground -> vBackColor (the window
+        // background, set by COLOR/BACKCOLOR), NOT the currently-selected text
+        // combo's bg. Using the combo bg left CLEAR painting the wrong color when
+        // a non-default combo was active. [9win §6]
+        const bgcolor: string = this.displaySpec.window.background;
+        this.logMessage(`  -- bgcolor=[${bgcolor}] (vBackColor)`);
 
         // Clear offscreen canvas (Bitmap[0] in Pascal)
         const jsCode = `

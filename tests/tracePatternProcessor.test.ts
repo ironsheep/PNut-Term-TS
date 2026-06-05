@@ -46,6 +46,36 @@ describe('TracePatternProcessor', () => {
     });
   });
 
+  describe('CLEAR restarts the trace at the pattern origin [9win §6]', () => {
+    // Pascal key_clear -> SetTrace(vTrace, True) restarts vPixelX/vPixelY at the
+    // pattern's origin. BITMAP/SPECTRO call setPattern() on CLEAR to do this; verify
+    // the position returns to origin even after the trace has advanced mid-bitmap.
+    beforeEach(() => {
+      processor.setBitmapSize(100, 100);
+    });
+
+    it('returns pattern-0 trace to top-left after stepping', () => {
+      processor.setPattern(0);
+      for (let i = 0; i < 250; i++) processor.step(); // advance well into the bitmap
+      const moved = processor.getPosition();
+      expect(moved.x === 0 && moved.y === 0).toBe(false); // actually moved
+
+      processor.setPattern(0); // CLEAR / SetTrace restart
+      const pos = processor.getPosition();
+      expect(pos.x).toBe(0);
+      expect(pos.y).toBe(0);
+    });
+
+    it('returns pattern-3 trace to bottom-right after stepping', () => {
+      processor.setPattern(3);
+      for (let i = 0; i < 250; i++) processor.step();
+      processor.setPattern(3); // CLEAR / SetTrace restart
+      const pos = processor.getPosition();
+      expect(pos.x).toBe(99);
+      expect(pos.y).toBe(99);
+    });
+  });
+
   describe('Pattern setting and initial positions', () => {
     beforeEach(() => {
       processor.setBitmapSize(100, 100);

@@ -1350,6 +1350,7 @@ export class DebugScopeWindow extends DebugWindowBase {
   private clearChannelData() {
     this.logMessage(`at clearChannelData()`);
     this.rateThrottle.reset(); // Pascal key_clear: vRateCount := 0 (:1258) [9win §5]
+    this.triggerFired = false; // Pascal key_clear: vTriggered := False — drop trigger indicator (:1255) [9win §6]
     // Ensure channelSamples array matches channelSpecs
     if (this.channelSamples.length !== this.channelSpecs.length) {
       this.channelSamples = [];

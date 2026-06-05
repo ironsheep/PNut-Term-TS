@@ -1359,8 +1359,9 @@ export class DebugLogicWindow extends DebugWindowBase {
     // Clear circular buffer (Pascal-style)
     this.circularBuffer.fill(0);
     this.samplePtr = 0;
-    this.samplePop = 0;
-    this.triggerFrozenPtr = -1;
+    this.samplePop = 0; // Pascal key_clear: SamplePop := 0 (:1057)
+    this.triggerFired = false; // Pascal key_clear: vTriggered := False — drop trigger indicator (:1055) [9win §6]
+    this.triggerFrozenPtr = -1; // un-freeze the draw pointer (TS pairing for vTriggered reset)
     this.rateThrottle.reset(); // Pascal key_clear: vRateCount := 0 (:1058) [9win §5]
 
     // Clear channel samples for compatibility
