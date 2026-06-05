@@ -61,8 +61,11 @@ describe('FFT Window Logic Validation', () => {
       console.log(`  rateCounter: ${privateAccess.rateCounter}`);
       console.log(`  rate: ${spec.rate}`);
 
-      // Configure channel first
-      await fftWindow.updateContent(["'Test'", '0', '1000', '180', '10', '15', 'YELLOW', '12']);
+      // Configure channel first. Pascal FFT channel def is `'label' mag high tall base grid
+      // {color}` (DebugDisplayUnit.pas:1630-1637) — 5 numerics + optional color, NO textsize.
+      // The old extra '12' textsize token is gone; with §11's faithful parse it would otherwise
+      // fall through as a stray data sample. [9win §11]
+      await fftWindow.updateContent(["'Test'", '0', '1000', '180', '10', '15', 'YELLOW']);
 
       console.log(`\nAfter channel config:`);
       console.log(`  channels.length: ${privateAccess.channels.length}`);

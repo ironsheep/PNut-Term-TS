@@ -136,12 +136,13 @@ describe('FFT Rendering', () => {
       expect(displaySpec.logScale).toBe(true);
     });
 
-    it('should enable grid when GRID specified', () => {
+    it('ignores the removed GRID directive — no Pascal key_grid [9win §11]', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128', 'GRID'
-      ]);
-      
-      expect(displaySpec.grid).toBe(true);
+      ]) as any;
+
+      expect(displaySpec.grid).toBeUndefined();
+      expect(displaySpec.samples).toBe(128); // still parses cleanly
     });
 
     it('should disable labels when HIDEXY specified', () => {
@@ -154,82 +155,38 @@ describe('FFT Rendering', () => {
     });
   });
 
-  describe('Frequency Range Configuration', () => {
-    it('should set first and last bins from RANGE', () => {
+  describe('Display bin range via SAMPLES (RANGE removed) [9win §11]', () => {
+    it('SAMPLES n first last sets the first and last display bins', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '256', 'RANGE', '10', '100'
+        'FFT', 'TestFFT', 'SAMPLES', '256', '10', '100'
       ]);
-      
+
       expect(displaySpec.firstBin).toBe(10);
       expect(displaySpec.lastBin).toBe(100);
     });
 
-    it('should handle single RANGE parameter as lastBin', () => {
+    it('SAMPLES last clamps to samples/2 - 1', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '256', 'RANGE', '64'
+        'FFT', 'TestFFT', 'SAMPLES', '128', '0', '200'
       ]);
-      
-      expect(displaySpec.firstBin).toBe(0);
-      expect(displaySpec.lastBin).toBe(64);
-    });
 
-    it('should limit lastBin to half of FFT size', () => {
-      const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '128', 'RANGE', '0', '200'
-      ]);
-      
-      // lastBin should be limited to samples/2 - 1
       expect(displaySpec.lastBin).toBe(63);
     });
-  });
 
-  describe('Coordinate Conversion', () => {
-    it('should convert mouse X to frequency bin', () => {
+    it('the removed RANGE directive is now a no-op (bins stay at SAMPLES defaults)', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '128', 'SIZE', '640', '480'
+        'FFT', 'TestFFT', 'SAMPLES', '256', 'RANGE', '10', '100'
       ]);
-      
-      fftWindow = new DebugFFTWindow(mockContext, displaySpec);
-      const window = fftWindow as any;
-      
-      // Test bin conversion at different X positions
-      expect(window.mouseXToBin(0)).toBe(0);
-      expect(window.mouseXToBin(320)).toBe(32); // Middle of display
-      expect(window.mouseXToBin(640)).toBe(63); // End of display (samples/2 - 1)
-    });
 
-    it('should convert mouse Y to magnitude with bottom-up coordinates', () => {
-      const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '128', 'SIZE', '640', '480'
-      ]);
-      
-      fftWindow = new DebugFFTWindow(mockContext, displaySpec);
-      const window = fftWindow as any;
-      
-      // Bottom-up coordinate system
-      expect(window.mouseYToMagnitude(480)).toBe(0);   // Bottom = 0%
-      expect(window.mouseYToMagnitude(240)).toBe(50);  // Middle = 50%
-      expect(window.mouseYToMagnitude(0)).toBe(100);   // Top = 100%
-    });
-
-    it('should calculate frequency from bin based on sample rate', () => {
-      const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
-        'FFT', 'TestFFT', 'SAMPLES', '128'
-      ]);
-      
-      fftWindow = new DebugFFTWindow(mockContext, displaySpec);
-      const window = fftWindow as any;
-      
-      // Set a known sample rate
-      window.detectedSampleRate = 1000; // 1kHz
-      window.fftExp = 7; // log2(128) = 7
-      
-      // Nyquist = 500Hz, 64 bins, so each bin = 500/64 = 7.8125Hz
-      expect(window.binToFrequency(0)).toBe(0);
-      expect(window.binToFrequency(1)).toBeCloseTo(7.8125, 2);
-      expect(window.binToFrequency(32)).toBeCloseTo(250, 1);
+      expect(displaySpec.firstBin).toBe(0);
+      expect(displaySpec.lastBin).toBe(127); // 256/2 - 1, unaffected by RANGE
     });
   });
+
+  // NOTE: the bin/frequency/magnitude mouse-conversion helpers (mouseXToBin,
+  // mouseYToMagnitude, binToFrequency) were removed in [9win §11]. Pascal FormMouseMove
+  // for dis_fft reports the raw plot-area pixel offset with Y inverted, not bin/Hz/%, so
+  // those conversions no longer exist. The new readout is covered in 'Mouse Interaction'.
 
   describe('Rendering Methods', () => {
     beforeEach(() => {
@@ -414,24 +371,27 @@ describe('FFT Rendering', () => {
       fftWindow = new DebugFFTWindow(mockContext, displaySpec);
     });
 
-    it('should update coordinate display on mouse move', () => {
+    it('updates the coordinate readout on mouse move — pixel offset, not Bin/Freq/Mag [9win §11]', () => {
       const window = fftWindow as any;
-      
+
       // Simulate mouse move event
       const event = {
         clientX: 320,
         clientY: 240
       } as MouseEvent;
-      
+
       window.handleMouseMove(event);
-      
-      // Check that coordinate display was updated
+
+      // Check that the coordinate readout was drawn (fillRect(0,0,200,20) is unique to it)
       const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
       if (mockExecuteJS && mockExecuteJS.mock) {
-        const coordCall = mockExecuteJS.mock.calls.find((call: any) => 
-          call[0].includes('Bin:') && call[0].includes('Freq:') && call[0].includes('Mag:')
+        const coordCall = mockExecuteJS.mock.calls.find(
+          (call: any) => typeof call[0] === 'string' && call[0].includes('fillRect(0, 0, 200, 20)')
         );
         expect(coordCall).toBeDefined();
+        // Pascal dis_fft readout is a raw pixel pair, not the old bin/Hz/% text.
+        expect(coordCall[0]).not.toContain('Bin:');
+        expect(coordCall[0]).not.toContain('Mag:');
       }
     });
 

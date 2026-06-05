@@ -58,7 +58,6 @@ export interface FFTDisplaySpec {
   packedSigned?: boolean; // Signed flag for packed data
   packedAlt?: boolean; // Alt flag for packed data
   logScale: boolean; // Enable log scale for magnitude
-  grid: boolean; // Show frequency grid
   showLabels: boolean; // Show frequency labels
   spectrumColor?: string; // Default spectrum color
   hideXY: boolean; // Hide coordinate display
@@ -642,7 +641,8 @@ export class DebugFFTWindow extends DebugWindowBase {
       title: '',
       position: { x: 0, y: 0 },
       hasExplicitPosition: false, // Default: use auto-placement
-      size: { width: 400, height: 300 },
+      // Pascal SetDefaults: vWidth := 256; vHeight := 256 (DebugDisplayUnit.pas:2884-2885) [9win §11]
+      size: { width: 256, height: 256 },
       nbrSamples: 512, // Required by BaseDisplaySpec
       samples: 512, // fft_default from Pascal
       firstBin: 0,
@@ -654,11 +654,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       window: { background: 'black', grid: 'gray' },
       isPackedData: false,
       logScale: false,
-      grid: false,
       showLabels: true,
       spectrumColor: '#00FF00',
-      windowWidth: 640,
-      windowHeight: 480,
+      windowWidth: 256, // overwritten from size at parse end (see below)
+      windowHeight: 256,
       hideXY: false
     };
 
@@ -762,25 +761,9 @@ export class DebugFFTWindow extends DebugWindowBase {
           }
           break;
 
-        case 'RANGE':
-          // RANGE can have 1 or 2 parameters
-          if (index < lineParts.length - 1) {
-            const firstParam = Number(lineParts[++index]);
-            if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-              // Two parameters: firstBin and lastBin
-              const secondParam = Number(lineParts[++index]);
-              const first = Math.max(0, Math.min(firstParam, spec.samples / 2 - 2));
-              const last = Math.max(first + 1, Math.min(secondParam, spec.samples / 2 - 1));
-              spec.firstBin = first;
-              spec.lastBin = last;
-            } else {
-              // One parameter: just lastBin
-              spec.firstBin = 0;
-              spec.lastBin = Math.max(1, Math.min(firstParam, spec.samples / 2 - 1));
-            }
-          }
-          // Silent clamping to valid range (matches Pascal behavior)
-          break;
+        // NOTE: there is intentionally NO RANGE directive — Pascal FFT_Configure has no
+        // key_range. The first/last display bins are set by SAMPLES (n {first {last}}),
+        // handled above, exactly as Pascal does (DebugDisplayUnit.pas:1573-1582). [9win §11]
 
         case 'DOTSIZE':
           if (index < lineParts.length - 1) {
@@ -829,9 +812,8 @@ export class DebugFFTWindow extends DebugWindowBase {
           spec.logScale = true;
           break;
 
-        case 'GRID':
-          spec.grid = true;
-          break;
+        // NOTE: there is intentionally NO GRID directive — Pascal FFT_Configure has no
+        // key_grid. The per-channel grid lines come from the channel-def `grid` field. [9win §11]
 
         case 'HIDEXY':
           spec.hideXY = true;
@@ -1063,31 +1045,27 @@ export class DebugFFTWindow extends DebugWindowBase {
       if (part.startsWith("'") || part.startsWith('"')) {
         if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Found quoted string at index ${i}: "${part}"`);
 
-        // Parse channel configuration
-        const channelConfig = this.parseChannelConfiguration(lineParts, i);
+        // The slot this channel goes into. Pascal vIndex saturates at Channels(=8): a 9th+
+        // definition overwrites the last slot rather than growing the set (:1630). The slot
+        // index also selects this channel's DefaultScopeColors default. [9win §11]
+        const slot = Math.min(this.channels.length, this.MAX_CHANNELS - 1);
+        const parsed = this.parseChannelConfiguration(lineParts, i, slot);
 
-        if (ENABLE_CONSOLE_LOG) console.log(`[FFT] parseChannelConfiguration returned:`, channelConfig);
-
-        if (channelConfig) {
-          // Add channel configuration
-          const channelIndex = this.channels.length;
-          this.channels.push(channelConfig);
+        if (parsed) {
+          const { channel, partsConsumed } = parsed;
+          if (this.channels.length < this.MAX_CHANNELS) {
+            this.channels.push(channel);
+          } else {
+            this.channels[this.MAX_CHANNELS - 1] = channel; // overwrite-in-place at the cap
+          }
 
           // Enable this channel in the mask
-          this.channelMask |= 1 << channelIndex;
+          this.channelMask |= 1 << slot;
 
-          if (ENABLE_CONSOLE_LOG)
-            console.log(
-              `[FFT] Added channel ${channelIndex}: ${channelConfig.label}, mask now: 0x${this.channelMask.toString(
-                16
-              )}`
-            );
-          this.logMessage(`Added channel ${channelIndex}: ${channelConfig.label}`);
+          this.logMessage(`Channel slot ${slot}: ${channel.label}`);
 
-          // Skip past the channel configuration parameters
-          // Format: 'label' mag high tall base grid color textsize
-          // That's 8 total parts, so skip 7 more after the label (index i)
-          i += 7; // Label + 6 numeric parameters + textsize
+          // Advance past the parts this channel consumed (the for-loop adds the final +1).
+          i += partsConsumed - 1;
         } else {
           if (ENABLE_CONSOLE_LOG) console.log(`[FFT] Channel config parsing FAILED for part at index ${i}`);
         }
@@ -1197,18 +1175,31 @@ export class DebugFFTWindow extends DebugWindowBase {
   /**
    * Parse a channel configuration from the command parts
    */
-  private parseChannelConfiguration(parts: string[], startIndex: number): FFTChannelSpec | null {
-    // Format: 'label' mag high tall base grid color
-    if (ENABLE_CONSOLE_LOG)
-      console.log(`[FFT] parseChannelConfiguration: startIndex=${startIndex}, parts.length=${parts.length}`);
-    if (ENABLE_CONSOLE_LOG)
-      console.log(
-        `[FFT] Boundary check: ${startIndex} + 6 = ${startIndex + 6} >= ${parts.length}? ${
-          startIndex + 6 >= parts.length
-        }`
-      );
+  // Pascal DefaultScopeColors (DebugDisplayUnit.pas:241): clLime, clRed, clCyan, clYellow,
+  // clMagenta, clBlue, clOrange, clOlive — the clXxx default palette (NOT the RGBI8X directive
+  // system). SetDefaults seeds vColor[i] from this; a channel keeps it unless its def supplies
+  // an explicit color (KeyColor is optional). Pascal seeds all 8 slots eagerly at init; we apply
+  // the slot default lazily at parse time, which is equivalent because channels are only queried
+  // after parsing completes. [9win §11]
+  private static readonly DEFAULT_SCOPE_COLORS = ['LIME', 'RED', 'CYAN', 'YELLOW', 'MAGENTA', 'BLUE', 'ORANGE', 'OLIVE'];
 
-    if (startIndex + 6 >= parts.length) {
+  private defaultChannelColor(channelIndex: number): string {
+    return DebugColor.fromDefaultName(DebugFFTWindow.DEFAULT_SCOPE_COLORS[channelIndex % 8], 8).rgbString;
+  }
+
+  /**
+   * Parse one channel definition `'label' mag high tall base grid {color}` matching Pascal
+   * FFT_Update NextStr (DebugDisplayUnit.pas:1628-1637): 5 required numerics then an OPTIONAL
+   * color. When the color is omitted the channel keeps its DefaultScopeColors slot color.
+   * Returns the parsed channel plus how many parts it consumed (label + 5 + maybe color).
+   */
+  private parseChannelConfiguration(
+    parts: string[],
+    startIndex: number,
+    channelIndex: number
+  ): { channel: FFTChannelSpec; partsConsumed: number } | null {
+    // Need the label + 5 numerics (mag, high, tall, base, grid). Color is optional.
+    if (startIndex + 5 >= parts.length) {
       if (ENABLE_CONSOLE_LOG) console.log(`[FFT] FAILED: Incomplete channel configuration at index ${startIndex}`);
       this.logMessage(`Incomplete channel configuration at index ${startIndex}`);
       return null;
@@ -1224,7 +1215,6 @@ export class DebugFFTWindow extends DebugWindowBase {
     const tall = Number(parts[startIndex + 3]);
     const base = Number(parts[startIndex + 4]);
     const grid = Number(parts[startIndex + 5]);
-    const color = parts[startIndex + 6];
 
     // Validate parameters
     if (isNaN(mag) || isNaN(high) || isNaN(tall) || isNaN(base) || isNaN(grid)) {
@@ -1232,24 +1222,32 @@ export class DebugFFTWindow extends DebugWindowBase {
       return null;
     }
 
-    return {
-      label,
-      magnitude: Math.max(0, Math.min(11, mag)), // Clamp to 0-11
-      high,
-      tall,
-      base,
-      grid,
-      color: this.parseChannelColor(color)
-    };
-  }
+    // Optional color (Pascal KeyColor): the token after `grid` is a color only when it exists
+    // and is not the start of the next channel ('...') or backtick data. Otherwise the channel
+    // keeps its DefaultScopeColors slot color.
+    let color = this.defaultChannelColor(channelIndex);
+    let partsConsumed = 6; // label + 5 numerics
+    const colorTok = parts[startIndex + 6];
+    if (colorTok !== undefined && !colorTok.startsWith("'") && !colorTok.startsWith('"') && !colorTok.startsWith('`')) {
+      const resolved = DebugColor.parseDirectiveColor(colorTok);
+      if (resolved) {
+        color = resolved;
+        partsConsumed = 7;
+      }
+    }
 
-  /**
-   * Parse a color string and return hex color
-   */
-  private parseChannelColor(colorStr: string): string {
-    // FFT channel COLOR directive: name -> RGBI8X, number -> literal (Pascal KeyColor).
-    const resolved = DebugColor.parseDirectiveColor(colorStr);
-    return resolved ?? '#FFFFFF';
+    return {
+      channel: {
+        label,
+        magnitude: Math.max(0, Math.min(11, mag)), // Clamp to 0-11
+        high,
+        tall,
+        base,
+        grid,
+        color
+      },
+      partsConsumed
+    };
   }
 
   /**
@@ -1321,11 +1319,8 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.logMessage('  -> Clearing canvas');
     await this.clearCanvasAsync();
 
-    // Draw grid if enabled (synchronous like Pascal)
-    if (this.displaySpec.grid) {
-      this.logMessage('  -> Drawing grid');
-      this.drawFrequencyGrid();
-    }
+    // (No window-level frequency grid — Pascal FFT has no such toggle; per-channel grid
+    //  lines come from each channel's `grid` field. The invented GRID directive was removed.) [9win §11]
 
     // Draw FFT spectrum - Pascal: for j := vIndex - 1 downto 0 (line 1688)
     // Pascal only draws if channels are configured (vIndex > 0)
@@ -1478,57 +1473,6 @@ export class DebugFFTWindow extends DebugWindowBase {
     this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
       this.logMessage(`Failed to clear canvas: ${error}`);
     });
-  }
-
-  /**
-   * Draw frequency grid lines
-   */
-  private drawFrequencyGrid(): void {
-    if (!this.debugWindow) return;
-
-    const width = this.displaySpec.windowWidth;
-    const height = this.displaySpec.windowHeight;
-
-    // Grid lines at power-of-2 bins or linear intervals
-    const jsCode = `
-      (function() {
-        const canvas = document.getElementById('${this.canvasId}');
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          ctx.save();
-          ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
-          ctx.lineWidth = 1;
-
-          // Vertical grid lines
-          const numVerticalLines = 8;
-          for (let i = 1; i < numVerticalLines; i++) {
-            const x = (canvas.width / numVerticalLines) * i;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvas.height);
-            ctx.stroke();
-          }
-
-          // Horizontal grid lines
-          const numHorizontalLines = 5;
-          for (let i = 1; i < numHorizontalLines; i++) {
-            const y = (canvas.height / numHorizontalLines) * i;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvas.width, y);
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
-        return true;
-      })();
-    `;
-
-    try {
-      this.debugWindow.webContents.executeJavaScript(jsCode);
-    } catch (error) {
-      this.logMessage(`Failed to draw grid: ${error}`);
-    }
   }
 
   /**
@@ -2031,39 +1975,6 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Convert mouse X coordinate to frequency bin
-   */
-  private mouseXToBin(mouseX: number): number {
-    const width = this.displaySpec.windowWidth;
-    const firstBin = this.displaySpec.firstBin;
-    const lastBin = this.displaySpec.lastBin;
-    const numBins = lastBin - firstBin + 1;
-
-    const binIndex = Math.floor((mouseX / width) * numBins);
-    return Math.max(firstBin, Math.min(lastBin, firstBin + binIndex));
-  }
-
-  /**
-   * Convert mouse Y coordinate to magnitude value
-   */
-  private mouseYToMagnitude(mouseY: number): number {
-    const height = this.displaySpec.windowHeight;
-    // Bottom-up coordinate system
-    const normalizedY = (height - mouseY) / height;
-    return normalizedY * 100; // Return as percentage
-  }
-
-  /**
-   * Get frequency for a given bin
-   */
-  private binToFrequency(bin: number): number {
-    const sampleRate = this.detectedSampleRate || 1000;
-    const nyquist = sampleRate / 2;
-    const binFrequency = nyquist / (this.fftExp > 0 ? Math.pow(2, this.fftExp - 1) : 1);
-    return bin * binFrequency;
-  }
-
-  /**
    * Handle mouse move events for coordinate display
    */
   protected handleMouseMove(event: MouseEvent): void {
@@ -2072,38 +1983,30 @@ export class DebugFFTWindow extends DebugWindowBase {
     const mouseX = event.clientX;
     const mouseY = event.clientY;
 
-    // Convert to FFT coordinates
-    const bin = this.mouseXToBin(mouseX);
-    const frequency = this.binToFrequency(bin);
-    const magnitude = this.mouseYToMagnitude(mouseY);
-
-    // Update coordinate display
-    this.updateCoordinateDisplay(bin, frequency, magnitude, mouseX, mouseY);
+    // Update coordinate display (Pascal renders raw plot-area pixel offset, Y inverted)
+    this.updateCoordinateDisplay(mouseX, mouseY);
 
     // Draw crosshair if enabled
     if (!this.displaySpec.hideXY) {
       this.drawCrosshair(mouseX, mouseY);
     }
-
-    // TODO: Forward mouse event through InputForwarder (Task 25)
-    // if (this.inputForwarder) {
-    //   // Transform coordinates for FFT window (bottom-up Y-axis)
-    //   const transformedY = this.displaySpec.windowHeight - mouseY;
-    //   this.inputForwarder.queueMouseEvent(mouseX, transformedY, { left: false, middle: false, right: false }, 0);
-    // }
   }
 
   /**
-   * Update coordinate display with current mouse position
+   * Update coordinate display with current mouse position.
+   * Pascal FormMouseMove dis_fft (DebugDisplayUnit.pas:668-674): inside the plot area the
+   * readout is `(X - vMarginLeft),(vMarginTop + vHeight - 1 - Y)` — the raw pixel offset within
+   * the plot, with Y inverted (origin bottom-left). Outside the plot it is blank. [9win §11]
    */
-  private updateCoordinateDisplay(
-    bin: number,
-    frequency: number,
-    magnitude: number,
-    mouseX: number,
-    mouseY: number
-  ): void {
+  private updateCoordinateDisplay(mouseX: number, mouseY: number): void {
     if (!this.debugWindow) return;
+
+    const ml = this.canvasMarginLeft;
+    const mt = this.canvasMarginTop;
+    const w = this.displayWidth;
+    const h = this.displayHeight;
+    const inside = mouseX >= ml && mouseX < ml + w && mouseY >= mt && mouseY < mt + h;
+    const text = inside ? `${mouseX - ml},${mt + h - 1 - mouseY}` : '';
 
     const jsCode = `
       (function() {
@@ -2123,8 +2026,8 @@ export class DebugFFTWindow extends DebugWindowBase {
           ctx.font = '12px monospace';
           ctx.textAlign = 'left';
 
-          const text = 'Bin:' + ${bin} + ' Freq:' + ${frequency.toFixed(1)} + 'Hz Mag:' + ${magnitude.toFixed(1)} + '%';
-          ctx.fillText(text, 5, 15);
+          const text = ${JSON.stringify(text)};
+          if (text) ctx.fillText(text, 5, 15);
 
           // Restore state
           ctx.restore();
