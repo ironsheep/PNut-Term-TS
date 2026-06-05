@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { ScopeTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { RateCycle } from './shared/rateCycle';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
@@ -175,6 +176,9 @@ export class DebugScopeWindow extends DebugWindowBase {
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private canvasRenderer: CanvasRenderer = new CanvasRenderer();
   private triggerProcessor: ScopeTriggerProcessor;
+  // Draw-throttle (Pascal RateCycle / vRateCount) — gates SCOPE_Draw to every vRate-th set [9win §5]
+  private rateThrottle: RateCycle = new RateCycle();
+
   // Trigger state properties (Pascal-faithful: absolute level comparison, no crossing detection)
   private triggerArmed: boolean = false;
   private triggerFired: boolean = false;
@@ -1262,9 +1266,10 @@ export class DebugScopeWindow extends DebugWindowBase {
 
               // ═══════════════════════════════════════════════════════════════
               // STEP 3: UPDATE DISPLAY (if trigger conditions met)
-              // Pascal: SCOPE_Draw is called ONCE per sample-set, ONLY when trigger conditions met
+              // Pascal: SCOPE_Draw is called ONCE per sample-set, ONLY when trigger conditions met,
+              // and then only every vRate-th time via RateCycle (DebugDisplayUnit.pas:1329/1332). [9win §5]
               // ═══════════════════════════════════════════════════════════════
-              if (didScroll) {
+              if (didScroll && this.rateThrottle.cycle(this.displaySpec.rate)) {
                 // Update ALL channels' display now that we have a complete sample set
                 for (let chanIdx = 0; chanIdx < nbrSamples; chanIdx++) {
                   const canvasName = `channel-${chanIdx}`;
@@ -1344,6 +1349,7 @@ export class DebugScopeWindow extends DebugWindowBase {
 
   private clearChannelData() {
     this.logMessage(`at clearChannelData()`);
+    this.rateThrottle.reset(); // Pascal key_clear: vRateCount := 0 (:1258) [9win §5]
     // Ensure channelSamples array matches channelSpecs
     if (this.channelSamples.length !== this.channelSpecs.length) {
       this.channelSamples = [];

@@ -13,6 +13,7 @@ import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { LogicTriggerProcessor } from './shared/triggerProcessor';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { RateCycle } from './shared/rateCycle';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
 import {
@@ -178,6 +179,9 @@ export class DebugLogicWindow extends DebugWindowBase {
   private triggerProcessor: LogicTriggerProcessor;
   private packedMode: PackedDataMode = {} as PackedDataMode;
   private singleBitChannelCount: number = 0; // number of single bit channels
+  // Draw-throttle (Pascal RateCycle / vRateCount) — gates LOGIC_Draw to every vRate-th set [9win §5]
+  private rateThrottle: RateCycle = new RateCycle();
+
   // Trigger state properties
   private triggerArmed: boolean = false;
   private triggerFired: boolean = false;
@@ -1308,8 +1312,10 @@ export class DebugLogicWindow extends DebugWindowBase {
       shouldDraw = this.samplePop > 0;
     }
 
-    // Draw if needed
-    if (shouldDraw) {
+    // Draw if needed — gated by RateCycle so we draw only every vRate-th sample-set
+    // (Pascal: `if RateCycle then LOGIC_Draw`, both trigger and no-trigger paths,
+    // DebugDisplayUnit.pas:1099/1102). [9win §5]
+    if (shouldDraw && this.rateThrottle.cycle(this.displaySpec.rate)) {
       this.drawAllChannelsFromBuffer();
     }
   }
@@ -1355,6 +1361,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.samplePtr = 0;
     this.samplePop = 0;
     this.triggerFrozenPtr = -1;
+    this.rateThrottle.reset(); // Pascal key_clear: vRateCount := 0 (:1058) [9win §5]
 
     // Clear channel samples for compatibility
     for (let index = 0; index < this.channelBitSpecs.length; index++) {

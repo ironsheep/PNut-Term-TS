@@ -209,10 +209,11 @@ describe('DebugLogicWindow', () => {
 
     it('should parse COLOR directive with background and grid', () => {
       const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'COLOR', 'BLUE', 'YELLOW']);
-      
+
+      // COLOR directive resolves names via RGBI8X (Pascal KeyColor), not clXxx. [9win §4b]
       expect(isValid).toBe(true);
-      expect(spec.window.background).toBe('#0000ff');
-      expect(spec.window.grid).toBe('#ffff00');
+      expect(spec.window.background).toBe('#0909ff'); // RGBI8X BLUE
+      expect(spec.window.grid).toBe('#ffff09'); // RGBI8X YELLOW
     });
 
     it('should parse HIDEXY directive', () => {
