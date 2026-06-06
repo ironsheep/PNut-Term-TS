@@ -30,6 +30,30 @@ dot. The dot-size≥4 gate, sparse color parsing (incl. named colors), and the c
 background are all at parity; only this per-pixel draw model is outstanding. Confirm in
 the §18 visual/hardware pass; promote to a fix only if a real program shows missing dots.
 
+### Sprint closeout — residual items (build 0.9.28, 2026-06-06)
+
+These surfaced during the #24 test-residue follow-on. The full open-item list (with priorities)
+lives in the local `tasks/PUNCH_LIST.md` (gitignored); mirrored here for durable, in-repo capture.
+
+- **Potential bug (unconfirmed): DebugLogicWindow timer fires after window close → null deref.**
+  A `DebugLogicWindow` internal `setTimeout` fires after the window closes and calls
+  `this.debugWindow!.getBounds()` on a now-null `debugWindow`. Seen under jest (it is why two
+  `memoryLeakDetection` tests are `.skip`ped); not yet reproduced/fixed in production. Likely a
+  missing timer-clear on close. Investigate; fixing it should un-gate those two tests.
+- **Hardware-gated / flaky tests left unregistered** in `scripts/claude/run_tests_sequentially.sh`
+  (the runner is 153/153 green; these 5 are intentionally excluded, documented, not silent skips):
+  `fftMultipleExecutions` + `fftRealHardwareComparison` + `spritedefRealUSB` (need P2/USB capture
+  files absent from the repo — commit synthetic data or move to an `external-hardware/` gated
+  suite); `memoryLeakDetection` (2 `.skip`s, see timer item above); `workerExtraction` (worker-
+  thread integration test that times out under jest — needs a worker-runtime-friendly harness;
+  same class as the registered-but-intermittent `workerSpritedefBug`).
+- **Runner progress counter (cosmetic):** the sequential runner prints `[N/70]` with a stale `70`
+  denominator; it actually runs/passes 153. Update the hardcoded total.
+- **`/DOCs/project-specific` and `tasks/` are gitignored.** The §17 refreshes to `ARCHITECTURE.md`,
+  `IMPLEMENTATION-STATUS.md`, `TEST-STATUS.md`, and the `PUNCH_LIST.md` update exist only in the
+  local working copy (this `TECHNICAL-DEBT.md` is the one tracked file under that tree). Decide
+  whether those spec/tracking docs should be version-controlled; if so, un-ignore and commit.
+
 ## ssdbg-parity Sprint — Deferred Items (v0.9.26, 2026-06-02)
 
 The single-step debugger reached parity-complete / hardware-test-ready in the

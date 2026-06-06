@@ -5,12 +5,14 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.27] - 2026-06-06
+## [0.9.28] - 2026-06-06
 
-The nine Pascal-drawn **debug *display* windows** (LOGIC, SCOPE, SCOPE_XY, FFT, SPECTRO, PLOT, TERM, BITMAP, MIDI) are brought to **full behavioral parity** with the official PNut v55. This build is a focused parity pass: each window was checked directive-by-directive against the original and the remaining differences were corrected. The most visible fixes are in BITMAP and MIDI.
+The nine Pascal-drawn **debug *display* windows** (LOGIC, SCOPE, SCOPE_XY, FFT, SPECTRO, PLOT, TERM, BITMAP, MIDI) are brought to **full behavioral parity** with the official PNut v55 — each window was checked directive-by-directive against the original and the remaining differences corrected (most visibly in BITMAP and MIDI). This build also fixes two real defects found while hardening the test suite: **binary-recording playback was completely broken**, and **SAVE could hang the app** on a failed capture.
 
 ### Fixed
 
+- **Binary recording playback is fixed.** Every `.p2rec` recording failed to play back ("metadata truncated" / JSON parse error): the player read the metadata-length field from the wrong byte offset in the file header, so it never matched what the recorder wrote. Recordings made with earlier builds now load correctly.
+- **SAVE no longer hangs the app on a failed capture.** If capturing the window image failed, the SAVE operation never completed and the app could appear frozen. The capture failure is now handled gracefully (SAVE finishes with an empty image instead of hanging).
 - **BITMAP: a bitmap with no color mode now renders correctly.** The default is now RGB24 (one 24-bit color per long), matching PNut — previously the default decoded your data as RGB8, shredding each color into eight garbage pixels.
 - **BITMAP: selecting a color mode no longer eats your first pixel.** Only the LUMA8 and HSV modes take a tint value; RGBI8/RGBI8W/RGBI8X, the LUT modes, and RGB8/RGB16/RGB24 do **not**. Previously every mode greedily consumed the next value as a tint, so e.g. `RGBI8 <data> …` silently dropped the first sample. HSV tints also now use the full 0–255 range instead of being clamped to 0–7.
 - **BITMAP: reloading `LUTCOLORS` replaces the palette instead of growing it.** Each `LUTCOLORS` directive now fills the palette from index 0 (as PNut does), so sending a new palette mid-stream takes effect; previously colors were appended past the end and ignored.
@@ -20,10 +22,13 @@ The nine Pascal-drawn **debug *display* windows** (LOGIC, SCOPE, SCOPE_XY, FFT, 
 - **MIDI: keys draw with the correct flat top edge** (the rounded-rectangle top is clipped as in PNut) instead of a rounded top, and the velocity bar height matches the original.
 - **MIDI: an `UPDATE` directive is now ignored.** MIDI redraws immediately on every note event and has no deferred-update mode, so `UPDATE` no longer triggers a spurious redraw.
 
+### Internal
+
+- **Test suite hardened.** Each of the nine display windows now has a dedicated parity test pinned to the Pascal algorithm, and the maintained sequential test runner was expanded from 70 to 153 files — all green. 42 obsolete test suites covering removed/replaced internal architectures were deleted.
+
 ### Known issues / not yet verified
 
-- **Not yet exercised on external P2 hardware.** This build is verified against the local test suite (each window has a dedicated parity test pinned to the Pascal algorithm). The whole-application + hardware visual-parity sign-off runs on a physical P2 and is the next step.
-- A few **command-suite** tests for already-ported windows (notably PLOT) are still being finalized; this is test bookkeeping, not a source-parity gap.
+- **Not yet exercised on external P2 hardware.** This build is verified against the local test suite only. The whole-application + hardware visual-parity sign-off (all nine windows against the basic demos, then the single-step debugger) runs on a physical P2 and is the next step. See `tasks/PUNCH_LIST.md` for the full open-item list, including a handful of hardware-gated tests and two recorded parity deviations to confirm during that pass.
 
 ## [0.9.26] - 2026-06-02
 
