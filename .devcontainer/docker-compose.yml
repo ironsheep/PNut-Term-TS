@@ -1,11 +1,13 @@
 services:
   dev:
-    image: mcr.microsoft.com/devcontainers/javascript-node:22
+    image: mcr.microsoft.com/devcontainers/javascript-node:24-bookworm
     ports:
       - "5003:5002"
       - "9124:8123"
-    environment:
-      IS_SANDBOX: "1"
     volumes:
       - ..:/workspaces/PNut-Term-TS:cached
+      - todo-mcp-data:/home/node/.local/share/todo-mcp
     command: sleep infinity
+
+volumes:
+  todo-mcp-data:
