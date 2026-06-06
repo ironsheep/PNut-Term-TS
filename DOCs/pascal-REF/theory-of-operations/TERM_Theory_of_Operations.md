@@ -4,6 +4,11 @@
 **Directive coverage verified**: 2026-06-01 against `DebugDisplayUnit.pas` (v55)
 **Companion**: [Debug Window Directive Matrix](../DEBUG-WINDOW-DIRECTIVE-MATRIX.md) — cross-window config/display/keyboard/mouse reference
 
+> **TS parity (2026-06-06):** `DebugTermWindow` was brought to parity by the 9-window parity
+> sprint **§14** (build 0.9.27): runtime named colors + `BACKCOLOR`, `SET` column/row consuming
+> their parameter (no double-dispatch), `CR`+`LF` collapsing to a single newline, default 10pt
+> font, and `SIZE`/`TEXTSIZE` clamping. See matrix §8 and `termResidualsParity.test.ts`.
+
 ## Table of Contents
 
 1. [Overview](#1-overview)

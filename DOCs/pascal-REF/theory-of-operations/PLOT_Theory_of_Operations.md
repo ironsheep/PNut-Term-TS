@@ -4,6 +4,13 @@
 **Directive coverage verified**: 2026-06-01 against `DebugDisplayUnit.pas` (v55)
 **Companion**: [Debug Window Directive Matrix](../DEBUG-WINDOW-DIRECTIVE-MATRIX.md) — cross-window config/display/keyboard/mouse reference
 
+> **TS parity (2026-06-06):** `DebugPlotWindow` was brought to parity by the 9-window parity
+> sprint **§13a–c** (build 0.9.27): the coordinate model (polar/Cartesian, origin, mirror/Y-invert),
+> shapes & sprites (flip/transpose orientations, `OBOX` rounded rect), and update-phase directives
+> (`OPACITY`/`BACKCOLOR`/`TEXTANGLE`/color-mode, `TEXTSIZE` 6..200, `LAYER` cap, `LUTCOLORS` 256).
+> See matrix §8 and `plotCoordinateModelParity` / `plotShapesSpritesParity` /
+> `plotUpdatePhaseDirectivesParity` tests. (Some PLOT command-suite tests are still being finalized.)
+
 ## Table of Contents
 
 1. [Introduction](#1-introduction)

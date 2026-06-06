@@ -653,7 +653,42 @@ default**. "color" = named color (§7.1) or numeric-through-color-mode.
 
 ---
 
+## 8. TypeScript parity status (per window)
+
+> Added by the **9-window parity sprint** (`DOCs/plans/NINE-WINDOW-PARITY-FIX-SPRINT-PLAN.md`).
+> Sections 0–7 above describe the Pascal **spec**; this section tracks the **TS implementation's
+> parity against that spec**, so the matrix tracks parity, not just Pascal. Authoritative
+> per-directive detail and the deliberate-deviation log live in the sprint plan (§ numbers below)
+> and `DOCs/project-specific/TECHNICAL-DEBT.md`.
+
+**Shared infrastructure (sprint §1–§7)** underpins every window: the `PC_MOUSE` wire model
+(raw-vs-readout coordinate split), parser clamp/parity helpers (`KeyValWithin`-style clamping
+instead of aborting a parse), color systems kept as **two distinct systems** (`clXxx` window
+chrome vs the `RGBI8X` named-directive colors — never unified), and the create-time config parse.
+
+| Window | TS class | Parity status | Sprint § | Parity / unit tests |
+|---|---|---|:--:|---|
+| LOGIC | `debugLogicWin.ts` | Config + display directives ported; clamp/parity helpers applied | §8 | `logicConfigParity` |
+| SCOPE | `debugScopeWin.ts` | Config + trigger/holdoff/display directives ported | §9 | `scopeConfigParity` |
+| SCOPE_XY | `debugScopeXyWin.ts` | Config + display directives ported; raw-pixel `PC_MOUSE` | §10 | `scopeXyConfigParity`, `scopeXyRenderer` |
+| FFT | `debugFftWin.ts` | Config + display directives ported; `SmoothFillMax` honored | §11 | `fftConfigParity` |
+| SPECTRO | `debugSpectroWin.ts` | Config + display directives ported | §12 | `spectroConfigParity` |
+| PLOT | `debugPlotWin.ts` | Coordinate model, shapes/sprites, update-phase directives at parity | §13a–c | `plotCoordinateModelParity`, `plotShapesSpritesParity`, `plotUpdatePhaseDirectivesParity` |
+| TERM | `debugTermWin.ts` | Runtime named colors, SET/CR-LF, font, clamps at parity | §14 | `termResidualsParity`, `debugTermWin` |
+| BITMAP | `debugBitmapWin.ts` | **Full parity** — default RGB24/1-sample-long, mode-gated tune, LUTCOLORS-from-0, W-mode background, sparse dot-size gate, named colors | §15 | `bitmapResidualsParity`, `debugBitmapWin`(+`.commands`,`.integration`,`.encoding`) |
+| MIDI | `debugMidiWin.ts` | **Full parity** — corrected key tweak table, note-off `-val`, flat-top key clip, UPDATE is a no-op | §16 | `midiResidualsParity`, `debugMidiWin`, `midiConfigParse`, `pianoKeyboardLayout` |
+
+**Notes:**
+- "Full parity" = directive-coverage verified directive-by-directive against the Pascal handler
+  this sprint, with a dedicated `*ResidualsParity` test exercising the parity-critical behaviors.
+- Some **command-suite** tests for already-ported windows (notably PLOT) remain pending finalization
+  and are tracked separately (sprint follow-on task); they do not reflect source-parity gaps.
+- The whole-application + external-hardware sign-off (sprint §18) is a single pass that runs on a
+  physical P2 and is **not** representable in this container.
+
+---
+
 *Authored 2026-05-31, value/range reference added 2026-06-01, against PNut v55
-`DebugDisplayUnit.pas`. This matrix is the punch-list for refreshing the nine
-per-window Theory-of-Operations docs under
-`DOCs/pascal-REF/theory-of-operations/` (which were last verified at v51 / 2025-11-08).*
+`DebugDisplayUnit.pas`. **TS parity-status layer (§8) added 2026-06-06** by the 9-window parity
+sprint. This matrix is the punch-list for refreshing the nine per-window Theory-of-Operations docs
+under `DOCs/pascal-REF/theory-of-operations/` (which were last verified at v51 / 2025-11-08).*

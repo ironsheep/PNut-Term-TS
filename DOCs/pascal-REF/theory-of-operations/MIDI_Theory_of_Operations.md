@@ -4,6 +4,12 @@
 **Directive coverage verified**: 2026-06-01 against `DebugDisplayUnit.pas` (v55)
 **Companion**: [Debug Window Directive Matrix](../DEBUG-WINDOW-DIRECTIVE-MATRIX.md) — cross-window config/display/keyboard/mouse reference
 
+> **TS parity (2026-06-06):** The `DebugMidiWindow` implementation was brought to full parity with
+> this spec by the 9-window parity sprint **§16** (build 0.9.27): the per-note key tweak table
+> (`MidiKey…` geometry) corrected to the Pascal values (F♯..B were off), note-off velocity stored
+> as `-val`, keys drawn with the flat-top clip (rect top at `-r`), and `UPDATE` treated as a no-op
+> (MIDI has no deferred-update mode). See matrix §8 and `midiResidualsParity.test.ts`.
+
 ## Table of Contents
 
 1. [Overview](#1-overview)

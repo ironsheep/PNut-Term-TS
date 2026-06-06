@@ -15,6 +15,21 @@ an independent trace rather than as a single multi-bit value waveform. Labels an
 colors are correct; only the combined-waveform draw is outstanding. Verify against
 Pascal in the §18 visual/hardware pass; promote to a fix if the bus display is wrong.
 
+### BITMAP sparse rendering: skip-on-match vs Pascal bordered-dot (LOW)
+
+§15 (build 0.9.27) brought BITMAP to directive parity, but the **sparse pixel rendering
+model** differs from Pascal and was left as-is (out of §15 scope). Pascal `BITMAP_Update`
+(`DebugDisplayUnit.pas:2472-2479`) draws **every** sparse pixel as a bordered dot — a
+`SmoothShape` outer rect in the sparse color `vSparse` with an inner rect of the
+translated pixel color — and never skips. The TS implementation
+(`debugBitmapWin.ts:1355`) instead **skips** any pixel whose value equals the sparse
+color (`state.backgroundColor`) and draws a two-layer bordered dot for the rest. Visible
+result is similar for typical "draw only the non-background dots" usage, but a pixel that
+genuinely equals the sparse color is dropped rather than drawn as a flat sparse-colored
+dot. The dot-size≥4 gate, sparse color parsing (incl. named colors), and the clear
+background are all at parity; only this per-pixel draw model is outstanding. Confirm in
+the §18 visual/hardware pass; promote to a fix only if a real program shows missing dots.
+
 ## ssdbg-parity Sprint — Deferred Items (v0.9.26, 2026-06-02)
 
 The single-step debugger reached parity-complete / hardware-test-ready in the

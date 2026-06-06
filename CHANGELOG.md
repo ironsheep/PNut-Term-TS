@@ -5,6 +5,26 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.27] - 2026-06-06
+
+The nine Pascal-drawn **debug *display* windows** (LOGIC, SCOPE, SCOPE_XY, FFT, SPECTRO, PLOT, TERM, BITMAP, MIDI) are brought to **full behavioral parity** with the official PNut v55. This build is a focused parity pass: each window was checked directive-by-directive against the original and the remaining differences were corrected. The most visible fixes are in BITMAP and MIDI.
+
+### Fixed
+
+- **BITMAP: a bitmap with no color mode now renders correctly.** The default is now RGB24 (one 24-bit color per long), matching PNut — previously the default decoded your data as RGB8, shredding each color into eight garbage pixels.
+- **BITMAP: selecting a color mode no longer eats your first pixel.** Only the LUMA8 and HSV modes take a tint value; RGBI8/RGBI8W/RGBI8X, the LUT modes, and RGB8/RGB16/RGB24 do **not**. Previously every mode greedily consumed the next value as a tint, so e.g. `RGBI8 <data> …` silently dropped the first sample. HSV tints also now use the full 0–255 range instead of being clamped to 0–7.
+- **BITMAP: reloading `LUTCOLORS` replaces the palette instead of growing it.** Each `LUTCOLORS` directive now fills the palette from index 0 (as PNut does), so sending a new palette mid-stream takes effect; previously colors were appended past the end and ignored.
+- **BITMAP: the "W" color schemes (LUMA8W/HSV8W/RGBI8W/HSV16W) now clear to a white background**, and the background is chosen from the color mode (white / palette-0 / black) independent of the SPARSE color, matching PNut.
+- **BITMAP: `SPARSE` and `LUTCOLORS` accept color names** (BLACK…GRAY with an optional brightness), not just numbers. SPARSE is also correctly disabled when the dot size is too small (< 4) to draw a bordered dot.
+- **MIDI: piano-key positions and note-number labels are corrected.** The key-placement table had drifted for the upper half of each octave (F♯ through B), so those keys and their labels sat a pixel or two off; they now match PNut exactly.
+- **MIDI: keys draw with the correct flat top edge** (the rounded-rectangle top is clipped as in PNut) instead of a rounded top, and the velocity bar height matches the original.
+- **MIDI: an `UPDATE` directive is now ignored.** MIDI redraws immediately on every note event and has no deferred-update mode, so `UPDATE` no longer triggers a spurious redraw.
+
+### Known issues / not yet verified
+
+- **Not yet exercised on external P2 hardware.** This build is verified against the local test suite (each window has a dedicated parity test pinned to the Pascal algorithm). The whole-application + hardware visual-parity sign-off runs on a physical P2 and is the next step.
+- A few **command-suite** tests for already-ported windows (notably PLOT) are still being finalized; this is test bookkeeping, not a source-parity gap.
+
 ## [0.9.26] - 2026-06-02
 
 The single-step debugger reaches **full Pascal parity and is ready for hardware testing**. This build finishes the debugger that the 0.9.25 architecture rewrite set up: a real disassembler, the remaining display behaviors, and the last interaction gaps.

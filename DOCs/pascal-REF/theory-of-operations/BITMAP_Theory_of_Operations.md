@@ -7,6 +7,13 @@
 **Author**: Analysis of P2 PNut Debug Display System
 **Companion**: [Debug Window Directive Matrix](../DEBUG-WINDOW-DIRECTIVE-MATRIX.md) — cross-window directive reference; directive coverage re-verified against `DebugDisplayUnit.pas` (v55) on 2026-06-01
 
+> **TS parity (2026-06-06):** The `DebugBitmapWindow` implementation was brought to full parity
+> with this spec by the 9-window parity sprint **§15** (build 0.9.27): default color mode RGB24
+> with one sample per long, tune consumed only by LUMA8/HSV modes (RGBI8/LUT/RGB consume none),
+> `LUTCOLORS` overwriting the palette from index 0, the mode-dependent clear background
+> (`GetBackground`: white for W modes, palette[0] for LUT, else black), sparse disabled below dot
+> size 4, and named colors for SPARSE/LUTCOLORS. See matrix §8 and `bitmapResidualsParity.test.ts`.
+
 ---
 
 ## Executive Summary
