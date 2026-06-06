@@ -15,7 +15,7 @@ describe('Hanning Window Pascal Comparison', () => {
     console.log('Size 8 window:');
     for (let i = 0; i < 8; i++) {
       const expected = Math.round((1 - Math.cos((i / 8) * Math.PI * 2)) * 0x1000);
-      const actual = window8[i];
+      const actual = Number(window8[i]);
       const match = expected === actual ? '✓' : '✗';
       console.log(`  [${i}] Expected: 0x${expected.toString(16).padStart(4, '0')}, Actual: 0x${actual.toString(16).padStart(4, '0')} ${match}`);
     }
@@ -27,7 +27,7 @@ describe('Hanning Window Pascal Comparison', () => {
     console.log('\nSize 2048 window (first 10 values):');
     for (let i = 0; i < 10; i++) {
       const expected = Math.round((1 - Math.cos((i / 2048) * Math.PI * 2)) * 0x1000);
-      const actual = window2048[i];
+      const actual = Number(window2048[i]);
       const match = expected === actual ? '✓' : '✗';
       console.log(`  [${i}] Expected: 0x${expected.toString(16).padStart(4, '0')}, Actual: 0x${actual.toString(16).padStart(4, '0')} ${match}`);
     }
@@ -43,9 +43,9 @@ describe('Hanning Window Pascal Comparison', () => {
     // At n=N/2: 1 - cos(π) = 1 - (-1) = 2
     // At n=N-1: 1 - cos(2π - ε) ≈ 0
 
-    expect(window2048[0]).toBeLessThan(10); // Should be 0 or very small
-    expect(window2048[1024]).toBe(0x2000); // Should be exactly 0x2000
-    expect(window2048[2047]).toBeLessThan(10); // Should be near 0
+    expect(Number(window2048[0])).toBeLessThan(10); // Should be 0 or very small
+    expect(Number(window2048[1024])).toBe(0x2000); // Should be exactly 0x2000
+    expect(Number(window2048[2047])).toBeLessThan(10); // Should be near 0
   });
 
   it('should check if window scaling affects power differently', () => {

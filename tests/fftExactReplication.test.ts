@@ -112,7 +112,7 @@ describe('FFT Exact Replication Test', () => {
     let windowMax = -Infinity;
 
     for (let i = 0; i < fftSize; i++) {
-      const w = windowTable[i];
+      const w = Number(windowTable[i]);
       windowSum += w;
       windowMin = Math.min(windowMin, w);
       windowMax = Math.max(windowMax, w);

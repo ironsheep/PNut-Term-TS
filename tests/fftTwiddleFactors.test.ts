@@ -83,8 +83,8 @@ describe('FFT Twiddle Factor Verification', () => {
         const sinTable = processor.getSinTable();
         const cosTable = processor.getCosTable();
 
-        expect(sinTable[i]).toBe(expectedSin);
-        expect(cosTable[i]).toBe(expectedCos);
+        expect(Number(sinTable[i])).toBe(expectedSin);
+        expect(Number(cosTable[i])).toBe(expectedCos);
       }
     });
   });
@@ -103,40 +103,40 @@ describe('FFT Twiddle Factor Verification', () => {
       const sinTable = processor.getSinTable();
       const cosTable = processor.getCosTable();
 
-      expect(sinTable[0]).toBe(expected.sin[0]);
-      expect(cosTable[0]).toBe(expected.cos[0]);
+      expect(Number(sinTable[0])).toBe(expected.sin[0]);
+      expect(Number(cosTable[0])).toBe(expected.cos[0]);
     });
 
     it('should match Pascal implementation for index 128', () => {
       const sinTable = processor.getSinTable();
       const cosTable = processor.getCosTable();
 
-      expect(sinTable[128]).toBe(expected.sin[128]);
-      expect(cosTable[128]).toBe(expected.cos[128]);
+      expect(Number(sinTable[128])).toBe(expected.sin[128]);
+      expect(Number(cosTable[128])).toBe(expected.cos[128]);
     });
 
     it('should match Pascal implementation for index 256', () => {
       const sinTable = processor.getSinTable();
       const cosTable = processor.getCosTable();
 
-      expect(sinTable[256]).toBe(expected.sin[256]);
-      expect(cosTable[256]).toBe(expected.cos[256]);
+      expect(Number(sinTable[256])).toBe(expected.sin[256]);
+      expect(Number(cosTable[256])).toBe(expected.cos[256]);
     });
 
     it('should match Pascal implementation for index 384', () => {
       const sinTable = processor.getSinTable();
       const cosTable = processor.getCosTable();
 
-      expect(sinTable[384]).toBe(expected.sin[384]);
-      expect(cosTable[384]).toBe(expected.cos[384]);
+      expect(Number(sinTable[384])).toBe(expected.sin[384]);
+      expect(Number(cosTable[384])).toBe(expected.cos[384]);
     });
 
     it('should match Pascal implementation for index 511', () => {
       const sinTable = processor.getSinTable();
       const cosTable = processor.getCosTable();
 
-      expect(sinTable[511]).toBe(expected.sin[511]);
-      expect(cosTable[511]).toBe(expected.cos[511]);
+      expect(Number(sinTable[511])).toBe(expected.sin[511]);
+      expect(Number(cosTable[511])).toBe(expected.cos[511]);
     });
 
     it('should match Pascal implementation for all 512 indices', () => {
@@ -144,8 +144,8 @@ describe('FFT Twiddle Factor Verification', () => {
       const cosTable = processor.getCosTable();
 
       for (let i = 0; i < 512; i++) {
-        expect(sinTable[i]).toBe(expected.sin[i]);
-        expect(cosTable[i]).toBe(expected.cos[i]);
+        expect(Number(sinTable[i])).toBe(expected.sin[i]);
+        expect(Number(cosTable[i])).toBe(expected.cos[i]);
       }
     });
   });
@@ -165,8 +165,8 @@ describe('FFT Twiddle Factor Verification', () => {
       const cosTable = processor.getCosTable();
 
       for (let i = 0; i < 1024; i++) {
-        expect(sinTable[i]).toBe(expected.sin[i]);
-        expect(cosTable[i]).toBe(expected.cos[i]);
+        expect(Number(sinTable[i])).toBe(expected.sin[i]);
+        expect(Number(cosTable[i])).toBe(expected.cos[i]);
       }
     });
   });
@@ -186,8 +186,8 @@ describe('FFT Twiddle Factor Verification', () => {
       const cosTable = processor.getCosTable();
 
       for (let i = 0; i < 2048; i++) {
-        expect(sinTable[i]).toBe(expected.sin[i]);
-        expect(cosTable[i]).toBe(expected.cos[i]);
+        expect(Number(sinTable[i])).toBe(expected.sin[i]);
+        expect(Number(cosTable[i])).toBe(expected.cos[i]);
       }
     });
   });
@@ -207,8 +207,8 @@ describe('FFT Twiddle Factor Verification', () => {
         const rev32Value = pascalRev32(i);
         results.push({
           index: i,
-          sin: sinTable[i],
-          cos: cosTable[i],
+          sin: Number(sinTable[i]),
+          cos: Number(cosTable[i]),
           rev32: rev32Value
         });
       }

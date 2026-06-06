@@ -274,21 +274,21 @@ describe('InputForwarder', () => {
       
       await jest.advanceTimersByTimeAsync(16);
       
-      const callArg = mockSerial.write.mock.calls[0][0];
+      const callArg = mockSerial.write.mock.calls[0][0] as string;
       const buffer = Buffer.from(callArg, 'base64');
-      
+
       expect(buffer.length).toBe(4);
       expect(buffer.readUInt32LE(0)).toBe(65);
     });
 
     it('should format PC_MOUSE data correctly', async () => {
-      forwarder.queueMouseEvent(10, 20, 
+      forwarder.queueMouseEvent(10, 20,
         { left: true, middle: false, right: true }, 1);
       forwarder.startPolling();
-      
+
       await jest.advanceTimersByTimeAsync(16);
-      
-      const callArg = mockSerial.write.mock.calls[0][0];
+
+      const callArg = mockSerial.write.mock.calls[0][0] as string;
       const buffer = Buffer.from(callArg, 'base64');
       
       expect(buffer.length).toBe(28); // 7 longs
@@ -308,9 +308,9 @@ describe('InputForwarder', () => {
       
       await jest.advanceTimersByTimeAsync(16);
       
-      const callArg = mockSerial.write.mock.calls[0][0];
+      const callArg = mockSerial.write.mock.calls[0][0] as string;
       const buffer = Buffer.from(callArg, 'base64');
-      
+
       expect(buffer.readInt32LE(0)).toBe(MOUSE_POSITION.OUTSIDE); // xpos
       expect(buffer.readInt32LE(4)).toBe(MOUSE_POSITION.OUTSIDE); // ypos
       expect(buffer.readInt32LE(24)).toBe(-1); // pixel

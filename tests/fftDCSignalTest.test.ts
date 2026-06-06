@@ -38,7 +38,7 @@ describe('FFT DC Signal Test', () => {
     const windowTable = processor.getWindowTable();
     let windowSum = 0;
     for (let i = 0; i < fftSize; i++) {
-      windowSum += windowTable[i];
+      windowSum += Number(windowTable[i]);
     }
     console.log(`  Window sum: ${windowSum} (0x${windowSum.toString(16)})`);
     console.log(`  Window average: ${(windowSum / fftSize).toFixed(2)}`);

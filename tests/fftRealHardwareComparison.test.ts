@@ -236,6 +236,13 @@ print(json.dumps(result))
     console.log('REAL P2 HARDWARE DATA COMPARISON');
     console.log('========================================\n');
 
+    // Skip if hardware sample file is not present (captured from real P2 hardware)
+    const samplesFile = path.join(__dirname, '../test-results/external-results/fft_input_samples.txt');
+    if (!fs.existsSync(samplesFile)) {
+      console.log('Hardware sample file not found — skipping test (requires real P2 capture).');
+      return;
+    }
+
     // Load real hardware samples
     const samples = loadRealHardwareSamples();
     console.log('Sample data loaded:');

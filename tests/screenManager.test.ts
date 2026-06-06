@@ -4,9 +4,12 @@
 
 import { jest } from '@jest/globals';
 import { ScreenManager } from '../src/utils/screenManager';
-import { setupDebugWindowTest, cleanupDebugWindowTest } from './shared/mockHelpers';
+import { cleanupDebugWindowTest } from './shared/mockHelpers';
 
-// Mock Electron screen API
+// Mock display data (defined before jest.mock so they can be used in jest.mock factory)
+// jest.mock is hoisted, so we use jest.fn() stubs in the factory and configure in beforeEach.
+
+// Display objects — plain data, no jest.fn(), safe to reference from hoisted factory
 const mockDisplay = {
   id: 1,
   bounds: { x: 0, y: 0, width: 1920, height: 1080 },
@@ -34,27 +37,54 @@ const mockHighDPIDisplay = {
   touchSupport: 'unavailable' as const
 };
 
-const mockScreen = {
-  getPrimaryDisplay: jest.fn().mockReturnValue(mockDisplay),
-  getAllDisplays: jest.fn().mockReturnValue([mockDisplay]),
-  getDisplayNearestPoint: jest.fn().mockReturnValue(mockDisplay),
-  on: jest.fn(),
-  removeListener: jest.fn(),
-  removeAllListeners: jest.fn()
-};
-
+// Shared mutable screen mock — accessed after hoist via module-level variable
+// We define the mock fns here and jest.mock uses them via closure through the mock module.
+// To avoid the hoisting trap: build the mock object inside the factory using jest.fn().
 jest.mock('electron', () => ({
-  screen: mockScreen,
+  screen: {
+    getPrimaryDisplay: jest.fn(),
+    getAllDisplays: jest.fn(),
+    getDisplayNearestPoint: jest.fn(),
+    on: jest.fn(),
+    removeListener: jest.fn(),
+    removeAllListeners: jest.fn()
+  },
   BrowserWindow: jest.fn().mockImplementation(() => ({
     getBounds: jest.fn().mockReturnValue({ x: 100, y: 100, width: 800, height: 600 })
   }))
 }));
 
+// Helper to get the mocked screen object after module load
+function getMockScreen() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return (require('electron') as any).screen as {
+    getPrimaryDisplay: jest.Mock;
+    getAllDisplays: jest.Mock;
+    getDisplayNearestPoint: jest.Mock;
+    on: jest.Mock;
+    removeListener: jest.Mock;
+    removeAllListeners: jest.Mock;
+  };
+}
+
 describe('ScreenManager', () => {
   let screenManager: ScreenManager;
+  let mockScreen: ReturnType<typeof getMockScreen>;
 
   beforeEach(() => {
+    mockScreen = getMockScreen();
+    // Set default return values
+    mockScreen.getPrimaryDisplay.mockReturnValue(mockDisplay);
+    mockScreen.getAllDisplays.mockReturnValue([mockDisplay]);
+    mockScreen.getDisplayNearestPoint.mockReturnValue(mockDisplay);
+
     jest.clearAllMocks();
+
+    // Restore defaults after clearAllMocks (clearAllMocks clears return values too)
+    mockScreen.getPrimaryDisplay.mockReturnValue(mockDisplay);
+    mockScreen.getAllDisplays.mockReturnValue([mockDisplay]);
+    mockScreen.getDisplayNearestPoint.mockReturnValue(mockDisplay);
+
     // Reset singleton
     (ScreenManager as any).instance = null;
     screenManager = ScreenManager.getInstance();
@@ -85,10 +115,10 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateSafePosition(
         800, 600, 1500, 800, { avoidTaskbar: true }
       );
-      
-      // Should constrain to work area
+
+      // Should constrain to work area (workArea: y=30, height=1050 → bottom at y=1080)
       expect(position.x).toBeLessThanOrEqual(1920 - 800);
-      expect(position.y).toBeLessThanOrEqual(1050 - 600);
+      expect(position.y).toBeLessThanOrEqual(30 + 1050 - 600); // workArea.y + workArea.height - windowHeight
       expect(position.y).toBeGreaterThanOrEqual(30); // Taskbar height
     });
 
@@ -96,7 +126,7 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateSafePosition(
         800, 600, 2000, 2000, {}
       );
-      
+
       // Should bring back on screen
       expect(position.x).toBe(1920 - 800);
       expect(position.y).toBe(1080 - 600);
@@ -106,7 +136,7 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateSafePosition(
         800, 600, 0, 0, { centerOnScreen: true, avoidTaskbar: true }
       );
-      
+
       expect(position.x).toBe(Math.round((1920 - 800) / 2));
       expect(position.y).toBe(Math.round(30 + (1050 - 600) / 2));
     });
@@ -115,7 +145,7 @@ describe('ScreenManager', () => {
       const pos1 = screenManager.calculateCascadePosition(0, 400, 300);
       const pos2 = screenManager.calculateCascadePosition(1, 400, 300);
       const pos3 = screenManager.calculateCascadePosition(2, 400, 300);
-      
+
       expect(pos1.x).toBe(0);
       expect(pos1.y).toBe(0);
       expect(pos2.x).toBe(32);
@@ -128,8 +158,8 @@ describe('ScreenManager', () => {
       const pos1 = screenManager.calculateGridPosition(0, 4, 400, 300);
       const pos2 = screenManager.calculateGridPosition(1, 4, 400, 300);
       const pos3 = screenManager.calculateGridPosition(2, 4, 400, 300);
-      const pos4 = screenManager.calculateGridPosition(3, 4, 400, 300);
-      
+      screenManager.calculateGridPosition(3, 4, 400, 300);
+
       // Should arrange in 2x2 grid
       expect(pos1.x).toBeLessThan(pos2.x);
       expect(pos1.y).toBe(pos2.y);
@@ -141,11 +171,14 @@ describe('ScreenManager', () => {
       mockScreen.getPrimaryDisplay.mockImplementation(() => {
         throw new Error('Screen API failed');
       });
-      
+      mockScreen.getAllDisplays.mockImplementation(() => {
+        throw new Error('Screen API failed');
+      });
+
       // Reset to trigger error
       (ScreenManager as any).instance = null;
       const manager = ScreenManager.getInstance();
-      
+
       const primary = manager.getPrimaryMonitor();
       expect(primary).toBeDefined();
       expect(primary.bounds.width).toBe(1920); // Default fallback
@@ -156,10 +189,11 @@ describe('ScreenManager', () => {
     beforeEach(() => {
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay, mockSecondaryDisplay]);
       mockScreen.getPrimaryDisplay.mockReturnValue(mockDisplay);
-      mockScreen.getDisplayNearestPoint.mockImplementation(({ x }) => {
+      mockScreen.getDisplayNearestPoint.mockImplementation((point: unknown) => {
+        const { x } = point as { x: number };
         return x >= 1920 ? mockSecondaryDisplay : mockDisplay;
       });
-      
+
       // Reinitialize with multi-monitor setup
       (ScreenManager as any).instance = null;
       screenManager = ScreenManager.getInstance();
@@ -186,7 +220,7 @@ describe('ScreenManager', () => {
     it('should find correct monitor for point', () => {
       const monitor1 = screenManager.getMonitorAtPoint(500, 500);
       expect(monitor1.id).toBe('1');
-      
+
       const monitor2 = screenManager.getMonitorAtPoint(2500, 500);
       expect(monitor2.id).toBe('2');
     });
@@ -195,7 +229,7 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateSafePosition(
         800, 600, 2500, 200, { monitorId: '2' }
       );
-      
+
       expect(position.monitor.id).toBe('2');
       expect(position.x).toBeGreaterThanOrEqual(1920);
     });
@@ -203,10 +237,10 @@ describe('ScreenManager', () => {
     it('should detect off-screen positions correctly', () => {
       // Position between monitors (gap)
       expect(screenManager.isPositionOffScreen(900, 200, 200, 200)).toBe(false);
-      
+
       // Position completely off screen
       expect(screenManager.isPositionOffScreen(-500, -500, 200, 200)).toBe(true);
-      
+
       // Position on secondary monitor
       expect(screenManager.isPositionOffScreen(2000, 200, 200, 200)).toBe(false);
     });
@@ -216,7 +250,7 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateCascadePosition(
         50, 400, 300, { cascadeOffset: { x: 40, y: 40 } }
       );
-      
+
       // Should be on secondary monitor
       expect(position.x).toBeGreaterThanOrEqual(1920);
     });
@@ -226,7 +260,7 @@ describe('ScreenManager', () => {
     beforeEach(() => {
       mockScreen.getAllDisplays.mockReturnValue([mockHighDPIDisplay]);
       mockScreen.getPrimaryDisplay.mockReturnValue(mockHighDPIDisplay);
-      
+
       // Reinitialize with high-DPI display
       (ScreenManager as any).instance = null;
       screenManager = ScreenManager.getInstance();
@@ -241,7 +275,7 @@ describe('ScreenManager', () => {
       const logicalPixels = 100;
       const devicePixels = screenManager.toDevicePixels(logicalPixels);
       expect(devicePixels).toBe(200); // 2x scale
-      
+
       const backToLogical = screenManager.toLogicalPixels(devicePixels);
       expect(backToLogical).toBe(logicalPixels);
     });
@@ -250,7 +284,7 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateSafePosition(
         800, 600, 1000, 1000, { avoidTaskbar: true }
       );
-      
+
       // Should work with logical pixels
       expect(position.x).toBeLessThanOrEqual(3840 - 800);
       expect(position.y).toBeLessThanOrEqual(2130 - 600);
@@ -266,16 +300,16 @@ describe('ScreenManager', () => {
 
     it('should refresh monitors when display is added', () => {
       const addHandler = mockScreen.on.mock.calls.find(
-        call => call[0] === 'display-added'
+        (call: unknown[]) => call[0] === 'display-added'
       )?.[1] as Function;
-      
+
       // Initially single monitor
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay]);
-      
+
       // Simulate adding monitor
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay, mockSecondaryDisplay]);
       addHandler();
-      
+
       expect(screenManager.isMultiMonitor()).toBe(true);
       expect(screenManager.getMonitors()).toHaveLength(2);
     });
@@ -283,36 +317,36 @@ describe('ScreenManager', () => {
     it('should handle monitor removal gracefully', () => {
       // Start with two monitors
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay, mockSecondaryDisplay]);
-      
+
       const removeHandler = mockScreen.on.mock.calls.find(
-        call => call[0] === 'display-removed'
+        (call: unknown[]) => call[0] === 'display-removed'
       )?.[1] as Function;
-      
+
       // Simulate removing monitor
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay]);
       removeHandler();
-      
+
       expect(screenManager.isMultiMonitor()).toBe(false);
       expect(screenManager.getMonitors()).toHaveLength(1);
     });
 
     it('should handle resolution changes', () => {
       const metricsHandler = mockScreen.on.mock.calls.find(
-        call => call[0] === 'display-metrics-changed'
+        (call: unknown[]) => call[0] === 'display-metrics-changed'
       )?.[1] as Function;
-      
+
       const updatedDisplay = {
         ...mockDisplay,
         bounds: { x: 0, y: 0, width: 2560, height: 1440 },
         workArea: { x: 0, y: 30, width: 2560, height: 1410 }
       };
-      
+
       mockScreen.getAllDisplays.mockReturnValue([updatedDisplay]);
       mockScreen.getPrimaryDisplay.mockReturnValue(updatedDisplay);
-      
+
       // Simulate resolution change
       metricsHandler({}, updatedDisplay, ['bounds', 'workArea']);
-      
+
       const primary = screenManager.getPrimaryMonitor();
       expect(primary.bounds.width).toBe(2560);
       expect(primary.bounds.height).toBe(1440);
@@ -324,7 +358,7 @@ describe('ScreenManager', () => {
       const mockWindow = {
         getBounds: jest.fn().mockReturnValue({ x: 100, y: 100, width: 800, height: 600 })
       };
-      
+
       const monitor = screenManager.getMonitorForWindow(mockWindow as any);
       expect(monitor).toBeDefined();
       expect(mockScreen.getDisplayNearestPoint).toHaveBeenCalledWith({ x: 500, y: 400 });
@@ -334,18 +368,18 @@ describe('ScreenManager', () => {
       const position = screenManager.calculateCascadePosition(
         3, 400, 300, { cascadeOffset: { x: 50, y: 25 } }
       );
-      
+
       expect(position.x).toBe(150); // 3 * 50
       expect(position.y).toBe(75);  // 3 * 25
     });
 
     it('should prefer primary monitor when specified', () => {
       mockScreen.getAllDisplays.mockReturnValue([mockDisplay, mockSecondaryDisplay]);
-      
+
       const position = screenManager.calculateSafePosition(
         400, 300, 2500, 500, { preferredMonitor: 'primary' }
       );
-      
+
       expect(position.monitor.id).toBe('1');
       expect(position.x).toBeLessThan(1920); // Should be on primary
     });

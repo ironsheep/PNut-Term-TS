@@ -210,59 +210,49 @@ describe('ScopeTriggerProcessor', () => {
   });
 
   describe('evaluateTriggerCondition', () => {
-    test('should detect positive slope crossing', () => {
+    test('should detect positive slope trigger (absolute comparison: sample >= fireLevel)', () => {
       processor.setTriggerLevels(30, 50, 'positive');
-      
-      // First sample establishes baseline
+
+      // Below fire level: no trigger
       expect(processor.evaluateTriggerCondition(40)).toBe(false);
-      
-      // No crossing
-      expect(processor.evaluateTriggerCondition(45)).toBe(false);
-      
-      // Crosses trigger level from below
+      expect(processor.evaluateTriggerCondition(49)).toBe(false);
+
+      // At or above fire level: trigger
+      expect(processor.evaluateTriggerCondition(50)).toBe(true);
       expect(processor.evaluateTriggerCondition(55)).toBe(true);
-      
-      // Already above, no crossing
-      expect(processor.evaluateTriggerCondition(60)).toBe(false);
+      expect(processor.evaluateTriggerCondition(60)).toBe(true); // still triggers — absolute, not crossing
     });
 
-    test('should detect negative slope crossing', () => {
+    test('should detect negative slope trigger (absolute comparison: sample <= fireLevel)', () => {
       processor.setTriggerLevels(70, 50, 'negative');
-      
-      // First sample establishes baseline
+
+      // Above fire level: no trigger
       expect(processor.evaluateTriggerCondition(60)).toBe(false);
-      
-      // No crossing
-      expect(processor.evaluateTriggerCondition(55)).toBe(false);
-      
-      // Crosses trigger level from above
+      expect(processor.evaluateTriggerCondition(51)).toBe(false);
+
+      // At or below fire level: trigger
+      expect(processor.evaluateTriggerCondition(50)).toBe(true);
       expect(processor.evaluateTriggerCondition(45)).toBe(true);
-      
-      // Already below, no crossing
-      expect(processor.evaluateTriggerCondition(40)).toBe(false);
+      expect(processor.evaluateTriggerCondition(40)).toBe(true); // still triggers — absolute, not crossing
     });
   });
 
   describe('processSample with arm/fire state machine', () => {
     test('should implement arm then fire sequence for positive slope', () => {
+      // Positive slope: arm when sample <= armLevel (30), fire when sample >= fireLevel (50)
       processor.setTriggerLevels(30, 50, 'positive');
       const triggerSpec = { trigHoldoff: 0 };
-      
-      // Start below arm level
+
+      // Start at/below arm level → arms immediately (absolute, not crossing)
       processor.processSample(20, triggerSpec);
-      expect(processor.getTriggerState().armed).toBe(false);
-      
-      // Cross arm level
-      processor.processSample(35, triggerSpec);
       expect(processor.getTriggerState().armed).toBe(true);
-      expect(processor.getTriggerState().fired).toBe(false);
-      
-      // Between arm and fire
+
+      // Between arm and fire — stays armed, not fired
       processor.processSample(40, triggerSpec);
       expect(processor.getTriggerState().armed).toBe(true);
       expect(processor.getTriggerState().fired).toBe(false);
-      
-      // Cross fire level
+
+      // At/above fire level — fires
       const shouldUpdate = processor.processSample(55, triggerSpec);
       expect(shouldUpdate).toBe(true);
       expect(processor.getTriggerState().armed).toBe(false);
@@ -270,24 +260,20 @@ describe('ScopeTriggerProcessor', () => {
     });
 
     test('should implement arm then fire sequence for negative slope', () => {
+      // Negative slope: arm when sample >= armLevel (70), fire when sample <= fireLevel (50)
       processor.setTriggerLevels(70, 50, 'negative');
       const triggerSpec = { trigHoldoff: 0 };
-      
-      // Start above arm level
+
+      // Start at/above arm level → arms immediately (absolute, not crossing)
       processor.processSample(80, triggerSpec);
-      expect(processor.getTriggerState().armed).toBe(false);
-      
-      // Cross arm level
-      processor.processSample(65, triggerSpec);
       expect(processor.getTriggerState().armed).toBe(true);
-      expect(processor.getTriggerState().fired).toBe(false);
-      
-      // Between arm and fire
+
+      // Between arm and fire — stays armed, not fired
       processor.processSample(60, triggerSpec);
       expect(processor.getTriggerState().armed).toBe(true);
       expect(processor.getTriggerState().fired).toBe(false);
-      
-      // Cross fire level
+
+      // At/below fire level — fires
       const shouldUpdate = processor.processSample(45, triggerSpec);
       expect(shouldUpdate).toBe(true);
       expect(processor.getTriggerState().armed).toBe(false);
@@ -313,12 +299,21 @@ describe('ScopeTriggerProcessor', () => {
       expect(processor.getTriggerState().holdoff).toBe(0);
     });
 
-    test('should always update display when no trigger levels set', () => {
-      processor.setTriggerLevels(0, 0);
+    test('should update display once armed and fired (levels 0,0 positive slope)', () => {
+      // With armLevel=0 and fireLevel=0, positive slope:
+      // arm when sample <= 0, fire when sample >= 0.
+      // A sample of exactly 0 arms AND fires in the same call.
+      processor.setTriggerLevels(0, 0, 'positive');
       const triggerSpec = { trigHoldoff: 0 };
-      
-      expect(processor.processSample(100, triggerSpec)).toBe(true);
-      expect(processor.processSample(0, triggerSpec)).toBe(true);
+
+      // Sample > armLevel(0): not armed, not fired → no update
+      expect(processor.processSample(100, triggerSpec)).toBe(false);
+
+      // Reset and use sample=0: arms then fires immediately
+      processor.resetTrigger();
+      expect(processor.processSample(0, triggerSpec)).toBe(true); // armed then fired
+
+      // After firing, further samples return true (fired=true)
       expect(processor.processSample(50, triggerSpec)).toBe(true);
     });
   });
@@ -341,8 +336,9 @@ describe('ScopeTriggerProcessor', () => {
       expect(state.fired).toBe(false);
       expect(state.holdoff).toBe(0);
       
-      // Previous sample should be reset (first sample won't trigger)
-      expect(processor.evaluateTriggerCondition(60)).toBe(false);
+      // evaluateTriggerCondition is absolute (Pascal behavior): 60 >= fireLevel(50) → true
+      // The reset clears armed/fired/holdoff but does not affect the absolute comparison result
+      expect(processor.evaluateTriggerCondition(60)).toBe(true);
     });
   });
 

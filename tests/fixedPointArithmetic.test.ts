@@ -224,18 +224,18 @@ describe('Fixed-Point Arithmetic Verification', () => {
 
       // Verify scale factor is applied
       // For i=0: angle should be 0, so cos=4096, sin=0
-      expect(Math.abs(cosTable[0] - 4096)).toBeLessThan(2); // Allow 1 rounding error
-      expect(Math.abs(sinTable[0])).toBeLessThan(2);
+      expect(Math.abs(Number(cosTable[0]) - 4096)).toBeLessThan(2); // Allow 1 rounding error
+      expect(Math.abs(Number(sinTable[0]))).toBeLessThan(2);
 
       // For i=4 (FFT size 16): angle should be 90 degrees
       // Rev32(4) = 0x40000000, divided by 0x100000000 = 0.25, times PI = PI/4 (45°)
       // Actually for FFT size 16, angles are distributed differently
       // Let's just verify they're in valid range
       for (let i = 0; i < 16; i++) {
-        expect(sinTable[i]).toBeGreaterThanOrEqual(-4096);
-        expect(sinTable[i]).toBeLessThanOrEqual(4096);
-        expect(cosTable[i]).toBeGreaterThanOrEqual(-4096);
-        expect(cosTable[i]).toBeLessThanOrEqual(4096);
+        expect(Number(sinTable[i])).toBeGreaterThanOrEqual(-4096);
+        expect(Number(sinTable[i])).toBeLessThanOrEqual(4096);
+        expect(Number(cosTable[i])).toBeGreaterThanOrEqual(-4096);
+        expect(Number(cosTable[i])).toBeLessThanOrEqual(4096);
       }
     });
 

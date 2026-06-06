@@ -50,6 +50,13 @@ describe('FFT Multiple Executions - Sliding Window Test', () => {
     console.log('MULTIPLE FFT EXECUTIONS TEST');
     console.log('========================================\n');
 
+    // Skip if hardware log file is not present (captured from real P2 hardware)
+    const logFile = path.join(__dirname, '../test-results/external-results/debug_251106-164458.log');
+    if (!fs.existsSync(logFile)) {
+      console.log('Hardware log file not found — skipping test (requires real P2 capture).');
+      return;
+    }
+
     // Load all samples
     const allSamples = loadAllHardwareSamples();
     console.log(`Total samples loaded: ${allSamples.length}`);

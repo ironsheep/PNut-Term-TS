@@ -57,8 +57,11 @@ export class BinaryPlayer extends EventEmitter {
         // Read start timestamp (8 bytes)
         const startTimestamp = fileBuffer.readBigUInt64LE(8);
         
-        // Read metadata length (4 bytes)
-        const metadataLength = fileBuffer.readUInt32LE(12);
+        // Read metadata length (4 bytes). Header layout: magic(0..3) version(4..7)
+        // startTimestamp:u64(8..15) metadataLength:u32(16..19) — matching BinaryRecorder's
+        // writeCompleteFile(). Was 12 (the high half of the timestamp), which corrupted the
+        // length and made every recorded file fail to play back. [9win #24 real-bug fix]
+        const metadataLength = fileBuffer.readUInt32LE(16);
         
         // Skip to metadata
         offset = 64;

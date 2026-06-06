@@ -30,7 +30,7 @@ describe('FFT Scaling Trace', () => {
     // Manually calculate what should happen
     console.log('\n--- After Windowing (sample * window) ---');
     for (let i = 0; i < 8; i++) {
-      const afterWindow = samples[i] * window[i];
+      const afterWindow = samples[i] * Number(window[i]);
       console.log(`samples[${i}] * window[${i}] = ${samples[i]} * 0x${window[i].toString(16)} = 0x${afterWindow.toString(16)}`);
     }
 
@@ -82,7 +82,7 @@ describe('FFT Scaling Trace', () => {
     const window = processor.getWindowTable();
     let windowedSum = 0;
     for (let i = 0; i < 8; i++) {
-      windowedSum += 1000 * window[i];
+      windowedSum += 1000 * Number(window[i]);
     }
     console.log(`\nSum after windowing: ${windowedSum} (0x${windowedSum.toString(16)})`);
 

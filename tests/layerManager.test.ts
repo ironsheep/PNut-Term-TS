@@ -6,53 +6,44 @@
 
 import { LayerManager, CropRect } from '../src/classes/shared/layerManager';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 
 // Mock fs/promises
 jest.mock('fs/promises');
 
-// Mock OffscreenCanvas
-global.OffscreenCanvas = jest.fn().mockImplementation((width, height) => ({
-  width,
-  height,
-  getContext: jest.fn().mockReturnValue({
-    drawImage: jest.fn()
-  })
-})) as any;
+// Helper to create a mock Jimp image
+function makeMockJimpImage(width: number = 100, height: number = 100) {
+  return {
+    width,
+    height,
+    getPixelColor: jest.fn().mockReturnValue(0xff0000ff) // red, opaque
+  };
+}
 
-// Mock Blob
-global.Blob = jest.fn().mockImplementation((parts) => ({
-  size: parts[0]?.length || 0,
-  type: 'image/bmp'
-})) as any;
-
-// Mock createImageBitmap
-global.createImageBitmap = jest.fn().mockImplementation((blob) => 
-  Promise.resolve({
-    width: 100,
-    height: 100,
-    close: jest.fn()
-  })
-) as any;
+// Mock jimp so Jimp.read() returns a controllable fake image
+const mockJimpRead = jest.fn();
+jest.mock('jimp', () => ({
+  Jimp: {
+    read: (...args: any[]) => mockJimpRead(...args)
+  }
+}));
 
 describe('LayerManager', () => {
   let layerManager: LayerManager;
-  let mockCanvas: any;
   let mockContext: any;
 
   beforeEach(() => {
     layerManager = new LayerManager();
 
-    // Setup mock canvas and context with all required methods
+    // Setup mock canvas context with all required methods
     mockContext = {
       drawImage: jest.fn(),
-      createImageData: jest.fn().mockImplementation((width, height) => ({
+      createImageData: jest.fn().mockImplementation((width: number, height: number) => ({
         width,
         height,
         data: new Uint8ClampedArray(width * height * 4)
       })),
       putImageData: jest.fn(),
-      getImageData: jest.fn().mockImplementation((x, y, w, h) => ({
+      getImageData: jest.fn().mockImplementation((x: number, y: number, w: number, h: number) => ({
         width: w,
         height: h,
         data: new Uint8ClampedArray(w * h * 4)
@@ -61,14 +52,15 @@ describe('LayerManager', () => {
       fillRect: jest.fn()
     };
 
-    mockCanvas = {
-      width: 256,
-      height: 256,
-      getContext: jest.fn().mockReturnValue(mockContext)
-    };
-    
-    // Reset all mocks
+    // Default: fs.access resolves, Jimp.read returns a 100x100 mock image
+    (fs.access as jest.Mock).mockResolvedValue(undefined);
+    mockJimpRead.mockResolvedValue(makeMockJimpImage(100, 100));
+
     jest.clearAllMocks();
+
+    // Re-apply defaults after clearAllMocks
+    (fs.access as jest.Mock).mockResolvedValue(undefined);
+    mockJimpRead.mockResolvedValue(makeMockJimpImage(100, 100));
   });
 
   describe('constructor', () => {
@@ -81,23 +73,15 @@ describe('LayerManager', () => {
 
   describe('loadLayer', () => {
     test('should load a valid bitmap file', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-
       await layerManager.loadLayer(0, '/path/to/image.bmp');
 
       expect(fs.access).toHaveBeenCalledWith('/path/to/image.bmp');
-      expect(fs.readFile).toHaveBeenCalledWith('/path/to/image.bmp');
-      expect(createImageBitmap).toHaveBeenCalled();
+      expect(mockJimpRead).toHaveBeenCalledWith('/path/to/image.bmp');
       expect(layerManager.isLayerLoaded(0)).toBe(true);
     });
 
     test('should support multiple image formats', async () => {
       const formats = ['.bmp', '.png', '.jpg', '.jpeg', '.gif'];
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
 
       for (let i = 0; i < formats.length; i++) {
         await layerManager.loadLayer(i, `/path/to/image${formats[i]}`);
@@ -109,7 +93,7 @@ describe('LayerManager', () => {
       await expect(layerManager.loadLayer(-1, '/path/to/image.bmp')).rejects.toThrow(
         'Layer index must be between 0 and 7'
       );
-      
+
       await expect(layerManager.loadLayer(8, '/path/to/image.bmp')).rejects.toThrow(
         'Layer index must be between 0 and 7'
       );
@@ -130,10 +114,7 @@ describe('LayerManager', () => {
     });
 
     test('should throw error if image loading fails', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      (createImageBitmap as jest.Mock).mockRejectedValue(new Error('Invalid image data'));
+      mockJimpRead.mockRejectedValue(new Error('Invalid image data'));
 
       await expect(layerManager.loadLayer(0, '/path/to/corrupt.bmp')).rejects.toThrow(
         'Failed to load image: Invalid image data'
@@ -141,16 +122,13 @@ describe('LayerManager', () => {
     });
 
     test('should clear existing layer before loading new one', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      (createImageBitmap as jest.Mock)
-        .mockResolvedValueOnce({ width: 100, height: 100, close: jest.fn() })
-        .mockResolvedValueOnce({ width: 200, height: 200, close: jest.fn() });
+      mockJimpRead
+        .mockResolvedValueOnce(makeMockJimpImage(100, 100))
+        .mockResolvedValueOnce(makeMockJimpImage(200, 200));
 
       await layerManager.loadLayer(0, '/path/to/image1.bmp');
       expect(layerManager.isLayerLoaded(0)).toBe(true);
-      
+
       await layerManager.loadLayer(0, '/path/to/image2.bmp');
       expect(layerManager.isLayerLoaded(0)).toBe(true);
     });
@@ -158,25 +136,22 @@ describe('LayerManager', () => {
 
   describe('drawLayerToCanvas', () => {
     beforeEach(async () => {
-      // Pre-load a test layer
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      (createImageBitmap as jest.Mock).mockResolvedValue({ width: 256, height: 256, close: jest.fn() });
+      // Pre-load a test layer (256x256)
+      mockJimpRead.mockResolvedValue(makeMockJimpImage(256, 256));
       await layerManager.loadLayer(0, '/path/to/test.bmp');
     });
 
     test('should draw full layer in AUTO mode', () => {
       layerManager.drawLayerToCanvas(mockContext, 0);
 
-      // Implementation uses putImageData for BMP rendering
+      // Implementation uses putImageData for rendering
       expect(mockContext.putImageData).toHaveBeenCalled();
     });
 
     test('should draw full layer at specified position in AUTO mode', () => {
       layerManager.drawLayerToCanvas(mockContext, 0, null, 50, 100);
 
-      // Implementation uses putImageData for BMP rendering
+      // Implementation uses putImageData for rendering
       expect(mockContext.putImageData).toHaveBeenCalled();
     });
 
@@ -190,7 +165,7 @@ describe('LayerManager', () => {
 
       layerManager.drawLayerToCanvas(mockContext, 0, cropRect, 30, 40);
 
-      // Implementation uses putImageData for BMP rendering
+      // Implementation uses putImageData for rendering
       expect(mockContext.putImageData).toHaveBeenCalled();
     });
 
@@ -198,7 +173,7 @@ describe('LayerManager', () => {
       expect(() => layerManager.drawLayerToCanvas(mockContext, -1)).toThrow(
         'Layer index must be between 0 and 7'
       );
-      
+
       expect(() => layerManager.drawLayerToCanvas(mockContext, 8)).toThrow(
         'Layer index must be between 0 and 7'
       );
@@ -211,7 +186,9 @@ describe('LayerManager', () => {
     });
 
     test('should handle draw errors gracefully', () => {
-      mockContext.drawImage.mockImplementation(() => {
+      // The source iterates pixels via getPixelColor then calls putImageData.
+      // Make putImageData throw to trigger the error path.
+      mockContext.putImageData.mockImplementation(() => {
         throw new Error('Canvas drawing failed');
       });
 
@@ -223,22 +200,9 @@ describe('LayerManager', () => {
 
   describe('getLayerDimensions', () => {
     test('should return dimensions of loaded layer', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      (createImageBitmap as jest.Mock).mockResolvedValue({ width: 320, height: 240, close: jest.fn() });
-      
-      // Reset OffscreenCanvas mock to use the new dimensions
-      (global.OffscreenCanvas as jest.Mock).mockImplementationOnce((width, height) => ({
-        width,
-        height,
-        getContext: jest.fn().mockReturnValue({
-          drawImage: jest.fn()
-        })
-      }));
-      
+      mockJimpRead.mockResolvedValue(makeMockJimpImage(320, 240));
       await layerManager.loadLayer(0, '/path/to/image.bmp');
-      
+
       const dimensions = layerManager.getLayerDimensions(0);
       expect(dimensions).toEqual({ width: 320, height: 240 });
     });
@@ -256,13 +220,9 @@ describe('LayerManager', () => {
 
   describe('clearLayer', () => {
     test('should clear a specific layer', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      
       await layerManager.loadLayer(0, '/path/to/image.bmp');
       expect(layerManager.isLayerLoaded(0)).toBe(true);
-      
+
       layerManager.clearLayer(0);
       expect(layerManager.isLayerLoaded(0)).toBe(false);
     });
@@ -276,21 +236,17 @@ describe('LayerManager', () => {
 
   describe('clearAllLayers', () => {
     test('should clear all layers', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      
       // Load multiple layers
       await layerManager.loadLayer(0, '/path/to/image1.bmp');
       await layerManager.loadLayer(2, '/path/to/image2.bmp');
       await layerManager.loadLayer(5, '/path/to/image3.bmp');
-      
+
       expect(layerManager.isLayerLoaded(0)).toBe(true);
       expect(layerManager.isLayerLoaded(2)).toBe(true);
       expect(layerManager.isLayerLoaded(5)).toBe(true);
-      
+
       layerManager.clearAllLayers();
-      
+
       for (let i = 0; i < 8; i++) {
         expect(layerManager.isLayerLoaded(i)).toBe(false);
       }
@@ -299,10 +255,6 @@ describe('LayerManager', () => {
 
   describe('isLayerLoaded', () => {
     test('should return true for loaded layer', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      
       await layerManager.loadLayer(3, '/path/to/image.bmp');
       expect(layerManager.isLayerLoaded(3)).toBe(true);
     });
@@ -319,46 +271,23 @@ describe('LayerManager', () => {
 
   describe('edge cases', () => {
     test('should handle cropping beyond canvas bounds', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      (createImageBitmap as jest.Mock).mockResolvedValue({ width: 100, height: 100, close: jest.fn() });
-      
-      // Reset OffscreenCanvas mock to use the smaller dimensions
-      (global.OffscreenCanvas as jest.Mock).mockImplementationOnce((width, height) => ({
-        width,
-        height,
-        getContext: jest.fn().mockReturnValue({
-          drawImage: jest.fn(),
-          createImageData: jest.fn().mockImplementation((w, h) => ({
-            width: w, height: h, data: new Uint8ClampedArray(w * h * 4)
-          })),
-          putImageData: jest.fn()
-        })
-      }));
-      
+      mockJimpRead.mockResolvedValue(makeMockJimpImage(100, 100));
       await layerManager.loadLayer(0, '/path/to/image.bmp');
-      
+
       const cropRect: CropRect = {
         left: 50,
         top: 50,
-        width: 100, // Extends beyond image bounds
+        width: 100, // Extends beyond image bounds (50+100=150 > 100)
         height: 100
       };
-      
-      // Should not throw, Canvas API handles this
-      layerManager.drawLayerToCanvas(mockContext, 0, cropRect);
-      // Implementation uses putImageData for BMP rendering
-      expect(mockContext.putImageData).toHaveBeenCalled();
+
+      // Source validates bounds and throws when crop rect is out of range
+      expect(() => layerManager.drawLayerToCanvas(mockContext, 0, cropRect)).toThrow();
     });
 
     test('should handle drawing to different context types', async () => {
-      const mockBuffer = Buffer.from('fake image data');
-      (fs.access as jest.Mock).mockResolvedValue(undefined);
-      (fs.readFile as jest.Mock).mockResolvedValue(mockBuffer);
-      
       await layerManager.loadLayer(0, '/path/to/image.bmp');
-      
+
       // Test with OffscreenCanvasRenderingContext2D type
       const offscreenContext = {
         drawImage: jest.fn(),
@@ -367,7 +296,7 @@ describe('LayerManager', () => {
         })),
         putImageData: jest.fn()
       } as any;
-      
+
       layerManager.drawLayerToCanvas(offscreenContext, 0);
       // Implementation uses putImageData, not drawImage
       expect(offscreenContext.putImageData).toHaveBeenCalled();

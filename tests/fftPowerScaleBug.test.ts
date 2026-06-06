@@ -61,8 +61,10 @@ describe('FFT Power Scale Bug Investigation', () => {
     console.log(`Max power: ${maxPower}`);
     console.log(`First 10 bins: ${Array.from(result.power.slice(0, 10))}`);
 
-    // If our theory is correct, maxPower should be ~220 (1/4 of expected ~1000)
-    expect(maxPower).toBeLessThan(300);
-    expect(maxPower).toBeGreaterThan(100);
+    // The original scaling bug was fixed: Pascal-matching implementation now produces
+    // maxPower at full amplitude (~1000) for amplitude-1000 sine wave input.
+    // Power ≈ input_amplitude (magnitude=0, scale_factor cancels window scaling).
+    expect(maxPower).toBeGreaterThan(900);
+    expect(maxPower).toBeLessThan(1100);
   });
 });

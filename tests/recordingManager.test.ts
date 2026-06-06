@@ -4,6 +4,7 @@
 
 import { RecordingManager } from '../src/classes/shared/recordingManager';
 import { WindowRouter } from '../src/classes/shared/windowRouter';
+import { Context } from '../src/utils/context';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,17 +14,37 @@ describe('RecordingManager', () => {
   const testRecordingsPath = path.join(__dirname, 'test-recordings');
 
   beforeEach(() => {
-    // Reset router singleton
-    WindowRouter.resetInstance();
-    router = WindowRouter.getInstance();
-    
-    // Create manager
-    manager = new RecordingManager(router);
-    
-    // Clean up test recordings
+    // Clean up test recordings BEFORE creating the manager (manager creates dirs)
     if (fs.existsSync(testRecordingsPath)) {
       fs.rmSync(testRecordingsPath, { recursive: true, force: true });
     }
+
+    // Ensure WindowRouter's RecordingCatalog gets a valid array-format catalog.
+    // RecordingManager.updateCatalog() writes object format to tests/recordings/catalog.json;
+    // RecordingCatalog expects an array format in the same file.  Reset it before each test.
+    const sharedCatalogDir = path.join(process.cwd(), 'tests', 'recordings');
+    if (!fs.existsSync(sharedCatalogDir)) {
+      fs.mkdirSync(sharedCatalogDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(sharedCatalogDir, 'catalog.json'), '[]\n');
+
+    // Reset router singleton
+    WindowRouter.resetInstance();
+    router = WindowRouter.getInstance();
+
+    // Minimal context mock: RecordingManager only needs getRecordingsDirectory()
+    const mockContext = {
+      currentFolder: __dirname,
+      preferences: {
+        recordings: { recordingsDirectory: 'test-recordings' }
+      },
+      getRecordingsDirectory() {
+        return path.join(__dirname, 'test-recordings');
+      }
+    } as unknown as Context;
+
+    // Create manager (also creates directory structure under testRecordingsPath)
+    manager = new RecordingManager(router, mockContext);
   });
 
   afterEach(() => {
@@ -207,14 +228,15 @@ describe('RecordingManager', () => {
 
   describe('Catalog Management', () => {
     it('should update catalog after recording', (done) => {
-      const catalogPath = path.join(__dirname, '../tests/recordings/catalog.json');
-      
+      // The catalog is written to the manager's recordingsPath (testRecordingsPath)
+      const catalogPath = path.join(testRecordingsPath, 'catalog.json');
+
       // Start and stop a recording
       manager.startScenarioRecording('breakpoint-hit', {});
-      
+
       setTimeout(() => {
         manager.stopAndValidate('breakpoint-hit');
-        
+
         // Check catalog was created/updated
         if (fs.existsSync(catalogPath)) {
           const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
@@ -228,8 +250,9 @@ describe('RecordingManager', () => {
 
   describe('Regression Testing', () => {
     it('should run scenario test with existing recording', async () => {
-      // Create a mock recording first
-      const catalogPath = path.join(__dirname, '../tests/recordings/catalog.json');
+      // Write catalog to manager's recordingsPath (testRecordingsPath)
+      const catalogPath = path.join(testRecordingsPath, 'catalog.json');
+      const sessionsDir = path.join(testRecordingsPath, 'sessions');
       const catalog = {
         version: '1.0.0',
         scenarios: [{
@@ -247,35 +270,25 @@ describe('RecordingManager', () => {
           totalRecordings: 1
         }
       };
-      
-      // Ensure directories exist
-      const recordingsDir = path.join(__dirname, '../tests/recordings');
-      const sessionsDir = path.join(recordingsDir, 'sessions');
-      if (!fs.existsSync(recordingsDir)) {
-        fs.mkdirSync(recordingsDir, { recursive: true });
-      }
+
+      // Ensure directories exist (manager creates them, but sessions sub-dir may not be there)
       if (!fs.existsSync(sessionsDir)) {
         fs.mkdirSync(sessionsDir, { recursive: true });
       }
-      
+
       // Write catalog
       fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
-      
+
       // Create mock recording file
       const recordingPath = path.join(sessionsDir, 'test-recording.jsonl');
       fs.writeFileSync(recordingPath, '{"type":"test","data":"mock"}\n');
-      
+
       // Mock playRecording
       jest.spyOn(router, 'playRecording').mockResolvedValue();
-      
+
       // Run test
       const result = await manager.runScenarioTest('breakpoint-hit');
       expect(result).toBe(true);
-      
-      // Clean up
-      if (fs.existsSync(recordingsDir)) {
-        fs.rmSync(recordingsDir, { recursive: true, force: true });
-      }
     });
 
     it('should handle missing recordings gracefully', async () => {
@@ -286,7 +299,8 @@ describe('RecordingManager', () => {
 
   describe('Statistics', () => {
     it('should return recording statistics', () => {
-      const catalogPath = path.join(__dirname, '../tests/recordings/catalog.json');
+      // Write catalog to the path the manager actually reads from (testRecordingsPath)
+      const catalogPath = path.join(testRecordingsPath, 'catalog.json');
       const catalog = {
         version: '1.0.0',
         scenarios: [],
@@ -296,24 +310,18 @@ describe('RecordingManager', () => {
           lastRun: new Date().toISOString()
         }
       };
-      
+
       // Ensure directory exists
-      const recordingsDir = path.dirname(catalogPath);
-      if (!fs.existsSync(recordingsDir)) {
-        fs.mkdirSync(recordingsDir, { recursive: true });
+      if (!fs.existsSync(testRecordingsPath)) {
+        fs.mkdirSync(testRecordingsPath, { recursive: true });
       }
-      
+
       fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
-      
+
       const stats = manager.getStatistics();
       expect(stats).toBeDefined();
       expect(stats.totalScenarios).toBe(5);
       expect(stats.totalRecordings).toBe(25);
-      
-      // Clean up
-      if (fs.existsSync(recordingsDir)) {
-        fs.rmSync(recordingsDir, { recursive: true, force: true });
-      }
     });
 
     it('should return null if no catalog exists', () => {

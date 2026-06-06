@@ -26,7 +26,8 @@ jest.mock('electron', () => ({
 jest.mock('fs');
 jest.mock('../src/utils/files', () => ({
   ensureDirExists: jest.fn(),
-  getFormattedDateTime: jest.fn().mockReturnValue('20250812_120000')
+  getFormattedDateTime: jest.fn().mockReturnValue('20250812_120000'),
+  getFormattedDateTimeISO: jest.fn().mockReturnValue('2025-08-12T12:00:00.000Z')
 }));
 
 describe('LoggerWindow', () => {
@@ -44,13 +45,26 @@ describe('LoggerWindow', () => {
       write: jest.fn((data, callback) => {
         if (callback) callback(null);
       }),
-      end: jest.fn()
+      end: jest.fn((callback?: () => void) => {
+        if (callback) callback();
+      }),
+      destroyed: false,
+      writable: true,
+      once: jest.fn((event: string, cb: (...args: any[]) => void) => {
+        // Immediately trigger 'open' so the header write path is exercised
+        if (event === 'open') {
+          cb(3); // fd = 3
+        }
+      }),
+      on: jest.fn()
     };
     
     const fsMock = require('fs');
     fsMock.createWriteStream = jest.fn().mockReturnValue(mockWriteStream);
     fsMock.existsSync = jest.fn().mockReturnValue(true);
     fsMock.mkdirSync = jest.fn();
+    fsMock.statSync = jest.fn().mockReturnValue({ size: 1024 });
+    fsMock.fsyncSync = jest.fn();
     
     // Setup mocks
     mockContext = {
@@ -78,8 +92,13 @@ describe('LoggerWindow', () => {
         loggingLevel: 'INFO',
         logToFile: true,
         logToConsole: false
+      },
+      // Required by LoggerWindow.initializeLogFile()
+      getLogDirectory: jest.fn().mockReturnValue('/tmp/test-logs'),
+      preferences: {
+        terminal: { colorTheme: 'green' }
       }
-    } as Context;
+    } as unknown as Context;
     
     mockBrowserWindow = {
       loadHTML: jest.fn(),
@@ -92,10 +111,17 @@ describe('LoggerWindow', () => {
       }),
       webContents: {
         send: jest.fn(),
-        executeJavaScript: jest.fn()
+        executeJavaScript: jest.fn(),
+        once: jest.fn(),
+        on: jest.fn(),
+        setMaxListeners: jest.fn()
       },
       show: jest.fn(),
+      focus: jest.fn(),
       close: jest.fn(),
+      destroy: jest.fn(),
+      isDestroyed: jest.fn().mockReturnValue(false),
+      removeAllListeners: jest.fn(),
       setPosition: jest.fn(),
       getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 })
     };
@@ -217,42 +243,55 @@ describe('LoggerWindow', () => {
   
   describe('File Logging', () => {
     beforeEach(() => {
-      debugLogger = LoggerWindow.getInstance(mockContext);
+      // Use fake timers BEFORE creating the instance so the setTimeout(100) that
+      // calls initializeLogFile() is captured and controllable.
       jest.useFakeTimers();
+      debugLogger = LoggerWindow.getInstance(mockContext);
     });
-    
+
     afterEach(() => {
       jest.useRealTimers();
     });
-    
+
     it('should create log file on initialization', () => {
+      // initializeLogFile() is called via setTimeout(100) in the constructor.
+      // Advance fake timers to trigger it.
+      jest.advanceTimersByTime(200);
       expect(fs.createWriteStream).toHaveBeenCalled();
-      expect(debugLogger['logFile']).toBeDefined();
+      expect(debugLogger['logFilePath']).toBeDefined();
     });
-    
+
     it('should buffer writes for performance', () => {
-      // Send messages
+      // Advance timer to trigger initializeLogFile first
+      jest.advanceTimersByTime(200);
+
+      // Send newline-terminated messages so writeToLog extracts complete lines
+      // into writeBuffer (messages without \n stay in logLineAccumulator).
       for (let i = 0; i < 10; i++) {
-        debugLogger['writeToLog'](`Log message ${i}`);
+        debugLogger['writeToLog'](`Log message ${i}\n`);
       }
-      
-      // Should be buffered
+
+      // writeBuffer is populated by writeLogEntry (called for complete lines)
       expect(debugLogger['writeBuffer'].length).toBe(10);
-      
-      // Advance timer to flush
-      jest.advanceTimersByTime(100);
-      
+
+      // Advance timer to flush writeBuffer to the stream
+      jest.advanceTimersByTime(500);
+
       // Should have written
       expect(mockWriteStream.write).toHaveBeenCalled();
     });
-    
+
     it('should handle DTR reset', () => {
+      // Advance to trigger initializeLogFile (first createWriteStream call)
+      jest.advanceTimersByTime(200);
+      expect(fs.createWriteStream).toHaveBeenCalledTimes(1);
+
       debugLogger.handleDTRReset();
-      
-      // Should close old file
+
+      // Should close old file and open a new one
       expect(mockWriteStream.end).toHaveBeenCalled();
-      
-      // Should create new file
+      // After DTR reset, initializeLogFile is called again asynchronously
+      jest.advanceTimersByTime(200);
       expect(fs.createWriteStream).toHaveBeenCalledTimes(2);
     });
   });
@@ -284,17 +323,20 @@ describe('LoggerWindow', () => {
     });
     
     it('should position at bottom-right by default', () => {
-      // Force window creation by calling the protected method
-      const window = debugLogger['createDebugWindow']();
-      
-      // Check that BrowserWindow was called with correct config
+      // BrowserWindow is created in the LoggerWindow constructor (called by getInstance).
+      // Grab the first call's config — that's the window created by the constructor.
       const windowConfig = (BrowserWindow as unknown as jest.Mock).mock.calls[0][0];
-      
-      // Should be positioned for bottom-right (1920 - 400 - 20 = 1500, 1080 - 800 - 40 = 240)
-      expect(windowConfig.x).toBe(1500);
-      expect(windowConfig.y).toBe(240);
-      expect(windowConfig.width).toBe(400);
-      expect(windowConfig.height).toBe(800);
+
+      // Window dimensions: contentWidth = 80*10+20=820, contentHeight = 24*18+10=442
+      // calculateWindowDimensions adds WINDOW_BORDER_WIDTH=20 and TITLE_BAR_HEIGHT=40
+      // Final: width=840, height=482
+      // With workAreaSize={width:1920,height:1080} and margin=20:
+      //   x = 1920 - 840 - 20 = 1060
+      //   y = 1080 - 482 - 20 = 578
+      expect(windowConfig.x).toBe(1060);
+      expect(windowConfig.y).toBe(578);
+      expect(windowConfig.width).toBe(840);
+      expect(windowConfig.height).toBe(482);
     });
     
     it('should clean up on close', () => {

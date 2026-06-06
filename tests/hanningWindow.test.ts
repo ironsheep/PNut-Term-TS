@@ -69,7 +69,7 @@ describe('Hanning Window Verification', () => {
 
     for (const point of testPoints) {
       const pascalValue = pascalHanningWindow(point.index, fftExp);
-      const tsValue = tsWindow[point.index];
+      const tsValue = Number(tsWindow[point.index]);
       const match = pascalValue === tsValue;
 
       console.log(`Index ${point.index} (${point.description}):`);
@@ -102,7 +102,7 @@ describe('Hanning Window Verification', () => {
     // Check every value
     for (let i = 0; i < size; i++) {
       const pascalValue = pascalHanningWindow(i, fftExp);
-      const tsValue = tsWindow[i];
+      const tsValue = Number(tsWindow[i]);
 
       if (pascalValue !== tsValue) {
         mismatchCount++;
@@ -179,9 +179,9 @@ describe('Hanning Window Verification', () => {
       const tsWindow = processor.getWindowTable();
 
       // Check first, middle, and last values
-      const first = tsWindow[0];
-      const middle = tsWindow[size / 2];
-      const last = tsWindow[size - 1];
+      const first = Number(tsWindow[0]);
+      const middle = Number(tsWindow[size / 2]);
+      const last = Number(tsWindow[size - 1]);
 
       const pascalFirst = pascalHanningWindow(0, fftExp);
       const pascalMiddle = pascalHanningWindow(size / 2, fftExp);
@@ -247,11 +247,11 @@ describe('Hanning Window Verification', () => {
       console.log(`  Description: ${test.description}`);
       console.log(`  Expected: ${test.expectedFormula}`);
       console.log(`  Actual:   ${window[test.index]}`);
-      console.log(`  Match:    ${Math.abs(window[test.index] - test.expectedFormula) < 2 ? '✓' : '✗'}`);
+      console.log(`  Match:    ${Math.abs(Number(window[test.index]) - test.expectedFormula) < 2 ? '✓' : '✗'}`);
       console.log();
 
       // Allow for rounding error (within 1)
-      expect(Math.abs(window[test.index] - test.expectedFormula)).toBeLessThanOrEqual(1);
+      expect(Math.abs(Number(window[test.index]) - test.expectedFormula)).toBeLessThanOrEqual(1);
     }
   });
 });

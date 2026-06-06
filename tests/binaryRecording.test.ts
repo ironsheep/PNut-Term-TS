@@ -75,15 +75,15 @@ describe('Binary Recording System (.p2rec format)', () => {
       const startTimestamp = fileBuffer.readBigUInt64LE(8);
       expect(Number(startTimestamp)).toBeCloseTo(metadata.startTime, -3); // Allow ±1000ms tolerance
       
-      // Validate metadata length (bytes 12-15)
-      const metadataLength = fileBuffer.readUInt32LE(12);
+      // Validate metadata length (bytes 16-19: AFTER 8-byte BigUInt64 timestamp at 8-15)
+      const metadataLength = fileBuffer.readUInt32LE(16);
       expect(metadataLength).toBeGreaterThan(0);
-      
-      // Validate reserved bytes (bytes 16-63 should be zeros)
-      const reserved = fileBuffer.subarray(16, 64);
-      const allZeros = Buffer.alloc(48, 0);
+
+      // Validate reserved bytes (bytes 20-63 should be zeros; 16-19 hold metadataLength)
+      const reserved = fileBuffer.subarray(20, 64);
+      const allZeros = Buffer.alloc(44, 0);
       expect(reserved.equals(allZeros)).toBe(true);
-      
+
       // Validate metadata JSON is parseable
       const metadataJson = fileBuffer.subarray(64, 64 + metadataLength).toString('utf-8');
       const parsedMetadata = JSON.parse(metadataJson);
@@ -112,7 +112,7 @@ describe('Binary Recording System (.p2rec format)', () => {
         
       // Read file and validate timestamp ordering
       const fileBuffer = fs.readFileSync(filepath);
-      const metadataLength = fileBuffer.readUInt32LE(12);
+      const metadataLength = fileBuffer.readUInt32LE(16); // bytes 16-19 (after 8-byte timestamp)
       let offset = 64 + metadataLength;
       
       let cumulativeTime = 0;
@@ -172,7 +172,7 @@ describe('Binary Recording System (.p2rec format)', () => {
       
       // Calculate expected file size
       const fileBuffer = fs.readFileSync(filepath);
-      const metadataLength = fileBuffer.readUInt32LE(12);
+      const metadataLength = fileBuffer.readUInt32LE(16); // bytes 16-19 (after 8-byte timestamp)
       
       let expectedSize = 64; // Header
       expectedSize += metadataLength; // Metadata
@@ -275,9 +275,12 @@ describe('Binary Recording System (.p2rec format)', () => {
           // Verify exact count
           expect(playbackData.length).toBe(testPatterns.length);
           
-          // Verify byte-for-byte equality for each message
+          // Verify byte-for-byte equality for each message. The recorder stores text as
+          // latin1 (BinaryRecorder.recordMessage) to preserve raw P2 byte streams 1:1 — P2
+          // debug output is bytes, never unicode — so the round-trip contract is latin1-in /
+          // latin1-out. Compare against latin1, matching that contract. [9win #24]
           testPatterns.forEach((original, index) => {
-            const originalBuffer = typeof original === 'string' ? Buffer.from(original, 'utf-8') : original;
+            const originalBuffer = typeof original === 'string' ? Buffer.from(original, 'latin1') : original;
             const playedBuffer = playbackData[index];
             
             // Critical: Every single byte must match exactly
@@ -526,9 +529,9 @@ describe('Binary Recording System (.p2rec format)', () => {
 
       // Verify file format is still correct
       const fileBuffer = fs.readFileSync(filepath);
-      const metadataLength = fileBuffer.readUInt32LE(12);
+      const metadataLength = fileBuffer.readUInt32LE(16); // bytes 16-19 (after 8-byte timestamp)
       let offset = 64 + metadataLength;
-      
+
       // Parse first entry (empty string)
       let deltaMs = fileBuffer.readUInt32LE(offset);
       offset += 4;
@@ -589,7 +592,7 @@ describe('Binary Recording System (.p2rec format)', () => {
 
       // Verify large data is recorded correctly
       const fileBuffer = fs.readFileSync(filepath);
-      const metadataLength = fileBuffer.readUInt32LE(12);
+      const metadataLength = fileBuffer.readUInt32LE(16); // bytes 16-19 (after 8-byte timestamp)
       let offset = 64 + metadataLength;
       
       // Parse entry
