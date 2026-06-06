@@ -60,14 +60,14 @@ The single-step debugger reached parity-complete / hardware-test-ready in the
 ssdbg-parity sprint. Four items were deliberately deferred (none block the
 hardware test):
 
-### 1. Hub-heatmap click navigation (LOW)
-**Where:** `src/classes/debugger/renderer/DebuggerInteraction.ts` (no `HUBMAP` hit region); heat-map painted in `DebuggerRenderer.renderHubMap`.
-Pascal `FormMouseDown` InHubMap (L967–969) jumps the hub viewer to the clicked
-sub-block's address. The TS heat-map is display-only — `onHubClick` covers only
-the hex-byte columns. **Impact:** minor convenience; every target it would reach
-is also reachable via the hub data click, the address-nibble wheel, or a
-pointer/SFR click. **Fix:** add a hit region over the map rect and set
-`state.hubAddr` from the cell. ~1h.
+### 1. Hub-heatmap click navigation (LOW) — ✅ RESOLVED 2026-06-03 (commit 4a0dc6a)
+**Implemented** in `src/classes/debugger/renderer/DebuggerInteraction.ts:165-181`
+(`handleMouseDown`): the click is hit-tested against `renderer.hubMapBoundsPx()`
+*before* the panel loop (so the HUB hex-column handler can't consume it), the
+sub-block is computed row-major, and `state.hubAddr` is set to
+`subBlock * HUB_SUB_BLOCK_SIZE` — matching Pascal `FormMouseDown` InHubMap
+(`DebuggerUnit.pas` L968 `HubAddr := MapHubAddr`). Cells past `HUB_SUB_BLOCKS`
+are ignored. No longer outstanding; hub heat-map at full click-nav parity.
 
 ### 2. Disassembler — byte-exact operand-text parity (LOW)
 **Where:** `src/classes/debugger/renderer/pasm2Disassembler.ts`.
@@ -102,13 +102,13 @@ hardware-test feedback**, not via pnut-ts.
   S[2:1] is don't-care for the mnemonic), so the four C≠Z rows cover all variants.
   Corpus-covered (12 variants) + unit-tested.
 
-### 3. Stale unregistered test files (~103) (MEDIUM)
-**Where:** `tests/*.test.ts` not listed in `scripts/claude/run_tests_sequentially.sh`.
-Of ~110 historically-unregistered test files, only 7 still pass; ~103 fail at
-suite-load because they import refactored-away / deleted modules (e.g. the
-deleted `shared/debugger*`, `shared/serialReceiver`, `shared/circularBuffer`).
-They are NOT in the runner, so they don't affect the green baseline, but they
-are dead weight. **Fix:** triage each — repoint to the live module or delete.
+### 3. Stale unregistered test files — ✅ LARGELY RESOLVED (v0.9.28, #24 finalization)
+The #24 test-finalization sweep deleted 42 obsolete suites and registered the
+rest: the runner grew 70 → **153** files, all green. Current state is **158 test
+files total / 153 registered**; the only 5 unregistered are *intentionally
+excluded* (hardware-gated/flaky), documented in the "Sprint closeout — residual
+items" section above. The old "~103 dead suites importing refactored-away
+modules" no longer exists. No triage backlog remains.
 
 ### 4. `workerSpritedefBug.test.ts` Docker-saturation flake (LOW)
 **Where:** `tests/workerSpritedefBug.test.ts` (worker threads + `SharedMessagePool`).
@@ -117,11 +117,19 @@ pressure / "Jest did not exit … async operations weren't stopped"); passes 7/7
 standalone. **Fix:** ensure the worker + pool are torn down in `afterEach`/`afterAll`
 so the test releases handles deterministically.
 
-## ⚠️ CRITICAL - DO NOT SHIP
+## ✅ RESOLVED (kept for history)
 
-### WindowRouter Array Copy Performance Issue
-**Priority: CRITICAL - Blocks production release**
-**File:** `src/classes/shared/windowRouter.ts:551`
+### WindowRouter Array Copy Performance Issue — RESOLVED 2026-06-06
+**Status: FIXED — no longer a release blocker.** Verified in
+`src/classes/shared/windowRouter.ts`: the data array is now created **once** via
+`const dataParts = parts.slice(dataStartIndex)` (L737) and the **same reference** is
+passed to every target window's `updateContent(dataParts)` (L762). The buggy
+per-window `dataString.split(' ')` inside the `forEach` is gone. This is exactly the
+"Required Fix" described below; behavior is deterministic across runs. The original
+report is retained for context:
+
+**Priority (historical): CRITICAL - Blocked production release**
+**File:** `src/classes/shared/windowRouter.ts:551` (line numbers since shifted)
 **Added:** 2025-10-08
 
 **Problem:**
@@ -170,49 +178,26 @@ perfectly but first 9 windows broke (or vice versa). Must identify root cause:
 
 ---
 
-## Pre-Release Audit Items
+## Pre-Release Audit Items — ✅ SUPERSEDED by the 9win-parity sprint (v0.9.28)
 
-### Debug Window Pascal Parity Audit
-**Priority: High - Must be completed before release**
+### Debug Window Pascal Parity Audit — ✅ COMPLETE (v0.9.28)
+All nine Pascal-drawn debug **display** windows (LOGIC, SCOPE, SCOPE_XY, FFT,
+SPECTRO, PLOT, TERM, BITMAP, MIDI) were brought to full PNut v55 parity in the
+9win-parity sprint (§1–§18), checked directive-by-directive against
+`DebugDisplayUnit.pas`. The old per-window audit checklist below is retired; the
+authoritative coverage record is now `DOCs/pascal-REF/DEBUG-WINDOW-DIRECTIVE-MATRIX.md`
+plus the per-window parity tests in the 153-file runner. Final whole-app +
+external-hardware visual sign-off is the remaining step (the release validation
+sweep), not a code-audit backlog.
 
-All implemented debug windows need to be audited against their Pascal reference implementation to ensure no features, behaviors, or implementation details have been missed during the TypeScript translation.
-
-**Windows to audit:**
-- ✅ Terminal (`debugTermWin.ts` vs `DebugDisplayUnit.pas`)
-- ✅ Logic (`debugLogicWin.ts` vs `DebugDisplayUnit.pas`)  
-- ✅ Scope (`debugScopeWin.ts` vs `DebugDisplayUnit.pas`)
-- ⚠️ Scope XY (`debugScopeXyWin.ts` vs `DebugDisplayUnit.pas`) - **Missing concentric rings in grid display**
-- ✅ Plot (`debugPlotWin.ts` vs `DebugDisplayUnit.pas`)
-- ✅ Bitmap (`debugBitmapWin.ts` vs `DebugDisplayUnit.pas`) 
-- ✅ MIDI (`debugMidiWin.ts` vs `DebugDisplayUnit.pas`)
-- ✅ FFT (`debugFftWin.ts` vs `DebugDisplayUnit.pas`) - Complete, needs final audit
-
-**Audit checklist for each window:**
-- [ ] All configuration parameters and their ranges
-- [ ] All data feeding modes and packed data support
-- [ ] All rendering modes and visual appearance
-- [ ] All commands (CLEAR, SAVE, PC_KEY, PC_MOUSE)
-- [ ] Mouse and keyboard interaction behavior
-- [ ] Window lifecycle and resource management
-- [ ] Error handling and edge cases
-- [ ] Performance characteristics
-
-**Estimated effort:** 2-3 hours per window × 8 windows = 16-24 hours
-
-### SCOPE_XY Specific Issues
-**Priority: Medium - Visual parity issue**
-
-The SCOPE_XY window has the following known issues:
-1. **Missing concentric rings**: The circular grid should display 4 concentric rings but they're not appearing. The drawing code exists and appears correct, but rings don't render. Crosshairs work fine.
-2. **Blue legend positioning**: The 'B' channel legend positioning has been problematic - needs final adjustment to match Pascal positioning exactly.
-3. **Minor flickering**: While greatly reduced with the snake/queue model, some flickering remains in the dot rendering.
-
-**Root cause analysis needed for:**
-- Why concentric rings don't render despite correct drawing code
-- Potential canvas state or rendering order issues
-- Possible interference from save/restore background optimization attempts
-
-**Estimated effort:** 2-4 hours to diagnose and fix
+### SCOPE_XY Specific Issues — ✅ RESOLVED (v0.9.28, §10)
+1. **Concentric rings** — implemented: `scopeXyRenderer.ts:178` `drawCircularGrid`
+   draws 4 concentric circles + a full-opacity perimeter + radial lines in
+   `vGridColor` (default `0x404040`), matching Pascal `DebugDisplayUnit.pas:3388`.
+2. **Grid color / perimeter opacity** — fixed in §10 (uses `vGridColor`, perimeter
+   at full opacity).
+3. **Minor dot flicker** — cosmetic; confirm acceptable in the hardware visual sweep
+   and close if not observed.
 
 ## Configuration and Logging Issues
 

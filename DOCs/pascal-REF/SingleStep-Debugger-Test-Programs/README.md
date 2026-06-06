@@ -7,7 +7,7 @@ Each file maps to one or more numbered tests in the plan.
 
 | Source file | Plan test(s) | What it exercises |
 |---|---|---|
-| `test01_basic_spin.spin2` | 1, 2, 5, 14 | Basic Spin2 loop; single-step, repeat mode, break-button matrix, hint bar |
+| `test01_basic_spin.spin2` | 0, 1, 2, 5, 14 | Visual-only render pass (Test 0); basic Spin2 loop; single-step, repeat mode, break-button matrix, hint bar |
 | `test03_pasm_regs.spin2` | 3, 4 | PA/PB PASM loop; register watch, disassembly nav and wheel/clicks |
 | `test06_flags_skip.spin2` | 6 | `cmp wz / cmp wc` and `skip #%1010`; C/Z flags, SKIP pattern, XBYTE, CT |
 | `test07_stack_ptr.spin2` | 7 | PTRA/PTRB, `wrlong`, `call/ret`; SFR panel, pointer window, stack |
@@ -17,8 +17,14 @@ Each file maps to one or more numbered tests in the plan.
 | `test11_interrupts.spin2` | 11, 13 | INT1 on CT1 event; EXEC panel, interrupt status, event breakpoints |
 | `test12_multicog.spin2` | 12 | `cogspin` launches cog 1; per-cog debugger windows, COGBRK |
 
+Test 0 (visual verification) loads `test01` but exercises no interaction — it is the
+Phase A "look, don't touch" render pass that opens the release sweep.
 Tests 4, 5, 13 reuse the PASM code from earlier tests rather than duplicate it.
 Test 14 (hint bar) runs against whatever program is loaded.
+
+The plan groups these into three escalating phases — **A: visual (Test 0)**, **B:
+core interaction (Tests 1–9)**, **C: advanced/special-code (Tests 10–13)** — see the
+*Validation Sequence* section at the top of the test plan.
 
 ## Compiling
 

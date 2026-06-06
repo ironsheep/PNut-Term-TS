@@ -6,6 +6,62 @@
 
 ---
 
+## Validation Sequence (run in this order)
+
+This plan is a **release gate**, walked front-to-back in three escalating phases. Do
+not skip ahead — each phase assumes the prior one passed, and a failure early is
+cheaper to diagnose than the same defect surfacing inside a complex interrupt test.
+
+| Phase | Goal | Tests | Test program(s) | Effort to set up |
+|-------|------|-------|-----------------|------------------|
+| **A — Visual verification** | *Look, don't touch.* Confirm the debugger window opens and every panel renders with correct layout/labels/colors **before** exercising any behavior. | **Test 0** | `test01_basic_spin.spin2` | Trivial — load and observe |
+| **B — Core interaction** | Small, low-risk interactions: single-step, repeat, watch, disassembly navigation, buttons, header flags, SFR/stack/pointers, hub viewer, pins. | **Tests 1–9** | `test01`, `test03`, `test06`, `test07`, `test08`, `test09` | Simple Spin2/PASM loops |
+| **C — Advanced / special code** | Features that require purpose-built P2 code: smart-pin watch, interrupts, multi-COG, event breakpoints. | **Tests 10–13** | `test10`, `test11`, `test12` | Hardware-feature-specific code |
+
+**Test 14 (hint bar)** is not a phase of its own — exercise it opportunistically
+throughout Phases B and C by hovering over each region as you reach it.
+
+**Gate rule**: a phase passes only when every test in it passes. If everything in
+Phases A–C passes against this plan (and the nine display windows pass their
+manual visual sweep), the build is release-ready.
+
+---
+
+## Test 0: Visual Verification (lightweight — no interaction)
+
+**What this tests**: The debugger window opens and every panel is present, correctly
+laid out, and correctly labeled/colored — a pure visual parity pass against the
+Pascal screenshots, with **no stepping or clicking**. This catches layout and
+rendering-parity regressions immediately, before any behavioral test muddies the
+picture.
+
+### P2 Code
+```
+test01_basic_spin.spin2   ' compile with: pnut_ts -d test01_basic_spin.spin2
+```
+
+### Interactions & Expected Results
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Compile and download | A single debugger window opens, titled **"Debugger - Cog 0"**, at a sensible cascade position. |
+| 2 | Observe the **header row** | **PC** (5 hex digits), **C** and **Z** flags ('0'/'1'), **SKIP** panel, **XBYTE** panel, and **CT** (16 hex digits split 8+8) all render with their labels. |
+| 3 | Observe the **left column** | **REG heatmap** renders as a bitmap grid (cold/dark at rest). |
+| 4 | Observe the **center** | **Disassembly** panel shows **R-xxx** cog-register addresses; the PC line is highlighted (inverse colors); a few decoded mnemonics are visible and read sensibly. |
+| 5 | Observe the **data panels** | **WATCH**, **SFR** (two columns), **PTR**, **STACK**, and **EXEC** panels are all present with correct headings. |
+| 6 | Observe the **pin/status panels** | **PIN** panel shows three rows **DIR / OUT / IN** (64 binary digits each, split 32+32); **STATUS** indicators (**INIT / STALLI / STR / MOD / LUTS**) render, dimmed when inactive. |
+| 7 | Observe the **interrupt/smart panels** | **SMART**, **INT**, and the **events** panel render with labels. |
+| 8 | Observe the **button column (right)** | All **13 buttons** in a two-column layout. **Go** button reads **"Go"** in bright orange. |
+| 9 | Observe the **hub viewer** | Hub data viewer (8 rows × 16 bytes, 5-hex address + hex + ASCII) and the **hub heatmap** both render. |
+| 10 | Observe the **hint bar** | Present and empty (no hover yet). |
+| 11 | Side-by-side compare | Hold the layout up against the Pascal PNut debugger screenshot — panel positions, fonts, colors, and labels should match. |
+
+**Pass criteria**: The window opens with **all** panels present and correctly
+laid out/labeled/colored, matching the Pascal reference, with no interaction
+required. Any layout or rendering-parity defect is logged here before Phase B.
+
+---
+
 ## Test 1: Basic Connection — DEBUG_MAIN Single Step
 
 **What this tests**: Debugger window opens, breakpoint protocol works, basic display renders.
@@ -457,22 +513,23 @@ Any of the above test programs.
 
 ## Test Summary Matrix
 
-| Test | Feature Area | Complexity | P2 Code Needed |
-|------|-------------|------------|----------------|
-| 1 | Basic connection, single step | Simple | Minimal Spin2 loop |
-| 2 | Repeat mode, throttling | Simple | Same as Test 1 |
-| 3 | Register watch, reset | Simple | PASM register ops |
-| 4 | Disassembly navigation | Medium | Same as Test 3 |
-| 5 | Button behavior | Medium | Same as Test 1 |
-| 6 | Header display (C/Z/SKIP/CT) | Medium | PASM with flags/skip |
-| 7 | SFR, stack, pointers | Medium | PASM with call/ptr |
-| 8 | Hub memory viewer | Medium | PASM hub writes |
-| 9 | Pin registers, status | Medium | PASM pin drive |
-| 10 | Smart pin watch | Medium | PASM smart pin |
-| 11 | Interrupts, exec mode | Complex | PASM with INT1 |
-| 12 | Multi-COG | Complex | Spin2 + COGINIT |
-| 13 | Event breakpoints | Complex | Same as Test 11 |
-| 14 | Hint bar | Simple | Any test program |
+| Test | Phase | Feature Area | Complexity | P2 Code Needed |
+|------|-------|-------------|------------|----------------|
+| 0 | A | Visual verification (no interaction) | Trivial | Minimal Spin2 loop |
+| 1 | B | Basic connection, single step | Simple | Minimal Spin2 loop |
+| 2 | B | Repeat mode, throttling | Simple | Same as Test 1 |
+| 3 | B | Register watch, reset | Simple | PASM register ops |
+| 4 | B | Disassembly navigation | Medium | Same as Test 3 |
+| 5 | B | Button behavior | Medium | Same as Test 1 |
+| 6 | B | Header display (C/Z/SKIP/CT) | Medium | PASM with flags/skip |
+| 7 | B | SFR, stack, pointers | Medium | PASM with call/ptr |
+| 8 | B | Hub memory viewer | Medium | PASM hub writes |
+| 9 | B | Pin registers, status | Medium | PASM pin drive |
+| 10 | C | Smart pin watch | Medium | PASM smart pin |
+| 11 | C | Interrupts, exec mode | Complex | PASM with INT1 |
+| 12 | C | Multi-COG | Complex | Spin2 + COGINIT |
+| 13 | C | Event breakpoints | Complex | Same as Test 11 |
+| 14 | B/C | Hint bar | Simple | Any test program (run throughout) |
 
 ---
 
