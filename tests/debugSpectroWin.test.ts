@@ -600,7 +600,8 @@ describe('DebugSpectroWindow', () => {
     });
 
     it('should invoke FFT draw once enough samples are collected', async () => {
-      const drawSpy = jest.spyOn(debugSpectroWindow as any, 'performFFTAndDraw').mockImplementation(() => {});
+      // mockImplementation must return a Promise because addSample calls performFFTAndDraw().catch(...)
+      const drawSpy = jest.spyOn(debugSpectroWindow as any, 'performFFTAndDraw').mockImplementation(() => Promise.resolve());
 
       const tokens = [
         'MyScope', '1_000',
@@ -671,7 +672,7 @@ describe('DebugSpectroWindow', () => {
   });
 
   describe('Recorded Spectro data parity', () => {
-    it('should match expected FFT peak for captured MySpectro stream', () => {
+    it('should match expected FFT peak for captured MySpectro stream', async () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('MySpectro', [
         'SPECTRO',
         'MySpectro',
@@ -687,21 +688,31 @@ describe('DebugSpectroWindow', () => {
 
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
 
-      const updateSpy = jest.spyOn(debugSpectroWindow as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      const updateSpy = jest.spyOn(debugSpectroWindow as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
       const scrollSpy = jest.spyOn(debugSpectroWindow as any, 'scrollWaterfall').mockImplementation(() => {});
       const drawnPixels: number[] = [];
       const plotSpy = jest.spyOn(debugSpectroWindow as any, 'plotPixel').mockImplementation((pixelValue: unknown) => {
         if (typeof pixelValue === 'number') {
           drawnPixels.push(pixelValue);
         }
+        return Promise.resolve();
       });
+
+      // Prevent the auto-triggered FFT from firing during sample loading.
+      // addSample() fires performFFTAndDraw() as fire-and-forget when the buffer fills;
+      // we block it here so that the explicit await call below is the sole draw pass.
+      (debugSpectroWindow as any).isPerformingFFT = true;
 
       const sampleBlock = recordedSpectroSamples.slice(0, displaySpec.samples);
       sampleBlock.forEach((sample) => {
         (debugSpectroWindow as any).addSample(sample);
       });
 
-      (debugSpectroWindow as any).performFFTAndDraw();
+      // Re-enable FFT guard and explicitly trigger exactly one draw pass.
+      (debugSpectroWindow as any).isPerformingFFT = false;
+
+      // performFFTAndDraw is async — await it so drawnPixels is fully populated before asserting
+      await (debugSpectroWindow as any).performFFTAndDraw();
 
       const fftPowerArray = Array.from(debugSpectroWindow['fftPower'] as Int32Array);
       const fftPower: Array<{ bin: number; value: number }> = fftPowerArray

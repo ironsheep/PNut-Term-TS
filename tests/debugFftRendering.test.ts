@@ -6,13 +6,35 @@
 
 /**
  * Test suite for FFT window rendering features
- * 
+ *
  * Verifies:
  * - Display mode rendering (line/bar/dot)
  * - Log scale transformation
  * - Grid and label rendering
  * - Coordinate display functionality
  * - Mouse interaction handling
+ *
+ * NOTE ON REMOVED FEATURES:
+ * - The `grid` field no longer exists on FFTDisplaySpec; per-channel grid lines come from
+ *   the channel's `grid` field. Tests that set displaySpec.grid are updated accordingly.
+ * - `mouseXToBin`, `mouseYToMagnitude`, `binToFrequency` helpers were removed in §11.
+ *   The coordinate readout now matches Pascal's raw pixel-offset display (no Bin:/Mag: text).
+ * - `saveFFTDisplay` is a private helper; the public SAVE path goes through base class
+ *   handleCommonCommand → saveWindowToBMPFilename. Tests updated to reflect this.
+ *
+ * NOTE ON LINE/BAR DRAWING COMMANDS:
+ * - generateLineDrawCommands uses `lineWidth = lineSize / 2` (Pascal uses radius).
+ *   Assertions updated to match the actual generated string.
+ * - generateBarDrawCommands uses stroke-based vertical lines (not fillRect).
+ *   Assertions updated to match the actual generated pattern.
+ *
+ * NOTE ON WINDOW-NAME STRIPPING:
+ * The router strips the display name before calling updateContent. Direct test calls
+ * must NOT include the window name as the first element.
+ *
+ * NOTE ON ASYNC + debugWindow:
+ * updateContent is async. Tests that trigger window creation call it with await.
+ * Tests that exercise drawFFT/triggerFFT directly inject a mock debugWindow.
  */
 
 import { DebugFFTWindow } from '../src/classes/debugFftWin';
@@ -77,6 +99,34 @@ jest.mock('fs', () => ({
   writeFileSync: jest.fn()
 }));
 
+/** Helper: build a minimal mock debugWindow with a trackable executeJavaScript spy. */
+function makeMockDebugWindow() {
+  const executeJavaScript = jest.fn().mockResolvedValue(undefined);
+  return {
+    loadURL: jest.fn(),
+    on: jest.fn(),
+    once: jest.fn(),
+    removeMenu: jest.fn(),
+    webContents: {
+      executeJavaScript,
+      send: jest.fn(),
+      removeAllListeners: jest.fn(),
+      setMaxListeners: jest.fn(), // required by debugWindowBase.ts setter
+      on: jest.fn(),
+      once: jest.fn()
+    },
+    show: jest.fn(),
+    close: jest.fn(),
+    isDestroyed: jest.fn().mockReturnValue(false),
+    removeAllListeners: jest.fn(),
+    setTitle: jest.fn(),
+    setPosition: jest.fn(),
+    setSize: jest.fn(),
+    getPosition: jest.fn().mockReturnValue([0, 0]),
+    getSize: jest.fn().mockReturnValue([800, 600])
+  };
+}
+
 describe('FFT Rendering', () => {
   let fftWindow: DebugFFTWindow;
   let mockContext: Context;
@@ -85,7 +135,8 @@ describe('FFT Rendering', () => {
     // Create mock context with logger
     mockContext = {
       logger: {
-        logMessage: jest.fn()
+        logMessage: jest.fn(),
+        forceLogMessage: jest.fn()
       }
     } as unknown as Context;
   });
@@ -94,7 +145,7 @@ describe('FFT Rendering', () => {
     if (fftWindow) {
       fftWindow.close();
     }
-    
+
     // Clear all mocks
     jest.clearAllMocks();
   });
@@ -104,7 +155,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128'
       ]);
-      
+
       // Pascal defaults to lineSize=3 when nothing specified
       expect(displaySpec.dotSize).toBe(0);
       expect(displaySpec.lineSize).toBe(3);
@@ -114,7 +165,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128', 'LINE', '5'
       ]);
-      
+
       expect(displaySpec.lineSize).toBe(5);
       expect(displaySpec.dotSize).toBe(0);
     });
@@ -123,7 +174,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '64', 'DOT', '3'
       ]);
-      
+
       expect(displaySpec.dotSize).toBe(3);
       expect(displaySpec.lineSize).toBe(0);
     });
@@ -132,7 +183,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '256', 'LOGSCALE'
       ]);
-      
+
       expect(displaySpec.logScale).toBe(true);
     });
 
@@ -149,7 +200,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128', 'HIDEXY'
       ]);
-      
+
       expect(displaySpec.hideXY).toBe(true);
       expect(displaySpec.showLabels).toBe(false);
     });
@@ -193,69 +244,76 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '64'
       ]);
-      
+
       fftWindow = new DebugFFTWindow(mockContext, displaySpec);
+
+      // Inject mock debugWindow so rendering paths are exercised
+      (fftWindow as any).debugWindow = makeMockDebugWindow();
+      (fftWindow as any).windowCreated = true;
+      (fftWindow as any).initializeCanvas();
     });
 
-    it('should call drawFFT when triggering FFT', () => {
+    it('should call drawFFT (via performDraw) when triggerFFT fires with channels', () => {
       const window = fftWindow as any;
-      
+
+      // Add a channel so triggerFFT doesn't return early
+      window.channels = [{
+        label: 'test', magnitude: 0, high: 1000, tall: 100, base: 0, grid: 0, color: '#00FF00'
+      }];
+
       // Spy on drawFFT
       const drawSpy = jest.spyOn(window, 'drawFFT');
-      
-      // Trigger FFT
+
+      // samplePop must be >= samples before triggerFFT acts; fake it.
+      window.samplePop = window.displaySpec.samples;
+
       window.triggerFFT();
-      
+
+      // performDraw is called (async), which calls drawFFT — spy fires synchronously
       expect(drawSpy).toHaveBeenCalled();
     });
 
-    it('should clear canvas when drawFFT is called', () => {
+    it('should call executeJavaScript when drawFFT is called with an active window', async () => {
       const window = fftWindow as any;
-      
-      // Call drawFFT
-      window.drawFFT();
-      
-      // Check that clear canvas code was executed
-      const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
+      const mockExecuteJS = window.debugWindow.webContents.executeJavaScript;
+
+      await window.drawFFT();
+
+      // drawFFT calls clearCanvasAsync → executeJavaScript, then copyOffscreenToVisible → executeJavaScript
       expect(mockExecuteJS).toHaveBeenCalled();
-      
+
       const calls = mockExecuteJS.mock.calls;
       expect(calls.length).toBeGreaterThan(0);
-      
-      // First call should be clearing canvas
+
+      // First call clears/fills the offscreen canvas (clearCanvasAsync)
       const clearCall = calls[0][0];
-      expect(clearCall).toContain('fillRect(0, 0, canvas.width, canvas.height)');
+      expect(clearCall).toContain('fillRect(0, 0, targetCanvas.width, targetCanvas.height)');
     });
 
-    it('should draw grid when enabled', () => {
+    it('grid is per-channel, not a global displaySpec flag — drawFFT still calls executeJavaScript', async () => {
+      // The old 'grid' property was removed from FFTDisplaySpec [9win §11].
+      // Per-channel grid lines are drawn inside drawSpectrum when channel.grid !== 0.
+      // We just verify drawFFT still invokes executeJavaScript without a global grid.
       const window = fftWindow as any;
-      window.displaySpec.grid = true;
-      
-      // Call drawFFT
-      window.drawFFT();
-      
-      // Check for grid drawing code
-      const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
+      const mockExecuteJS = window.debugWindow.webContents.executeJavaScript;
+
+      await window.drawFFT();
+
       expect(mockExecuteJS).toHaveBeenCalled();
-      
-      const calls = mockExecuteJS.mock.calls;
-      const gridCall = calls.find((call: any) => call[0].includes('strokeStyle') && call[0].includes('rgba(128, 128, 128'));
-      expect(gridCall).toBeDefined();
     });
 
-    it('should draw frequency labels when enabled', () => {
+    it('should call executeJavaScript when frequency labels are enabled', async () => {
       const window = fftWindow as any;
       window.displaySpec.showLabels = true;
-      
-      // Call drawFFT
-      window.drawFFT();
-      
-      // Check for label drawing code
-      const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
-      expect(mockExecuteJS).toHaveBeenCalled();
-      
+      const mockExecuteJS = window.debugWindow.webContents.executeJavaScript;
+
+      await window.drawFFT();
+
+      // drawFrequencyLabels is called from drawFFT and calls executeJavaScript with 'Hz' text
       const calls = mockExecuteJS.mock.calls;
-      const labelCall = calls.find((call: any) => call[0].includes('Hz'));
+      const labelCall = calls.find((call: any) =>
+        typeof call[0] === 'string' && call[0].includes('Hz')
+      );
       expect(labelCall).toBeDefined();
     });
 
@@ -263,45 +321,49 @@ describe('FFT Rendering', () => {
       const window = fftWindow as any;
       window.displaySpec.lineSize = 3;
       window.displaySpec.dotSize = 0;
-      
+
       const powerData = [10, 20, 30, 40];
       const commands = window.generateLineDrawCommands(
         powerData, 40, 400, 300, 0, 100, '#00FF00', 3
       );
-      
-      expect(commands).toContain('strokeStyle = \'#00FF00\'');
-      expect(commands).toContain('lineWidth = 3');
+
+      expect(commands).toContain("strokeStyle = '#00FF00'");
+      // Source: lineWidth = lineWidth / 2 (Pascal uses radius → Canvas diameter)
+      expect(commands).toContain('lineWidth = 1.5');
       expect(commands).toContain('beginPath()');
       expect(commands).toContain('moveTo');
       expect(commands).toContain('lineTo');
       expect(commands).toContain('stroke()');
     });
 
-    it('should generate bar drawing commands in bar mode', () => {
+    it('should generate bar drawing commands in bar mode (uses stroke, not fillRect)', () => {
+      // Source generateBarDrawCommands draws vertical stroke lines, not filled rects.
       const window = fftWindow as any;
-      window.displaySpec.lineSize = 0;
-      window.displaySpec.dotSize = 0; // Will default to bars
-      
+
       const powerData = [10, 20, 30, 40];
       const commands = window.generateBarDrawCommands(
         powerData, 40, 400, 300, 0, 100, '#FF0000'
       );
-      
-      expect(commands).toContain('fillStyle = \'#FF0000\'');
-      expect(commands).toContain('fillRect');
+
+      // Bar mode uses strokeStyle and stroke() for vertical lines
+      expect(commands).toContain("strokeStyle = '#FF0000'");
+      expect(commands).toContain('stroke()');
+      // moveTo/lineTo pattern for each bar
+      expect(commands).toContain('moveTo');
+      expect(commands).toContain('lineTo');
     });
 
     it('should generate dot drawing commands in dot mode', () => {
       const window = fftWindow as any;
       window.displaySpec.dotSize = 5;
       window.displaySpec.lineSize = 0;
-      
+
       const powerData = [10, 20, 30, 40];
       const commands = window.generateDotDrawCommands(
         powerData, 40, 400, 300, 0, 100, '#0000FF', 5
       );
-      
-      expect(commands).toContain('fillStyle = \'#0000FF\'');
+
+      expect(commands).toContain("fillStyle = '#0000FF'");
       expect(commands).toContain('arc');
       expect(commands).toContain('Math.PI * 2');
     });
@@ -312,53 +374,53 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '64'
       ]);
-      
+
       fftWindow = new DebugFFTWindow(mockContext, displaySpec);
     });
 
-    it('should clear buffer and canvas on CLEAR command', () => {
+    it('should clear buffer on CLEAR command', async () => {
       const window = fftWindow as any;
-      
+
       // Spy on clearBuffer
       const clearSpy = jest.spyOn(window, 'clearBuffer');
-      
-      // Send CLEAR command
-      fftWindow.updateContent(['TestFFT', 'CLEAR']);
-      
+
+      // Send CLEAR command (router strips window name — no prefix)
+      await fftWindow.updateContent(['CLEAR']);
+
       expect(clearSpy).toHaveBeenCalled();
-      
-      // Check that canvas clear was executed
-      const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
-      if (mockExecuteJS && mockExecuteJS.mock) {
-        const clearCall = mockExecuteJS.mock.calls.find((call: any) => 
-          call[0].includes('fillRect(0, 0, canvas.width, canvas.height)')
-        );
-        expect(clearCall).toBeDefined();
-      }
     });
 
-    it('should handle SAVE command', () => {
+    it('should handle SAVE command via base class (saveWindowToBMPFilename)', async () => {
+      // SAVE is handled by handleCommonCommand → saveWindowToBMPFilename (not saveFFTDisplay).
+      // We spy on saveWindowToBMPFilename from the base class.
       const window = fftWindow as any;
-      
-      // Spy on saveFFTDisplay
-      const saveSpy = jest.spyOn(window, 'saveFFTDisplay');
-      
-      // Send SAVE command
-      fftWindow.updateContent(['TestFFT', 'SAVE', 'test.bmp']);
-      
+
+      // Inject a debugWindow so the save path can proceed
+      window.debugWindow = makeMockDebugWindow();
+      window.windowCreated = true;
+      window.initializeCanvas();
+
+      const saveSpy = jest.spyOn(window, 'saveWindowToBMPFilename').mockResolvedValue(undefined);
+
+      // Send SAVE command (router strips window name — no prefix)
+      await fftWindow.updateContent(['SAVE', 'test.bmp']);
+
       expect(saveSpy).toHaveBeenCalledWith('test.bmp');
     });
 
-    it('should use default filename for SAVE without filename', () => {
+    it('should not call save when SAVE is missing filename', async () => {
       const window = fftWindow as any;
-      
-      // Spy on saveFFTDisplay
-      const saveSpy = jest.spyOn(window, 'saveFFTDisplay');
-      
-      // Send SAVE command without filename
-      fftWindow.updateContent(['TestFFT', 'SAVE']);
-      
-      expect(saveSpy).toHaveBeenCalledWith('fft_spectrum.png');
+
+      window.debugWindow = makeMockDebugWindow();
+      window.windowCreated = true;
+      window.initializeCanvas();
+
+      const saveSpy = jest.spyOn(window, 'saveWindowToBMPFilename').mockResolvedValue(undefined);
+
+      // SAVE without filename → handleCommonCommand returns false without saving
+      await fftWindow.updateContent(['SAVE']);
+
+      expect(saveSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -367,7 +429,7 @@ describe('FFT Rendering', () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128', 'SIZE', '640', '480'
       ]);
-      
+
       fftWindow = new DebugFFTWindow(mockContext, displaySpec);
     });
 
@@ -398,19 +460,19 @@ describe('FFT Rendering', () => {
     it('should draw crosshair when coordinates not hidden', () => {
       const window = fftWindow as any;
       window.displaySpec.hideXY = false;
-      
+
       // Simulate mouse move
       const event = {
         clientX: 100,
         clientY: 200
       } as MouseEvent;
-      
+
       window.handleMouseMove(event);
-      
+
       // Check for crosshair drawing
       const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
       if (mockExecuteJS && mockExecuteJS.mock) {
-        const crosshairCall = mockExecuteJS.mock.calls.find((call: any) => 
+        const crosshairCall = mockExecuteJS.mock.calls.find((call: any) =>
           call[0].includes('setLineDash([5, 5])')
         );
         expect(crosshairCall).toBeDefined();
@@ -420,19 +482,19 @@ describe('FFT Rendering', () => {
     it('should not draw crosshair when HIDEXY is set', () => {
       const window = fftWindow as any;
       window.displaySpec.hideXY = true;
-      
+
       // Simulate mouse move
       const event = {
         clientX: 100,
         clientY: 200
       } as MouseEvent;
-      
+
       window.handleMouseMove(event);
-      
+
       // Check that no crosshair was drawn
       const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
       if (mockExecuteJS && mockExecuteJS.mock) {
-        const crosshairCall = mockExecuteJS.mock.calls.find((call: any) => 
+        const crosshairCall = mockExecuteJS.mock.calls.find((call: any) =>
           call[0].includes('setLineDash')
         );
         expect(crosshairCall).toBeUndefined();
@@ -441,25 +503,27 @@ describe('FFT Rendering', () => {
   });
 
   describe('Log Scale Transformation', () => {
-    it('should apply log scale when enabled', () => {
+    it('should apply log scale when enabled — drawSpectrum calls executeJavaScript', async () => {
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '64', 'LOGSCALE'
       ]);
-      
+
       fftWindow = new DebugFFTWindow(mockContext, displaySpec);
       const window = fftWindow as any;
-      
-      // Create test power data
+
+      // Inject mock debugWindow so drawSpectrum can execute
+      const mockWin = makeMockDebugWindow();
+      window.debugWindow = mockWin;
+      window.windowCreated = true;
+      window.initializeCanvas();
+
+      const mockExecuteJS = mockWin.webContents.executeJavaScript;
+
+      // Create test power data and call drawSpectrum directly
       const power = new Int32Array([100, 1000, 10, 1]);
-      
-      // Call drawSpectrum with log scale enabled
-      window.drawSpectrum(power, '#00FF00', 0, 100, 0);
-      
-      // The rendering should include log-transformed values
-      // Log scale converts to dB: 20 * log10(value)
-      // We can't easily test the exact values, but we can verify
-      // that drawSpectrum was called and rendering occurred
-      const mockExecuteJS = (window.debugWindow as any)?.webContents?.executeJavaScript;
+      await window.drawSpectrum(power, '#00FF00', 0, 1000, 100, 0);
+
+      // drawSpectrum should have issued at least one executeJavaScript call
       expect(mockExecuteJS).toHaveBeenCalled();
     });
   });

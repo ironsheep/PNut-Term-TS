@@ -125,7 +125,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 1: Normal range (0-236)', () => {
-    it('should iterate exactly 237 times for bins 0-236 inclusive', () => {
+    it('should iterate exactly 237 times for bins 0-236 inclusive', async () => {
       // Create SPECTRO with SAMPLES 2048 0 236
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
@@ -138,16 +138,18 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
 
       const window = new DebugSpectroWindow(mockContext, displaySpec);
 
-      // Mock plotPixel to count iterations
+      // Mock plotPixel to count iterations — return a resolved Promise because
+      // performFFTAndDraw awaits plotPixel() (it's declared async).
       const plottedBins: number[] = [];
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         // Track which bin is being processed by checking fftPower access
         // We'll count calls instead
         plottedBins.push(plottedBins.length);
+        return Promise.resolve();
       });
 
       // Mock updateWaterfallDisplay to prevent actual rendering
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer with samples to trigger FFT automatically
       const samples = displaySpec.samples;
@@ -155,7 +157,9 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
         const sample = Math.round(1000 * Math.sin((2 * Math.PI * i) / samples));
         (window as any).addSample(sample);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Note: performFFTAndDraw is called automatically when buffer fills (fire-and-forget async).
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Verify loop iterations
       const expectedIterations = displaySpec.lastBin - displaySpec.firstBin + 1;
@@ -169,7 +173,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 2: firstBin == lastBin clamps lastBin up to firstBin+1 (Pascal) [9win §12]', () => {
-    it('should clamp lastBin to firstBin+1 when given last <= first', () => {
+    it('should clamp lastBin to firstBin+1 when given last <= first', async () => {
       // Create SPECTRO with single-bin attempt (first == last == 100)
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
@@ -190,20 +194,22 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
 
       const window = new DebugSpectroWindow(mockContext, displaySpec);
 
-      // Track plotPixel calls
+      // Track plotPixel calls — return resolved Promise (plotPixel is async)
       let plotCount = 0;
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         plotCount++;
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       const samples = displaySpec.samples;
       for (let i = 0; i < samples; i++) {
         (window as any).addSample(i);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       const expectedIterations = displaySpec.lastBin - displaySpec.firstBin + 1;
       expect(plotCount).toBe(expectedIterations);
@@ -216,7 +222,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 3: Maximum range (0-1023)', () => {
-    it('should iterate exactly 1024 times for maximum FFT size', () => {
+    it('should iterate exactly 1024 times for maximum FFT size', async () => {
       // Create SPECTRO with maximum FFT size and full bin range
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
@@ -229,20 +235,22 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
 
       const window = new DebugSpectroWindow(mockContext, displaySpec);
 
-      // Track iterations
+      // Track iterations — return resolved Promise (plotPixel is async)
       let iterationCount = 0;
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         iterationCount++;
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       const samples = displaySpec.samples;
       for (let i = 0; i < samples; i++) {
         (window as any).addSample(i);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Should iterate exactly 1024 times (bins 0-1023 inclusive)
       const expectedIterations = displaySpec.lastBin - displaySpec.firstBin + 1;
@@ -252,7 +260,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 4: Edge case - firstBin=0', () => {
-    it('should handle firstBin=0 correctly', () => {
+    it('should handle firstBin=0 correctly', async () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
         'BinTest',
@@ -267,15 +275,17 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
       let iterationCount = 0;
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         iterationCount++;
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       for (let i = 0; i < displaySpec.samples; i++) {
         (window as any).addSample(i);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Should iterate 11 times (0-10 inclusive)
       expect(iterationCount).toBe(11);
@@ -285,7 +295,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 5: Edge case - lastBin at FFT maximum', () => {
-    it('should handle lastBin=255 for 512-sample FFT', () => {
+    it('should handle lastBin=255 for 512-sample FFT', async () => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
         'BinTest',
@@ -300,15 +310,17 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
       let iterationCount = 0;
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         iterationCount++;
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       for (let i = 0; i < displaySpec.samples; i++) {
         (window as any).addSample(i);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Should iterate 256 times (0-255 inclusive)
       expect(iterationCount).toBe(256);
@@ -317,7 +329,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 6: Loop implementation verification', () => {
-    it('should use <= operator for inclusive range', () => {
+    it('should use <= operator for inclusive range', async () => {
       // Read the source to verify loop structure
       // This test verifies the Pascal pattern: for x := FFTfirst to FFTlast do
       // In TypeScript this should be: for (let x = firstBin; x <= lastBin; x++)
@@ -336,17 +348,20 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
       const processedBins: number[] = [];
 
       // Spy on the internal fftPower array access to track which bins are processed
+      // Return a resolved Promise (plotPixel is async)
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         processedBins.push(processedBins.length + displaySpec.firstBin);
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       for (let i = 0; i < displaySpec.samples; i++) {
         (window as any).addSample(i * 100);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Verify inclusive range
       expect(processedBins.length).toBe(11); // 15 - 5 + 1 = 11
@@ -356,7 +371,7 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
   });
 
   describe('Test 7: Actual loop code inspection', () => {
-    it('should confirm performFFTAndDraw uses inclusive loop bounds', () => {
+    it('should confirm performFFTAndDraw uses inclusive loop bounds', async () => {
       // This test verifies by examining actual bin processing behavior
       const displaySpec = DebugSpectroWindow.createDisplaySpec('BinTest', [
         'SPECTRO',
@@ -372,20 +387,22 @@ describe('SPECTRO Bin Range Boundary Conditions', () => {
       // Track exact bins being processed by monitoring fftPower array access
       const binAccessLog: number[] = [];
 
-      // Intercept plotPixel to track bin processing
+      // Intercept plotPixel to track bin processing — return resolved Promise (plotPixel is async)
       let currentBinIndex = displaySpec.firstBin;
       jest.spyOn(window as any, 'plotPixel').mockImplementation(() => {
         binAccessLog.push(currentBinIndex);
         currentBinIndex++;
+        return Promise.resolve();
       });
 
-      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => {});
+      jest.spyOn(window as any, 'updateWaterfallDisplay').mockImplementation(() => Promise.resolve());
 
       // Fill buffer to trigger FFT automatically
       for (let i = 0; i < displaySpec.samples; i++) {
         (window as any).addSample(i);
       }
-      // Note: performFFTAndDraw is called automatically when buffer fills
+      // Flush all pending microtasks so the async FFT loop completes before asserting.
+      await new Promise(resolve => setImmediate(resolve));
 
       // Verify bins 20-30 inclusive (11 bins total)
       expect(binAccessLog.length).toBe(11);
