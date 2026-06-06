@@ -22,20 +22,22 @@ export class PianoKeyboardLayout {
     false, true, false, true, false, false, true, false, true, false, true, false
   ];
 
-  // Tweak values from Pascal for positioning keys
+  // Tweak values from Pascal MIDI_Configure (DebugDisplayUnit.pas:2535-2547). These must match
+  // the Pascal table EXACTLY: black-key tweaks set key left/right, white-key tweaks set the note
+  // label X. The whole table from F# onward had drifted (F#/G/G#/A/A#/B were -3/15/1/19/7/25). [9win §16]
   private static readonly TWEAK_VALUES = [
     10,  // C  white
-    -2,  // C# black  
+    -2,  // C# black
     16,  // D  white
     2,   // D# black
     22,  // E  white
     9,   // F  white
-    -3,  // F# black
-    15,  // G  white
-    1,   // G# black
-    19,  // A  white
-    7,   // A# black
-    25   // B  white
+    -4,  // F# black
+    14,  // G  white
+    0,   // G# black
+    18,  // A  white
+    4,   // A# black
+    23   // B  white
   ];
 
   /**

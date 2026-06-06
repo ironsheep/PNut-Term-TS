@@ -558,8 +558,12 @@ export class DebugMidiWindow extends DebugWindowBase {
     const border = Math.floor(this.keySize / 6);
     const left = key.left - this.keyOffset;
     const right = key.right - this.keyOffset;
-    const top = border; // Top of all keys is at border offset
-    const bottom = border + key.bottom; // CRITICAL: key.bottom is a HEIGHT, must add border offset for Y coordinate
+    // Pascal MIDI_DrawKey: RoundRect(left, -r, right, MidiBottom, r, r) (DebugDisplayUnit.pas:2671).
+    // The rect top is at -r so the rounded top corners fall above y=0 and the VISIBLE top edge is
+    // flat; the border gap sits at the BOTTOM of the window (vHeight = keySize*6 + border). [9win §16]
+    const top = -radius;
+    const bottom = key.bottom; // Pascal MidiBottom is the Y coordinate directly (no top border added)
+    const textTop = border; // note-label inset from the window top, independent of the clipped key top
     const velocity = this.midiVelocity[keyNum] || 0;
 
     const keyColorHex = this.rgbToHex(keyColor);
@@ -567,7 +571,9 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     // Log velocity bar placement for debugging
     if (velocity > 0) {
-      const velocityHeight = Math.floor(((bottom - top - radius) * velocity) / 127);
+      // Pascal velocity bar: RoundRect(left, MidiBottom - r - (MidiBottom-r)*vel div 127, ...,
+      // MidiBottom, ...) (DebugDisplayUnit.pas:2680-2683) — height/top reference MidiBottom-r. [9win §16]
+      const velocityHeight = Math.floor(((bottom - radius) * velocity) / 127);
       const velocityTop = bottom - radius - velocityHeight;
       this.logMessage(
         `MIDI: Drawing velocity bar on key ${keyNum}: velocity=${velocity}, height=${velocityHeight}px, position Y=${velocityTop}-${
@@ -597,7 +603,7 @@ export class DebugMidiWindow extends DebugWindowBase {
         velocity > 0
           ? `
         ctx.fillStyle = '${velocityColorHex}';
-        const velocityHeight = Math.floor((${bottom} - ${top} - ${radius}) * ${velocity} / 127);
+        const velocityHeight = Math.floor((${bottom} - ${radius}) * ${velocity} / 127);
         const velocityTop = ${bottom} - ${radius} - velocityHeight;
         ctx.fillRect(${left + 1}, velocityTop, ${right - left - 2}, velocityHeight);
       `
@@ -624,7 +630,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       // Note: key.numX already accounts for irregular white key shapes near black keys
       // Position text 12 pixels down from top to place it well inside the key
       ctx.save();
-      ctx.translate(${key.numX - this.keyOffset}, ${top + 12});
+      ctx.translate(${key.numX - this.keyOffset}, ${textTop + 12});
       ctx.rotate(Math.PI / 2);  // 90 degrees clockwise
       ctx.fillStyle = '${key.isBlack ? '#BBB' : '#444'}';
       ctx.fillText('${keyNum}', 0, 0);
@@ -647,22 +653,30 @@ export class DebugMidiWindow extends DebugWindowBase {
    * Called by router's updateContent(dataParts)
    */
   public async updateContent(lineParts: string[]): Promise<void> {
-    this.processMessageImmediate(lineParts);
+    await this.processMessageImmediate(lineParts);
   }
 
   /**
-   * Process MIDI data and commands (synchronous wrapper for async operations)
+   * Process MIDI data and commands. Awaits the async pipeline so callers that await
+   * updateContent() observe completed state (note draws, command effects). [9win §16]
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    await this.processMessageAsync(lineParts);
   }
 
   /**
    * Process MIDI data and commands (async implementation)
    */
   private async processMessageAsync(lineParts: string[]): Promise<void> {
-    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
+    // Pascal MIDI_Update ignores key_update (DebugDisplayUnit.pas:2589-2598): drop a leading
+    // UPDATE token so the base class does not treat it as a force-update, while still letting any
+    // remaining tokens on the line be processed (Pascal's parse loop simply continues). [9win §16]
+    if (lineParts.length > 0 && lineParts[0].toUpperCase() === 'UPDATE') {
+      lineParts = lineParts.slice(1);
+      if (lineParts.length === 0) return;
+    }
+
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, SAVE, PC_KEY, PC_MOUSE)
     // Window name was already stripped by mainWindow before routing - pass lineParts directly
     if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done
@@ -818,8 +832,11 @@ export class DebugMidiWindow extends DebugWindowBase {
         this.logMessage(`MIDI: Note number = ${byte}`);
         break;
 
-      case 4: // Note-off, get velocity (Pascal stores as negative but displays as 0)
-        this.midiVelocity[this.midiNote] = 0; // Note off always shows as no velocity
+      case 4: // Note-off, get velocity
+        // Pascal MIDI_Update: MidiVelocity[MidiNote] := -val (DebugDisplayUnit.pas:2636). A
+        // negative velocity renders as "no bar" (draw guards on velocity > 0), matching the
+        // note-off appearance, while preserving the Pascal value exactly. [9win §16]
+        this.midiVelocity[this.midiNote] = -byte;
         this.midiState = 3;
         this.logMessage(`MIDI: ✅ Note-OFF: key=${this.midiNote} → Highlight removed`);
         this.drawKeyboard(false);
@@ -863,10 +880,12 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
-   * Override: Force display update (called by base class UPDATE command)
+   * Override: UPDATE is a no-op for MIDI. Pascal MIDI_Update (DebugDisplayUnit.pas:2589-2598)
+   * has no key_update case — the keyboard redraws immediately on every note event and MIDI has
+   * no deferred-update mode, so an UPDATE directive must NOT trigger a redraw. [9win §16]
    */
   protected forceDisplayUpdate(): void {
-    this.drawKeyboard(false);
+    // intentionally empty — MIDI ignores UPDATE
   }
 
   /**

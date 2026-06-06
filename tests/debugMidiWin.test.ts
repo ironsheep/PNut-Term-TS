@@ -159,21 +159,17 @@ describe('DebugMidiWindow', () => {
     it('should handle TITLE command', async () => {
       await midiWindow.updateContent(['TITLE', 'My MIDI Keyboard']);
 
-      // Title should be set
-      const mockWindow = (midiWindow as any).debugWindow;
-      if (mockWindow) {
-        expect(mockWindow.setTitle).toHaveBeenCalledWith('My MIDI Keyboard');
-      }
+      // MIDI applies the title to its window-title state (and the renderer DOM via
+      // setWindowTitle), not via the BrowserWindow.setTitle API. [9win §16]
+      expect((midiWindow as any)._windowTitle).toBe('My MIDI Keyboard');
     });
 
     it('should handle POS command', async () => {
       await midiWindow.updateContent(['POS', '100', '200']);
 
-      // Position should be set
-      const mockWindow = (midiWindow as any).debugWindow;
-      if (mockWindow) {
-        expect(mockWindow.setPosition).toHaveBeenCalledWith(100, 200);
-      }
+      // MIDI positions via the renderer DOM (setWindowPosition) and records the explicit
+      // position flag, not via the BrowserWindow.setPosition API. [9win §16]
+      expect((midiWindow as any).displaySpec.hasExplicitPosition).toBe(true);
     });
 
     // PRESET command is not implemented in the TypeScript version
@@ -226,16 +222,16 @@ describe('DebugMidiWindow', () => {
 
     it('should clean up on close', async () => {
       await midiWindow.updateContent(['$90', '60', '64']);
+      expect((midiWindow as any).debugWindow).toBeDefined();
 
-      const mockWindow = (midiWindow as any).debugWindow;
-      expect(mockWindow).toBeDefined();
-
-      // Close the window
+      // Close the window. MIDI's closeDebugWindow() releases its keyboard/canvas state and
+      // nulls debugWindow (the base class then performs the actual teardown) rather than
+      // calling BrowserWindow.destroy() directly. [9win §16]
       midiWindow.closeDebugWindow();
 
-      if (mockWindow) {
-        expect(mockWindow.destroy).toHaveBeenCalled();
-      }
+      expect((midiWindow as any).debugWindow).toBeNull();
+      expect((midiWindow as any).keyLayout).toBeNull();
+      expect((midiWindow as any).canvasInitialized).toBe(false);
     });
   });
 
@@ -293,28 +289,27 @@ describe('DebugMidiWindow', () => {
       expect(mouseSpy).toHaveBeenCalled();
     });
 
-    it('should delegate UPDATE command to base class', async () => {
+    it('should ignore UPDATE (no-op, no redraw)', async () => {
+      // Pascal MIDI_Update has no key_update case (DebugDisplayUnit.pas:2589-2598): MIDI draws
+      // immediately on every note and has no deferred-update mode, so UPDATE must NOT redraw.
+      // MIDI strips a leading UPDATE token so it never reaches forceDisplayUpdate. [9win §16]
       const updateSpy = jest.spyOn(midiWindow as any, 'forceDisplayUpdate');
+      const drawSpy = jest.spyOn(midiWindow as any, 'drawKeyboard');
 
-      midiWindow.updateContent(['UPDATE']);
+      await midiWindow.updateContent(['UPDATE']);
+      await new Promise((resolve) => setImmediate(resolve));
 
-      // Allow async operations to complete
-      await new Promise(resolve => setImmediate(resolve));
-
-      // forceDisplayUpdate should have been called via base class delegation
-      expect(updateSpy).toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(drawSpy).not.toHaveBeenCalled();
     });
 
-    it('should delegate CLOSE command to base class', async () => {
-      const closeSpy = jest.spyOn(midiWindow as any, 'closeDebugWindow');
+    it('should null the window on CLOSE (base-class teardown)', async () => {
+      // The base CLOSE handler flushes pending ops and nulls debugWindow directly; it does not
+      // call the window's closeDebugWindow() override. [9win §16]
+      await midiWindow.updateContent(['CLOSE']);
+      await new Promise((resolve) => setImmediate(resolve));
 
-      midiWindow.updateContent(['CLOSE']);
-
-      // Allow async operations to complete
-      await new Promise(resolve => setImmediate(resolve));
-
-      // closeDebugWindow should have been called via base class delegation
-      expect(closeSpy).toHaveBeenCalled();
+      expect((midiWindow as any).debugWindow).toBeNull();
     });
   });
 });
