@@ -157,6 +157,101 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private _windowTitle: string = '';
   private windowContent: string = '';
 
+  // Named-color table (Pascal key_black..key_gray order, DebugDisplayUnit.pas:32-41).
+  // Used by SPARSE / LUTCOLORS / COLOR which accept color names via KeyColor (:2752). [9win §15]
+  private static readonly NAMED_COLORS: { [name: string]: number } = {
+    BLACK: 0,
+    WHITE: 1,
+    ORANGE: 2,
+    BLUE: 3,
+    GREEN: 4,
+    CYAN: 5,
+    RED: 6,
+    MAGENTA: 7,
+    YELLOW: 8,
+    GRAY: 9,
+    GREY: 9 // alternate spelling
+  };
+
+  // LUMA8/RGBI8 color-name tune values (orange..gray => 0..7). Pascal KeyColorMode
+  // computes vColorTune := val - key_orange (:2797), valid only for LUMA modes. [9win §15]
+  private static readonly COLOR_TUNE: { [name: string]: number } = {
+    ORANGE: 0,
+    BLUE: 1,
+    GREEN: 2,
+    CYAN: 3,
+    RED: 4,
+    MAGENTA: 5,
+    YELLOW: 6,
+    GRAY: 7,
+    GREY: 7
+  };
+
+  // Lazily-built throwaway translator fixed to RGBI8X — mirrors Pascal KeyColor's
+  // `TranslateColor(h shl 5 or p shl 1, key_rgbi8x)` for named colors (:2773). [9win §15]
+  private static rgbi8xTranslator: ColorTranslator | null = null;
+
+  /**
+   * Translate a named-color RGBI8X index value to RGB24, exactly as Pascal KeyColor does.
+   */
+  private static translateRgbi8x(value: number): number {
+    if (!DebugBitmapWindow.rgbi8xTranslator) {
+      DebugBitmapWindow.rgbi8xTranslator = new ColorTranslator();
+      DebugBitmapWindow.rgbi8xTranslator.setColorMode(ColorMode.RGBI8X);
+    }
+    return DebugBitmapWindow.rgbi8xTranslator.translateColor(value & 0xff);
+  }
+
+  /**
+   * Parse a color name (with optional trailing brightness 0-15 for orange..gray) at
+   * parts[index]. Mirrors the named-color branch of Pascal KeyColor (:2757-2773):
+   *   BLACK -> $000000, WHITE -> $FFFFFF, else TranslateColor((h<<5)|(p<<1), key_rgbi8x)
+   * where h = name-orange (0..7) and p = brightness (default 8). Returns null when the
+   * token is not a recognized color name (caller then tries a raw numeric). [9win §15]
+   */
+  private static parseNamedColor(parts: string[], index: number): { color: number; consumed: number } | null {
+    const tok = parts[index];
+    if (tok === undefined) return null;
+    const nameIdx = DebugBitmapWindow.NAMED_COLORS[tok.toUpperCase()];
+    if (nameIdx === undefined) return null;
+    if (nameIdx === 0) return { color: 0x000000, consumed: 1 }; // black
+    if (nameIdx === 1) return { color: 0xffffff, consumed: 1 }; // white
+    const h = nameIdx - 2; // orange..gray => 0..7
+    let p = 8; // default brightness (Pascal: p := 8)
+    let consumed = 1;
+    const nxt = parts[index + 1];
+    if (nxt !== undefined && /^-?\d+$/.test(nxt)) {
+      p = parseInt(nxt, 10) & 15; // Pascal: p := val and 15
+      consumed = 2;
+    }
+    const value = ((h << 5) | (p << 1)) & 0xff;
+    return { color: DebugBitmapWindow.translateRgbi8x(value), consumed };
+  }
+
+  /** Pascal mode group: key_luma8..key_luma8x (tune may be a color name OR numeric). */
+  private static isLumaMode(mode: ColorMode): boolean {
+    return mode === ColorMode.LUMA8 || mode === ColorMode.LUMA8W || mode === ColorMode.LUMA8X;
+  }
+
+  /** Pascal mode group: key_hsv8..key_hsv8x, key_hsv16..key_hsv16x (numeric tune only). */
+  private static isHsvMode(mode: ColorMode): boolean {
+    return (
+      mode === ColorMode.HSV8 ||
+      mode === ColorMode.HSV8W ||
+      mode === ColorMode.HSV8X ||
+      mode === ColorMode.HSV16 ||
+      mode === ColorMode.HSV16W ||
+      mode === ColorMode.HSV16X
+    );
+  }
+
+  /** Pascal mode group: key_luma8w/hsv8w/rgbi8w/hsv16w clear to white (GetBackground, :3200-3204). */
+  private static isWhiteBackgroundMode(mode: ColorMode): boolean {
+    return (
+      mode === ColorMode.LUMA8W || mode === ColorMode.HSV8W || mode === ColorMode.RGBI8W || mode === ColorMode.HSV16W
+    );
+  }
+
   get windowTitle(): string {
     return this._windowTitle;
   }
@@ -271,9 +366,15 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
             case 'SPARSE':
               if (i + 1 < lineParts.length) {
-                const colorStr = lineParts[++i];
-                // Parse sparse background color
-                displaySpec.sparseColor = parseInt(colorStr);
+                // SPARSE color accepts a color name (with optional brightness) OR a raw
+                // numeric, per Pascal KeyColor (DebugDisplayUnit.pas:2752). [9win §15]
+                const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
+                if (named) {
+                  displaySpec.sparseColor = named.color;
+                  i += named.consumed;
+                } else {
+                  displaySpec.sparseColor = parseInt(lineParts[++i]);
+                }
               } else {
                 errorMessage = 'SPARSE directive missing color value';
                 isValid = false;
@@ -311,19 +412,24 @@ export class DebugBitmapWindow extends DebugWindowBase {
               break;
 
             case 'LUTCOLORS':
-              // Collect all remaining color values
+              // Collect consecutive color values into the palette (index 0 upward). Each
+              // value is a color name (with optional brightness) OR a raw rgb24 numeric,
+              // per Pascal KeyLutColors -> KeyColor (DebugDisplayUnit.pas:2806-2814). Stop
+              // at the first non-color token (it belongs to the next directive). [9win §15]
               displaySpec.lutColors = [];
               while (i + 1 < lineParts.length) {
-                const nextPart = lineParts[i + 1];
-                // Stop if we hit another directive (all caps word)
-                if (nextPart === nextPart.toUpperCase() && isNaN(parseInt(nextPart))) {
-                  break;
+                const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
+                if (named) {
+                  displaySpec.lutColors.push(named.color);
+                  i += named.consumed;
+                  continue;
                 }
+                const colorValue = Spin2NumericParser.parseColor(lineParts[i + 1]);
+                if (colorValue === null) {
+                  break; // not a color/number -> next directive
+                }
+                displaySpec.lutColors.push(colorValue);
                 i++;
-                const colorValue = parseInt(nextPart);
-                if (!isNaN(colorValue)) {
-                  displaySpec.lutColors.push(colorValue);
-                }
               }
               break;
 
@@ -378,39 +484,27 @@ export class DebugBitmapWindow extends DebugWindowBase {
                 `[BITMAP_PARSE] ✅ Set colorMode to ${displaySpec.colorMode} from directive "${directive}"`
               );
 
-              // Check if next token is a tune parameter
-              // For LUMA8/RGBI8 modes, tune can be:
-              // - A number 0-7
-              // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
+              // Check if next token is a tune parameter. Pascal KeyColorMode (:2786-2803):
+              // ONLY LUMA8/HSV8/HSV16 groups consume a tune. LUMA accepts a color name
+              // (ORANGE..GRAY => 0..7) OR a number; HSV accepts a number only. RGBI/LUT/RGB
+              // consume NOTHING — a following value there is pixel data, not a tune. [9win §15]
               if (i + 1 < lineParts.length) {
-                const nextToken = lineParts[i + 1].toUpperCase();
-
-                // Try parsing as color name first (for LUMA/RGBI modes)
-                const colorToTune: { [key: string]: number } = {
-                  ORANGE: 0,
-                  BLUE: 1,
-                  GREEN: 2,
-                  CYAN: 3,
-                  RED: 4,
-                  MAGENTA: 5,
-                  YELLOW: 6,
-                  GRAY: 7,
-                  GREY: 7 // Alternative spelling
-                };
-
-                if (colorToTune.hasOwnProperty(nextToken)) {
-                  displaySpec.colorTune = colorToTune[nextToken];
-                  i++; // Consume color name
-                  DebugBitmapWindow.logConsoleMessageStatic(
-                    `[BITMAP] Parsed color tune: ${nextToken} -> ${displaySpec.colorTune}`
-                  );
-                } else if (!isNaN(parseInt(nextToken))) {
-                  // Try parsing as number
-                  const possibleTune = parseInt(nextToken);
-                  if (possibleTune >= 0 && possibleTune <= 7) {
-                    displaySpec.colorTune = possibleTune;
-                    i++; // Consume tune parameter
-                    DebugBitmapWindow.logConsoleMessageStatic(`[BITMAP] Parsed numeric tune: ${possibleTune}`);
+                const mode = displaySpec.colorMode;
+                const nextRaw = lineParts[i + 1];
+                const nextToken = nextRaw.toUpperCase();
+                if (DebugBitmapWindow.isLumaMode(mode)) {
+                  if (/^-?\d+$/.test(nextRaw)) {
+                    displaySpec.colorTune = parseInt(nextRaw, 10) & 0xff;
+                    i++;
+                  } else if (DebugBitmapWindow.COLOR_TUNE.hasOwnProperty(nextToken)) {
+                    displaySpec.colorTune = DebugBitmapWindow.COLOR_TUNE[nextToken];
+                    i++;
+                  }
+                  // else: not a color-name/number => leave for next directive (Pascal Dec(ptr))
+                } else if (DebugBitmapWindow.isHsvMode(mode)) {
+                  if (/^-?\d+$/.test(nextRaw)) {
+                    displaySpec.colorTune = parseInt(nextRaw, 10) & 0xff;
+                    i++;
                   }
                 }
               }
@@ -488,7 +582,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
       sparseMode: displaySpec.sparseColor !== undefined,
       manualUpdate: displaySpec.manualUpdate ?? false,
       tracePattern: displaySpec.tracePattern ?? 0,
-      colorMode: displaySpec.colorMode ?? ColorMode.RGB8,
+      // Pascal SetDefaults: vColorMode := key_rgb24 (DebugDisplayUnit.pas:2889). The
+      // BITMAP default is RGB24 (one 24-bit color per long), NOT RGB8 — defaulting to
+      // RGB8 mis-decodes default RGB24 data. [9win §15]
+      colorMode: displaySpec.colorMode ?? ColorMode.RGB24,
       colorTune: displaySpec.colorTune ?? 0,
       isInitialized: false
     };
@@ -497,9 +594,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     this.lutManager = new LUTManager();
     this.colorTranslator = new ColorTranslator();
 
-    // Apply LUTCOLORS from declaration if provided
+    // Apply LUTCOLORS from declaration if provided. Pascal KeyLutColors fills vLut[0..$FF]
+    // (DebugDisplayUnit.pas:2806-2814), so the palette holds up to 256 entries. [9win §15]
     if (displaySpec.lutColors && displaySpec.lutColors.length > 0) {
-      for (let i = 0; i < displaySpec.lutColors.length && i < 16; i++) {
+      for (let i = 0; i < displaySpec.lutColors.length && i < 256; i++) {
         this.lutManager.setColor(i, displaySpec.lutColors[i]);
       }
     }
@@ -655,32 +753,31 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
         case 'SPARSE':
           if (i + 1 < lineParts.length) {
-            const bgColor = this.parseColorValue(lineParts[i + 1]);
-            this.setSparseMode(bgColor);
-            dataStartIndex = i + 2;
-            i++;
+            // SPARSE color accepts a color name (with optional brightness) or a raw numeric,
+            // per Pascal key_sparse -> KeyColor(vSparse) (DebugDisplayUnit.pas:2752). [9win §15]
+            const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
+            if (named) {
+              this.setSparseMode(named.color);
+              i += named.consumed;
+            } else {
+              this.setSparseMode(this.parseColorValue(lineParts[i + 1]));
+              i++;
+            }
+            dataStartIndex = i + 1;
           }
           break;
 
-        default:
-          // Check for color mode commands
-          if (this.parseColorModeCommand(part, lineParts.slice(i + 1))) {
-            // Color mode parsed, advance index
-            if (part.includes('LUTCOLORS')) {
-              // LUTCOLORS consumes all remaining parts
-              dataStartIndex = lineParts.length;
-              i = lineParts.length;
-            } else {
-              // Regular color mode may have tune parameter
-              if (i + 1 < lineParts.length && this.isNumeric(lineParts[i + 1])) {
-                dataStartIndex = i + 2;
-                i++;
-              } else {
-                dataStartIndex = i + 1;
-              }
-            }
+        default: {
+          // Check for color-mode / LUTCOLORS commands. The handler reports exactly how many
+          // following tokens it consumed (tune values or LUT colors) so the cursor advances
+          // precisely — pixel data after a no-tune mode (RGBI8/LUT*/RGB*) is preserved. [9win §15]
+          const consumed = this.parseColorModeCommand(part, lineParts.slice(i + 1));
+          if (consumed >= 0) {
+            i += consumed; // skip the consumed tune / LUT-color tokens
+            dataStartIndex = i + 1; // data (if any) starts after them
           }
           break;
+        }
       }
     }
 
@@ -720,6 +817,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Clamp to valid range
     this.state.width = Math.max(1, Math.min(2048, width));
     this.state.height = Math.max(1, Math.min(2048, height));
+
+    // Pascal SetSize (DebugDisplayUnit.pas:2938): sparse rendering only applies when BOTH dot
+    // dimensions are >= 4 (it needs room to draw a bordered dot); otherwise vSparse := -1
+    // (sparse disabled). [9win §15]
+    this.enforceSparseDotSizeConstraint();
 
     // Update trace processor
     this.traceProcessor.setBitmapSize(this.state.width, this.state.height);
@@ -796,8 +898,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private clearBitmap(): void {
     if (!this.debugWindow) return;
 
-    // Convert background color to hex string
-    const bgColor = this.state.backgroundColor & 0xffffff;
+    // Clear color is the mode-dependent background (Pascal ClearBitmap -> GetBackground,
+    // :3240) — white for W modes, palette[0] for LUT modes, else black. It is NOT the SPARSE
+    // color. [9win §15]
+    const bgColor = this.getBackground();
     const r = (bgColor >> 16) & 0xff;
     const g = (bgColor >> 8) & 0xff;
     const b = bgColor & 0xff;
@@ -1034,6 +1138,9 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     this.state.dotSizeX = Math.max(1, dotX);
     this.state.dotSizeY = Math.max(1, dotY);
 
+    // A dot size below 4 disables sparse rendering (Pascal SetSize, :2938). [9win §15]
+    this.enforceSparseDotSizeConstraint();
+
     // Update input forwarder
     this.inputForwarder.setDotSize(this.state.dotSizeX, this.state.dotSizeY);
 
@@ -1049,6 +1156,39 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
   private setSparseMode(bgColor: number): void {
     this.state.sparseMode = true;
     this.state.backgroundColor = bgColor;
+    // Sparse only applies when both dot dimensions are >= 4 (Pascal SetSize, :2938). [9win §15]
+    this.enforceSparseDotSizeConstraint();
+  }
+
+  /**
+   * Disable sparse mode unless both dot dimensions are >= 4. Mirrors Pascal SetSize, which
+   * forces vSparse := -1 when the dots are too small to draw a bordered sparse pixel
+   * (DebugDisplayUnit.pas:2938). [9win §15]
+   */
+  private enforceSparseDotSizeConstraint(): void {
+    if (this.state.sparseMode && (this.state.dotSizeX < 4 || this.state.dotSizeY < 4)) {
+      this.state.sparseMode = false;
+      this.logMessage(
+        `[SPARSE] disabled — dot size ${this.state.dotSizeX}x${this.state.dotSizeY} < 4 (Pascal SetSize)`
+      );
+    }
+  }
+
+  /**
+   * Return the bitmap clear/background color for the current color mode, mirroring Pascal
+   * GetBackground (DebugDisplayUnit.pas:3180-3204): LUT modes use palette entry 0; the W
+   * variants (LUMA8W/HSV8W/RGBI8W/HSV16W) clear to white; every other mode clears to black.
+   * Note this is independent of the SPARSE color (which only tints sparse-dot borders). [9win §15]
+   */
+  private getBackground(): number {
+    const mode = this.state.colorMode;
+    if (mode === ColorMode.LUT1 || mode === ColorMode.LUT2 || mode === ColorMode.LUT4 || mode === ColorMode.LUT8) {
+      return (this.lutManager.getPalette()[0] ?? 0) & 0xffffff;
+    }
+    if (DebugBitmapWindow.isWhiteBackgroundMode(mode)) {
+      return 0xffffff; // clWhite
+    }
+    return 0x000000; // clBlack
   }
 
   /**
@@ -1071,33 +1211,39 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
   }
 
   /**
-   * Parse color mode commands
+   * Parse a color-mode / LUTCOLORS directive that begins at `command`, with `remainingParts`
+   * being the tokens that follow it on the line. Returns the number of tokens consumed FROM
+   * `remainingParts` (0 = bare mode, 1 = mode+tune, N = N LUT colors), or -1 if `command` is
+   * not a color directive. Mirrors Pascal KeyColorMode / KeyLutColors so the caller can advance
+   * the line cursor precisely and not mistake pixel data for a tune. [9win §15]
    */
-  private parseColorModeCommand(command: string, remainingParts: string[]): boolean {
-    // Check for LUTCOLORS command
+  private parseColorModeCommand(command: string, remainingParts: string[]): number {
+    // LUTCOLORS: overwrite the palette from index 0 (Pascal KeyLutColors always restarts at
+    // vLut[0], :2806-2814 — it does NOT append). Each entry is a color name (with optional
+    // brightness) or a raw rgb24 numeric; stop at the first non-color token. [9win §15]
     if (command === 'LUTCOLORS') {
-      this.logMessage(`[LUTCOLORS] Processing ${remainingParts.length} colors: [${remainingParts.join(', ')}]`);
-      // Parse LUT colors using shared parser for consistency
-      let colorCount = 0;
-      for (const colorStr of remainingParts) {
-        const colorValue = this.parseColorValue(colorStr);
-        if (colorValue !== null) {
-          const index = this.lutManager.getPaletteSize();
-          if (index < 256) {
-            this.lutManager.setColor(index, colorValue);
-            this.logMessage(`[LUTCOLORS] Set LUT[${index}] = 0x${colorValue.toString(16)} (${colorStr})`);
-            colorCount++;
-          }
+      let index = 0;
+      let consumed = 0;
+      while (consumed < remainingParts.length && index < 256) {
+        const named = DebugBitmapWindow.parseNamedColor(remainingParts, consumed);
+        if (named) {
+          this.lutManager.setColor(index, named.color);
+          index++;
+          consumed += named.consumed;
+          continue;
         }
+        const colorValue = Spin2NumericParser.parseColor(remainingParts[consumed]);
+        if (colorValue === null) break;
+        this.lutManager.setColor(index, colorValue);
+        index++;
+        consumed++;
       }
-      this.logMessage(`[LUTCOLORS] Loaded ${colorCount} colors into LUT`);
-      // Sync palette to ColorTranslator
       this.colorTranslator.setLutPalette(this.lutManager.getPalette());
-      this.logMessage(`[LUTCOLORS] Synced palette to ColorTranslator`);
-      return true;
+      this.logMessage(`[LUTCOLORS] Loaded ${index} colors into LUT from index 0`);
+      return consumed;
     }
 
-    // Check for color mode commands
+    // Color mode commands
     const colorModeMap: { [key: string]: ColorMode } = {
       LUT1: ColorMode.LUT1,
       LUT2: ColorMode.LUT2,
@@ -1121,46 +1267,38 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     };
 
     if (command in colorModeMap) {
-      this.state.colorMode = colorModeMap[command];
-      this.colorTranslator.setColorMode(this.state.colorMode);
+      const mode = colorModeMap[command];
+      this.state.colorMode = mode;
+      this.colorTranslator.setColorMode(mode); // NOTE: this zeroes the translator's tune
 
-      // Check for tune parameter
-      // For LUMA8/RGBI8 modes, tune can be:
-      // - A number 0-7
-      // - A color name: ORANGE(0), BLUE(1), GREEN(2), CYAN(3), RED(4), MAGENTA(5), YELLOW(6), GRAY(7)
+      // Pascal KeyColorMode (:2786-2803): only LUMA8 (color name OR number) and HSV8/HSV16
+      // (number only) consume a tune token. RGBI8/W/X, LUT*, RGB8/16/24 consume NOTHING — a
+      // following value there is pixel DATA, so it must NOT be eaten as a tune. [9win §15]
+      let consumed = 0;
       if (remainingParts.length > 0) {
-        const tuneToken = remainingParts[0].toUpperCase();
-
-        // Try parsing as color name first
-        const colorToTune: { [key: string]: number } = {
-          ORANGE: 0,
-          BLUE: 1,
-          GREEN: 2,
-          CYAN: 3,
-          RED: 4,
-          MAGENTA: 5,
-          YELLOW: 6,
-          GRAY: 7,
-          GREY: 7 // Alternative spelling
-        };
-
-        if (colorToTune.hasOwnProperty(tuneToken)) {
-          const tune = colorToTune[tuneToken];
-          this.state.colorTune = tune;
-          this.colorTranslator.setTune(tune);
-          this.logMessage(`[COLOR MODE] Set tune from color name: ${tuneToken} -> ${tune}`);
-        } else if (this.isNumeric(remainingParts[0])) {
-          const tune = parseInt(remainingParts[0]) & 0x7;
-          this.state.colorTune = tune;
-          this.colorTranslator.setTune(tune);
-          this.logMessage(`[COLOR MODE] Set numeric tune: ${tune}`);
+        const next = remainingParts[0];
+        if (DebugBitmapWindow.isLumaMode(mode)) {
+          if (this.isNumeric(next)) {
+            this.state.colorTune = parseInt(next, 10) & 0xff;
+            consumed = 1;
+          } else if (DebugBitmapWindow.COLOR_TUNE.hasOwnProperty(next.toUpperCase())) {
+            this.state.colorTune = DebugBitmapWindow.COLOR_TUNE[next.toUpperCase()];
+            consumed = 1;
+          }
+        } else if (DebugBitmapWindow.isHsvMode(mode)) {
+          if (this.isNumeric(next)) {
+            this.state.colorTune = parseInt(next, 10) & 0xff;
+            consumed = 1;
+          }
         }
       }
-
-      return true;
+      // Re-apply the current tune (setColorMode zeroed it; non-tune modes retain the prior
+      // tune, matching Pascal which leaves vColorTune untouched for those modes).
+      this.colorTranslator.setTune(this.state.colorTune);
+      return consumed;
     }
 
-    return false;
+    return -1;
   }
 
   /**
@@ -1413,8 +1551,11 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         valueSize = ePackedDataWidth.PDW_LONGS;
         break;
       default:
-        mode = ePackedDataMode.PDM_LONGS_8BIT;
-        bitsPerSample = 8;
+        // Pascal SetDefaults calls SetPack(0) (DebugDisplayUnit.pas:2915) = no packing =
+        // one sample per long. The fallback must NOT shred a long into 8-bit packed
+        // samples; an unrecognized mode keeps each long as a single sample. [9win §15]
+        mode = ePackedDataMode.PDM_UNKNOWN;
+        bitsPerSample = 32;
         valueSize = ePackedDataWidth.PDW_LONGS;
         break;
     }
