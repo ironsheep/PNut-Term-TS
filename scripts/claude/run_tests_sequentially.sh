@@ -193,6 +193,12 @@ run_test "tests/windowRouterIntegration.test.ts"
 run_test "tests/serialMessageProcessorIntegration.test.ts"
 run_test "tests/debugLoggerRouting.test.ts"
 run_test "tests/debugLoggerWindow.test.ts"
+# 9win-parity follow-on (#24) — final batch. NOT registered: memoryLeakDetection (2 jest-env
+# timer-pollution tests gated with .skip) and spritedefRealUSB (needs an absent USB capture log).
+run_test "tests/baseClassCommonCommands.test.ts"
+run_test "tests/debugMidiWin.integration.test.ts"
+run_test "tests/tLongTransmission.test.ts"
+run_test "tests/spectroEndToEnd.test.ts"
 
 # Print summary
 echo "==================================================================="

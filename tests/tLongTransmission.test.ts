@@ -9,8 +9,8 @@ describe('TLongTransmission', () => {
   let transmittedData: string[] = [];
 
   // Mock send callback that captures transmitted data
-  const mockSendCallback = (data: string) => {
-    transmittedData.push(data);
+  const mockSendCallback = (data: string | Buffer) => {
+    transmittedData.push(typeof data === 'string' ? data : data.toString('binary'));
   };
 
   beforeEach(() => {
@@ -96,13 +96,12 @@ describe('TLongTransmission', () => {
       }).toThrow('TLong transmission: Serial port not available - no send callback set');
     });
 
-    it('should log transmission details', () => {
+    it('should not log transmission details when ENABLE_CONSOLE_LOG is false', () => {
+      // ENABLE_CONSOLE_LOG is false in tLongTransmission.ts, so no log should be emitted
       const testValue = 0x12345678;
       tLong.transmitTLong(testValue);
 
-      expect(mockContext.logger.forceLogMessage).toHaveBeenCalledWith(
-        '[TLONG] Transmitting value=305419896 (0x12345678) as bytes=[0x78, 0x56, 0x34, 0x12]'
-      );
+      expect(mockContext.logger.forceLogMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -158,27 +157,31 @@ describe('TLongTransmission', () => {
   });
 
   describe('transmitMouseData', () => {
-    it('should transmit position and color as two TLong values', () => {
+    it('should transmit position and color as a single 8-byte buffer', () => {
+      // Current implementation sends both longs as one atomic 8-byte buffer to avoid
+      // timing issues where P2 might hang waiting for the second long.
       const position = 0x12345678;
       const color = 0x87654321;
 
       tLong.transmitMouseData(position, color);
 
-      expect(transmittedData).toHaveLength(2);
+      expect(transmittedData).toHaveLength(1);
 
-      // First transmission: position
-      let bytes = transmittedData[0];
+      // Single 8-byte buffer: position (bytes 0-3) then color (bytes 4-7), both LE
+      const bytes = transmittedData[0];
+      expect(bytes.length).toBe(8);
+
+      // Position bytes (little-endian)
       expect(bytes.charCodeAt(0)).toBe(0x78);
       expect(bytes.charCodeAt(1)).toBe(0x56);
       expect(bytes.charCodeAt(2)).toBe(0x34);
       expect(bytes.charCodeAt(3)).toBe(0x12);
 
-      // Second transmission: color
-      bytes = transmittedData[1];
-      expect(bytes.charCodeAt(0)).toBe(0x21);
-      expect(bytes.charCodeAt(1)).toBe(0x43);
-      expect(bytes.charCodeAt(2)).toBe(0x65);
-      expect(bytes.charCodeAt(3)).toBe(0x87);
+      // Color bytes (little-endian)
+      expect(bytes.charCodeAt(4)).toBe(0x21);
+      expect(bytes.charCodeAt(5)).toBe(0x43);
+      expect(bytes.charCodeAt(6)).toBe(0x65);
+      expect(bytes.charCodeAt(7)).toBe(0x87);
     });
   });
 

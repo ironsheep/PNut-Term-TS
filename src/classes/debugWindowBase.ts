@@ -2021,15 +2021,21 @@ export abstract class DebugWindowBase extends EventEmitter {
 
   private captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
     return new Promise((resolve) => {
-      try {
-        window.webContents.capturePage().then((image) => {
-          const desiredPngImage = image.toPNG();
-          resolve(desiredPngImage);
-        });
-      } catch (error) {
+      const failSafe = (error: unknown) => {
         console.error('Win: ERROR: capturing window as PNG:', error);
-        const desiredPngImage: Buffer = Buffer.alloc(0);
-        resolve(desiredPngImage);
+        resolve(Buffer.alloc(0));
+      };
+      try {
+        window.webContents
+          .capturePage()
+          .then((image) => resolve(image.toPNG()))
+          // capturePage() returns a Promise — a rejection is NOT caught by the synchronous
+          // try/catch below. Without this .catch the outer Promise never resolves and SAVE
+          // hangs forever (plus an unhandled rejection). Resolve with an empty buffer instead,
+          // matching the catch branch's intent. [9win #24 real-bug fix]
+          .catch(failSafe);
+      } catch (error) {
+        failSafe(error);
       }
     });
   }

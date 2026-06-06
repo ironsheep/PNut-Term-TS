@@ -174,9 +174,13 @@ describe('SPECTRO End-to-End Rendering Test', () => {
       });
 
       // Generate test data: 10Hz sine wave
+      // numSamples must equal fftSize (2048) so the frequency bin maps correctly.
+      // generateSineWave uses numSamples as the period, so bin N in a 2048-pt FFT
+      // corresponds to frequency (N / numSamples). Using 4096 would map bin 10 to
+      // bin 5 in the 2048-pt FFT (half the frequency). [stale: was 4096]
       const targetBin = 10;
       const amplitude = 1000;
-      const numSamples = 4096; // Enough for 2 FFTs
+      const numSamples = 2048; // Must match fftSize for correct frequency bin mapping
       const samples = generateSineWave(targetBin, amplitude, numSamples);
 
       // Feed samples to window
