@@ -19,10 +19,8 @@ jest.mock('electron', () => ({
 class TestableDebugPlotWindow extends DebugPlotWindow {
   public testProcessCommand(command: string): boolean {
     try {
-      // Parse command into tokens like the real parser would
-      // IMPORTANT: Add display name prefix that processMessageImmediate expects
-      const tokens = ['LutTest', ...command.trim().split(/\s+/)];
-      console.log(`[TEST DEBUG] Calling processMessageImmediate with tokens: [${tokens.join(', ')}] (length: ${tokens.length})`);
+      // Parse command into tokens — window name already stripped per processMessageImmediate contract
+      const tokens = command.trim().split(/\s+/);
       this.processMessageImmediate(tokens);
       return true;
     } catch (error) {
@@ -400,7 +398,7 @@ describe('LUT Palette System Tests', () => {
         'LUT 0 $FF0000',
         'LUT 5 $00FF00',
         'LUT 10 $0000FF',
-        'LUTCOLORS $FFFF00 $FF00FF'  // This should replace the palette
+        'LUTCOLORS $FFFF00 $FF00FF'  // Overwrites indices 0 and 1 only (Pascal: fills from 0)
       ];
 
       commands.forEach(command => {
@@ -408,11 +406,14 @@ describe('LUT Palette System Tests', () => {
         expect(result).toBe(true);
       });
 
-      // After LUTCOLORS, only the new palette should remain
+      // Pascal KeyLutColors fills from index 0 and does NOT clear the prior palette.
+      // After LUTCOLORS with 2 colors: indices 0 and 1 are overwritten; prior entries survive.
       const lutManager = plotWindow.getLutManager();
       expect(lutManager.getColor(0)).toBe(0xFFFF00);
       expect(lutManager.getColor(1)).toBe(0xFF00FF);
-      expect(lutManager.getPaletteSize()).toBe(2);
+      // LUT 5 and LUT 10 set positions beyond 1; they remain after a 2-color LUTCOLORS
+      // Palette size is at least 11 (index 10 was set earlier)
+      expect(lutManager.getPaletteSize()).toBeGreaterThanOrEqual(11);
     });
   });
 

@@ -84,7 +84,7 @@ describe('PLOT Pascal Integration Tests', () => {
   });
 
   describe('DEBUG_PLOT_HubRAM.spin2 Pascal Compatibility', () => {
-    test('should handle Pascal coordinate system setup exactly like PNut', () => {
+    test('should handle Pascal coordinate system setup exactly like PNut', async () => {
       // Test Pascal sequence: origin 300 270 polar -64 -16
       const originCommand = 'ORIGIN 300 270';
       const polarCommand = 'POLAR -64 -16';
@@ -95,16 +95,20 @@ describe('PLOT Pascal Integration Tests', () => {
       const polarResult = plotWindow.testProcessCommand(polarCommand);
       expect(polarResult).toBe(true);
 
+      // processMessageImmediate is async — flush before reading state
+      await new Promise(resolve => setImmediate(resolve));
+
       // Verify coordinate system state matches Pascal
       const origin = (plotWindow as any).origin;
-      const coordMode = (plotWindow as any).coordinateMode;
       const polarConfig = (plotWindow as any).polarConfig;
 
       expect(origin.x).toBe(300);
       expect(origin.y).toBe(270);
-      expect(coordMode).toBe(1); // CM_POLAR
+      // Source uses isCartesian boolean (not coordinateMode enum) for mode tracking
+      expect((plotWindow as any).isCartesian).toBe(false); // POLAR command sets isCartesian=false
+      // polarConfig.twopi and theta (not 'offset') are set by POLAR command
       expect(polarConfig.twopi).toBe(-64);
-      expect(polarConfig.offset).toBe(-16);
+      expect(polarConfig.theta).toBe(-16);
     });
 
     test('should handle Pascal animation loop with clear/update cycle', () => {
@@ -208,7 +212,7 @@ describe('PLOT Pascal Integration Tests', () => {
   });
 
   describe('DEBUG_PLOT_Sprites.spin2 Pascal Compatibility', () => {
-    test('should handle Pascal sprite size specification', () => {
+    test('should handle Pascal sprite size specification', async () => {
       // Pascal creates 384x384 plot with sprites
       displaySpec.size = { width: 384, height: 384 };
       plotWindow = new TestableDebugPlotWindow(mockContext, displaySpec);
@@ -217,12 +221,15 @@ describe('PLOT Pascal Integration Tests', () => {
       const cartesianResult = plotWindow.testProcessCommand('CARTESIAN 1');
       expect(cartesianResult).toBe(true);
 
-      // Verify coordinate system
-      const coordSys = (plotWindow as any).coordinateSystem;
-      expect(coordSys.mode).toBe('CARTESIAN');
+      // processMessageImmediate is async — flush before reading state
+      await new Promise(resolve => setImmediate(resolve));
+
+      // Verify coordinate system: source uses isCartesian boolean (not a coordinateSystem object)
+      // CARTESIAN command sets isCartesian=true
+      expect((plotWindow as any).isCartesian).toBe(true);
     });
 
-    test('should handle Pascal sprite definition with pixel and color arrays', () => {
+    test('should handle Pascal sprite definition with pixel and color arrays', async () => {
       // Pascal: spritedef `(i) 16 16 `uhex_byte_array_(@Mario0 + i * 256, 256) `uhex_long_array_(@MarioColors, 52)
       // Simulate Mario sprite 0 definition (simplified pixel data)
       const pixels = new Array(256).fill(0); // 16x16 = 256 pixels
@@ -243,9 +250,13 @@ describe('PLOT Pascal Integration Tests', () => {
       const result = plotWindow.testProcessCommand(spritedefCommand);
       expect(result).toBe(true);
 
+      // processMessageImmediate is async — flush before reading state
+      await new Promise(resolve => setImmediate(resolve));
+
       // Verify sprite was stored
+      // Note: method is isSpriteDefine (no trailing 'd') per current spriteManager source
       const spriteManager = (plotWindow as any).spriteManager;
-      expect(spriteManager.isSpriteDefined(0)).toBe(true);
+      expect(spriteManager.isSpriteDefine(0)).toBe(true);
     });
 
     test('should handle Pascal sprite animation with transformations', () => {

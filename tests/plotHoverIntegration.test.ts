@@ -10,13 +10,14 @@ import { Context } from '../src/utils/context';
 import { PlotDisplaySpec } from '../src/classes/debugPlotWin';
 import {
   createMockContext,
+  createMockBrowserWindow,
   setupDebugWindowTest,
   cleanupDebugWindowTest
 } from './shared/mockHelpers';
 
 // Mock Electron
 jest.mock('electron', () => ({
-  BrowserWindow: jest.fn()
+  BrowserWindow: jest.fn().mockImplementation(() => createMockBrowserWindow())
 }));
 
 describe('PLOT Hover Coordinate Display Integration', () => {
@@ -96,25 +97,38 @@ describe('PLOT Hover Coordinate Display Integration', () => {
 
       plotWindow = new DebugPlotWindow(mockContext, displaySpec);
 
-      // Initially should have default axis directions
+      // Initially should have default axis directions (Pascal: vDirX=false, vDirY=false)
       const initialXDir = (plotWindow as any).cartesianConfig.xdir;
       const initialYDir = (plotWindow as any).cartesianConfig.ydir;
       expect(initialXDir).toBe(false); // Normal X
-      expect(initialYDir).toBe(true);  // Inverted Y (for screen coordinates)
+      expect(initialYDir).toBe(false); // Mathematical coords default (vDirY := False in Pascal)
 
-      // Update with CARTESIAN command
+      // Window-ready gate: mock environment never fires ready-to-show, so mark ready manually
+      (plotWindow as any).isWindowReady = true;
+
+      // Update with CARTESIAN command: CARTESIAN <flipY> <flipX>
+      // CARTESIAN 1 0 => ydir=true (inverted), xdir=false (normal)
       await plotWindow.updateContent(['TestPlot', 'CARTESIAN', '1', '0']);
 
-      // Should now have inverted axis directions
       const updatedXDir = (plotWindow as any).cartesianConfig.xdir;
       const updatedYDir = (plotWindow as any).cartesianConfig.ydir;
-      expect(updatedXDir).toBe(true);  // Inverted X
-      expect(updatedYDir).toBe(false); // Normal Y
+      expect(updatedYDir).toBe(true);  // flipY=1 => ydir=true (inverted Y)
+      expect(updatedXDir).toBe(false); // flipX=0 => xdir=false (normal X)
     });
   });
 
   describe('Window Creation with Coordinate Display', () => {
-    test('should include coordinate display in HTML when hideXY is false', async () => {
+    test('should include coordinate display in HTML when hideXY is false', () => {
+      // Source writes HTML to a temp file via fs.writeFileSync then calls loadFile.
+      // Capture the HTML by spying on fs.writeFileSync.
+      const fs = require('fs');
+      let capturedHtml = '';
+      const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation((path: any, data: any) => {
+        if (typeof data === 'string' && data.includes('coordinate-display')) {
+          capturedHtml = data;
+        }
+      });
+
       const displaySpec: PlotDisplaySpec = {
         displayName: 'TestPlot',
         windowTitle: 'Test Plot',
@@ -130,23 +144,23 @@ describe('PLOT Hover Coordinate Display Integration', () => {
 
       plotWindow = new DebugPlotWindow(mockContext, displaySpec);
 
-      // PLOT windows create window on first drawing command
-      await plotWindow.updateContent(['TestPlot', 'DOT', '100', '100']);
+      writeFileSpy.mockRestore();
 
-      // Check if window was created
-      const debugWindow = (plotWindow as any).debugWindow;
-      if (debugWindow && debugWindow.loadURL.mock) {
-        const loadURLCall = debugWindow.loadURL.mock.calls[0][0];
-        const htmlContent = decodeURIComponent(loadURLCall.replace('data:text/html;charset=utf-8,', ''));
-
-        // Verify coordinate display element is present
-        expect(htmlContent).toContain('id="coordinate-display"');
-        expect(htmlContent).toContain('font-family: \'Parallax\'');
-        expect(htmlContent).toContain('padding: 8px');
-      }
+      // Verify coordinate display element is present in the generated HTML
+      expect(capturedHtml).toContain('id="coordinate-display"');
+      expect(capturedHtml).toContain("font-family: 'Parallax'");
+      expect(capturedHtml).toContain('padding: 8px');
     });
 
-    test('should respect window colors in coordinate display', async () => {
+    test('should respect window colors in coordinate display', () => {
+      const fs = require('fs');
+      let capturedHtml = '';
+      const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation((path: any, data: any) => {
+        if (typeof data === 'string') {
+          capturedHtml = data;
+        }
+      });
+
       const displaySpec: PlotDisplaySpec = {
         displayName: 'TestPlot',
         windowTitle: 'Test Plot',
@@ -162,20 +176,12 @@ describe('PLOT Hover Coordinate Display Integration', () => {
 
       plotWindow = new DebugPlotWindow(mockContext, displaySpec);
 
-      // PLOT windows create window on first drawing command
-      await plotWindow.updateContent(['TestPlot', 'DOT', '100', '100']);
+      writeFileSpy.mockRestore();
 
-      // Check if window was created
-      const debugWindow = (plotWindow as any).debugWindow;
-      if (debugWindow && debugWindow.loadURL.mock) {
-        const loadURLCall = debugWindow.loadURL.mock.calls[0][0];
-        const htmlContent = decodeURIComponent(loadURLCall.replace('data:text/html;charset=utf-8,', ''));
-
-        // Verify colors are applied
-        expect(htmlContent).toContain('background: #FF0000');
-        expect(htmlContent).toContain('color: #00FF00');
-        expect(htmlContent).toContain('border: 1px solid #00FF00');
-      }
+      // Verify colors are applied in the generated HTML
+      expect(capturedHtml).toContain('background: #FF0000');
+      expect(capturedHtml).toContain('color: #00FF00');
+      expect(capturedHtml).toContain('border: 1px solid #00FF00');
     });
   });
 
