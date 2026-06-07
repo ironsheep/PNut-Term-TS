@@ -464,6 +464,47 @@ describe('DebugWindowBase', () => {
     });
   });
 
+  describe('updateContent teardown-race guard', () => {
+    // Regression: the router dispatches updateContent fire-and-forget, so a
+    // rejection from message processing would surface as a process-level
+    // unhandled rejection (and its synchronous twin reaches
+    // uncaughtException -> app.quit()). A window can be destroyed mid-message
+    // during a download/reboot teardown, making an in-flight window access throw
+    // "Object has been destroyed". updateContent must absorb that, not reject.
+    it('does NOT reject when the window is destroyed mid-processing', async () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['isLogging'] = true;
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['isWindowReady'] = true;
+      // Simulate the teardown race: the window is gone and processing throws.
+      (mockWindow.isDestroyed as jest.Mock).mockReturnValue(true);
+      jest
+        .spyOn(testWindow as any, 'processMessageImmediate')
+        .mockRejectedValue(new TypeError('Object has been destroyed'));
+
+      await expect(testWindow.updateContent(['DOT', '10', '20'])).resolves.toBeUndefined();
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Dropped message for test')
+      );
+    });
+
+    it('does NOT reject on a genuine processing error, but logs it visibly', async () => {
+      const mockWindow = new BrowserWindow();
+      testWindow['isLogging'] = true;
+      testWindow['debugWindow'] = mockWindow;
+      testWindow['isWindowReady'] = true;
+      // Live window (isDestroyed stays false) but processing throws for real.
+      jest
+        .spyOn(testWindow as any, 'processMessageImmediate')
+        .mockRejectedValue(new Error('boom'));
+
+      await expect(testWindow.updateContent(['DOT', '10', '20'])).resolves.toBeUndefined();
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith(
+        expect.stringContaining('ERROR processing message for test')
+      );
+    });
+  });
+
   describe('Input Helpers', () => {
     it('should validate spin numbers', () => {
       const [isValid1, value1] = testWindow['isSpinNumber']('123');
@@ -938,29 +979,29 @@ describe('DebugWindowBase', () => {
       expect(() => testWindow.updateContent(['UPDATE'])).not.toThrow();
     });
 
-    it('should propagate webContents.send failures from processMessageImmediate', async () => {
+    it('absorbs webContents.send failures from processMessageImmediate (does not propagate)', async () => {
       // updateContent calls processMessageImmediate, which (in TestDebugWindow) calls
-      // clearDisplayContent -> webContents.send(). If send() throws, the error
-      // propagates through updateContent. The base class does NOT swallow errors from
-      // processMessageImmediate (only handleRouterMessage has a try/catch).
-      // This test documents the ACTUAL behavior.
+      // clearDisplayContent -> webContents.send(). If send() throws, updateContent
+      // now CATCHES it rather than propagating: the router dispatches updateContent
+      // fire-and-forget, so a propagated error became a process-level unhandled
+      // rejection (and its synchronous twin reached uncaughtException -> app.quit()).
+      // Live window here, so this exercises the "genuine error" branch (logged, not
+      // silently dropped).
       const mockWindow = new BrowserWindow();
+      testWindow['isLogging'] = true;
       testWindow['debugWindow'] = mockWindow;
       await testWindow['onWindowReady']();
 
-      // Mock send to throw error
+      // Mock send to throw error (simulates a real processing failure)
       (mockWindow.webContents.send as jest.Mock).mockImplementation(() => {
         throw new Error('Send failed');
       });
 
-      let threw = false;
-      try {
-        await testWindow.updateContent(['CLEAR']);
-      } catch {
-        threw = true;
-      }
-      // Error propagates from processMessageImmediate -> updateContent
-      expect(threw).toBe(true);
+      // Must resolve, not reject — the fire-and-forget caller can't catch it.
+      await expect(testWindow.updateContent(['CLEAR'])).resolves.toBeUndefined();
+      expect((mockContext as any).logger.forceLogMessage).toHaveBeenCalledWith(
+        expect.stringContaining('ERROR processing message for test')
+      );
     });
   });
 

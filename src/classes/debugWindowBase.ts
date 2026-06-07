@@ -528,8 +528,28 @@ export abstract class DebugWindowBase extends EventEmitter {
    */
   async updateContent(lineParts: string[] | any): Promise<void> {
     if (this.isWindowReady) {
-      // Window is ready, process immediately and await for proper ordering
-      await this.processMessageImmediate(lineParts);
+      // Window is ready, process immediately and await for proper ordering.
+      // The router dispatches updateContent fire-and-forget (windowRouter routes
+      // to each target window without awaiting/catching the returned promise), so
+      // any rejection from message processing surfaces as a process-level
+      // *unhandled rejection*. A window can be destroyed mid-message during a
+      // download/reboot teardown, making an in-flight window access throw
+      // "Object has been destroyed". That race is expected — catch it here at the
+      // shared dispatch chokepoint so it can never crash the app.
+      try {
+        await this.processMessageImmediate(lineParts);
+      } catch (error) {
+        const windowGone = !this._debugWindow || this._debugWindow.isDestroyed();
+        if (windowGone) {
+          // Benign teardown race: the window was torn down (e.g. P2 reboot on a
+          // download) while a message was in flight. Drop the orphaned message.
+          this.logMessageBase(`- Dropped message for ${this.windowType}: window destroyed mid-processing`);
+        } else {
+          // Genuine processing error — keep it visible (previously hidden behind
+          // the router's dropped promise).
+          this.logMessageBase(`- ERROR processing message for ${this.windowType}: ${error}`);
+        }
+      }
     } else {
       // Window not ready yet, queue the message
       const queued = this.messageQueue.enqueue(lineParts);
