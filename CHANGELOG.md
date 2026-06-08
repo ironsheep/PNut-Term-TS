@@ -5,6 +5,28 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.29] - 2026-06-08
+
+Hardware-certification polish for the windowed (headed) workflow. This build fixes `SAVE WINDOW` so it once again captures the **full window including its title bar/frame**, makes `--exit-on-end-session` actually exit a windowed run, and quiets a cosmetic macOS startup log line found during certification testing.
+
+### Added
+
+- **macOS: a one-time Screen Recording permission prompt for `SAVE WINDOW`.** Because `SAVE WINDOW` now captures the window *with* its native title bar (see below), macOS requires Screen Recording permission. On startup, if the permission hasn't been granted, the app offers to enable it — with **Enable… / Remind Me Later / Don't Ask Again**. The dialog states clearly that this is **only** for `SAVE WINDOW`; the plain `SAVE` command (window contents only) is unaffected and never needs it. Windows and Linux are unaffected.
+
+### Fixed
+
+- **`SAVE WINDOW 'name'` again includes the window chrome.** It had regressed to saving only the window *contents* (same as plain `SAVE`). It now captures the on-screen window region including the native title bar and frame, matching PNut. `SAVE l t w h 'name'` (capture an explicit desktop rectangle) is fixed the same way. If the desktop capture is unavailable (e.g. macOS permission not yet granted), it falls back to a contents-only image so a file is always produced.
+- **`--exit-on-end-session` now actually exits a windowed run.** The flag (and any `--end-marker` phrase) was parsed in the launcher but never reached the GUI process, so a headed run ignored `DEBUG(DEBUG_END_SESSION)` and stayed open. The setting now crosses the launcher→app process boundary, so a windowed run shuts itself down on end-of-session as documented.
+- **macOS: the benign `SecCodeCheckValidity … (-67062)` startup line is suppressed.** This is a cosmetic upstream Electron/Chromium log on newer macOS (it appears even for valid, notarized signatures; tracked at electron/electron#49652) and has no functional impact. The launcher now filters just that line from output; all other diagnostics pass through untouched.
+
+### Changed
+
+- **`SAVE` reports the file it wrote.** Every `SAVE` now prints `pnut-term-ts: File written [<full path>]` (path and filename), replacing internal screenshot-directory debug chatter.
+
+### Known issues / not yet verified
+
+- **Not yet exercised on external P2 hardware.** Verified against the local test suite, type-check, and build only. The `SAVE WINDOW` chrome capture, the macOS permission flow, and headed `--exit-on-end-session` are validated on a physical P2 / real macOS as the next step.
+
 ## [0.9.28] - 2026-06-06
 
 The nine Pascal-drawn **debug *display* windows** (LOGIC, SCOPE, SCOPE_XY, FFT, SPECTRO, PLOT, TERM, BITMAP, MIDI) are brought to **full behavioral parity** with the official PNut v55 — each window was checked directive-by-directive against the original and the remaining differences corrected (most visibly in BITMAP and MIDI). This build also fixes two real defects found while hardening the test suite: **binary-recording playback was completely broken**, and **SAVE could hang the app** on a failed capture.

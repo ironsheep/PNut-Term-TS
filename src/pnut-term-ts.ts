@@ -859,6 +859,10 @@ export class DebugTerminalInTypeScript {
         quiet: this.context.runEnvironment.quiet,
         serialPortDevices: this.context.runEnvironment.serialPortDevices,
         usbTrafficLogging: this.context.runEnvironment.usbTrafficLogging,
+        // Headed batch termination: must cross the process boundary so the
+        // Electron-side WindowRouter/MainWindow can honor --exit-on-end-session.
+        exitOnEndSession: this.context.runEnvironment.exitOnEndSession,
+        headlessEndMarker: this.context.runEnvironment.headlessEndMarker,
         // These are passed separately as they're not in RuntimeEnvironment
         ramFileSpec: this.context.actions.writeRAM ? this.context.actions.binFilename : '',
         flashFileSpec: this.context.actions.writeFlash ? this.context.actions.binFilename : ''
@@ -884,12 +888,38 @@ export class DebugTerminalInTypeScript {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
 
+    // On macOS, pipe stderr so we can drop ONE benign upstream Electron/Chromium
+    // log line — "SecCodeCheckValidity … codesign_util.cc … Code=-67062" — which
+    // is cosmetic on newer macOS (it appears even for valid signatures; tracked
+    // at electron/electron#49652). Everything else on stderr passes through
+    // verbatim. Other platforms keep plain inherit (the line never appears there).
+    const isMac = process.platform === 'darwin';
+
     return new Promise((resolve) => {
       const electronProcess = spawn(electronPath, electronArgs, {
-        stdio: 'inherit', // Pass through stdin/stdout/stderr
+        stdio: isMac ? ['inherit', 'inherit', 'pipe'] : 'inherit',
         detached: false,
         env: env // Use environment without ELECTRON_RUN_AS_NODE
       });
+
+      if (isMac && electronProcess.stderr) {
+        const CODESIGN_NOISE = /codesign_util\.cc/; // benign SecCodeCheckValidity -67062 on macOS
+        let tail = ''; // hold a partial trailing line between chunks
+        electronProcess.stderr.on('data', (chunk: Buffer) => {
+          const lines = (tail + chunk.toString()).split('\n');
+          tail = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!CODESIGN_NOISE.test(line)) {
+              process.stderr.write(`${line}\n`);
+            }
+          }
+        });
+        electronProcess.stderr.on('end', () => {
+          if (tail.length > 0 && !CODESIGN_NOISE.test(tail)) {
+            process.stderr.write(tail);
+          }
+        });
+      }
 
       electronProcess.on('close', (code) => {
         // Clean up the context file

@@ -3890,6 +3890,12 @@ export class MainWindow {
         this.checkDirectoryContext();
       }, 1000);
 
+      // macOS only: SAVE WINDOW (window image WITH title bar/chrome) needs Screen
+      // Recording permission. Offer it at startup so it's sorted before first use.
+      setTimeout(() => {
+        void this.checkScreenRecordingPermission();
+      }, 1500);
+
       // Check serial port status after window loads - delayed to let async operations complete
       setTimeout(async () => {
         if (this._serialPort === undefined) {
@@ -7505,6 +7511,87 @@ export class MainWindow {
       }
     } catch (error) {
       this.logMessage(`Failed to add directory to skip list: ${error}`);
+    }
+  }
+
+  /**
+   * macOS only: the SAVE WINDOW command captures a window image INCLUDING its
+   * native title bar/frame, which requires Screen Recording permission. Offer it
+   * once at startup (skippable, persistently dismissable). Plain SAVE (window
+   * contents only) never needs this. No-op on Windows/Linux.
+   */
+  private async checkScreenRecordingPermission(): Promise<void> {
+    if (process.platform !== 'darwin') return; // only macOS gates screen capture
+    if (this.context.preferences?.suppressScreenRecordingPrompt) return; // user chose "Don't Ask Again"
+    if (!electron?.systemPreferences || !dialog || !this.mainWindow) return;
+
+    let status: string;
+    try {
+      status = electron.systemPreferences.getMediaAccessStatus('screen');
+    } catch {
+      return; // can't determine — stay quiet rather than nag
+    }
+    if (status === 'granted') return; // already have it — nothing to do
+
+    const detail =
+      `The "SAVE WINDOW" debug command saves a window image INCLUDING its title ` +
+      `bar and frame. On macOS that needs Screen Recording permission.\n\n` +
+      `This permission is ONLY for "SAVE WINDOW". The plain "SAVE" command — which ` +
+      `saves the window contents only — does NOT need it and is unaffected.\n\n` +
+      `If you enable it now, quit and relaunch PNut-Term-TS for macOS to apply the change.`;
+
+    const result = await dialog.showMessageBox(this.mainWindow, {
+      type: 'info',
+      title: 'Screen Recording Permission (optional)',
+      message: 'Enable Screen Recording for the "SAVE WINDOW" command?',
+      detail,
+      buttons: ['Enable…', 'Remind Me Later', "Don't Ask Again"],
+      defaultId: 0,
+      cancelId: 1
+    });
+
+    if (result.response === 2) {
+      // Don't Ask Again → persist so we never prompt again.
+      this.suppressScreenRecordingPrompt();
+      return;
+    }
+    if (result.response === 1) {
+      // Remind Me Later → session-only; we'll offer again next launch.
+      return;
+    }
+
+    // Enable… → (1) a throwaway capture registers us in the Screen Recording
+    // list and, when status is 'not-determined', triggers macOS's native prompt;
+    // (2) open the Screen Recording settings pane so the user can flip the toggle.
+    try {
+      if (electron.desktopCapturer) {
+        void electron.desktopCapturer
+          .getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+          .catch(() => undefined);
+      }
+    } catch {
+      /* non-fatal */
+    }
+    try {
+      if (electron.shell) {
+        await electron.shell.openExternal(
+          'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+        );
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  /** Persist the user's "Don't Ask Again" choice for the SAVE WINDOW permission prompt. */
+  private suppressScreenRecordingPrompt(): void {
+    try {
+      const currentSettings = this.context.preferences || {};
+      currentSettings.suppressScreenRecordingPrompt = true;
+      this.context.saveUserGlobalSettings(currentSettings);
+      this.logMessage("Screen Recording prompt suppressed (user chose Don't Ask Again)");
+    } catch (error) {
+      this.logMessage(`Failed to persist screen-recording suppression: ${error}`);
     }
   }
 }

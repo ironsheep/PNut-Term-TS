@@ -61,7 +61,6 @@ export function localFSpecForFilename(
   // Use context.currentFolder which is set correctly at startup
   // This preserves the launch directory even in Electron apps
   const workingDir = ctx.currentFolder;
-  console.log(`[FILES] Using working directory: ${workingDir} (from context.currentFolder)`);
   return path.join(workingDir, fileName);
 }
 
@@ -86,7 +85,6 @@ export function screenshotFSpecForFilename(
 
   // Use context.getScreenshotDirectory() for dedicated screenshot folder
   const screenshotDir = ctx.getScreenshotDirectory();
-  console.log(`[FILES] Using screenshot directory: ${screenshotDir} (from context.getScreenshotDirectory())`);
 
   // Ensure screenshot directory exists
   ensureDirExists(screenshotDir);

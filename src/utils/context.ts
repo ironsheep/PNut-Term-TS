@@ -97,6 +97,7 @@ export interface UserPreferences {
     scrollbackLines: number;
   };
   suppressedDirectoryWarnings?: string[]; // Directories to not warn about
+  suppressScreenRecordingPrompt?: boolean; // macOS: user chose "Don't ask again" for SAVE WINDOW Screen Recording permission
 }
 
 export class Context {

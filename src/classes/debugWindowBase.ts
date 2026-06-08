@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { BrowserWindow, NativeImage } from 'electron';
+import { BrowserWindow, NativeImage, desktopCapturer, screen, systemPreferences } from 'electron';
 import { Jimp } from 'jimp';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1319,6 +1319,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
         this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
+        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
       } catch (error) {
         console.error('Win: ERROR: saving canvas BMP image:', error);
       }
@@ -1336,14 +1337,22 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.saveInProgress = true;
 
       try {
-        // For now, just use canvas capture to avoid screen recording permissions
-        // TODO: Implement proper desktop capture when permission handling is sorted
-        this.logMessageBase('Using canvas capture for SAVE WINDOW command');
-        const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+        // Pascal SAVE WINDOW captures the on-screen window region INCLUDING the
+        // native title-bar/chrome. getBounds() returns screen coords with chrome.
+        const bounds = this._debugWindow.getBounds();
+        let pngBuffer = await this.captureDesktopRegionAsPNG(bounds.x, bounds.y, bounds.width, bounds.height);
+        if (!pngBuffer || pngBuffer.length === 0) {
+          // Desktop capture unavailable (e.g. macOS Screen Recording permission
+          // not yet granted). Fall back to content-only so SAVE WINDOW still
+          // produces a file rather than nothing.
+          this.logMessageBase('SAVE WINDOW: desktop capture unavailable — falling back to canvas content');
+          pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+        }
         const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
         this.logMessageBase(`- Window BMP image [${outputFSpec}] saved successfully`);
+        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
         this.saveInProgress = false;
         return;
 
@@ -1499,18 +1508,22 @@ export abstract class DebugWindowBase extends EventEmitter {
     this.saveInProgress = true;
 
     try {
-      // For now, just save the canvas as we can't capture desktop without permissions
-      // TODO: Implement proper desktop region capture when permission handling is sorted
-      this.logMessageBase('Using canvas capture for SAVE coordinates command (desktop capture requires permissions)');
-
-      if (this._debugWindow) {
-        const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+      // Pascal SAVE l t w h captures an arbitrary desktop rectangle (screen
+      // coordinates). Capture that region directly; fall back to canvas content
+      // only if the desktop capture is unavailable (e.g. macOS permission).
+      let pngBuffer = await this.captureDesktopRegionAsPNG(left, top, width, height);
+      if ((!pngBuffer || pngBuffer.length === 0) && this._debugWindow) {
+        this.logMessageBase('SAVE coordinates: desktop capture unavailable — falling back to canvas content');
+        pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+      }
+      if (pngBuffer && pngBuffer.length > 0) {
         const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
-        this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
+        this.logMessageBase(`- Coordinates BMP image [${outputFSpec}] saved successfully`);
+        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
       } else {
-        this.logMessageBase('ERROR: Window not available for capture');
+        this.logMessageBase('ERROR: No image available for capture');
       }
 
       /* Original implementation - disabled to avoid permissions
@@ -2058,6 +2071,82 @@ export abstract class DebugWindowBase extends EventEmitter {
         failSafe(error);
       }
     });
+  }
+
+  /**
+   * macOS Screen Recording permission status for desktop capture.
+   * Returns 'granted' | 'denied' | 'restricted' | 'not-determined'. On non-macOS
+   * platforms desktop capture needs no permission, so we report 'granted'.
+   */
+  protected screenCapturePermission(): 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown' {
+    if (process.platform !== 'darwin') return 'granted';
+    try {
+      return systemPreferences.getMediaAccessStatus('screen') as
+        | 'granted'
+        | 'denied'
+        | 'restricted'
+        | 'not-determined';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Capture a rectangular region of the DESKTOP — including any native window
+   * chrome that falls within it — as a PNG buffer. Matches Pascal's SAVE WINDOW
+   * / SAVE l t w h behavior (webContents.capturePage() only yields web content,
+   * never the OS-drawn frame). Uses Electron's desktopCapturer.
+   *
+   * On macOS this requires Screen Recording permission; without it getSources
+   * yields an empty/black image. Returns an empty Buffer on any failure so
+   * callers can fall back to canvas content.
+   *
+   * @param left,top    region top-left in screen DIP coordinates
+   * @param width,height region size in DIP
+   */
+  protected async captureDesktopRegionAsPNG(
+    left: number,
+    top: number,
+    width: number,
+    height: number
+  ): Promise<Buffer> {
+    try {
+      // Pick the display the region lives on; capture it at native pixel res.
+      const display = screen.getDisplayMatching({ x: left, y: top, width, height });
+      const scale = display.scaleFactor || 1;
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(display.size.width * scale),
+          height: Math.round(display.size.height * scale)
+        }
+      });
+      if (!sources || sources.length === 0) {
+        this.logMessageBase('captureDesktopRegionAsPNG: no screen sources (Screen Recording permission?)');
+        return Buffer.alloc(0);
+      }
+      // Match the source to our display when the platform reports display_id.
+      const matched = sources.find((s) => s.display_id && s.display_id === `${display.id}`);
+      const source = matched ?? sources[0];
+      const full: NativeImage = source.thumbnail;
+      if (!full || full.isEmpty()) {
+        this.logMessageBase('captureDesktopRegionAsPNG: empty thumbnail (Screen Recording permission?)');
+        return Buffer.alloc(0);
+      }
+      // Convert DIP→pixels relative to the display origin, clamped to the image.
+      const imgSize = full.getSize();
+      let cx = Math.round((left - display.bounds.x) * scale);
+      let cy = Math.round((top - display.bounds.y) * scale);
+      cx = Math.max(0, Math.min(cx, imgSize.width - 1));
+      cy = Math.max(0, Math.min(cy, imgSize.height - 1));
+      const cw = Math.max(1, Math.min(Math.round(width * scale), imgSize.width - cx));
+      const ch = Math.max(1, Math.min(Math.round(height * scale), imgSize.height - cy));
+      const cropped = full.crop({ x: cx, y: cy, width: cw, height: ch });
+      return cropped.toPNG();
+    } catch (error) {
+      this.logMessageBase(`captureDesktopRegionAsPNG ERROR: ${error}`);
+      return Buffer.alloc(0);
+    }
   }
 
   private async convertPNGtoBMP(pngBuffer: Buffer): Promise<Buffer> {
