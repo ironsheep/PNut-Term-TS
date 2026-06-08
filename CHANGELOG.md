@@ -5,6 +5,19 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.30] - 2026-06-08
+
+A hardware-certification crash fix. Automated batch runs that launch the app, download/run a program, and let it self-exit on `DEBUG_END_SESSION` (the `--exit-on-end-session` workflow) could crash the whole app with an abort (SIGABRT) on macOS during shutdown — observed mid-way through a back-to-back run of several files.
+
+### Fixed
+
+- **No more crash on `--exit-on-end-session` shutdown.** When a windowed run exited on end-of-session, two shutdown paths each closed the serial port — once unawaited from the end-session handler, then again from the window-close handler — so the port's native reader was torn down twice at the same time and aborted the process. End-of-session shutdown now hands serial-port teardown to a single owner that closes it once, cleanly, before the app exits. As a second line of defense, the serial close is now idempotent: any overlapping close requests share one teardown instead of racing. Interactive (window-close) shutdown was never affected; only the automated end-session path could hit this.
+
+### Known issues / not yet verified
+
+- **Verified against the local test suite, type-check, and build.** The fix targets the automated end-session shutdown path; confirm on a physical P2 with the same scripted launch → download → run → self-exit loop that previously crashed.
+- **The separate "broken `SAVE WINDOW` image" report is still open.** A `SAVE WINDOW` capture that overlaps end-of-session shutdown can still produce a corrupt image; that is a distinct capture-timing issue from this crash and is tracked separately.
+
 ## [0.9.29] - 2026-06-08
 
 Hardware-certification polish for the windowed (headed) workflow. This build fixes `SAVE WINDOW` so it once again captures the **full window including its title bar/frame**, makes `--exit-on-end-session` actually exit a windowed run, and quiets a cosmetic macOS startup log line found during certification testing.

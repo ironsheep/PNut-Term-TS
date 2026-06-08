@@ -7239,14 +7239,16 @@ export class MainWindow {
         }
       }
 
-      // Close serial port
-      if (this._serialPort) {
-        this.logMessage('[SIGNAL] Closing serial port');
-        this._serialPort.close();
-      }
+      // NOTE: Do NOT close the serial port here. Closing the main window below
+      // triggers the window-all-closed handler, which is the SINGLE awaited
+      // owner of serial teardown (setShuttingDown + await _serialPort.close()
+      // + reference release). Closing it here too (and unawaited) produced two
+      // concurrent native closes racing the @serialport poller during shutdown,
+      // which aborted the process (SIGABRT) on automated --exit-on-end-session
+      // runs. UsbSerial.close() is also idempotent as a second line of defense.
 
-      // Close main window — triggers window-all-closed, which performs the
-      // final app.exit() with this.shutdownExitCode.
+      // Close main window — triggers window-all-closed, which closes the serial
+      // port (awaited) and performs the final app.exit() with shutdownExitCode.
       if (this.mainWindow) {
         this.logMessage('[SIGNAL] Closing main window');
         this.mainWindow.close();

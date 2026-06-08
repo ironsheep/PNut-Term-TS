@@ -85,6 +85,7 @@ export class UsbSerial extends EventEmitter {
   private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
   private _isShuttingDown: boolean = false; // Flag to stop processing data during shutdown
   private _ignoreFrontTraffic: boolean = false; // Flag to drop incoming data (quiesce/startup control)
+  private _closePromise: Promise<void> | null = null; // In-flight close() — makes close idempotent (see close())
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -628,6 +629,24 @@ export class UsbSerial extends EventEmitter {
   }
 
   public async close(): Promise<void> {
+    // IDEMPOTENT close: the teardown sequence below (control-line preserve,
+    // drain, flush, removeAllListeners, native close + libuv poller close) must
+    // run exactly ONCE. During automated --exit-on-end-session shutdown, two
+    // paths race to close the same port: gracefulShutdown() and the
+    // window-all-closed handler. Two concurrent native closes drive the
+    // @serialport/bindings-cpp Poller into onData on a half-torn-down env, whose
+    // C++ exception escapes the uv_poll callback and aborts the whole process
+    // (SIGABRT). Collapse all concurrent/repeat callers onto a single in-flight
+    // promise so the native port + poller are torn down once, cleanly.
+    if (this._closePromise) {
+      this.logMessage(`* USBSer close() already in progress — awaiting existing teardown`);
+      return this._closePromise;
+    }
+    this._closePromise = this._doClose();
+    return this._closePromise;
+  }
+
+  private async _doClose(): Promise<void> {
     // (alternate suggested by perplexity search)
     // release the usb port
     this.logMessage(`* USBSer closing...`);
