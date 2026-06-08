@@ -2,8 +2,12 @@
 # Sequential test runner for Docker environment
 # Runs all tests one at a time to avoid resource exhaustion
 
+# Derive the total from the run_test call sites below so the counter never
+# goes stale as tests are added/removed (previously hard-coded to 70).
+EXPECTED_TOTAL=$(grep -c '^[[:space:]]*run_test "' "${BASH_SOURCE[0]}")
+
 echo "==================================================================="
-echo "Sequential Test Runner - Running all 70 tests individually"
+echo "Sequential Test Runner - Running all ${EXPECTED_TOTAL} tests individually"
 echo "==================================================================="
 echo ""
 
@@ -18,7 +22,7 @@ run_test() {
     local test_file="$1"
     TOTAL=$((TOTAL + 1))
 
-    echo "[$TOTAL/70] Running: $test_file"
+    echo "[$TOTAL/${EXPECTED_TOTAL}] Running: $test_file"
 
     if npm test -s -- "$test_file" > /dev/null 2>&1; then
         PASSED=$((PASSED + 1))

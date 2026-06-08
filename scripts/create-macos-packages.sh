@@ -3,6 +3,9 @@
 
 set -e
 
+# Robust Electron download/verify helper (retry + zip integrity check)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/electron-fetch.sh"
+
 echo "🎯 Creating Optimized macOS Packages"
 echo "====================================="
 echo ""
@@ -37,15 +40,15 @@ download_electron() {
     local ZIP_FILE="$CACHE_DIR/electron-v${ELECTRON_VERSION}-${PLATFORM}-${ARCH}.zip"
     local EXTRACT_DIR="electron-${PLATFORM}-${ARCH}"
 
-    # Download if not cached
-    if [ ! -f "$ZIP_FILE" ]; then
-        local ELECTRON_URL="https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/electron-v${ELECTRON_VERSION}-${PLATFORM}-${ARCH}.zip"
-        curl -L -o "$ZIP_FILE" "$ELECTRON_URL" || {
-            echo "❌ Failed to download Electron"
-            return 1
-        }
-    else
+    # Use the cached archive only if it's present AND a valid zip; otherwise
+    # (re)download. Guards against a stale/corrupt cache from an earlier run.
+    if [ -f "$ZIP_FILE" ] && unzip -tqq "$ZIP_FILE" > /dev/null 2>&1; then
         echo "   Using cached Electron"
+    else
+        local ELECTRON_URL="https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/electron-v${ELECTRON_VERSION}-${PLATFORM}-${ARCH}.zip"
+        if ! download_and_verify_electron "$ELECTRON_URL" "$ZIP_FILE"; then
+            return 1
+        fi
     fi
 
     # Extract

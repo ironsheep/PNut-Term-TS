@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Robust Electron download/verify helper (retry + zip integrity check)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/electron-fetch.sh"
+
 echo "📦 Creating Windows Package for PNut-Term-TS"
 echo "==========================================="
 
@@ -48,12 +51,7 @@ download_electron() {
     echo "   📥 Downloading Electron $ELECTRON_VERSION for $arch..."
     local url="https://github.com/electron/electron/releases/download/${ELECTRON_VERSION}/electron-${ELECTRON_VERSION}-${arch}.zip"
 
-    if command -v curl > /dev/null; then
-        curl -L -o "$electron_zip" "$url"
-    elif command -v wget > /dev/null; then
-        wget -O "$electron_zip" "$url"
-    else
-        echo "   ❌ Neither curl nor wget found. Please install one."
+    if ! download_and_verify_electron "$url" "$electron_zip"; then
         return 1
     fi
 
