@@ -61,7 +61,13 @@ module.exports = {
   
   // Timeout for tests (30 seconds)
   testTimeout: 30000,
-  
+
+  // Recycle a worker once its heap grows past this, so a heavy file (e.g. SPECTRO's
+  // 62 windows of FFT buffers) can't accumulate memory across files and flake a
+  // later test under parallel load. Applies to every parallel run; the check-in
+  // runner (run_tests_parallel.sh) also passes this explicitly.
+  workerIdleMemoryLimit: '512MB',
+
   // Resource Management Options (commented out by default)
   // Uncomment the options below to throttle test execution:
   

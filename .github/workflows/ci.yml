@@ -89,10 +89,13 @@ jobs:
 
       - name: Run tests
         run: |
-          # Run the sequential test script which includes only verified working tests
-          # Many legacy tests reference deprecated modules and need updating
-          chmod +x scripts/claude/run_tests_sequentially.sh
-          scripts/claude/run_tests_sequentially.sh
+          # Bounded-parallel runner over the SAME curated set as the sequential
+          # script (which stays the source of truth for which tests are green;
+          # some legacy tests reference deprecated modules and remain excluded).
+          # GitHub runners have spare cores, so use 50% workers for fast feedback;
+          # workerIdleMemoryLimit keeps memory-heavy suites deterministic.
+          chmod +x scripts/claude/run_tests_parallel.sh
+          JEST_WORKERS=50% scripts/claude/run_tests_parallel.sh
 
   build:
     name: Build Check

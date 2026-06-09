@@ -39,6 +39,7 @@
     "test:memory": "node --max-old-space-size=2048 node_modules/.bin/jest",
     "test:throttled": "node --max-old-space-size=2048 node_modules/.bin/jest --maxWorkers=2 --detectOpenHandles",
     "test:individual": "./run-tests-individually.sh",
+    "test:checkin": "scripts/claude/run_tests_parallel.sh",
     "help": "npm run build && dist/pnut-term-ts.min.js --help",
     "minify": "terser dist/pnut-term-ts.js -c -m -o dist/pnut-term-ts.min.js",
     "clean": "shx rm -rf ./dist ./prebuilds ./fonts",

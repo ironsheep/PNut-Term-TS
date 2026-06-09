@@ -129,6 +129,16 @@ describe('DebugSpectroWindow', () => {
   });
 
   afterEach(() => {
+    // Release the per-test window (each allocates FFT/waterfall buffers) so 62
+    // SPECTRO windows don't pile heap onto a shared/parallel jest worker — the
+    // load-only flake (passes in isolation, fails ~#26/153 under full-suite
+    // memory pressure). Pairs with the runner's workerIdleMemoryLimit.
+    try {
+      debugSpectroWindow?.closeDebugWindow?.();
+    } catch {
+      /* ignore teardown errors */
+    }
+    debugSpectroWindow = undefined as any;
     cleanup();
   });
 
