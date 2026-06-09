@@ -88,7 +88,7 @@ esbuild.build({
   outfile: 'dist/workers/serialIoWorker.bundled.js',
   platform: 'node',
   target: 'node18',
-  external: ['worker_threads', 'serialport', '@serialport/bindings-cpp', 'usb'],
+  external: ['worker_threads', '@serialport/bindings-cpp', 'usb'],
   minify: false,
   format: 'cjs'
 }).then(() => console.log('   ✅ Serial I/O worker bundle created'));

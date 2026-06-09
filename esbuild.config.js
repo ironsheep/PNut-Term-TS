@@ -44,7 +44,10 @@ Promise.all([
     outfile: 'dist/workers/serialIoWorker.bundled.js',
     platform: 'node',
     target: 'node23',
-    external: ['worker_threads', 'serialport', '@serialport/bindings-cpp', 'usb'],
+    // Mirror the MAIN bundle's externals: inline serialport's JS, keep ONLY the native
+    // binding external (the packaged app ships @serialport/bindings-cpp resolvable, but NOT
+    // a top-level node_modules/serialport next to the worker). [#31]
+    external: ['worker_threads', '@serialport/bindings-cpp', 'usb'],
     minify: true,
     sourcemap: true,
     format: 'cjs'

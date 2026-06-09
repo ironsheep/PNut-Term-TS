@@ -5,6 +5,10 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.35] - 2026-06-09
+
+Packaging fix for the v0.9.34 experimental serial worker: in the packaged app the worker failed to start with `Cannot find module 'serialport'`. The worker bundle now inlines the serialport JS (keeping only the native binding resolved at runtime), exactly as the main bundle does, so the opt-in `PNUT_SERIAL_WORKER=1` path can load on macOS/Windows/Linux installs. No change to default behavior.
+
 ## [0.9.34] - 2026-06-09
 
 Root-cause work on the high-rate serial corruption seen at 2 Mbaud. Investigation showed the received bytes were being corrupted **before** the app could parse them — the serial-port read shares the main thread with all the on-screen rendering, so under heavy display load the driver isn't serviced fast enough and bytes get garbled on arrival. This release adds an opt-in path that moves serial reception off the main thread entirely, plus the supporting render and instrumentation changes needed to validate it on hardware.
