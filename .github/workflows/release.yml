@@ -1060,7 +1060,8 @@ jobs:
           cat release_body.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        # v2 — v1 routinely hung for ~hours on asset upload against the GitHub API.
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_type.outputs.RELEASE_TAG }}
           name: ${{ steps.release_type.outputs.RELEASE_NAME }}
@@ -1069,3 +1070,4 @@ jobs:
           files: |
             release/*
           body_path: release_body.md
+          fail_on_unmatched_files: true
