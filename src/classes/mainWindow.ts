@@ -1483,9 +1483,8 @@ export class MainWindow {
       // render work can never starve the driver. Default path is unchanged main-thread
       // UsbSerial, so a worker problem can't brick an otherwise-good build.
       if (process.env.PNUT_SERIAL_WORKER === '1') {
-        const ring = this.serialProcessor.getRingTransferables();
-        console.log('[SERIAL] ✅ WORKER MODE ENABLED — serial read hosted off the main loop (#31)');
-        this._serialPort = new UsbSerialProxy(this.context, deviceNode, ring) as unknown as UsbSerial;
+        console.log('[SERIAL] ✅ WORKER MODE ENABLED — serial read hosted in a dedicated process (#31)');
+        this._serialPort = new UsbSerialProxy(this.context, deviceNode) as unknown as UsbSerial;
       } else {
         this._serialPort = new UsbSerial(this.context, deviceNode);
       }

@@ -35,19 +35,17 @@ Promise.all([
     sourcemap: true,
     format: 'cjs' // CommonJS format for worker threads
   }),
-  // [#31] Build the Serial I/O worker (hosts the SerialPort off the main loop).
-  // serialport's native binding stays EXTERNAL (required from node_modules at runtime, same
-  // as the main bundle) — it cannot be inlined into a worker bundle.
+  // [#31] Build the Serial I/O host — an Electron UtilityProcess that owns the SerialPort in
+  // its own process (worker_threads can't host serialport: its native poller binds
+  // uv_default_loop()). Inline serialport's JS, keep ONLY the native binding external (mirror
+  // the main bundle; the packaged app ships @serialport/bindings-cpp resolvable).
   esbuild.build({
-    entryPoints: ['src/workers/serialIoWorker.ts'],
+    entryPoints: ['src/workers/serialIoHost.ts'],
     bundle: true,
-    outfile: 'dist/workers/serialIoWorker.bundled.js',
+    outfile: 'dist/workers/serialIoHost.bundled.js',
     platform: 'node',
     target: 'node23',
-    // Mirror the MAIN bundle's externals: inline serialport's JS, keep ONLY the native
-    // binding external (the packaged app ships @serialport/bindings-cpp resolvable, but NOT
-    // a top-level node_modules/serialport next to the worker). [#31]
-    external: ['worker_threads', '@serialport/bindings-cpp', 'usb'],
+    external: ['electron', '@serialport/bindings-cpp', 'usb'],
     minify: true,
     sourcemap: true,
     format: 'cjs'

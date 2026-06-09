@@ -5,6 +5,14 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.36] - 2026-06-09
+
+Continues the experimental off-main-thread serial work. v0.9.35 loaded the serial worker but crashed the instant data arrived: the native serial library pins its data-ready callback to the **main process's** event loop, so it cannot run inside a background thread (it fired against the wrong context and segfaulted). The opt-in path now hosts the serial port in a **dedicated child process** (an Electron utility process) instead — where that callback runs correctly on the child's own loop, fully off the main process. Still opt-in via `PNUT_SERIAL_WORKER=1`; default behavior unchanged.
+
+### Changed
+
+- **Off-main serial I/O now uses a dedicated child process** rather than a worker thread (the serial library is not thread-safe). The child drains the port and forwards data to the main process, which feeds the existing pipeline; downloads and device detection are preserved.
+
 ## [0.9.35] - 2026-06-09
 
 Packaging fix for the v0.9.34 experimental serial worker: in the packaged app the worker failed to start with `Cannot find module 'serialport'`. The worker bundle now inlines the serialport JS (keeping only the native binding resolved at runtime), exactly as the main bundle does, so the opt-in `PNUT_SERIAL_WORKER=1` path can load on macOS/Windows/Linux installs. No change to default behavior.

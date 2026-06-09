@@ -2,24 +2,22 @@
 
 // src/utils/usbSerialProxy.ts
 //
-// [#31] Main-thread stand-in for UsbSerial. Spawns the serialIoWorker (which OWNS the port
-// off the main loop) and presents the exact subset of the UsbSerial interface that
-// MainWindow / Downloader / InputForwarder consume:
-//   - async methods are marshalled to the worker as RPC and return a Promise;
-//   - synchronous getters are served from a local cache the worker keeps fresh;
-//   - the EventEmitter 'data' surface is preserved (only emitted in download mode — in run
-//     mode the worker writes the ring directly, so the main thread never sees raw bytes).
+// [#31] Main-thread stand-in for UsbSerial. Forks an Electron UtilityProcess (serialIoHost)
+// that OWNS the port in its own process — required because @serialport's native poller binds to
+// uv_default_loop(), so it can only run correctly on a process's own main loop, NOT a
+// worker_threads Worker (which crashes). The utility process drains the driver off the main
+// process's loop and forwards every chunk; this proxy re-emits them as 'data' so MainWindow's
+// existing handleSerialRx path is unchanged.
 //
-// Behind the --serial-worker (PNUT_SERIAL_WORKER=1) flag; default path remains main-thread
-// UsbSerial, so a worker problem can never brick an otherwise-good build.
+// Presents the consumed UsbSerial surface: async methods are RPC'd to the host and return a
+// Promise; synchronous getters are served from a cache the host keeps fresh; the EventEmitter
+// 'data' surface is preserved. Behind PNUT_SERIAL_WORKER=1; default path is unchanged.
 
 import { EventEmitter } from 'events';
-import { Worker } from 'worker_threads';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { Context } from './context';
 import { UsbSerial } from './usb.serial';
-import type { SharedBufferTransferables } from '../classes/shared/sharedCircularBuffer';
 
 const ENABLE_CONSOLE_LOG = true; // loud during bring-up / HW validation
 
@@ -30,9 +28,12 @@ interface ChecksumStatus {
 }
 
 export class UsbSerialProxy extends EventEmitter {
-  private worker: Worker;
+  private child: any;
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
+  private outbox: any[] = []; // calls buffered until the host says 'hello' + we've sent init
+  private hostReady = false; // host has constructed UsbSerial ('ready')
+  private helloSeen = false;
 
   private cached: {
     currentBaudRate: number;
@@ -46,53 +47,63 @@ export class UsbSerialProxy extends EventEmitter {
     isDownloading: false
   };
 
-  constructor(ctx: Context, deviceNode: string, ring: SharedBufferTransferables) {
+  constructor(ctx: Context, deviceNode: string) {
     super();
     this.cached.currentBaudRate = UsbSerial.desiredCommsBaudRate;
 
-    const workerPath = UsbSerialProxy.resolveWorkerPath();
-    if (ENABLE_CONSOLE_LOG) console.log(`[SERIAL-PROXY] launching serial worker: ${workerPath}`);
+    // utilityProcess is only available in the Electron main process.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { utilityProcess } = require('electron');
+    const hostPath = UsbSerialProxy.resolveHostPath();
+    if (ENABLE_CONSOLE_LOG) console.log(`[SERIAL-PROXY] forking serial utility process: ${hostPath}`);
 
-    this.worker = new Worker(workerPath, {
-      workerData: {
-        ring,
-        deviceNode,
-        baudRate: UsbSerial.desiredCommsBaudRate,
-        runEnvironment: {
-          loggingEnabled: (ctx as any).runEnvironment?.loggingEnabled,
-          rtsOverride: (ctx as any).runEnvironment?.rtsOverride,
-          resetOnConnection: (ctx as any).runEnvironment?.resetOnConnection,
-          matchVendorOnly: (ctx as any).runEnvironment?.matchVendorOnly
-        }
+    const initMessage = {
+      kind: 'init',
+      deviceNode,
+      baudRate: UsbSerial.desiredCommsBaudRate,
+      runEnvironment: {
+        loggingEnabled: (ctx as any).runEnvironment?.loggingEnabled,
+        rtsOverride: (ctx as any).runEnvironment?.rtsOverride,
+        resetOnConnection: (ctx as any).runEnvironment?.resetOnConnection,
+        matchVendorOnly: (ctx as any).runEnvironment?.matchVendorOnly
       }
-    });
+    };
 
-    this.worker.on('message', (msg: any) => this.onMessage(ctx, msg));
-    this.worker.on('error', (err: Error) => {
-      console.error(`[SERIAL-PROXY] worker error: ${err.message}`);
-      this.emit('error', err);
-    });
-    this.worker.on('exit', (code: number) => {
-      if (code !== 0) console.error(`[SERIAL-PROXY] serial worker exited code=${code}`);
-      for (const [, p] of this.pending) p.reject(new Error('serial worker exited'));
+    this.child = utilityProcess.fork(hostPath, [], { stdio: 'inherit', serviceName: 'pnut-serial-io' });
+
+    this.child.on('message', (msg: any) => this.onMessage(ctx, initMessage, msg));
+    this.child.on('exit', (code: number) => {
+      if (code !== 0) console.error(`[SERIAL-PROXY] serial utility process exited code=${code}`);
+      for (const [, p] of this.pending) p.reject(new Error('serial utility process exited'));
       this.pending.clear();
     });
   }
 
-  private static resolveWorkerPath(): string {
+  private static resolveHostPath(): string {
     const candidates = [
-      path.join(__dirname, 'workers/serialIoWorker.bundled.js'),
-      path.join(__dirname, '../workers/serialIoWorker.bundled.js'),
-      path.join(__dirname, '../../workers/serialIoWorker.bundled.js'),
-      path.join(process.cwd(), 'dist/workers/serialIoWorker.bundled.js'),
-      path.join(__dirname, 'workers/serialIoWorker.js'),
-      path.join(process.cwd(), 'dist/workers/serialIoWorker.js')
+      path.join(__dirname, 'workers/serialIoHost.bundled.js'),
+      path.join(__dirname, '../workers/serialIoHost.bundled.js'),
+      path.join(__dirname, '../../workers/serialIoHost.bundled.js'),
+      path.join(process.cwd(), 'dist/workers/serialIoHost.bundled.js'),
+      path.join(__dirname, 'workers/serialIoHost.js'),
+      path.join(process.cwd(), 'dist/workers/serialIoHost.js')
     ];
     return candidates.find((p) => fs.existsSync(p)) || candidates[0];
   }
 
-  private onMessage(ctx: Context, msg: any): void {
+  private onMessage(ctx: Context, initMessage: any, msg: any): void {
     switch (msg?.kind) {
+      case 'hello':
+        // Host's listener is attached — now it's safe to send init, then flush buffered calls.
+        this.helloSeen = true;
+        this.child.postMessage(initMessage);
+        for (const m of this.outbox) this.child.postMessage(m);
+        this.outbox = [];
+        break;
+      case 'ready':
+        this.hostReady = true;
+        if (ENABLE_CONSOLE_LOG) console.log('[SERIAL-PROXY] serial host READY — port hosted in a dedicated process');
+        break;
       case 'result': {
         const p = this.pending.get(msg.id);
         if (p) {
@@ -112,35 +123,36 @@ export class UsbSerialProxy extends EventEmitter {
         try {
           (ctx as any).logger?.forceLogMessage?.((msg.args || []).join(' '));
         } catch {
-          /* ignore log forwarding failures */
+          /* ignore */
         }
         break;
-      case 'ready':
-        if (ENABLE_CONSOLE_LOG) console.log('[SERIAL-PROXY] serial worker READY — port hosted off the main loop');
-        break;
       case 'fatal':
-        console.error(`[SERIAL-PROXY] serial worker FATAL: ${msg.error}`);
+        console.error(`[SERIAL-PROXY] serial host FATAL: ${msg.error}`);
         this.emit('error', new Error(msg.error));
         break;
     }
+  }
+
+  private send(message: any): void {
+    if (this.helloSeen) this.child.postMessage(message);
+    else this.outbox.push(message); // buffer until host listener is up (avoids lost messages)
   }
 
   private call(method: string, ...args: any[]): Promise<any> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ kind: 'call', id, method, args });
+      this.send({ kind: 'call', id, method, args });
     });
   }
 
   private fire(method: string, ...args: any[]): void {
-    // id===0 → no reply expected. FIFO message ordering preserves call order.
-    this.worker.postMessage({ kind: 'call', id: 0, method, args });
+    this.send({ kind: 'call', id: 0, method, args });
   }
 
-  // --- async methods (RPC to the worker) ---
+  // --- async methods (RPC to the host) ---
   public changeBaudRate(baud: number): Promise<void> {
-    this.cached.currentBaudRate = baud; // optimistic; worker confirms via state
+    this.cached.currentBaudRate = baud;
     return this.call('changeBaudRate', baud);
   }
   public clearGarbageBytes(discardMs?: number): Promise<number> {
@@ -184,16 +196,16 @@ export class UsbSerialProxy extends EventEmitter {
     try {
       await this.call('close');
     } catch {
-      /* worker may already be gone */
+      /* host may already be gone */
     }
     try {
-      await this.worker.terminate();
+      this.child.kill();
     } catch {
       /* ignore */
     }
   }
 
-  // --- synchronous setters (fire-and-forget; FIFO keeps ordering with later calls) ---
+  // --- synchronous setters (fire-and-forget; FIFO keeps ordering) ---
   public setShuttingDown(value: boolean): void {
     this.fire('setShuttingDown', value);
   }
@@ -205,7 +217,7 @@ export class UsbSerialProxy extends EventEmitter {
     this.fire('setDownloadBaudRate', baud);
   }
 
-  // --- synchronous getters (served from worker-pushed cache) ---
+  // --- synchronous getters (served from host-pushed cache) ---
   public getCurrentBaudRate(): number {
     return this.cached.currentBaudRate;
   }
