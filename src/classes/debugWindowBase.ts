@@ -1310,19 +1310,39 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
-    if (this._debugWindow) {
-      this.logMessage(`  -- writing canvas BMP to [${filename}]`);
-      this.saveInProgress = true;
-      const pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
-      const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
-      try {
-        const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
-        fs.writeFileSync(outputFSpec, bmpBuffer);
-        this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
-        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
-      } catch (error) {
-        console.error('Win: ERROR: saving canvas BMP image:', error);
+    if (!this._debugWindow) {
+      return;
+    }
+    this.logMessage(`  -- writing canvas BMP to [${filename}]`);
+    this.saveInProgress = true;
+    try {
+      // capturePage() can hand back an EMPTY frame even for a visible, painted
+      // window (observed on the small SCOPE_XY window when SAVE fires right
+      // after a burst of data). Previously the convert step ran OUTSIDE this
+      // try and there was no empty check, so an empty/failed capture threw and
+      // the plain SAVE silently produced NO file at all (unlike SAVE WINDOW,
+      // which always falls back). Detect the empty frame, give the compositor a
+      // beat, and retry once before giving up — and never fail silently.
+      let pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+      if ((!pngBuffer || pngBuffer.length === 0) && this._debugWindow && !this._debugWindow.isDestroyed()) {
+        this.logMessageBase(`SAVE: empty capturePage frame for [${filename}] — retrying after paint settle`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
       }
+      if (!pngBuffer || pngBuffer.length === 0) {
+        this.logMessageBase(`SAVE: capturePage returned an empty image — no canvas BMP written for [${filename}]`);
+        return;
+      }
+      const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
+      const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+      fs.writeFileSync(outputFSpec, bmpBuffer);
+      this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
+      this.context.logger.progressMsg(`File written [${outputFSpec}]`);
+    } catch (error) {
+      // Keep the failure visible instead of silently producing no file.
+      console.error('Win: ERROR: saving canvas BMP image:', error);
+      this.logMessageBase(`SAVE: ERROR writing canvas BMP [${filename}]: ${error}`);
+    } finally {
       this.saveInProgress = false;
     }
   }

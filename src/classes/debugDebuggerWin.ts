@@ -497,8 +497,11 @@ ${bundleJs}
     const contentWidth = windowDetails?.width || LAYOUT_CONSTANTS.GRID_WIDTH * 8;
     const contentHeight = windowDetails?.height || LAYOUT_CONSTANTS.GRID_HEIGHT * 8; // half-rows * 8px
 
-    // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: contentWidth, height: contentHeight };
     const width = windowDimensions.width;
     const height = windowDimensions.height;
     
@@ -537,6 +540,7 @@ ${bundleJs}
       x,
       y,
       title: `Debugger - Cog ${this.cogId}`,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

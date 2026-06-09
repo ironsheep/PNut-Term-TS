@@ -5,6 +5,20 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.31] - 2026-06-09
+
+Hardware-certification fixes for the `SAVE 'filename'` command (save window *contents* to a BMP). Two problems surfaced while exercising the demo programs: most windows saved with a **white strip down the right edge**, and the **SCOPE_XY window saved no file at all**.
+
+### Fixed
+
+- **`SAVE 'filename'` no longer leaves a white strip on the right (and bottom) edge.** Every debug *display* window except FFT sized its window by adding a fixed chrome estimate to the *outer* window size. On macOS — which has no left/right window borders — that made the drawable area wider than the actual content, so the saved image (which captures the whole content area) carried an unpainted white margin on the right, with a smaller one along the bottom. All of these windows now size by their **client area** and let the OS add the correct chrome (the same approach FFT already used): LOGIC, SCOPE, SPECTRO, PLOT, TERM, BITMAP, MIDI, and the debugger window. The visible on-screen window is now correctly sized as well.
+- **`SAVE 'filename'` on a SCOPE_XY window now writes a file.** The plain-`SAVE` path could fail to produce any file at all: if the window snapshot came back empty for a moment, the failure went unhandled and the save was abandoned silently (the `SAVE WINDOW` form was unaffected because it already had a fallback). `SAVE` now detects an empty snapshot, waits a beat for the window to finish painting and retries once, and — if it still cannot capture — reports the reason instead of failing silently.
+
+### Known issues / not yet verified
+
+- **Verified against the local test suite, type-check, and build.** Re-run the SCOPE and SCOPE_XY demos on a physical P2 to confirm the saved BMPs are full-bleed (no white edge) and that SCOPE_XY produces a file.
+- **The separate "broken `SAVE WINDOW` image" report remains open** — that is a distinct capture-timing issue during end-of-session shutdown.
+
 ## [0.9.30] - 2026-06-08
 
 A hardware-certification crash fix. Automated batch runs that launch the app, download/run a program, and let it self-exit on `DEBUG_END_SESSION` (the `--exit-on-end-session` workflow) could crash the whole app with an abort (SIGABRT) on macOS during shutdown — observed mid-way through a back-to-back run of several files.

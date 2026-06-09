@@ -1095,8 +1095,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
     let x = this.displaySpec.position.x;
     let y = this.displaySpec.position.y;
 
-    // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(this.canvasWidth, this.canvasHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: this.canvasWidth, height: this.canvasHeight };
 
     // If no POS clause was present, use WindowPlacer
     if (!this.displaySpec.hasExplicitPosition) {
@@ -1129,6 +1132,7 @@ export class DebugSpectroWindow extends DebugWindowBase {
       x,
       y,
       title: this.displaySpec.windowTitle,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

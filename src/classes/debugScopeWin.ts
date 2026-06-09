@@ -470,10 +470,16 @@ export class DebugScopeWindow extends DebugWindowBase {
     const contentHeight = 2 * this.contentInset + channelLabelHeight + windowCanvasHeight;
     const contentWidth = 2 * this.contentInset + channelWidth;
 
-    // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
-    const windowHeight = windowDimensions.height;
-    const windowWidth = windowDimensions.width;
+    // Size the window by its CLIENT (content) area and let Electron add the
+    // correct OS chrome via useContentSize:true on the BrowserWindow below.
+    // The old calculateWindowDimensions() added a FIXED +20w/+40h chrome
+    // estimate and used the result as the OUTER size — but macOS has no left/
+    // right window borders, so the web content area ended up ~20px wider than
+    // our drawn content. Plain SAVE (capturePage captures the whole content
+    // area) then included that unpainted strip as a white right edge (and a
+    // smaller bottom strip). Matches the FFT window, which already does this.
+    const windowWidth = contentWidth;
+    const windowHeight = contentHeight;
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
@@ -512,6 +518,7 @@ export class DebugScopeWindow extends DebugWindowBase {
       height: windowHeight,
       x: windowX,
       y: windowY,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

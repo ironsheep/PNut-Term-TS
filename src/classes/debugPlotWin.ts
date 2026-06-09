@@ -519,7 +519,11 @@ export class DebugPlotWindow extends DebugWindowBase {
     // Use base class method for consistent chrome adjustments
     const contentHeight = canvasHeight + 8; // +8 to prevent scrollbars
     const contentWidth = canvasWidth + this.contentInset * 2 + 8; // +8 to prevent scrollbars
-    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: contentWidth, height: contentHeight };
     const windowHeight = windowDimensions.height;
     const windowWidth = windowDimensions.width;
     // Check if position was explicitly set or is still at default (0,0)
@@ -561,6 +565,7 @@ export class DebugPlotWindow extends DebugWindowBase {
       x: windowX,
       y: windowY,
       show: false, // Start hidden to prevent flashing
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

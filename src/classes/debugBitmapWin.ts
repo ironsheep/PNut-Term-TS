@@ -1578,8 +1578,11 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     // Calculate window size based on bitmap and dotsize
     const canvasWidth = this.state.width * this.state.dotSizeX;
     const canvasHeight = this.state.height * this.state.dotSizeY;
-    // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(canvasWidth, canvasHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: canvasWidth, height: canvasHeight };
     const windowWidth = windowDimensions.width;
     const windowHeight = windowDimensions.height;
 
@@ -1619,6 +1622,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       x: windowX,
       y: windowY,
       title: this.windowTitle,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

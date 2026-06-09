@@ -462,7 +462,11 @@ export class DebugTermWindow extends DebugWindowBase {
     // Calculate window dimensions with chrome adjustments using base class method
     const contentHeight = divHeight;
     const contentWidth = divWidth;
-    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: contentWidth, height: contentHeight };
     const windowHeight = windowDimensions.height;
     const windowWidth = windowDimensions.width;
     // Check if position was explicitly set with POS clause
@@ -503,6 +507,7 @@ export class DebugTermWindow extends DebugWindowBase {
       height: windowHeight,
       x: windowX,
       y: windowY,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

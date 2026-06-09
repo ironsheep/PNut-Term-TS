@@ -678,8 +678,11 @@ export class DebugLogicWindow extends DebugWindowBase {
     const contentHeight = channelGroupHeight + containerPadding; // Pascal: MarginTop + vHeight + MarginBottom
     const contentWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1;
 
-    // Use base class method for consistent chrome adjustments
-    const windowDimensions = this.calculateWindowDimensions(contentWidth, contentHeight);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: contentWidth, height: contentHeight };
     const windowHeight = windowDimensions.height;
     const windowWidth = windowDimensions.width;
 
@@ -713,7 +716,7 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.logMessage(
       `DEBUG: DETAILED CALCULATION: contentHeight = ${channelGroupHeight} + ${containerPadding} = ${contentHeight}`
     );
-    this.logMessage(`DEBUG: DETAILED CALCULATION: windowHeight = ${contentHeight} + 40 (title bar) = ${windowHeight}`);
+    this.logMessage(`DEBUG: DETAILED CALCULATION: windowHeight = contentHeight ${contentHeight} (useContentSize; Electron adds OS chrome) = ${windowHeight}`);
     // Check if position was explicitly set with POS clause
     let windowX = this.displaySpec.position.x;
     let windowY = this.displaySpec.position.y;
@@ -752,6 +755,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       height: windowHeight,
       x: windowX,
       y: windowY,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,

@@ -248,10 +248,13 @@ export class DebugMidiWindow extends DebugWindowBase {
       console.warn('Failed to log WINDOW_PLACED to debug logger:', error);
     }
 
-    // Use base class method for consistent chrome adjustments
     // Add status bar height (20px + 2px border) to ensure no scrollbar
     const STATUS_BAR_HEIGHT = 22;
-    const windowDimensions = this.calculateWindowDimensions(this.vWidth, this.vHeight + STATUS_BAR_HEIGHT);
+    // Size by CLIENT area + useContentSize:true on the BrowserWindow (Electron
+    // adds OS chrome). The old +20w/+40h outer-size estimate left the web
+    // content wider than our drawing on macOS (no side borders), which plain
+    // SAVE captured as a white right/bottom edge. Matches the FFT window.
+    const windowDimensions = { width: this.vWidth, height: this.vHeight + STATUS_BAR_HEIGHT };
 
     // Create browser window using base class property
     this.debugWindow = new BrowserWindow({
@@ -260,6 +263,7 @@ export class DebugMidiWindow extends DebugWindowBase {
       x,
       y,
       title: this._windowTitle,
+      useContentSize: true, // width/height are the client area; Electron adds OS chrome (no white SAVE overhang)
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
