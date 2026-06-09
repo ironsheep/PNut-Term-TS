@@ -45,7 +45,11 @@ describe('Worker Thread SPRITEDEF Bug', () => {
     processor.registerDestination(SharedMessageType.BACKTICK_PLOT, {
       name: 'PlotTestHandler',
       handler: (message) => {
-        receivedMessages.push(message);
+        // SNAPSHOT the data NOW: message.data is a zero-copy subarray view into the shared
+        // pool slot (sharedMessagePool.readData), valid only until the router releases the slot
+        // after this synchronous dispatch. Holding the view and reading it later (as these tests
+        // do) would read recycled bytes — the source of this suite's flakiness. Copy eagerly.
+        receivedMessages.push({ ...message, data: Buffer.from(message.data) });
       }
     });
 
@@ -53,7 +57,11 @@ describe('Worker Thread SPRITEDEF Bug', () => {
     processor.registerDestination(SharedMessageType.BACKTICK_UPDATE, {
       name: 'UpdateTestHandler',
       handler: (message) => {
-        receivedMessages.push(message);
+        // SNAPSHOT the data NOW: message.data is a zero-copy subarray view into the shared
+        // pool slot (sharedMessagePool.readData), valid only until the router releases the slot
+        // after this synchronous dispatch. Holding the view and reading it later (as these tests
+        // do) would read recycled bytes — the source of this suite's flakiness. Copy eagerly.
+        receivedMessages.push({ ...message, data: Buffer.from(message.data) });
       }
     });
 
@@ -225,7 +233,11 @@ describe('Worker Thread SPRITEDEF Bug', () => {
 
     processor.receiveData(combined);
 
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Wait deterministically for both messages instead of a fixed delay (CI-load tolerant).
+    const deadline = Date.now() + 5000;
+    while (receivedMessages.length < 2 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
 
     // Should receive BOTH messages, each starting with backtick
     expect(receivedMessages.length).toBe(2);
