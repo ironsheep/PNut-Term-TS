@@ -150,6 +150,12 @@ describe('DebugBitmapWindow Integration Tests', () => {
     (window as any).isWindowReady = true;
   });
 
+  afterEach(() => {
+    // [#30] Stop the coalescing render timer so a self-rescheduling flush can't outlive the
+    // test (closeDebugWindow clears the timer and is safe to call repeatedly).
+    window?.closeDebugWindow?.();
+  });
+
   describe('ColorTranslator integration with bitmap plotting', () => {
     it('should translate colors and plot pixels correctly', async () => {
       const mockColorTranslator = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances[0];
@@ -524,19 +530,25 @@ describe('DebugBitmapWindow Integration Tests', () => {
         .mockReturnValueOnce([64])
         .mockReturnValueOnce([32]);
 
-      // 6. Plot 4 pixels individually (all awaited)
+      // 6. Plot 4 pixels individually
       await window.updateContent(['255']);
       await window.updateContent(['128']);
       await window.updateContent(['64']);
       await window.updateContent(['32']);
 
-      // In normal (non-sparse) mode, rendering goes through plotPixelBatch →
-      // executeJavaScript. CanvasRenderer.plotScaledPixel is NOT used. [9win §15]
-      // Verify 4 pixels were processed (translateColor called for each).
+      // [#30] In normal (non-sparse) mode, pixels are QUEUED and flushed to the renderer in
+      // coalesced batches by the render timer — they are no longer plotted via an awaited
+      // executeJavaScript per message (that per-message IPC starved the serial drain at
+      // 2 Mbaud). Color translation / trace step still run synchronously per pixel; the IPC
+      // is deferred. Drive the flush explicitly here to stand in for a timer tick.
       expect(mockColorTranslator.translateColor).toHaveBeenCalledTimes(4);
       // step called once per pixel
       expect(mockTraceProcessor.step).toHaveBeenCalledTimes(4);
-      // executeJavaScript called for batch plotting
+      // No IPC yet — plotting is deferred to the coalescing flush.
+      expect(mockBrowserWindow.webContents.executeJavaScript).not.toHaveBeenCalled();
+
+      // Flush the coalesced render queue → plotPixelBatch + updateCanvas via executeJavaScript.
+      await window['flushRenderQueue']();
       expect(mockBrowserWindow.webContents.executeJavaScript).toHaveBeenCalled();
 
       // 7. Save bitmap

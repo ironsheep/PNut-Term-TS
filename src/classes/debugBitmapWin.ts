@@ -157,6 +157,18 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private _windowTitle: string = '';
   private windowContent: string = '';
 
+  // [#30] Render-IPC coalescing. At 2 Mbaud the old per-message awaited executeJavaScript
+  // round-trip (one plotPixelBatch per pixel-message, ×N windows) saturated the main process
+  // and starved the serial drain → dropped raw bytes. We now accumulate plotted pixels and
+  // flush them to the renderer in coalesced batches on a timer, so serial processing never
+  // awaits IPC. Display refresh stays rate-gated (displayDirty is only set on a rate cycle),
+  // so visual cadence matches the pre-coalescing behavior.
+  private pendingPixels: Array<{ x: number; y: number; color: string }> = [];
+  private displayDirty: boolean = false;
+  private renderFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private renderFlushChain: Promise<void> = Promise.resolve();
+  private static readonly RENDER_FLUSH_MS = 16; // ~60 fps coalescing cadence
+
   // Named-color table (Pascal key_black..key_gray order, DebugDisplayUnit.pas:32-41).
   // Used by SPARSE / LUTCOLORS / COLOR which accept color names via KeyColor (:2752). [9win §15]
   private static readonly NAMED_COLORS: { [name: string]: number } = {
@@ -648,6 +660,15 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Stop input polling
     this.inputForwarder.stopPolling();
 
+    // [#30] Stop the coalescing render timer and drop any still-queued pixels — the window
+    // is gone, so they can't be drawn (and a stranded interval would leak).
+    if (this.renderFlushTimer !== null) {
+      clearTimeout(this.renderFlushTimer);
+      this.renderFlushTimer = null;
+    }
+    this.pendingPixels = [];
+    this.displayDirty = false;
+
     // Clean up window reference
     this.debugWindow = null;
   }
@@ -792,6 +813,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Called by base class handleCommonCommand() when CLEAR is received
    */
   protected clearDisplayContent(): void {
+    // [#30] Discard queued pixels — they arrived before this CLEAR and would be wiped by
+    // it, so flushing them is pointless and would leave zombie pixels drawn after the clear.
+    this.pendingPixels = [];
+    this.displayDirty = false;
     this.clearBitmap();
     // Pascal key_clear: SetTrace(vTrace, True) (DebugDisplayUnit.pas:2447, :2973-2980).
     // Restart the trace pixel position at the pattern's origin AND (ModifyRate=True)
@@ -807,7 +832,45 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Called by base class handleCommonCommand() when UPDATE is received
    */
   protected async forceDisplayUpdate(): Promise<void> {
-    await this.updateCanvas();
+    // [#30] Drain any queued pixels into the offscreen first, then refresh. flushRenderQueue
+    // also performs the updateCanvas when displayDirty, but call it explicitly here so an
+    // UPDATE with no preceding rate cycle still repaints.
+    this.displayDirty = true;
+    await this.flushRenderQueue();
+  }
+
+  /**
+   * [#30] SAVE captures the on-screen canvas/window, so any pixels still queued by the
+   * coalescing render timer must be flushed (and the display repainted) BEFORE the capture,
+   * or the saved image would be missing the most-recent pixels. These overrides force a
+   * synchronous flush, then defer to the base capture implementation.
+   */
+  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+    await this.flushQueuedRenderForCapture();
+    await super.saveWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
+    await this.flushQueuedRenderForCapture();
+    await super.saveDesktopWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopCoordinatesToBMPFilename(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    filename: string
+  ): Promise<void> {
+    await this.flushQueuedRenderForCapture();
+    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
+  }
+
+  /** [#30] Force-draw queued pixels and repaint the display before a SAVE capture. */
+  private async flushQueuedRenderForCapture(): Promise<void> {
+    if (this.state.sparseMode) return; // SPARSE draws straight to the display canvas
+    this.displayDirty = true;
+    await this.flushRenderQueue();
   }
 
   /**
@@ -1070,6 +1133,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     if (!this.debugWindow) return;
 
+    // [#30] Flush any queued pixels to the offscreen FIRST so the scroll moves them along
+    // with the rest of the image. drainPendingPixelsNow queues the pixel draw on the
+    // webContents synchronously, ahead of the scroll's executeJavaScript below.
+    this.drainPendingPixelsNow();
+
     // Scroll the OFFSCREEN BITMAP where pixel data lives, not the display canvas
     // The display canvas gets updated from the offscreen bitmap via updateCanvas()
     // NOTE: We don't clear the exposed edge - new pixels will overwrite it immediately
@@ -1319,9 +1387,9 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     if (this.isLogging)
       this.logMessage(`[BITMAP DATA] Processing ${dataParts.length} data parts: [${dataParts.join(', ')}]`);
 
-    // Pixel batch for NORMAL mode (batched rendering to offscreen canvas)
-    const pixelBatch: Array<{ x: number; y: number; color: string }> = [];
-
+    // NORMAL-mode pixels are appended to this.pendingPixels (a persistent, cross-message
+    // queue) and flushed by the coalescing render timer — NOT plotted via an awaited IPC
+    // here. [#30]
     for (const part of dataParts) {
       // Parse value using Spin2NumericParser to handle all formats (hex, decimal, binary, etc.)
       // Pre-check if value looks numeric to avoid error logging for non-numeric tokens
@@ -1444,8 +1512,8 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
               );
             }
 
-            // Add pixel to batch instead of immediate IPC call
-            pixelBatch.push({ x: pos.x, y: pos.y, color: color });
+            // Queue pixel for coalesced flush instead of an immediate/awaited IPC call. [#30]
+            this.pendingPixels.push({ x: pos.x, y: pos.y, color: color });
           }
         }
 
@@ -1454,12 +1522,8 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       }
     }
 
-    // NORMAL MODE: Plot all batched pixels in single IPC call
-    // This dramatically improves performance (2,500x-12,700x faster!)
-    if (!this.state.sparseMode && pixelBatch.length > 0) {
-      if (this.isLogging) this.logMessage(`[BATCH] Plotting ${pixelBatch.length} pixels before rate cycle check`);
-      await this.plotPixelBatch(pixelBatch);
-    }
+    // NORMAL MODE: pixels are now queued in this.pendingPixels; the render timer flushes
+    // them in one coalesced plotPixelBatch IPC (instead of one awaited IPC per message). [#30]
 
     // Check if we should update the display (Pascal: RateCycle)
     // Rate controls how often the display is updated
@@ -1483,13 +1547,85 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
         );
       this.state.rateCounter = remainder;
 
-      // Update display canvas with stretched bitmap (Pascal: BitmapToCanvas)
-      // Only do this in NORMAL mode (not SPARSE mode which draws directly to display canvas)
+      // Mark the display dirty (Pascal: BitmapToCanvas) instead of awaiting updateCanvas()
+      // here. The render timer drains pendingPixels → plotPixelBatch → updateCanvas in order,
+      // so the display still refreshes once per rate cycle but the serial drain is never
+      // blocked on an IPC round-trip. SPARSE mode draws directly to the display canvas. [#30]
       if (!this.state.sparseMode) {
-        if (this.isLogging) this.logMessage(`[UPDATE CANVAS] Calling updateCanvas() to transfer offscreen→display`);
-        await this.updateCanvas();
+        this.displayDirty = true;
+        this.ensureRenderFlushTimer();
       }
     }
+
+    // Even if no rate cycle fired this call, make sure the timer is running so queued
+    // pixels are eventually flushed to the offscreen bitmap. [#30]
+    if (!this.state.sparseMode && this.pendingPixels.length > 0) {
+      this.ensureRenderFlushTimer();
+    }
+  }
+
+  /**
+   * [#30] Coalesced render flush. Drains the accumulated pixel queue into a single
+   * plotPixelBatch IPC, then refreshes the display if a rate cycle marked it dirty.
+   * All flushes are serialized through renderFlushChain so batches never overlap and
+   * always reach the renderer in order. Returns a promise that resolves when THIS
+   * flush (and any already queued ahead of it) has completed — callers that must see a
+   * consistent offscreen (SAVE) can await it.
+   */
+  private flushRenderQueue(): Promise<void> {
+    this.renderFlushChain = this.renderFlushChain.then(() => this.doRenderFlush());
+    return this.renderFlushChain;
+  }
+
+  private async doRenderFlush(): Promise<void> {
+    if (!this.debugWindow) {
+      // Window gone — discard anything queued so it can't leak.
+      this.pendingPixels = [];
+      this.displayDirty = false;
+      return;
+    }
+    if (this.pendingPixels.length > 0) {
+      const batch = this.pendingPixels;
+      this.pendingPixels = [];
+      await this.plotPixelBatch(batch);
+    }
+    if (this.displayDirty) {
+      this.displayDirty = false;
+      await this.updateCanvas();
+    }
+  }
+
+  /**
+   * [#30] Synchronously hand off any queued pixels to the renderer BEFORE an operation
+   * that mutates the offscreen bitmap in renderer-queue order (e.g. SCROLL). plotPixelBatch
+   * invokes executeJavaScript synchronously up to its internal await, so the pixels' draw is
+   * queued on the webContents ahead of the caller's own executeJavaScript — preserving order
+   * without awaiting (we can't await from inside the synchronous trace step() callback).
+   */
+  private drainPendingPixelsNow(): void {
+    if (this.pendingPixels.length === 0 || !this.debugWindow) return;
+    const batch = this.pendingPixels;
+    this.pendingPixels = [];
+    void this.plotPixelBatch(batch);
+  }
+
+  /**
+   * [#30] Schedule a one-shot coalescing flush ~RENDER_FLUSH_MS from now if one isn't
+   * already pending. Self-terminating: after the flush, it reschedules ONLY if more work
+   * accumulated during the flush, so an idle window holds no live timer (important for
+   * clean teardown and to avoid spinning when no data flows). Re-armed by processDataValues
+   * whenever new pixels are queued. Cleared in closeDebugWindow().
+   */
+  private ensureRenderFlushTimer(): void {
+    if (this.renderFlushTimer !== null || !this.debugWindow) return;
+    this.renderFlushTimer = setTimeout(() => {
+      this.renderFlushTimer = null;
+      if (this.pendingPixels.length === 0 && !this.displayDirty) return;
+      void this.flushRenderQueue().then(() => {
+        // More may have accumulated while the flush IPC was in flight — keep draining.
+        if (this.pendingPixels.length > 0 || this.displayDirty) this.ensureRenderFlushTimer();
+      });
+    }, DebugBitmapWindow.RENDER_FLUSH_MS);
   }
 
   /**
