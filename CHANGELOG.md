@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.33] - 2026-06-09
+
+Two hardware-certification fixes: the MIDI keyboard now renders when more than one note is held, and a hot-path performance fix toward sustaining high-rate bitmap streams.
+
+### Fixed
+
+- **MIDI keyboard now draws correctly with multiple notes held (chords).** The keyboard is drawn by one injected script built from all keys; each active note's velocity bar declared a JavaScript variable, so a second simultaneous note re-declared it and the whole draw failed with a script error ("MIDI drawing error"). The velocity-bar geometry is now computed up front so the drawing code declares no variables — any number of notes can be held at once.
+
+### Performance
+
+- **Bitmap pixel rendering does far less work per pixel.** The bitmap data path built several diagnostic log strings for *every pixel* even though that diagnostic logging is off by default — wasted work that, on a fast pixel stream, kept the app from draining the serial port quickly enough and caused dropped data at the higher communication rates. Those strings are now only built when diagnostic logging is explicitly enabled. (Further high-rate streaming work continues.)
+
+### Known issues / not yet verified
+
+- **Verified against the local test suite, type-check, and build.** On hardware: confirm a multi-note MIDI program draws the keyboard, and re-check the high-rate HSV16 bitmap demo at full speed to see how much the per-pixel fix recovers.
+
 ## [0.9.32] - 2026-06-09
 
 Follow-up to the v0.9.31 `SAVE` work, from continued hardware-cert testing: the SCOPE window's saved image still showed a strip down the right edge, and the **SCOPE_XY window ignored `SAVE`, `SAVE WINDOW`, and `CLOSE` entirely**. Both are fixed, and a new test guards the whole class of bug.

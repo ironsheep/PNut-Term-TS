@@ -312,4 +312,32 @@ describe('DebugMidiWindow', () => {
       expect((midiWindow as any).debugWindow).toBeNull();
     });
   });
+
+  describe('Chord rendering (regression: duplicate-const SyntaxError)', () => {
+    it('emits syntactically valid draw JS when multiple keys are active at once', () => {
+      const win = midiWindow as any;
+      win.updateKeyboardLayout(); // build keyLayout
+      const layout = win.keyLayout as Map<number, any>;
+
+      // Two simultaneous notes with velocity > 0 (a chord). Each key's draw code is
+      // concatenated into ONE injected-function scope; the old code re-declared
+      // `const velocityHeight`/`velocityTop` on the 2nd key — a parse-time SyntaxError
+      // that failed the ENTIRE draw ("Script failed to execute").
+      const [k1, k2] = [...layout.keys()].filter((k) => !layout.get(k).isBlack).slice(0, 2);
+      win.midiVelocity[k1] = 100;
+      win.midiVelocity[k2] = 100;
+
+      const code1 = win.generateKeyDrawingCode(k1, layout.get(k1), 0xffffff, 0xff0000, 8);
+      const code2 = win.generateKeyDrawingCode(k2, layout.get(k2), 0xffffff, 0xff0000, 8);
+
+      // Both keys must have produced a velocity bar (this is what triggers the bug).
+      expect((`${code1}${code2}`.match(/ctx\.fillRect\(/g) || []).length).toBe(2);
+
+      // Concatenated into one scope, the result must parse as valid JS.
+      const combined = `(function(){ const ctx = { fillRect(){}, fillStyle:'' }; ${code1}${code2} })`;
+      expect(() => new Function(combined)).not.toThrow();
+      // And it must declare no per-key JS variables that could collide across keys.
+      expect(`${code1}${code2}`).not.toMatch(/\bconst velocityHeight\b/);
+    });
+  });
 });

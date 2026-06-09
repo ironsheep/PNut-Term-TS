@@ -1020,7 +1020,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
       return;
     }
 
-    this.logMessage(`[BATCH PLOT] Plotting ${pixels.length} pixels to canvas '${this.bitmapCanvasId}'`);
+    if (this.isLogging)
+      this.logMessage(`[BATCH PLOT] Plotting ${pixels.length} pixels to canvas '${this.bitmapCanvasId}'`);
 
     const batchJS = `
       (function() {
@@ -1049,7 +1050,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     try {
       const result = await this.debugWindow.webContents.executeJavaScript(batchJS);
-      this.logMessage(`[BATCH RESULT] ${result}`);
+      if (this.isLogging) this.logMessage(`[BATCH RESULT] ${result}`);
     } catch (error) {
       this.logMessage(`[BATCH ERROR] Failed to execute batch pixel plot: ${error}`);
     }
@@ -1310,7 +1311,11 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       return;
     }
 
-    this.logMessage(`[BITMAP DATA] Processing ${dataParts.length} data parts: [${dataParts.join(', ')}]`);
+    // HOT PATH: guard with isLogging so the message string (and any .join()/.map())
+    // is NOT built per pixel when diagnostics are off — building these eagerly, even
+    // though logMessage discards them, starved the serial drain at 2 Mbaud. [#30]
+    if (this.isLogging)
+      this.logMessage(`[BITMAP DATA] Processing ${dataParts.length} data parts: [${dataParts.join(', ')}]`);
 
     // Pixel batch for NORMAL mode (batched rendering to offscreen canvas)
     const pixelBatch: Array<{ x: number; y: number; color: string }> = [];
@@ -1319,29 +1324,31 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
       // Parse value using Spin2NumericParser to handle all formats (hex, decimal, binary, etc.)
       // Pre-check if value looks numeric to avoid error logging for non-numeric tokens
       if (!Spin2NumericParser.isNumeric(part)) {
-        this.logMessage(`[BITMAP DATA] Skipping non-numeric token: ${part}`);
+        if (this.isLogging) this.logMessage(`[BITMAP DATA] Skipping non-numeric token: ${part}`);
         continue;
       }
       const rawValue = Spin2NumericParser.parseValue(part);
       if (rawValue === null) {
-        this.logMessage(`[BITMAP DATA] Failed to parse value: ${part}`);
+        if (this.isLogging) this.logMessage(`[BITMAP DATA] Failed to parse value: ${part}`);
         continue;
       }
-      this.logMessage(`[BITMAP DATA] Parsed ${part} → 0x${rawValue.toString(16)}`);
+      if (this.isLogging) this.logMessage(`[BITMAP DATA] Parsed ${part} → 0x${rawValue.toString(16)}`);
 
       // Unpack data based on explicit packed mode (if specified) or derived from color mode
       const packedMode = this.displaySpec?.explicitPackedMode || this.getPackedDataMode();
-      this.logMessage(
-        `[UNPACK] Mode=${packedMode.mode}, bitsPerSample=${packedMode.bitsPerSample}, ` +
-          `isAlternate=${packedMode.isAlternate}, isSigned=${packedMode.isSigned}, rawValue=0x${rawValue.toString(16)}`
-      );
       const unpackedValues = PackedDataProcessor.unpackSamples(rawValue, packedMode);
-      this.logMessage(
-        `[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map((v) => '0x' + v.toString(16)).join(', ')}]`
-      );
-
-      // Process each unpacked value
-      this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}`);
+      // HOT PATH: guard all per-pixel diagnostics — these strings (and .map().join())
+      // must not be built when isLogging is off. [#30]
+      if (this.isLogging) {
+        this.logMessage(
+          `[UNPACK] Mode=${packedMode.mode}, bitsPerSample=${packedMode.bitsPerSample}, ` +
+            `isAlternate=${packedMode.isAlternate}, isSigned=${packedMode.isSigned}, rawValue=0x${rawValue.toString(16)}`
+        );
+        this.logMessage(
+          `[UNPACK] Got ${unpackedValues.length} values: [${unpackedValues.map((v) => '0x' + v.toString(16)).join(', ')}]`
+        );
+        this.logMessage(`[LOOP] Starting loop: ${unpackedValues.length} values, rate=${this.state.rate}`);
+      }
       for (let idx = 0; idx < unpackedValues.length; idx++) {
         const value = unpackedValues[idx];
 
@@ -1448,7 +1455,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     // NORMAL MODE: Plot all batched pixels in single IPC call
     // This dramatically improves performance (2,500x-12,700x faster!)
     if (!this.state.sparseMode && pixelBatch.length > 0) {
-      this.logMessage(`[BATCH] Plotting ${pixelBatch.length} pixels before rate cycle check`);
+      if (this.isLogging) this.logMessage(`[BATCH] Plotting ${pixelBatch.length} pixels before rate cycle check`);
       await this.plotPixelBatch(pixelBatch);
     }
 

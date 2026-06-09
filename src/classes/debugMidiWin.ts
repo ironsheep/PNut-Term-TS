@@ -573,12 +573,15 @@ export class DebugMidiWindow extends DebugWindowBase {
     const keyColorHex = this.rgbToHex(keyColor);
     const velocityColorHex = this.rgbToHex(velocityColor);
 
-    // Log velocity bar placement for debugging
+    // Velocity-bar geometry, computed in TS so the emitted draw code declares NO JS
+    // variables. Every key's code is concatenated into ONE injected-function scope, so
+    // a second active key (a chord) used to re-emit a "const velocityHeight/velocityTop"
+    // declaration — a SyntaxError that failed the entire draw ("Script failed to
+    // execute"). Pascal velocity bar: RoundRect(left, MidiBottom - r - (MidiBottom-r)*
+    // vel div 127, ..., MidiBottom, ...) (DebugDisplayUnit.pas:2680-2683). [9win §16]
+    const velocityHeight = velocity > 0 ? Math.floor(((bottom - radius) * velocity) / 127) : 0;
+    const velocityTop = bottom - radius - velocityHeight;
     if (velocity > 0) {
-      // Pascal velocity bar: RoundRect(left, MidiBottom - r - (MidiBottom-r)*vel div 127, ...,
-      // MidiBottom, ...) (DebugDisplayUnit.pas:2680-2683) — height/top reference MidiBottom-r. [9win §16]
-      const velocityHeight = Math.floor(((bottom - radius) * velocity) / 127);
-      const velocityTop = bottom - radius - velocityHeight;
       this.logMessage(
         `MIDI: Drawing velocity bar on key ${keyNum}: velocity=${velocity}, height=${velocityHeight}px, position Y=${velocityTop}-${
           velocityTop + velocityHeight
@@ -602,14 +605,12 @@ export class DebugMidiWindow extends DebugWindowBase {
       ctx.closePath();
       ctx.fill();
 
-      // Draw velocity bar if active
+      // Draw velocity bar if active (literal numbers only; no JS var declarations)
       ${
         velocity > 0
           ? `
         ctx.fillStyle = '${velocityColorHex}';
-        const velocityHeight = Math.floor((${bottom} - ${radius}) * ${velocity} / 127);
-        const velocityTop = ${bottom} - ${radius} - velocityHeight;
-        ctx.fillRect(${left + 1}, velocityTop, ${right - left - 2}, velocityHeight);
+        ctx.fillRect(${left + 1}, ${velocityTop}, ${right - left - 2}, ${velocityHeight});
       `
           : ''
       }
