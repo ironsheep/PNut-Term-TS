@@ -35,6 +35,20 @@ Promise.all([
     sourcemap: true,
     format: 'cjs' // CommonJS format for worker threads
   }),
+  // [#31] Build the Serial I/O worker (hosts the SerialPort off the main loop).
+  // serialport's native binding stays EXTERNAL (required from node_modules at runtime, same
+  // as the main bundle) — it cannot be inlined into a worker bundle.
+  esbuild.build({
+    entryPoints: ['src/workers/serialIoWorker.ts'],
+    bundle: true,
+    outfile: 'dist/workers/serialIoWorker.bundled.js',
+    platform: 'node',
+    target: 'node23',
+    external: ['worker_threads', 'serialport', '@serialport/bindings-cpp', 'usb'],
+    minify: true,
+    sourcemap: true,
+    format: 'cjs'
+  }),
   // Build the renderer-side debugger bundle (loaded by the debugger window HTML)
   esbuild.build({
     entryPoints: ['src/classes/debugger/renderer/index.ts'],

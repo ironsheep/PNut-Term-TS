@@ -77,6 +77,23 @@ esbuild.build({
 }).then(() => console.log('   ✅ Worker bundle created'));
 "
 
+# [#31] Build the Serial I/O worker bundle (hosts the SerialPort off the main loop).
+# serialport's native binding stays EXTERNAL (required from node_modules at runtime).
+echo "   Building Serial I/O worker bundle..."
+node -e "
+const esbuild = require('esbuild');
+esbuild.build({
+  entryPoints: ['src/workers/serialIoWorker.ts'],
+  bundle: true,
+  outfile: 'dist/workers/serialIoWorker.bundled.js',
+  platform: 'node',
+  target: 'node18',
+  external: ['worker_threads', 'serialport', '@serialport/bindings-cpp', 'usb'],
+  minify: false,
+  format: 'cjs'
+}).then(() => console.log('   ✅ Serial I/O worker bundle created'));
+"
+
 # Build the renderer-side debugger bundle (loaded by the debugger window HTML)
 echo "   Building debugger renderer bundle..."
 node -e "

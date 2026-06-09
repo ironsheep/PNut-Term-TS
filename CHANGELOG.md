@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.34] - 2026-06-09
+
+Root-cause work on the high-rate serial corruption seen at 2 Mbaud. Investigation showed the received bytes were being corrupted **before** the app could parse them — the serial-port read shares the main thread with all the on-screen rendering, so under heavy display load the driver isn't serviced fast enough and bytes get garbled on arrival. This release adds an opt-in path that moves serial reception off the main thread entirely, plus the supporting render and instrumentation changes needed to validate it on hardware.
+
+### Added
+
+- **Experimental off-main-thread serial I/O (opt-in, `PNUT_SERIAL_WORKER=1`).** The USB serial port can now be hosted in a dedicated worker that reads bytes straight into the shared receive buffer, so display/render work on the main thread can never starve the driver. Downloads and device detection are preserved. **Default behavior is unchanged** — this path is off unless the flag is set, so normal use and existing builds are unaffected. Intended for hardware validation of the high-rate fix.
+- **Event-loop responsiveness monitor (opt-in, `PNUT_LOOP_MONITOR=1`).** Logs main-thread scheduling delay (p50/p90/p99/max) so the before/after of the serial-offload work can be measured directly.
+
+### Performance
+
+- **Bitmap rendering coalesces canvas updates.** Pixels are now batched and flushed on a timer instead of one cross-process draw call per pixel, dramatically reducing per-message main-thread cost at high data rates. Display refresh cadence is unchanged.
+- **Reduced hot-path work in the message router.** Diagnostic strings that were always being built (even with logging off) are now only built when logging is enabled.
+
+### Known issues / not yet verified
+
+- The off-main-thread serial path requires on-hardware validation at 2 Mbaud (open/read in the worker, downloads, DTR/RTS reset) before it becomes the default.
+
 ## [0.9.33] - 2026-06-09
 
 Two hardware-certification fixes: the MIDI keyboard now renders when more than one note is held, and a hot-path performance fix toward sustaining high-rate bitmap streams.
