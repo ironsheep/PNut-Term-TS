@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.32] - 2026-06-09
+
+Follow-up to the v0.9.31 `SAVE` work, from continued hardware-cert testing: the SCOPE window's saved image still showed a strip down the right edge, and the **SCOPE_XY window ignored `SAVE`, `SAVE WINDOW`, and `CLOSE` entirely**. Both are fixed, and a new test guards the whole class of bug.
+
+### Fixed
+
+- **SCOPE `SAVE` no longer has a strip down the right edge.** After v0.9.31 sized the window to its exact content, SCOPE was the one debug window whose page didn't suppress scrollbars, so a 1-pixel internal border overflowed the window by a hair and a vertical scrollbar appeared — captured in the saved image as a pale band on the right. SCOPE now suppresses scrollbars like every other window.
+- **SCOPE_XY now honors `SAVE`, `SAVE WINDOW`, and `CLOSE`.** The X/Y scope silently dropped every one of these commands — no image file was written and the window would not close on `` `name CLOSE `` — because it stripped the window name from the message a second time (the router had already removed it), which discarded the actual command word. It now processes commands the same way the other windows do. (Numeric plotting was unaffected, which is why the dots still drew.)
+
+### Internal
+
+- **New command-dispatch test across all nine display windows.** Each window is now verified to handle `SAVE`, `SAVE WINDOW`, `CLEAR`, and `CLOSE` as the router actually delivers them (window name already removed). This is the regression net for the SCOPE_XY-style bug, where a window mishandles the delivered message shape — the previous SCOPE_XY test passed only because it fed the message in a shape the real router never produces.
+
+### Known issues / not yet verified
+
+- **Verified against the local test suite, type-check, and build.** Re-run the SCOPE and SCOPE_XY demos on a physical P2 to confirm SCOPE's saved BMP is clean to the right edge and that SCOPE_XY now writes both `SAVE` and `SAVE WINDOW` files and closes on end-of-session.
+
 ## [0.9.31] - 2026-06-09
 
 Hardware-certification fixes for the `SAVE 'filename'` command (save window *contents* to a BMP). Two problems surfaced while exercising the demo programs: most windows saved with a **white strip down the right edge**, and the **SCOPE_XY window saved no file at all**.

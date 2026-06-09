@@ -581,6 +581,10 @@ export class DebugScopeWindow extends DebugWindowBase {
             flex-direction: column;
             margin: 0;
             padding: 0;
+            overflow: hidden; /* CRITICAL: fixed-size window — never scroll. Without this, the
+                                 #channels 1px border overflows the exact useContentSize viewport by
+                                 ~2px and a vertical scrollbar steals ~15px on the right (white bar).
+                                 Every other debug window already sets this; SCOPE was the only one missing it. */
             font-family: 'Parallax', sans-serif;
             font-size: 12px;
             /* background-color: rgb(237, 142, 238); */

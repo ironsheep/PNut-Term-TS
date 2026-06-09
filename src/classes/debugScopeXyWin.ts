@@ -1089,9 +1089,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   protected async handleData(elements: string[]): Promise<void> {
     this.logMessage(`handleData: Processing ${elements.length} elements`);
 
-    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
-    // Strip display name/window name (first element) before passing to base class
-    const commandParts = elements.length > 0 ? elements.slice(1) : [];
+    // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE).
+    // The window name is ALREADY stripped by the router before updateContent(), so
+    // commandParts[0] is the command itself (e.g. 'save', 'close'). The previous
+    // elements.slice(1) stripped it a SECOND time, so 'close' became [] and
+    // 'save x' became ['x'] — every common command was silently dropped (no SAVE
+    // file written, window never closed). Pass elements through as-is, like the
+    // SCOPE/PLOT/etc. windows do. Numeric data still falls through to the data
+    // loop below (a coordinate never matches a command keyword).
+    const commandParts = elements;
     if (await this.handleCommonCommand(commandParts)) {
       // Base class handled the command, we're done
       return;

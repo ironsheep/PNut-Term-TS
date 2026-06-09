@@ -396,8 +396,9 @@ describe('DebugScopeXyWindow', () => {
 
     it('should handle CLOSE command', async () => {
       const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
-      // Include display name as first element (gets stripped by handleData)
-      window.updateContent(['test-scope', 'CLOSE']);
+      // The router strips the window name before updateContent(), so the window
+      // receives the bare command (no name prefix). See windowRouter dataParts.
+      window.updateContent(['CLOSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -604,7 +605,6 @@ describe('DebugScopeXyWindow', () => {
   });
 
   describe('Base class delegation', () => {
-    const displayName = 'test';
 
     beforeEach(() => {
       window = new DebugScopeXyWindow(mockContext, createTestDisplaySpec());
@@ -616,7 +616,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate CLEAR command to base class', async () => {
       const clearSpy = jest.spyOn(window as any, 'clearDisplayContent');
 
-      window.updateContent([displayName, 'CLEAR']);
+      window.updateContent(['CLEAR']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -628,7 +628,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate SAVE command to base class', async () => {
       const saveSpy = jest.spyOn(window as any, 'saveWindowToBMPFilename');
 
-      window.updateContent([displayName, 'SAVE', 'test.bmp']);
+      window.updateContent(['SAVE', 'test.bmp']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -640,7 +640,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate PC_KEY command to base class', async () => {
       const keySpy = jest.spyOn(window as any, 'enableKeyboardInput');
 
-      window.updateContent([displayName, 'PC_KEY']);
+      window.updateContent(['PC_KEY']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -652,7 +652,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate PC_MOUSE command to base class', async () => {
       const mouseSpy = jest.spyOn(window as any, 'enableMouseInput');
 
-      window.updateContent([displayName, 'PC_MOUSE']);
+      window.updateContent(['PC_MOUSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -664,7 +664,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate UPDATE command to base class', async () => {
       const updateSpy = jest.spyOn(window as any, 'forceDisplayUpdate');
 
-      window.updateContent([displayName, 'UPDATE']);
+      window.updateContent(['UPDATE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
@@ -676,7 +676,7 @@ describe('DebugScopeXyWindow', () => {
     it('should delegate CLOSE command to base class', async () => {
       const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
 
-      window.updateContent([displayName, 'CLOSE']);
+      window.updateContent(['CLOSE']);
 
       // Allow async operations to complete
       await new Promise(resolve => setImmediate(resolve));
