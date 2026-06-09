@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel an in-flight run when a newer commit is pushed to the same ref, so
+# rapid successive pushes don't pile up redundant runs. Keyed per workflow+ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: '22'
   # Run JS actions on Node 24 now (becomes the runner default 2026-06-16),
