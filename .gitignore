@@ -191,9 +191,10 @@ src/classes/f1.txt
 WORK_STATE.md
 tasks/
 /test-results/.history
-/tests/recordings
+/tests/recordings/*
+# Keep the static recorded-sample fixture required by debugSpectroWin.test.ts
+!/tests/recordings/spectro_samples_4096.json
 /tests/recordings/sessions
-/tests/recordings
 tests/recordings/catalog.json
 /temp-debug-scripts
 /extracted-icons/app-icon-set
@@ -254,7 +255,6 @@ DOCs/USER-GUIDE-UPDATED.md
 /DOCs/archive
 /electron-darwin-arm64
 /recordings
-/tests/recordings
 
 # PASM2 disassembler corpus — regenerable from .spin2 via gen-disasm-corpus.mjs
 tests/fixtures/*.bin
