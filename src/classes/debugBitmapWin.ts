@@ -972,11 +972,13 @@ export class DebugBitmapWindow extends DebugWindowBase {
       return;
     }
 
-    this.logMessage(
-      `[UPDATE CANVAS] Executing StretchDraw: ${this.state.width}x${this.state.height} → ${
-        this.state.width * this.state.dotSizeX
-      }x${this.state.height * this.state.dotSizeY}`
-    );
+    // HOT PATH: guard — runs on every rate cycle. [#30]
+    if (this.isLogging)
+      this.logMessage(
+        `[UPDATE CANVAS] Executing StretchDraw: ${this.state.width}x${this.state.height} → ${
+          this.state.width * this.state.dotSizeX
+        }x${this.state.height * this.state.dotSizeY}`
+      );
 
     const stretchJS = `
       (function() {
@@ -1462,24 +1464,29 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
     // Check if we should update the display (Pascal: RateCycle)
     // Rate controls how often the display is updated
     if (this.state.rateCounter >= this.state.rate) {
-      this.logMessage(
-        `[RATE CYCLE] Triggered update: rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, sparseMode=${this.state.sparseMode}`
-      );
+      // HOT PATH: guard rate-cycle diagnostics — these strings were built every rate
+      // cycle even with logging off, adding to the main-thread cost that starves the
+      // serial drain at 2 Mbaud. (fix A missed this block.) [#30]
+      if (this.isLogging)
+        this.logMessage(
+          `[RATE CYCLE] Triggered update: rateCounter=${this.state.rateCounter}, rate=${this.state.rate}, sparseMode=${this.state.sparseMode}`
+        );
 
       // Handle multiple rate cycles if counter significantly exceeds rate
       // This can happen if we batch many pixels together
       const cycleCount = Math.floor(this.state.rateCounter / this.state.rate);
       const remainder = this.state.rateCounter % this.state.rate;
 
-      this.logMessage(
-        `[RATE CYCLE] cycleCount=${cycleCount}, remainder=${remainder}, RESET: ${this.state.rateCounter} → ${remainder}`
-      );
+      if (this.isLogging)
+        this.logMessage(
+          `[RATE CYCLE] cycleCount=${cycleCount}, remainder=${remainder}, RESET: ${this.state.rateCounter} → ${remainder}`
+        );
       this.state.rateCounter = remainder;
 
       // Update display canvas with stretched bitmap (Pascal: BitmapToCanvas)
       // Only do this in NORMAL mode (not SPARSE mode which draws directly to display canvas)
       if (!this.state.sparseMode) {
-        this.logMessage(`[UPDATE CANVAS] Calling updateCanvas() to transfer offscreen→display`);
+        if (this.isLogging) this.logMessage(`[UPDATE CANVAS] Calling updateCanvas() to transfer offscreen→display`);
         await this.updateCanvas();
       }
     }

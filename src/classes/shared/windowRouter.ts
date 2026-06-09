@@ -657,7 +657,11 @@ export class WindowRouter extends EventEmitter {
   }
 
   private routeBacktickCommand(command: string): void {
-    this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command.trimEnd()}"`);
+    // HOT PATH: guard so the template string (and command.trimEnd()) is NOT built
+    // per message when console logging is off — eager arg-building on every routed
+    // backtick command starved the serial drain at 2 Mbaud. [#30]
+    if (ENABLE_CONSOLE_LOG)
+      this.logConsoleMessage(`[ROUTER DEBUG] routeBacktickCommand called with: "${command.trimEnd()}"`);
 
     if (!command.startsWith('`')) {
       this.logConsoleMessage(`[ROUTER DEBUG] ❌ Invalid backtick command (no backtick): "${command.trimEnd()}"`);
@@ -675,11 +679,14 @@ export class WindowRouter extends EventEmitter {
     const cleanCommand = command.substring(1).trim();
     const parts = this.tokenizeCommand(cleanCommand);
 
-    this.logConsoleMessage(
-      `[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts
-        .map((p) => safeDisplayString(p))
-        .join(', ')}]`
-    );
+    // HOT PATH: guard so the parts.map(safeDisplayString).join() is NOT built per
+    // message when console logging is off. [#30]
+    if (ENABLE_CONSOLE_LOG)
+      this.logConsoleMessage(
+        `[ROUTER DEBUG] Parsed command: "${safeDisplayString(cleanCommand)}", parts: [${parts
+          .map((p) => safeDisplayString(p))
+          .join(', ')}]`
+      );
 
     if (parts.length < 1) {
       this.logConsoleMessage(`[ROUTER DEBUG] ❌ Empty backtick command`);
@@ -735,13 +742,17 @@ export class WindowRouter extends EventEmitter {
 
     // STEP 4: Extract data portion ONCE (window names were only for routing, windows don't need them)
     const dataParts = parts.slice(dataStartIndex);
-    const dataString = dataParts.join(' ');
 
-    this.logConsoleMessage(
-      `[ROUTER DEBUG] Multi-window dispatch to ${targetWindows.length} window(s): [${targetWindows.join(
-        ', '
-      )}], data: "${dataString}"`
-    );
+    // HOT PATH: do NOT build dataParts.join(' ') unconditionally — it ran on every
+    // routed message (and again per target window below). Build it only when console
+    // logging is on or a recording is active. Eager joins here starved the serial
+    // drain at 2 Mbaud. [#30]
+    if (ENABLE_CONSOLE_LOG)
+      this.logConsoleMessage(
+        `[ROUTER DEBUG] Multi-window dispatch to ${targetWindows.length} window(s): [${targetWindows.join(
+          ', '
+        )}], data: "${dataParts.join(' ')}"`
+      );
 
     // STEP 5: Route SAME data to all target windows
     targetWindows.forEach((windowNameUpper) => {
@@ -752,19 +763,20 @@ export class WindowRouter extends EventEmitter {
         const [displayName, window] = displayEntry;
         const debugWindow = window as any; // DebugWindowBase type
 
-        this.logConsoleMessage(`[ROUTER DEBUG]   ✅ Routing to window "${displayName}": "${dataString}"`);
-
-        // Send dataParts directly - already properly tokenized by tokenizeCommand()
-        // Commas are already separate tokens, quoted strings are intact
-        this.logConsoleMessage(
-          `[ROUTER DEBUG]   📤 Sending dataParts array: [${dataParts.join(', ')}] (${dataParts.length} parts)`
-        );
+        if (ENABLE_CONSOLE_LOG) {
+          this.logConsoleMessage(`[ROUTER DEBUG]   ✅ Routing to window "${displayName}": "${dataParts.join(' ')}"`);
+          // Send dataParts directly - already properly tokenized by tokenizeCommand()
+          // Commas are already separate tokens, quoted strings are intact
+          this.logConsoleMessage(
+            `[ROUTER DEBUG]   📤 Sending dataParts array: [${dataParts.join(', ')}] (${dataParts.length} parts)`
+          );
+        }
         debugWindow.updateContent(dataParts);
 
         if (this.isRecording) {
-          this.recordMessage(displayName, debugWindow.windowType || 'unknown', 'text', dataString);
+          this.recordMessage(displayName, debugWindow.windowType || 'unknown', 'text', dataParts.join(' '));
         }
-      } else {
+      } else if (ENABLE_CONSOLE_LOG) {
         this.logConsoleMessage(`[ROUTER DEBUG]   ❌ Window "${windowNameUpper}" not found in displays map`);
       }
     });
