@@ -96,6 +96,7 @@ export class UsbSerialProxy extends EventEmitter {
       case 'hello':
         // Host's listener is attached — now it's safe to send init, then flush buffered calls.
         this.helloSeen = true;
+        console.log(`[SERIAL-PROXY] hello recv → sending init + flushing ${this.outbox.length} buffered call(s)`);
         this.child.postMessage(initMessage);
         for (const m of this.outbox) this.child.postMessage(m);
         this.outbox = [];
@@ -105,11 +106,14 @@ export class UsbSerialProxy extends EventEmitter {
         if (ENABLE_CONSOLE_LOG) console.log('[SERIAL-PROXY] serial host READY — port hosted in a dedicated process');
         break;
       case 'result': {
+        console.log(`[SERIAL-PROXY] result id=${msg.id} ok=${msg.ok}`);
         const p = this.pending.get(msg.id);
         if (p) {
           this.pending.delete(msg.id);
           if (msg.ok) p.resolve(msg.value);
           else p.reject(new Error(msg.error));
+        } else {
+          console.log(`[SERIAL-PROXY] result id=${msg.id} had NO pending promise (id mismatch?)`);
         }
         break;
       }
@@ -134,6 +138,9 @@ export class UsbSerialProxy extends EventEmitter {
   }
 
   private send(message: any): void {
+    if (message?.kind === 'call') {
+      console.log(`[SERIAL-PROXY] ${this.helloSeen ? 'send' : 'buffer'} call ${message.method} id=${message.id}`);
+    }
     if (this.helloSeen) this.child.postMessage(message);
     else this.outbox.push(message); // buffer until host listener is up (avoids lost messages)
   }

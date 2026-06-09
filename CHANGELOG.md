@@ -5,6 +5,10 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.37] - 2026-06-09
+
+Diagnostic build for the experimental off-main-thread serial path. v0.9.36 fixed the crash (the serial child process is now stable and survives incoming data), but connecting hangs: the main process waits forever for the child to confirm the port opened, so downloads report "Please connect to a Propeller 2 device first" even though the port is open. This build adds detailed connect-handshake logging (visible in the console) to pinpoint where the request/response between the two processes stalls. Opt-in path only (`PNUT_SERIAL_WORKER=1`); default behavior unchanged.
+
 ## [0.9.36] - 2026-06-09
 
 Continues the experimental off-main-thread serial work. v0.9.35 loaded the serial worker but crashed the instant data arrived: the native serial library pins its data-ready callback to the **main process's** event loop, so it cannot run inside a background thread (it fired against the wrong context and segfaulted). The opt-in path now hosts the serial port in a **dedicated child process** (an Electron utility process) instead — where that callback runs correctly on the child's own loop, fully off the main process. Still opt-in via `PNUT_SERIAL_WORKER=1`; default behavior unchanged.
