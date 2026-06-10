@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.42] - 2026-06-10
+
+Smooths out the repaint cadence on multi-window bitmap demos. v0.9.41's coordinated scheduler
+fixed the ordering but made updates too coarse — when the busy main thread briefly freed up, a
+window would repaint its entire accumulated backlog in one big jump, then the next window, so the
+windows updated in large, infrequent steps. This build caps how much each window repaints per
+pass, so all windows advance in small, even increments together — a more responsive feel. The cap
+is tunable per-run via `PNUT_RENDER_BATCH_CAP` (smaller = finer/more-frequent updates) so the
+sweet spot can be dialed in on hardware. Note: this is a smoothness change, not a throughput one —
+the overall speed gate at high data rates is the main thread keeping up with the incoming stream,
+which is a separate follow-up.
+
+### Changed
+
+- **Bitmap repaints are now capped per pass** (default ~8192 px/window, override with
+  `PNUT_RENDER_BATCH_CAP`): windows advance in small even steps together instead of one window
+  making a large jump at a time. Smoother, more responsive painting; no change to final output.
+
 ## [0.9.41] - 2026-06-10
 
 Second bitmap-rendering performance pass, targeting the jerky, out-of-order painting on
