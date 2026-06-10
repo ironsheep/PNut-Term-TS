@@ -5,6 +5,25 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.41] - 2026-06-10
+
+Second bitmap-rendering performance pass, targeting the jerky, out-of-order painting on
+multi-window demos. v0.9.40 fixed the missing-final-row glitch (and confirmed per-pixel drawing
+was no longer the bottleneck), but the diagnostics showed the real cost is *serialization*: each
+window was running its own independent repaint loop, and with several windows live at once they
+all piled work onto the single rendering thread out of order — producing a backlog and the
+visible "one window finishes late" reordering. This build replaces those per-window loops with a
+**single coordinated repaint pass** that updates every window needing a refresh together, in a
+fixed window order, one after another. That bounds the backlog and makes painting orderly. Run
+with `PNUT_RENDER_STATS=1` to compare.
+
+### Changed
+
+- **One global render scheduler** replaces the per-window repaint timers. All windows that need a
+  refresh are flushed together each frame in stable creation order, instead of competing
+  independently — smoother, ordered painting with a bounded renderer backlog. No behavior change
+  to what's drawn.
+
 ## [0.9.40] - 2026-06-10
 
 First performance pass on the correct-but-slow bitmap rendering. The v0.9.39 render-timing

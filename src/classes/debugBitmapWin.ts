@@ -168,9 +168,22 @@ export class DebugBitmapWindow extends DebugWindowBase {
   // ctx.fillRect per pixel (the dominant renderer cost the RENDER-STATS exec time exposed).
   private pendingPixels: Array<{ x: number; y: number; rgb: number }> = [];
   private displayDirty: boolean = false;
-  private renderFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private renderFlushChain: Promise<void> = Promise.resolve();
   private static readonly RENDER_FLUSH_MS = 16; // ~60 fps coalescing cadence
+
+  // [#30 perf] GLOBAL render scheduler. v0.9.40 RENDER-STATS proved per-pixel cost is NOT the gate
+  // (putImageData barely moved the wall clock); the gate is N independent per-window 16ms flush
+  // chains all piling AWAITED executeJavaScript onto the single renderer, out of order → a multi-
+  // second renderer backlog (a 1,627px flush measured exe=1048ms = pure queue-wait) + the visible
+  // reorder/jerk. ONE coordinated pass over ALL dirty windows in a STABLE order (creation order =
+  // a,b,c,…), processed sequentially (each window awaited before the next) every ~RENDER_FLUSH_MS,
+  // bounds the backlog to one pass and paints in order. Each window still flushes through its own
+  // renderFlushChain (shared with SAVE/UPDATE) so a window's batches never overlap.
+  private static dirtyWindows: Set<DebugBitmapWindow> = new Set();
+  private static renderTickTimer: ReturnType<typeof setTimeout> | null = null;
+  private static renderPassRunning: boolean = false;
+  private static nextRenderSeq: number = 0;
+  private readonly renderSeq: number = DebugBitmapWindow.nextRenderSeq++;
 
   // [#30 perf] Gated render-timing telemetry (PNUT_RENDER_STATS=1). Splits each flush into main-side
   // payload BUILD time (JSON.stringify + string assembly) vs RENDERER await time (the executeJavaScript
@@ -739,12 +752,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Stop input polling
     this.inputForwarder.stopPolling();
 
-    // [#30] Stop the coalescing render timer and drop any still-queued pixels — the window
-    // is gone, so they can't be drawn (and a stranded interval would leak).
-    if (this.renderFlushTimer !== null) {
-      clearTimeout(this.renderFlushTimer);
-      this.renderFlushTimer = null;
-    }
+    // [#30] Deregister from the global render scheduler and drop any still-queued pixels — the
+    // window is gone, so they can't be drawn. runRenderPass also skips a window once debugWindow
+    // is null, so a window closed mid-pass is safe.
+    DebugBitmapWindow.dirtyWindows.delete(this);
     this.pendingPixels = [];
     this.displayDirty = false;
 
@@ -1720,22 +1731,48 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
   }
 
   /**
-   * [#30] Schedule a one-shot coalescing flush ~RENDER_FLUSH_MS from now if one isn't
-   * already pending. Self-terminating: after the flush, it reschedules ONLY if more work
-   * accumulated during the flush, so an idle window holds no live timer (important for
-   * clean teardown and to avoid spinning when no data flows). Re-armed by processDataValues
-   * whenever new pixels are queued. Cleared in closeDebugWindow().
+   * [#30] Register this window as needing render and arm the GLOBAL scheduler. Replaces the old
+   * per-window timer: instead of N windows each running their own 16ms flush loop (which serialize
+   * chaotically through the single renderer), all dirty windows are drained together in one ordered
+   * pass — see runRenderPass.
    */
   private ensureRenderFlushTimer(): void {
-    if (this.renderFlushTimer !== null || !this.debugWindow) return;
-    this.renderFlushTimer = setTimeout(() => {
-      this.renderFlushTimer = null;
-      if (this.pendingPixels.length === 0 && !this.displayDirty) return;
-      void this.flushRenderQueue().then(() => {
-        // More may have accumulated while the flush IPC was in flight — keep draining.
-        if (this.pendingPixels.length > 0 || this.displayDirty) this.ensureRenderFlushTimer();
-      });
+    if (!this.debugWindow) return;
+    DebugBitmapWindow.dirtyWindows.add(this);
+    DebugBitmapWindow.scheduleRenderTick();
+  }
+
+  /** [#30] Arm the single global render tick if work is pending and none is already scheduled/running. */
+  private static scheduleRenderTick(): void {
+    if (DebugBitmapWindow.renderTickTimer !== null || DebugBitmapWindow.renderPassRunning) return;
+    if (DebugBitmapWindow.dirtyWindows.size === 0) return;
+    DebugBitmapWindow.renderTickTimer = setTimeout(() => {
+      DebugBitmapWindow.renderTickTimer = null;
+      void DebugBitmapWindow.runRenderPass();
     }, DebugBitmapWindow.RENDER_FLUSH_MS);
+  }
+
+  /**
+   * [#30] One coordinated flush+blit pass over every dirty window in STABLE creation order,
+   * processed sequentially (each awaited before the next) so the renderer does one window's work
+   * at a time, in order — no cross-window contention, no reordered painting. Windows re-add
+   * themselves as new data arrives during the pass; the finally schedules the next tick.
+   */
+  private static async runRenderPass(): Promise<void> {
+    if (DebugBitmapWindow.renderPassRunning) return;
+    DebugBitmapWindow.renderPassRunning = true;
+    try {
+      const batch = Array.from(DebugBitmapWindow.dirtyWindows).sort((a, b) => a.renderSeq - b.renderSeq);
+      DebugBitmapWindow.dirtyWindows.clear();
+      for (const win of batch) {
+        if (!win.debugWindow) continue; // window closed mid-pass
+        await win.flushRenderQueue(); // serialized through the window's own chain (shared with SAVE)
+      }
+    } finally {
+      DebugBitmapWindow.renderPassRunning = false;
+      // Work accumulated during the pass (or a window re-queued) → run another tick.
+      DebugBitmapWindow.scheduleRenderTick();
+    }
   }
 
   /**
