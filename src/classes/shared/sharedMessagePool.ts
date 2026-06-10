@@ -362,6 +362,21 @@ export class SharedMessagePool {
   }
 
   /**
+   * [#30] True occupancy: count slots currently allocated (metadata != 0). The per-instance
+   * free counters (smallSlotsFree etc.) are unreliable across threads — the worker acquires on
+   * its instance while main releases on its own — so this scans the SHARED metadata atomically.
+   * O(maxSlots); call sparingly (e.g. once/second for RX stats), never on the per-message path.
+   */
+  public countUsedSlots(): number {
+    let used = 0;
+    const slots = this.metadata.length;
+    for (let i = 0; i < slots; i++) {
+      if (Atomics.load(this.metadata, i) !== 0) used++;
+    }
+    return used;
+  }
+
+  /**
    * Get slot handle for reading
    * UNCHANGED external signature
    */

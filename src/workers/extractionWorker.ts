@@ -43,6 +43,21 @@ let messagePool: SharedMessagePool | null = null;
 let isExtracting: boolean = false;
 let extractionCount: number = 0;
 
+// [#30] Pool backpressure (no drop). When the SharedMessagePool is momentarily full we stash
+// the ONE already-extracted message and STOP extracting, leaving un-extracted data in the ring
+// (upstream backpressure) instead of dropping. The autonomous loop retries placing the stash
+// until main routes+releases a slot. No data lost; no thread blocks (main keeps draining its
+// port queue → releases slots → we resume). Cleared on buffer clear/DTR-reset.
+let stashedMessage: { data: Uint8Array; type: SharedMessageType } | null = null;
+let poolBackpressureEvents: number = 0;
+
+// [#30] Periodic RX stats (gated by main via the 'init' msg from PNUT_RX_STATS=1). When on, the
+// worker logs extraction count, backpressure activations, and a true pool-occupancy SAB scan
+// once per second so an HW run can confirm backpressure engaged with zero loss.
+let rxStatsEnabled: boolean = false;
+let lastRxStatsTime: number = 0;
+let extractedSinceStats: number = 0;
+
 // Idle timeout detection for CR/LF at buffer end
 // When CR/LF appears at buffer end, wait for this timeout before extracting
 // to distinguish "waiting for next USB packet" from "transmission complete"
@@ -574,6 +589,45 @@ function classifyMessage(data: Uint8Array): SharedMessageType | null {
 }
 
 /**
+ * [#30] Write an extracted message into a pool slot and hand its poolId to main.
+ * Factored out so the same write happens for a freshly-extracted message and for a
+ * previously-stashed one (placed once a slot frees during pool backpressure).
+ */
+function writeMessageToSlot(slot: PoolSlot, data: Uint8Array, type: SharedMessageType): void {
+  if (ENABLE_CONSOLE_LOG && data.length > 1000) {
+    console.log(
+      `[ExtractionWorker] DIAGNOSTIC: Writing large message poolId=${slot.poolId}, type=${type}, length=${data.length} bytes`
+    );
+  }
+  slot.writeType(type);
+  slot.writeLength(data.length);
+  slot.writeData(data);
+  slot.setRefCount(1); // Main thread will release
+  parentPort!.postMessage({ type: 'message', poolId: slot.poolId });
+  extractionCount++;
+  extractedSinceStats++;
+}
+
+/**
+ * [#30] Emit periodic RX stats (≤ once/second) so an HW run can confirm backpressure engaged
+ * with zero loss. poolUsed is a true SHARED-metadata scan (local free counters are unreliable
+ * across threads). Gated by rxStatsEnabled (PNUT_RX_STATS=1 on main).
+ */
+function maybeLogRxStats(): void {
+  if (!rxStatsEnabled || !messagePool) return;
+  const now = Date.now();
+  if (now - lastRxStatsTime < 1000) return;
+  const poolUsed = messagePool.countUsedSlots();
+  console.error(
+    `[RX-STATS] extracted/s=${extractedSinceStats} total=${extractionCount} ` +
+      `poolBackpressureEvents=${poolBackpressureEvents} poolUsed=${poolUsed} ` +
+      `stashed=${stashedMessage ? 1 : 0}`
+  );
+  lastRxStatsTime = now;
+  extractedSinceStats = 0;
+}
+
+/**
  * Extract messages from buffer using boundary detection
  * Writes to SharedMessagePool and sends poolId to main thread
  */
@@ -585,6 +639,20 @@ function extractMessages(): void {
   isExtracting = true;
   const maxBatch = 100; // Extract up to 100 messages per call
   let extracted = 0;
+
+  // [#30] Pool backpressure: if a message is stashed (pool was full last time), it MUST be
+  // placed before extracting anything new — order is preserved by draining the stash first.
+  // If the pool is still full, stop now and retry next tick; the ring stays un-drained.
+  if (stashedMessage) {
+    const slot = messagePool.acquire(stashedMessage.data.length);
+    if (!slot) {
+      isExtracting = false;
+      maybeLogRxStats();
+      return;
+    }
+    writeMessageToSlot(slot, stashedMessage.data, stashedMessage.type);
+    stashedMessage = null;
+  }
 
   try {
     while (extracted < maxBatch && buffer.hasData()) {
@@ -621,45 +689,20 @@ function extractMessages(): void {
         continue;
       }
 
-      // Acquire pool slot with message size for size class selection
-      // If pool is full, retry multiple times to allow main thread to release
-      let slot = messagePool.acquire(messageData.length);
-      let retries = 0;
-      const MAX_RETRIES = 1000;  // Retry up to 1000 times
-
-      while (!slot && retries < MAX_RETRIES) {
-        // Pool full - retry immediately
-        // Atomic operations have memory barriers, so we'll see releases
-        retries++;
-        slot = messagePool.acquire(messageData.length);
-      }
-
+      // [#30] Pool backpressure (NO DROP): acquire a slot; if the pool is momentarily full,
+      // stash this ONE message and STOP extracting. The un-extracted remainder stays in the ring
+      // (upstream backpressure) and we retry placing the stash next tick once main frees a slot.
+      const slot = messagePool.acquire(messageData.length);
       if (!slot) {
-        // Pool still full after many retries - message will be lost!
-        console.error('[ExtractionWorker] Pool exhausted after ' + retries + ' retries, message lost!');
-        // Continue extracting to clear buffer
-        continue;
+        stashedMessage = { data: messageData, type: messageType };
+        poolBackpressureEvents++;
+        break; // leave remaining ring data un-extracted; resume when a slot frees
       }
 
-      // DIAGNOSTIC: Log length for large messages (SPRITEDEF debugging)
-      if (ENABLE_CONSOLE_LOG && messageData.length > 1000) {
-        console.log(`[ExtractionWorker] DIAGNOSTIC: Writing large message poolId=${slot.poolId}, type=${messageType}, length=${messageData.length} bytes`);
-      }
-
-      // Write message to pool
-      slot.writeType(messageType);
-      slot.writeLength(messageData.length);
-      slot.writeData(messageData);
-      slot.setRefCount(1); // Main thread will release
-
-      // Send poolId to main thread
-      parentPort!.postMessage({
-        type: 'message',
-        poolId: slot.poolId
-      });
+      // Write message to pool + hand poolId to main (increments extraction counters)
+      writeMessageToSlot(slot, messageData, messageType);
 
       extracted++;
-      extractionCount++;
     }
 
     if (extracted > 0) {
@@ -697,10 +740,15 @@ function autonomousLoop(): void {
 
   const hasData = buffer && buffer.hasData();
 
-  // Check if buffer has data and we're not already extracting
-  if (buffer && hasData && !isExtracting) {
+  // Check if buffer has data (or a stashed message is waiting for a free slot) and we're not
+  // already extracting. [#30] The stash must keep being retried even if the ring is momentarily
+  // empty, so it is placed as soon as main frees a slot.
+  if (buffer && (hasData || stashedMessage) && !isExtracting) {
     extractMessages();
   }
+
+  // [#30] Periodic RX stats (self-throttled to ≤1/sec; no-op unless PNUT_RX_STATS=1).
+  maybeLogRxStats();
 
   // Yield to event loop and continue monitoring
   setImmediate(autonomousLoop);
@@ -727,6 +775,9 @@ parentPort.on('message', (msg: any) => {
           maxMessageSize: msg.maxMessageSize
         });
 
+        // [#30] Gate periodic RX backpressure stats (main passes this from PNUT_RX_STATS=1).
+        rxStatsEnabled = msg.rxStats === true;
+
         logConsoleMessage('Initialized with SharedCircularBuffer and SharedMessagePool');
 
         // Start autonomous extraction loop
@@ -742,6 +793,13 @@ parentPort.on('message', (msg: any) => {
           error: `Init failed: ${error}`
         });
       }
+      break;
+
+    case 'clear':
+      // [#30] Main cleared the ring (DTR-reset / resync) — drop any stashed pre-reset message so
+      // it isn't emitted after the boundary. The ring itself was already reset on the main side.
+      stashedMessage = null;
+      logConsoleMessage('Cleared stashed message on buffer clear');
       break;
 
     case 'shutdown':

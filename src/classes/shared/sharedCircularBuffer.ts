@@ -128,25 +128,30 @@ export class SharedCircularBuffer extends EventEmitter {
    * Append data to tail (PRODUCER - Main Thread)
    * Thread-safe using Atomics
    */
-  public appendAtTail(data: Uint8Array): boolean {
+  public appendAtTail(data: Uint8Array, silent: boolean = false): boolean {
     const dataLength = data.length;
 
     // Check available space
     const available = this.getAvailableSpace();
     if (dataLength > available) {
       this.overflowCount++;
-      // Log if buffer hits full capacity
-      if (available === 0 && !this.fullCapacityLogged) {
-        console.error(`[CircularBuffer] 🔴 FULL CAPACITY REACHED: Buffer exhausted (${this.bufferSize} bytes)`);
-        this.fullCapacityLogged = true;
+      // [#30] silent=true: caller (ring backpressure) re-queues this chunk and retries, so this is
+      // NOT a real overflow/drop — suppress the destructive 'bufferOverflow' emit (which triggers
+      // clearBuffer) and the FULL-CAPACITY log. Returning false tells the caller to hold + retry.
+      if (!silent) {
+        // Log if buffer hits full capacity
+        if (available === 0 && !this.fullCapacityLogged) {
+          console.error(`[CircularBuffer] 🔴 FULL CAPACITY REACHED: Buffer exhausted (${this.bufferSize} bytes)`);
+          this.fullCapacityLogged = true;
+        }
+        this.emit('bufferOverflow', {
+          attempted: dataLength,
+          available: available
+        });
+        SharedCircularBuffer.logConsoleMessage(
+          `[SharedCircularBuffer] OVERFLOW: Attempted ${dataLength} bytes, only ${available} available`
+        );
       }
-      this.emit('bufferOverflow', {
-        attempted: dataLength,
-        available: available
-      });
-      SharedCircularBuffer.logConsoleMessage(
-        `[SharedCircularBuffer] OVERFLOW: Attempted ${dataLength} bytes, only ${available} available`
-      );
       return false;
     }
     // Reset full capacity flag once space becomes available again

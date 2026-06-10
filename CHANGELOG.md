@@ -5,6 +5,18 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.38] - 2026-06-10
+
+Makes the experimental off-main-thread serial path **lossless under heavy display load**. With the serial port now hosted off the main process (v0.9.36+), high-volume demos like the RGB24 bitmap test still dropped data — not at the port, but downstream: when the main process can't process incoming messages as fast as they arrive, the internal hand-off buffers filled and the oldest messages were discarded ("message lost"), producing incomplete renders. This build replaces dropping with **backpressure**: when a buffer is full the producer briefly waits instead of discarding, so a momentary slow-down delays a message rather than losing it. Every byte is preserved and the picture renders complete. Includes opt-in receive-pipeline telemetry (`PNUT_RX_STATS=1`) to confirm the behavior on hardware. Still opt-in via `PNUT_SERIAL_WORKER=1`; default behavior unchanged.
+
+### Changed
+
+- **Receive pipeline never drops data under load.** The message pool and the shared ring buffer now apply backpressure instead of discarding when full: the extraction worker holds a message (leaving data in the ring) until a slot frees, and the main process holds incoming chunks in an ordered queue until the ring drains. The ring is also kept at most half-full so its data stays in a race-free region. No message is lost; rendering simply catches up.
+
+### Added
+
+- **Receive-pipeline diagnostics** (`PNUT_RX_STATS=1`): once-per-second logging of extraction rate, backpressure activations, pool occupancy, and ring-queue depth, to validate losslessness on real hardware.
+
 ## [0.9.37] - 2026-06-09
 
 Diagnostic build for the experimental off-main-thread serial path. v0.9.36 fixed the crash (the serial child process is now stable and survives incoming data), but connecting hangs: the main process waits forever for the child to confirm the port opened, so downloads report "Please connect to a Propeller 2 device first" even though the port is open. This build adds detailed connect-handshake logging (visible in the console) to pinpoint where the request/response between the two processes stalls. Opt-in path only (`PNUT_SERIAL_WORKER=1`); default behavior unchanged.

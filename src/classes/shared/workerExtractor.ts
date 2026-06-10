@@ -52,6 +52,25 @@ export class WorkerExtractor extends EventEmitter {
   private peakMessageRateStartTime: number = 0;
   private peakMessageRateDuration: number = 0;
 
+  // [#30] Ring backpressure (NO DROP). When the SAB ring is momentarily full (the worker has
+  // stopped extracting because the pool is full), new USB chunks are held here IN ORDER and
+  // written as the ring drains. Main never blocks → producer/consumer never deadlock. Bounded by
+  // burst size for a finite stream. clearBuffer() discards these (pre-reset data).
+  private pendingRingChunks: Uint8Array[] = [];
+  private pendingRingBytes: number = 0;
+  private ringQueueHighWater: number = 0;
+  private ringDrainScheduled: boolean = false;
+  // [#30] Keep the SAB ring at most HALF full and hold the rest of the backlog in pendingRingChunks
+  // (main's race-free JS heap). A near-FULL SPSC ring couples producer (main tail) and consumer
+  // (worker head) tightly enough that the buffer's non-atomic space read can let a write clobber
+  // not-yet-consumed bytes → silent corruption/loss. A 50% cap guarantees a large margin between
+  // tail and head, so that race can't fire. Set from bufferSize in the constructor.
+  private readonly ringWriteLimit: number;
+
+  // [#30] Gate periodic RX backpressure stats (PNUT_RX_STATS=1). Forwarded to the worker; main
+  // logs ring-queue depth on the existing once-per-second message-rate cadence.
+  private rxStats: boolean = process.env.PNUT_RX_STATS === '1';
+
   constructor(bufferSize: number = 1048576, maxSlots: number = 1000, maxMessageSize: number = 65536) {
     super();
 
@@ -59,6 +78,7 @@ export class WorkerExtractor extends EventEmitter {
 
     // Create shared circular buffer
     this.buffer = new SharedCircularBuffer(bufferSize);
+    this.ringWriteLimit = Math.floor(bufferSize / 2); // [#30] keep ring ≤ 50% full (see field)
 
     // Create shared message pool
     this.messagePool = new SharedMessagePool(maxSlots, maxMessageSize);
@@ -130,7 +150,9 @@ export class WorkerExtractor extends EventEmitter {
       metadataBuffer: poolTransferables.metadataBuffer,
       poolDataBuffer: poolTransferables.dataBuffer,
       maxSlots: poolTransferables.maxSlots,
-      maxMessageSize: poolTransferables.maxMessageSize
+      maxMessageSize: poolTransferables.maxMessageSize,
+      // [#30] forward the RX-stats gate so the worker emits backpressure telemetry too
+      rxStats: this.rxStats
     });
 
     WorkerExtractor.logConsoleMessage('SharedCircularBuffer and SharedMessagePool sent to worker');
@@ -175,6 +197,15 @@ export class WorkerExtractor extends EventEmitter {
             this.peakMessageRateDuration = now - this.peakMessageRateStartTime;
           }
 
+          // [#30] RX backpressure telemetry (PNUT_RX_STATS=1): ring-queue depth confirms the
+          // main-side hold-queue stays bounded (no unbounded growth = healthy backpressure).
+          if (this.rxStats) {
+            console.error(
+              `[RX-STATS main] msgs/s=${currentRate} ringQueueDepth=${this.pendingRingChunks.length} ` +
+                `pendingRingBytes=${this.pendingRingBytes} ringQueueHighWater=${this.ringQueueHighWater}`
+            );
+          }
+
           // Reset for next second
           this.messagesInLastSecond = 0;
           this.lastMessageRateCheckTime = now;
@@ -205,25 +236,74 @@ export class WorkerExtractor extends EventEmitter {
   public receiveData(data: Buffer): void {
     WorkerExtractor.logConsoleMessage(`receiveData(): ${data.length} bytes received`);
 
-    // Create independent copy for safety (prevents buffer reuse corruption)
+    // Independent immutable copy (prevents serialport buffer-reuse corruption). The USB logger
+    // reads exactly these bytes; the ring copies out of it via .set(), never mutating it.
     const dataCopy = new Uint8Array(Buffer.from(data));
 
-    // Log USB traffic if enabled (async, non-blocking)
+    // Log USB traffic if enabled (async, non-blocking) — log what ARRIVED, before any queuing.
     this.usbLogger.log(dataCopy, Date.now());
-
-    // Write to shared buffer (fast: bulk .set() operation)
-    const written = this.buffer.appendAtTail(dataCopy);
-
-    if (!written) {
-      // Buffer overflow - data dropped
-      WorkerExtractor.logConsoleMessage(`Buffer overflow! Dropped ${data.length} bytes`);
-      return;
-    }
 
     this.totalBytesReceived += data.length;
 
-    // Worker autonomously monitors buffer - no signaling needed
-    // CRITICAL: Return immediately - event loop free for next USB packet!
+    // [#30] Ring backpressure: never drop, and never call appendAtTail without space (that emits
+    // the destructive bufferOverflow→clearBuffer). Hold chunks in order when the ring is full and
+    // drain as it frees. Returns immediately — the event loop stays free for the next USB packet.
+    this.enqueueOrWriteRing(dataCopy);
+  }
+
+  /**
+   * [#30] Write a chunk to the ring if it fits, else hold it in FIFO order. Always flushes held
+   * chunks first so ordering is preserved. Never blocks; never triggers the destructive overflow.
+   * Safe single-writer: only main calls appendAtTail; the worker only advances head (the consumer),
+   * which can only INCREASE available space — so a chunk that passes the space check always fits.
+   */
+  private enqueueOrWriteRing(chunk: Uint8Array): void {
+    this.flushPendingRing();
+    // Write to the ring only while it stays ≤ 50% full (ringWriteLimit) AND the silent append
+    // succeeds; otherwise hold the chunk in order. The fill cap avoids the near-full SPSC race; the
+    // honored silent return is belt-and-suspenders so a write is NEVER assumed and NEVER drops. [#30]
+    if (
+      this.pendingRingChunks.length === 0 &&
+      this.buffer.getUsedSpace() + chunk.length <= this.ringWriteLimit &&
+      this.buffer.appendAtTail(chunk, true)
+    ) {
+      return;
+    }
+    this.pendingRingChunks.push(chunk);
+    this.pendingRingBytes += chunk.length;
+    if (this.pendingRingBytes > this.ringQueueHighWater) {
+      this.ringQueueHighWater = this.pendingRingBytes;
+    }
+    this.scheduleRingDrain();
+  }
+
+  /**
+   * [#30] Drain held chunks into the ring while it stays ≤ 50% full, preserving FIFO order. Stops
+   * (keeps the chunk) the moment the fill cap is reached or a silent write doesn't fit, so the
+   * near-full race can't fire and the head chunk is never dropped. The drain pump retries.
+   */
+  private flushPendingRing(): void {
+    while (this.pendingRingChunks.length > 0) {
+      const head = this.pendingRingChunks[0];
+      if (this.buffer.getUsedSpace() + head.length > this.ringWriteLimit) break;
+      if (!this.buffer.appendAtTail(head, true)) break;
+      this.pendingRingBytes -= this.pendingRingChunks.shift()!.length;
+    }
+  }
+
+  /**
+   * [#30] Self-terminating drain pump. Runs only while chunks are held; the worker keeps
+   * extracting (freeing ring space) as main releases pool slots, so the queue drains. setImmediate
+   * keeps the main loop responsive between attempts (no busy-wait, no blocking).
+   */
+  private scheduleRingDrain(): void {
+    if (this.ringDrainScheduled) return;
+    this.ringDrainScheduled = true;
+    setImmediate(() => {
+      this.ringDrainScheduled = false;
+      this.flushPendingRing();
+      if (this.pendingRingChunks.length > 0) this.scheduleRingDrain();
+    });
   }
 
   /**
@@ -342,7 +422,27 @@ export class WorkerExtractor extends EventEmitter {
   /**
    * Clear buffer
    */
+  /**
+   * [#30] Backpressure diagnostic snapshot (tests / HW debugging).
+   */
+  public getBackpressureDebug() {
+    return {
+      pendingRingChunks: this.pendingRingChunks.length,
+      pendingRingBytes: this.pendingRingBytes,
+      ringQueueHighWater: this.ringQueueHighWater,
+      ringDrainScheduled: this.ringDrainScheduled,
+      ringUsed: this.buffer.getUsedSpace(),
+      ringAvailable: this.buffer.getAvailableSpace(),
+      ringHasData: this.buffer.hasData()
+    };
+  }
+
   public clearBuffer(): void {
     this.buffer.clear();
+    // [#30] Discard held pre-reset chunks and tell the worker to drop any stashed message so no
+    // pre-reset data is emitted across the resync boundary (DTR/RTS reset path).
+    this.pendingRingChunks = [];
+    this.pendingRingBytes = 0;
+    this.worker.postMessage({ type: 'clear' });
   }
 }
