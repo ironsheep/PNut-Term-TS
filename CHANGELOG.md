@@ -5,6 +5,27 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.45] - 2026-06-10
+
+Fixes a false end-of-session detection that could disconnect the serial port mid-run and drop a
+message from the log. The end-of-session signal is a single `0x1B` (ESC) byte, but the terminal was
+treating *any* `0x1B` anywhere in a COG message as that signal. Binary `DEBUG` data legitimately
+contains `0x1B` bytes — for example a 16-bit sample value of `$031B` serializes to the bytes
+`1B 03`. When such a value appeared inside a binary payload, the terminal mistook it for the
+end-of-session sentinel: it disconnected the serial port (so the rest of the run was never
+received) and replaced the carrying message in the log with `[DEBUG_END_SESSION]` (dropping the
+real bytes). The sentinel is now trusted **only** when the `0x1B` immediately follows a `CR LF`
+line terminator (the 3-byte sequence `0D 0A 1B`), which binary sample data effectively never
+produces. Surfaced during voice-recognizer (DF2301Q) hardware testing.
+
+### Fixed
+
+- **A `0x1B` byte inside binary DEBUG data no longer triggers a false end-of-session.** Detection
+  was changed from "the message contains `0x1B` anywhere" to "a `0x1B` immediately preceded by a
+  `CR LF` pair." This prevents the spurious serial-port disconnect and the lost log message when a
+  binary sample value (e.g. `$031B`, or `$1B0A` → `0A 1B`) happens to carry a `0x1B` byte. New
+  shared `isEndSessionSentinel()` helper is used by both the window router and the debug logger.
+
 ## [0.9.44] - 2026-06-10
 
 Fixes an intermittent crash on command-line download (`-r`/`-f`): "Cannot read properties of

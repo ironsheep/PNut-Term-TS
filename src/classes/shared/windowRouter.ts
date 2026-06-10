@@ -13,6 +13,7 @@ import { safeDisplayString } from '../../utils/displayUtils';
 import { BinaryRecorder } from './binaryRecorder';
 import { Context, FEATURE_FLAGS } from '../../utils/context';
 import { SharedMessageType, ExtractedMessage } from './sharedMessagePool';
+import { isEndSessionSentinel } from './endSessionSentinel';
 
 /**
  * Window handler callback for routing messages to debug windows
@@ -497,9 +498,12 @@ export class WindowRouter extends EventEmitter {
     ) {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
 
-      // Check for DEBUG_END_SESSION sentinel (0x1B / ESC byte) in COG message data
-      // The P2 compiler's DEBUG(DEBUG_END_SESSION) emits 0x1B as a single-byte sentinel
-      if (message.data instanceof Uint8Array && message.data.includes(0x1b)) {
+      // Check for DEBUG_END_SESSION sentinel in COG message data. The only
+      // trusted signal is a 0x1B immediately preceded by a CR LF pair (the
+      // sequence 0x0D 0x0A 0x1B). A bare "contains 0x1B" scan false-triggers on
+      // binary DEBUG payloads (e.g. sample value $031B -> 1B 03), so use the
+      // boundary-aligned check (see endSessionSentinel.ts).
+      if (message.data instanceof Uint8Array && isEndSessionSentinel(message.data)) {
         this.logConsoleMessage(`[ROUTER] DEBUG_END_SESSION sentinel (0x1B) detected in COG${cogId ?? '?'} message`);
         this.emit('debugEndSession', { cogId: cogId ?? 0, timestamp: Date.now() });
       }

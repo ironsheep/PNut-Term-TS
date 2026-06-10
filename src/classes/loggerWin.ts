@@ -10,6 +10,7 @@ import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime, getFormattedDateTimeISO } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
 import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool';
+import { isEndSessionSentinel } from './shared/endSessionSentinel';
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
 // Console logging control for debugging
@@ -946,8 +947,12 @@ export class LoggerWindow extends DebugWindowBase {
           this.appendMessage(formatted, 'cog-message');
           this.writeToLog(formatted);
         } else {
-          // Check for DEBUG_END_SESSION sentinel (0x1B) before treating as routing error
-          if (actualData.includes(0x1b)) {
+          // Check for a DEBUG_END_SESSION sentinel before treating as routing
+          // error. The only trusted signal is a 0x1B immediately preceded by a
+          // CR LF pair (0x0D 0x0A 0x1B). A bare "contains 0x1B" scan false-
+          // matches binary payloads carrying a 0x1B byte (e.g. sample value
+          // $031B), wrongly replacing the carrying message (see #32).
+          if (isEndSessionSentinel(actualData)) {
             const endMsg = '[DEBUG_END_SESSION]';
             this.appendMessage(endMsg, 'cog-message');
             this.writeToLog(endMsg);
