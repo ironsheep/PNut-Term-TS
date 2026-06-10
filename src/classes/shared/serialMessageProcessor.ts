@@ -66,6 +66,22 @@ export class SerialMessageProcessor extends EventEmitter {
   private isRunning: boolean = false;
   private startTime: number = 0;
 
+  // [#30 perf] Time-budgeted cooperative consume. The single main thread is shared between CONSUMING
+  // the serial message stream (route→parse→unpack→color→queue) and RENDERING. Routing every message
+  // the instant the worker hands it over monopolizes the thread in long synchronous bursts, freezing
+  // the display for seconds. Instead we ENQUEUE poolIds and drain them under a time budget, yielding
+  // (setImmediate) between slices so the render loop + IPC replies get a turn — the display then
+  // repaints at a steady cadence instead of in bursts. A TIME budget (not a message COUNT) is
+  // hardware-INDEPENDENT: any machine yields after CONSUME_BUDGET_MS of work, so it paints just as
+  // often everywhere — a slow box simply processes fewer messages per slice (fills slower) while
+  // still always showing activity. 8ms = half a 60fps frame (16.7ms), keeping any single burst well
+  // under the ~100ms human "instantaneous" threshold. Composes with backpressure: un-drained data
+  // waits losslessly in the ring/pool. Time is checked every 64 messages so the clock isn't read
+  // per-message (64 msgs is sub-ms even on a Pi → negligible overshoot).
+  private static readonly CONSUME_BUDGET_MS = 8;
+  private pendingPoolIds: number[] = [];
+  private drainScheduled: boolean = false;
+
   constructor(
     enablePerformanceLogging: boolean = false,
     performanceLogPath?: string
@@ -106,12 +122,11 @@ export class SerialMessageProcessor extends EventEmitter {
       throw new Error('WorkerExtractor not initialized');
     }
 
-    // Worker sends poolId when message extracted
+    // Worker sends poolId when message extracted. [#30] Enqueue cheaply; the paced drain does the
+    // heavy routeFromPool work within a time budget so rendering shares the main thread.
     this.workerExtractor.on('messageExtracted', (poolId: number) => {
-      this.logConsoleMessage(`[Processor] Worker extracted message, poolId: ${poolId}`);
-
-      // Route from SharedMessagePool (zero-copy!)
-      this.router.routeFromPool(poolId);
+      this.pendingPoolIds.push(poolId);
+      this.ensureDrainScheduled();
     });
 
     // Handle worker ready
@@ -187,6 +202,37 @@ export class SerialMessageProcessor extends EventEmitter {
       this.logConsoleMessage('[Processor] Performance threshold exceeded:', alert);
       this.emit('performanceAlert', alert);
     });
+  }
+
+  /** [#30] Schedule the paced consume drain if one isn't already pending. */
+  private ensureDrainScheduled(): void {
+    if (this.drainScheduled) return;
+    this.drainScheduled = true;
+    setImmediate(() => this.drainPoolQueue());
+  }
+
+  /**
+   * [#30] Drain queued poolIds through the router for up to CONSUME_BUDGET_MS, then YIELD so the
+   * render loop + IPC replies run, and reschedule while work remains. This time-shares the single
+   * main thread between serial consumption and rendering so the display never freezes in long
+   * bursts. See CONSUME_BUDGET_MS.
+   */
+  private drainPoolQueue(): void {
+    this.drainScheduled = false;
+    if (!this.isRunning) {
+      // Stopped/torn down — the pool SAB is being discarded with the worker, so just drop the queue.
+      this.pendingPoolIds = [];
+      return;
+    }
+    const budget = SerialMessageProcessor.CONSUME_BUDGET_MS;
+    const start = performance.now();
+    let n = 0;
+    while (this.pendingPoolIds.length > 0) {
+      this.router.routeFromPool(this.pendingPoolIds.shift()!);
+      // Check the clock every 64 messages; yield once the time budget is spent.
+      if ((++n & 0x3f) === 0 && performance.now() - start >= budget) break;
+    }
+    if (this.pendingPoolIds.length > 0) this.ensureDrainScheduled();
   }
 
 

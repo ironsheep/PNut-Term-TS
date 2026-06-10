@@ -5,6 +5,30 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.43] - 2026-06-10
+
+Fixes the "displays freeze for seconds, then jump" behavior on busy multi-window demos at the
+root. The diagnostics showed the single main thread was being monopolized by serial-message
+processing in long bursts, starving the display so it could only repaint in the gaps. This build
+**time-shares the main thread**: it processes incoming messages for a short slice (~8 ms), then
+yields so the display can repaint, then continues — so the windows paint at a steady cadence the
+whole time instead of stalling and lurching. Because the slice is measured in *time* (not message
+count), this behaves the same across hardware — a slower machine simply does less per slice but
+still repaints just as often, so it looks responsive on a Raspberry Pi, a typical Windows box, or
+a Mac without any per-machine tuning. Overall runtime is essentially unchanged; it just always
+*looks* like it's working. This supersedes the v0.9.42 repaint cap, which has been removed.
+
+### Changed
+
+- **Main-thread work is now time-sliced between consuming the serial stream and repainting**
+  (~8 ms processing slices with yields), so the display updates continuously instead of freezing
+  in multi-second bursts. Hardware-independent by design.
+
+### Removed
+
+- The v0.9.42 per-pass repaint cap and its `PNUT_RENDER_BATCH_CAP` knob — the time-slicing makes
+  it redundant, so it's gone rather than left as an unused control.
+
 ## [0.9.42] - 2026-06-10
 
 Smooths out the repaint cadence on multi-window bitmap demos. v0.9.41's coordinated scheduler

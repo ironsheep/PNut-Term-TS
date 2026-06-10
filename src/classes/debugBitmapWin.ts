@@ -185,15 +185,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private static nextRenderSeq: number = 0;
   private readonly renderSeq: number = DebugBitmapWindow.nextRenderSeq++;
 
-  // [#30 perf] Per-window pixels flushed+repainted per scheduler pass. The gate at high rate is the
-  // MAIN thread (serial consume), so when it frees up the scheduler would otherwise dump a window's
-  // ENTIRE accumulated backlog (~23k px) in one visible jump, then move on — "fewer, bigger, too far
-  // apart" updates. Capping makes every window inch forward a small, even step each pass instead, so
-  // they advance TOGETHER and the repaint cadence feels responsive. Tunable per-run via
-  // PNUT_RENDER_BATCH_CAP (smaller = smaller/more-frequent increments). 0/unset → default.
-  private static readonly RENDER_BATCH_CAP: number =
-    Number(process.env.PNUT_RENDER_BATCH_CAP) > 0 ? Number(process.env.PNUT_RENDER_BATCH_CAP) : 8192;
-
   // [#30 perf] Gated render-timing telemetry (PNUT_RENDER_STATS=1). Splits each flush into main-side
   // payload BUILD time (JSON.stringify + string assembly) vs RENDERER await time (the executeJavaScript
   // round-trip), aggregated across ALL bitmap windows per second. One HW run then says whether the
@@ -1715,19 +1706,8 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
       return;
     }
     if (this.pendingPixels.length > 0) {
-      // [#30 perf] Flush at most RENDER_BATCH_CAP pixels this pass; leave the rest for the next pass
-      // so the window stays "dirty" and advances in small, even steps (see RENDER_BATCH_CAP). A
-      // partial flush forces a repaint so the increment is actually shown.
-      const cap = DebugBitmapWindow.RENDER_BATCH_CAP;
-      let batch: Array<{ x: number; y: number; rgb: number }>;
-      if (this.pendingPixels.length > cap) {
-        batch = this.pendingPixels.slice(0, cap);
-        this.pendingPixels = this.pendingPixels.slice(cap);
-        this.displayDirty = true; // show this partial increment now
-      } else {
-        batch = this.pendingPixels;
-        this.pendingPixels = [];
-      }
+      const batch = this.pendingPixels;
+      this.pendingPixels = [];
       await this.plotPixelBatch(batch);
     }
     if (this.displayDirty) {
@@ -1787,8 +1767,6 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
       for (const win of batch) {
         if (!win.debugWindow) continue; // window closed mid-pass
         await win.flushRenderQueue(); // serialized through the window's own chain (shared with SAVE)
-        // [#30] capped flush may leave a remainder — keep the window dirty so the next pass continues it
-        if (win.pendingPixels.length > 0 || win.displayDirty) DebugBitmapWindow.dirtyWindows.add(win);
       }
     } finally {
       DebugBitmapWindow.renderPassRunning = false;
