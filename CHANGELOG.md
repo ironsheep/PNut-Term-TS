@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.40] - 2026-06-10
+
+First performance pass on the correct-but-slow bitmap rendering. The v0.9.39 render-timing
+diagnostics showed the bottleneck is the **renderer**: drawing each pixel with its own canvas
+fill call was, by far, the most expensive thing it did. This build replaces that per-pixel loop
+with a single image blit — pixels are written into an in-memory image buffer and pushed to the
+canvas in one operation per update. This should sharply cut the per-update render cost on dense
+demos like RGB24. (A follow-up will coordinate the windows' repaints to also smooth out the
+remaining jerkiness/reordering.) Run with `PNUT_RENDER_STATS=1` to compare the before/after.
+
+### Changed
+
+- **Bitmap pixels are now drawn via a single `putImageData` blit** instead of one `fillRect`
+  per pixel. The image buffer is kept in sync with clears and scrolls, so behavior is unchanged
+  — only much faster. Pixels also carry their color as a number rather than a CSS string.
+
 ## [0.9.39] - 2026-06-10
 
 Promotes the off-main-thread serial path from opt-in to **the** serial path. The dedicated serial child process + lossless backpressure (v0.9.36–v0.9.38) validated on hardware — HSV16 clean and RGB24 lossless at 2 Mbaud — so it now runs by default with no flag. The verbose connect-handshake logging used to bring it up has been quieted (genuine errors still print). This build also adds **opt-in render-timing diagnostics** (`PNUT_RENDER_STATS=1`) that measure where each bitmap window spends its drawing time — building the update on the main process vs. waiting on the renderer — so we can pin down and tune the remaining slowness on dense demos like RGB24 (which is correct, but paints slowly/jerkily). macOS is the validated platform for this test-release stage.

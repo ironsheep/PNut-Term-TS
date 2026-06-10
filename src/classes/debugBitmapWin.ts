@@ -163,7 +163,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
   // flush them to the renderer in coalesced batches on a timer, so serial processing never
   // awaits IPC. Display refresh stays rate-gated (displayDirty is only set on a rate cycle),
   // so visual cadence matches the pre-coalescing behavior.
-  private pendingPixels: Array<{ x: number; y: number; color: string }> = [];
+  // [#30 perf] Pixels carry numeric rgb (0xRRGGBB), not a '#rrggbb' string — they're written into
+  // a persistent ImageData and blitted with a single putImageData (one renderer op), instead of one
+  // ctx.fillRect per pixel (the dominant renderer cost the RENDER-STATS exec time exposed).
+  private pendingPixels: Array<{ x: number; y: number; rgb: number }> = [];
   private displayDirty: boolean = false;
   private renderFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private renderFlushChain: Promise<void> = Promise.resolve();
@@ -1065,6 +1068,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
           offCtx.fillStyle = 'rgb(${r}, ${g}, ${b})';
           offCtx.fillRect(0, 0, ${this.state.width}, ${this.state.height});
         }
+        // [#30 perf] invalidate the persistent pixel store so the next plot re-syncs from this clear
+        delete window['bitmapImageData_${this.bitmapCanvasId}'];
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
@@ -1159,7 +1164,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
    * Plot multiple pixels in a single batched operation (NORMAL mode only)
    * This dramatically improves performance by reducing IPC calls from O(n) to O(1)
    */
-  private async plotPixelBatch(pixels: Array<{ x: number; y: number; color: string }>): Promise<void> {
+  private async plotPixelBatch(pixels: Array<{ x: number; y: number; rgb: number }>): Promise<void> {
     if (!this.debugWindow || pixels.length === 0) {
       return;
     }
@@ -1169,6 +1174,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
     // [#30 perf] t0→t1 = main-side payload build (JSON.stringify + string assembly);
     //            t1→(await done) = renderer exec round-trip. See RENDER-STATS.
+    // The renderer writes each pixel into a persistent ImageData (a typed-array store) and blits
+    // it with ONE putImageData — replacing the per-pixel ctx.fillRect loop that dominated exec time.
+    // The ImageData is a cache of the offscreen: clearBitmap/scrollBitmap delete it so the next batch
+    // re-syncs from the (freshly cleared/scrolled) offscreen via a single getImageData.
     const rs = DebugBitmapWindow.RENDER_STATS;
     const t0 = rs ? performance.now() : 0;
     const batchJS = `
@@ -1186,13 +1195,26 @@ export class DebugBitmapWindow extends DebugWindowBase {
           return 'ERROR: Context not available';
         }
 
-        const pixels = ${JSON.stringify(pixels)};
-        for (let i = 0; i < pixels.length; i++) {
-          const p = pixels[i];
-          offCtx.fillStyle = p.color;
-          offCtx.fillRect(p.x, p.y, 1, 1);
+        const W = ${this.state.width}, H = ${this.state.height};
+        const idKey = 'bitmapImageData_${this.bitmapCanvasId}';
+        let id = window[idKey];
+        if (!id || id.width !== W || id.height !== H) {
+          // (re)sync the pixel store from the current offscreen (post clear/scroll/init)
+          id = offCtx.getImageData(0, 0, W, H);
+          window[idKey] = id;
         }
-        return 'SUCCESS: ' + pixels.length + ' pixels plotted';
+        const d = id.data;
+        const px = ${JSON.stringify(pixels)};
+        for (let i = 0; i < px.length; i++) {
+          const p = px[i];
+          const o = (p.y * W + p.x) * 4;
+          d[o] = (p.rgb >> 16) & 255;
+          d[o + 1] = (p.rgb >> 8) & 255;
+          d[o + 2] = p.rgb & 255;
+          d[o + 3] = 255;
+        }
+        offCtx.putImageData(id, 0, 0);
+        return 'SUCCESS: ' + px.length + ' pixels plotted';
       })();
     `;
     const t1 = rs ? performance.now() : 0;
@@ -1245,6 +1267,8 @@ tempCtx.drawImage(offscreen, 0, 0);
 // Copy back with scroll offset (scrollX/Y are in logical pixels, not scaled)
 // The exposed edge will contain "garbage" (wrapped data) until new pixels overwrite it
 ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${scrollX}), (${scrollY}), ${this.state.width}, ${this.state.height});
+// [#30 perf] invalidate the persistent pixel store so the next plot re-syncs from the scrolled offscreen
+delete window['bitmapImageData_${this.bitmapCanvasId}'];
 })();`;
 
     this.logMessage(`[SCROLL] Scrolling offscreen bitmap: scrollX=${scrollX}, scrollY=${scrollY}`);
@@ -1599,7 +1623,7 @@ ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${sc
             }
 
             // Queue pixel for coalesced flush instead of an immediate/awaited IPC call. [#30]
-            this.pendingPixels.push({ x: pos.x, y: pos.y, color: color });
+            this.pendingPixels.push({ x: pos.x, y: pos.y, rgb: rgb24 });
           }
         }
 
