@@ -165,14 +165,14 @@ export class DebugBitmapWindow extends DebugWindowBase {
   // so visual cadence matches the pre-coalescing behavior.
   // [#30 perf] Pixels carry numeric rgb (0xRRGGBB), not a '#rrggbb' string — they're written into
   // a persistent ImageData and blitted with a single putImageData (one renderer op), instead of one
-  // ctx.fillRect per pixel (the dominant renderer cost the RENDER-STATS exec time exposed).
+  // ctx.fillRect per pixel (which was the dominant renderer cost).
   private pendingPixels: Array<{ x: number; y: number; rgb: number }> = [];
   private displayDirty: boolean = false;
   private renderFlushChain: Promise<void> = Promise.resolve();
   private static readonly RENDER_FLUSH_MS = 16; // ~60 fps coalescing cadence
 
-  // [#30 perf] GLOBAL render scheduler. v0.9.40 RENDER-STATS proved per-pixel cost is NOT the gate
-  // (putImageData barely moved the wall clock); the gate is N independent per-window 16ms flush
+  // [#30 perf] GLOBAL render scheduler. Per-pixel cost is NOT the wall-clock gate (putImageData
+  // barely moved it); the gate is N independent per-window 16ms flush
   // chains all piling AWAITED executeJavaScript onto the single renderer, out of order → a multi-
   // second renderer backlog (a 1,627px flush measured exe=1048ms = pure queue-wait) + the visible
   // reorder/jerk. ONE coordinated pass over ALL dirty windows in a STABLE order (creation order =
@@ -184,82 +184,6 @@ export class DebugBitmapWindow extends DebugWindowBase {
   private static renderPassRunning: boolean = false;
   private static nextRenderSeq: number = 0;
   private readonly renderSeq: number = DebugBitmapWindow.nextRenderSeq++;
-
-  // [#30 perf] Gated render-timing telemetry (PNUT_RENDER_STATS=1). Splits each flush into main-side
-  // payload BUILD time (JSON.stringify + string assembly) vs RENDERER await time (the executeJavaScript
-  // round-trip), aggregated across ALL bitmap windows per second. One HW run then says whether the
-  // ceiling is main-CPU (→ global render scheduler / move parse off main) or the renderer (→ binary
-  // pixel IPC / putImageData). Quiet + zero-overhead when the flag is off. activeWin count confirms the
-  // "N concurrent windows = N× flush cost" mechanism.
-  private static readonly RENDER_STATS: boolean = process.env.PNUT_RENDER_STATS === '1';
-  private static renderStatsByWin: Map<
-    string,
-    { buildMs: number; execMs: number; updateMs: number; flushes: number; updates: number; pixels: number }
-  > = new Map();
-  private static renderStatsLastEmit: number = 0;
-
-  private static rsBucket(winId: string) {
-    let s = DebugBitmapWindow.renderStatsByWin.get(winId);
-    if (!s) {
-      s = { buildMs: 0, execMs: 0, updateMs: 0, flushes: 0, updates: 0, pixels: 0 };
-      DebugBitmapWindow.renderStatsByWin.set(winId, s);
-    }
-    return s;
-  }
-
-  /** [#30 perf] Record one plotPixelBatch flush: main-side build time vs renderer exec (await) time. */
-  private static recordFlush(winId: string, buildMs: number, execMs: number, pixels: number): void {
-    if (!DebugBitmapWindow.RENDER_STATS) return;
-    const s = DebugBitmapWindow.rsBucket(winId);
-    s.buildMs += buildMs;
-    s.execMs += execMs;
-    s.flushes++;
-    s.pixels += pixels;
-    DebugBitmapWindow.maybeEmitRenderStats();
-  }
-
-  /** [#30 perf] Record one updateCanvas visible stretch-blit await. */
-  private static recordUpdate(winId: string, updateMs: number): void {
-    if (!DebugBitmapWindow.RENDER_STATS) return;
-    const s = DebugBitmapWindow.rsBucket(winId);
-    s.updateMs += updateMs;
-    s.updates++;
-    DebugBitmapWindow.maybeEmitRenderStats();
-  }
-
-  private static maybeEmitRenderStats(): void {
-    const now = Date.now();
-    if (DebugBitmapWindow.renderStatsLastEmit === 0) {
-      DebugBitmapWindow.renderStatsLastEmit = now;
-      return;
-    }
-    if (now - DebugBitmapWindow.renderStatsLastEmit < 1000) return;
-    let tB = 0,
-      tE = 0,
-      tU = 0,
-      tF = 0,
-      tUN = 0,
-      tP = 0;
-    const parts: string[] = [];
-    for (const [id, s] of DebugBitmapWindow.renderStatsByWin) {
-      tB += s.buildMs;
-      tE += s.execMs;
-      tU += s.updateMs;
-      tF += s.flushes;
-      tUN += s.updates;
-      tP += s.pixels;
-      parts.push(
-        `${id}[bld=${s.buildMs.toFixed(0)} exe=${s.execMs.toFixed(0)} upd=${s.updateMs.toFixed(0)} fl=${s.flushes} px=${s.pixels}]`
-      );
-    }
-    console.error(
-      `[RENDER-STATS] activeWin=${DebugBitmapWindow.renderStatsByWin.size} ` +
-        `buildMs=${tB.toFixed(0)} execMs=${tE.toFixed(0)} updateMs=${tU.toFixed(0)} ` +
-        `flushes=${tF} updates=${tUN} px=${tP} | ${parts.join(' ')}`
-    );
-    DebugBitmapWindow.renderStatsByWin.clear();
-    DebugBitmapWindow.renderStatsLastEmit = now;
-  }
 
   // Named-color table (Pascal key_black..key_gray order, DebugDisplayUnit.pas:32-41).
   // Used by SPARSE / LUTCOLORS / COLOR which accept color names via KeyColor (:2752). [9win §15]
@@ -1161,13 +1085,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     `;
 
     // Now properly await the JavaScript execution
-    const rsT0 = DebugBitmapWindow.RENDER_STATS ? performance.now() : 0;
     try {
       await this.debugWindow.webContents.executeJavaScript(stretchJS);
     } catch (error) {
       this.logMessage(`Failed to execute StretchDraw: ${error}`);
-    } finally {
-      if (DebugBitmapWindow.RENDER_STATS) DebugBitmapWindow.recordUpdate(this.idString, performance.now() - rsT0);
     }
   }
 
@@ -1183,14 +1104,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
     if (this.isLogging)
       this.logMessage(`[BATCH PLOT] Plotting ${pixels.length} pixels to canvas '${this.bitmapCanvasId}'`);
 
-    // [#30 perf] t0→t1 = main-side payload build (JSON.stringify + string assembly);
-    //            t1→(await done) = renderer exec round-trip. See RENDER-STATS.
-    // The renderer writes each pixel into a persistent ImageData (a typed-array store) and blits
-    // it with ONE putImageData — replacing the per-pixel ctx.fillRect loop that dominated exec time.
-    // The ImageData is a cache of the offscreen: clearBitmap/scrollBitmap delete it so the next batch
-    // re-syncs from the (freshly cleared/scrolled) offscreen via a single getImageData.
-    const rs = DebugBitmapWindow.RENDER_STATS;
-    const t0 = rs ? performance.now() : 0;
+    // [#30 perf] The renderer writes each pixel into a persistent ImageData (a typed-array store)
+    // and blits it with ONE putImageData — replacing the per-pixel ctx.fillRect loop that dominated
+    // render time. The ImageData is a cache of the offscreen: clearBitmap/scrollBitmap delete it so
+    // the next batch re-syncs from the (freshly cleared/scrolled) offscreen via a single getImageData.
     const batchJS = `
       (function() {
         const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
@@ -1228,15 +1145,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
         return 'SUCCESS: ' + px.length + ' pixels plotted';
       })();
     `;
-    const t1 = rs ? performance.now() : 0;
 
     try {
       const result = await this.debugWindow.webContents.executeJavaScript(batchJS);
       if (this.isLogging) this.logMessage(`[BATCH RESULT] ${result}`);
     } catch (error) {
       this.logMessage(`[BATCH ERROR] Failed to execute batch pixel plot: ${error}`);
-    } finally {
-      if (rs) DebugBitmapWindow.recordFlush(this.idString, t1 - t0, performance.now() - t1, pixels.length);
     }
   }
 

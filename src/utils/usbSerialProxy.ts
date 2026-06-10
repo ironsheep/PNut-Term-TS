@@ -19,8 +19,6 @@ import * as fs from 'fs';
 import type { Context } from './context';
 import { UsbSerial } from './usb.serial';
 
-const ENABLE_CONSOLE_LOG = false; // handshake play-by-play (genuine errors stay ungated below)
-
 interface ChecksumStatus {
   verified: boolean;
   valid: boolean;
@@ -55,7 +53,6 @@ export class UsbSerialProxy extends EventEmitter {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { utilityProcess } = require('electron');
     const hostPath = UsbSerialProxy.resolveHostPath();
-    if (ENABLE_CONSOLE_LOG) console.log(`[SERIAL-PROXY] forking serial utility process: ${hostPath}`);
 
     const initMessage = {
       kind: 'init',
@@ -96,18 +93,14 @@ export class UsbSerialProxy extends EventEmitter {
       case 'hello':
         // Host's listener is attached — now it's safe to send init, then flush buffered calls.
         this.helloSeen = true;
-        if (ENABLE_CONSOLE_LOG)
-          console.log(`[SERIAL-PROXY] hello recv → sending init + flushing ${this.outbox.length} buffered call(s)`);
         this.child.postMessage(initMessage);
         for (const m of this.outbox) this.child.postMessage(m);
         this.outbox = [];
         break;
       case 'ready':
         this.hostReady = true;
-        if (ENABLE_CONSOLE_LOG) console.log('[SERIAL-PROXY] serial host READY — port hosted in a dedicated process');
         break;
       case 'result': {
-        if (ENABLE_CONSOLE_LOG) console.log(`[SERIAL-PROXY] result id=${msg.id} ok=${msg.ok}`);
         const p = this.pending.get(msg.id);
         if (p) {
           this.pending.delete(msg.id);
@@ -139,9 +132,6 @@ export class UsbSerialProxy extends EventEmitter {
   }
 
   private send(message: any): void {
-    if (ENABLE_CONSOLE_LOG && message?.kind === 'call') {
-      console.log(`[SERIAL-PROXY] ${this.helloSeen ? 'send' : 'buffer'} call ${message.method} id=${message.id}`);
-    }
     if (this.helloSeen) this.child.postMessage(message);
     else this.outbox.push(message); // buffer until host listener is up (avoids lost messages)
   }

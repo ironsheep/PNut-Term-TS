@@ -174,30 +174,6 @@ export class MainWindow {
     // Initialize Two-Tier Pattern Matching serial processor and COG managers
     this.serialProcessor = new SerialMessageProcessor(true); // Enable performance logging
 
-    // [#31] Optional main-thread event-loop-delay monitor (PNUT_LOOP_MONITOR=1). This is the
-    // acceptance instrument for the serial-offload work: with the render-heavy demo at 2 Mbaud,
-    // p99 delay should collapse to ~idle once the serial read is off the main loop. Cheap and
-    // off by default; capture before (worker off) and after (worker on) with this enabled.
-    if (process.env.PNUT_LOOP_MONITOR === '1') {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { monitorEventLoopDelay } = require('perf_hooks');
-        const h = monitorEventLoopDelay({ resolution: 10 });
-        h.enable();
-        const ms = (ns: number) => Math.round(ns / 1e5) / 10;
-        setInterval(() => {
-          console.log(
-            `[LOOP-DELAY] p50=${ms(h.percentile(50))}ms p90=${ms(h.percentile(90))}ms p99=${ms(
-              h.percentile(99)
-            )}ms max=${ms(h.max)}ms`
-          );
-          h.reset();
-        }, 2000).unref();
-        console.log('[LOOP-DELAY] event-loop-delay monitor enabled (PNUT_LOOP_MONITOR=1)');
-      } catch (e) {
-        console.error('[LOOP-DELAY] failed to enable monitor:', e);
-      }
-    }
     this.cogWindowManager = new COGWindowManager();
     this.cogHistoryManager = new COGHistoryManager();
     this.cogLogExporter = new COGLogExporter();
