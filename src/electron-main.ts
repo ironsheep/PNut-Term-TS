@@ -258,27 +258,27 @@ app.commandLine.appendSwitch('no-sandbox');
         }
       }
 
-      // If we have a download file, initiate download
+      // If we have a download file, initiate download. downloadFileFromPath waits for the serial
+      // connection to be fully ready, so there's no fixed delay to race the async connect (which
+      // intermittently caused an undefined-port crash on tight exit→relaunch cycles).
       if (ramFileSpec) {
         logger.verboseMsg(`Downloading to RAM: ${ramFileSpec}`);
-        // Wait a moment for the window to be fully ready, then download
-        setTimeout(async () => {
+        void (async () => {
           try {
             await mainWindow.downloadFileFromPath(ramFileSpec, false);
           } catch (error) {
             logger.errorMsg(`Failed to download to RAM: ${error}`);
           }
-        }, 2000);
+        })();
       } else if (flashFileSpec) {
         logger.verboseMsg(`Downloading to FLASH: ${flashFileSpec}`);
-        // Wait a moment for the window to be fully ready, then download
-        setTimeout(async () => {
+        void (async () => {
           try {
             await mainWindow.downloadFileFromPath(flashFileSpec, true);
           } catch (error) {
             logger.errorMsg(`Failed to download to FLASH: ${error}`);
           }
-        }, 2000);
+        })();
       }
     } catch (error) {
       logger.errorMsg(`Failed to create main window: ${error}`);

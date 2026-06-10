@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.44] - 2026-06-10
+
+Fixes an intermittent crash on command-line download (`-r`/`-f`): "Cannot read properties of
+undefined (reading 'getCurrentBaudRate') — failed to download to RAM", seen every few starts on a
+tight exit→relaunch cycle. The auto-download was kicked off on a fixed 2-second delay, but
+establishing the serial connection is asynchronous and variable — especially when the previous
+instance's serial process is still releasing the port on a rapid relaunch. When the connect ran
+long, the download started against a half-initialized port and crashed. The download now **waits
+for the connection to actually be ready** (up to 10 s) before starting, instead of guessing a
+delay, and aborts cleanly with a clear message if it never connects.
+
+### Fixed
+
+- **Command-line download no longer races the serial connect.** `downloadFileFromPath` waits for
+  the port + downloader to be fully established before downloading; the fixed 2-second pre-download
+  delay was removed (the readiness wait replaces it). Resolves the intermittent
+  undefined-port crash on fast download→exit→relaunch cycles.
+
 ## [0.9.43] - 2026-06-10
 
 Fixes the "displays freeze for seconds, then jump" behavior on busy multi-window demos at the

@@ -6159,8 +6159,35 @@ export class MainWindow {
     this.logMessage(`Download mode set to ${mode.toUpperCase()}`);
   }
 
+  /**
+   * Resolve true once the serial connection is fully established (port object + downloader both
+   * created), or false after timeoutMs. openSerialPort() is async and fire-and-forget, and it
+   * creates the downloader LAST — so a CLI auto-download must wait for readiness, not a fixed
+   * delay. A fixed delay races the connect, especially on a tight exit→relaunch cycle where the
+   * prior instance's UtilityProcess/port is still releasing and waitForPortOpen runs long.
+   */
+  private async waitForConnectionReady(timeoutMs: number): Promise<boolean> {
+    const start = Date.now();
+    while (!(this._serialPort && this.downloader)) {
+      if (Date.now() - start >= timeoutMs) return false;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return true;
+  }
+
   public async downloadFileFromPath(filePath: string, toFlash: boolean): Promise<void> {
-    // Public method for command-line initiated downloads
+    // Public method for command-line initiated downloads.
+    // Gate on the connection being fully ready so we never download against a half-initialized
+    // serial port (which intermittently derefs an undefined port mid-download — bug seen on tight
+    // relaunch cycles). Abort cleanly on timeout instead of crashing.
+    const ready = await this.waitForConnectionReady(10000);
+    if (!ready) {
+      this.logMessage(
+        `ERROR: Cannot download ${path.basename(filePath)} — serial connection not ready (timed out after 10s)`
+      );
+      this.updateRecordingStatus('Not connected');
+      return;
+    }
     await this.performDownloadFromPath(filePath, toFlash);
   }
 
