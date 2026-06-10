@@ -1012,9 +1012,14 @@ export class UsbSerial extends EventEmitter {
           if (err) {
             reject(err);
           } else {
-            const logValue = Buffer.isBuffer(value)
-              ? `<Buffer ${value.length} bytes>`
-              : value.split(/\r?\n/).filter(Boolean)[0];
+            // NOTE: a Buffer passed across the serial-worker boundary arrives here as a
+            // plain Uint8Array (structured clone drops the Buffer prototype), so guard on
+            // "is it a string?" rather than Buffer.isBuffer — otherwise .split() throws and
+            // the unhandled error in this write callback tears down the serial process.
+            const logValue =
+              typeof value === 'string'
+                ? value.split(/\r?\n/).filter(Boolean)[0]
+                : `<Buffer ${value.length} bytes>`;
             this.logMessage(`--> Tx [${logValue}]`);
             // Ensure data is fully transmitted before returning
             try {

@@ -5,6 +5,29 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.46] - 2026-06-10
+
+Fixes a crash that aborted the download (and killed the serial connection) when the off-main serial
+worker was active — the default since v0.9.39. The symptom was an abrupt exit with
+`TypeError: value.split is not a function` followed by `serial utility process exited`, seen on a
+plain CLI download with or without USB-traffic logging (`-u`). The cause was a diagnostic log line
+in the serial `write()` path that assumed any non-`Buffer` value is a `string`. A `Buffer` handed to
+the serial worker crosses the process boundary via structured clone, which drops the `Buffer`
+prototype and delivers it as a plain `Uint8Array`; `Buffer.isBuffer()` then returns `false`, so the
+code called `.split()` on a `Uint8Array` and threw. The actual byte write had already succeeded — the
+throw was purely in the post-write logging callback, but being unhandled it tore down the whole
+serial process. The guard now keys on `typeof value === 'string'`, so both real `Buffer`s and
+boundary-downgraded `Uint8Array`s take the byte-count log path. Transmit behavior is unchanged.
+
+### Fixed
+
+- **Serial `write()` no longer crashes the serial worker process when logging a binary write.** The
+  diagnostic formatter guarded on `Buffer.isBuffer(value)`, but a `Buffer` sent across the
+  serial-worker boundary arrives as a `Uint8Array` (structured clone drops the `Buffer` prototype),
+  which failed the check and fell through to `value.split()` — throwing `TypeError: value.split is
+  not a function` and terminating the serial utility process mid-download. The guard now tests
+  `typeof value === 'string'` so non-string payloads are logged as `<Buffer N bytes>`.
+
 ## [0.9.45] - 2026-06-10
 
 Fixes a false end-of-session detection that could disconnect the serial port mid-run and drop a
