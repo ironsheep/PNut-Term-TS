@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.39] - 2026-06-10
+
+Promotes the off-main-thread serial path from opt-in to **the** serial path. The dedicated serial child process + lossless backpressure (v0.9.36–v0.9.38) validated on hardware — HSV16 clean and RGB24 lossless at 2 Mbaud — so it now runs by default with no flag. The verbose connect-handshake logging used to bring it up has been quieted (genuine errors still print). This build also adds **opt-in render-timing diagnostics** (`PNUT_RENDER_STATS=1`) that measure where each bitmap window spends its drawing time — building the update on the main process vs. waiting on the renderer — so we can pin down and tune the remaining slowness on dense demos like RGB24 (which is correct, but paints slowly/jerkily). macOS is the validated platform for this test-release stage.
+
+### Changed
+
+- **Off-main serial I/O is now the default and only path** (the `PNUT_SERIAL_WORKER` flag is gone). The legacy main-thread serial code still runs inside the serial child process.
+- **Quieted the serial connect/RPC play-by-play logging** (the `[HOST]`/`[SERIAL-PROXY]` chatter); real failures still log.
+
+### Added
+
+- **Render-timing diagnostics** (`PNUT_RENDER_STATS=1`): per-second, per-window split of main-side update-build time vs. renderer round-trip time, plus active-window count and pixel/flush counts — to identify which rendering bottleneck to tune.
+
+### Removed
+
+- Dead `getRingTransferables()` helpers left over from the worker-thread→child-process pivot.
+
 ## [0.9.38] - 2026-06-10
 
 Makes the experimental off-main-thread serial path **lossless under heavy display load**. With the serial port now hosted off the main process (v0.9.36+), high-volume demos like the RGB24 bitmap test still dropped data — not at the port, but downstream: when the main process can't process incoming messages as fast as they arrive, the internal hand-off buffers filled and the oldest messages were discarded ("message lost"), producing incomplete renders. This build replaces dropping with **backpressure**: when a buffer is full the producer briefly waits instead of discarding, so a momentary slow-down delays a message rather than losing it. Every byte is preserved and the picture renders complete. Includes opt-in receive-pipeline telemetry (`PNUT_RX_STATS=1`) to confirm the behavior on hardware. Still opt-in via `PNUT_SERIAL_WORKER=1`; default behavior unchanged.

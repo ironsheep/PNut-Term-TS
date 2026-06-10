@@ -1478,16 +1478,12 @@ export class MainWindow {
       this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_SET ${this._serialBaud} baud (${source})`);
     }
     try {
-      // [#31] --serial-worker (PNUT_SERIAL_WORKER=1): host the SerialPort in a dedicated
-      // worker_threads Worker that writes the extraction ring directly, so the main loop's
-      // render work can never starve the driver. Default path is unchanged main-thread
-      // UsbSerial, so a worker problem can't brick an otherwise-good build.
-      if (process.env.PNUT_SERIAL_WORKER === '1') {
-        console.log('[SERIAL] ✅ WORKER MODE ENABLED — serial read hosted in a dedicated process (#31)');
-        this._serialPort = new UsbSerialProxy(this.context, deviceNode) as unknown as UsbSerial;
-      } else {
-        this._serialPort = new UsbSerial(this.context, deviceNode);
-      }
+      // [#31] Serial I/O is hosted off the main loop in a dedicated Electron UtilityProcess
+      // (UsbSerialProxy → serialIoHost), so render work can never starve the driver — the torn-read
+      // corruption / data-loss seen at 2 Mbaud is gone, and receive backpressure (#30) keeps the
+      // pipeline lossless under display load. This is the production path; the legacy main-thread
+      // UsbSerial still runs inside that UtilityProcess (constructed by the host).
+      this._serialPort = new UsbSerialProxy(this.context, deviceNode) as unknown as UsbSerial;
       // Wait for port to actually open before proceeding
       await this._serialPort.waitForPortOpen();
     } catch (error) {

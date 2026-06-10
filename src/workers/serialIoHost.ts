@@ -20,6 +20,9 @@ const port: any = (process as any).parentPort;
 
 let serial: UsbSerial | null = null;
 
+// Handshake/RPC play-by-play (stdio-inherited to the parent). Genuine failures below stay ungated.
+const ENABLE_CONSOLE_LOG = false;
+
 function post(msg: any, transfer?: any[]): void {
   if (transfer && transfer.length) port.postMessage(msg, transfer);
   else port.postMessage(msg);
@@ -53,7 +56,7 @@ function pushState(): void {
 
 function handleInit(init: any): void {
   try {
-    console.error(`[HOST] init: constructing UsbSerial for ${init.deviceNode} @ ${init.baudRate}`);
+    if (ENABLE_CONSOLE_LOG) console.error(`[HOST] init: constructing UsbSerial for ${init.deviceNode} @ ${init.baudRate}`);
     UsbSerial.setCommBaudRate(init.baudRate);
     serial = new UsbSerial(makeContextStub(init.runEnvironment || {}), init.deviceNode);
     if (init.downloadBaudRate) {
@@ -70,7 +73,7 @@ function handleInit(init: any): void {
       copy.set(data);
       post({ kind: 'data', data: copy }, [copy.buffer]);
     });
-    console.error('[HOST] init done, posting ready');
+    if (ENABLE_CONSOLE_LOG) console.error('[HOST] init done, posting ready');
     post({ kind: 'ready' });
   } catch (e: any) {
     console.error(`[HOST] init FAILED: ${e?.message ?? e}`);
@@ -79,7 +82,7 @@ function handleInit(init: any): void {
 }
 
 async function handleCall(msg: any): Promise<void> {
-  console.error(`[HOST] call ${msg.method} id=${msg.id}`);
+  if (ENABLE_CONSOLE_LOG) console.error(`[HOST] call ${msg.method} id=${msg.id}`);
   if (!serial) {
     if (msg.id) post({ kind: 'result', id: msg.id, ok: false, error: 'serial not initialized' });
     return;
@@ -88,7 +91,7 @@ async function handleCall(msg: any): Promise<void> {
     const fn = (serial as any)[msg.method];
     if (typeof fn !== 'function') throw new Error(`serial host: unknown method '${msg.method}'`);
     const value = await fn.apply(serial, msg.args || []);
-    console.error(`[HOST] call ${msg.method} id=${msg.id} resolved -> posting result`);
+    if (ENABLE_CONSOLE_LOG) console.error(`[HOST] call ${msg.method} id=${msg.id} resolved -> posting result`);
     if (msg.id) post({ kind: 'result', id: msg.id, ok: true, value });
   } catch (e: any) {
     console.error(`[HOST] call ${msg.method} id=${msg.id} REJECTED: ${e?.message ?? e}`);
@@ -101,7 +104,7 @@ async function handleCall(msg: any): Promise<void> {
 port.on('message', (event: any) => {
   // UtilityProcess delivers a MessageEvent ({data, ports}); be tolerant of a raw payload too.
   const msg = event && Object.prototype.hasOwnProperty.call(event, 'data') ? event.data : event;
-  console.error(`[HOST] recv kind=${msg?.kind} method=${msg?.method ?? ''} id=${msg?.id ?? ''}`);
+  if (ENABLE_CONSOLE_LOG) console.error(`[HOST] recv kind=${msg?.kind} method=${msg?.method ?? ''} id=${msg?.id ?? ''}`);
   if (!msg) return;
   if (msg.kind === 'init') handleInit(msg);
   else if (msg.kind === 'call') void handleCall(msg);
@@ -109,5 +112,5 @@ port.on('message', (event: any) => {
 
 // Announce readiness to receive 'init' (main waits for this so no message is sent before our
 // listener is attached).
-console.error('[HOST] loaded — posting hello');
+if (ENABLE_CONSOLE_LOG) console.error('[HOST] loaded — posting hello');
 post({ kind: 'hello' });

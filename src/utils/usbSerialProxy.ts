@@ -11,7 +11,7 @@
 //
 // Presents the consumed UsbSerial surface: async methods are RPC'd to the host and return a
 // Promise; synchronous getters are served from a cache the host keeps fresh; the EventEmitter
-// 'data' surface is preserved. Behind PNUT_SERIAL_WORKER=1; default path is unchanged.
+// 'data' surface is preserved. This is the production serial path (always used).
 
 import { EventEmitter } from 'events';
 import * as path from 'path';
@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import type { Context } from './context';
 import { UsbSerial } from './usb.serial';
 
-const ENABLE_CONSOLE_LOG = true; // loud during bring-up / HW validation
+const ENABLE_CONSOLE_LOG = false; // handshake play-by-play (genuine errors stay ungated below)
 
 interface ChecksumStatus {
   verified: boolean;
@@ -96,7 +96,8 @@ export class UsbSerialProxy extends EventEmitter {
       case 'hello':
         // Host's listener is attached — now it's safe to send init, then flush buffered calls.
         this.helloSeen = true;
-        console.log(`[SERIAL-PROXY] hello recv → sending init + flushing ${this.outbox.length} buffered call(s)`);
+        if (ENABLE_CONSOLE_LOG)
+          console.log(`[SERIAL-PROXY] hello recv → sending init + flushing ${this.outbox.length} buffered call(s)`);
         this.child.postMessage(initMessage);
         for (const m of this.outbox) this.child.postMessage(m);
         this.outbox = [];
@@ -106,14 +107,14 @@ export class UsbSerialProxy extends EventEmitter {
         if (ENABLE_CONSOLE_LOG) console.log('[SERIAL-PROXY] serial host READY — port hosted in a dedicated process');
         break;
       case 'result': {
-        console.log(`[SERIAL-PROXY] result id=${msg.id} ok=${msg.ok}`);
+        if (ENABLE_CONSOLE_LOG) console.log(`[SERIAL-PROXY] result id=${msg.id} ok=${msg.ok}`);
         const p = this.pending.get(msg.id);
         if (p) {
           this.pending.delete(msg.id);
           if (msg.ok) p.resolve(msg.value);
           else p.reject(new Error(msg.error));
         } else {
-          console.log(`[SERIAL-PROXY] result id=${msg.id} had NO pending promise (id mismatch?)`);
+          console.warn(`[SERIAL-PROXY] result id=${msg.id} had NO pending promise (id mismatch?)`);
         }
         break;
       }
@@ -138,7 +139,7 @@ export class UsbSerialProxy extends EventEmitter {
   }
 
   private send(message: any): void {
-    if (message?.kind === 'call') {
+    if (ENABLE_CONSOLE_LOG && message?.kind === 'call') {
       console.log(`[SERIAL-PROXY] ${this.helloSeen ? 'send' : 'buffer'} call ${message.method} id=${message.id}`);
     }
     if (this.helloSeen) this.child.postMessage(message);

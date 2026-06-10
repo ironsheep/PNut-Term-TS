@@ -4,7 +4,7 @@
 
 import { EventEmitter } from 'events';
 import { Worker } from 'worker_threads';
-import { SharedCircularBuffer, SharedBufferTransferables } from './sharedCircularBuffer';
+import { SharedCircularBuffer } from './sharedCircularBuffer';
 import { SharedMessagePool } from './sharedMessagePool';
 import { USBTrafficLogger } from './usbTrafficLogger';
 import path from 'path';
@@ -311,16 +311,6 @@ export class WorkerExtractor extends EventEmitter {
    */
   public getMessagePool(): SharedMessagePool {
     return this.messagePool;
-  }
-
-  /**
-   * [#31] Expose the SharedCircularBuffer transferables so a dedicated serial worker can
-   * become the ring WRITER (the extraction worker stays the reader → single-producer/
-   * single-consumer). When the serial worker writes the ring directly, the main thread is
-   * removed from the receive path entirely.
-   */
-  public getRingTransferables(): SharedBufferTransferables {
-    return this.buffer.getTransferables();
   }
 
   /**

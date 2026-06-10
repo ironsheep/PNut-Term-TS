@@ -10,7 +10,6 @@ import { MessageRouter, RouteDestination } from './messageRouter';
 import { DTRResetManager } from './dtrResetManager';
 import { PerformanceMonitor } from './performanceMonitor';
 import { WorkerExtractor } from './workerExtractor';
-import type { SharedBufferTransferables } from './sharedCircularBuffer';
 
 /**
  * SerialMessageProcessor - Autonomous Worker Thread Architecture
@@ -246,15 +245,6 @@ export class SerialMessageProcessor extends EventEmitter {
 
     // Pass to WorkerExtractor (writes to SharedCircularBuffer)
     this.workerExtractor.receiveData(data);
-  }
-
-  /**
-   * [#31] Expose the ring transferables so a dedicated serial worker can own the port and
-   * write the ring directly (main thread out of the receive path). Used only by the
-   * --serial-worker path; in the default path the main thread still calls receiveData().
-   */
-  public getRingTransferables(): SharedBufferTransferables {
-    return this.workerExtractor.getRingTransferables();
   }
 
   /**
