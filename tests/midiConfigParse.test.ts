@@ -14,8 +14,13 @@
  * KeyValWithin CLAMPS into range (Pascal Within), it does not reject.
  */
 import { DebugMidiWindow } from '../src/classes/debugMidiWin';
+import { DebugColor } from '../src/classes/shared/debugColor';
 
 const parse = (s: string) => DebugMidiWindow.parseMidiDeclaration(s.split(' '));
+
+// Canonical Pascal RGBI8X oracle: resolve a directive NAME at a given brightness.
+const rgbi8x = (name: string, brightness: number) =>
+  parseInt(DebugColor.colorNameToRGB24UsingRGBI8X(name, brightness).slice(1), 16);
 
 describe('MIDI create-time config parsing [9win §7]', () => {
   it('parses the full directive set from the creation line', () => {
@@ -66,5 +71,31 @@ describe('MIDI create-time config parsing [9win §7]', () => {
     const [, spec] = parse('`MIDI synth CHANNEL 9');
     expect(spec.displayName).toBe('synth');
     expect(spec.channel).toBe(9);
+  });
+
+  // [9win §7 / task #37 C5] COLOR routes each color through shared parseKeyColor, so a
+  // directive NAME may carry an optional trailing brightness (Pascal KeyColor: p := val
+  // and 15). The bare DebugColor path used to DROP that brightness token.
+  it('honors the optional brightness on each COLOR (Pascal KeyColor RGBI8X)', () => {
+    const [, spec] = parse('`MIDI m COLOR CYAN 8 MAGENTA 4');
+    expect(spec.keyColors.white).toBe(rgbi8x('CYAN', 8));
+    expect(spec.keyColors.black).toBe(rgbi8x('MAGENTA', 4));
+    // MAGENTA at brightness 4 must differ from the default brightness (8): proves the
+    // brightness token was actually consumed, not silently dropped.
+    expect(spec.keyColors.black).not.toBe(rgbi8x('MAGENTA', 8));
+  });
+
+  it('COLOR with only the first color leaves the black key at its default', () => {
+    const [, spec] = parse('`MIDI m COLOR YELLOW');
+    expect(spec.keyColors.white).toBe(rgbi8x('YELLOW', 8));
+    expect(spec.keyColors.black).toBe(0xff00ff); // clMagenta default kept (Pascal: 2nd KeyColor not reached)
+  });
+
+  it('COLOR with no valid color token keeps both defaults and does not abort', () => {
+    const [ok, spec] = parse('`MIDI m COLOR CHANNEL 5');
+    expect(ok).toBe(true);
+    expect(spec.keyColors.white).toBe(0x00ffff); // clCyan
+    expect(spec.keyColors.black).toBe(0xff00ff); // clMagenta
+    expect(spec.channel).toBe(5); // CHANNEL still parsed after the no-op COLOR
   });
 });

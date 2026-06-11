@@ -25,7 +25,6 @@ import { DebugWindowBase, Position, Size } from './debugWindowBase';
 import { PianoKeyboardLayout, KeyInfo } from './shared/pianoKeyboardLayout';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { DisplaySpecParser, BaseDisplaySpec } from './shared/displaySpecParser';
-import { DebugColor } from './shared/debugColor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { WindowPlacer, PlacementConfig } from '../utils/windowPlacer';
 
@@ -707,15 +706,29 @@ export class DebugMidiWindow extends DebugWindowBase {
         continue;
       }
 
-      // Custom COLOR override (2 REQUIRED parameters, different from shared parser)
-      if (part === 'COLOR' && i + 2 < lineParts.length) {
-        const color1 = new DebugColor(lineParts[i + 1]).rgbValue;
-        const color2 = new DebugColor(lineParts[i + 2]).rgbValue;
-        this.vColor[0] = color1;
-        this.whiteKeyColor = color1;
-        this.vColor[1] = color2;
-        this.blackKeyColor = color2;
-        i += 3;
+      // COLOR white-key {bright} black-key {bright} — Pascal: if KeyColor(vColor[0])
+      // then KeyColor(vColor[1]). Each color is ONE shared parseKeyColor (RGBI8X
+      // NAME with optional brightness, or a numeric literal) so 'COLOR CYAN 8
+      // MAGENTA 4' honors the brightness tokens. The 2nd color is optional and
+      // never aborts the directive. [9win §7]
+      if (part === 'COLOR') {
+        const white = DisplaySpecParser.parseKeyColor(lineParts, i + 1);
+        if (white !== null) {
+          const color1 = parseInt(white.rgb.slice(1), 16);
+          this.vColor[0] = color1;
+          this.whiteKeyColor = color1;
+          let next = white.nextIdx;
+          const blackColor = DisplaySpecParser.parseKeyColor(lineParts, white.nextIdx);
+          if (blackColor !== null) {
+            const color2 = parseInt(blackColor.rgb.slice(1), 16);
+            this.vColor[1] = color2;
+            this.blackKeyColor = color2;
+            next = blackColor.nextIdx;
+          }
+          i = next;
+        } else {
+          i += 1; // COLOR with no valid color token — skip keyword, keep current colors
+        }
         continue;
       }
 
@@ -981,13 +994,27 @@ export class DebugMidiWindow extends DebugWindowBase {
         continue;
       }
 
-      // COLOR white-key black-key — Pascal KeyColor(vColor[0]) then KeyColor(vColor[1]) (RGBI8X)
-      if (part === 'COLOR' && i + 2 < lineParts.length) {
-        displaySpec.keyColors = {
-          white: new DebugColor(lineParts[i + 1]).rgbValue,
-          black: new DebugColor(lineParts[i + 2]).rgbValue
-        };
-        i += 3;
+      // COLOR white-key {bright} black-key {bright} — Pascal: if KeyColor(vColor[0])
+      // then KeyColor(vColor[1]). Each color is ONE shared parseKeyColor (RGBI8X
+      // NAME with optional brightness, or a numeric literal), so 'COLOR CYAN 8
+      // MAGENTA 4' honors the brightness tokens the bare DebugColor path dropped.
+      // The 2nd color is optional (Pascal reads it only if the 1st succeeded; a
+      // missing/invalid 2nd leaves black at its default). Never abort. [9win §7]
+      if (part === 'COLOR') {
+        const white = DisplaySpecParser.parseKeyColor(lineParts, i + 1);
+        if (white !== null) {
+          let black = displaySpec.keyColors.black;
+          let next = white.nextIdx;
+          const blackColor = DisplaySpecParser.parseKeyColor(lineParts, white.nextIdx);
+          if (blackColor !== null) {
+            black = parseInt(blackColor.rgb.slice(1), 16);
+            next = blackColor.nextIdx;
+          }
+          displaySpec.keyColors = { white: parseInt(white.rgb.slice(1), 16), black };
+          i = next;
+        } else {
+          i += 1; // COLOR with no valid color token — skip keyword, keep defaults
+        }
         continue;
       }
 
