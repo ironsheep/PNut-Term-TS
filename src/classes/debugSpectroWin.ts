@@ -348,40 +348,44 @@ export class DebugSpectroWindow extends DebugWindowBase {
       const element = lineParts[index].toUpperCase();
 
       // Handle SAMPLES with optional first and last bins
+      // Pascal SPECTRO_Configure (DebugDisplayUnit.pas:1741-1750):
+      //   if not NextNum then Continue;
+      //   FFTexp := Trunc(Log2(Within(val, 4, FFTmax))); vSamples := 1 shl FFTexp;
+      //   FFTfirst := 0; FFTlast := vSamples div 2 - 1;
+      //   if KeyValWithin(FFTfirst, 0, vSamples div 2 - 2) then
+      //     KeyValWithin(FFTlast, FFTfirst + 1, vSamples div 2 - 1);
       if (element === 'SAMPLES') {
-        if (index < lineParts.length - 1) {
-          const samplesValue = Number(lineParts[++index]);
+        // NextNum: parse via Spin2NumericParser ($hex / %bin / 1_000 underscores,
+        // which raw Number() drops to NaN). If absent/non-numeric, Pascal Continues
+        // (leave defaults), so we skip the rest of this directive. [9win §3]
+        const samplesValue = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+        if (samplesValue === null) {
+          continue;
+        }
+        index++; // consume the SAMPLES count token
 
-          // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax))); vSamples := 1 shl FFTexp.
-          // FLOOR of log2 (largest power of two <= clamped), NOT round-to-nearest
-          // (e.g. 768 -> 512). Shared helper, same path as FFT. [9win §3]
-          spec.samples = DisplaySpecParser.floorPowerOfTwoWithin(samplesValue, 4, FFT_MAX);
-          // Keep the BaseDisplaySpec mirror in sync (interface: "same as samples").
-          // Was left at the FFT_DEFAULT init, which only matched while samples
-          // happened to round to 512. [9win §3]
-          spec.nbrSamples = spec.samples;
+        // FLOOR of log2 (largest power of two <= clamped to [4,FFTmax]), NOT
+        // round-to-nearest (e.g. 768 -> 512). Shared helper, same path as FFT. [9win §3]
+        spec.samples = DisplaySpecParser.floorPowerOfTwoWithin(samplesValue, 4, FFT_MAX);
+        // Keep the BaseDisplaySpec mirror in sync (interface: "same as samples").
+        spec.nbrSamples = spec.samples;
 
-          // Default first and last bins
-          spec.firstBin = 0;
-          spec.lastBin = spec.samples / 2 - 1;
+        // Default first and last bins
+        spec.firstBin = 0;
+        spec.lastBin = spec.samples / 2 - 1;
 
-          // Optional first/last bin parameters.
-          // Pascal (DebugDisplayUnit.pas:1748-1749):
-          //   if KeyValWithin(FFTfirst, 0, vSamples div 2 - 2) then
-          //     KeyValWithin(FFTlast, FFTfirst + 1, vSamples div 2 - 1);
-          // KeyValWithin CLAMPS the value into [bottom, top] (INCLUSIVE) — it never
-          // rejects an out-of-range value. The old TS used a strict `<` upper bound
-          // (off-by-one — excluded samples/2-2) and DISCARDED out-of-range firsts
-          // instead of clamping. [9win §12]
-          if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-            const firstRaw = Math.trunc(Number(lineParts[++index]));
-            spec.firstBin = Math.max(0, Math.min(spec.samples / 2 - 2, firstRaw));
+        // Optional first bin — Pascal KeyValWithin CLAMPS into [0, samples/2 - 2]
+        // (INCLUSIVE); it never rejects an out-of-range value. [9win §12]
+        const firstRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+        if (firstRaw !== null) {
+          index++;
+          spec.firstBin = DisplaySpecParser.clamp(firstRaw, 0, spec.samples / 2 - 2);
 
-            // Optional last bin parameter — clamped into [firstBin + 1, samples/2 - 1]
-            if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-              const lastRaw = Math.trunc(Number(lineParts[++index]));
-              spec.lastBin = Math.max(spec.firstBin + 1, Math.min(spec.samples / 2 - 1, lastRaw));
-            }
+          // Optional last bin — clamped into [firstBin + 1, samples/2 - 1]
+          const lastRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+          if (lastRaw !== null) {
+            index++;
+            spec.lastBin = DisplaySpecParser.clamp(lastRaw, spec.firstBin + 1, spec.samples / 2 - 1);
           }
         }
         continue;
@@ -404,66 +408,81 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
       // Parse SPECTRO-specific keywords
       switch (element) {
-        case 'DEPTH':
-          if (index < lineParts.length - 1) {
-            const depthValue = Number(lineParts[++index]);
-            if (depthValue >= 1 && depthValue <= FFT_MAX) {
-              spec.depth = depthValue;
+        // All numeric directives below use clampInt (Spin2NumericParser + Within
+        // clamp): Pascal KeyValWithin CLAMPS the value into range and never rejects
+        // out-of-range, and the value token is consumed only when a number is
+        // present (clampInt returns null otherwise → leave default, don't advance).
+
+        case 'DEPTH': {
+          // Pascal: KeyValWithin(vWidth, 1, FFTmax)
+          const depthValue = DisplaySpecParser.clampInt(lineParts, index + 1, 1, FFT_MAX);
+          if (depthValue !== null) {
+            spec.depth = depthValue;
+            index++;
+          }
+          break;
+        }
+
+        case 'MAG': {
+          // Pascal: KeyValWithin(FFTmag, 0, FFTexpMax) — FFTexpMax = 11
+          const magValue = DisplaySpecParser.clampInt(lineParts, index + 1, 0, 11);
+          if (magValue !== null) {
+            spec.magnitude = magValue;
+            index++;
+          }
+          break;
+        }
+
+        case 'RANGE': {
+          // Pascal: KeyValWithin(vRange, 1, $7FFFFFFF)
+          const rangeValue = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 0x7fffffff);
+          if (rangeValue !== null) {
+            spec.range = rangeValue;
+            index++;
+          }
+          break;
+        }
+
+        case 'RATE': {
+          // Pascal: KeyValWithin(vRate, 1, FFTmax)
+          const rateValue = DisplaySpecParser.clampInt(lineParts, index + 1, 1, FFT_MAX);
+          if (rateValue !== null) {
+            spec.rate = rateValue;
+            index++;
+          }
+          break;
+        }
+
+        case 'TRACE': {
+          // Pascal: KeyVal(vTrace) — sets the RAW value, NO clamp and NO mask.
+          // The pattern is masked (& 0xF / & 0x4) only at its use sites, so storing
+          // the raw integer here is Pascal-faithful (the old `& 0xf` here was wrong).
+          const traceValue = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+          if (traceValue !== null) {
+            spec.tracePattern = traceValue;
+            index++;
+          }
+          break;
+        }
+
+        case 'DOTSIZE': {
+          // Pascal: if KeyValWithin(vDotSize, 1, 16) then begin vDotSizeY := vDotSize;
+          //           KeyValWithin(vDotSizeY, 1, 16); end;
+          const dotX = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 16);
+          if (dotX !== null) {
+            spec.dotSize = dotX;
+            spec.dotSizeY = dotX;
+            index++;
+
+            // Optional second parameter for Y (also clamped 1..16)
+            const dotY = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 16);
+            if (dotY !== null) {
+              spec.dotSizeY = dotY;
+              index++;
             }
           }
           break;
-
-        case 'MAG':
-          if (index < lineParts.length - 1) {
-            const magValue = Number(lineParts[++index]);
-            if (magValue >= 0 && magValue <= 11) {
-              spec.magnitude = magValue;
-            }
-          }
-          break;
-
-        case 'RANGE':
-          if (index < lineParts.length - 1) {
-            const rangeValue = Number(lineParts[++index]);
-            if (rangeValue >= 1 && rangeValue <= 0x7fffffff) {
-              spec.range = rangeValue;
-            }
-          }
-          break;
-
-        case 'RATE':
-          if (index < lineParts.length - 1) {
-            const rateValue = Number(lineParts[++index]);
-            if (rateValue >= 1 && rateValue <= FFT_MAX) {
-              spec.rate = rateValue;
-            }
-          }
-          break;
-
-        case 'TRACE':
-          if (index < lineParts.length - 1) {
-            const traceValue = Number(lineParts[++index]);
-            spec.tracePattern = traceValue & 0xf; // 0-15
-          }
-          break;
-
-        case 'DOTSIZE':
-          if (index < lineParts.length - 1) {
-            const dotX = Number(lineParts[++index]);
-            if (dotX >= 1 && dotX <= 16) {
-              spec.dotSize = dotX;
-              spec.dotSizeY = dotX;
-
-              // Optional second parameter for Y
-              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-                const dotY = Number(lineParts[++index]);
-                if (dotY >= 1 && dotY <= 16) {
-                  spec.dotSizeY = dotY;
-                }
-              }
-            }
-          }
-          break;
+        }
 
         case 'LOGSCALE':
           spec.logScale = true;

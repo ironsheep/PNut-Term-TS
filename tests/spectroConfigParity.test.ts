@@ -143,4 +143,68 @@ describe('[9win §12] SPECTRO config parity', () => {
       expect(s.hideXY).toBe(true);
     });
   });
+
+  // [Sprint 0.9.47 §2.5 / C2,C3] Numeric directives route through clampInt
+  // (Spin2NumericParser + Within). Pascal KeyValWithin CLAMPS out-of-range values
+  // and never rejects; the old TS used reject-style `if (v >= min && v <= max)`
+  // range guards that DISCARDED out-of-range values (left the default). It also
+  // used raw Number(), which drops $hex / %bin / 1_000 underscore literals to NaN.
+  describe('C2/C3 clamp parity (Pascal KeyValWithin clamps, never rejects)', () => {
+    it('DEPTH $200 parses hex (= 512)', () => {
+      expect(spec('DEPTH', '$200').depth).toBe(512);
+    });
+
+    it('MAG 12 CLAMPS to 11 (was rejected -> stuck at default 0)', () => {
+      expect(spec('MAG', '12').magnitude).toBe(11);
+    });
+
+    it('MAG -3 clamps up to 0', () => {
+      expect(spec('MAG', '-3').magnitude).toBe(0);
+    });
+
+    it('RANGE $7FFFFFFF parses the hex max', () => {
+      expect(spec('RANGE', '$7FFFFFFF').range).toBe(0x7fffffff);
+    });
+
+    it('RANGE 0 clamps up to 1 (was rejected -> default)', () => {
+      expect(spec('RANGE', '0').range).toBe(1);
+    });
+
+    it('RATE over-range clamps to FFTmax (2048)', () => {
+      expect(spec('RATE', '9999').rate).toBe(2048);
+    });
+
+    it('SAMPLES 768 floors to the largest power of two <= clamped (512)', () => {
+      expect(spec('SAMPLES', '768').samples).toBe(512);
+    });
+
+    it('SAMPLES 1_024 parses an underscore literal (= 1024)', () => {
+      expect(spec('SAMPLES', '1_024').samples).toBe(1024);
+    });
+
+    it('DOTSIZE single param sets both X and Y', () => {
+      const s = spec('DOTSIZE', '4');
+      expect(s.dotSize).toBe(4);
+      expect(s.dotSizeY).toBe(4);
+    });
+
+    it('DOTSIZE over-range clamps to 16 (both axes)', () => {
+      const s = spec('DOTSIZE', '99', '50');
+      expect(s.dotSize).toBe(16);
+      expect(s.dotSizeY).toBe(16);
+    });
+
+    it('TRACE stores the RAW value (no &0xF mask, matching Pascal KeyVal)', () => {
+      // Pascal KeyVal(vTrace) sets the raw integer; masking happens only at use.
+      expect(spec('TRACE', '20').tracePattern).toBe(20);
+    });
+
+    it('bad numeric param keeps the default and does not abort the window', () => {
+      // DEPTH with a non-numeric value: clampInt returns null -> default kept,
+      // token NOT consumed, and a later directive (MAG) still parses.
+      const s = spec('DEPTH', 'abc', 'MAG', '4');
+      expect(s.depth).toBe(256); // default unchanged
+      expect(s.magnitude).toBe(4); // later directive survives
+    });
+  });
 });
