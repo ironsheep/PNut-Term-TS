@@ -2,7 +2,6 @@ import { DebugWindowBase } from './debugWindowBase';
 import { Context } from '../utils/context';
 import { BrowserWindow } from 'electron';
 import { CanvasRenderer } from './shared/canvasRenderer';
-import { ColorTranslator, ColorMode } from './shared/colorTranslator';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { ScopeXyRenderer } from './shared/scopeXyRenderer';
 import { PersistenceManager } from './shared/persistenceManager';
@@ -111,7 +110,6 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private renderer: ScopeXyRenderer | null = null;
   private persistenceManager: PersistenceManager;
   private canvasRenderer: CanvasRenderer | null = null;
-  private colorTranslator: ColorTranslator;
   private packedDataProcessor: PackedDataProcessor;
   private packedDataMode: PackedDataMode | null = null;
 
@@ -139,6 +137,11 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private radius: number = 128;
   private scale: number = 1;
   private backgroundColor: number = 0x000000;
+  // Pascal vGridColor default = DefaultGridColor = clGray = 0x404040. Held here so a
+  // COLOR-directive grid override survives until the renderer exists (parseConfiguration
+  // runs in createDebugWindow BEFORE initializeRenderer, when this.renderer is still null
+  // — the old `this.renderer.setGridColor()` at parse time silently dropped the override).
+  private gridColor: number = 0x404040;
 
   // Channels
   private channels: Array<{ name: string; color: number }> = [];
@@ -177,7 +180,6 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.displaySpec = displaySpec;
 
     // Initialize shared components
-    this.colorTranslator = new ColorTranslator();
     this.packedDataProcessor = new PackedDataProcessor();
     this.persistenceManager = new PersistenceManager();
 
@@ -567,6 +569,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
   private initializeRenderer(): void {
     // Create the renderer
     this.renderer = new ScopeXyRenderer();
+    // Apply any COLOR-directive grid override captured during parseConfiguration.
+    this.renderer.setGridColor(this.gridColor);
     this.logMessage(
       `initializeRenderer: Created renderer, radius=${this.radius}, polar=${this.polar}, margin=${this.margin}`
     );
@@ -718,12 +722,16 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
       // Custom SIZE override (1 parameter for radius, not 2 like shared parser)
       if (element === 'SIZE') {
-        if (i + 1 < lineParts.length) {
-          const size = parseInt(lineParts[++i]);
-          // Pascal key_size: vWidth := Within(val*2, scope_xy_wmin=32, scope_xy_wmax=2048),
-          // radius = vWidth/2 (DebugDisplayUnit.pas:1404). So the *diameter* is clamped, making
-          // valid radius input 16..1024 — e.g. SIZE 1025 -> 1024, SIZE 10 -> 16. [9win §10]
-          this.radius = Math.max(32, Math.min(2048, size * 2)) / 2;
+        // Pascal key_size: `if NextNum then vWidth := Within(val*2, scope_xy_wmin=32,
+        // scope_xy_wmax=2048) else Continue`, radius = vWidth/2 (DebugDisplayUnit.pas:1404).
+        // The *diameter* is clamped, making valid radius input 16..1024 — e.g. SIZE 1025 ->
+        // 1024, SIZE 10 -> 16. Spin2NumericParser so $hex/%bin/underscores parse; consume the
+        // value token only when it IS a number (else leave it for the outer loop). [9win §10]
+        const sizeTok = lineParts[i + 1];
+        const sizeVal = sizeTok !== undefined ? Spin2NumericParser.parseInteger(sizeTok, true) : null;
+        if (sizeVal !== null) {
+          this.radius = Math.max(32, Math.min(2048, sizeVal * 2)) / 2;
+          i++; // consume the value token (the i++ below consumes SIZE)
         }
         i++;
         continue;
@@ -763,85 +771,100 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
       // Handle SCOPE_XY-specific keywords
       switch (element) {
-        case 'RANGE':
-          if (i + 1 < lineParts.length) {
-            const range = parseInt(lineParts[++i]);
-            this.range = Math.max(1, Math.min(0x7fffffff, range));
+        // Numeric directives: parse via clampInt (handles $hex/%bin/underscores that
+        // raw parseInt dropped to NaN) and clamp to the Pascal KeyValWithin bounds.
+        // Consume the value token only when it parses as a number; the switch-bottom
+        // i++ consumes the keyword. Never abort the window on a bad param. [C2/C4]
+        case 'RANGE': {
+          // Pascal KeyValWithin(vRange, 1, $7FFFFFFF) (DebugDisplayUnit.pas:1408).
+          const v = DisplaySpecParser.clampInt(lineParts, i + 1, 1, 0x7fffffff);
+          if (v !== null) {
+            this.range = v;
+            i++;
           }
           break;
+        }
 
-        case 'RATE':
-          if (i + 1 < lineParts.length) {
-            const rate = parseInt(lineParts[++i]);
-            // Pascal: KeyValWithin(vRate, 1, XY_Sets) — XY_Sets = 2048, not 512. [9win §3]
-            this.rate = Math.max(1, Math.min(2048, rate));
+        case 'RATE': {
+          // Pascal KeyValWithin(vRate, 1, XY_Sets=2048) (:1412) — XY_Sets is 2048, not 512. [9win §3]
+          const v = DisplaySpecParser.clampInt(lineParts, i + 1, 1, 2048);
+          if (v !== null) {
+            this.rate = v;
+            i++;
           }
           break;
+        }
 
-        case 'DOTSIZE':
-          if (i + 1 < lineParts.length) {
-            const dotSize = parseInt(lineParts[++i]);
-            this.dotSize = Math.max(2, Math.min(20, dotSize));
+        case 'DOTSIZE': {
+          // Pascal KeyValWithin(vDotSize, 2, 20) (:1414).
+          const v = DisplaySpecParser.clampInt(lineParts, i + 1, 2, 20);
+          if (v !== null) {
+            this.dotSize = v;
+            i++;
           }
           break;
+        }
 
-        case 'TEXTSIZE':
-          if (i + 1 < lineParts.length) {
-            const textSize = parseInt(lineParts[++i]);
-            this.textSize = Math.max(6, Math.min(200, textSize));
+        case 'TEXTSIZE': {
+          // Pascal KeyTextSize -> KeyValWithin(vTextSize, 6, 200) (:2836).
+          const v = DisplaySpecParser.clampInt(lineParts, i + 1, 6, 200);
+          if (v !== null) {
+            this.textSize = v;
+            i++;
           }
           break;
+        }
 
-        case 'COLOR':
-          if (i + 1 < lineParts.length) {
-            const nextElement = lineParts[i + 1];
-            // Only parse as color if it's not a quoted string
-            if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
-              const bgColor = this.colorTranslator.translateColor(parseInt(lineParts[++i]) || 0);
-              this.backgroundColor = bgColor;
-              // Check for optional grid color
-              if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-                const gridElement = lineParts[i + 1];
-                // Only parse as grid color if it's not a quoted string
-                if (!gridElement.startsWith("'") && !gridElement.startsWith('"')) {
-                  const gridColor = this.colorTranslator.translateColor(parseInt(lineParts[++i]) || 0);
-                  if (this.renderer) {
-                    this.renderer.setGridColor(gridColor);
-                  }
-                }
-              }
+        case 'COLOR': {
+          // Pascal: `if KeyColor(vBackColor) then KeyColor(vGridColor)` (:1417). Route both
+          // colors through the shared parseKeyColor so directive NAMES (RED, BLUE 8) work —
+          // the old colorTranslator path was numeric-only (lost named colors) and mis-parsed
+          // $hex literals to black. parseKeyColor returns a '#rrggbb' string; convert to the
+          // numeric form these fields/renderer use. A non-color token (quoted label, next
+          // directive) ends the parse with the default kept (Pascal KeyColor -> False). [C5]
+          const bg = DisplaySpecParser.parseKeyColor(lineParts, i + 1);
+          if (bg !== null) {
+            this.backgroundColor = parseInt(bg.rgb.slice(1), 16);
+            const grid = DisplaySpecParser.parseKeyColor(lineParts, bg.nextIdx);
+            if (grid !== null) {
+              this.gridColor = parseInt(grid.rgb.slice(1), 16);
+              i = grid.nextIdx - 1; // the switch-bottom i++ lands on the first unconsumed token
+            } else {
+              i = bg.nextIdx - 1;
             }
           }
           break;
+        }
 
-        case 'POLAR':
+        case 'POLAR': {
+          // Pascal KeyTwoPi (DebugDisplayUnit.pas:2736): unconditionally vPolar:=True,
+          // vTwoPi:=$100000000, vTheta:=0; then if NextNum: -1 reverses the wrap
+          // (-$100000000), 0 restores the default, any other value is literal, and an
+          // optional following number sets vTheta (KeyVal, no clamp). Spin2NumericParser so
+          // $hex/%bin/signed parse; each number is consumed only when present. [9win §10]
           this.polar = true;
-          if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-            const nextElement = lineParts[i + 1];
-            // Only parse as twopi if it's not a quoted string
-            if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
-              // Pascal KeyTwoPi (DebugDisplayUnit.pas:2736): -1 wraps the angle the other way
-              // via vTwoPi := -$100000000; 0 (or absent) restores the default +$100000000;
-              // any other value is taken literally. parseInt('-1')||default lost the -1 case. [9win §10]
-              const polarVal = parseInt(lineParts[++i]);
-              if (polarVal === -1) {
-                this.twopi = -0x100000000;
-              } else if (polarVal === 0 || isNaN(polarVal)) {
-                this.twopi = 0x100000000;
-              } else {
-                this.twopi = polarVal;
-              }
-              // Check for theta parameter
-              if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-                const nextNextElement = lineParts[i + 1];
-                // Only parse as theta if it's not a quoted string
-                if (!nextNextElement.startsWith("'") && !nextNextElement.startsWith('"')) {
-                  this.theta = parseInt(lineParts[++i]) || 0;
-                }
-              }
+          this.twopi = 0x100000000;
+          this.theta = 0;
+          const twopiTok = lineParts[i + 1];
+          const twopiVal = twopiTok !== undefined ? Spin2NumericParser.parseInteger(twopiTok, true) : null;
+          if (twopiVal !== null) {
+            i++;
+            if (twopiVal === -1) {
+              this.twopi = -0x100000000;
+            } else if (twopiVal === 0) {
+              this.twopi = 0x100000000;
+            } else {
+              this.twopi = twopiVal;
+            }
+            const thetaTok = lineParts[i + 1];
+            const thetaVal = thetaTok !== undefined ? Spin2NumericParser.parseInteger(thetaTok, true) : null;
+            if (thetaVal !== null) {
+              this.theta = thetaVal;
+              i++;
             }
           }
           break;
+        }
 
         case 'LOGSCALE':
           this.logScale = true;
@@ -886,28 +909,15 @@ export class DebugScopeXyWindow extends DebugWindowBase {
             let color = this.defaultColors[this.channels.length % 8];
             this.logMessage(`  Found channel '${channelName}', default color: 0x${color.toString(16)}`);
 
-            // Check for optional color
-            if (i + 1 < lineParts.length && !this.isKeyword(lineParts[i + 1])) {
-              const nextElement = lineParts[i + 1];
-              // Only consume next element if it's a number (color value)
-              if (!nextElement.startsWith("'") && !nextElement.startsWith('"')) {
-                const colorValue = parseInt(nextElement);
-                if (!isNaN(colorValue)) {
-                  const translatedColor = this.colorTranslator.translateColor(colorValue);
-                  // IMPORTANT: If translation fails to black (and black wasn't intended),
-                  // use BRIGHT MAGENTA as error color - it's obvious something went wrong
-                  if (translatedColor === 0x000000 && colorValue !== 0) {
-                    color = 0xff00ff; // Bright magenta - ERROR COLOR
-                    this.logMessage(
-                      `    ERROR: Color translation failed for ${colorValue}, using ERROR COLOR (magenta)`
-                    );
-                  } else {
-                    color = translatedColor;
-                    this.logMessage(`    Custom color specified: ${colorValue} -> 0x${color.toString(16)}`);
-                  }
-                  i++;
-                }
-              }
+            // Optional channel color — Pascal KeyColor(vColor[vIndex-1]) (:1433). Route
+            // through the shared parseKeyColor so directive NAMES (and name+brightness)
+            // resolve here too, not just numeric literals; a non-color token (next label,
+            // a directive keyword) leaves the per-channel default in place. [C5]
+            const parsedColor = DisplaySpecParser.parseKeyColor(lineParts, i + 1);
+            if (parsedColor !== null) {
+              color = parseInt(parsedColor.rgb.slice(1), 16);
+              i = parsedColor.nextIdx - 1; // switch-bottom i++ lands on first unconsumed token
+              this.logMessage(`    Custom color -> 0x${color.toString(16).padStart(6, '0')}`);
             }
 
             // Pascal SCOPE_XY_Configure (DebugDisplayUnit.pas:1431): `if vIndex <> Channels
@@ -957,43 +967,6 @@ export class DebugScopeXyWindow extends DebugWindowBase {
       return str.slice(1, -1);
     }
     return str;
-  }
-
-  private isKeyword(str: string): boolean {
-    const keywords = [
-      'TITLE',
-      'POS',
-      'SIZE',
-      'RANGE',
-      'SAMPLES',
-      'RATE',
-      'DOTSIZE',
-      'TEXTSIZE',
-      'COLOR',
-      'POLAR',
-      'LOGSCALE',
-      'HIDEXY',
-      'CLEAR',
-      'SAVE',
-      'CLOSE',
-      'PC_KEY',
-      'PC_MOUSE',
-      'ALT',
-      'SIGNED',
-      'LONGS_1BIT',
-      'LONGS_2BIT',
-      'LONGS_4BIT',
-      'LONGS_8BIT',
-      'LONGS_16BIT',
-      'WORDS_1BIT',
-      'WORDS_2BIT',
-      'WORDS_4BIT',
-      'WORDS_8BIT',
-      'BYTES_1BIT',
-      'BYTES_2BIT',
-      'BYTES_4BIT'
-    ];
-    return keywords.includes(str.toUpperCase());
   }
 
   private getPackedDataMode(modeStr: string): PackedDataMode | null {
@@ -1105,9 +1078,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // SCOPE_XY-specific data processing
     for (const element of elements) {
-      // Process numerical data
-      const value = parseInt(element);
-      if (!isNaN(value)) {
+      // Process numerical data — Spin2NumericParser (signed) so $hex/%bin/underscored
+      // sample values parse, matching Pascal NextNum/NewPack. [C2 runtime]
+      const value = Spin2NumericParser.parseInteger(element, true);
+      if (value !== null) {
         // Unpack if using packed data mode
         const unpacked = this.packedDataMode ? PackedDataProcessor.unpackSamples(value, this.packedDataMode) : [value];
 

@@ -122,4 +122,71 @@ describe('[9win §10] SCOPE_XY config parity (parseConfiguration)', () => {
       expect(r.getGridColor()).toBe(0x123456);
     });
   });
+
+  // [#36 §2.3] parsing-parity: directive colors via the shared parseKeyColor (named colors
+  // were lost on the old colorTranslator numeric-only path) and numeric directives via
+  // clampInt/Spin2NumericParser (so $hex/%bin/underscores parse, and out-of-range CLAMPS
+  // rather than aborting the window). Pascal SCOPE_XY_Configure (DebugDisplayUnit.pas:1386).
+  describe('[#36] directive-color + numeric parsing parity', () => {
+    it('COLOR RED -> background 0xff0909 (named directive color, was broken)', () => {
+      parse('COLOR', 'RED');
+      expect((window as any).backgroundColor).toBe(0xff0909);
+    });
+
+    it('COLOR RED BLUE -> background 0xff0909, grid 0x0909ff (both KeyColor)', () => {
+      parse('COLOR', 'RED', 'BLUE');
+      expect((window as any).backgroundColor).toBe(0xff0909);
+      expect((window as any).gridColor).toBe(0x0909ff);
+    });
+
+    it('COLOR $FF8000 -> background 0xff8000 ($hex numeric, parseInt dropped to black before)', () => {
+      parse('COLOR', '$FF8000');
+      expect((window as any).backgroundColor).toBe(0xff8000);
+    });
+
+    it('SIZE $80 -> radius 128 (diameter $80*2 = 256, in range)', () => {
+      parse('SIZE', '$80');
+      expect((window as any).radius).toBe(128);
+    });
+
+    it('RANGE $7FFFFFFF -> range 0x7fffffff (hex max)', () => {
+      parse('RANGE', '$7FFFFFFF');
+      expect((window as any).range).toBe(0x7fffffff);
+    });
+
+    it('RANGE 1_000 -> range 1000 (underscore-grouped literal)', () => {
+      parse('RANGE', '1_000');
+      expect((window as any).range).toBe(1000);
+    });
+
+    it('DOTSIZE 1 -> 2 (clamp UP to min, never abort)', () => {
+      parse('DOTSIZE', '1');
+      expect((window as any).dotSize).toBe(2);
+    });
+
+    it('RATE 9999 -> 2048 (clamp DOWN to XY_Sets, not 512)', () => {
+      parse('RATE', '9999');
+      expect((window as any).rate).toBe(2048);
+    });
+
+    it('TEXTSIZE 999 -> 200 (clamp to KeyTextSize max)', () => {
+      parse('TEXTSIZE', '999');
+      expect((window as any).textSize).toBe(200);
+    });
+
+    it("channel 'A' RED -> channel color 0xff0909 (named color per channel)", () => {
+      parse("'A'", 'RED');
+      const channels = (window as any).channels;
+      expect(channels).toHaveLength(1);
+      expect(channels[0].name).toBe('A');
+      expect(channels[0].color).toBe(0xff0909);
+    });
+
+    it('bad param keeps default and still configures (DOTSIZE foo -> default 6, window intact)', () => {
+      expect(() => parse('DOTSIZE', 'foo', 'RANGE', '500')).not.toThrow();
+      // Bad DOTSIZE token leaves the default; the later RANGE 500 still parses (never aborted).
+      expect((window as any).dotSize).toBe(6);
+      expect((window as any).range).toBe(500);
+    });
+  });
 });
