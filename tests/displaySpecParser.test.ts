@@ -352,6 +352,92 @@ describe('DisplaySpecParser', () => {
     });
   });
 
+  describe('parseKeyColor (shared KeyColor analog, Pascal KeyColor) [§1]', () => {
+    test('resolves a directive NAME via RGBI8X and consumes one token', () => {
+      const r = DisplaySpecParser.parseKeyColor(['RED'], 0);
+      expect(r).toEqual({ rgb: '#ff0909', nextIdx: 1 });
+    });
+
+    test('consumes an optional trailing brightness (masked &15) for a NAME', () => {
+      const r = DisplaySpecParser.parseKeyColor(['BLUE', '4'], 0);
+      expect(r).toEqual({ rgb: '#000084', nextIdx: 2 }); // BLUE toward black at brightness 4
+    });
+
+    test('BLACK consumes NO brightness (fixed color, Pascal)', () => {
+      const r = DisplaySpecParser.parseKeyColor(['BLACK', '8'], 0);
+      expect(r).toEqual({ rgb: '#000000', nextIdx: 1 }); // the "8" is left for the next token
+    });
+
+    test('WHITE consumes NO brightness (fixed color, Pascal)', () => {
+      const r = DisplaySpecParser.parseKeyColor(['WHITE', '5'], 0);
+      expect(r).toEqual({ rgb: '#ffffff', nextIdx: 1 });
+    });
+
+    test('parses a $hex numeric literal (no brightness consumed)', () => {
+      const r = DisplaySpecParser.parseKeyColor(['$FF0000', '8'], 0);
+      expect(r).toEqual({ rgb: '#ff0000', nextIdx: 1 });
+    });
+
+    test('parses a #rrggbb web literal', () => {
+      const r = DisplaySpecParser.parseKeyColor(['#00ff00'], 0);
+      expect(r).toEqual({ rgb: '#00ff00', nextIdx: 1 });
+    });
+
+    test('parses a bare decimal literal', () => {
+      const r = DisplaySpecParser.parseKeyColor(['255'], 0);
+      expect(r).toEqual({ rgb: '#0000ff', nextIdx: 1 });
+    });
+
+    test('returns null on a non-color token (Pascal KeyColor False -> Dec(ptr))', () => {
+      expect(DisplaySpecParser.parseKeyColor(['SIZE'], 0)).toBeNull();
+      expect(DisplaySpecParser.parseKeyColor(['GREY'], 0)).toBeNull(); // not a directive name
+    });
+
+    test('returns null at end-of-stream (token undefined)', () => {
+      expect(DisplaySpecParser.parseKeyColor([], 0)).toBeNull();
+      expect(DisplaySpecParser.parseKeyColor(['RED'], 5)).toBeNull();
+    });
+
+    test('honors idx offset (parses the token AT idx, not part 0)', () => {
+      const r = DisplaySpecParser.parseKeyColor(['COLOR', 'CYAN'], 1);
+      expect(r).toEqual({ rgb: '#09ffff', nextIdx: 2 });
+    });
+  });
+
+  describe('clampInt (shared numeric-policy convenience) [§1]', () => {
+    test('parses a decimal literal and passes through in-range', () => {
+      expect(DisplaySpecParser.clampInt(['10'], 0, 0, 100)).toBe(10);
+    });
+
+    test('parses a $hex literal then clamps to max', () => {
+      expect(DisplaySpecParser.clampInt(['$FF'], 0, 0, 100)).toBe(100); // 255 -> 100
+    });
+
+    test('parses a %binary literal', () => {
+      expect(DisplaySpecParser.clampInt(['%1000'], 0, 0, 100)).toBe(8);
+    });
+
+    test('parses an underscore-grouped literal', () => {
+      expect(DisplaySpecParser.clampInt(['1_000'], 0, 0, 2048)).toBe(1000);
+    });
+
+    test('clamps an out-of-range (under-min) value up to the minimum', () => {
+      expect(DisplaySpecParser.clampInt(['-5'], 0, 0, 100, true)).toBe(0);
+    });
+
+    test('returns null on a garbage (non-numeric) token', () => {
+      expect(DisplaySpecParser.clampInt(['abc'], 0, 0, 100)).toBeNull();
+    });
+
+    test('returns null at end-of-stream (token undefined)', () => {
+      expect(DisplaySpecParser.clampInt([], 0, 0, 100)).toBeNull();
+    });
+
+    test('honors idx offset', () => {
+      expect(DisplaySpecParser.clampInt(['DOTSIZE', '5000'], 1, 2, 20)).toBe(20);
+    });
+  });
+
   describe('real-world debug string parsing', () => {
     test('should parse complete LOGIC declaration', () => {
       // Note: In real usage, the quoted title would be kept as a single token

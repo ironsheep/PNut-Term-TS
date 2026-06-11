@@ -68,6 +68,72 @@ export class DisplaySpecParser {
   }
 
   /**
+   * Parse ONE color from the token stream — the canonical TS analog of Pascal
+   * KeyColor (DebugDisplayUnit.pas:2752). Accepts a directive color NAME with an
+   * optional trailing brightness (0-15, masked &15, RGBI8X) — except BLACK/WHITE
+   * which are fixed and consume NO brightness, matching Pascal — or a bare
+   * numeric / $hex / #rrggbb literal. Returns the resolved '#rrggbb' string plus
+   * the index of the next unconsumed token, or null when the token at idx is not
+   * a color (Pascal KeyColor returns False, leaving the token for the outer
+   * directive loop — Dec(ptr)).
+   *
+   * This is the shared helper every window's directive-color site delegates to:
+   * TERM COLOR/BACKCOLOR, SCOPE/LOGIC/SCOPE_XY/FFT background+grid (via
+   * parseColorKeyword), and MIDI/PLOT/BITMAP COLOR/BACKCOLOR/SPARSE/LUTCOLORS
+   * entries. The pixel color-MODE path (KeyColorMode/ColorTranslator) is a
+   * DIFFERENT mechanism and is NOT a parseKeyColor site.
+   */
+  static parseKeyColor(lineParts: string[], idx: number): { rgb: string; nextIdx: number } | null {
+    const token = lineParts[idx];
+    if (token === undefined) {
+      return null;
+    }
+    let colorSpec = token;
+    let consumed = 1;
+    const upper = token.toUpperCase();
+    // RGBI8X named colors (but NOT BLACK/WHITE) may take an optional brightness byte.
+    if (DebugColor.isValidDirectiveColorName(token) && upper !== 'BLACK' && upper !== 'WHITE') {
+      const next = lineParts[idx + 1];
+      if (next !== undefined && /^\d+$/.test(next)) {
+        colorSpec = `${token} ${Number(next) & 15}`; // Pascal KeyColor: p := val and 15
+        consumed = 2;
+      }
+    }
+    const rgb = DebugColor.parseDirectiveColor(colorSpec);
+    if (rgb === null) {
+      return null;
+    }
+    return { rgb, nextIdx: idx + consumed };
+  }
+
+  /**
+   * Numeric-policy convenience: parse the token at idx via Spin2NumericParser
+   * (which handles $hex, %bin, %%quaternary, and 1_000 underscore literals that
+   * raw Number()/parseInt() silently drop to NaN), then clamp to [min,max]
+   * (Pascal Within). Returns null when the token is absent or not a valid
+   * integer, so the caller leaves its default unchanged (Pascal KeyValWithin:
+   * ignore-and-continue, never abort the window). `signed` allows negatives
+   * through (Pascal NextNum is signed); pass false for count-only params.
+   */
+  static clampInt(
+    lineParts: string[],
+    idx: number,
+    min: number,
+    max: number,
+    signed: boolean = true
+  ): number | null {
+    const token = lineParts[idx];
+    if (token === undefined) {
+      return null;
+    }
+    const value = Spin2NumericParser.parseInteger(token, signed);
+    if (value === null) {
+      return null;
+    }
+    return this.clamp(value, min, max);
+  }
+
+  /**
    * Parse common keywords that are shared between Logic and Scope windows
    * Returns true if a keyword was parsed, false otherwise
    */
@@ -149,8 +215,14 @@ export class DisplaySpecParser {
   }
 
   /**
-   * Parse COLOR keyword with background and optional grid color
-   * Format: COLOR <background> [<grid-color>]
+   * Parse the COLOR directive's background + optional grid colors (SCOPE / LOGIC
+   * / SCOPE_XY / FFT). Each color is one KeyColor (parseKeyColor): a directive
+   * NAME [brightness] or a numeric / $hex / #rrggbb literal. The grid color is
+   * optional — a non-color token (e.g. the next directive keyword, or a numeric
+   * brightness that is no longer attached to a name) ends the parse with the
+   * grid default kept, matching Pascal (KeyColor returns False -> Dec(ptr) leaves
+   * the token for the outer loop). `index` points at the COLOR keyword;
+   * `consumed` counts COLOR plus its consumed color tokens.
    */
   static parseColorKeyword(lineParts: string[], index: number): [boolean, WindowColor, number] {
     const windowColor: WindowColor = {
@@ -158,64 +230,21 @@ export class DisplaySpecParser {
       grid: '#808080' // default gray
     };
 
-    if (index + 1 >= lineParts.length) {
+    const bg = this.parseKeyColor(lineParts, index + 1);
+    if (bg === null) {
       return [false, windowColor, 0];
     }
-    
-    let consumed = 1; // Start with COLOR keyword
-    
-    // Parse background color with potential brightness
-    let bgColorSpec = lineParts[index + 1];
-    consumed++;
-    
-    // Check if next part is a brightness value (0-15)
-    if (index + 2 < lineParts.length && /^\d+$/.test(lineParts[index + 2])) {
-      const brightness = Spin2NumericParser.parseCount(lineParts[index + 2]) ?? 0;
-      if (brightness >= 0 && brightness <= 15) {
-        bgColorSpec += ' ' + lineParts[index + 2];
-        consumed++;
-      }
+    windowColor.background = bg.rgb;
+
+    const grid = this.parseKeyColor(lineParts, bg.nextIdx);
+    if (grid !== null) {
+      windowColor.grid = grid.rgb;
+      return [true, windowColor, grid.nextIdx - index];
     }
-    
-    const bgColor = this.parseColorValue(bgColorSpec);
-    if (!bgColor) {
-      return [false, windowColor, 0];
-    }
-    windowColor.background = bgColor;
-    
-    // Parse optional grid color with potential brightness
-    if (index + consumed < lineParts.length) {
-      let gridColorSpec = lineParts[index + consumed];
-      const gridStartIndex = consumed;
-      consumed++;
-      
-      // Check if this might be a color (not a command keyword)
-      if (!this.isCommandKeyword(gridColorSpec)) {
-        // Check for brightness value
-        if (index + consumed < lineParts.length && /^\d+$/.test(lineParts[index + consumed])) {
-          const brightness = Spin2NumericParser.parseCount(lineParts[index + consumed]) ?? 0;
-          if (brightness >= 0 && brightness <= 15) {
-            gridColorSpec += ' ' + lineParts[index + consumed];
-            consumed++;
-          }
-        }
-        
-        const gridColor = this.parseColorValue(gridColorSpec);
-        if (gridColor) {
-          windowColor.grid = gridColor;
-        } else {
-          // Reset consumed if grid color parsing failed
-          consumed = gridStartIndex;
-        }
-      } else {
-        // Reset consumed since this is a command keyword, not a grid color
-        consumed = gridStartIndex;
-      }
-    }
-    
-    return [true, windowColor, consumed];
+
+    return [true, windowColor, bg.nextIdx - index];
   }
-  
+
   /**
    * Check if a string is a known command keyword
    */
@@ -263,20 +292,6 @@ export class DisplaySpecParser {
    */
   static validateParameterCount(lineParts: string[], index: number, requiredCount: number): boolean {
     return index + requiredCount < lineParts.length;
-  }
-
-  /**
-   * Parse a color value from a string
-   * Supports:
-   * - Hex format: $RRGGBB or #RRGGBB
-   * - Decimal format: numeric value
-   * - Color names: BLACK, WHITE, ORANGE, BLUE, GREEN, CYAN, RED, MAGENTA, YELLOW, GRAY
-   * - Color names with brightness: RED 12
-   */
-  private static parseColorValue(colorStr: string): string | null {
-    // Window COLOR directive (Pascal key_color -> KeyColor): a color NAME resolves
-    // through RGBI8X, a number through the color mode. NOT the clXxx default table.
-    return DebugColor.parseDirectiveColor(colorStr);
   }
 
   /**

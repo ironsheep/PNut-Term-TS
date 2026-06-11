@@ -208,38 +208,6 @@ export class DebugTermWindow extends DebugWindowBase {
     metrics.baseline = Math.round(metrics.charHeight * 0.8);
   }
 
-  /**
-   * Parse ONE color from the token stream — the TS analog of Pascal KeyColor
-   * (DebugDisplayUnit.pas:2752). Accepts a directive color NAME with an optional
-   * trailing brightness (0-15, RGBI8X) — except BLACK/WHITE which are fixed and
-   * consume NO brightness, matching Pascal — or a bare numeric / $hex / #rrggbb
-   * literal. Returns the resolved '#rrggbb' string plus the index of the next
-   * unconsumed token, or null when the token at idx is not a color (Pascal
-   * KeyColor returns False, leaving the token for the outer directive loop).
-   */
-  private static parseTermColor(lineParts: string[], idx: number): { rgb: string; nextIdx: number } | null {
-    const token = lineParts[idx];
-    if (token === undefined) {
-      return null;
-    }
-    let colorSpec = token;
-    let consumed = 1;
-    const upper = token.toUpperCase();
-    // RGBI8X named colors (but NOT BLACK/WHITE) may take an optional brightness byte.
-    if (DebugColor.isValidDirectiveColorName(token) && upper !== 'BLACK' && upper !== 'WHITE') {
-      const next = lineParts[idx + 1];
-      if (next !== undefined && /^\d+$/.test(next)) {
-        colorSpec = `${token} ${Number(next) & 15}`; // Pascal KeyColor: p := val and 15
-        consumed = 2;
-      }
-    }
-    const rgb = DebugColor.parseDirectiveColor(colorSpec);
-    if (rgb === null) {
-      return null;
-    }
-    return { rgb, nextIdx: idx + consumed };
-  }
-
   static parseTermDeclaration(lineParts: string[]): [boolean, TermDisplaySpec] {
     // here with lineParts = ['`TERM', {displayName}, ...]
     // Valid directives are:
@@ -359,7 +327,7 @@ export class DebugTermWindow extends DebugWindowBase {
             // SAME KeyColor as COLOR: name+optional-brightness, or a numeric/$hex literal).
             // Note: deprecated in favor of the COLOR parameter.
             if (index < lineParts.length - 1) {
-              const parsed = DebugTermWindow.parseTermColor(lineParts, index + 1);
+              const parsed = DisplaySpecParser.parseKeyColor(lineParts, index + 1);
               if (parsed !== null) {
                 displaySpec.window.background = parsed.rgb;
                 // Also update the default color combo's background
@@ -388,7 +356,7 @@ export class DebugTermWindow extends DebugWindowBase {
             let scanIdx = index + 1;
             let slot = 0;
             while (slot < 8 && scanIdx < lineParts.length) {
-              const parsed = DebugTermWindow.parseTermColor(lineParts, scanIdx);
+              const parsed = DisplaySpecParser.parseKeyColor(lineParts, scanIdx);
               if (parsed === null) {
                 break; // not a color — leave the token for the outer directive loop (Pascal Dec(ptr))
               }
