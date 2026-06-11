@@ -354,10 +354,74 @@ describe('DebugTermWindow', () => {
       expect(displaySpec.colorCombos.length).toBeGreaterThan(0);
     });
 
+    // Regression: COLOR parser crash + correctness + runtime-safety.
+    // Old hand-rolled state machine read lineParts[colorIdx+1] unguarded and called
+    // .match() on undefined whenever a COLOR clause's final color had no trailing
+    // brightness — e.g. `COLOR $FF7F00 $000000` — killing the window-create path.
+    it('should not crash when a COLOR clause ends without a trailing brightness', () => {
+      // The exact failing case from the field (test_term_status.bin): $RRGGBB pair.
+      const lineParts = ['TERM', 'st', 'COLOR', '$FF7F00', '$000000'];
+      let result: [boolean, TermDisplaySpec] | undefined;
+      expect(() => {
+        result = DebugTermWindow.parseTermDeclaration(lineParts);
+      }).not.toThrow();
+      const [isValid, displaySpec] = result!;
+      expect(isValid).toBe(true);
+      expect(displaySpec.colorCombos).toHaveLength(4); // never shrinks (runtime select 4..7 indexes [0..3])
+      expect(displaySpec.colorCombos[0]).toEqual({ fgcolor: '#ff7f00', bgcolor: '#000000' });
+    });
+
+    it('should keep 4 color combos (defaults preserved) for a short COLOR list', () => {
+      // Pascal fills vColor[0..7] in place; unspecified slots keep their default.
+      const lineParts = ['TERM', 'st', 'COLOR', '$112233', '$445566'];
+      const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+      expect(isValid).toBe(true);
+      expect(displaySpec.colorCombos).toHaveLength(4);
+      expect(displaySpec.colorCombos[0]).toEqual({ fgcolor: '#112233', bgcolor: '#445566' });
+      // Combos 1..3 must still be the defaults (so runtime PAIR_OK/PAIR_ERR selects don't crash).
+      expect(displaySpec.colorCombos[1]).toBeDefined();
+      expect(displaySpec.colorCombos[2]).toBeDefined();
+      expect(displaySpec.colorCombos[3]).toBeDefined();
+    });
+
+    it('should treat BLACK/WHITE as fixed (no brightness consumed) in COLOR', () => {
+      // Pascal KeyColor: black->$000000, white->$FFFFFF, and neither consumes a following num.
+      const lineParts = ['TERM', 'st', 'COLOR', 'WHITE', 'BLACK'];
+      const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+      expect(isValid).toBe(true);
+      expect(displaySpec.colorCombos[0]).toEqual({ fgcolor: '#ffffff', bgcolor: '#000000' });
+    });
+
+    it('should resume directive parsing after a COLOR clause (index advance)', () => {
+      const lineParts = ['TERM', 'st', 'COLOR', '$FF7F00', '$000000', 'HIDEXY'];
+      const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+      expect(isValid).toBe(true);
+      expect(displaySpec.colorCombos[0]).toEqual({ fgcolor: '#ff7f00', bgcolor: '#000000' });
+      expect(displaySpec.hideXY).toBe(true); // directive after COLOR still processed
+    });
+
+    it('should not abort the whole parse on a malformed numeric directive (Pascal clamps/skips)', () => {
+      // Old code set isValid=false + break on a bad SIZE token, so the window was never
+      // created and later directives were dropped. Pascal TERM_Configure never aborts.
+      const lineParts = ['TERM', 'st', 'SIZE', 'bogus', '20', 'HIDEXY'];
+      const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+      expect(isValid).toBe(true); // window still created
+      expect(displaySpec.size).toEqual({ columns: 40, rows: 20 }); // bad SIZE kept defaults
+      expect(displaySpec.hideXY).toBe(true); // directive after the bad one still processed
+    });
+
+    it('should accept BACKCOLOR without consuming a following non-numeric directive', () => {
+      const lineParts = ['TERM', 'st', 'BACKCOLOR', '$010203', 'HIDEXY'];
+      const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
+      expect(isValid).toBe(true);
+      expect(displaySpec.window.background).toBe('#010203');
+      expect(displaySpec.hideXY).toBe(true); // HIDEXY not swallowed as a brightness value
+    });
+
     it('should handle UPDATE directive', () => {
       const lineParts = ['TERM', 'TestTerm', 'UPDATE'];
       const [isValid, displaySpec] = DebugTermWindow.parseTermDeclaration(lineParts);
-      
+
       expect(isValid).toBe(true);
       expect(displaySpec.delayedUpdate).toBe(true);
     });

@@ -208,6 +208,38 @@ export class DebugTermWindow extends DebugWindowBase {
     metrics.baseline = Math.round(metrics.charHeight * 0.8);
   }
 
+  /**
+   * Parse ONE color from the token stream — the TS analog of Pascal KeyColor
+   * (DebugDisplayUnit.pas:2752). Accepts a directive color NAME with an optional
+   * trailing brightness (0-15, RGBI8X) — except BLACK/WHITE which are fixed and
+   * consume NO brightness, matching Pascal — or a bare numeric / $hex / #rrggbb
+   * literal. Returns the resolved '#rrggbb' string plus the index of the next
+   * unconsumed token, or null when the token at idx is not a color (Pascal
+   * KeyColor returns False, leaving the token for the outer directive loop).
+   */
+  private static parseTermColor(lineParts: string[], idx: number): { rgb: string; nextIdx: number } | null {
+    const token = lineParts[idx];
+    if (token === undefined) {
+      return null;
+    }
+    let colorSpec = token;
+    let consumed = 1;
+    const upper = token.toUpperCase();
+    // RGBI8X named colors (but NOT BLACK/WHITE) may take an optional brightness byte.
+    if (DebugColor.isValidDirectiveColorName(token) && upper !== 'BLACK' && upper !== 'WHITE') {
+      const next = lineParts[idx + 1];
+      if (next !== undefined && /^\d+$/.test(next)) {
+        colorSpec = `${token} ${Number(next) & 15}`; // Pascal KeyColor: p := val and 15
+        consumed = 2;
+      }
+    }
+    const rgb = DebugColor.parseDirectiveColor(colorSpec);
+    if (rgb === null) {
+      return null;
+    }
+    return { rgb, nextIdx: idx + consumed };
+  }
+
   static parseTermDeclaration(lineParts: string[]): [boolean, TermDisplaySpec] {
     // here with lineParts = ['`TERM', {displayName}, ...]
     // Valid directives are:
@@ -296,12 +328,12 @@ export class DebugTermWindow extends DebugWindowBase {
                 displaySpec.size.columns = Math.max(1, Math.min(columns, 256));
                 displaySpec.size.rows = Math.max(1, Math.min(rows, 256));
               } else {
-                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing size values`);
-                isValid = false;
+                // Pascal KeyValWithin leaves the value unchanged on a bad token and the
+                // TERM_Configure loop continues — it does NOT abort. Skip, keep defaults.
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid SIZE values, keeping defaults`);
               }
             } else {
               DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
             }
             break;
           case 'TEXTSIZE':
@@ -315,104 +347,63 @@ export class DebugTermWindow extends DebugWindowBase {
                 // This is different from other windows which use standard font metrics
                 DebugTermWindow.calcTerminalFontMetrics(clamped, displaySpec.font);
               } else {
-                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing text size value`);
-                isValid = false;
+                // Pascal KeyTextSize ignores a bad token and continues — does NOT abort.
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid TEXTSIZE value, keeping default`);
               }
             } else {
               DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
             }
             break;
           case 'BACKCOLOR':
-            // BACKCOLOR sets the window background color (matches Pascal's KeyColor(vBackColor))
-            // Note: This is deprecated in favor of COLOR parameter
+            // BACKCOLOR sets the window background color (Pascal: KeyColor(vBackColor) — the
+            // SAME KeyColor as COLOR: name+optional-brightness, or a numeric/$hex literal).
+            // Note: deprecated in favor of the COLOR parameter.
             if (index < lineParts.length - 1) {
-              const colorName: string = lineParts[++index];
-              let colorBrightness: number = 8;
-              if (index < lineParts.length - 1) {
-                colorBrightness = Number(lineParts[++index]);
-              }
-              const backColor = new DebugColor(colorName, colorBrightness);
-              displaySpec.window.background = backColor.rgbString;
-              // Also update the default color combo's background
-              if (displaySpec.colorCombos.length > 0) {
-                displaySpec.colorCombos[0].bgcolor = backColor.rgbString;
+              const parsed = DebugTermWindow.parseTermColor(lineParts, index + 1);
+              if (parsed !== null) {
+                displaySpec.window.background = parsed.rgb;
+                // Also update the default color combo's background
+                if (displaySpec.colorCombos.length > 0) {
+                  displaySpec.colorCombos[0].bgcolor = parsed.rgb;
+                }
+                index = parsed.nextIdx - 1; // advance past the consumed color token(s)
+              } else {
+                DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Invalid BACKCOLOR value: ${lineParts[index + 1]}`);
               }
             } else {
               DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing parameter for ${element}`);
-              isValid = false;
             }
             break;
-          case 'COLOR':
-            // here with
-            //   COLOR fg-color0 bg-color0 [fg-color1 bg-color1 [fg-color2 bg-color2 [fg-color3 bg-color3]]]
-            //   fg/bg-color is a color name, with optional brightness: {name [brightness]}
-            // ensure we color names in pairs!
-            let colorComboIdx: number = 0;
-            let fgColor: string | undefined = undefined;
-            let bgColor: string | undefined = undefined;
-            let haveName: boolean = false;
-            let fgColorName: string | undefined = undefined;
-            let bgColorName: string | undefined = undefined;
-            for (let colorIdx = index + 1; colorIdx < lineParts.length; colorIdx++) {
-              const element = lineParts[colorIdx];
-              if (fgColor !== undefined && bgColor !== undefined) {
-                // have both fg and bg colors, make a color combo
-                const channelColor: ColorCombo = { fgcolor: fgColor, bgcolor: bgColor };
-                if (colorComboIdx == 0) {
-                  // Clear all default color combos when first COLOR is specified
-                  displaySpec.colorCombos = [];
-                }
-                displaySpec.colorCombos.push(channelColor);
-                colorComboIdx++;
-                // Reset for next pair
-                fgColor = undefined;
-                bgColor = undefined;
-              } else if (!haveName) {
-                // color name
-                const newColorName = element.toUpperCase();
-                if (fgColorName === undefined) {
-                  fgColorName = newColorName;
-                } else if (bgColorName === undefined) {
-                  bgColorName = newColorName;
-                }
-                haveName = true;
-              } else {
-                // this could be color brightness or next name...
-                let colorBrightness: number = 8;
-                const possibleBrightness: string = lineParts[colorIdx + 1];
-                // if possible is numeric then we have brightness
-                const numericResult = possibleBrightness.match(/^-{0,1}\d+$/);
-                if (numericResult != null) {
-                  // have brightness for latest colorName
-                  colorBrightness = Number(lineParts[++colorIdx]);
-                  if (fgColorName !== undefined) {
-                    // this is fg brightness
-                    fgColor = new DebugColor(fgColorName, colorBrightness).rgbString;
-                    fgColorName = undefined;
-                  } else if (bgColorName !== undefined) {
-                    // this is bg brightness
-                    bgColor = new DebugColor(bgColorName, colorBrightness).rgbString;
-                    bgColorName = undefined;
-                  }
-                  haveName = false; // next up we're looking for next color name
-                } else {
-                  // have next color name
-                  // record current color as fg then save bgColorName
-                  if (fgColorName !== undefined) {
-                    fgColor = new DebugColor(fgColorName).rgbString;
-                    fgColorName = undefined;
-                  } else {
-                    DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Missing fgColorName for ${element}`);
-                  }
-                  const newColorName = element.toUpperCase();
-                  bgColorName = newColorName;
-                  // we have the bg color name
-                  haveName = true;
-                }
+          case 'COLOR': {
+            // Pascal TERM_Configure: `for i := 0 to 7 do if not KeyColor(vColor[i]) then Break;`
+            // (DebugDisplayUnit.pas:2204). COLOR fills up to 8 flat colors = 4 fg/bg pairs
+            // (vColor[0..7]): even slot = fg of pair slot/2, odd slot = bg. Each color is an
+            // independent `NAME [brightness]` (RGBI8X) or numeric/$hex literal, resolved by the
+            // shared KeyColor analog. Parsing stops at the first token that is not a color.
+            //
+            // We OVERWRITE the 4 default combos in place (never shrink the array): unspecified
+            // slots keep their default, so colorCombos always stays length 4. The runtime
+            // color-pair select (codes 4..7) indexes colorCombos[0..3], so a short COLOR list
+            // must NOT leave that array smaller than 4 (would crash on select at runtime).
+            let scanIdx = index + 1;
+            let slot = 0;
+            while (slot < 8 && scanIdx < lineParts.length) {
+              const parsed = DebugTermWindow.parseTermColor(lineParts, scanIdx);
+              if (parsed === null) {
+                break; // not a color — leave the token for the outer directive loop (Pascal Dec(ptr))
               }
+              const comboIdx = slot >> 1;
+              if (slot % 2 === 0) {
+                displaySpec.colorCombos[comboIdx].fgcolor = parsed.rgb;
+              } else {
+                displaySpec.colorCombos[comboIdx].bgcolor = parsed.rgb;
+              }
+              scanIdx = parsed.nextIdx;
+              slot++;
             }
+            index = scanIdx - 1; // outer loop's index++ advances to the first unconsumed token
             break;
+          }
 
           case 'UPDATE':
             displaySpec.delayedUpdate = true;
@@ -425,9 +416,8 @@ export class DebugTermWindow extends DebugWindowBase {
             DebugTermWindow.logConsoleMessageStatic(`CL: TermDisplaySpec: Unknown directive: ${element}`);
             break;
         }
-        if (!isValid) {
-          break;
-        }
+        // Pascal TERM_Configure never aborts on a bad directive — it clamps/skips and keeps
+        // going, always building the window. isValid stays true once we have a display name.
       }
     }
     DebugTermWindow.logConsoleMessageStatic(
