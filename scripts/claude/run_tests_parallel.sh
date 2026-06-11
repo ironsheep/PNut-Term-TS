@@ -22,6 +22,15 @@ SEQ_SCRIPT="$SCRIPT_DIR/run_tests_sequentially.sh"
 
 cd "$REPO_ROOT" || exit 1
 
+# No-skip / coverage gate FIRST — fail fast if any present test file is
+# unregistered/unexcluded or any non-excluded test carries a .skip/.only marker.
+# This is the same gate CI runs and the sequential runner runs. [sprint 0.9.47 §7]
+if ! bash "$SCRIPT_DIR/check_test_coverage.sh"; then
+  echo "" >&2
+  echo "ERROR: test-coverage gate failed (see above) — fix registration/skips first." >&2
+  exit 1
+fi
+
 # Curated list = the run_test "tests/..." entries in the sequential script.
 mapfile -t FILES < <(grep -oE 'run_test "tests/[^"]+"' "$SEQ_SCRIPT" | sed 's/run_test "//; s/"$//')
 

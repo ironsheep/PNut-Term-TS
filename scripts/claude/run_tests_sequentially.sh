@@ -11,6 +11,17 @@ echo "Sequential Test Runner - Running all ${EXPECTED_TOTAL} tests individually"
 echo "==================================================================="
 echo ""
 
+# No-skip / coverage gate FIRST — abort before spending time on tests if any
+# present test file is unregistered/unexcluded, or any non-excluded test carries
+# a .skip/.only marker. [sprint 0.9.47 §7]
+GATE="$(dirname "${BASH_SOURCE[0]}")/check_test_coverage.sh"
+if ! bash "$GATE"; then
+    echo ""
+    echo "❌ Aborting: test-coverage gate failed (see above). Fix registration/skips first."
+    exit 1
+fi
+echo ""
+
 # Counter for test results
 TOTAL=0
 PASSED=0
@@ -71,12 +82,12 @@ run_test "tests/debuggerInteraction.test.ts"
 run_test "tests/debuggerDisplay.test.ts"
 run_test "tests/exitCodes.test.ts"
 run_test "tests/headedExitDrain.test.ts"
+run_test "tests/endSessionSentinel.test.ts"
 # §5a sweep (2026-06-01): of 110 unregistered tests/*.test.ts, only these 7 still
 # pass — the other 103 fail at suite-load (import refactored-away/renamed modules,
 # e.g. shared/serialReceiver, shared/circularBuffer). Those are stale-test debt,
 # tracked separately (NOT added here so the runner stays a true green baseline).
 run_test "tests/cogMessageRouting.test.ts"
-run_test "tests/debuggerPacketTest.test.ts"
 run_test "tests/dynamicQueue.test.ts"
 run_test "tests/messageRouter.test.ts"
 run_test "tests/sharedCircularBuffer.test.ts"
@@ -110,7 +121,7 @@ run_test "tests/fftWindowLogic.test.ts"
 run_test "tests/fixedPointDetailedDemo.test.ts"
 run_test "tests/hanningWindowEnergy.test.ts"
 run_test "tests/hsv16Worker.test.ts"
-  "tests/rxBackpressure.test.ts"
+run_test "tests/rxBackpressure.test.ts"
 run_test "tests/ide-mode.test.ts"
 run_test "tests/integrationTests.test.ts"
 run_test "tests/logicConfigParity.test.ts"
@@ -166,9 +177,10 @@ run_test "tests/windowFunctions.test.ts"
 run_test "tests/workerExtractor.simple.test.ts"
 run_test "tests/workerSpritedefBug.test.ts"
 # 9win-parity follow-on (#24) — FFT / shared-component / routing suites finalized to current behavior.
-# NOTE: fftMultipleExecutions + fftRealHardwareComparison are intentionally NOT registered — they
-# require external P2 capture files (debug_*.log / fft_input_samples.txt) absent from the repo, so
-# they can only run on a developer machine with the captures present.
+# NOTE: every present tests/*.test.ts is either registered below or listed (with a reason) in the
+# EXCLUDED_TESTS block of scripts/claude/check_test_coverage.sh — the single authoritative record of
+# what cannot run here. The guard (run at the top of this script) fails the build if that invariant
+# breaks or if any non-excluded test carries a .skip/.only/xit marker. [sprint 0.9.47 §7]
 run_test "tests/fftProcessor.detailed.test.ts"
 run_test "tests/fftAccuracyVerification.test.ts"
 run_test "tests/fftDeepDive.test.ts"
@@ -197,8 +209,7 @@ run_test "tests/windowRouterIntegration.test.ts"
 run_test "tests/serialMessageProcessorIntegration.test.ts"
 run_test "tests/debugLoggerRouting.test.ts"
 run_test "tests/debugLoggerWindow.test.ts"
-# 9win-parity follow-on (#24) — final batch. NOT registered: memoryLeakDetection (2 jest-env
-# timer-pollution tests gated with .skip) and spritedefRealUSB (needs an absent USB capture log).
+# 9win-parity follow-on (#24) — final batch.
 run_test "tests/baseClassCommonCommands.test.ts"
 run_test "tests/debugMidiWin.integration.test.ts"
 run_test "tests/tLongTransmission.test.ts"

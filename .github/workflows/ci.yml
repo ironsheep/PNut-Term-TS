@@ -90,6 +90,16 @@ jobs:
           echo "npm ci failed after 3 attempts"
           exit 1
 
+      - name: Test-coverage & no-skip gate
+        run: |
+          # Fail the build if any tests/*.test.ts is neither registered in
+          # run_tests_sequentially.sh nor in EXCLUDED_TESTS (with a reason), or if
+          # any non-excluded test carries a .skip/.only marker. A test the runner
+          # never invokes — or one silently skipped — is an invisible failure;
+          # this gate makes that drift red instead of hidden. [sprint 0.9.47 §7]
+          chmod +x scripts/claude/check_test_coverage.sh
+          scripts/claude/check_test_coverage.sh
+
       - name: Build
         run: npm run build
 
@@ -100,6 +110,7 @@ jobs:
           # some legacy tests reference deprecated modules and remain excluded).
           # GitHub runners have spare cores, so use 50% workers for fast feedback;
           # workerIdleMemoryLimit keeps memory-heavy suites deterministic.
+          # (run_tests_parallel.sh re-runs the gate too — belt and suspenders.)
           chmod +x scripts/claude/run_tests_parallel.sh
           JEST_WORKERS=50% scripts/claude/run_tests_parallel.sh
 
