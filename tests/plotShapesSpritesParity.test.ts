@@ -173,7 +173,6 @@ function makeStub(overrides: Record<string, any> = {}): any {
     skipComma: proto.skipComma,
     isColorCommand: proto.isColorCommand,
     isColorModeCommand: proto.isColorModeCommand,
-    setPlotColor: proto.setPlotColor,
     setCursorPosition: proto.setCursorPosition,
     getCursorXY: proto.getCursorXY,
     drawOBoxToPlot: proto.drawOBoxToPlot,

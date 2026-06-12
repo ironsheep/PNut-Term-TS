@@ -140,8 +140,8 @@ describe('DebugPlotWindow', () => {
       // Send COLOR command using Spin2 hex notation ($RRGGBB)
       await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
 
-      // Verify color was set via ColorTranslator (RGB24 mode: $FF0000 → #FF0000)
-      expect((plotWindow as any).currFgColor).toBe('#FF0000');
+      // Verify color was set via ColorTranslator (RGB24 mode: $FF0000 → canonical lowercase #ff0000)
+      expect((plotWindow as any).currFgColor).toBe('#ff0000');
     });
     
     test('should use LUTManager for palette management', async () => {

@@ -44,7 +44,7 @@ function makeStub(overrides: Record<string, any> = {}): any {
     currFgColor: '#ffffff',
     currTextColor: '#ffffff',
     colorMode: 'RGB24',
-    colorTranslator: { setColorMode: jest.fn() },
+    colorTranslator: { setColorMode: jest.fn(), translateColor: (v: number) => v & 0xffffff },
     font: { textSizePts: 10, charHeight: 13 },
     textStyle: {},
     pendingOperations: [] as any[],
@@ -63,7 +63,8 @@ function makeStub(overrides: Record<string, any> = {}): any {
     skipComma: proto.skipComma,
     isColorCommand: proto.isColorCommand,
     isColorModeCommand: proto.isColorModeCommand,
-    setPlotColor: proto.setPlotColor,
+    resolveKeyColor: proto.resolveKeyColor,
+    applyColorDirective: proto.applyColorDirective,
     setCursorPosition: proto.setCursorPosition,
     getCursorXY: proto.getCursorXY,
     makeTextAngle: proto.makeTextAngle,
@@ -99,6 +100,57 @@ describe('[9win §13c] BACKCOLOR directive at runtime (Pascal key_backcolor :193
     await run(stub, ['Plot', 'BACKCOLOR', 'RED']);
     expect(stub.displaySpec.window.background).toBe(new DebugColor('RED', 8).rgbString);
     expect(stub.displaySpec.window.background).not.toBe('#000000');
+  });
+
+  it('BACKCOLOR with a numeric arg goes through the active color MODE (ColorTranslator)', async () => {
+    // The stub translator is identity-masked; in RGB24 mode $112233 stays #112233. Proves the
+    // numeric path is taken (Pascal KeyColor: TranslateColor(val, vColorMode)), not a name.
+    const stub = makeStub();
+    await run(stub, ['Plot', 'BACKCOLOR', '$112233']);
+    expect(stub.displaySpec.window.background).toBe('#112233');
+  });
+
+  it('a non-color BACKCOLOR arg leaves the default and does not abort (C4)', async () => {
+    const stub = makeStub();
+    await run(stub, ['Plot', 'BACKCOLOR', 'TEXT']); // TEXT is not a color
+    expect(stub.displaySpec.window.background).toBe('#000000');
+  });
+});
+
+describe('[9win §13c] COLOR directive at runtime (Pascal key_color :1934-1943, unified KeyColor)', () => {
+  it('COLOR <name> sets the plot color via the shared parseKeyColor', async () => {
+    const stub = makeStub();
+    await run(stub, ['Plot', 'COLOR', 'RED']);
+    expect(stub.currFgColor).toBe(new DebugColor('RED', 8).rgbString);
+  });
+
+  it('COLOR <name> <brightness> honors the brightness byte', async () => {
+    const dim = makeStub();
+    await run(dim, ['Plot', 'COLOR', 'RED', '2']);
+    const full = makeStub();
+    await run(full, ['Plot', 'COLOR', 'RED', '15']);
+    expect(dim.currFgColor).not.toBe(full.currFgColor);
+  });
+
+  it('COLOR followed by TEXT also sets the text color (Pascal vTextColor := vPlotColor)', async () => {
+    const stub = makeStub();
+    await run(stub, ['Plot', 'COLOR', 'RED', 'TEXT']);
+    expect(stub.currTextColor).toBe(stub.currFgColor);
+    expect(stub.currTextColor).toBe(new DebugColor('RED', 8).rgbString);
+  });
+
+  it('a bare color name behaves identically to COLOR <name> (same KeyColor arm)', async () => {
+    const bare = makeStub();
+    await run(bare, ['Plot', 'GREEN']);
+    const kw = makeStub();
+    await run(kw, ['Plot', 'COLOR', 'GREEN']);
+    expect(bare.currFgColor).toBe(kw.currFgColor);
+  });
+
+  it('COLOR <numeric> uses the active color MODE (ColorTranslator), not a literal name', async () => {
+    const stub = makeStub();
+    await run(stub, ['Plot', 'COLOR', '$00FF00']);
+    expect(stub.currFgColor).toBe('#00ff00');
   });
 });
 

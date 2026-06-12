@@ -381,7 +381,8 @@ describe('DebugPlotWindow Commands', () => {
 
     test('should update foreground color via COLOR command', async () => {
       await plotWindow.updateContent(['TestPlot', 'COLOR', '$FF0000']);
-      expect((plotWindow as any).currFgColor).toBe('#FF0000');
+      // Unified KeyColor path emits canonical lowercase '#rrggbb' (shared parseDirectiveColor).
+      expect((plotWindow as any).currFgColor).toBe('#ff0000');
     });
 
     test('should apply new color to subsequent draws', async () => {
@@ -391,7 +392,7 @@ describe('DebugPlotWindow Commands', () => {
       await plotWindow.updateContent(['TestPlot', 'DOT']);
 
       const calls = executeJavaScript.mock.calls.map((c: any[]) => c[0]);
-      const greenDot = calls.find((s: string) => typeof s === 'string' && s.includes('#00FF00'));
+      const greenDot = calls.find((s: string) => typeof s === 'string' && s.includes('#00ff00'));
       expect(greenDot).toBeDefined();
     });
   });

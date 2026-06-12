@@ -1415,31 +1415,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       // Convert to uppercase for command matching
       const upperCommand = command.toUpperCase();
 
-      // Check if this is a color command
-      const isColorCommand = this.isColorCommand(upperCommand);
-      if (isColorCommand) {
-        // Handle color command (ORANGE, CYAN, WHITE, etc.)
-        let brightness = 8; // Default to full saturated color (not pale)
-
-        // Check if next token is a brightness value
-        let nextIndex = index + 1;
-        if (nextIndex < lineParts.length) {
-          const nextToken = lineParts[nextIndex];
-          const brightnessValue = this.parseNumber(nextToken);
-          if (brightnessValue !== null && brightnessValue >= 0 && brightnessValue <= 15) {
-            brightness = brightnessValue;
-            index++; // Consume the brightness token
-            nextIndex++; // Update next token position
-          }
-        }
-
-        // Pascal: if TEXT is next, set text color; otherwise leave it unchanged
-        // Check if TEXT command follows this color command
-        const nextCommand = nextIndex < lineParts.length ? lineParts[nextIndex].toUpperCase() : '';
-        const textFollows = nextCommand === 'TEXT';
-
-        // Apply the color
-        this.setPlotColor(upperCommand, brightness, textFollows);
+      // A bare directive color name (ORANGE, CYAN, WHITE, ...) is Pascal's key_black..key_gray
+      // arm of the COLOR case — resolve it through the same unified KeyColor path as the COLOR
+      // keyword (name [brightness], and TEXT-follows -> set text color).
+      if (this.isColorCommand(upperCommand)) {
+        index = this.applyColorDirective(lineParts, index);
         continue;
       }
 
@@ -1465,34 +1445,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'COLOR': {
-          // COLOR value - Set drawing color using color name or numeric pixel value
-          // Color names: BLACK, WHITE, ORANGE, BLUE, GREEN, CYAN, RED, MAGENTA, YELLOW, GRAY
-          // Numeric values are interpreted according to current color mode (RGBI8, RGB24, etc.)
-          if (index + 1 < lineParts.length) {
-            const colorToken = lineParts[++index];
-            let rgb24: number;
-
-            // Check if it's a color name first (like processLutCommand does)
-            if (DebugColor.isValidColorName(colorToken)) {
-              // Handle color name with default brightness 8
-              const color = new DebugColor(colorToken, 8);
-              rgb24 = color.rgbValue;
-              this.currFgColor = color.rgbString;
-              this.logMessage(`COLOR: Set color to name '${colorToken}' -> ${this.currFgColor}`);
-            } else {
-              // Try parsing as numeric value
-              const colorValue = this.parseNumber(colorToken);
-              if (colorValue !== null) {
-                // Use ColorTranslator to convert pixel value to RGB24
-                rgb24 = this.colorTranslator.translateColor(colorValue);
-
-                // Convert RGB24 (0xRRGGBB) to CSS color string '#RRGGBB'
-                this.currFgColor = '#' + rgb24.toString(16).padStart(6, '0').toUpperCase();
-
-                this.logMessage(`COLOR: Set color to value ${colorValue} -> ${this.currFgColor}`);
-              }
-            }
-          }
+          // COLOR <color> — Pascal key_color (:1934-1943): KeyColor(vPlotColor) then, if TEXT
+          // follows, vTextColor := vPlotColor. A NAME resolves via the shared parseKeyColor; a
+          // numeric value is interpreted through the current color MODE (ColorTranslator). A
+          // missing/non-color arg leaves the color unchanged and does not abort (C4).
+          index = this.applyColorDirective(lineParts, index + 1);
           break;
         }
 
@@ -1868,17 +1825,14 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'BACKCOLOR': {
-          // BACKCOLOR color — Pascal key_backcolor (:1932): set the background color (used by
-          // CLEAR) at runtime, mirroring the config-time BACKCOLOR handling.
-          if (index + 1 < lineParts.length) {
-            const colorName = lineParts[++index];
-            let brightness = 8; // full-saturated default (matches config-time BACKCOLOR)
-            if (index + 1 < lineParts.length && /^-?\d/.test(lineParts[index + 1])) {
-              brightness = Number(lineParts[++index]);
-            }
-            const bg = new DebugColor(colorName, brightness);
-            this.displaySpec.window.background = bg.rgbString;
-            this.logMessage(`Set background color to ${bg.rgbString}`);
+          // BACKCOLOR color — Pascal key_backcolor (:1932): KeyColor(vBackColor). A NAME resolves
+          // via the shared parseKeyColor; a numeric value through the current color MODE
+          // (ColorTranslator). A missing/non-color arg leaves the default and never aborts (C4).
+          const resolved = this.resolveKeyColor(lineParts, index + 1);
+          if (resolved !== null) {
+            this.displaySpec.window.background = resolved.rgb;
+            index = resolved.nextIdx - 1;
+            this.logMessage(`Set background color to ${resolved.rgb}`);
           }
           break;
         }
@@ -2383,23 +2337,54 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   }
 
   /**
-   * Set the current drawing color
-   * Pascal: Sets vPlotColor always; vTextColor only if TEXT immediately follows
+   * Resolve ONE PLOT runtime color argument at lineParts[idx] — the TS analog of Pascal
+   * KeyColor (DebugDisplayUnit.pas:2752). A directive color NAME (BLACK..GRAY, with an
+   * optional 0..15 brightness; BLACK/WHITE fixed) resolves via the shared parseKeyColor; a
+   * numeric pixel value is translated through the ACTIVE color MODE (Pascal TranslateColor(
+   * val, vColorMode)) via ColorTranslator. Returns the '#rrggbb' string plus the index of
+   * the next unconsumed token, or null when the token is not a color (Pascal KeyColor=False,
+   * token left for the outer loop). Never throws / never aborts the window (C4).
+   *
+   * The two paths are the sprint's documented color split: directive-NAME colors go to the
+   * shared parseKeyColor, pixel-MODE numerics stay on ColorTranslator. The name gate runs
+   * first so parseKeyColor's own numeric-literal fallback never shadows the mode path.
    */
-  private setPlotColor(colorName: string, brightness: number = 8, textFollows: boolean = false): void {
-    const color = new DebugColor(colorName, brightness);
-    this.currFgColor = color.rgbString;
-
-    // Pascal: if TEXT is next command, set text color to this color
-    // Otherwise, text color remains unchanged (stays white/default)
-    if (textFollows) {
-      this.currTextColor = color.rgbString;
-      this.logMessage(
-        `Set color to ${colorName} brightness ${brightness}: ${color.rgbString} (TEXT follows - updating text color)`
-      );
-    } else {
-      this.logMessage(`Set color to ${colorName} brightness ${brightness}: ${color.rgbString}`);
+  private resolveKeyColor(lineParts: string[], idx: number): { rgb: string; nextIdx: number } | null {
+    const token = lineParts[idx];
+    if (token === undefined) {
+      return null;
     }
+    if (DebugColor.isValidDirectiveColorName(token)) {
+      return DisplaySpecParser.parseKeyColor(lineParts, idx); // NAME [brightness], BLACK/WHITE fixed
+    }
+    const num = this.parseNumber(token); // $hex/%bin/decimal/underscores via Spin2NumericParser
+    if (num !== null) {
+      const rgb24 = this.colorTranslator.translateColor(num) & 0xffffff;
+      return { rgb: '#' + rgb24.toString(16).padStart(6, '0'), nextIdx: idx + 1 };
+    }
+    return null;
+  }
+
+  /**
+   * Apply a COLOR directive (the explicit COLOR keyword OR a bare color name) starting at
+   * lineParts[colorIdx]. Sets the plot color via resolveKeyColor, and — matching Pascal
+   * key_color/key_black..key_gray (:1934-1943) — if the immediately following token is TEXT,
+   * the text color tracks the plot color too (the TEXT token itself is left in place for the
+   * TEXT command to consume). Returns the last consumed index for the caller's for-loop;
+   * a non-color argument consumes nothing here (Pascal KeyColor=False -> Dec(ptr)).
+   */
+  private applyColorDirective(lineParts: string[], colorIdx: number): number {
+    const resolved = this.resolveKeyColor(lineParts, colorIdx);
+    if (resolved === null) {
+      return colorIdx - 1; // not a color -> leave the token for the outer loop
+    }
+    this.currFgColor = resolved.rgb;
+    const peek = lineParts[resolved.nextIdx];
+    if (peek !== undefined && peek.toUpperCase() === 'TEXT') {
+      this.currTextColor = resolved.rgb; // Pascal: vTextColor := vPlotColor when TEXT follows
+    }
+    this.logMessage(`COLOR resolved to ${resolved.rgb}`);
+    return resolved.nextIdx - 1;
   }
 
   /**

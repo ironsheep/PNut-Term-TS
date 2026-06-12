@@ -239,7 +239,7 @@ describe('DebugPlotWindow Integration Tests', () => {
       // Verify styles are stored
       expect((plotWindow as any).lineSize).toBe(5);
       expect((plotWindow as any).opacity).toBe(128);
-      expect((plotWindow as any).currFgColor).toBe('#FF0000');
+      expect((plotWindow as any).currFgColor).toBe('#ff0000');
 
       // Draw multiple shapes — all should use the styles
       await plotWindow.updateContent(['TestPlot', 'DOT']);
