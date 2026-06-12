@@ -322,8 +322,10 @@ export class DebugScopeWindow extends DebugWindowBase {
                 }
                 index = index + consumed - 1; // Adjust for loop increment
               } else {
-                DebugScopeWindow.logConsoleMessageStatic(`DEBUG WINDOW COLOR: Failed to parse COLOR specification`);
-                isValid = false;
+                // Pascal `if KeyColor(vBackColor)` (DebugDisplayUnit.pas:1180): a non-color
+                // token makes KeyColor return False (Dec(ptr) leaves it for the outer loop)
+                // — the window is NOT invalidated. Keep default colors and continue. [C4]
+                DebugScopeWindow.logConsoleMessageStatic(`DEBUG WINDOW COLOR: no valid color token; keeping defaults`);
               }
               break;
 
@@ -904,7 +906,12 @@ export class DebugScopeWindow extends DebugWindowBase {
             colorExplicit = true;
           }
           if (lineParts.length > 6) {
-            colorBrightness = Number(lineParts[6]);
+            // Pascal KeyColor: `if NextNum then p := val and 15` — override brightness
+            // only when a number follows, masked to 0..15; otherwise keep default 8.
+            const b = Spin2NumericParser.parseInteger(lineParts[6], false);
+            if (b !== null) {
+              colorBrightness = b & 15;
+            }
           }
           this.logMessage(
             `DEBUG AUTO PARSE: colorName='${colorName}' (from index 5), brightness=${colorBrightness} (from index 6)`
@@ -948,16 +955,26 @@ export class DebugScopeWindow extends DebugWindowBase {
             colorExplicit = true;
           }
           if (lineParts.length > 7) {
-            colorBrightness = Number(lineParts[7]);
+            // Pascal KeyColor: `if NextNum then p := val and 15` — override brightness
+            // only when a number follows, masked to 0..15; otherwise keep default 8.
+            const b = Spin2NumericParser.parseInteger(lineParts[7], false);
+            if (b !== null) {
+              colorBrightness = b & 15;
+            }
           }
           this.logMessage(
             `DEBUG MANUAL PARSE: colorName='${colorName}' (from index 6), brightness=${colorBrightness} (from index 7)`
           );
         }
         // Explicit color -> RGBI8X directive system; default -> clXxx DefaultScopeColors.
-        const channelColor = colorExplicit
+        // Pascal KeyColor(vColor[ch]) (DebugDisplayUnit.pas:1231) applies an explicit color
+        // ONLY when the token is a valid directive color NAME; any other token (number,
+        // next label, keyword) leaves the DefaultScopeColors default in place (KeyColor
+        // returns False -> Dec(ptr)) — never a forced gray fallback. [C5]
+        const explicitColor = colorExplicit && DebugColor.isValidDirectiveColorName(colorName);
+        const channelColor = explicitColor
           ? new DebugColor(colorName, colorBrightness)
-          : DebugColor.fromDefaultName(colorName, colorBrightness);
+          : DebugColor.fromDefaultName(defaultScopeColors[channelIndex % 8], 8);
         channelSpec.color = channelColor.rgbString;
         channelSpec.gridColor = channelColor.gridRgbString;
         channelSpec.textColor = channelColor.fontRgbString;

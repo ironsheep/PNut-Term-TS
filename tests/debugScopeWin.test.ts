@@ -354,6 +354,47 @@ describe('DebugScopeWindow', () => {
         expect(channelSamples).toBeDefined();
       });
     });
+
+    describe('Channel color parity (Pascal KeyColor vColor[ch], :1231)', () => {
+      // Manual channel line: '<name>' <min> <max> <ySize> <yBase> <legend> <color> <brightness>
+      it('masks explicit color brightness to 0..15 (p := val and 15): RED 20 == RED 4', async () => {
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'sig'", '0', '255', '100', '0', '%1111', 'RED', '4']);
+        const red4 = debugScopeWindow['channelSpecs'][0].color;
+
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'sig'", '0', '255', '100', '0', '%1111', 'RED', '20']);
+        const red20 = debugScopeWindow['channelSpecs'][0].color;
+
+        expect(red20).toBe(red4); // 20 & 15 == 4, not reset-to-8
+      });
+
+      it('a non-color explicit token keeps the DefaultScopeColors default (never forces gray)', async () => {
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'a'", '0', '255', '100', '0', '%1111']);
+        const defaultColor = debugScopeWindow['channelSpecs'][0].color;
+
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'b'", '0', '255', '100', '0', '%1111', 'NOTACOLOR']);
+        const badColor = debugScopeWindow['channelSpecs'][0].color;
+
+        expect(badColor).toBe(defaultColor); // kept default, NOT the 0x5a5a5a gray fallback
+        expect(badColor).not.toBe('#5a5a5a');
+      });
+
+      it('a valid explicit directive color overrides the channel default', async () => {
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'a'", '0', '255', '100', '0', '%1111']);
+        const defaultColor = debugScopeWindow['channelSpecs'][0].color;
+
+        debugScopeWindow['channelSpecs'] = [];
+        await debugScopeWindow['processMessageAsync'](["'b'", '0', '255', '100', '0', '%1111', 'RED', '8']);
+        const redColor = debugScopeWindow['channelSpecs'][0].color;
+
+        expect(redColor).not.toBe(defaultColor);
+        expect(redColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+      });
+    });
   });
 
   describe('Y-axis Scaling', () => {

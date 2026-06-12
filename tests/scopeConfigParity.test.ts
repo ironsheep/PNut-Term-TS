@@ -93,6 +93,46 @@ describe('[9win §9] SCOPE config parity (static parseScopeDeclaration)', () => 
     });
   });
 
+  describe('numeric literals + COLOR directive (Pascal KeyValWithin / KeyColor)', () => {
+    it('SAMPLES accepts a $hex literal via Spin2NumericParser ($100 -> 256)', () => {
+      const [isValid, spec] = DebugScopeWindow.parseScopeDeclaration(['`SCOPE', 'S', 'SAMPLES', '$100']);
+      expect(isValid).toBe(true);
+      expect(spec.nbrSamples).toBe(256);
+    });
+
+    it('COLOR <name> <brightness> honors the brightness on the background (KeyColor p := val and 15)', () => {
+      const dim = DebugScopeWindow.parseScopeDeclaration(['`SCOPE', 'S', 'COLOR', 'RED', '2'])[1];
+      const bright = DebugScopeWindow.parseScopeDeclaration(['`SCOPE', 'S', 'COLOR', 'RED', '15'])[1];
+      // canonical lowercase #rrggbb, no longer the default black, brightness-sensitive
+      expect(dim.window.background).toMatch(/^#[0-9a-f]{6}$/);
+      expect(dim.window.background).not.toBe('#000000');
+      expect(dim.window.background).not.toBe(bright.window.background);
+    });
+
+    it('COLOR <bg> <grid> sets both; a trailing non-color token ends the color loop and is still parsed', () => {
+      const [isValid, spec] = DebugScopeWindow.parseScopeDeclaration([
+        '`SCOPE', 'S', 'COLOR', 'RED', 'HIDEXY'
+      ]);
+      expect(isValid).toBe(true);
+      // RED consumed as background; HIDEXY is NOT a color, so grid keeps its default
+      // (Pascal KeyColor returns False -> Dec(ptr)) and HIDEXY is processed as a directive.
+      expect(spec.window.background).not.toBe('#000000');
+      expect(spec.window.grid).toBe('#404040');
+      expect(spec.hideXY).toBe(true);
+    });
+
+    it('a bad/empty COLOR token never aborts the window (Pascal never invalidates) [C4]', () => {
+      // non-color token after COLOR: window stays valid, later directives still parse
+      const bad = DebugScopeWindow.parseScopeDeclaration(['`SCOPE', 'S', 'COLOR', 'NOTACOLOR', 'SAMPLES', '64']);
+      expect(bad[0]).toBe(true);
+      expect(bad[1].nbrSamples).toBe(64);
+      // COLOR with no following token at end of line: still valid, defaults kept
+      const dangling = DebugScopeWindow.parseScopeDeclaration(['`SCOPE', 'S', 'COLOR']);
+      expect(dangling[0]).toBe(true);
+      expect(dangling[1].window.background).toBe('#000000');
+    });
+  });
+
   describe('legend %abcd / numeric bit order (Pascal vGrid :3298-3322)', () => {
     // Pascal: bit0(1)=min/base LINE, bit1(2)=max/top LINE, bit2(4)=min VALUE, bit3(8)=max VALUE.
     it('%abcd string is MSB-first: a=maxLegend b=minLegend c=maxLine d=minLine', () => {

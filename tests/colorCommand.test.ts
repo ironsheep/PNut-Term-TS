@@ -26,7 +26,9 @@ describe('COLOR directive parsing [9win §4b]', () => {
       const [isValid, windowColor, consumed] = parseColor('`LOGIC t COLOR BLACK');
       expect(isValid).toBe(true);
       expect(windowColor.background).toBe('#000000');
-      expect(windowColor.grid).toBe('#808080'); // unchanged default
+      // Empty sentinel = grid not given; the caller keeps its own window default
+      // ($404040), matching Pascal's untouched vGridColor. [parity]
+      expect(windowColor.grid).toBe('');
       expect(consumed).toBe(2); // COLOR + background
     });
 
@@ -83,7 +85,7 @@ describe('COLOR directive parsing [9win §4b]', () => {
       const [isValid, windowColor] = DisplaySpecParser.parseColorKeyword(['COLOR', 'INVALID_COLOR'], 0);
       expect(isValid).toBe(false);
       expect(windowColor.background).toBe('#000000'); // defaults preserved
-      expect(windowColor.grid).toBe('#808080');
+      expect(windowColor.grid).toBe(''); // grid sentinel: never given
     });
 
     it('rejects alias names that are not in the 10-name directive set', () => {

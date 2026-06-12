@@ -227,7 +227,12 @@ export class DisplaySpecParser {
   static parseColorKeyword(lineParts: string[], index: number): [boolean, WindowColor, number] {
     const windowColor: WindowColor = {
       background: '#000000', // default black
-      grid: '#808080' // default gray
+      // Empty sentinel = "no grid color given". Pascal `if KeyColor(vBackColor) then
+      // KeyColor(vGridColor)` (DebugDisplayUnit.pas:1180): when only a background is
+      // supplied, vGridColor is left UNCHANGED at the window's DefaultGridColor ($404040).
+      // Returning a filler here used to overwrite that default; instead leave it empty so
+      // each caller's `if (colors.grid)` guard keeps the window's own default. [parity]
+      grid: ''
     };
 
     const bg = this.parseKeyColor(lineParts, index + 1);
