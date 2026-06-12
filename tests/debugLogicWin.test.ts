@@ -309,6 +309,17 @@ describe('DebugLogicWindow', () => {
         expect(debugLogicWindow['triggerSpec'].trigMatch).toBe(8);
       });
 
+      it('should parse TRIGGER from a comma-separated `(mask, match, offset) feed', async () => {
+        // Regression: `(255, 128, 50) tokenizes to standalone ',' tokens between values.
+        // Before the fix the positional grab read ',' as the match value and the trigger
+        // spec mis-sequenced. Commas must be dropped as pure separators. [9win §14]
+        await debugLogicWindow['processMessageAsync'](['TRIGGER', '255', ',', '128', ',', '50']);
+        expect(debugLogicWindow['triggerSpec'].trigEnabled).toBe(true);
+        expect(debugLogicWindow['triggerSpec'].trigMask).toBe(255);
+        expect(debugLogicWindow['triggerSpec'].trigMatch).toBe(128);
+        expect(debugLogicWindow['triggerSpec'].trigSampOffset).toBe(50);
+      });
+
       it('should update trigger status display', async () => {
         const mockWindow = mockBrowserWindowInstances[0];
 

@@ -803,6 +803,14 @@ export class DebugTermWindow extends DebugWindowBase {
     const unparsedCommand = lineParts.join(' ');
     //this.logMessage(`at updateContent(${unparsedCommand})`);
 
+    // Runtime numeric feeds — `(a, b, c) — arrive with commas as standalone separator
+    // tokens: tokenizeCommand() emits ',' as its own token (commas inside quoted strings
+    // stay attached to their quote token). For TERM these commas are pure separators, so
+    // drop them before dispatch. Without this, set-column/set-row (actions 2/3) grabbed
+    // the following ',' as their value — "Unknown numeric format - value: ','" — and the
+    // rest of the feed mis-sequenced. Mirrors PLOT/SCOPE comma skipping. [9win §14]
+    lineParts = lineParts.filter((part) => part !== ',');
+
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
     // Window name was already stripped by mainWindow routing
     if (await this.handleCommonCommand(lineParts)) {

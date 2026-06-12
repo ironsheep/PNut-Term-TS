@@ -5,6 +5,26 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.48] - 2026-06-12
+
+A follow-on parsing fix to the 0.9.47 foundation pass. Runtime DEBUG feeds written in
+Spin2 as `` `(a, b, c) `` are tokenized with each comma as its own standalone token, and
+three windows passed those separator tokens straight to the numeric parser — producing
+`Unknown numeric format - value: ","` and, in LOGIC, mis-grabbing positional values. The
+trigger was a TERM status panel (`test_term_status.bin` @ 2Mbaud) that logged the error
+six times. TERM, SCOPE_XY, and LOGIC now skip standalone comma tokens before parsing,
+matching the six windows (PLOT, SCOPE, FFT, SPECTRO, BITMAP, MIDI) that already did. The
+fix is surgical and invisible to well-formed feeds; it only stops the spurious errors and
+restores correct value sequencing on comma-separated feeds.
+
+### Fixed
+
+- **TERM, SCOPE_XY, LOGIC: comma separators in `` `(a, b, c) `` runtime feeds no longer
+  reach the numeric parser.** `tokenizeCommand` emits each `,` as its own token; these
+  three windows now skip standalone comma tokens before calling `Spin2NumericParser`,
+  eliminating `Unknown numeric format - value: ","` and fixing LOGIC's positional
+  TRIGGER/HOLDOFF value grabs. The other six windows already guarded against this.
+
 ## [0.9.47] - 2026-06-12
 
 Foundation parity pass over how all nine debug-display windows parse their declaration

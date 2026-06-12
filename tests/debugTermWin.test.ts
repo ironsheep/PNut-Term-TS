@@ -265,6 +265,22 @@ describe('DebugTermWindow', () => {
       expect(debugTermWindow['cursorPosition'].x).toBe(10);
     });
 
+    it('should treat commas in a `(a, b, c) feed as separators, not values', async () => {
+      // Regression: runtime numeric feed `(TC_ROW, 0, TC_COL, 0, PAIR_HILITE) tokenizes
+      // to ['3', ',', '0', ',', '2', ',', '0', ',', '5'] — tokenizeCommand emits each ','
+      // as its own token. Before the fix, set-row(3) grabbed the following ',' as its value
+      // ("Unknown numeric format - value: ','") and the rest mis-sequenced (row value '0'
+      // read as action 0 = CLEAR). Commas must be dropped as pure separators. [9win §14]
+      debugTermWindow['cursorPosition'] = { x: 9, y: 9 };
+      debugTermWindow['selectedCombo'] = 0;
+
+      await debugTermWindow.updateContent(['3', ',', '0', ',', '2', ',', '0', ',', '5']);
+
+      expect(debugTermWindow['cursorPosition'].y).toBe(0); // set-row 0
+      expect(debugTermWindow['cursorPosition'].x).toBe(0); // set-col 0
+      expect(debugTermWindow['selectedCombo']).toBe(1); // color code 5 -> combo 1
+    });
+
     it('should handle text output', async () => {
       // In delayed-update mode the chars still write to the offscreen buffer (cursor
       // advances); only the flip to the visible canvas is deferred until UPDATE. The old

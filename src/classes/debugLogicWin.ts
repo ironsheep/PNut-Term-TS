@@ -1170,6 +1170,14 @@ export class DebugLogicWindow extends DebugWindowBase {
     // ----------------------------------------------------------------
     this.logMessage(`at updateContent(${lineParts.join(' ')})`);
 
+    // Runtime numeric feeds `(a, b, c) arrive with commas as standalone separator tokens
+    // (tokenizeCommand emits ','; commas inside quoted channel-name strings stay attached
+    // to their quote token). For LOGIC these commas are pure separators, so drop them
+    // before dispatch. Without this, the positional TRIGGER/HOLDOFF value grabs
+    // (lineParts[index + 1]) read a ',' as the mask/match/offset and mis-sequenced the
+    // trigger spec. Mirrors TERM/PLOT/SCOPE comma handling. [9win §14]
+    lineParts = lineParts.filter((part) => part !== ',');
+
     // FIRST: Let base class handle common commands (CLEAR, CLOSE, UPDATE, SAVE, PC_KEY, PC_MOUSE)
     if (await this.handleCommonCommand(lineParts)) {
       // Base class handled the command, we're done

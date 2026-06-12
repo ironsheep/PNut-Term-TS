@@ -1078,6 +1078,13 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // SCOPE_XY-specific data processing
     for (const element of elements) {
+      // Runtime numeric feeds `(a, b, c) arrive with commas as standalone separator
+      // tokens (tokenizeCommand emits ','). Guard with isNumeric() before parsing so a
+      // comma is silently skipped instead of reaching parseInteger() and logging
+      // "Unknown numeric format - value: ','". Matches BITMAP/MIDI/SPECTRO. [9win §14]
+      if (!Spin2NumericParser.isNumeric(element)) {
+        continue;
+      }
       // Process numerical data — Spin2NumericParser (signed) so $hex/%bin/underscored
       // sample values parse, matching Pascal NextNum/NewPack. [C2 runtime]
       const value = Spin2NumericParser.parseInteger(element, true);

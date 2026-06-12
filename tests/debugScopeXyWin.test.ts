@@ -1,4 +1,5 @@
 import { DebugScopeXyWindow, ScopeXyDisplaySpec } from '../src/classes/debugScopeXyWin';
+import { Spin2NumericParser } from '../src/classes/shared/spin2NumericParser';
 import { createMockContext, createMockBrowserWindow, setupDebugWindowTest, cleanupDebugWindowTest } from './shared/mockHelpers';
 import { BrowserWindow } from 'electron';
 
@@ -262,6 +263,21 @@ describe('DebugScopeXyWindow', () => {
       await new Promise(resolve => setImmediate(resolve));
 
       expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalled();
+    });
+
+    it('should treat commas in a `(a, b, c) data feed as separators, not values', async () => {
+      // Regression: `(10, 20, 30, 40) tokenizes to standalone ',' tokens between values.
+      // Before the fix each ',' reached Spin2NumericParser.parseInteger() and logged
+      // "Unknown numeric format - value: ','". The isNumeric() guard must skip commas so
+      // the parser only ever sees real values. [9win §14]
+      const parseSpy = jest.spyOn(Spin2NumericParser, 'parseInteger');
+      await (window as any).handleData(['10', ',', '20', ',', '30', ',', '40']);
+      // The parser must never be handed a comma token...
+      expect(parseSpy.mock.calls.some((call) => call[0] === ',')).toBe(false);
+      // ...and must still have parsed all four real values.
+      const parsedTokens = parseSpy.mock.calls.map((call) => call[0]);
+      expect(parsedTokens).toEqual(['10', '20', '30', '40']);
+      parseSpy.mockRestore();
     });
 
     it('should render static content on window creation', () => {
