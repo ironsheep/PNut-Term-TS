@@ -147,5 +147,57 @@ describe('[9win §13a] PLOT coordinate model parity', () => {
       expect(dotSizeOf(['DOTSIZE', '999'])).toEqual({ width: 256, height: 256 });
       expect(dotSizeOf(['DOTSIZE', '0'])).toEqual({ width: 1, height: 1 });
     });
+
+    it('parses Spin2 radix literals (%bin) for the size, not just decimal', () => {
+      // %1010 == 10; raw Number() returned NaN and silently kept the default.
+      expect(dotSizeOf(['DOTSIZE', '%1010'])).toEqual({ width: 10, height: 10 });
+      expect(dotSizeOf(['DOTSIZE', '$10', '$08'])).toEqual({ width: 16, height: 8 });
+    });
+  });
+});
+
+// [9win §2.6] PLOT create-parser color parity vs Pascal PLOT_Configure (DebugDisplayUnit.pas:1864):
+// key_backcolor -> KeyColor(vBackColor); key_lutcolors -> KeyLutColors (vLut[0..$FF]). Both go
+// through the shared parseKeyColor; a missing/bad color never aborts the window (C4).
+describe('[9win §2.6] PLOT create-parser BACKCOLOR / LUTCOLORS parity', () => {
+  function parse(parts: string[]): { isValid: boolean; spec: PlotDisplaySpec } {
+    const [isValid, spec] = DebugPlotWindow.parsePlotDeclaration(['`PLOT', 'P', ...parts]);
+    return { isValid, spec: spec as PlotDisplaySpec };
+  }
+
+  // The default background (no BACKCOLOR) — assert against this for the C4 cases.
+  const defaultBackground = parse([]).spec.window.background;
+
+  it('BACKCOLOR $112233 sets a literal $hex rgb24 background', () => {
+    const { isValid, spec } = parse(['BACKCOLOR', '$112233']);
+    expect(isValid).toBe(true);
+    expect(spec.window.background).toBe('#112233');
+  });
+
+  it('BACKCOLOR <name> resolves via the shared directive-color path', () => {
+    // RED is an RGBI8X directive name; parseKeyColor resolves it (full saturation default).
+    const { spec } = parse(['BACKCOLOR', 'RED']);
+    expect(spec.window.background.toLowerCase()).not.toBe(defaultBackground.toLowerCase());
+  });
+
+  it('C4: a trailing BACKCOLOR with no color keeps the default and does NOT reject the window', () => {
+    const { isValid, spec } = parse(['BACKCOLOR']);
+    expect(isValid).toBe(true);
+    expect(spec.window.background).toBe(defaultBackground);
+  });
+
+  it('LUTCOLORS loads consecutive colors as rgb24 ints, stopping at the next directive', () => {
+    // $hex literals + a following directive (UPDATE) that must NOT be swallowed.
+    const { isValid, spec } = parse(['LUTCOLORS', '$FF0000', '$00FF00', '$0000FF', 'UPDATE']);
+    expect(isValid).toBe(true);
+    expect(spec.lutColors).toEqual([0xff0000, 0x00ff00, 0x0000ff]);
+    expect(spec.delayedUpdate).toBe(true); // UPDATE after the color run still applied
+  });
+
+  it('LUTCOLORS with no colors leaves an empty palette and does not abort', () => {
+    const { isValid, spec } = parse(['LUTCOLORS', 'UPDATE']);
+    expect(isValid).toBe(true);
+    expect(spec.lutColors).toEqual([]);
+    expect(spec.delayedUpdate).toBe(true);
   });
 });

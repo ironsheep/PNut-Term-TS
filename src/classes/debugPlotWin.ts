@@ -40,10 +40,6 @@ import {
 } from './debugWindowBase';
 import { TIMEOUT } from 'dns';
 
-export interface LutColor {
-  fgcolor: string;
-  bgcolor: string;
-}
 export interface PlotDisplaySpec {
   displayName: string;
   windowTitle: string; // composite or override w/TITLE
@@ -52,7 +48,7 @@ export interface PlotDisplaySpec {
   size: Size;
   dotSize: Size;
   window: WindowColor;
-  lutColors: LutColor[];
+  lutColors?: number[]; // LUTCOLORS directive — rgb24 LUT palette entries (Pascal vLut[0..$FF])
   delayedUpdate: boolean;
   hideXY: boolean;
   colorMode?: ColorMode; // Optional color mode (LUT1, RGBI8, RGB24, etc.)
@@ -260,6 +256,14 @@ export class DebugPlotWindow extends DebugWindowBase {
     if (displaySpec.colorMode) {
       this.colorTranslator.setColorMode(displaySpec.colorMode);
     }
+    // Apply LUTCOLORS from the declaration (Pascal KeyLutColors fills vLut[0..$FF] at
+    // PLOT_Configure time). parsePlotDeclaration stored them as rgb24 ints from index 0 up.
+    if (displaySpec.lutColors && displaySpec.lutColors.length > 0) {
+      for (let i = 0; i < displaySpec.lutColors.length && i < 256; i++) {
+        this.lutManager.setColor(i, displaySpec.lutColors[i]);
+      }
+      this.colorTranslator.setLutPalette(this.lutManager.getPalette());
+    }
     this.layerManager = new LayerManager();
     this.spriteManager = new SpriteManager();
 
@@ -359,7 +363,6 @@ export class DebugPlotWindow extends DebugWindowBase {
     //   HIDEXY
     DebugPlotWindow.logConsoleMessageStatic(`CL: at parsePlotDeclaration()`);
     let displaySpec: PlotDisplaySpec = {} as PlotDisplaySpec;
-    displaySpec.lutColors = [] as LutColor[]; // ensure this is structured too! (CRASHED without this!)
     displaySpec.window = {} as WindowColor; // ensure this is structured too! (CRASHED without this!)
     let isValid: boolean = false;
 
@@ -419,36 +422,52 @@ export class DebugPlotWindow extends DebugWindowBase {
               // KeyValWithin(vDotSize,1,256); if present, vDotSizeY := vDotSize then
               // KeyValWithin(vDotSizeY,1,256). Was unhandled (fell to default → stayed 1×1),
               // so a config-time DOTSIZE never applied (e.g. PC_MOUSE ÷dotSize stayed ÷1). [9win §13a]
-              if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-                const w = Math.max(1, Math.min(256, Math.trunc(Number(lineParts[++index]))));
-                displaySpec.dotSize.width = w;
-                displaySpec.dotSize.height = w; // y defaults to x
-                if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-                  const h = Math.max(1, Math.min(256, Math.trunc(Number(lineParts[++index]))));
-                  displaySpec.dotSize.height = h;
+              // Parse via Spin2NumericParser ($hex/%bin/%%quat/underscores) clamped 1..256,
+              // mirroring Pascal KeyValWithin(vDotSize,1,256) then optional y.
+              const dsW = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 256);
+              if (dsW !== null) {
+                index++;
+                displaySpec.dotSize.width = dsW;
+                displaySpec.dotSize.height = dsW; // Pascal: vDotSizeY := vDotSize (y defaults to x)
+                const dsH = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 256);
+                if (dsH !== null) {
+                  index++;
+                  displaySpec.dotSize.height = dsH;
                 }
               }
               break;
             }
-            case 'BACKCOLOR':
-              // ensure we have one more value
-              if (index < lineParts.length - 1) {
-                const colorName: string = lineParts[++index];
-                let colorBrightness: number = 8; // Default to full saturated color (brightness 8 in RGBI8X), not pale (15)
-                if (index < lineParts.length - 1) {
-                  // Check if next part is numeric (simple check for 0-9 or -)
-                  const nextPart = lineParts[index + 1];
-                  if (nextPart && /^-?\d/.test(nextPart)) {
-                    colorBrightness = Number(lineParts[++index]);
-                  }
-                }
-                const textColor = new DebugColor(colorName, colorBrightness);
-                displaySpec.window.background = textColor.rgbString;
-              } else {
-                DebugPlotWindow.logConsoleMessageStatic(`CL: PlotDisplaySpec: Missing parameter for ${element}`);
-                isValid = false;
+            case 'BACKCOLOR': {
+              // Pascal PLOT_Configure key_backcolor -> KeyColor(vBackColor) (:1900-1901).
+              // One directive color via the shared parseKeyColor (NAME [brightness] | numeric
+              // | $hex | #rrggbb). Missing/invalid color leaves the default and does NOT abort
+              // the window (C4 / Pascal KeyColor returns False -> token left for outer loop).
+              const bg = DisplaySpecParser.parseKeyColor(lineParts, index + 1);
+              if (bg !== null) {
+                displaySpec.window.background = bg.rgb;
+                index = bg.nextIdx - 1; // -1 compensates for the loop's ++index
               }
               break;
+            }
+            case 'LUTCOLORS': {
+              // Pascal PLOT_Configure key_lutcolors -> KeyLutColors (:1898-1899, :2806):
+              // load up to 256 LUT entries, each one KeyColor (NAME [brightness] | numeric |
+              // $hex | #rrggbb), stopping at the first non-color token (it belongs to the next
+              // directive). Routed through the shared parseKeyColor; never aborts the window.
+              displaySpec.lutColors = [];
+              for (;;) {
+                const entry = DisplaySpecParser.parseKeyColor(lineParts, index + 1);
+                if (entry === null) {
+                  break; // not a color -> next directive (also stops at end of tokens)
+                }
+                displaySpec.lutColors.push(parseInt(entry.rgb.slice(1), 16)); // '#rrggbb' -> rgb24 int
+                index = entry.nextIdx - 1; // -1 compensates for the loop's ++index
+                if (displaySpec.lutColors.length >= 256) {
+                  break; // Pascal vLut[0..$FF]
+                }
+              }
+              break;
+            }
             case 'UPDATE':
               displaySpec.delayedUpdate = true;
               DebugPlotWindow.logConsoleMessageStatic('CL: PlotDisplaySpec: UPDATE mode enabled (buffered drawing)');
