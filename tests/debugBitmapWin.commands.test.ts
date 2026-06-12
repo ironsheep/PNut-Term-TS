@@ -199,28 +199,34 @@ describe('DebugBitmapWindow Command Tests', () => {
       expect(mockTraceProcessor.setPosition).toHaveBeenCalledWith(255, 255);
     });
 
-    it('should reject negative coordinates', async () => {
-      const logSpy = jest.spyOn(window as any, 'logMessage');
+    it('should clamp negative coordinates to 0 (Pascal KeyValWithin, never reject)', async () => {
+      // Pascal key_set CLAMPS via KeyValWithin(vPixelX, 0, vWidth-1); the old code
+      // rejected out-of-range coords (invented non-Pascal behavior). [9win §15]
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
 
       await window.updateContent(['SET', '-1', '0']);
 
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ERROR: Invalid pixel coordinates'));
+      expect(mockTraceProcessor.setPosition).toHaveBeenCalledWith(0, 0);
     });
 
-    it('should reject out of bounds coordinates', async () => {
-      const logSpy = jest.spyOn(window as any, 'logMessage');
-
-      await window.updateContent(['SET', '256', '256']);
-
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ERROR: Invalid pixel coordinates'));
-    });
-
-    it('should handle decimal coordinates by truncating', async () => {
+    it('should clamp out-of-bounds coordinates to the bitmap edge (Pascal KeyValWithin)', async () => {
       const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+
+      await window.updateContent(['SET', '256', '256']); // 256x256 bitmap -> max 255,255
+
+      expect(mockTraceProcessor.setPosition).toHaveBeenCalledWith(255, 255);
+    });
+
+    it('should ignore non-integer coordinates (Spin2NumericParser is integer-strict)', async () => {
+      // Debug coordinate values are always integers on the wire; a non-integer token
+      // is not a valid coordinate and is left unapplied (no truncation). [9win §15]
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
+      const logSpy = jest.spyOn(window as any, 'logMessage');
 
       await window.updateContent(['SET', '10.5', '20.7']);
 
-      expect(mockTraceProcessor.setPosition).toHaveBeenCalledWith(10, 20);
+      expect(mockTraceProcessor.setPosition).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ERROR: SET command requires two numeric coordinates'));
     });
   });
 

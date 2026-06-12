@@ -215,6 +215,64 @@ describe('DebugBitmapWindow', () => {
       expect(spec.dotSize).toEqual({ x: 2, y: 3 });
     });
 
+    // [9win §15] BITMAP create-parser parity (Pascal BITMAP_Configure, DebugDisplayUnit.pas:2372)
+    it('DOTSIZE with a single value applies it to both X and Y (Pascal vDotSizeY := vDotSize)', () => {
+      const [, spec] = DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'DOTSIZE', '5']);
+      expect(spec.dotSize).toEqual({ x: 5, y: 5 });
+    });
+
+    it('DOTSIZE clamps each axis to 1..256 (Pascal KeyValWithin) and accepts Spin2 numerics', () => {
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'DOTSIZE', '999', '0'])[1].dotSize).toEqual({
+        x: 256,
+        y: 1
+      });
+      // %100 = 4 (binary) — raw parseInt would have produced NaN.
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'DOTSIZE', '%100'])[1].dotSize).toEqual({
+        x: 4,
+        y: 4
+      });
+    });
+
+    it('TRACE is an UNCLAMPED integer (Pascal KeyVal) and accepts $hex', () => {
+      // $0F -> 15; no 0..15 reject (the old code aborted outside 0..15).
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'TRACE', '$0F'])[1].tracePattern).toBe(15);
+      const [isValid, spec] = DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'TRACE', '200']);
+      expect(isValid).toBe(true); // never aborts
+      expect(spec.tracePattern).toBe(200); // stored raw; masked to a pattern at use
+    });
+
+    it('RATE preserves the -1 sentinel (expanded to width*height downstream) and accepts Spin2 numerics', () => {
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'RATE', '-1'])[1].rate).toBe(-1);
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'RATE', '$100'])[1].rate).toBe(256);
+    });
+
+    it('SPARSE accepts a directive name (with brightness) or a numeric, via shared parseKeyColor', () => {
+      // RED 8 via RGBI8X = 0xFF0909 (see rgbi8x-directive-color-values).
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'SPARSE', 'RED'])[1].sparseColor).toBe(0xff0909);
+      // $hex numeric — the old SPARSE numeric path used bare parseInt and produced NaN here.
+      expect(DebugBitmapWindow.parseBitmapDeclaration(['`BITMAP', 'b', 'SPARSE', '$112233'])[1].sparseColor).toBe(
+        0x112233
+      );
+    });
+
+    it('LUTCOLORS collects consecutive names/numerics and stops at the next directive (never aborts)', () => {
+      const [isValid, spec] = DebugBitmapWindow.parseBitmapDeclaration([
+        '`BITMAP', 'b', 'LUTCOLORS', 'RED', '$00FF00', 'HIDEXY'
+      ]);
+      expect(isValid).toBe(true);
+      expect(spec.lutColors).toEqual([0xff0909, 0x00ff00]);
+      expect(spec.hideXY).toBe(true); // HIDEXY after the palette still applies
+    });
+
+    it('a missing/invalid directive value keeps defaults and never aborts (C4)', () => {
+      const [isValid, spec] = DebugBitmapWindow.parseBitmapDeclaration([
+        '`BITMAP', 'b', 'DOTSIZE', 'oops', 'HIDEXY'
+      ]);
+      expect(isValid).toBe(true);
+      expect(spec.dotSize).toBeUndefined(); // default 1,1 applied at state init
+      expect(spec.hideXY).toBe(true);
+    });
+
     // §15: BITMAP has no COLOR-to-backgroundColor mapping in parseBitmapDeclaration.
     // The COLOR token is not consumed by shared parser (each window handles it differently)
     // and in BITMAP's default case it is gracefully skipped via validatePackedMode check.
@@ -561,15 +619,18 @@ describe('DebugBitmapWindow', () => {
       expect(logSpy).toHaveBeenCalledWith('ERROR: Cannot set pixel position before bitmap size is defined');
     });
 
-    it('should log error for invalid pixel coordinates', async () => {
+    it('should clamp out-of-range pixel coordinates to the bitmap (Pascal KeyValWithin)', async () => {
       const logSpy = jest.spyOn(window as any, 'logMessage');
+      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock
+        .instances[0];
       // Force uninitialized so '100 100' is parsed as bitmap size (100×100),
-      // then SET 200 50 is invalid (200 >= 100).
+      // then SET 200 50: Pascal key_set clamps X to 0..99 (-> 99), never rejects. [9win §15]
       window['state'].isInitialized = false;
 
       await window.updateContent(['100', '100', 'SET', '200', '50']);
 
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ERROR: Invalid pixel coordinates'));
+      expect(mockTraceProcessor.setPosition).toHaveBeenCalledWith(99, 50);
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('ERROR: Invalid pixel coordinates'));
     });
 
     it('should log error when plotting pixels before size is defined', async () => {

@@ -256,6 +256,23 @@ export class DebugBitmapWindow extends DebugWindowBase {
     return { color: DebugBitmapWindow.translateRgbi8x(value), consumed };
   }
 
+  /**
+   * Resolve ONE directive color token to its rgb24 integer via the shared
+   * parseKeyColor — the canonical Pascal KeyColor analog (DebugDisplayUnit.pas:2752)
+   * used by every window's directive-color site. Accepts a directive NAME with an
+   * optional 0..15 brightness (RGBI8X) or a numeric / $hex / #rrggbb literal, and
+   * returns null when the token is not a color (so the caller leaves it for the next
+   * directive). BITMAP stores colors as 24-bit integers (vSparse / vLut[]), so the
+   * helper's '#rrggbb' result is converted here. [9win §15]
+   */
+  private static parseKeyColorValue(parts: string[], index: number): { color: number; nextIdx: number } | null {
+    const resolved = DisplaySpecParser.parseKeyColor(parts, index);
+    if (resolved === null) {
+      return null;
+    }
+    return { color: parseInt(resolved.rgb.slice(1), 16), nextIdx: resolved.nextIdx };
+  }
+
   /** Pascal mode group: key_luma8..key_luma8x (tune may be a color name OR numeric). */
   private static isLumaMode(mode: ColorMode): boolean {
     return mode === ColorMode.LUMA8 || mode === ColorMode.LUMA8W || mode === ColorMode.LUMA8X;
@@ -358,106 +375,84 @@ export class DebugBitmapWindow extends DebugWindowBase {
         } else {
           // Handle BITMAP-specific keywords
           switch (directive) {
-            case 'DOTSIZE':
-              if (i + 1 < lineParts.length) {
-                const x = parseInt(lineParts[++i]); // Pascal: DOTSIZE x y
-                if (!isNaN(x) && x >= 1) {
-                  // Check if there's a second value
-                  if (i + 1 < lineParts.length) {
-                    const nextVal = parseInt(lineParts[i + 1]);
-                    if (!isNaN(nextVal) && nextVal >= 1) {
-                      // Two values provided
-                      const y = nextVal;
-                      i++;
-                      displaySpec.dotSize = { x, y };
-                    } else {
-                      // Only one value, use for both X and Y
-                      displaySpec.dotSize = { x, y: x };
-                    }
-                  } else {
-                    // Only one value, use for both X and Y
-                    displaySpec.dotSize = { x, y: x };
-                  }
-                } else {
-                  errorMessage = 'DOTSIZE directive requires at least one positive numeric value';
-                  isValid = false;
+            case 'DOTSIZE': {
+              // Pascal key_dotsize (DebugDisplayUnit.pas:2389): if KeyValWithin(vDotSize,
+              // 1, 256) then vDotSizeY := vDotSize; KeyValWithin(vDotSizeY, 1, 256). So X
+              // 1..256, optional Y 1..256 defaulting to X. Route through Spin2NumericParser
+              // (signed, like Pascal NextNum) so %bin/$hex/underscored values parse; clamp
+              // 1..256; ignore-and-continue, never abort. [9win §15]
+              const x = DisplaySpecParser.clampInt(lineParts, i + 1, 1, 256, true);
+              if (x !== null) {
+                i++;
+                let y = x; // Pascal: vDotSizeY := vDotSize before the optional second read
+                const y2 = DisplaySpecParser.clampInt(lineParts, i + 1, 1, 256, true);
+                if (y2 !== null) {
+                  y = y2;
+                  i++;
                 }
-              } else {
-                errorMessage = 'DOTSIZE directive missing value';
-                isValid = false;
+                displaySpec.dotSize = { x, y };
               }
               break;
+            }
 
             case 'HIDEXY':
               displaySpec.hideXY = true;
               break;
 
-            case 'SPARSE':
-              if (i + 1 < lineParts.length) {
-                // SPARSE color accepts a color name (with optional brightness) OR a raw
-                // numeric, per Pascal KeyColor (DebugDisplayUnit.pas:2752). [9win §15]
-                const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
-                if (named) {
-                  displaySpec.sparseColor = named.color;
-                  i += named.consumed;
-                } else {
-                  displaySpec.sparseColor = parseInt(lineParts[++i]);
-                }
-              } else {
-                errorMessage = 'SPARSE directive missing color value';
-                isValid = false;
+            case 'SPARSE': {
+              // Pascal key_sparse: KeyColor(vSparse) (DebugDisplayUnit.pas:2390) — one
+              // directive color via the shared parseKeyColor (a NAME [0..15 brightness] or
+              // a numeric / $hex / #rrggbb literal), stored as a 24-bit int. Absent or
+              // non-color leaves the default (no sparse); never abort. [9win §15]
+              const sparse = DebugBitmapWindow.parseKeyColorValue(lineParts, i + 1);
+              if (sparse !== null) {
+                displaySpec.sparseColor = sparse.color;
+                i = sparse.nextIdx - 1; // outer loop adds the trailing ++
               }
               break;
+            }
 
-            case 'TRACE':
+            case 'TRACE': {
+              // Pascal key_trace: KeyVal(vTrace) (DebugDisplayUnit.pas:2401) — an UNCLAMPED
+              // integer (masked to a pattern via `and 7` at use), default 0. Route through
+              // Spin2NumericParser for %bin/$hex; never clamp, never abort. [9win §15]
               if (i + 1 < lineParts.length) {
-                const pattern = parseInt(lineParts[++i]);
-                if (!isNaN(pattern) && pattern >= 0 && pattern <= 15) {
-                  displaySpec.tracePattern = pattern;
-                } else {
-                  errorMessage = 'TRACE pattern must be 0-15';
-                  isValid = false;
+                const v = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+                if (v !== null) {
+                  displaySpec.tracePattern = v;
+                  i++;
                 }
-              } else {
-                errorMessage = 'TRACE directive missing pattern value';
-                isValid = false;
               }
               break;
+            }
 
-            case 'RATE':
+            case 'RATE': {
+              // Pascal key_rate: KeyVal(vRate) (DebugDisplayUnit.pas:2403) — an UNCLAMPED
+              // integer, default 0; the -1 sentinel expands to width*height downstream
+              // (preserved). Route through Spin2NumericParser for %bin/$hex; never abort. [9win §15]
               if (i + 1 < lineParts.length) {
-                const rate = parseInt(lineParts[++i]);
-                if (!isNaN(rate)) {
-                  displaySpec.rate = rate;
-                } else {
-                  errorMessage = 'RATE directive requires numeric value';
-                  isValid = false;
+                const v = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+                if (v !== null) {
+                  displaySpec.rate = v;
+                  i++;
                 }
-              } else {
-                errorMessage = 'RATE directive missing value';
-                isValid = false;
               }
               break;
+            }
 
             case 'LUTCOLORS':
-              // Collect consecutive color values into the palette (index 0 upward). Each
-              // value is a color name (with optional brightness) OR a raw rgb24 numeric,
-              // per Pascal KeyLutColors -> KeyColor (DebugDisplayUnit.pas:2806-2814). Stop
-              // at the first non-color token (it belongs to the next directive). [9win §15]
+              // Pascal key_lutcolors: KeyLutColors -> repeated KeyColor (DebugDisplayUnit.pas:2806).
+              // Collect consecutive directive colors (NAME [brightness] or numeric/$hex) via the
+              // shared parseKeyColor into the palette (index 0 upward); stop at the first
+              // non-color token — it belongs to the next directive. Guarded; never abort. [9win §15]
               displaySpec.lutColors = [];
-              while (i + 1 < lineParts.length) {
-                const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
-                if (named) {
-                  displaySpec.lutColors.push(named.color);
-                  i += named.consumed;
-                  continue;
+              for (;;) {
+                const entry = DebugBitmapWindow.parseKeyColorValue(lineParts, i + 1);
+                if (entry === null) {
+                  break; // not a color -> next directive (also stops at end of tokens)
                 }
-                const colorValue = Spin2NumericParser.parseColor(lineParts[i + 1]);
-                if (colorValue === null) {
-                  break; // not a color/number -> next directive
-                }
-                displaySpec.lutColors.push(colorValue);
-                i++;
+                displaySpec.lutColors.push(entry.color);
+                i = entry.nextIdx - 1; // outer loop adds the trailing ++
               }
               break;
 
@@ -728,10 +723,17 @@ export class DebugBitmapWindow extends DebugWindowBase {
       switch (part) {
         case 'SET':
           if (i + 2 < lineParts.length) {
-            const x = parseInt(lineParts[i + 1]);
-            const y = parseInt(lineParts[i + 2]);
-            if (!isNaN(x) && !isNaN(y)) {
-              this.setPixelPosition(x, y);
+            // Pascal key_set: KeyValWithin(vPixelX, 0, vWidth-1) then
+            // KeyValWithin(vPixelY, 0, vHeight-1) (DebugDisplayUnit.pas:2418) — numeric via
+            // Spin2NumericParser and CLAMP into the bitmap (setPixelPosition would otherwise
+            // reject out-of-range; Pascal clamps). [9win §15]
+            const x = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+            const y = Spin2NumericParser.parseInteger(lineParts[i + 2], true);
+            if (x !== null && y !== null) {
+              this.setPixelPosition(
+                DisplaySpecParser.clamp(x, 0, this.state.width - 1),
+                DisplaySpecParser.clamp(y, 0, this.state.height - 1)
+              );
               dataStartIndex = i + 3;
               i += 2;
             } else {
@@ -744,9 +746,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
         case 'SCROLL':
           if (i + 2 < lineParts.length) {
-            const scrollX = parseInt(lineParts[i + 1]);
-            const scrollY = parseInt(lineParts[i + 2]);
-            if (!isNaN(scrollX) && !isNaN(scrollY)) {
+            // Pascal key_scroll: KeyValWithin(x, -vWidth, vWidth) / (y, -vHeight, vHeight)
+            // (DebugDisplayUnit.pas:2422); scrollBitmap already clamps, so just route the
+            // numerics through Spin2NumericParser (%bin/$hex). [9win §15]
+            const scrollX = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+            const scrollY = Spin2NumericParser.parseInteger(lineParts[i + 2], true);
+            if (scrollX !== null && scrollY !== null) {
               this.scrollBitmap(scrollX, scrollY);
               dataStartIndex = i + 3;
               i += 2;
@@ -760,19 +765,27 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
         case 'TRACE':
           if (i + 1 < lineParts.length) {
-            const pattern = parseInt(lineParts[i + 1]);
-            this.setTracePattern(pattern);
-            dataStartIndex = i + 2;
-            i++;
+            // Pascal key_trace: if NextNum then SetTrace(val, True) (DebugDisplayUnit.pas:2415) —
+            // act only on a real number; route through Spin2NumericParser. [9win §15]
+            const pattern = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+            if (pattern !== null) {
+              this.setTracePattern(pattern);
+              dataStartIndex = i + 2;
+              i++;
+            }
           }
           break;
 
         case 'RATE':
           if (i + 1 < lineParts.length) {
-            const rate = parseInt(lineParts[i + 1]);
-            this.setRate(rate);
-            dataStartIndex = i + 2;
-            i++;
+            // Pascal key_rate: KeyVal(vRate) (DebugDisplayUnit.pas:2416) — route through
+            // Spin2NumericParser (%bin/$hex); the -1 sentinel is honored downstream. [9win §15]
+            const rate = Spin2NumericParser.parseInteger(lineParts[i + 1], true);
+            if (rate !== null) {
+              this.setRate(rate);
+              dataStartIndex = i + 2;
+              i++;
+            }
           }
           break;
 
