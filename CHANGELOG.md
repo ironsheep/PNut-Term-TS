@@ -5,6 +5,66 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.47] - 2026-06-12
+
+Foundation parity pass over how all nine debug-display windows parse their declaration
+and runtime directives. The earlier nine-window sprint aligned *which* directives each
+window accepts and *how* it draws; this one aligns the parsing itself — numeric formats,
+clamp bounds, color handling, and accept/reject behavior — to the original Pascal
+(`DebugDisplayUnit.pas`). The trigger was a TERM `COLOR` crash that exposed a broader,
+orthogonal gap: windows that drew correctly could still misparse a declaration.
+
+Three things changed across the board. **Numeric parameters now accept the full Spin2
+set** — `$hex`, `%bin`, `%%quaternary`, and `1_000` underscore separators — everywhere a
+directive takes a number; previously several windows used raw `Number()`/`parseInt()`
+that silently turned those into `NaN` and dropped the value. **Directive colors are
+centralized** through one shared KeyColor parser, so a color name plus optional
+brightness (e.g. `CYAN 8`) is honored consistently — MIDI and SCOPE_XY previously lost
+named colors or the brightness byte. **Parsing never rejects a window:** matching Pascal,
+an out-of-range or malformed parameter is clamped or skipped and parsing continues, and a
+valid display type always creates its window — a single bad value can no longer abort the
+declaration or drop the directives after it. As part of strict parity, a few invented,
+non-Pascal directives (BITMAP runtime `DOTSIZE`/`SPARSE`) were removed.
+
+For most demos this is invisible — well-formed declarations parse as before. The
+difference shows on edge-case or machine-generated strings, which now clamp to a sensible
+window instead of failing. The authoritative parsing reference is recorded in-repo at
+`DOCs/project-specific/WINDOW-PARSING-PARITY.md`.
+
+This release also adds a test-coverage gate that fails the build if any test file is
+unregistered or any test is silently skipped, closing a class of invisible test gaps.
+
+### Changed
+
+- **All nine windows: numeric directive parameters accept full Spin2 numeric formats**
+  (`$hex`, `%bin`, `%%quat`, `1_000`) via the shared `Spin2NumericParser`, replacing raw
+  `Number()`/`parseInt()` that dropped those formats to `NaN`. Affects SCOPE_XY, MIDI,
+  SPECTRO, FFT, LOGIC, BITMAP, PLOT (SCOPE/TERM were already compliant).
+- **Directive colors centralized** through a shared `parseKeyColor` helper: a color name
+  with optional brightness, or a numeric / `$hex` / `#rrggbb` literal, parsed the same way
+  everywhere (COLOR / BACKCOLOR / SPARSE / LUTCOLORS). MIDI `COLOR name brightness` and
+  SCOPE_XY named colors, previously lost, are now honored.
+- **Parsing is clamp-and-continue, never reject** (strict Pascal parity): out-of-range
+  parameters clamp to their documented bounds, malformed ones are skipped, and a valid
+  display type always creates its window. A bad parameter no longer drops later directives.
+- **Cross-window grid-color default fix:** a `COLOR` with only a background color now keeps
+  each window's own grid-color default (`$404040`) instead of being overwritten — corrects
+  SCOPE, LOGIC, and FFT.
+
+### Removed
+
+- **Invented non-Pascal directives:** BITMAP runtime `DOTSIZE` and `SPARSE` commands that
+  have no counterpart in the Pascal source were removed (parity).
+
+### Added
+
+- **Test-coverage / no-skip gate** (`scripts/claude/check_test_coverage.sh`, wired into the
+  sequential runner and CI): the build fails if any `tests/*.test.ts` is neither registered
+  nor on the reasoned exclusion list, or if any non-excluded test carries a `.skip`/`.only`
+  marker. Suite at release: 155/155, 0 silent skips.
+- **`DOCs/project-specific/WINDOW-PARSING-PARITY.md`** — authoritative per-window directive
+  bounds/defaults table, the two color-path distinction, and the never-reject policy.
+
 ## [0.9.46] - 2026-06-10
 
 Fixes a crash that aborted the download (and killed the serial connection) when the off-main serial

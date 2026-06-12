@@ -1,6 +1,8 @@
 # Window Parsing Foundation Parity — Sprint Plan
 
-**Status:** STARTED 2026-06-11 (all §0 Open Questions resolved)
+**Status:** ✅ CLOSED 2026-06-12 — certified done; all 12 commitments shipped.
+Audit: `DOCs/plans/archive/CLOSEOUT-2026-06-12-WINDOW-PARSING-FOUNDATION-PARITY.md`.
+(Was: STARTED 2026-06-11, all §0 Open Questions resolved.)
 **Authored:** 2026-06-11
 **Owner:** Stephen
 **Type:** Sprint plan (commitment to ship code changes), not a study.
