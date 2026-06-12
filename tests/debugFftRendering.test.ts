@@ -161,22 +161,27 @@ describe('FFT Rendering', () => {
       expect(displaySpec.lineSize).toBe(3);
     });
 
-    it('should configure line mode with specified width', () => {
+    it('ignores the non-Pascal LINE directive — key_line is PLOT-only, not FFT [9win §11]', () => {
+      // Pascal FFT_Configure handles key_linesize, NOT key_line (key_line/key_dot belong to
+      // PLOT_Configure, DebugDisplayUnit.pas:1980/1965). LINE + its operand are ignored here,
+      // so the line/dot sizes keep their FFT_Configure defaults (lineSize=3, dotSize=0).
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '128', 'LINE', '5'
       ]);
 
-      expect(displaySpec.lineSize).toBe(5);
+      expect(displaySpec.lineSize).toBe(3);
       expect(displaySpec.dotSize).toBe(0);
     });
 
-    it('should configure dot mode with specified size', () => {
+    it('ignores the non-Pascal DOT directive — key_dot is PLOT-only, not FFT [9win §11]', () => {
+      // Same reasoning: DOT is not an FFT directive. It and its operand are ignored, leaving
+      // the FFT_Configure defaults (lineSize=3, dotSize=0).
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '64', 'DOT', '3'
       ]);
 
-      expect(displaySpec.dotSize).toBe(3);
-      expect(displaySpec.lineSize).toBe(0);
+      expect(displaySpec.dotSize).toBe(0);
+      expect(displaySpec.lineSize).toBe(3);
     });
 
     it('should enable log scale when LOGSCALE specified', () => {

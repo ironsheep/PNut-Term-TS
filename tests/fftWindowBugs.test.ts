@@ -162,13 +162,12 @@ describe('FFT Window Bug Proof Tests', () => {
     });
   });
 
-  describe('BUG #3: Textsize Parameter Treated as Data', () => {
-    test('PROOF: Textsize parameter should be skipped but is currently treated as data', async () => {
-      console.log('\n=== BUG #3 PROOF TEST ===');
-      console.log('Testing: Channel config textsize parameter handling');
-      console.log('Format: "\'label\' mag high tall base grid color textsize"');
-      console.log('Expected: All 8 parameters skipped, textsize NOT treated as data');
-      console.log('Current: Only 7 parameters skipped, textsize (12) becomes first sample\n');
+  describe('[9win §11] channel color consumes optional brightness (was BUG #3)', () => {
+    test('a trailing brightness after a named color is consumed by KeyColor, not left as data', async () => {
+      console.log('\n=== CHANNEL COLOR BRIGHTNESS TEST ===');
+      console.log('Format: "\'label\' mag high tall base grid color {brightness}"');
+      console.log('Pascal KeyColor (DebugDisplayUnit.pas:1637): a directive NAME may take an');
+      console.log('optional trailing brightness — `YELLOW 12` consumes BOTH; 12 is NOT a sample.');
 
       const spec = DebugFFTWindow.createDisplaySpec('TestFFT', [
         'FFT', 'TestFFT', 'SAMPLES', '8', 'RATE', '8'
@@ -177,7 +176,7 @@ describe('FFT Window Bug Proof Tests', () => {
       const fftWindow = new DebugFFTWindow(context, spec);
       const privateAccess = fftWindow as any;
 
-      // Send channel config followed by known data values
+      // Send channel config (with YELLOW + brightness 12) followed by known data values
       console.log('Sending: ["\'Test\'", "0", "1000", "180", "10", "15", "YELLOW", "12"]');
       console.log('Then sending: ["100", "200", "300"]');
 
@@ -194,28 +193,13 @@ describe('FFT Window Bug Proof Tests', () => {
         samples.push(buffer[bufferIndex]);
       }
 
-      console.log(`\nBuffer contents (first 4 samples):`);
-      console.log(`  Sample 0: ${samples[0]}`);
-      console.log(`  Sample 1: ${samples[1]}`);
-      console.log(`  Sample 2: ${samples[2]}`);
-      console.log(`  Sample 3: ${samples[3]}`);
+      console.log(`\nBuffer contents (first 4 samples): ${samples.slice(0, 3).join(', ')}`);
 
-      // Pascal FFT_Update channel config: 'label' mag high tall base grid {color}
-      // The channel definition has NO textsize field — only 6 required + 1 optional color.
-      // Sending: ["'Test'", '0', '1000', '180', '10', '15', 'YELLOW', '12']
-      // Parser consumes: label(1) + mag(1) + high(1) + tall(1) + base(1) + grid(1) + YELLOW as color(1) = 7 parts
-      // '12' is NOT a textsize parameter — it is the FIRST DATA SAMPLE (current correct behavior).
-      console.log('\n🔍 CHANNEL PARSING BEHAVIOR (BUG #3 reassessment):');
-      console.log('Pascal has no textsize in channel config — 12 is legitimately the first data sample.');
-      if (samples[0] === 12) {
-        console.log('✅ CORRECT: First sample is 12 (channel config has no textsize field)');
-        console.log('   Parser consumed label+5numerics+YELLOW = 7 parts; 12 is first data sample.');
-      }
-
-      // Current source behavior: '12' becomes first data sample (no textsize in channel config).
-      expect(samples[0]).toBe(12); // 12 is the first data sample — no textsize in channel config
-      expect(samples[1]).toBe(100);
-      expect(samples[2]).toBe(200);
+      // FIXED behavior: `YELLOW 12` is fully consumed as color+brightness (Pascal KeyColor),
+      // so the channel def eats all 8 parts and the FIRST real data sample is 100 — NOT 12.
+      expect(samples[0]).toBe(100);
+      expect(samples[1]).toBe(200);
+      expect(samples[2]).toBe(300);
     });
   });
 
@@ -297,18 +281,16 @@ describe('FFT Window Bug Proof Tests', () => {
       const fftWindow = new DebugFFTWindow(context, spec);
       const privateAccess = fftWindow as any;
 
-      // Configure channel (from DEBUG_FFT.spin2 line 9)
+      // Configure channel (from DEBUG_FFT.spin2 line 8: `'FFT' 0 1000 180 10 15 YELLOW 12`)
       await fftWindow.updateContent(["'FFT'", '0', '1000', '180', '10', '15', 'YELLOW', '12']);
 
-      // The channel config above parsed 7 parts (label+5numerics+YELLOW) and '12' became
-      // the FIRST data sample. So the FFT buffer receives: [12, realSineWave[0..62]] = 64
-      // samples → first FFT fires at that point (RATE=64, rateCounter starts at RATE-1).
-      // Do NOT add a second batch of zeros: that would fire a second FFT (mostly zeros)
-      // which overwrites channelFFTResults[0] with near-zero power.
-      console.log(`Feeding ${realSineWave.length} real sine wave samples (first FFT fires after 63 values)...`);
+      // [9win §11] The channel config above is FULLY consumed (label+5numerics+YELLOW+brightness
+      // 12, 8 parts) — Pascal KeyColor eats the trailing brightness, so '12' is NOT a stray data
+      // sample. The FFT buffer therefore receives a clean [realSineWave[0..63]] = 64 samples →
+      // the first FFT fires on the 64th value (RATE=64, rateCounter starts at RATE-1).
+      console.log(`Feeding ${realSineWave.length} real sine wave samples (first FFT fires on the 64th)...`);
 
-      // Feed real sine wave — first FFT fires automatically after 63 sine values
-      // (buffer = [12 (from channel config), sine[0..62]])
+      // Feed real sine wave — first FFT fires automatically on the 64th sample (clean buffer)
       for (const value of realSineWave) {
         await fftWindow.updateContent([value.toString()]);
       }

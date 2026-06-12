@@ -11,6 +11,7 @@ import { DebugColor } from './shared/debugColor';
 import { PackedDataProcessor } from './shared/packedDataProcessor';
 import { CanvasRenderer } from './shared/canvasRenderer';
 import { DisplaySpecParser } from './shared/displaySpecParser';
+import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { ColorTranslator } from './shared/colorTranslator';
 import { InputForwarder } from './shared/inputForwarder';
 import { FFTProcessor } from './shared/fftProcessor';
@@ -668,46 +669,36 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // Handle SAMPLES first since FFT needs special parsing (first/last bins)
       if (element === 'SAMPLES') {
-        // FFT-specific SAMPLES parsing with optional first and last bins
-        if (index < lineParts.length - 1) {
-          const samplesValue = Number(lineParts[++index]);
+        // Pascal key_samples (DebugDisplayUnit.pas:1573-1582): if no number follows,
+        // Continue (defaults stand). Otherwise FFTexp := Trunc(Log2(Within(val,4,FFTmax)));
+        // vSamples := 1 shl FFTexp — clamp to [4,2048] then FLOOR to a power of two
+        // (e.g. 768 -> 512). Spin2NumericParser resolves $hex/%bin/1_024 underscore
+        // literals that raw Number() drops to NaN. [9win §11]
+        const samplesValue =
+          index < lineParts.length - 1 ? Spin2NumericParser.parseInteger(lineParts[index + 1], true) : null;
+        if (samplesValue === null) {
+          continue; // Pascal: if not NextNum then Continue
+        }
+        index++;
+        spec.samples = DisplaySpecParser.floorPowerOfTwoWithin(samplesValue, 4, 2048); // [4,2048], floor not round
+        spec.nbrSamples = spec.samples; // required by BaseDisplaySpec
 
-          // Validate power of 2 between 4 and 2048
-          if (!this.isPowerOfTwo(samplesValue) || samplesValue < 4 || samplesValue > 2048) {
-            const nearest = this.nearestPowerOfTwo(samplesValue, 4, 2048);
-            // Silent rounding to nearest power of 2 (matches Pascal behavior)
-            spec.samples = nearest;
-          } else {
-            spec.samples = samplesValue;
-          }
-
-          // Update nbrSamples to match samples (required by BaseDisplaySpec)
-          spec.nbrSamples = spec.samples;
-
-          // Calculate FFT exponent for later use
-          const fftExp = Math.log2(spec.samples);
-
-          // Default first and last bins
-          spec.firstBin = 0;
-          spec.lastBin = spec.samples / 2 - 1;
-
-          // Optional first bin parameter
-          if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-            const first = Number(lineParts[++index]);
-            if (first >= 0 && first < spec.samples / 2 - 1) {
-              spec.firstBin = first;
-            }
-
-            // Optional last bin parameter
-            if (index < lineParts.length - 1 && !isNaN(Number(lineParts[index + 1]))) {
-              const last = Number(lineParts[++index]);
-              if (last > spec.firstBin && last <= spec.samples / 2 - 1) {
-                spec.lastBin = last;
-              }
-            }
+        // Display bins default to the full half-spectrum, then optional first/last
+        // CLAMP into range via KeyValWithin (Pascal CLAMPS, never rejects):
+        //   FFTfirst := Within(val, 0, vSamples/2 - 2)
+        //   FFTlast  := Within(val, FFTfirst+1, vSamples/2 - 1)  (only if first present)
+        spec.firstBin = 0;
+        spec.lastBin = spec.samples / 2 - 1;
+        const first = DisplaySpecParser.clampInt(lineParts, index + 1, 0, spec.samples / 2 - 2, true);
+        if (first !== null) {
+          index++;
+          spec.firstBin = first;
+          const last = DisplaySpecParser.clampInt(lineParts, index + 1, spec.firstBin + 1, spec.samples / 2 - 1, true);
+          if (last !== null) {
+            index++;
+            spec.lastBin = last;
           }
         }
-        // Missing parameter handled by using defaults
         continue;
       }
 
@@ -721,79 +712,56 @@ export class DebugFFTWindow extends DebugWindowBase {
 
       // Parse other FFT-specific keywords
       switch (element) {
-        case 'RATE':
-          if (index < lineParts.length - 1) {
-            const rateValue = Number(lineParts[++index]);
-            if (rateValue >= 1 && rateValue <= 2048) {
-              spec.rate = rateValue;
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
+        case 'RATE': {
+          // Pascal key_rate: KeyValWithin(vRate, 1, FFTmax) — CLAMP to [1,2048]. [9win §11]
+          const rateValue = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 2048, true);
+          if (rateValue !== null) {
+            spec.rate = rateValue;
+            index++;
           }
           break;
+        }
 
-        case 'LINE':
-          if (index < lineParts.length - 1) {
-            const lineValue = Number(lineParts[++index]);
-            if (lineValue >= -32 && lineValue <= 32) {
-              spec.lineSize = lineValue; // Preserve sign! Negative = bar mode
-              spec.dotSize = 0; // Line mode disables dot mode
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
-          } else {
-            // Default line size
-            spec.lineSize = 3;
-            spec.dotSize = 0;
-          }
-          break;
-
-        case 'DOT':
-          if (index < lineParts.length - 1) {
-            const dotValue = Number(lineParts[++index]);
-            if (dotValue >= 0 && dotValue <= 32) {
-              spec.dotSize = dotValue;
-              spec.lineSize = 0; // Dot mode disables line mode
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
-          } else {
-            // Default dot size
-            spec.dotSize = 3;
-            spec.lineSize = 0;
-          }
-          break;
+        // NOTE: there is intentionally NO bare DOT / LINE directive — Pascal FFT_Configure
+        // (DebugDisplayUnit.pas:1567-1597) handles only key_dotsize / key_linesize. key_dot
+        // and key_line are real keywords but belong to PLOT_Configure (:1965,:1980), not FFT.
+        // A DOT/LINE token here is therefore not an FFT directive — it falls through to the
+        // default (ignored), keeping the dotSize/lineSize defaults. [9win §11]
 
         // NOTE: there is intentionally NO RANGE directive — Pascal FFT_Configure has no
         // key_range. The first/last display bins are set by SAMPLES (n {first {last}}),
         // handled above, exactly as Pascal does (DebugDisplayUnit.pas:1573-1582). [9win §11]
 
-        case 'DOTSIZE':
-          if (index < lineParts.length - 1) {
-            const dotValue = Number(lineParts[++index]);
-            if (dotValue >= 0 && dotValue <= 32) {
-              spec.dotSize = dotValue;
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
+        case 'DOTSIZE': {
+          // Pascal key_dotsize: KeyValWithin(vDotSize, 0, 32) — CLAMP. [9win §11]
+          const dotValue = DisplaySpecParser.clampInt(lineParts, index + 1, 0, 32, true);
+          if (dotValue !== null) {
+            spec.dotSize = dotValue;
+            index++;
           }
           break;
+        }
 
-        case 'LINESIZE':
-          if (index < lineParts.length - 1) {
-            const lineValue = Number(lineParts[++index]);
-            if (lineValue >= -32 && lineValue <= 32) {
-              spec.lineSize = lineValue;
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
+        case 'LINESIZE': {
+          // Pascal key_linesize: KeyValWithin(vLineSize, -32, 32) — CLAMP, sign preserved
+          // (negative = vertical-bar mode in FFT_Draw). [9win §11]
+          const lineValue = DisplaySpecParser.clampInt(lineParts, index + 1, -32, 32, true);
+          if (lineValue !== null) {
+            spec.lineSize = lineValue;
+            index++;
           }
           break;
+        }
 
-        case 'TEXTSIZE':
-          if (index < lineParts.length - 1) {
-            const textValue = Number(lineParts[++index]);
-            if (textValue >= 6 && textValue <= 200) {
-              spec.textSize = textValue;
-            }
-            // Silent clamping if out of range (matches Pascal behavior)
+        case 'TEXTSIZE': {
+          // Pascal key_textsize: KeyTextSize -> KeyValWithin(vTextSize, 6, 200) — CLAMP. [9win §11]
+          const textValue = DisplaySpecParser.clampInt(lineParts, index + 1, 6, 200, true);
+          if (textValue !== null) {
+            spec.textSize = textValue;
+            index++;
           }
           break;
+        }
 
         case 'COLOR':
           // Parse COLOR directive: COLOR <background> {<grid-color>}
@@ -936,23 +904,6 @@ export class DebugFFTWindow extends DebugWindowBase {
     const displayName = lineParts[1];
     const spec = DebugFFTWindow.createDisplaySpec(displayName, lineParts);
     return [true, spec];
-  }
-
-  /**
-   * Check if a number is a power of two
-   */
-  private static isPowerOfTwo(n: number): boolean {
-    return n > 0 && (n & (n - 1)) === 0;
-  }
-
-  /**
-   * Find the nearest power of two within range
-   */
-  private static nearestPowerOfTwo(value: number, min: number, max: number): number {
-    // Pascal: FFTexp := Trunc(Log2(Within(val, 4, FFTmax))); vSamples := 1 shl FFTexp.
-    // FLOOR of log2 (largest power of two <= clamped), NOT round-to-nearest:
-    // e.g. SAMPLES 768 -> 512. Shared with SPECTRO. [9win §3]
-    return DisplaySpecParser.floorPowerOfTwoWithin(value, min, max);
   }
 
   /**
@@ -1209,39 +1160,41 @@ export class DebugFFTWindow extends DebugWindowBase {
     const labelPart = parts[startIndex];
     const label = labelPart.replace(/^['"]|['"]$/g, '');
 
-    // Parse numeric parameters
-    const mag = Number(parts[startIndex + 1]);
-    const high = Number(parts[startIndex + 2]);
-    const tall = Number(parts[startIndex + 3]);
-    const base = Number(parts[startIndex + 4]);
-    const grid = Number(parts[startIndex + 5]);
+    // Parse numeric parameters via Spin2NumericParser ($hex/%bin/1_024 underscore aware,
+    // signed) — Pascal FFT_Update parses each with NextNum (DebugDisplayUnit.pas:1631-1636).
+    const mag = Spin2NumericParser.parseInteger(parts[startIndex + 1], true);
+    const high = Spin2NumericParser.parseInteger(parts[startIndex + 2], true);
+    const tall = Spin2NumericParser.parseInteger(parts[startIndex + 3], true);
+    const base = Spin2NumericParser.parseInteger(parts[startIndex + 4], true);
+    const grid = Spin2NumericParser.parseInteger(parts[startIndex + 5], true);
 
-    // Validate parameters
-    if (isNaN(mag) || isNaN(high) || isNaN(tall) || isNaN(base) || isNaN(grid)) {
+    // Validate parameters (Pascal: a missing NextNum aborts the channel def via Continue)
+    if (mag === null || high === null || tall === null || base === null || grid === null) {
       this.logMessage(`Invalid numeric parameters in channel configuration`);
       return null;
     }
 
-    // Optional color (Pascal KeyColor): the token after `grid` is a color only when it exists
-    // and is not the start of the next channel ('...') or backtick data. Otherwise the channel
-    // keeps its DefaultScopeColors slot color.
+    // Optional color via shared parseKeyColor (Pascal KeyColor, :1637): a directive NAME with
+    // an OPTIONAL trailing brightness (e.g. `YELLOW 12` -> both consumed) or a numeric literal.
+    // The token after `grid` is a color only when it exists and is not the next channel ('...')
+    // or backtick data; otherwise the channel keeps its DefaultScopeColors slot color.
     let color = this.defaultChannelColor(channelIndex);
     let partsConsumed = 6; // label + 5 numerics
     const colorTok = parts[startIndex + 6];
     if (colorTok !== undefined && !colorTok.startsWith("'") && !colorTok.startsWith('"') && !colorTok.startsWith('`')) {
-      const resolved = DebugColor.parseDirectiveColor(colorTok);
+      const resolved = DisplaySpecParser.parseKeyColor(parts, startIndex + 6);
       if (resolved) {
-        color = resolved;
-        partsConsumed = 7;
+        color = resolved.rgb;
+        partsConsumed = resolved.nextIdx - startIndex; // 7 for NAME/numeric, 8 for NAME+brightness
       }
     }
 
     return {
       channel: {
         label,
-        magnitude: Math.max(0, Math.min(11, mag)), // Clamp to 0-11
-        high,
-        tall,
+        magnitude: DisplaySpecParser.clamp(mag, 0, 11), // Pascal KeyValWithin(vMag, 0, 11)
+        high: DisplaySpecParser.clamp(high, 1, 0x7fffffff), // Pascal KeyValWithin(vHigh, 1, $7FFFFFFF)
+        tall, // Pascal KeyVal (plain signed)
         base,
         grid,
         color

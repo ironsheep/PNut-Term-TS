@@ -107,5 +107,74 @@ describe('[9win §11] FFT config parity', () => {
       expect(parseChannel(["'A'", '99', '100', '64', '0', '0'], 0, 0).channel.magnitude).toBe(11);
       expect(parseChannel(["'A'", '-5', '100', '64', '0', '0'], 0, 0).channel.magnitude).toBe(0);
     });
+
+    it('high clamps to 1..$7FFFFFFF (Pascal KeyValWithin vHigh)', () => {
+      expect(parseChannel(["'A'", '0', '0', '64', '0', '0'], 0, 0).channel.high).toBe(1);
+    });
+
+    it('a named channel color consumes its optional trailing brightness (Pascal KeyColor)', () => {
+      // DEBUG_FFT.spin2:8 — `'FFT' 0 1000 180 10 15 YELLOW 12`: the 12 is YELLOW's brightness,
+      // NOT a stray data sample. parseKeyColor consumes both -> partsConsumed = 8.
+      const r = parseChannel(["'FFT'", '0', '1000', '180', '10', '15', 'YELLOW', '12'], 0, 3);
+      expect(r).not.toBeNull();
+      expect(r.partsConsumed).toBe(8);
+      const YELLOW = DebugColor.fromDefaultName('YELLOW', 8).rgbString; // DefaultScopeColors[3]
+      expect(r.channel.color).not.toBe(YELLOW); // brightness 12 (not 8) -> different shade
+    });
+
+    it('channel numerics accept $hex / underscore literals (Spin2NumericParser)', () => {
+      const r = parseChannel(["'A'", '4', '1_000', '$80', '0', '0'], 0, 0);
+      expect(r.channel.magnitude).toBe(4);
+      expect(r.channel.high).toBe(1000);
+      expect(r.channel.tall).toBe(128); // $80
+    });
+  });
+});
+
+// [9win §11] C2 numeric-policy parity: every FFT_Configure numeric now routes through
+// Spin2NumericParser ($hex/%bin/underscore aware) and CLAMPS into the Pascal KeyValWithin
+// range rather than rejecting out-of-range tokens (the prior raw-Number()/reject behavior).
+describe('[9win §11] FFT create-parser numeric parity (C2)', () => {
+  it('SAMPLES 1_024 underscore literal -> 1024 (raw Number would NaN)', () => {
+    expect(spec('SAMPLES', '1_024').samples).toBe(1024);
+  });
+
+  it('SAMPLES 768 floors to the nearest power of two (-> 512)', () => {
+    expect(spec('SAMPLES', '768').samples).toBe(512);
+  });
+
+  it('SAMPLES clamps to [4,2048] then floors (9999 -> 2048, 1 -> 4)', () => {
+    expect(spec('SAMPLES', '9999').samples).toBe(2048);
+    expect(spec('SAMPLES', '1').samples).toBe(4);
+  });
+
+  it('SAMPLES first/last CLAMP into range, not reject (64 999 999 -> 30 / 31)', () => {
+    const s = spec('SAMPLES', '64', '999', '999');
+    expect(s.samples).toBe(64);
+    expect(s.firstBin).toBe(30); // 64/2 - 2
+    expect(s.lastBin).toBe(31); // 64/2 - 1
+  });
+
+  it('RATE clamps to [1,2048] (9999 -> 2048, 0 -> 1)', () => {
+    expect(spec('SAMPLES', '512', 'RATE', '9999').rate).toBe(2048);
+    expect(spec('SAMPLES', '512', 'RATE', '0').rate).toBe(1);
+  });
+
+  it('DOTSIZE clamps to [0,32] (99 -> 32)', () => {
+    expect(spec('DOTSIZE', '99').dotSize).toBe(32);
+  });
+
+  it('LINESIZE -3 is valid and sign-preserved (negative = bar mode)', () => {
+    expect(spec('LINESIZE', '-3').lineSize).toBe(-3);
+  });
+
+  it('LINESIZE clamps to [-32,32] (-99 -> -32, 99 -> 32)', () => {
+    expect(spec('LINESIZE', '-99').lineSize).toBe(-32);
+    expect(spec('LINESIZE', '99').lineSize).toBe(32);
+  });
+
+  it('TEXTSIZE clamps to [6,200] (2 -> 6, 300 -> 200)', () => {
+    expect(spec('TEXTSIZE', '2').textSize).toBe(6);
+    expect(spec('TEXTSIZE', '300').textSize).toBe(200);
   });
 });

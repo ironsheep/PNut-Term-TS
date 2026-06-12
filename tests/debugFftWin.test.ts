@@ -277,15 +277,13 @@ describe('DebugFFTWindow', () => {
       expect(displaySpec.samples).toBe(512); // Should use default
     });
 
-    it('should handle invalid parameter ranges', () => {
-      // Test that invalid parameter values use defaults
-      // Note: Logging is commented out in static methods as per project convention
-      
+    it('should CLAMP out-of-range parameters (Pascal KeyValWithin, not reject)', () => {
+      // [9win §11] Pascal key_dotsize: KeyValWithin(vDotSize, 0, 32) CLAMPS an out-of-range
+      // value into the range — it does NOT discard it and keep the default.
       const lineParts = ['FFT', 'TestFFT', 'DOTSIZE', '100']; // Out of range (0-32)
       const displaySpec = DebugFFTWindow.createDisplaySpec('TestFFT', lineParts);
-      
-      // Should use default value when parameter is out of range
-      expect(displaySpec.dotSize).toBe(0); // Default value
+
+      expect(displaySpec.dotSize).toBe(32); // clamped to the upper bound
       expect(displaySpec.displayName).toBe('TestFFT');
     });
   });
