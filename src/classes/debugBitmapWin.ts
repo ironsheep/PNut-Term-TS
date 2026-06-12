@@ -789,31 +789,11 @@ export class DebugBitmapWindow extends DebugWindowBase {
           }
           break;
 
-        case 'DOTSIZE':
-          if (i + 2 < lineParts.length) {
-            const dotX = parseInt(lineParts[i + 1]);
-            const dotY = parseInt(lineParts[i + 2]);
-            this.setDotSize(dotX, dotY);
-            dataStartIndex = i + 3;
-            i += 2;
-          }
-          break;
-
-        case 'SPARSE':
-          if (i + 1 < lineParts.length) {
-            // SPARSE color accepts a color name (with optional brightness) or a raw numeric,
-            // per Pascal key_sparse -> KeyColor(vSparse) (DebugDisplayUnit.pas:2752). [9win §15]
-            const named = DebugBitmapWindow.parseNamedColor(lineParts, i + 1);
-            if (named) {
-              this.setSparseMode(named.color);
-              i += named.consumed;
-            } else {
-              this.setSparseMode(this.parseColorValue(lineParts[i + 1]));
-              i++;
-            }
-            dataStartIndex = i + 1;
-          }
-          break;
+        // NOTE: BITMAP_Update (DebugDisplayUnit.pas:2416) has NO runtime DOTSIZE or SPARSE
+        // command — those are configure-only (BITMAP_Configure, :2389/:2390). A DOTSIZE/SPARSE
+        // key arriving at runtime falls through to default (no color-mode match), is ignored,
+        // and any following numbers are processed as pixel data — matching Pascal, where an
+        // unhandled key is consumed by the case and the numbers feed the pixel loop. [9win §15]
 
         default: {
           // Check for color-mode / LUTCOLORS commands. The handler reports exactly how many
@@ -916,8 +896,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // Update trace processor
     this.traceProcessor.setBitmapSize(this.state.width, this.state.height);
 
-    // Update input forwarder window dimensions
+    // Update input forwarder window dimensions + dot size. Pascal computes the PC_MOUSE
+    // wire coordinates from vDotSize/vDotSizeY, which are fixed at Configure — so the
+    // forwarder must learn the create-time dot size here (it is no longer set by a
+    // runtime DOTSIZE command, which BITMAP_Update does not have). [9win §15]
     this.inputForwarder.setWindowDimensions(this.state.width, this.state.height);
+    this.inputForwarder.setDotSize(this.state.dotSizeX, this.state.dotSizeY);
 
     // Initialize canvas if not already done
     if (!this.state.isInitialized) {
@@ -1248,35 +1232,6 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
     } else {
       this.logMessage(`[RATE SET] rate=${this.state.rate}, rateCounter reset to 0`);
     }
-  }
-
-  /**
-   * Set dot size for pixel scaling
-   */
-  private setDotSize(dotX: number, dotY: number): void {
-    this.state.dotSizeX = Math.max(1, dotX);
-    this.state.dotSizeY = Math.max(1, dotY);
-
-    // A dot size below 4 disables sparse rendering (Pascal SetSize, :2938). [9win §15]
-    this.enforceSparseDotSizeConstraint();
-
-    // Update input forwarder
-    this.inputForwarder.setDotSize(this.state.dotSizeX, this.state.dotSizeY);
-
-    // Reinitialize canvas with new size
-    if (this.state.isInitialized) {
-      this.initializeCanvas();
-    }
-  }
-
-  /**
-   * Set sparse mode with background color
-   */
-  private setSparseMode(bgColor: number): void {
-    this.state.sparseMode = true;
-    this.state.backgroundColor = bgColor;
-    // Sparse only applies when both dot dimensions are >= 4 (Pascal SetSize, :2938). [9win §15]
-    this.enforceSparseDotSizeConstraint();
   }
 
   /**
@@ -1707,15 +1662,6 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
    */
   private isNumeric(str: string): boolean {
     return /^-?\d+$/.test(str);
-  }
-
-  /**
-   * Parse color value (handles $hex, %binary, %%quaternary, and decimal)
-   * Note: PackedDataProcessor handles packed data streams separately
-   */
-  private parseColorValue(str: string): number {
-    const value = Spin2NumericParser.parseColor(str);
-    return value !== null ? value : 0;
   }
 
   /**

@@ -279,16 +279,21 @@ describe('DebugBitmapWindow Integration Tests', () => {
       );
     });
 
-    it('should forward mouse events with coordinate transformation', async () => {
-      const mockInputForwarder = (InputForwarder as jest.MockedClass<typeof InputForwarder>).mock.instances[0];
+    it('should forward mouse events with the create-time dot-size coordinate transformation', async () => {
+      // DOTSIZE is configure-only (Pascal BITMAP_Configure); the window is built with it in
+      // the declaration and the dot size propagates to the forwarder at create, mirroring
+      // Pascal which derives PC_MOUSE coordinates from vDotSize set at Configure. [9win §15]
+      const w = new DebugBitmapWindow(mockContext, { ...createTestDisplaySpec(), dotSize: { x: 2, y: 3 } } as any, 'mouse-id');
+      w['debugWindow'] = mockBrowserWindow;
+      (w as any).isWindowReady = true;
 
-      // Set DOTSIZE for scaling — no size prefix needed, window already 100x100
-      await window.updateContent(['DOTSIZE', '2', '3']);
+      // Assert against the window's own forwarder (the one setBitmapSize configured).
+      const mockInputForwarder = (w as any).inputForwarder;
 
       expect(mockInputForwarder.setDotSize).toHaveBeenCalledWith(2, 3);
 
       // Enable mouse input
-      await window.updateContent(['PC_MOUSE']);
+      await w.updateContent(['PC_MOUSE']);
 
       expect(mockInputForwarder.startPolling).toHaveBeenCalled();
 
@@ -352,23 +357,25 @@ describe('DebugBitmapWindow Integration Tests', () => {
 
   describe('Sparse mode rendering', () => {
     it('should skip pixels matching background in sparse mode', async () => {
-      const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
-      const mockColorTranslator = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances[0];
+      // Sparse rendering is configure-only and requires dotSize >= 4 (Pascal SetSize, :2938).
+      // Build the window with dotSize 4x4 + a SPARSE background of 0 (black) + rate 1 in the
+      // declaration; BITMAP_Update has no runtime DOTSIZE/SPARSE/setup. [9win §15]
+      window = new DebugBitmapWindow(
+        mockContext,
+        { ...createTestDisplaySpec(), dotSize: { x: 4, y: 4 }, sparseColor: 0, rate: 1 } as any,
+        'sparse-id'
+      );
+      window['debugWindow'] = mockBrowserWindow;
+      (window as any).isWindowReady = true;
 
-      // Setup initial mocks
-      (mockTraceProcessor.getPosition as jest.Mock).mockReturnValue({ x: 0, y: 0 });
-      (mockTraceProcessor.getSuggestedRate as jest.Mock).mockReturnValue(1);
-
-      // Window already initialized — clear construction-phase mock calls
-      initializeWindow(100, 100);
-
-      // Sparse rendering requires dotSizeX >= 4 AND dotSizeY >= 4 (Pascal SetSize, :2938).
-      // With default dotSize=1, enforceSparseDotSizeConstraint() disables sparse immediately.
-      // We must set dotsize>=4 BEFORE SPARSE so sparse stays enabled. [9win §15]
-      await window.updateContent(['RATE', '1', 'DOTSIZE', '4', '4', 'SPARSE', '0']);
+      const tpInsts = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances;
+      const mockTraceProcessor = tpInsts[tpInsts.length - 1];
+      const ctInsts = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances;
+      const mockColorTranslator = ctInsts[ctInsts.length - 1];
 
       // Setup mocks for pixel plotting
       (mockTraceProcessor.getPosition as jest.Mock).mockReturnValue({ x: 0, y: 0 });
+      (mockTraceProcessor.getSuggestedRate as jest.Mock).mockReturnValue(1);
       (mockColorTranslator.translateColor as jest.Mock).mockReturnValue(0xFF0000);
 
       // Mock unpacker to return the exact values we're sending

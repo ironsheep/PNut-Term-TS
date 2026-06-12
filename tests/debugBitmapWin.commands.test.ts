@@ -482,72 +482,57 @@ describe('DebugBitmapWindow Command Tests', () => {
     });
   });
 
-  describe('DOTSIZE command behavior', () => {
-    it('should set symmetric dot size', async () => {
-      await window.updateContent(['DOTSIZE', '2', '2']);
+  // DOTSIZE and SPARSE are CONFIGURE-only in Pascal (BITMAP_Configure, DebugDisplayUnit.pas:
+  // 2389/2390); BITMAP_Update has NO DOTSIZE/SPARSE command. These windows are therefore
+  // constructed with the dot/sparse config in the declaration spec, and a runtime DOTSIZE/
+  // SPARSE token is verified to be ignored. [9win §15]
+  const makeConfiguredWindow = (extra: any): DebugBitmapWindow => {
+    const w = new DebugBitmapWindow(mockContext, { ...createTestDisplaySpec(), ...extra }, 'cfg-id');
+    w['debugWindow'] = mockBrowserWindow;
+    (w as any).isWindowReady = true;
+    return w;
+  };
 
-      expect(window['state'].dotSizeX).toBe(2);
-      expect(window['state'].dotSizeY).toBe(2);
+  describe('DOTSIZE (configure-time only — not a runtime command)', () => {
+    it('applies a symmetric dot size from the declaration', () => {
+      const w = makeConfiguredWindow({ dotSize: { x: 2, y: 2 } });
+      expect(w['state'].dotSizeX).toBe(2);
+      expect(w['state'].dotSizeY).toBe(2);
     });
 
-    it('should set asymmetric dot size', async () => {
-      await window.updateContent(['DOTSIZE', '3', '5']);
-
-      expect(window['state'].dotSizeX).toBe(3);
-      expect(window['state'].dotSizeY).toBe(5);
+    it('applies an asymmetric dot size from the declaration', () => {
+      const w = makeConfiguredWindow({ dotSize: { x: 3, y: 5 } });
+      expect(w['state'].dotSizeX).toBe(3);
+      expect(w['state'].dotSizeY).toBe(5);
     });
 
-    it('should update input forwarder dot size', async () => {
-      const mockInputForwarder = (InputForwarder as jest.MockedClass<typeof InputForwarder>).mock.instances[0];
+    it('propagates the create-time dot size to the input forwarder', () => {
+      const w = makeConfiguredWindow({ dotSize: { x: 4, y: 4 } });
+      expect((w as any).inputForwarder.setDotSize).toHaveBeenCalledWith(4, 4);
+    });
 
+    it('ignores a runtime DOTSIZE token; its numbers feed the pixel loop (Pascal BITMAP_Update)', async () => {
       await window.updateContent(['DOTSIZE', '4', '4']);
-
-      expect(mockInputForwarder.setDotSize).toHaveBeenCalledWith(4, 4);
-    });
-
-    it('should clamp dot size to minimum 1', async () => {
-      await window.updateContent(['DOTSIZE', '0', '-5']);
-
-      expect(window['state'].dotSizeX).toBe(1);
+      expect(window['state'].dotSizeX).toBe(1); // unchanged from the 1x1 default
       expect(window['state'].dotSizeY).toBe(1);
     });
   });
 
-  describe('SPARSE mode behavior', () => {
-    // §15 SPARSE FIX: sparseMode is auto-disabled when dotSizeX<4 OR dotSizeY<4 (Pascal
-    // SetSize). Default dotSize is 1x1, so setSparseMode() sets sparseMode=true but
-    // enforceSparseDotSizeConstraint() immediately sets it back to false.
-    // Tests that check sparseMode=true must first set dotSize >= 4.
-    it('should enable sparse mode with color when dotSize >= 4', async () => {
-      // Set dotSize to 4 first so enforceSparseDotSizeConstraint() won't disable sparse
-      await window.updateContent(['DOTSIZE', '4', '4']);
-      await window.updateContent(['SPARSE', '$FF0000']);
-
-      expect(window['state'].sparseMode).toBe(true);
-      expect(window['state'].backgroundColor).toBe(0xFF0000);
+  describe('SPARSE (configure-time only — not a runtime command)', () => {
+    it('enables sparse mode from the declaration when dot size >= 4', () => {
+      const w = makeConfiguredWindow({ dotSize: { x: 4, y: 4 }, sparseColor: 0xff0000 });
+      expect(w['state'].sparseMode).toBe(true);
+      expect(w['state'].backgroundColor).toBe(0xff0000);
     });
 
-    it('should NOT enable sparse mode when dotSize < 4 (default dotSize=1)', async () => {
-      // §15: default dotSize is 1x1 → sparse is auto-disabled
-      await window.updateContent(['SPARSE', '$FF0000']);
+    it('disables sparse mode when dot size < 4 even with a SPARSE color (Pascal SetSize)', () => {
+      const w = makeConfiguredWindow({ sparseColor: 0xff0000 }); // default dot size 1x1
+      expect(w['state'].sparseMode).toBe(false);
+    });
 
+    it('ignores a runtime SPARSE token (Pascal BITMAP_Update has no SPARSE)', async () => {
+      await window.updateContent(['SPARSE', '$FF0000']);
       expect(window['state'].sparseMode).toBe(false);
-    });
-
-    it('should parse decimal color values for SPARSE background', async () => {
-      // §15: SPARSE sets backgroundColor regardless of whether sparseMode stays active.
-      // With dotSize=4, sparse stays enabled.
-      await window.updateContent(['DOTSIZE', '4', '4']);
-      await window.updateContent(['SPARSE', '16777215']); // White
-
-      expect(window['state'].backgroundColor).toBe(16777215);
-    });
-
-    it('should parse binary color values for SPARSE background', async () => {
-      await window.updateContent(['DOTSIZE', '4', '4']);
-      await window.updateContent(['SPARSE', '%11111111']); // 255
-
-      expect(window['state'].backgroundColor).toBe(255);
     });
   });
 });

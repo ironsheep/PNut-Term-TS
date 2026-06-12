@@ -397,27 +397,20 @@ describe('DebugBitmapWindow', () => {
       expect(window['state'].rate).toBe(60);
     });
 
-    it('should handle DOTSIZE command', async () => {
+    // DOTSIZE and SPARSE are configure-only in Pascal (BITMAP_Configure); BITMAP_Update
+    // has neither. A runtime DOTSIZE/SPARSE key is ignored and its numbers feed the pixel
+    // loop. Create-time configuration is covered in debugBitmapWin.commands.test.ts. [9win §15]
+    it('ignores a runtime DOTSIZE token (configure-only, Pascal BITMAP_Update)', async () => {
       await window.updateContent(['256', '256', 'DOTSIZE', '2', '2']);
 
-      expect(window['state'].dotSizeX).toBe(2);
-      expect(window['state'].dotSizeY).toBe(2);
+      expect(window['state'].dotSizeX).toBe(1); // default unchanged; 2,2 become pixel data
+      expect(window['state'].dotSizeY).toBe(1);
     });
 
-    // §15: SPARSE auto-disabled when dotSizeX < 4 OR dotSizeY < 4 (Pascal SetSize).
-    // Default dotSizeX=1, dotSizeY=1 => SPARSE alone does NOT enable sparseMode.
-    it('should not enable sparse mode when DOTSIZE < 4', async () => {
-      // Default dotsize is 1x1 — sparseMode must remain false after SPARSE alone.
+    it('ignores a runtime SPARSE token (configure-only, Pascal BITMAP_Update)', async () => {
       await window.updateContent(['256', '256', 'SPARSE', '$FF0000']);
 
       expect(window['state'].sparseMode).toBe(false);
-    });
-
-    // SPARSE + DOTSIZE >= 4 enables sparse mode correctly.
-    it('should enable sparse mode when DOTSIZE >= 4', async () => {
-      await window.updateContent(['256', '256', 'DOTSIZE', '4', '4', 'SPARSE', '$FF0000']);
-
-      expect(window['state'].sparseMode).toBe(true);
     });
 
     it('should handle SAVE command', async () => {
