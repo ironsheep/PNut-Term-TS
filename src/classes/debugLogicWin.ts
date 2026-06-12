@@ -379,45 +379,32 @@ export class DebugLogicWindow extends DebugWindowBase {
             // Pascal grammar (DebugDisplayUnit.pas:974-1003): name, then optional
             // KeyValWithin(v,1,LogicChannels), then optional KeyIs(key_range), then
             // optional KeyColor — each independent. [9win §8]
-            // Optional bit-count (default 1; Pascal clamps 1..LogicChannels=32)
-            if (index < lineParts.length - 1 && /^[0-9]+$/.test(lineParts[index + 1])) {
-              newChannelSpec.nbrBits = Math.max(1, Math.min(32, Number(lineParts[++index])));
+            // Optional bit-count (Pascal KeyValWithin(v, 1, LogicChannels), default 1,
+            // DebugDisplayUnit.pas:978). Numeric via Spin2NumericParser (signed, like
+            // Pascal NextNum) so %bin/$hex/underscored counts parse identically, then
+            // clamp 1..32. A non-numeric next token (another name, RANGE, color) is
+            // left for the steps below. [9win §8]
+            if (index < lineParts.length - 1) {
+              const bits = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+              if (bits !== null) {
+                newChannelSpec.nbrBits = DisplaySpecParser.clamp(bits, 1, 32);
+                index++;
+              }
             }
             // Optional RANGE keyword -> bus-waveform variant (Pascal isRange := KeyIs(key_range), :984)
             if (index < lineParts.length - 1 && lineParts[index + 1].toUpperCase() === 'RANGE') {
               newChannelSpec.isRange = true;
               index++; // consume RANGE
             }
-            // Optional color (rgb24 number, or name + optional 0..15 brightness)
-            if (index < lineParts.length - 1 && lineParts[index + 1].includes("'") == false) {
-              // if have color, grab it
-              const colorOrColorName = lineParts[++index];
-              // if color is a number, then it is a rgb24 value
-              // NOTE number could be decimal or $ prefixed hex  ($rrggbb) and either could have '_' digit separaters
-              const [isValidRgb24, colorHexRgb24] = this.getValidRgb24(colorOrColorName);
-              DebugLogicWindow.logConsoleMessageStatic(
-                `CL: LogicDisplaySpec - colorOrColorName: [${colorOrColorName}], isValidRgb24=(${isValidRgb24})`
-              );
-              if (isValidRgb24) {
-                // color is a number and is converted to #rrbbgg string
-                newChannelSpec.color = colorHexRgb24;
-              } else {
-                // color is a name, so grab possible brightness
-                let brightness: number = 8; // default brightness
-                if (index < lineParts.length - 1) {
-                  // let's ensure lineParts[++index] is a string of decimal digits or hex digits (hex prefix is $)
-                  const brightnessStr = lineParts[++index].replace(/_/g, '');
-                  if (brightnessStr.startsWith('$') && /^[0-9A-Fa-f]+$/.test(brightnessStr.substring(1))) {
-                    brightness = parseInt(brightnessStr.substring(1), 16);
-                  } else if (/^[0-9]+$/.test(brightnessStr)) {
-                    brightness = parseInt(brightnessStr, 10);
-                  } else {
-                    index--; // back up to allow reprocess of this... (not part of color spec!)
-                  }
-                }
-                const channelColor = new DebugColor(colorOrColorName, brightness);
-                newChannelSpec.color = channelColor.rgbString;
-              }
+            // Optional color via the shared parseKeyColor — the canonical KeyColor
+            // analog (Pascal `if not KeyColor(color)`, DebugDisplayUnit.pas:981).
+            // Accepts a directive NAME with optional 0..15 brightness (RGBI8X) or a
+            // numeric/$hex/#rrggbb literal; null leaves the DefaultScopeColors[...]
+            // default already set above. [9win §8]
+            const resolvedColor = DisplaySpecParser.parseKeyColor(lineParts, index + 1);
+            if (resolvedColor !== null) {
+              newChannelSpec.color = resolvedColor.rgb;
+              index = resolvedColor.nextIdx - 1; // outer for-loop adds the trailing ++
             }
             //console.log(`CL: LogicDisplaySpec - add channelSpec: ${JSON.stringify(newChannelSpec, null, 2)}`);
             displaySpec.channelSpecs.push(newChannelSpec);
@@ -463,27 +450,24 @@ export class DebugLogicWindow extends DebugWindowBase {
                   }
                   index = index + consumed - 1; // Adjust for loop increment
                 } else {
+                  // Pascal key_color: KeyColor returns False -> colors unchanged, the
+                  // directive loop simply continues. Never abort the window. [9win §8]
                   DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Invalid COLOR specification`);
-                  isValid = false;
                 }
                 break;
 
-              case 'SPACING':
-                // ensure we have one more value
-                if (index < lineParts.length - 1) {
-                  displaySpec.spacing = Number(lineParts[++index]); // FIX: was incorrectly assigning to nbrSamples
-                  // Validate spacing range
-                  if (displaySpec.spacing < 1 || displaySpec.spacing > 32) {
-                    DebugLogicWindow.logConsoleMessageStatic(
-                      `CL: LogicDisplaySpec: SPACING value ${displaySpec.spacing} out of range (1-32)`
-                    );
-                    displaySpec.spacing = Math.max(1, Math.min(32, displaySpec.spacing));
-                  }
-                } else {
-                  DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Missing parameter for ${element}`);
-                  isValid = false;
+              case 'SPACING': {
+                // Pascal key_spacing: KeyValWithin(vSpacing, 2-1, 32) (DebugDisplayUnit.pas:953).
+                // Route through Spin2NumericParser (handles %bin/$hex/underscored literals
+                // that raw Number() drops to NaN) and clamp 1..32; ignore-and-continue,
+                // never abort (a missing/invalid value keeps the default 8). [9win §8]
+                const v = DisplaySpecParser.clampInt(lineParts, index + 1, 1, 32, true);
+                if (v !== null) {
+                  displaySpec.spacing = v;
+                  index++;
                 }
                 break;
+              }
 
               case 'RATE': {
                 // Pascal key_rate: KeyValWithin(vRate, 1, LogicSets=2048) (:955). Clamp,
@@ -547,15 +531,14 @@ export class DebugLogicWindow extends DebugWindowBase {
                   displaySpec.isPackedData = true;
                   // Packed mode configuration will be used during data processing
                 } else {
+                  // Pascal LOGIC_Configure: an unrecognized key falls through the case
+                  // with no action — silently ignored, the window stays valid. Matches
+                  // the FFT/SCOPE_XY siblings; never abort. [9win §8]
                   DebugLogicWindow.logConsoleMessageStatic(`CL: LogicDisplaySpec: Unknown directive: ${element}`);
-                  isValid = false;
                 }
                 break;
             }
           }
-        }
-        if (!isValid) {
-          break;
         }
       }
     }
@@ -1229,9 +1212,14 @@ export class DebugLogicWindow extends DebugWindowBase {
               if (index + 1 < lineParts.length) {
                 const [isValidOffset, offsetInSamples] = this.isSpinNumber(lineParts[index + 1]);
                 if (isValidOffset) {
-                  if (offsetInSamples >= 0 && offsetInSamples < this.displaySpec.nbrSamples) {
-                    this.triggerSpec.trigSampOffset = offsetInSamples;
-                  }
+                  // Pascal key_trigger: KeyValWithin(vTriggerOffset, 0, vSamples - 1)
+                  // (DebugDisplayUnit.pas:1049) — CLAMP into range, not ignore-if-outside
+                  // (the prior code silently dropped out-of-range offsets). [9win §8]
+                  this.triggerSpec.trigSampOffset = DisplaySpecParser.clamp(
+                    offsetInSamples,
+                    0,
+                    this.displaySpec.nbrSamples - 1
+                  );
                   index++; // show we consumed the offset value
                 }
               }

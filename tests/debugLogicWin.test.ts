@@ -263,10 +263,26 @@ describe('DebugLogicWindow', () => {
       expect(spec.channelSpecs[0].name).toBe('My Test Channel');
     });
 
-    it('should handle invalid directives', () => {
-      const [isValid] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'INVALID']);
-      
-      expect(isValid).toBe(false);
+    it('should silently ignore an unknown directive and keep the window valid', () => {
+      // Pascal LOGIC_Configure: an unrecognized key falls through the case with no
+      // action — never rejects the window (C4 never-abort). The old code aborted
+      // with isValid=false; that was invented non-Pascal behavior. [9win §8]
+      const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'Test', 'INVALID']);
+
+      expect(isValid).toBe(true);
+      // Unknown directive consumed nothing else; defaults remain intact.
+      expect(spec.spacing).toBe(8);
+    });
+
+    it('should not abort later directives after an unknown one (never-abort)', () => {
+      // SAMPLES still applies even though BOGUS precedes it. [9win §8]
+      const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration([
+        '`LOGIC', 'Test', 'BOGUS', 'SAMPLES', '128', 'SPACING', '12'
+      ]);
+
+      expect(isValid).toBe(true);
+      expect(spec.nbrSamples).toBe(128);
+      expect(spec.spacing).toBe(12);
     });
   });
 

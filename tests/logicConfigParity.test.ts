@@ -77,6 +77,25 @@ describe('[9win §8] LOGIC config parity (static parseLogicDeclaration)', () => 
       expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SAMPLES', '2'])[1].nbrSamples).toBe(4);
       expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SAMPLES', '99999'])[1].nbrSamples).toBe(2047);
     });
+    it('SPACING clamps to 1..32 (Pascal KeyValWithin(vSpacing, 1, 32))', () => {
+      expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SPACING', '99'])[1].spacing).toBe(32);
+      expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SPACING', '0'])[1].spacing).toBe(1);
+    });
+    it('SPACING accepts Spin2 numeric forms (%binary / $hex) via Spin2NumericParser', () => {
+      // %1000 = 8, the Pascal default; previously raw Number() turned this to NaN.
+      expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SPACING', '%1000'])[1].spacing).toBe(8);
+      expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SPACING', '$10'])[1].spacing).toBe(16);
+    });
+    it('SPACING with a missing/invalid value keeps the default 8, never aborts', () => {
+      expect(DebugLogicWindow.parseLogicDeclaration(['`LOGIC', 'L', 'SPACING'])[1].spacing).toBe(8);
+      // an invalid value is ignored and a following directive still applies
+      const [isValid, spec] = DebugLogicWindow.parseLogicDeclaration([
+        '`LOGIC', 'L', 'SPACING', 'oops', 'RATE', '4'
+      ]);
+      expect(isValid).toBe(true);
+      expect(spec.spacing).toBe(8);
+      expect(spec.rate).toBe(4);
+    });
   });
 
   describe('normal: defaults match Pascal LOGIC_Configure', () => {
