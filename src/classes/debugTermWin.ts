@@ -856,6 +856,17 @@ export class DebugTermWindow extends DebugWindowBase {
           // KeyValWithin). Previously the action also fell through to the generic branch
           // below (double-dispatch) and the param was re-processed as its own action. [9win §14]
           if (index + 1 < lineParts.length) {
+            // [TEMP DIAGNOSTIC — remove after pinning the apostrophe leak] Capture the
+            // exact feed when a set-col/row (2/3) value token is a quote, so we can see
+            // the real runtime feed shape that the source's feeds should never produce.
+            const nextTok = lineParts[index + 1];
+            if (nextTok.charAt(0) === "'" || nextTok.charAt(0) === '"') {
+              console.error(
+                `[TERM-FEED TRACE] action ${action} (set-${action === 2 ? 'col' : 'row'}) value is a quote token ${JSON.stringify(
+                  nextTok
+                )} | unparsed=${JSON.stringify(unparsedCommand)} | filtered lineParts=${JSON.stringify(lineParts)} | index=${index}`
+              );
+            }
             this.updateTermDisplay(`${action} ${lineParts[index + 1]}`);
             index++; // consume the parameter so it is not re-dispatched
           } else {

@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.50] - 2026-06-12
+
+Second diagnostic build. The 0.9.49 stack trace confirmed the apostrophe leak path:
+`processMessageAsync → updateTermDisplay → processDisplayCommand → parsePixel`, i.e. a
+single-quote token is arriving as the value of a TERM set-column (action 2) or set-row
+(action 3) directive — a feed shape the source program's feeds should never produce. This
+build adds a `[TERM-FEED TRACE]` log at that exact spot that dumps the raw feed and the
+tokenized `lineParts` whenever a set-col/row value is a quote, so the actual runtime feed
+that produces the leak is captured verbatim. Temporary instrumentation; removed once the
+root cause is identified and fixed.
+
+### Added
+
+- **Temporary diagnostic:** TERM logs `[TERM-FEED TRACE]` with the unparsed feed and
+  tokenized `lineParts` when a set-col/row (action 2/3) value token is a quote.
+
 ## [0.9.49] - 2026-06-12
 
 Diagnostic build to pin a reported `Spin2NumericParser: Unknown numeric format - value: "'"`
