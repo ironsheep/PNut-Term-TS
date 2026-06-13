@@ -86,6 +86,12 @@ export class Spin2NumericParser {
   private static logError(message: string, value: string): void {
     const errorMsg = `Spin2NumericParser: ${message} - value: "${value}"`;
     console.error(errorMsg);
+    // [TEMP DIAGNOSTIC — remove after pinning the apostrophe leak] When a quote
+    // token reaches the numeric parser, dump the call stack so we can see exactly
+    // which window/method/line passed it in.
+    if (value === "'" || value === '"' || value.indexOf("'") !== -1 || value.indexOf('"') !== -1) {
+      console.error(`[PARSER-LEAK TRACE] non-numeric quote token reached parseValue: ${JSON.stringify(value)}\n${new Error().stack}`);
+    }
     // TODO: Also log to Context logger when available
   }
 

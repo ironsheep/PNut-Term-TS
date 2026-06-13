@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.49] - 2026-06-12
+
+Diagnostic build to pin a reported `Spin2NumericParser: Unknown numeric format - value: "'"`
+error seen while running a TERM status-panel program. Static tracing of every parser call site
+reachable by a TERM program shows none of the program's actual feeds can place a `'` where a
+number is expected, so this build instruments the single log site to dump a call stack the
+moment a quote token reaches the numeric parser. This pinpoints the exact window/method/line
+producing the leak at runtime. No behavior change for well-formed feeds; the instrumentation is
+temporary and will be removed once the path is identified and fixed.
+
+### Added
+
+- **Temporary diagnostic:** `Spin2NumericParser.logError` now emits a `[PARSER-LEAK TRACE]`
+  call stack whenever a quote token (`'`/`"`) reaches `parseValue`, to locate the runtime path
+  that leaks a quote into numeric parsing.
+
 ## [0.9.48] - 2026-06-12
 
 A follow-on parsing fix to the 0.9.47 foundation pass. Runtime DEBUG feeds written in
