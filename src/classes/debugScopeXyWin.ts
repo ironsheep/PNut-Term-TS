@@ -399,7 +399,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
           <title>${this.windowTitle}</title>
           <style>
             body { margin: 0; padding: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-            canvas { display: block; image-rendering: auto; width: ${canvasSize}px; height: ${canvasSize}px; }
+            canvas { display: block; image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; width: ${canvasSize}px; height: ${canvasSize}px; }
           </style>
         </head>
         <body>
@@ -409,11 +409,14 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     `;
 
     // Calculate window dimensions
-    // SCOPE_XY uses square canvas that should fill window horizontally
-    // Only add height for title bar, no side borders (matches Pascal behavior)
-    const TITLE_BAR_HEIGHT = 40;
+    // SCOPE_XY uses a SQUARE canvas. Size by CLIENT area + useContentSize:true on the
+    // BrowserWindow (Electron adds OS chrome outside) so the web content is EXACTLY the
+    // square canvas. The old outer-size estimate (canvasSize + hardcoded 40px title bar,
+    // no useContentSize) left the content ~12px taller than the canvas on macOS — the
+    // flex-centered canvas then got a black letterbox top/bottom and the plain display-area
+    // SAVE captured a non-square, letterboxed image. Matches the TERM/FFT windows.
     const windowWidth = canvasSize;
-    const windowHeight = canvasSize + TITLE_BAR_HEIGHT;
+    const windowHeight = canvasSize;
 
     // Determine position based on hasExplicitPosition flag
     let windowX: number;
@@ -455,6 +458,7 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     this.debugWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
+      useContentSize: true, // width/height are the CLIENT area (= square canvas); Electron adds OS chrome
       x: windowX,
       y: windowY,
       resizable: false,

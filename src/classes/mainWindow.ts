@@ -6252,6 +6252,14 @@ export class MainWindow {
 
   private async executeDownload(filePath: string, toFlash: boolean, target: string): Promise<void> {
     if (this._serialPort && this.downloader) {
+      // Capture the port reference once. A concurrent shutdown (end-session / SIGINT) tears the
+      // serial port down and nulls this._serialPort while the download's async tail (baud-rate
+      // restore, garbage clear) is still mid-await — re-reading this._serialPort there derefs
+      // undefined and throws "Cannot read properties of undefined (reading 'getCurrentBaudRate')".
+      // The download itself has already succeeded by then, so the error was purely cosmetic noise
+      // on scripted exit→relaunch batches. Holding a local ref keeps the cached getters valid and
+      // routes any post-teardown port op through its own idempotent/rejecting path instead.
+      const port = this._serialPort;
       try {
         this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
         this.updateRecordingStatus(`Downloading to ${target}...`);
@@ -6259,10 +6267,10 @@ export class MainWindow {
         // Get debug baud rate for runtime communication (from CLI -b, preferences, or default 115200)
         // Download baud rate is separate (from UsbSerial, currently hardcoded 2 Mbps, future: configurable)
         const debugBaudRate = this._serialBaud;
-        const downloadBaudRate = this._serialPort.getDownloadBaudRate();
+        const downloadBaudRate = port.getDownloadBaudRate();
 
         // CRITICAL: Log current state before any changes
-        const currentBaud = this._serialPort.getCurrentBaudRate();
+        const currentBaud = port.getCurrentBaudRate();
         this.logConsoleMessage(
           `[DOWNLOAD] Current port baud rate: ${currentBaud}, debug rate: ${debugBaudRate}, download rate: ${downloadBaudRate}`
         );
@@ -6272,10 +6280,10 @@ export class MainWindow {
         if (currentBaud !== downloadBaudRate) {
           this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
           this.logConsoleMessage(`[DOWNLOAD] MUST switch from ${debugBaudRate} to ${downloadBaudRate} for download`);
-          await this._serialPort.changeBaudRate(downloadBaudRate);
+          await port.changeBaudRate(downloadBaudRate);
 
           // Verify the baud rate actually changed
-          const actualBaud = this._serialPort.getCurrentBaudRate();
+          const actualBaud = port.getCurrentBaudRate();
           this.logConsoleMessage(`[DOWNLOAD] After switch, actual baud rate is: ${actualBaud}`);
 
           if (actualBaud !== downloadBaudRate) {
@@ -6299,9 +6307,9 @@ export class MainWindow {
         }
 
         // Download to target (RAM or Flash)
-        this.logConsoleMessage(`[DOWNLOAD] Starting download at ${this._serialPort.getCurrentBaudRate()} baud`);
+        this.logConsoleMessage(`[DOWNLOAD] Starting download at ${port.getCurrentBaudRate()} baud`);
         const downloadResult = await this.downloader.download(filePath, toFlash);
-        this.logConsoleMessage(`[DOWNLOAD] Download complete, port at ${this._serialPort.getCurrentBaudRate()} baud`);
+        this.logConsoleMessage(`[DOWNLOAD] Download complete, port at ${port.getCurrentBaudRate()} baud`);
 
         // Log download result FIRST (before switching baud rate back)
         if (downloadResult.success) {
@@ -6317,25 +6325,27 @@ export class MainWindow {
         }
 
         // Switch back to debug baud rate for runtime DEBUG output from P2 code
-        // User's P2 code may be configured for different baud than download speed
-        const postDownloadBaud = this._serialPort.getCurrentBaudRate();
-        if (postDownloadBaud !== debugBaudRate) {
+        // User's P2 code may be configured for different baud than download speed.
+        // Skip entirely if a shutdown is already underway — the port is being torn down, so
+        // restoring its baud rate is pointless and would race the close (the bug this guards).
+        const postDownloadBaud = port.getCurrentBaudRate();
+        if (postDownloadBaud !== debugBaudRate && !this.isShuttingDown) {
           this.logConsoleMessage(
             `[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to debug baud rate ${debugBaudRate}`
           );
 
           // Ensure TX buffer is empty before switching for a cleaner transition
           try {
-            await this._serialPort.drain();
+            await port.drain();
             this.logConsoleMessage(`[BAUD RATE] TX buffer drained before switch`);
           } catch (drainErr: any) {
             this.logConsoleMessage(`[BAUD RATE] Warning: Could not drain TX: ${drainErr.message}`);
           }
 
-          await this._serialPort.changeBaudRate(debugBaudRate);
+          await port.changeBaudRate(debugBaudRate);
 
           // Verify the baud rate was actually changed
-          const actualBaud = this._serialPort.getCurrentBaudRate();
+          const actualBaud = port.getCurrentBaudRate();
           this.logConsoleMessage(`[BAUD RATE] Verified actual port baud rate: ${actualBaud}`);
 
           // CRITICAL: Handle garbage bytes from baud rate transition
@@ -6346,14 +6356,14 @@ export class MainWindow {
           // It will discard garbage for 25ms to ensure we catch any late-arriving garbage
           // This preserves any clean data that arrives early
           try {
-            const garbageCount = await this._serialPort.clearGarbageBytes(25);
+            const garbageCount = await port.clearGarbageBytes(25);
             this.logConsoleMessage(`[BAUD RATE] Cleared ${garbageCount} garbage bytes from stream`);
           } catch (clearErr: any) {
             this.logConsoleMessage(`[BAUD RATE] Warning: Error clearing garbage: ${clearErr.message}`);
             // Fall back to the ignore approach if new method fails
-            this._serialPort.setIgnoreFrontTraffic(true);
+            port.setIgnoreFrontTraffic(true);
             await new Promise((resolve) => setTimeout(resolve, 25));
-            this._serialPort.setIgnoreFrontTraffic(false);
+            port.setIgnoreFrontTraffic(false);
           }
 
           this.logConsoleMessage(`[BAUD RATE] Ready to receive at ${actualBaud} baud`);
@@ -6430,14 +6440,16 @@ export class MainWindow {
         this.logMessage(`ERROR: Failed to download to ${target}: ${errorMsg}`);
         this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} failed`);
 
-        // Ensure we restore debug baud rate even on error
+        // Ensure we restore debug baud rate even on error (skip if shutting down — port is closing)
         try {
           const debugBaudRate = this._serialBaud;
-          this.logConsoleMessage(`[BAUD RATE] Restoring debug baud rate to ${debugBaudRate} after download error`);
-          await this._serialPort.changeBaudRate(debugBaudRate);
+          if (!this.isShuttingDown) {
+            this.logConsoleMessage(`[BAUD RATE] Restoring debug baud rate to ${debugBaudRate} after download error`);
+            await port.changeBaudRate(debugBaudRate);
+          }
 
           // Verify and log single message to debug logger
-          const actualBaud = this._serialPort.getCurrentBaudRate();
+          const actualBaud = port.getCurrentBaudRate();
           this.logConsoleMessage(`[BAUD RATE] Verified actual port baud rate: ${actualBaud}`);
           if (this.debugLoggerWindow) {
             this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_RESTORED ${actualBaud} baud (after error)`);

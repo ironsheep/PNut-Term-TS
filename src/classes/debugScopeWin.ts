@@ -646,6 +646,11 @@ export class DebugScopeWindow extends DebugWindowBase {
             /* background-color: rgb(240, 194, 151); */
             background-color: ${this.displaySpec.window.background};
             margin: 0;
+            /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+               logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
           }
           #trigger-status {
             position: absolute;
@@ -1137,26 +1142,12 @@ export class DebugScopeWindow extends DebugWindowBase {
           if (isValidNumber) {
             if (this.isFirstNumericData) {
               this.isFirstNumericData = false;
-              // Create default channel if none exist
-              if (this.channelSpecs.length == 0) {
-                const defaultColor: DebugColor = DebugColor.fromDefaultName('GREEN', 15);
-                // Pascal: vTall[i] := vHeight (SIZE directive IS the drawing area height)
-                this.channelSpecs.push({
-                  name: 'Channel 0',
-                  color: defaultColor.rgbString,
-                  gridColor: defaultColor.gridRgbString,
-                  textColor: defaultColor.fontRgbString,
-                  minValue: 0,
-                  maxValue: 255,
-                  ySize: this.displaySpec.size.height,
-                  yBaseOffset: 0,
-                  lgndShowMax: true,
-                  lgndShowMin: true,
-                  lgndShowMaxLine: true,
-                  lgndShowMinLine: true,
-                  autoScale: false
-                });
-              }
+              // Pascal parity: do NOT fabricate a default channel. SCOPE_Update only ever
+              // increments vIndex when an explicit channel-def (`'name' …`) is parsed via
+              // NextStr; bare sample data with vIndex=0 commits NOTHING (`if ch = vIndex`
+              // never fires), so a SCOPE with no channel-def draws an empty frame. The old
+              // invented default (GREEN/15, range 0..255) railed any real-amplitude signal
+              // and diverged from PNut, which renders nothing. [v55 SCOPE_Update parity]
               this.calculateAutoTriggerAndScale();
               this.initChannelSamples();
 

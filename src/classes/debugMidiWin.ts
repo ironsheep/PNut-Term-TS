@@ -200,9 +200,11 @@ export class DebugMidiWindow extends DebugWindowBase {
     // Create the actual BrowserWindow (now with correct dimensions)
     this.createDebugWindow();
 
-    // CRITICAL: Mark window as ready to process messages (matches TERM window pattern)
-    // This ensures messages are processed immediately instead of being queued indefinitely
-    this.onWindowReady();
+    // Readiness is marked from registerWithRouter() in the ready-to-show handler, which
+    // fires AFTER did-finish-load initializes the canvas. Marking ready HERE in the
+    // constructor (before the canvas exists) lets content drawn in the gap be silently
+    // dropped against a not-yet-initialized context — the blank-window class bug found in
+    // TERM. Matches the working PLOT/BITMAP/SCOPE_XY pattern. [class-fix: premature-ready]
   }
 
   // Getter for window title
@@ -339,6 +341,11 @@ export class DebugMidiWindow extends DebugWindowBase {
         canvas {
             display: block;
             border: 1px solid #ccc;
+            /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+               logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
         }
         .status-bar {
             height: 20px;

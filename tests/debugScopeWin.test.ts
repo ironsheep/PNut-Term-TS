@@ -918,6 +918,12 @@ describe('DebugScopeWindow', () => {
       debugScopeWindow['debugWindow'] = null;
       debugScopeWindow['windowCreated'] = false;
 
+      // v55 SCOPE_Update parity: a channel only exists when an explicit channel-def
+      // (`'name' …` via NextStr) is parsed — bare sample data with no channel-def commits
+      // nothing (vIndex stays 0). So define one channel first, THEN send a sample. The old
+      // code fabricated a default channel from bare data; that invented behavior was removed.
+      await debugScopeWindow['processMessageAsync'](["'CH0'", '0', '255']);
+
       // Call processMessageAsync directly to trigger initialization synchronously
       await debugScopeWindow['processMessageAsync'](['123']);
 

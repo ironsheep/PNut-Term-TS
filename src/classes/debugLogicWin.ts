@@ -238,8 +238,11 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.createDebugWindow();
     this.initChannelSamples();
 
-    // CRITICAL: Mark window as ready to process messages
-    this.onWindowReady();
+    // Readiness is marked from registerWithRouter() in the ready-to-show handler, which
+    // fires AFTER did-finish-load initializes the canvas. Marking ready HERE in the
+    // constructor (before the canvas exists) lets content drawn in the gap be silently
+    // dropped against a not-yet-initialized context — the blank-window class bug found in
+    // TERM. Matches the working PLOT/BITMAP/SCOPE_XY pattern. [class-fix: premature-ready]
   }
 
   public static colorNameFmChanNumber(chanNumber: number): string {
@@ -927,6 +930,11 @@ export class DebugLogicWindow extends DebugWindowBase {
             /* Center canvas vertically within the channel height, with tighter spacing */
             margin-top: ${Math.floor((channelHeight - canvasHeight) / 2) + 1}px;
             margin-bottom: ${Math.ceil((channelHeight - canvasHeight) / 2) - 1}px;
+            /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+               logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
           }
           #trigger-status {
             position: absolute;

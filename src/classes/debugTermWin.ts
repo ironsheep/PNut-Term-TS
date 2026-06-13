@@ -167,9 +167,12 @@ export class DebugTermWindow extends DebugWindowBase {
     this.logMessage('Creating TERM window immediately in constructor');
     this.createDebugWindow();
 
-    // CRITICAL: Mark window as ready to process messages
-    // Without this, all messages get queued instead of processed immediately
-    this.onWindowReady();
+    // Readiness is marked from registerWithRouter() in the ready-to-show handler, which
+    // fires AFTER did-finish-load initializes the offscreen canvas. Marking ready HERE in
+    // the constructor (before the canvas exists) let content drawn in the gap hit the
+    // `if (!window.offscreenCtx) return;` early-return in writeCharToTerm and be silently
+    // dropped — blank windows on fast create->content->save capture scripts. Matches the
+    // working PLOT/BITMAP/SCOPE_XY pattern. [class-fix: premature-ready]
   }
 
   get windowTitle(): string {
@@ -578,6 +581,11 @@ export class DebugTermWindow extends DebugWindowBase {
             /* Canvas positioned at top-left of its container with padding */
             display: block;
             margin: 0;
+            /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+               logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
           }
           #coordinate-display {
             position: absolute;

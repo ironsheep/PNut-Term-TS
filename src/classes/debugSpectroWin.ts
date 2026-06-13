@@ -219,9 +219,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
     this.logMessage('Creating SPECTRO window immediately in constructor');
     this.createDebugWindow();
 
-    // CRITICAL: Mark window as ready to process messages
-    // Without this, all messages get queued instead of processed immediately
-    this.onWindowReady();
+    // Readiness is marked from registerWithRouter() in the ready-to-show handler, which
+    // fires AFTER did-finish-load initializes the canvas. Marking ready HERE in the
+    // constructor (before the canvas exists) lets content drawn in the gap be silently
+    // dropped against a not-yet-initialized context — the blank-window class bug found in
+    // TERM. Matches the working PLOT/BITMAP/SCOPE_XY pattern. [class-fix: premature-ready]
   }
 
   /**
@@ -858,6 +860,26 @@ export class DebugSpectroWindow extends DebugWindowBase {
    *
    * @param colorValue Pixel color value (0-255 for LUMA modes, or packed HSV16 value)
    */
+  /**
+   * Pascal GetBackground (DebugDisplayUnit.pas): for SPECTRO/BITMAP the bitmap's base/clear
+   * color depends on the color mode. The white-variant modes (…W: LUMA8W/HSV8W/RGBI8W/
+   * HSV16W) clear to clWhite; EVERY other mode (including the X variants) clears to clBlack.
+   * Hardcoding black made a LUMA8W spectrogram render on black instead of PNut's white
+   * field. [v55 GetBackground parity] (LUT modes use vLut[0] in Pascal; not used by SPECTRO
+   * here, so they fall through to black.)
+   */
+  private getBackgroundColorHex(): string {
+    switch (this.displaySpec.colorMode) {
+      case ColorMode.LUMA8W:
+      case ColorMode.HSV8W:
+      case ColorMode.RGBI8W:
+      case ColorMode.HSV16W:
+        return '#ffffff';
+      default:
+        return '#000000';
+    }
+  }
+
   private async plotPixel(colorValue: number): Promise<void> {
     if (!this.debugWindow) return;
 
@@ -942,8 +964,8 @@ export class DebugSpectroWindow extends DebugWindowBase {
         ctx.drawImage(tempCanvas, 0, 0, offscreen.width, offscreen.height,
                      ${scrollXPixels}, ${scrollYPixels}, offscreen.width, offscreen.height);
 
-        // Clear newly exposed region to background color
-        ctx.fillStyle = '#000000';
+        // Clear newly exposed region to background color (Pascal GetBackground: white for …W modes)
+        ctx.fillStyle = '${this.getBackgroundColorHex()}';
         if (${scrollXPixels} < 0) {
           ctx.fillRect(offscreen.width + ${scrollXPixels}, 0, ${-scrollXPixels}, offscreen.height);
         } else if (${scrollXPixels} > 0) {
@@ -1082,17 +1104,17 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
         const offscreen = window[offscreenKey];
 
-        // Clear offscreen
+        // Clear offscreen to the mode-appropriate background (Pascal GetBackground: white for …W modes)
         const offCtx = offscreen.getContext('2d');
         if (offCtx) {
-          offCtx.fillStyle = '#000000';
+          offCtx.fillStyle = '${this.getBackgroundColorHex()}';
           offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
         }
 
-        // Clear display
+        // Clear display to the mode-appropriate background
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.fillStyle = '#000000';
+          ctx.fillStyle = '${this.getBackgroundColorHex()}';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
       })();

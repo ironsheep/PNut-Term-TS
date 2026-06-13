@@ -666,6 +666,11 @@ export class DebugPlotWindow extends DebugWindowBase {
             background-color: ${this.displaySpec.window.background};
             display: block;
             margin: 0;
+            /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+               logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
           }
           ${
             ENABLE_PERFORMANCE_MONITORING

@@ -2342,6 +2342,11 @@ export class DebugFFTWindow extends DebugWindowBase {
               position: absolute;
               top: 0;
               left: 0;
+              /* Nearest-neighbor on the Retina (DPR>1) upscale — avoids bilinear blur of the
+                 logical-res canvas. Matches BITMAP/SPECTRO; Chromium resolves to crisp-edges. */
+              image-rendering: pixelated;
+              image-rendering: -moz-crisp-edges;
+              image-rendering: crisp-edges;
             }
             #coordinate-display {
               position: absolute;

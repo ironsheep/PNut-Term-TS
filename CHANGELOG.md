@@ -5,6 +5,50 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.52] - 2026-06-13
+
+Debug-window display parity pass, driven by side-by-side captures of every window against the
+Pascal (PNut) reference. The goal for each was strict behavioral parity: on identical source our
+output should match PNut's, even where the source itself is imperfect. Several distinct defects
+were found — a shared window-readiness race that silently dropped early content, HiDPI rendering
+blur, and a handful of per-window parity gaps measured against the v55 Pascal spec — plus a
+scripted-batch download crash.
+
+### Fixed
+
+- **Blank / partial windows on fast capture (window-readiness race).** TERM, MIDI, LOGIC and
+  SPECTRO marked the window "ready to receive content" in their constructor, *before*
+  `did-finish-load` had created the drawing canvas. Any content that arrived in that gap was drawn
+  against a non-existent context and silently dropped — producing blank TERM windows, LOGIC windows
+  with stale "Label" placeholders and missing traces, and all-black SPECTRO waterfalls on rapid
+  create→content→save scripts. Readiness now comes from `ready-to-show` (after canvas init), matching
+  the windows that already behaved correctly (PLOT / BITMAP / SCOPE_XY).
+- **Blurry / "dispersed" rendering on HiDPI (Retina) displays.** Every display canvas now requests
+  nearest-neighbor scaling (`image-rendering: crisp-edges`) for the device-pixel upscale instead of
+  the default bilinear blur. SCOPE_XY dots are crisp again and thin grid/axis lines render at their
+  true color (the apparent "lighter gray grid" was the blur diluting a correct color, not a wrong
+  value). Matches the BITMAP / SPECTRO canvases, which already did this.
+- **SCOPE_XY save was non-square with a black letterbox.** The window was sized with a hardcoded
+  title-bar estimate and no `useContentSize`, so on macOS the web content ended slightly taller than
+  the square canvas and the display-area SAVE captured black bands top and bottom. The window is now
+  sized by client area so the content is exactly the square canvas.
+- **SCOPE drew an invented trace where PNut draws nothing.** A SCOPE with no explicit channel
+  definition used to fabricate a default `0..255` green channel, which railed any real-amplitude
+  signal. Pascal (`SCOPE_Update`, v55) creates a channel only from an explicit channel-def; bare
+  sample data with no channel defined commits nothing and the window stays empty. The fabricated
+  default channel was removed.
+- **SPECTRO LUMA8W rendered on black instead of white.** The waterfall cleared and scroll-filled to
+  black regardless of color mode. Per Pascal `GetBackground`, the white-variant color modes
+  (LUMA8W / HSV8W / RGBI8W / HSV16W) clear to white; every other mode clears to black. The background
+  is now mode-aware (mirroring the BITMAP window, which already did this), so a LUMA8W spectrogram
+  shows the correct white field.
+- **Download crash on scripted batch runs.** Repeated `download → run → shut-down → next` batches
+  could log `Failed to download to RAM: Cannot read properties of undefined (reading
+  'getCurrentBaudRate')`. The download itself had already succeeded; a concurrent shutdown released
+  the serial port while the post-download baud-rate-restore tail was still running, so a subsequent
+  port access dereferenced a released port. The download routine now holds a local port reference and
+  skips the (pointless) baud restore once a shutdown is underway.
+
 ## [0.9.51] - 2026-06-13
 
 The real fix for the `Spin2NumericParser: Unknown numeric format - value: "'"` errors, plus

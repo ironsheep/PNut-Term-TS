@@ -523,6 +523,9 @@ describe('DebugTermWindow', () => {
 
   describe('Base class delegation (Task 1)', () => {
     beforeEach(() => {
+      // Window is created in the constructor; mark it ready so updateContent() processes
+      // immediately instead of queueing (the queue drains on the real ready-to-show). [9win §14]
+      debugTermWindow['isWindowReady'] = true;
       // Trigger window creation with a printable character
       debugTermWindow.updateContent(['32']);
       // Force immediate update mode
@@ -766,6 +769,9 @@ describe('DebugTermWindow', () => {
 
   describe('Canvas rendering operations', () => {
     beforeEach(() => {
+      // Window is created in the constructor; mark it ready so updateContent() processes
+      // immediately instead of queueing (the queue drains on the real ready-to-show). [9win §14]
+      debugTermWindow['isWindowReady'] = true;
       // Trigger window creation
       debugTermWindow.updateContent(['32']);
       debugTermWindow['displaySpec'].delayedUpdate = false;
@@ -824,6 +830,9 @@ describe('DebugTermWindow', () => {
 
   describe('File save operations', () => {
     it('should handle SAVE WINDOW command with proper format', async () => {
+      // Window is created in the constructor; mark it ready so updateContent() processes
+      // immediately instead of queueing (the queue drains on the real ready-to-show). [9win §14]
+      debugTermWindow['isWindowReady'] = true;
       // Trigger window creation
       debugTermWindow.updateContent(['32']);
       
