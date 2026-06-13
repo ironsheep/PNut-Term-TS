@@ -281,6 +281,33 @@ describe('DebugTermWindow', () => {
       expect(debugTermWindow['selectedCombo']).toBe(1); // color code 5 -> combo 1
     });
 
+    it('should not feed a string element into set-col/row when udec_ value collides with a control code', async () => {
+      // Regression [class-fix]: the Uptime feed `(TC_ROW,5,TC_COL,14,PAIR_NORMAL) `udec_(secs) ' s   '
+      // sends secs as a BARE feed value. When secs is 2 (=set-col) or 3 (=set-row) it is read as a
+      // control code; the FOLLOWING quoted string ' s   ' must NOT be consumed as its numeric value
+      // (that leaked "'" into parsePixel -> "Unknown numeric format - value: ','/'"). Pascal KeyValWithin
+      // reads the next element only if it is numeric; a string element is left to print. So: position is
+      // set by the leading (3,5,2,14,4), the colliding secs sets no value, and ' s   ' prints at col 14.
+      const errSpy = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        for (const secs of ['2', '3']) {
+          debugTermWindow['cursorPosition'] = { x: 0, y: 0 };
+          debugTermWindow['selectedCombo'] = 0;
+          // filtered lineParts (commas already dropped), exactly as captured at runtime
+          await debugTermWindow.updateContent(['3', '5', '2', '14', '4', secs, "' s   '"]);
+
+          expect(debugTermWindow['cursorPosition'].y).toBe(5); // set-row 5 from the leading tuple
+          expect(debugTermWindow['selectedCombo']).toBe(0); // color code 4 -> combo 0
+          // col set to 14, the colliding secs sets no col, then " s   " (5 chars) prints -> x = 19
+          expect(debugTermWindow['cursorPosition'].x).toBe(19);
+        }
+        // The whole point: no numeric-parser spam reached the console.
+        expect(errSpy).not.toHaveBeenCalledWith(expect.stringContaining('Unknown numeric format'));
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
     it('should handle text output', async () => {
       // In delayed-update mode the chars still write to the offscreen buffer (cursor
       // advances); only the flip to the visible canvas is deferred until UPDATE. The old

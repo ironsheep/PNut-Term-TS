@@ -855,22 +855,19 @@ export class DebugTermWindow extends DebugWindowBase {
           // SET column (2) / row (3): consumes the FOLLOWING parameter token (Pascal
           // KeyValWithin). Previously the action also fell through to the generic branch
           // below (double-dispatch) and the param was re-processed as its own action. [9win §14]
-          if (index + 1 < lineParts.length) {
-            // [TEMP DIAGNOSTIC — remove after pinning the apostrophe leak] Capture the
-            // exact feed when a set-col/row (2/3) value token is a quote, so we can see
-            // the real runtime feed shape that the source's feeds should never produce.
-            const nextTok = lineParts[index + 1];
-            if (nextTok.charAt(0) === "'" || nextTok.charAt(0) === '"') {
-              console.error(
-                `[TERM-FEED TRACE] action ${action} (set-${action === 2 ? 'col' : 'row'}) value is a quote token ${JSON.stringify(
-                  nextTok
-                )} | unparsed=${JSON.stringify(unparsedCommand)} | filtered lineParts=${JSON.stringify(lineParts)} | index=${index}`
-              );
-            }
+          if (index + 1 < lineParts.length && Spin2NumericParser.isNumeric(lineParts[index + 1])) {
+            // Numeric element follows — set-col/row consumes it (Pascal KeyValWithin).
             this.updateTermDisplay(`${action} ${lineParts[index + 1]}`);
             index++; // consume the parameter so it is not re-dispatched
           } else {
-            this.logMessage(`* UPD-ERROR  missing value for action ${action}`);
+            // Pascal KeyValWithin reads the NEXT element only if it is numeric (ele_num).
+            // A string element (ele_str) or a missing value leaves vCol/vRow UNCHANGED and
+            // is NOT consumed — the string then prints on the next loop iteration. This is
+            // exactly the case a `udec_` value < 32 produces: the small value is read as
+            // set-col/row (2/3), and the following 'text' must stay a string, never a
+            // numeric parameter. Consuming it here is what leaked a quote into parsePixel
+            // ("Unknown numeric format - value: ','/'"). Leave it for the loop. [class-fix]
+            // (No index++ — the following element, if any, is processed normally.)
           }
         } else if (action >= 32 && action <= 255) {
           // printable character

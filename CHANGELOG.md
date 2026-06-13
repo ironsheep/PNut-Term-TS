@@ -5,6 +5,45 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.51] - 2026-06-13
+
+The real fix for the `Spin2NumericParser: Unknown numeric format - value: "'"` errors, plus
+removal of the 0.9.49/0.9.50 diagnostics. Root cause (confirmed from a hardware `[TERM-FEED
+TRACE]` capture): the TERM status program's Uptime line sends its seconds value as a bare feed
+element via `` `udec_(secs) ``. When that value is small it collides with a TERM control code —
+`2` = set-column, `3` = set-row — so TERM reads it as a positioning directive and then consumed
+the *following* quoted string (`' s   '`) as the directive's numeric value, leaking a `'` into
+`parsePixel → parseValue`. This is a general class — a value-reading directive consuming the next
+token as a number without confirming it is a numeric element (`ele_num`) rather than a string
+element (`ele_str`). Pascal never does this: `KeyValWithin` reads the next element only when it is
+numeric; a string element is left in place and printed.
+
+Fixed at two levels so the whole class is closed, not just the one symptom.
+
+### Fixed
+
+- **Parser choke point (class fix):** `Spin2NumericParser.parseValue` now returns `null`
+  **silently** for a non-numeric protocol element — a quoted-string token (`'…'` / `"…"`) or a
+  standalone comma — instead of logging `Unknown numeric format`. These are `ele_str` / separators,
+  not malformed numbers; every window that reads a value through the shared parser is now immune to
+  this error class, while genuinely malformed numeric tokens (e.g. `5x`) still log as before. New
+  `isNonNumericElement` helper.
+- **TERM set-col/row (behavioral parity):** action `2`/`3` consumes the next token **only when it
+  is numeric** (Pascal `KeyValWithin`). A string element is no longer consumed — it is left to print
+  on the next element, matching Pascal, so a `udec_` value that collides with a control code no
+  longer eats the trailing string.
+
+### Removed
+
+- Temporary `[PARSER-LEAK TRACE]` (0.9.49) and `[TERM-FEED TRACE]` (0.9.50) diagnostics.
+
+### Tests
+
+- Regression tests proven to **fail on the pre-fix code** for the right reason: the parser suite
+  reproduces the exact `value: "'"` / `","` / `'Mode :'` console errors; the TERM suite feeds the
+  byte-exact runtime `lineParts` for the `secs=2`/`secs=3` collision and asserts the string is
+  printed (cursor advances) rather than consumed.
+
 ## [0.9.50] - 2026-06-12
 
 Second diagnostic build. The 0.9.49 stack trace confirmed the apostrophe leak path:

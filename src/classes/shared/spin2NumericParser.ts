@@ -86,13 +86,22 @@ export class Spin2NumericParser {
   private static logError(message: string, value: string): void {
     const errorMsg = `Spin2NumericParser: ${message} - value: "${value}"`;
     console.error(errorMsg);
-    // [TEMP DIAGNOSTIC — remove after pinning the apostrophe leak] When a quote
-    // token reaches the numeric parser, dump the call stack so we can see exactly
-    // which window/method/line passed it in.
-    if (value === "'" || value === '"' || value.indexOf("'") !== -1 || value.indexOf('"') !== -1) {
-      console.error(`[PARSER-LEAK TRACE] non-numeric quote token reached parseValue: ${JSON.stringify(value)}\n${new Error().stack}`);
-    }
     // TODO: Also log to Context logger when available
+  }
+
+  /**
+   * True when the token is a NON-NUMERIC protocol element rather than a (possibly
+   * malformed) number: a quoted-string element (`'…'` / `"…"`) or a standalone comma
+   * separator. In the P2 debug element model these are `ele_str` / separators, never
+   * `ele_num`. They legitimately appear in the stream and can land in a value slot when
+   * a value-reading directive's argument is absent (e.g. a `udec_` value that collides
+   * with a control code, followed by a string). Treating them as numbers is the whole
+   * class of "Unknown numeric format - value: \"'\"" defects; callers should instead
+   * skip / clamp / leave-unchanged. [class-fix]
+   */
+  public static isNonNumericElement(value: string): boolean {
+    const t = value.trim();
+    return t === ',' || t.charAt(0) === "'" || t.charAt(0) === '"';
   }
 
   /**
@@ -328,6 +337,16 @@ export class Spin2NumericParser {
    */
   public static parseValue(value: string): number | null {
     if (!value || value.trim() === '') {
+      return null;
+    }
+
+    // A non-numeric protocol element (quoted string `'…'`/`"…"` or a standalone comma)
+    // is NOT a malformed number — it is a string/separator element that legitimately
+    // appears in the feed and can land in a value slot. Return null SILENTLY so callers
+    // fall back to skip/clamp/leave-unchanged instead of logging "Unknown numeric
+    // format". Genuinely malformed numeric tokens (e.g. "5x") still log below. This is
+    // the single choke point that neutralizes the whole element-in-value-slot class. [class-fix]
+    if (this.isNonNumericElement(value)) {
       return null;
     }
 

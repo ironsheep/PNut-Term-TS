@@ -322,4 +322,51 @@ describe('Spin2NumericParser', () => {
       expect(Spin2NumericParser.parseValue('%1_0_1_0')).toBe(10);
     });
   });
+
+  describe('non-numeric protocol elements (string/separator) — silent null [class-fix]', () => {
+    // A quoted-string element ('…'/"…") or a standalone comma is NOT a malformed number;
+    // it is a string/separator element that can legitimately land in a value slot (e.g. a
+    // `udec_` value < 32 read as a control code, followed by 'text'). parseValue must
+    // return null SILENTLY for these so callers skip/clamp/leave-unchanged instead of
+    // spamming `Unknown numeric format - value: "'"`. Genuinely malformed numbers still log.
+    test('lone single-quote token returns null without logging', () => {
+      expect(Spin2NumericParser.parseValue("'")).toBe(null);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    test('quoted-string elements return null without logging', () => {
+      expect(Spin2NumericParser.parseValue("' s   '")).toBe(null);
+      expect(Spin2NumericParser.parseValue("'Mode :'")).toBe(null);
+      expect(Spin2NumericParser.parseValue('"hi"')).toBe(null);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    test('standalone comma separator returns null without logging', () => {
+      expect(Spin2NumericParser.parseValue(',')).toBe(null);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    test('parseInteger/parseCount/parsePixel/parseColor on a quote token are silent', () => {
+      expect(Spin2NumericParser.parseInteger("'")).toBe(null);
+      expect(Spin2NumericParser.parseCount("' s   '")).toBe(null);
+      expect(Spin2NumericParser.parsePixel("'")).toBe(null);
+      expect(Spin2NumericParser.parseColor("'")).toBe(null);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    test('genuinely malformed numeric tokens STILL log (diagnostic preserved)', () => {
+      expect(Spin2NumericParser.parseValue('5x')).toBe(null);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown numeric format'));
+    });
+
+    test('isNonNumericElement classifies elements correctly', () => {
+      expect(Spin2NumericParser.isNonNumericElement("'")).toBe(true);
+      expect(Spin2NumericParser.isNonNumericElement("' s   '")).toBe(true);
+      expect(Spin2NumericParser.isNonNumericElement('"hi"')).toBe(true);
+      expect(Spin2NumericParser.isNonNumericElement(',')).toBe(true);
+      expect(Spin2NumericParser.isNonNumericElement('14')).toBe(false);
+      expect(Spin2NumericParser.isNonNumericElement('$FF')).toBe(false);
+      expect(Spin2NumericParser.isNonNumericElement('-5')).toBe(false);
+    });
+  });
 });
