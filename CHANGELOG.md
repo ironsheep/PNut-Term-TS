@@ -5,6 +5,20 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.58] - 2026-06-14
+
+Bug-fix release: the MIDI window's saved image now shows the keys held at the moment of capture.
+
+### Fixed
+
+- **MIDI: a saved image showed an un-pressed keyboard even with a chord held.** The window was
+  marked "ready" (which replays buffered messages, including SAVE) before its drawing canvas
+  finished its asynchronous setup. The held-note draws were therefore deferred until after the setup
+  completed — losing the race to the SAVE capture, which grabbed a keyboard with no lit keys. The
+  window now registers to receive messages without being marked ready, and only becomes ready once
+  its canvas is initialized, so the held chord is drawn before SAVE captures it. (The same latent
+  timing issue was corrected in the PLOT window.)
+
 ## [0.9.57] - 2026-06-14
 
 Parity release: closes the last two known deviations from the original PNut behavior — how the

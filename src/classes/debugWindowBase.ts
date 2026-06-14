@@ -774,18 +774,30 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   /**
-   * Register this window with WindowRouter for message routing
-   * Should be called when the window is ready to receive messages
+   * Register this window with WindowRouter for message routing.
+   *
+   * @param markReady when true (default), the window is also marked READY here, which drains any
+   *   queued messages and switches to immediate processing. Windows whose canvas/renderer is
+   *   initialized SYNCHRONOUSLY before this call (the common case) keep the default. Windows whose
+   *   canvas init is ASYNCHRONOUS (MIDI/PLOT — an executeJavaScript round-trip that flips
+   *   `canvasInitialized` in a `.then()`) must pass `false`: registration alone lets the router
+   *   deliver messages (which then ENQUEUE because the window is not yet ready), and the window
+   *   calls `onWindowReady()` itself from the canvas-init `.then()`. This prevents the buffered drain
+   *   from running against an uninitialized canvas — which made deferred draws (e.g. a held MIDI
+   *   chord) miss the SAVE capture. [MIDI lit-chord-not-captured: ready-after-canvas-init]
    */
-  protected registerWithRouter(): void {
+  protected registerWithRouter(markReady: boolean = true): void {
     if (!this.isRegisteredWithRouter) {
       try {
         this.windowRouter.registerWindow(this.windowId, this.windowType, this.handleRouterMessage.bind(this));
         this.isRegisteredWithRouter = true;
         this.logMessageBase(`- Registered with WindowRouter: ${this.windowId} (${this.windowType})`);
 
-        // Mark window as ready when registered with router
-        this.onWindowReady();
+        // Mark window as ready when registered with router (unless the caller defers readiness until
+        // its asynchronous canvas init completes — see @param markReady).
+        if (markReady) {
+          this.onWindowReady();
+        }
       } catch (error) {
         this.logMessageBase(`- Failed to register with WindowRouter: ${error}`);
       }

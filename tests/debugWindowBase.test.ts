@@ -505,6 +505,38 @@ describe('DebugWindowBase', () => {
     });
   });
 
+  describe('registerWithRouter readiness decoupling', () => {
+    // Regression: windows with ASYNC canvas init (MIDI/PLOT) must register for delivery WITHOUT
+    // marking ready, so buffered messages enqueue until the canvas-init .then() calls onWindowReady().
+    // Marking ready at registration drained the queue against an uninitialized canvas and the draw
+    // (e.g. a held MIDI chord) missed the SAVE capture. [MIDI lit-chord-not-captured]
+    it('marks the window ready by default (synchronous-init windows)', () => {
+      const w = new TestDebugWindow(mockContext, 'reg-default');
+      const router = (w as any).windowRouter;
+      w['registerWithRouter']();
+      expect(router.registerWindow).toHaveBeenCalledTimes(1);
+      expect(w['isWindowReady']).toBe(true);
+    });
+
+    it('registers WITHOUT marking ready when markReady=false, so messages enqueue until onWindowReady', async () => {
+      const w = new TestDebugWindow(mockContext, 'reg-deferred');
+      const router = (w as any).windowRouter;
+
+      w['registerWithRouter'](false);
+      expect(router.registerWindow).toHaveBeenCalledTimes(1); // delivery is registered
+      expect(w['isWindowReady']).toBe(false); // but NOT ready yet
+
+      // A message that arrives now is buffered, not processed.
+      await w.updateContent(['DOT', '1', '2']);
+      expect(w.processedMessages).toHaveLength(0);
+
+      // The async canvas-init completion later marks the window ready, draining the queue.
+      await w['onWindowReady']();
+      expect(w['isWindowReady']).toBe(true);
+      expect(w.processedMessages).toEqual([['DOT', '1', '2']]);
+    });
+  });
+
   describe('Input Helpers', () => {
     it('should validate spin numbers', () => {
       const [isValid1, value1] = testWindow['isSpinNumber']('123');

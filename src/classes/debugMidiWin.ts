@@ -325,8 +325,14 @@ export class DebugMidiWindow extends DebugWindowBase {
     // Set up window event handlers
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('MIDI window ready to show');
-      // Router registration + show. (Readiness/canvas-init now happen in did-finish-load above.)
-      this.registerWithRouter();
+      // Register for message DELIVERY but do NOT mark ready here: MIDI's canvas init is async and
+      // completes in initializeWindow()'s .then() (did-finish-load). ready-to-show fires before that
+      // .then() resolves, so marking ready here would drain the buffered note-ons against an
+      // uninitialized canvas — each drawKeyboard() would DEFER via pendingDrawRequest and the held
+      // chord would miss the SAVE capture. Passing markReady=false keeps isWindowReady false so
+      // incoming messages ENQUEUE; onWindowReady() then fires from the canvas-init .then(), draining
+      // them onto a ready canvas before SAVE captures. [MIDI lit-chord-not-captured: ready-after-canvas-init]
+      this.registerWithRouter(false);
       this.debugWindow?.show();
     });
 

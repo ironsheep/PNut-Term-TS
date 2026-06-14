@@ -611,8 +611,13 @@ export class DebugPlotWindow extends DebugWindowBase {
     this.debugWindow.once('ready-to-show', () => {
       this.logMessage('at ready-to-show');
 
-      // Register with WindowRouter when window is ready
-      this.registerWithRouter();
+      // Register for message DELIVERY but do NOT mark ready here: PLOT's canvas init is async and
+      // completes in initializeCanvas()'s .then(). Marking ready here (before canvasInitialized)
+      // would drain the buffered draws against an uninitialized canvas — they would queue into
+      // pendingOperations and lose the race to SAVE's capturePage, capturing a blank/stale plot.
+      // markReady=false keeps messages enqueued until onWindowReady() fires from the init .then().
+      // [ready AFTER canvas init — same fix as MIDI lit-chord-not-captured]
+      this.registerWithRouter(false);
 
       // Remove menu for linux/windows
       if (this.debugWindow) {
