@@ -522,7 +522,10 @@ describe('DebugBitmapWindow Command Tests', () => {
     it('enables sparse mode from the declaration when dot size >= 4', () => {
       const w = makeConfiguredWindow({ dotSize: { x: 4, y: 4 }, sparseColor: 0xff0000 });
       expect(w['state'].sparseMode).toBe(true);
-      expect(w['state'].backgroundColor).toBe(0xff0000);
+      // Pascal vSparse is the sparse-dot FRAME color, stored in state.sparseColor — it must NOT
+      // overwrite the bitmap background (which stays GetBackground; black here). [9win §15]
+      expect(w['state'].sparseColor).toBe(0xff0000);
+      expect(w['state'].backgroundColor).toBe(0x000000);
     });
 
     it('disables sparse mode when dot size < 4 even with a SPARSE color (Pascal SetSize)', () => {

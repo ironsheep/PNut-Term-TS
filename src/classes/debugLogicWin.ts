@@ -72,6 +72,7 @@ export interface LogicChannelBitSpec {
   height: number;
   base: number;
   busWidth?: number; // >1 when this bit belongs to a RANGE bus group (Pascal vLogicBits := v, :987)
+  busBitOffset?: number; // 0-based position within a RANGE bus group; 0 = LSB/primary row that owns the tall band canvas
 }
 
 interface LogicChannelSamples {
@@ -615,6 +616,7 @@ export class DebugLogicWindow extends DebugWindowBase {
         newSpec.base = channelBase;
         if (channelSpec.isRange) {
           newSpec.busWidth = bitsInGroup; // Pascal vLogicBits[+i] := v
+          newSpec.busBitOffset = activeIdx; // 0 = LSB/primary row that owns the tall band canvas
         }
         // and update to next base
         channelBase += canvasHeight;
@@ -650,13 +652,27 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.labelHeight = labelHeight;
     this.labelWidth = labelCanvasWidth;
 
-    // Create channels in normal order (0 to n-1) - CSS will flip display order to put channel 0 at bottom
+    // Create channels in normal order (0 to n-1) - CSS will flip display order to put channel 0 at bottom.
+    // Labels are always one per bit. Data canvases: a RANGE bus (busWidth>1) is a single ANALOG
+    // value-waveform spanning busWidth rows (Pascal LOGIC_Draw, DebugDisplayUnit.pas:1108-1142), so
+    // its primary row (busBitOffset 0) gets ONE tall canvas covering the band and the follower rows
+    // get NO canvas. The tall canvas DOM box (height + shared canvas margins) equals busWidth*channelHeight,
+    // so it occupies exactly the same vertical span as its busWidth label rows and every channel below
+    // stays aligned. [9win §8]
     for (let index = 0; index < activeBitChannels; index++) {
       const idNbr: number = index;
       labelDivs.push(
         `<div id="label-${idNbr}" width="${labelCanvasWidth}" height="${channelHeight}">Label ${idNbr}</div>`
       );
-      dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${canvasHeight}"></canvas>`);
+      const bitSpec = this.channelBitSpecs[index];
+      const busWidth: number = bitSpec.busWidth ?? 1;
+      const isRangeBus: boolean = busWidth > 1;
+      if (isRangeBus && (bitSpec.busBitOffset ?? 0) > 0) {
+        continue; // follower row of a RANGE bus — covered by the primary row's tall canvas
+      }
+      // Tall band canvas: (busWidth-1)*channelHeight + canvasHeight, so DOM box + shared margins == busWidth*channelHeight
+      const thisCanvasHeight: number = isRangeBus ? (busWidth - 1) * channelHeight + canvasHeight : canvasHeight;
+      dataCanvases.push(`<canvas id="data-${idNbr}" width="${dataCanvasWidth}" height="${thisCanvasHeight}"></canvas>`);
     }
 
     // set height so NO scroller by default - account for container padding (Pascal margins) + window chrome
@@ -1522,22 +1538,42 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     // Extract samples for each channel from circular buffer
     for (let channelIdx = 0; channelIdx < this.singleBitChannelCount; channelIdx++) {
-      const samples: number[] = [];
+      const channelSpec = this.channelBitSpecs[channelIdx];
+      const busWidth = channelSpec.busWidth ?? 1;
+      const isRangeBus = busWidth > 1;
+      const canvasName = `data-${channelIdx}`;
 
-      // Extract channel bits from circular buffer (drawing backwards from current position)
-      for (let k = this.samplePop - 1; k >= 0; k--) {
-        // Access samples backward from write pointer (like Pascal line 1136)
-        const bufferIndex = (drawPtr - k - 1) & (this.bufferSize - 1);
-        const fullSample = this.circularBuffer[bufferIndex];
-        // Extract bit for this channel
-        const bitValue = (fullSample >> channelIdx) & 1;
-        samples.push(bitValue);
+      // Follower row of a RANGE bus: its band is drawn by the primary row's tall canvas.
+      if (isRangeBus && (channelSpec.busBitOffset ?? 0) > 0) {
+        continue;
       }
 
-      // Draw this channel with extracted samples
-      const canvasName = `data-${channelIdx}`;
-      const channelSpec = this.channelBitSpecs[channelIdx];
-      this.drawChannelFromSamples(canvasName, channelSpec, samples);
+      if (isRangeBus) {
+        // RANGE bus: extract the busWidth-bit value per sample (Pascal v := (sample >> j) & mask,
+        // DebugDisplayUnit.pas:1136) and normalize 0..1 for the analog band waveform.
+        const mask = busWidth >= 32 ? 0xffffffff : (1 << busWidth) - 1;
+        const maskU = mask >>> 0;
+        const normValues: number[] = [];
+        for (let k = this.samplePop - 1; k >= 0; k--) {
+          const bufferIndex = (drawPtr - k - 1) & (this.bufferSize - 1);
+          const fullSample = this.circularBuffer[bufferIndex];
+          const v = ((fullSample >>> channelIdx) & mask) >>> 0;
+          normValues.push(maskU === 0 ? 0 : v / maskU);
+        }
+        this.drawRangeBusFromSamples(canvasName, channelSpec, normValues);
+      } else {
+        const samples: number[] = [];
+        // Extract channel bit from circular buffer (drawing backwards from current position)
+        for (let k = this.samplePop - 1; k >= 0; k--) {
+          // Access samples backward from write pointer (like Pascal line 1136)
+          const bufferIndex = (drawPtr - k - 1) & (this.bufferSize - 1);
+          const fullSample = this.circularBuffer[bufferIndex];
+          // Extract bit for this channel
+          const bitValue = (fullSample >> channelIdx) & 1;
+          samples.push(bitValue);
+        }
+        this.drawChannelFromSamples(canvasName, channelSpec, samples);
+      }
     }
 
     // Update trigger position indicator if triggered
@@ -1630,6 +1666,93 @@ export class DebugLogicWindow extends DebugWindowBase {
       } catch (error) {
         console.error('Failed to draw channel:', error);
       }
+    }
+  }
+
+  /**
+   * Draw a RANGE bus as a single ANALOG value-waveform spanning a band of busWidth rows, mirroring
+   * Pascal LOGIC_Draw (DebugDisplayUnit.pas:1108-1142). The band occupies the tall canvas created for
+   * the bus primary row; two dimmed boundary lines mark the band top (value=max) and bottom (value=0),
+   * and the value is rendered as a sample-and-hold step waveform between them (Pascal connects each
+   * sample with DrawLineDot at its mapped y). `normValues` are the per-sample bus values normalized to
+   * 0..1 (newest-on-the-right ordering, matching drawChannelFromSamples). [9win §8]
+   */
+  private drawRangeBusFromSamples(canvasName: string, channelSpec: LogicChannelBitSpec, normValues: number[]): void {
+    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
+      return;
+    }
+    if (normValues.length === 0) {
+      return;
+    }
+
+    const busWidth: number = channelSpec.busWidth ?? 1;
+    const channelHeight: number = this.displaySpec.font.charHeight;
+    const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75);
+    // Tall band canvas height — MUST match createDebugWindow()'s thisCanvasHeight for this bus.
+    const canvasHeightTall: number = (busWidth - 1) * channelHeight + canvasHeight;
+    const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
+    const vInset: number = this.channelVInset;
+    const drawHeight: number = canvasHeightTall - vInset * 2;
+    const spacing: number = this.displaySpec.spacing;
+    const channelColor: string = channelSpec.color; // Pascal vLogicColor[j]
+    const dimmed: string = DebugLogicWindow.dimColor(channelColor); // Pascal colordim = color shr 2 and $3F3F3F
+
+    this.logMessage(`at drawRangeBusFromSamples(${canvasName}, busWidth=${busWidth}, #${normValues.length} samples)`);
+
+    const jsCode = `
+      const canvas = document.getElementById('${canvasName}');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const spacing = ${spacing};
+      const drawHeight = ${drawHeight};
+      const vInset = ${vInset};
+      const bandTop = ${vInset};
+      const bandBottom = ${canvasHeightTall - vInset};
+
+      ctx.lineWidth = ${this.displaySpec.lineSize};
+      ctx.setLineDash([]);
+      ctx.lineCap = 'square';
+      ctx.lineJoin = 'miter';
+
+      // Dimmed top/bottom boundary lines of the band (Pascal LOGIC_Draw :1124-1129)
+      ctx.strokeStyle = '${dimmed}';
+      ctx.beginPath();
+      ctx.moveTo(0, bandTop); ctx.lineTo(${canvasWidth}, bandTop);
+      ctx.moveTo(0, bandBottom); ctx.lineTo(${canvasWidth}, bandBottom);
+      ctx.stroke();
+
+      // Analog value step-waveform (Pascal LOGIC_Draw :1131-1140); value mapped into the band:
+      // norm=1 -> bandTop, norm=0 -> bandBottom.
+      const norms = [${normValues.join(',')}];
+      if (norms.length === 0) return;
+      ctx.strokeStyle = '${channelColor}';
+      ctx.beginPath();
+      for (let i = 0; i < norms.length; i++) {
+        const x = (${canvasWidth} - (norms.length - i) * spacing);
+        const y = (1 - norms[i]) * drawHeight + vInset;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevY = (1 - norms[i - 1]) * drawHeight + vInset;
+          ctx.lineTo(x, prevY);
+          ctx.lineTo(x, y);
+        }
+        const nextX = (i === norms.length - 1) ? ${canvasWidth} : (${canvasWidth} - (norms.length - i - 1) * spacing);
+        ctx.lineTo(nextX, y);
+      }
+      ctx.stroke();
+    `;
+
+    try {
+      if (this.debugWindow) {
+        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+          this.logMessage(`Failed to execute range-bus drawing JavaScript: ${error}`);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to draw range bus:', error);
     }
   }
 

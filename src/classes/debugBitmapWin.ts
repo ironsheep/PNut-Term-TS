@@ -32,6 +32,7 @@ interface BitmapState {
   rateCounter: number;
   backgroundColor: number;
   sparseMode: boolean;
+  sparseColor: number; // Pascal vSparse — the SPARSE frame/border color (NOT the bitmap background)
   manualUpdate: boolean;
   tracePattern: number;
   colorMode: ColorMode;
@@ -603,6 +604,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
       rateCounter: 0,
       backgroundColor: displaySpec.backgroundColor ?? 0x000000,
       sparseMode: displaySpec.sparseColor !== undefined,
+      sparseColor: displaySpec.sparseColor ?? 0x000000,
       manualUpdate: displaySpec.manualUpdate ?? false,
       tracePattern: displaySpec.tracePattern ?? 0,
       // Pascal SetDefaults: vColorMode := key_rgb24 (DebugDisplayUnit.pas:2889). The
@@ -643,10 +645,10 @@ export class DebugBitmapWindow extends DebugWindowBase {
       this.traceProcessor.setPattern(displaySpec.tracePattern);
     }
 
-    // Apply SPARSE background color from declaration if provided
-    if (displaySpec.sparseColor !== undefined) {
-      this.state.backgroundColor = displaySpec.sparseColor;
-    }
+    // Pascal vSparse is the sparse-dot FRAME color, not the bitmap background. The bitmap is
+    // cleared to GetBackground() (black, or white for W modes); the sparse color only tints the
+    // outer square of each sparse dot. Stored in state.sparseColor (see BITMAP_Update sparse
+    // branch, DebugDisplayUnit.pas:2466-2478). Do NOT overwrite state.backgroundColor. [9win §15]
 
     // Set up canvas ID for bitmap
     this.bitmapCanvasId = `bitmap-canvas-${this.idString}`;
@@ -1431,11 +1433,10 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
         // Get current pixel position
         const pos = this.traceProcessor.getPosition();
 
-        // Skip if sparse mode and value matches background
-        if (this.state.sparseMode && value === this.state.backgroundColor) {
-          this.traceProcessor.step();
-          continue;
-        }
+        // NOTE: Pascal BITMAP_Update plots EVERY sparse pixel (DebugDisplayUnit.pas:2466-2478) —
+        // there is no "skip if value == background/sparse". A pixel whose value matches the field
+        // still shows its vSparse frame against the GetBackground field, which is the intended
+        // sparse visual. Do NOT skip here. [9win §15]
 
         // Translate color
         const rgb24 = this.colorTranslator.translateColor(value);
@@ -1461,51 +1462,47 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
         // Plot pixel with SPARSE mode two-layer rendering if enabled
         if (this.debugWindow) {
           if (this.state.sparseMode) {
-            // SPARSE MODE: Two-layer rendering with border effect
-            // Calculate center position with offset (Pascal: x := vPixelX * vDotSize + vDotSize shr 1)
+            // SPARSE MODE: Two-layer dot, mirroring Pascal BITMAP_Update (DebugDisplayUnit.pas:2466-2478):
+            //   Layer 1 (outer): SmoothShape(x,y, dotSize,dotSizeY, 0,0, 0, vSparse, 255)
+            //                    → full-DOTSIZE SQUARE in the SPARSE frame color (vSparse).
+            //   Layer 2 (inner): SmoothShape(x,y, dotSize-dotSize>>2, dotSizeY-dotSizeY>>2,
+            //                                dotSize,dotSizeY, 0, TranslateColor(value), 255)
+            //                    → 3/4-DOTSIZE ROUNDED dot (xro/yro = full size ⇒ ellipse) in the
+            //                      pixel's translated color. [9win §15]
+            // Pascal: x := vPixelX * vDotSize + vDotSize shr 1 (center).
             const centerX = pos.x * this.state.dotSizeX + (this.state.dotSizeX >> 1);
             const centerY = pos.y * this.state.dotSizeY + (this.state.dotSizeY >> 1);
 
-            // Convert border color to hex string
-            const borderRgb24 = this.state.backgroundColor & 0xffffff;
-            const borderColor = `#${borderRgb24.toString(16).padStart(6, '0')}`;
+            // Frame color = vSparse (the SPARSE directive color), NOT the bitmap background.
+            const frameRgb24 = this.state.sparseColor & 0xffffff;
+            const frameColor = `#${frameRgb24.toString(16).padStart(6, '0')}`;
 
-            // LAYER 1: Draw outer rectangle (border) at 100% DOTSIZE
+            // LAYER 1: outer SQUARE (border) at 100% DOTSIZE in the SPARSE frame color.
             const outerX = centerX - (this.state.dotSizeX >> 1);
             const outerY = centerY - (this.state.dotSizeY >> 1);
-            const outerCode = `
-              const canvas = document.getElementById('${this.bitmapCanvasId}');
-              if (canvas) {
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.fillStyle = '${borderColor}';
-                  ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
-                }
-              }
-            `;
-            this.debugWindow.webContents
-              .executeJavaScript(outerCode)
-              .catch((err) => this.logMessage(`ERROR plotting outer rect: ${err}`));
 
-            // LAYER 2: Draw inner rectangle (pixel) at 75% DOTSIZE
-            // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining)
+            // LAYER 2: inner ROUNDED dot at 75% DOTSIZE in the pixel color.
+            // Pascal: vDotSize - vDotSize shr 2 (subtract 25% = 75% remaining); xro/yro = full
+            // DOTSIZE so SmoothShape renders a filled ellipse, not a rounded rectangle.
             const innerW = this.state.dotSizeX - (this.state.dotSizeX >> 2);
             const innerH = this.state.dotSizeY - (this.state.dotSizeY >> 2);
-            const innerX = centerX - (innerW >> 1);
-            const innerY = centerY - (innerH >> 1);
-            const innerCode = `
+            const sparseCode = `
               const canvas = document.getElementById('${this.bitmapCanvasId}');
               if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
+                  ctx.fillStyle = '${frameColor}';
+                  ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
                   ctx.fillStyle = '${color}';
-                  ctx.fillRect(${innerX}, ${innerY}, ${innerW}, ${innerH});
+                  ctx.beginPath();
+                  ctx.ellipse(${centerX}, ${centerY}, ${innerW / 2}, ${innerH / 2}, 0, 0, Math.PI * 2);
+                  ctx.fill();
                 }
               }
             `;
             this.debugWindow.webContents
-              .executeJavaScript(innerCode)
-              .catch((err) => this.logMessage(`ERROR plotting inner rect: ${err}`));
+              .executeJavaScript(sparseCode)
+              .catch((err) => this.logMessage(`ERROR plotting sparse dot: ${err}`));
           } else {
             // NORMAL MODE: Collect pixels for batched rendering to offscreen bitmap
             // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]

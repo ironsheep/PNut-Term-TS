@@ -356,10 +356,11 @@ describe('DebugBitmapWindow Integration Tests', () => {
   });
 
   describe('Sparse mode rendering', () => {
-    it('should skip pixels matching background in sparse mode', async () => {
-      // Sparse rendering is configure-only and requires dotSize >= 4 (Pascal SetSize, :2938).
-      // Build the window with dotSize 4x4 + a SPARSE background of 0 (black) + rate 1 in the
-      // declaration; BITMAP_Update has no runtime DOTSIZE/SPARSE/setup. [9win §15]
+    it('plots EVERY sparse pixel (no skip), even when the value matches the field', async () => {
+      // Pascal BITMAP_Update (DebugDisplayUnit.pas:2466-2478) draws every sparse pixel as a two-layer
+      // dot — there is NO "skip if value == background/sparse". A pixel whose value equals the field
+      // still shows its vSparse frame, so all four samples here must be translated + plotted. Sparse
+      // rendering is configure-only and requires dotSize >= 4 (Pascal SetSize, :2938). [9win §15]
       window = new DebugBitmapWindow(
         mockContext,
         { ...createTestDisplaySpec(), dotSize: { x: 4, y: 4 }, sparseColor: 0, rate: 1 } as any,
@@ -380,23 +381,21 @@ describe('DebugBitmapWindow Integration Tests', () => {
 
       // Mock unpacker to return the exact values we're sending
       (PackedDataProcessor.unpackSamples as jest.Mock)
-        .mockReturnValueOnce([255])  // Non-background
-        .mockReturnValueOnce([0])    // Matches background (black = 0x000000, value 0)
-        .mockReturnValueOnce([128])  // Non-background
-        .mockReturnValueOnce([0]);   // Matches background
+        .mockReturnValueOnce([255]) // Non-field
+        .mockReturnValueOnce([0])   // Equals the field value (black = 0) — still plotted in Pascal
+        .mockReturnValueOnce([128]) // Non-field
+        .mockReturnValueOnce([0]);  // Equals the field value — still plotted
 
       // Send pixels individually (all awaited)
-      await window.updateContent(['255']); // Non-background
-      await window.updateContent(['0']);   // Matches background → skipped
-      await window.updateContent(['128']); // Non-background
-      await window.updateContent(['0']);   // Matches background → skipped
+      await window.updateContent(['255']);
+      await window.updateContent(['0']);
+      await window.updateContent(['128']);
+      await window.updateContent(['0']);
 
-      // Sparse mode: background pixels are SKIPPED (no translateColor / no plot for them).
-      // Only the 2 non-background pixels have their color translated and plotted.
-      // (The sparse check is `value === this.state.backgroundColor` before translateColor.)
-      expect(mockColorTranslator.translateColor).toHaveBeenCalledTimes(2); // Only 255 and 128
+      // Every sparse pixel is translated + plotted — no skipping.
+      expect(mockColorTranslator.translateColor).toHaveBeenCalledTimes(4);
 
-      // But trace should step for all 4 pixels (background and non-background alike)
+      // And the trace steps once per pixel.
       expect(mockTraceProcessor.step).toHaveBeenCalledTimes(4);
     });
 

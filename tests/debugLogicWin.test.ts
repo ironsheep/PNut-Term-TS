@@ -614,6 +614,62 @@ describe('DebugLogicWindow', () => {
     });
   });
 
+  describe('RANGE bus-waveform (Pascal LOGIC_Draw :1108-1142)', () => {
+    const makeRangeWindow = () => {
+      const spec = {
+        ...mockDisplaySpec,
+        channelSpecs: [{ name: 'Bus', nbrBits: 4, color: '#00FF00', isRange: true }]
+      };
+      const w = new DebugLogicWindow(mockContext, spec);
+      triggerWindowCreation(w, 'LOGIC');
+      return w;
+    };
+
+    it('tags each bus bit with busWidth and busBitOffset', () => {
+      const w = makeRangeWindow();
+      const bitSpecs = w['channelBitSpecs'];
+      expect(bitSpecs).toHaveLength(4);
+      for (let i = 0; i < 4; i++) {
+        expect(bitSpecs[i].busWidth).toBe(4);
+        expect(bitSpecs[i].busBitOffset).toBe(i);
+      }
+    });
+
+    it('emits ONE tall data canvas spanning the band (no follower canvases)', () => {
+      makeRangeWindow();
+      const mockWindow = mockBrowserWindowInstances[mockBrowserWindowInstances.length - 1];
+      const html = decodeURIComponent(mockWindow.loadURL.mock.calls[0][0]);
+      const dataCanvases = html.match(/<canvas id="data-\d+"/g) ?? [];
+      // 4 label rows but only the primary (data-0) data canvas
+      expect(dataCanvases).toEqual(['<canvas id="data-0"']);
+      // charHeight=16 -> canvasHeight=12, channelHeight=16; tall = (4-1)*16 + 12 = 60
+      expect(html).toContain('<canvas id="data-0" width="800" height="60">');
+      // 4 label divs still present (name on row 0, dimmed bit-count on row 1, blanks above)
+      expect((html.match(/<div id="label-\d+"/g) ?? [])).toHaveLength(4);
+    });
+
+    it('routes a bus group to the analog band renderer, not the 1-bit renderer', () => {
+      const w = makeRangeWindow();
+      const rangeSpy = jest.spyOn(w as any, 'drawRangeBusFromSamples');
+      const bitSpy = jest.spyOn(w as any, 'drawChannelFromSamples');
+
+      // Seed one sample whose 4-bit bus value is 0b1010 = 10 (of max 15).
+      w['circularBuffer'] = new Array(w['bufferSize']).fill(0);
+      w['circularBuffer'][0] = 0b1010;
+      w['samplePtr'] = 1;
+      w['samplePop'] = 1;
+      w['triggerFrozenPtr'] = -1;
+
+      (w as any).drawAllChannelsFromBuffer();
+
+      expect(bitSpy).not.toHaveBeenCalled();
+      expect(rangeSpy).toHaveBeenCalledTimes(1);
+      const [canvasName, , normValues] = rangeSpy.mock.calls[0];
+      expect(canvasName).toBe('data-0');
+      expect(normValues).toEqual([10 / 15]); // bus value normalized into the band
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle missing display name', () => {
       const [isValid] = DebugLogicWindow.parseLogicDeclaration(['`LOGIC']);

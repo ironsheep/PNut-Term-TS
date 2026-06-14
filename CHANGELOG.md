@@ -5,6 +5,27 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.57] - 2026-06-14
+
+Parity release: closes the last two known deviations from the original PNut behavior — how the
+BITMAP window draws SPARSE pixels, and how the LOGIC window draws a RANGE (multi-bit bus) channel.
+
+### Fixed
+
+- **BITMAP SPARSE now draws every pixel, with the correct frame and dot.** Three deviations from
+  the original were corrected: (1) sparse pixels whose value happened to match the background were
+  being dropped — the original draws *every* sparse pixel, so a matching pixel still shows its
+  SPARSE-colored frame against the field; (2) the SPARSE color was being used as the bitmap
+  background, washing out the field — the background is now the mode's normal clear color (black, or
+  white for the "…W" modes) and the SPARSE color is used only for the dot's frame; (3) each sparse
+  dot is now an outer square in the SPARSE frame color with an inner *rounded* dot in the pixel's
+  color, matching the original's two-layer shape (the inner dot was previously square).
+- **LOGIC RANGE channels now draw as a single analog waveform, not stacked on/off traces.** A
+  channel declared with a bit range (a multi-bit bus) is now rendered the way the original does it:
+  one continuous value-waveform occupying a band as tall as the bus, bounded by two dimmed
+  guide-lines at the band's top and bottom. Previously each bit of the bus was drawn as its own
+  separate high/low trace.
+
 ## [0.9.56] - 2026-06-14
 
 Capture-pipeline correctness pass: a window-by-window audit of how each debug window draws and how
