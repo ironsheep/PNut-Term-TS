@@ -190,6 +190,12 @@ export class DebugFFTWindow extends DebugWindowBase {
   // Drawing lock to prevent concurrent draws (matches Pascal's synchronous FFT_Draw)
   private isDrawing = false;
 
+  // Draws (performDraw → drawFFT) are SERIALIZED through this chain so a SAVE can await the
+  // in-flight/queued draw before capturing. drawFFT issues several awaited executeJavaScript steps
+  // and only copies offscreen→visible partway through, so a fire-and-forget draw would let SAVE's
+  // capturePage race a stale/blank spectrum. Mirrors BITMAP/PLOT's render flush. [SAVE flush]
+  private renderChain: Promise<void> = Promise.resolve();
+
   constructor(context: Context, displaySpec: FFTDisplaySpec, windowId: string = `fft-${Date.now()}`) {
     super(context, windowId, 'fft');
     this.windowLogPrefix = 'fftW';
@@ -468,15 +474,53 @@ export class DebugFFTWindow extends DebugWindowBase {
       return;
     }
 
-    // Trigger display update (async but with lock)
+    // Trigger display update (serialized through renderChain so a following SAVE can await it)
     this.logMessage('  -> Calling drawFFT()');
-    this.performDraw();
+    void this.flushDraw();
   }
 
   /**
    * Perform the draw operation with lock protection
    * Ensures only one draw happens at a time, matching Pascal's synchronous behavior
    */
+  /**
+   * Serialize an FFT draw through renderChain so SAVE can await the in-flight/queued draw before
+   * capturing. Call this instead of performDraw()/drawFFT() fire-and-forget.
+   */
+  private flushDraw(): Promise<void> {
+    this.renderChain = this.renderChain.then(() => this.performDraw()).catch((error) => {
+      this.logMessage(`FFT draw failed: ${error}`);
+    });
+    return this.renderChain;
+  }
+
+  /**
+   * SAVE/SAVE WINDOW capture the canvas; FFT draws asynchronously (drawFFT issues several awaited
+   * executeJavaScript steps, copying offscreen→visible partway through), so the in-flight/queued
+   * draw must FINISH before the capture or the saved image is a stale/blank spectrum. Await the
+   * render chain, then defer to the base capture. Mirrors BITMAP/PLOT. [SAVE flush]
+   */
+  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+    await this.renderChain;
+    await super.saveWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
+    await this.renderChain;
+    await super.saveDesktopWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopCoordinatesToBMPFilename(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    filename: string
+  ): Promise<void> {
+    await this.renderChain;
+    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
+  }
+
   private async performDraw(): Promise<void> {
     // Set lock
     this.isDrawing = true;
@@ -941,7 +985,7 @@ export class DebugFFTWindow extends DebugWindowBase {
    * Force display update (called by base class UPDATE command)
    */
   protected forceDisplayUpdate(): void {
-    this.drawFFT(); // Fire and forget async call
+    void this.flushDraw(); // serialized through renderChain so a following SAVE can await it
   }
 
   /**

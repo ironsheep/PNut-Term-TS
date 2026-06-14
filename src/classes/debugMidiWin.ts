@@ -310,9 +310,16 @@ export class DebugMidiWindow extends DebugWindowBase {
     // init + readiness in ready-to-show was unreliable with show:true (the SAVE could go
     // unprocessed → no .bmp on capture runs). [window-readiness uniform sequence]
     this.debugWindow.webContents.once('did-finish-load', () => {
-      this.logMessage('MIDI did-finish-load: init canvas + onWindowReady');
+      // Canvas init is ASYNC (an executeJavaScript round-trip that flips canvasInitialized true in
+      // its .then). Readiness must fire AFTER that, not here: onWindowReady() makes the router drain
+      // buffered messages (the held-chord note-ons AND the SAVE). If we marked ready before the
+      // canvas exists, every drawKeyboard during the drain is DEFERRED via pendingDrawRequest, and
+      // the deferred chord draw then loses the FIFO race to SAVE's capturePage — capturing the
+      // keyboard with NO lit chord. initializeWindow() now calls onWindowReady() once the canvas is
+      // ready, so the chord draws synchronously during the drain and the capture flush catches it.
+      // [MIDI lit-chord-not-captured: ready-after-canvas-init]
+      this.logMessage('MIDI did-finish-load: init canvas (readiness fires when the canvas is ready)');
       this.initializeWindow();
-      this.onWindowReady();
     });
 
     // Set up window event handlers
@@ -446,10 +453,16 @@ export class DebugMidiWindow extends DebugWindowBase {
           this.logMessage(`MIDI: ERROR during canvas initialization: ${result}`);
           console.error('MIDI canvas initialization failed:', result);
         }
+        // Mark the window READY only now that the canvas is initialized (see did-finish-load): the
+        // router then drains buffered messages against a ready canvas, so the held-chord draw is
+        // issued synchronously during the drain and the SAVE capture flush catches it.
+        this.onWindowReady();
       })
       .catch((error) => {
         this.logMessage(`MIDI: FATAL ERROR initializing canvas: ${error.message}`);
         console.error('MIDI canvas initialization error:', error);
+        // Still mark ready so the buffered SAVE/messages drain instead of hanging on a failed init.
+        this.onWindowReady();
       });
 
     // Enable input forwarding if requested

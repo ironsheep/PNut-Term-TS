@@ -191,6 +191,12 @@ export class DebugPlotWindow extends DebugWindowBase {
   private shouldWriteToCanvas: boolean = true;
   private canvasInitialized: boolean = false;
 
+  // Renders (performUpdate) are SERIALIZED through this chain so a SAVE can await the in-flight /
+  // queued render before capturing. executeBatch issues its per-operation draws across MULTIPLE
+  // awaited IPC turns, so a fire-and-forget performUpdate would let SAVE's capturePage race a
+  // half-drawn plot (only the first operation issued). Mirrors BITMAP's renderFlushChain. [SAVE flush]
+  private renderChain: Promise<void> = Promise.resolve();
+
   // Double buffering support
   private workingCanvas?: OffscreenCanvas;
   private workingCtx?: OffscreenCanvasRenderingContext2D;
@@ -799,11 +805,12 @@ export class DebugPlotWindow extends DebugWindowBase {
       // Set up Plot-specific coordinate display handler
       this.setupCoordinateDisplayHandler();
 
-      // CRITICAL: mark ready HERE — after initializeCanvas() — matching SCOPE_XY and the other
-      // camp-A windows. did-finish-load ALWAYS fires on page load, so readiness is reliable
-      // regardless of ready-to-show timing (PLOT also uses show:false, but this makes the whole
-      // camp-A family follow ONE sequence). [window-readiness uniform sequence]
-      this.onWindowReady();
+      // NOTE: readiness is marked inside initializeCanvas()'s completion, NOT here. initializeCanvas
+      // sets up the canvas context ASYNCHRONOUSLY (an executeJavaScript round-trip that flips
+      // canvasInitialized true in its .then). onWindowReady() drains buffered messages (draws + the
+      // SAVE); marking ready here, before canvasInitialized, made every draw during the drain queue
+      // into pendingOperations and lose the FIFO race to SAVE's capturePage — capturing a blank/
+      // stale plot. [window-readiness uniform sequence — ready AFTER canvas init]
     });
   }
 
@@ -907,9 +914,7 @@ export class DebugPlotWindow extends DebugWindowBase {
           this.logMessage(
             `Canvas ready - executing ${this.pendingOperations.length} pending operations that were queued during initialization`
           );
-          this.performUpdate().catch((error) => {
-            this.logMessage(`Failed to execute pending operations after canvas init: ${error}`);
-          });
+          void this.flushRender();
         }
 
         // Set up input event listeners after canvas is ready
@@ -918,10 +923,16 @@ export class DebugPlotWindow extends DebugWindowBase {
         if (ENABLE_PERFORMANCE_MONITORING) {
           this.initializePerformanceOverlay();
         }
+        // Mark READY only now that the canvas is initialized: the router then drains buffered
+        // messages against a ready canvas, so draws are issued synchronously during the drain and
+        // the SAVE capture flush catches them (matches MIDI/SPECTRO). [ready AFTER canvas init]
+        this.onWindowReady();
       })
       .catch((error) => {
         this.logMessage(`Failed to initialize canvas: ${error}`);
         this.shouldWriteToCanvas = false;
+        // Still mark ready so the buffered SAVE/messages drain instead of hanging on a failed init.
+        this.onWindowReady();
       });
   }
 
@@ -1075,6 +1086,44 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   private setupDoubleBuffering(): void {
     // Double buffering is now handled in initializeCanvas
     // This method is kept for compatibility but doesn't do anything
+  }
+
+  /**
+   * Serialize a render through renderChain so SAVE can await the in-flight/queued render before
+   * capturing. Call this instead of performUpdate() fire-and-forget. Returns the chain tail.
+   */
+  private flushRender(): Promise<void> {
+    this.renderChain = this.renderChain.then(() => this.performUpdate()).catch((error) => {
+      this.logMessage(`Render failed: ${error}`);
+    });
+    return this.renderChain;
+  }
+
+  /**
+   * SAVE/SAVE WINDOW capture the canvas; PLOT renders asynchronously (executeBatch issues per-op
+   * draws across several IPC turns), so the in-flight/queued render must FINISH before the capture
+   * or the saved image is a partial plot. Await the render chain, then defer to the base capture.
+   * Mirrors BITMAP's pre-capture flush. [SAVE flush]
+   */
+  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
+    await this.renderChain;
+    await super.saveWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
+    await this.renderChain;
+    await super.saveDesktopWindowToBMPFilename(filename);
+  }
+
+  protected async saveDesktopCoordinatesToBMPFilename(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    filename: string
+  ): Promise<void> {
+    await this.renderChain;
+    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
   }
 
   private async performUpdate(): Promise<void> {
@@ -1313,12 +1362,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
     this.logMessage('Forcing PLOT display update');
 
-    // Perform the update regardless of buffering mode
-    // performUpdate is async, but we don't wait for it to complete
-    // to avoid blocking the message processing loop
-    this.performUpdate().catch((error) => {
-      this.logMessage(`Failed to force update: ${error}`);
-    });
+    // Perform the update regardless of buffering mode, serialized through renderChain so a
+    // following SAVE can await it (we still don't block the message loop here).
+    void this.flushRender();
   }
 
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
@@ -2264,7 +2310,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         // These commands are handled by base class but included for completeness
         case 'UPDATE':
-          this.performUpdate();
+          void this.flushRender();
           break;
 
         case 'CLEAR':
@@ -2300,7 +2346,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
     // If not in delayed update mode, perform update after processing all commands
     if (!this.displaySpec.delayedUpdate) {
-      this.performUpdate();
+      void this.flushRender();
     }
   }
 
@@ -2715,7 +2761,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       this.logMessage(`Clear result: ${result}`);
       // In live mode (not updateMode), flip buffer immediately after clear
       if (!this.updateMode) {
-        await this.performUpdate();
+        await this.flushRender();
       }
     } catch (error) {
       this.logMessage(`Failed to clear canvas: ${error}`);

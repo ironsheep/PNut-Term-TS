@@ -1357,9 +1357,18 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.saveInProgress = true;
 
       try {
-        // Flush pending renderer draws first — desktopCapturer grabs the on-screen pixels and does
-        // NOT wait for fire-and-forget canvas draws, so a heavy window (LOGIC/SPECTRO) would be
-        // captured half-drawn. This is why plain SAVE (flushed capturePage) was complete while
+        // Bring the window to the FRONT of the OS z-order before the screen grab. desktopCapturer
+        // captures whatever pixels are physically on screen at the window's region, so if another
+        // window overlaps it, SAVE WINDOW would capture the OTHER window's content. Pascal SAVE
+        // WINDOW always captures THIS window (with chrome), so raise + show + focus it, then give
+        // the window-server a beat to restack/repaint before grabbing. [SAVE WINDOW occlusion parity]
+        if (!this._debugWindow.isVisible()) this._debugWindow.show();
+        this._debugWindow.moveTop();
+        this._debugWindow.focus();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        // Flush pending renderer draws — desktopCapturer grabs the on-screen pixels and does NOT
+        // wait for fire-and-forget canvas draws, so a heavy window (LOGIC/SPECTRO) would otherwise
+        // be captured half-drawn. This is why plain SAVE (flushed capturePage) was complete while
         // SAVE WINDOW was missing most of the LOGIC content. [SAVE-vs-async-draw race]
         await this.flushRendererDraws(this._debugWindow);
         // Pascal SAVE WINDOW captures the on-screen window region INCLUDING the

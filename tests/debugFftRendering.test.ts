@@ -258,7 +258,7 @@ describe('FFT Rendering', () => {
       (fftWindow as any).initializeCanvas();
     });
 
-    it('should call drawFFT (via performDraw) when triggerFFT fires with channels', () => {
+    it('should call drawFFT (via performDraw) when triggerFFT fires with channels', async () => {
       const window = fftWindow as any;
 
       // Add a channel so triggerFFT doesn't return early
@@ -274,7 +274,10 @@ describe('FFT Rendering', () => {
 
       window.triggerFFT();
 
-      // performDraw is called (async), which calls drawFFT — spy fires synchronously
+      // triggerFFT now serializes the draw through renderChain (flushDraw), so performDraw →
+      // drawFFT runs one microtask later (this lets a following SAVE await the in-flight draw).
+      // Await the render chain so the deferred draw has fired before asserting.
+      await window.renderChain;
       expect(drawSpy).toHaveBeenCalled();
     });
 

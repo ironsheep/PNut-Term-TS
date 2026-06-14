@@ -756,37 +756,16 @@ export class DebugLogicWindow extends DebugWindowBase {
     this.contentWidth = channelGroupWidth + this.contentInset * 2 + this.canvasMargin * 1;
     this.contentHeight = contentHeight;
 
-    // HYPOTHESIS 4 DEBUGGING: Registration Side Effects
-    const beforeBounds = this.debugWindow.getBounds();
-    this.logConsoleMessage(
-      `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: BEFORE REGISTRATION: (${beforeBounds.x}, ${beforeBounds.y}) size:${beforeBounds.width}x${beforeBounds.height}`
-    );
-
     // Register window with WindowPlacer for position tracking (only if using auto-placement)
     if (this.debugWindow && !this.displaySpec.hasExplicitPosition) {
       const windowPlacer = WindowPlacer.getInstance();
-      this.logConsoleMessage(
-        `[DEBUG_WIN_LOGIC] 🔄 REGISTERING: logic-${this.displaySpec.displayName} with WindowPlacer`
-      );
       windowPlacer.registerWindow(`logic-${this.displaySpec.displayName}`, this.debugWindow);
-
-      // Check for position changes after registration
-      setTimeout(() => {
-        const afterBounds = this.debugWindow!.getBounds();
-        this.logConsoleMessage(
-          `[DEBUG_WIN_LOGIC] 📍 HYPOTHESIS 4: AFTER REGISTRATION: (${afterBounds.x}, ${afterBounds.y}) size:${afterBounds.width}x${afterBounds.height}`
-        );
-        if (beforeBounds.x !== afterBounds.x || beforeBounds.y !== afterBounds.y) {
-          this.logConsoleMessage(
-            `[DEBUG_WIN_LOGIC] ⚠️ HYPOTHESIS 4: POSITION CHANGED DURING REGISTRATION! Δx:${
-              afterBounds.x - beforeBounds.x
-            } Δy:${afterBounds.y - beforeBounds.y}`
-          );
-        } else {
-          this.logConsoleMessage(`[DEBUG_WIN_LOGIC] ✅ HYPOTHESIS 4: Position stable during registration`);
-        }
-      }, 100);
     }
+    // NOTE: a leftover "HYPOTHESIS 4" diagnostic setTimeout(…, 100) used to re-read
+    // this.debugWindow!.getBounds() after registration. If the window was closed within that
+    // 100 ms (closeDebugWindow nulls debugWindow and clears nothing), the non-null assertion
+    // threw on a null deref. Removed: it was pure diagnostic logging and the only thing keeping
+    // that timer alive. [P2 punch-list: LOGIC timer-after-close null deref]
 
     // HYPOTHESIS 6 DEBUGGING: Content Loading Interference
     this.debugWindow.on('ready-to-show', () => {

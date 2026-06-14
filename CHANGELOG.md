@@ -5,6 +5,34 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.56] - 2026-06-14
+
+Capture-pipeline correctness pass: a window-by-window audit of how each debug window draws and how
+SAVE captures it. Fixes the windows whose saved image could miss content because the drawing
+finished after the capture, and makes SAVE WINDOW capture the correct window even when another
+window sits on top of it.
+
+### Fixed
+
+- **MIDI: the held chord was missing from the saved image.** The window marked itself "ready"
+  (which replays the buffered commands, including SAVE) before its canvas finished initializing, so
+  the chord's key-lighting was deferred and lost the race to the capture. Readiness now waits for
+  the canvas, so the lit chord is drawn before SAVE captures it.
+- **PLOT: a saved plot could be incomplete (only the first drawing operation).** PLOT draws its
+  operations asynchronously, one after another, and SAVE did not wait for them — so the capture
+  could land mid-draw. PLOT now finishes all pending drawing before the capture. (Its readiness
+  ordering was corrected the same way as MIDI.)
+- **FFT: a saved spectrum could be stale or blank.** FFT draws to an off-screen buffer and copies
+  it to the visible canvas partway through an asynchronous draw; SAVE did not wait for that copy.
+  FFT now finishes the draw before the capture.
+- **SAVE WINDOW captured the wrong window when windows overlapped.** SAVE WINDOW grabs the
+  on-screen region, so if another window covered the target, it captured that other window. SAVE
+  WINDOW now raises the target window to the front (and lets the screen settle) before grabbing, so
+  it always captures the intended window and its title-bar/chrome.
+- **LOGIC: removed a leftover diagnostic timer that could crash on window close.** A debug-only
+  100 ms timer re-read the window bounds after the window was already closed, causing a null
+  reference. The diagnostic was removed.
+
 ## [0.9.55] - 2026-06-14
 
 Bug-fix release: SPECTRO once again produces its saved bitmap *and* draws its waterfall; LOGIC's
