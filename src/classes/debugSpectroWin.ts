@@ -144,6 +144,14 @@ export class DebugSpectroWindow extends DebugWindowBase {
   // FFT operation guard (prevents overlapping FFT operations)
   private isPerformingFFT = false;
 
+  // Per-column draw batch. When non-null, the draw helpers (plotPixel / updateWaterfallDisplay /
+  // scrollWaterfall) APPEND their self-contained canvas snippet here instead of each issuing its
+  // own executeJavaScript; performFFTAndDraw flushes the whole column in ONE executeJavaScript.
+  // This is what lets a full high-speed capture render every FFT column — the old per-bin async
+  // IPC (256 round-trips per column) could not keep up with the data burst, so the overlap guard
+  // dropped almost every column and the window came out blank. [SPECTRO batched per-column draw]
+  private columnBatch: string[] | null = null;
+
   // FFT properties
   private fftExp = 0; // FFTexp
   private fftSize = 0; // vSamples
@@ -757,16 +765,18 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Check if we should perform FFT
     // Pascal: if RateCycle then SPECTRO_Draw
     if (this.rateCycle()) {
-      // Fire and forget - but guard against overlapping operations
+      // performFFTAndDraw is SYNCHRONOUS now, so the guard is reset before the next addSample —
+      // it no longer drops columns (the old async path dropped almost all of them). It still
+      // lets tests block the auto-draw by holding isPerformingFFT = true across a sample load.
       if (!this.isPerformingFFT) {
         this.isPerformingFFT = true;
-        this.performFFTAndDraw()
-          .catch((error) => {
-            this.logMessage(`FFT operation failed: ${error}`);
-          })
-          .finally(() => {
-            this.isPerformingFFT = false;
-          });
+        try {
+          this.performFFTAndDraw();
+        } catch (error) {
+          this.logMessage(`FFT operation failed: ${error}`);
+        } finally {
+          this.isPerformingFFT = false;
+        }
       }
     }
   }
@@ -792,7 +802,15 @@ export class DebugSpectroWindow extends DebugWindowBase {
    * Perform FFT and draw results to waterfall
    * Pascal: SPECTRO_Draw procedure
    */
-  private async performFFTAndDraw(): Promise<void> {
+  // SYNCHRONOUS by design. SPECTRO data arrives as one tight back-to-back burst (the readiness
+  // drain replays the whole capture in a single tick), so this must compute AND emit its column
+  // draw without yielding: an async per-bin path yielded mid-loop, the overlap guard then dropped
+  // every subsequent rate-cycle, and only ~1 of ~240 columns ever rendered → blank window. Here the
+  // per-bin plot/blit/scroll snippets accumulate into columnBatch and flush as ONE executeJavaScript
+  // per column (~240 IPC for the whole capture instead of ~61k). [SPECTRO batched per-column draw]
+  private performFFTAndDraw(): void {
+    if (!this.debugWindow) return;
+
     // Copy samples from circular buffer to FFT input
     // Pascal: for x := 0 to vSamples - 1 do FFTsamp[x] := SPECTRO_SampleBuff[(SamplePtr - vSamples + x) and SPECTRO_PtrMask]
     for (let x = 0; x < this.fftSize; x++) {
@@ -810,6 +828,10 @@ export class DebugSpectroWindow extends DebugWindowBase {
     // Calculate scaling factor
     // Pascal: fScale := 255 / vRange
     const fScale = 255 / this.displaySpec.range;
+
+    // Open the per-column draw batch; the plot/blit/scroll snippets below append to it and the
+    // whole column flushes as ONE executeJavaScript after the bin loop.
+    this.columnBatch = [];
 
     // Plot FFT bins as pixels
     // Pascal: for x := FFTfirst to FFTlast do
@@ -838,17 +860,27 @@ export class DebugSpectroWindow extends DebugWindowBase {
         pixelValue = pixelValue | ((this.fftAngle[x] >> 16) & 0xff00);
       }
 
-      await this.plotPixel(pixelValue);
+      // These append to columnBatch (batch mode) rather than each issuing executeJavaScript.
+      this.plotPixel(pixelValue);
 
       // Capture bitmap just before last pixel triggers scroll
       // Pascal: if x = FFTlast then BitmapToCanvas(0)
       if (x === this.displaySpec.lastBin) {
-        await this.updateWaterfallDisplay();
+        this.updateWaterfallDisplay();
       }
 
       // Step trace to next position (triggers scroll if at edge)
       // Pascal: StepTrace
       this.traceProcessor.step();
+    }
+
+    // Flush the whole column in one IPC, in snippet order (plots → blit → scroll).
+    const batch = this.columnBatch;
+    this.columnBatch = null;
+    if (batch.length > 0 && this.debugWindow && !this.debugWindow.isDestroyed()) {
+      this.debugWindow.webContents.executeJavaScript(batch.join('\n')).catch((error) => {
+        this.logMessage(`Failed to draw SPECTRO column: ${error}`);
+      });
     }
   }
 
@@ -914,6 +946,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
         }
       })();
     `;
+
+    // Batch mode (performFFTAndDraw): append the snippet and flush the whole column in one IPC.
+    if (this.columnBatch) {
+      this.columnBatch.push(plotCode);
+      return;
+    }
 
     try {
       await this.debugWindow.webContents.executeJavaScript(plotCode);
@@ -987,6 +1025,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
       })();
     `;
 
+    // Batch mode (performFFTAndDraw): append the snippet and flush the whole column in one IPC.
+    if (this.columnBatch) {
+      this.columnBatch.push(scrollCode);
+      return;
+    }
+
     this.debugWindow.webContents.executeJavaScript(scrollCode).catch((error) => {
       this.logMessage(`Failed to scroll waterfall: ${error}`);
     });
@@ -1020,6 +1064,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
         }
       })();
     `;
+
+    // Batch mode (performFFTAndDraw): append the snippet and flush the whole column in one IPC.
+    if (this.columnBatch) {
+      this.columnBatch.push(updateCode);
+      return;
+    }
 
     try {
       await this.debugWindow.webContents.executeJavaScript(updateCode);

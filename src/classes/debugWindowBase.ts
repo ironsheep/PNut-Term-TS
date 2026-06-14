@@ -1357,6 +1357,11 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.saveInProgress = true;
 
       try {
+        // Flush pending renderer draws first — desktopCapturer grabs the on-screen pixels and does
+        // NOT wait for fire-and-forget canvas draws, so a heavy window (LOGIC/SPECTRO) would be
+        // captured half-drawn. This is why plain SAVE (flushed capturePage) was complete while
+        // SAVE WINDOW was missing most of the LOGIC content. [SAVE-vs-async-draw race]
+        await this.flushRendererDraws(this._debugWindow);
         // Pascal SAVE WINDOW captures the on-screen window region INCLUDING the
         // native title-bar/chrome. getBounds() returns screen coords with chrome.
         const bounds = this._debugWindow.getBounds();
@@ -2072,25 +2077,28 @@ export abstract class DebugWindowBase extends EventEmitter {
   // ----------------------------------------------------------------------
   // PRIVATE (utility) Methods
 
-  private async captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
-    // FLUSH the renderer's draw queue before capturing. Every window issues its canvas draws
-    // FIRE-AND-FORGET via executeJavaScript, and capturePage() does NOT wait for them. Light
-    // windows (TERM/SCOPE/SCOPE_XY) finish their few draws before capture; heavy windows do not —
-    // LOGIC fires 32 clears + 32 channel draws PER redraw (× every rate-cycle) and SPECTRO fires a
-    // per-FFT-bin waterfall, so when SAVE's capturePage lands on that backlog the capture is
-    // partial/empty (only some channels, no chirp streak). This used to be hidden by the device's
-    // `waitms` before SAVE, but the window-readiness drain replays buffered messages back-to-back,
-    // collapsing that gap. executeJavaScript runs FIFO, so awaiting a TRAILING double-rAF
-    // (issued after all the draws) guarantees every queued draw has executed AND been painted/
-    // composited before we capture. [SAVE-vs-async-draw race — fixes LOGIC traces + SPECTRO streak]
-    // The double-rAF only resolves while the renderer is actually servicing animation
-    // frames. A debug window that is OCCLUDED/unfocused during a scripted multi-window SAVE
-    // has its rAF paused by Chromium's backgroundThrottling, so this Promise would NEVER
-    // resolve and SAVE would hang forever — producing NO file at all (observed: SPECTRO, the
-    // heavy window this flush was added for, sitting behind others). We also disable
-    // backgroundThrottling on the debug windows so rAF keeps firing while occluded, but this
-    // race makes the "best-effort" intent literally true: cap the flush so capture ALWAYS
-    // proceeds, even if a frame is never serviced (e.g. a minimized window).
+  /**
+   * Flush the renderer's pending canvas draws before a capture. Every window issues its canvas
+   * draws FIRE-AND-FORGET via executeJavaScript, and NEITHER capturePage() NOR desktopCapturer
+   * waits for them. Light windows (TERM/SCOPE/SCOPE_XY) finish their few draws before capture;
+   * heavy windows do not — LOGIC fires 32 clears + 32 channel draws PER redraw (× every rate-cycle)
+   * and SPECTRO fires a per-FFT-bin waterfall, so when SAVE lands on that backlog the capture is
+   * partial/empty (only some channels, no chirp streak). This used to be hidden by the device's
+   * `waitms` before SAVE, but the window-readiness drain replays buffered messages back-to-back,
+   * collapsing that gap. executeJavaScript runs FIFO, so awaiting a TRAILING double-rAF (issued
+   * after all the draws) guarantees every queued draw has executed AND been painted/composited
+   * before we capture. [SAVE-vs-async-draw race — fixes LOGIC traces + SPECTRO streak]
+   *
+   * The double-rAF only resolves while the renderer is actually servicing animation frames. A
+   * window that is OCCLUDED/unfocused during a scripted multi-window SAVE has its rAF paused by
+   * Chromium's backgroundThrottling, so awaiting it unbounded would HANG SAVE forever (no file at
+   * all). We disable backgroundThrottling on the debug windows so rAF keeps firing while occluded,
+   * but this race also caps the flush so capture ALWAYS proceeds, even if a frame is never serviced
+   * (e.g. a minimized window). Used by BOTH the content-capture (capturePage) and SAVE WINDOW
+   * (desktopCapturer) paths — the latter previously skipped the flush, so SAVE WINDOW captured a
+   * half-drawn LOGIC while plain SAVE (flushed) was complete.
+   */
+  private async flushRendererDraws(window: BrowserWindow): Promise<void> {
     try {
       if (!window.isDestroyed()) {
         const flush = window.webContents.executeJavaScript(
@@ -2102,6 +2110,10 @@ export abstract class DebugWindowBase extends EventEmitter {
     } catch {
       /* best-effort flush; proceed to capture regardless */
     }
+  }
+
+  private async captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
+    await this.flushRendererDraws(window);
     return new Promise((resolve) => {
       const failSafe = (error: unknown) => {
         console.error('Win: ERROR: capturing window as PNG:', error);

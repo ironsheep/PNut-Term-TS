@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.55] - 2026-06-14
 
-Hotfix for a regression introduced in 0.9.54: the SPECTRO window stopped producing its saved
-bitmap entirely.
+Bug-fix release: SPECTRO once again produces its saved bitmap *and* draws its waterfall; LOGIC's
+SAVE WINDOW now captures the full trace; and the SCOPE value legend is grey (not blue) with its
+dotted graticule line no longer running through the label.
 
 ### Fixed
 
@@ -20,6 +21,20 @@ bitmap entirely.
   0.9.54 turned "partial" into "nothing.") Two fixes: the pre-capture wait now has a 1-second cap
   so a SAVE can never hang, and every debug window now keeps rendering while it is occluded so the
   wait finishes immediately and the capture is a fresh, complete frame.
+- **SPECTRO drew no content (blank window).** Each FFT column was painted one pixel at a time over
+  256 separate round-trips to the renderer, guarded by a "skip if a draw is already running" flag.
+  When the spectrogram data arrives as one high-speed burst, that guard tripped on nearly every
+  column, so only about one column out of ~240 was ever drawn — effectively blank. Each column is
+  now computed and drawn in a single batched renderer update, so the full waterfall renders.
+- **LOGIC SAVE WINDOW was missing most of the trace.** Plain SAVE (which captures the window's
+  drawing) was complete, but SAVE WINDOW (which captures the on-screen region including the title
+  bar) grabbed the screen before the renderer had finished drawing the traces. SAVE WINDOW now
+  waits for the same draw-flush that plain SAVE uses, so both capture the complete window.
+- **SCOPE value legend was blue and overran its label.** The min/max value labels and their dotted
+  graticule lines were drawn in the channel/trace color (blue) instead of the window grid color, and
+  the live redraw ran the dotted line edge-to-edge through the value text. The legend is now grey
+  (the window grid color, e.g. `COLOR WHITE GRAY`) and the dotted line starts just past the value
+  text — matching PNut.
 
 ## [0.9.54] - 2026-06-14
 

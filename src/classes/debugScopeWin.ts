@@ -764,9 +764,12 @@ export class DebugScopeWindow extends DebugWindowBase {
       for (let index = 0; index < this.channelSpecs.length; index++) {
         const channelSpec = this.channelSpecs[index];
         this.updateScopeChannelLabel(channelSpec.name, channelSpec.color);
-        const channelGridColor: string = channelSpec.gridColor;
-        // Use the same color for legend text as the trace to ensure they match
-        const channelTextColor: string = channelSpec.color; // Changed from channelSpec.textColor
+        // The graticule lines AND their value labels are drawn in the WINDOW grid color
+        // (Pascal: COLOR <bg> <grid>; fig-07 = `COLOR WHITE GRAY`), NOT the channel/trace color.
+        // The channel color is reserved for the trace and the channel-NAME label. (0.9.54 wrongly
+        // used a pale blend of the channel color, so the value legend rendered blue; PNut shows grey.)
+        const channelGridColor: string = this.displaySpec.window.grid;
+        const channelTextColor: string = this.displaySpec.window.grid;
         const windowGridColor: string = this.displaySpec.window.grid;
         const canvasName = `channel-${index}`;
         // paint the grid/min/max, etc.
@@ -1889,13 +1892,8 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
       try {
-        // Pascal: the graticule line and its value label are BOTH the pale AlphaBlend of the
-        // channel color over the background ($40 = 25%), not the saturated blue we were using.
-        const fadedColor: string = DebugScopeWindow.alphaBlendHex(
-          channelSpec.color,
-          this.displaySpec.window.background,
-          0x40
-        );
+        // The graticule line and its value label are drawn in the WINDOW grid color (passed in as
+        // gridColor/textColor), NOT a blend of the channel/trace color. PNut shows a grey legend.
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const horizLineWidth: number = 2;
         const lineYOffset: number =
@@ -1986,10 +1984,10 @@ export class DebugScopeWindow extends DebugWindowBase {
             const textWidth = textMetrics.width;
             const canWidth = canvas.width - (2 * ${canvasMarginValue});
 
-            // Draw the dashed line after the text — in the PALE graticule color (Pascal AlphaBlend),
-            // and starting past the value text so the dashes never overwrite it.
+            // Draw the dashed line after the text — in the grey window-grid color, starting past
+            // the value text so the dashes never overwrite it.
             ctx.save();
-            ctx.strokeStyle = '${fadedColor}';
+            ctx.strokeStyle = '${gridColor}';
             ctx.lineWidth = ${horizLineWidth};
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
@@ -1998,9 +1996,9 @@ export class DebugScopeWindow extends DebugWindowBase {
             ctx.stroke();
             ctx.restore();
 
-            // Draw the value text in the same pale graticule color (matches PNut)
+            // Draw the value text in the grey window-grid color (matches PNut)
             ctx.font = '9px Arial';
-            ctx.fillStyle = '${fadedColor}';
+            ctx.fillStyle = '${textColor}';
             ctx.fillText('${escapedValueText}', ${textXOffset}, ${textYOffset});
           })();
         `;
@@ -2021,9 +2019,11 @@ export class DebugScopeWindow extends DebugWindowBase {
    */
   private redrawGraticule(channelSpec: ScopeChannelSpec): string {
     let jsCode = '';
-    const channelGridColor: string = channelSpec.gridColor;
-    // Use the same color for legend text as the trace to ensure they match
-    const channelTextColor: string = channelSpec.color; // Changed from channelSpec.textColor
+    // Graticule lines AND value labels use the WINDOW grid color (grey), not the channel/trace
+    // color. This is the LIVE-redraw path that overdraws the initial graticule every update, so it
+    // must match. [scope value-legend grey, not blue]
+    const channelGridColor: string = this.displaySpec.window.grid;
+    const channelTextColor: string = this.displaySpec.window.grid;
 
     // Redraw grid lines and labels using the same logic as initial drawing
     // %abcd where a=enable max legend, b=min legend, c=max line, d=min line
@@ -2129,10 +2129,42 @@ export class DebugScopeWindow extends DebugWindowBase {
     gridColor: string,
     textColor: string
   ): string {
-    let jsCode = '';
-    jsCode += this.generateHorizontalLineJS(channelSpec, YOffset, gridColor);
-    jsCode += this.generateHorizontalValueJS(channelSpec, YOffset, textColor);
-    return jsCode;
+    // Combined value + line: the dashed line must START PAST the value text so it never runs
+    // under/through the label (PNut leaves a gap; the old full-width generateHorizontalLineJS ran
+    // the dashes edge-to-edge through the text). Measure the text in the renderer and begin the
+    // line just after it — mirrors drawHorizontalLineAndValue. [scope value-legend line extent]
+    const atTop: boolean = YOffset == channelSpec.maxValue;
+    const horizLineWidth: number = 2;
+    const lineYOffset: number =
+      (atTop ? 0 - 1 : channelSpec.ySize + horizLineWidth / 2 + this.channelLineWidth / 2) +
+      this.channelInset +
+      this.canvasMargin;
+    const textXOffset: number = 5 + this.canvasMargin;
+    const value: number = atTop ? channelSpec.maxValue : channelSpec.minValue;
+    const valueText: string = this.stringForRangeValue(value);
+    const escapedValueText = valueText.replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+    // Wrapped in an IIFE so the per-call `tw` const can't collide when the max- and min-value
+    // blocks are concatenated into one script (the MIDI-chord duplicate-const class of bug).
+    return `
+      (function() {
+        ctx.save();
+        ctx.font = '9px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText('${escapedValueText}').width;
+        ctx.fillStyle = '${textColor}';
+        ctx.fillText('${escapedValueText}', ${textXOffset}, ${lineYOffset});
+        ctx.strokeStyle = '${gridColor}';
+        ctx.lineWidth = ${horizLineWidth};
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(tw + 8 + ${textXOffset}, ${lineYOffset});
+        ctx.lineTo(canvas.width - (2 * ${this.canvasMargin}), ${lineYOffset});
+        ctx.stroke();
+        ctx.restore();
+      })();
+    `;
   }
 
   /**
