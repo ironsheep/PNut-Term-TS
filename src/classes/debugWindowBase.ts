@@ -2083,11 +2083,21 @@ export abstract class DebugWindowBase extends EventEmitter {
     // collapsing that gap. executeJavaScript runs FIFO, so awaiting a TRAILING double-rAF
     // (issued after all the draws) guarantees every queued draw has executed AND been painted/
     // composited before we capture. [SAVE-vs-async-draw race — fixes LOGIC traces + SPECTRO streak]
+    // The double-rAF only resolves while the renderer is actually servicing animation
+    // frames. A debug window that is OCCLUDED/unfocused during a scripted multi-window SAVE
+    // has its rAF paused by Chromium's backgroundThrottling, so this Promise would NEVER
+    // resolve and SAVE would hang forever — producing NO file at all (observed: SPECTRO, the
+    // heavy window this flush was added for, sitting behind others). We also disable
+    // backgroundThrottling on the debug windows so rAF keeps firing while occluded, but this
+    // race makes the "best-effort" intent literally true: cap the flush so capture ALWAYS
+    // proceeds, even if a frame is never serviced (e.g. a minimized window).
     try {
       if (!window.isDestroyed()) {
-        await window.webContents.executeJavaScript(
+        const flush = window.webContents.executeJavaScript(
           'new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame))'
         );
+        const timeout = new Promise((resolve) => setTimeout(resolve, 1000));
+        await Promise.race([flush, timeout]);
       }
     } catch {
       /* best-effort flush; proceed to capture regardless */

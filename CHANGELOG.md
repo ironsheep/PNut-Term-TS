@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.55] - 2026-06-14
+
+Hotfix for a regression introduced in 0.9.54: the SPECTRO window stopped producing its saved
+bitmap entirely.
+
+### Fixed
+
+- **SPECTRO (and any occluded window) saved no bitmap.** The 0.9.54 capture flush waited for the
+  renderer to paint a frame before capturing, but it waited *without a time limit*. A debug window
+  that is behind other windows during a scripted multi-window SAVE has its animation frames paused
+  by the OS (background throttling), so the wait never finished — the SAVE hung and the window was
+  then closed before any file could be written. (Before 0.9.54 SPECTRO produced a partial image;
+  0.9.54 turned "partial" into "nothing.") Two fixes: the pre-capture wait now has a 1-second cap
+  so a SAVE can never hang, and every debug window now keeps rendering while it is occluded so the
+  wait finishes immediately and the capture is a fresh, complete frame.
+
 ## [0.9.54] - 2026-06-14
 
 Continuation of the debug-window parity pass, driven by re-capturing each window against the

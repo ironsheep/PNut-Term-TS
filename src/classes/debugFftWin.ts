@@ -2292,7 +2292,10 @@ export class DebugFFTWindow extends DebugWindowBase {
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
-        sandbox: false
+        sandbox: false,
+        // Keep the renderer painting + rAF firing while this window is occluded/unfocused so a
+        // scripted multi-window SAVE captures a fresh frame and the capture flush never stalls.
+        backgroundThrottling: false
       }
     });
 

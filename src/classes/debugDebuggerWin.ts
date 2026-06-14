@@ -545,7 +545,9 @@ ${bundleJs}
         nodeIntegration: true,
         contextIsolation: false,
         sandbox: false,
-        devTools: true
+        devTools: true,
+        // Keep the renderer painting + rAF firing while occluded so SAVE captures a fresh frame.
+        backgroundThrottling: false
       }
     });
 
