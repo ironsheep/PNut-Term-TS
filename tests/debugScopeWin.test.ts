@@ -1023,15 +1023,17 @@ describe('DebugScopeWindow', () => {
       debugScopeWindow['isFirstNumericData'] = false;
     });
 
-    it('should draw channel labels', () => {
+    it('should draw channel labels', async () => {
       const mockWindow = mockBrowserWindowInstances[0];
 
-      // Trigger the 'did-finish-load' once handler (labels are set on load)
+      // Trigger the 'did-finish-load' once handler (labels are set on load). The handler is now
+      // async (it `await`s onWindowReady before drawing labels — see the channel-name-label fix),
+      // so await its completion before asserting.
       const onceHandlers = mockWindow.webContents.once.mock.calls.filter(
         (call: any) => call[0] === 'did-finish-load'
       );
       if (onceHandlers.length > 0) {
-        onceHandlers[0][1](); // Call the handler
+        await onceHandlers[0][1](); // Call the (async) handler and await it
       }
 
       // Check for label update calls

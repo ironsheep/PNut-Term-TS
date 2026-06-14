@@ -5,6 +5,44 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.54] - 2026-06-14
+
+Continuation of the debug-window parity pass, driven by re-capturing each window against the
+Pascal (PNut) reference. Closes the remaining visual gaps found in the 0.9.53 captures — clipped
+text, windows that captured before their content finished drawing, and several per-window
+graticule/label/background mismatches — and finishes the SCOPE_XY dots so they are both smooth and
+crisp on HiDPI displays.
+
+### Fixed
+
+- **SCOPE_XY dots were soft/fuzzy on HiDPI (Retina) displays.** The canvas drew at logical
+  resolution and was then up-scaled by the OS compositor, blurring the small anti-aliased dots.
+  The canvas is now rendered at device resolution (DPR-aware): the backing store is sized to the
+  display's pixel ratio while the layout size is unchanged, so the trace is now both smooth
+  (sub-pixel placement) and crisp — matching PNut. No effect on standard-DPI displays.
+- **SCOPE_XY curve looked stair-stepped.** The 0.9.53 change that crisped the dots also snapped
+  each point to the nearest whole pixel, making the connected curve jagged. Sub-pixel dot
+  positions are restored (Pascal plots at fractional coordinates), so the curve is smooth again.
+- **SCOPE_XY had a black band above/below the plot.** The window body was painted black, showing
+  as a letterbox around the square plot; it now matches the plot background.
+- **Text with descenders was clipped at the bottom in the TERM window** (letters like y, g, p, q —
+  e.g. `Ready.` could read as `Readv.`). Each character cell is now drawn at the full row height
+  instead of the glyph height, so descenders are no longer cut off.
+- **LOGIC traces and the SPECTRO chirp were missing from saved/scripted captures.** Heavy windows
+  issue many asynchronous draw operations per frame, and a capture could land before those draws
+  had painted, producing a partial or empty image. The capture path now flushes all pending draws
+  (waits for the next rendered frame) before grabbing the image, so every window is fully drawn
+  when saved.
+- **SCOPE "Wave" channel-name label was missing.** The label was drawn before the queued
+  channel definition had been applied; the label pass now waits for the window to finish
+  initializing, so the channel name appears.
+- **SCOPE graticule lines and value labels were drawn in the saturated trace color** and read as
+  overlapping the trace. They now use the pale blend of trace and background color that Pascal
+  uses, so the gridlines and labels are clearly distinct from the trace.
+- **SPECTRO white-field (…W) spectrograms had a black frame** on the top and left edges from a
+  hardcoded black clear/padding. The frame and the newly-scrolled region now clear to the mode's
+  background color (white for the …W color modes), matching PNut.
+
 ## [0.9.53] - 2026-06-14
 
 Follow-up to 0.9.52, driven by re-capturing the debug windows against the Pascal (PNut)

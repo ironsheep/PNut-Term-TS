@@ -392,18 +392,45 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     // Canvas size includes data area (radius * 2) PLUS margins on all sides
     const canvasSize = this.radius * 2 + this.margin * 2;
+    // The flex-centered canvas can leave a thin margin if the client area ends up a hair taller
+    // than the square canvas (macOS useContentSize rounding). Paint the body with the SAME
+    // background as the canvas so any residual margin is invisible (white field for COLOR WHITE)
+    // instead of a black letterbox top/bottom. [scope_xy letterbox]
+    const bodyBg = `#${((this.backgroundColor >>> 0) & 0xffffff).toString(16).padStart(6, '0')}`;
     this.windowContent = `
       <html>
         <head>
           <meta charset="UTF-8"></meta>
           <title>${this.windowTitle}</title>
           <style>
-            body { margin: 0; padding: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+            body { margin: 0; padding: 0; background: ${bodyBg}; overflow: hidden; display: flex; justify-content: center; align-items: center; }
             canvas { display: block; image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; width: ${canvasSize}px; height: ${canvasSize}px; }
           </style>
         </head>
         <body>
           <canvas id="${this.scopeXyCanvasId}" width="${canvasSize}" height="${canvasSize}"></canvas>
+          <script>
+            // DEVICE-RESOLUTION (DPR-aware) canvas. Pascal plots SmoothDot at 8-bit-fractional
+            // (sub-pixel) coords on a native-resolution bitmap, so the curve is both SMOOTH and
+            // CRISP. A logical-resolution canvas displayed on a 2x Retina screen gets its small
+            // AA dots up-scaled by the compositor -> soft/fuzzy. Fix: size the backing store to
+            // canvasSize*dpr, keep the CSS box at canvasSize px, and pre-scale the context by dpr.
+            // All draw code stays in LOGICAL coords; the transform persists across every later
+            // getContext('2d') call (same context object) because we never reassign canvas.width
+            // afterward. On a 1x display dpr=1, so this is a no-op there. [scope_xy DPR crisp]
+            (function () {
+              var c = document.getElementById('${this.scopeXyCanvasId}');
+              if (!c) return;
+              var dpr = window.devicePixelRatio || 1;
+              var size = ${canvasSize};
+              c.width = Math.round(size * dpr);
+              c.height = Math.round(size * dpr);
+              c.style.width = size + 'px';
+              c.style.height = size + 'px';
+              var ctx = c.getContext('2d');
+              if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            })();
+          </script>
         </body>
       </html>
     `;
@@ -1261,14 +1288,16 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Sort groups by opacity (oldest/faintest first) for consistent layering
     const sortedGroups = Array.from(dotGroups.values()).sort((a, b) => a.opacity - b.opacity);
 
-    // Pascal draws each point with SmoothDot(x, y, vDotSize shl 6) — a radius of vDotSize/4 px
-    // (DOTSIZE 4 -> 1px) rendered as a crisp ~2x2 core. We were drawing an anti-aliased CIRCLE
-    // (ctx.arc) at SUB-PIXEL float coords, which (even with crisp-edges) spread each dot into a
-    // soft, fat blob. Draw INTEGER-positioned filled SQUARES of the same radius instead: crisp,
-    // pixel-aligned dots that match Pascal's dot core and nearest-neighbor-upscale cleanly on
-    // HiDPI. [dot-shape parity]
-    const dotR = Math.max(1, Math.round(this.dotSize / 4)); // radius in px (DOTSIZE 4 -> 1)
-    const dotD = dotR * 2; // diameter (2x2 for DOTSIZE 4)
+    // Pascal draws each point with SmoothDot at 8-bit-FRACTIONAL (sub-pixel) coordinates — that
+    // sub-pixel placement is what makes the connected curve SMOOTH. 0.9.53 rounded every dot to
+    // the nearest integer pixel to crisp them up, which snapped points to the pixel grid and made
+    // the curve visibly JAGGED/stair-stepped vs Windows. Restore SUB-PIXEL positions (curve smooth
+    // again); keep small filled SQUARES of Pascal's radius (vDotSize/4). NOTE: at the canvas's
+    // LOGICAL resolution a sub-pixel square is slightly AA-soft; rendering the canvas at DEVICE
+    // resolution (DPR-aware) would make these both smooth AND crisp — see WINDOW_PARITY doc FIX D.
+    // [scope_xy sub-pixel curve]
+    const dotR = this.dotSize / 4; // sub-pixel radius (DOTSIZE 4 -> 1px), matches Pascal vDotSize/4
+    const dotD = dotR * 2;
     const plotCommands: string[] = [];
     for (const group of sortedGroups) {
       plotCommands.push(`
@@ -1276,7 +1305,9 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         ctx.globalAlpha = ${group.opacity / 255};
         ctx.fillStyle = '${group.color}';
         ${group.points
-          .map((p) => `ctx.fillRect(${Math.round(p.x) - dotR}, ${Math.round(p.y) - dotR}, ${dotD}, ${dotD});`)
+          .map(
+            (p) => `ctx.fillRect(${(p.x - dotR).toFixed(3)}, ${(p.y - dotR).toFixed(3)}, ${dotD.toFixed(3)}, ${dotD.toFixed(3)});`
+          )
           .join('\n        ')}
         ctx.restore();
       `);

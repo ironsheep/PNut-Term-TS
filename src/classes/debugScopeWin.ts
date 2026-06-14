@@ -748,11 +748,14 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
 
     // now hook load complete event so we can label and paint the grid/min/max, etc.
-    this.debugWindow.webContents.once('did-finish-load', () => {
+    this.debugWindow.webContents.once('did-finish-load', async () => {
       this.logMessage('at did-finish-load');
 
-      // Mark window as ready to process queued messages
-      this.onWindowReady();
+      // Mark window as ready to process queued messages. AWAIT it: onWindowReady drains the queued
+      // messages, and the channel-def (`'Wave' …`) that populates channelSpecs arrives that way.
+      // Without the await, the label loop below ran while channelSpecs was still empty, so the
+      // channel-name label (e.g. "Wave") was never drawn. [scope channel-name label]
+      await this.onWindowReady();
 
       // Only update channel labels if we have channels defined
       for (let index = 0; index < this.channelSpecs.length; index++) {
@@ -1856,6 +1859,23 @@ export class DebugScopeWindow extends DebugWindowBase {
     }
   }
 
+  /**
+   * Pascal AlphaBlend(fg, bg, alpha): alpha/255 of fg + (255-alpha)/255 of bg, per channel. The
+   * SCOPE graticule lines AND their value labels are drawn in AlphaBlend(channelColor, vBackColor,
+   * $40) — a 25%-channel / 75%-background PALE blend (e.g. blue+white -> pale blue that reads light
+   * gray), NOT the full/brightness-adjusted channel color (DebugDisplayUnit.pas graticule). [9win §9]
+   */
+  private static alphaBlendHex(fgHex: string, bgHex: string, alpha: number): string {
+    const parse = (h: string): [number, number, number] => {
+      const n = parseInt(h.replace('#', ''), 16);
+      return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+    };
+    const [fr, fg, fb] = parse(fgHex);
+    const [br, bg, bb] = parse(bgHex);
+    const bl = (f: number, b: number): number => Math.round((f * alpha + b * (255 - alpha)) / 255);
+    return '#' + [bl(fr, br), bl(fg, bg), bl(fb, bb)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+
   private drawHorizontalLineAndValue(
     canvasName: string,
     channelSpec: ScopeChannelSpec,
@@ -1866,6 +1886,13 @@ export class DebugScopeWindow extends DebugWindowBase {
     if (this.debugWindow) {
       this.logMessage(`at drawHorizontalLineAndValue(${canvasName}, ${YOffset}, ${gridColor}, ${textColor})`);
       try {
+        // Pascal: the graticule line and its value label are BOTH the pale AlphaBlend of the
+        // channel color over the background ($40 = 25%), not the saturated blue we were using.
+        const fadedColor: string = DebugScopeWindow.alphaBlendHex(
+          channelSpec.color,
+          this.displaySpec.window.background,
+          0x40
+        );
         const atTop: boolean = YOffset == channelSpec.maxValue;
         const horizLineWidth: number = 2;
         const lineYOffset: number =
@@ -1956,9 +1983,10 @@ export class DebugScopeWindow extends DebugWindowBase {
             const textWidth = textMetrics.width;
             const canWidth = canvas.width - (2 * ${canvasMarginValue});
 
-            // Draw the dashed line after the text
+            // Draw the dashed line after the text — in the PALE graticule color (Pascal AlphaBlend),
+            // and starting past the value text so the dashes never overwrite it.
             ctx.save();
-            ctx.strokeStyle = '${gridColor}';
+            ctx.strokeStyle = '${fadedColor}';
             ctx.lineWidth = ${horizLineWidth};
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
@@ -1967,9 +1995,9 @@ export class DebugScopeWindow extends DebugWindowBase {
             ctx.stroke();
             ctx.restore();
 
-            // Draw the text
+            // Draw the value text in the same pale graticule color (matches PNut)
             ctx.font = '9px Arial';
-            ctx.fillStyle = '${textColor}';
+            ctx.fillStyle = '${fadedColor}';
             ctx.fillText('${escapedValueText}', ${textXOffset}, ${textYOffset});
           })();
         `;

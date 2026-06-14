@@ -2072,7 +2072,26 @@ export abstract class DebugWindowBase extends EventEmitter {
   // ----------------------------------------------------------------------
   // PRIVATE (utility) Methods
 
-  private captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
+  private async captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
+    // FLUSH the renderer's draw queue before capturing. Every window issues its canvas draws
+    // FIRE-AND-FORGET via executeJavaScript, and capturePage() does NOT wait for them. Light
+    // windows (TERM/SCOPE/SCOPE_XY) finish their few draws before capture; heavy windows do not —
+    // LOGIC fires 32 clears + 32 channel draws PER redraw (× every rate-cycle) and SPECTRO fires a
+    // per-FFT-bin waterfall, so when SAVE's capturePage lands on that backlog the capture is
+    // partial/empty (only some channels, no chirp streak). This used to be hidden by the device's
+    // `waitms` before SAVE, but the window-readiness drain replays buffered messages back-to-back,
+    // collapsing that gap. executeJavaScript runs FIFO, so awaiting a TRAILING double-rAF
+    // (issued after all the draws) guarantees every queued draw has executed AND been painted/
+    // composited before we capture. [SAVE-vs-async-draw race — fixes LOGIC traces + SPECTRO streak]
+    try {
+      if (!window.isDestroyed()) {
+        await window.webContents.executeJavaScript(
+          'new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame))'
+        );
+      }
+    } catch {
+      /* best-effort flush; proceed to capture regardless */
+    }
     return new Promise((resolve) => {
       const failSafe = (error: unknown) => {
         console.error('Win: ERROR: capturing window as PNG:', error);

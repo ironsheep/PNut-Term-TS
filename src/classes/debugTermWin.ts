@@ -1247,6 +1247,12 @@ export class DebugTermWindow extends DebugWindowBase {
       const charHeight: number = this.displaySpec.font.charHeight;
       const charWidth: number = this.displaySpec.font.charWidth;
       // Use lineHeight for row spacing to match Pascal
+      const lineHeight: number = this.displaySpec.font.lineHeight;
+      // The drawn cell (background + blit) must be the FULL row height, not charHeight. The glyph
+      // is pushed down by verticalAdjust, so with only a charHeight-tall cell its descender (y, g,
+      // p, q, j) fell OUTSIDE the cell and was clipped by the offscreen->visible blit ("Ready." ->
+      // "Readv."). lineHeight == the row pitch, so adjacent cells still don't overlap. [TERM descender]
+      const cellHeight: number = lineHeight;
       const textYOffset: number = this.cursorPosition.y * this.displaySpec.font.lineHeight;
       const textXOffset: number = this.cursorPosition.x * charWidth;
       // Fonts have internal padding - adjust to get 2/3 space above, 1/3 below
@@ -1264,9 +1270,9 @@ export class DebugTermWindow extends DebugWindowBase {
         (function() {
           if (!window.offscreenCtx) return;
 
-          // Draw background rectangle on offscreen canvas
+          // Draw background rectangle on offscreen canvas (full row height so descenders fit)
           window.offscreenCtx.fillStyle = '${bgcolor}';
-          window.offscreenCtx.fillRect(${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight});
+          window.offscreenCtx.fillRect(${textXOffset}, ${textYOffset}, ${charWidth}, ${cellHeight});
 
           // Draw character on offscreen canvas
           window.offscreenCtx.fillStyle = '${fgColor}';
@@ -1280,8 +1286,8 @@ export class DebugTermWindow extends DebugWindowBase {
             // Copy just the character rectangle from offscreen to visible
             window.visibleCtx.drawImage(
               window.offscreenCanvas,
-              ${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight},
-              ${textXOffset}, ${textYOffset}, ${charWidth}, ${charHeight}
+              ${textXOffset}, ${textYOffset}, ${charWidth}, ${cellHeight},
+              ${textXOffset}, ${textYOffset}, ${charWidth}, ${cellHeight}
             );
           }
         })()

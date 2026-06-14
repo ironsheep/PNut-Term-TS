@@ -1228,7 +1228,9 @@ export class DebugSpectroWindow extends DebugWindowBase {
               margin: 0;
               padding: 10px;
               overflow: hidden;
-              background-color: #000;
+              /* Match the mode background (Pascal GetBackground: white for the …W modes) so the
+                 body padding/margin is NOT a black frame around a LUMA8W (white) spectrogram. */
+              background-color: ${this.getBackgroundColorHex()};
             }
             canvas {
               display: block;
