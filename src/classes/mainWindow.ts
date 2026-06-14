@@ -6396,6 +6396,15 @@ export class MainWindow {
           setTimeout(() => {
             this.updateRecordingStatus('Ready');
           }, 2000);
+        } else if (this.isShuttingDown) {
+          // The serial host is killed as part of an intentional shutdown (close() → child.kill(),
+          // a non-zero/signal exit), which rejects any in-flight download op with
+          // "serial host closed (shutdown)". On a scripted download→run→shutdown→next batch this
+          // races the download tail — it is benign teardown, NOT a real download failure, so do
+          // not raise the scary "Failed to download" error/dialog. [serial teardown-race]
+          this.logConsoleMessage(
+            `[DOWNLOAD] Download interrupted by shutdown (benign): ${downloadResult.errorMessage || 'serial host closed'}`
+          );
         } else {
           // Download failed - use the actual error message from downloader
           const errorMsg = downloadResult.errorMessage || 'Unknown error occurred during download';
@@ -6426,6 +6435,14 @@ export class MainWindow {
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
+
+        // Benign teardown: an intentional shutdown killed the serial host mid-download
+        // (rejection flagged serialHostClosed, or we're already shutting down). Don't surface a
+        // "Failed to download" error/dialog — it's expected on scripted download→…→shutdown runs.
+        if (this.isShuttingDown || (error as any)?.serialHostClosed) {
+          this.logConsoleMessage(`[DOWNLOAD] Download interrupted by shutdown (benign): ${errorMsg}`);
+          return;
+        }
 
         // Log download failure to debug logger window
         const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} failed to download to ${target}: ${errorMsg}`;

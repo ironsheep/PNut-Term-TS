@@ -759,6 +759,12 @@ export class DebugTermWindow extends DebugWindowBase {
             this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
           });
       }
+
+      // CRITICAL: mark ready HERE — after the offscreen canvas is initialized — like SCOPE_XY.
+      // did-finish-load ALWAYS fires on page load, so queued content (and the SAVE) are drained
+      // reliably onto a ready canvas. Relying solely on ready-to-show was unreliable with
+      // show:true. [window-readiness uniform sequence]
+      this.onWindowReady();
     });
   }
 

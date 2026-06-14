@@ -5,6 +5,36 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.53] - 2026-06-14
+
+Follow-up to 0.9.52, driven by re-capturing the debug windows against the Pascal (PNut)
+reference. Corrects an incomplete window-readiness change from 0.9.52, closes a class of
+spurious parser warnings, hardens the scripted-shutdown path, and makes the SCOPE_XY dots match
+Pascal.
+
+### Fixed
+
+- **Some windows produced no saved image on scripted/headless capture runs.** 0.9.52 moved
+  window readiness off the constructor but left TERM/MIDI/LOGIC/SPECTRO depending solely on the
+  `ready-to-show` event, which is unreliable for always-shown windows — so the deferred content
+  and the SAVE were never processed (e.g. SPECTRO timed out with no `.bmp`). All windows now
+  follow ONE proven construction sequence (the SCOPE_XY pattern): the canvas is initialized and
+  the window marked ready in `did-finish-load`, which always fires on page load. TERM, MIDI,
+  LOGIC, SPECTRO and PLOT were aligned to this sequence (MIDI's canvas init was moved into
+  `did-finish-load`).
+- **Spurious `Unknown numeric format` warnings on valid programs.** When a directive that takes
+  an *optional* trailing value was followed by the next directive (e.g. `SAMPLES 512 DEPTH …`),
+  the parser probed that directive keyword as if it were a number and logged a warning. The
+  optional-value probes in SPECTRO and FFT (`SAMPLES [first] [last]`) now only read the next
+  element when it is actually numeric, matching the Pascal behavior.
+- **SCOPE_XY dots rendered as soft, oversized blobs.** Points were drawn as anti-aliased circles
+  at sub-pixel coordinates. They are now drawn as crisp, integer-positioned squares of the same
+  radius Pascal uses (`DOTSIZE/4`), so the trace is sharp and matches the reference dot.
+- **`Failed to download … serial utility process exited` on scripted batch runs.** When a
+  download was interrupted by an intentional shutdown, the serial host process is killed (a
+  non-zero exit) and any in-flight operation was reported as a hard download failure. The
+  intentional shutdown is now recognized as benign teardown rather than an error.
+
 ## [0.9.52] - 2026-06-13
 
 Debug-window display parity pass, driven by side-by-side captures of every window against the

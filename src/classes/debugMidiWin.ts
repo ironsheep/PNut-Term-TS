@@ -301,13 +301,23 @@ export class DebugMidiWindow extends DebugWindowBase {
       }
     }, 5000);
 
+    // Initialize the canvas AND mark ready on did-finish-load — like SCOPE_XY. did-finish-load
+    // ALWAYS fires on page load (the 'midi-canvas' element exists by then), so the offscreen/
+    // visible contexts are set up and queued content + the SAVE drain reliably. Doing canvas
+    // init + readiness in ready-to-show was unreliable with show:true (the SAVE could go
+    // unprocessed → no .bmp on capture runs). [window-readiness uniform sequence]
+    this.debugWindow.webContents.once('did-finish-load', () => {
+      this.logMessage('MIDI did-finish-load: init canvas + onWindowReady');
+      this.initializeWindow();
+      this.onWindowReady();
+    });
+
     // Set up window event handlers
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('MIDI window ready to show');
-      // Register with WindowRouter when window is ready
+      // Router registration + show. (Readiness/canvas-init now happen in did-finish-load above.)
       this.registerWithRouter();
       this.debugWindow?.show();
-      this.initializeWindow();
     });
 
     this.debugWindow.on('closed', () => {

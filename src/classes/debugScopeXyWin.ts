@@ -1261,6 +1261,14 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     // Sort groups by opacity (oldest/faintest first) for consistent layering
     const sortedGroups = Array.from(dotGroups.values()).sort((a, b) => a.opacity - b.opacity);
 
+    // Pascal draws each point with SmoothDot(x, y, vDotSize shl 6) — a radius of vDotSize/4 px
+    // (DOTSIZE 4 -> 1px) rendered as a crisp ~2x2 core. We were drawing an anti-aliased CIRCLE
+    // (ctx.arc) at SUB-PIXEL float coords, which (even with crisp-edges) spread each dot into a
+    // soft, fat blob. Draw INTEGER-positioned filled SQUARES of the same radius instead: crisp,
+    // pixel-aligned dots that match Pascal's dot core and nearest-neighbor-upscale cleanly on
+    // HiDPI. [dot-shape parity]
+    const dotR = Math.max(1, Math.round(this.dotSize / 4)); // radius in px (DOTSIZE 4 -> 1)
+    const dotD = dotR * 2; // diameter (2x2 for DOTSIZE 4)
     const plotCommands: string[] = [];
     for (const group of sortedGroups) {
       plotCommands.push(`
@@ -1268,14 +1276,8 @@ export class DebugScopeXyWindow extends DebugWindowBase {
         ctx.globalAlpha = ${group.opacity / 255};
         ctx.fillStyle = '${group.color}';
         ${group.points
-          .map(
-            (p) => `
-          ctx.beginPath();
-          ctx.arc(${p.x}, ${p.y}, ${this.dotSize / 4}, 0, Math.PI * 2);
-          ctx.fill();
-        `
-          )
-          .join('')}
+          .map((p) => `ctx.fillRect(${Math.round(p.x) - dotR}, ${Math.round(p.y) - dotR}, ${dotD}, ${dotD});`)
+          .join('\n        ')}
         ctx.restore();
       `);
     }

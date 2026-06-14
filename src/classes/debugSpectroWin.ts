@@ -378,16 +378,24 @@ export class DebugSpectroWindow extends DebugWindowBase {
 
         // Optional first bin — Pascal KeyValWithin CLAMPS into [0, samples/2 - 2]
         // (INCLUSIVE); it never rejects an out-of-range value. [9win §12]
-        const firstRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
-        if (firstRaw !== null) {
-          index++;
-          spec.firstBin = DisplaySpecParser.clamp(firstRaw, 0, spec.samples / 2 - 2);
-
-          // Optional last bin — clamped into [firstBin + 1, samples/2 - 1]
-          const lastRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
-          if (lastRaw !== null) {
+        // Probe the NEXT element ONLY when it is actually numeric (Pascal reads ele_num, not
+        // a directive keyword). Without this guard, `SAMPLES 512 DEPTH …` fed the DEPTH
+        // directive token into parseInteger, logging a spurious "Unknown numeric format -
+        // value: DEPTH" (same class as the 0.9.51 quote/comma fix). [9win §12]
+        if (Spin2NumericParser.isNumeric(lineParts[index + 1])) {
+          const firstRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+          if (firstRaw !== null) {
             index++;
-            spec.lastBin = DisplaySpecParser.clamp(lastRaw, spec.firstBin + 1, spec.samples / 2 - 1);
+            spec.firstBin = DisplaySpecParser.clamp(firstRaw, 0, spec.samples / 2 - 2);
+
+            // Optional last bin — clamped into [firstBin + 1, samples/2 - 1]
+            if (Spin2NumericParser.isNumeric(lineParts[index + 1])) {
+              const lastRaw = Spin2NumericParser.parseInteger(lineParts[index + 1], true);
+              if (lastRaw !== null) {
+                index++;
+                spec.lastBin = DisplaySpecParser.clamp(lastRaw, spec.firstBin + 1, spec.samples / 2 - 1);
+              }
+            }
           }
         }
         continue;
@@ -1272,6 +1280,13 @@ export class DebugSpectroWindow extends DebugWindowBase {
     this.debugWindow.webContents.once('did-finish-load', () => {
       this.clearCanvas();
       this.injectCoordinateReadout();
+
+      // CRITICAL: mark ready HERE — after the canvas is initialized — exactly like SCOPE_XY.
+      // did-finish-load ALWAYS fires on page load, so readiness (and thus the queued content
+      // + SAVE) is processed reliably. Relying solely on ready-to-show (registerWithRouter)
+      // was unreliable with show:true and left the SAVE unprocessed → no .bmp on capture runs.
+      // [window-readiness uniform sequence]
+      this.onWindowReady();
 
       // Clean up temp file after a delay to ensure it's fully loaded
       setTimeout(() => {

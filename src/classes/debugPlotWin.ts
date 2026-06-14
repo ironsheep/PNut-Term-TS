@@ -795,6 +795,12 @@ export class DebugPlotWindow extends DebugWindowBase {
 
       // Set up Plot-specific coordinate display handler
       this.setupCoordinateDisplayHandler();
+
+      // CRITICAL: mark ready HERE — after initializeCanvas() — matching SCOPE_XY and the other
+      // camp-A windows. did-finish-load ALWAYS fires on page load, so readiness is reliable
+      // regardless of ready-to-show timing (PLOT also uses show:false, but this makes the whole
+      // camp-A family follow ONE sequence). [window-readiness uniform sequence]
+      this.onWindowReady();
     });
   }
 

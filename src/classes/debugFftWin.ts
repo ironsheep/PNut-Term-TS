@@ -689,14 +689,22 @@ export class DebugFFTWindow extends DebugWindowBase {
         //   FFTlast  := Within(val, FFTfirst+1, vSamples/2 - 1)  (only if first present)
         spec.firstBin = 0;
         spec.lastBin = spec.samples / 2 - 1;
-        const first = DisplaySpecParser.clampInt(lineParts, index + 1, 0, spec.samples / 2 - 2, true);
-        if (first !== null) {
-          index++;
-          spec.firstBin = first;
-          const last = DisplaySpecParser.clampInt(lineParts, index + 1, spec.firstBin + 1, spec.samples / 2 - 1, true);
-          if (last !== null) {
+        // Probe the optional first/last bins ONLY when the next element is numeric (Pascal reads
+        // ele_num, not a directive keyword). Without this, `SAMPLES n RANGE …` fed the RANGE
+        // directive token into clampInt→parseInteger, logging a spurious "Unknown numeric format
+        // - value: RANGE" (same class as the SPECTRO DEPTH / 0.9.51 quote-comma fix). [9win §11]
+        if (Spin2NumericParser.isNumeric(lineParts[index + 1])) {
+          const first = DisplaySpecParser.clampInt(lineParts, index + 1, 0, spec.samples / 2 - 2, true);
+          if (first !== null) {
             index++;
-            spec.lastBin = last;
+            spec.firstBin = first;
+            if (Spin2NumericParser.isNumeric(lineParts[index + 1])) {
+              const last = DisplaySpecParser.clampInt(lineParts, index + 1, spec.firstBin + 1, spec.samples / 2 - 1, true);
+              if (last !== null) {
+                index++;
+                spec.lastBin = last;
+              }
+            }
           }
         }
         continue;

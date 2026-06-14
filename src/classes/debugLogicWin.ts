@@ -1037,6 +1037,12 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage('at did-finish-load');
       // let's populate labels
       this.loadLables();
+
+      // CRITICAL: mark ready HERE — after the channel canvases/labels exist (DOM loaded) —
+      // like SCOPE_XY. did-finish-load ALWAYS fires on page load, so queued samples + the SAVE
+      // drain reliably onto ready canvases. Relying solely on ready-to-show was unreliable with
+      // show:true. [window-readiness uniform sequence]
+      this.onWindowReady();
     });
   }
 

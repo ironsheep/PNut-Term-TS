@@ -32,6 +32,11 @@ export class UsbSerialProxy extends EventEmitter {
   private outbox: any[] = []; // calls buffered until the host says 'hello' + we've sent init
   private hostReady = false; // host has constructed UsbSerial ('ready')
   private helloSeen = false;
+  // True once we deliberately kill the host (close()/shutdown). The host then exits with a
+  // non-zero (signal) code, which is EXPECTED — distinguish it from a genuine host crash so a
+  // shutdown that races an in-flight op (e.g. a download) doesn't surface a scary error. The
+  // rejection reason for pending ops is marked accordingly. [serial teardown-race]
+  private intentionalClose = false;
 
   private cached: {
     currentBaudRate: number;
@@ -70,8 +75,22 @@ export class UsbSerialProxy extends EventEmitter {
 
     this.child.on('message', (msg: any) => this.onMessage(ctx, initMessage, msg));
     this.child.on('exit', (code: number) => {
-      if (code !== 0) console.error(`[SERIAL-PROXY] serial utility process exited code=${code}`);
-      for (const [, p] of this.pending) p.reject(new Error('serial utility process exited'));
+      // A deliberate close()/shutdown kills the host (non-zero signal exit) — that is expected,
+      // not a crash. Only flag an UNEXPECTED exit, and tag the pending-op rejection so callers
+      // (e.g. the downloader during a scripted shutdown) can treat it as benign teardown rather
+      // than a hard failure.
+      if (code !== 0 && !this.intentionalClose) {
+        console.error(`[SERIAL-PROXY] serial utility process exited UNEXPECTEDLY code=${code}`);
+      }
+      const reason = this.intentionalClose
+        ? 'serial host closed (shutdown)'
+        : 'serial utility process exited';
+      for (const [, p] of this.pending) {
+        const err: any = new Error(reason);
+        err.serialHostClosed = true;
+        err.intentionalClose = this.intentionalClose;
+        p.reject(err);
+      }
       this.pending.clear();
     });
   }
@@ -191,6 +210,9 @@ export class UsbSerialProxy extends EventEmitter {
   }
 
   public async close(): Promise<void> {
+    // Mark BEFORE anything so the host's exit (from close/kill below) is recognized as a
+    // deliberate teardown, not a crash — see the 'exit' handler.
+    this.intentionalClose = true;
     try {
       await this.call('close');
     } catch {
