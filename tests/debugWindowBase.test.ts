@@ -537,6 +537,36 @@ describe('DebugWindowBase', () => {
     });
   });
 
+  describe('router message serialization', () => {
+    // Regression: the router dispatches handleRouterMessage fire-and-forget. A message that redraws
+    // (e.g. a MIDI note-off release) must NOT interleave with an in-flight async SAVE capture, or it
+    // clobbers the canvas before capturePage samples it (the saved MIDI image lost the held chord).
+    // [MIDI save-clobbered-by-following-message]
+    it('processes router messages strictly one-at-a-time (next waits for the prior to finish)', async () => {
+      const w = new TestDebugWindow(mockContext, 'serialize');
+      w['isWindowReady'] = true;
+
+      const order: string[] = [];
+      jest.spyOn(w as any, 'processMessageImmediate').mockImplementation(async (...args: unknown[]) => {
+        const parts = args[0] as string[];
+        order.push(`start:${parts[0]}`);
+        if (parts[0] === 'SAVE') {
+          // Simulate the slow async SAVE capture (flush + capturePage + encode).
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        order.push(`end:${parts[0]}`);
+      });
+
+      // SAVE then an immediate REDRAW, exactly like MIDI's `save` ... `note-off` sequence.
+      w['handleRouterMessage']('SAVE file');
+      w['handleRouterMessage']('REDRAW');
+      await (w as any).routerDispatchChain;
+
+      // REDRAW must not start until SAVE fully completes — no interleaving.
+      expect(order).toEqual(['start:SAVE', 'end:SAVE', 'start:REDRAW', 'end:REDRAW']);
+    });
+  });
+
   describe('Input Helpers', () => {
     it('should validate spin numbers', () => {
       const [isValid1, value1] = testWindow['isSpinNumber']('123');

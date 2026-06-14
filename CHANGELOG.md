@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.59] - 2026-06-14
+
+Bug-fix release: the MIDI saved image now actually shows the held chord (the real fix — see below).
+
+### Fixed
+
+- **MIDI: the saved image showed an un-pressed keyboard even with a chord held (real root cause).**
+  The window receives its messages from a dispatcher that does not wait for one message to finish
+  before delivering the next. A MIDI program holds a chord, issues SAVE (and SAVE WINDOW), then
+  immediately releases the notes. Capturing the image is asynchronous, so the note-off release was
+  redrawing the keyboard — clearing the lit keys — *before* the capture had sampled the canvas, and
+  the saved file showed an un-pressed keyboard. Message processing is now serialized per window: each
+  message (including the full SAVE capture) completes before the next is processed, so the release can
+  no longer clobber an in-flight SAVE. This honors the "no message reordering" guarantee on
+  completion, not just on arrival order. (The 0.9.56/0.9.58 readiness fixes addressed a separate
+  startup race and were necessary but not sufficient; this is the fix that resolves the symptom.)
+
 ## [0.9.58] - 2026-06-14
 
 Bug-fix release: the MIDI window's saved image now shows the keys held at the moment of capture.

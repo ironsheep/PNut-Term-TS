@@ -178,6 +178,15 @@ export abstract class DebugWindowBase extends EventEmitter {
   private messageQueue: MessageQueue<any>;
   private isWindowReady: boolean = false;
 
+  // Serializes router-dispatched messages so each is FULLY processed (including an awaited SAVE
+  // capture) before the next begins. The WindowRouter dispatches fire-and-forget, so without this a
+  // message that redraws the canvas (e.g. a MIDI note-off release that immediately follows SAVE)
+  // runs DURING the in-flight async SAVE and clobbers the canvas before capturePage samples it — the
+  // saved image then misses the just-drawn content (the held chord). This enforces the documented
+  // "never any message reordering" guarantee on COMPLETION, not just start order.
+  // [MIDI save-clobbered-by-following-message]
+  private routerDispatchChain: Promise<void> = Promise.resolve();
+
   // Per-window input state variables for PC_KEY and PC_MOUSE commands
   // These match Pascal's per-window state management
   protected vKeyPress: number = 0; // Stores last keypress value for PC_KEY
@@ -822,24 +831,32 @@ export abstract class DebugWindowBase extends EventEmitter {
    * Protected to allow subclasses to override (e.g., LoggerWindow)
    */
   protected handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
-    try {
-      if (typeof message === 'string') {
-        // Text message - parse and process
-        // NOTE: WindowRouter already trims/filters - don't do it again here
-        const lineParts = message.split(' ');
-        this.updateContent(lineParts);
-      } else if (message instanceof Uint8Array) {
-        // Binary data - pass through as-is for windows that handle binary
-        // DebugLoggerWindow and DebugDebuggerWindow need raw binary
-        this.updateContent(message);
-      } else if (typeof message === 'object' && message.type && message.data) {
-        // ExtractedMessage object - decode Uint8Array to string for text windows
-        const text = new TextDecoder().decode(message.data);
-        const lineParts = text.split(' ');
-        this.updateContent(lineParts);
-      }
-    } catch (error) {
-      this.logMessageBase(`- Error handling router message: ${error}`);
+    // Serialize: chain each message so its full processing (incl. an awaited SAVE capture) completes
+    // before the next message is processed. The router calls this fire-and-forget, so chaining here
+    // is what guarantees a redraw can't interleave with an in-flight SAVE. [save-clobbered-by-following-message]
+    this.routerDispatchChain = this.routerDispatchChain
+      .then(() => this.dispatchRouterMessage(message))
+      .catch((error) => this.logMessageBase(`- Error handling router message: ${error}`));
+  }
+
+  /**
+   * Decode a router message and process it, awaiting completion. Invoked only via the serialized
+   * routerDispatchChain so messages never overlap. Subclasses that need custom routing (e.g. the
+   * LoggerWindow) override handleRouterMessage directly and bypass this.
+   */
+  private async dispatchRouterMessage(message: ExtractedMessage | Uint8Array | string): Promise<void> {
+    if (typeof message === 'string') {
+      // Text message - parse and process
+      // NOTE: WindowRouter already trims/filters - don't do it again here
+      await this.updateContent(message.split(' '));
+    } else if (message instanceof Uint8Array) {
+      // Binary data - pass through as-is for windows that handle binary
+      // DebugLoggerWindow and DebugDebuggerWindow need raw binary
+      await this.updateContent(message);
+    } else if (typeof message === 'object' && message.type && message.data) {
+      // ExtractedMessage object - decode Uint8Array to string for text windows
+      const text = new TextDecoder().decode(message.data);
+      await this.updateContent(text.split(' '));
     }
   }
 
