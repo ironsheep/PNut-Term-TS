@@ -2256,23 +2256,33 @@ export abstract class DebugWindowBase extends EventEmitter {
   private async captureCanvasAsPNG(window: BrowserWindow): Promise<Buffer> {
     const canvasId = this.getCaptureCanvasId();
     if (!canvasId || window.isDestroyed()) {
+      this.logMessageBase(`[SAVE-READBACK] skipped (canvasId=${canvasId}, destroyed=${window.isDestroyed?.()})`);
       return Buffer.alloc(0);
     }
     try {
+      // The injected console.* lands in the RENDERER console (CONSOLE.log) so a HW run shows exactly
+      // what the readback saw without needing the main log. [#49 diagnostics]
       const dataUrl = await window.webContents.executeJavaScript(
         `(function(){
           const c = document.getElementById(${JSON.stringify(canvasId)});
-          if (!c || typeof c.toDataURL !== 'function') return null;
-          try { return c.toDataURL('image/png'); } catch (e) { return null; }
+          if (!c || typeof c.toDataURL !== 'function') { console.error('[SAVE-READBACK] canvas not found:', ${JSON.stringify(canvasId)}); return null; }
+          try {
+            const u = c.toDataURL('image/png');
+            console.log('[SAVE-READBACK]', ${JSON.stringify(canvasId)}, c.width + 'x' + c.height, 'dataURL len=' + u.length);
+            return u;
+          } catch (e) { console.error('[SAVE-READBACK] toDataURL threw:', e && e.message); return 'THREW:' + (e && e.message); }
         })()`
       );
       const prefix = 'data:image/png;base64,';
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) {
+        this.logMessageBase(`[SAVE-READBACK] no usable dataURL (got ${typeof dataUrl}: ${String(dataUrl).slice(0, 40)}) — falling back to capturePage`);
         return Buffer.alloc(0);
       }
-      return Buffer.from(dataUrl.slice(prefix.length), 'base64');
+      const buf = Buffer.from(dataUrl.slice(prefix.length), 'base64');
+      this.logMessageBase(`[SAVE-READBACK] using canvas '${canvasId}' readback, ${buf.length} bytes`);
+      return buf;
     } catch (error) {
-      this.logMessageBase(`captureCanvasAsPNG failed: ${error}`);
+      this.logMessageBase(`[SAVE-READBACK] failed: ${error} — falling back to capturePage`);
       return Buffer.alloc(0);
     }
   }
