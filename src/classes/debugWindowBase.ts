@@ -2256,33 +2256,48 @@ export abstract class DebugWindowBase extends EventEmitter {
   private async captureCanvasAsPNG(window: BrowserWindow): Promise<Buffer> {
     const canvasId = this.getCaptureCanvasId();
     if (!canvasId || window.isDestroyed()) {
-      this.logMessageBase(`[SAVE-READBACK] skipped (canvasId=${canvasId}, destroyed=${window.isDestroyed?.()})`);
       return Buffer.alloc(0);
     }
+    const prefix = 'data:image/png;base64,';
     try {
-      // The injected console.* lands in the RENDERER console (CONSOLE.log) so a HW run shows exactly
-      // what the readback saw without needing the main log. [#49 diagnostics]
-      const dataUrl = await window.webContents.executeJavaScript(
+      // Read BOTH the visible canvas AND the double-buffer's offscreen canvas (window.offscreenCanvas),
+      // returning metadata for each plus the data-URL of whichever has more pixels. MIDI/BITMAP draw to
+      // the offscreen buffer and blit to the visible canvas; if the visible read comes back blank/stale
+      // (the symptom), the offscreen buffer still holds the full drawn frame (the held chord / all dots).
+      // Diagnostics are logged UNCONDITIONALLY from the MAIN process below (console.log → the captured
+      // console.log) because MIDI's logMessageBase is gated by isLogging=false and its renderer console
+      // is not forwarded. [#49 capture readback + diagnostics]
+      const raw = await window.webContents.executeJavaScript(
         `(function(){
-          const c = document.getElementById(${JSON.stringify(canvasId)});
-          if (!c || typeof c.toDataURL !== 'function') { console.error('[SAVE-READBACK] canvas not found:', ${JSON.stringify(canvasId)}); return null; }
-          try {
-            const u = c.toDataURL('image/png');
-            console.log('[SAVE-READBACK]', ${JSON.stringify(canvasId)}, c.width + 'x' + c.height, 'dataURL len=' + u.length);
-            return u;
-          } catch (e) { console.error('[SAVE-READBACK] toDataURL threw:', e && e.message); return 'THREW:' + (e && e.message); }
+          function grab(c){
+            if (!c || typeof c.toDataURL !== 'function') return { found:false };
+            try { var u = c.toDataURL('image/png'); return { found:true, w:c.width, h:c.height, len:u.length, url:u }; }
+            catch (e) { return { found:true, threw:String(e && e.message) }; }
+          }
+          var v = grab(document.getElementById(${JSON.stringify(canvasId)}));
+          var o = grab(window.offscreenCanvas);
+          var pick = (o.url && (!v.url || o.len > v.len)) ? o : v;
+          return JSON.stringify({
+            v: { found:v.found, w:v.w, h:v.h, len:v.len, threw:v.threw },
+            o: { found:o.found, w:o.w, h:o.h, len:o.len, threw:o.threw },
+            url: pick.url || null
+          });
         })()`
       );
-      const prefix = 'data:image/png;base64,';
-      if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) {
-        this.logMessageBase(`[SAVE-READBACK] no usable dataURL (got ${typeof dataUrl}: ${String(dataUrl).slice(0, 40)}) — falling back to capturePage`);
-        return Buffer.alloc(0);
+      const info = JSON.parse(typeof raw === 'string' ? raw : '{}');
+      // Unconditional main-process diagnostic — lands in the captured console.log.
+      console.log(
+        `[SAVE-READBACK] canvas='${canvasId}' visible=${JSON.stringify(info.v)} offscreen=${JSON.stringify(info.o)}`
+      );
+      if (typeof info.url === 'string' && info.url.startsWith(prefix)) {
+        const buf = Buffer.from(info.url.slice(prefix.length), 'base64');
+        console.log(`[SAVE-READBACK] using ${buf.length} bytes from ${info.o.len > (info.v.len || 0) ? 'OFFSCREEN' : 'visible'} canvas`);
+        return buf;
       }
-      const buf = Buffer.from(dataUrl.slice(prefix.length), 'base64');
-      this.logMessageBase(`[SAVE-READBACK] using canvas '${canvasId}' readback, ${buf.length} bytes`);
-      return buf;
+      console.log('[SAVE-READBACK] no usable dataURL — falling back to capturePage');
+      return Buffer.alloc(0);
     } catch (error) {
-      this.logMessageBase(`[SAVE-READBACK] failed: ${error} — falling back to capturePage`);
+      console.log(`[SAVE-READBACK] failed: ${error} — falling back to capturePage`);
       return Buffer.alloc(0);
     }
   }

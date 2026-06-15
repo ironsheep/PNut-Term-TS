@@ -658,7 +658,14 @@ describe('DebugWindowBase', () => {
       jest.spyOn(w as any, 'convertPNGtoBMP').mockResolvedValue(Buffer.from([1, 2, 3]));
       const tinyPng =
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/IqHAAAAAElFTkSuQmCC';
-      (mockWindow.webContents.executeJavaScript as jest.Mock).mockResolvedValue(tinyPng);
+      // captureCanvasAsPNG's injected script returns JSON metadata for the visible + offscreen
+      // canvases plus the chosen data-URL.
+      const readbackJson = JSON.stringify({
+        v: { found: true, w: 714, h: 197, len: tinyPng.length },
+        o: { found: false },
+        url: tinyPng
+      });
+      (mockWindow.webContents.executeJavaScript as jest.Mock).mockResolvedValue(readbackJson);
 
       await w['saveWindowToBMPFilename']('readback.bmp');
 
