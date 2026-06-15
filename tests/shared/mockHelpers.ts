@@ -267,6 +267,10 @@ export function createMockBrowserWindow(overrides: any = {}) {
     isDestroyed: jest.fn().mockReturnValue(false),
     focus: jest.fn(),
     blur: jest.fn(),
+    // SAVE WINDOW (saveDesktopWindowToBMPFilename) raises the window before the desktop grab:
+    // show()/moveTop()/focus(). moveTop must exist or it throws and the catch swallows the whole
+    // SAVE — including the capturePage fallback — which silently broke SAVE WINDOW tests. [SAVE WINDOW occlusion parity]
+    moveTop: jest.fn(),
     isFocused: jest.fn().mockReturnValue(true),
     isVisible: jest.fn().mockReturnValue(true),
     setTitle: jest.fn(),

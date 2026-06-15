@@ -600,16 +600,17 @@ describe('Memory Leak Detection', () => {
     
     it('should clean up recording buffers', async () => {
       baseline.capture();
-      
+
       const router = WindowRouter.getInstance();
-      
+
       // Start recording
       router.startRecording({
         sessionName: 'test-recording',
         description: 'Memory test',
         startTime: Date.now()
       });
-      
+      expect(router.isRecordingActive()).toBe(true);
+
       // Send many messages
       for (let i = 0; i < 1000; i++) {
         const msg: ExtractedMessage = {
@@ -619,18 +620,24 @@ describe('Memory Leak Detection', () => {
         };
         router.routeTextMessage(msg);
       }
-      
+
       // Stop recording
       router.stopRecording();
-      
-      // Force GC
+
+      // Deterministic teardown assertions — these prove the recording state/buffers were released.
+      // (The previous raw process-heap-diff threshold was unreliable: jest is not run with
+      // --expose-gc, so `global.gc` is undefined and the heap is never reclaimed before the
+      // measurement — which made this test fail purely from heap carried over by the prior test.)
+      expect(router.isRecordingActive()).toBe(false);
+      expect((router as any)['recordingBuffer'].length).toBe(0); // recording buffer drained/released
+
+      // When the suite IS run with --expose-gc, additionally guard against a large residual.
       if (global.gc) {
         global.gc();
-      }
-      
-      const diff = baseline.compare();
-      if (diff) {
-        expect(diff.heapUsedDiff / 1024 / 1024).toBeLessThan(5);
+        const diff = baseline.compare();
+        if (diff) {
+          expect(diff.heapUsedDiff / 1024 / 1024).toBeLessThan(5);
+        }
       }
     });
   });
