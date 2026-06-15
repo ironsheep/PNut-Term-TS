@@ -734,8 +734,10 @@ export class DebugScopeXyWindow extends DebugWindowBase {
    * Process data and commands (synchronous wrapper for async operations)
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // AWAIT the async processing so updateContent (and thus the base's per-message routerDispatchChain
+    // serialization) only resolves once this message's draw has been ISSUED — a following SAVE then
+    // reliably sees this message's render on the chain. [#49]
+    await this.processMessageAsync(lineParts);
   }
 
   /**
@@ -1457,9 +1459,12 @@ export class DebugScopeXyWindow extends DebugWindowBase {
 
     this.logMessage(`render: Executing batched script (${batchedScript.length} chars, ${plotCount} points)`);
 
-    // Execute the entire rendering operation atomically with await to prevent listener accumulation
-    this.debugWindow.webContents
-      .executeJavaScript(batchedScript)
+    // Execute the entire rendering operation atomically. Record the draw promise on the inherited
+    // renderChain (single-shot → trackRender) so a SAVE awaits the in-flight render before capturing
+    // (base flushBeforeCapture); issuance stays eager so streaming is unthrottled. [#49]
+    const renderPromise = this.debugWindow.webContents.executeJavaScript(batchedScript);
+    this.trackRender(renderPromise);
+    renderPromise
       .then((result) => {
         this.logMessage(`render: Batched render complete: ${result}`);
       })

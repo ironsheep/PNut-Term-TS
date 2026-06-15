@@ -839,8 +839,10 @@ export class DebugScopeWindow extends DebugWindowBase {
   }
 
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // AWAIT the async processing so updateContent (and the base's per-message routerDispatchChain
+    // serialization) only resolves once this message's draws have been ISSUED + tracked on
+    // renderChain — a following SAVE then reliably awaits them before capturing. [#49]
+    await this.processMessageAsync(lineParts);
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
@@ -1684,10 +1686,14 @@ export class DebugScopeWindow extends DebugWindowBase {
           }
         }
 
-        // Execute all the JavaScript at once
-        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
-          this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
-        });
+        // Execute all the JavaScript at once. Record on the inherited renderChain (single-shot →
+        // trackRender) so a SAVE awaits this per-sample render before capturing; issuance stays
+        // eager so the per-sample hot path is unthrottled. [#49]
+        this.trackRender(
+          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+            this.logMessage(`Failed to execute channel data JavaScript: ${error}`);
+          })
+        );
       } catch (error) {
         console.error('Failed to update channel data:', error);
       }
@@ -2347,9 +2353,11 @@ export class DebugScopeWindow extends DebugWindowBase {
         allJsCode += markerCode;
       }
 
-      this.debugWindow.webContents.executeJavaScript(`(function() { ${allJsCode} })();`).catch((error) => {
-        this.logMessage(`Failed to execute channel update JavaScript: ${error}`);
-      });
+      this.trackRender(
+        this.debugWindow.webContents.executeJavaScript(`(function() { ${allJsCode} })();`).catch((error) => {
+          this.logMessage(`Failed to execute channel update JavaScript: ${error}`);
+        })
+      );
     }
   }
 
@@ -2395,11 +2403,13 @@ export class DebugScopeWindow extends DebugWindowBase {
           '9px Arial'
         );
 
-        this.debugWindow.webContents
-          .executeJavaScript(`(function() { ${jsCodeArm} ${armLabelCode} })();`)
-          .catch((error) => {
-            this.logMessage(`Failed to execute trigger arm level JavaScript: ${error}`);
-          });
+        this.trackRender(
+          this.debugWindow.webContents
+            .executeJavaScript(`(function() { ${jsCodeArm} ${armLabelCode} })();`)
+            .catch((error) => {
+              this.logMessage(`Failed to execute trigger arm level JavaScript: ${error}`);
+            })
+        );
       }
 
       // Draw trigger level (green solid line with label)
@@ -2428,11 +2438,13 @@ export class DebugScopeWindow extends DebugWindowBase {
           '9px Arial'
         );
 
-        this.debugWindow.webContents
-          .executeJavaScript(`(function() { ${jsCodeTrig} ${trigLabelCode} })();`)
-          .catch((error) => {
-            this.logMessage(`Failed to execute trigger level JavaScript: ${error}`);
-          });
+        this.trackRender(
+          this.debugWindow.webContents
+            .executeJavaScript(`(function() { ${jsCodeTrig} ${trigLabelCode} })();`)
+            .catch((error) => {
+              this.logMessage(`Failed to execute trigger level JavaScript: ${error}`);
+            })
+        );
       }
     }
   }

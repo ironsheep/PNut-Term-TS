@@ -567,6 +567,85 @@ describe('DebugWindowBase', () => {
     });
   });
 
+  // [unified draw→save flow #49] The shared mechanism every window now uses so a SAVE can never
+  // race an async draw. trackRender (single-shot, eager/replace-tail) + scheduleRender (batched,
+  // serialized) feed renderChain; the base SAVE methods await it via flushBeforeCapture().
+  describe('unified draw→save flow', () => {
+    it('trackRender records the latest draw on renderChain (awaiting it implies the draw ran)', async () => {
+      const w = new TestDebugWindow(mockContext, 'track');
+      let landed = false;
+      const draw = new Promise<void>((resolve) => setTimeout(() => {
+        landed = true;
+        resolve();
+      }, 0));
+      (w as any).trackRender(draw);
+      await (w as any).renderChain;
+      expect(landed).toBe(true);
+    });
+
+    it('scheduleRender runs batched draws strictly in order', async () => {
+      const w = new TestDebugWindow(mockContext, 'sched');
+      const order: string[] = [];
+      (w as any).scheduleRender(async () => {
+        await Promise.resolve();
+        order.push('a');
+      });
+      (w as any).scheduleRender(() => {
+        order.push('b');
+      });
+      await (w as any).renderChain;
+      expect(order).toEqual(['a', 'b']);
+    });
+
+    it('flushBeforeCapture does not resolve until renderChain resolves', async () => {
+      const w = new TestDebugWindow(mockContext, 'flush');
+      const seq: string[] = [];
+      let resolveDraw!: () => void;
+      (w as any).renderChain = new Promise<void>((resolve) => {
+        resolveDraw = () => {
+          seq.push('draw');
+          resolve();
+        };
+      });
+      const gate = (w as any).flushBeforeCapture().then(() => seq.push('gate-open'));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(seq).toEqual([]); // gate must stay closed while the draw is pending
+      resolveDraw();
+      await gate;
+      expect(seq).toEqual(['draw', 'gate-open']);
+    });
+
+    it('base SAVE awaits flushBeforeCapture before capturing (no draw → no capture race)', async () => {
+      const w = new TestDebugWindow(mockContext, 'save-gate');
+      const mockWindow = new BrowserWindow();
+      w['debugWindow'] = mockWindow;
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const seq: string[] = [];
+      let resolveDraw!: () => void;
+      (w as any).renderChain = new Promise<void>((resolve) => {
+        resolveDraw = () => {
+          seq.push('draw');
+          resolve();
+        };
+      });
+      (mockWindow.webContents.capturePage as jest.Mock).mockImplementation(async () => {
+        seq.push('capture');
+        return { toPNG: () => Buffer.from([1, 2, 3, 4]) };
+      });
+
+      const savePromise = w['saveWindowToBMPFilename']('gated.bmp');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(seq).toEqual([]); // capture MUST NOT run while the draw is pending
+
+      resolveDraw();
+      await savePromise;
+      expect(seq[0]).toBe('draw'); // draw completes strictly before the capture
+      expect(seq).toContain('capture');
+    });
+  });
+
   describe('Input Helpers', () => {
     it('should validate spin numbers', () => {
       const [isValid1, value1] = testWindow['isSpinNumber']('123');

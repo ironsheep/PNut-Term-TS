@@ -653,15 +653,17 @@ export class DebugSpectroWindow extends DebugWindowBase {
    * Called by router's updateContent(dataParts)
    */
   public async updateContent(lineParts: string[]): Promise<void> {
-    this.processMessageImmediate(lineParts);
+    await this.processMessageImmediate(lineParts);
   }
 
   /**
    * Update SPECTRO window content with new data (synchronous wrapper for async operations)
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // AWAIT the async processing so updateContent (and the base's per-message routerDispatchChain
+    // serialization) only resolves once this message's column draw has been ISSUED + tracked on
+    // renderChain — a following SAVE then reliably awaits this column before capturing. [#49]
+    await this.processMessageAsync(lineParts);
   }
 
   /**
@@ -874,13 +876,17 @@ export class DebugSpectroWindow extends DebugWindowBase {
       this.traceProcessor.step();
     }
 
-    // Flush the whole column in one IPC, in snippet order (plots → blit → scroll).
+    // Flush the whole column in one IPC, in snippet order (plots → blit → scroll). Record the draw
+    // promise on the inherited renderChain (single-shot per column → trackRender) so a SAVE awaits the
+    // in-flight column before capturing (base flushBeforeCapture); issuance stays eager. [#49]
     const batch = this.columnBatch;
     this.columnBatch = null;
     if (batch.length > 0 && this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.webContents.executeJavaScript(batch.join('\n')).catch((error) => {
-        this.logMessage(`Failed to draw SPECTRO column: ${error}`);
-      });
+      this.trackRender(
+        this.debugWindow.webContents.executeJavaScript(batch.join('\n')).catch((error) => {
+          this.logMessage(`Failed to draw SPECTRO column: ${error}`);
+        })
+      );
     }
   }
 
@@ -1031,9 +1037,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       return;
     }
 
-    this.debugWindow.webContents.executeJavaScript(scrollCode).catch((error) => {
-      this.logMessage(`Failed to scroll waterfall: ${error}`);
-    });
+    this.trackRender(
+      this.debugWindow.webContents.executeJavaScript(scrollCode).catch((error) => {
+        this.logMessage(`Failed to scroll waterfall: ${error}`);
+      })
+    );
   }
 
   /**
@@ -1178,9 +1186,11 @@ export class DebugSpectroWindow extends DebugWindowBase {
       })();
     `;
 
-    this.debugWindow.webContents.executeJavaScript(clearCode).catch((error) => {
-      this.logMessage(`Failed to clear canvas: ${error}`);
-    });
+    this.trackRender(
+      this.debugWindow.webContents.executeJavaScript(clearCode).catch((error) => {
+        this.logMessage(`Failed to clear canvas: ${error}`);
+      })
+    );
   }
 
   // Note: initializeCanvas() method removed - initialization now happens in constructor

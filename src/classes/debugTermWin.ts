@@ -1015,9 +1015,13 @@ export class DebugTermWindow extends DebugWindowBase {
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-      this.logMessage(`Failed to update visible canvas: ${error}`);
-    });
+    // Record on the inherited renderChain (single-shot → trackRender, eager issuance keeps the
+    // per-char hot path unthrottled) so a SAVE awaits the latest draw before capturing. [#49]
+    this.trackRender(
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to update visible canvas: ${error}`);
+      })
+    );
   }
 
   private processDisplayCommand(displayString: string): void {
@@ -1205,9 +1209,11 @@ export class DebugTermWindow extends DebugWindowBase {
           })()
         `;
 
-        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-          this.logMessage(`Failed to execute clear terminal JavaScript: ${error}`);
-        });
+        this.trackRender(
+          this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+            this.logMessage(`Failed to execute clear terminal JavaScript: ${error}`);
+          })
+        );
       } catch (error) {
         console.error('Failed to clear text area:', error);
       }
@@ -1296,9 +1302,11 @@ export class DebugTermWindow extends DebugWindowBase {
         })()
       `;
 
-      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-        this.logMessage(`Failed to execute terminal text JavaScript: ${error}`);
-      });
+      this.trackRender(
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+          this.logMessage(`Failed to execute terminal text JavaScript: ${error}`);
+        })
+      );
 
       // Advance cursor
       this.cursorPosition.x++;
@@ -1337,9 +1345,11 @@ export class DebugTermWindow extends DebugWindowBase {
     const bgcolor = this.displaySpec.colorCombos[this.selectedCombo].bgcolor;
 
     const jsCode = this.canvasRenderer.clearCharacterCell('text-area', startX, y, width, charHeight, bgcolor);
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-      this.logMessage(`Failed to execute terminal clear line JavaScript: ${error}`);
-    });
+    this.trackRender(
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to execute terminal clear line JavaScript: ${error}`);
+      })
+    );
   }
 
   /**
@@ -1388,9 +1398,11 @@ export class DebugTermWindow extends DebugWindowBase {
       })()
     `;
 
-    this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-      this.logMessage(`Failed to execute terminal scroll JavaScript: ${error}`);
-    });
+    this.trackRender(
+      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+        this.logMessage(`Failed to execute terminal scroll JavaScript: ${error}`);
+      })
+    );
   }
 
   /**

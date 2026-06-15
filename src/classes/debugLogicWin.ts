@@ -1161,8 +1161,10 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
 
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // Handle async internally
-    this.processMessageAsync(lineParts);
+    // AWAIT the async processing so updateContent (and the base's per-message routerDispatchChain
+    // serialization) only resolves once this message's draws have been ISSUED + tracked on
+    // renderChain — a following SAVE then reliably awaits them before capturing. [#49]
+    await this.processMessageAsync(lineParts);
   }
 
   private async processMessageAsync(lineParts: string[]): Promise<void> {
@@ -1515,9 +1517,11 @@ export class DebugLogicWindow extends DebugWindowBase {
           }
         })();
       `;
-      this.debugWindow.webContents.executeJavaScript(jsCode).catch((err) => {
-        this.logMessage(`Failed to clear canvas ${canvasName}: ${err}`);
-      });
+      this.trackRender(
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((err) => {
+          this.logMessage(`Failed to clear canvas ${canvasName}: ${err}`);
+        })
+      );
     }
   }
 
@@ -1659,9 +1663,11 @@ export class DebugLogicWindow extends DebugWindowBase {
       // Execute the drawing JavaScript
       try {
         if (this.debugWindow) {
-          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
-            this.logMessage(`Failed to execute channel drawing JavaScript: ${error}`);
-          });
+          this.trackRender(
+            this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+              this.logMessage(`Failed to execute channel drawing JavaScript: ${error}`);
+            })
+          );
         }
       } catch (error) {
         console.error('Failed to draw channel:', error);
@@ -1747,9 +1753,11 @@ export class DebugLogicWindow extends DebugWindowBase {
 
     try {
       if (this.debugWindow) {
-        this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
-          this.logMessage(`Failed to execute range-bus drawing JavaScript: ${error}`);
-        });
+        this.trackRender(
+          this.debugWindow.webContents.executeJavaScript(`(function() { ${jsCode} })();`).catch((error) => {
+            this.logMessage(`Failed to execute range-bus drawing JavaScript: ${error}`);
+          })
+        );
       }
     } catch (error) {
       console.error('Failed to draw range bus:', error);
@@ -1777,9 +1785,11 @@ export class DebugLogicWindow extends DebugWindowBase {
     try {
       const labelSpan: string = `<p style="color: ${color};">${label}</p>`;
       const jsCode = this.canvasRenderer.updateElementHTML(divId, labelSpan);
-      this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
-        this.logMessage(`Failed to execute label update JavaScript: ${error}`);
-      });
+      this.trackRender(
+        this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
+          this.logMessage(`Failed to execute label update JavaScript: ${error}`);
+        })
+      );
     } catch (error) {
       console.error(`Failed to update ${divId}: ${error}`);
     }
