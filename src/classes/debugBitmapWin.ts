@@ -877,7 +877,14 @@ export class DebugBitmapWindow extends DebugWindowBase {
 
   /** [#30] Force-draw queued pixels and repaint the display before a SAVE capture. */
   private async flushQueuedRenderForCapture(): Promise<void> {
-    if (this.state.sparseMode) return; // SPARSE draws straight to the display canvas
+    if (this.state.sparseMode) {
+      // SPARSE draws straight to the display canvas via per-dot executeJavaScript serialized through
+      // renderFlushChain. Those draws are issued during data processing but complete asynchronously,
+      // so the SAVE must AWAIT the chain or it captures a black canvas before the dots land.
+      // [BITMAP SPARSE save-before-draw]
+      await this.renderFlushChain;
+      return;
+    }
     this.displayDirty = true;
     await this.flushRenderQueue();
   }
@@ -1500,8 +1507,14 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
                 }
               }
             `;
-            this.debugWindow.webContents
-              .executeJavaScript(sparseCode)
+            // Serialize the sparse-dot draw through renderFlushChain (NOT fire-and-forget) so a
+            // SAVE can await it before capturing. Sparse mode draws straight to the display canvas
+            // and bypasses the pendingPixels batch, so without this the per-dot executeJavaScript
+            // was un-awaited and a SAVE's capturePage/desktopCapturer grabbed a BLACK canvas before
+            // any dot landed. [BITMAP SPARSE save-before-draw — same class as MIDI lit-chord]
+            this.renderFlushChain = this.renderFlushChain
+              .then(() => this.debugWindow?.webContents.executeJavaScript(sparseCode))
+              .then(() => undefined)
               .catch((err) => this.logMessage(`ERROR plotting sparse dot: ${err}`));
           } else {
             // NORMAL MODE: Collect pixels for batched rendering to offscreen bitmap

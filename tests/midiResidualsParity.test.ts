@@ -96,7 +96,9 @@ describe('[9win §16] MIDI note-off stores velocity as -val', () => {
       midiChannel: 0,
       midiVelocity: new Array(128).fill(0),
       logMessage: () => {},
-      drawKeyboard: () => {}
+      // processMidiByte now schedules draws through flushDraw (renderChain) so a SAVE can await the
+      // in-flight render before capturing. [MIDI lit-chord-not-captured: SAVE must await the draw]
+      flushDraw: () => {}
     };
   }
 

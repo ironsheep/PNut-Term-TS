@@ -340,4 +340,45 @@ describe('DebugMidiWindow', () => {
       expect(`${code1}${code2}`).not.toMatch(/\bconst velocityHeight\b/);
     });
   });
+
+  // [MIDI lit-chord-not-captured: SAVE must await the draw]
+  // The held-chord SAVE rendered a BARELESS keyboard because drawKeyboard() was fire-and-forget and
+  // nothing waited for it: a SAVE's capturePage/desktopCapturer grabbed the canvas before the chord's
+  // velocity-bar draw landed. Three message-ordering fixes (v0.9.56/58/59) never closed this because
+  // they ordered MESSAGES, not the async DRAW. The fix routes draws through renderChain and has the
+  // SAVE overrides await it (the PLOT/FFT/BITMAP pattern). This test pins that the SAVE blocks on the
+  // in-flight render before deferring to the base capture.
+  describe('SAVE awaits the in-flight keyboard render', () => {
+    it('does not capture until renderChain resolves', async () => {
+      const order: string[] = [];
+      let resolveRender!: () => void;
+      (midiWindow as any).renderChain = new Promise<void>((resolve) => {
+        resolveRender = () => {
+          order.push('render-done');
+          resolve();
+        };
+      });
+
+      // Spy the BASE-class capture so we observe exactly when the override defers to it.
+      const baseProto = Object.getPrototypeOf(DebugMidiWindow.prototype);
+      const spy = jest
+        .spyOn(baseProto, 'saveWindowToBMPFilename')
+        .mockImplementation(async () => {
+          order.push('capture');
+        });
+
+      const savePromise = (midiWindow as any).saveWindowToBMPFilename('chord');
+      // Let microtasks flush — the capture MUST NOT have run while the render is still pending.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(order).toEqual([]);
+
+      resolveRender();
+      await savePromise;
+      // Render must complete strictly before the capture.
+      expect(order).toEqual(['render-done', 'capture']);
+
+      spy.mockRestore();
+    });
+  });
 });

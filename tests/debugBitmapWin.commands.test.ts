@@ -456,6 +456,41 @@ describe('DebugBitmapWindow Command Tests', () => {
     });
   });
 
+  // [BITMAP SPARSE save-before-draw] In SPARSE mode the dots draw straight to the display canvas
+  // via per-dot executeJavaScript serialized through renderFlushChain (NOT the pendingPixels batch).
+  // The SAVE override must AWAIT renderFlushChain or it captures a BLACK canvas before the dots land
+  // — the exact failure seen in fig-12-bitmap-sparse (99.99% black). This pins that SPARSE SAVE
+  // blocks on the in-flight dot draws before deferring to the base capture.
+  describe('SPARSE SAVE awaits the in-flight dot draws', () => {
+    it('does not capture until renderFlushChain resolves', async () => {
+      window['state'].sparseMode = true;
+      const order: string[] = [];
+      let resolveDots!: () => void;
+      (window as any).renderFlushChain = new Promise<void>((resolve) => {
+        resolveDots = () => {
+          order.push('dots-done');
+          resolve();
+        };
+      });
+
+      const baseProto = Object.getPrototypeOf(DebugBitmapWindow.prototype);
+      const spy = jest.spyOn(baseProto, 'saveWindowToBMPFilename').mockImplementation(async () => {
+        order.push('capture');
+      });
+
+      const savePromise = (window as any).saveWindowToBMPFilename('sparse');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(order).toEqual([]); // capture MUST NOT run while dots are still pending
+
+      resolveDots();
+      await savePromise;
+      expect(order).toEqual(['dots-done', 'capture']); // dots complete strictly before capture
+
+      spy.mockRestore();
+    });
+  });
+
   describe('RATE command behavior', () => {
     it('should set explicit rate', async () => {
       await window.updateContent(['RATE', '30']);
