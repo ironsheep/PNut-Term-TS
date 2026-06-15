@@ -644,6 +644,39 @@ describe('DebugWindowBase', () => {
       expect(seq[0]).toBe('draw'); // draw completes strictly before the capture
       expect(seq).toContain('capture');
     });
+
+    // [#49 capture readback] capturePage returns a stale composited frame for a window that draws
+    // then goes quiescent (MIDI held chord / BITMAP SPARSE dots are on the canvas + on screen but
+    // missing from the capture). Windows that register a capture canvas id read the canvas BACKING
+    // STORE via toDataURL instead — exactly the drawn pixels, compositor-independent.
+    it('canvas-content windows read the backing store (toDataURL), not capturePage', async () => {
+      const w = new TestDebugWindow(mockContext, 'readback');
+      const mockWindow = new BrowserWindow();
+      w['debugWindow'] = mockWindow;
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      jest.spyOn(w as any, 'getCaptureCanvasId').mockReturnValue('test-canvas');
+      jest.spyOn(w as any, 'convertPNGtoBMP').mockResolvedValue(Buffer.from([1, 2, 3]));
+      const tinyPng =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/IqHAAAAAElFTkSuQmCC';
+      (mockWindow.webContents.executeJavaScript as jest.Mock).mockResolvedValue(tinyPng);
+
+      await w['saveWindowToBMPFilename']('readback.bmp');
+
+      // The toDataURL readback was used; capturePage (stale composited frame) was NOT.
+      expect(mockWindow.webContents.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('toDataURL'));
+      expect(mockWindow.webContents.capturePage).not.toHaveBeenCalled();
+    });
+
+    it('falls back to capturePage when no capture canvas is registered', async () => {
+      const w = new TestDebugWindow(mockContext, 'no-canvas'); // getCaptureCanvasId() → null (default)
+      const mockWindow = new BrowserWindow();
+      w['debugWindow'] = mockWindow;
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+
+      await w['saveWindowToBMPFilename']('default.bmp');
+
+      expect(mockWindow.webContents.capturePage).toHaveBeenCalled();
+    });
   });
 
   describe('Input Helpers', () => {

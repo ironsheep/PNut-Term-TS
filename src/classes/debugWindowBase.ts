@@ -1445,6 +1445,29 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.logMessage(`  -- writing desktop window BMP to [${filename}]`);
       this.saveInProgress = true;
 
+      // Canvas-content windows: the desktop/on-screen grab misses a quiescent canvas (same cause as
+      // capturePage staleness — see captureCanvasAsPNG). Read the canvas backing store directly so
+      // SAVE WINDOW shows the ACTUAL content. This is content-only (no native chrome); for these
+      // windows correct content matters more than the window frame. [#49 capture readback]
+      if (this.getCaptureCanvasId()) {
+        const canvasBuffer = await this.captureWindowAsPNG(this._debugWindow);
+        if (canvasBuffer.length > 0) {
+          try {
+            const bmpBuffer = await this.convertPNGtoBMP(canvasBuffer);
+            const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
+            fs.writeFileSync(outputFSpec, bmpBuffer);
+            this.logMessageBase(`- Window BMP image [${outputFSpec}] saved (canvas readback) successfully`);
+            this.context.logger.progressMsg(`File written [${outputFSpec}]`);
+          } catch (error) {
+            console.error('Win: ERROR: saving window BMP (canvas readback):', error);
+            this.logMessageBase(`SAVE WINDOW: ERROR writing BMP [${filename}]: ${error}`);
+          } finally {
+            this.saveInProgress = false;
+          }
+          return;
+        }
+      }
+
       try {
         // Bring the window to the FRONT of the OS z-order before the screen grab. desktopCapturer
         // captures whatever pixels are physically on screen at the window's region, so if another
@@ -2212,8 +2235,56 @@ export abstract class DebugWindowBase extends EventEmitter {
     }
   }
 
+  /**
+   * The id of the single DOM canvas that holds this window's drawn content, or null to use the
+   * default capturePage path. Canvas-content windows (MIDI, BITMAP) override this so SAVE reads the
+   * canvas BACKING STORE directly (see captureCanvasAsPNG) instead of capturePage. [#49 capture readback]
+   */
+  protected getCaptureCanvasId(): string | null {
+    return null;
+  }
+
+  /**
+   * Capture the window's content by reading the canvas backing store directly in the renderer
+   * (canvas.toDataURL). This reflects exactly the pixels drawn to the canvas — the same bitmap shown
+   * on screen — REGARDLESS of compositor/screen state. capturePage() returns a COMPOSITED frame that
+   * can lag the canvas for a window that draws then goes quiescent: the drawn content (MIDI held
+   * chord, BITMAP SPARSE dots) is on the canvas + visible on screen, yet capturePage grabs an earlier
+   * frame. Reading the canvas sidesteps that entirely. Returns an empty Buffer when the window has no
+   * registered capture canvas (→ caller falls back to capturePage) or on any error. [#49]
+   */
+  private async captureCanvasAsPNG(window: BrowserWindow): Promise<Buffer> {
+    const canvasId = this.getCaptureCanvasId();
+    if (!canvasId || window.isDestroyed()) {
+      return Buffer.alloc(0);
+    }
+    try {
+      const dataUrl = await window.webContents.executeJavaScript(
+        `(function(){
+          const c = document.getElementById(${JSON.stringify(canvasId)});
+          if (!c || typeof c.toDataURL !== 'function') return null;
+          try { return c.toDataURL('image/png'); } catch (e) { return null; }
+        })()`
+      );
+      const prefix = 'data:image/png;base64,';
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) {
+        return Buffer.alloc(0);
+      }
+      return Buffer.from(dataUrl.slice(prefix.length), 'base64');
+    } catch (error) {
+      this.logMessageBase(`captureCanvasAsPNG failed: ${error}`);
+      return Buffer.alloc(0);
+    }
+  }
+
   private async captureWindowAsPNG(window: BrowserWindow): Promise<Buffer> {
     await this.flushRendererDraws(window);
+    // Canvas-content windows read the backing store directly (compositor-independent); only fall
+    // back to capturePage when no capture canvas is registered or the readback fails. [#49]
+    const canvasBuffer = await this.captureCanvasAsPNG(window);
+    if (canvasBuffer.length > 0) {
+      return canvasBuffer;
+    }
     return new Promise((resolve) => {
       const failSafe = (error: unknown) => {
         console.error('Win: ERROR: capturing window as PNG:', error);

@@ -866,6 +866,16 @@ export class DebugBitmapWindow extends DebugWindowBase {
   }
 
   /**
+   * Read SAVE pixels from the bitmap canvas BACKING STORE (toDataURL) instead of capturePage. The
+   * pixels/sparse-dots ARE drawn to this canvas and visible on screen, but capturePage returns a
+   * stale composited frame for the quiescent window — which dropped all but ~1 SPARSE dot from the
+   * saved BMP. Reading the canvas directly captures exactly what's drawn. [#49 capture readback]
+   */
+  protected getCaptureCanvasId(): string | null {
+    return this.bitmapCanvasId;
+  }
+
+  /**
    * Set bitmap size and initialize canvas
    */
   private setBitmapSize(width: number, height: number): void {

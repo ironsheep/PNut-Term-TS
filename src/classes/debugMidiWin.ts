@@ -963,6 +963,16 @@ export class DebugMidiWindow extends DebugWindowBase {
   // chord's velocity bars are guaranteed on the canvas before capture. No override needed. [#49]
 
   /**
+   * Read SAVE pixels from the keyboard canvas BACKING STORE (toDataURL) instead of capturePage. The
+   * held chord IS drawn to this canvas and visible on screen, but capturePage returns a stale
+   * composited frame for the quiescent window (the keyboard without the bars) — the real reason five
+   * timing/await fixes never produced a lit-chord BMP. [#49 capture readback]
+   */
+  protected getCaptureCanvasId(): string | null {
+    return 'midi-canvas';
+  }
+
+  /**
    * Clean up resources when window is closed
    */
   closeDebugWindow(): void {
