@@ -341,15 +341,15 @@ describe('DebugMidiWindow', () => {
     });
   });
 
-  // [MIDI lit-chord-not-captured: SAVE must await the draw]
+  // [MIDI lit-chord-not-captured: SAVE must await the draw — unified flow #49]
   // The held-chord SAVE rendered a BARELESS keyboard because drawKeyboard() was fire-and-forget and
   // nothing waited for it: a SAVE's capturePage/desktopCapturer grabbed the canvas before the chord's
-  // velocity-bar draw landed. Three message-ordering fixes (v0.9.56/58/59) never closed this because
-  // they ordered MESSAGES, not the async DRAW. The fix routes draws through renderChain and has the
-  // SAVE overrides await it (the PLOT/FFT/BITMAP pattern). This test pins that the SAVE blocks on the
-  // in-flight render before deferring to the base capture.
+  // velocity-bar draw landed. The unified fix funnels draws through the base renderChain (here via
+  // flushDraw()→trackRender()), and the base SAVE methods await flushBeforeCapture() (→ renderChain)
+  // before capturing. These tests pin (a) flushDraw records the draw on renderChain and (b) the SAVE
+  // gate (flushBeforeCapture) blocks until that render resolves.
   describe('SAVE awaits the in-flight keyboard render', () => {
-    it('does not capture until renderChain resolves', async () => {
+    it('flushBeforeCapture does not resolve until renderChain resolves', async () => {
       const order: string[] = [];
       let resolveRender!: () => void;
       (midiWindow as any).renderChain = new Promise<void>((resolve) => {
@@ -359,26 +359,31 @@ describe('DebugMidiWindow', () => {
         };
       });
 
-      // Spy the BASE-class capture so we observe exactly when the override defers to it.
-      const baseProto = Object.getPrototypeOf(DebugMidiWindow.prototype);
-      const spy = jest
-        .spyOn(baseProto, 'saveWindowToBMPFilename')
-        .mockImplementation(async () => {
-          order.push('capture');
-        });
-
-      const savePromise = (midiWindow as any).saveWindowToBMPFilename('chord');
-      // Let microtasks flush — the capture MUST NOT have run while the render is still pending.
+      const gate = (midiWindow as any).flushBeforeCapture().then(() => order.push('capture-allowed'));
+      // Let microtasks flush — the SAVE gate MUST NOT open while the render is still pending.
       await Promise.resolve();
       await Promise.resolve();
       expect(order).toEqual([]);
 
       resolveRender();
-      await savePromise;
-      // Render must complete strictly before the capture.
-      expect(order).toEqual(['render-done', 'capture']);
+      await gate;
+      // Render must complete strictly before the capture gate opens.
+      expect(order).toEqual(['render-done', 'capture-allowed']);
+    });
 
-      spy.mockRestore();
+    it('flushDraw records the keyboard draw on the shared renderChain', async () => {
+      let landed = false;
+      // Make the async draw observable: stub drawKeyboard with a deferred promise.
+      const drawPromise = new Promise<void>((resolve) => setTimeout(() => {
+        landed = true;
+        resolve();
+      }, 0));
+      (midiWindow as any).drawKeyboard = jest.fn().mockReturnValue(drawPromise);
+
+      (midiWindow as any).flushDraw(false);
+      // The SAVE gate must await that draw — i.e. not resolve before the draw lands.
+      await (midiWindow as any).flushBeforeCapture();
+      expect(landed).toBe(true);
     });
   });
 });

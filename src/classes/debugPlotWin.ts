@@ -191,11 +191,11 @@ export class DebugPlotWindow extends DebugWindowBase {
   private shouldWriteToCanvas: boolean = true;
   private canvasInitialized: boolean = false;
 
-  // Renders (performUpdate) are SERIALIZED through this chain so a SAVE can await the in-flight /
-  // queued render before capturing. executeBatch issues its per-operation draws across MULTIPLE
-  // awaited IPC turns, so a fire-and-forget performUpdate would let SAVE's capturePage race a
-  // half-drawn plot (only the first operation issued). Mirrors BITMAP's renderFlushChain. [SAVE flush]
-  private renderChain: Promise<void> = Promise.resolve();
+  // Renders (performUpdate) are SERIALIZED through the inherited renderChain (DebugWindowBase) via
+  // scheduleRender() so a SAVE awaits the in-flight/queued render before capturing. executeBatch
+  // issues per-operation draws across MULTIPLE awaited IPC turns, so a fire-and-forget performUpdate
+  // would let SAVE's capturePage race a half-drawn plot. The base SAVE methods await renderChain via
+  // flushBeforeCapture(), so PLOT no longer overrides them. [unified draw→save flow #49]
 
   // Double buffering support
   private workingCanvas?: OffscreenCanvas;
@@ -1098,37 +1098,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
    * capturing. Call this instead of performUpdate() fire-and-forget. Returns the chain tail.
    */
   private flushRender(): Promise<void> {
-    this.renderChain = this.renderChain.then(() => this.performUpdate()).catch((error) => {
-      this.logMessage(`Render failed: ${error}`);
-    });
-    return this.renderChain;
-  }
-
-  /**
-   * SAVE/SAVE WINDOW capture the canvas; PLOT renders asynchronously (executeBatch issues per-op
-   * draws across several IPC turns), so the in-flight/queued render must FINISH before the capture
-   * or the saved image is a partial plot. Await the render chain, then defer to the base capture.
-   * Mirrors BITMAP's pre-capture flush. [SAVE flush]
-   */
-  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
-    await this.renderChain;
-    await super.saveWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
-    await this.renderChain;
-    await super.saveDesktopWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopCoordinatesToBMPFilename(
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    filename: string
-  ): Promise<void> {
-    await this.renderChain;
-    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
+    // Serialize through the inherited renderChain; the base SAVE awaits it via flushBeforeCapture().
+    return this.scheduleRender(() => this.performUpdate());
   }
 
   private async performUpdate(): Promise<void> {

@@ -456,38 +456,31 @@ describe('DebugBitmapWindow Command Tests', () => {
     });
   });
 
-  // [BITMAP SPARSE save-before-draw] In SPARSE mode the dots draw straight to the display canvas
-  // via per-dot executeJavaScript serialized through renderFlushChain (NOT the pendingPixels batch).
-  // The SAVE override must AWAIT renderFlushChain or it captures a BLACK canvas before the dots land
-  // — the exact failure seen in fig-12-bitmap-sparse (99.99% black). This pins that SPARSE SAVE
-  // blocks on the in-flight dot draws before deferring to the base capture.
+  // [BITMAP SPARSE save-before-draw — unified flow #49] In SPARSE mode the dots draw straight to the
+  // display canvas via per-dot executeJavaScript serialized through the inherited renderChain (NOT
+  // the pendingPixels batch). The SAVE gate (flushBeforeCapture → renderChain) must AWAIT it or the
+  // capture is a BLACK canvas before the dots land — the exact fig-12-bitmap-sparse failure (99.99%
+  // black). This pins that, in sparse mode, the SAVE gate blocks on the in-flight dot draws.
   describe('SPARSE SAVE awaits the in-flight dot draws', () => {
-    it('does not capture until renderFlushChain resolves', async () => {
+    it('flushBeforeCapture (sparse) does not resolve until renderChain resolves', async () => {
       window['state'].sparseMode = true;
       const order: string[] = [];
       let resolveDots!: () => void;
-      (window as any).renderFlushChain = new Promise<void>((resolve) => {
+      (window as any).renderChain = new Promise<void>((resolve) => {
         resolveDots = () => {
           order.push('dots-done');
           resolve();
         };
       });
 
-      const baseProto = Object.getPrototypeOf(DebugBitmapWindow.prototype);
-      const spy = jest.spyOn(baseProto, 'saveWindowToBMPFilename').mockImplementation(async () => {
-        order.push('capture');
-      });
-
-      const savePromise = (window as any).saveWindowToBMPFilename('sparse');
+      const gate = (window as any).flushBeforeCapture().then(() => order.push('capture-allowed'));
       await Promise.resolve();
       await Promise.resolve();
-      expect(order).toEqual([]); // capture MUST NOT run while dots are still pending
+      expect(order).toEqual([]); // gate MUST NOT open while dots are still pending
 
       resolveDots();
-      await savePromise;
-      expect(order).toEqual(['dots-done', 'capture']); // dots complete strictly before capture
-
-      spy.mockRestore();
+      await gate;
+      expect(order).toEqual(['dots-done', 'capture-allowed']); // dots complete strictly before capture
     });
   });
 

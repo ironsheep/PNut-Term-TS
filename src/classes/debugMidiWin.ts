@@ -165,15 +165,6 @@ export class DebugMidiWindow extends DebugWindowBase {
   private pendingDrawRequest: boolean = false;
   private pendingClear: boolean = false;
 
-  // Serializes the ASYNC keyboard render so a SAVE can AWAIT the in-flight/queued draw before it
-  // captures. drawKeyboard() issues an executeJavaScript round-trip; routing every draw through this
-  // chain (instead of fire-and-forget) and having the SAVE overrides await it is the ONLY thing that
-  // guarantees the held-chord velocity bars are on the canvas when capturePage/desktopCapturer grabs
-  // it. The base class's best-effort 2-rAF flush does NOT wait for the draw to complete, which is why
-  // three message-ordering fixes (v0.9.56/58/59) never fixed the blank-chord SAVE. Mirrors the
-  // PLOT/FFT/BITMAP renderChain pattern. [MIDI lit-chord-not-captured: SAVE must await the draw]
-  private renderChain: Promise<void> = Promise.resolve();
-
   constructor(ctx: Context, displaySpec: MidiDisplaySpec, windowId: string = `midi-${Date.now()}`) {
     super(ctx, windowId, 'midi');
 
@@ -504,15 +495,14 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
-   * Serialize a keyboard render through renderChain so SAVE can await the in-flight/queued draw
-   * before capturing. Call this instead of drawKeyboard() fire-and-forget. Returns the chain tail.
-   * [MIDI lit-chord-not-captured: SAVE must await the draw]
+   * Funnel every keyboard render through the inherited renderChain so a SAVE awaits the in-flight
+   * draw before capturing. drawKeyboard() is a SINGLE-SHOT executeJavaScript that redraws the whole
+   * (idempotent) keyboard state, so we issue it EAGERLY and trackRender() its promise — awaiting the
+   * latest draw implies any earlier chord-note draws already landed (FIFO). The base SAVE methods
+   * await renderChain via flushBeforeCapture(); MIDI no longer overrides them. [#49]
    */
-  private flushDraw(clear: boolean): Promise<void> {
-    this.renderChain = this.renderChain.then(() => this.drawKeyboard(clear)).catch((error) => {
-      this.logMessage(`MIDI draw failed: ${error}`);
-    });
-    return this.renderChain;
+  private flushDraw(clear: boolean): void {
+    this.trackRender(this.drawKeyboard(clear));
   }
 
   /**
@@ -968,33 +958,9 @@ export class DebugMidiWindow extends DebugWindowBase {
     // intentionally empty — MIDI ignores UPDATE
   }
 
-  /**
-   * SAVE / SAVE WINDOW capture the keyboard canvas; MIDI renders the keyboard ASYNCHRONOUSLY (each
-   * note event issues an executeJavaScript offscreen→visible draw). The in-flight/queued render must
-   * FINISH before the capture or the saved image misses the just-played notes — e.g. a held chord's
-   * velocity bars. Await the render chain, then defer to the base capture. This is the fix the three
-   * message-ordering attempts (v0.9.56/58/59) lacked; mirrors PLOT/FFT/BITMAP. [SAVE must await draw]
-   */
-  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
-    await this.renderChain;
-    await super.saveWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
-    await this.renderChain;
-    await super.saveDesktopWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopCoordinatesToBMPFilename(
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    filename: string
-  ): Promise<void> {
-    await this.renderChain;
-    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
-  }
+  // SAVE / SAVE WINDOW capture is handled by the base class, which awaits renderChain via
+  // flushBeforeCapture() — MIDI funnels its draws through flushDraw()→trackRender(), so the held
+  // chord's velocity bars are guaranteed on the canvas before capture. No override needed. [#49]
 
   /**
    * Clean up resources when window is closed

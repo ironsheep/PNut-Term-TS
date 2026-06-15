@@ -187,6 +187,13 @@ export abstract class DebugWindowBase extends EventEmitter {
   // [MIDI save-clobbered-by-following-message]
   private routerDispatchChain: Promise<void> = Promise.resolve();
 
+  // Tail of every renderer draw this window has issued. A SAVE awaits this (via flushBeforeCapture)
+  // so a capturePage/desktopCapturer grab never races an in-flight async draw — the bug class that
+  // produced the MIDI held-chord blank save and the BITMAP SPARSE black save. Every window funnels
+  // its draws through trackRender() (single-shot) or scheduleRender() (batched/multi-step) so this
+  // one field is the single source of "is the canvas done being drawn." [unified draw→save flow #49]
+  protected renderChain: Promise<void> = Promise.resolve();
+
   // Per-window input state variables for PC_KEY and PC_MOUSE commands
   // These match Pascal's per-window state management
   protected vKeyPress: number = 0; // Stores last keypress value for PC_KEY
@@ -1338,10 +1345,61 @@ export abstract class DebugWindowBase extends EventEmitter {
     return [isValieSpin2Number, spin2Value];
   }
 
+  // ----------------------------------------------------------------------
+  // Unified draw → SAVE flow [#49]
+  //
+  // The whole bug class (MIDI held-chord blank save, BITMAP SPARSE black save) is "SAVE captured
+  // before the window's async draw landed." These three primitives make every window share ONE
+  // mechanism: route draws through trackRender()/scheduleRender(), and the base SAVE methods await
+  // flushBeforeCapture() (→ renderChain) before grabbing pixels.
+
+  /**
+   * SINGLE-SHOT draws (one executeJavaScript per visible update: TERM char, SCOPE/LOGIC sample,
+   * SCOPE_XY/MIDI redraw). Issue the executeJavaScript EAGERLY at the call site (do NOT await it
+   * there) and pass its promise here. This REPLACES the chain tail rather than chaining: because
+   * executeJavaScript runs and resolves in FIFO order, awaiting only the latest draw implies every
+   * earlier-issued draw has already completed. O(1) memory and ZERO throughput cost — the hot path
+   * (e.g. TERM per-char at 2 Mbaud) is unchanged; we only record the promise so SAVE can await it.
+   */
+  protected trackRender(drawPromise: Promise<unknown>): void {
+    // Swallow rejections so a failed draw can't make a later `await this.renderChain` throw.
+    this.renderChain = drawPromise.then(
+      () => undefined,
+      () => undefined
+    );
+  }
+
+  /**
+   * MULTI-STEP / BATCHED renders (PLOT performUpdate across IPC turns, BITMAP pixel batch, SPECTRO
+   * column batch). The draw fn runs INSIDE the chain so SAVE awaits a COMPLETE render, never a
+   * half-issued one, and successive renders never overlap. Returns the chain tail so a caller may
+   * await a specific render. Use only for low-rate or already-coalesced renders (serializing
+   * issuance would throttle a per-char/per-sample hot path — use trackRender there instead).
+   */
+  protected scheduleRender(draw: () => Promise<void> | void): Promise<void> {
+    this.renderChain = this.renderChain
+      .then(() => draw())
+      .catch((error) => this.logMessageBase(`render failed: ${error}`));
+    return this.renderChain;
+  }
+
+  /**
+   * Called by every base SAVE method before it captures. Default: await the render chain (bounded by
+   * a timeout so a never-resolving draw on a torn-down window can't hang SAVE forever — mirrors
+   * flushRendererDraws). Windows that hold work in a private queue (BITMAP pendingPixels, SPECTRO
+   * columnBatch) OVERRIDE this to flush that queue onto the chain first, then `await super`.
+   */
+  protected async flushBeforeCapture(): Promise<void> {
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    await Promise.race([this.renderChain.catch(() => undefined), timeout]);
+  }
+
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
     if (!this._debugWindow) {
       return;
     }
+    // Wait for this window's own in-flight async draw to land before capturing. [#49]
+    await this.flushBeforeCapture();
     this.logMessage(`  -- writing canvas BMP to [${filename}]`);
     this.saveInProgress = true;
     try {
@@ -1382,6 +1440,8 @@ export abstract class DebugWindowBase extends EventEmitter {
    */
   protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
     if (this._debugWindow) {
+      // Wait for this window's own in-flight async draw to land before capturing. [#49]
+      await this.flushBeforeCapture();
       this.logMessage(`  -- writing desktop window BMP to [${filename}]`);
       this.saveInProgress = true;
 
@@ -1565,6 +1625,8 @@ export abstract class DebugWindowBase extends EventEmitter {
     height: number,
     filename: string
   ): Promise<void> {
+    // Wait for this window's own in-flight async draw to land before capturing. [#49]
+    await this.flushBeforeCapture();
     this.logMessage(
       `  -- writing desktop coordinates BMP to [${filename}] at (${left},${top}) size ${width}x${height}`
     );

@@ -169,7 +169,8 @@ export class DebugBitmapWindow extends DebugWindowBase {
   // ctx.fillRect per pixel (which was the dominant renderer cost).
   private pendingPixels: Array<{ x: number; y: number; rgb: number }> = [];
   private displayDirty: boolean = false;
-  private renderFlushChain: Promise<void> = Promise.resolve();
+  // Batched renders flow through the inherited renderChain (DebugWindowBase) via scheduleRender();
+  // the base SAVE awaits it through our flushBeforeCapture() override. [unified draw→save flow #49]
   private static readonly RENDER_FLUSH_MS = 16; // ~60 fps coalescing cadence
 
   // [#30 perf] GLOBAL render scheduler. Per-pixel cost is NOT the wall-clock gate (putImageData
@@ -179,7 +180,7 @@ export class DebugBitmapWindow extends DebugWindowBase {
   // reorder/jerk. ONE coordinated pass over ALL dirty windows in a STABLE order (creation order =
   // a,b,c,…), processed sequentially (each window awaited before the next) every ~RENDER_FLUSH_MS,
   // bounds the backlog to one pass and paints in order. Each window still flushes through its own
-  // renderFlushChain (shared with SAVE/UPDATE) so a window's batches never overlap.
+  // renderChain (shared with SAVE/UPDATE) so a window's batches never overlap.
   private static dirtyWindows: Set<DebugBitmapWindow> = new Set();
   private static renderTickTimer: ReturnType<typeof setTimeout> | null = null;
   private static renderPassRunning: boolean = false;
@@ -849,44 +850,19 @@ export class DebugBitmapWindow extends DebugWindowBase {
   }
 
   /**
-   * [#30] SAVE captures the on-screen canvas/window, so any pixels still queued by the
-   * coalescing render timer must be flushed (and the display repainted) BEFORE the capture,
-   * or the saved image would be missing the most-recent pixels. These overrides force a
-   * synchronous flush, then defer to the base capture implementation.
+   * [#30/#49] SAVE captures the on-screen canvas/window, so any pixels still queued by the
+   * coalescing render timer must be flushed (and the display repainted) BEFORE the capture, or the
+   * saved image would be missing the most-recent pixels. Normal mode: force a final batch flush +
+   * repaint onto the chain. Sparse mode: the per-dot draws are already on the chain (scheduleRender),
+   * so just await it. Then defer to the base, which awaits renderChain (with its timeout guard).
+   * The base SAVE methods call this; BITMAP no longer overrides them. [unified draw→save flow #49]
    */
-  protected async saveWindowToBMPFilename(filename: string): Promise<void> {
-    await this.flushQueuedRenderForCapture();
-    await super.saveWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
-    await this.flushQueuedRenderForCapture();
-    await super.saveDesktopWindowToBMPFilename(filename);
-  }
-
-  protected async saveDesktopCoordinatesToBMPFilename(
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    filename: string
-  ): Promise<void> {
-    await this.flushQueuedRenderForCapture();
-    await super.saveDesktopCoordinatesToBMPFilename(left, top, width, height, filename);
-  }
-
-  /** [#30] Force-draw queued pixels and repaint the display before a SAVE capture. */
-  private async flushQueuedRenderForCapture(): Promise<void> {
-    if (this.state.sparseMode) {
-      // SPARSE draws straight to the display canvas via per-dot executeJavaScript serialized through
-      // renderFlushChain. Those draws are issued during data processing but complete asynchronously,
-      // so the SAVE must AWAIT the chain or it captures a black canvas before the dots land.
-      // [BITMAP SPARSE save-before-draw]
-      await this.renderFlushChain;
-      return;
+  protected async flushBeforeCapture(): Promise<void> {
+    if (!this.state.sparseMode) {
+      this.displayDirty = true;
+      await this.flushRenderQueue();
     }
-    this.displayDirty = true;
-    await this.flushRenderQueue();
+    await super.flushBeforeCapture();
   }
 
   /**
@@ -1507,15 +1483,12 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
                 }
               }
             `;
-            // Serialize the sparse-dot draw through renderFlushChain (NOT fire-and-forget) so a
-            // SAVE can await it before capturing. Sparse mode draws straight to the display canvas
-            // and bypasses the pendingPixels batch, so without this the per-dot executeJavaScript
-            // was un-awaited and a SAVE's capturePage/desktopCapturer grabbed a BLACK canvas before
-            // any dot landed. [BITMAP SPARSE save-before-draw — same class as MIDI lit-chord]
-            this.renderFlushChain = this.renderFlushChain
-              .then(() => this.debugWindow?.webContents.executeJavaScript(sparseCode))
-              .then(() => undefined)
-              .catch((err) => this.logMessage(`ERROR plotting sparse dot: ${err}`));
+            // Serialize the sparse-dot draw through the inherited renderChain (NOT fire-and-forget)
+            // so a SAVE awaits it before capturing. Sparse mode draws straight to the display canvas
+            // and bypasses the pendingPixels batch, so without this the per-dot executeJavaScript was
+            // un-awaited and a SAVE's capturePage/desktopCapturer grabbed a BLACK canvas before any
+            // dot landed. [BITMAP SPARSE save-before-draw — same class as MIDI lit-chord, #49]
+            this.scheduleRender(() => this.debugWindow?.webContents.executeJavaScript(sparseCode));
           } else {
             // NORMAL MODE: Collect pixels for batched rendering to offscreen bitmap
             // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]
@@ -1580,14 +1553,13 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
   /**
    * [#30] Coalesced render flush. Drains the accumulated pixel queue into a single
    * plotPixelBatch IPC, then refreshes the display if a rate cycle marked it dirty.
-   * All flushes are serialized through renderFlushChain so batches never overlap and
+   * All flushes are serialized through the inherited renderChain so batches never overlap and
    * always reach the renderer in order. Returns a promise that resolves when THIS
    * flush (and any already queued ahead of it) has completed — callers that must see a
-   * consistent offscreen (SAVE) can await it.
+   * consistent offscreen (SAVE) can await it. [#49]
    */
   private flushRenderQueue(): Promise<void> {
-    this.renderFlushChain = this.renderFlushChain.then(() => this.doRenderFlush());
-    return this.renderFlushChain;
+    return this.scheduleRender(() => this.doRenderFlush());
   }
 
   private async doRenderFlush(): Promise<void> {
