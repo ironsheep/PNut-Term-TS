@@ -3874,4 +3874,15 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
   protected getCanvasId(): string {
     return 'plot-area'; // Plot window uses 'plot-area' as the canvas ID
   }
+
+  /**
+   * Capture SAVE pixels from the plot canvas BACKING STORE (toDataURL) instead of capturePage.
+   * PLOT draws 1px traces; capturePage returns a bilinearly-SMOOTHED composite (the canvas displayed
+   * scaled), which turned the thin grey ctl trace into a heavy ~28×-too-dense band with a grey halo
+   * (fig-05). Reading the native-resolution backing store keeps the traces crisp and 1px, matching
+   * the PNut reference. [#49 capture readback — applies to PLOT's thin-line traces]
+   */
+  protected getCaptureCanvasId(): string | null {
+    return 'plot-area';
+  }
 }

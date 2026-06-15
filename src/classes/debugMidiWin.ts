@@ -958,15 +958,26 @@ export class DebugMidiWindow extends DebugWindowBase {
     // intentionally empty — MIDI ignores UPDATE
   }
 
-  // SAVE / SAVE WINDOW capture is handled by the base class, which awaits renderChain via
-  // flushBeforeCapture() — MIDI funnels its draws through flushDraw()→trackRender(), so the held
-  // chord's velocity bars are guaranteed on the canvas before capture. No override needed. [#49]
+  /**
+   * Force a fresh redraw of the CURRENT keyboard state immediately before SAVE captures, and AWAIT it.
+   *
+   * GROUND TRUTH (v0.9.63 [SAVE-READBACK] diagnostics): the canvas readback works perfectly — the
+   * problem was that the canvas had NO velocity bars at capture time even though the held chord is
+   * visible live. Two mechanisms produce that, and this guards against BOTH:
+   *   (a) the note-off RELEASE that arrives in the same serial chunk as the SAVE clears the bars, or
+   *   (b) the original note-on draw was deferred and lands after the capture.
+   * `this.midiVelocity[]` still holds the held chord here (processMidiByte set it, and the SAVE is
+   * serialized BEFORE the release on routerDispatchChain), so re-rendering it now — synchronously and
+   * awaited — puts the bars on the canvas at the instant of capture, regardless of (a)/(b).
+   * [#49 MIDI lit-chord: redraw current state at capture]
+   */
+  protected async flushBeforeCapture(): Promise<void> {
+    await this.drawKeyboard(false);
+    await super.flushBeforeCapture();
+  }
 
   /**
-   * Read SAVE pixels from the keyboard canvas BACKING STORE (toDataURL) instead of capturePage. The
-   * held chord IS drawn to this canvas and visible on screen, but capturePage returns a stale
-   * composited frame for the quiescent window (the keyboard without the bars) — the real reason five
-   * timing/await fixes never produced a lit-chord BMP. [#49 capture readback]
+   * Read SAVE pixels from the keyboard canvas BACKING STORE (toDataURL) — see captureCanvasAsPNG.
    */
   protected getCaptureCanvasId(): string | null {
     return 'midi-canvas';

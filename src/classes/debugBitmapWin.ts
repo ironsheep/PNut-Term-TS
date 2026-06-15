@@ -1849,8 +1849,12 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage('* Bitmap window will show...');
       this.debugWindow?.show();
-      // Register with WindowRouter when window is ready
-      this.registerWithRouter();
+      // Register for message DELIVERY but do NOT mark ready yet: ready-to-show fires BEFORE
+      // did-finish-load, so the bitmap canvas element does not exist yet. Marking ready here let the
+      // router drain streamed pixels/SPARSE dots against a missing canvas (getElementById → null →
+      // the draw is a no-op) — which dropped all but the last SPARSE dot from fig-12. Mark ready from
+      // did-finish-load instead, once the canvas exists. [#49 BITMAP premature-ready dot loss]
+      this.registerWithRouter(false);
     });
 
     this.debugWindow.webContents.once('did-finish-load', () => {
@@ -1954,6 +1958,10 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
         .catch((error) => {
           this.logMessage(`Failed to enable mouse coordinate tracking: ${error}`);
         });
+
+      // Mark the window READY only now that the page (and the bitmap canvas element) has loaded, so
+      // the router drains buffered pixels/SPARSE dots onto an existing canvas. [#49 BITMAP premature-ready]
+      this.onWindowReady();
     });
 
     this.debugWindow.on('closed', () => {
