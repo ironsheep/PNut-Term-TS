@@ -714,8 +714,11 @@ export abstract class DebugWindowBase extends EventEmitter {
       window.webContents.setMaxListeners(20);
 
       // Add window drag position tracking (matches Pascal FormMove behavior)
-      // Skip for windows that don't support drag: COG, LOGGER, DEBUGGER
-      if (this.windowType !== 'cog' && this.windowType !== 'logger' && this.windowType !== 'debugger') {
+      // Skip for windows that don't support drag: COG, LOGGER, DEBUGGER.
+      // Compare case-insensitively — the COG window registers its type as 'COG' (uppercase),
+      // which previously slipped past a lowercase-only check and got drag-title unintentionally.
+      const wt = this.windowType.toLowerCase();
+      if (wt !== 'cog' && wt !== 'logger' && wt !== 'debugger') {
         // Initialize caption tracking (matches Pascal CaptionStr)
         this.captionStr = this.windowTitle;
 
