@@ -946,7 +946,7 @@ describe('DebugWindowBase', () => {
       expect(mockWindow.close).toHaveBeenCalled();
     });
 
-    it('should handle compound commands (PLOT pattern)', () => {
+    it('should handle compound commands (PLOT pattern)', async () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
       testWindow['onWindowReady']();
@@ -954,12 +954,14 @@ describe('DebugWindowBase', () => {
       mockWindow.setSize = jest.fn();
       mockWindow.setPosition = jest.fn();
 
-      // Simulate compound command like PLOT uses
-      testWindow.updateContent(['CLEAR']);
-      testWindow.updateContent(['SIZE', '640', '480']);
-      testWindow.updateContent(['POS', '50', '50']);
-      testWindow.updateContent(['TITLE', 'Compound', 'Test']);
-      testWindow.updateContent(['UPDATE']);
+      // Simulate compound command like PLOT uses. updateContent now single-flight serializes per
+      // window (so an in-flight SAVE can't be clobbered by a following message), so back-to-back
+      // ready updates complete in order asynchronously — await each. [MIDI save-clobber]
+      await testWindow.updateContent(['CLEAR']);
+      await testWindow.updateContent(['SIZE', '640', '480']);
+      await testWindow.updateContent(['POS', '50', '50']);
+      await testWindow.updateContent(['TITLE', 'Compound', 'Test']);
+      await testWindow.updateContent(['UPDATE']);
 
       // Verify all commands were processed
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-clear', undefined);
@@ -1187,23 +1189,28 @@ describe('DebugWindowBase', () => {
   });
 
   describe('Performance and Memory Management', () => {
-    it('should handle rapid command sequences', () => {
+    it('should handle rapid command sequences', async () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
       testWindow['onWindowReady']();
 
       const startTime = Date.now();
 
-      // Send many commands rapidly
+      // Send many commands rapidly. Dispatch is still synchronous and cheap (single-flight just
+      // chains the work); processing now completes asynchronously and in order. Await the LAST
+      // promise — serialization guarantees every prior command finished before it resolves.
+      let last: Promise<void> = Promise.resolve();
       for (let i = 0; i < 1000; i++) {
-        testWindow.updateContent(['CLEAR']);
-        testWindow.updateContent(['UPDATE']);
+        last = testWindow.updateContent(['CLEAR']);
+        last = testWindow.updateContent(['UPDATE']);
       }
 
       const endTime = Date.now();
 
-      // Should complete quickly (< 100ms)
+      // Synchronous dispatch loop should complete quickly (< 100ms)
       expect(endTime - startTime).toBeLessThan(100);
+
+      await last;
 
       // All commands should be sent
       expect(mockWindow.webContents.send).toHaveBeenCalledTimes(2000);
@@ -1230,7 +1237,7 @@ describe('DebugWindowBase', () => {
   });
 
   describe('PLOT Window Integration Pattern', () => {
-    it('should support PLOT-style initialization sequence', () => {
+    it('should support PLOT-style initialization sequence', async () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
 
@@ -1240,15 +1247,15 @@ describe('DebugWindowBase', () => {
       // PLOT window initialization pattern
       testWindow['onWindowReady']();
 
-      // Configure window
-      testWindow.updateContent(['SIZE', '600', '650']);
-      testWindow.updateContent(['TITLE', 'PLOT', 'Test']);
-      testWindow.updateContent(['UPDATE']); // Enable double buffering
+      // Configure window — await each (updateContent single-flight serializes ready updates). [MIDI save-clobber]
+      await testWindow.updateContent(['SIZE', '600', '650']);
+      await testWindow.updateContent(['TITLE', 'PLOT', 'Test']);
+      await testWindow.updateContent(['UPDATE']); // Enable double buffering
 
       // Drawing commands would go here
-      testWindow.updateContent(['CLEAR']);
+      await testWindow.updateContent(['CLEAR']);
       // ... more drawing ...
-      testWindow.updateContent(['UPDATE']); // Flip buffer
+      await testWindow.updateContent(['UPDATE']); // Flip buffer
 
       // Verify initialization sequence
       expect(mockWindow.setSize).toHaveBeenCalledWith(600, 650);
@@ -1257,17 +1264,17 @@ describe('DebugWindowBase', () => {
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-update', undefined);
     });
 
-    it('should handle PLOT coordinate visibility commands', () => {
+    it('should handle PLOT coordinate visibility commands', async () => {
       const mockWindow = new BrowserWindow();
       testWindow['debugWindow'] = mockWindow;
       testWindow['onWindowReady']();
 
-      // Hide coordinates
-      testWindow.updateContent(['HIDEXY']);
+      // Hide coordinates (await — single-flight serializes ready updates). [MIDI save-clobber]
+      await testWindow.updateContent(['HIDEXY']);
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-hidexy', undefined);
 
       // Show coordinates
-      testWindow.updateContent(['SHOWXY']);
+      await testWindow.updateContent(['SHOWXY']);
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('debug-showxy', undefined);
     });
 

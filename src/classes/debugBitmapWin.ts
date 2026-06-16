@@ -1492,13 +1492,26 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
                   ctx.fill();
                 }
               }
+              window.__sparseN = (window.__sparseN || 0) + 1;
+              JSON.stringify({ n: window.__sparseN, found: !!canvas, w: canvas ? canvas.width : 0, h: canvas ? canvas.height : 0 });
             `;
             // Serialize the sparse-dot draw through the inherited renderChain (NOT fire-and-forget)
             // so a SAVE awaits it before capturing. Sparse mode draws straight to the display canvas
             // and bypasses the pendingPixels batch, so without this the per-dot executeJavaScript was
             // un-awaited and a SAVE's capturePage/desktopCapturer grabbed a BLACK canvas before any
             // dot landed. [BITMAP SPARSE save-before-draw — same class as MIDI lit-chord, #49]
-            this.scheduleRender(() => this.debugWindow?.webContents.executeJavaScript(sparseCode));
+            //
+            // [BITMAP-DIAG #49] TEMPORARY unconditional main-process log — fig-12 renders only 1 of 120
+            // SPARSE dots and static analysis cleared parsing/position/queue/wipe; this confirms at
+            // RUNTIME how many dots actually draw, whether the canvas exists at draw time, its size, and
+            // the grid position of each. REMOVE once the dot loss is root-caused.
+            const diagPos = `(${pos.x},${pos.y})`;
+            const diagOuter = `(${outerX},${outerY})`;
+            this.scheduleRender(() =>
+              (this.debugWindow?.webContents.executeJavaScript(sparseCode) ?? Promise.resolve('no-window'))
+                .then((r) => console.log(`[BITMAP-DIAG] sparse pos${diagPos} outer${diagOuter} -> ${r}`))
+                .catch((e) => console.log(`[BITMAP-DIAG] sparse pos${diagPos} FAILED: ${e}`))
+            );
           } else {
             // NORMAL MODE: Collect pixels for batched rendering to offscreen bitmap
             // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]

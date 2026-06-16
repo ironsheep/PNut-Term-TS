@@ -189,15 +189,16 @@ describe('LoggerWindow', () => {
       jest.useRealTimers();
     });
     
-    it('should batch messages for rendering', () => {
+    it('should batch messages for rendering', async () => {
       // Create a debug window
       debugLogger['_debugWindow'] = mockBrowserWindow;
-      
-      // Send multiple messages
+
+      // Send multiple messages. updateContent single-flight serializes per window (so an in-flight
+      // SAVE can't be clobbered), so await each enqueue completes before asserting. [MIDI save-clobber]
       for (let i = 0; i < 10; i++) {
-        debugLogger.updateContent(`Message ${i}`);
+        await debugLogger.updateContent(`Message ${i}`);
       }
-      
+
       // Should be queued
       expect(debugLogger['renderQueue'].length).toBe(10);
       

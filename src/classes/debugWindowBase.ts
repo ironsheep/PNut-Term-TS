@@ -187,6 +187,20 @@ export abstract class DebugWindowBase extends EventEmitter {
   // [MIDI save-clobbered-by-following-message]
   private routerDispatchChain: Promise<void> = Promise.resolve();
 
+  // Serializes EVERY content update for this window, regardless of routing path. routerDispatchChain
+  // (above) only covers the handler path (handleRouterMessage). But runtime backtick-UPDATE commands
+  // — note-on/off, SAVE, pixel feeds — are dispatched by the WindowRouter via
+  // routeBacktickCommand → updateContent() DIRECTLY (windowRouter.ts), fire-and-forget, BYPASSING
+  // handleRouterMessage. So the MIDI held-chord SAVE was still clobbered: `save` started an async
+  // capture and the note-off `release` that arrived 1ms later ran updateContent CONCURRENTLY, clearing
+  // the velocity bars before the capture sampled the canvas. updateContent is the single chokepoint
+  // BOTH paths share, so the completion-ordering guarantee must live HERE. [MIDI save-clobber: real path]
+  private updateContentChain: Promise<void> = Promise.resolve();
+  // Count of updateContent calls started but not finished (in-flight + queued). 0 ⇒ idle, so the next
+  // update may start SYNCHRONOUSLY (preserving immediate-effect); > 0 ⇒ an update is in flight (e.g. a
+  // SAVE awaiting capture) so the next update chains behind the backlog. [MIDI save-clobber: single-flight]
+  private updateContentPending: number = 0;
+
   // Tail of every renderer draw this window has issued. A SAVE awaits this (via flushBeforeCapture)
   // so a capturePage/desktopCapturer grab never races an in-flight async draw — the bug class that
   // produced the MIDI held-chord blank save and the BITMAP SPARSE black save. Every window funnels
@@ -543,6 +557,38 @@ export abstract class DebugWindowBase extends EventEmitter {
    * IMPORTANT: Now async to maintain message ordering for LAYER commands.
    */
   async updateContent(lineParts: string[] | any): Promise<void> {
+    // SINGLE-FLIGHT serialization. The WindowRouter dispatches updateContent fire-and-forget (via
+    // routeBacktickCommand), so without ordering a note-off release runs CONCURRENTLY with an
+    // in-flight SAVE and clears the held-chord bars before the capture samples them. [MIDI clobber]
+    //
+    // When idle (nothing in flight) we start processing in THIS turn so the synchronous prefix
+    // (parse / issue draw / webContents.send) takes effect immediately — preserving the long-standing
+    // immediate-effect contract callers and tests rely on. While any update is in flight we instead
+    // CHAIN, so message N+1 cannot begin until N has FULLY completed (including a SAVE's async
+    // capture). updateContentPending stays > 0 for the whole backlog so a late arrival can never
+    // jump ahead of queued messages (no reordering).
+    // Not ready: enqueue synchronously (drained in order by onWindowReady). Nothing is in flight yet,
+    // so there is no SAVE to clobber and serialization would only break burst-enqueue ordering.
+    if (!this.isWindowReady) {
+      return this.dispatchContentUpdate(lineParts);
+    }
+    let run: Promise<void>;
+    if (this.updateContentPending === 0) {
+      this.updateContentPending++;
+      run = this.dispatchContentUpdate(lineParts);
+    } else {
+      this.updateContentPending++;
+      run = this.updateContentChain.then(() => this.dispatchContentUpdate(lineParts));
+    }
+    // Keep the chain alive even if this update rejects, so one failure can't break ordering for every
+    // subsequent message; the original `run` still surfaces the rejection to its caller.
+    this.updateContentChain = run.catch(() => undefined).finally(() => {
+      this.updateContentPending--;
+    });
+    return run;
+  }
+
+  private async dispatchContentUpdate(lineParts: string[] | any): Promise<void> {
     if (this.isWindowReady) {
       // Window is ready, process immediately and await for proper ordering.
       // The router dispatches updateContent fire-and-forget (windowRouter routes

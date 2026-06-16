@@ -869,15 +869,17 @@ describe('DebugTermWindow', () => {
       expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('fillRect'));
     });
 
-    it('should handle multiple character rendering in sequence', () => {
+    it('should handle multiple character rendering in sequence', async () => {
       const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
-      
-      // Write multiple characters
-      debugTermWindow.updateContent(["'Hello World'"]);
-      
+
+      // Write multiple characters. updateContent now single-flight serializes per window (so an
+      // in-flight SAVE can't be clobbered), so back-to-back ready updates complete asynchronously —
+      // await each. [MIDI save-clobber]
+      await debugTermWindow.updateContent(["'Hello World'"]);
+
       // Force update to render
-      debugTermWindow.updateContent(['UPDATE']);
-      
+      await debugTermWindow.updateContent(['UPDATE']);
+
       // Should have multiple render calls
       expect(executeJavaScript).toHaveBeenCalled();
     });
@@ -1073,21 +1075,22 @@ describe('DebugTermWindow', () => {
       expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(`fillText('A', 0, ${expectedBaseline})`));
     });
 
-    it('should handle extended ASCII characters', () => {
+    it('should handle extended ASCII characters', async () => {
       const executeJavaScript = mockBrowserWindowInstances[0].webContents.executeJavaScript;
-      
+
       // Clear any previous calls
       executeJavaScript.mockClear();
-      
-      // Write extended ASCII character (128-255 range)
-      debugTermWindow.updateContent(['128']);
-      
+
+      // Write extended ASCII character (128-255 range). updateContent single-flight serializes ready
+      // updates, so await each. [MIDI save-clobber]
+      await debugTermWindow.updateContent(['128']);
+
       // updateContent processes the command but rendering happens in updateTermDisplay
       // which only executes in UPDATE mode or when deferred updates are flushed
-      
+
       // Force an update to trigger rendering
-      debugTermWindow.updateContent(['UPDATE']);
-      
+      await debugTermWindow.updateContent(['UPDATE']);
+
       // Should have rendered something
       expect(executeJavaScript).toHaveBeenCalled();
       // Cursor should have advanced
