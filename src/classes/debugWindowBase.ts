@@ -1497,29 +1497,14 @@ export abstract class DebugWindowBase extends EventEmitter {
       this.logMessage(`  -- writing desktop window BMP to [${filename}]`);
       this.saveInProgress = true;
 
-      // Canvas-content windows: the desktop/on-screen grab misses a quiescent canvas (same cause as
-      // capturePage staleness — see captureCanvasAsPNG). Read the canvas backing store directly so
-      // SAVE WINDOW shows the ACTUAL content. This is content-only (no native chrome); for these
-      // windows correct content matters more than the window frame. [#49 capture readback]
-      if (this.getCaptureCanvasId()) {
-        const canvasBuffer = await this.captureWindowAsPNG(this._debugWindow);
-        if (canvasBuffer.length > 0) {
-          try {
-            const bmpBuffer = await this.convertPNGtoBMP(canvasBuffer);
-            const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
-            fs.writeFileSync(outputFSpec, bmpBuffer);
-            this.logMessageBase(`- Window BMP image [${outputFSpec}] saved (canvas readback) successfully`);
-            this.context.logger.progressMsg(`File written [${outputFSpec}]`);
-          } catch (error) {
-            console.error('Win: ERROR: saving window BMP (canvas readback):', error);
-            this.logMessageBase(`SAVE WINDOW: ERROR writing BMP [${filename}]: ${error}`);
-          } finally {
-            this.saveInProgress = false;
-          }
-          return;
-        }
-      }
-
+      // SAVE WINDOW must include the native title-bar/chrome — Pascal SAVE WINDOW captures the
+      // on-screen window region (frame included). Go straight to the desktopCapturer path below: it
+      // raises + shows + focuses + settles the window and flushes renderer draws before grabbing, and
+      // falls back to the content-only canvas readback ONLY if the desktop grab is unavailable
+      // (e.g. macOS Screen Recording permission). A canvas-content readback was previously the PRIMARY
+      // here as a workaround for quiescent-canvas / capture-staleness — but that root cause is now
+      // fixed (single-flight updateContent + the onWindowReady drain serialization), so the on-screen
+      // content is reliable and we no longer strip the chrome to get it. [SAVE WINDOW chrome parity]
       try {
         // Bring the window to the FRONT of the OS z-order before the screen grab. desktopCapturer
         // captures whatever pixels are physically on screen at the window's region, so if another
