@@ -50,6 +50,10 @@ describe('DebugMidiWindow Integration', () => {
     };
 
     midiWindow = new DebugMidiWindow(mockContext, defaultMidiSpec);
+    // Mark ready so updateContent processes immediately (BrowserWindow lifecycle events that fire
+    // onWindowReady() don't run under the mock). MIDI now uses the base ready-queue + single-flight
+    // serialization instead of its own updateContent passthrough. [MIDI save-clobber]
+    (midiWindow as any).isWindowReady = true;
   });
 
   afterEach(() => {

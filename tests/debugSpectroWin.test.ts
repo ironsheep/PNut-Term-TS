@@ -461,6 +461,10 @@ describe('DebugSpectroWindow', () => {
     beforeEach(() => {
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', ['SPECTRO', 'TestSpectro']);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+      // Mark ready so updateContent processes immediately. SPECTRO no longer overrides updateContent,
+      // so it uses the base ready-queue; the BrowserWindow lifecycle events that fire onWindowReady()
+      // don't run under the mock, so set it directly. [save-clobber: base serialization]
+      (debugSpectroWindow as any).isWindowReady = true;
     });
 
     it('should accept updateContent calls without error', () => {
@@ -510,6 +514,9 @@ describe('DebugSpectroWindow', () => {
         'RATE', '64'
       ]);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+      // Mark ready so updateContent processes immediately (base ready-queue; lifecycle events that fire
+      // onWindowReady() don't run under the mock). [save-clobber: base serialization]
+      (debugSpectroWindow as any).isWindowReady = true;
     });
 
     it('should accumulate samples in circular buffer', async () => {
@@ -531,6 +538,7 @@ describe('DebugSpectroWindow', () => {
         'SAMPLES', '512'
       ]);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+      (debugSpectroWindow as any).isWindowReady = true; // base ready-queue; lifecycle event absent under mock
 
       // Fill more than BUFFER_SIZE samples
       for (let i = 0; i < 2100; i++) {
@@ -607,6 +615,7 @@ describe('DebugSpectroWindow', () => {
         'LUMA8X', 'GREEN'
       ]);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+      (debugSpectroWindow as any).isWindowReady = true; // base ready-queue; lifecycle event absent under mock
     });
 
     it('should invoke FFT draw once enough samples are collected', async () => {
@@ -1001,6 +1010,7 @@ describe('DebugSpectroWindow', () => {
       const lineParts = ['SPECTRO', 'TestSpectro', 'SAMPLES', '2048', '0', '236', 'RANGE', '1000', 'LUMA8X', 'GREEN'];
       const displaySpec = DebugSpectroWindow.createDisplaySpec('TestSpectro', lineParts);
       debugSpectroWindow = new DebugSpectroWindow(mockContext, displaySpec);
+      (debugSpectroWindow as any).isWindowReady = true; // base ready-queue; lifecycle event absent under mock
 
       // Spy on private performFFTAndDraw method to verify it's called
       const fftSpy = jest.spyOn(debugSpectroWindow as any, 'performFFTAndDraw');

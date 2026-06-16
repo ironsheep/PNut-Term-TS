@@ -2754,16 +2754,28 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     forceExecution: boolean = false,
     colorOverride?: string
   ): Promise<void> {
+    // [PLOT-DIAG #49] TEMPORARY unconditional main-process log — fig-05 grey ctl trace is a 28×-too-heavy
+    // band + green-tail miscolor; this records the ACTUAL from→to, color and path of the first ~60 LINE
+    // draws so a fan (stale `from`) vs a thickness/overdraw vs a color-state bug is distinguishable at
+    // runtime. REMOVE once root-caused.
+    const _n = ((this as any)._plotLineDiagN = ((this as any)._plotLineDiagN || 0) + 1);
+    const _diag = _n <= 60;
+
     if (!forceExecution && this.updateMode) {
+      if (_diag) console.log(`[PLOT-DIAG] #${_n} DEFER(updateMode) from(${fromX},${fromY})->(${x},${y}) color=${colorOverride ?? this.currFgColor} size=${lineSize}`);
       this.queueDeferredLine(fromX, fromY, x, y, lineSize, opacity, this.currFgColor);
       return;
     }
 
     const debugWindow = this.debugWindow;
-    if (!debugWindow || !this.shouldWriteToCanvas) return;
+    if (!debugWindow || !this.shouldWriteToCanvas) {
+      if (_diag) console.log(`[PLOT-DIAG] #${_n} SKIP(noWin/noWrite win=${!!debugWindow} write=${this.shouldWriteToCanvas}) from(${fromX},${fromY})->(${x},${y})`);
+      return;
+    }
 
     this.logMessage(`at drawLineToPlotFrom(${fromX}, ${fromY} to ${x}, ${y}, ${lineSize}, ${opacity})`);
     const fgColor: string = colorOverride ?? this.currFgColor;
+    if (_diag) console.log(`[PLOT-DIAG] #${_n} DRAW from(${fromX},${fromY})->(${x},${y}) color=${fgColor} size=${lineSize} op=${opacity}`);
 
     // Transform the target coordinates if in polar mode
     let targetX = x;

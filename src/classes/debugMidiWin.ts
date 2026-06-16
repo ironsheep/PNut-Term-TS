@@ -705,16 +705,16 @@ export class DebugMidiWindow extends DebugWindowBase {
   }
 
   /**
-   * Entry point for message processing from WindowRouter
-   * Called by router's updateContent(dataParts)
-   */
-  public async updateContent(lineParts: string[]): Promise<void> {
-    await this.processMessageImmediate(lineParts);
-  }
-
-  /**
    * Process MIDI data and commands. Awaits the async pipeline so callers that await
-   * updateContent() observe completed state (note draws, command effects). [9win §16]
+   * processMessageImmediate() observe completed state (note draws, command effects). [9win §16]
+   *
+   * IMPORTANT: do NOT override updateContent() here. The base updateContent() provides the
+   * single-flight per-window serialization that keeps a note-off RELEASE from clobbering an
+   * in-flight held-chord SAVE (the fig-11 blank-chord bug) AND the not-ready message queue. A
+   * passthrough override (the old `updateContent → processMessageImmediate`) silently bypassed both,
+   * so the SAVE and the release ran CONCURRENTLY and the capture sampled a bar-less canvas. The base
+   * funnels here via processMessageImmediate, so this override alone is the correct extension point.
+   * [MIDI save-clobber: override bypassed base serialization]
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     await this.processMessageAsync(lineParts);

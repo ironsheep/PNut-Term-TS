@@ -649,18 +649,16 @@ export class DebugSpectroWindow extends DebugWindowBase {
   }
 
   /**
-   * Entry point for message processing from WindowRouter
-   * Called by router's updateContent(dataParts)
-   */
-  public async updateContent(lineParts: string[]): Promise<void> {
-    await this.processMessageImmediate(lineParts);
-  }
-
-  /**
-   * Update SPECTRO window content with new data (synchronous wrapper for async operations)
+   * Update SPECTRO window content with new data (synchronous wrapper for async operations).
+   *
+   * IMPORTANT: do NOT override updateContent() here. The base updateContent() provides the
+   * single-flight per-window serialization referenced below PLUS the not-ready message queue; a
+   * passthrough `updateContent → processMessageImmediate` silently bypassed BOTH (so the serialization
+   * this comment relied on never actually ran). The base funnels here via processMessageImmediate.
+   * [save-clobber: override bypassed base serialization]
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
-    // AWAIT the async processing so updateContent (and the base's per-message routerDispatchChain
+    // AWAIT the async processing so updateContent (and the base's per-message single-flight
     // serialization) only resolves once this message's column draw has been ISSUED + tracked on
     // renderChain — a following SAVE then reliably awaits this column before capturing. [#49]
     await this.processMessageAsync(lineParts);

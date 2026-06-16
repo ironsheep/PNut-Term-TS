@@ -976,15 +976,13 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Entry point for message processing from WindowRouter
-   * Called by router's updateContent(dataParts)
-   */
-  public async updateContent(lineParts: string[]): Promise<void> {
-    await this.processMessageImmediate(lineParts);
-  }
-
-  /**
-   * Update FFT window content with new data (async implementation)
+   * Update FFT window content with new data (async implementation).
+   *
+   * IMPORTANT: do NOT override updateContent() here. The base updateContent() provides single-flight
+   * per-window serialization (so a following message can't clobber an in-flight SAVE capture) plus the
+   * not-ready message queue. A passthrough `updateContent → processMessageImmediate` silently bypassed
+   * BOTH. The base funnels here via processMessageImmediate, so this is the correct extension point.
+   * [save-clobber: override bypassed base serialization]
    */
   protected async processMessageImmediate(lineParts: string[]): Promise<void> {
     // Handle async operations and await them

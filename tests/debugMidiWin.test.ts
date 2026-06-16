@@ -48,6 +48,11 @@ describe('DebugMidiWindow', () => {
     });
     
     midiWindow = new DebugMidiWindow(mockContext, createTestMidiDisplaySpec());
+    // Mark ready so updateContent processes immediately. In production the window enqueues messages
+    // until its canvas-init onWindowReady() fires; the BrowserWindow lifecycle events that trigger
+    // that don't run under the mock, so set it directly. (MIDI no longer overrides updateContent, so
+    // it now uses the base ready-queue + single-flight serialization.) [MIDI save-clobber]
+    (midiWindow as any).isWindowReady = true;
   });
 
   afterEach(() => {
