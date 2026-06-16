@@ -845,7 +845,16 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // [#30] Drain any queued pixels into the offscreen first, then refresh. flushRenderQueue
     // also performs the updateCanvas when displayDirty, but call it explicitly here so an
     // UPDATE with no preceding rate cycle still repaints.
-    this.displayDirty = true;
+    //
+    // SPARSE EXCEPTION: SPARSE draws its bordered dots DIRECTLY to the visible canvas and never
+    // writes the offscreen buffer (which CLEAR/init left filled with the background colour). Requesting
+    // the offscreen→visible blit (updateCanvas StretchDraw) would paint that EMPTY/background offscreen
+    // OVER the dots and blank the frame — the fig-04 SPARSE+UPDATE black save. So mark dirty (→ blit)
+    // only for NON-sparse buffered mode; for sparse just flush the in-flight per-dot draws (already on
+    // renderChain) so a following SAVE captures them. [SPARSE+UPDATE blanks the frame]
+    if (!this.state.sparseMode) {
+      this.displayDirty = true;
+    }
     await this.flushRenderQueue();
   }
 
