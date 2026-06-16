@@ -1479,39 +1479,33 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
             // DOTSIZE so SmoothShape renders a filled ellipse, not a rounded rectangle.
             const innerW = this.state.dotSizeX - (this.state.dotSizeX >> 2);
             const innerH = this.state.dotSizeY - (this.state.dotSizeY >> 2);
+            // The whole body MUST be wrapped in an IIFE. webContents.executeJavaScript evaluates each
+            // call in the page's GLOBAL lexical scope, so a top-level `const canvas`/`const ctx` leaks
+            // as a global binding — and the NEXT sparse dot redeclaring them throws
+            // "Identifier 'canvas' has already been declared" (a SyntaxError surfaced as "Script failed
+            // to execute"). That dropped every SPARSE dot after the first (1 of 120 on fig-12). Function
+            // scope inside the IIFE makes each dot's declarations local. [BITMAP SPARSE duplicate-const;
+            // same class as the MIDI chord duplicate-const fix]
             const sparseCode = `
-              const canvas = document.getElementById('${this.bitmapCanvasId}');
-              if (canvas) {
+              (function() {
+                const canvas = document.getElementById('${this.bitmapCanvasId}');
+                if (!canvas) return;
                 const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.fillStyle = '${frameColor}';
-                  ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
-                  ctx.fillStyle = '${color}';
-                  ctx.beginPath();
-                  ctx.ellipse(${centerX}, ${centerY}, ${innerW / 2}, ${innerH / 2}, 0, 0, Math.PI * 2);
-                  ctx.fill();
-                }
-              }
-              window.__sparseN = (window.__sparseN || 0) + 1;
-              JSON.stringify({ n: window.__sparseN, found: !!canvas, w: canvas ? canvas.width : 0, h: canvas ? canvas.height : 0 });
+                if (!ctx) return;
+                ctx.fillStyle = '${frameColor}';
+                ctx.fillRect(${outerX}, ${outerY}, ${this.state.dotSizeX}, ${this.state.dotSizeY});
+                ctx.fillStyle = '${color}';
+                ctx.beginPath();
+                ctx.ellipse(${centerX}, ${centerY}, ${innerW / 2}, ${innerH / 2}, 0, 0, Math.PI * 2);
+                ctx.fill();
+              })()
             `;
             // Serialize the sparse-dot draw through the inherited renderChain (NOT fire-and-forget)
             // so a SAVE awaits it before capturing. Sparse mode draws straight to the display canvas
             // and bypasses the pendingPixels batch, so without this the per-dot executeJavaScript was
             // un-awaited and a SAVE's capturePage/desktopCapturer grabbed a BLACK canvas before any
             // dot landed. [BITMAP SPARSE save-before-draw — same class as MIDI lit-chord, #49]
-            //
-            // [BITMAP-DIAG #49] TEMPORARY unconditional main-process log — fig-12 renders only 1 of 120
-            // SPARSE dots and static analysis cleared parsing/position/queue/wipe; this confirms at
-            // RUNTIME how many dots actually draw, whether the canvas exists at draw time, its size, and
-            // the grid position of each. REMOVE once the dot loss is root-caused.
-            const diagPos = `(${pos.x},${pos.y})`;
-            const diagOuter = `(${outerX},${outerY})`;
-            this.scheduleRender(() =>
-              (this.debugWindow?.webContents.executeJavaScript(sparseCode) ?? Promise.resolve('no-window'))
-                .then((r) => console.log(`[BITMAP-DIAG] sparse pos${diagPos} outer${diagOuter} -> ${r}`))
-                .catch((e) => console.log(`[BITMAP-DIAG] sparse pos${diagPos} FAILED: ${e}`))
-            );
+            this.scheduleRender(() => this.debugWindow?.webContents.executeJavaScript(sparseCode));
           } else {
             // NORMAL MODE: Collect pixels for batched rendering to offscreen bitmap
             // Pascal: PlotPixel writes to BitmapLine[vPixelY][vPixelX]

@@ -399,6 +399,44 @@ describe('DebugBitmapWindow Integration Tests', () => {
       expect(mockTraceProcessor.step).toHaveBeenCalledTimes(4);
     });
 
+    it('wraps each sparse-dot draw in an IIFE so repeated executeJavaScript cannot redeclare const (fig-12 1-of-120 regression)', async () => {
+      // webContents.executeJavaScript evaluates every call in the page's GLOBAL lexical scope. A
+      // top-level `const canvas`/`const ctx` leaks as a global binding, so the SECOND dot redeclaring
+      // them throws "Identifier 'canvas' has already been declared" — which dropped every SPARSE dot
+      // after the first (fig-12 rendered 1 of 120). Each dot's draw MUST be function-scoped (IIFE).
+      window = new DebugBitmapWindow(
+        mockContext,
+        { ...createTestDisplaySpec(), dotSize: { x: 4, y: 4 }, sparseColor: 0, rate: 1 } as any,
+        'sparse-iife-id'
+      );
+      window['debugWindow'] = mockBrowserWindow;
+      (window as any).isWindowReady = true;
+
+      const tpInsts = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances;
+      const mockTraceProcessor = tpInsts[tpInsts.length - 1];
+      const ctInsts = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances;
+      const mockColorTranslator = ctInsts[ctInsts.length - 1];
+      (mockTraceProcessor.getPosition as jest.Mock).mockReturnValue({ x: 0, y: 0 });
+      (mockColorTranslator.translateColor as jest.Mock).mockReturnValue(0xff0000);
+      (PackedDataProcessor.unpackSamples as jest.Mock).mockReturnValue([255]);
+
+      const exec = mockBrowserWindow.webContents.executeJavaScript as jest.Mock;
+      exec.mockClear();
+
+      await window.updateContent(['255']);
+      await window.updateContent(['255']);
+
+      // The per-dot draw scripts are the ones that paint the dot (fillRect + ellipse).
+      const dotScripts = exec.mock.calls.map((c) => String(c[0])).filter((s) => s.includes('ellipse'));
+      expect(dotScripts.length).toBeGreaterThanOrEqual(2);
+      for (const s of dotScripts) {
+        // Function-scoped: the body opens with an IIFE, and `const canvas` lives INSIDE it (never at
+        // the top level where a second evaluation would redeclare it).
+        expect(s.trimStart()).toMatch(/^\(function\s*\(\s*\)\s*\{/);
+        expect(s.indexOf('(function')).toBeLessThan(s.indexOf('const canvas'));
+      }
+    });
+
     it('should plot all pixels in normal mode', async () => {
       const mockTraceProcessor = (TracePatternProcessor as jest.MockedClass<typeof TracePatternProcessor>).mock.instances[0];
       const mockColorTranslator = (ColorTranslator as jest.MockedClass<typeof ColorTranslator>).mock.instances[0];
