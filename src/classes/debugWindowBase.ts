@@ -805,13 +805,19 @@ export abstract class DebugWindowBase extends EventEmitter {
       // CRITICAL: Await each message to ensure LAYER commands complete before CROP/UPDATE
       const queuedMessages = this.messageQueue.dequeueAll();
 
+      // Drain through updateContent()'s single-flight chain — NOT processMessageImmediate directly.
+      // isWindowReady is already true above, so any LIVE message arriving during this drain takes the
+      // ready path; draining via the SAME chain makes those live messages queue BEHIND the drain
+      // instead of running CONCURRENTLY with it. The old direct-drain loop raced live single-flight
+      // processing: two async flows mutated the per-window cursor/state at once, which on PLOT drew a
+      // stray line from the trace start to mid-trace + interleaved the trace draws (the fig-05 heavy
+      // grey band). Firing synchronously here (no await between iterations) chains them in order before
+      // any live message can slip in; then we await the chain so queued work completes before return.
+      // [drain-vs-live race — PLOT trace fan]
       for (const message of queuedMessages) {
-        try {
-          await this.processMessageImmediate(message);
-        } catch (error) {
-          this.logMessageBase(`- Error processing queued message: ${error}`);
-        }
+        void this.updateContent(message);
       }
+      await this.updateContentChain;
 
       // Log stats if there were dropped messages
       if (stats.droppedCount > 0) {
