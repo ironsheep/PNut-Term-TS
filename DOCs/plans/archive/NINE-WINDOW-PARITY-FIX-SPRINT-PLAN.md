@@ -1,5 +1,11 @@
 # Nine-Window Debug-DISPLAY Parity — Fix Sprint Plan (Phase B)
 
+> **✅ CLOSED 2026-06-16 — CERTIFIED DONE.** All 20 tasks (§1–§18) shipped; §18
+> whole-app hardware pass complete (Stephen HW-tested all 9 windows). Implementation
+> built straight through from v0.9.27; the §18 HW defect-fix tail shipped through
+> v0.9.72. Closeout audit:
+> `DOCs/plans/archive/CLOSEOUT-2026-06-16-NINE-WINDOW-PARITY-FIX.md`.
+
 > **Type:** Sprint plan (ships code). Home: `DOCs/plans/`.
 > **Backing study:** `DOCs/investigations/NINE-WINDOW-PARITY-AUDIT-PHASE-A.md` (Phase A cold audit).
 > **Spec authority:** PNut **v55** `/pascal-source/P2_PNut_Public/DebugDisplayUnit.pas`;
