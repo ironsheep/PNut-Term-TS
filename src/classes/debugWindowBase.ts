@@ -661,6 +661,27 @@ export abstract class DebugWindowBase extends EventEmitter {
   }
 
   /**
+   * Await this window's single-flight message chain (updateContentChain) to drain, bounded by
+   * `timeoutMs`. A queued SAVE / SAVE WINDOW command lives on this chain BEFORE it becomes a tracked
+   * pendingOps entry, so a shutdown that only flushPending()s pendingOps could close the window before
+   * the queued command runs — dropping a slow desktop-grab SAVE WINDOW's file (observed on fig-04's
+   * _WDW). Call this BEFORE flushPending() during shutdown, from OUTSIDE the chain. Do NOT call it from
+   * a command handler that runs INSIDE the chain (e.g. CLOSE's flushPending()) or it self-deadlocks.
+   * [shutdown cuts off a queued SAVE WINDOW]
+   */
+  public async flushMessageChain(timeoutMs: number = 10000): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    });
+    try {
+      await Promise.race([this.updateContentChain.catch(() => undefined), timedOut]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Await all in-flight async ops (SAVEs) for this window, up to `timeoutMs`.
    * Returns true if everything drained, false if the timeout elapsed first
    * (in which case output may be incomplete). Best-effort: precious data is

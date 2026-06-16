@@ -7258,12 +7258,25 @@ export class MainWindow {
       }
     }
 
-    // Flush every debug window's in-flight SAVE(s) concurrently.
+    // Flush every debug window's in-flight SAVE(s) concurrently. Per window, drain the single-flight
+    // MESSAGE CHAIN first (flushMessageChain) so any SAVE / SAVE WINDOW command still QUEUED on the
+    // chain is dispatched + completed, THEN await the tracked in-flight ops (flushPending). Awaiting
+    // only pendingOps would miss a queued SAVE WINDOW and close the window before it runs — dropping
+    // its _WDW file (fig-04, after the desktopCapturer SAVE WINDOW became slow enough to lose the race
+    // with DEBUG_END_SESSION shutdown). [shutdown cuts off a queued SAVE WINDOW]
     const flushes: Promise<boolean>[] = [];
     for (const key in this.displays) {
       const display = this.displays[key];
       if (display && typeof display.flushPending === 'function') {
-        flushes.push(display.flushPending(timeoutMs).catch(() => false));
+        const chainDrain =
+          typeof display.flushMessageChain === 'function'
+            ? display.flushMessageChain(timeoutMs)
+            : Promise.resolve();
+        flushes.push(
+          chainDrain
+            .then(() => display.flushPending(timeoutMs))
+            .catch(() => false)
+        );
       }
     }
     if (flushes.length > 0) {
