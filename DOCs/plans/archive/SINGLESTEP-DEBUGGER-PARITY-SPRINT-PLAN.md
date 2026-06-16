@@ -1,5 +1,10 @@
 # SingleStep Debugger Parity — Sprint Plan
 
+> **✅ CLOSED 2026-06-16 — shipped v0.9.26.** All 9 tasks / 6 sections CERTIFIED DONE.
+> Closeout audit: `DOCs/plans/archive/CLOSEOUT-2026-06-16-SINGLESTEP-DEBUGGER-PARITY.md`.
+> Residual (non-blocking): manual P2 hardware functional test (owner: Stephen) +
+> small dead-code cleanup in `debugDebuggerWin.ts`. See closeout for details.
+
 > **Type:** Sprint plan (ship commitment), not a study.
 > **Goal:** Bring the single-step debugger to verified parity with the Pascal
 > original (`DebuggerUnit.pas`) across interaction, display, and disassembly,
