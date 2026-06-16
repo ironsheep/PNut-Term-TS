@@ -2516,7 +2516,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           window.plotCtx.fillRect(${xl}, ${yt}, ${width}, ${height});
         } else {
           window.plotCtx.strokeStyle = '${this.currFgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.lineWidth = ${lineSize};  // Shape outline: Pascal SmoothShape uses thick as FULL frame width (no radius halving), unlike LINE/DOT.
           window.plotCtx.strokeRect(${xl}, ${yt}, ${width}, ${height});
         }
 
@@ -2581,7 +2581,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           window.plotCtx.fill();
         } else {
           window.plotCtx.strokeStyle = '${this.currFgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.lineWidth = ${lineSize};  // Shape outline: Pascal SmoothShape uses thick as FULL frame width (no radius halving), unlike LINE/DOT.
           window.plotCtx.stroke();
         }
 
@@ -2633,7 +2633,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           window.plotCtx.fill();
         } else {
           window.plotCtx.strokeStyle = '${this.currFgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.lineWidth = ${lineSize};  // Shape outline: Pascal SmoothShape uses thick as FULL frame width (no radius halving), unlike LINE/DOT.
           window.plotCtx.stroke();
         }
 
@@ -2815,7 +2815,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         // Set line style
         window.plotCtx.strokeStyle = '${fgColor}';
-        window.plotCtx.lineWidth = ${lineSize};
+        window.plotCtx.lineWidth = ${lineSize / 2};  // LINE: Pascal SmoothLine radius = lineSize shl vPrecise SHR 1 (half width); Canvas lineWidth is full width. Matches SCOPE/FFT/LOGIC traces.
         window.plotCtx.lineCap = 'round';
         window.plotCtx.lineJoin = 'round';
 
@@ -3009,7 +3009,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           window.plotCtx.fill();
         } else {
           window.plotCtx.strokeStyle = '${fgColor}';
-          window.plotCtx.lineWidth = ${lineSize};
+          window.plotCtx.lineWidth = ${lineSize};  // Shape outline: Pascal SmoothShape uses thick as FULL frame width (no radius halving), unlike LINE/DOT.
           window.plotCtx.stroke();
         }
 

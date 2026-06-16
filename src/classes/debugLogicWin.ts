@@ -1602,8 +1602,13 @@ export class DebugLogicWindow extends DebugWindowBase {
       this.logMessage(`at drawChannelFromSamples(${canvasName}, w/#${samples.length}) sample(s)`);
 
       const canvasWidth: number = this.displaySpec.nbrSamples * this.displaySpec.spacing;
-      const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // Increased from Pascal's 62.5% to 75% for better visual impact
-      const drawHeight: number = canvasHeight - this.channelVInset * 2;
+      const canvasHeight: number = Math.round(this.displaySpec.font.charHeight * 0.75); // canvas backing per channel
+      // Pascal LOGIC_Draw amplitude = (13/16 - 3/16) * ChrHeight = 0.625 * ChrHeight (DebugDisplayUnit.pas:1121-1122).
+      // The prior (canvasHeight - 2*channelVInset = ~0.375*ChrHeight) was ~40% short, cramping the band so dense
+      // traces (e.g. the SPI clock burst) merged into a solid block. Use the Pascal amplitude, centered within the
+      // existing canvas backing (no window-layout / label-alignment change).
+      const drawHeight: number = Math.round(this.displaySpec.font.charHeight * 0.625);
+      const bandInset: number = Math.max(0, Math.round((canvasHeight - drawHeight) / 2));
       const channelColor: string = channelSpec.color;
       const spacing: number = this.displaySpec.spacing;
 
@@ -1617,10 +1622,10 @@ export class DebugLogicWindow extends DebugWindowBase {
 
         // Set line properties
         const lineColor = '${channelColor}';
-        const lineWidth = ${this.displaySpec.lineSize};
+        const lineWidth = ${this.displaySpec.lineSize / 2};  // Pascal SmoothLine uses vLineSize as a RADIUS (vLineSize shl 6 vs coords shl 8 = vLineSize/2 px width); HTML Canvas lineWidth is full width. Matches SCOPE/FFT.
         const spacing = ${spacing};
         const drawHeight = ${drawHeight};
-        const vInset = ${this.channelVInset};
+        const vInset = ${bandInset};
 
         ctx.strokeStyle = lineColor;
         ctx.lineWidth = lineWidth;
@@ -1717,12 +1722,13 @@ export class DebugLogicWindow extends DebugWindowBase {
       const bandTop = ${vInset};
       const bandBottom = ${canvasHeightTall - vInset};
 
-      ctx.lineWidth = ${this.displaySpec.lineSize};
       ctx.setLineDash([]);
       ctx.lineCap = 'square';
       ctx.lineJoin = 'miter';
 
-      // Dimmed top/bottom boundary lines of the band (Pascal LOGIC_Draw :1124-1129)
+      // Dimmed top/bottom boundary lines of the band (Pascal LOGIC_Draw :1124-1129).
+      // Pascal draws these with SmoothLine radius $80 (= 0.5px radius = 1px width).
+      ctx.lineWidth = 1;
       ctx.strokeStyle = '${dimmed}';
       ctx.beginPath();
       ctx.moveTo(0, bandTop); ctx.lineTo(${canvasWidth}, bandTop);
@@ -1734,6 +1740,7 @@ export class DebugLogicWindow extends DebugWindowBase {
       const norms = [${normValues.join(',')}];
       if (norms.length === 0) return;
       ctx.strokeStyle = '${channelColor}';
+      ctx.lineWidth = ${this.displaySpec.lineSize / 2};  // Pascal SmoothLine radius -> Canvas full-width diameter (vLineSize/2). Matches SCOPE/FFT.
       ctx.beginPath();
       for (let i = 0; i < norms.length; i++) {
         const x = (${canvasWidth} - (norms.length - i) * spacing);
