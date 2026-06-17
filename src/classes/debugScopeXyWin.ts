@@ -173,8 +173,12 @@ export class DebugScopeXyWindow extends DebugWindowBase {
     0x7f7f00 // clOlive   $7F7F00 (NOT 0x808000)
   ];
 
-  constructor(ctx: Context, displaySpec: ScopeXyDisplaySpec, windowId: string = `scopexy-${Date.now()}`) {
-    super(ctx, windowId, 'scopexy');
+  constructor(ctx: Context, displaySpec: ScopeXyDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `scopexy-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'scopexy');
     this.windowLogPrefix = 'CL-scopeXy';
 
     this.displaySpec = displaySpec;

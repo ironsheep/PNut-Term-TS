@@ -201,8 +201,12 @@ export class DebugScopeWindow extends DebugWindowBase {
     // }
   }
 
-  constructor(ctx: Context, displaySpec: ScopeDisplaySpec, windowId: string = `scope-${Date.now()}`) {
-    super(ctx, windowId, 'scope');
+  constructor(ctx: Context, displaySpec: ScopeDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `scope-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'scope');
     this.windowLogPrefix = 'scoW';
     // record our Debug Scope Window Spec
     this.displaySpec = displaySpec;

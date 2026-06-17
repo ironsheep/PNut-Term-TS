@@ -167,8 +167,12 @@ export class DebugSpectroWindow extends DebugWindowBase {
   private canvasWidth: number = 0;
   private canvasHeight: number = 0;
 
-  constructor(context: Context, displaySpec: SpectroDisplaySpec, windowId: string = `spectro-${Date.now()}`) {
-    super(context, windowId, 'spectro');
+  constructor(context: Context, displaySpec: SpectroDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `spectro-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(context, actualWindowId, 'spectro');
     this.windowLogPrefix = 'spectroW';
 
     // Enable logging for SPECTRO window (both console and constructor logging)

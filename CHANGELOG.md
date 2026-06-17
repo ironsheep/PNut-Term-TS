@@ -5,6 +5,21 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.73] - 2026-06-17
+
+Bug-fix release: two graphical debug windows of the same type created at the same instant no longer collide.
+
+### Fixed
+
+- **Two windows of the same type (e.g. two SCOPE windows) created in the same instant could fail to
+  register.** Each graphical debug window (SCOPE, FFT, MIDI, SCOPE_XY, SPECTRO, PLOT, BITMAP) derived
+  its internal ID from a millisecond timestamp. When a program created two windows of the same type
+  back-to-back, they could land in the same millisecond and receive an identical ID, so the second
+  one's handler registration failed with "Window … is already registered". These windows now use the
+  user-assigned display name as their ID — already guaranteed unique and the value used for message
+  routing — matching what the TERM and LOGIC windows already do. (Message routing itself was never
+  affected, since it keys on the display name.)
+
 ## [0.9.59] - 2026-06-14
 
 Bug-fix release: the MIDI saved image now actually shows the held chord (the real fix — see below).

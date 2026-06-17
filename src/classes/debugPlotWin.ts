@@ -229,8 +229,12 @@ export class DebugPlotWindow extends DebugWindowBase {
   private keyBuffer: number[] = []; // Legacy - not used with base class implementation
   private currentMouseState: number = 0; // Legacy - use base class mouse state variables instead
 
-  constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId: string = `plot-${Date.now()}`) {
-    super(ctx, windowId, 'plot');
+  constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `plot-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'plot');
     this.windowLogPrefix = 'pltW';
     DebugColor.setDefaultBrightness(8); // Default to full saturated color (brightness 8 in RGBI8X), not pale (15)
 

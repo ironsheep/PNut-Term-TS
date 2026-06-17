@@ -581,8 +581,12 @@ export class DebugBitmapWindow extends DebugWindowBase {
     return [isValid, displaySpec];
   }
 
-  constructor(ctx: Context, displaySpec: BitmapDisplaySpec, windowId: string = `bitmap-${Date.now()}`) {
-    super(ctx, windowId, 'bitmap');
+  constructor(ctx: Context, displaySpec: BitmapDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `bitmap-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'bitmap');
 
     this.displaySpec = displaySpec;
 

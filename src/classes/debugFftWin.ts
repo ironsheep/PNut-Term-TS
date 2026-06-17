@@ -196,8 +196,12 @@ export class DebugFFTWindow extends DebugWindowBase {
   // fire-and-forget draw would let SAVE's capturePage race a stale/blank spectrum. The base SAVE
   // methods await renderChain via flushBeforeCapture(), so FFT no longer overrides them. [#49]
 
-  constructor(context: Context, displaySpec: FFTDisplaySpec, windowId: string = `fft-${Date.now()}`) {
-    super(context, windowId, 'fft');
+  constructor(context: Context, displaySpec: FFTDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `fft-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(context, actualWindowId, 'fft');
     this.windowLogPrefix = 'fftW';
 
     // Enable logging for FFT window debugging

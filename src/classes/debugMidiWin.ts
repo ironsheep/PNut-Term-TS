@@ -165,8 +165,12 @@ export class DebugMidiWindow extends DebugWindowBase {
   private pendingDrawRequest: boolean = false;
   private pendingClear: boolean = false;
 
-  constructor(ctx: Context, displaySpec: MidiDisplaySpec, windowId: string = `midi-${Date.now()}`) {
-    super(ctx, windowId, 'midi');
+  constructor(ctx: Context, displaySpec: MidiDisplaySpec, windowId?: string) {
+    // Use the user-provided display name as the window ID (the unique routing key), matching
+    // TERM/LOGIC. The old `midi-${Date.now()}` default collided when two same-type windows were
+    // created in the same millisecond → "Window … is already registered". [windowid-datenow-collision]
+    const actualWindowId = windowId || displaySpec.displayName;
+    super(ctx, actualWindowId, 'midi');
 
     this.displaySpec = displaySpec;
 
