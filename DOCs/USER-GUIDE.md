@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.9.72*
+*Version 0.9.73*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -141,10 +141,25 @@ For a condensed first-run walkthrough see **`DOCs/QUICK-START.md`**. In brief:
 
 ## The Main Window
 
-The main window hosts the terminal/log display and a status bar.
+The main window hosts a menu bar, a text-entry field, a toolbar, the terminal/log
+display, and a status bar.
+
+**Toolbar (left to right):**
+- **Reset control line** — a button showing the active reset line (**DTR** or **RTS**)
+  with a checkbox; click to assert a reset on the P2. The line is configured per device
+  in PropPlug Management.
+- **RAM** / **FLASH** — download the loaded binary to the P2's RAM or flash and run it.
+  The adjacent LED is green for the active download target.
+- **📥 Download** — choose a binary file and download it.
+- **⏺ Record** / **▶ Play** — start/stop a recording and play one back, with a status
+  label (e.g. "Ready", "Recording…") alongside.
+
+A **text-entry field** above the toolbar sends a line of text to the running P2 when you
+press **Enter**. During playback a transport strip appears with play/pause/stop, an
+elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
 
 **Status bar — left:**
-- **Connection indicator** — lit when connected to a P2, dim when disconnected.
+- **Connection indicator** — green when connected to a P2, amber when disconnected.
 - **Active COGs** — which COG cores are currently driving debug windows.
 - **Logging indicator** — lit while a recording is active.
 

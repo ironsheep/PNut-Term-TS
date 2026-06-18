@@ -1,993 +1,449 @@
 # PNut-Term-TS Application Help
 
-## Quick Start Guide
+PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
+It receives the `debug()` output a P2 program emits over a USB serial adapter
+(PropPlug or FTDI) and renders it through a set of specialized debug windows, with
+support for downloading programs, recording and replaying sessions, and headless
+automation.
 
-1. **Connect your Propeller 2** device via USB
-2. **Launch PNut-Term-TS** from Applications (macOS), Start Menu (Windows), or command line
-3. **Select your serial port** from the Connection menu
-4. **Click Connect** or press `Cmd/Ctrl+Shift+C`
-5. **Open Debug Logger** with `F2` to see all traffic
-6. Your P2 debug messages will automatically route to appropriate windows!
+For a fuller treatment see the **User Guide** (`DOCs/USER-GUIDE.md`); for the
+single-step debugger see the **Debugger User Manual** (`DOCs/DEBUGGER-USER-MANUAL.md`).
 
-## Introduction
-
-**PNut-Term-TS** is a cross-platform debug terminal application for the Parallax Propeller 2 (P2) microcontroller. Built with Electron and TypeScript, it provides comprehensive debugging capabilities through multiple specialized visualization windows.
-
-This application is the TypeScript reimplementation of the original Pascal-based PNut Terminal, maintaining 100% functional parity while adding modern cross-platform support for macOS, Windows, and Linux.
+> Shortcuts below are shown in their Windows/Linux form. On macOS, use `Cmd` wherever
+> `Ctrl` is listed.
 
 ---
 
-## What Does the App Do
+## Quick start
 
-PNut-Term-TS serves as a **real-time debugging interface** between your computer and the Propeller 2 chip. It:
+1. Plug the PropPlug into USB and connect it to the P2.
+2. Run `pnut-term-ts -n` to confirm the device is detected.
+3. Launch PNut-Term-TS. With exactly one device connected it auto-detects; otherwise
+   pass `-p <device>` or pick one from **File → Select PropPlug**.
+4. Download and run a program with `pnut-term-ts -r yourprogram.bin`.
+5. Debug windows open automatically as the P2 sends `debug()` output.
 
-- **Captures and displays** serial debug output from the P2
-- **Routes messages** to appropriate debug windows based on content
-- **Visualizes data** through specialized windows (logic analyzer, scope, FFT, etc.)
-- **Logs all traffic** for analysis and troubleshooting
-- **Provides multiple COG debuggers** for multi-core debugging
-- **Supports binary downloads** to the P2 for program execution
-
----
-
-## Services Provided
-
-### Real-Time Message Routing
-- **Intelligent classification** of incoming serial data
-- **Automatic routing** to appropriate visualization windows
-- **Zero-copy architecture** for high-performance data handling
-- **Message extraction** via autonomous worker thread
-
-### Data Visualization
-- **10 window types** for different data formats
-- **Multi-COG debugging** with 8 independent COG windows
-- **Live updates** at full USB speed (up to 2\_000\_000 baud)
-- **Synchronized displays** across multiple windows
-
-### Debug Logging
-- **Complete traffic logging** to timestamped files
-- **TX/RX separation** with clear visual indicators
-- **Configurable scrollback** buffer
-- **Session markers** for P2 reboot events
-
-### Binary Download
-- **Fast binary transfer** to P2 RAM or flash
-- **Automatic protocol handling** for download sequences
+Whether the P2 is reset when you connect is governed by the **Reset P2 on Connection**
+preference (default: on).
 
 ---
 
-## Feature List
+## What the app does
 
-### Core Features
-- ✅ **Cross-Platform**: macOS (x64, ARM64), Windows, Linux
-- ✅ **High-Speed Serial**: Up to 2\_000\_000 baud
-- ✅ **Worker Thread Architecture**: Non-blocking USB processing
-- ✅ **Zero-Copy Buffers**: SharedArrayBuffer for peak performance
-- ✅ **DTR/RTS Control**: Hardware reset line support
+PNut-Term-TS is the real-time interface between your computer and a running P2. It:
 
-### Debug Windows
-- ✅ **Debug Logger**: All traffic with timestamps and TX/RX indicators
-- ✅ **COG Windows** (0-7): Individual COG state monitoring
-- ✅ **Debugger Windows** (0-7): single-step debugger
-- ✅ **Logic Analyzer**: 16-channel digital waveform display
-- ✅ **Oscilloscope**: Analog waveform visualization
-- ✅ **XY Scope**: Phase and trajectory plotting
-- ✅ **FFT Analyzer**: Frequency spectrum analysis
-- ✅ **Spectrogram**: Time-frequency waterfall display
-- ✅ **Plot Window**: Multi-channel data plotting
-- ✅ **Terminal Window**: Text-based debug output
-- ✅ **Bitmap Display**: Graphical bitmap rendering
-- ✅ **MIDI Display**: MIDI message visualization
+- receives the P2's serial `debug()` stream and classifies it,
+- routes each message to the right debug window automatically,
+- visualizes data through specialized windows (terminal, logic, scope, FFT, and more),
+- logs all traffic to timestamped files for later analysis,
+- downloads compiled binaries to P2 RAM or flash and resets the P2 to run them,
+- captures full-rate streams (default debug baud **2 Mbps**) without data loss via an
+  off-main-thread serial reader.
+
+This is the TypeScript reimplementation of the original Pascal PNut Terminal,
+targeting full functional parity with cross-platform support for Windows, macOS, and
+Linux (x64 and arm64).
 
 ---
 
-## Supported Windows (Current State)
+## Debug windows
 
-### 1. Debug Logger Window
-**Status**: ✅ **Fully Implemented**
+Debug windows are created **automatically** by the P2 program's `debug()` display
+directives — there is no menu command to open one. The directive syntax for each
+window type is part of the Parallax P2 `debug()` specification and is documented in the
+official Propeller 2 DEBUG documentation; this Help does not reproduce it.
 
-**Purpose**: Central logging window for all serial traffic
+| Window | Shows |
+|--------|-------|
+| **TERM** | Text terminal — status text and text UIs (PST or ANSI) |
+| **BITMAP** | Pixel/image display (LUT, RGB, LUMA, HSV color modes) |
+| **PLOT** | General X/Y plotting, shapes, and sprites |
+| **SCOPE** | Oscilloscope-style waveform display |
+| **SCOPE_XY** | X-vs-Y (Lissajous / vector) display |
+| **LOGIC** | Logic-analyzer timing display |
+| **FFT** | Frequency spectrum |
+| **SPECTRO** | Spectrogram / waterfall |
+| **MIDI** | MIDI keyboard / message display |
+| **COG logger** | Per-COG `debug()` message log (COG 0–7) |
+| **Debugger** | Interactive single-step PASM2 debugger (one per COG) |
 
-**Features**:
-- Complete message logging with timestamps
-- TX (transmitted) messages marked with `[TX]` prefix
-- Control characters shown as `<cr>`, `<lf>` notation
-- Configurable scrollback buffer (default: 10,000 lines)
-- Session markers for P2 reboots (golden sync points)
-- Color-coded message types
+### Shared window behavior
 
-**Backtick Window Messages**: All backtick window commands are logged here for visibility
+- **Automatic placement** — a window with no `POS` directive is laid out for you;
+  windows with an explicit `POS` honor it.
+- **Position readout while dragging** — drag a display window and its title bar shows
+  the live `x, y` position, so you can pick coordinates for a `POS` directive. (The COG
+  logger and debugger windows don't show this.)
+- **SAVE** — `debug()` `SAVE` / `SAVE WINDOW` directives write a window's image to a
+  bitmap file.
+- **Input forwarding** — a window forwards mouse and keyboard input back to the running
+  P2 program when the program requested it (`PC_MOUSE` / `PC_KEY`).
 
 ---
 
-### 2. COG Windows (COG0 through COG7)
-**Status**: ✅ **Fully Implemented**
+## Menus
 
-**Purpose**: Monitor individual COG states during execution
+PNut-Term-TS uses the native application menu on macOS and an in-window menu bar on
+Windows/Linux. The items are equivalent; accelerators follow the platform.
 
-**Features**:
-- Independent window for each of 8 COGs
-- Display COG-specific messages (format: `Cog[0-7]  <message>`)
-- Optional - windows only created if user opens them
-- Silent drop if COG messages arrive without window open
-- P2 System Init messages route to COG0 window
+### File
 
-**Message Format**:
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| New Recording | | Begin a new recording session |
+| Open Recording… | | Load a `.p2rec` recording for playback |
+| Save Recording As… | | Save the current recording |
+| Select PropPlug ▸ | | Choose among connected devices; the chosen device becomes your default |
+| Start Recording | `Ctrl+R` | Begin recording the debug stream |
+| Stop Recording | | End the current recording |
+| Playback Recording | `Ctrl+P` | Replay the selected recording with original timing |
+| Exit | `Ctrl+Q` | Quit the application |
+
+### Edit
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Cut / Copy / Paste | `Ctrl+X` / `Ctrl+C` / `Ctrl+V` | Standard clipboard actions |
+| Find… | `Ctrl+F` | Search the terminal output |
+| Clear Terminal | | Clear the main terminal display (does not affect the Debug Logger) |
+| Preferences… | `Ctrl+,` | Open the settings dialog |
+
+### Window
+
+| Item | Description |
+|------|-------------|
+| Performance Monitor | Open the performance metrics window |
+| Cascade | Arrange debug windows in a cascade |
+| Tile | Tile debug windows to fill the screen |
+| Show All Windows | Reveal all debug windows |
+| Hide All Windows | Hide all debug windows (they stay active) |
+
+### Help
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Documentation | `F1` | Open this Help |
+| About PNut-Term-TS | | Version, build, platform, and runtime details |
+
+> On macOS, **Preferences…** is under the application menu (`Cmd+,`), along with the
+> standard **Quit** and **Hide** items.
+
+---
+
+## Settings & preferences
+
+Open with **Edit → Preferences…** (`Ctrl+,`, or `Cmd+,` on macOS).
+
+### Settings hierarchy
+
+Settings resolve in priority order — the first that supplies a value wins:
+
+1. **Project settings** — overrides scoped to the current project directory.
+2. **User settings** — your per-machine defaults.
+3. **Application defaults** — the built-in baseline.
+
+The dialog has three tabs: **User Settings**, **Project Settings**, and **PropPlug
+Management**. Project Settings mirrors the User Settings controls, each behind an
+**override** checkbox — only checked items override your user defaults for the current
+project (delta-save); unchecked items inherit and display the global value.
+
+### Terminal
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Terminal Mode | PST, ANSI | PST |
+| Color Theme | Green on Black, White on Black, Amber on Black | Green on Black |
+| Font Size | 10–24 | 14 |
+| Font Family | Default, Parallax, IBM 3270, IBM 3270 Green, IBM 3270 Amber | Default |
+| Show COG Prefixes | on / off | on |
+| Local Echo | on / off | off |
+
+### Serial Port
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Default PropPlug | Auto-detect, or a named device | Auto-detect |
+| Default Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | 2000000 |
+| Reset P2 on Connection | on / off | on |
+
+> The DTR/RTS control line is **not** set here — it is configured per device in the
+> PropPlug Management tab.
+
+### Logging
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Log Directory | path | `./logs/` |
+| Auto-Save Debug Output | on / off | on |
+| New Log on P2 Reset | on / off | on |
+| Max Log Size | 1 MB, 10 MB, 100 MB, Unlimited | Unlimited |
+| Enable USB Traffic Logging | on / off | off |
+| USB Log Directory | path | `./logs/` |
+
+### Recordings
+
+| Setting | Default |
+|---------|---------|
+| Recordings Directory | `./recordings/` |
+
+### Debug Logger
+
+| Setting | Range | Default |
+|---------|-------|---------|
+| History Lines | 100–10000 | 1000 |
+
+### Settings file locations
+
+- **User (global):** `%APPDATA%\PNut-Term-TS\settings.json` (Windows) or
+  `~/.pnut-term-ts-settings.json` (macOS/Linux).
+- **Project (local):** `./.pnut-term-ts-settings.json` in the project directory —
+  created only when you enable project-specific overrides.
+
+---
+
+## PropPlug / device management
+
+PNut-Term-TS remembers each USB serial device it sees and lets you name it and set its
+reset control line. Open **Preferences → PropPlug Management** to manage the
+known-devices list: set a **Friendly Name**, choose the **Control Line** (DTR or RTS),
+view VID/PID, and save or delete a device. New devices are added automatically on USB
+enumeration with the Parallax default control line (DTR).
+
+This tab manages device *properties*. Choose *which* device to use from the User or
+Project Settings tabs, from **File → Select PropPlug**, or with the `-p` flag.
+
+### Control line (DTR vs RTS)
+
+P2 reset is asserted over DTR or RTS:
+
+- Parallax PropPlugs and most FTDI adapters → **DTR**.
+- Some clones/adapters → **RTS**.
+
+The control line is stored per device; the `--rts` command-line flag overrides it for a
+session (primarily for `--ide`).
+
+### Device selection priority
+
+1. Command-line `-p <device>` (exact, or case-insensitive partial match on path/serial).
+2. Project device override (if enabled).
+3. User default.
+4. Auto-detect (exactly one device connected).
+5. Otherwise selection is required.
+
+---
+
+## Recording & playback
+
+A recording captures an entire debug session for later replay — useful for regression
+testing, sharing reproductions, and offline study.
+
+- **Format:** `.p2rec` (binary, with timing metadata); `.jsonl` recordings also play
+  back. Default location `./recordings/`, auto-named `recording_YYYYMMDD_HHMMSS.p2rec`.
+- **Record:** **File → Start Recording** (`Ctrl+R`); stop with **File → Stop
+  Recording**. The logging indicator is lit while recording.
+- **Play:** **File → Open Recording…**, then `Ctrl+P` to play. Playback reproduces the
+  captured stream — including timing — driving the debug windows as the live session
+  did.
+
+---
+
+## Performance monitoring
+
+Open with **Window → Performance Monitor** to watch the health of the serial → window
+data path: throughput history, receive/message buffer usage, per-window queue depth,
+and message/error counts. If buffer usage climbs toward full at high baud, reduce the
+data rate or close windows you don't need.
+
+---
+
+## The main window
+
+The main window hosts a menu bar, a text-entry field, a toolbar, the terminal/log
+display, and a status bar.
+
+**Toolbar (left to right):**
+- **Reset control line** — a button showing the active reset line (**DTR** or **RTS**)
+  with a checkbox; click to assert a reset on the P2. (The line is set per device in
+  PropPlug Management.)
+- **RAM** / **FLASH** — download the loaded binary to the P2's RAM or flash and run it;
+  the adjacent LED is green for the active download target.
+- **📥 Download** — choose a binary file and download it.
+- **⏺ Record** / **▶ Play** — start/stop a recording and play one back; a status label
+  ("Ready", "Recording…") sits alongside.
+
+A **text-entry field** above the toolbar sends a line of text to the running P2 when you
+press **Enter**. During playback a transport strip appears with play/pause/stop, an
+elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
+
+**Connection indicator** (status bar): green when connected, amber when disconnected
+(grey until the first connection).
+
+**Other status fields:** active COGs, the logging indicator (lit while recording),
+TX/RX activity indicators, the connected **Port**, the active **Baud**, and the
+**DTR/RTS** control line for the current device. The **Echo** checkbox filters locally
+echoed characters from the display.
+
+**Terminal display area:** shows your program's terminal output — text classified as
+terminal output, `print()` text, and COG lines that don't match the COG-window pattern.
+Backtick window commands do **not** appear here; they route to their windows.
+
+---
+
+## Debug Logger
+
+The Debug Logger is the central log of all serial traffic, with timestamps.
+
+- **Auto-scroll** keeps the latest messages in view; turn it off to review history.
+- **Search** filters messages by keyword.
+- Transmitted bytes are marked `[TX]`; control characters show as `<cr>`, `<lf>`.
+- A P2 reset produces a session marker (golden sync point) that separates sessions and
+  rotates the log file.
+- Messages are shown in distinct colors by type — terminal output, COG messages, window
+  (backtick) commands, and errors.
+
+History length is set by **History Lines** in Preferences (default 1000).
+
+---
+
+## COG windows
+
+A COG window logs the `debug()` messages from one COG (0–7).
+
+- **Message format:** `Cog<N>  <message>` — note the **two spaces** after the COG name.
+- Each window shows recent-activity state and a per-COG message count.
+- **P2 system init** (`Cog0 INIT … load`) is a golden sync point: it marks a new
+  session, clears debug windows, and rotates the log.
+- COG windows are optional — COG messages that arrive with no window open are logged to
+  the Debug Logger and otherwise dropped silently.
+
+---
+
+## Backtick window: creation vs. update
+
+`debug()` window traffic uses backtick commands. The first word decides whether a
+command **creates** a window or **updates** one.
+
+**Create** — first word is a window-type keyword:
+
 ```
-Cog0  INIT $0000_0000 $0000_0000 load
-Cog1  STATUS: Running
-Cog2  Counter: 1234
+`logic  scope  scope_xy  fft  spectro  plot  term  bitmap  midi
 ```
 
----
+Example — create a 16-channel logic window named `SIGNAL_BUS`:
 
-### 3. Debugger Windows (Debugger 0-7)
-**Status**: 🔴 **NOT ready for Use!**
-
-**Purpose**: Display single-step debugger for each COG
-
-**Features**:
-- Auto-create on first debugger packet arrival
-- Display processor state data in structured format
-- One window per COG (0-7)
-
----
-
-### 4. Logic Analyzer Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: 16-channel digital waveform display
-
-**Backtick Command**:
-```
-`logic <name> <bits> <samples> ...
-`<name> <data> ...  (updates)
-```
-
-**Features**:
-- 16-channel digital display
-- Horizontal timeline with zoom
-- Vertical channel labels
-- Color-coded signal transitions
-
----
-
-### 5. Oscilloscope Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Analog waveform visualization
-
-**Backtick Command**:
-```
-`scope <name> <channels> <samples> ...
-`<name> <data> ...  (updates)
-```
-
-**Features**:
-- Multi-channel analog display
-- Automatic scaling
-- Trigger controls
-- Timebase adjustment
-
----
-
-### 6. XY Scope Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Two-channel XY phase plotting
-
-**Backtick Command**:
-```
-`scope_xy <name> <samples> ...
-`<name> <x> <y> ...  (updates)
-```
-
-**Features**:
-- Lissajous patterns
-- Phase relationships
-- Trajectory plotting
-
----
-
-### 7. FFT Analyzer Window
-**Status**: ✅ **Fully Implemented** (*noise floor display issue*)
-
-**Purpose**: Frequency spectrum analysis
-
-**Backtick Command**:
-```
-`fft <name> <bins> <sample_rate> ...
-`<name> <data> ...  (updates)
-```
-
-**Features**:
-- Frequency domain display
-- Peak detection
-- Logarithmic/linear scales
-- **Note**: Infrastructure fixes applied for window creation and routing
-
----
-
-### 8. Spectrogram Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Time-frequency waterfall display
-
-**Backtick Command**:
-```
-`spectro <name> <bins> <time_slices> ...
-`<name> <data> ...  (updates)
-```
-
-**Features**:
-- Waterfall display
-- Color-coded intensity
-- Time evolution of spectrum
-- **Note**: Window creation pattern updated to match working windows
-
----
-
-### 9. Plot Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Multi-channel data plotting
-
-**Backtick Command**:
-```
-`plot <name> <channels> <samples> ...
-`<name> <data> ...  (updates)
-```
-
-**Features**:
-- Multiple data series
-- Automatic scaling
-- Legend display
-
----
-
-### 10. Terminal Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Text-based debug output
-
-**Backtick Command**:
-```
-`term <name> <rows> <cols>
-`<name> <text> ...  (updates)
-```
-
-**Features**:
-- Scrolling text display
-- ANSI color support (if implemented)
-- Configurable dimensions
-
----
-
-### 11. Bitmap Display Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: Graphical bitmap rendering
-
-**Backtick Command**:
-```
-`bitmap <name> <width> <height> <format>
-`<name> <pixel_data> ...  (updates)
-```
-
-**Features**:
-- Multiple pixel formats
-- Scaling and zoom
-- Real-time updates
-
----
-
-### 12. MIDI Display Window
-**Status**: ✅ **Fully Implemented**
-
-**Purpose**: MIDI message visualization
-
-**Backtick Command**:
-```
-`midi <name>
-`<name> <midi_bytes> ...  (updates)
-```
-
-**Features**:
-- MIDI message decoding
-- Note on/off visualization
-- Control change display
-- **Note**: Fixed message routing and canvas rendering issues
-
----
-
-## Menus and Usage
-
-### File Menu
-
-**New Recording**
-- Start a new recording session
-- Clears any existing recording buffer
-
-**Open Recording...**
-- Load a previously saved .p2rec recording file
-- Opens file picker dialog
-
-**Save Recording As...**
-- Save current recording buffer to .p2rec file
-- Opens file save dialog
-
-**Select PropPlug**
-- Quick device switching menu
-- Shows currently connected PropPlug devices
-- Checkmark indicates currently selected device
-- Selected device becomes your default automatically
-- "Manage Devices..." opens Preferences to PropPlug Management tab
-
-**Start Recording** (`Ctrl/Cmd+R`)
-- Begin capturing all serial traffic to recording buffer
-- Recording indicator shows "Recording..." status
-
-**Stop Recording**
-- End current recording session
-- Data remains in buffer until saved or cleared
-
-**Playback Recording** (`Ctrl/Cmd+P`)
-- Play back a loaded .p2rec recording
-- Simulates real serial traffic with accurate timing
-
-**Exit** (`Ctrl/Cmd+Q`)
-- Exit application
-- Logs final session statistics
-- Prompts to save unsaved recordings
-
----
-
-### Edit Menu
-
-**Cut** (`Ctrl/Cmd+X`)
-- Cut selected text to clipboard
-
-**Copy** (`Ctrl/Cmd+C`)
-- Copy selected text from active window
-
-**Paste** (`Ctrl/Cmd+V`)
-- Paste clipboard contents
-
-**Find...** (`Ctrl/Cmd+F`)
-- Search within debug logger or terminal
-- Opens find dialog with search options
-
-**Clear Terminal**
-- Clear main window blue terminal area
-- Does not affect debug logger
-
-**Preferences...** (`Ctrl/Cmd+,`)
-- Configure application settings with two tabs:
-  - **User Settings**: Global preferences for all projects
-  - **Project Settings**: Project-specific overrides with checkboxes
-- Settings include: terminal mode, serial port, logging, recordings
-- Settings files:
-  - User global: `%APPDATA%\PNut-Term-TS\settings.json` (Win) or `~/.pnut-term-ts-settings.json` (Mac/Linux)
-  - Project local: `./.pnut-term-ts-settings.json` in project directory
-- See Preferences Settings section below for details
-
----
-
-### Window Menu
-
-**Performance Monitor**
-- Open performance monitoring window
-- Shows real-time metrics: throughput, buffer usage, queue depth
-- Live sparkline graphs and statistics
-
-**Cascade**
-- Arrange all debug windows in cascading layout
-- Overlapping windows with title bars visible
-
-**Tile**
-- Arrange all debug windows in tiled grid layout
-- Non-overlapping, maximizes screen space
-
-**Show All Windows**
-- Unhide and bring to front all debug windows
-- Restores hidden windows
-
-**Hide All Windows**
-- Hide all debug windows
-- Useful for decluttering workspace
-- Windows remain active, just not visible
-
----
-
-### Help Menu
-
-**Documentation** (`F1`)
-- Opens this help document
-- Clickable table of contents
-- Searchable content
-
-**About PNut-Term-TS**
-- Application version information
-- Build date and commit hash
-- Platform and architecture details
-- Runtime versions (Node.js, Chromium, Electron)
-
----
-
-## Preferences Settings
-
-Access via **Edit → Preferences** (`Ctrl/Cmd+,`)
-
-### Settings Hierarchy
-
-PNut-Term-TS uses a **3-tier cascading settings system**:
-
-1. **Application Defaults** - Built-in baseline settings
-2. **User Global Settings** - Your personal preferences across all projects
-3. **Project Local Settings** - Project-specific overrides (optional)
-
-**Effective Value** = Project Local **OR** User Global **OR** App Default (first non-empty value wins)
-
-### Three-Tab Interface
-
-#### User Settings Tab
-- **Global preferences** that apply to all projects
-- Saved to user profile directory
-- Changes affect all projects unless overridden
-- **Default PropPlug dropdown** in Serial Port section
-  - Sets your preferred device for all projects
-  - Choose "Auto-detect" or select a specific device
-
-#### Project Settings Tab
-- **Project-specific overrides** using checkboxes
-- Saved to `.pnut-term-ts-settings.json` in project directory
-- Each setting has a checkbox to enable override
-- Unchecked settings use User Global or App Default values
-- Only enabled overrides are saved (delta-save strategy)
-- **PropPlug Device override** in Serial Port section
-  - Check override box to enable project-specific device
-  - Overrides user default when this project is active
-
-#### PropPlug Management Tab
-- **Device inventory** of all known PropPlug devices
-- Edit friendly names for easy identification
-- Configure per-device control line (DTR/RTS)
-- Delete stale or unused devices
-- Automatic discovery of new devices on connection
-- **Note**: This tab manages device properties, not selection
-- Use User/Project Settings tabs to choose which device to use
-
-### Settings File Locations
-
-**User Global Settings**:
-- **Windows**: `%APPDATA%\PNut-Term-TS\settings.json`
-- **macOS/Linux**: `~/.pnut-term-ts-settings.json`
-
-**Project Local Settings** (optional):
-- `./.pnut-term-ts-settings.json` in project directory
-- Only created when you enable project-specific overrides
-
----
-
-### Terminal Display Settings
-
-**Terminal Mode**
-- **Options**: Classic Terminal, Split View, Debug Only
-- **Default**: Split View
-- **Description**: Controls main window layout
-  - **Classic Terminal**: Single terminal area (traditional mode)
-  - **Split View**: Terminal + status panels side-by-side
-  - **Debug Only**: Hides terminal, focuses on debug windows
-
-**Color Theme**
-- **Options**: Dark (Default), Light, High Contrast, Solarized
-- **Default**: Dark
-- **Description**: Color scheme for terminal and debug windows
-
-**Font Size**
-- **Range**: 10-24 pixels
-- **Default**: 14px
-- **Description**: Terminal and debug window text size
-
-**Font Family**
-- **Options**:
-  - Consolas (Default on Windows)
-  - Monaco (Default on macOS)
-  - Courier New
-  - Monospace
-  - Source Code Pro
-  - Fira Code
-- **Default**: Platform-dependent
-- **Description**: Monospace font for terminal output
-
-**Show COG Prefixes**
-- **Type**: Checkbox
-- **Default**: Enabled
-- **Description**: Display "Cog0", "Cog1" etc. prefixes in COG window messages
-
-**Local Echo**
-- **Type**: Checkbox
-- **Default**: Disabled
-- **Description**: Echo typed characters back to terminal (usually handled by P2)
-
----
-
-### PropPlug Management
-
-**Per-Device Configuration**
-- Each PropPlug device remembers its own settings
-- Friendly names for easy identification
-- Control line (DTR/RTS) stored per device
-- Automatic discovery of new devices
-
-**Device Selection Priority**
-1. Command-line `-p` flag (if specified)
-2. Project setting (PropPlug Device in Project Settings)
-3. User default (Default PropPlug in User Settings)
-4. Auto-detect (if only one device connected)
-5. User selection via UI (multiple devices)
-
-**Automatic Default Setting:**
-- Single device detected (first time) → Automatically becomes user default
-- File → Select PropPlug → Selected device becomes user default
-- This ensures your device preference is remembered for future sessions
-
-### Serial Port Settings
-
-**Default PropPlug (User Settings)**
-- **Location**: User Settings Tab → Serial Port section
-- **Options**: Auto-detect or list of known devices
-- **Default**: Auto-detect (any available)
-- **Description**: Your preferred PropPlug device for all projects
-  - Shows friendly name and serial number
-  - Click "Manage devices..." link to configure device properties
-
-**PropPlug Device (Project Settings)**
-- **Location**: Project Settings Tab → Serial Port section
-- **Options**: Auto-detect or list of known devices
-- **Default**: (use user default)
-- **Description**: Project-specific PropPlug override
-  - Check override box to enable
-  - Overrides user default when this project is active
-
-**Control Line (per device)**
-- **Location**: PropPlug Management Tab
-- **Options**: DTR (Default), RTS
-- **Description**: Hardware control line used for P2 reset
-  - **DTR**: Used by Parallax PropPlug devices
-  - **RTS**: Used by some non-Parallax USB serial adapters
-  - **Note**: Configured per-device, not globally
-  - Each PropPlug remembers its own control line setting
-
-**Default Baud Rate**
-- **Options**:
-  - 115200
-  - 230400
-  - 460800
-  - 921600
-  - 2000000 (Default)
-- **Default**: 2000000
-- **Description**: Serial communication speed (must match P2 program)
-
-**Reset P2 on Connection**
-- **Type**: Checkbox
-- **Default**: Enabled
-- **Description**: Automatically toggle DTR/RTS when connecting to port
-  - **Enabled**: P2 resets on connection (fresh start)
-  - **Disabled**: Connect without reset (capture existing output)
-
----
-
-### Logging Settings
-
-**Log Directory**
-- **Type**: Text path
-- **Default**: `./logs/`
-- **Description**: Directory for debug logger output files
-  - Supports absolute paths or relative to project directory
-  - Timestamped log files created per session
-
-**Auto-Save Debug Logs**
-- **Type**: Checkbox
-- **Default**: Enabled
-- **Description**: Automatically save debug logger output to timestamped files
-
-**New Log File on DTR/RTS**
-- **Type**: Checkbox
-- **Default**: Enabled
-- **Description**: Rotate to new log file when DTR/RTS reset detected
-  - Creates session boundaries in log files
-  - Each P2 reboot starts fresh log file
-
-**Max Log File Size**
-- **Options**:
-  - 1 MB
-  - 5 MB (Default)
-  - 10 MB
-  - 50 MB
-  - Unlimited
-- **Default**: 5 MB
-- **Description**: Maximum size before log rotation
-  - When exceeded, creates new timestamped log file
-  - Prevents single files from growing indefinitely
-
-**Enable USB Traffic Logging**
-- **Type**: Checkbox
-- **Default**: Disabled
-- **Description**: Log raw USB serial traffic to separate file
-  - Low-level debugging tool
-  - Logs all bytes sent/received with timestamps
-  - Separate from debug logger window
-
-**USB Log Path**
-- **Type**: Text path
-- **Default**: `./logs/`
-- **Description**: Directory for USB traffic logs (if enabled)
-
----
-
-### Recording Settings
-
-**Recordings Directory**
-- **Type**: Text path
-- **Default**: `./recordings/`
-- **Description**: Directory for .p2rec recording files
-  - Used by Save Recording As... dialog
-  - Used by Open Recording... dialog
-
-**Auto-Save Recordings**
-- **Type**: Checkbox
-- **Default**: Disabled
-- **Description**: Automatically save recordings when stopped
-  - Creates timestamped .p2rec files in recordings directory
-  - No prompt for filename
-
-**Recording Buffer Size**
-- **Options**: 10 MB, 50 MB, 100 MB (Default), 500 MB, 1 GB
-- **Default**: 100 MB
-- **Description**: Maximum memory for recording buffer
-  - When exceeded, oldest data is discarded (ring buffer)
-
----
-
-### Using Project Settings Effectively
-
-**When to Use User Settings**:
-- Personal preferences (font, colors, theme)
-- Default baud rate for your hardware
-- Your preferred log directory structure
-- Global workflow preferences
-
-**When to Use Project Settings**:
-- Project-specific baud rate (if different from your usual)
-- Custom log directory for this project
-- Special control line (RTS instead of DTR)
-- Project-specific recording directory
-
-**Example Workflow**:
-
-1. **Set User Defaults** (one-time setup):
-   - Terminal Mode: Split View
-   - Font Size: 14px
-   - Default Baud: 2000000
-   - Log Directory: `~/Documents/P2Logs/`
-
-2. **Override for Specific Project** (as needed):
-   - Enable "Default Baud Rate" checkbox
-   - Set to 115200 (this project uses slower baud)
-   - Enable "Log Directory" checkbox
-   - Set to `./project-logs/` (keep logs with project)
-
-3. **Result**:
-   - This project uses 115200 baud and `./project-logs/`
-   - All other projects use 2000000 baud and `~/Documents/P2Logs/`
-   - Font and theme remain consistent across all projects
-
-**Delta-Save Strategy**: Only enabled checkboxes are saved to `.pnut-term-ts-settings.json`, keeping project files minimal and focused.
-
----
-
-## Window Controls and Status Indicators
-
-### Main Window
-
-#### Connection Status Indicator
-**Location**: Top-left corner
-
-**States**:
-- 🔴 **Red**: Disconnected
-- 🟢 **Green**: Connected and receiving data
-- 🟡 **Yellow**: Connected but no recent data
-
-#### Control Buttons
-
-**Connect/Disconnect**
-- Toggle serial port connection
-- Shows current connection state
-
-**DTR Button**
-- Toggle DTR control line
-- Used for hardware reset
-- Indicator shows current state (ON/OFF)
-
-**RTS Button**
-- Toggle RTS control line
-- Alternative reset mechanism
-- Indicator shows current state (ON/OFF)
-
-**Baud Rate Selector**
-- Dropdown menu: 115200, 230400, 460800, 921600
-- Changes take effect on next connect
-
-#### Terminal Display Area (Blue Window)
-**Location**: Bottom section of main window
-
-**Purpose**: Displays user program output (not debug messages)
-
-**Content**:
-- Terminal output classified as `TERMINAL_OUTPUT`
-- Invalid COG messages that don't match pattern
-- User `print()` statements
-- **NOT backtick window commands** (those route to specific windows)
-
----
-
-## Debug Logger Window Controls
-
-### Header Controls
-
-**Scrollback Limit Indicator**
-- Shows current buffer size (e.g., "10,000 lines")
-- Configurable in Preferences
-
-**Auto-Scroll Toggle**
-- Enable/disable automatic scrolling
-- When ON: always shows latest messages
-- When OFF: manual scroll to review history
-
-**Search Box**
-- Filter messages by keyword
-- Highlights matching lines
-- Case-sensitive option
-
-### Status Indicators
-
-**Message Count**
-- Total messages logged this session
-- Resets on clear or new session
-
-**Session Marker**
-- `[GOLDEN SYNC]` indicates P2 reboot
-- Triggers log rotation
-- Marks session boundaries
-
-**TX/RX Indicators**
-- `[TX]` prefix: Transmitted to P2
-- `[RX]` prefix: Received from P2 (rarely shown, most are unmarked RX)
-- Control chars: `<cr>`, `<lf>` notation
-
-### Message Colors
-
-- **Blue**: User terminal output
-- **Green**: COG messages
-- **Yellow**: Window commands (backtick)
-- **Red**: Errors and warnings
-- **Gray**: Timestamps
-
----
-
-## COG Window Controls
-
-### Window Title
-- Shows COG number (e.g., "COG 3 Debug")
-- Updates dynamically with message count
-
-### Message Display
-- **Format**: `Cog<N>  <message content>`
-- **Timestamp**: Each message has receive time
-- **Auto-scroll**: Follows latest COG activity
-
-### Status Indicators
-
-**Activity Indicator**
-- 🟢 **Green dot**: COG recently active (< 1 second)
-- 🟡 **Yellow dot**: COG idle (1-5 seconds)
-- ⚫ **Gray dot**: COG inactive (> 5 seconds)
-
-**Message Counter**
-- Total messages from this COG
-- Resets on window close or session restart
-
-### Special Messages
-
-**P2_SYSTEM_INIT** (COG0 only)
-- Message: `Cog0 INIT $0000_0000 $0000_0000 load`
-- Prefix: `[GOLDEN SYNC]`
-- Triggers complete system synchronization
-- Clears all debug windows
-- Rotates log files
-
-### Controls
-
-**Clear Buffer**
-- Erases all messages in window
-- Preserves message counter
-
-**Save to File**
-- Export COG messages to text file
-- Includes timestamps
-
-**Close Window**
-- Closes COG window
-- Messages still logged to Debug Logger
-- Can reopen with F3-F10 keys
-
----
-
-## Backtick Window Creation vs. Update
-
-### Window Creation Commands
-**Pattern**: `` `<type_keyword> <window_name> <parameters>``
-
-**Type Keywords**:
-- `logic` - Logic Analyzer
-- `scope` - Oscilloscope
-- `scope_xy` - XY Scope
-- `fft` - FFT Analyzer
-- `spectro` - Spectrogram
-- `plot` - Plot Window
-- `term` - Terminal Window
-- `bitmap` - Bitmap Display
-- `midi` - MIDI Display
-
-**Example**:
 ```
 `logic SIGNAL_BUS 16 1000
 ```
-Creates window named "SIGNAL_BUS" with 16 channels, 1000 samples
+
+**Update** — first word is an existing window's name (anything not a type keyword):
+
+```
+`SIGNAL_BUS $FFFF      updates the window named SIGNAL_BUS
+`my_scope 123 456      updates the window named my_scope
+```
+
+Update commands must match the window name **exactly** (case-sensitive). An update to a
+name that doesn't exist is an error — check the Debug Logger to see the raw command.
 
 ---
 
-### Window Update Commands
-**Pattern**: `` `<window_name> <data>``
+## Keyboard shortcuts
 
-**User-Defined Names**:
-- Any name NOT matching type keywords
-- Routes to existing window by name
-- **Error if window doesn't exist**
+Windows/Linux shown; use `Cmd` instead of `Ctrl` on macOS.
 
-**Examples**:
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+R` | Start Recording |
+| `Ctrl+P` | Playback Recording |
+| `Ctrl+F` | Find in terminal |
+| `Ctrl+,` | Preferences |
+| `Ctrl+X` / `Ctrl+C` / `Ctrl+V` | Cut / Copy / Paste |
+| `Ctrl+Q` | Exit |
+| `F1` | Documentation |
+
+> Inside a debug window, mouse and keyboard input may be forwarded to the running P2
+> program when that program requested it (`PC_MOUSE` / `PC_KEY`).
+
+---
+
+## Command-line usage
+
+```bash
+pnut-term-ts [options]
 ```
-`j k l $FFB7        (updates window named "j")
-`SIGNAL_BUS $FFFF   (updates previously created "SIGNAL_BUS")
-`my_scope 123 456   (updates window named "my_scope")
+
+| Option | Long form | Description |
+|--------|-----------|-------------|
+| `-r` | `--ram` | Download the file to RAM and run |
+| `-f` | `--flash` | Download the file to flash and run |
+| `-p` | `--plug` | Use the PropPlug at `<device>` (path/serial; partial match OK) |
+| `-b` | `--debugbaud` | Debug baud rate (default 2000000) |
+| `-n` | `--dvcnodes` | List detected USB serial devices and exit |
+| `-u` | `--log-usb-trfc` | Write a timestamped USB-traffic log |
+| | `--ide` | IDE-integration mode (minimal UI) |
+| | `--rts` | Use RTS instead of DTR for reset (intended with `--ide`) |
+| | `--headless` | Run with no GUI (file logging only) |
+| | `--timeout <s>` | Exit after N seconds (headless only) |
+| | `--end-marker [phrase]` | Exit when `phrase` appears; default matches `END_SESSION` / `DEBUG_END_SESSION` |
+| | `--exit-on-end-session` | GUI batch: exit on the end-session marker, draining saves/logs first |
+| `-V` | `--version` | Print the version |
+| `-h` | `--help` | Show help |
+
+```bash
+pnut-term-ts                                      # GUI, auto-detect a single device
+pnut-term-ts -r myprogram.bin                     # download to RAM and run
+pnut-term-ts --ide -p P9cektn7                    # IDE mode for the VS Code Spin2 extension
+pnut-term-ts -n                                   # list connected devices
+pnut-term-ts --headless -r test.bin --end-marker  # headless, exit on end-session marker
 ```
 
-**Important**: Update commands must match window name exactly (case-sensitive)
+`-r` and `-f` are mutually exclusive; `--timeout` requires `--headless`; `--end-marker`
+requires `--headless` or `--exit-on-end-session`. See the **User Guide** for the full
+command-line reference, exit codes, and operating modes.
 
 ---
 
 ## Troubleshooting
 
-### No Data Appearing
-1. Check connection status (green indicator)
-2. Verify correct serial port selected
-3. Check baud rate matches P2 program
-4. Try DTR/RTS reset
-5. Check USB cable connection
+**No data appears**
+- Confirm the connection indicator is green and the correct port is selected.
+- Match the debug baud to your program (`-b`, or the Default Baud Rate preference).
+- Confirm the P2 is powered, running, and emitting `debug()` output; try a DTR/RTS reset.
 
-### Messages in Wrong Window
-- Backtick window updates require exact name match
-- COG messages need `Cog[0-7]  ` format (note: TWO spaces)
-- Check Debug Logger to see raw messages
+**Garbled text** — usually a baud mismatch. Common rates: 115200, 921600, 2000000.
 
-### Window Won't Open
-- Check Window menu for existing instance
-- Try "Hide All Debug Windows" then reopen
-- Restart application if persistent
+**P2 doesn't reset / program doesn't start** — the control line may be wrong for your
+adapter. Set DTR or RTS for the device in **Preferences → PropPlug Management**, or pass
+`--rts` for the session. PropPlugs use DTR; some clones use RTS.
 
-### Performance Issues
-- Check high water mark statistics (logged on shutdown)
-- Reduce debug output frequency from P2
-- Increase scrollback limit if messages dropping
+**Messages in the wrong window** — backtick updates must match the window name exactly;
+COG lines need the `Cog<N>  ` format (two spaces). Check the Debug Logger for the raw
+stream.
 
-### Connection Lost
-- Check for USB power issues
-- Verify P2 is powered and running
+**A window is blank** — confirm the P2 is sending to that window; open the Performance
+Monitor and lower the data rate if buffer usage is high.
 
----
+**Performance** — watch the Performance Monitor; if buffers fill at high baud, reduce
+baud or close unneeded windows.
 
-## Keyboard Shortcuts Reference
-
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| **File** |||
-| Open Binary | `Cmd+O` | `Ctrl+O` |
-| Download to P2 | `Cmd+D` | `Ctrl+D` |
-| Save Log | `Cmd+S` | `Ctrl+S` |
-| Preferences | `Cmd+,` | `Ctrl+,` |
-| Quit | `Cmd+Q` | `Ctrl+Q` |
-| **Edit** |||
-| Copy | `Cmd+C` | `Ctrl+C` |
-| Select All | `Cmd+A` | `Ctrl+A` |
-| Find | `Cmd+F` | `Ctrl+F` |
-| Clear Terminal | `Cmd+K` | `Ctrl+K` |
-| **Connection** |||
-| Connect | `Cmd+Shift+C` | `Ctrl+Shift+C` |
-| Disconnect | `Cmd+Shift+D` | `Ctrl+Shift+D` |
-| Reconnect | `Cmd+R` | `Ctrl+R` |
-| DTR Reset | `Cmd+Shift+R` | `Ctrl+Shift+R` |
-| **Debug** |||
-| Debug Logger | `F2` | `F2` |
-| COG 0 | `F3` | `F3` |
-| COG 1 | `F4` | `F4` |
-| COG 2 | `F5` | `F5` |
-| COG 3 | `F6` | `F6` |
-| COG 4 | `F7` | `F7` |
-| COG 5 | `F8` | `F8` |
-| COG 6 | `F9` | `F9` |
-| COG 7 | `F10` | `F10` |
-| Hide All Windows | `Cmd+Shift+H` | `Ctrl+Shift+H` |
-| **Help** |||
-| Documentation | `F1` | `F1` |
+**Platform notes** — Windows: ensure no other app holds the COM port. macOS: grant
+serial access if prompted; devices appear as `/dev/tty.usbserial-*`. Linux: add your
+user to the `dialout` group (`sudo usermod -a -G dialout $USER`, then re-login).
 
 ---
 
-## Getting Help
+## Getting help
 
-### Online Resources
-- **GitHub Repository**: [PNut-Term-TS](https://github.com/parallaxinc/PNut-Term-TS)
-- **Issue Tracker**: Report bugs and request features at our [issues](https://github.com/parallaxinc/PNut-Term-TS/issues) page
-- **Parallax Forums**: Community support and discussion
+- **GitHub repository / issues:** https://github.com/ironsheep/PNut-Term-TS
+- **Propeller 2 documentation:** https://propeller.parallax.com/p2.html
+- **P2 `debug()` directive reference:** the official Parallax P2 DEBUG documentation
+- **Single-step debugger:** `DOCs/DEBUGGER-USER-MANUAL.md`
+- **Parallax Forums:** the P2 section
 
-### Version Information
-Check **Help → About** for:
-
-- Current version number
-- Build date and commit
-- Platform and architecture
-
-### Log Files
-Debug logs stored in:
-
-- **macOS**: `~/Library/Logs/PNut-Term-TS/`
-- **Windows**: `%APPDATA%\PNut-Term-TS\logs\`
-- **Linux**: `~/.config/PNut-Term-TS/logs/`
-
-Attach relevant log files when reporting issues.
+Check **Help → About** for the version, build, platform, and runtime details. Log files
+are written to your configured Log Directory (default `./logs/`); attach the relevant
+log when reporting an issue.
 
 ---
 
-## Command-Line Usage
-
-PNut-Term-TS can be launched from the command line. For complete command-line documentation, run:
-
-```bash
-pnut-term-ts --help
-```
-
-### Quick Examples
-```bash
-# Launch GUI (auto-detects USB device if only one connected)
-pnut-term-ts
-
-# Download to RAM and run
-pnut-term-ts -r myprogram.bin
-
-# IDE mode for VSCode integration
-pnut-term-ts --ide -p P9cektn7
-
-# List available USB devices
-pnut-term-ts -n
-
-# Headless mode - ideal for Claude Code and AI agent regression testing
-pnut-term-ts --headless -p P9cektn7 -r test.bin --end-marker --timeout 60
-```
-
-See the **User Guide** for detailed command-line reference and examples.
-
----
-
-**Last Updated**: 2025-11-08
-
-**Version**: 0.9.0
+*Version 0.9.73 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
