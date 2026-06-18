@@ -1,12 +1,36 @@
 # Single-Step Debugger: Interactive Test Plan
 
-> **Purpose**: Validate the corrected single-step debugger implementation against real P2 hardware. Tests are ordered from simplest to most complex. Each test specifies the P2 code, user interactions, and expected display behavior.
+> **Purpose**: Validate the single-step debugger against real P2 hardware. Tests run
+> simplest → most complex. Each test names the P2 program to load, the keys/clicks to
+> press, and what you should see.
 >
-> **Prerequisites**: P2 board connected via USB (Prop Plug or FTDI), PNut-Term-TS running, serial port selected.
+> **Prerequisites**: P2 board connected via USB (PropPlug or FTDI), PNut-Term-TS
+> running, serial port selected. The P2 programs are pre-built `.spin2` files in
+> **`SingleStep-Debugger-Test-Programs/`** (next to this plan).
 
 ---
 
-## Validation Sequence (run in this order)
+## How to read this plan
+
+- **You load a file per test — you don't type code.** Each test starts with a
+  **▶ Load** line naming the `.spin2` file. Compile and download it with:
+  ```bash
+  pnut_ts -d testNN_xxx.spin2        # -d embeds the debug stub
+  ```
+  The debugger window opens by itself on download — every program sets
+  `DEBUG_MAIN = 1` to break on the first instruction.
+- **When two tests share a file, the ▶ Load line says "keep loaded"** — no reload.
+- **Example values are illustrative.** Addresses and hex such as `1F6 00000001`,
+  `BreakValue = $10`, or `$DEADBEEF` will differ on your build/hardware. Match the
+  **behavior** described, not the exact digits.
+- **A few names in *italics* are internal references** from the Theory of Operations
+  (*dmPC* / *dmCog* / *dmHub* disassembly modes, *BreakValue*, *ExecMode*). They explain
+  *why* something happens — they are **not labels you will see on screen**. Judge each
+  step by the on-screen change it describes (which panel lights up, what a flag reads).
+
+---
+
+## Validation sequence (run in this order)
 
 This plan is a **release gate**, walked front-to-back in three escalating phases. Do
 not skip ahead — each phase assumes the prior one passed, and a failure early is
@@ -14,31 +38,45 @@ cheaper to diagnose than the same defect surfacing inside a complex interrupt te
 
 | Phase | Goal | Tests | Test program(s) | Effort to set up |
 |-------|------|-------|-----------------|------------------|
-| **A — Visual verification** | *Look, don't touch.* Confirm the debugger window opens and every panel renders with correct layout/labels/colors **before** exercising any behavior. | **Test 0** | `test01_basic_spin.spin2` | Trivial — load and observe |
-| **B — Core interaction** | Small, low-risk interactions: single-step, repeat, watch, disassembly navigation, buttons, header flags, SFR/stack/pointers, hub viewer, pins. | **Tests 1–9** | `test01`, `test03`, `test06`, `test07`, `test08`, `test09` | Simple Spin2/PASM loops |
-| **C — Advanced / special code** | Features that require purpose-built P2 code: smart-pin watch, interrupts, multi-COG, event breakpoints. | **Tests 10–13** | `test10`, `test11`, `test12` | Hardware-feature-specific code |
+| **A — Visual verification** | *Look, don't touch.* Confirm the debugger window opens and every panel renders with correct layout/labels/colors **before** exercising any behavior. | **Test 0** | `test01` | Trivial — load and observe |
+| **B — Core interaction** | Single-step, repeat, watch, disassembly navigation, buttons, header flags, SFR/stack/pointers, hub viewer, pins. | **Tests 1–9** | `test01`, `test03`, `test06`, `test07`, `test08`, `test09` | Simple Spin2/PASM loops |
+| **C — Advanced / special code** | Features needing purpose-built P2 code: smart-pin watch, interrupts, multi-COG, event breakpoints. | **Tests 10–13** | `test10`, `test11`, `test12` | Hardware-feature-specific code |
 
 **Test 14 (hint bar)** is not a phase of its own — exercise it opportunistically
 throughout Phases B and C by hovering over each region as you reach it.
 
 **Gate rule**: a phase passes only when every test in it passes. If everything in
-Phases A–C passes against this plan (and the nine display windows pass their
-manual visual sweep), the build is release-ready.
+Phases A–C passes (and the nine display windows pass their manual visual sweep), the
+build is release-ready.
+
+### Suggested load order (minimizes reloads)
+
+Load each file **once** and run all of its tests before moving on. The only deviation
+from strict numeric order is **Test 5**: it reuses `test01`, so do it together with
+Tests 1–2 while that file is still loaded.
+
+| Order | Load this file | Run these tests | Phase |
+|-------|----------------|-----------------|-------|
+| 1 | `test01_basic_spin.spin2` | **0**, **1**, **2**, **5** (+ 14 anytime) | A, B |
+| 2 | `test03_pasm_regs.spin2` | **3**, **4** | B |
+| 3 | `test06_flags_skip.spin2` | **6** | B |
+| 4 | `test07_stack_ptr.spin2` | **7** | B |
+| 5 | `test08_hub_writes.spin2` | **8** | B |
+| 6 | `test09_pins.spin2` | **9** | B |
+| 7 | `test10_smart_pin.spin2` | **10** | C |
+| 8 | `test11_interrupts.spin2` | **11**, **13** | C |
+| 9 | `test12_multicog.spin2` | **12** | C |
 
 ---
 
-## Test 0: Visual Verification (lightweight — no interaction)
+## Test 0: Visual verification (lightweight — no interaction)
+
+**▶ Load:** `test01_basic_spin.spin2`
 
 **What this tests**: The debugger window opens and every panel is present, correctly
-laid out, and correctly labeled/colored — a pure visual parity pass against the
-Pascal screenshots, with **no stepping or clicking**. This catches layout and
-rendering-parity regressions immediately, before any behavioral test muddies the
-picture.
-
-### P2 Code
-```
-test01_basic_spin.spin2   ' compile with: pnut_ts -d test01_basic_spin.spin2
-```
+laid out, and correctly labeled/colored — a pure visual parity pass against the Pascal
+screenshots, with **no stepping or clicking**. This catches layout and rendering-parity
+regressions immediately, before any behavioral test muddies the picture.
 
 ### Interactions & Expected Results
 
@@ -62,21 +100,13 @@ required. Any layout or rendering-parity defect is logged here before Phase B.
 
 ---
 
-## Test 1: Basic Connection — DEBUG_MAIN Single Step
+## Test 1: Basic connection — single step
+
+**▶ Load:** keep `test01_basic_spin.spin2` loaded (from Test 0).
+
+**The program**: a Spin2 `repeat: x++` loop that runs forever.
 
 **What this tests**: Debugger window opens, breakpoint protocol works, basic display renders.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-PUB main() | x
-  x := 0
-  repeat
-    x++
-```
 
 ### Interactions & Expected Results
 
@@ -93,12 +123,11 @@ PUB main() | x
 
 ---
 
-## Test 2: Repeat Mode — Continuous Execution
+## Test 2: Repeat mode — continuous execution
+
+**▶ Load:** keep `test01` loaded.
 
 **What this tests**: ENTER key toggles repeat mode, ~20 breaks/sec throttling, Stop button.
-
-### P2 Code
-Same as Test 1.
 
 ### Interactions & Expected Results
 
@@ -113,25 +142,13 @@ Same as Test 1.
 
 ---
 
-## Test 3: Register Watch and Reset
+## Test 3: Register watch and reset
+
+**▶ Load:** `test03_pasm_regs.spin2`
+
+**The program**: a tight PASM loop that increments **PA** and decrements **PB** every pass.
 
 **What this tests**: Delta tracking algorithm, R key reset, watch list display.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  mov   pa, #0
-  mov   pb, #100
-  add   pa, #1
-  sub   pb, #1
-  jmp   #entry+2    ' Loop back to add/sub
-```
 
 ### Interactions & Expected Results
 
@@ -147,49 +164,48 @@ entry
 
 ---
 
-## Test 4: Disassembly Navigation — Modes and Scrolling
+## Test 4: Disassembly navigation — modes and scrolling
 
-**What this tests**: dmPC/dmCog/dmHub modes, mouse wheel scrolling, click behaviors.
+**▶ Load:** keep `test03` loaded.
 
-### P2 Code
-Same as Test 3 (simple PASM loop).
+**What this tests**: disassembly follow modes (*dmPC* follow-PC / *dmCog* cog-locked / *dmHub* hub), mouse wheel scrolling, click behaviors.
 
 ### Interactions & Expected Results
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Observe disassembly | Shows **R-xxx** format addresses (cog registers). PC line highlighted with inverse colors. Current mode: follow PC (dmPC). |
-| 2 | **Mouse wheel up** in disassembly box | Switches from PC-follow to cog-locked mode (dmCog). Disassembly scrolls up. PC highlight may scroll out of view. |
+| 1 | Observe disassembly | Shows **R-xxx** format addresses (cog registers). PC line highlighted with inverse colors. Currently following the PC (*dmPC*). |
+| 2 | **Mouse wheel up** in disassembly box | Switches from PC-follow to cog-locked (*dmCog*). Disassembly scrolls up. PC highlight may scroll out of view. |
 | 3 | **Ctrl+mouse wheel** | Scrolls by 4 instructions per tick (vs 1 without Ctrl). |
 | 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. |
-| 5 | **Left-click** in disassembly box | Returns to PC-follow mode (dmPC). Disassembly snaps back to show PC. |
+| 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
 | 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
 | 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
-| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (dmCog mode). Shows registers around clicked area. |
-| 9 | Click on **PC** value in header row | Returns to PC-follow mode. |
+| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. |
+| 9 | Click on **PC** value in header row | Returns to PC-follow. |
 
-**Pass criteria**: Three disassembly modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
+**Pass criteria**: All three disassembly follow modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
 
 ---
 
-## Test 5: Breakpoint Control Buttons
+## Test 5: Breakpoint control buttons
 
-**What this tests**: Left-click exclusive set, right-click toggle, button highlight states.
+**▶ Load:** `test01_basic_spin.spin2` — *or do this test right after Test 2, while
+`test01` is still loaded* (see Suggested load order).
 
-### P2 Code
-Same as Test 1.
+**What this tests**: Left-click exclusive set, right-click toggle, button highlight states. (*BreakValue* below is the internal break-condition word — it is not shown on screen; watch the button highlights.)
 
 ### Interactions & Expected Results
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Observe buttons | MAIN button should be highlighted (active). All others dimmed. This matches initial BreakValue = break on MAIN. |
-| 2 | **Left-click DEBUG** button | DEBUG highlights, MAIN dims. Only DEBUG condition active. BreakValue = $10. |
-| 3 | **Right-click INT1** button | INT1 highlights additionally (toggle on). BreakValue = $12 (DEBUG + INT1). DEBUG stays highlighted. |
-| 4 | **Right-click INT1** again | INT1 dims (toggle off). BreakValue = $10 (DEBUG only). |
-| 5 | **Left-click MAIN** | MAIN highlights exclusively. DEBUG, INT1 all dim. BreakValue = $01. |
-| 6 | Press **I** key | INIT button toggles (independent bit 8). INIT highlights. MAIN stays highlighted. BreakValue = $101. |
-| 7 | Press **I** again | INIT dims. BreakValue = $01. |
+| 1 | Observe buttons | MAIN button should be highlighted (active). All others dimmed. This matches initial *BreakValue* = break on MAIN. |
+| 2 | **Left-click DEBUG** button | DEBUG highlights, MAIN dims. Only DEBUG condition active. *BreakValue* = $10. |
+| 3 | **Right-click INT1** button | INT1 highlights additionally (toggle on). *BreakValue* = $12 (DEBUG + INT1). DEBUG stays highlighted. |
+| 4 | **Right-click INT1** again | INT1 dims (toggle off). *BreakValue* = $10 (DEBUG only). |
+| 5 | **Left-click MAIN** | MAIN highlights exclusively. DEBUG, INT1 all dim. *BreakValue* = $01. |
+| 6 | Press **I** key | INIT button toggles (independent bit 8). INIT highlights. MAIN stays highlighted. *BreakValue* = $101. |
+| 7 | Press **I** again | INIT dims. *BreakValue* = $01. |
 | 8 | Press **B** key | BREAK button action: clears all conditions except INIT. All mode buttons dim. |
 | 9 | Press **M** key | MAIN toggles back on. |
 | 10 | Press **D** key | DEBUG toggles on, MAIN cleared (mutual exclusion). |
@@ -198,29 +214,13 @@ Same as Test 1.
 
 ---
 
-## Test 6: Header Display — Flags, SKIP, XBYTE, CT
+## Test 6: Header display — flags, SKIP, XBYTE, CT
+
+**▶ Load:** `test06_flags_skip.spin2`
+
+**The program**: sets **Z** (`cmp wz`) then **C** (`cmp wc`), then a `skip #%1010` over the next four `nop`s (2nd and 4th skipped), then loops.
 
 **What this tests**: Top row panels render correctly with proper bit extraction.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  mov   pa, #5
-  cmp   pa, #5    wz   ' Sets Z flag
-  cmp   pa, #3    wc   ' Sets C flag
-  skip  #%1010         ' Set SKIP pattern
-  nop                  ' Skipped
-  nop                  ' Not skipped
-  nop                  ' Skipped
-  nop                  ' Not skipped
-  jmp   #entry
-```
 
 ### Interactions & Expected Results
 
@@ -237,30 +237,13 @@ entry
 
 ---
 
-## Test 7: SFR, Stack, and Pointer Display
+## Test 7: SFR, stack, and pointer display
+
+**▶ Load:** `test07_stack_ptr.spin2`
+
+**The program**: sets PTRA/PTRB, `wrlong`s test values to hub, then `call`s a subroutine that `ret`s.
 
 **What this tests**: Special function registers, hardware stack, pointer data windows.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  mov   ptra, ##$1000    ' Set PTRA to hub address
-  mov   ptrb, ##$2000    ' Set PTRB to hub address
-  wrlong #$DEADBEEF, ptra  ' Write to hub at PTRA
-  wrlong #$CAFEBABE, ptrb  ' Write to hub at PTRB
-  call  #subroutine
-  jmp   #entry
-
-subroutine
-  nop
-  ret
-```
 
 ### Interactions & Expected Results
 
@@ -278,27 +261,13 @@ subroutine
 
 ---
 
-## Test 8: Hub Memory Viewer and Heatmap
+## Test 8: Hub memory viewer and heatmap
+
+**▶ Load:** `test08_hub_writes.spin2`
+
+**The program**: a tight loop writing each hub long across `hub[$00..$FF]`, then repeats.
 
 **What this tests**: Hub data display, scrolling, nibble editing, heatmap visualization.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  mov   ptra, #0
-.loop
-  wrlong ptra, ptra      ' Write address to hub[address]
-  add   ptra, #4
-  cmp   ptra, ##$100  wz
-  if_nz jmp #.loop
-  jmp   #entry            ' Repeat forever
-```
 
 ### Interactions & Expected Results
 
@@ -319,25 +288,13 @@ entry
 
 ---
 
-## Test 9: Pin Registers and Status Indicators
+## Test 9: Pin registers and status indicators
+
+**▶ Load:** `test09_pins.spin2`
+
+**The program**: `drvh`/`drvl`/`fltl` to drive pins 0, 1, 16 and float pin 2, then loops.
 
 **What this tests**: DIR/OUT/IN binary display, status indicators (INIT, STALLI, STR, MOD, LUTS).
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  drvh  #0               ' Set pin 0 high (DIR=1, OUT=1)
-  drvl  #1               ' Set pin 1 low  (DIR=1, OUT=0)
-  drvh  #16              ' Set pin 16 high
-  fltl  #2               ' Float pin 2    (DIR=0)
-  jmp   #entry
-```
 
 ### Interactions & Expected Results
 
@@ -353,27 +310,13 @@ entry
 
 ---
 
-## Test 10: Smart Pin Watch
+## Test 10: Smart pin watch
+
+**▶ Load:** `test10_smart_pin.spin2`
+
+**The program**: configures pin 0 as a smart-pin NCO (`wrpin`/`wxpin`/`wypin`/`drvl`), then reads it with `rdpin` in a loop.
 
 **What this tests**: Smart pin delta tracking, DIR filter, compressed data parsing.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-
-DAT
-  org
-entry
-  wrpin ##$4C_00_0000, #0   ' Configure pin 0 as NCO frequency
-  wxpin ##1000, #0           ' Set base period
-  wypin #500, #0             ' Set PWM value
-  drvl  #0                   ' Enable smart pin
-  nop
-  rdpin pa, #0               ' Read smart pin value (RQPIN)
-  jmp   #entry+4             ' Loop reading
-```
 
 ### Interactions & Expected Results
 
@@ -389,30 +332,13 @@ entry
 
 ---
 
-## Test 11: Interrupt Status and Execution Mode
+## Test 11: Interrupt status and execution mode
 
-**What this tests**: INT1/INT2/INT3 display, execution mode (MAIN/INT1/INT2/INT3), SKIP suspension.
+**▶ Load:** `test11_interrupts.spin2`
 
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
+**The program**: enables INT1 on a CT1 event and waits for it; the handler re-arms CT1 and `reti1`s.
 
-DAT
-  org
-entry
-  mov   ijmp1, #int1_handler
-  mov   iret1, #0
-  setint1 #EVENT_CT1          ' Enable INT1 on CT1 event
-  addct1  cnt, ##1000         ' Set CT1 target
-  nop
-  jmp   #$-1                  ' Wait for interrupt
-
-int1_handler
-  addct1  cnt, ##1000         ' Reset CT1 target
-  reti1
-```
+**What this tests**: INT1/INT2/INT3 display, execution mode (MAIN/INT1/INT2/INT3), SKIP suspension. (*ExecMode* below is the internal execution-mode value; on screen, read the **EXEC** panel.)
 
 ### Interactions & Expected Results
 
@@ -420,35 +346,20 @@ int1_handler
 |------|--------|-----------------|
 | 1 | Step until interrupt fires | **EXEC** panel changes from **MAIN** to **INT1**. |
 | 2 | Observe interrupt status | **INT** panel shows `INT1 CT1 busy`. INT2/INT3 show `idle` or `off`. |
-| 3 | Observe SKIP panel | Should show **"Suspended during MODE"** (dimmed) when ExecMode != 0 (inside INT1). |
+| 3 | Observe SKIP panel | Should show **"Suspended during MODE"** (dimmed) when *ExecMode* != 0 (inside INT1). |
 | 4 | Step through `reti1` | EXEC returns to **MAIN**. INT1 status changes to `idle`. SKIP pattern becomes active again. |
 
 **Pass criteria**: Execution mode changes on interrupt entry/exit, interrupt status shows correct event name and state, SKIP suspension message appears.
 
 ---
 
-## Test 12: Multi-COG Debugging
+## Test 12: Multi-COG debugging
+
+**▶ Load:** `test12_multicog.spin2`
+
+**The program**: `cogspin` launches a second cog running its own loop; both cogs break (`DEBUG_COGINIT = 1`).
 
 **What this tests**: Per-cog debugger windows, COGBRK async break.
-
-### P2 Code
-```spin2
-CON
-  _clkfreq = 200_000_000
-  DEBUG_MAIN = 1
-  DEBUG_COGINIT = 1
-
-PUB main()
-  cogspin(NEWCOG, cog1_task(), @stack1)
-
-PUB cog1_task() | x
-  x := 0
-  repeat
-    x++
-
-VAR
-  long stack1[64]
-```
 
 ### Interactions & Expected Results
 
@@ -465,19 +376,18 @@ VAR
 
 ---
 
-## Test 13: Event Breakpoints
+## Test 13: Event breakpoints
+
+**▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
 **What this tests**: Breaking on specific events, EVENT button behavior.
-
-### P2 Code
-Same as Test 11 (uses CT1 event for INT1).
 
 ### Interactions & Expected Results
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Click on **CT1** event name in events panel | Sets BreakEvent to CT1 (event index 1). |
-| 2 | **Left-click EVENT** button | EVENT button highlights. BreakValue includes bit 9 + event ID. |
+| 2 | **Left-click EVENT** button | EVENT button highlights. *BreakValue* includes bit 9 + event ID. |
 | 3 | Press **SPACE** (single go) | Execution continues until CT1 event fires. Debugger breaks at the event. |
 | 4 | Observe event flags | CT1 event flag shows '1' in events panel. |
 | 5 | **Right-click EVENT** button | Toggles EVENT condition off. |
@@ -487,12 +397,11 @@ Same as Test 11 (uses CT1 event for INT1).
 
 ---
 
-## Test 14: Context-Sensitive Hint Bar
+## Test 14: Context-sensitive hint bar
+
+**▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
 **What this tests**: Hint bar content changes based on mouse hover position.
-
-### P2 Code
-Any of the above test programs.
 
 ### Interactions & Expected Results
 
@@ -511,26 +420,27 @@ Any of the above test programs.
 
 ---
 
-## Test Summary Matrix
+## Test summary matrix
 
-| Test | Phase | Feature Area | Complexity | P2 Code Needed |
-|------|-------|-------------|------------|----------------|
-| 0 | A | Visual verification (no interaction) | Trivial | Minimal Spin2 loop |
-| 1 | B | Basic connection, single step | Simple | Minimal Spin2 loop |
-| 2 | B | Repeat mode, throttling | Simple | Same as Test 1 |
-| 3 | B | Register watch, reset | Simple | PASM register ops |
-| 4 | B | Disassembly navigation | Medium | Same as Test 3 |
-| 5 | B | Button behavior | Medium | Same as Test 1 |
-| 6 | B | Header display (C/Z/SKIP/CT) | Medium | PASM with flags/skip |
-| 7 | B | SFR, stack, pointers | Medium | PASM with call/ptr |
-| 8 | B | Hub memory viewer | Medium | PASM hub writes |
-| 9 | B | Pin registers, status | Medium | PASM pin drive |
-| 10 | C | Smart pin watch | Medium | PASM smart pin |
-| 11 | C | Interrupts, exec mode | Complex | PASM with INT1 |
-| 12 | C | Multi-COG | Complex | Spin2 + COGINIT |
-| 13 | C | Event breakpoints | Complex | Same as Test 11 |
-| 14 | B/C | Hint bar | Simple | Any test program (run throughout) |
+| Test | Phase | Feature Area | Complexity | Load file |
+|------|-------|-------------|------------|-----------|
+| 0 | A | Visual verification (no interaction) | Trivial | `test01_basic_spin.spin2` |
+| 1 | B | Basic connection, single step | Simple | `test01` (keep loaded) |
+| 2 | B | Repeat mode, throttling | Simple | `test01` (keep loaded) |
+| 3 | B | Register watch, reset | Simple | `test03_pasm_regs.spin2` |
+| 4 | B | Disassembly navigation | Medium | `test03` (keep loaded) |
+| 5 | B | Button behavior | Medium | `test01` (reuse — do with Tests 1–2) |
+| 6 | B | Header display (C/Z/SKIP/CT) | Medium | `test06_flags_skip.spin2` |
+| 7 | B | SFR, stack, pointers | Medium | `test07_stack_ptr.spin2` |
+| 8 | B | Hub memory viewer | Medium | `test08_hub_writes.spin2` |
+| 9 | B | Pin registers, status | Medium | `test09_pins.spin2` |
+| 10 | C | Smart pin watch | Medium | `test10_smart_pin.spin2` |
+| 11 | C | Interrupts, exec mode | Complex | `test11_interrupts.spin2` |
+| 12 | C | Multi-COG | Complex | `test12_multicog.spin2` |
+| 13 | C | Event breakpoints | Complex | `test11` (keep loaded) |
+| 14 | B/C | Hint bar | Simple | Any (run throughout) |
 
 ---
 
-*Generated from Single-Step Debugger Theory of Operations document and PNut-Term-TS implementation review.*
+*Generated from the Single-Step Debugger Theory of Operations document and the
+PNut-Term-TS implementation review. Companion P2 sources: `SingleStep-Debugger-Test-Programs/`.*
