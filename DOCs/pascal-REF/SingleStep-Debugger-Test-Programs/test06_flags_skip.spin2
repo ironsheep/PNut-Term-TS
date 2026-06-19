@@ -5,6 +5,10 @@
 ''   Test 6 — Header display: C/Z flags, SKIP pattern with strikethrough, CT,
 ''            XBYTE, PC
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / mov pa,#5) — no Spin interpreter or
+'' coginit indirection in the way.
+''
 '' Behavior: Sets Z then C by compare, sets a SKIP pattern %1010 over the next
 '' four NOPs (pins 0 and 2 skipped), then loops. Stepping through shows the
 '' SKIP 32-bit pattern in the header and strikethrough on skipped disasm lines.
@@ -12,9 +16,6 @@
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org
