@@ -50,7 +50,8 @@ class DebuggerApp {
       sendPhase2: (bytes) => sendToMain({ kind: 'phase2', bytes }),
       requestRender: () => this.render(),
       onBreakpointTimeout: () => this.render(),
-      onPhase3Complete: () => sendToMain({ kind: 'phase3Complete' })
+      onPhase3Complete: () => sendToMain({ kind: 'phase3Complete' }),
+      log: (msg) => log('info', `[CTRL] ${msg}`)
     });
     this.renderer = new DebuggerRenderer(canvas, this.state);
     this.interaction = new DebuggerInteraction(canvas, this.state, this.renderer, this.controller, {

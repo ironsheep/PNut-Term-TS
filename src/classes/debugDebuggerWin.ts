@@ -208,12 +208,33 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // by the bundle's phase2 reply in handleRendererMessage, cleared on
     // phase3Complete), otherwise Phase 1 packets (pnut_ts emits 416 bytes;
     // Pascal documents 456 — accept either).
+    //
+    // CRITICAL: the router hands us a zero-copy Uint8Array view onto the
+    // SharedMessagePool's SharedArrayBuffer. We MUST copy it into an owned,
+    // non-shared buffer before doing anything else, for TWO reasons:
+    //   1. webContents.send (IPC to the renderer bundle) cannot structured-clone
+    //      a SharedArrayBuffer-backed typed array — it throws "Failed to
+    //      serialize arguments", so the renderer never receives the packet and
+    //      the window sits at "awaiting first breakpoint" forever.
+    //   2. The pool reuses this slot once processMessageImmediate returns, so any
+    //      view buffered in pendingPhase1/pendingPhase3 (renderer not yet ready)
+    //      would read clobbered bytes on drain.
+    // new Uint8Array(view) allocates a fresh regular ArrayBuffer and copies.
+    const owned = new Uint8Array(data);
+    // DIAGNOSTIC (build A): log EVERY binary message the router delivers to this
+    // window. Correlate with the USB-traffic log: if the P2 streams Phase 3 bytes
+    // but none show up here, the extractor is dropping/misrouting them (no Phase 3
+    // framing path) — the suspected data-region defect.
+    const first16 = Array.from(owned.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    this.debugLog(`RX binary len=${owned.length} awaitingP3=${this.awaitingPhase3} first16=[${first16}]`);
     if (this.awaitingPhase3) {
-      this.forwardPhase3ToRenderer(data);
+      this.forwardPhase3ToRenderer(owned);
       return;
     }
-    if (data.length === 416 || data.length === 456) {
-      this.forwardPhase1ToRenderer(data);
+    if (owned.length === 416 || owned.length === 456) {
+      this.forwardPhase1ToRenderer(owned);
+    } else {
+      this.debugLog(`RX binary len=${owned.length} DID NOT match Phase 1 (416/456) and not awaitingP3 — DROPPED`);
     }
   }
 
@@ -398,6 +419,9 @@ ${bundleJs}
           this.tLongTransmitter.transmitBuffer(message.bytes);
           // With the cut-over complete, we expect Phase 3 next.
           this.awaitingPhase3 = true;
+          // DIAGNOSTIC (build A): mark the Phase 2 TX → Phase 3 boundary so the
+          // log timeline lines up with the USB-traffic capture.
+          this.debugLog(`PHASE2 transmitted (${message.bytes.length}B) → awaitingPhase3=true`);
         } catch (error) {
           this.logConsoleMessage(`[DEBUGGER] Error transmitting Phase 2 from bundle: ${error}`);
         }

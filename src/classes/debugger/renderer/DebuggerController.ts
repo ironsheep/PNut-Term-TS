@@ -5,7 +5,9 @@ import {
   PHASE2_SIZE,
   DEBUGGER_MSG_LONGS,
   COG_BLOCKS,
+  COG_BLOCK_SIZE,
   HUB_BLOCKS,
+  HUB_BLOCK_RATIO,
   HUB_SUB_BLOCK_SIZE,
   PTR_BYTES,
   PTR_CENTER,
@@ -44,6 +46,8 @@ export interface ControllerCallbacks {
   requestRender: () => void;
   onBreakpointTimeout: () => void;
   onPhase3Complete: () => void;
+  /** Optional diagnostic sink (routed to the shared debug log via main). */
+  log?: (msg: string) => void;
 }
 
 /**
@@ -80,6 +84,10 @@ export class DebuggerController {
    */
   public processPhase3(bytes: Uint8Array): void {
     const complete = this.phase3Parser.addChunk(bytes);
+    // DIAGNOSTIC (build A): confirm Phase 3 chunks actually reach the renderer.
+    if (this.callbacks.log) {
+      this.callbacks.log(`PHASE3 chunk: +${bytes.length}B, complete=${complete}`);
+    }
     if (complete) {
       // Decay heat for any address we did NOT receive (those that weren't
       // set to 254 in this pass). Pascal: CogImageHit[i] -= HitDecayRate.
@@ -162,6 +170,25 @@ export class DebuggerController {
     // ─── Build + send Phase 2 reply ─────────────────────────────────────
     const phase2 = this.buildPhase2();
     this.callbacks.sendPhase2(phase2);
+
+    // ─── DIAGNOSTIC (build A, phase3-extraction investigation) ──────────
+    // Report the expected Phase 3 size so the captured log can be correlated
+    // with the USB-traffic log: the P2 will now stream this many raw bytes in
+    // response to Phase 2, and we need to know whether they reach this window.
+    // (Smart-pin tail is variable; this is the fixed minimum + 8 mask bytes.)
+    if (this.callbacks.log) {
+      const cogBytes = this.state.pendingCogBlocks.length * COG_BLOCK_SIZE * 4;
+      const hubBytes = this.state.pendingHubBlocks.length * HUB_BLOCK_RATIO * 2;
+      const fixedHub = (this.state.pendingHubCode ? DIS_LINES * 4 : 0) + PTR_BYTES * 3 + HUB_SUB_BLOCK_SIZE;
+      const minTotal = cogBytes + hubBytes + fixedHub + 8 /* smart-pin mask bytes */;
+      this.callbacks.log(
+        `PHASE1 ok: PC=$${(this.state.message[M.IRET] & 0xfffff).toString(16)} ` +
+        `→ PHASE2 sent (${phase2.length}B). Expecting PHASE3 ≥ ${minTotal}B ` +
+        `[cogBlocks=${this.state.pendingCogBlocks.length}(${cogBytes}B) ` +
+        `hubBlocks=${this.state.pendingHubBlocks.length}(${hubBytes}B) ` +
+        `hubCode=${this.state.pendingHubCode} fixedHub=${fixedHub}B +smartPins(var)]`
+      );
+    }
 
     // ─── Ask renderer to repaint with new state ─────────────────────────
     this.callbacks.requestRender();
