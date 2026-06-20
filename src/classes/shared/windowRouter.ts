@@ -297,12 +297,17 @@ export class WindowRouter extends EventEmitter {
       this.logger.trace('ROUTE', `Routing message type ${message.type} (${dataSize} bytes)`);
 
       // Determine binary vs text from SharedMessageType enum ranges
-      const isBinaryMessage =
+      const isPhase1 =
         message.type >= SharedMessageType.DEBUGGER0_416BYTE && message.type <= SharedMessageType.DEBUGGER7_416BYTE;
+      const isPhase3 =
+        message.type >= SharedMessageType.DEBUGGER0_PHASE3 && message.type <= SharedMessageType.DEBUGGER7_PHASE3;
 
-      if (isBinaryMessage) {
-        // Binary debugger message - extract COG ID from SharedMessageType
-        const cogId = message.type - SharedMessageType.DEBUGGER0_416BYTE;
+      if (isPhase1 || isPhase3) {
+        // Binary debugger message - cog-id is carried by the TYPE (phase3 raw
+        // chunks have no cog-id prefix). routeBinaryMessage uses taggedCogId.
+        const cogId = isPhase1
+          ? message.type - SharedMessageType.DEBUGGER0_416BYTE
+          : message.type - SharedMessageType.DEBUGGER0_PHASE3;
         this.routeBinaryMessage(message.data, cogId);
       } else {
         // Text message (COG, backtick, terminal) - decode in routeTextMessage

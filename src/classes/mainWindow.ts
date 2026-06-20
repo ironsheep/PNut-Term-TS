@@ -336,6 +336,14 @@ export class MainWindow {
       }
 
       const cogId = packet[0];
+      // Defense-in-depth: this handler derives the cog-id from the first DATA
+      // byte, which is only valid for a phase1 packet (cog-id 0..7). Phase 3 now
+      // uses a distinct type that never reaches here, but guard anyway so no stray
+      // binary can spawn a bogus debugger window (e.g. COG215 from a raw byte).
+      if (cogId > 7) {
+        this.logConsoleMessage(`[DEBUGGER] Ignoring non-phase1 packet with invalid COG id ${cogId} (len=${packet.length})`);
+        return;
+      }
       this.logConsoleMessage(`[DEBUGGER] Received 416-byte packet from COG${cogId}`);
 
       // Create debugger window directly like other debug windows (scope, plot, etc.)

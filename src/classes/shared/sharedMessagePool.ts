@@ -79,7 +79,22 @@ export enum SharedMessageType {
   BACKTICK_UPDATE = 27,
 
   TERMINAL_OUTPUT = 28,
-  INVALID_COG = 29
+  INVALID_COG = 29,
+
+  // Single-step debugger Phase 3 raw-stream chunks (per cog). DISTINCT from the
+  // 416-byte phase1 types so that (a) the window-creation 'debuggerPacketReceived'
+  // event — which derives the cog-id from the FIRST DATA BYTE — fires ONLY for
+  // real phase1 packets (raw phase3 bytes are not cog-ids), and (b) routing still
+  // carries the cog-id via the TYPE (phase3 has no cog-id prefix). See
+  // extractionWorker raw-passthrough + windowRouter.routeMessage.
+  DEBUGGER0_PHASE3 = 30,
+  DEBUGGER1_PHASE3 = 31,
+  DEBUGGER2_PHASE3 = 32,
+  DEBUGGER3_PHASE3 = 33,
+  DEBUGGER4_PHASE3 = 34,
+  DEBUGGER5_PHASE3 = 35,
+  DEBUGGER6_PHASE3 = 36,
+  DEBUGGER7_PHASE3 = 37
 }
 
 // Slot header layout (metadata before data)

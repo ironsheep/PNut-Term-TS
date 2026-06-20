@@ -296,11 +296,16 @@ export class MessageRouter extends EventEmitter {
     // Registering both debuggerWindow and debugLogger caused 2x delivery to the logger.
     for (let cogId = 0; cogId <= 7; cogId++) {
       const debuggerType = SharedMessageType.DEBUGGER0_416BYTE + cogId;
+      // Phase 3 raw-stream chunks use a distinct type but route to the same
+      // window (cog-id carried by the type — see windowRouter.routeMessage).
+      const phase3Type = SharedMessageType.DEBUGGER0_PHASE3 + cogId;
       if (debuggerWindow) {
         this.registerDestination(debuggerType, debuggerWindow);
+        this.registerDestination(phase3Type, debuggerWindow);
       } else {
         // No debugger window — route to debug logger so messages aren't lost
         this.registerDestination(debuggerType, debugLogger);
+        this.registerDestination(phase3Type, debugLogger);
       }
     }
 

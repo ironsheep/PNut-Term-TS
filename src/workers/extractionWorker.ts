@@ -692,7 +692,10 @@ function extractMessages(): void {
         }
         if (got === 0) break;
         const rawData = got === drainLen ? raw : raw.subarray(0, got);
-        const rawType = (SharedMessageType.DEBUGGER0_416BYTE + debuggerTransactionCog) as SharedMessageType;
+        // DISTINCT phase3 type (not the 416-byte phase1 type): carries the cog-id
+        // via the type for routing, but does NOT trigger the byte-derived
+        // window-creation event (which would spawn bogus windows from raw bytes).
+        const rawType = (SharedMessageType.DEBUGGER0_PHASE3 + debuggerTransactionCog) as SharedMessageType;
         const rawSlot = messagePool.acquire(rawData.length);
         if (!rawSlot) {
           stashedMessage = { data: new Uint8Array(rawData), type: rawType };
