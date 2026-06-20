@@ -361,6 +361,14 @@ export class MainWindow {
           }
         });
 
+        // Phase 3 raw-passthrough handshake: when this window's renderer reports
+        // Phase 3 complete, tell the extraction worker to close the open debug
+        // transaction so the next phase1 (any cog) is framed normally. Mirrors
+        // Pascal's run-to-completion read (the P2 holds lock[15] per exchange).
+        debuggerDisplay.on('debuggerPhase3Done', () => {
+          this.serialProcessor.signalDebuggerPhase3Done();
+        });
+
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
 

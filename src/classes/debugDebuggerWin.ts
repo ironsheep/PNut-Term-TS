@@ -432,9 +432,13 @@ ${bundleJs}
         this.emit('setGlobalCogBrk', { mask: message.mask, originCogId: this.cogId });
         break;
       case 'phase3Complete':
-        // Bundle finished parsing Phase 3. The next 456-byte chunk is a
+        // Bundle finished parsing Phase 3. The next 416-byte chunk is a
         // new Phase 1 (not a Phase 3 continuation).
         this.awaitingPhase3 = false;
+        // Close the worker's raw-passthrough transaction so the next phase1 is
+        // framed normally (see DebugDebuggerWindow ctor wiring in mainWindow).
+        this.emit('debuggerPhase3Done', { cogId: this.cogId });
+        this.debugLog(`PHASE3 complete → awaitingPhase3=false, transaction closed`);
         break;
       case 'log':
         this.debugLog(`[R/${message.level}] ${message.msg}`);

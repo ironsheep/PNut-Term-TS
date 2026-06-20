@@ -435,4 +435,13 @@ export class WorkerExtractor extends EventEmitter {
     this.pendingRingBytes = 0;
     this.worker.postMessage({ type: 'clear' });
   }
+
+  /**
+   * Close the open single-step-debugger Phase 3 transaction in the worker.
+   * Called when a debugger window's renderer reports Phase 3 complete, so the
+   * worker resumes normal framing for the next phase1 (any cog).
+   */
+  public signalDebuggerPhase3Done(): void {
+    this.worker.postMessage({ type: 'debuggerPhase3Done' });
+  }
 }

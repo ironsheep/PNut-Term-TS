@@ -360,6 +360,14 @@ export class SerialMessageProcessor extends EventEmitter {
   }
 
   /**
+   * Close the open single-step-debugger Phase 3 transaction in the extraction
+   * worker (called when a debugger window's renderer reports Phase 3 complete).
+   */
+  public signalDebuggerPhase3Done(): void {
+    this.workerExtractor.signalDebuggerPhase3Done();
+  }
+
+  /**
    * Get synchronization status
    */
   public getSyncStatus(): { synchronized: boolean; source: string } {

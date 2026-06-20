@@ -627,6 +627,23 @@ function maybeLogRxStats(): void {
   extractedSinceStats = 0;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Single-step debugger Phase 3 raw-passthrough
+//
+// The P2 debug protocol per cog is phase1(416B, framed) → phase2(host→P2) →
+// phase3(VARIABLE, RAW — no cog-id prefix, no length). The P2 holds hardware
+// lock[15] for the whole exchange (Spin2_debugger.spin2 :201/:235), so exactly
+// ONE cog's transaction is on the wire at a time. We mirror Pascal's run-to-
+// completion read: once a phase1 DEBUGGER{N} packet is emitted, a transaction is
+// "open" for cog N — every subsequent byte is that cog's raw phase3 and must be
+// delivered WITHOUT framing (find416 would mis-frame / stall on non-zero data).
+// We tag the raw chunks with the same DEBUGGER{N} type so routeMessage() routes
+// them by TYPE to cog N's window (the missing cog-id prefix is irrelevant).
+// The transaction closes when the host signals 'debuggerPhase3Done' (the
+// renderer's structural parser reports completion).
+let debuggerTransactionCog: number | null = null;
+const PHASE3_DRAIN_CAP = 4096; // ≤ large-slot capacity (8184B) — keeps one chunk in one slot
+
 /**
  * Extract messages from buffer using boundary detection
  * Writes to SharedMessagePool and sends poolId to main thread
@@ -657,6 +674,35 @@ function extractMessages(): void {
   try {
     while (extracted < maxBatch && buffer.hasData()) {
       let messageData: Uint8Array | null = null;
+
+      // ── Debugger Phase 3 raw-passthrough ───────────────────────────────
+      // A debug transaction is open: drain available bytes RAW (bypass all
+      // framing) and tag them with the open cog's DEBUGGER type so they route
+      // to that window as Phase 3. Capped so one chunk fits one pool slot.
+      if (debuggerTransactionCog !== null) {
+        const avail = buffer.getUsedSpace();
+        if (avail === 0) break; // nothing yet; resume next tick when data arrives
+        const drainLen = Math.min(avail, PHASE3_DRAIN_CAP);
+        const raw = new Uint8Array(drainLen);
+        let got = 0;
+        for (let k = 0; k < drainLen; k++) {
+          const r = buffer.next();
+          if (r.status === NextStatus.EMPTY) break;
+          raw[got++] = r.value!;
+        }
+        if (got === 0) break;
+        const rawData = got === drainLen ? raw : raw.subarray(0, got);
+        const rawType = (SharedMessageType.DEBUGGER0_416BYTE + debuggerTransactionCog) as SharedMessageType;
+        const rawSlot = messagePool.acquire(rawData.length);
+        if (!rawSlot) {
+          stashedMessage = { data: new Uint8Array(rawData), type: rawType };
+          poolBackpressureEvents++;
+          break;
+        }
+        writeMessageToSlot(rawSlot, rawData, rawType);
+        extracted++;
+        continue;
+      }
 
       // Check if idle timeout has expired (for CR/LF at buffer end detection)
       const now = Date.now();
@@ -701,6 +747,17 @@ function extractMessages(): void {
 
       // Write message to pool + hand poolId to main (increments extraction counters)
       writeMessageToSlot(slot, messageData, messageType);
+
+      // Open a debugger transaction when a Phase 1 packet is emitted: the cog-id
+      // is the message type's offset, and from here the P2 streams raw Phase 3
+      // for this cog until the host signals completion. (Only reachable while no
+      // transaction is open — the raw-drain branch above handles the open case.)
+      if (
+        messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+        messageType <= SharedMessageType.DEBUGGER7_416BYTE
+      ) {
+        debuggerTransactionCog = messageType - SharedMessageType.DEBUGGER0_416BYTE;
+      }
 
       extracted++;
     }
@@ -795,10 +852,18 @@ parentPort.on('message', (msg: any) => {
       }
       break;
 
+    case 'debuggerPhase3Done':
+      // The renderer's structural parser reported Phase 3 complete: close the
+      // transaction so the next phase1 (any cog) is framed normally by find416.
+      debuggerTransactionCog = null;
+      break;
+
     case 'clear':
       // [#30] Main cleared the ring (DTR-reset / resync) — drop any stashed pre-reset message so
       // it isn't emitted after the boundary. The ring itself was already reset on the main side.
       stashedMessage = null;
+      // A ring reset (DTR/RTS) abandons any in-flight debug exchange.
+      debuggerTransactionCog = null;
       logConsoleMessage('Cleared stashed message on buffer clear');
       break;
 
