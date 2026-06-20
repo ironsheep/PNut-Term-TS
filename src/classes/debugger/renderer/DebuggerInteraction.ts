@@ -426,7 +426,7 @@ export class DebuggerInteraction {
   }
 
   private onStackClick(relX: number): void {
-    const i = Math.floor(relX / (CHAR_WIDTH_PX * 9)); // 9 chars per stack slot
+    const i = Math.floor((relX - 6 * CHAR_WIDTH_PX) / (CHAR_WIDTH_PX * 9)); // data at StackDataLeft (STACKl+6); 9 chars per slot
     if (i < 0 || i >= 8) return;
     const value = this.state.message[6 + i]; // mSTK0 + i
     if (value < 0x400) {

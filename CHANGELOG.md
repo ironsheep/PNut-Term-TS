@@ -5,6 +5,41 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.77] - 2026-06-20
+
+Single-step debugger visual-parity release: the debugger window now matches the original v55 PNut debugger across boxes, fonts, labels, colors, buttons, heat maps, dimming, and hover hints.
+
+### Changed
+
+- **Panel boxes are now filled, rounded, and rim-highlighted** to match the original. Each panel
+  (and every button) draws a filled rounded rectangle in its box color plus a brightened rounded rim,
+  instead of the previous flat single-pixel outline. This is what gives the CT box its orange fill and
+  every panel its rounded-corner look.
+- **Debugger text now uses the bundled Parallax font sized to the 8×16 cell grid**, so labels and
+  values fill their cells exactly instead of overflowing slightly.
+- **Register/LUT/hub heat maps now use the original's exact (linear) blend** and add a brightness
+  band over the rows currently shown in the disassembly window, linking the heat map to the
+  disassembly view. Set vs. clear register bits render in their correct distinct tones.
+- **The idle dim is now a true graded dim** — when 250 ms pass without a break, every pixel is halved
+  in brightness (matching the original) rather than covered by a flat grey veil, and the GO button
+  stays bright orange showing "Break".
+
+### Fixed
+
+- **Panel labels, titles, and indicators corrected to the original**: REG/LUT column titles, the
+  REG ▲ / LUT ▲ watch indicator (replacing a spurious "DIS"/"WATCH"), execution-mode and CALL(n)
+  display, interrupt off/active wording, RFxx/WFxx pointer labels, the RQPIN smart-pin title, and the
+  HUB label below its box.
+- **Pointer and hub data colors corrected**: pointer addresses are white with green data bytes; the
+  center pointer byte gets a green highlight with inverted dark text; hub addresses are white with
+  green hex/ASCII.
+- **The XBYTE checkmark now always shows dim and brightens to orange** when C/Z are affected by XBYTE
+  (previously no checkmark appeared).
+- **Button panel matches the original**: correct active/dim colors per button, the orange GO button,
+  the INT-entry right-arrows and the EVENT up-arrow, and the Go/Stop/Break caption logic.
+- **Fly-over hover hints are now orange italic** (previously white), and appear live on hover without
+  waiting for the next break.
+
 ## [0.9.73] - 2026-06-17
 
 Bug-fix release: two graphical debug windows of the same type created at the same instant no longer collide.

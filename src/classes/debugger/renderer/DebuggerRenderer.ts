@@ -66,15 +66,20 @@ function rgb(color: number): string {
   return '#' + (color & 0xFFFFFF).toString(16).padStart(6, '0');
 }
 
-/** Gamma-2.0 blend: sqrt((dst² * (255-a) + src² * a) / 256). Matches Pascal SmoothPixel (§5.7). */
-function blendGamma2(dst: number, src: number, alpha: number): number {
-  const notA = 255 - alpha;
-  const b = (dstC: number, srcC: number) =>
-    Math.round(Math.sqrt((dstC * dstC * notA + srcC * srcC * alpha) / 256));
-  const r = b((dst >> 16) & 0xFF, (src >> 16) & 0xFF);
-  const g = b((dst >> 8) & 0xFF, (src >> 8) & 0xFF);
-  const bl = b(dst & 0xFF, src & 0xFF);
-  return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (bl & 0xFF);
+/**
+ * Linear heat blend matching Pascal BlendPixel (DebuggerUnit.pas:2293-2298) — the
+ * blend the REG/LUT/HUB heat maps use (NOT the gamma-correct SmoothPixel used for
+ * line AA): each channel = min( (a*(255-alpha) + b*alpha + 255) >> 8 + shade, 255 ).
+ * `alpha` is the hit value 0..254 ramping a→b; `shade` is an additive brightness
+ * boost ($40 for the visible-disassembly highlight band, 0 otherwise).
+ */
+function blendPixel(a: number, b: number, alpha: number, shade: number = 0): number {
+  const ch = (ac: number, bc: number) =>
+    Math.min(((ac * (255 - alpha) + bc * alpha + 0xFF) >> 8) + shade, 0xFF);
+  const r = ch((a >> 16) & 0xFF, (b >> 16) & 0xFF);
+  const g = ch((a >> 8) & 0xFF, (b >> 8) & 0xFF);
+  const bl = ch(a & 0xFF, b & 0xFF);
+  return (r << 16) | (g << 8) | bl;
 }
 
 /** ASCII-or-dot for pointer / hub bytes. */
@@ -113,6 +118,14 @@ export class DebuggerRenderer {
   private baseCtx: OffscreenCanvasRenderingContext2D | null = null;
   private disasm = new Pasm2Disassembler();   // full PASM2 decoder (§4/§5)
 
+  // §2 font: the cell grid is fixed at CHAR_WIDTH_PX(8)×CHAR_HEIGHT_PX(16).
+  // Pascal derives the grid FROM the font (ChrWidth := TextWidth('X')); we invert
+  // it — size the bundled Parallax font so its 'X' advance fills exactly one cell,
+  // which also keeps multi-char hex strings aligned to the column grid. Measured
+  // once the font is available and recomputed when document.fonts settles.
+  private static readonly FONT_FAMILY = "'Parallax', monospace";
+  private fontPx = CHAR_HEIGHT_PX - 3;   // sane default until measured
+
   // Pre-rendered 32×512 RGBA bitmaps for REG and LUT heat maps. We mutate
   // these per frame in-place and StretchDraw them into the panel region.
   private regMapBmp: ImageData;
@@ -150,6 +163,23 @@ export class DebuggerRenderer {
     this.hubMapBmp = this.hubMapCtx.createImageData(64, 62);
 
     this.buildBaseTemplate();
+
+    // §2 — size the Parallax font to the cell. The font may not be loaded when
+    // the renderer constructs; measure now (best-effort) and recompute + repaint
+    // once document.fonts settles so the first real paint uses the right metrics.
+    this.fontPx = this.measureFontPx();
+    const docFonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    if (docFonts?.ready) {
+      docFonts.ready
+        .then(() => {
+          const px = this.measureFontPx();
+          if (px !== this.fontPx) {
+            this.fontPx = px;
+            this.render();
+          }
+        })
+        .catch(() => { /* font load failed — keep best-effort size */ });
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -162,6 +192,21 @@ export class DebuggerRenderer {
   private py(halfRow: number): number { return halfRow * HALF_ROW_PX; }
 
   /**
+   * §2 — find the Parallax px size whose 'X' advance equals one cell
+   * (CHAR_WIDTH_PX). measureText scales linearly with font size, so we measure
+   * at a reference size and scale. Falls back to the current value when the
+   * canvas can't measure (e.g. the jsdom test canvas returns width 0).
+   */
+  private measureFontPx(): number {
+    const ref = 32;
+    this.ctx.font = `${ref}px ${DebuggerRenderer.FONT_FAMILY}`;
+    const w = this.ctx.measureText('X').width;
+    if (!w || !isFinite(w)) return this.fontPx;
+    const px = (ref * CHAR_WIDTH_PX) / w;
+    return Math.max(6, Math.min(px, CHAR_HEIGHT_PX));
+  }
+
+  /**
    * Draw text at grid (col, halfRow). Text is CHAR_HEIGHT (16) tall so it
    * occupies 2 half-rows. Callers usually increment halfRow by 2 for the
    * next text line.
@@ -169,25 +214,141 @@ export class DebuggerRenderer {
   private drawText(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     text: string, col: number, halfRow: number,
-    color: number, bold: boolean = false
+    color: number, bold: boolean = false, italic: boolean = false
   ): void {
-    ctx.font = `${bold ? 'bold ' : ''}14px monospace`;
+    // Canvas font shorthand order: style weight size family.
+    ctx.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${this.fontPx}px ${DebuggerRenderer.FONT_FAMILY}`;
     ctx.textBaseline = 'top';
     ctx.fillStyle = rgb(color);
     ctx.fillText(text, this.px(col), this.py(halfRow));
   }
 
-  /** Stroke a rectangular box at grid (col, halfRow) with (w, h) in chars/half-rows. */
+  /**
+   * Draw a panel box at grid (col, halfRow), size (w, h) in chars/half-rows.
+   *
+   * Pascal DrawBox (DebuggerUnit.pas:2123-2148) is NOT a flat stroke — it draws a
+   * FILLED rounded rectangle in `color` plus a rounded rim brightened ×1.5
+   * (per-channel `color*3>>1`, clamped). Rim thickness `t = ChrWidth*rim>>4`
+   * (rim=3 for panels, 6 for the GO button); corner radius `ChrHeight/3+1`
+   * (tighter for `small` button tabs). Canvas2D `roundRect` supplies the
+   * anti-aliased edge Pascal's SmoothShape renders by hand — same pattern as
+   * debugPlotWin.ts:2547. This is what gives the CT box (cBox3) its orange and
+   * every panel its rounded corners.
+   */
   private drawBox(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-    col: number, halfRow: number, wCols: number, hHalfRows: number, color: number
+    col: number, halfRow: number, wCols: number, hHalfRows: number,
+    color: number, rim: number = 3, small: boolean = false
   ): void {
+    const x = this.px(col);
+    const y = this.py(halfRow);
+    const w = wCols * CHAR_WIDTH_PX;
+    const h = hHalfRows * HALF_ROW_PX;
+    // Pascal: t = ChrWidth*rim shr 4 (our fixed ChrWidth = CHAR_WIDTH_PX).
+    const t = Math.max(1, (CHAR_WIDTH_PX * rim) >> 4);
+    // Pascal: corner radius = ChrHeight div 3 + 1; tighter for small tabs.
+    let radius = ((CHAR_HEIGHT_PX / 3) | 0) + 1;
+    if (small) radius = Math.max(2, radius >> 1);
+    radius = Math.min(radius, w / 2, h / 2);
+    // Rim color: box color brightened ×1.5 per channel, clamped to 0xFF.
+    const rimColor =
+      (Math.min(((color >> 16) & 0xFF) * 3 >> 1, 0xFF) << 16) |
+      (Math.min(((color >> 8) & 0xFF) * 3 >> 1, 0xFF) << 8) |
+      Math.min((color & 0xFF) * 3 >> 1, 0xFF);
+    // Filled interior in the box color.
+    ctx.beginPath();
+    ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, radius);
+    ctx.fillStyle = rgb(color);
+    ctx.fill();
+    // Brightened rounded rim.
+    ctx.strokeStyle = rgb(rimColor);
+    ctx.lineWidth = t;
+    ctx.stroke();
+  }
+
+  /**
+   * Filled rounded rectangle centered at pixel (cx, cy) — the rim-less
+   * SmoothShape (thick=0) Pascal uses for the pointer center-byte highlight
+   * (DebuggerUnit.pas:2254-2261). No brightened rim, fully opaque.
+   */
+  private fillRoundedPx(
+    cx: number, cy: number, w: number, h: number, r: number, color: number
+  ): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.roundRect(cx - w / 2, cy - h / 2, w, h, Math.min(r, w / 2, h / 2));
+    ctx.fillStyle = rgb(color);
+    ctx.fill();
+  }
+
+  /**
+   * Draw a checkmark glyph at grid (col, halfRow) — mirrors Pascal DrawCheck
+   * (DebuggerUnit.pas:2158-2171): a two-segment stroke (down to +½ cell, then
+   * up to +1½ cells) centered vertically in the row, ±3px tall, starting at the
+   * left edge of `col`. Drawn with canvas lines so it is font-independent.
+   */
+  private drawCheck(col: number, halfRow: number, color: number): void {
+    const ctx = this.ctx;
+    const x0 = this.px(col);
+    const ym = this.py(halfRow) + CHAR_HEIGHT_PX / 2;
+    const dy = (CHAR_HEIGHT_PX * 3) >> 4; // Pascal ChrHeight*3 shr 4 = 3px
+    ctx.beginPath();
+    ctx.moveTo(x0, ym);
+    ctx.lineTo(x0 + (CHAR_WIDTH_PX >> 1), ym + dy);                  // mid, lower
+    ctx.lineTo(x0 + CHAR_WIDTH_PX + (CHAR_WIDTH_PX >> 1), ym - dy);  // right, upper
     ctx.strokeStyle = rgb(color);
-    ctx.lineWidth = 1;
-    ctx.strokeRect(
-      this.px(col) + 0.5, this.py(halfRow) + 0.5,
-      wCols * CHAR_WIDTH_PX - 1, hHalfRows * HALF_ROW_PX - 1
-    );
+    ctx.lineWidth = Math.max(2, CHAR_WIDTH_PX >> 2);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+
+  /**
+   * Right-pointing arrow within one cell at grid (col, halfRow) — mirrors Pascal
+   * DrawArrowRight (DebuggerUnit.pas:2205-2219): tip at the cell's right edge,
+   * shaft to the left, head to the upper/lower mid. Marks the INT*-Entry buttons.
+   */
+  private drawArrowRight(col: number, halfRow: number, color: number): void {
+    const ctx = this.ctx;
+    const xl = this.px(col);
+    const xr = xl + CHAR_WIDTH_PX;
+    const xm = (xl + xr) / 2;
+    const ym = this.py(halfRow) + CHAR_HEIGHT_PX / 2;
+    const dy = (CHAR_HEIGHT_PX * 3) >> 4; // Pascal ChrHeight*3 shr 4 = 3px
+    ctx.strokeStyle = rgb(color);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(xr, ym); ctx.lineTo(xl, ym);
+    ctx.moveTo(xr, ym); ctx.lineTo(xm, ym - dy);
+    ctx.moveTo(xr, ym); ctx.lineTo(xm, ym + dy);
+    ctx.stroke();
+  }
+
+  /**
+   * Up-pointing arrow centered on grid (col, halfRow) — mirrors Pascal
+   * DrawArrowUp (DebuggerUnit.pas:2189-2203): tip at the top, shaft down, head to
+   * the left/right mid. Marks the EVENT button.
+   */
+  private drawArrowUp(col: number, halfRow: number, color: number): void {
+    const ctx = this.ctx;
+    const xm = this.px(col) + CHAR_WIDTH_PX / 2;
+    const dx = (CHAR_WIDTH_PX * 7) >> 4;  // Pascal ChrWidth*7 shr 4 = 3px
+    const xl = xm - dx;
+    const xr = xm + dx;
+    const ym = this.py(halfRow) + CHAR_HEIGHT_PX / 2;
+    const dy = (CHAR_HEIGHT_PX * 7) >> 5; // Pascal ChrHeight*7 shr 5 = 3px
+    const yt = ym - dy;
+    ctx.strokeStyle = rgb(color);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(xm, yt); ctx.lineTo(xm, ym + dy);
+    ctx.moveTo(xm, yt); ctx.lineTo(xl, ym);
+    ctx.moveTo(xm, yt); ctx.lineTo(xr, ym);
+    ctx.stroke();
   }
 
   /** Fill a rectangular region. */
@@ -291,10 +452,18 @@ export class DebuggerRenderer {
     this.renderButtons();
     this.renderHint();
 
-    // 2. Dim overlay if 250 ms without a new break.
+    // 2. §7 graded dim — 250 ms without a new break. Pascal FormBreakpointTimeout
+    // (:1112-1131) halves every RGB channel of the rendered frame (a 50%
+    // multiplicative dim, NOT a translucent black overlay) then redraws the GO
+    // button at full brightness so it stays orange with the 'Break' caption.
     if (this.state.isDimmed) {
-      this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      this.ctx.fillRect(0, 0, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX);
+      const img = this.ctx.getImageData(0, 0, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] >>= 1; d[i + 1] >>= 1; d[i + 2] >>= 1; // R,G,B; leave A
+      }
+      this.ctx.putImageData(img, 0, 0);
+      this.renderGoButton();
     }
   }
 
@@ -309,17 +478,24 @@ export class DebuggerRenderer {
     const pixels = bmp.data;
     const cogImage = this.state.cogImage;
     const cogHit = this.state.cogHit;
+    // §6 highlight band — rows whose address falls in the disassembly's currently
+    // visible window get an additive $40 brightness (Pascal :1667-1672). The
+    // disassembly addresses the REG/LUT cog space only when NOT in hub-exec mode;
+    // in hub mode the visible window is hub addresses, so no band lands here.
+    const top = this.state.disTopAddr;
+    const bandActive = this.state.disMode !== DisMode.dmHub && top < 0x400;
     for (let row = 0; row < 512; row++) {
       const addr = addrBase + row;
       if (addr >= cogImage.length) break;
       const value = cogImage[addr];
       const hit = cogHit[addr]; // 0..254
+      const shade = (bandActive && addr >= top && addr < top + DIS_LINES) ? 0x40 : 0x00;
       for (let col = 0; col < 32; col++) {
         // MSB at col 0, LSB at col 31.
         const bit = (value >>> (31 - col)) & 1;
         const same = bit ? COLOR.cHighSame : COLOR.cLowSame;
         const diff = bit ? COLOR.cHighDiff : COLOR.cLowDiff;
-        const c = blendGamma2(same, diff, hit);
+        const c = blendPixel(same, diff, hit, shade);
         const idx = (row * 32 + col) * 4;
         pixels[idx]     = (c >> 16) & 0xFF;
         pixels[idx + 1] = (c >> 8) & 0xFF;
@@ -339,6 +515,8 @@ export class DebuggerRenderer {
       this.px(p.l) + 1, this.py(p.t) + 1,
       p.w * CHAR_WIDTH_PX - 2, p.h * HALF_ROW_PX - 2
     );
+    // §3.1 — REG column title (Pascal DebuggerUnit.pas:1954).
+    this.drawText(this.ctx, 'REG', p.l + 3, p.t, COLOR.cName, true);
   }
 
   private renderLutMap(): void {
@@ -350,6 +528,8 @@ export class DebuggerRenderer {
       this.px(p.l) + 1, this.py(p.t) + 1,
       p.w * CHAR_WIDTH_PX - 2, p.h * HALF_ROW_PX - 2
     );
+    // §3.1 — LUT column title (Pascal DebuggerUnit.pas:1957).
+    this.drawText(this.ctx, 'LUT', p.l + 3, p.t, COLOR.cName, true);
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -408,9 +588,11 @@ export class DebuggerRenderer {
     const p = PANEL.XBYTE;
     this.drawText(this.ctx, 'XBYTE', p.l, p.t, COLOR.cName, true);
     this.drawText(this.ctx, hex(this.state.xbyte, 3), p.l + 6, p.t, COLOR.cData, true);
-    // Checkmark if bit 25 of mBRKC (C,Z affected by XBYTE).
+    // §4.3 — dim check ALWAYS (Pascal base DebuggerUnit.pas:1973), brightened to
+    // orange when the XBYTE C,Z-affected bit (mBRKC bit 25) is set (dynamic :1428).
+    this.drawCheck(p.l + 10, p.t, COLOR.cDataDim);
     if (((this.state.message[2] >>> 25) & 1) !== 0) {
-      this.drawText(this.ctx, '✓', p.l + 10, p.t, COLOR.cIndicator, true);
+      this.drawCheck(p.l + 10, p.t, COLOR.cIndicator);
     }
   }
 
@@ -477,10 +659,12 @@ export class DebuggerRenderer {
 
   private renderExec(): void {
     const p = PANEL.EXEC;
-    const label = EXEC_MODE_NAMES[this.state.execMode];
-    // Highlighted tab
-    this.fillRect(this.ctx, p.l, p.t, p.w, p.h, COLOR.cModeButton);
-    this.drawText(this.ctx, label, p.l, p.t + 1, COLOR.cModeText, true);
+    // §3.3 — exec-mode label on the STACK row (EXECl, EXECt+2), green plain, no
+    // fill; show CALL(n) when suspended inside a call (Pascal :1423/1436).
+    const label = this.state.execMode === 0 && this.state.callDepth !== 0
+      ? `CALL(${this.state.callDepth})`
+      : EXEC_MODE_NAMES[this.state.execMode];
+    this.drawText(this.ctx, label, p.l, p.t + 2, COLOR.cData2);
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -489,10 +673,10 @@ export class DebuggerRenderer {
 
   private renderStack(): void {
     const p = PANEL.STACK;
-    this.drawText(this.ctx, 'STACK', p.l - 6, p.t, COLOR.cName, true);
-    // 8 values of 8 hex digits each, space separated. Pascal: 9 char width each.
+    // §3.3 — 'STACK' at STACKl; data at StackDataLeft (STACKl+6). Pascal :1995/1438.
+    this.drawText(this.ctx, 'STACK', p.l, p.t, COLOR.cName, true);
     for (let i = 0; i < 8; i++) {
-      this.drawText(this.ctx, hex(this.state.message[6 + i], 8), p.l + i * 9, p.t, COLOR.cData);
+      this.drawText(this.ctx, hex(this.state.message[6 + i], 8), p.l + 6 + i * 9, p.t, COLOR.cData);
     }
   }
 
@@ -515,14 +699,17 @@ export class DebuggerRenderer {
       const def = ints[i];
       const evIdx = (brkcz >>> def.evBits) & 0xF;
       const stBits = (brkcz >>> def.stBits) & 0x3;
-      const stLabels = ['idle', 'idle', 'wait', 'busy'];
-      let stateLabel = stLabels[stBits];
-      if ((stBits === 0 || stBits === 1) && evIdx === 0) stateLabel = 'off';
-      const eventName = EVENT_NAMES[evIdx] || '???';
       const row = p.t + i * 2;
       this.drawText(this.ctx, def.label, p.l, row, COLOR.cName, true);
-      this.drawText(this.ctx, eventName, p.l + 5, row, COLOR.cData);
-      this.drawText(this.ctx, stateLabel, p.l + 9, row, stBits === 3 ? COLOR.cIndicator : COLOR.cData2);
+      // §3.4 — Pascal DrawInt (:2270): off ⇒ just 'off' at +5; active ⇒ event
+      // name at +5 + idle/wait/busy status at +9. No event word when off.
+      if (evIdx === 0) {
+        this.drawText(this.ctx, 'off', p.l + 5, row, COLOR.cData2, true);
+      } else {
+        this.drawText(this.ctx, EVENT_NAMES[evIdx] || '???', p.l + 5, row, COLOR.cData, true);
+        const status = stBits === 3 ? 'busy' : stBits === 2 ? 'wait' : 'idle';
+        this.drawText(this.ctx, status, p.l + 9, row, COLOR.cData2, true);
+      }
     }
   }
 
@@ -534,29 +721,45 @@ export class DebuggerRenderer {
     const p = PANEL.PTR;
     const rfwf = (this.state.message[1] >>> 20) & 1; // mBRKCZ bit 20
     const rows: Array<{ label: string; addr: number; data: Uint8Array }> = [
-      { label: rfwf ? 'Wxx' : 'Rxx', addr: this.state.message[15] & 0xFFFFF, data: this.state.fptrWindow },
+      { label: rfwf ? 'WFxx' : 'RFxx', addr: this.state.message[15] & 0xFFFFF, data: this.state.fptrWindow },
       { label: 'PTRA',                addr: this.state.message[16] & 0xFFFFF, data: this.state.ptraWindow },
       { label: 'PTRB',                addr: this.state.message[17] & 0xFFFFF, data: this.state.ptrbWindow }
     ];
+    // ASCII column starts after the 14 hex pairs (Pascal: left+11+PtrBytes*3+1).
+    const asciiStart = p.l + 11 + PTR_BYTES * 3 + 1;
     for (let r = 0; r < rows.length; r++) {
       const row = p.t + r * 2;
       this.drawText(this.ctx, rows[r].label, p.l, row, COLOR.cName, true);
+      // §4.1 — address is WHITE (Pascal DrawPtrBytes:2243, cData).
       this.drawText(this.ctx, hex(rows[r].addr, 5), p.l + 5, row, COLOR.cData);
-      // 14 hex bytes
-      let x = p.l + 11;
-      let ascii = '';
+      // §4.1 — data bytes + ascii are cData2 GREEN; the center byte gets a green
+      // filled rounded highlight (hex pair AND ascii char) with dark (cBox) bold
+      // text inverted on top (Pascal DrawPtrBytes:2245-2266).
+      const cy = this.py(row) + CHAR_HEIGHT_PX / 2;
       for (let i = 0; i < PTR_BYTES; i++) {
         const b = rows[r].data[i];
-        const isCenter = i === PTR_CENTER;
-        this.drawText(this.ctx, hex(b, 2), x, row, COLOR.cData);
-        if (isCenter) {
-          // Box around center byte
-          this.drawBox(this.ctx, x, row, 2, 2, COLOR.cIndicator);
+        const hexCol = p.l + 11 + i * 3;
+        const ascCol = asciiStart + i;
+        let color: number = COLOR.cData2;
+        let bold = false;
+        if (i === PTR_CENTER) {
+          // Highlight behind the hex pair: 3 cells wide, ¾ row tall (Pascal:2254-2257).
+          this.fillRoundedPx(
+            (hexCol + 1) * CHAR_WIDTH_PX, cy,
+            CHAR_WIDTH_PX * 3, (CHAR_HEIGHT_PX * 3) >> 2, CHAR_HEIGHT_PX >> 2, COLOR.cData2
+          );
+          // Highlight behind the ascii char: 1½ cells wide (Pascal:2258-2261).
+          this.fillRoundedPx(
+            ascCol * CHAR_WIDTH_PX + ((CHAR_WIDTH_PX - 1) >> 1), cy,
+            (CHAR_WIDTH_PX * 3) >> 1, (CHAR_HEIGHT_PX * 3) >> 2, CHAR_HEIGHT_PX >> 2, COLOR.cData2
+          );
+          color = COLOR.cBox;
+          bold = true;
         }
-        x += 3;
-        ascii += (b >= 0x20 && b <= 0x7E) ? String.fromCharCode(b) : '.';
+        this.drawText(this.ctx, hex(b, 2), hexCol, row, color, bold);
+        const c = (b >= 0x20 && b <= 0x7E) ? String.fromCharCode(b) : '.';
+        this.drawText(this.ctx, c, ascCol, row, color, bold);
       }
-      this.drawText(this.ctx, ascii, x + 1, row, COLOR.cData2);
     }
   }
 
@@ -617,13 +820,15 @@ export class DebuggerRenderer {
 
   private renderHub(): void {
     const p = PANEL.HUB;
-    this.drawText(this.ctx, 'HUB', p.l, p.t, COLOR.cName, true);
+    // §3.7 — 'HUB' label BELOW the memory box (Pascal :2023, HUBt+HUBh+1).
+    this.drawText(this.ctx, 'HUB', p.l, p.t + p.h + 1, COLOR.cName, true);
     // 8 rows × 16 bytes. Data comes from state.hubWindow (128 bytes).
     const base = this.state.hubAddr;
     for (let r = 0; r < 8; r++) {
       const row = p.t + 2 + r * 2;
       const addr = (base + r * 16) & 0xFFFFF;
-      this.drawText(this.ctx, hex(addr, 5), p.l, row, COLOR.cData2);
+      // §4.2 — hub address WHITE (Pascal :1471), hex bytes + ascii GREEN (:1475/:1477).
+      this.drawText(this.ctx, hex(addr, 5), p.l, row, COLOR.cData);
       let hexStr = '';
       let ascStr = '';
       for (let c = 0; c < 16; c++) {
@@ -631,7 +836,7 @@ export class DebuggerRenderer {
         hexStr += hex(b, 2) + (c === 7 ? '  ' : ' ');
         ascStr += ascii(b);
       }
-      this.drawText(this.ctx, hexStr, p.l + 6, row, COLOR.cData);
+      this.drawText(this.ctx, hexStr, p.l + 6, row, COLOR.cData2);
       this.drawText(this.ctx, ascStr, p.l + 6 + 16 * 3 + 2, row, COLOR.cData2);
     }
   }
@@ -642,16 +847,16 @@ export class DebuggerRenderer {
 
   private renderHubMap(): void {
     // One pixel per 128-byte sub-block. Each cell's heat (0..254) flashes to
-    // 254 when that sub-block's checksum changes and decays each break — same
-    // graded gamma-2 blend (cDataDim→cName/cYellow) the REG/LUT maps use.
-    // Heat is computed in DebuggerController; here we only paint it. Pascal
-    // DebuggerUnit.pas L1679-1688. Cells past the firmware's sub-block count
-    // stay dim (heat 0).
+    // 254 when that sub-block's checksum changes and decays each break — the
+    // linear cDataDim→cYellow blend the REG/LUT maps use (cYellow == cName ==
+    // 0xFFFF00). Heat is computed in DebuggerController; here we only paint it.
+    // Pascal DebuggerUnit.pas:1677-1688. Cells past the firmware's sub-block
+    // count stay dim (heat 0).
     const pixels = this.hubMapBmp.data;
     const hit = this.state.hubSubBlockHit;
     for (let i = 0; i < HUB_MAP_WIDTH * HUB_MAP_HEIGHT; i++) {
       const h = i < hit.length ? hit[i] : 0;
-      const c = blendGamma2(COLOR.cDataDim, COLOR.cName, h);
+      const c = blendPixel(COLOR.cDataDim, COLOR.cName, h);
       const idx = i * 4;
       pixels[idx]     = (c >> 16) & 0xFF;
       pixels[idx + 1] = (c >> 8) & 0xFF;
@@ -686,7 +891,7 @@ export class DebuggerRenderer {
 
   private renderDisassembly(): void {
     const p = PANEL.DIS;
-    this.drawText(this.ctx, 'DIS', p.l, p.t, COLOR.cName, true);
+    // §3.2 — Pascal draws NO 'DIS' title (box only, DebuggerUnit.pas:1979).
     const pc = this.state.pc;
     // Auto-scroll decision (§6.6): if PC jumped far, snap to ideal line;
     // else if visible, gradually scroll toward ideal after threshold breaks.
@@ -808,7 +1013,8 @@ export class DebuggerRenderer {
 
   private renderRegisterWatch(): void {
     const p = PANEL.WATCH;
-    this.drawText(this.ctx, 'WATCH', p.l, p.t, COLOR.cName, true);
+    // §3.2 — register-delta watch indicator, not a 'WATCH' title (Pascal :1572-1573).
+    this.drawText(this.ctx, 'REG ▲', p.l + 3, p.t, COLOR.cName, true);
     for (let i = 0; i < this.state.regWatchListMax; i++) {
       const row = p.t + 2 + i * 2;
       const e = this.state.regWatchList[i];
@@ -827,8 +1033,8 @@ export class DebuggerRenderer {
 
   private renderSmartPinWatch(): void {
     const p = PANEL.SMART;
-    const label = this.state.smartWatchDirOnly ? 'RQPIN△ (DIR)' : 'RQPIN△ (all)';
-    this.drawText(this.ctx, label, p.l, p.t, COLOR.cName, true);
+    // §3.6 — title 'RQPIN' + delta (Pascal :1622); DIR/all goes to the hover hint (§8).
+    this.drawText(this.ctx, 'RQPIN ▲', p.l, p.t, COLOR.cName, true);
     let x = p.l + 14;
     for (let i = 0; i < this.state.smartWatchListMax; i++) {
       const e = this.state.smartWatchList[i];
@@ -851,7 +1057,9 @@ export class DebuggerRenderer {
   private renderHint(): void {
     const p = PANEL.HINT;
     if (this.hintText) {
-      this.drawText(this.ctx, this.hintText, p.l + 1, p.t, COLOR.cData);
+      // §8 — fly-over hints are orange italic (Pascal DebuggerUnit.pas:1917,
+      // cIndicator + fsItalic), not white.
+      this.drawText(this.ctx, this.hintText, p.l + 1, p.t, COLOR.cIndicator, false, true);
     }
   }
 
@@ -890,32 +1098,58 @@ export class DebuggerRenderer {
     const panelTopPx = this.py(PANEL.B.t);
 
     for (const btn of BUTTONS) {
-      const x = panelLeftPx + btn.xOffsetPx;
-      const y = panelTopPx + btn.yOffsetPx;
-      const w = btn.wCells * CHAR_WIDTH_PX;
-      const h = btn.hHalfRows * HALF_ROW_PX;
+      // GO is special: always orange, redrawn at full brightness even when the
+      // window is dimmed (Pascal :2056 / :1126) — handled by renderGoButton.
+      if (btn.name === 'GO') { this.renderGoButton(); continue; }
 
-      const isGo = btn.name === 'GO';
+      // Convert the button's pixel offset back to (fractional) grid coords so
+      // the §1 drawBox + drawText/arrow helpers all share one coordinate space.
+      const col = (panelLeftPx + btn.xOffsetPx) / CHAR_WIDTH_PX;
+      const halfRow = (panelTopPx + btn.yOffsetPx) / HALF_ROW_PX;
       const active = this.isButtonActive(btn.name);
-      const bg = isGo
-        ? (this.state.isDimmed ? COLOR.cCmdButtonDim : COLOR.cCmdButton)
-        : (active ? COLOR.cModeButton : COLOR.cModeButtonDim);
-      const fg = isGo
-        ? (this.state.isDimmed ? COLOR.cCmdTextDim : COLOR.cCmdText)
-        : (active ? COLOR.cModeText : COLOR.cModeTextDim);
 
-      this.ctx.fillStyle = rgb(bg);
-      this.ctx.fillRect(x, y, w, h);
-      // Label centered
-      const label = isGo ? this.goCaption() : btn.name;
-      this.ctx.fillStyle = rgb(fg);
-      this.ctx.font = 'bold 12px monospace';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.textAlign = 'center';
-      this.ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+      // Mode buttons bright when active, dim otherwise (Pascal base :2029 dim →
+      // dynamic :1700 bright). Tabs are small with rim=3.
+      const boxColor = active ? COLOR.cModeButton : COLOR.cModeButtonDim;
+      const textColor = active ? COLOR.cModeText : COLOR.cModeTextDim;
+      this.drawBox(this.ctx, col, halfRow, btn.wCells, btn.hHalfRows, boxColor, 3, true);
+
+      switch (btn.name) {
+        // INT*-Entry: right-arrow + the plain INT label (Pascal :2032-2040 / :1730-1750).
+        case 'INT3E': case 'INT2E': case 'INT1E':
+          this.drawArrowRight(col - 0.25, halfRow, textColor);
+          this.drawText(this.ctx, btn.name.slice(0, 4), col + 1, halfRow, textColor, true);
+          break;
+        // EVENT: event-name + up-arrow (Pascal :2045-2046 / :1757-1765).
+        case 'EVENT':
+          this.drawText(this.ctx, EVENT_NAMES[this.state.breakEvent & 0xF] || 'EVT', col - 0.25, halfRow, textColor, true);
+          this.drawArrowUp(col + 3, halfRow, textColor);
+          break;
+        // ADDR: the break address hex, not the word 'ADDR' (Pascal :1766-1773).
+        case 'ADDR':
+          this.drawText(this.ctx, hex(this.state.breakAddr & 0xFFFFF, 5), col, halfRow, textColor, true);
+          break;
+        default:
+          this.drawText(this.ctx, btn.name, col, halfRow, textColor, true);
+      }
     }
-    this.ctx.textAlign = 'start';
-    this.ctx.textBaseline = 'top';
+  }
+
+  /**
+   * Draw the GO button (box + Go/Stop/Break caption) at full brightness. Split
+   * out from renderButtons because the §7 idle dim redraws ONLY this button over
+   * the dimmed frame so it stays orange (Pascal FormBreakpointTimeout:1123-1126).
+   */
+  private renderGoButton(): void {
+    const btn = BUTTONS.find(b => b.name === 'GO');
+    if (!btn) return;
+    const col = (this.px(PANEL.B.l) + btn.xOffsetPx) / CHAR_WIDTH_PX;
+    const halfRow = (this.py(PANEL.B.t) + btn.yOffsetPx) / HALF_ROW_PX;
+    // Full rim=6, not small (Pascal :2056).
+    this.drawBox(this.ctx, col, halfRow, btn.wCells, btn.hHalfRows, COLOR.cCmdButton, 6, false);
+    const cap = this.goCaption();
+    const goCol = cap === 'Break' ? col + 2.5 : col + 3;
+    this.drawText(this.ctx, cap, goCol, halfRow, COLOR.cCmdText, true);
   }
 
   // ──────────────────────────────────────────────────────────────────────

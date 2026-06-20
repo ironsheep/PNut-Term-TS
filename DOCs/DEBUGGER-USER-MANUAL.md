@@ -242,7 +242,7 @@ Click on a heatmap cell to lock the disassembly view to that address.
 
 ### XBYTE Status (Top Row)
 
-9-bit XBYTE configuration displayed as 3 hex digits. Checkmark glyph appears if C/Z are affected by XBYTE.
+9-bit XBYTE configuration displayed as 3 hex digits. A dim checkmark glyph is always present; it brightens to orange when C/Z are affected by XBYTE.
 
 ### Clock Ticks (Top Row)
 
