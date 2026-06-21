@@ -618,7 +618,7 @@ export class DebuggerRenderer {
     // Two columns: left = 0x1F0..0x1F7, right = 0x1F8..0x1FF.
     // Each entry: addr(3) + name(5) + value(8) = ~16 chars.
     for (let i = 0; i < 8; i++) {
-      const row = p.t + 2 + i * 2;
+      const row = p.t + i * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
       // Left column (0x1F0..0x1F7)
       this.drawText(this.ctx, hex(0x1F0 + i, 3), p.l, row, COLOR.cData2);
       this.drawText(this.ctx, SFR_NAMES[i], p.l + 4, row, COLOR.cName);
@@ -631,7 +631,7 @@ export class DebuggerRenderer {
     // 16 rows stacked vertically (2 half-rows each = 16*2=32 half-rows).
     // Row 0..7 = 0x1F0..0x1F7 (above); row 8..15 = 0x1F8..0x1FF (below).
     for (let i = 0; i < 8; i++) {
-      const row = p.t + 2 + (i + 8) * 2;
+      const row = p.t + (i + 8) * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
       this.drawText(this.ctx, hex(0x1F8 + i, 3), p.l, row, COLOR.cData2);
       this.drawText(this.ctx, SFR_NAMES[8 + i], p.l + 4, row, COLOR.cName);
       this.drawText(this.ctx, hex(this.state.cogImage[0x1F8 + i], 8), p.l + 10, row, COLOR.cData);
@@ -647,7 +647,7 @@ export class DebuggerRenderer {
     const flags = this.state.eventFlags;
     for (let i = 0; i < 16; i++) {
       const bit = (flags >>> i) & 1;
-      const row = p.t + 2 + i * 2;
+      const row = p.t + i * 2; // Pascal EVENTt + i shl 1 (DebuggerUnit.pas:1992)
       this.drawText(this.ctx, EVENT_NAMES[i], p.l, row, COLOR.cName);
       this.drawText(this.ctx, String(bit), p.l + 4, row, bit ? COLOR.cData : COLOR.cDataDim);
     }
@@ -823,9 +823,12 @@ export class DebuggerRenderer {
     // §3.7 — 'HUB' label BELOW the memory box (Pascal :2023, HUBt+HUBh+1).
     this.drawText(this.ctx, 'HUB', p.l, p.t + p.h + 1, COLOR.cName, true);
     // 8 rows × 16 bytes. Data comes from state.hubWindow (128 bytes).
+    // Rows start at the panel top (Pascal HUBt + j shl 1, DebuggerUnit.pas:1471) —
+    // NOT p.t+2: the §3.7 move of the 'HUB' label to below the box left no title
+    // row at the top, so the old +2 pushed the 8th row down onto the HINT bar.
     const base = this.state.hubAddr;
     for (let r = 0; r < 8; r++) {
-      const row = p.t + 2 + r * 2;
+      const row = p.t + r * 2;
       const addr = (base + r * 16) & 0xFFFFF;
       // §4.2 — hub address WHITE (Pascal :1471), hex bytes + ascii GREEN (:1475/:1477).
       this.drawText(this.ctx, hex(addr, 5), p.l, row, COLOR.cData);
@@ -904,7 +907,7 @@ export class DebuggerRenderer {
     const skipPattern = this.state.skipPattern;
 
     for (let i = 0; i < DIS_LINES; i++) {
-      const row = p.t + 2 + i * 2;
+      const row = p.t + i * 2; // Pascal DISt + i shl 1 (DebuggerUnit.pas:1504)
       // Address representation depends on disMode and value.
       let addr: number;
       let addrStr: string;
@@ -1186,7 +1189,7 @@ export class DebuggerRenderer {
   /** Return the disassembly line index (0..15) at the given canvas Y, or -1. */
   public hitTestDisassemblyLine(py: number): number {
     const p = PANEL.DIS;
-    const topPx = this.py(p.t + 2);
+    const topPx = this.py(p.t);
     const lineH = 2 * HALF_ROW_PX; // 16 px per line
     const idx = Math.floor((py - topPx) / lineH);
     return idx >= 0 && idx < DIS_LINES ? idx : -1;

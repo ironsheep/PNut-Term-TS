@@ -388,7 +388,8 @@ export class DebuggerInteraction {
   }
 
   private onDisassemblyClick(relY: number, rightClick: boolean): void {
-    const lineIdx = Math.floor((relY - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
+    // Lines render at p.t + i*2 (no title offset — matches renderDisassembly).
+    const lineIdx = Math.floor(relY / (2 * HALF_ROW_PX));
     if (lineIdx < 0 || lineIdx >= 16) return;
     const addr = this.renderer.disassemblyLineAddress(lineIdx);
     if (rightClick) {
@@ -409,9 +410,9 @@ export class DebuggerInteraction {
   }
 
   private onSFRClick(relY: number): void {
-    // Each SFR line is 2 half-rows = 16 px. Rows 0..7 (left) + 8..15 (right
-    // column — we stack vertically so they're rows 16..31 in current impl).
-    const row = Math.floor((relY - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
+    // Each SFR line is 2 half-rows = 16 px, starting at the panel top (p.t + i*2,
+    // matches renderSFR). Rows 0..7 (left) + 8..15 (right) stack vertically.
+    const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 0 || row >= 16) return;
     const addr = 0x1F0 + row;
     const value = this.state.cogImage[addr];
@@ -438,7 +439,8 @@ export class DebuggerInteraction {
   }
 
   private onEventClick(relY: number): void {
-    const row = Math.floor((relY - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
+    // Event rows render at p.t + i*2 (no title offset — matches renderEvents).
+    const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 1 || row > 15) return;
     this.state.breakEvent = row;
   }
@@ -468,7 +470,9 @@ export class DebuggerInteraction {
   }
 
   private onHubClick(relX: number, relY: number): void {
-    const row = Math.floor((relY - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
+    // Hub rows start at the panel top (matches renderHub: p.t + r*2), so no
+    // 2-half-row title offset is subtracted.
+    const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 0 || row > 7) return;
     // If click falls in the hex-byte area, compute which byte.
     const hexStartCol = 6; // after the 5-hex address

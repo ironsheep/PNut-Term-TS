@@ -5,6 +5,20 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.78] - 2026-06-21
+
+Single-step debugger follow-up: fixes a row-alignment regression in v0.9.77 where four data panels were drawn one text row too low.
+
+### Fixed
+
+- **Hub memory rows were shifted down one row and overlapped the hint bar.** When the v0.9.77 work
+  moved the "HUB" label to below the memory box, the hub data rows kept an old title-row offset, so
+  the bottom row landed on top of the fly-over hint text. The rows now start at the top of the box,
+  matching the original.
+- **The SFR, event, and disassembly panels had the same one-row downward shift** (and slightly
+  overflowed the bottom of their boxes). All three now start at the top of their boxes like the
+  original, and clicks in those panels map to the correct row.
+
 ## [0.9.77] - 2026-06-20
 
 Single-step debugger visual-parity release: the debugger window now matches the original v55 PNut debugger across boxes, fonts, labels, colors, buttons, heat maps, dimming, and hover hints.
