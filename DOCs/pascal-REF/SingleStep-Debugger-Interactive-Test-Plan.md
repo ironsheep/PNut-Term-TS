@@ -177,11 +177,11 @@ required. Any layout or rendering-parity defect is logged here before Phase B.
 | 1 | Observe disassembly | Shows **R-xxx** format addresses (cog registers). PC line highlighted with inverse colors. Currently following the PC (*dmPC*). |
 | 2 | **Mouse wheel up** in disassembly box | Switches from PC-follow to cog-locked (*dmCog*). Disassembly scrolls up. PC highlight may scroll out of view. |
 | 3 | **Ctrl+mouse wheel** | Scrolls by 4 instructions per tick (vs 1 without Ctrl). |
-| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. |
+| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. (NOTE: shift doesn't work on Mac?) |
 | 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
 | 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
 | 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
-| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. |
+| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. (NOTE: Left click on Mac does nothing) |
 | 9 | Click on **PC** value in header row | Returns to PC-follow. |
 
 **Pass criteria**: All three disassembly follow modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
@@ -209,6 +209,8 @@ required. Any layout or rendering-parity defect is logged here before Phase B.
 | 8 | Press **B** key | BREAK button action: clears all conditions except INIT. All mode buttons dim. |
 | 9 | Press **M** key | MAIN toggles back on. |
 | 10 | Press **D** key | DEBUG toggles on, MAIN cleared (mutual exclusion). |
+
+NOTE: on Mac/Windows I don't see any BreakValue = $xxx
 
 **Pass criteria**: Left-click sets exclusively, right-click toggles independently, INIT always independent, keyboard shortcuts match button behaviors.
 
