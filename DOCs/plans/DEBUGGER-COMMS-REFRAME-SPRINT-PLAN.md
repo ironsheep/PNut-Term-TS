@@ -262,3 +262,60 @@ sprint changed is left undocumented; CHANGELOG entry present.
 §5 (variant) is adjacent correctness, independent after §3. §6 at closeout.
 Every section is a complete, first-testable deliverable. The streaming path is
 out of scope throughout and the §1 harness must show it unchanged.
+
+---
+
+## Sprint Execution Record
+
+**Started:** 2026-06-22 (via `sprint-start`).
+
+**Outgoing build version (agreed with Stephen):** **0.9.80** — *single ship*.
+The whole sprint (§1–§6) releases as one version at closeout: one CHANGELOG
+entry, one tag. (`package.json` "version" is bumped 0.9.79 → 0.9.80 at
+`build-wrapup`/release, not now.)
+
+**Working-tree audit:** clean — no uncommitted edits, no untracked files in the
+sprint blast radius (`src/classes/shared`, `tests`, `DOCs/project-specific`).
+Entry tree is committed at `f7828c9`.
+
+**Tracking-readiness (entry):** board clean (0 tasks). Context pruned 12 → 4
+keys (superseded session-end snapshots for shipped/closed work removed;
+backup at `tasks/backups/project_dump_20260622_223444.json`). Kept: the live
+`resume_debugger_comms_reframe` pointer, the container-persistence lesson, the
+doc-refresh key (live open doc items), and the 2026-06-20 SSDB bring-up key
+(directly-relevant parked rapid-break race). MEMORY.md is over its size hint
+(34 KB) — index-entry trimming is a standing housekeeping item, not
+sprint-blocking. **Verdict: READY.**
+
+**Baseline-health (entry baseline):**
+- Build: clean — `tsc` zero compiler warnings. One pre-existing/intentional
+  esbuild bundler notice (`direct-eval` on `eval("require('electron')")`,
+  `mainWindow.ts:14`) — bundler notice, out of scope, unrelated to this sprint.
+- Test coverage gate: green — 160 test files = 155 registered + 5
+  excluded-with-reason (HW-only / env-only, documented in
+  `check_test_coverage.sh`), 0 stray skips.
+- Full sequential suite: **155/155 suites passed, 0 failed, 0 skipped**
+  (`scripts/claude/run_tests_sequentially.sh`, 2026-06-22). This is the
+  **entry baseline** the exit baseline must not fall below at closeout.
+
+**Entry-baseline scope decisions:** no failure groups to triage (suite is fully
+green), so no fix-before / fold-in / defer decisions were needed. The sprint
+climbs from a clean protection point.
+
+### Section ↔ task cross-reference
+
+Tasks generated 2026-06-22 via `plan-to-tasks`, sprint tag `dbg-comms-reframe`.
+`seq` is the only ordering signal (`todo_next` walks foundational → dependent).
+
+| Plan § | Deliverable                                              | Task   | seq | est   |
+| ------ | ------------------------------------------------------- | ------ | --- | ----- |
+| §1     | Replay harness over real capture (foundation/oracle)    | «#60»  | 1   | 4h    |
+| §2     | Kill logger wiretap leak (clean signal)                 | «#61»  | 2   | 2h    |
+| §3     | Single-owner transaction + exact byte accounting (core) | «#62»  | 3   | 6h    |
+| §4     | Deterministic completion + recovery                     | «#63»  | 4   | 4h    |
+| §5     | 416/456 Phase-1 hardware-variant correctness            | «#64»  | 5   | 2.5h  |
+| §6     | Documentation (SPEC_DOC + durable spec + CHANGELOG)      | «#65»  | 6   | 2.5h  |
+
+**Model:** all six tasks are intricate Pascal-parity protocol work on a fragile
+request/response channel — `opus` throughout (project `DEFAULT_MODEL`); no
+mixed-tier batching warranted.
