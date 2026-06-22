@@ -1,6 +1,10 @@
 services:
   dev:
-    image: mcr.microsoft.com/devcontainers/javascript-node:24-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Name the built image so Docker reuses the cached layers across rebuilds.
+    image: pnut-term-ts-dev:local
     ports:
       - "5003:5002"
       - "9124:8123"
