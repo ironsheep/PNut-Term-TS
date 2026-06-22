@@ -464,6 +464,17 @@ export class DebuggerRenderer {
       }
       this.ctx.putImageData(img, 0, 0);
       this.renderGoButton();
+      // Pascal FormBreakpointTimeout (:1110,1127-1129): over the dimmed frame,
+      // draw at FULL brightness either the live fly-over hint (when hovering) or
+      // the idle explanation when this cog is free-running. Both are cIndicator
+      // italic at the HINT panel. Pascal gates the idle line on
+      // GetTickCount-LastDebugTick>100; when dimmed that is always true for this
+      // cog (250 ms since the last break), so we always show it.
+      const hp = PANEL.HINT;
+      const dimHint = this.hintText
+        ? this.hintText
+        : 'To force an asynchronous break in this cog, another cog must be idling in its own debugger';
+      this.drawText(this.ctx, dimHint, hp.l + 1, hp.t, COLOR.cIndicator, false, true);
     }
   }
 

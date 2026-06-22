@@ -1,6 +1,6 @@
 {
   "name": "pnut-term-ts",
-  "version": "0.9.78",
+  "version": "0.9.79",
   "description": "A recreation of Chips' Debug listener but multiplatform combined with PST and downloader",
   "keywords": [
     "cli",

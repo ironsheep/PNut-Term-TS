@@ -5,6 +5,26 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.79] - 2026-06-22
+
+Single-step debugger fixes: keyboard control now works the moment the window opens, and the dimmed screen shows the original's explanatory hint.
+
+### Fixed
+
+- **The debugger window ignored all keyboard input (Enter, Space, and every other key).** A diagnostic
+  developer-tools window was opening automatically next to each debugger and taking keyboard focus, so
+  key presses never reached the debugger until you clicked back into its window. That auto-open is now
+  off, so the debugger has keyboard focus as soon as it appears: Space and Enter drive the Go button,
+  and B, I, D, M, R plus the arrow and page keys behave as in the original v55 debugger. (Developer
+  tools can still be opened manually with F12 or the View menu, or by launching with
+  `PNUT_DEBUGGER_DEVTOOLS=1`.)
+
+### Added
+
+- **The dimmed debugger now shows the "force an asynchronous break" hint** from the original. When a cog
+  is free-running and the debugger screen dims after a quarter-second, it now explains that to force a
+  break in that cog, another cog must be idling in its own debugger.
+
 ## [0.9.78] - 2026-06-21
 
 Single-step debugger follow-up: fixes a row-alignment regression in v0.9.77 where four data panels were drawn one text row too low.

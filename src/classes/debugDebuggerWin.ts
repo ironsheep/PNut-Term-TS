@@ -579,9 +579,15 @@ ${bundleJs}
       }
     });
 
-    // Diagnostic: auto-open DevTools while validating the bundle rendering path.
-    // TODO: put behind a preference once renderer is proven stable.
-    this.debugWindow.webContents.openDevTools({ mode: 'detach' });
+    // Diagnostic only: a DETACHED DevTools window steals OS keyboard focus on
+    // open, so the debugger page never receives keydown (Enter/Space and every
+    // other key are dead) until the user clicks back into the window. The
+    // renderer bundle is proven stable, so DevTools is OFF by default; opt in
+    // with PNUT_DEBUGGER_DEVTOOLS=1. (devTools:true above still allows manual
+    // open via the menu / F12.)
+    if (process.env.PNUT_DEBUGGER_DEVTOOLS === '1') {
+      this.debugWindow.webContents.openDevTools({ mode: 'detach' });
+    }
 
     // Register with WindowPlacer for position tracking (only if using auto-placement)
     // Debugger uses windowDetails parameter, not displaySpec
