@@ -328,7 +328,25 @@ mixed-tier batching warranted.
   `tests/debuggerReplay.test.ts` (10 green) with S1/S2/S3/F7 broken-baseline
   lines + an `it.failing` SPEC. Full suite 155/155 proved #31 streaming
   untouched.
-- **§3 «#62» — MACHINERY DONE (commit `fa3b6f2`); VERIFICATION gated on §5.**
+- **§5 «#64» — DONE (commit `559e1b5`); §3 «#62» VERIFICATION now MET → both CLOSED.**
+  Per Stephen's directive, derived the wire size from the sources (not the stale
+  comment): Spin2_debugger.spin2 `bp_handler` sends 20 longs + 64 CRC words + 124
+  hub words; DebuggerUnit.pas `Breakpoint` reads `HubBlocks = $7C000/$1000 = 124`.
+  Both agree: **Phase-1 = 456 bytes, 124 hub blocks — there is no 416/104
+  variant** (the debugger kernel is fixed Parallax Spin2, compiler-independent).
+  Corrected `PHASE1_SIZE` 416→456 and `HUB_BLOCKS` 104→124 (constants.ts) and the
+  worker framer `DEBUGGER_SIZE` 416→456 (extractionCore.ts); DebuggerState arrays
+  + controller hub loops auto-resize. Bonus: the 64×62 hub heat-map is exactly
+  3968 = 124×32 cells, so 124 also fixes a latent under-sizing (104 read past the
+  array). With this, the §3 replay oracle frames **all 11 clean breaks** and
+  completes the **10** that carry Phase-3 (break-10 is the capture's Phase-1-only
+  tail, 10683+456=11139). The `it.failing` SPEC is now a **passing `it`** (11
+  frame / 10 complete / 0 drops / 0 leak / byte-exact Phase-2). §5 as originally
+  planned assumed dual 416/456 support; the sources proved only 456 exists, so it
+  is 456-only (more correct than coding for a non-existent variant). §3's
+  deliverables (single-owner exact-accounting re-framer, leftover() re-dispatch,
+  cross-check) + §5's correct sizes together close the desync on the capture.
+- **§3 «#62» — MACHINERY DONE (commit `fa3b6f2`); VERIFICATION met by §5 above.**
   The `DebuggerController` is now the SINGLE framing authority: `processPhase3`
   is a framing state machine (`driveFrames`) that re-frames the raw stream
   structurally — the worker is a dumb pass-through that stays open and forwards
