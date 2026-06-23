@@ -5,6 +5,33 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.80] - 2026-06-23
+
+The single-step debugger now talks to the P2 reliably. The break conversation between the host and the P2 is framed correctly from end to end, so the debugger no longer hangs on a blank "awaiting first breakpoint" screen, the message log stays clean while you single-step, and a lost byte on the wire no longer wedges the debugger permanently. **Built for hardware testing — not yet validated on a P2.**
+
+### Fixed
+
+- **The single-step debugger no longer gets stuck on a blank "awaiting first breakpoint" screen.** Each
+  break is a three-part exchange — the P2 sends a status snapshot, the host asks for the registers/memory
+  it wants, and the P2 streams them back. Three different parts of the host were each trying to track
+  where one exchange ended and the next began, and they could disagree: data the P2 sent back could be
+  dropped in the gap, so the break never finished and the panels stayed empty. The debugger window is now
+  the single owner of the whole conversation and accounts for every byte, so each break completes and the
+  panels fill in.
+- **The break packet size was wrong, which corrupted every break after the first.** The P2's status
+  snapshot is 456 bytes (20 status longs, 64 register-block checksums, and 124 hub-memory checksum words),
+  but the host was reading it as 416 bytes (only 104 hub words). The two correct sizes were confirmed
+  against the Parallax debugger sources. With the right size, the host stays aligned with the P2 across
+  back-to-back breaks. This also corrects the **hub-memory heat-map**, whose grid is sized for 124 blocks
+  and was reading past the end of the (too-small) checksum array.
+- **The message-log window no longer fills with bogus `Cog N:` / hex-dump lines while you single-step.**
+  During a break the wire is dedicated to the debugger, but the binary break packets were also being
+  copied to the message log, which rendered them as meaningless hex dumps with a mis-derived cog number.
+  Those packets now go only to their debugger window.
+- **A dropped byte mid-transfer no longer wedges the debugger.** If the P2 stops sending partway through a
+  break's data (a lost byte or an unplugged cable), the debugger now times out after a quarter second,
+  discards the incomplete break, and resynchronizes on the next clean break instead of waiting forever.
+
 ## [0.9.79] - 2026-06-22
 
 Single-step debugger fixes: keyboard control now works the moment the window opens, and the dimmed screen shows the original's explanatory hint.
