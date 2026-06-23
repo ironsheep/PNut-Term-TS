@@ -17,10 +17,11 @@ Fixes a single-step debugger lock-up: **repeat mode (and stepping) no longer fre
   carries the binary break protocol. The debugger was treating that text as if it were a break packet,
   which knocked the host and the P2 out of sync — so after a few steps the run silently stopped and the
   window dimmed to "Break". The debugger now separates the ROM's text messages from the break protocol
-  (matching how the original PNut debugger demultiplexes the stream), so the text is passed through and
-  the next breakpoint is read correctly. Repeat mode runs continuously again, and stepping survives a cog
-  launch. A `COGINIT` mid-program is correctly treated as informational text — it does **not** trigger the
-  full-reset that only the initial download should.
+  (matching how the original PNut debugger demultiplexes the stream), so the text is consumed and the next
+  breakpoint is read correctly. Repeat mode runs continuously again, and stepping survives a cog launch.
+  The `Cog0  INIT …` line is debug-ROM control output, not user program output, so it is discarded rather
+  than shown in the terminal — and a `COGINIT` mid-program does **not** trigger the full-reset that only
+  the initial download should.
 
 ## [0.9.81] - 2026-06-23
 

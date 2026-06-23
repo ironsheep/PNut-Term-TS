@@ -54,13 +54,15 @@ export interface ControllerCallbacks {
    */
   onPhase1?: (length: number) => void;
   /**
-   * Interleaved debug TEXT peeled from between break transactions (e.g. the
-   * `Cog0  INIT … jump` line the ROM emits when a COGINIT relaunches the cog at
-   * program start). The P2 multiplexes terminal text and break binary on one wire
-   * (Pascal `DebugUnit.pas:ChrIn`); the controller demuxes it so the text can be
-   * shown in the terminal instead of desyncing the break framer. Optional.
+   * Non-break ROM housekeeping text peeled from between break transactions (e.g.
+   * the `Cog0  INIT … jump` line the ROM emits when a COGINIT relaunches the cog at
+   * program start). The P2 multiplexes this and the break binary on one wire
+   * (Pascal `DebugUnit.pas:ChrIn`); the controller demuxes it purely so it does NOT
+   * desync the break framer. This is debug-ROM control output, NOT user program
+   * output — it must NOT be routed to the terminal window. The hook is
+   * diagnostic-only (e.g. the §3.1 tests assert what was peeled). Optional.
    */
-  onTerminalText?: (bytes: Uint8Array) => void;
+  onInterleavedText?: (bytes: Uint8Array) => void;
   /** Optional diagnostic sink (routed to the shared debug log via main). */
   log?: (msg: string) => void;
 }
@@ -302,12 +304,13 @@ export class DebuggerController {
   }
 
   /**
-   * Peel a run of interleaved debug TEXT off the head of `frameBuf` and route it
-   * to the terminal. A break/Phase-1 always begins with the cog-ID byte 0x00-0x07
-   * (Pascal ChrIn); terminal text (ASCII, CR/LF) never does. We consume bytes up
-   * to the next break-start byte — that boundary is unambiguous because a text run
-   * cannot contain a 0x00-0x07. If no break-start byte is buffered yet we flush up
-   * to the last complete line (LF) and wait for the rest, so a message is never
+   * Peel a run of interleaved ROM housekeeping TEXT off the head of `frameBuf` and
+   * DISCARD it (it is debug-ROM control output, not user program output — it is NOT
+   * routed to the terminal). A break/Phase-1 always begins with the cog-ID byte
+   * 0x00-0x07 (Pascal ChrIn); this text (ASCII, CR/LF) never does. We consume bytes
+   * up to the next break-start byte — that boundary is unambiguous because a text
+   * run cannot contain a 0x00-0x07. If no break-start byte is buffered yet we flush
+   * up to the last complete line (LF) and wait for the rest, so a message is never
    * split mid-token. Returns true when it made progress (head re-checkable), false
    * when the run is incomplete and the caller must wait for more bytes.
    */
@@ -323,10 +326,10 @@ export class DebuggerController {
     const text = Uint8Array.from(this.frameBuf.slice(0, k));
     this.frameBuf.splice(0, k);
     this.remnantBytes += text.length;
-    if (this.callbacks.onTerminalText) this.callbacks.onTerminalText(text);
+    if (this.callbacks.onInterleavedText) this.callbacks.onInterleavedText(text);
     if (this.callbacks.log) {
       const printable = String.fromCharCode(...text).replace(/[^\x20-\x7e]/g, '.');
-      this.callbacks.log(`Demuxed ${text.length}B interleaved debug text → terminal: "${printable}"`);
+      this.callbacks.log(`Demuxed ${text.length}B ROM housekeeping text (discarded, not user output): "${printable}"`);
     }
     return true;
   }
