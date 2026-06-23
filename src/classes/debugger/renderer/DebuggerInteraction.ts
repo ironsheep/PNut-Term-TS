@@ -18,7 +18,7 @@ import {
   STALL_CMD,
   CHAR_WIDTH_PX, HALF_ROW_PX, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX,
   EVENT_NAMES, PTR_BYTES, PTR_CENTER,
-  HUB_MAP_WIDTH, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS
+  HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
 import { DebuggerController } from './DebuggerController';
@@ -170,8 +170,10 @@ export class DebuggerInteraction {
     // dim/unmapped and ignored.
     const map = this.renderer.hubMapBoundsPx();
     if (px >= map.x && px < map.x + map.w && py >= map.y && py < map.y + map.h) {
-      const col = Math.floor(px - map.x);
-      const row = Math.floor(py - map.y);
+      // The 64×62 bitmap is StretchDraw'n across the (larger) map rect, so scale
+      // the click back to bitmap cells (Pascal MapHubAddr, DebuggerUnit.pas:695-696).
+      const col = Math.floor((px - map.x) * HUB_MAP_WIDTH / map.w);
+      const row = Math.floor((py - map.y) * HUB_MAP_HEIGHT / map.h);
       const subBlock = row * HUB_MAP_WIDTH + col;
       if (subBlock < HUB_SUB_BLOCKS) {
         this.state.hubAddr = (subBlock * HUB_SUB_BLOCK_SIZE) & 0xFFFFF;

@@ -240,16 +240,32 @@ export class DebuggerRenderer {
     col: number, halfRow: number, wCols: number, hHalfRows: number,
     color: number, rim: number = 3, small: boolean = false
   ): void {
-    const x = this.px(col);
-    const y = this.py(halfRow);
-    const w = wCols * CHAR_WIDTH_PX;
-    const h = hHalfRows * HALF_ROW_PX;
-    // Pascal: t = ChrWidth*rim shr 4 (our fixed ChrWidth = CHAR_WIDTH_PX).
-    const t = Math.max(1, (CHAR_WIDTH_PX * rim) >> 4);
-    // Pascal: corner radius = ChrHeight div 3 + 1; tighter for small tabs.
-    let radius = ((CHAR_HEIGHT_PX / 3) | 0) + 1;
-    if (small) radius = Math.max(2, radius >> 1);
-    radius = Math.min(radius, w / 2, h / 2);
+    const cw = CHAR_WIDTH_PX;    // Pascal ChrWidth
+    const chh = CHAR_HEIGHT_PX;  // Pascal ChrHeight
+    // Pascal DrawBox (DebuggerUnit.pas:2123-2148): the box extends BEYOND the bare
+    // grid cells by ChrWidth*wm/8 horizontally and ChrHeight/hd vertically, and is
+    // drawn CENTERED on the grid rect. This margin is the padding that keeps text
+    // off the box edges (e.g. the CT counter's orange surround, the button pills).
+    // wm/hd differ for `small` (mode-button tabs) vs full panels.
+    const wm = small ? 10 : 11;
+    const hd = small ? -6 : 5;
+    const idiv = (a: number, b: number) => Math.trunc(a / b);
+    // Pascal: t = ChrWidth*rim shr 4; h = t shr 1 (rim shape is 2h larger than fill).
+    const t = (cw * rim) >> 4;
+    const h = t >> 1;
+    const wPx = wCols * cw;
+    const hPx = hHalfRows * HALF_ROW_PX;
+    // Box center — Pascal SmoothShape xc/yc (left+width/2, top+height/2).
+    const cx = this.px(col) + wPx / 2;
+    const cy = this.py(halfRow) + hPx / 2;
+    // Full extents of the filled shape (thick=0) and the slightly larger rim shape.
+    // SmoothShape's xs/ys are full width/height (the box spans xc±xs/2).
+    const fillW = wPx + idiv(cw * wm, 8) - h;
+    const fillH = hPx + idiv(chh, hd) - h;
+    const rimW  = wPx + idiv(cw * wm, 8) + h;
+    const rimH  = hPx + idiv(chh, hd) + h;
+    // Pascal corner radius = ChrHeight div 3 + 1 (same for small tabs).
+    const radius = idiv(chh, 3) + 1;
     // Rim color: box color brightened ×1.5 per channel, clamped to 0xFF.
     const rimColor =
       (Math.min(((color >> 16) & 0xFF) * 3 >> 1, 0xFF) << 16) |
@@ -257,13 +273,37 @@ export class DebuggerRenderer {
       Math.min((color & 0xFF) * 3 >> 1, 0xFF);
     // Filled interior in the box color.
     ctx.beginPath();
-    ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, radius);
+    ctx.roundRect(cx - fillW / 2, cy - fillH / 2, fillW, fillH,
+      Math.min(radius, fillW / 2, fillH / 2));
     ctx.fillStyle = rgb(color);
     ctx.fill();
-    // Brightened rounded rim.
-    ctx.strokeStyle = rgb(rimColor);
-    ctx.lineWidth = t;
-    ctx.stroke();
+    // Brightened rounded rim (only when rim thickness rounds to ≥1 px).
+    if (t > 0) {
+      ctx.beginPath();
+      ctx.roundRect(cx - rimW / 2, cy - rimH / 2, rimW, rimH,
+        Math.min(radius, rimW / 2, rimH / 2));
+      ctx.strokeStyle = rgb(rimColor);
+      ctx.lineWidth = t;
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Pixel rect for a Pascal BoxBoundary(L, T, W, H, B) call (DebuggerUnit.pas:2327)
+   * — the inset rectangle that heat-map bitmaps are StretchDraw'd into and that
+   * mouse hit-tests use. B=1 grows the rect by ±ChrWidth*7/8 horizontally and
+   * ±ChrHeight/7 vertically (a box surround); B=0 is the bare grid rect.
+   */
+  private boxBoundaryPx(
+    L: number, T: number, W: number, H: number, B: number
+  ): { x: number; y: number; w: number; h: number } {
+    const mx = Math.trunc(B * CHAR_WIDTH_PX * 7 / 8);
+    const my = Math.trunc(B * CHAR_HEIGHT_PX / 7);
+    const x1 = this.px(L) - mx;
+    const y1 = this.py(T) - my;
+    const x2 = this.px(L + W) + mx;
+    const y2 = this.py(T + H) + my;
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
   }
 
   /**
@@ -520,27 +560,26 @@ export class DebuggerRenderer {
     this.paintHeatBitmap(this.regMapBmp, 0x000);
     this.regMapCtx.putImageData(this.regMapBmp, 0, 0);
     const p = PANEL.REGMAP;
-    // StretchDraw from 32×512 into the panel interior (inside the border).
-    this.ctx.drawImage(
-      this.regMapCanvas,
-      this.px(p.l) + 1, this.py(p.t) + 1,
-      p.w * CHAR_WIDTH_PX - 2, p.h * HALF_ROW_PX - 2
-    );
-    // §3.1 — REG column title (Pascal DebuggerUnit.pas:1954).
-    this.drawText(this.ctx, 'REG', p.l + 3, p.t, COLOR.cName, true);
+    // StretchDraw the 32×512 bitmap into the INSET map rect (Pascal BoxBoundary
+    // RegMapLeft/Top/Right/Bottom, DebuggerUnit.pas:2061): grid (l+1, t+3) ×
+    // (7, h-4) with a B=1 surround. The +3 half-row top inset leaves a header band
+    // for the 'REG' title (so it sits on the dark box, NOT over the heat map) and
+    // the inset on every side lets the box border + window background show through.
+    const m = this.boxBoundaryPx(p.l + 1, p.t + 3, 7, p.h - 4, 1);
+    this.ctx.drawImage(this.regMapCanvas, m.x, m.y, m.w, m.h);
+    // §3.1 — REG column title (Pascal DebuggerUnit.pas:1954, bold + italic).
+    this.drawText(this.ctx, 'REG', p.l + 3, p.t, COLOR.cName, true, true);
   }
 
   private renderLutMap(): void {
     this.paintHeatBitmap(this.lutMapBmp, 0x200);
     this.lutMapCtx.putImageData(this.lutMapBmp, 0, 0);
     const p = PANEL.LUTMAP;
-    this.ctx.drawImage(
-      this.lutMapCanvas,
-      this.px(p.l) + 1, this.py(p.t) + 1,
-      p.w * CHAR_WIDTH_PX - 2, p.h * HALF_ROW_PX - 2
-    );
-    // §3.1 — LUT column title (Pascal DebuggerUnit.pas:1957).
-    this.drawText(this.ctx, 'LUT', p.l + 3, p.t, COLOR.cName, true);
+    // Inset map rect — see renderRegMap (Pascal LutMap, DebuggerUnit.pas:2063).
+    const m = this.boxBoundaryPx(p.l + 1, p.t + 3, 7, p.h - 4, 1);
+    this.ctx.drawImage(this.lutMapCanvas, m.x, m.y, m.w, m.h);
+    // §3.1 — LUT column title (Pascal DebuggerUnit.pas:1957, bold + italic).
+    this.drawText(this.ctx, 'LUT', p.l + 3, p.t, COLOR.cName, true, true);
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -831,8 +870,8 @@ export class DebuggerRenderer {
 
   private renderHub(): void {
     const p = PANEL.HUB;
-    // §3.7 — 'HUB' label BELOW the memory box (Pascal :2023, HUBt+HUBh+1).
-    this.drawText(this.ctx, 'HUB', p.l, p.t + p.h + 1, COLOR.cName, true);
+    // §3.7 — 'HUB' label BELOW the memory box (Pascal :2023, HUBt+HUBh+1, bold+italic).
+    this.drawText(this.ctx, 'HUB', p.l, p.t + p.h + 1, COLOR.cName, true, true);
     // 8 rows × 16 bytes. Data comes from state.hubWindow (128 bytes).
     // Rows start at the panel top (Pascal HUBt + j shl 1, DebuggerUnit.pas:1471) —
     // NOT p.t+2: the §3.7 move of the 'HUB' label to below the box left no title
@@ -878,25 +917,25 @@ export class DebuggerRenderer {
       pixels[idx + 3] = 0xFF;
     }
     this.hubMapCtx.putImageData(this.hubMapBmp, 0, 0);
-    // Draw in the top-right of the HUB panel (rect is the single source of truth
-    // for both the draw and the click hit-test — see hubMapBoundsPx).
+    // StretchDraw the 64×62 bitmap to FILL the map rect (rect is the single source
+    // of truth for both the draw and the click hit-test — see hubMapBoundsPx).
+    // Pascal StretchDraws HubMap into HubMapLeft..Right/Top..Bottom (:1694), a
+    // 22×14-cell region — the full dark field to the right of the ASCII dump, NOT
+    // a 1:1 64×62 block in the corner.
     const b = this.hubMapBoundsPx();
-    this.ctx.drawImage(this.hubMapCanvas, b.x, b.y);
+    this.ctx.drawImage(this.hubMapCanvas, b.x, b.y, b.w, b.h);
   }
 
   /**
-   * Pixel rect of the hub heat-map (top-right of the HUB panel), 1:1 with the
-   * HUB_MAP_WIDTH×HUB_MAP_HEIGHT bitmap. Each pixel is one 128-byte sub-block;
-   * the interaction layer hit-tests clicks against this rect (Pascal InHubMap).
+   * Pixel rect of the hub heat-map — the full dark field filling the HUB panel to
+   * the right of the ASCII dump. Pascal BoxBoundary(HUBl+74, HUBt+1, 22, HUBh-2, 1)
+   * (DebuggerUnit.pas:2105). The 64×62 bitmap is StretchDraw'd into it; the
+   * interaction layer hit-tests clicks against this rect, scaling by the bitmap
+   * dimensions (Pascal InHubMap / MapHubAddr, :695-696).
    */
   public hubMapBoundsPx(): { x: number; y: number; w: number; h: number } {
     const p = PANEL.HUB;
-    return {
-      x: this.px(p.l + p.w) - HUB_MAP_WIDTH - 4,
-      y: this.py(p.t) + 4,
-      w: HUB_MAP_WIDTH,
-      h: HUB_MAP_HEIGHT
-    };
+    return this.boxBoundaryPx(p.l + 74, p.t + 1, 22, p.h - 2, 1);
   }
 
   // ──────────────────────────────────────────────────────────────────────

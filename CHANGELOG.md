@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.81] - 2026-06-23
+
+Visual-parity polish for the single-step debugger window so it matches the original PNut debugger pixel-for-pixel. The register/LUT/hub heat maps now sit inside their panels the way PNut draws them, and the CT counter and break-condition buttons have the correct padding around their text. **Built for hardware testing — not yet validated on a P2.**
+
+### Fixed
+
+- **The REG and LUT register heat maps now sit inside their panels correctly.** Each heat map was filling
+  its whole panel, so the "REG"/"LUT" title was painted on top of the bitmap and the colored container had
+  no visible border. The maps are now inset the way PNut draws them — a dark header band holds the title,
+  and the panel border and window background show through around each map.
+- **The hub-memory heat map now fills the dark field to the right of the ASCII dump.** It was being drawn
+  as a small 64×62 block tucked in the top-right corner; it now stretches to fill the whole remaining area
+  of the HUB panel, matching PNut.
+- **The CT cycle counter and the break-condition buttons now have proper padding.** Their rounded boxes
+  were hugging the text on the left and right edges; the boxes are now drawn slightly wider and taller than
+  the text and centered on it — the same surround PNut uses — so the orange CT field and the two columns of
+  buttons read correctly. The "REG", "LUT", and "HUB" panel labels are now italic to match.
+
 ## [0.9.80] - 2026-06-23
 
 The single-step debugger now talks to the P2 reliably. The break conversation between the host and the P2 is framed correctly from end to end, so the debugger no longer hangs on a blank "awaiting first breakpoint" screen, the message log stays clean while you single-step, and a lost byte on the wire no longer wedges the debugger permanently. **Built for hardware testing — not yet validated on a P2.**
