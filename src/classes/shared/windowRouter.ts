@@ -308,7 +308,9 @@ export class WindowRouter extends EventEmitter {
         const cogId = isPhase1
           ? message.type - SharedMessageType.DEBUGGER0_416BYTE
           : message.type - SharedMessageType.DEBUGGER0_PHASE3;
-        this.routeBinaryMessage(message.data, cogId);
+        // Pass the type through so the wiretap can recognize debugger-protocol
+        // frames and keep them off the logger (dbg-comms-reframe §2).
+        this.routeBinaryMessage(message.data, cogId, message.type);
       } else {
         // Text message (COG, backtick, terminal) - decode in routeTextMessage
         this.routeTextMessage(message);
@@ -336,9 +338,25 @@ export class WindowRouter extends EventEmitter {
    * Route binary message (debugger protocol)
    * @param data Binary data to route
    * @param taggedCogId Optional pre-extracted COG ID from message tag
+   * @param messageType Optional SharedMessageType of the frame. Single-step
+   *   debugger Phase-1/Phase-3 frames (DEBUGGER*_416BYTE / DEBUGGER*_PHASE3) are
+   *   dedicated to their cog's debugger window and are NEVER wiretapped to the
+   *   logger — see the wiretap guard below.
    */
-  public routeBinaryMessage(data: Uint8Array, taggedCogId?: number): void {
+  public routeBinaryMessage(data: Uint8Array, taggedCogId?: number, messageType?: SharedMessageType): void {
     const startTime = performance.now();
+
+    // Single-step debugger Phase-1/Phase-3 frames belong solely to their cog's
+    // debugger window. Pascal dedicates the wire to the debugger during a break
+    // (DebuggerUnit.pas Breakpoint) — nothing else sees those bytes. Routing them
+    // to the logger renders bogus 'Cog N:' / 'INVALID(0xNN)' hex dumps (the logger
+    // formats raw binary as a debugger packet). Recognize them here so the wiretap
+    // below skips them; the logger still wiretaps genuine streaming traffic via the
+    // text path (dbg-comms-reframe §2).
+    const isDebuggerProtocol =
+      messageType !== undefined &&
+      ((messageType >= SharedMessageType.DEBUGGER0_416BYTE && messageType <= SharedMessageType.DEBUGGER7_416BYTE) ||
+        (messageType >= SharedMessageType.DEBUGGER0_PHASE3 && messageType <= SharedMessageType.DEBUGGER7_PHASE3));
 
     // Use tagged COG ID if provided, otherwise extract from 32-bit little-endian word
     // P2 debugger protocol: COG ID is first 32-bit little-endian word (not just first byte!)
@@ -363,42 +381,47 @@ export class WindowRouter extends EventEmitter {
 
     this.logger.debug('ROUTE_BINARY', `Routing binary message to COG ${cogId} (${data.length}B)`);
 
-    // ALWAYS route binary messages to DebugLogger window for logging/analysis
+    // Wiretap genuine streaming binary to the logger — but NOT single-step
+    // debugger frames (see isDebuggerProtocol above). The whole block is skipped
+    // for debugger frames so they never reach the logger and never trigger the
+    // "no logger registered" warning (their absence from the logger is intended).
     let loggerWindowFound = false;
-    for (const [winId, window] of this.windows) {
-      if (window.type === 'logger') {
-        // FEATURE FLAG: Skip logging 416-byte debugger packets if feature disabled (v0.9.x release)
-        if (!FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS && data.length === 416) {
-          this.logger.debug(
-            'ROUTE_BINARY',
-            `Debugger windows disabled - skipping logger routing for COG ${cogId} (416-byte packet)`
-          );
-          loggerWindowFound = true; // Set to true to avoid warning below
-          continue; // Skip this window, don't send the packet
-        }
+    if (!isDebuggerProtocol) {
+      for (const [winId, window] of this.windows) {
+        if (window.type === 'logger') {
+          // FEATURE FLAG: Skip logging 416-byte debugger packets if feature disabled (v0.9.x release)
+          if (!FEATURE_FLAGS.ENABLE_DEBUGGER_WINDOWS && data.length === 416) {
+            this.logger.debug(
+              'ROUTE_BINARY',
+              `Debugger windows disabled - skipping logger routing for COG ${cogId} (416-byte packet)`
+            );
+            loggerWindowFound = true; // Set to true to avoid warning below
+            continue; // Skip this window, don't send the packet
+          }
 
-        // DebugLoggerWindow registers as 'logger' type
-        window.handler(data); // Send raw Uint8Array for hex formatting
-        window.stats.messagesReceived++;
-        loggerWindowFound = true;
+          // DebugLoggerWindow registers as 'logger' type
+          window.handler(data); // Send raw Uint8Array for hex formatting
+          window.stats.messagesReceived++;
+          loggerWindowFound = true;
 
-        if (this.isRecording) {
-          this.recordMessage(winId, window.type, 'binary', data);
+          if (this.isRecording) {
+            this.recordMessage(winId, window.type, 'binary', data);
+          }
         }
       }
-    }
 
-    // Defensive error logging: warn if no logger window found for binary data
-    if (!loggerWindowFound) {
-      this.logger.warn(
-        'ROUTE_ERROR',
-        `No DebugLoggerWindow registered to receive binary message from COG ${cogId} (${data.length}B)`
-      );
-      console.warn(
-        `[ROUTING] ⚠️ Binary debugger message from COG ${cogId} received but no DebugLoggerWindow registered! Message will be lost.`
-      );
-      console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
-    }
+      // Defensive error logging: warn if no logger window found for binary data
+      if (!loggerWindowFound) {
+        this.logger.warn(
+          'ROUTE_ERROR',
+          `No DebugLoggerWindow registered to receive binary message from COG ${cogId} (${data.length}B)`
+        );
+        console.warn(
+          `[ROUTING] ⚠️ Binary debugger message from COG ${cogId} received but no DebugLoggerWindow registered! Message will be lost.`
+        );
+        console.warn('[ROUTING] 💡 This usually means DebugLoggerWindow failed to call registerWithRouter()');
+      }
+    } // end if (!isDebuggerProtocol) — debugger frames skip the logger wiretap
 
     // Also route to specific debugger window if it exists
     const window = this.windows.get(windowId);

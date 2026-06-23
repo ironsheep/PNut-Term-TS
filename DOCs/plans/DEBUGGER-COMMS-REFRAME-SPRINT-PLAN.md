@@ -319,3 +319,32 @@ Tasks generated 2026-06-22 via `plan-to-tasks`, sprint tag `dbg-comms-reframe`.
 **Model:** all six tasks are intricate Pascal-parity protocol work on a fragile
 request/response channel — `opus` throughout (project `DEFAULT_MODEL`); no
 mixed-tier batching warranted.
+
+### Section completion log
+
+- **§1 «#60» — DONE (commit `bb6d1a9`).** Replay harness over the real 19-break
+  capture; extracted pure `extractionCore.ts` (framing engine) with
+  `extractionWorker.ts` as a thin worker shell (behavior-preserving). Oracle
+  `tests/debuggerReplay.test.ts` (10 green) with S1/S2/S3/F7 broken-baseline
+  lines + an `it.failing` SPEC. Full suite 155/155 proved #31 streaming
+  untouched.
+- **§2 «#61» — DONE (not yet committed at time of writing; ships in 0.9.80).**
+  Killed the logger wiretap leak (S3). `WindowRouter.routeBinaryMessage` now
+  takes the frame's `SharedMessageType`; single-step debugger Phase-1/Phase-3
+  frames (`DEBUGGER*_416BYTE` / `DEBUGGER*_PHASE3`) skip the logger-wiretap block
+  entirely (and its "no logger registered" warning) — they go solely to their
+  cog's debugger window. `routeMessage` passes the type through. Root cause was
+  the logger formatting raw debugger binary as a `Cog N:` / `INVALID(0xNN)` hex
+  dump (`loggerWin.processTypedMessageSync`). The guard closes the leak across
+  **all** routing configs because both the `DebugLogger` and `DebuggerWindow`
+  `MessageRouter` destinations funnel through `routeMessage → routeBinaryMessage`
+  — so no separate `messageRouter.ts` change was needed; `classifyMessage` never
+  emits `INVALID_COG` for debugger bytes, so no `INVALID_COG` path can carry
+  them. Oracle flipped: S3 now asserts `loggerBinaryBytes === 0` (was 11100 B).
+  Direct `routeBinaryMessage(data)` callers (no type) are unaffected — the
+  wiretap still runs for genuine non-debugger binary. Regression check: routing
+  + logger + replay suites green (windowRouter / windowRouterIntegration /
+  debugLoggerRouting / messageClassificationRouting / messageRouter /
+  cogMessageRouting / cog2DebugLoggerRouting / routerLoggingPerformance /
+  debugLoggerWindow / debuggerReplay = 158 tests). `it.failing` SPEC stays green
+  (breaks/drops unmet until §3/§4).

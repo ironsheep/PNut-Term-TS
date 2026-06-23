@@ -89,9 +89,14 @@ describe('debugger replay oracle (§1)', () => {
       expect(r.completedBreaks).toBeLessThan(fixture.phase2Sends.length);
     });
 
-    it('S3: debugger binary leaks to the logger wiretap', () => {
-      // §2 target: flip to `expect(r.loggerBinaryBytes).toBe(0)`.
-      expect(r.loggerBinaryBytes).toBeGreaterThan(0);
+    it('S3: debugger binary no longer leaks to the logger wiretap (§2 fixed)', () => {
+      // §2 killed the wiretap leak: WindowRouter.routeBinaryMessage now keeps
+      // debugger Phase-1/Phase-3 frames off logger-type windows (they render as
+      // bogus 'Cog N:' hex dumps there). Debugger frames go solely to their cog's
+      // debugger window; the logger still wiretaps genuine streaming via the text
+      // path. Was `> 0` (11100 B leaked) before the fix.
+      expect(r.loggerBinaryBytes).toBe(0);
+      expect(r.loggerBinaryMessages).toBe(0);
     });
 
     it('F7: out-of-window Phase-3 chunks are hard-dropped', () => {
