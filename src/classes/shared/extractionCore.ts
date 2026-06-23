@@ -259,8 +259,11 @@ export class ExtractionCore {
   // ── Control signals (production wires these to parentPort messages) ────────
 
   /**
-   * The renderer's structural parser reported Phase 3 complete: close the
-   * transaction so the next phase1 (any cog) is framed normally by find416.
+   * Close the debugger raw pass-through transaction so the next Phase-1 is framed
+   * normally by find456. In the single-owner model (§3) the worker STAYS open
+   * across breaks — the renderer's controller re-frames each subsequent break
+   * itself — so this is called only at a session boundary (DTR/RTS reset), NOT
+   * per break. (Method name kept for the existing worker/IPC wiring.)
    */
   public onPhase3Done(): void {
     this.debuggerTransactionCog = null;

@@ -227,14 +227,23 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     // framing path) — the suspected data-region defect.
     const first16 = Array.from(owned.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join(' ');
     this.debugLog(`RX binary len=${owned.length} awaitingP3=${this.awaitingPhase3} first16=[${first16}]`);
+    // Single-owner model (dbg-comms-reframe §3): once a debug session is open we
+    // forward EVERY byte to the renderer as Phase-3 — the worker is a dumb
+    // pass-through that stays open, and the controller is the single framing
+    // authority that re-frames the raw stream (it splits out each subsequent
+    // break's Phase-1 itself via exact-accounting leftover()). So the FIRST
+    // Phase-1 starts the session and flips awaitingPhase3 synchronously here
+    // (closing the old open-edge race where the flag only flipped after the
+    // Phase-2 IPC round-trip); from then on all bytes go to the controller.
     if (this.awaitingPhase3) {
       this.forwardPhase3ToRenderer(owned);
       return;
     }
-    if (owned.length === 416 || owned.length === 456) {
+    if (owned.length === 456) {
+      this.awaitingPhase3 = true; // session open — forward all subsequent bytes as Phase-3
       this.forwardPhase1ToRenderer(owned);
     } else {
-      this.debugLog(`RX binary len=${owned.length} DID NOT match Phase 1 (416/456) and not awaitingP3 — DROPPED`);
+      this.debugLog(`RX binary len=${owned.length} is not a 456-byte Phase-1 and no session open — DROPPED`);
     }
   }
 
@@ -432,13 +441,13 @@ ${bundleJs}
         this.emit('setGlobalCogBrk', { mask: message.mask, originCogId: this.cogId });
         break;
       case 'phase3Complete':
-        // Bundle finished parsing Phase 3. The next 416-byte chunk is a
-        // new Phase 1 (not a Phase 3 continuation).
-        this.awaitingPhase3 = false;
-        // Close the worker's raw-passthrough transaction so the next phase1 is
-        // framed normally (see DebugDebuggerWindow ctor wiring in mainWindow).
-        this.emit('debuggerPhase3Done', { cogId: this.cogId });
-        this.debugLog(`PHASE3 complete → awaitingPhase3=false, transaction closed`);
+        // Single-owner model (§3): a break completed, but the session STAYS open.
+        // The controller is the single framing authority — it re-frames the next
+        // break's Phase-1 itself out of the continuing raw stream, so we do NOT
+        // flip awaitingPhase3 off and do NOT close the worker's pass-through here.
+        // The worker transaction is closed only on DTR/RTS reset (see mainWindow).
+        // The repaint was already requested by the controller.
+        this.debugLog(`PHASE3 complete (break framed) → session stays open (single-owner)`);
         break;
       case 'log':
         this.debugLog(`[R/${message.level}] ${message.msg}`);

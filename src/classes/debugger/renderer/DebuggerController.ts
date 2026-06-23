@@ -94,6 +94,14 @@ export class DebuggerController {
   private expectedPhase3Fixed: number = 0;
   /** Post-break remnant bytes discarded (trailing zeros / desync) — diagnostic. */
   private remnantBytes: number = 0;
+  /**
+   * §4 self-heal: timer that fires if an OPEN break stalls mid-Phase-3 (no bytes
+   * for BREAKPOINT_TIMEOUT_MS). Re-armed on every Phase-3 chunk (so it never
+   * fires during an active burst — a full Phase-3 streams in ~ms at debug baud),
+   * cleared at Done. On fire it aborts the stuck transaction so the channel
+   * recovers instead of wedging (mirrors Pascal RByte's read timeout).
+   */
+  private stallHandle: ReturnType<typeof setTimeout> | null = null;
 
   constructor(state: DebuggerState, callbacks: ControllerCallbacks) {
     this.state = state;
@@ -111,8 +119,46 @@ export class DebuggerController {
    * boundary.
    */
   public processPhase3(bytes: Uint8Array): void {
+    this.clearStallTimer(); // progress — cancel any pending stall abort
     for (let i = 0; i < bytes.length; i++) this.frameBuf.push(bytes[i]);
     this.driveFrames();
+    // If a break is still open (awaiting more Phase-3), arm the stall watchdog.
+    if (!this.expectingPhase1) this.armStallTimer();
+  }
+
+  // ─── §4 self-heal: Phase-3 stall watchdog ─────────────────────────────────
+
+  private armStallTimer(): void {
+    this.clearStallTimer();
+    this.stallHandle = setTimeout(() => {
+      this.stallHandle = null;
+      this.abortStuckTransaction();
+    }, BREAKPOINT_TIMEOUT_MS);
+  }
+
+  private clearStallTimer(): void {
+    if (this.stallHandle) {
+      clearTimeout(this.stallHandle);
+      this.stallHandle = null;
+    }
+  }
+
+  /**
+   * Abort a break whose Phase-3 stalled (a lost byte or a disconnect mid-stream).
+   * Drop the partial parse + carried bytes and return to awaiting a fresh Phase-1
+   * so the channel self-heals on the next clean break — never wedging the pipe on
+   * one bad byte. Exposed (and callable directly) so §4 can unit-test recovery
+   * without real timers. Pascal: RByte times out into a clean error (§4).
+   */
+  public abortStuckTransaction(): void {
+    this.clearStallTimer();
+    const dropped = this.frameBuf.length;
+    this.phase3Parser.reset();
+    this.frameBuf.length = 0;
+    this.expectingPhase1 = true; // resync: the next clean Phase-1 re-establishes framing
+    if (this.callbacks.log) {
+      this.callbacks.log(`Phase-3 stall after ${BREAKPOINT_TIMEOUT_MS}ms — aborted stuck break (dropped ${dropped}B); awaiting fresh Phase-1`);
+    }
   }
 
   /**
@@ -483,6 +529,7 @@ export class DebuggerController {
       clearTimeout(this.timeoutHandle);
       this.timeoutHandle = null;
     }
+    this.clearStallTimer();
     this.phase3Parser.reset();
     // §3 framing state: drop any carried bytes so the next session starts clean.
     this.frameBuf.length = 0;

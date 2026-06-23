@@ -369,13 +369,13 @@ export class MainWindow {
           }
         });
 
-        // Phase 3 raw-passthrough handshake: when this window's renderer reports
-        // Phase 3 complete, tell the extraction worker to close the open debug
-        // transaction so the next phase1 (any cog) is framed normally. Mirrors
-        // Pascal's run-to-completion read (the P2 holds lock[15] per exchange).
-        debuggerDisplay.on('debuggerPhase3Done', () => {
-          this.serialProcessor.signalDebuggerPhase3Done();
-        });
+        // Single-owner model (dbg-comms-reframe §3): the worker opens a raw
+        // pass-through on the first Phase-1 and STAYS open, forwarding every byte;
+        // the renderer's DebuggerController is the single framing authority and
+        // re-frames each subsequent break itself. So there is no per-break worker
+        // close — the transaction is closed only on DTR/RTS reset (see
+        // resetAllDebuggers below), which returns the worker to normal framing for
+        // the next session's first Phase-1.
 
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
@@ -405,6 +405,10 @@ export class MainWindow {
     // owns Phase 2), so there is nothing to reset on the main side.
     const resetAllDebuggers = (source: string): void => {
       this.logConsoleMessage(`[DEBUGGER] ${source} reset detected — clearing all debugger state`);
+      // Single-owner model (§3): close the worker's open Phase-3 pass-through so
+      // the next session's first Phase-1 is framed normally. The worker no longer
+      // closes per-break, so the reset boundary is the one place it must close.
+      this.serialProcessor.signalDebuggerPhase3Done();
       for (const key of Object.keys(this.displays)) {
         const w = this.displays[key];
         if (w instanceof DebugDebuggerWindow) w.broadcastReset();

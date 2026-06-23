@@ -145,11 +145,12 @@ describe('SerialMessageProcessor Integration', () => {
       expect(cogMsg?.type).toBe(SharedMessageType.COG3_MESSAGE);
     });
 
-    it('should handle 416-byte debugger packets', async () => {
-      // Worker Thread architecture uses 416-byte packets.
-      // Must register a destination for the COG being tested (COG 0 = DEBUGGER0_416BYTE).
-      // DEBUGGER0_416BYTE is already registered in beforeEach — use COG 0 packet.
-      const packet = new Uint8Array(416);
+    it('should handle 456-byte debugger Phase-1 packets', async () => {
+      // The debugger Phase-1 packet is 456 bytes (20 longs + 64 CRC words + 124
+      // hub words — DebuggerUnit.pas / Spin2_debugger.spin2). DEBUGGER0_416BYTE is
+      // registered in beforeEach (the enum name keeps the legacy "416" label) —
+      // use a COG 0 packet.
+      const packet = new Uint8Array(456);
       packet[0] = 0; // COG 0 → SharedMessageType.DEBUGGER0_416BYTE
 
       processor.receiveData(Buffer.from(packet));

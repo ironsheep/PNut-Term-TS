@@ -31,6 +31,8 @@
  */
 
 import { loadCaptureFixture, runReplay } from './shared/debuggerReplay';
+import { makeController, makeDebuggerState, buildPhase1Packet, buildPhase3Packet } from './shared/debuggerFixture';
+import { BREAKPOINT_TIMEOUT_MS } from '../src/classes/debugger/shared/constants';
 
 describe('debugger replay oracle (§1)', () => {
   const fixture = loadCaptureFixture();
@@ -170,6 +172,48 @@ describe('debugger replay oracle (§1)', () => {
       const r = runReplay(truncated);
       expect(r.breaks.length).toBeGreaterThan(0);
       expect(r.totalBreaks).toBeGreaterThan(0);
+    });
+  });
+
+  // ── §4 — Phase-3 stall self-heal (controller unit test, fake timers) ───────
+  describe('§4 — Phase-3 stall recovery', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('aborts a break stalled mid-Phase-3, then recovers on the next clean break', () => {
+      jest.useFakeTimers();
+      const state = makeDebuggerState(0);
+      const logs: string[] = [];
+      const h = makeController(state, { log: (m) => logs.push(m) });
+
+      // Break A: a Phase-1 whose every cog block changed (huge Phase-3), then
+      // feed only a 10-byte sliver of Phase-3 — the break cannot complete.
+      h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x1234) }));
+      const partial = buildPhase3Packet(state).subarray(0, 10);
+      h.controller.processPhase3(partial);
+      expect(h.calls.phase3Complete).toBe(0); // still open, awaiting the rest
+
+      // Bytes stop. After the stall bound the watchdog aborts the stuck break.
+      jest.advanceTimersByTime(BREAKPOINT_TIMEOUT_MS + 1);
+      expect(logs.some((m) => /stall/i.test(m))).toBe(true);
+      expect(h.calls.phase3Complete).toBe(0); // the aborted break never completes
+
+      // Recovery: a fresh, complete break frames and completes normally —
+      // proving the pipe self-healed rather than wedging on the lost bytes.
+      h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x1234) }));
+      h.controller.processPhase3(buildPhase3Packet(state));
+      expect(h.calls.phase3Complete).toBe(1);
+    });
+
+    it('abortStuckTransaction() is directly callable (no real timer needed)', () => {
+      const state = makeDebuggerState(0);
+      const h = makeController(state);
+      h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x55) }));
+      h.controller.processPhase3(buildPhase3Packet(state).subarray(0, 8));
+      h.controller.abortStuckTransaction(); // explicit abort
+      // A clean break still completes afterwards.
+      h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x55) }));
+      h.controller.processPhase3(buildPhase3Packet(state));
+      expect(h.calls.phase3Complete).toBe(1);
     });
   });
 
