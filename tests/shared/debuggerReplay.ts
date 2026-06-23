@@ -14,19 +14,19 @@
  *     under Jest. So we construct an `ExtractionCore` (the framing engine lifted
  *     out of the worker, §1) over an in-process `SharedCircularBuffer` /
  *     `SharedMessagePool` and feed it the capture ourselves.
- *   - The desync is a RACE: the worker opens its raw-drain transaction and emits
- *     Phase-3 immediately on Phase-1 emit, but the main-side `awaitingPhase3`
- *     gate (`debugDebuggerWin.handleBinaryMessage`) only flips true after the
- *     Phase-2 reply round-trips bundle→main. Phase-3 bytes landing in that gap
- *     hit the `else` branch and are DROPPED, so that break never completes
- *     (the S1/S2 symptoms: 10/19 complete on current code). We reproduce that by
- *     modeling the controller→main→worker control round-trips as DEFERRED
- *     (applied at end-of-USB-chunk), while the core opens/drains synchronously
- *     during `pump()`.
+ *   - §3 single-owner model: the worker opens a raw-passthrough transaction on
+ *     the first Phase-1 and STAYS open, forwarding every subsequent byte (it can
+ *     over-drain the next break's Phase-1 into a Phase-3 chunk). The controller
+ *     is the SINGLE framing authority — it re-frames the raw stream structurally
+ *     using exact byte accounting, so a `leftover()` after a completed break
+ *     starts precisely on the next Phase-1 boundary. Break bookkeeping therefore
+ *     happens at the controller callbacks (`onPhase1` / `sendPhase2` /
+ *     `onPhase3Complete`), not at the worker→main boundary. This removed the old
+ *     awaitingPhase3 open-edge gate that dropped Phase-3 in the broken baseline.
  *   - The leading terminal text and per-chunk Phase-3 granularity match the
  *     hardware log byte-for-byte (verified during §1 bring-up).
  *
- * This module is shared test scaffolding (NOT inlined into one test) so §3/§4
+ * This module is shared test scaffolding (NOT inlined into one test) so §3/§4/§5
  * can reuse `runReplay()` and assert against the same oracle.
  */
 
@@ -92,13 +92,6 @@ export interface ReplayResult {
 }
 
 export interface ReplayOptions {
-  /**
-   * Model the controller→main→worker control round-trips (awaitingPhase3 flip,
-   * worker transaction close) as deferred to end-of-USB-chunk. Default true —
-   * this reproduces the current code's drop race. Set false to apply control
-   * signals synchronously (useful once §3/§4 make the channel race-free).
-   */
-  deferControlRoundTrips?: boolean;
   /** Ring size for the in-process SharedCircularBuffer (default 1 MiB). */
   ringSize?: number;
 }
@@ -124,8 +117,6 @@ const cogOfType = (t: SharedMessageType): number =>
  * the logger leak, and hard drops.
  */
 export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}): ReplayResult {
-  const defer = options.deferControlRoundTrips ?? true;
-
   // Fresh router (singleton) with a logger window to detect the S3 leak.
   WindowRouter.resetInstance();
   const router = WindowRouter.getInstance();
@@ -155,54 +146,30 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
   const emitted: number[] = [];
   const core = new ExtractionCore(ring, pool, (id) => emitted.push(id), { now: () => clock });
 
-  // Control round-trips queued here are applied at the end of each USB chunk
-  // (deferControlRoundTrips) to reproduce the async awaitingPhase3 / close race.
-  const pendingControl: Array<() => void> = [];
-  const runControl = (fn: () => void) => (defer ? pendingControl.push(fn) : fn());
-  const flushControl = () => {
-    while (pendingControl.length) pendingControl.shift()!();
-  };
-
   // Cogs we have already stood up a controller + window handler for.
   const cogsSeen = new Set<number>();
 
   const ensureCog = (cogId: number): void => {
     if (cogsSeen.has(cogId)) return;
-    const gate = { awaitingP3: false };
+
+    // §3 single-owner model: the worker opens a raw-passthrough transaction on
+    // the first Phase-1 and stays open, forwarding EVERY subsequent byte here as
+    // a Phase-3 chunk (it can over-drain the next break's Phase-1 into one). The
+    // controller is the SINGLE framing authority — it re-frames the raw stream
+    // structurally (exact accounting puts each `leftover()` on a Phase-1
+    // boundary). Break bookkeeping therefore happens at the controller callbacks,
+    // not at this worker→main boundary.
+    let sessionActive = false;
     let current: ReplayBreakResult | null = null;
 
     const harness = makeController(makeDebuggerState(cogId), {
-      sendPhase2: (bytes) => {
-        result.phase2Replies.push(new Uint8Array(bytes));
-        if (current) current.phase2Length = bytes.length;
-        // Round-trip: bundle posts phase2 → main flips awaitingPhase3 true.
-        runControl(() => { gate.awaitingP3 = true; });
-      },
-      onPhase3Complete: () => {
-        if (current) current.phase3Complete = true;
-        // Round-trip: bundle 'phase3Complete' → main clears awaitingPhase3 and
-        // signals the worker to close its raw-drain transaction.
-        runControl(() => {
-          gate.awaitingP3 = false;
-          core.onPhase3Done();
-        });
-      },
-      requestRender: () => {},
-      onBreakpointTimeout: () => {}
-    });
-
-    // The main-side binary handler (debugDebuggerWin.handleBinaryMessage): the
-    // router hands it ONLY the bytes, so it re-derives phase1-vs-phase3 from the
-    // awaitingPhase3 gate + length, exactly as production does.
-    const handle = (data: Uint8Array): void => {
-      if (gate.awaitingP3) {
-        if (current) current.phase3DeliveredBytes += data.length;
-        harness.controller.processPhase3(data);
-      } else if (data.length === 416 || data.length === 456) {
+      // Fired once per Phase-1 the controller frames — including breaks it
+      // re-frames out of the raw Phase-3 stream. The single source of break truth.
+      onPhase1: (length) => {
         current = {
           index: result.breaks.length,
           cogId,
-          phase1Length: data.length,
+          phase1Length: length,
           phase2Length: null,
           phase3DeliveredBytes: 0,
           phase3DroppedChunks: 0,
@@ -211,15 +178,35 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
         };
         result.breaks.push(current);
         result.totalBreaks++;
-        harness.controller.processPhase1(data);
-      } else {
-        // F7: out-of-window binary, not awaited and not a phase1 frame → dropped.
-        result.droppedBinaryMessages++;
-        result.droppedBinaryBytes += data.length;
-        if (current) {
-          current.phase3DroppedChunks++;
-          current.phase3DroppedBytes += data.length;
+      },
+      sendPhase2: (bytes) => {
+        result.phase2Replies.push(new Uint8Array(bytes));
+        if (current) current.phase2Length = bytes.length;
+      },
+      // Done fires before the loop frames the next break, so `current` is still
+      // this break (see DebuggerController.driveFrames ordering).
+      onPhase3Complete: () => {
+        if (current) current.phase3Complete = true;
+      },
+      requestRender: () => {},
+      onBreakpointTimeout: () => {}
+    });
+
+    // Main-side dispatch (debugDebuggerWin.handleBinaryMessage): once a debug
+    // session is open, forward all raw bytes to the controller, which frames
+    // them. Only the very first framed Phase-1 starts the session.
+    const handle = (data: Uint8Array): void => {
+      if (!sessionActive) {
+        if (data.length === 416 || data.length === 456) {
+          sessionActive = true;
+          harness.controller.processPhase1(data);
+        } else {
+          // Pre-session non-Phase-1 binary (should not occur with a clean stream).
+          result.droppedBinaryMessages++;
+          result.droppedBinaryBytes += data.length;
         }
+      } else {
+        harness.controller.processPhase3(data);
       }
     };
 
@@ -264,12 +251,10 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
     ring.appendAtTail(fixture.bytes.subarray(off, off + fixture.chunkLengths[i]));
     off += fixture.chunkLengths[i];
     pumpConsume(1); // frame what the just-delivered chunk completed
-    if (defer) flushControl(); // round-trips complete by the next chunk
   }
   // Trailing idle flush + drain.
   clock += 200;
   pumpConsume(4);
-  flushControl();
 
   result.completedBreaks = result.breaks.filter((b) => b.phase3Complete).length;
   return result;

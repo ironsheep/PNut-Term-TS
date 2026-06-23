@@ -46,6 +46,13 @@ export interface ControllerCallbacks {
   requestRender: () => void;
   onBreakpointTimeout: () => void;
   onPhase3Complete: () => void;
+  /**
+   * Fired once per Phase-1 the controller frames — including breaks the
+   * controller re-frames itself out of the raw Phase-3 stream (§3). `length`
+   * is the Phase-1 packet size (416/456). Optional; used by the replay harness
+   * to count breaks at the single owner rather than at the worker boundary.
+   */
+  onPhase1?: (length: number) => void;
   /** Optional diagnostic sink (routed to the shared debug log via main). */
   log?: (msg: string) => void;
 }
@@ -71,6 +78,23 @@ export class DebuggerController {
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private phase3Parser: DebuggerPhase3Parser;
 
+  // ─── Single-owner break framing (§3) ──────────────────────────────────
+  // The controller is the SINGLE authority for the break transaction (mirrors
+  // Pascal's atomic `Breakpoint`). The worker is a dumb raw pass-through: once a
+  // debug session is open it forwards EVERY byte here, including the next break's
+  // Phase-1 (which it can over-drain into a Phase-3 chunk). Because the parser is
+  // byte-exact, `leftover()` after a completed break starts precisely on the next
+  // Phase-1 boundary — so we re-frame the raw stream structurally here rather than
+  // letting two owners (worker + main gate) guess at boundaries.
+  /** Unframed Phase-3/next-Phase-1 bytes carried across `processPhase3` calls. */
+  private frameBuf: number[] = [];
+  /** True when the next `PHASE1_SIZE` bytes in `frameBuf` are a new Phase-1. */
+  private expectingPhase1: boolean = false;
+  /** Exact fixed Phase-3 size (cog+hub+hubReads) computed at Phase-2 build. */
+  private expectedPhase3Fixed: number = 0;
+  /** Post-break remnant bytes discarded (trailing zeros / desync) — diagnostic. */
+  private remnantBytes: number = 0;
+
   constructor(state: DebuggerState, callbacks: ControllerCallbacks) {
     this.state = state;
     this.callbacks = callbacks;
@@ -78,48 +102,137 @@ export class DebuggerController {
   }
 
   /**
-   * Consume a chunk of Phase 3 bytes. When the parser reports completion,
-   * post-processing (heat decay, watch-list update) runs and the renderer
-   * is asked for a repaint.
+   * Consume a chunk of raw bytes for the open debug session. The controller is
+   * the single framing authority (§3): it feeds Phase-3 bytes to the parser and,
+   * when a break completes, re-frames any `leftover()` as the next break's
+   * Phase-1 — so a worker over-drain (the next Phase-1 arriving inside a Phase-3
+   * chunk) is handled here instead of being dropped or mis-walked by a second
+   * owner. Exact byte accounting guarantees `leftover()` starts on a Phase-1
+   * boundary.
    */
   public processPhase3(bytes: Uint8Array): void {
-    const complete = this.phase3Parser.addChunk(bytes);
-    // DIAGNOSTIC (build A): confirm Phase 3 chunks actually reach the renderer.
-    if (this.callbacks.log) {
-      this.callbacks.log(`PHASE3 chunk: +${bytes.length}B, complete=${complete}`);
-    }
-    if (complete) {
-      // Decay heat for any address we did NOT receive (those that weren't
-      // set to 254 in this pass). Pascal: CogImageHit[i] -= HitDecayRate.
-      for (let i = 0; i < this.state.cogHit.length; i++) {
-        if (this.state.cogHit[i] > HIT_DECAY_RATE) {
-          this.state.cogHit[i] -= HIT_DECAY_RATE;
-        } else {
-          this.state.cogHit[i] = 0;
+    for (let i = 0; i < bytes.length; i++) this.frameBuf.push(bytes[i]);
+    this.driveFrames();
+  }
+
+  /**
+   * Drive the break framing state machine over whatever is buffered. Each turn
+   * either frames a Phase-1 (when `expectingPhase1`) or feeds the buffer to the
+   * Phase-3 parser; on completion it cross-checks the exact size, post-processes,
+   * carries the byte-exact `leftover()` forward, and loops to frame the next break.
+   */
+  private driveFrames(): void {
+    for (;;) {
+      if (this.expectingPhase1) {
+        if (this.frameBuf.length < PHASE1_SIZE) return; // wait for the full Phase-1
+        if (!this.looksLikePhase1(this.frameBuf)) {
+          // Trailing all-zero remnant after a clean break, or a desync. §3
+          // DETECTS + counts it (instead of mis-walking it as a break); §4 adds
+          // the active recovery (parser reset / timeout / new-Phase-1 escape).
+          this.discardRemnant();
+          return;
         }
+        const p1 = Uint8Array.from(this.frameBuf.slice(0, PHASE1_SIZE));
+        this.frameBuf.splice(0, PHASE1_SIZE);
+        this.expectingPhase1 = false;
+        this.processPhase1(p1); // builds Phase-2, computes expectedPhase3Fixed
+        continue; // remaining frameBuf is this break's Phase-3
       }
-      // Hub heat (§6.18): flash sub-blocks whose checksum changed this break,
-      // decay the rest. The parser already shifted old→current for changed
-      // 4 KB blocks; this loop runs the flash/decay state machine for every
-      // sub-block and re-syncs old=current. Pascal DebuggerUnit.pas L1679-1687.
-      for (let y = 0; y < this.state.hubSubBlockHit.length; y++) {
-        const cur = this.state.hubSubBlock[y];
-        this.state.hubSubBlockHit[y] = nextHubHeat(
-          cur, this.state.hubSubBlockOld[y], this.state.hubSubBlockHit[y], HIT_DECAY_RATE
-        );
-        this.state.hubSubBlockOld[y] = cur;
+      if (this.frameBuf.length === 0) return;
+      const chunk = Uint8Array.from(this.frameBuf);
+      this.frameBuf.length = 0;
+      const complete = this.phase3Parser.addChunk(chunk);
+      if (this.callbacks.log) {
+        this.callbacks.log(`PHASE3 chunk: +${chunk.length}B, complete=${complete}`);
       }
-      // Update register watch list (§6.7) — deferred to the renderer update
-      // pass that owns the list data.
-      this.updateRegisterWatch();
-      this.updateSmartPinWatch();
-      // Reset the parser for the next breakpoint exchange.
+      if (!complete) return; // need more bytes for this break's Phase-3
+      this.crossCheckPhase3Size();
+      const leftover = this.phase3Parser.leftover();
+      this.finishBreak();
       this.phase3Parser.reset();
-      // Notify main so it can flip awaitingPhase3 off.
       this.callbacks.onPhase3Complete();
-      // Trigger a repaint now that all data is in.
       this.callbacks.requestRender();
+      // Carry the byte-exact boundary leftover back; the next PHASE1_SIZE bytes
+      // are the next break's Phase-1. Loop frames it now if we already have it.
+      this.frameBuf = Array.from(leftover);
+      this.expectingPhase1 = true;
     }
+  }
+
+  /**
+   * Post-break state updates (heat decay, hub-heat flash/decay, watch lists).
+   * Split out of the framing loop so §3's re-framer can call it per completed
+   * break. Does NOT reset the parser or notify main — `driveFrames` owns those.
+   */
+  private finishBreak(): void {
+    // Decay heat for any address we did NOT receive (those that weren't
+    // set to 254 in this pass). Pascal: CogImageHit[i] -= HitDecayRate.
+    for (let i = 0; i < this.state.cogHit.length; i++) {
+      if (this.state.cogHit[i] > HIT_DECAY_RATE) {
+        this.state.cogHit[i] -= HIT_DECAY_RATE;
+      } else {
+        this.state.cogHit[i] = 0;
+      }
+    }
+    // Hub heat (§6.18): flash sub-blocks whose checksum changed this break,
+    // decay the rest. The parser already shifted old→current for changed
+    // 4 KB blocks; this loop runs the flash/decay state machine for every
+    // sub-block and re-syncs old=current. Pascal DebuggerUnit.pas L1679-1687.
+    for (let y = 0; y < this.state.hubSubBlockHit.length; y++) {
+      const cur = this.state.hubSubBlock[y];
+      this.state.hubSubBlockHit[y] = nextHubHeat(
+        cur, this.state.hubSubBlockOld[y], this.state.hubSubBlockHit[y], HIT_DECAY_RATE
+      );
+      this.state.hubSubBlockOld[y] = cur;
+    }
+    // Update register watch list (§6.7) — deferred to the renderer update
+    // pass that owns the list data.
+    this.updateRegisterWatch();
+    this.updateSmartPinWatch();
+  }
+
+  /**
+   * Exact-size cross-check (§3): when the parser reaches `Done` it has consumed
+   * `cog+hub+hubReads` (the fixed size known at Phase-2 build) plus the
+   * self-describing smart-pin tail (`8 mask bytes + 4·Σsetbits`). If the consumed
+   * count cannot decompose into `fixed + 8 + 4k`, the stream mis-walked — log it
+   * so a desync is DETECTED rather than silently absorbed. (Active recovery is §4.)
+   */
+  private crossCheckPhase3Size(): void {
+    const consumed = this.phase3Parser.consumed();
+    const tail = consumed - this.expectedPhase3Fixed;
+    const ok = tail >= 8 && (tail - 8) % 4 === 0;
+    if (!ok && this.callbacks.log) {
+      this.callbacks.log(
+        `PHASE3 size cross-check FAILED: consumed=${consumed} fixed=${this.expectedPhase3Fixed} ` +
+        `tail=${tail} (expected fixed + 8 + 4·Σsetbits)`
+      );
+    }
+  }
+
+  /**
+   * Does the head of `buf` begin a real Phase-1 packet? Exact byte accounting
+   * already guarantees the bytes after a completed break begin on the next
+   * Phase-1 boundary, so we TRUST the structure rather than sniff the header —
+   * the COGN long carries status bits in non-first breaks (e.g. byte 3 = 0x80),
+   * so a strict `[cog,0,0,0]` check wrongly rejects every steady-state break. The
+   * only thing to screen out is a trailing ALL-ZERO remnant after the final
+   * break: a live Phase-1 always carries non-zero CRC/checksum words.
+   */
+  private looksLikePhase1(buf: number[]): boolean {
+    for (let i = 0; i < PHASE1_SIZE; i++) if (buf[i] !== 0) return true;
+    return false;
+  }
+
+  /** Discard a non-Phase-1 remnant from the frame buffer, counting it. */
+  private discardRemnant(): void {
+    const n = this.frameBuf.length;
+    this.remnantBytes += n;
+    if (this.callbacks.log) {
+      this.callbacks.log(`Discarded ${n}B post-break remnant (not a Phase-1 frame); total=${this.remnantBytes}B`);
+    }
+    this.frameBuf.length = 0;
+    this.expectingPhase1 = false;
   }
 
   // ============================================================================
@@ -130,6 +243,13 @@ export class DebuggerController {
     if (bytes.length !== PHASE1_SIZE) {
       throw new Error(`Phase 1 packet wrong size: got ${bytes.length}, expected ${PHASE1_SIZE}`);
     }
+
+    // Single owner (§3): a new Phase-1 opens a fresh break transaction. Reset the
+    // parser and the framing state so a stale partial Phase-3 (e.g. a §4 escape)
+    // can never bleed into this break. Notify the break counter.
+    this.phase3Parser.reset();
+    this.expectingPhase1 = false;
+    this.callbacks.onPhase1?.(bytes.length);
 
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
 
@@ -249,6 +369,17 @@ export class DebuggerController {
     this.state.pendingHubBlocks = pendingHub;
     this.state.pendingHubCode = (this.computeHubCodeRequest() >>> 20) !== 0;
 
+    // Exact FIXED Phase-3 size (§3): every requested cog block is 64 bytes, every
+    // requested hub block is 64 bytes (32 sub-block words), plus the fixed hub
+    // reads (optional 64-byte disassembly + 3×14-byte pointer windows + 128-byte
+    // hub viewer = 170 or 234). The smart-pin tail (8 mask bytes + 4·Σsetbits) is
+    // self-describing and added by the parser; crossCheckPhase3Size validates the
+    // total decomposes as fixed + 8 + 4k. Mirrors Pascal Breakpoint :1304-1383.
+    const cogBytes = pendingCog.length * COG_BLOCK_SIZE * 4;
+    const hubBytes = pendingHub.length * HUB_BLOCK_RATIO * 2;
+    const hubReads = (this.state.pendingHubCode ? DIS_LINES * 4 : 0) + PTR_BYTES * 3 + HUB_SUB_BLOCK_SIZE;
+    this.expectedPhase3Fixed = cogBytes + hubBytes + hubReads;
+
     // ─── 5 longs: hub read requests (size<<20 | address) ────────────────
     // Disassembly — only if we're displaying hub-execute code.
     const hubCodeRequest = this.computeHubCodeRequest();
@@ -353,6 +484,11 @@ export class DebuggerController {
       this.timeoutHandle = null;
     }
     this.phase3Parser.reset();
+    // §3 framing state: drop any carried bytes so the next session starts clean.
+    this.frameBuf.length = 0;
+    this.expectingPhase1 = false;
+    this.expectedPhase3Fixed = 0;
+    this.remnantBytes = 0;
     this.state.reset();
   }
 

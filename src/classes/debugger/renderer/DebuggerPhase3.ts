@@ -100,6 +100,16 @@ export class DebuggerPhase3Parser {
     return this.section === Section.Done;
   }
 
+  /**
+   * Exact number of Phase-3 bytes consumed so far (the read cursor). When the
+   * parser is `Done`, this is the authoritative byte length of the completed
+   * Phase-3 stream — used by the controller's exact-size cross-check. Mirrors
+   * Pascal's atomic byte accounting in `Breakpoint` (DebuggerUnit.pas :1304-1383).
+   */
+  public consumed(): number {
+    return this.pos;
+  }
+
   /** Bytes remaining in the buffer past the Phase 3 end (should be 0). */
   public leftover(): Uint8Array {
     if (this.pos >= this.buffer.length) return new Uint8Array(0);

@@ -9,25 +9,26 @@
  * protocol's behavior. See `tests/shared/debuggerReplay.ts` for the harness and
  * `tests/fixtures/debugger/README.md` for the capture's provenance + calibration.
  *
- * The suite has two tiers:
- *   • GREEN now — fixture integrity, structural invariants, byte-exact Phase-2,
- *     and the CURRENT broken-baseline symptoms (S1/S2 incomplete breaks, S3
- *     logger leak, F7 drops). Later sections FLIP their own symptom line:
- *       §2 → `loggerBinaryBytes === 0`   (kill the wiretap leak)
- *       §3 → all framed breaks complete with exact accounting
- *       §4 → `droppedBinaryMessages === 0` (no hard drops)
- *   • `it.failing` SPEC — the post-fix target (all 19 breaks complete, zero
- *     leak, zero drops). It is GREEN while the target is unmet and turns RED the
- *     moment §2–§4 satisfy it, which is the signal to convert it to a plain `it`.
+ * Progress against the sprint sections:
+ *   • §2 (DONE) → `loggerBinaryBytes === 0` — debugger frames never reach the
+ *     logger wiretap.
+ *   • §3 (DONE) → the controller is the single framing authority: break-0 frames
+ *     byte-exact, the worker over-drain is re-framed structurally via exact-
+ *     accounting `leftover()`, and `droppedBinaryMessages === 0` (the open-edge
+ *     gate that dropped Phase-3 is gone).
+ *   • §5 (PENDING) → `completedBreaks === r.totalBreaks`. The capture's hardware
+ *     sends a **456-byte** Phase-1 (124 hub checksum words; verified — the smart-
+ *     pin tail of every steady-state break aligns exactly on the next break only
+ *     at length 456). With PHASE1_SIZE still 416/104, each break's Phase-3 is
+ *     mis-aligned by 40 B, so only the first 1-2 of the 11 clean breaks complete.
+ *   • `it.failing` SPEC — the aspirational all-19 target. It stays GREEN while
+ *     the body throws; note the capture only *cleanly* contains 11 breaks
+ *     (break-0 ≈4866 B + 10 steady ≈642 B), so the 19 there reflects host→P2
+ *     replies sent during the derail, not 19 clean RX breaks.
  *
- * Fidelity note: this single-threaded, discrete-pump harness reproduces the S3
- * leak and F7 drops deterministically, but it under-detects break FRAMING (it
- * sees ~10 of the 19 Phase-1 frames) because the hardware derail is partly a
- * continuous-thread race the harness cannot reproduce exactly. The companion
- * `debug_260622-142138.log` records 19 `PHASE1 ok` / 10 `complete=true`. The
- * deterministic, faithful oracle signals are the leak, the drops, and "every
- * framed break completes with exact byte accounting" — §3's single-owner
- * transaction is expected to make framing detect all 19.
+ * Capture structure (measured): 11 Phase-1 frames whose CRC words match break-0
+ * at offsets 39, 4905, then every +642 B. break-0's Phase-3 is 4410 B
+ * (regs 4096 + sums 128 + hubReads 170 + smart-pin tail 16) at length 456.
  */
 
 import { loadCaptureFixture, runReplay } from './shared/debuggerReplay';
@@ -83,10 +84,17 @@ describe('debugger replay oracle (§1)', () => {
   describe('current (broken) behavior — reproduces the documented symptoms', () => {
     const r = base;
 
-    it('S1/S2: not all breaks complete (Phase-3 desync)', () => {
-      // §3/§4 target: every framed break completes. Flip to
-      // `expect(r.completedBreaks).toBe(r.totalBreaks)` once that holds.
-      expect(r.completedBreaks).toBeLessThan(fixture.phase2Sends.length);
+    it('S1/S2: not all breaks complete (Phase-1 length 416-vs-456 desync)', () => {
+      // §3 made the controller the single framing authority with exact byte
+      // accounting + leftover() re-dispatch, so break-0 frames byte-exact and the
+      // worker over-drain is re-framed structurally. The capture cleanly contains
+      // 11 breaks (break-0 ≈4866 B + 10 steady ≈642 B each), NOT 19 — the other
+      // host→P2 replies were sent during the derail. Full completion of all 11 is
+      // blocked on §5: this hardware (pnut-ts) sends a 456-byte Phase-1 (124 hub
+      // checksum words), but PHASE1_SIZE/HUB_BLOCKS are still 416/104, so each
+      // break's Phase-3 is mis-aligned by 40 B and only the first 1-2 complete.
+      // Flip to `expect(r.completedBreaks).toBe(r.totalBreaks)` once §5 lands.
+      expect(r.completedBreaks).toBeLessThan(r.totalBreaks);
     });
 
     it('S3: debugger binary no longer leaks to the logger wiretap (§2 fixed)', () => {
@@ -99,9 +107,15 @@ describe('debugger replay oracle (§1)', () => {
       expect(r.loggerBinaryMessages).toBe(0);
     });
 
-    it('F7: out-of-window Phase-3 chunks are hard-dropped', () => {
-      // §4 target: flip to `expect(r.droppedBinaryMessages).toBe(0)`.
-      expect(r.droppedBinaryMessages).toBeGreaterThan(0);
+    it('F7: out-of-window Phase-3 chunks are no longer dropped (§3 single-framer)', () => {
+      // §3 removed the main-side awaitingPhase3 gate that dropped Phase-3 chunks
+      // landing in the open-edge window: the controller is now the single framing
+      // authority and consumes every byte (re-framing the worker over-drain via
+      // exact-accounting leftover()). So the clean-capture drop count is 0. Was
+      // `> 0` (19 chunks dropped) on the gated baseline. §4 adds *active recovery*
+      // (timeout / new-Phase-1 escape / counted remnant) for truncated/corrupt
+      // streams the clean capture never exercises.
+      expect(r.droppedBinaryMessages).toBe(0);
     });
   });
 
