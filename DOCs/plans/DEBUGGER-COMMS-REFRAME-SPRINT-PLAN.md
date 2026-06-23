@@ -328,7 +328,38 @@ mixed-tier batching warranted.
   `tests/debuggerReplay.test.ts` (10 green) with S1/S2/S3/F7 broken-baseline
   lines + an `it.failing` SPEC. Full suite 155/155 proved #31 streaming
   untouched.
-- **§2 «#61» — DONE (not yet committed at time of writing; ships in 0.9.80).**
+- **§3 «#62» — MACHINERY DONE (commit `fa3b6f2`); VERIFICATION gated on §5.**
+  The `DebuggerController` is now the SINGLE framing authority: `processPhase3`
+  is a framing state machine (`driveFrames`) that re-frames the raw stream
+  structurally — the worker is a dumb pass-through that stays open and forwards
+  every byte (over-draining the next Phase-1 into a Phase-3 chunk), and exact
+  byte accounting puts each `leftover()` precisely on the next Phase-1 boundary,
+  so the next `PHASE1_SIZE` bytes are re-dispatched as the next break. Added:
+  `expectedPhase3Fixed` (computed at Phase-2 build) + `crossCheckPhase3Size`
+  (`consumed == fixed + 8 + 4·Σsetbits` → desync DETECTED); `finishBreak()` split
+  out; counted all-zero remnant discard; `onPhase1` callback; parser exposes
+  `consumed()` (parser otherwise unchanged — it was already Pascal-correct). The
+  open-edge drop race (F8) and the main-side awaitingPhase3 gate are gone:
+  break-0 frames byte-exact, `droppedBinaryMessages === 0`, logger leak 0, no
+  wedge. Harness rewritten to the single-owner model; oracle F7 flipped to
+  `=== 0`.
+  - **KEY FINDING — re-scopes the sprint.** The capture's pnut-ts hardware sends
+    a **456-byte** Phase-1 (124 hub checksum words), NOT 416. *Proven:* the
+    smart-pin tail of every steady-state break aligns exactly on the next break
+    only at length 456 (at 416 it ends 8 B short). The capture cleanly contains
+    **11 breaks** (break-0 ≈4866 B + 10 steady ≈642 B at offsets 39, 4905, then
+    every +642 B), not 19 — the rest of the "19" host→P2 replies were sent during
+    the derail. The parser is correct; `PHASE1_SIZE`/`HUB_BLOCKS` (416/104) are
+    wrong for this hardware, so each break's Phase-3 is mis-aligned by 40 B and
+    only the first 1-2 of 11 complete.
+  - **RE-SEQUENCE:** §3 and §5 are entangled. Do **§5 («#64», 416/456
+    length-driven) BEFORE closing §3** — making Phase-1 length-driven (incl. the
+    worker framer: how it picks 416 vs 456 from RX content is the open design
+    question) is the prerequisite that lets §3's oracle flip S1/S2 to
+    `completedBreaks === totalBreaks` for all 11 breaks. Then §4 recovery. The
+    `it.failing` SPEC (all-19) stays aspirational — the capture only contains 11
+    clean breaks.
+- **§2 «#61» — DONE (commit `5719236`; ships in 0.9.80).**
   Killed the logger wiretap leak (S3). `WindowRouter.routeBinaryMessage` now
   takes the frame's `SharedMessageType`; single-step debugger Phase-1/Phase-3
   frames (`DEBUGGER*_416BYTE` / `DEBUGGER*_PHASE3`) skip the logger-wiretap block
