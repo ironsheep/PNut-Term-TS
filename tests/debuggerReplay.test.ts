@@ -12,23 +12,22 @@
  * Progress against the sprint sections:
  *   • §2 (DONE) → `loggerBinaryBytes === 0` — debugger frames never reach the
  *     logger wiretap.
- *   • §3 (DONE) → the controller is the single framing authority: break-0 frames
- *     byte-exact, the worker over-drain is re-framed structurally via exact-
- *     accounting `leftover()`, and `droppedBinaryMessages === 0` (the open-edge
- *     gate that dropped Phase-3 is gone).
- *   • §5 (PENDING) → `completedBreaks === r.totalBreaks`. The capture's hardware
- *     sends a **456-byte** Phase-1 (124 hub checksum words; verified — the smart-
- *     pin tail of every steady-state break aligns exactly on the next break only
- *     at length 456). With PHASE1_SIZE still 416/104, each break's Phase-3 is
- *     mis-aligned by 40 B, so only the first 1-2 of the 11 clean breaks complete.
- *   • `it.failing` SPEC — the aspirational all-19 target. It stays GREEN while
- *     the body throws; note the capture only *cleanly* contains 11 breaks
- *     (break-0 ≈4866 B + 10 steady ≈642 B), so the 19 there reflects host→P2
- *     replies sent during the derail, not 19 clean RX breaks.
+ *   • §3 (DONE) → the controller is the single framing authority: it re-frames
+ *     the raw stream structurally via exact-accounting `leftover()`, and
+ *     `droppedBinaryMessages === 0` (the open-edge gate that dropped Phase-3 is
+ *     gone).
+ *   • §5 (DONE) → the authoritative Phase-1 is **456 bytes** (20 longs + 64 CRC
+ *     words + 124 hub words), per DebuggerUnit.pas `Breakpoint` and
+ *     Spin2_debugger.spin2 `bp_handler` — there is no 416/104 variant. With
+ *     `PHASE1_SIZE=456`/`HUB_BLOCKS=124`, all 11 clean breaks frame and the 10
+ *     that carry Phase-3 complete with exact byte accounting.
  *
  * Capture structure (measured): 11 Phase-1 frames whose CRC words match break-0
  * at offsets 39, 4905, then every +642 B. break-0's Phase-3 is 4410 B
- * (regs 4096 + sums 128 + hubReads 170 + smart-pin tail 16) at length 456.
+ * (regs 4096 + sums 128 + hubReads 170 + smart-pin tail 16). break-10's 456-byte
+ * Phase-1 is the capture's tail (10683 + 456 = 11139) with no Phase-3, so 10 of
+ * 11 complete. The other "19" host→P2 replies in the manifest were sent during
+ * the derail and are not clean RX breaks.
  */
 
 import { loadCaptureFixture, runReplay } from './shared/debuggerReplay';
@@ -62,10 +61,13 @@ describe('debugger replay oracle (§1)', () => {
 
   // ── Real-pipeline structural invariants (true broken OR fixed) ─────────────
   describe('real pipeline', () => {
-    it('frames every break as a 416-byte Phase-1 + 52-byte Phase-2', () => {
-      expect(base.breaks.length).toBeGreaterThan(0);
+    it('frames all 11 breaks as a 456-byte Phase-1 + 52-byte Phase-2', () => {
+      // §5: the authoritative Phase-1 is 456 bytes (20 longs + 64 CRC words + 124
+      // hub words — DebuggerUnit.pas Breakpoint / Spin2_debugger.spin2 bp_handler).
+      // The capture's 11 clean breaks all frame at the single owner.
+      expect(base.breaks.length).toBe(11);
       for (const b of base.breaks) {
-        expect(b.phase1Length).toBe(416);
+        expect(b.phase1Length).toBe(456);
         expect(b.phase2Length).toBe(52);
       }
       expect(base.phase2Replies.every((p) => p.length === 52)).toBe(true);
@@ -80,21 +82,20 @@ describe('debugger replay oracle (§1)', () => {
     });
   });
 
-  // ── Current broken baseline — each later section flips its own line ────────
-  describe('current (broken) behavior — reproduces the documented symptoms', () => {
+  // ── Fixed behavior — §2/§3/§5 land; each line documents the symptom it cures ──
+  describe('fixed behavior — symptoms cured by §2/§3/§5', () => {
     const r = base;
 
-    it('S1/S2: not all breaks complete (Phase-1 length 416-vs-456 desync)', () => {
-      // §3 made the controller the single framing authority with exact byte
-      // accounting + leftover() re-dispatch, so break-0 frames byte-exact and the
-      // worker over-drain is re-framed structurally. The capture cleanly contains
-      // 11 breaks (break-0 ≈4866 B + 10 steady ≈642 B each), NOT 19 — the other
-      // host→P2 replies were sent during the derail. Full completion of all 11 is
-      // blocked on §5: this hardware (pnut-ts) sends a 456-byte Phase-1 (124 hub
-      // checksum words), but PHASE1_SIZE/HUB_BLOCKS are still 416/104, so each
-      // break's Phase-3 is mis-aligned by 40 B and only the first 1-2 complete.
-      // Flip to `expect(r.completedBreaks).toBe(r.totalBreaks)` once §5 lands.
-      expect(r.completedBreaks).toBeLessThan(r.totalBreaks);
+    it('S1/S2: every break that carried Phase-3 completes with exact accounting', () => {
+      // §3 (single-owner exact-accounting re-framer) + §5 (456-byte Phase-1)
+      // together cure the desync: all 11 clean breaks frame, and every break that
+      // actually received Phase-3 reaches Done. break-10 is the capture's tail —
+      // its 456-byte Phase-1 is the last bytes recorded (10683 + 456 = 11139), so
+      // it has NO Phase-3 and legitimately cannot complete (a §4 timeout would
+      // abort it on hardware). Hence completedBreaks === totalBreaks - 1.
+      expect(r.totalBreaks).toBe(11);
+      expect(r.completedBreaks).toBe(10);
+      expect(r.completedBreaks).toBe(r.totalBreaks - 1);
     });
 
     it('S3: debugger binary no longer leaks to the logger wiretap (§2 fixed)', () => {
@@ -139,7 +140,7 @@ describe('debugger replay oracle (§1)', () => {
       // continuous-thread close/awaitingP3 race that the single-threaded harness
       // approximates, so it shifts with chunk granularity — see the file header.)
       const tiny = runReplay(reChunk(7));
-      expect(tiny.breaks[0].phase1Length).toBe(416);
+      expect(tiny.breaks[0].phase1Length).toBe(456);
       expect(Array.from(tiny.phase2Replies[0])).toEqual(Array.from(fixture.phase2Sends[0]));
     });
   });
@@ -172,13 +173,15 @@ describe('debugger replay oracle (§1)', () => {
     });
   });
 
-  // ── SPEC target — fails on current code by design (encodes the goal) ───────
-  // `it.failing` is GREEN while the body throws (target unmet) and turns RED the
-  // moment §2–§4 make it pass — the signal to convert this to a plain `it`.
-  it.failing('SPEC: all 19 breaks complete with zero leak and zero drops', () => {
+  // ── SPEC — the post-§2/§3/§5 target, now MET on real bytes ─────────────────
+  // Was an `it.failing` marker asserting all-19; the capture was then measured to
+  // contain 11 clean breaks (the rest were derail host-replies, never clean RX
+  // breaks), and §3+§5 made the pipeline frame all 11, complete the 10 that
+  // carried Phase-3, with zero leak and zero drops. Now a plain passing `it`.
+  it('SPEC: all 11 clean breaks frame; the 10 with Phase-3 complete; zero leak/drops', () => {
     const r = runReplay(fixture);
-    expect(r.totalBreaks).toBe(19);
-    expect(r.completedBreaks).toBe(19);
+    expect(r.totalBreaks).toBe(11);
+    expect(r.completedBreaks).toBe(10); // break-10 is a Phase-1-only capture tail
     expect(r.droppedBinaryMessages).toBe(0);
     expect(r.loggerBinaryBytes).toBe(0);
   });

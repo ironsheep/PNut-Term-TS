@@ -99,15 +99,17 @@ describe('DebuggerInteraction — hub heat-map click (B.1)', () => {
     expect(h.renderer.render).toHaveBeenCalled();
   });
 
-  it('ignores clicks on the dim region beyond the firmware sub-block count', () => {
+  it('jumps on the last map cell — the 64×62 map is exactly 124×32 sub-blocks', () => {
+    // With the authoritative HUB_BLOCKS=124, HUB_SUB_BLOCKS=3968 = 64×62, so the
+    // map has NO dim region: every cell (incl. the last, row 61 col 63 →
+    // sub-block 3967) maps to a real sub-block. Pascal's geometry is identical
+    // ($7C000/$80 = 3968). (The prior 104/3328 value left a phantom dim region.)
     const h = harness();
-    h.state.hubAddr = 0xABCDE;
-    // last row (61) is past sub-block 3327 (3328 sub-blocks ⇒ rows 0..51 used);
-    // col 63, row 61 → sub-block 3967 ≥ HUB_SUB_BLOCKS → no jump
     const subBlock = 61 * HUB_MAP_WIDTH + 63;
-    expect(subBlock).toBeGreaterThanOrEqual(HUB_SUB_BLOCKS);
+    expect(subBlock).toBe(HUB_SUB_BLOCKS - 1); // 3967 — the last valid cell
     (h.interaction as any).handleMouseDown(MAP.x + 63, MAP.y + 61, 0);
-    expect(h.state.hubAddr).toBe(0xABCDE); // unchanged
+    expect(h.state.hubAddr).toBe((subBlock * HUB_SUB_BLOCK_SIZE) & 0xFFFFF);
+    expect(h.renderer.render).toHaveBeenCalled();
   });
 
   it('does not treat a click outside the map rect as a map jump', () => {

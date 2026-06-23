@@ -522,11 +522,17 @@ export class ExtractionCore {
   }
 
   /**
-   * Boundary Detection: 416-byte debugger packet
-   * Returns message bytes if complete, null if incomplete
+   * Boundary Detection: debugger Phase-1 packet (456 bytes).
+   * Returns message bytes if complete, null if incomplete.
+   *
+   * Size is authoritative: the Spin2 debugger kernel sends 20 longs + 64 CRC
+   * words + 124 hub checksum words = 456 bytes (DebuggerUnit.pas `Breakpoint`
+   * reads the same). This frames only the FIRST Phase-1 of a break session —
+   * the single-owner controller re-frames everything after (see
+   * DebuggerController §3); the worker then raw-passes the rest.
    *
    * CRITICAL: validates first byte is 0x00-0x07 (COG ID) and bytes 1-3 are 0x00
-   * (COG number is a little-endian LONG). Without this, ANY 416 bytes would be
+   * (COG number is a little-endian LONG). Without this, ANY 456 bytes would be
    * extracted as a debugger packet, splitting large text messages like SPRITEDEF.
    */
   private find416ByteBoundary(): Uint8Array | null {
@@ -569,9 +575,9 @@ export class ExtractionCore {
       return null;
     }
 
-    // Valid COG ID with proper LONG format - extract remaining 412 bytes
+    // Valid COG ID with proper LONG format - extract the full Phase-1 packet.
     const messageBytes: number[] = [firstByte, 0x00, 0x00, 0x00];
-    const DEBUGGER_SIZE = 416;
+    const DEBUGGER_SIZE = 456; // 20 longs + 64 CRC words + 124 hub words (authoritative)
 
     for (let i = 4; i < DEBUGGER_SIZE; i++) {  // Start at 4 since we already read 4 bytes
       const result = buffer.next();

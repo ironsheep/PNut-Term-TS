@@ -17,15 +17,22 @@
 // ============================================================================
 // Phase sizes (§3.3 of Theory of Operations)
 //
-// NOTE: Pascal (PNut) documents 124 hub blocks (456-byte packet). The
-// TypeScript fork `pnut_ts` used by this host uses 104 hub blocks
-// (416-byte packet) — confirmed by host-side extractor (`DEBUGGER*_416BYTE`
-// in sharedMessagePool.ts, DEBUGGER_SIZE=416 in extractionWorker.ts) and
-// by observed wire-format bytes. All constants below match pnut_ts reality.
+// PROTOCOL SIZES — derived from the authoritative sources, not rumor:
+//   • P2 side  : Spin2_debugger.spin2 `bp_handler` sends 20 longs + 64 CRC words
+//                + 124 hub checksum words (y = $7C000/$1000 = 124 blocks).
+//   • Host side: DebuggerUnit.pas `Breakpoint` reads DebuggerMsgSize(20) longs +
+//                CogBlocks(64) CRC words + HubBlocks($7C000/$1000 = 124) words.
+// Both agree: Phase-1 is 456 bytes with 124 hub blocks. The debugger kernel is
+// fixed Parallax Spin2 code, identical regardless of which compiler (pnut-ts or
+// PNut) built the user program — there is NO 416/104 variant. (A prior comment
+// here claimed pnut-ts sends 104 words / 416 bytes "confirmed by observed wire
+// bytes"; that was wrong — a real 456-byte capture and the two sources disprove
+// it. The 64×62 hub heat-map is also sized 3968 = 124×32 sub-blocks, only exact
+// at 124.)
 // ============================================================================
 
-/** Phase 1 packet: 20 longs + 64 CRC words + 104 hub checksums = 80 + 128 + 208 */
-export const PHASE1_SIZE = 416;
+/** Phase 1 packet: 20 longs + 64 CRC words + 124 hub checksums = 80 + 128 + 248 */
+export const PHASE1_SIZE = 456;
 
 /** Phase 2 response (8 + 16 + 5*4 + 4 + 4) = 52 bytes */
 export const PHASE2_SIZE = 52;
@@ -67,11 +74,11 @@ export const COG_LUT_SIZE      = 0x400;  // 1024 longs (COG 0x000-0x1FF + LUT 0x
 export const COG_BLOCK_SIZE    = 0x10;   // 16 longs per CRC block
 export const COG_BLOCKS        = 64;     // 1024 / 16
 export const HUB_BLOCK_SIZE    = 0x1000; // 4096 bytes per checksum block
-export const HUB_BLOCKS        = 104;    // pnut_ts firmware sends 104 checksum words (208 bytes)
-export const HUB_SIZE          = HUB_BLOCKS * HUB_BLOCK_SIZE; // 425,984 bytes
+export const HUB_BLOCKS        = 124;    // DebuggerUnit.pas HubBlocks = $7C000/$1000 = 124 (Spin2 sends 124 words)
+export const HUB_SIZE          = HUB_BLOCKS * HUB_BLOCK_SIZE; // $7C000 = 507,904 bytes (top 16 KB is debugger ROM)
 export const HUB_SUB_BLOCK_SIZE = 0x80;  // 128 bytes per sub-block
 export const HUB_BLOCK_RATIO   = 32;     // sub-blocks per block
-export const HUB_SUB_BLOCKS    = HUB_BLOCKS * HUB_BLOCK_RATIO; // 3328 sub-blocks (heat-map cells)
+export const HUB_SUB_BLOCKS    = HUB_BLOCKS * HUB_BLOCK_RATIO; // 3968 sub-blocks = 64×62 heat-map cells
 export const HUB_MAP_WIDTH      = 64;    // hub heat-map bitmap width (px), §6.18
 export const HUB_MAP_HEIGHT     = 62;    // hub heat-map bitmap height (px)
 
