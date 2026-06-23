@@ -53,6 +53,14 @@ export interface ControllerCallbacks {
    * to count breaks at the single owner rather than at the worker boundary.
    */
   onPhase1?: (length: number) => void;
+  /**
+   * Interleaved debug TEXT peeled from between break transactions (e.g. the
+   * `Cog0  INIT … jump` line the ROM emits when a COGINIT relaunches the cog at
+   * program start). The P2 multiplexes terminal text and break binary on one wire
+   * (Pascal `DebugUnit.pas:ChrIn`); the controller demuxes it so the text can be
+   * shown in the terminal instead of desyncing the break framer. Optional.
+   */
+  onTerminalText?: (bytes: Uint8Array) => void;
   /** Optional diagnostic sink (routed to the shared debug log via main). */
   log?: (msg: string) => void;
 }
@@ -170,6 +178,18 @@ export class DebuggerController {
   private driveFrames(): void {
     for (;;) {
       if (this.expectingPhase1) {
+        if (this.frameBuf.length === 0) return;
+        // Demux interleaved debug TEXT from the break binary. Pascal ChrIn
+        // (DebugUnit.pas:177) dispatches per byte: a value 0x00-0x07 starts a
+        // break transaction (the cog-ID low byte of the COGN long), anything else
+        // is terminal text. The P2 ROM emits text on the SAME wire between breaks
+        // — notably the `Cog0  INIT … jump` line when a COGINIT relaunches the cog
+        // at program start (which single-stepping ALWAYS reaches). Without this
+        // demux that text is mis-framed as a bogus Phase-1 and wedges the channel.
+        if (this.frameBuf[0] >= 0x08) {
+          if (!this.peelInterleavedText()) return; // run not yet terminated — wait
+          continue;                                // text consumed; re-check the head
+        }
         if (this.frameBuf.length < PHASE1_SIZE) return; // wait for the full Phase-1
         if (!this.looksLikePhase1(this.frameBuf)) {
           // Trailing all-zero remnant after a clean break, or a desync. §3
@@ -279,6 +299,36 @@ export class DebuggerController {
     }
     this.frameBuf.length = 0;
     this.expectingPhase1 = false;
+  }
+
+  /**
+   * Peel a run of interleaved debug TEXT off the head of `frameBuf` and route it
+   * to the terminal. A break/Phase-1 always begins with the cog-ID byte 0x00-0x07
+   * (Pascal ChrIn); terminal text (ASCII, CR/LF) never does. We consume bytes up
+   * to the next break-start byte — that boundary is unambiguous because a text run
+   * cannot contain a 0x00-0x07. If no break-start byte is buffered yet we flush up
+   * to the last complete line (LF) and wait for the rest, so a message is never
+   * split mid-token. Returns true when it made progress (head re-checkable), false
+   * when the run is incomplete and the caller must wait for more bytes.
+   */
+  private peelInterleavedText(): boolean {
+    let k = 0;
+    while (k < this.frameBuf.length && this.frameBuf[k] >= 0x08) k++;
+    if (k === this.frameBuf.length) {
+      // No break-start byte yet: flush only up to the last complete line.
+      const lastLf = this.frameBuf.lastIndexOf(0x0a);
+      if (lastLf < 0) return false; // partial line, no break ahead — wait for more
+      k = lastLf + 1;
+    }
+    const text = Uint8Array.from(this.frameBuf.slice(0, k));
+    this.frameBuf.splice(0, k);
+    this.remnantBytes += text.length;
+    if (this.callbacks.onTerminalText) this.callbacks.onTerminalText(text);
+    if (this.callbacks.log) {
+      const printable = String.fromCharCode(...text).replace(/[^\x20-\x7e]/g, '.');
+      this.callbacks.log(`Demuxed ${text.length}B interleaved debug text → terminal: "${printable}"`);
+    }
+    return true;
   }
 
   // ============================================================================

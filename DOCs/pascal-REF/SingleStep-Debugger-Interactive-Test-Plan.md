@@ -98,6 +98,8 @@ regressions immediately, before any behavioral test muddies the picture.
 laid out/labeled/colored, matching the Pascal reference, with no interaction
 required. Any layout or rendering-parity defect is logged here before Phase B.
 
+ON HW TEST: PASS w/Version 0.9.81! (2026-06-23)
+
 ---
 
 ## Test 1: Basic connection — single step
@@ -121,6 +123,10 @@ required. Any layout or rendering-parity defect is logged here before Phase B.
 
 **Pass criteria**: Window opens, PC advances on SPACE, register watch populates, dimming occurs after timeout.
 
+
+
+ON HW TEST: window didn't dim after timeout
+
 ---
 
 ## Test 2: Repeat mode — continuous execution
@@ -139,6 +145,8 @@ required. Any layout or rendering-parity defect is logged here before Phase B.
 | 4 | Press **SPACE** | Single step resumes. One instruction advances. |
 
 **Pass criteria**: ENTER starts/stops repeat mode, display updates visibly, throttling prevents overwhelming updates.
+
+ON HW TEST: something stopped the run ended with [BREAK] button - this is all after first [ENTER]
 
 ---
 

@@ -230,3 +230,64 @@ describe('debugger replay oracle (§1)', () => {
     expect(r.loggerBinaryBytes).toBe(0);
   });
 });
+
+// ── §3.1 — COGINIT interleaved-text demux (repeat-mode wedge fix) ────────────
+//
+// The P2 multiplexes terminal text and break binary on ONE wire (Pascal
+// DebugUnit.pas:ChrIn — byte 0x00-0x07 starts a break, anything else is text).
+// When a COGINIT relaunches the cog at program start it emits a `Cog0  INIT … jump`
+// line BETWEEN breaks. The single-owner controller used to swallow that non-zero
+// ASCII as a bogus Phase-1 and wedge the channel — which is exactly why repeat
+// mode died once single-stepping reached the startup COGINIT (HW log 2026-06-23).
+// The controller now demuxes the text to the terminal and frames the next break.
+describe('COGINIT interleaved-text demux (§3.1)', () => {
+  const COGINIT_LINE = 'Cog0  INIT $0000_0FA8 $0000_189C jump\r\n';
+  const initBytes = Uint8Array.from(Array.from(COGINIT_LINE, (c) => c.charCodeAt(0)));
+  const concat = (...arrs: Uint8Array[]): Uint8Array => {
+    const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0));
+    let o = 0;
+    for (const a of arrs) { out.set(a, o); o += a.length; }
+    return out;
+  };
+
+  it('peels the INIT line to the terminal and frames the NEXT break (no wedge)', () => {
+    const state = makeDebuggerState(0);
+    const terminalText: Uint8Array[] = [];
+    const h = makeController(state, { onTerminalText: (b) => { terminalText.push(b); } });
+
+    // Break 1 opens, its Phase-3 completes.
+    h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x55) }));
+    const p3a = buildPhase3Packet(state);
+    // Break 2's fresh post-COGINIT Phase-1 (cog-ID 0 in byte 0, new CRCs).
+    const p1b = buildPhase1Packet({ cogCrc: new Array(64).fill(0x77) });
+
+    // Wire order after a resume that hits a COGINIT:
+    //   [break-1 Phase-3][COGINIT text line][break-2 Phase-1]
+    h.controller.processPhase3(concat(p3a, initBytes, p1b));
+    h.controller.processPhase3(buildPhase3Packet(state)); // complete break 2
+
+    // Both breaks framed → two Phase-2 replies; the channel never wedged.
+    expect(h.calls.phase2.length).toBe(2);
+    expect(h.calls.phase3Complete).toBe(2);
+    // The INIT line was routed to the terminal verbatim, not mis-framed as binary.
+    expect(terminalText.length).toBe(1);
+    expect(String.fromCharCode(...terminalText[0])).toBe(COGINIT_LINE);
+  });
+
+  it('recovers even when the INIT line is split across two raw chunks', () => {
+    const state = makeDebuggerState(0);
+    const seen: string[] = [];
+    const h = makeController(state, { onTerminalText: (b) => { seen.push(String.fromCharCode(...b)); } });
+    h.controller.processPhase1(buildPhase1Packet({ cogCrc: new Array(64).fill(0x55) }));
+    const p1b = buildPhase1Packet({ cogCrc: new Array(64).fill(0x77) });
+    const split = 12; // mid-line chunk boundary
+    // Chunk A ends mid-INIT-line (no break-start byte yet → controller waits).
+    h.controller.processPhase3(concat(buildPhase3Packet(state), initBytes.subarray(0, split)));
+    expect(h.calls.phase2.length).toBe(1); // break 2 not framed yet — still in the text run
+    // Chunk B delivers the rest of the line + break-2 Phase-1.
+    h.controller.processPhase3(concat(initBytes.subarray(split), p1b));
+    h.controller.processPhase3(buildPhase3Packet(state));
+    expect(h.calls.phase2.length).toBe(2);
+    expect(seen.join('')).toBe(COGINIT_LINE);
+  });
+});

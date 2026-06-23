@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.82] - 2026-06-23
+
+Fixes a single-step debugger lock-up: **repeat mode (and stepping) no longer freezes when your program launches a cog.** **Built for hardware testing — not yet validated on a P2.**
+
+### Fixed
+
+- **Single-step / repeat mode no longer dies the moment the program starts.** Because the debugger
+  breaks on the very first instruction, stepping always walks through the startup `COGINIT` that launches
+  `main()`. When that fires, the P2's debug ROM prints a `Cog0  INIT … jump` line on the same wire that
+  carries the binary break protocol. The debugger was treating that text as if it were a break packet,
+  which knocked the host and the P2 out of sync — so after a few steps the run silently stopped and the
+  window dimmed to "Break". The debugger now separates the ROM's text messages from the break protocol
+  (matching how the original PNut debugger demultiplexes the stream), so the text is passed through and
+  the next breakpoint is read correctly. Repeat mode runs continuously again, and stepping survives a cog
+  launch. A `COGINIT` mid-program is correctly treated as informational text — it does **not** trigger the
+  full-reset that only the initial download should.
+
 ## [0.9.81] - 2026-06-23
 
 Visual-parity polish for the single-step debugger window so it matches the original PNut debugger pixel-for-pixel. The register/LUT/hub heat maps now sit inside their panels the way PNut draws them, and the CT counter and break-condition buttons have the correct padding around their text. **Built for hardware testing — not yet validated on a P2.**
