@@ -34,8 +34,7 @@ declare -A EXCLUDED_TESTS=(
   ["tests/fftMultipleExecutions.test.ts"]="HW-only: needs external P2 capture under test-results/external-results/* (gitignored, never committed; exists only post-run on a hardware-connected machine)."
   ["tests/fftRealHardwareComparison.test.ts"]="HW-only: needs the debug_251106-164458.log hardware capture (gitignored)."
   ["tests/spritedefRealUSB.test.ts"]="HW-only: needs an absent USB capture log (hardware-connected machine only)."
-  ["tests/workerExtraction.test.ts"]="Env-only: the worker_threads SAB round-trip does not deliver messages under Jest in-container (the extraction tests 30s-timeout); the worker serial path itself is HW-validated (#31)."
-  ["tests/memoryLeakDetection.test.ts"]="Env-only: its memory-profiler tests assert on real GC / wall-clock heap growth (growthRate<0.01, 1.5s real timers) and hit DebugLogicWindow-mock timer pollution — non-deterministic under Jest."
+  ["tests/memoryLeakDetection.test.ts"]="Env-only: its memory-profiler tests assert on real GC / wall-clock heap growth (growthRate<0.01, 1.5s real timers) and hit DebugLogicWindow-mock timer pollution — non-deterministic under Jest (the runner exports --expose-gc, but the real-timer/timer-pollution non-determinism remains)."
 )
 
 fail=0

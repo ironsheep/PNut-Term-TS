@@ -22,6 +22,22 @@ if ! bash "$GATE"; then
 fi
 echo ""
 
+# Build the worker_threads bundles BEFORE running. Several suites spawn the
+# extraction / serial-IO workers from dist/workers/*.bundled.js; without this a
+# fresh container fails them with 30s "worker ready/extract" timeouts (the bundle
+# is gitignored, so it must be regenerated). See workaround memory note.
+echo "Building worker bundles (dist/workers) ..."
+if ! node esbuild.config.js > /dev/null 2>&1; then
+    echo "❌ Aborting: failed to build dist/workers bundles (node esbuild.config.js)."
+    exit 1
+fi
+echo "  ✅ worker bundles built"
+echo ""
+
+# Expose GC so heap-profiling tests can force collection and measure accurately
+# (their global.gc() is otherwise a no-op → non-deterministic heap thresholds).
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--expose-gc"
+
 # Counter for test results
 TOTAL=0
 PASSED=0
@@ -176,6 +192,7 @@ run_test "tests/tracePattern15Position.test.ts"
 run_test "tests/tracePatternProcessor.test.ts"
 run_test "tests/windowFunctions.test.ts"
 run_test "tests/workerExtractor.simple.test.ts"
+run_test "tests/workerExtraction.test.ts"
 run_test "tests/workerSpritedefBug.test.ts"
 # 9win-parity follow-on (#24) — FFT / shared-component / routing suites finalized to current behavior.
 # NOTE: every present tests/*.test.ts is either registered below or listed (with a reason) in the
