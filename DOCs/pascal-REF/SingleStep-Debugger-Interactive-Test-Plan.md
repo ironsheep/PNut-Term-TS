@@ -118,14 +118,22 @@ ON HW TEST: PASS w/Version 0.9.81! (2026-06-23)
 | 2 | Observe initial state | PC shows 5-hex address. C and Z flags show '0' or '1'. CT shows non-zero 16-hex-digit clock value. All 13 buttons visible in two-column layout on right side. Go button says **"Go"** in bright orange. |
 | 3 | Press **SPACE** | PC advances by one instruction. Disassembly highlights new PC line with inverse colors (white background, green text). Register watch may show changed register. |
 | 4 | Press **SPACE** 5 more times | PC advances each time. Register watch list populates with registers that change (3-hex address + 8-hex value). REG heatmap on left shows bright pixels where registers changed. |
-| 5 | Wait 10 seconds (don't press anything) | After ~250ms without a new breakpoint, display should **dim** (darker overlay). Go button caption changes to **"Break"** in dimmed orange. |
-| 6 | Press **SPACE** | Display brightens immediately. Go button returns to **"Go"**. PC shows next instruction. |
+| 5 | Wait 10 seconds (don't press anything) | Display stays **bright**; Go button stays **"Go"**. **It does NOT dim.** In single-step the cog idles *inside its own debug ISR* and keeps polling the host (~12 breaks/sec on the wire), so the host's 250 ms dim timer is continuously restarted and never fires. This is correct v55 behavior (Pascal `Breakpoint` restarts `BreakpointTimer` at `DebuggerUnit.pas:1932` on every break; `FormBreakpointTimeout` only dims when no break arrives for 250 ms). |
+| 6 | Press **SPACE** | PC shows next instruction. Display still bright. |
 
-**Pass criteria**: Window opens, PC advances on SPACE, register watch populates, dimming occurs after timeout.
+**Pass criteria**: Window opens, PC advances on SPACE, register watch populates, display stays bright while idle-stepping.
 
+> **Dimming is verified separately (free-run scenario, NOT single-step).** The dim
+> + **"Break"** caption means *"this cog is running free and not hitting a break — press
+> to force an asynchronous break."* To see it: set a break condition that is never met,
+> then press **GO** (R-click / ENTER) so the cog runs free. After ~250 ms with no break the
+> display dims and Go reads **"Break"** (dimmed orange); pressing it forces an async COGBRK
+> and the display brightens. Async break requires another cog idling in its own debugger
+> (Pascal hint, `DebuggerUnit.pas:1128`).
 
-
-ON HW TEST: window didn't dim after timeout
+ON HW TEST (v0.9.82): **PASS — corrected expectation.** Window correctly stays bright
+while single-step-idle; the earlier "didn't dim" was a test-spec error, not a defect.
+Logs confirm 1380 breaks at ~12 Hz with no >250 ms gap (audit 2026-06-24).
 
 ---
 
@@ -146,7 +154,23 @@ ON HW TEST: window didn't dim after timeout
 
 **Pass criteria**: ENTER starts/stops repeat mode, display updates visibly, throttling prevents overwhelming updates.
 
-ON HW TEST: something stopped the run ended with [BREAK] button - this is all after first [ENTER]
+ON HW TEST: visual green lines (center of each row, like a strikethrough) in the
+disassembly **are EXPECTED — they are not a defect.** They are the SKIP-pattern
+strikethrough (same feature as Test 6 step 4): each marked row is an upcoming
+instruction the live SKIP pattern (`mBRKZ`, shown in the top **SKIP** panel) will skip.
+The Spin2 bytecode interpreter (running here in cog $0) uses SKIPF/EXECF constantly, so
+a non-zero skip pattern — and thus strikethroughs — is normal. **Which rows, and how
+many at once, change continuously as the run proceeds because they track the live skip
+pattern** (data-driven, not a constant overlay → proof it is correct, not a rendering
+bug). Gated in Pascal by `SkipOn = (ExecMode=0) and (CallDepth=0)` and the per-row bit
+test (`DebuggerUnit.pas:1530-1532`); our `shouldStrikeSkipped()` matches it exactly.
+
+> **Rendering style — FIXED (not yet released).** Pascal draws each mark as a
+> *half-row-height translucent band* (`SmoothShape(... ys shr 1 ..., cData2, opacity 160)`);
+> we previously drew a *2 px solid line* at the row center (read as a harsh "crossed-out"
+> line). `DebuggerRenderer.renderDisassembly` now draws a half-row translucent band
+> centered on the row, matching Pascal. Which rows are marked was already correct.
+> Recapture this view after the next build to confirm the band matches the reference.
 
 ---
 
@@ -169,6 +193,13 @@ ON HW TEST: something stopped the run ended with [BREAK] button - this is all af
 | 5 | Click anywhere in the WATCH box | Watch list resets (same as R key). |
 
 **Pass criteria**: Watch tracks changed registers, R key and click both reset, format shows 3-hex address + 8-hex value.
+
+ON HW TEST: **PASS.** Watch tracks changed registers, R-key and click both reset, format
+is 3-hex address + 8-hex value (verified). The literal hex values in this test
+(`1F6 00000001`, `1F7 00000063`, "counter=1000") are **illustrative only** — per the
+plan preamble, match the *behavior*, not the digits; the program's actual PA/PB
+addresses and values differ on hardware. (Pascal: watch counter is set to 1000 on
+change and decremented to 1, `DebuggerUnit.pas:1545`; `RegWatchSize=$1F0`.)
 
 ---
 
@@ -216,9 +247,11 @@ ON HW TEST: something stopped the run ended with [BREAK] button - this is all af
 | 7 | Press **I** again | INIT dims. *BreakValue* = $01. |
 | 8 | Press **B** key | BREAK button action: clears all conditions except INIT. All mode buttons dim. |
 | 9 | Press **M** key | MAIN toggles back on. |
-| 10 | Press **D** key | DEBUG toggles on, MAIN cleared (mutual exclusion). |
+| 10 | Press **D** key | DEBUG **toggles** on. MAIN stays as it was — `D` (right-click DEBUG) is a *toggle*, it does **not** clear MAIN. Only **left-click** sets a mode exclusively (clears the others). (Pascal `DebuggerUnit.pas:768` — RB DEBUG clears bit 4 then XORs it; MAIN bit 0 untouched. Note the asymmetry: `M`/RB-MAIN at :760 *does* clear DEBUG, but `D`/RB-DEBUG does not clear MAIN.) |
 
-NOTE: on Mac/Windows I don't see any BreakValue = $xxx
+NOTE: `BreakValue = $xxx` is INTERNAL and never shown on screen (see this test's
+preamble) — judge every step by the **button highlights**, not by a displayed value.
+The `$xx` values are given only to explain what each click does internally.
 
 **Pass criteria**: Left-click sets exclusively, right-click toggles independently, INIT always independent, keyboard shortcuts match button behaviors.
 

@@ -4,6 +4,10 @@
 '' Covers Test Plan test:
 ''   Test 10 — Smart pin delta tracking, DIR-only filter, RQPIN readback
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / wrpin ...) — no Spin interpreter or
+'' coginit indirection in the way.
+''
 '' Behavior: Configures pin 0 as NCO-frequency smart pin with a 1000-cycle
 '' base period, then reads RQPIN repeatedly. The smart-pin watch panel should
 '' show P00 with a changing 8-hex value.
@@ -11,9 +15,6 @@
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

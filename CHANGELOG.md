@@ -5,6 +5,45 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.83] - 2026-06-24
+
+A broad visual- and behavioral-parity pass on the single-step debugger window so every
+panel matches the original PNut debugger, plus corrected test programs and a corrected
+interactive test plan. **Built for hardware testing — not yet validated on a P2.**
+
+### Fixed
+
+- **The SKIP indicator now matches PNut.** Instructions the SKIP pattern will skip are marked
+  with a translucent highlight band over the row (it used to be a harsh line through the text
+  that read like a strike-out). The 32-bit pattern is shown byte-grouped, the **SKIP/SKIPF**
+  label was inverted (it showed SKIPF when it should have shown SKIP, and vice-versa) and now
+  stays bright, and the "Suspended during …" message is centered over the dimmed pattern.
+- **The interrupt (INT) panel showed the wrong run state.** INT1/INT2/INT3 were reading their
+  idle/wait/busy status two bits too low, so the state shown for each interrupt could be wrong.
+  They now read the correct field.
+- **EXEC, EVENT flags, and the HUB memory viewer match PNut.** The EXEC tab always shows the
+  execution mode (MAIN/INT1/INT2/INT3); event-flag digits render white (no longer dimmed); and
+  the hub viewer's hex bytes and ASCII column are aligned the way PNut draws them.
+- **Register-watch and smart-pin-watch lists no longer reshuffle as you step.** Each watched
+  register/pin now keeps a fixed row (a new entry replaces the most-decayed one), matching
+  PNut's stable layout, with the correct header, row positions, and bold addresses.
+- **The STATUS indicators (INIT / STALLI / STR / MOD / LUTS) use PNut's staggered layout.**
+- **Panel labels are bold-italic like PNut**, and the **Go** button now flashes on press and
+  carries the correct caption spacing.
+- **The hover hint bar text now matches PNut word-for-word**, including the live XBYTE-mode
+  decode, the clock-ticks/seconds readout, and the per-event "break on …" hints.
+
+### Changed
+
+- **Debugger test programs `test03/07/08/09/10/11` are now PASM-only.** They previously launched
+  through a Spin2 `coginit`, so single-stepping started inside the Spin2 interpreter ("not my
+  code") and the documented step counts and register values didn't line up. They now boot
+  straight into their PASM so the debugger breaks on the first real instruction.
+- **The single-step interactive test plan was corrected**: single-step idle correctly stays
+  bright (it does **not** dim — that only happens when a cog is free-running with no break), the
+  skip strike-through is expected behavior, and the scroll/break-button/hub steps were verified
+  against the original.
+
 ## [0.9.82] - 2026-06-23
 
 Fixes a single-step debugger lock-up: **repeat mode (and stepping) no longer freezes when your program launches a cog.** **Built for hardware testing — not yet validated on a P2.**

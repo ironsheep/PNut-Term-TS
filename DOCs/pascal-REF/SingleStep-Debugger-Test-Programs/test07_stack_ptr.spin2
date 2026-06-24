@@ -4,6 +4,10 @@
 '' Covers Test Plan test:
 ''   Test 7 — SFR values (PTRA/PTRB), hub writes via pointer, call/return stack
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / mov ptra,##$1000) — no Spin
+'' interpreter or coginit indirection in the way.
+''
 '' Behavior: Loads PTRA=$1000, PTRB=$2000. Writes $DEADBEEF to [PTRA] and
 '' $CAFEBABE to [PTRB]. Calls a subroutine, returns, loops. The SFR panel
 '' reflects PTRA/PTRB; stepping through 'call' lights up STK0.
@@ -11,9 +15,6 @@
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

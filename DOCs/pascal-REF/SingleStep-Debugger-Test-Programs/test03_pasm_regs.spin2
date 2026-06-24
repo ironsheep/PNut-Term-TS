@@ -5,15 +5,18 @@
 ''   Test 3 — Register watch tracks changed registers; R key / click resets
 ''   Test 4 — Disassembly navigation, scroll, address breakpoints
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / mov pa,#0) — no Spin interpreter or
+'' coginit indirection in the way. The disassembly shows YOUR PASM immediately
+'' (R-000 entry ...), not interpreter "not my code".
+''
 '' Behavior: Tight PASM loop that increments PA and decrements PB.
-'' Expected register watch: PA ($1F6) and PB ($1F7) update on every pass.
+'' Expected register watch after stepping into .loop: PA ($1F6) increments from
+'' 0, PB ($1F7) decrements from 100 ($64) — e.g. PA=1, PB=$63 (99) after one pass.
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

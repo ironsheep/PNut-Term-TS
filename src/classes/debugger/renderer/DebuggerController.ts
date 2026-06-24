@@ -646,16 +646,29 @@ export class DebuggerController {
       }
     }
 
-    // Step 2: insert / refresh visible list — keep the 16 highest-counter
-    // entries. We scan once, maintain a sorted-by-counter array.
-    const active: Array<{ address: number; value: number; counter: number }> = [];
+    // Step 2: slot-stable list (Pascal :1547-1568). Each register keeps a fixed
+    // slot; a register not yet in the list takes the slot with the LOWEST
+    // counter (empty slots = counter 0, so registers fill slots 0,1,2,… and a
+    // full list evicts the most-decayed entry). The renderer draws each slot at
+    // its own row → stable positions, no per-frame reshuffle.
+    const max = this.state.regWatchListMax;
+    const slots = this.state.regWatchList;
     for (let a = 0; a < WATCH_MAX_ADDR; a++) {
-      if (regWatchCounters[a] > 0) {
-        active.push({ address: a, value: cogImage[a], counter: regWatchCounters[a] });
+      if (regWatchCounters[a] <= 0) continue;
+      let index = -1;
+      for (let j = 0; j < max; j++) {
+        const s = slots[j];
+        if (s && s.address === a) { index = j; break; }
       }
+      if (index < 0) {
+        let lowest = Infinity;
+        for (let j = max - 1; j >= 0; j--) {
+          const c = slots[j] ? slots[j].counter : 0;
+          if (c <= lowest) { lowest = c; index = j; }
+        }
+      }
+      slots[index] = { address: a, value: cogImage[a], counter: regWatchCounters[a] };
     }
-    active.sort((x, y) => y.counter - x.counter);
-    this.state.regWatchList = active.slice(0, this.state.regWatchListMax);
   }
 
   // ─── Smart-pin watch-list delta tracking (§6.16) ──────────────────────
@@ -696,13 +709,24 @@ export class DebuggerController {
       }
     }
 
-    const active: Array<{ pin: number; value: number; counter: number }> = [];
+    // Slot-stable list (Pascal :1598-1617), mirroring the register watch.
+    const smax = this.state.smartWatchListMax;
+    const sslots = this.state.smartWatchList;
     for (let p = 0; p < smartWatchPrevValues.length; p++) {
-      if (smartWatchCounters[p] > 0) {
-        active.push({ pin: p, value: smartPinRqpin[p], counter: smartWatchCounters[p] });
+      if (smartWatchCounters[p] <= 0) continue;
+      let index = -1;
+      for (let j = 0; j < smax; j++) {
+        const s = sslots[j];
+        if (s && s.pin === p) { index = j; break; }
       }
+      if (index < 0) {
+        let lowest = Infinity;
+        for (let j = smax - 1; j >= 0; j--) {
+          const c = sslots[j] ? sslots[j].counter : 0;
+          if (c <= lowest) { lowest = c; index = j; }
+        }
+      }
+      sslots[index] = { pin: p, value: smartPinRqpin[p], counter: smartWatchCounters[p] };
     }
-    active.sort((x, y) => y.counter - x.counter);
-    this.state.smartWatchList = active.slice(0, this.state.smartWatchListMax);
   }
 }

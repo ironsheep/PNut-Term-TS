@@ -2,7 +2,8 @@
 '' Single-Step Debugger Test Program 01 — Basic Spin2 single-step
 ''
 '' Covers Test Plan tests:
-''   Test 1  — Basic connection, SPACE single-step, dim-on-timeout
+''   Test 1  — Basic connection, SPACE single-step (stays bright while idle;
+''             single-step does NOT dim — the cog keeps polling in its debug ISR)
 ''   Test 2  — Repeat mode (ENTER), throttling, Stop
 ''   Test 5  — Breakpoint control buttons (BreakValue matrix)
 ''   Test 14 — Hint bar (works with any program)

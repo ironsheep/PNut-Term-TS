@@ -10,8 +10,9 @@
 '' coginit indirection in the way.
 ''
 '' Behavior: Sets Z then C by compare, sets a SKIP pattern %1010 over the next
-'' four NOPs (pins 0 and 2 skipped), then loops. Stepping through shows the
-'' SKIP 32-bit pattern in the header and strikethrough on skipped disasm lines.
+'' four NOPs (the 2nd and 4th NOPs are skipped — a SET bit means skip), then
+'' loops. Stepping through shows the SKIP 32-bit pattern in the header and
+'' strikethrough on the skipped disasm lines.
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
@@ -22,9 +23,9 @@ DAT
 entry           mov     pa, #5
                 cmp     pa, #5          wz       ' Sets Z flag (equal)
                 cmp     pa, #3          wc       ' Sets C flag (5 > 3)
-                skip    #%1010                   ' Skip 2nd and 4th of next 4
-                nop                              ' skipped (bit 0 = 0)
-                nop                              ' not skipped (bit 1 = 1)
-                nop                              ' skipped (bit 2 = 0)
-                nop                              ' not skipped (bit 3 = 1)
+                skip    #%1010                   ' SET bit = skip; %1010 -> skip 2nd & 4th
+                nop                              ' bit 0 = 0 -> executes (NOT skipped)
+                nop                              ' bit 1 = 1 -> skipped
+                nop                              ' bit 2 = 0 -> executes (NOT skipped)
+                nop                              ' bit 3 = 1 -> skipped
                 jmp     #entry

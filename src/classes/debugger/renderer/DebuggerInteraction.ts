@@ -39,6 +39,7 @@ export class DebuggerInteraction {
   private renderer: DebuggerRenderer;
   private controller: DebuggerController;
   private cb: InteractionCallbacks;
+  private goFlashTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -337,7 +338,27 @@ export class DebuggerInteraction {
     return true;
   }
 
+  /**
+   * Pascal sets GoState := 2 on any Go-button mousedown (:729) and the redraw
+   * inverts the button colors while GoState > 0, decrementing it on a ~100 ms
+   * timer (:1784-1788 / FormButtonTimeout). Reproduce the press-flash here.
+   */
+  private triggerGoFlash(): void {
+    this.state.goFlash = 2;
+    this.renderer.render();
+    if (this.goFlashTimer) clearInterval(this.goFlashTimer);
+    this.goFlashTimer = setInterval(() => {
+      if (this.state.goFlash > 0) this.state.goFlash--;
+      this.renderer.render();
+      if (this.state.goFlash <= 0 && this.goFlashTimer) {
+        clearInterval(this.goFlashTimer);
+        this.goFlashTimer = null;
+      }
+    }, 100);
+  }
+
   private onGoLeftClick(): void {
+    this.triggerGoFlash();
     if (this.goWhileRunning()) return;
     if (this.state.repeatMode) {
       // Stop repeat → halted
@@ -350,6 +371,7 @@ export class DebuggerInteraction {
   }
 
   private onGoRightClick(): void {
+    this.triggerGoFlash();
     if (this.goWhileRunning()) return;
     if (this.state.repeatMode) {
       this.controller.setRepeatMode(false);
@@ -515,39 +537,42 @@ export class DebuggerInteraction {
     if (btn) {
       newHint = this.buttonHint(btn);
     } else {
-      // Check each panel
+      // Verbatim Pascal hint strings (DebuggerUnit.pas FormMouseMove MouseWithin
+      // :638-690, plus the live CT/EVENT dynamic forms :1833/:654).
+      const freqHz = this.state.message[18] || 1;
+      const secs = Number(this.state.ctCounter) / freqHz;
+      const ctHint = `Clock Ticks Since Reset | ${secs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} seconds at ${freqHz.toLocaleString()} Hz`;
       const regions: Array<[keyof typeof PANEL, string]> = [
-        ['REGMAP', 'COG register heat map — click to lock disassembly'],
-        ['LUTMAP', 'LUT register heat map — click to lock disassembly'],
-        ['CF', 'C flag (mIRET bit 31)'],
-        ['ZF', 'Z flag (mIRET bit 30)'],
-        ['PC',     'Program counter — click to follow PC'],
-        ['SKIP',   'SKIP/SKIPF pattern (mBRKZ)'],
-        ['XBYTE',  'XBYTE execution engine config'],
-        ['CT',     `Elapsed: ${this.elapsedSeconds()} s @ ${(this.state.message[18] / 1e6).toFixed(1)} MHz`],
-        ['DIS', this.state.disMode === DisMode.dmPC ? 'Disassembly (follow PC)' :
-                 this.state.disMode === DisMode.dmCog ? 'Disassembly (cog locked)' :
-                 'Disassembly (hub locked)'],
-        ['WATCH',  'Register watch — click to reset'],
-        ['SFR',    'Special function registers'],
-        ['EVENT',  'Events — click to set BreakEvent'],
-        ['EXEC',   'Current execution mode'],
-        ['STACK',  'Hardware stack (STK0 = top)'],
-        ['INT',    'Interrupt status'],
-        ['PTR',    'Pointer data (FPTR/PTRA/PTRB)'],
-        ['STATUS', 'Status indicators'],
-        ['PIN',    'Pin registers (DIR/OUT/IN)'],
-        ['SMART',  'Smart pin watch — L-click reset, R-click toggle DIR filter'],
-        ['HUB',    `Hub address: $${this.state.hubAddr.toString(16).toUpperCase().padStart(5, '0')}`]
+        ['REGMAP', 'Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange'],
+        ['LUTMAP', 'LUT Register Bitmap/Heatmap | Click to lock disassembly to LUT subrange'],
+        ['CF', 'Carry Flag'],
+        ['ZF', 'Zero Flag'],
+        ['PC', 'Program Counter | Click to lock disassembly to PC'],
+        ['SKIP', 'Skip-Instruction Pattern'],
+        ['XBYTE', this.xbyteModeHint()],
+        ['CT', ctHint],
+        ['DIS', 'L-Click to lock to PC | R-Click to toggle break address | Mousewheel {+Ctrl/Shift} scrolls'],
+        ['WATCH', 'Register-Delta Watch List | Click or <R> to reset list'],
+        ['SFR', 'Special-Function Registers'],
+        ['EVENT', 'Event Flags'],
+        ['EXEC', 'Instruction Disassembly'],
+        ['STACK', 'Stack Registers (top..bottom)'],
+        ['INT', 'Interrupt Status'],
+        ['PTR', 'Pointers and Data'],
+        ['STATUS', 'Indicators for COGINIT, STALLI, Streamer, Color Modulator, LUT sharing'],
+        ['PIN', 'Pin Registers'],
+        ['SMART', 'RQPIN-Delta Watch List | L-Click to reset list | R-Click to watch all/only pins with DIR set'],
+        ['HUB', 'Hub Data | Mousewheel {+Ctrl/Shift} scrolls']
       ];
       for (const [name, text] of regions) {
         const b = this.renderer.panelBoundsPx(name);
         if (px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h) {
           newHint = text;
           if (name === 'EVENT') {
-            // Include specific event name
             const row = Math.floor((py - b.y - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
-            if (row >= 0 && row < 16) newHint = `Event ${EVENT_NAMES[row]} (${row})`;
+            if (row >= 0 && row < 16) {
+              newHint = `Event Flags | L-Click to break on ${EVENT_NAMES[row]} event | R-Click to toggle`;
+            }
           }
           break;
         }
@@ -560,32 +585,56 @@ export class DebuggerInteraction {
     }
   }
 
-  private elapsedSeconds(): string {
-    const ct = this.state.ctCounter;
-    const freq = BigInt(this.state.message[18] || 1);
-    if (freq === 0n) return '0.000000';
-    // BigInt division with 6 decimals
-    const micros = (ct * 1_000_000n) / freq;
-    const whole = micros / 1_000_000n;
-    const frac = micros % 1_000_000n;
-    return `${whole.toString()}.${frac.toString().padStart(6, '0')}`;
+  /** XBYTE-box dynamic hint — decodes the XBYTE mode word (mBRKC bits 24..16).
+   *  Verbatim port of Pascal DebuggerUnit.pas :1799-1825. */
+  private xbyteModeHint(): string {
+    const i = (this.state.message[2] >>> 16) & 0x1FF;
+    const h = (v: number, n: number): string => (v >>> 0).toString(16).toUpperCase().padStart(n, '0');
+    let s = '';
+    if ((i & 0x0FC) === 0x000)
+      s = `8-bit mode | LUT ${h(i & 0x100, 3)}..${h((i & 0x100) | 0x0FF, 3)} uses full bytecode as offset`;
+    else if ((i & 0x00C) === 0x000)
+      s = `8-bit mode | LUT ${h(i & 0x100, 3)}..${h((i & 0x1F0) - 1, 3)} does 00..${h((i & 0x0F0) - 1, 2)} | LUT ${h(i & 0x1F0, 3)}..${h((i & 0x1F0) + 15 - ((i >> 4) & 0xF), 3)} compresses ${h((i >> 4) & 0xF, 1)}x..Fx`;
+    else if ((i & 0x01E) === 0x004)
+      s = `7-bit mode | LUT ${h(i & 0x180, 3)}..${h((i & 0x180) | 0x07F, 3)} uses bytecode.[6..0] as offset`;
+    else if ((i & 0x01E) === 0x006)
+      s = `7-bit mode | LUT ${h(i & 0x180, 3)}..${h((i & 0x180) | 0x07F, 3)} uses bytecode.[7..1] as offset`;
+    else if ((i & 0x01E) === 0x014)
+      s = `6-bit mode | LUT ${h(i & 0x1C0, 3)}..${h((i & 0x1C0) | 0x03F, 3)} uses bytecode.[5..0] as offset`;
+    else if ((i & 0x01E) === 0x016)
+      s = `6-bit mode | LUT ${h(i & 0x1C0, 3)}..${h((i & 0x1C0) | 0x03F, 3)} uses bytecode.[7..2] as offset`;
+    else if ((i & 0x00E) === 0x008)
+      s = `5-bit mode | LUT ${h(i & 0x1E0, 3)}..${h((i & 0x1E0) | 0x01F, 3)} uses bytecode.[4..0] as offset`;
+    else if ((i & 0x00E) === 0x00A)
+      s = `5-bit mode | LUT ${h(i & 0x1E0, 3)}..${h((i & 0x1E0) | 0x01F, 3)} uses bytecode.[7..3] as offset`;
+    else if ((i & 0x00E) === 0x00C)
+      s = `4-bit mode | LUT ${h(i & 0x1F0, 3)}..${h((i & 0x1F0) | 0x00F, 3)} uses bytecode.[3..0] as offset`;
+    else if ((i & 0x00E) === 0x00E)
+      s = `4-bit mode | LUT ${h(i & 0x1F0, 3)}..${h((i & 0x1F0) | 0x00F, 3)} uses bytecode.[7..4] as offset`;
+    if ((i & 0x001) === 0x001) s += ' | C,Z affected';
+    return 'XBYTE ' + s;
   }
 
   private buttonHint(name: string): string {
+    // Verbatim Pascal (DebuggerUnit.pas :674-685; GO is dynamic :1908-1911).
+    if (name === 'GO') {
+      return this.state.repeatMode
+        ? 'Click or <ENTER> to stop executing through breaks'
+        : 'L-Click or <SPACE> to execute to next break | R-Click or <ENTER> to execute through breaks';
+    }
     const hints: Record<string, string> = {
-      GO:    'L-Click or SPACE to step | R-Click or ENTER for repeat',
-      BREAK: 'Click or <B> to select async BREAK | another cog must be in DEBUG',
-      ADDR:  'L-Click break on PC address | R-Click toggle | R-Click in disasm to set',
-      MAIN:  'L-Click break on MAIN (single-step) | R-Click or <M> toggle',
-      INT1:  'L-Click break on INT1 | R-Click toggle',
-      INT2:  'L-Click break on INT2 | R-Click toggle',
-      INT3:  'L-Click break on INT3 | R-Click toggle',
-      DEBUG: 'L-Click break on DEBUG | R-Click or <D> toggle | exclusive to all but INIT',
-      INT1E: 'L-Click break on INT1 entry | R-Click toggle',
-      INT2E: 'L-Click break on INT2 entry | R-Click toggle',
-      INT3E: 'L-Click break on INT3 entry | R-Click toggle',
-      INIT:  'L-Click break on COGINIT | R-Click or <I> toggle | independent of others',
-      EVENT: 'L-Click break on event | R-Click toggle | Select event by clicking CT1..QMT'
+      BREAK: 'Click or <B> to select asynchronous BREAK | Another cog must be in DEBUG for BREAK to work',
+      ADDR:  'L-Click to break on PC address | R-Click to toggle | R-Click in disassembly to set address',
+      MAIN:  'L-Click to break on MAIN instructions (single-step) | R-Click or <M> to toggle',
+      INT1:  'L-Click to break on INT1 instructions (single-step) | R-Click to toggle',
+      INT2:  'L-Click to break on INT2 instructions (single-step) | R-Click to toggle',
+      INT3:  'L-Click to break on INT3 instructions (single-step) | R-Click to toggle',
+      DEBUG: 'L-Click to break on DEBUG | R-Click or <D> to toggle | DEBUG is exclusive to all but INIT',
+      INT1E: 'L-Click to break on INT1 entry | R-Click to toggle',
+      INT2E: 'L-Click to break on INT2 entry | R-Click to toggle',
+      INT3E: 'L-Click to break on INT3 entry | R-Click to toggle',
+      INIT:  'L-Click to break on COGINIT | R-Click or <I> to toggle | INIT is independent of all others',
+      EVENT: 'L-Click to break on event | R-Click to toggle | Select event by clicking on CT1..QMT'
     };
     return hints[name] || '';
   }

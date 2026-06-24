@@ -4,6 +4,10 @@
 '' Covers Test Plan test:
 ''   Test 9 — DIR/OUT/IN binary display; status indicators (INIT, STALLI, etc.)
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / drvh #0) — no Spin interpreter or
+'' coginit indirection in the way.
+''
 '' Behavior: Drives pin 0 high, pin 1 low, pin 16 high, and floats pin 2.
 ''   Expected PIN panel after stepping past all four instructions:
 ''     DIR: bits 0, 1, 16 = 1   (pin 2 = 0 because fltl turned it off)
@@ -15,9 +19,6 @@
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

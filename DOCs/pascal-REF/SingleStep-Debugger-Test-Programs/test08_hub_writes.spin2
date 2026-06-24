@@ -5,16 +5,17 @@
 ''   Test 8 — Hub data display, scrolling (arrows/PageUp/PageDown/wheel),
 ''            nibble editing, heatmap click-to-navigate
 ''
-'' Behavior: Writes each long value N at hub address N for N=0..$FF (one long
-'' at a time), then loops. Hub heatmap should light up the low hub range
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / mov ptra,#0) — no Spin interpreter
+'' or coginit indirection in the way.
+''
+'' Behavior: Writes each long value N at hub address N for N=0,4,8..$FC (one
+'' long at a time), then loops. Hub heatmap should light up the low hub range
 '' ($000-$100). Stepping or repeat mode makes changes visible.
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

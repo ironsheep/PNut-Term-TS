@@ -588,17 +588,17 @@ export class DebuggerRenderer {
 
   private renderCFlag(): void {
     const p = PANEL.CF;
-    this.drawText(this.ctx, 'C', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'C', p.l, p.t, COLOR.cName, true, true);
     this.drawText(this.ctx, String(this.state.cFlag), p.l + 2, p.t, COLOR.cData, true);
   }
   private renderZFlag(): void {
     const p = PANEL.ZF;
-    this.drawText(this.ctx, 'Z', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'Z', p.l, p.t, COLOR.cName, true, true);
     this.drawText(this.ctx, String(this.state.zFlag), p.l + 2, p.t, COLOR.cData, true);
   }
   private renderPC(): void {
     const p = PANEL.PC;
-    this.drawText(this.ctx, 'PC', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'PC', p.l, p.t, COLOR.cName, true, true);
     this.drawText(this.ctx, hex(this.state.pc, 5), p.l + 3, p.t, COLOR.cData, true);
   }
 
@@ -613,21 +613,28 @@ export class DebuggerRenderer {
     const execMode = this.state.execMode;
     const active = execMode === 0 && callDepth === 0;
 
-    this.drawText(this.ctx, label, p.l, p.t, active ? COLOR.cName : COLOR.cDataDim, true);
+    // Label is ALWAYS bright cName — Pascal never dims it (DebuggerUnit.pas:1969);
+    // only the bit pattern dims when suspended.
+    this.drawText(this.ctx, label, p.l, p.t, COLOR.cName, true, true);
 
-    if (!active) {
-      const why = execMode !== 0
-        ? `Suspended during ${EXEC_MODE_NAMES[execMode]}`
-        : `Suspended during CALL(${callDepth})`;
-      this.drawText(this.ctx, why, p.l + 6, p.t, COLOR.cDataDim);
-      return;
-    }
-
-    // 32-bit pattern, MSB on left.
+    // 32-bit pattern, MSB on left, byte-grouped with a space every 8 bits
+    // (Pascal DrawRegBin :2227-2231). Drawn ALWAYS — cData when SKIP is in
+    // effect, dimmed cDataDim when suspended.
     const pattern = this.state.skipPattern;
     let bits = '';
-    for (let i = 31; i >= 0; i--) bits += ((pattern >>> i) & 1).toString();
-    this.drawText(this.ctx, bits, p.l + 6, p.t, COLOR.cData);
+    for (let i = 31; i >= 0; i--) {
+      bits += ((pattern >>> i) & 1).toString();
+      if ((i & 7) === 0 && i !== 0) bits += ' ';
+    }
+    this.drawText(this.ctx, bits, p.l + 6, p.t, active ? COLOR.cData : COLOR.cDataDim);
+
+    // When suspended, overlay "Suspended during <mode/CALL(n)>" centered, bold,
+    // bright (Pascal :1421-1424). Centering uses the short mode-name length.
+    if (!active) {
+      const s = execMode !== 0 ? EXEC_MODE_NAMES[execMode] : `CALL(${callDepth})`;
+      const x = p.l + 15 - ((s.length + 1) >> 1);
+      this.drawText(this.ctx, `Suspended during ${s}`, x, p.t, COLOR.cData, true);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -636,7 +643,7 @@ export class DebuggerRenderer {
 
   private renderXByte(): void {
     const p = PANEL.XBYTE;
-    this.drawText(this.ctx, 'XBYTE', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'XBYTE', p.l, p.t, COLOR.cName, true, true);
     this.drawText(this.ctx, hex(this.state.xbyte, 3), p.l + 6, p.t, COLOR.cData, true);
     // §4.3 — dim check ALWAYS (Pascal base DebuggerUnit.pas:1973), brightened to
     // orange when the XBYTE C,Z-affected bit (mBRKC bit 25) is set (dynamic :1428).
@@ -654,7 +661,7 @@ export class DebuggerRenderer {
     const p = PANEL.CT;
     const hi = this.state.message[4]; // mCTH2
     const lo = this.state.message[5]; // mCTL2
-    this.drawText(this.ctx, 'CT', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'CT', p.l, p.t, COLOR.cName, true, true);
     this.drawText(this.ctx, hex(hi, 8), p.l + 3, p.t, COLOR.cData, true);
     this.drawText(this.ctx, hex(lo, 8), p.l + 12, p.t, COLOR.cData, true);
   }
@@ -671,7 +678,7 @@ export class DebuggerRenderer {
       const row = p.t + i * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
       // Left column (0x1F0..0x1F7)
       this.drawText(this.ctx, hex(0x1F0 + i, 3), p.l, row, COLOR.cData2);
-      this.drawText(this.ctx, SFR_NAMES[i], p.l + 4, row, COLOR.cName);
+      this.drawText(this.ctx, SFR_NAMES[i], p.l + 4, row, COLOR.cName, true, true);
       this.drawText(this.ctx, hex(this.state.cogImage[0x1F0 + i], 8), p.l + 10, row, COLOR.cData);
       // Right column (0x1F8..0x1FF) — starts col +18 isn't quite right for
       // Pascal's layout; Pascal draws both columns in the same SFR panel.
@@ -683,7 +690,7 @@ export class DebuggerRenderer {
     for (let i = 0; i < 8; i++) {
       const row = p.t + (i + 8) * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
       this.drawText(this.ctx, hex(0x1F8 + i, 3), p.l, row, COLOR.cData2);
-      this.drawText(this.ctx, SFR_NAMES[8 + i], p.l + 4, row, COLOR.cName);
+      this.drawText(this.ctx, SFR_NAMES[8 + i], p.l + 4, row, COLOR.cName, true, true);
       this.drawText(this.ctx, hex(this.state.cogImage[0x1F8 + i], 8), p.l + 10, row, COLOR.cData);
     }
   }
@@ -698,8 +705,9 @@ export class DebuggerRenderer {
     for (let i = 0; i < 16; i++) {
       const bit = (flags >>> i) & 1;
       const row = p.t + i * 2; // Pascal EVENTt + i shl 1 (DebuggerUnit.pas:1992)
-      this.drawText(this.ctx, EVENT_NAMES[i], p.l, row, COLOR.cName);
-      this.drawText(this.ctx, String(bit), p.l + 4, row, bit ? COLOR.cData : COLOR.cDataDim);
+      this.drawText(this.ctx, EVENT_NAMES[i], p.l, row, COLOR.cName, true, true);
+      // Pascal :1434 draws every flag digit in cData (white) regardless of value.
+      this.drawText(this.ctx, String(bit), p.l + 4, row, COLOR.cData);
     }
   }
 
@@ -709,11 +717,10 @@ export class DebuggerRenderer {
 
   private renderExec(): void {
     const p = PANEL.EXEC;
-    // §3.3 — exec-mode label on the STACK row (EXECl, EXECt+2), green plain, no
-    // fill; show CALL(n) when suspended inside a call (Pascal :1423/1436).
-    const label = this.state.execMode === 0 && this.state.callDepth !== 0
-      ? `CALL(${this.state.callDepth})`
-      : EXEC_MODE_NAMES[this.state.execMode];
+    // §3.3 — exec-mode label on the STACK row (EXECl, EXECt+2), green plain.
+    // Pascal :1436 ALWAYS shows ModeName[ExecMode] (MAIN/INT1/INT2/INT3) here;
+    // CALL(n) appears only inside the SKIP "Suspended" overlay, never in EXEC.
+    const label = EXEC_MODE_NAMES[this.state.execMode];
     this.drawText(this.ctx, label, p.l, p.t + 2, COLOR.cData2);
   }
 
@@ -724,7 +731,7 @@ export class DebuggerRenderer {
   private renderStack(): void {
     const p = PANEL.STACK;
     // §3.3 — 'STACK' at STACKl; data at StackDataLeft (STACKl+6). Pascal :1995/1438.
-    this.drawText(this.ctx, 'STACK', p.l, p.t, COLOR.cName, true);
+    this.drawText(this.ctx, 'STACK', p.l, p.t, COLOR.cName, true, true);
     for (let i = 0; i < 8; i++) {
       this.drawText(this.ctx, hex(this.state.message[6 + i], 8), p.l + 6 + i * 9, p.t, COLOR.cData);
     }
@@ -740,17 +747,19 @@ export class DebuggerRenderer {
     // INT1: event bits [11..8], state bits [1..0]
     // INT2: event bits [15..12], state bits [3..2]
     // INT3: event bits [19..16], state bits [5..4]
+    // Pascal DrawInt (:2281): status = mBRKCZ shr (int shl 1) and 3 → shifts
+    // 2 / 4 / 6 (NOT 0/2/4). Event name = mBRKCZ shr (int shl 2 + 4) → 8/12/16.
     const ints = [
-      { label: 'INT1', evBits: 8,  stBits: 0 },
-      { label: 'INT2', evBits: 12, stBits: 2 },
-      { label: 'INT3', evBits: 16, stBits: 4 }
+      { label: 'INT1', evBits: 8,  stBits: 2 },
+      { label: 'INT2', evBits: 12, stBits: 4 },
+      { label: 'INT3', evBits: 16, stBits: 6 }
     ];
     for (let i = 0; i < ints.length; i++) {
       const def = ints[i];
       const evIdx = (brkcz >>> def.evBits) & 0xF;
       const stBits = (brkcz >>> def.stBits) & 0x3;
       const row = p.t + i * 2;
-      this.drawText(this.ctx, def.label, p.l, row, COLOR.cName, true);
+      this.drawText(this.ctx, def.label, p.l, row, COLOR.cName, true, true);
       // §3.4 — Pascal DrawInt (:2270): off ⇒ just 'off' at +5; active ⇒ event
       // name at +5 + idle/wait/busy status at +9. No event word when off.
       if (evIdx === 0) {
@@ -779,7 +788,7 @@ export class DebuggerRenderer {
     const asciiStart = p.l + 11 + PTR_BYTES * 3 + 1;
     for (let r = 0; r < rows.length; r++) {
       const row = p.t + r * 2;
-      this.drawText(this.ctx, rows[r].label, p.l, row, COLOR.cName, true);
+      this.drawText(this.ctx, rows[r].label, p.l, row, COLOR.cName, true, true);
       // §4.1 — address is WHITE (Pascal DrawPtrBytes:2243, cData).
       this.drawText(this.ctx, hex(rows[r].addr, 5), p.l + 5, row, COLOR.cData);
       // §4.1 — data bytes + ascii are cData2 GREEN; the center byte gets a green
@@ -819,16 +828,20 @@ export class DebuggerRenderer {
 
   private renderStatus(): void {
     const p = PANEL.STATUS;
+    // Pascal staggered 2D layout (DebuggerUnit.pas:1451-1459 / base :2008-2012),
+    // q1/q2/q3 = +¼/+½/+¾ char on both axes. STR & MOD share a row.
+    // Inactive = cDataDim (from base bitmap), active overdraws cIndicator. All
+    // bold+italic.
     const items = [
-      { label: 'INIT',   active: this.state.initFlag },
-      { label: 'STALLI', active: this.state.stalliFlag },
-      { label: 'STR',    active: this.state.strFlag },
-      { label: 'MOD',    active: this.state.modFlag },
-      { label: 'LUTS',   active: this.state.luts }
+      { label: 'INIT',   active: this.state.initFlag,   dc: 1,         dr: -1 + 0.75 },
+      { label: 'STALLI', active: this.state.stalliFlag, dc: 0,         dr:  1 + 0.25 },
+      { label: 'STR',    active: this.state.strFlag,    dc: -1 + 0.75, dr:  2 + 0.75 },
+      { label: 'MOD',    active: this.state.modFlag,    dc:  3 + 0.25, dr:  2 + 0.75 },
+      { label: 'LUTS',   active: this.state.luts,       dc: 1,         dr:  4 + 0.25 }
     ];
-    for (let i = 0; i < items.length; i++) {
-      const row = p.t + i;
-      this.drawText(this.ctx, items[i].label, p.l, row, items[i].active ? COLOR.cIndicator : COLOR.cDataDim, true);
+    for (const it of items) {
+      const color = it.active ? COLOR.cIndicator : COLOR.cDataDim;
+      this.drawText(this.ctx, it.label, p.l + it.dc, p.t + it.dr, color, true, true);
     }
   }
 
@@ -846,7 +859,7 @@ export class DebuggerRenderer {
     ];
     for (let r = 0; r < rows.length; r++) {
       const row = p.t + r * 2;
-      this.drawText(this.ctx, rows[r].label, p.l, row, COLOR.cName, true);
+      this.drawText(this.ctx, rows[r].label, p.l, row, COLOR.cName, true, true);
       // Format: [31..0 of a] [31..0 of b], splitting each 32 into 4 bytes
       // with spaces between bytes.
       const makeGroups = (v: number): string => {
@@ -886,11 +899,13 @@ export class DebuggerRenderer {
       let ascStr = '';
       for (let c = 0; c < 16; c++) {
         const b = this.state.hubWindow[r * 16 + c];
-        hexStr += hex(b, 2) + (c === 7 ? '  ' : ' ');
+        // Pascal :1474 uses a uniform 3-col stride for all 16 bytes (no extra
+        // gap mid-row); ASCII starts at HUBl+55 (:1476).
+        hexStr += hex(b, 2) + ' ';
         ascStr += ascii(b);
       }
       this.drawText(this.ctx, hexStr, p.l + 6, row, COLOR.cData2);
-      this.drawText(this.ctx, ascStr, p.l + 6 + 16 * 3 + 2, row, COLOR.cData2);
+      this.drawText(this.ctx, ascStr, p.l + 6 + 16 * 3 + 1, row, COLOR.cData2);
     }
   }
 
@@ -998,15 +1013,25 @@ export class DebuggerRenderer {
         this.drawText(this.ctx, disText, p.l + 18, row, COLOR.cData);
       }
 
-      // SKIP strikethrough: a translucent bar over instructions whose SKIP
-      // bit is set (will be skipped on resume). §6.6 / Pascal L1530-1532
-      // (SmoothShape over the line, half height, cData2, alpha 160).
+      // SKIP indicator: a translucent band over instructions whose SKIP bit is
+      // set (will be skipped on resume). §6.6 / Pascal L1530-1532
+      //   SmoothShape(x, y, xs, ys shr 1, r, r, 0, cData2, 160)
+      // = a filled translucent rect, full instruction width, HALF the row
+      // height, vertically centered on the row (NOT a thin strikethrough line —
+      // that reads as "crossed out"; Pascal draws a faint highlight band).
       const hiddenPC = addr < 0x400 && this.state.disMode === DisMode.dmHub;
       if (shouldStrikeSkipped(addr, pc, skipOn, skipPattern, hiddenPC)) {
         this.ctx.save();
         this.ctx.globalAlpha = 160 / 255;
         this.ctx.fillStyle = rgb(COLOR.cData2);
-        this.ctx.fillRect(this.px(p.l + 1), this.py(row) + HALF_ROW_PX - 1, (p.w - 2) * CHAR_WIDTH_PX, 2);
+        // Full row = 2 * HALF_ROW_PX tall; band = HALF_ROW_PX tall, centered →
+        // top inset = HALF_ROW_PX / 2.
+        this.ctx.fillRect(
+          this.px(p.l + 1),
+          this.py(row) + (HALF_ROW_PX >> 1),
+          (p.w - 2) * CHAR_WIDTH_PX,
+          HALF_ROW_PX
+        );
         this.ctx.restore();
       }
 
@@ -1066,17 +1091,21 @@ export class DebuggerRenderer {
 
   private renderRegisterWatch(): void {
     const p = PANEL.WATCH;
-    // §3.2 — register-delta watch indicator, not a 'WATCH' title (Pascal :1572-1573).
-    this.drawText(this.ctx, 'REG ▲', p.l + 3, p.t, COLOR.cName, true);
+    const list = this.state.regWatchList;
+    // Pascal :1570-1584: two mutually-exclusive states.
+    //  Empty  → draw 'REG' + a delta marker ONCE (at WATCHl+3+q2 / +7+q2); nothing else.
+    //  Filled → NO header; each used slot i draws addr+value at row WATCHt+i*2.
+    if (!list[0]) {
+      this.drawText(this.ctx, 'REG', p.l + 3.5, p.t, COLOR.cName, true, true);
+      this.drawText(this.ctx, '▲', p.l + 7.5, p.t, COLOR.cName);
+      return;
+    }
     for (let i = 0; i < this.state.regWatchListMax; i++) {
-      const row = p.t + 2 + i * 2;
-      const e = this.state.regWatchList[i];
-      if (e) {
-        this.drawText(this.ctx, hex(e.address, 3), p.l, row, COLOR.cData2);
-        this.drawText(this.ctx, hex(e.value, 8), p.l + 4, row, COLOR.cData);
-      } else {
-        this.drawText(this.ctx, '△', p.l, row, COLOR.cDataDim);
-      }
+      const e = list[i];
+      if (!e) continue; // Pascal skips empty slots — draws no per-row marker.
+      const row = p.t + i * 2; // slot-indexed row, starting at WATCHt (no +2)
+      this.drawText(this.ctx, hex(e.address, 3), p.l, row, COLOR.cData2, true); // bold addr
+      this.drawText(this.ctx, hex(e.value, 8), p.l + 4, row, COLOR.cData);
     }
   }
 
@@ -1086,19 +1115,21 @@ export class DebuggerRenderer {
 
   private renderSmartPinWatch(): void {
     const p = PANEL.SMART;
-    // §3.6 — title 'RQPIN' + delta (Pascal :1622); DIR/all goes to the hover hint (§8).
-    this.drawText(this.ctx, 'RQPIN ▲', p.l, p.t, COLOR.cName, true);
-    let x = p.l + 14;
+    const list = this.state.smartWatchList;
+    // Pascal :1619-1635, mirrors the WATCH panel: empty → 'RQPIN' + delta once;
+    // filled → no title, each used slot i at SMARTl+q2+i*14 with P## in cData2
+    // bold and the value in cData.
+    if (!list[0]) {
+      this.drawText(this.ctx, 'RQPIN', p.l, p.t, COLOR.cName, true, true);
+      this.drawText(this.ctx, '▲', p.l + 6, p.t, COLOR.cName);
+      return;
+    }
     for (let i = 0; i < this.state.smartWatchListMax; i++) {
-      const e = this.state.smartWatchList[i];
-      if (e) {
-        this.drawText(this.ctx, 'P' + String(e.pin).padStart(2, '0'), x, p.t, COLOR.cName);
-        this.drawText(this.ctx, hex(e.value, 8), x + 4, p.t, COLOR.cData);
-        x += 14;
-      } else {
-        this.drawText(this.ctx, '△', x, p.t, COLOR.cDataDim);
-        x += 14;
-      }
+      const e = list[i];
+      if (!e) continue;
+      const x = p.l + 0.5 + i * 14; // SMARTl + q2 + i*14
+      this.drawText(this.ctx, 'P' + String(e.pin).padStart(2, '0'), x, p.t, COLOR.cData2, true);
+      this.drawText(this.ctx, hex(e.value, 8), x + 4, p.t, COLOR.cData);
     }
   }
 
@@ -1143,7 +1174,7 @@ export class DebuggerRenderer {
   private goCaption(): string {
     if (this.state.isDimmed) return 'Break';
     if (this.state.repeatMode) return 'Stop';
-    return 'Go';
+    return ' Go'; // Pascal GoCaption := ' Go' (leading space, :1783)
   }
 
   private renderButtons(): void {
@@ -1198,11 +1229,15 @@ export class DebuggerRenderer {
     if (!btn) return;
     const col = (this.px(PANEL.B.l) + btn.xOffsetPx) / CHAR_WIDTH_PX;
     const halfRow = (this.py(PANEL.B.t) + btn.yOffsetPx) / HALF_ROW_PX;
-    // Full rim=6, not small (Pascal :2056).
-    this.drawBox(this.ctx, col, halfRow, btn.wCells, btn.hHalfRows, COLOR.cCmdButton, 6, false);
+    // Full rim=6, not small (Pascal :2056). Press-flash: while GoState>0 the
+    // button colors invert for a couple of frames (Pascal :1784-1788).
+    const flash = this.state.goFlash > 0;
+    const boxColor = flash ? COLOR.cCmdText : COLOR.cCmdButton;
+    const textColor = flash ? COLOR.cCmdButton : COLOR.cCmdText;
+    this.drawBox(this.ctx, col, halfRow, btn.wCells, btn.hHalfRows, boxColor, 6, false);
     const cap = this.goCaption();
     const goCol = cap === 'Break' ? col + 2.5 : col + 3;
-    this.drawText(this.ctx, cap, goCol, halfRow, COLOR.cCmdText, true);
+    this.drawText(this.ctx, cap, goCol, halfRow, textColor, true);
   }
 
   // ──────────────────────────────────────────────────────────────────────

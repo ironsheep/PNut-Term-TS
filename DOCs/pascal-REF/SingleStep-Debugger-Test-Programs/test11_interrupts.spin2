@@ -6,15 +6,16 @@
 ''             SKIP panel shows "Suspended during MODE" while in INT1
 ''   Test 13 — Event breakpoints (uses CT1 event for INT1)
 ''
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / mov ijmp1,...) — no Spin interpreter
+'' or coginit indirection in the way.
+''
 '' Behavior: Arms INT1 to fire every 1000 clock ticks on the CT1 event.
-'' MAIN loop is a JMP #$-1 idle; the ISR re-arms CT1 and returns.
+'' MAIN loop is an idle .idle JMP; the ISR re-arms CT1 and returns (reti1).
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
-
-PUB main()
-  coginit(0, @entry, 0)
 
 DAT
                 org

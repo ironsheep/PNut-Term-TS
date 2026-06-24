@@ -104,6 +104,9 @@ export class DebuggerState {
   public lastBreakTime: number = 0;
   /** True when display is dimmed due to breakpoint timeout. */
   public isDimmed: boolean = false;
+  /** Go-button press-flash counter (Pascal GoState): >0 inverts the Go button
+   *  colors for a couple of frames after a click. */
+  public goFlash: number = 0;
 
   // ─── Breakpoint targets ────────────────────────────────────────────────
   /** Event index 1..15 for the EVENT break button. */
@@ -178,6 +181,7 @@ export class DebuggerState {
     this.firstBreak = true;
     this.lastBreakTime = 0;
     this.isDimmed = false;
+    this.goFlash = 0;
     this.breakEvent = 1;
     this.breakAddr = 0;
     this.disMode = DisMode.dmPC;
@@ -219,9 +223,10 @@ export class DebuggerState {
   public get xbyte(): number {
     return (this.message[2] >>> 16) & 0x1FF;
   }
-  /** SKIPF mode flag (bit 27 of mBRKC). */
+  /** SKIPF mode flag. Pascal draws the 'F' (→ SKIPF) when mBRKC bit27 == 0
+   *  (DebuggerUnit.pas:1416) — i.e. SKIPF is indicated by the bit being CLEAR. */
   public get isSkipf(): boolean {
-    return ((this.message[2] >>> 27) & 1) !== 0;
+    return ((this.message[2] >>> 27) & 1) === 0;
   }
   /** LUTS (LUT sharing) flag (bit 26 of mBRKC). */
   public get luts(): boolean {
