@@ -165,6 +165,7 @@ export interface MockRenderer {
   hitTestButton: jest.Mock;
   panelBoundsPx: jest.Mock;
   hubMapBoundsPx: jest.Mock;
+  disassemblyLineAddress: jest.Mock;
   render: jest.Mock;
 }
 export function makeMockRenderer(): MockRenderer {
@@ -174,6 +175,7 @@ export function makeMockRenderer(): MockRenderer {
     // Zero-size rect never matches a click; tests that exercise the hub map
     // override this with a real rect.
     hubMapBoundsPx: jest.fn().mockReturnValue({ x: -1, y: -1, w: 0, h: 0 }),
+    disassemblyLineAddress: jest.fn().mockReturnValue(0x000),
     render: jest.fn()
   };
 }

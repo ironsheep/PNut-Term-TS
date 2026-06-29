@@ -172,6 +172,8 @@ test (`DebuggerUnit.pas:1530-1532`); our `shouldStrikeSkipped()` matches it exac
 > centered on the row, matching Pascal. Which rows are marked was already correct.
 > Recapture this view after the next build to confirm the band matches the reference.
 
+ON HW TEST: pass v0.9.83
+
 ---
 
 ## Test 3: Register watch and reset
@@ -201,6 +203,8 @@ plan preamble, match the *behavior*, not the digits; the program's actual PA/PB
 addresses and values differ on hardware. (Pascal: watch counter is set to 1000 on
 change and decremented to 1, `DebuggerUnit.pas:1545`; `RegWatchSize=$1F0`.)
 
+ON HW TEST: pass v0.9.83
+
 ---
 
 ## Test 4: Disassembly navigation — modes and scrolling
@@ -216,7 +220,7 @@ change and decremented to 1, `DebuggerUnit.pas:1545`; `RegWatchSize=$1F0`.)
 | 1 | Observe disassembly | Shows **R-xxx** format addresses (cog registers). PC line highlighted with inverse colors. Currently following the PC (*dmPC*). |
 | 2 | **Mouse wheel up** in disassembly box | Switches from PC-follow to cog-locked (*dmCog*). Disassembly scrolls up. PC highlight may scroll out of view. |
 | 3 | **Ctrl+mouse wheel** | Scrolls by 4 instructions per tick (vs 1 without Ctrl). |
-| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. (NOTE: shift doesn't work on Mac?) |
+| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. (NOTE: shift doesn't work on Mac?) no shift confirmed... v0.9.83 |
 | 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
 | 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
 | 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
@@ -224,6 +228,29 @@ change and decremented to 1, `DebuggerUnit.pas:1545`; `RegWatchSize=$1F0`.)
 | 9 | Click on **PC** value in header row | Returns to PC-follow. |
 
 **Pass criteria**: All three disassembly follow modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
+
+ON HW TEST: v0.9.83 confirmed shift deosn't work, also right-click doesn't work. (right click help, does show) rest of steps pass
+
+> **Both failures — FIXED (not yet released), macOS input plumbing, not logic.**
+> The Pascal-faithful handlers underneath were correct; the bugs were in how the
+> browser delivers two macOS gestures:
+> - **Shift+wheel (step 4):** on macOS Chromium delivers Shift+wheel as a
+>   *horizontal* scroll — `deltaX` carries the motion and `deltaY≈0`. The handler
+>   read only `deltaY` (→ `Math.sign(0)=0`, no scroll). Fixed by folding whichever
+>   axis carries the motion into one delta. (Ctrl-wheel worked because Ctrl does
+>   not trigger the axis swap.)
+> - **Right-click breakpoint (steps 6–7):** we detected right-click as `mousedown`
+>   `button===2`, but a Mac secondary click is usually **Ctrl+click / trackpad
+>   two-finger tap**, reported as `button 0 + ctrlKey` — so it never matched. (The
+>   hover hint still showed because that is `mousemove`-driven, hence "help shows.")
+>   Fixed by routing the secondary click through the `contextmenu` event (reliable
+>   for real right-button, trackpad, and Mac Ctrl+click), driving left-clicks from
+>   `mousedown`. **This same defect would have broken every right-click in Test 5**,
+>   so Test 5's mouse steps are now unblocked by this fix.
+>
+> `src/classes/debugger/renderer/DebuggerInteraction.ts` (listener install block).
+> Regression coverage added in `tests/debuggerInteraction.test.ts` (macOS input
+> plumbing). **Recapture Test 4 — and proceed to Test 5 — after the next build.**
 
 ---
 

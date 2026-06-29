@@ -60,18 +60,36 @@ export class DebuggerInteraction {
     // Keyboard (document-level so focus doesn't matter)
     document.addEventListener('keydown', (e) => this.handleKey(e));
     // Mouse
+    // macOS reports a secondary (right) click as either button 2 OR a Ctrl+left
+    // click, and the reliable cross-platform signal for it is the `contextmenu`
+    // event — not `mousedown` button===2 (which Mac Ctrl+click never sets). So we
+    // drive LEFT clicks from mousedown and route the secondary click through
+    // contextmenu, dispatching it as a right-click. Works for a two-button mouse,
+    // a trackpad two-finger tap, and Mac Ctrl+click alike.
+    const isMac = typeof navigator !== 'undefined' &&
+      /mac/i.test(navigator.platform || navigator.userAgent || '');
     this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 2) return;                       // right button → contextmenu handles it
+      if (isMac && e.button === 0 && e.ctrlKey) return; // Mac Ctrl+click is a secondary click → contextmenu handles it
       const { x, y } = this.toCanvasPx(e);
       if (x < 0 || y < 0) return;
       this.handleMouseDown(x, y, e.button);
     });
-    // Context menu suppression so right-click reaches us.
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Wheel (Ctrl/Shift modifiers)
+    // Right-click: suppress the OS menu and dispatch as a right-click hit-test.
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const { x, y } = this.toCanvasPx(e);
+      if (x < 0 || y < 0) return;
+      this.handleMouseDown(x, y, 2);
+    });
+    // Wheel (Ctrl/Shift modifiers). On macOS, Shift+wheel is delivered as a
+    // HORIZONTAL scroll (deltaX) with deltaY≈0, so fold whichever axis carries
+    // the motion into a single delta before applying the scroll matrix.
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const { x, y } = this.toCanvasPx(e);
-      this.handleWheel(x, y, e.deltaY, e.ctrlKey, e.shiftKey);
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      this.handleWheel(x, y, delta, e.ctrlKey, e.shiftKey);
     }, { passive: false });
     // Hover → hint bar.
     this.canvas.addEventListener('mousemove', (e) => {

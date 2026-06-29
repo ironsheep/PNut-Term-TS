@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.84] - 2026-06-29
+
+Two single-step-debugger mouse interactions that didn't work on macOS now work on all
+platforms. **Built for hardware testing — not yet validated on a P2.**
+
+### Fixed
+
+- **Shift+mouse-wheel now scrolls the disassembly on macOS.** macOS delivers a Shift+wheel
+  as a horizontal scroll, which the debugger was ignoring, so the 16-instruction-per-notch
+  scroll did nothing. It now reads the scroll regardless of which axis the OS reports.
+  (Ctrl+wheel was unaffected and already worked.)
+- **Right-click now works in the debugger on macOS** — toggling an address breakpoint on a
+  disassembly line, and the right-click button toggles. A Mac secondary click is usually a
+  Ctrl+click or trackpad two-finger tap, which the debugger wasn't recognizing as a
+  right-click. Right-click is now detected the same way across Windows, Linux, and macOS.
+
 ## [0.9.83] - 2026-06-24
 
 A broad visual- and behavioral-parity pass on the single-step debugger window so every
