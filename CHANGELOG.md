@@ -5,6 +5,21 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.85] - 2026-06-29
+
+Debugger right-click instrumentation build. **Built for hardware testing — not yet validated
+on a P2.**
+
+### Changed
+
+- **Debugger right-click is now handled from both the mouse-button press and the OS
+  context-menu event**, deduplicated so a single right-click performs its action exactly once.
+  On the tester's Mac a physical right button was not toggling breakpoints/buttons via either
+  path alone, while the keyboard equivalents worked — so this build also **logs every mouse
+  event in the debugger window to the debug log** to capture exactly what the right button
+  emits, so the remaining issue can be pinned down. (Diagnostic logging will be removed once
+  the right-click path is confirmed.)
+
 ## [0.9.84] - 2026-06-29
 
 Two single-step-debugger mouse interactions that didn't work on macOS now work on all

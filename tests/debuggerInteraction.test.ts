@@ -113,11 +113,22 @@ describe('DebuggerInteraction — macOS input plumbing (Test 4 HW gate)', () => 
     expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR);
   });
 
-  it('mousedown with button 2 is ignored (contextmenu owns the right-click — no double-fire)', () => {
+  it('mousedown with a physical right button (button 2) toggles the breakpoint directly', () => {
     const h = harness();
     withDisPanel(h);
     listener(h, 'mousedown')({ button: 2, ctrlKey: false, clientX: DIS.x + 5, clientY: DIS.y + 1 });
-    expect(h.state.breakValue & BREAK_ADDR).toBe(0);     // nothing toggled from mousedown
+    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR); // toggled ON from mousedown
+  });
+
+  it('mousedown(button2)+contextmenu from one gesture fires exactly once (no double-toggle)', () => {
+    const h = harness();
+    withDisPanel(h);
+    // mousedown right toggles ON and arms suppression of the following contextmenu
+    listener(h, 'mousedown')({ button: 2, ctrlKey: false, clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR);
+    // the contextmenu of the SAME gesture must be swallowed, else it toggles back OFF
+    listener(h, 'contextmenu')({ preventDefault: jest.fn(), clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR); // still ON → single fire
   });
 
   it('left mousedown still drives a normal left-click (lock-to-PC)', () => {

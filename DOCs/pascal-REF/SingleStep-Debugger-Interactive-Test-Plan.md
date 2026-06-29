@@ -252,6 +252,21 @@ ON HW TEST: v0.9.83 confirmed shift deosn't work, also right-click doesn't work.
 > Regression coverage added in `tests/debuggerInteraction.test.ts` (macOS input
 > plumbing). **Recapture Test 4 — and proceed to Test 5 — after the next build.**
 
+ON HW TEST: v0.9.84: shift+click works, right-click does not
+
+> **Shift+wheel: CONFIRMED FIXED (v0.9.84). Right-click: still failing — under active
+> diagnosis in v0.9.85.** With a PHYSICAL right mouse button, right-click failed in BOTH
+> v0.9.83 (acted on `mousedown` button===2) AND v0.9.84 (acted on the `contextmenu` event),
+> and ALSO fails for the button toggles in Test 5 — yet the SAME toggle works from the
+> keyboard (Test 5 `M`/`D`/`I`). That proves the downstream toggle/render is correct and the
+> right-button **event is not reaching the canvas handler** — anomalous, since a plain
+> `mousedown` listener should receive every button. v0.9.85: (1) acts on a right-click from
+> EITHER mousedown (button 2 / Mac Ctrl+left) OR contextmenu, deduped to one action per
+> gesture; (2) **logs every pointer event** (type, button code, buttons mask, ctrl, coords)
+> to the shared debug log. **NEXT HW CAPTURE:** right-click a disassembly line, then send the
+> `debug-*.log` — the `[R/info] [MOUSE] …` lines will show exactly what your right button
+> emits, making the fix deterministic.
+
 ---
 
 ## Test 5: Breakpoint control buttons
@@ -282,6 +297,16 @@ The `$xx` values are given only to explain what each click does internally.
 
 **Pass criteria**: Left-click sets exclusively, right-click toggles independently, INIT always independent, keyboard shortcuts match button behaviors.
 
+ON HW TEST: v0.9.84: 3, 4 don't work. and we have [->int1] and [int1] you are not specifying in test (since you don't say not the other one..) 
+
+> **Button disambiguation (test clarified):** there are TWO INT1-related buttons —
+> **"INT1"** (plain, `BREAK_INT1` = $02) and **"→INT1"** (the right-arrow *entry* button,
+> `INT1E` = $20). Steps 3–4 mean the **plain "INT1"** button (yielding BreakValue $12 =
+> DEBUG $10 + INT1 $02), NOT the "→INT1" entry button. Steps 3–4 fail for the SAME
+> right-click delivery defect as Test 4 (see Test 4 note) — confirmed not a button-logic
+> bug because the keyboard equivalents work: step 6 (`I`), 9 (`M`), 10 (`D`) all toggle
+> correctly. Re-run 3–4 after the v0.9.85 right-click fix lands.
+
 ---
 
 ## Test 6: Header display — flags, SKIP, XBYTE, CT
@@ -296,14 +321,24 @@ The `$xx` values are given only to explain what each click does internally.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Step to `cmp pa, #5 wz` | **Z** flag shows **1** (equal). **C** unchanged. |
-| 2 | Step to `cmp pa, #3 wc` | **C** flag shows **1** (5 > 3, carry set). **Z** may change. |
+| 1 | Step **through** `cmp pa, #5 wz` (press SPACE so the instruction EXECUTES, i.e. PC moves past it) | **Z** flag shows **1** (equal). **C** unchanged. |
+| 2 | Step **through** `cmp pa, #3 wc` | **C** flag shows **1** (5 > 3, carry set). **Z** may change. |
 | 3 | Step past `skip #%1010` | **SKIP** panel shows **SKIP** label with 32-bit binary pattern. Bits corresponding to %1010 are set. |
 | 4 | Step through skipped instructions | Skipped instruction lines in disassembly show semi-transparent strikethrough. Non-skipped lines render normally. |
 | 5 | Observe **CT** panel | Shows 16 hex digits split into two 8-digit groups. Value increases on each step. Hover over CT to see elapsed seconds in hint bar. |
 | 6 | Observe **PC** | Shows current address as 5 hex digits. Click PC to lock disassembly to follow PC. |
 
 **Pass criteria**: C/Z flags update correctly, SKIP shows 32-bit pattern, CT increments, strikethrough appears on skipped instructions.
+
+ON HW TEST: v0.9.84: nope step 2 no C flag - and don't you mean step thru so the instruction runs?
+
+> **You're right — "step THROUGH", now corrected in steps 1–2.** The header C/Z reflect the
+> flags AFTER the instruction at PC executes. When you merely step *to* `cmp …wc` it is the
+> highlighted, not-yet-executed instruction, so C hasn't been written — that alone explains
+> "no C flag". The C/Z extraction itself is verified correct (C = bit 31, Z = bit 30 of
+> mIRET; `DebuggerState.cFlag/zFlag`). **Re-verify on HW after stepping THROUGH the
+> `cmp …wc`:** C should read 1. If it still reads 0 after the instruction executes, THAT is a
+> real defect — capture the step and flag it.
 
 ---
 
@@ -328,6 +363,17 @@ The `$xx` values are given only to explain what each click does internally.
 | 7 | Click on **STK0 value** in stack | Disassembly navigates to that return address. |
 
 **Pass criteria**: SFR values update correctly, pointer windows show hub data, stack shows call/return, click navigation works.
+
+ON HW TEST: v0.9.84: space bar is stepping two instructions, is this due to AUGS preceeding? or do we need to debounce space bar?
+
+> **AUGS — correct v55 behavior, NOT a debounce bug.** A `##` 32-bit immediate (e.g.
+> `mov ptra, ##$1000`) compiles to **AUGS + the instruction** (two longs). P2 hardware
+> treats an AUGS/AUGD prefix and the instruction it augments as **atomic** — it will not
+> break (interrupt or debug single-step) between them — so one SPACE advances PC past BOTH
+> longs. That is exactly what you'd see here (this program is full of `##` pointer loads).
+> No debounce needed. (Sanity check: on a routine with NO `##`/AUG prefix, one SPACE should
+> advance exactly one instruction. If it double-steps THERE too, that would be a real
+> double-keydown bug — but the AUG case above is expected and matches PNut.)
 
 ---
 

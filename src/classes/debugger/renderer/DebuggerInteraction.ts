@@ -31,6 +31,8 @@ import { DebuggerRenderer } from './DebuggerRenderer';
  */
 export interface InteractionCallbacks {
   onCogBrkRequest: (mask: number) => void;
+  /** Optional diagnostic sink → shared debug log (temporary right-click probe). */
+  log?: (msg: string) => void;
 }
 
 export class DebuggerInteraction {
@@ -40,6 +42,9 @@ export class DebuggerInteraction {
   private controller: DebuggerController;
   private cb: InteractionCallbacks;
   private goFlashTimer: ReturnType<typeof setInterval> | null = null;
+  /** When a right-click is handled on mousedown, swallow the contextmenu that
+   *  follows the SAME gesture so the action fires exactly once. */
+  private suppressNextContextMenu = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -60,28 +65,42 @@ export class DebuggerInteraction {
     // Keyboard (document-level so focus doesn't matter)
     document.addEventListener('keydown', (e) => this.handleKey(e));
     // Mouse
-    // macOS reports a secondary (right) click as either button 2 OR a Ctrl+left
-    // click, and the reliable cross-platform signal for it is the `contextmenu`
-    // event — not `mousedown` button===2 (which Mac Ctrl+click never sets). So we
-    // drive LEFT clicks from mousedown and route the secondary click through
-    // contextmenu, dispatching it as a right-click. Works for a two-button mouse,
-    // a trackpad two-finger tap, and Mac Ctrl+click alike.
+    // Right-mouse delivery is misbehaving on Stephen's Mac with a PHYSICAL right
+    // button: v0.9.83 (act on mousedown button===2) AND v0.9.84 (act on the
+    // contextmenu event) BOTH failed — anomalous, since a plain mousedown listener
+    // should receive every button. Until we know what the right button actually
+    // emits there, act on a right-click from EITHER mousedown (button 2, or Mac
+    // Ctrl+left) OR contextmenu, deduped so one gesture = one action; and log every
+    // pointer event to the shared debug log so the next HW capture is conclusive.
+    // TODO(right-click-diag): remove diagMouse() calls + the mouseup/auxclick
+    // probe listeners once the delivery path is confirmed.
     const isMac = typeof navigator !== 'undefined' &&
       /mac/i.test(navigator.platform || navigator.userAgent || '');
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) return;                       // right button → contextmenu handles it
-      if (isMac && e.button === 0 && e.ctrlKey) return; // Mac Ctrl+click is a secondary click → contextmenu handles it
+      this.diagMouse('mousedown', e);
       const { x, y } = this.toCanvasPx(e);
       if (x < 0 || y < 0) return;
-      this.handleMouseDown(x, y, e.button);
+      const isRight = e.button === 2 || (isMac && e.button === 0 && e.ctrlKey);
+      if (isRight) {
+        this.suppressNextContextMenu = true; // the contextmenu that follows is the same gesture
+        this.handleMouseDown(x, y, 2);
+        return;
+      }
+      this.suppressNextContextMenu = false;  // genuine left interaction; clear any stale suppress
+      if (e.button === 0) this.handleMouseDown(x, y, 0);
     });
-    // Right-click: suppress the OS menu and dispatch as a right-click hit-test.
     this.canvas.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
+      e.preventDefault();                    // always suppress the OS menu
+      this.diagMouse('contextmenu', e);
+      if (this.suppressNextContextMenu) { this.suppressNextContextMenu = false; return; }
       const { x, y } = this.toCanvasPx(e);
       if (x < 0 || y < 0) return;
       this.handleMouseDown(x, y, 2);
     });
+    // Diagnostic-only probes (no action): reveal whether the right button arrives
+    // via these on the failing setup when mousedown/contextmenu don't carry it.
+    this.canvas.addEventListener('mouseup', (e) => this.diagMouse('mouseup', e));
+    this.canvas.addEventListener('auxclick', (e) => this.diagMouse('auxclick', e as MouseEvent));
     // Wheel (Ctrl/Shift modifiers). On macOS, Shift+wheel is delivered as a
     // HORIZONTAL scroll (deltaX) with deltaY≈0, so fold whichever axis carries
     // the motion into a single delta before applying the scroll matrix.
@@ -100,6 +119,20 @@ export class DebuggerInteraction {
       this.renderer.hintText = '';
       this.renderer.render();
     });
+  }
+
+  /**
+   * TEMP right-click probe: report a pointer event (type, button code, coords)
+   * to the shared debug log so a HW capture shows exactly what the right button
+   * emits. Remove with the diag listeners once the delivery path is confirmed.
+   */
+  private diagMouse(tag: string, e: MouseEvent): void {
+    if (!this.cb.log) return;
+    const { x, y } = this.toCanvasPx(e);
+    this.cb.log(
+      `${tag} button=${e.button} buttons=${e.buttons} ctrl=${e.ctrlKey ? 1 : 0} ` +
+      `meta=${e.metaKey ? 1 : 0} @(${x},${y})`
+    );
   }
 
   /**
