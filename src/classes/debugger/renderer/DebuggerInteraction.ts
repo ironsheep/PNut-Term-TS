@@ -31,8 +31,6 @@ import { DebuggerRenderer } from './DebuggerRenderer';
  */
 export interface InteractionCallbacks {
   onCogBrkRequest: (mask: number) => void;
-  /** Optional diagnostic sink → shared debug log (temporary right-click probe). */
-  log?: (msg: string) => void;
 }
 
 export class DebuggerInteraction {
@@ -42,9 +40,13 @@ export class DebuggerInteraction {
   private controller: DebuggerController;
   private cb: InteractionCallbacks;
   private goFlashTimer: ReturnType<typeof setInterval> | null = null;
-  /** When a right-click is handled on mousedown, swallow the contextmenu that
-   *  follows the SAME gesture so the action fires exactly once. */
-  private suppressNextContextMenu = false;
+  /** Latches for the duration of ONE physical right-press so the right-click
+   *  action fires exactly once, then released on mouseup. macOS/Electron delivers
+   *  TWO mousedown+contextmenu pairs per physical right-press (but only one
+   *  mouseup) — a per-event suppress flag let the second mousedown fire the toggle
+   *  a second time, cancelling the first (HW capture 2026-06-30, debug_260630-143127).
+   *  Latching the whole gesture and releasing on the single mouseup fixes it. */
+  private rightGestureLatched = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -65,42 +67,41 @@ export class DebuggerInteraction {
     // Keyboard (document-level so focus doesn't matter)
     document.addEventListener('keydown', (e) => this.handleKey(e));
     // Mouse
-    // Right-mouse delivery is misbehaving on Stephen's Mac with a PHYSICAL right
-    // button: v0.9.83 (act on mousedown button===2) AND v0.9.84 (act on the
-    // contextmenu event) BOTH failed — anomalous, since a plain mousedown listener
-    // should receive every button. Until we know what the right button actually
-    // emits there, act on a right-click from EITHER mousedown (button 2, or Mac
-    // Ctrl+left) OR contextmenu, deduped so one gesture = one action; and log every
-    // pointer event to the shared debug log so the next HW capture is conclusive.
-    // TODO(right-click-diag): remove diagMouse() calls + the mouseup/auxclick
-    // probe listeners once the delivery path is confirmed.
+    // macOS/Electron delivers TWO mousedown+contextmenu pairs per single physical
+    // right-press, but only ONE mouseup (HW capture 2026-06-30). Since every right
+    // action is a TOGGLE, firing on each pair toggled twice → no net change ("right-
+    // click does nothing" — the v0.9.83/.84 symptom). Fix: latch the right gesture
+    // on the first right event and ignore further right mousedown/contextmenu until
+    // the single mouseup releases the latch — so one physical press = one action.
+    // Accept a right-click from mousedown (button 2, or Mac Ctrl+left) OR contextmenu
+    // (some setups carry the button only there).
     const isMac = typeof navigator !== 'undefined' &&
       /mac/i.test(navigator.platform || navigator.userAgent || '');
     this.canvas.addEventListener('mousedown', (e) => {
-      this.diagMouse('mousedown', e);
       const { x, y } = this.toCanvasPx(e);
       if (x < 0 || y < 0) return;
       const isRight = e.button === 2 || (isMac && e.button === 0 && e.ctrlKey);
       if (isRight) {
-        this.suppressNextContextMenu = true; // the contextmenu that follows is the same gesture
-        this.handleMouseDown(x, y, 2);
-        return;
+        if (!this.rightGestureLatched) {     // first event of this physical right-press
+          this.rightGestureLatched = true;
+          this.handleMouseDown(x, y, 2);
+        }
+        return;                              // ignore the duplicate pairs in the same gesture
       }
-      this.suppressNextContextMenu = false;  // genuine left interaction; clear any stale suppress
+      this.rightGestureLatched = false;      // genuine left interaction; clear any stale latch
       if (e.button === 0) this.handleMouseDown(x, y, 0);
     });
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();                    // always suppress the OS menu
-      this.diagMouse('contextmenu', e);
-      if (this.suppressNextContextMenu) { this.suppressNextContextMenu = false; return; }
+      if (this.rightGestureLatched) return;  // same gesture already actioned via mousedown
       const { x, y } = this.toCanvasPx(e);
       if (x < 0 || y < 0) return;
+      this.rightGestureLatched = true;       // contextmenu-only delivery: action here, latch the rest
       this.handleMouseDown(x, y, 2);
     });
-    // Diagnostic-only probes (no action): reveal whether the right button arrives
-    // via these on the failing setup when mousedown/contextmenu don't carry it.
-    this.canvas.addEventListener('mouseup', (e) => this.diagMouse('mouseup', e));
-    this.canvas.addEventListener('auxclick', (e) => this.diagMouse('auxclick', e as MouseEvent));
+    // Release the gesture latch on the single mouseup (also on mouseleave below, in
+    // case the press is dragged off-canvas with no mouseup on the element).
+    this.canvas.addEventListener('mouseup', () => { this.rightGestureLatched = false; });
     // Wheel (Ctrl/Shift modifiers). On macOS, Shift+wheel is delivered as a
     // HORIZONTAL scroll (deltaX) with deltaY≈0, so fold whichever axis carries
     // the motion into a single delta before applying the scroll matrix.
@@ -116,23 +117,10 @@ export class DebuggerInteraction {
       this.updateHint(x, y);
     });
     this.canvas.addEventListener('mouseleave', () => {
+      this.rightGestureLatched = false;      // press dragged off-canvas; don't strand the latch
       this.renderer.hintText = '';
       this.renderer.render();
     });
-  }
-
-  /**
-   * TEMP right-click probe: report a pointer event (type, button code, coords)
-   * to the shared debug log so a HW capture shows exactly what the right button
-   * emits. Remove with the diag listeners once the delivery path is confirmed.
-   */
-  private diagMouse(tag: string, e: MouseEvent): void {
-    if (!this.cb.log) return;
-    const { x, y } = this.toCanvasPx(e);
-    this.cb.log(
-      `${tag} button=${e.button} buttons=${e.buttons} ctrl=${e.ctrlKey ? 1 : 0} ` +
-      `meta=${e.metaKey ? 1 : 0} @(${x},${y})`
-    );
   }
 
   /**

@@ -120,15 +120,38 @@ describe('DebuggerInteraction — macOS input plumbing (Test 4 HW gate)', () => 
     expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR); // toggled ON from mousedown
   });
 
-  it('mousedown(button2)+contextmenu from one gesture fires exactly once (no double-toggle)', () => {
+  it('one physical right-press fires exactly once across macOS TWO md+cm pairs (no double-toggle)', () => {
+    // HW capture 2026-06-30 (debug_260630-143127): macOS/Electron delivers a single
+    // physical right-press as mousedown,contextmenu,mousedown,contextmenu,mouseup —
+    // TWO md+cm pairs but ONE mouseup. A per-event suppress flag let the 2nd mousedown
+    // toggle back OFF (the right-click-does-nothing symptom). The gesture latch must
+    // make all four pre-mouseup events collapse to a single toggle.
     const h = harness();
     withDisPanel(h);
-    // mousedown right toggles ON and arms suppression of the following contextmenu
-    listener(h, 'mousedown')({ button: 2, ctrlKey: false, clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    const at = () => ({ button: 2, ctrlKey: false, clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    const cm = () => ({ preventDefault: jest.fn(), clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    listener(h, 'mousedown')(at());     // pair 1 — toggles ON, latches the gesture
+    listener(h, 'contextmenu')(cm());   // swallowed
+    listener(h, 'mousedown')(at());     // pair 2 — must be ignored (latched)
+    listener(h, 'contextmenu')(cm());   // swallowed
+    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR); // still ON → exactly one fire
+  });
+
+  it('a SECOND right-press (after mouseup releases the latch) toggles back OFF', () => {
+    const h = harness();
+    withDisPanel(h);
+    const at = () => ({ button: 2, ctrlKey: false, clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    const cm = () => ({ preventDefault: jest.fn(), clientX: DIS.x + 5, clientY: DIS.y + 1 });
+    // Gesture 1 → ON
+    listener(h, 'mousedown')(at()); listener(h, 'contextmenu')(cm());
+    listener(h, 'mousedown')(at()); listener(h, 'contextmenu')(cm());
+    listener(h, 'mouseup')({});       // releases the gesture latch
     expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR);
-    // the contextmenu of the SAME gesture must be swallowed, else it toggles back OFF
-    listener(h, 'contextmenu')({ preventDefault: jest.fn(), clientX: DIS.x + 5, clientY: DIS.y + 1 });
-    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR); // still ON → single fire
+    // Gesture 2 → OFF (proves the latch reset; a stuck latch would block this)
+    listener(h, 'mousedown')(at()); listener(h, 'contextmenu')(cm());
+    listener(h, 'mousedown')(at()); listener(h, 'contextmenu')(cm());
+    listener(h, 'mouseup')({});
+    expect(h.state.breakValue & BREAK_ADDR).toBe(0);
   });
 
   it('left mousedown still drives a normal left-click (lock-to-PC)', () => {

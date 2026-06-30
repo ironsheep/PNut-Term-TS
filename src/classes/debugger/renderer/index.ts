@@ -55,8 +55,7 @@ class DebuggerApp {
     });
     this.renderer = new DebuggerRenderer(canvas, this.state);
     this.interaction = new DebuggerInteraction(canvas, this.state, this.renderer, this.controller, {
-      onCogBrkRequest: (mask) => sendToMain({ kind: 'setCogBrk', mask }),
-      log: (msg) => log('info', `[MOUSE] ${msg}`)
+      onCogBrkRequest: (mask) => sendToMain({ kind: 'setCogBrk', mask })
     });
     // Initial paint.
     this.render();

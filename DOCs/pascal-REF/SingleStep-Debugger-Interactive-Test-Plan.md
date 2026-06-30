@@ -267,6 +267,8 @@ ON HW TEST: v0.9.84: shift+click works, right-click does not
 > `debug-*.log` — the `[R/info] [MOUSE] …` lines will show exactly what your right button
 > emits, making the fix deterministic.
 
+ON HW TEST: v0.9.85: right-click does not yet work
+
 ---
 
 ## Test 5: Breakpoint control buttons
