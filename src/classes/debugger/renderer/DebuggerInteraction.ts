@@ -233,7 +233,15 @@ export class DebuggerInteraction {
       ['STACK',  (rx, _ry, _rc) => this.onStackClick(rx)],
       ['EVENT',  (_rx, ry, _rc) => this.onEventClick(ry)],
       ['PTR',    (rx, ry, _rc) => this.onPointerClick(rx, ry)],
-      ['SMART',  (_rx, _ry, rc) => rc ? this.controller.toggleSmartPinDirFilter() : this.onResetSmartWatch()],
+      // Pascal FormMouseDown :948-953 — a click on the SMART box ALWAYS resets the
+      // watch list (both left and right); a right-click ALSO toggles the DIR-only ↔
+      // all-pins filter. The always-reset is what makes the toggle immediately
+      // visible: the list clears (box shows 'RQPIN▲') and repopulates fresh under the
+      // new filter, instead of the change hiding behind the delta-decay counters.
+      ['SMART',  (_rx, _ry, rc) => {
+        this.controller.resetSmartPinWatch();
+        if (rc) this.controller.toggleSmartPinDirFilter();
+      }],
       ['HUB',    (rx, ry, _rc) => this.onHubClick(rx, ry)]
     ];
 
@@ -557,10 +565,6 @@ export class DebuggerInteraction {
 
   private onResetWatch(): void {
     this.controller.resetRegisterWatch();
-    this.renderer.render();
-  }
-  private onResetSmartWatch(): void {
-    this.controller.resetSmartPinWatch();
     this.renderer.render();
   }
 

@@ -476,7 +476,7 @@ ON HW TEST: v0.9.87 pass timeout might still be too short? but it does appear to
 
 **Pass criteria**: Binary digits show correct pin states, three rows (DIR/OUT/IN) render properly, status indicators highlight correctly.
 
-ON HW TEST: v0.9.87 — bit-orientation query, NOT a defect. Display is exact Pascal parity
+ON HW TEST: v0.9.87 PASS — bit-orientation query, NOT a defect. Display is exact Pascal parity
 (`DrawRegBin` :2221 `for i := 31 downto 0` → bit 0 rightmost; `:1461-1462` draws the …B/high
 register LEFT, …A/low register RIGHT). Driven low pins 0/1/16 correctly appear in the
 right-hand 32-bit group; bit 16 sits in the same column on both DIR and OUT (`drvh #16` sets
@@ -489,7 +489,7 @@ note added to steps 1–2 above. No code change.
 
 **▶ Load:** `test10_smart_pin.spin2`
 
-**The program**: configures pin 0 as a smart-pin NCO (`wrpin`/`wxpin`/`wypin`/`drvl`), then reads it with `rdpin` in a loop.
+**The program**: configures pin 0 as a smart-pin NCO (`wrpin`/`wxpin`/`wypin`/`dirh`), then reads it with `rqpin` in a loop. (The SMART watch panel reads RQPIN itself via the debugger's Phase-3 smart-pin data, so it populates while the NCO runs regardless of the program's own `rqpin`/`rdpin` — the loop just keeps the cog busy.)
 
 **What this tests**: Smart pin delta tracking, DIR filter, compressed data parsing.
 
@@ -498,12 +498,22 @@ note added to steps 1–2 above. No code change.
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Step past smart pin setup | **SMART** panel shows `RQPIN△` label. |
-| 2 | Step through `rdpin` repeatedly | Smart pin watch list shows `P00` + 8-hex RQPIN value. Value changes as NCO runs. |
-| 3 | **Right-click** on smart pin watch box | Toggles between "DIR-only" and "all pins" filter. With "all pins", may show additional pins with non-zero RQPIN. |
-| 4 | **Left-click** on smart pin watch box | Resets the smart pin watch list. |
+| 2 | Step through `rqpin` repeatedly | Smart pin watch list shows `P00` + 8-hex RQPIN value. Value changes as NCO runs. |
+| 3 | **Right-click** on smart pin watch box | **Clears the list** (box momentarily shows `RQPIN▲`) **and** toggles the "DIR-only" ↔ "all pins" filter; the list then repopulates as you step. The momentary clear is the visible cue that the click registered. NOTE: this program has only ONE active smart pin (P00), so both filter modes usually show just P00 — the filter difference only appears if another pin has a *changing* RQPIN. (SMART is a 1-row strip just below the DIR/OUT/IN rows — click squarely on it.) |
+| 4 | **Left-click** on smart pin watch box | **Clears the list** (no filter change); it repopulates as you step. |
 | 5 | Continue stepping | Watch repopulates with newly changed pins. |
 
 **Pass criteria**: Smart pin values appear, delta tracking shows changes, DIR filter toggles, reset clears list.
+
+ON HW TEST: v0.9.87 — FOUND + FIXED a parity bug: right-click on the SMART box only toggled
+the filter without resetting, so the toggle hid behind the delta-decay counters and felt
+unresponsive ("changes occasionally, can't tell why"). Pascal `:948-953` ALWAYS resets the
+watch on a click (LB and RB) and RB *additionally* toggles the filter — so each click visibly
+clears + repopulates. Fixed in `DebuggerInteraction.ts` (+2 regression tests). Re-test in the
+next build. Separately, plan wording corrected: the program's read instruction is `rqpin`
+(not `rdpin`) and setup ends in `dirh #0` (not `drvl`); step past `rqpin`. Not a defect —
+the SMART watch panel reads RQPIN via the debugger's Phase-3 smart-pin data independently of
+the program. Continue Test 10.
 
 ---
 

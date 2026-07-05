@@ -221,3 +221,42 @@ describe('DebuggerInteraction — hub heat-map click (B.1)', () => {
     expect(h.state.hubAddr).toBe(0x12345);
   });
 });
+
+describe('DebuggerInteraction — SMART box click (Test 10, Pascal :948-953)', () => {
+  const SMART = { x: 300, y: 300, w: 100, h: 20 };
+  function harness() {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.hubMapBoundsPx.mockReturnValue({ x: -10, y: -10, w: 0, h: 0 });
+    // Only the SMART panel is under the cursor; all other panels miss.
+    h.renderer.panelBoundsPx.mockImplementation((name: string) =>
+      name === 'SMART' ? SMART : { x: -10, y: -10, w: 0, h: 0 }
+    );
+    return h;
+  }
+
+  it('left-click resets the watch list but does NOT toggle the DIR filter', () => {
+    const h = harness();
+    h.state.smartWatchList = [{ pin: 0, value: 0x1234, counter: 500 }];
+    h.state.smartWatchDirOnly = true;
+    (h.interaction as any).handleMouseDown(SMART.x + 1, SMART.y + 1, 0); // left
+    expect(h.state.smartWatchList).toEqual([]);
+    expect(h.state.smartWatchDirOnly).toBe(true); // unchanged
+    expect(h.renderer.render).toHaveBeenCalled();
+  });
+
+  it('right-click ALWAYS resets the list AND toggles the DIR filter (Pascal :950-953)', () => {
+    const h = harness();
+    h.state.smartWatchList = [{ pin: 0, value: 0x1234, counter: 500 }];
+    h.state.smartWatchDirOnly = true;
+    (h.interaction as any).handleMouseDown(SMART.x + 1, SMART.y + 1, 2); // right
+    expect(h.state.smartWatchList).toEqual([]);
+    expect(h.state.smartWatchDirOnly).toBe(false); // toggled all-pins
+
+    // A second right-click resets again and toggles back to DIR-only.
+    h.state.smartWatchList = [{ pin: 1, value: 0x5, counter: 3 }];
+    (h.interaction as any).handleMouseDown(SMART.x + 1, SMART.y + 1, 2);
+    expect(h.state.smartWatchList).toEqual([]);
+    expect(h.state.smartWatchDirOnly).toBe(true);
+  });
+});
