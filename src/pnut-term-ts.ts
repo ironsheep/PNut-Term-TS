@@ -144,6 +144,17 @@ export class DebugTerminalInTypeScript {
     //DebugTerminalInTypeScript.isTesting = true;
   }
 
+  /**
+   * Resolve a download target filename. P2 executables are always `.bin`, so a
+   * name supplied with NO extension gets `.bin` appended (e.g. `myTop` →
+   * `myTop.bin`); a name that already carries any extension is used verbatim.
+   * The caller's fs.existsSync check then reports a clear not-found error on the
+   * resolved (.bin) name if the file is absent.
+   */
+  private resolveBinFilename(name: string): string {
+    return path.extname(name) === '' ? `${name}.bin` : name;
+  }
+
   public async run(): Promise<number> {
     // ensure we know early if we are running in developer mode
     if (process.env.PNUT_DEVELOP_MODE) {
@@ -196,6 +207,7 @@ export class DebugTerminalInTypeScript {
          $ pnut-term-ts                                          # auto-detects and uses USB serial device (if only one connected)
          $ pnut-term-ts -p P9cektn7                              # run using PropPlug on /dev/tty.usbserial-P9cektn7
          $ pnut-term-ts -r myTopfile.bin                         # download to RAM (auto-detects single USB device)
+         $ pnut-term-ts -r myTopfile                             # ".bin" assumed when no extension given (→ myTopfile.bin)
          $ pnut-term-ts -r myTopfile.bin -p P9cektn7             # download myTopfile.bin to RAM and run
          $ pnut-term-ts --ide                                    # IDE mode (auto-detects single USB device)
          $ pnut-term-ts --ide -p P9cektn7                        # IDE mode for VSCode integration
@@ -438,7 +450,7 @@ export class DebugTerminalInTypeScript {
     if (options.flash && !options.ram) {
       this.context.actions.writeFlash = true;
       this.requiresFilename = true;
-      this.context.actions.binFilename = options.flash;
+      this.context.actions.binFilename = this.resolveBinFilename(options.flash);
 
       // Check if the file exists before proceeding
       if (!fs.existsSync(this.context.actions.binFilename)) {
@@ -453,7 +465,7 @@ export class DebugTerminalInTypeScript {
     if (options.ram && !options.flash) {
       this.context.actions.writeRAM = true;
       this.requiresFilename = true;
-      this.context.actions.binFilename = options.ram;
+      this.context.actions.binFilename = this.resolveBinFilename(options.ram);
 
       // Check if the file exists before proceeding
       if (!fs.existsSync(this.context.actions.binFilename)) {

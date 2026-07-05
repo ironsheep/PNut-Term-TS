@@ -452,6 +452,8 @@ ON HW TEST: v0.9.86 all steps work but HUB heatmap shows no content (just backgr
 > repeat mode the low-address area should now stay lit (fading over ~2s) rather than going
 > blank. Ships in the next build.
 
+ON HW TEST: v0.9.87 pass timeout might still be too short? but it does appear to be seconds now, so if matched pascal then good.
+
 ---
 
 ## Test 9: Pin registers and status indicators
@@ -466,13 +468,20 @@ ON HW TEST: v0.9.86 all steps work but HUB heatmap shows no content (just backgr
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Step past all `drv`/`flt` instructions | **PIN** panel shows three rows: **DIR**, **OUT**, **IN**. Each is 64 binary digits split 32+32 with byte separators. |
-| 2 | Examine DIR row | Bits 0, 1, 16 should be '1' (driven). Bit 2 should be '0' (floating). All other bits '0'. |
+| 1 | Step past all `drv`/`flt` instructions | **PIN** panel shows three rows: **DIR**, **OUT**, **IN**. Each is 64 binary digits split 32+32 with byte separators. **Bit orientation (Pascal `DrawRegBin`/`:1461`): bit 0 is the RIGHTMOST digit (LSB-right, standard binary); the LEFT 32-bit group is pins 63–32 (…B register), the RIGHT group is pins 31–0 (…A register).** So a low pin like 0/1/16 appears in the **right-hand** group. |
+| 2 | Examine DIR row | Bits 0, 1, 16 should be '1' (driven), Bit 2 '0' (floating), all others '0'. With bit 0 rightmost: the RIGHT half reads `… 00000001 00000000 00000011` — bit 16 is the rightmost digit of the 2nd byte-group, bits 0,1 in the last group. The LEFT half (pins 63–32) is all zeros. |
 | 3 | Examine OUT row | Bit 0 = '1' (high), bit 1 = '0' (low), bit 16 = '1' (high). |
 | 4 | Examine IN row | Shows actual pin input states from hardware. |
 | 5 | Observe **STATUS** indicators | **INIT** highlighted if COGINIT occurred. **STALLI**, **STR**, **MOD**, **LUTS** dimmed unless those features are active. Labels in bright orange when active, dark when inactive. |
 
 **Pass criteria**: Binary digits show correct pin states, three rows (DIR/OUT/IN) render properly, status indicators highlight correctly.
+
+ON HW TEST: v0.9.87 — bit-orientation query, NOT a defect. Display is exact Pascal parity
+(`DrawRegBin` :2221 `for i := 31 downto 0` → bit 0 rightmost; `:1461-1462` draws the …B/high
+register LEFT, …A/low register RIGHT). Driven low pins 0/1/16 correctly appear in the
+right-hand 32-bit group; bit 16 sits in the same column on both DIR and OUT (`drvh #16` sets
+both). The only inversion was the tester's assumption that bit 0 is leftmost — orientation
+note added to steps 1–2 above. No code change.
 
 ---
 
