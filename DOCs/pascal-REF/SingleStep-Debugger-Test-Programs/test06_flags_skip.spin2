@@ -22,7 +22,7 @@ DAT
                 org
 entry           mov     pa, #5
                 cmp     pa, #5          wz       ' Sets Z flag (equal)
-                cmp     pa, #3          wc       ' Sets C flag (5 > 3)
+                cmp     pa, #9          wc       ' Sets C flag: P2 CMP..WC sets C on unsigned borrow (5 < 9 -> C=1)
                 skip    #%1010                   ' SET bit = skip; %1010 -> skip 2nd & 4th
                 nop                              ' bit 0 = 0 -> executes (NOT skipped)
                 nop                              ' bit 1 = 1 -> skipped

@@ -15,8 +15,8 @@ import {
   M,
   STALL_CMD,
   BREAKPOINT_TIMEOUT_MS,
+  HEAT_FADE_MS,
   REPEAT_THROTTLE_MS,
-  HIT_DECAY_RATE
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
 import { DebuggerPhase3Parser } from './DebuggerPhase3';
@@ -65,6 +65,11 @@ export interface ControllerCallbacks {
   onInterleavedText?: (bytes: Uint8Array) => void;
   /** Optional diagnostic sink (routed to the shared debug log via main). */
   log?: (msg: string) => void;
+  /**
+   * Wall-clock source (ms) used for time-based heat decay (§6.18). Defaults to
+   * Date.now; injectable so tests can drive the fade deterministically.
+   */
+  now?: () => number;
 }
 
 /**
@@ -87,6 +92,14 @@ export class DebuggerController {
   private callbacks: ControllerCallbacks;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private phase3Parser: DebuggerPhase3Parser;
+
+  // ─── Time-based heat decay (§6.18) ────────────────────────────────────────
+  /** Wall-clock source for heat decay (Date.now unless a test injects one). */
+  private nowFn: () => number;
+  /** Timestamp of the last heat-decay pass; 0 until the first break. */
+  private lastHeatMs = 0;
+  /** Sub-unit decay carried between breaks so fast breaks still age heat. */
+  private heatDecayCarry = 0;
 
   // ─── Single-owner break framing (§3) ──────────────────────────────────
   // The controller is the SINGLE authority for the break transaction (mirrors
@@ -117,6 +130,7 @@ export class DebuggerController {
     this.state = state;
     this.callbacks = callbacks;
     this.phase3Parser = new DebuggerPhase3Parser(state);
+    this.nowFn = callbacks.now ?? (() => Date.now());
   }
 
   /**
@@ -233,11 +247,20 @@ export class DebuggerController {
    * break. Does NOT reset the parser or notify main — `driveFrames` owns those.
    */
   private finishBreak(): void {
+    // Time-based decay step (§6.18): Pascal decays by HIT_DECAY_RATE on EVERY
+    // break, but while a cog sits halted the P2 re-breaks continuously — at our
+    // fast break-processing rate a fixed per-break step washes sparse hub flashes
+    // out almost instantly. Instead we age heat by ELAPSED WALL-CLOCK TIME so the
+    // fade takes a consistent ~HEAT_FADE_MS regardless of break rate, reproducing
+    // Pascal's intended trail. The sub-unit remainder is carried so a burst of
+    // fast breaks still ages heat correctly (and never rounds the decay to zero).
+    const decay = this.heatDecayStep();
+
     // Decay heat for any address we did NOT receive (those that weren't
     // set to 254 in this pass). Pascal: CogImageHit[i] -= HitDecayRate.
     for (let i = 0; i < this.state.cogHit.length; i++) {
-      if (this.state.cogHit[i] > HIT_DECAY_RATE) {
-        this.state.cogHit[i] -= HIT_DECAY_RATE;
+      if (this.state.cogHit[i] > decay) {
+        this.state.cogHit[i] -= decay;
       } else {
         this.state.cogHit[i] = 0;
       }
@@ -249,7 +272,7 @@ export class DebuggerController {
     for (let y = 0; y < this.state.hubSubBlockHit.length; y++) {
       const cur = this.state.hubSubBlock[y];
       this.state.hubSubBlockHit[y] = nextHubHeat(
-        cur, this.state.hubSubBlockOld[y], this.state.hubSubBlockHit[y], HIT_DECAY_RATE
+        cur, this.state.hubSubBlockOld[y], this.state.hubSubBlockHit[y], decay
       );
       this.state.hubSubBlockOld[y] = cur;
     }
@@ -257,6 +280,25 @@ export class DebuggerController {
     // pass that owns the list data.
     this.updateRegisterWatch();
     this.updateSmartPinWatch();
+  }
+
+  /**
+   * Integer heat-decay amount for this break, derived from wall-clock elapsed
+   * time so the fade is break-rate independent (§6.18). Full 254→0 over
+   * HEAT_FADE_MS. The fractional remainder is carried across breaks so a burst of
+   * fast breaks (each < 1 decay unit) still ages heat instead of rounding to 0.
+   * First break (lastHeatMs == 0) decays nothing — it only anchors the clock.
+   */
+  private heatDecayStep(): number {
+    const now = this.nowFn();
+    let decay = 0;
+    if (this.lastHeatMs !== 0) {
+      this.heatDecayCarry += (now - this.lastHeatMs) * (255 / HEAT_FADE_MS);
+      decay = Math.floor(this.heatDecayCarry);
+      this.heatDecayCarry -= decay;
+    }
+    this.lastHeatMs = now;
+    return decay;
   }
 
   /**

@@ -20,7 +20,7 @@ import {
 } from './shared/debuggerFixture';
 import { shouldStrikeSkipped } from '../src/classes/debugger/renderer/DebuggerRenderer';
 import { nextHubHeat } from '../src/classes/debugger/renderer/DebuggerController';
-import { HIT_DECAY_RATE, HUB_BLOCK_RATIO } from '../src/classes/debugger/shared/constants';
+import { HIT_DECAY_RATE, HUB_BLOCK_RATIO, HEAT_FADE_MS } from '../src/classes/debugger/shared/constants';
 
 describe('§3 SKIP strikethrough — shouldStrikeSkipped (#8)', () => {
   // PC at cog address 0x010; SKIP pattern with bits 0, 2, 31 set.
@@ -120,14 +120,30 @@ describe('§6.18 hub heat — end-to-end Phase-3 capture + flash/decay (#8)', ()
     expect(h.state.hubSubBlockHit[0]).toBe(254);
   });
 
-  it('decays an unrequested sub-block toward 0 over successive breaks', () => {
-    const h = makeController();
-    step(h, 0x1111, 0xABCD);            // round 1
-    step(h, 0x2222, 0x9999);            // round 2 → heat 254
-    // Round 3: block 0 unchanged (same checksum) → not re-requested → decay.
+  it('decays an unrequested sub-block by ELAPSED WALL-CLOCK TIME, not per-break (§6.18)', () => {
+    // Time-based fade: decay is a function of elapsed ms (255 over HEAT_FADE_MS),
+    // so a burst of fast idle breaks no longer washes heat out — only the passage
+    // of time does. Inject a controllable clock to drive the fade deterministically.
+    let clock = 1000;
+    const h = makeController(makeDebuggerState(), { now: () => clock });
+    step(h, 0x1111, 0xABCD);            // round 1: first receipt (anchors clock)
+    step(h, 0x2222, 0x9999);            // round 2: change → heat 254 (no time elapsed)
+    expect(h.state.hubSubBlockHit[0]).toBe(254);
+
+    // A flurry of idle breaks with NO time elapsed must NOT decay the flash.
+    for (let i = 0; i < 20; i++) {
+      const p0 = buildPhase1Packet({ longs: { [MSG.COND]: 0 }, hubSum: [0x2222] });
+      h.controller.processPhase1(p0);
+      h.controller.processPhase3(buildPhase3Packet(h.state));
+    }
+    expect(h.state.hubSubBlockHit[0]).toBe(254);
+
+    // Advance half the fade window (block 0 unchanged) → ~half decayed.
+    clock += HEAT_FADE_MS / 2;
     const p1 = buildPhase1Packet({ longs: { [MSG.COND]: 0 }, hubSum: [0x2222] });
     h.controller.processPhase1(p1);
     h.controller.processPhase3(buildPhase3Packet(h.state));
-    expect(h.state.hubSubBlockHit[0]).toBe(254 - HIT_DECAY_RATE);
+    const expectedDecay = Math.floor((255 / HEAT_FADE_MS) * (HEAT_FADE_MS / 2)); // 127
+    expect(h.state.hubSubBlockHit[0]).toBe(254 - expectedDecay);
   });
 });

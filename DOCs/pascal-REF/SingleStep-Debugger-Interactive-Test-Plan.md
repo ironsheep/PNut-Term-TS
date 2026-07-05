@@ -268,6 +268,7 @@ ON HW TEST: v0.9.84: shift+click works, right-click does not
 > emits, making the fix deterministic.
 
 ON HW TEST: v0.9.85: right-click does not yet work
+ON HW TEST: v0.9.86: right-click WORKS ✅ (root cause: macOS/Electron delivers TWO mousedown+contextmenu pairs per physical right-press but only ONE mouseup; the per-event suppress flag let the 2nd mousedown double-toggle the action back off. Fix = whole-gesture latch released on mouseup.)
 
 ---
 
@@ -284,9 +285,11 @@ ON HW TEST: v0.9.85: right-click does not yet work
 |------|--------|-----------------|
 | 1 | Observe buttons | MAIN button should be highlighted (active). All others dimmed. This matches initial *BreakValue* = break on MAIN. |
 | 2 | **Left-click DEBUG** button | DEBUG highlights, MAIN dims. Only DEBUG condition active. *BreakValue* = $10. |
-| 3 | **Right-click INT1** button | INT1 highlights additionally (toggle on). *BreakValue* = $12 (DEBUG + INT1). DEBUG stays highlighted. |
-| 4 | **Right-click INT1** again | INT1 dims (toggle off). *BreakValue* = $10 (DEBUG only). |
-| 5 | **Left-click MAIN** | MAIN highlights exclusively. DEBUG, INT1 all dim. *BreakValue* = $01. |
+| 3 | **Right-click INT1** (plain) | **DEBUG dims, INT1 highlights.** DEBUG is *exclusive* to every single-step bit, so right-clicking any INT/MAIN clears it (Pascal `:768` masks with `$FFFFFFEF` before XOR). *BreakValue* = $02 (INT1 only). |
+| 4 | **Right-click INT1** again | INT1 dims (toggle off). No break conditions remain, so the **top-left BREAK button highlights** — its "no condition set" indicator (Pascal `:1775`, `BreakValue and $6FF = 0`). *BreakValue* = $00. |
+| 5 | **Left-click MAIN** | MAIN highlights exclusively; BREAK un-highlights. *BreakValue* = $01. |
+| 5a | **Right-click INT1** | **Additive toggle:** INT1 highlights and **MAIN stays highlighted** (right-click INT1 only clears the DEBUG bit, which isn't set here). This is the additive-toggle behavior — it works when the base is MAIN/an INT, but NOT when the base is the exclusive DEBUG (step 3). *BreakValue* = $03 (MAIN + INT1). |
+| 5b | **Right-click INT1** again | INT1 dims, MAIN stays. *BreakValue* = $01. |
 | 6 | Press **I** key | INIT button toggles (independent bit 8). INIT highlights. MAIN stays highlighted. *BreakValue* = $101. |
 | 7 | Press **I** again | INIT dims. *BreakValue* = $01. |
 | 8 | Press **B** key | BREAK button action: clears all conditions except INIT. All mode buttons dim. |
@@ -309,6 +312,18 @@ ON HW TEST: v0.9.84: 3, 4 don't work. and we have [->int1] and [int1] you are no
 > bug because the keyboard equivalents work: step 6 (`I`), 9 (`M`), 10 (`D`) all toggle
 > correctly. Re-run 3–4 after the v0.9.85 right-click fix lands.
 
+ON HW TEST: v0.9.86: right-click now delivers correctly, and the observed behavior is
+EXACT Pascal parity — the ORIGINAL steps 3–4 expectations ($12 DEBUG+INT1) were WRONG and
+are corrected above. Verified vs `DebuggerUnit.pas`: (a) DEBUG is mutually exclusive —
+right-clicking INT1 clears the DEBUG bit (`:768` `and $FFFFFFEF`), so DEBUG turning off in
+step 3 is correct, not a bug; (b) when all conditions clear (step 4 → $00), the top-left
+BREAK button lights as the "no break condition set" indicator (`:1775`). Our
+`DebuggerInteraction.ts` mirrors the Pascal formulas bit-for-bit. Added steps 5a/5b to
+demonstrate the *additive* right-click toggle on a MAIN base — the coverage the old steps
+3–4 were reaching for but couldn't get from an exclusive-DEBUG base.
+
+ON HW TEST: v0.9.86 - PASS
+
 ---
 
 ## Test 6: Header display — flags, SKIP, XBYTE, CT
@@ -324,7 +339,7 @@ ON HW TEST: v0.9.84: 3, 4 don't work. and we have [->int1] and [int1] you are no
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Step **through** `cmp pa, #5 wz` (press SPACE so the instruction EXECUTES, i.e. PC moves past it) | **Z** flag shows **1** (equal). **C** unchanged. |
-| 2 | Step **through** `cmp pa, #3 wc` | **C** flag shows **1** (5 > 3, carry set). **Z** may change. |
+| 2 | Step **through** `cmp pa, #9 wc` | **C** flag shows **1** (P2 `CMP…WC` sets C on unsigned *borrow*: 5 < 9 → C=1). **Z** stays 1 (`wc`-only leaves Z). |
 | 3 | Step past `skip #%1010` | **SKIP** panel shows **SKIP** label with 32-bit binary pattern. Bits corresponding to %1010 are set. |
 | 4 | Step through skipped instructions | Skipped instruction lines in disassembly show semi-transparent strikethrough. Non-skipped lines render normally. |
 | 5 | Observe **CT** panel | Shows 16 hex digits split into two 8-digit groups. Value increases on each step. Hover over CT to see elapsed seconds in hint bar. |
@@ -340,7 +355,21 @@ ON HW TEST: v0.9.84: nope step 2 no C flag - and don't you mean step thru so the
 > "no C flag". The C/Z extraction itself is verified correct (C = bit 31, Z = bit 30 of
 > mIRET; `DebuggerState.cFlag/zFlag`). **Re-verify on HW after stepping THROUGH the
 > `cmp …wc`:** C should read 1. If it still reads 0 after the instruction executes, THAT is a
-> real defect — capture the step and flag it.
+> real defect — capture the step and flag it.ON HW TEST: v0.9.84
+
+ON HW TEST: v0.9.86 C flag not set
+
+> **ROOT CAUSE = test-program bug, NOT a debugger defect (v0.9.86).** The old program ran
+> `cmp pa, #3 wc` with `pa = 5`. P2 `CMP…WC` sets **C only on unsigned borrow — C = 1 iff
+> Dest < Src** (authoritative P2 spec; Pascal-independent). `5 < 3` is false, so C = 0, and
+> nothing later touches C — the test could NEVER show C=1 regardless of the debugger. The
+> program comment "(5 > 3, carry set)" had the carry convention backwards. The C/Z
+> *extraction* is confirmed EXACT Pascal parity (`DebuggerState.cFlag` = `message[14] >>> 31`
+> = Pascal `:1410` `DebuggerMsg[mIRET] shr 31 and 1`; Z = bit 30; PC = `& $FFFFF`). **Fix:
+> the test program now does `cmp pa, #9 wc` (5 < 9 → C=1).** Recompile & re-download
+> `test06_flags_skip.spin2`, then re-run — C should read 1 after stepping through it.
+
+ON HW TEST: v0.9.86 PASS
 
 ---
 
@@ -377,6 +406,8 @@ ON HW TEST: v0.9.84: space bar is stepping two instructions, is this due to AUGS
 > advance exactly one instruction. If it double-steps THERE too, that would be a real
 > double-keydown bug — but the AUG case above is expected and matches PNut.)
 
+ON HW TEST: v0.9.86 PASS
+
 ---
 
 ## Test 8: Hub memory viewer and heatmap
@@ -403,6 +434,23 @@ ON HW TEST: v0.9.84: space bar is stepping two instructions, is this due to AUGS
 | 10 | Click on a hex byte in hub data | Hub viewer navigates to that byte's address. |
 
 **Pass criteria**: Hub data renders correctly, all scroll amounts match spec, nibble editing works, heatmap click navigates.
+
+ON HW TEST: v0.9.86 all steps work but HUB heatmap shows no content (just background color)
+
+> **ROOT CAUSE = heat decay washout at high break rate; FIXED (time-based decay).**
+> Single-stepping proved the mechanism works: a `wrlong` to a NEW hub address lights a
+> single yellow sub-block pixel — which then *fades*. While a cog sits halted the P2
+> re-breaks continuously (we hold it with `STALL_CMD`), and Pascal decays heat by
+> `HIT_DECAY_RATE` on EVERY break (`DebuggerUnit.pas:1677-1688`). Pascal's slow GDI loop
+> processed few breaks/sec → a visible ~1-2s trail; our fast offloaded pipeline processes
+> breaks far faster → the sparse hub flashes (once per `wrlong`) washed out almost instantly,
+> so 2-second repeat mode looked blank. (The REG map survives only because registers change
+> on every advance, constantly re-flashing.) **Fix:** heat now decays by ELAPSED WALL-CLOCK
+> TIME (`HEAT_FADE_MS`, ~2s full→cold) instead of per-break — break-rate independent,
+> reproducing Pascal's intended trail on any hardware; applied to both hub and REG/LUT heat.
+> `DebuggerController.heatDecayStep()`; tests in `debuggerDisplay.test.ts`. **Re-test:** in
+> repeat mode the low-address area should now stay lit (fading over ~2s) rather than going
+> blank. Ships in the next build.
 
 ---
 

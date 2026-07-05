@@ -95,7 +95,21 @@ export const DIS_LINE_IDEAL      = 3;
 export const DIS_SCROLL_THRESHOLD = 8;
 
 export const HIT_INITIAL    = 254; // initial heat value on change
-export const HIT_DECAY_RATE = 2;   // per-break decay
+export const HIT_DECAY_RATE = 2;   // legacy per-break decay step (still the pure-decision unit / Pascal reference)
+
+/**
+ * Wall-clock time for a heat cell to fade from full (254) to cold (0), §6.18.
+ *
+ * Pascal decays heat by HIT_DECAY_RATE on EVERY received break (DebuggerUnit.pas
+ * :1677-1688). While a cog sits halted the P2 re-breaks continuously (we hold it
+ * with STALL_CMD), so heat decays at the break-processing rate. Pascal's slow GDI
+ * loop processed few breaks/sec, giving a visible ~1-2s trail; our fast offloaded
+ * pipeline processes breaks far faster, so a fixed per-break decay washed sparse
+ * hub flashes out almost instantly. We therefore decay by ELAPSED WALL-CLOCK TIME
+ * instead of per-break — reproducing Pascal's intended fade on any hardware speed.
+ * ~2s ≈ Pascal's 127-step fade at its historical halted break rate; tune on HW.
+ */
+export const HEAT_FADE_MS = 2000;
 
 // ============================================================================
 // Command/break-condition word (§3.7)
