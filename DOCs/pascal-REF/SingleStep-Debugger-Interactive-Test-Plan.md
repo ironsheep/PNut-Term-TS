@@ -515,6 +515,21 @@ next build. Separately, plan wording corrected: the program's read instruction i
 the SMART watch panel reads RQPIN via the debugger's Phase-3 smart-pin data independently of
 the program. Continue Test 10.
 
+ON HW TEST: v0.9.88 — right-click on SMART "does nothing" VISIBLY, which is EXPECTED for this
+program (fix IS in the 0.9.88 binary; NOT a regression). Two reasons: (1) the NCO smart pin
+free-runs, so P00's RQPIN changes on every break — incl. the idle hold-breaks that stream
+while halted — and repopulates within a frame of the reset, so the momentary clear is
+imperceptible; (2) only pin 0 has DIR set, so DIR-only and all-pins show the identical list.
+The reset+toggle IS firing (proven by the 2 unit tests). A VISUAL gate for the DIR filter is
+architecturally INFEASIBLE with a clean program: the watch condition (`:1590-1592`) shows a
+pin only if `(all-pins OR DIR[i]=1) AND RQPIN changed`, so all-pins adds over DIR-only ONLY a
+pin with DIR=0 AND changing RQPIN — but on P2 you enable a smart pin by driving DIR high
+(`dirh`, true for input/counting modes too), so every changing-RQPIN pin has DIR=1 (shows in
+BOTH modes) and every DIR=0 pin is disabled → static RQPIN (shows in NEITHER). The only
+difference case is spurious noise on a floating DIR=0 input — not a reliable gate. RESOLUTION:
+Test 10 step 3 verified by the 2 committed unit tests (reset-only on LB; reset+toggle on RB,
+exact Pascal parity); no HW visual demo. Step 3 = PASS (mechanism-verified).
+
 ---
 
 ## Test 11: Interrupt status and execution mode
@@ -529,10 +544,16 @@ the program. Continue Test 10.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Step until interrupt fires | **EXEC** panel changes from **MAIN** to **INT1**. |
-| 2 | Observe interrupt status | **INT** panel shows `INT1 CT1 busy`. INT2/INT3 show `idle` or `off`. |
-| 3 | Observe SKIP panel | Should show **"Suspended during MODE"** (dimmed) when *ExecMode* != 0 (inside INT1). |
-| 4 | Step through `reti1` | EXEC returns to **MAIN**. INT1 status changes to `idle`. SKIP pattern becomes active again. |
+| 0 | **Enable the INT1 break condition** (prerequisite) | Left-click **MAIN**, then **right-click the plain `INT1` button** (right column, *not* `→INT1`) → BreakValue = MAIN + INT1 ($03). Without this the debugger breaks ONLY on MAIN, so the INT1 handler runs invisibly between steps and INT1 stays perpetually `wait` (armed) — you never see the interrupt. INT states are `off`→`idle`→`wait`→`busy` (Pascal `:2282`); `wait` = armed, `busy` = handler executing. |
+| 1 | Step until interrupt fires | With MAIN+INT1 breaking, a step or two into `.idle` the pending CT1 fires and you break at the first handler instruction: **EXEC** panel changes from **MAIN** to **INT1**. |
+| 2 | Observe interrupt status | **INT** panel shows `INT1 CT1 busy` (you are now *inside* the handler). INT2/INT3 show `off` (no event armed). |
+| 3 | Observe SKIP panel | When *ExecMode* != 0 (inside INT1) it shows **"Suspended during INT1"** — the MESSAGE text is bright **WHITE** bold (Pascal `:1424`, cData); only the 32-bit pattern *behind* it dims to `cDataDim`. (test11 runs no `skip`, so that pattern is zeros — the white "Suspended during INT1" line is the thing to watch, appearing in the handler and vanishing on return to MAIN.) |
+| 4 | Step through `reti1` | EXEC returns to **MAIN**. INT1 re-arms to **`wait`** (the handler's `addct1` re-armed CT1 — NOT `idle`/`off`). SKIP pattern becomes active again. |
+
+ON HW TEST: v0.9.88 PASS — needed the step-0 enable-INT1 prerequisite (added). INT1 flips
+busy↔wait as you step into/out of the handler; "Suspended during INT1" shows correctly in
+WHITE bold (Pascal `:1424` cData, exact parity — the pattern behind it dims, the message does
+not). Log `debug_260706-132450.log` confirmed clean single-owner framing (no errors/desync).
 
 **Pass criteria**: Execution mode changes on interrupt entry/exit, interrupt status shows correct event name and state, SKIP suspension message appears.
 
@@ -550,7 +571,7 @@ the program. Continue Test 10.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Compile and download | **Two** debugger windows open: "Debugger - Cog 0" and "Debugger - Cog 1". Windows cascaded by offset. |
+| 1 | Compile and download, then **run Cog 0 to the `cogspin`** | On download only **"Debugger - Cog 0"** opens — Cog 0 is halted at main()'s FIRST instruction, BEFORE the `cogspin` that launches Cog 1 (so Cog 1 doesn't exist yet; "two windows on download" was a wrong expectation). In the Cog 0 window press **ENTER (repeat mode)** (or step) so Cog 0 executes the `cogspin`; Cog 1 then launches, breaks on `DEBUG_COGINIT`, and **"Debugger - Cog 1"** auto-opens (cascaded). |
 | 2 | In Cog 0 window, press SPACE | Cog 0 steps. Cog 1 window remains at its breakpoint. |
 | 3 | In Cog 1 window, press SPACE | Cog 1 steps independently. |
 | 4 | In Cog 0 window, press ENTER (repeat mode) | Cog 0 runs continuously. Cog 1 can still be independently stepped. |
@@ -558,6 +579,28 @@ the program. Continue Test 10.
 | 6 | Observe hint bar when dimmed | If one cog is running and the other is halted, dimmed window hint should mention async break availability. |
 
 **Pass criteria**: Multiple debugger windows open, each cog steps independently, COGBRK hint appears when applicable.
+
+ON HW TEST: v0.9.88 — "2nd window didn't open" = EXPECTED with this program, not a code bug.
+Log `debug_260706-133241.log`: Cog 0 stuck at PC=$0 (main's 1st break, BEFORE the `cogspin`),
+zero Cog-1 activity. Multi-cog window creation IS implemented + cog-agnostic
+(`mainWindow.ts:355` auto-creates `DebugDebuggerWindow(ctx, cogId)` per cog on first Phase-1)
+— it just never got a Cog-1 packet because Cog 1 was never launched. Fix the run procedure
+(step 1: run Cog 0 to the `cogspin`).
+
+CONFIRMED (log `debug_260706-134258.log`): running Cog 0 to the `cogspin` DID launch Cog 1
+(`Cog1 INIT $0000_0FA8 …` demuxed), but NO Cog-1 window formed — Cog 1's break traffic was
+funneled into Cog 0's controller. ROOT CAUSE = **multi-cog single-step debugging is NOT
+supported by the v0.9.80 single-owner comms model.** `extractionCore.ts:222`
+`debuggerTransactionCog: number|null` tracks ONE cog: once Cog 0's first Phase-1 opens the
+session the worker raw-passes ALL subsequent debug bytes to Cog 0 (tagged DEBUGGER0) and never
+re-classifies a 2nd cog's Phase-1 → `debuggerPacketReceived` never fires for Cog 1, no window;
+Cog 1's breaks mis-attribute into Cog 0 (its PC jumps around). Per-cog window CREATION is fine
+(`mainWindow.ts:355`); the gap is the worker's single-cog transaction. FIX (non-surgical,
+tractable — breaks are lock-atomic per cog, `lock[15]`, so NOT byte-interleaved): demux by the
+Phase-1 cog-ID at the worker — emit DEBUGGER{cogId}, spawn that cog's window, route its raw
+stream to its own controller; per-cog transaction map instead of a single `debuggerTransactionCog`.
+DECISION PENDING: build the multi-cog fix vs defer as a known limitation. Test 13/14 are
+single-cog and unaffected.
 
 ---
 
