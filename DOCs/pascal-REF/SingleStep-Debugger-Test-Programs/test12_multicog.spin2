@@ -14,8 +14,15 @@
 ''   entry (cog 0) COGINITs cog 1 as its very first instruction, loading cog 1's
 ''   PASM from hub (@cog1code). With DEBUG_COGINIT=1 the P2 debug interrupt fires
 ''   on the launched cog's first instruction, so cog 1 breaks on startup and a
-''   second window opens. Each cog then increments its OWN local counter in a
-''   tight loop, so the two windows step fully independently.
+''   second window opens. Each cog then increments its OWN counter in a tight
+''   loop, so the two windows step fully independently.
+''
+''   CONSTRUCTION NOTE: the two cog images must occupy DISJOINT hub regions. The
+''   per-cog counters are therefore hub-backed `long 0` cells, NOT `res` — a `res`
+''   reserves a cog register but emits no hub bytes, so cog 1's image would land
+''   on top of cog 0's counter slot (both claiming the same hub address) and the
+''   layout becomes ambiguous. With `long 0` each counter has real hub storage and
+''   cog 1's image (`orgh`-aligned) sits cleanly after cog 0's block.
 ''
 '' Expected on hardware:
 ''   1. Cog 0 breaks at `entry` (coginit) — "Debugger - Cog 0" window.
@@ -29,22 +36,23 @@ CON
   DEBUG_COGINIT = 1
 
 DAT
-                org     0
 ' ── Cog 0 ────────────────────────────────────────────────────────────────────
 ' Launch cog 1 from hub as the very first instruction (1-step gate), then loop.
 ' COGINIT #1,##@cog1code : Dest %0_0_00001 = load-from-hub, specific cog 1;
-' Src = hub address of cog 1's image; loads 504 longs ($000-$1F7) into cog 1.
+' Src = hub address of cog 1's image; loads $000-$1F7 into cog 1.
+                org     0
 entry           coginit #1, ##@cog1code
-                mov     x, #0
 .loop           add     x, #1
                 jmp     #.loop
-x               res     1
+x               long    0                       ' hub-backed counter (see CONSTRUCTION NOTE)
 
 ' ── Cog 1 ────────────────────────────────────────────────────────────────────
-' Small PASM loop, assembled to run at cog $000, residing in hub at @cog1code.
+' Self-contained hub image, assembled to run at cog $000, residing at @cog1code.
+' `orgh` puts it on a clean hub long boundary, disjoint from cog 0's block.
 ' Breaks on its first instruction via the debug-on-coginit interrupt.
+                orgh
+cog1code
                 org     0
-cog1code        mov     y, #0
-.cloop          add     y, #1
-                jmp     #.cloop
-y               res     1
+c1              add     y, #1
+                jmp     #c1
+y               long    0                       ' hub-backed counter (see CONSTRUCTION NOTE)
