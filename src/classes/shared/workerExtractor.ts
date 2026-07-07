@@ -444,4 +444,23 @@ export class WorkerExtractor extends EventEmitter {
   public signalDebuggerPhase3Done(): void {
     this.worker.postMessage({ type: 'debuggerPhase3Done' });
   }
+
+  /**
+   * Relay a debugger window's per-break Phase-3 fixed-size hint (§3) to the
+   * worker's per-cog demux, so it can delimit cog `cogId`'s Phase-3 exactly. A
+   * tiny forward — no framing on the main thread. Mirrors signalDebuggerPhase3Done.
+   */
+  public signalDebuggerPhase3Size(cogId: number, size: number): void {
+    this.worker.postMessage({ type: 'debuggerPhase3Size', cogId, size });
+  }
+
+  /**
+   * DTR/RTS reset (§4): tell the worker's per-cog demux to abandon every
+   * in-flight debug exchange and return to awaitingPhase1, so the post-reboot
+   * first Phase-1 of any cog frames cleanly. A tiny forward — no framing on the
+   * main thread. Scoped to debug state; does NOT clear the streaming ring.
+   */
+  public signalDebuggerReset(): void {
+    this.worker.postMessage({ type: 'debuggerReset' });
+  }
 }

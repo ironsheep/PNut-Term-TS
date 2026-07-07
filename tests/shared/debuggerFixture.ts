@@ -131,6 +131,8 @@ export interface ControllerCalls {
   render: number;
   timeout: number;
   phase3Complete: number;
+  /** Per-break Phase-3 size hints (§3), in emit order. */
+  phase3Size: Array<{ cogId: number; size: number }>;
 }
 
 export interface ControllerHarness {
@@ -144,12 +146,13 @@ export function makeController(
   state: DebuggerState = makeDebuggerState(),
   cb: Partial<ControllerCallbacks> = {}
 ): ControllerHarness {
-  const calls: ControllerCalls = { phase2: [], render: 0, timeout: 0, phase3Complete: 0 };
+  const calls: ControllerCalls = { phase2: [], render: 0, timeout: 0, phase3Complete: 0, phase3Size: [] };
   const callbacks: ControllerCallbacks = {
     sendPhase2: (b) => { calls.phase2.push(b); },
     requestRender: () => { calls.render++; },
     onBreakpointTimeout: () => { calls.timeout++; },
     onPhase3Complete: () => { calls.phase3Complete++; },
+    onPhase3Size: (cogId, size) => { calls.phase3Size.push({ cogId, size }); },
     ...cb
   };
   return { controller: new DebuggerController(state, callbacks), state, calls };

@@ -15,7 +15,8 @@ import { ExtractionCore } from '../classes/shared/extractionCore';
  * 2. Constructs an ExtractionCore over them (all framing + classification +
  *    the single-step debugger Phase-3 raw-passthrough live in the core now).
  * 3. Runs the autonomous loop: pump the core, emit periodic RX stats, repeat.
- * 4. Forwards control signals (debuggerPhase3Done, clear) to the core.
+ * 4. Forwards control signals (debuggerPhase3Done, debuggerPhase3Size, clear) to
+ *    the core.
  *
  * The framing logic was lifted VERBATIM into `ExtractionCore` (a
  * behavior-preserving code-move) so the same engine can be driven in-process by
@@ -133,9 +134,22 @@ parentPort.on('message', (msg: any) => {
       break;
 
     case 'debuggerPhase3Done':
-      // The renderer's structural parser reported Phase 3 complete: close the
-      // transaction so the next phase1 (any cog) is framed normally by find416.
+      // The renderer's structural parser reported Phase 3 complete. No-op under
+      // the per-cog demux (the core self-delimits each break); kept for wiring.
       if (core) core.onPhase3Done();
+      break;
+
+    case 'debuggerPhase3Size':
+      // Per-break Phase-3 fixed-size hint (§3) relayed from a debugger window's
+      // renderer: lets the core's per-cog demux delimit cog `cogId`'s Phase-3.
+      if (core) core.signalDebuggerPhase3Size(msg.cogId, msg.size);
+      break;
+
+    case 'debuggerReset':
+      // DTR/RTS reset (§4): abandon every in-flight per-cog debug exchange and
+      // return to awaitingPhase1 so the post-reboot first Phase-1 frames cleanly.
+      // Scoped to debug state — does NOT clear the streaming ring.
+      if (core) core.resetDebuggerFraming();
       break;
 
     case 'clear':

@@ -32,7 +32,15 @@
 
 import { loadCaptureFixture, runReplay } from './shared/debuggerReplay';
 import { makeController, makeDebuggerState, buildPhase1Packet, buildPhase3Packet } from './shared/debuggerFixture';
-import { BREAKPOINT_TIMEOUT_MS } from '../src/classes/debugger/shared/constants';
+import {
+  BREAKPOINT_TIMEOUT_MS,
+  COG_BLOCK_SIZE,
+  HUB_BLOCK_RATIO,
+  DIS_LINES,
+  PTR_BYTES,
+  HUB_SUB_BLOCK_SIZE
+} from '../src/classes/debugger/shared/constants';
+import { DebuggerState, DisMode } from '../src/classes/debugger/renderer/DebuggerState';
 
 describe('debugger replay oracle (§1)', () => {
   const fixture = loadCaptureFixture();
@@ -290,5 +298,67 @@ describe('COGINIT interleaved-text demux (§3.1)', () => {
     h.controller.processPhase3(buildPhase3Packet(state));
     expect(h.calls.phase2.length).toBe(2);
     expect(seen.join('')).toBe(COGINIT_LINE);
+  });
+});
+
+// ── §3 — per-break Phase-3 size hint (renderer→main→worker) ──────────────────
+//
+// The controller fires onPhase3Size exactly once per break, right after Phase-2,
+// carrying THIS cog's exact FIXED Phase-3 byte count (cog blocks + hub blocks +
+// hub reads, EXCLUDING the self-describing smart-pin tail the worker sizes on its
+// own). Main relays it (renderer→main→worker, §4) so the worker's per-cog demux
+// delimits Phase-3 precisely. The size carries the optional +DIS_LINES*4 disasm
+// term that depends on the renderer-only `disMode` — the exact quantity the worker
+// cannot compute itself, which is why the hint exists at all.
+describe('§3 — Phase-3 size hint', () => {
+  const COG_CRC = new Array(64).fill(0x1234); // every cog block changes on first break
+
+  /** Independent re-derivation of DebuggerController.buildPhase2's
+   *  expectedPhase3Fixed, read from the pending-block state after processPhase1. */
+  const expectedFixed = (state: DebuggerState): number =>
+    state.pendingCogBlocks.length * COG_BLOCK_SIZE * 4 +
+    state.pendingHubBlocks.length * HUB_BLOCK_RATIO * 2 +
+    (state.pendingHubCode ? DIS_LINES * 4 : 0) + PTR_BYTES * 3 + HUB_SUB_BLOCK_SIZE;
+
+  it('emits exactly one hint per break, tagged with this window’s cogId', () => {
+    const state = makeDebuggerState(3); // cog 3
+    const h = makeController(state);
+    for (let i = 0; i < 3; i++) {
+      h.controller.processPhase1(buildPhase1Packet({ cogCrc: COG_CRC }));
+      h.controller.processPhase3(buildPhase3Packet(state));
+    }
+    expect(h.calls.phase3Size.length).toBe(3);         // one per break, no more/less
+    expect(h.calls.phase3Size.every((e) => e.cogId === 3)).toBe(true); // always this cog
+  });
+
+  it('the hint size matches the controller’s exact fixed Phase-3 accounting', () => {
+    const state = makeDebuggerState(0);
+    const h = makeController(state);
+    h.controller.processPhase1(buildPhase1Packet({ cogCrc: COG_CRC }));
+    // Emitted inside processPhase1 (right after Phase-2), when pendingCog/Hub/HubCode
+    // reflect this break — cross-check the emitted size against them.
+    expect(h.calls.phase3Size.length).toBe(1);
+    expect(h.calls.phase3Size[0].size).toBe(expectedFixed(state));
+  });
+
+  it('includes the +DIS_LINES*4 disasm term only when disMode requests hub code', () => {
+    // dmPC with pc=0 (< 0x400 ⇒ cog-execute) requests NO disassembly read.
+    const pcState = makeDebuggerState(0);
+    const pc = makeController(pcState);
+    pc.controller.processPhase1(buildPhase1Packet({ cogCrc: COG_CRC }));
+    expect(pcState.pendingHubCode).toBe(false);
+    const sizeNoDisasm = pc.calls.phase3Size[0].size;
+
+    // dmHub is hub-locked ⇒ the disassembly window is always read ⇒ +DIS_LINES*4.
+    // Same input packet, so cog/hub block requests are identical — the ONLY delta
+    // is the disasm term, exactly the worker-uncomputable quantity the hint carries.
+    const hubState = makeDebuggerState(0);
+    hubState.disMode = DisMode.dmHub;
+    const hub = makeController(hubState);
+    hub.controller.processPhase1(buildPhase1Packet({ cogCrc: COG_CRC }));
+    expect(hubState.pendingHubCode).toBe(true);
+    const sizeWithDisasm = hub.calls.phase3Size[0].size;
+
+    expect(sizeWithDisasm - sizeNoDisasm).toBe(DIS_LINES * 4);
   });
 });

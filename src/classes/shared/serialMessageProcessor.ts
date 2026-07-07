@@ -368,6 +368,24 @@ export class SerialMessageProcessor extends EventEmitter {
   }
 
   /**
+   * Relay a debugger window's per-break Phase-3 fixed-size hint (§3) to the
+   * extraction worker's per-cog demux (a pure forward — no framing on main).
+   */
+  public signalDebuggerPhase3Size(cogId: number, size: number): void {
+    this.workerExtractor.signalDebuggerPhase3Size(cogId, size);
+  }
+
+  /**
+   * DTR/RTS reset (§4): tell the extraction worker's per-cog demux to abandon
+   * every in-flight debug exchange and return to awaitingPhase1 (a pure forward —
+   * no framing on main). Replaces the old single-owner signalDebuggerPhase3Done
+   * DTR close, which is now a dead no-op removed in §10.
+   */
+  public signalDebuggerReset(): void {
+    this.workerExtractor.signalDebuggerReset();
+  }
+
+  /**
    * Get synchronization status
    */
   public getSyncStatus(): { synchronized: boolean; source: string } {

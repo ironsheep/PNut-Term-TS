@@ -129,12 +129,28 @@ export interface RendererToMainPhase3Complete {
   kind: 'phase3Complete';
 }
 
+/**
+ * Per-break Phase-3 fixed-size hint (§3). Fired right after this cog's
+ * Phase-2 is built, carrying the exact FIXED Phase-3 byte count (changed
+ * cog blocks + changed hub blocks + hub reads, EXCLUDING the self-describing
+ * smart-pin tail the worker sizes itself). The main process relays this to
+ * the extraction worker (§4) so its per-cog demux can delimit this break's
+ * Phase-3 exactly — the worker cannot compute the optional-disasm term on its
+ * own because it depends on the renderer-only `disMode`.
+ */
+export interface RendererToMainPhase3Size {
+  kind: 'phase3Size';
+  cogId: number;                 // 0..7 — which cog's Phase-3 this sizes
+  size: number;                  // fixed Phase-3 byte count (excludes smart-pin tail)
+}
+
 export type RendererToMainMessage =
   | RendererToMainPhase2
   | RendererToMainSetCogBrk
   | RendererToMainLog
   | RendererToMainReady
-  | RendererToMainPhase3Complete;
+  | RendererToMainPhase3Complete
+  | RendererToMainPhase3Size;
 
 // ============================================================================
 // IPC channel names — single source of truth

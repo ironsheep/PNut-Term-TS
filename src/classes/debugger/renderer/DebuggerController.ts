@@ -47,6 +47,17 @@ export interface ControllerCallbacks {
   onBreakpointTimeout: () => void;
   onPhase3Complete: () => void;
   /**
+   * Per-break Phase-3 fixed-size hint (§3): fired right after Phase-2 is built,
+   * carrying the exact FIXED Phase-3 byte count (changed cog blocks + changed hub
+   * blocks + hub reads, EXCLUDING the self-describing smart-pin tail) for this
+   * cog. Relayed renderer→main→worker so the worker's per-cog demux can delimit
+   * this break's Phase-3 exactly (it can't compute the optional-disasm term
+   * itself — that depends on the renderer-only `disMode`). Optional: the replay
+   * harness wires it straight to the ExtractionCore. Mirrors the `onPhase3Complete`
+   * signal path.
+   */
+  onPhase3Size?: (cogId: number, size: number) => void;
+  /**
    * Fired once per Phase-1 the controller frames — including breaks the
    * controller re-frames itself out of the raw Phase-3 stream (§3). `length`
    * is the Phase-1 packet size (416/456). Optional; used by the replay harness
@@ -431,6 +442,12 @@ export class DebuggerController {
     // ─── Build + send Phase 2 reply ─────────────────────────────────────
     const phase2 = this.buildPhase2();
     this.callbacks.sendPhase2(phase2);
+
+    // ─── Emit the per-break Phase-3 fixed-size hint (§3) ────────────────
+    // buildPhase2 just computed the exact fixed Phase-3 size for this break;
+    // relay it (renderer→main→worker) so the worker's per-cog demux delimits
+    // this cog's Phase-3 exactly. Sent alongside Phase-2, one per break.
+    this.callbacks.onPhase3Size?.(this.state.cogId, this.expectedPhase3Fixed);
 
     // ─── DIAGNOSTIC (build A, phase3-extraction investigation) ──────────
     // Report the expected Phase 3 size so the captured log can be correlated

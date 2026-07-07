@@ -51,6 +51,9 @@ class DebuggerApp {
       requestRender: () => this.render(),
       onBreakpointTimeout: () => this.render(),
       onPhase3Complete: () => sendToMain({ kind: 'phase3Complete' }),
+      // Per-break Phase-3 fixed-size hint (§3): relayed main→worker so the
+      // worker's per-cog demux delimits this cog's Phase-3 exactly.
+      onPhase3Size: (cogId, size) => sendToMain({ kind: 'phase3Size', cogId, size }),
       log: (msg) => log('info', `[CTRL] ${msg}`)
     });
     this.renderer = new DebuggerRenderer(canvas, this.state);

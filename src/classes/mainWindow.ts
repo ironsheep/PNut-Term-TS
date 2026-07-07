@@ -369,6 +369,17 @@ export class MainWindow {
           }
         });
 
+        // Per-break Phase-3 size hint relay (multi-cog §4). Main is a PURE
+        // ROUTER here: forward this cog's renderer-computed fixed Phase-3 size
+        // straight to the extraction worker so its per-cog demux can delimit the
+        // break exactly (the worker cannot compute the display-dependent disasm
+        // term itself). No framing/parsing on the main thread — preserving the
+        // 2 Mbaud responsiveness win from the serial offload. One tiny forward
+        // per break, alongside the existing Phase-2 reply.
+        debuggerDisplay.on('debuggerPhase3Size', (info: { cogId: number; size: number }) => {
+          this.serialProcessor.signalDebuggerPhase3Size(info.cogId, info.size);
+        });
+
         // Single-owner model (dbg-comms-reframe §3): the worker opens a raw
         // pass-through on the first Phase-1 and STAYS open, forwarding every byte;
         // the renderer's DebuggerController is the single framing authority and
@@ -405,10 +416,12 @@ export class MainWindow {
     // owns Phase 2), so there is nothing to reset on the main side.
     const resetAllDebuggers = (source: string): void => {
       this.logConsoleMessage(`[DEBUGGER] ${source} reset detected — clearing all debugger state`);
-      // Single-owner model (§3): close the worker's open Phase-3 pass-through so
-      // the next session's first Phase-1 is framed normally. The worker no longer
-      // closes per-break, so the reset boundary is the one place it must close.
-      this.serialProcessor.signalDebuggerPhase3Done();
+      // Multi-cog §4: the P2 rebooted. Return the worker's per-cog demux to
+      // awaitingPhase1 so the post-reboot first Phase-1 of ANY cog frames cleanly
+      // — it must abandon EVERY in-flight per-cog Phase-3 exchange, not just one
+      // owner's. (Replaces the old single-owner signalDebuggerPhase3Done close,
+      // now a dead no-op removed in §10.) Then reset every open debugger window.
+      this.serialProcessor.signalDebuggerReset();
       for (const key of Object.keys(this.displays)) {
         const w = this.displays[key];
         if (w instanceof DebugDebuggerWindow) w.broadcastReset();

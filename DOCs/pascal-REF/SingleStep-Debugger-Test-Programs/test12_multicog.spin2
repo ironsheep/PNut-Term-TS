@@ -4,25 +4,47 @@
 '' Covers Test Plan test:
 ''   Test 12 — Per-cog debugger windows, independent stepping, COGBRK
 ''
-'' Behavior: Cog 0 launches cog 1 via cogspin(). Both cogs hit a break on
-'' startup (DEBUG_COGINIT = 1) — two debugger windows open: "Debugger - Cog 0"
-'' and "Debugger - Cog 1". Each increments its own local counter in a repeat.
+'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
+'' breaks on the FIRST instruction (entry / coginit) — no Spin2 interpreter or
+'' cogspin indirection in the way. This makes reaching the cog-launch a 1-step
+'' gate (like tests 1-11), instead of single-stepping the Spin2 interpreter for
+'' hundreds of steps to reach a `cogspin`.
+''
+'' Behavior:
+''   entry (cog 0) COGINITs cog 1 as its very first instruction, loading cog 1's
+''   PASM from hub (@cog1code). With DEBUG_COGINIT=1 the P2 debug interrupt fires
+''   on the launched cog's first instruction, so cog 1 breaks on startup and a
+''   second window opens. Each cog then increments its OWN local counter in a
+''   tight loop, so the two windows step fully independently.
+''
+'' Expected on hardware:
+''   1. Cog 0 breaks at `entry` (coginit) — "Debugger - Cog 0" window.
+''   2. Single-step cog 0 THROUGH the coginit → cog 1 launches and breaks —
+''      "Debugger - Cog 1" window opens.
+''   3. Stepping one window advances only that cog (x in cog 0, y in cog 1).
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
   DEBUG_MAIN = 1
   DEBUG_COGINIT = 1
 
-VAR
-  long stack1[64]
+DAT
+                org     0
+' ── Cog 0 ────────────────────────────────────────────────────────────────────
+' Launch cog 1 from hub as the very first instruction (1-step gate), then loop.
+' COGINIT #1,##@cog1code : Dest %0_0_00001 = load-from-hub, specific cog 1;
+' Src = hub address of cog 1's image; loads 504 longs ($000-$1F7) into cog 1.
+entry           coginit #1, ##@cog1code
+                mov     x, #0
+.loop           add     x, #1
+                jmp     #.loop
+x               res     1
 
-PUB main() | x
-  cogspin(NEWCOG, cog1_task(), @stack1)
-  x := 0
-  repeat
-    x++
-
-PUB cog1_task() | y
-  y := 0
-  repeat
-    y++
+' ── Cog 1 ────────────────────────────────────────────────────────────────────
+' Small PASM loop, assembled to run at cog $000, residing in hub at @cog1code.
+' Breaks on its first instruction via the debug-on-coginit interrupt.
+                org     0
+cog1code        mov     y, #0
+.cloop          add     y, #1
+                jmp     #.cloop
+y               res     1

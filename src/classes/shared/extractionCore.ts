@@ -206,21 +206,46 @@ export class ExtractionCore {
   private poolBackpressureEvents: number = 0;
 
   // ────────────────────────────────────────────────────────────────────────
-  // Single-step debugger Phase 3 raw-passthrough
+  // Single-step debugger per-cog Phase-3 demux / framer (multi-cog)
   //
-  // The P2 debug protocol per cog is phase1(416B, framed) → phase2(host→P2) →
+  // The P2 debug protocol per cog is phase1(456B, framed) → phase2(host→P2) →
   // phase3(VARIABLE, RAW — no cog-id prefix, no length). The P2 holds hardware
   // lock[15] for the whole exchange (Spin2_debugger.spin2 :201/:235), so exactly
-  // ONE cog's transaction is on the wire at a time. We mirror Pascal's run-to-
-  // completion read: once a phase1 DEBUGGER{N} packet is emitted, a transaction is
-  // "open" for cog N — every subsequent byte is that cog's raw phase3 and must be
-  // delivered WITHOUT framing (find416 would mis-frame / stall on non-zero data).
-  // We tag the raw chunks with the same DEBUGGER{N} type so routeMessage() routes
-  // them by TYPE to cog N's window (the missing cog-id prefix is irrelevant).
-  // The transaction closes when the host signals 'debuggerPhase3Done' (the
-  // renderer's structural parser reports completion).
-  private debuggerTransactionCog: number | null = null;
+  // ONE cog's exchange is on the wire at a time — never byte-interleaved. This is
+  // the worker-side ChrIn analog (Pascal DebugUnit.pas :177-194): one place reads
+  // the cog-ID at each break boundary and routes.
+  //
+  // We DELIMIT each break exactly instead of raw-draining every byte to a single
+  // "open" cog (the v0.9.80 single-owner model, which never re-classified a 2nd
+  // cog's phase1 → no window for cog1). State machine:
+  //   • awaitingPhase1 (debugPhase3Cog === null): run normal text/DB/phase1
+  //     detection. On a phase1 for cog N, emit DEBUGGER{N}_416BYTE and enter
+  //     awaitingPhase3 for N.
+  //   • awaitingPhase3 (debugPhase3Cog === N): every ring byte is N's raw phase3
+  //     (atomic exchange). Once the renderer's fixed-size hint arrives
+  //     (signalDebuggerPhase3Size) AND enough bytes are present to walk the
+  //     self-describing smart-pin tail, delimit `fixed + tail`, emit exactly that
+  //     many bytes as DEBUGGER{N}_PHASE3 (chunked to fit a pool slot), then return
+  //     to awaitingPhase1 so the NEXT cog's phase1 is detected.
+  // The fixed size depends on the renderer's disMode (optional 64B disasm), which
+  // lives only in the renderer — so the worker cannot compute it alone and takes
+  // the hint. The smart-pin tail (8 groups, each = 1 mask byte + 4·popcount data)
+  // IS self-describing, so the worker walks it directly.
+  private debugPhase3Cog: number | null = null;       // cog whose phase3 we're framing (null = awaitingPhase1)
+  private debugPhase3Fixed: number | null = null;     // renderer size hint (fixed cog+hub+hubReads bytes)
+  private debugPhase3Remaining: number | null = null; // bytes left to drain once the exact total is known
+  private debugPhase3Deadline: number | null = null;  // now()-based stall-abort deadline for the current break
+  private debugPhase3SeenAvail: number = 0;           // high-water ring occupancy — refresh the deadline as bytes arrive
+  // True once any debugger Phase-1 has been seen (until a DTR/clear). While set,
+  // awaitingPhase1 detection tries find416ByteBoundary BEFORE findTextBoundary so a
+  // binary Phase-1 packet is never chopped at an embedded CR/LF (which findText
+  // would do once the idle timeout expires — e.g. a trailing break at capture end).
+  // The strict [cog,0,0,0] Phase-1 header is unambiguous inside a debug session and
+  // never collides with terminal text (ASCII) or the ROM CogN INIT lines ('C'=0x43).
+  // Scoped to debug sessions → zero effect on the 2 Mbaud streaming classifier.
+  private inDebugSession: boolean = false;
   private static readonly PHASE3_DRAIN_CAP = 4096; // ≤ large-slot capacity (8184B) — keeps one chunk in one slot
+  private static readonly PHASE3_STALL_MS = 3000;  // abort a wedged awaitingPhase3 (hint/bytes never arrive) and resync
 
   constructor(
     buffer: SharedCircularBuffer,
@@ -259,24 +284,107 @@ export class ExtractionCore {
   // ── Control signals (production wires these to parentPort messages) ────────
 
   /**
-   * Close the debugger raw pass-through transaction so the next Phase-1 is framed
-   * normally by find456. In the single-owner model (§3) the worker STAYS open
-   * across breaks — the renderer's controller re-frames each subsequent break
-   * itself — so this is called only at a session boundary (DTR/RTS reset), NOT
-   * per break. (Method name kept for the existing worker/IPC wiring.)
+   * Renderer's structural parser reported Phase-3 complete. In the per-cog demux
+   * model the worker already delimits each break itself (fixed-size hint +
+   * smart-pin tail) and returns to awaitingPhase1 on its own, so this signal is no
+   * longer needed to close a transaction — it is a NO-OP kept only for the
+   * existing worker/IPC wiring (renderer→main→worker). Clearing state here would
+   * risk aborting the NEXT break of the same cog if a stale Done raced the wire.
+   * (Slated for removal in the §10 post-certification cleanup.)
    */
   public onPhase3Done(): void {
-    this.debuggerTransactionCog = null;
+    /* no-op — the per-cog framer self-delimits; see debugPhase3* state. */
+  }
+
+  /**
+   * Renderer size hint (§3): the exact FIXED Phase-3 byte count (changed cog
+   * blocks + changed hub blocks + hub reads, EXCLUDING the self-describing
+   * smart-pin tail) the renderer computed at Phase-2 build for cog `cogId`. The
+   * worker buffers that cog's Phase-3 until this arrives, then delimits
+   * `fixed + tail`. Relayed renderer→main→worker; it has no hardware round-trip so
+   * it beats the P2's Phase-3 response. Applied only while we are awaiting Phase-3
+   * for that cog and have not yet taken a hint — a late/duplicate/foreign hint is
+   * dropped (the atomic per-cog exchange ordering keeps hints 1:1 with breaks).
+   */
+  public signalDebuggerPhase3Size(cogId: number, size: number): void {
+    if (this.debugPhase3Cog === cogId && this.debugPhase3Fixed === null) {
+      this.debugPhase3Fixed = size >>> 0;
+      this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS; // progress
+    }
   }
 
   /**
    * Main cleared the ring (DTR-reset / resync) — drop any stashed pre-reset
    * message so it isn't emitted after the boundary, and abandon any in-flight
-   * debug exchange. (The ring itself is reset on the caller's side.)
+   * per-cog debug exchange. (The ring itself is reset on the caller's side.)
    */
   public onClear(): void {
     this.stashedMessage = null;
-    this.debuggerTransactionCog = null;
+    this.resetDebugPhase3();
+    this.inDebugSession = false;
+  }
+
+  /**
+   * DTR/RTS reset (multi-cog §4): the P2 rebooted, so abandon EVERY in-flight
+   * per-cog debug exchange and leave the debug session, returning the worker to
+   * awaitingPhase1 for the post-reboot first Phase-1 of any cog. Scoped to
+   * debug-framing state ONLY — it does NOT touch the streaming ring/stash, so it
+   * can never perturb the 2 Mbaud classifier. Replaces the old single-owner
+   * onPhase3Done() DTR close (now a dead no-op; removed in §10). Without this, a
+   * reset taken mid-Phase-3 would leave the worker stuck draining the old cog's
+   * (now defunct) exchange and wedge every post-reboot break.
+   */
+  public resetDebuggerFraming(): void {
+    this.resetDebugPhase3();
+    this.inDebugSession = false;
+  }
+
+  /** Return to awaitingPhase1, dropping any in-flight per-cog Phase-3 framing. */
+  private resetDebugPhase3(): void {
+    this.debugPhase3Cog = null;
+    this.debugPhase3Fixed = null;
+    this.debugPhase3Remaining = null;
+    this.debugPhase3Deadline = null;
+    this.debugPhase3SeenAvail = 0;
+  }
+
+  /**
+   * Does the ring head look like a debugger Phase-1 header — cog-id byte 0x00-0x07
+   * followed by three 0x00 bytes (the COGN long, little-endian)? Peeks (no
+   * consume). Used only inside a debug session to force full-456 Phase-1 framing
+   * over findTextBoundary. Returns false if fewer than 4 bytes are buffered.
+   */
+  private headLooksLikePhase1Header(): boolean {
+    if (this.buffer.getUsedSpace() < 4) return false;
+    const h = this.buffer.peekAtOffset(0, 4);
+    return !!h && h[0] <= 0x07 && h[1] === 0 && h[2] === 0 && h[3] === 0;
+  }
+
+  /** popcount of a byte (0..255) — set-bit count of a smart-pin group mask. */
+  private static popcount8(b: number): number {
+    b = (b & 0xff) - ((b >> 1) & 0x55);
+    b = (b & 0x33) + ((b >> 2) & 0x33);
+    return (b + (b >> 4)) & 0x0f;
+  }
+
+  /**
+   * Walk the self-describing smart-pin tail (by PEEKING the ring, no consume) to
+   * compute the EXACT total Phase-3 byte count for the current break. The tail is
+   * 8 groups; each group is 1 mask byte followed by 4 bytes per set bit in that
+   * mask (RQPIN longs) — interleaved, NOT 8 contiguous mask bytes. Mirrors
+   * DebuggerPhase3Parser's SmartPinMask/SmartPinLongs sections exactly, so the
+   * worker's delimit equals the total the renderer's parser consumes (and its
+   * crossCheckPhase3Size validates as `fixed + 8 + 4·Σsetbits`). Returns the total
+   * once all 8 group masks are readable, or null if more bytes are still needed.
+   */
+  private computePhase3Total(fixed: number): number | null {
+    let offset = fixed;
+    for (let g = 0; g < 8; g++) {
+      if (this.buffer.getUsedSpace() < offset + 1) return null; // the group's mask byte hasn't arrived yet
+      const mask = this.buffer.peekAtOffset(offset, 1)![0];
+      offset += 1 + 4 * ExtractionCore.popcount8(mask);
+    }
+    return offset;
   }
 
   private logConsoleMessage(...args: any[]): void {
@@ -727,34 +835,77 @@ export class ExtractionCore {
       while (extracted < maxBatch && this.buffer.hasData()) {
         let messageData: Uint8Array | null = null;
 
-        // ── Debugger Phase 3 raw-passthrough ───────────────────────────────
-        // A debug transaction is open: drain available bytes RAW (bypass all
-        // framing) and tag them with the open cog's DEBUGGER type so they route
-        // to that window as Phase 3. Capped so one chunk fits one pool slot.
-        if (this.debuggerTransactionCog !== null) {
-          const avail = this.buffer.getUsedSpace();
-          if (avail === 0) break; // nothing yet; resume next tick when data arrives
-          const drainLen = Math.min(avail, ExtractionCore.PHASE3_DRAIN_CAP);
-          const raw = new Uint8Array(drainLen);
-          let got = 0;
-          for (let k = 0; k < drainLen; k++) {
-            const r = this.buffer.next();
-            if (r.status === NextStatus.EMPTY) break;
-            raw[got++] = r.value!;
+        // ── Debugger Phase-3 per-cog framing (multi-cog demux) ─────────────
+        // We are awaitingPhase3 for one cog: every ring byte is THAT cog's raw
+        // Phase-3 (atomic per-cog exchange, P2 lock[15]). Delimit it exactly with
+        // the renderer's fixed-size hint + the self-describing smart-pin tail, emit
+        // the break's bytes tagged with the cog's PHASE3 type (chunked to fit a
+        // slot), then return to awaitingPhase1 so the NEXT cog's Phase-1 is framed.
+        if (this.debugPhase3Cog !== null) {
+          const cog = this.debugPhase3Cog;
+
+          // Progress = bytes arriving. Refresh the stall deadline whenever the
+          // ring has grown since we last looked, so a long Phase-3 that streams
+          // in over many ticks is never mistaken for a stall (the deadline only
+          // fires when the hint or the bytes genuinely stop). Occupancy grows
+          // monotonically while accumulating; draining (branch c) refreshes on
+          // its own, so the high-water mark never yields a false negative.
+          const availTop = this.buffer.getUsedSpace();
+          if (availTop > this.debugPhase3SeenAvail) {
+            this.debugPhase3SeenAvail = availTop;
+            this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS;
           }
-          if (got === 0) break;
-          const rawData = got === drainLen ? raw : raw.subarray(0, got);
+
+          // (a) Need the renderer size hint before we can delimit.
+          if (this.debugPhase3Fixed === null) {
+            if (this.debugPhase3Deadline !== null && this.now() > this.debugPhase3Deadline) {
+              this.logConsoleMessage(`Phase-3 framing abort (cog ${cog}): size hint never arrived; resync`);
+              this.resetDebugPhase3();
+              continue; // resynced to awaitingPhase1 — re-detect from the ring
+            }
+            break; // leave this cog's bytes in the ring; wait for the hint
+          }
+
+          // (b) Compute the exact total (fixed + smart-pin tail) once, when we have
+          //     enough bytes to walk the 8 group masks.
+          if (this.debugPhase3Remaining === null) {
+            const total = this.computePhase3Total(this.debugPhase3Fixed);
+            if (total === null) {
+              if (this.debugPhase3Deadline !== null && this.now() > this.debugPhase3Deadline) {
+                this.logConsoleMessage(`Phase-3 framing abort (cog ${cog}): stalled before smart-pin tail; resync`);
+                this.resetDebugPhase3();
+                continue;
+              }
+              break; // need more bytes to walk the tail
+            }
+            this.debugPhase3Remaining = total;
+          }
+
+          // (c) Drain up to `remaining` bytes, chunked to one slot, tagged PHASE3.
+          const avail = this.buffer.getUsedSpace();
+          if (avail === 0) break; // wait for more of this break's bytes
+          const drainLen = Math.min(this.debugPhase3Remaining, avail, ExtractionCore.PHASE3_DRAIN_CAP);
+          const raw = this.buffer.peekAtOffset(0, drainLen);
+          if (!raw) break; // defensive (avail ≥ drainLen guarantees a result)
+          this.buffer.consume(drainLen);
+          this.debugPhase3Remaining -= drainLen;
+          this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS; // progress
+          if (this.debugPhase3Remaining === 0) {
+            // Break fully framed → back to awaitingPhase1 for the next Phase-1.
+            this.resetDebugPhase3();
+          }
           // DISTINCT phase3 type (not the 416-byte phase1 type): carries the cog-id
           // via the type for routing, but does NOT trigger the byte-derived
           // window-creation event (which would spawn bogus windows from raw bytes).
-          const rawType = (SharedMessageType.DEBUGGER0_PHASE3 + this.debuggerTransactionCog) as SharedMessageType;
-          const rawSlot = this.messagePool.acquire(rawData.length);
+          const rawType = (SharedMessageType.DEBUGGER0_PHASE3 + cog) as SharedMessageType;
+          const rawSlot = this.messagePool.acquire(raw.length);
           if (!rawSlot) {
-            this.stashedMessage = { data: new Uint8Array(rawData), type: rawType };
+            // Bytes are already consumed from the ring; stash so no data is lost.
+            this.stashedMessage = { data: new Uint8Array(raw), type: rawType };
             this.poolBackpressureEvents++;
             break;
           }
-          this.writeMessageToSlot(rawSlot, rawData, rawType);
+          this.writeMessageToSlot(rawSlot, raw, rawType);
           extracted++;
           continue;
         }
@@ -766,6 +917,21 @@ export class ExtractionCore {
         // Try boundary detection in order of likelihood
         // 1. DB_PACKET (0xDB prefix)
         messageData = this.findDBPacketBoundary();
+
+        // 1b. In a debug session, a debugger Phase-1 header at the ring head must
+        // be framed as a full 456-byte packet — or WAITED for. Never let
+        // findTextBoundary chop the binary Phase-1 at an embedded CR/LF (which it
+        // would once the idle timeout expires — e.g. the trailing break at the end
+        // of a capture arrives across chunks). Mirrors the controller's "wait for
+        // PHASE1_SIZE" framing. The strict [cog,0,0,0] header is unambiguous inside
+        // a debug session (terminal text is ASCII; ROM CogN INIT lines start 'C');
+        // an all-zero 456 block frames here but the renderer's looksLikePhase1
+        // discards it as a trailing remnant. Scoped to debug sessions → the 2 Mbaud
+        // streaming classifier is untouched.
+        if (!messageData && this.inDebugSession && this.headLooksLikePhase1Header()) {
+          messageData = this.find416ByteBoundary();
+          if (!messageData) break; // partial Phase-1 — wait for the rest, don't chop as text
+        }
 
         // 2. Text message (CR/LF) - pass idle timeout flag
         if (!messageData) {
@@ -802,15 +968,23 @@ export class ExtractionCore {
         // Write message to pool + emit poolId (increments extraction counters)
         this.writeMessageToSlot(slot, messageData, messageType);
 
-        // Open a debugger transaction when a Phase 1 packet is emitted: the cog-id
-        // is the message type's offset, and from here the P2 streams raw Phase 3
-        // for this cog until the host signals completion. (Only reachable while no
-        // transaction is open — the raw-drain branch above handles the open case.)
+        // Enter awaitingPhase3 for this cog when its Phase-1 is emitted: the cog-id
+        // is the message type's offset, and from here the P2 streams this cog's raw
+        // Phase-3. We hold in awaitingPhase3 until the renderer's size hint arrives
+        // (signalDebuggerPhase3Size) and we can delimit the break exactly (the
+        // branch above), then resync to awaitingPhase1 for the NEXT cog's Phase-1.
+        // (Only reachable while awaitingPhase1 — the framing branch handles the
+        // awaitingPhase3 case.)
         if (
           messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
           messageType <= SharedMessageType.DEBUGGER7_416BYTE
         ) {
-          this.debuggerTransactionCog = messageType - SharedMessageType.DEBUGGER0_416BYTE;
+          this.debugPhase3Cog = messageType - SharedMessageType.DEBUGGER0_416BYTE;
+          this.debugPhase3Fixed = null;
+          this.debugPhase3Remaining = null;
+          this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS;
+          this.debugPhase3SeenAvail = 0;
+          this.inDebugSession = true;
         }
 
         extracted++;

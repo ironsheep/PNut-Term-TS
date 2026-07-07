@@ -449,6 +449,15 @@ ${bundleJs}
         // The repaint was already requested by the controller.
         this.debugLog(`PHASE3 complete (break framed) → session stays open (single-owner)`);
         break;
+      case 'phase3Size':
+        // Per-break Phase-3 fixed-size hint (§3). Relay it toward the extraction
+        // worker so its per-cog demux can delimit this break's Phase-3 exactly.
+        // The main-process coordinator (§4) listens for this event and forwards
+        // it to serialProcessor.signalDebuggerPhase3Size — same relay shape as
+        // 'setGlobalCogBrk'. Emitting with no listener is a harmless no-op.
+        this.debugLog(`PHASE3 size hint (cog=${message.cogId} fixed=${message.size}B) → relay`);
+        this.emit('debuggerPhase3Size', { cogId: message.cogId, size: message.size });
+        break;
       case 'log':
         this.debugLog(`[R/${message.level}] ${message.msg}`);
         break;

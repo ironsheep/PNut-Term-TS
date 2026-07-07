@@ -188,6 +188,10 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
       onPhase3Complete: () => {
         if (current) current.phase3Complete = true;
       },
+      // Per-break Phase-3 size hint (§3): relay it straight into the worker's
+      // per-cog demux, exactly as main does in production (renderer→main→worker).
+      // Without this the worker cannot delimit Phase-3 and no break completes.
+      onPhase3Size: (hintCogId, size) => core.signalDebuggerPhase3Size(hintCogId, size),
       requestRender: () => {},
       onBreakpointTimeout: () => {}
     });
