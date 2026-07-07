@@ -360,6 +360,30 @@ export class ExtractionCore {
     return !!h && h[0] <= 0x07 && h[1] === 0 && h[2] === 0 && h[3] === 0;
   }
 
+  /**
+   * Does the ring head begin with the P2 debug ROM's cog-init banner,
+   * "CogN  INIT " (N = 0-7, TWO spaces — the exact ROM format)? Peeks (no
+   * consume). This line is emitted at the very START of a debug session, BEFORE
+   * the first Phase-1, so recognizing it arms `inDebugSession` in time for step-1b
+   * to frame that first Phase-1 — even when the banner and the Phase-1 arrive in
+   * the SAME USB burst (a PASM program that breaks on its first instruction, e.g.
+   * test12_multicog). Without this, first-contact framing is a chicken-and-egg:
+   * `inDebugSession` armed only AFTER the first Phase-1 emits, so the first Phase-1
+   * was never framed. Scoped: ONLY this exact ROM banner arms debug framing, so the
+   * 2 Mbaud streaming classifier is untouched (arbitrary text never matches).
+   */
+  private headLooksLikeCogInitLine(): boolean {
+    if (this.buffer.getUsedSpace() < 10) return false;
+    const h = this.buffer.peekAtOffset(0, 10);
+    return (
+      !!h &&
+      h[0] === 0x43 && h[1] === 0x6f && h[2] === 0x67 &&               // "Cog"
+      h[3] >= 0x30 && h[3] <= 0x37 &&                                  // 0-7
+      h[4] === 0x20 && h[5] === 0x20 &&                                // two spaces
+      h[6] === 0x49 && h[7] === 0x4e && h[8] === 0x49 && h[9] === 0x54 // "INIT"
+    );
+  }
+
   /** popcount of a byte (0..255) — set-bit count of a smart-pin group mask. */
   private static popcount8(b: number): number {
     b = (b & 0xff) - ((b >> 1) & 0x55);
@@ -462,7 +486,16 @@ export class ExtractionCore {
       }
 
       // Select boundary validator based on message type
-      const isValidBoundary = isBacktickMessage ? looksLikeMessageStart : looksLikeTextLineStart;
+      const baseBoundary = isBacktickMessage ? looksLikeMessageStart : looksLikeTextLineStart;
+      // In a debug session, a byte 0x00-0x07 immediately after a line terminator is
+      // a debugger Phase-1 header (the cog-id LONG), NOT embedded text data — so
+      // treat it as a valid boundary. This lets the ROM "CogN  INIT" banner split
+      // cleanly from the binary Phase-1 that follows it in the same burst (only cog 0
+      // needs this — 0x01-0x07 already pass as PST controls; 0x00 is the gap).
+      // Scoped to debug sessions → the 2 Mbaud streaming classifier is untouched.
+      const isValidBoundary: (b: number | undefined) => boolean = this.inDebugSession
+        ? (b) => baseBoundary(b) || (b !== undefined && b <= 0x07)
+        : baseBoundary;
 
       // Check for CR (0x0D)
       if (result.value === 0x0D) {
@@ -908,6 +941,16 @@ export class ExtractionCore {
           this.writeMessageToSlot(rawSlot, raw, rawType);
           extracted++;
           continue;
+        }
+
+        // Arm the debug session on the ROM's "CogN  INIT " banner, which precedes
+        // the first Phase-1. This lets step-1b (below) frame that first Phase-1 even
+        // when the banner and the Phase-1 arrive contiguously in one burst (PASM
+        // first-instruction breaks) — the multi-cog first-contact fix. inDebugSession
+        // is also (re)armed on the first Phase-1 emission below; this arms it one
+        // step earlier, from the banner, so the first Phase-1 is never mis-framed.
+        if (!this.inDebugSession && this.headLooksLikeCogInitLine()) {
+          this.inDebugSession = true;
         }
 
         // Check if idle timeout has expired (for CR/LF at buffer end detection)
