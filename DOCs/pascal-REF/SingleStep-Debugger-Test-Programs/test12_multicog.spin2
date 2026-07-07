@@ -1,32 +1,33 @@
 '' =============================================================================
-'' Single-Step Debugger Test Program 12 — Multi-COG debugging
+'' Single-Step Debugger Test Program 12 — Multi-COG debugging (PURE PASM2)
 ''
 '' Covers Test Plan test:
 ''   Test 12 — Per-cog debugger windows, independent stepping, COGBRK
 ''
-'' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
-'' breaks on the FIRST instruction (entry / coginit) — no Spin2 interpreter or
-'' cogspin indirection in the way. This makes reaching the cog-launch a 1-step
-'' gate (like tests 1-11), instead of single-stepping the Spin2 interpreter for
-'' hundreds of steps to reach a `cogspin`.
+'' PASM-only program: cog 0 boots directly into this DAT at $000 (like the other
+'' DAT-only tests 3, 6-11), so DEBUG_MAIN breaks on the FIRST instruction — no
+'' Spin2 interpreter or cogspin indirection in the way. A Spin2-based counterpart
+'' lives in test12a_multicog.spin2.
 ''
 '' Behavior:
-''   entry (cog 0) COGINITs cog 1 as its very first instruction, loading cog 1's
-''   PASM from hub (@cog1code). With DEBUG_COGINIT=1 the P2 debug interrupt fires
-''   on the launched cog's first instruction, so cog 1 breaks on startup and a
-''   second window opens. Each cog then increments its OWN counter in a tight
-''   loop, so the two windows step fully independently.
+''   entry (cog 0) does a benign NOP (the first break lands here, matching the
+''   working DAT tests), then COGINITs cog 1 loading its PASM from hub (@cog1code).
+''   With DEBUG_COGINIT=1 the P2 debug interrupt fires on the launched cog's first
+''   instruction, so cog 1 breaks on startup and a second window opens. Each cog
+''   then increments its OWN counter in a tight loop, so the two windows step
+''   fully independently.
 ''
-''   CONSTRUCTION NOTE: the two cog images must occupy DISJOINT hub regions. The
-''   per-cog counters are therefore hub-backed `long 0` cells, NOT `res` — a `res`
-''   reserves a cog register but emits no hub bytes, so cog 1's image would land
-''   on top of cog 0's counter slot (both claiming the same hub address) and the
-''   layout becomes ambiguous. With `long 0` each counter has real hub storage and
-''   cog 1's image (`orgh`-aligned) sits cleanly after cog 0's block.
+''   CONSTRUCTION NOTES (learned the hard way on HW):
+''   • Per-cog counters are hub-backed `long 0` cells, NOT `res` — a `res` reserves
+''     a cog register but emits no hub bytes, so cog 1's image would land on top of
+''     cog 0's counter slot. `long 0` keeps the two cog images in DISJOINT hub
+''     regions (cog 1's image is `orgh`-aligned after cog 0's block).
+''   • COGINIT uses a plain `#` (9-bit) source, NOT `##` — @cog1code fits in 9 bits,
+''     so this avoids an AUGS prefix as cog 0's executed instruction.
 ''
 '' Expected on hardware:
-''   1. Cog 0 breaks at `entry` (coginit) — "Debugger - Cog 0" window.
-''   2. Single-step cog 0 THROUGH the coginit → cog 1 launches and breaks —
+''   1. Cog 0 breaks at `entry` (the NOP) — "Debugger - Cog 0" window.
+''   2. Single-step cog 0 through the NOP + coginit → cog 1 launches and breaks —
 ''      "Debugger - Cog 1" window opens.
 ''   3. Stepping one window advances only that cog (x in cog 0, y in cog 1).
 '' =============================================================================
@@ -37,22 +38,20 @@ CON
 
 DAT
 ' ── Cog 0 ────────────────────────────────────────────────────────────────────
-' Launch cog 1 from hub as the very first instruction (1-step gate), then loop.
-' COGINIT #1,##@cog1code : Dest %0_0_00001 = load-from-hub, specific cog 1;
-' Src = hub address of cog 1's image; loads $000-$1F7 into cog 1.
-                org     0
-entry           coginit #1, ##@cog1code
-.loop           add     x, #1
-                jmp     #.loop
-x               long    0                       ' hub-backed counter (see CONSTRUCTION NOTE)
+              org     0
+entry         nop                             ' benign first break (matches the working DAT tests)
+              coginit #1, #@cog1code          ' load & start Cog 1 from hub @cog1code (plain #, no AUGS)
+.loop         add     x, #1
+              jmp     #.loop
+x             long    0                        ' hub-backed counter (see CONSTRUCTION NOTES)
 
 ' ── Cog 1 ────────────────────────────────────────────────────────────────────
 ' Self-contained hub image, assembled to run at cog $000, residing at @cog1code.
 ' `orgh` puts it on a clean hub long boundary, disjoint from cog 0's block.
 ' Breaks on its first instruction via the debug-on-coginit interrupt.
-                orgh
+              orgh
 cog1code
-                org     0
-c1              add     y, #1
-                jmp     #c1
-y               long    0                       ' hub-backed counter (see CONSTRUCTION NOTE)
+              org     0
+c1            add     y, #1
+              jmp     #c1
+y             long    0                        ' hub-backed counter (see CONSTRUCTION NOTES)

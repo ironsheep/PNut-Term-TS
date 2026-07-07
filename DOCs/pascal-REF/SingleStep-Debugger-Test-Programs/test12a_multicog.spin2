@@ -1,0 +1,41 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program 12a — Multi-COG debugging (SPIN2)
+''
+'' Covers Test Plan test:
+''   Test 12 — Per-cog debugger windows, independent stepping, COGBRK
+''
+'' Spin2 counterpart to the pure-PASM2 test12_multicog.spin2 — same multi-cog
+'' behavior, but cog 0 runs the Spin2 interpreter (like test01), so DEBUG_MAIN
+'' breaks at `main()`. The `coginit` is the FIRST statement of main(), so cog 1
+'' launches within a step or two of the initial break (no long interpreter walk).
+''
+'' Behavior:
+''   Cog 0 breaks at main() (DEBUG_MAIN) — "Debugger - Cog 0". main()'s first act
+''   is COGINIT(1, @cog1code, 0), launching cog 1's PASM from hub. With
+''   DEBUG_COGINIT=1 the P2 debug interrupt fires on cog 1's first instruction, so
+''   cog 1 breaks on startup and a second window opens. Cog 0 then spins its own
+''   counter and cog 1 spins its own, so the two windows step independently.
+''
+'' Expected on hardware:
+''   1. Cog 0 breaks in main() — "Debugger - Cog 0" window.
+''   2. Step cog 0 through the COGINIT → cog 1 launches and breaks —
+''      "Debugger - Cog 1" window opens.
+''   3. Stepping one window advances only that cog (x in cog 0, y in cog 1).
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+  DEBUG_COGINIT = 1
+
+PUB main() | x
+  coginit(1, @cog1code, 0)          ' launch cog 1 (PASM); DEBUG_COGINIT breaks it on its 1st instruction
+  x := 0
+  repeat
+    x++
+
+DAT
+' ── Cog 1 : self-contained PASM image, assembled to run at cog $000 ──────────
+              org     0
+cog1code      add     y, #1
+              jmp     #cog1code
+y             long    0
