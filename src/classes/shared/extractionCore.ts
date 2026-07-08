@@ -233,6 +233,14 @@ export class ExtractionCore {
   // IS self-describing, so the worker walks it directly.
   private debugPhase3Cog: number | null = null;       // cog whose phase3 we're framing (null = awaitingPhase1)
   private debugPhase3Fixed: number | null = null;     // renderer size hint (fixed cog+hub+hubReads bytes)
+  // Per-cog FIFO of pending renderer size hints. The hint is relayed
+  // renderer→main→worker ASYNCHRONOUSLY, so for back-to-back breaks a hint can
+  // arrive before the worker frames that break's Phase-1, or while it is still
+  // draining the previous break. A single slot dropped those → the next break got
+  // no size → stall → resync → misframe (the $14201 desync). Queuing keeps hints
+  // 1:1 with breaks in arrival order (IPC preserves per-channel order); the worker
+  // dequeues exactly one when it enters awaitingPhase3 for that cog.
+  private debugPhase3HintQueue: Map<number, number[]> = new Map();
   private debugPhase3Remaining: number | null = null; // bytes left to drain once the exact total is known
   private debugPhase3Deadline: number | null = null;  // now()-based stall-abort deadline for the current break
   private debugPhase3SeenAvail: number = 0;           // high-water ring occupancy — refresh the deadline as bytes arrive
@@ -307,9 +315,20 @@ export class ExtractionCore {
    * dropped (the atomic per-cog exchange ordering keeps hints 1:1 with breaks).
    */
   public signalDebuggerPhase3Size(cogId: number, size: number): void {
+    // NEVER drop the hint — enqueue it per-cog. The worker dequeues one per break
+    // in the awaitingPhase3 branch. (The old single-slot `if awaiting && fixed===null`
+    // dropped any hint that arrived a beat early or late, wedging that break.)
+    let q = this.debugPhase3HintQueue.get(cogId);
+    if (!q) {
+      q = [];
+      this.debugPhase3HintQueue.set(cogId, q);
+    }
+    q.push(size >>> 0);
+    // If a break for this cog is already waiting on its hint, refresh the stall
+    // deadline so a slow relay can never trip the abort before the next pump
+    // consumes the queued hint.
     if (this.debugPhase3Cog === cogId && this.debugPhase3Fixed === null) {
-      this.debugPhase3Fixed = size >>> 0;
-      this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS; // progress
+      this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS;
     }
   }
 
@@ -321,6 +340,7 @@ export class ExtractionCore {
   public onClear(): void {
     this.stashedMessage = null;
     this.resetDebugPhase3();
+    this.debugPhase3HintQueue.clear(); // new session — abandon any queued hints
     this.inDebugSession = false;
   }
 
@@ -336,6 +356,7 @@ export class ExtractionCore {
    */
   public resetDebuggerFraming(): void {
     this.resetDebugPhase3();
+    this.debugPhase3HintQueue.clear(); // P2 rebooted — abandon any queued hints
     this.inDebugSession = false;
   }
 
@@ -889,14 +910,21 @@ export class ExtractionCore {
             this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS;
           }
 
-          // (a) Need the renderer size hint before we can delimit.
+          // (a) Need the renderer size hint before we can delimit. Dequeue this
+          //     cog's next queued hint (FIFO, 1:1 with breaks). If none has arrived
+          //     yet, wait (bounded by the stall deadline) — never chop blindly.
           if (this.debugPhase3Fixed === null) {
-            if (this.debugPhase3Deadline !== null && this.now() > this.debugPhase3Deadline) {
-              this.logConsoleMessage(`Phase-3 framing abort (cog ${cog}): size hint never arrived; resync`);
-              this.resetDebugPhase3();
-              continue; // resynced to awaitingPhase1 — re-detect from the ring
+            const q = this.debugPhase3HintQueue.get(cog);
+            if (q && q.length > 0) {
+              this.debugPhase3Fixed = q.shift()! >>> 0;
+            } else {
+              if (this.debugPhase3Deadline !== null && this.now() > this.debugPhase3Deadline) {
+                this.logConsoleMessage(`Phase-3 framing abort (cog ${cog}): size hint never arrived; resync`);
+                this.resetDebugPhase3();
+                continue; // resynced to awaitingPhase1 — re-detect from the ring
+              }
+              break; // leave this cog's bytes in the ring; wait for the hint
             }
-            break; // leave this cog's bytes in the ring; wait for the hint
           }
 
           // (b) Compute the exact total (fixed + smart-pin tail) once, when we have
