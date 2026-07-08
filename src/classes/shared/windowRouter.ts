@@ -16,9 +16,16 @@ import { SharedMessageType, ExtractedMessage } from './sharedMessagePool';
 import { isEndSessionSentinel } from './endSessionSentinel';
 
 /**
- * Window handler callback for routing messages to debug windows
+ * Window handler callback for routing messages to debug windows.
+ * `messageType` carries the SharedMessageType of a binary frame so a window can
+ * tell a debugger Phase-1 (…_416BYTE) from a Phase-3 chunk (…_PHASE3) — the
+ * worker is the single framing authority and main routes by this type, NOT by
+ * length (task #78). Optional/ignored by windows that don't need it.
  */
-export type WindowHandler = (message: ExtractedMessage | Uint8Array | string) => void;
+export type WindowHandler = (
+  message: ExtractedMessage | Uint8Array | string,
+  messageType?: SharedMessageType
+) => void;
 
 /**
  * Information about a registered window
@@ -426,7 +433,9 @@ export class WindowRouter extends EventEmitter {
     // Also route to specific debugger window if it exists
     const window = this.windows.get(windowId);
     if (window) {
-      window.handler(data);
+      // Pass the frame's SharedMessageType so the debugger window can route by
+      // type (Phase-1 vs Phase-3) instead of guessing from length (task #78).
+      window.handler(data, messageType);
       window.stats.messagesReceived++;
 
       const routingTime = performance.now() - startTime;

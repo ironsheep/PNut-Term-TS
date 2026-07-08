@@ -196,27 +196,32 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
       onBreakpointTimeout: () => {}
     });
 
-    // Main-side dispatch (debugDebuggerWin.handleBinaryMessage): once a debug
-    // session is open, forward all raw bytes to the controller, which frames
-    // them. Only the very first framed Phase-1 starts the session.
-    const handle = (data: Uint8Array): void => {
-      if (!sessionActive) {
-        if (data.length === 416 || data.length === 456) {
-          sessionActive = true;
-          harness.controller.processPhase1(data);
-        } else {
-          // Pre-session non-Phase-1 binary (should not occur with a clean stream).
-          result.droppedBinaryMessages++;
-          result.droppedBinaryBytes += data.length;
-        }
+    // Main-side dispatch (debugDebuggerWin.handleBinaryMessage): route by the
+    // worker's frame TYPE (task #78) — a Phase-1 (…_416BYTE) opens/advances a
+    // break via processPhase1, a Phase-3 chunk (…_PHASE3) feeds processPhase3.
+    // The worker is the single framing authority; the controller PARSES the
+    // discrete boundaries it is handed (no flatten, no re-frame).
+    const handle = (data: Uint8Array, isPhase1: boolean): void => {
+      if (isPhase1) {
+        sessionActive = true;
+        harness.controller.processPhase1(data);
+      } else if (!sessionActive) {
+        // Pre-session non-Phase-1 binary (should not occur with a clean stream).
+        result.droppedBinaryMessages++;
+        result.droppedBinaryBytes += data.length;
       } else {
         harness.controller.processPhase3(data);
       }
     };
 
     cogsSeen.add(cogId);
-    router.registerWindow(`debugger-${cogId}`, 'debugger', (msg) => {
-      if (msg instanceof Uint8Array) handle(msg);
+    router.registerWindow(`debugger-${cogId}`, 'debugger', (msg, messageType) => {
+      if (!(msg instanceof Uint8Array)) return;
+      const isP1 =
+        messageType !== undefined &&
+        messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+        messageType <= SharedMessageType.DEBUGGER7_416BYTE;
+      handle(msg, isP1);
     });
   };
 

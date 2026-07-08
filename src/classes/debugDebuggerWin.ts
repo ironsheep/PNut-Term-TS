@@ -21,7 +21,7 @@ import {
   createMemoryBlock
 } from './shared/debuggerConstants';
 import { CanvasRenderer } from './shared/canvasRenderer';
-import { ExtractedMessage } from './shared/sharedMessagePool';
+import { ExtractedMessage, SharedMessageType } from './shared/sharedMessagePool';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
@@ -191,8 +191,13 @@ export class DebugDebuggerWindow extends DebugWindowBase {
    */
   private handleDebuggerMessage(message: any): void {
     if (message instanceof Uint8Array) {
-      // Binary message - debugger protocol
+      // Binary message with NO type tag (legacy path) — fall back to length framing.
       this.handleBinaryMessage(message);
+    } else if (message && message.frame instanceof Uint8Array) {
+      // Type-tagged binary frame (task #78): the worker is the single framing
+      // authority; route by the SharedMessageType it stamped (Phase-1 vs Phase-3)
+      // rather than guessing from length.
+      this.handleBinaryMessage(message.frame, message.frameType as SharedMessageType);
     } else if (typeof message === 'string') {
       // Text message - might be a response
       this.handleTextMessage(message);
@@ -202,7 +207,38 @@ export class DebugDebuggerWindow extends DebugWindowBase {
   /**
    * Handle binary debugger message
    */
-  private handleBinaryMessage(data: Uint8Array): void {
+  private handleBinaryMessage(data: Uint8Array, messageType?: SharedMessageType): void {
+    // ── Single framing authority (task #78) ──────────────────────────────────
+    // When the router supplies the frame's SharedMessageType, route by TYPE: the
+    // worker delimits each break's Phase-1 (…_416BYTE) and Phase-3 (…_PHASE3)
+    // EXACTLY and forwards them as discrete boundaries. Main hands the renderer
+    // those discrete units (Phase-1 → forwardPhase1, Phase-3 → forwardPhase3) so
+    // the renderer PARSES them without re-framing a flattened raw stream. This
+    // removes the second framer (the flatten + controller re-split) whose hint
+    // queue could misalign and emit a later break's Phase-1 ahead of the current
+    // break's Phase-3 — the reorder that poisoned framing (proven:
+    // debuggerDesyncMechanismProof.test.ts). Length-guessing is gone.
+    if (messageType !== undefined) {
+      const owned = new Uint8Array(data);
+      const isPhase1 =
+        messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+        messageType <= SharedMessageType.DEBUGGER7_416BYTE;
+      const first16 = Array.from(owned.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+      this.debugLog(`RX ${isPhase1 ? 'PHASE1' : 'PHASE3'} len=${owned.length} first16=[${first16}]`);
+      if (isPhase1) {
+        this.awaitingPhase3 = true; // a break is open; Phase-3 chunks follow
+        this.forwardPhase1ToRenderer(owned);
+      } else {
+        this.forwardPhase3ToRenderer(owned);
+      }
+      return;
+    }
+    // Legacy fallback (no type tag): keep the length-based dumb pass-through.
+    this.handleBinaryMessageByLength(data);
+  }
+
+  /** Legacy length-framed binary dispatch (used only when no type tag is present). */
+  private handleBinaryMessageByLength(data: Uint8Array): void {
     // The renderer bundle owns all parsing, state, and rendering. Main only
     // routes raw packets to it: Phase 3 continuations while awaitingPhase3 (set
     // by the bundle's phase2 reply in handleRendererMessage, cleared on

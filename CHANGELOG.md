@@ -5,6 +5,32 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.92] - 2026-07-08
+
+Structural fix for the single-step debugger comms desync. **Built for hardware testing —
+not yet validated on a P2.**
+
+### Fixed
+
+- **The single-step debugger no longer garbles itself after the first few steps.** On real
+  hardware the debugger window would step cleanly for a break or two, then derail —
+  showing an impossible program counter, requesting a huge (multi-kilobyte) block of
+  memory, and stalling. The root cause was that **two separate parts of the app were each
+  trying to decide where one break's data ended and the next break began**, using a timing
+  signal that could arrive out of order. When they disagreed, one break's data got read as
+  the next break's, and every step after that was scrambled. The data path is now
+  redesigned so **one component owns those boundaries** and hands each break to the display
+  as a complete, correctly-ordered unit — the display no longer re-guesses the boundaries.
+  This affects both single-cog and multi-cog debugging.
+
+### Notes
+
+- This replaces the earlier 0.9.89–0.9.91 attempts, which addressed the same symptom in the
+  wrong layer and did not hold on hardware.
+- Please re-run the debugger tests on a P2: **test11** (single cog) should single-step
+  cleanly with no impossible program counter or stall; **test12 / test12a** (two cogs)
+  should open both cog windows and step each independently.
+
 ## [0.9.85] - 2026-06-29
 
 Debugger right-click instrumentation build. **Built for hardware testing — not yet validated

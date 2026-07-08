@@ -16,7 +16,7 @@ import { waitMSec } from '../utils/timerUtils';
 import { Spin2NumericParser } from './shared/spin2NumericParser';
 import { InputForwarder } from './shared/inputForwarder';
 import { WindowRouter, WindowHandler } from './shared/windowRouter';
-import { ExtractedMessage } from './shared/sharedMessagePool';
+import { ExtractedMessage, SharedMessageType } from './shared/sharedMessagePool';
 import { MessageQueue, BatchedMessageQueue } from './shared/messageQueue';
 import { TLongTransmission } from './shared/tLongTransmission';
 
@@ -913,12 +913,15 @@ export abstract class DebugWindowBase extends EventEmitter {
    * This method processes both ExtractedMessage objects and raw data
    * Protected to allow subclasses to override (e.g., LoggerWindow)
    */
-  protected handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
+  protected handleRouterMessage(
+    message: ExtractedMessage | Uint8Array | string,
+    messageType?: SharedMessageType
+  ): void {
     // Serialize: chain each message so its full processing (incl. an awaited SAVE capture) completes
     // before the next message is processed. The router calls this fire-and-forget, so chaining here
     // is what guarantees a redraw can't interleave with an in-flight SAVE. [save-clobbered-by-following-message]
     this.routerDispatchChain = this.routerDispatchChain
-      .then(() => this.dispatchRouterMessage(message))
+      .then(() => this.dispatchRouterMessage(message, messageType))
       .catch((error) => this.logMessageBase(`- Error handling router message: ${error}`));
   }
 
@@ -927,15 +930,32 @@ export abstract class DebugWindowBase extends EventEmitter {
    * routerDispatchChain so messages never overlap. Subclasses that need custom routing (e.g. the
    * LoggerWindow) override handleRouterMessage directly and bypass this.
    */
-  private async dispatchRouterMessage(message: ExtractedMessage | Uint8Array | string): Promise<void> {
+  private async dispatchRouterMessage(
+    message: ExtractedMessage | Uint8Array | string,
+    messageType?: SharedMessageType
+  ): Promise<void> {
     if (typeof message === 'string') {
       // Text message - parse and process
       // NOTE: WindowRouter already trims/filters - don't do it again here
       await this.updateContent(message.split(' '));
     } else if (message instanceof Uint8Array) {
       // Binary data - pass through as-is for windows that handle binary
-      // DebugLoggerWindow and DebugDebuggerWindow need raw binary
-      await this.updateContent(message);
+      // (DebugLoggerWindow and DebugDebuggerWindow need raw binary). When the
+      // router supplied the frame's SharedMessageType (single-step debugger,
+      // task #78), carry it alongside the bytes so the window can route a
+      // Phase-1 (…_416BYTE) vs a Phase-3 chunk (…_PHASE3) by TYPE rather than by
+      // guessing from length — the fix that keeps the single framer's boundaries.
+      const isDebuggerFrame =
+        messageType !== undefined &&
+        ((messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
+          messageType <= SharedMessageType.DEBUGGER7_416BYTE) ||
+          (messageType >= SharedMessageType.DEBUGGER0_PHASE3 &&
+            messageType <= SharedMessageType.DEBUGGER7_PHASE3));
+      if (isDebuggerFrame) {
+        await this.updateContent({ frame: message, frameType: messageType });
+      } else {
+        await this.updateContent(message);
+      }
     } else if (typeof message === 'object' && message.type && message.data) {
       // ExtractedMessage object - decode Uint8Array to string for text windows
       const text = new TextDecoder().decode(message.data);

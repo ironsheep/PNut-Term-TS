@@ -891,28 +891,33 @@ export class ExtractionCore {
 
         // ── Debugger Phase-3 per-cog framing (multi-cog demux) ─────────────
         // We are awaitingPhase3 for one cog: every ring byte is THAT cog's raw
-        // Phase-3 (atomic per-cog exchange, P2 lock[15]). Delimit it exactly with
-        // the renderer's fixed-size hint + the self-describing smart-pin tail, emit
-        // the break's bytes tagged with the cog's PHASE3 type (chunked to fit a
+        // Phase-3 (atomic per-cog exchange, P2 lock[15]). Delimit it EXACTLY with
+        // the Phase-2-derived fixed-size hint + the self-describing smart-pin tail,
+        // emit the break's bytes tagged with the cog's PHASE3 type (chunked to fit a
         // slot), then return to awaitingPhase1 so the NEXT cog's Phase-1 is framed.
+        //
+        // The worker is the SINGLE framing authority (task #78): main forwards these
+        // delimited Phase-1/Phase-3 units to the renderer as discrete boundaries and
+        // the renderer PARSES them (it no longer re-frames the raw stream). One
+        // framer ⇒ the hint queue stays 1:1 with breaks and a later Phase-1 can
+        // never be emitted ahead of the current break's Phase-3 (the reorder that
+        // poisoned the renderer — proven: debuggerDesyncMechanismProof.test.ts).
         if (this.debugPhase3Cog !== null) {
           const cog = this.debugPhase3Cog;
 
           // Progress = bytes arriving. Refresh the stall deadline whenever the
           // ring has grown since we last looked, so a long Phase-3 that streams
           // in over many ticks is never mistaken for a stall (the deadline only
-          // fires when the hint or the bytes genuinely stop). Occupancy grows
-          // monotonically while accumulating; draining (branch c) refreshes on
-          // its own, so the high-water mark never yields a false negative.
+          // fires when the hint or the bytes genuinely stop).
           const availTop = this.buffer.getUsedSpace();
           if (availTop > this.debugPhase3SeenAvail) {
             this.debugPhase3SeenAvail = availTop;
             this.debugPhase3Deadline = this.now() + ExtractionCore.PHASE3_STALL_MS;
           }
 
-          // (a) Need the renderer size hint before we can delimit. Dequeue this
-          //     cog's next queued hint (FIFO, 1:1 with breaks). If none has arrived
-          //     yet, wait (bounded by the stall deadline) — never chop blindly.
+          // (a) Need the Phase-2-derived size hint before we can delimit. Dequeue
+          //     this cog's next queued hint (FIFO, 1:1 with breaks). If none has
+          //     arrived yet, wait (bounded by the stall deadline) — never chop.
           if (this.debugPhase3Fixed === null) {
             const q = this.debugPhase3HintQueue.get(cog);
             if (q && q.length > 0) {
@@ -1041,11 +1046,9 @@ export class ExtractionCore {
 
         // Enter awaitingPhase3 for this cog when its Phase-1 is emitted: the cog-id
         // is the message type's offset, and from here the P2 streams this cog's raw
-        // Phase-3. We hold in awaitingPhase3 until the renderer's size hint arrives
-        // (signalDebuggerPhase3Size) and we can delimit the break exactly (the
+        // Phase-3. We hold in awaitingPhase3 until the Phase-2-derived size hint
+        // arrives (signalDebuggerPhase3Size) and delimit the break exactly (the
         // branch above), then resync to awaitingPhase1 for the NEXT cog's Phase-1.
-        // (Only reachable while awaitingPhase1 — the framing branch handles the
-        // awaitingPhase3 case.)
         if (
           messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
           messageType <= SharedMessageType.DEBUGGER7_416BYTE
