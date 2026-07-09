@@ -134,9 +134,10 @@ parentPort.on('message', (msg: any) => {
       break;
 
     case 'debuggerPhase3Done':
-      // The renderer's structural parser reported Phase 3 complete. No-op under
-      // the per-cog demux (the core self-delimits each break); kept for wiring.
-      if (core) core.onPhase3Done();
+      // Cog `cogId`'s controller reported its break framed (Phase-3 complete).
+      // Path 1: this returns the core's per-cog stream for that cog to
+      // awaitingPhase1 so the NEXT Phase-1 (of any cog) is detected.
+      if (core) core.onPhase3Done(msg.cogId);
       break;
 
     case 'debuggerPhase3Size':

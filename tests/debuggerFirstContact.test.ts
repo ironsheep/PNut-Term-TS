@@ -100,13 +100,14 @@ describe('debugger first-contact framing (multi-cog §2 regression)', () => {
     const masks = [0x03, 0, 0, 0, 0, 0, 0, 0]; // a multi-bit smart-pin tail
     const p3 = buildWorkerPhase3(fixed, { masks });
 
+    // Path 1: the worker frames the Phase-1 then STREAMS the Phase-3 verbatim in
+    // the same drain (no size-hint gate). Drain fully and collect every cog-0
+    // Phase-3 byte; the total equals the whole streamed payload.
     h.feed(concat(cogInitBanner(0), phase1WithEmbeddedCr(0), p3));
-    let em = h.pump();
-    expect(p1Of(em, 0)).toHaveLength(1);
-    h.hint(0, fixed);
-    em = h.pump();
+    for (let i = 0; i < 8 && h.pump().length; i++) { /* drain banner + Phase-1 + Phase-3 */ }
 
-    const p3Bytes = em.filter((e) => e.kind === 'p3' && e.cog === 0);
+    expect(p1Of(h.emissions, 0)).toHaveLength(1);
+    const p3Bytes = h.emissions.filter((e) => e.kind === 'p3' && e.cog === 0);
     const total = p3Bytes.reduce((n, e) => n + e.bytes.length, 0);
     expect(total).toBe(phase3TotalLen(fixed, masks));
   });
@@ -115,11 +116,12 @@ describe('debugger first-contact framing (multi-cog §2 regression)', () => {
     const h = makeWorkerHarness();
     const fixed = 256;
 
-    // Cog 0 exchange first (arms the session).
+    // Cog 0 exchange first (arms the session), fully drained, then break-complete
+    // relayed (done) so the worker returns to awaitingPhase1 — exactly the lockstep
+    // gap before the next cog can break.
     h.feed(concat(cogInitBanner(0), phase1WithEmbeddedCr(0), buildWorkerPhase3(fixed)));
-    h.pump();
-    h.hint(0, fixed);
-    h.pump();
+    for (let i = 0; i < 8 && h.pump().length; i++) { /* drain cog-0 exchange */ }
+    h.done(0);
 
     // Cog 1 now breaks — its own banner + Phase-1, contiguous.
     h.feed(concat(cogInitBanner(1), phase1WithEmbeddedCr(1)));

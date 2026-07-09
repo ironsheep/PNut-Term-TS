@@ -380,6 +380,16 @@ export class MainWindow {
           this.serialProcessor.signalDebuggerPhase3Size(info.cogId, info.size);
         });
 
+        // Break-complete relay (Path 1, task #78). Main is a PURE ROUTER: forward
+        // this cog's controller report that its break is fully framed straight to
+        // the extraction worker, whose raw per-cog Phase-3 stream for that cog then
+        // returns to awaitingPhase1 so the next Phase-1 (any cog) is detected. No
+        // framing/parsing on the main thread — preserving the 2 Mbaud
+        // responsiveness win from the serial offload.
+        debuggerDisplay.on('debuggerPhase3Complete', (info: { cogId: number }) => {
+          this.serialProcessor.signalDebuggerPhase3Done(info.cogId);
+        });
+
         // Single-owner model (dbg-comms-reframe §3): the worker opens a raw
         // pass-through on the first Phase-1 and STAYS open, forwarding every byte;
         // the renderer's DebuggerController is the single framing authority and

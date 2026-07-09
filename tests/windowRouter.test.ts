@@ -123,15 +123,17 @@ describe('WindowRouter', () => {
       // Message with COG ID 0 (in lower 3 bits)
       const data0 = new Uint8Array([0x00, 0x01, 0x02]);
       router.routeBinaryMessage(data0);
-      
-      expect(handler0).toHaveBeenCalledWith(data0);
+
+      // Debugger windows receive (data, messageType) so they can route by frame
+      // type (task #78 "main routes by frame type"); here no type is supplied.
+      expect(handler0).toHaveBeenCalledWith(data0, undefined);
       expect(handler1).not.toHaveBeenCalled();
-      
+
       // Message with COG ID 1
       const data1 = new Uint8Array([0x01, 0x01, 0x02]);
       router.routeBinaryMessage(data1);
-      
-      expect(handler1).toHaveBeenCalledWith(data1);
+
+      expect(handler1).toHaveBeenCalledWith(data1, undefined);
     });
     
     it('should extract COG ID from data byte for short messages', () => {
@@ -143,7 +145,7 @@ describe('WindowRouter', () => {
       const data = new Uint8Array([0x05, 0x00]);
       router.routeBinaryMessage(data);
 
-      expect(handler).toHaveBeenCalledWith(data);
+      expect(handler).toHaveBeenCalledWith(data, undefined);
     });
     
     it('should emit unhandled message for missing debugger window', () => {
@@ -223,8 +225,9 @@ describe('WindowRouter', () => {
       const binaryMessage = createBinaryMessage(new Uint8Array([0x00, 0x01]), 0);
       router.routeMessage(binaryMessage);
 
-      // Binary messages pass Uint8Array to handler
-      expect(handler).toHaveBeenCalledWith(new Uint8Array([0x00, 0x01]));
+      // Binary messages pass (Uint8Array, messageType) to a debugger window so it
+      // can route by frame type (task #78). The type is the DEBUGGER0 Phase-1 tag.
+      expect(handler).toHaveBeenCalledWith(new Uint8Array([0x00, 0x01]), SharedMessageType.DEBUGGER0_416BYTE);
     });
 
     it('should route text messages via routeMessage', () => {
@@ -542,7 +545,7 @@ describe('WindowRouter', () => {
 
       router.routeBinaryMessage(new Uint8Array([]));
 
-      expect(handler).toHaveBeenCalledWith(new Uint8Array([]));
+      expect(handler).toHaveBeenCalledWith(new Uint8Array([]), undefined);
     });
 
     it('should handle text message with empty data', () => {

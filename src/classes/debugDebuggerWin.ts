@@ -477,13 +477,15 @@ ${bundleJs}
         this.emit('setGlobalCogBrk', { mask: message.mask, originCogId: this.cogId });
         break;
       case 'phase3Complete':
-        // Single-owner model (§3): a break completed, but the session STAYS open.
-        // The controller is the single framing authority — it re-frames the next
-        // break's Phase-1 itself out of the continuing raw stream, so we do NOT
-        // flip awaitingPhase3 off and do NOT close the worker's pass-through here.
-        // The worker transaction is closed only on DTR/RTS reset (see mainWindow).
-        // The repaint was already requested by the controller.
-        this.debugLog(`PHASE3 complete (break framed) → session stays open (single-owner)`);
+        // Path 1 (task #78): the controller is the single Phase-3 framer and has
+        // just framed this break. Relay break-complete to the extraction worker so
+        // its raw per-cog stream for THIS cog returns to awaitingPhase1 and the
+        // next Phase-1 (any cog) is detected. The main-process coordinator listens
+        // for this event and forwards it to serialProcessor.signalDebuggerPhase3Done
+        // — same relay shape as 'debuggerPhase3Size'. Emitting with no listener is a
+        // harmless no-op. The repaint was already requested by the controller.
+        this.debugLog(`PHASE3 complete (break framed, cog=${this.cogId}) → relay break-complete`);
+        this.emit('debuggerPhase3Complete', { cogId: this.cogId });
         break;
       case 'phase3Size':
         // Per-break Phase-3 fixed-size hint (§3). Relay it toward the extraction

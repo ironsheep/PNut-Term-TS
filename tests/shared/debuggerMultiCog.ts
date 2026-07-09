@@ -3,17 +3,27 @@
 /**
  * Multi-cog §7 shared scaffolding — synthetic two-cog debug wire fixtures and a
  * WORKER-path replay driver. This drives the REAL framing engine
- * (`ExtractionCore`, where the §2 per-cog demux lives) over an in-process ring +
+ * (`ExtractionCore`, where the per-cog demux lives) over an in-process ring +
  * pool, NOT the renderer `DebuggerController` — so the tests prove the worker
  * tags each cog's break correctly, which is the whole multi-cog fix.
+ *
+ * Path 1 (task #78): the worker is a pure DISPATCHER — it frames each break's
+ * Phase-1, then STREAMS that cog's Phase-3 bytes verbatim (no size hint, no
+ * delimiting, no scanning) until the cog's controller reports the break framed.
+ * The replay driver models the controller + the P2's lockstep gap: it feeds each
+ * break ATOMICALLY (a next break's bytes never share the wire with the current
+ * break's Phase-3 — the P2 is halted until the host's next step reply) and calls
+ * `done(cog)` after each break, exactly the renderer→main→worker break-complete
+ * relay in production.
  *
  * Wire shapes (must match the worker's detectors byte-for-byte):
  *   • Phase-1: a 456-byte packet whose header is [cog,0,0,0] (little-endian COG
  *     LONG) — exactly what `find416ByteBoundary` validates.
  *   • Phase-3: `fixed` bytes of cog/hub data, then the self-describing smart-pin
- *     tail — 8 INTERLEAVED groups, each `[mask byte][4·popcount(mask) long bytes]`
- *     — exactly what `computePhase3Total` walks. `fixed` is the renderer size
- *     hint the worker needs (it can't compute the display-dependent term itself).
+ *     tail — 8 INTERLEAVED groups, each `[mask byte][4·popcount(mask) long bytes]`.
+ *     The worker streams these verbatim; the CONTROLLER (not the worker) sizes the
+ *     tail. `phase3TotalLen`/`buildWorkerPhase3` model that exact payload so the
+ *     tests can assert byte-exact reassembly of what the worker streamed.
  */
 
 import { SharedCircularBuffer } from '../../src/classes/shared/sharedCircularBuffer';
@@ -86,8 +96,11 @@ export interface WorkerHarness {
   feed(bytes: Uint8Array): void;
   /** Pump the core once; return (and record) any new debug emissions. */
   pump(): Emission[];
-  /** Relay a per-break Phase-3 fixed-size hint into the worker (as main does). */
+  /** Relay a per-break Phase-3 fixed-size hint into the worker (Path 1: no-op). */
   hint(cog: number, fixed: number): void;
+  /** Relay break-complete for `cog` (renderer→main→worker): returns the worker's
+   *  raw per-cog stream to awaitingPhase1 so the next Phase-1 is detected. */
+  done(cog: number): void;
   /** Advance the injectable clock (ms) — for stall / timeout tests. */
   advance(ms: number): void;
   /** Resync the pipe: clear the ring and the worker's debug state — mirrors
@@ -128,6 +141,7 @@ export function makeWorkerHarness(startClock = 1000): WorkerHarness {
     feed: (bytes) => { ring.appendAtTail(bytes); },
     pump: () => { core.pump(); return drain(); },
     hint: (cog, fixed) => core.signalDebuggerPhase3Size(cog, fixed),
+    done: (cog) => core.onPhase3Done(cog),
     advance: (ms) => { clock += ms; },
     reset: () => { ring.clear(); core.onClear(); },
     emissions
@@ -169,39 +183,42 @@ export function buildMultiCogStream(exchanges: MultiCogExchange[]): BuiltStream 
 }
 
 /**
- * Drive a built stream through the worker, chunked per `chunkLengths`, supplying
- * each break's Phase-3 size hint the instant the worker frames that break's
- * Phase-1 — exactly the renderer→main→worker relay order in production. Returns
+ * Drive a built stream through the worker, ATOMICALLY per break (Path 1). For
+ * each exchange in order: feed its Phase-1 then its Phase-3 — each split into
+ * pieces of at most `maxChunk` bytes to exercise reassembly across USB-chunk
+ * boundaries WITHIN the break — pumping between pieces; then call `done(cog)`,
+ * the break-complete relay that returns the worker to awaitingPhase1 for the next
+ * break. This models the P2's lockstep: a next break's bytes never share the wire
+ * with the current break's Phase-3 (the P2 is halted until the host's next step
+ * reply), so the worker never over-streams one cog's bytes onto another. Returns
  * the ordered emissions.
  */
-export function runMultiCogReplay(built: BuiltStream, chunkLengths: number[], gapMs = 1): Emission[] {
+export function runMultiCogReplay(built: BuiltStream, maxChunk = Infinity, gapMs = 1): Emission[] {
   const h = makeWorkerHarness();
-  let exIdx = 0; // the next exchange whose Phase-1 we expect (atomic sequential)
 
-  const pumpUntilQuiet = (): void => {
-    for (let guard = 0; guard < 256; guard++) {
-      const em = h.pump();
-      for (const e of em) {
-        if (e.kind === 'p1') {
-          // A break just framed → relay its fixed-size hint so the next pump can
-          // delimit its Phase-3. Atomic sequential exchanges keep hints 1:1.
-          const ex = built.exchanges[exIdx++];
-          if (ex) h.hint(e.cog, ex.fixed);
-        }
-      }
-      if (em.length === 0) break; // no more progress from the bytes on hand
+  const feedFrame = (frame: Uint8Array): void => {
+    const step = Number.isFinite(maxChunk) ? Math.max(1, maxChunk) : frame.length || 1;
+    for (let off = 0; off < frame.length; off += step) {
+      h.advance(gapMs);
+      h.feed(frame.subarray(off, Math.min(off + step, frame.length)));
+      h.pump();
     }
+    // Drain any tail the last feed left buffered.
+    for (let guard = 0; guard < 8 && h.pump().length; guard++) { /* flush */ }
   };
 
   let off = 0;
-  for (const len of chunkLengths) {
-    h.advance(gapMs);
-    h.feed(built.bytes.subarray(off, off + len));
-    off += len;
-    pumpUntilQuiet();
+  for (let i = 0; i < built.exchanges.length; i++) {
+    const p1Len = built.frameLengths[i * 2];
+    const p3Len = built.frameLengths[i * 2 + 1];
+    feedFrame(built.bytes.subarray(off, off + p1Len));          // Phase-1
+    off += p1Len;
+    feedFrame(built.bytes.subarray(off, off + p3Len));          // Phase-3 (streamed raw)
+    off += p3Len;
+    h.done(built.exchanges[i].cog); // controller break-complete → worker back to awaitingPhase1
   }
   h.advance(gapMs);
-  pumpUntilQuiet();
+  for (let guard = 0; guard < 8 && h.pump().length; guard++) { /* final flush */ }
   return h.emissions;
 }
 

@@ -437,12 +437,13 @@ export class WorkerExtractor extends EventEmitter {
   }
 
   /**
-   * Close the open single-step-debugger Phase 3 transaction in the worker.
-   * Called when a debugger window's renderer reports Phase 3 complete, so the
-   * worker resumes normal framing for the next phase1 (any cog).
+   * Cog `cogId`'s renderer reported its break framed (Phase 3 complete). Path 1:
+   * relay it to the worker so its per-cog stream for that cog returns to
+   * awaitingPhase1 and the next Phase-1 (any cog) is detected. A tiny forward —
+   * no framing on the main thread.
    */
-  public signalDebuggerPhase3Done(): void {
-    this.worker.postMessage({ type: 'debuggerPhase3Done' });
+  public signalDebuggerPhase3Done(cogId: number): void {
+    this.worker.postMessage({ type: 'debuggerPhase3Done', cogId });
   }
 
   /**

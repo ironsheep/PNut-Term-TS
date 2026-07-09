@@ -360,11 +360,12 @@ export class SerialMessageProcessor extends EventEmitter {
   }
 
   /**
-   * Close the open single-step-debugger Phase 3 transaction in the extraction
-   * worker (called when a debugger window's renderer reports Phase 3 complete).
+   * Cog `cogId`'s renderer reported its break framed (Phase 3 complete). Path 1:
+   * relay it to the extraction worker so its per-cog stream for that cog returns
+   * to awaitingPhase1 (a pure forward — no framing on main).
    */
-  public signalDebuggerPhase3Done(): void {
-    this.workerExtractor.signalDebuggerPhase3Done();
+  public signalDebuggerPhase3Done(cogId: number): void {
+    this.workerExtractor.signalDebuggerPhase3Done(cogId);
   }
 
   /**

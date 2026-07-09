@@ -184,13 +184,17 @@ export function runReplay(fixture: CaptureFixture, options: ReplayOptions = {}):
         if (current) current.phase2Length = bytes.length;
       },
       // Done fires before the loop frames the next break, so `current` is still
-      // this break (see DebuggerController.driveFrames ordering).
+      // this break (see DebuggerController.driveFrames ordering). Path 1 (task
+      // #78): relay break-complete straight into the worker's per-cog dispatcher,
+      // exactly as main does in production (renderer→main→worker), so its raw
+      // Phase-3 stream for this cog returns to awaitingPhase1 for the next Phase-1.
       onPhase3Complete: () => {
         if (current) current.phase3Complete = true;
+        core.onPhase3Done(cogId);
       },
-      // Per-break Phase-3 size hint (§3): relay it straight into the worker's
-      // per-cog demux, exactly as main does in production (renderer→main→worker).
-      // Without this the worker cannot delimit Phase-3 and no break completes.
+      // Per-break Phase-3 size hint (§3): still emitted by the controller and
+      // relayed as in production, but Path 1's worker IGNORES it (the controller is
+      // the single framer). Kept wired so the relay path stays exercised.
       onPhase3Size: (hintCogId, size) => core.signalDebuggerPhase3Size(hintCogId, size),
       requestRender: () => {},
       onBreakpointTimeout: () => {}
