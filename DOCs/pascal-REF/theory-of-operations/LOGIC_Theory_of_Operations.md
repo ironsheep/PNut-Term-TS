@@ -320,8 +320,8 @@ Accepted in `LOGIC_Configure` (lines 926–1032). All are optional; defaults sho
 
 | Directive | Parameter shape | Default | Range | Pascal lines |
 |---|---|---|---|---|
-| `TITLE` | `'string'` | (window name) | — | 946–947 (`KeyTitle`) |
-| `POS` | `left top` | cascaded | screen coords | 948–949 (`KeyPos`) |
+| `TITLE` | `'string'` | `"<name> - LOGIC"` (instance name + type) | — | 946–947 (`KeyTitle`); default caption set in `FormCreate:626` |
+| `POS` | `left top` | host origin ≈ `(0, 210)` (**not** `0,0`; **no cascade** — windows overlap) | offset from `DebugDisplayLeft/Top` | 948–949 (`KeyPos`); default in `FormCreate:628-629` |
 | `SAMPLES` | `n` | 32 | 4 .. 2047 (LogicSets−1) | 950–951 |
 | `SPACING` | `n` | 8 | 1 .. 32 | 952–953 |
 | `RATE` | `n` | 1 | 1 .. 2048 (LogicSets) | 954–955 |
@@ -461,8 +461,8 @@ end;
 
 | Parameter | Command | Default | Range | Purpose |
 |-----------|---------|---------|-------|---------|
-| Title | `TITLE 'string'` | "Logic" | - | Window title |
-| Position | `POS x y` | Cascaded | Screen coords | Window position |
+| Title | `TITLE 'string'` | `"<name> - LOGIC"` | - | Window title (default = instance name + type) |
+| Position | `POS x y` | host origin ≈ `(0, 210)`, no cascade | offset from `DebugDisplayLeft/Top` | Window position (**not** `0,0`; windows overlap without `POS`) |
 | Samples | `SAMPLES count` | 32 | 4-2047 | Horizontal resolution |
 | Spacing | `SPACING pixels` | 8 | 1-32 | Pixel spacing between samples |
 | Rate | `RATE divisor` | 1 | 1-2048 | Display update rate divisor |
@@ -2752,7 +2752,9 @@ vLogicIndex := 0;
 // 6. Sample-buffer state: SamplePtr := 0; SamplePop := 0; (LogicSampleBuff is a
 //    static global array[0..2047]; not per-window FillChar'd here)
 
-// 7. Window sized via SetSize / positioned from POS or cascade.
+// 7. Window sized via SetSize / positioned from POS, else host origin
+//    DebugDisplayLeft/Top (~0,210). Display windows do NOT cascade (unlike the
+//    single-step debugger windows, which offset by cog id) — no-POS windows overlap.
 
 // 8. Packing: default LONGS_1BIT comes from the global default; an explicit
 //    LONGS_*..BYTES_* directive calls KeyPack → SetPack (4146-4156).

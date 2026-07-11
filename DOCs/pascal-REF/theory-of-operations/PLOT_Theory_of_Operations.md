@@ -219,7 +219,7 @@ vPixelX      : integer;     // Current X position (relative to origin)
 vPixelY      : integer;     // Current Y position (relative to origin)
 
 // Precision control
-vPrecise     : integer;     // Precision mode: 8 = sub-pixel, 0 = pixel
+vPrecise     : integer;     // Coordinate-INPUT shift: 8 = whole-pixel input (default, PRECISE off); 0 = sub-pixel 8.8 input (PRECISE on)
 
 // Polar coordinate parameters
 vTwoPi       : integer;     // Full circle value (default: $100000000)
@@ -231,7 +231,7 @@ vTheta       : integer;     // Theta offset for polar coordinates
 - **vDirX/vDirY**: Allow coordinate system flipping for different orientations
 - **vOffsetX/vOffsetY**: Define the origin point for drawing operations
 - **vPixelX/vPixelY**: Track the current drawing position
-- **vPrecise**: Controls sub-pixel precision (8 = 1/256th pixel, 0 = whole pixel)
+- **vPrecise**: The left-shift applied to the user's coordinate into the internal 8.8 draw space (`pixel shl vPrecise`). Default **8 = whole-pixel input** (sub-pixel addressing OFF); `PRECISE` toggles it to **0 = raw 8.8 fixed-point input** (sub-pixel addressing ON, 1/256-pixel). The internal draw space is always 8.8 — `vPrecise` only sets whether the user supplies whole pixels or sub-pixel units
 - **vTwoPi**: Defines the value representing a full circle in polar mode
 - **vTheta**: Adds an angular offset to all polar coordinates
 
@@ -248,7 +248,7 @@ vDotSizeY := 1;
 vPlotColor := DefaultPlotColor;
 vTextColor := DefaultTextColor;
 vOpacity := $FF;
-vPrecise := 8;            // Sub-pixel precision enabled
+vPrecise := 8;            // whole-pixel input (default; PRECISE toggles to 0 = sub-pixel input)
 ```
 
 > **v55 note:** `vPolar` is **not** reset in `PLOT_Configure`. It retains whatever value it had at window creation (typically False from `FormCreate`). `vPolar` is only written by `POLAR`/`CARTESIAN` directives in the update phase.
@@ -386,7 +386,7 @@ Accepted by `PLOT_Update` (1918–2155). PLOT is the only window whose update ph
 | `COLOR` | `color` | Any color | 1934–1943 | Set `vPlotColor`; if next key is `TEXT`, also sets `vTextColor` |
 | `BLACK`…`GRAY` | `{brightness}` | Brightness 0–15 | 1934–1943 | Named-color shorthand; optional brightness nibble |
 | `OPACITY` | `byte` | **0–255**; default `$FF` | 1944–1945 | Set `vOpacity` |
-| `PRECISE` | _(toggle)_ | Starts at 8 (on) | 1946–1947 | XOR `vPrecise` 8↔0; enables/disables sub-pixel fixed-point |
+| `PRECISE` | _(toggle)_ | Starts at 8 (whole-pixel / sub-pixel OFF) | 1946–1947 | XOR `vPrecise` 8↔0; **8→0 enables** sub-pixel 8.8-fixed-point input (v55: PRECISE turns sub-pixel on) |
 | `LINESIZE` | `size` | — | 1948–1949 | Set `vLineSize` default for DOT/LINE |
 | `ORIGIN` | `{x y}` | — | 1950–1956 | Set coordinate origin; no args = use current `vPixelX,vPixelY` |
 | `SET` | `x_rho y_theta` | — | 1957–1964 | Set current position; applies polar conversion if `vPolar` |
@@ -529,7 +529,7 @@ vDotSizeY := 1;
 vPlotColor := DefaultPlotColor;
 vTextColor := DefaultTextColor;
 vOpacity := $FF;              // Fully opaque
-vPrecise := 8;                // Sub-pixel precision
+vPrecise := 8;                // whole-pixel input (default; PRECISE → 0 for sub-pixel)
 ```
 
 **Step 2**: Process configuration commands
@@ -765,16 +765,16 @@ key_precise:
   vPrecise := vPrecise xor 8;
 ```
 
-**States**:
-- `vPrecise = 8`: Sub-pixel precision **enabled** (default)
-  - Coordinates use 8.8 fixed-point format
-  - Position stored with 1/256th pixel resolution
-  - Anti-aliasing fully effective
+> **⚠️ Corrected (v55 ratification, 2026-07-11):** earlier revisions had these two states **inverted**. `vPrecise` is the shift applied to the *user's* coordinate (`pixel shl vPrecise`) into the always-8.8 internal draw space — so `8` = whole-pixel input (sub-pixel **off**, the default) and `0` = raw 8.8 sub-pixel input (sub-pixel **on**). This matches the v55 language ref: *sub-pixel disabled at start; `PRECISE` turns it on.*
 
-- `vPrecise = 0`: Sub-pixel precision **disabled**
-  - Coordinates use whole pixels
-  - Faster rendering for pixel-aligned graphics
-  - Anti-aliasing still applies but with pixel-aligned positioning
+**States**:
+- `vPrecise = 8`: Sub-pixel input **disabled** (default — the whole-pixel mode)
+  - The user supplies **whole-pixel** coordinates; `pixel shl 8` scales them into the 8.8 space, always landing on integer-pixel boundaries
+  - Anti-aliased rendering still applies (the draw space is always 8.8), but the user cannot address between pixels
+
+- `vPrecise = 0`: Sub-pixel input **enabled** (after one `PRECISE`)
+  - The user supplies coordinates **already in 8.8 fixed-point** (1/256-pixel units); `pixel shl 0` passes them straight through
+  - Lets the program place points/lines at sub-pixel positions for smooth animation
 
 **Fixed-Point Coordinate Calculation** (example from DOT, lines 1970-1978):
 ```pascal
@@ -791,13 +791,13 @@ else
 
 **Precision Effect**:
 ```
-When vPrecise = 8:
+When vPrecise = 8 (default, sub-pixel OFF):
   coord_fixed = (offset shl 8) + (pixel shl 8)
-  Result: 8.8 fixed-point (256 subpixels per pixel)
+  → user's `pixel` is treated as WHOLE pixels (its 8 low fraction bits are always 0)
 
-When vPrecise = 0:
+When vPrecise = 0 (PRECISE on, sub-pixel input):
   coord_fixed = (offset shl 8) + (pixel shl 0)
-  Result: whole pixels (pixel is not shifted)
+  → user's `pixel` is used AS-IS in 8.8 fixed-point → 1/256-pixel sub-pixel positions
 ```
 
 **Usage**:
@@ -2848,11 +2848,11 @@ integer := (fixed + 128) shr 8;
 
 **Precision Mode**:
 ```pascal
-// Sub-pixel precision (vPrecise = 8)
+// Whole-pixel input — default, sub-pixel OFF (vPrecise = 8)
 coord_fixed := pixel shl 8;
 
-// Pixel precision (vPrecise = 0)
-coord_fixed := pixel shl 0;  // No shift
+// Sub-pixel 8.8 input — PRECISE on (vPrecise = 0)
+coord_fixed := pixel shl 0;  // pixel already in 1/256 units
 ```
 
 ### 17.3 Color Handling
@@ -3155,8 +3155,8 @@ t3 := vOffsetX shl 8 + vPixelX shl vPrecise;   // X fixed-point
 t4 := (vHeight - 1 - vOffsetY) shl 8 - vPixelY shl vPrecise;  // Y fixed-point
 ```
 
-- When `vPrecise = 8` (default on): `pixel shl 8` → full 8.8 precision, 1/256-pixel resolution.
-- When `vPrecise = 0` (toggled off): `pixel shl 0` → whole-pixel addressing.
+- When `vPrecise = 8` (default, sub-pixel **off**): `pixel shl 8` → the user's whole-pixel value is scaled into the 8.8 space (fraction always 0) → **whole-pixel input**.
+- When `vPrecise = 0` (after `PRECISE`, sub-pixel **on**): `pixel shl 0` → the user's value is used directly as 8.8 fixed-point → **sub-pixel (1/256) input**.
 
 The DOT radius is `t1 shl vPrecise shr 1`, making radius half the linesize, in matching precision units.
 
@@ -3180,7 +3180,7 @@ end;
 
 ### 21.4 Precision Mode (`vPrecise`)
 
-`vPrecise` is an `integer` (not a boolean). It holds either `8` (sub-pixel on, default) or `0` (sub-pixel off). The `PRECISE` directive XORs it: `vPrecise := vPrecise xor 8` (line 1947).
+`vPrecise` is an `integer` (not a boolean). It holds either `8` (**default — whole-pixel input, sub-pixel off**) or `0` (**sub-pixel 8.8 input, on**). The `PRECISE` directive XORs it: `vPrecise := vPrecise xor 8` (line 1947), so the first `PRECISE` enables sub-pixel input. (v55 ratification 2026-07-11: the on/off sense is this way round — matches the v55 language ref "PRECISE turns sub-pixel on.")
 
 There is no `PRECISE_OFF` command — a single `PRECISE` directive toggles the state.
 
@@ -3289,7 +3289,7 @@ vDotSize = 1, vDotSizeY = 1
 vPlotColor = DefaultPlotColor
 vTextColor = DefaultTextColor
 vOpacity = $FF (255)
-vPrecise = 8 (sub-pixel on)
+vPrecise = 8 (default: whole-pixel input; sub-pixel OFF until PRECISE)
 vPolar = False (not reset here; retains FormCreate value, which is False)
 vUpdate = False (automatic) unless UPDATE specified
 vHideXY = False unless HIDEXY specified

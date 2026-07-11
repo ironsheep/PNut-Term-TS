@@ -1510,7 +1510,7 @@ key_lut1..key_rgb24:
 BITMAP `0 rgb24 $FF0000,$00FF00,$0000FF lut4 0,1,2,3
 ```
 - First 3 pixels: RGB24 (red, green, blue)
-- Next 4 pixels: LUT4 (indices 0,1,2,3 → undefined colors!)
+- Next 4 pixels: LUT4 (indices 0,1,2,3 → **black `$000000`** — `vLut[]` is never default-populated; it is Delphi zero-initialized until `LUTCOLORS`, so it reads black, not the v55-text's claimed "0–7 default colors")
 
 ### 14.2 Trace Mode Switching
 
@@ -1752,7 +1752,7 @@ SpriteMaxY  = 32      // 32 pixels tall
 
 **LUT Modes**: Require palette definition
 ```
-BITMAP `0 lut4        // LUT undefined! Colors = garbage
+BITMAP `0 lut4        // LUT unset → all entries black $000000 (zero-init, not "0-7 default colors")
 BITMAP `0 lut4 lutcolors $000000,$111111,...,$FFFFFF    // Correct
 ```
 

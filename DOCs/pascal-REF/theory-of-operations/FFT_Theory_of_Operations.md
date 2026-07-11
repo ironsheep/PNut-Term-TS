@@ -107,7 +107,7 @@ vLow[0..7]    : integer    // Minimum value (unused in FFT)
 vMag[0..7]    : integer    // Magnitude multiplier (0-11, right-shift divisor)
 vTall[0..7]   : integer    // Vertical display height in pixels
 vBase[0..7]   : integer    // Vertical baseline offset in pixels
-vGrid[0..7]   : integer    // Grid display flags (bitwise: 1=baseline, 2=top)
+vGrid[0..7]   : integer    // Grid/legend flags (4-bit %abcd: 1=baseline line, 2=top line, 4=min-value legend TEXT, 8=max-value legend TEXT)
 vColor[0..7]  : integer    // Channel color (RGB format: $00RRGGBB)
 ```
 
@@ -150,7 +150,7 @@ Accepted by `FFT_Update` (lines 1620–1679) — run on every subsequent message
 | Directive / element | Parameters | Notes |
 |---|---|---|
 | **Numeric sample stream** | integers | The primary data stream. Samples are interleaved by channel: Ch0, Ch1, …, Ch(N−1), Ch0, … One FFT drawn per `vRate` complete sample sets after the circular buffer is full (`vSamples` samples). Lines 1657–1678. |
-| **Channel-def string** | `'label' {mag {high {tall {base {grid {color}}}}}}` | A string element defines (or redefines) the next channel in order. All parameters are optional and positional: *mag* int **0..11** (right-shift divisor for FFT magnitude, default 0); *high* int **1..$7FFFFFFF** (Y-axis full-scale, default $7FFFFFFF); *tall* int (height in px, default vHeight); *base* int (baseline offset in px, default 0); *grid* int (bitfield: bit 0=baseline line, bit 1=top line, default 0); *color* named-color or $00RRGGBB. Lines 1628–1638. |
+| **Channel-def string** | `'label' {mag {high {tall {base {grid {color}}}}}}` | A string element defines (or redefines) the next channel in order. All parameters are optional and positional: *mag* int **0..11** (right-shift divisor for FFT magnitude, default 0); *high* int **1..$7FFFFFFF** (Y-axis full-scale, default $7FFFFFFF); *tall* int (height in px, default vHeight); *base* int (baseline offset in px, default 0); *grid* int (**4-bit `%abcd` field**, default 0: bit 0=baseline line, bit 1=top line, **bit 2=min-value legend TEXT at the baseline, bit 3=max-value legend TEXT at the top line** — bits 2–3 `TextOut` the lower/upper of `vLow`/`vHigh`); *color* named-color or $00RRGGBB. Lines 1628–1638. |
 | `CLEAR` | — | Erase display, reset `SamplePop` and rate counter (lines 1642–1648) |
 | `SAVE` | — | Save bitmap to file (`KeySave`, line 1649) |
 | `PC_KEY` | — | Poll latched keypress and transmit to P2 (`SendKeyPress`, line 1651) |
@@ -696,7 +696,24 @@ begin
   Bitmap[0].Canvas.MoveTo(vMarginLeft, y);
   Bitmap[0].Canvas.LineTo(vMarginLeft + vWidth, y);
 end;
+
+if (vGrid[i] and 4) <> 0 then                      // Min-value legend TEXT (at baseline)
+begin
+  y := vMarginTop + vHeight - vBase[i] - 1;
+  if vLow[i] < vHigh[i] then x := vLow[i] else x := vHigh[i];
+  if x >= 0 then s := '+' + IntToStr(x) else s := IntToStr(x);
+  Bitmap[0].Canvas.TextOut(vMarginLeft + ChrWidth div 2, y - ChrHeight div 2, s);
+end;
+
+if (vGrid[i] and 8) <> 0 then                      // Max-value legend TEXT (at top line)
+begin
+  y := vMarginTop + vHeight - vBase[i] - vTall[i];
+  if vLow[i] < vHigh[i] then x := vHigh[i] else x := vLow[i];
+  if x >= 0 then s := '+' + IntToStr(x) else s := IntToStr(x);
+  Bitmap[0].Canvas.TextOut(vMarginLeft + ChrWidth div 2, y - ChrHeight div 2, s);
+end;
 ```
+> **Note (v55 ratification, 2026-07-11):** `vGrid` is a **4-bit** field. Bits 0–1 draw the baseline/top **lines**; **bits 2–3 render min/max-value legend TEXT** (`ClearBitmap` lines 3310–3333, actual `TextOut`). Earlier revisions of this doc described it as 2-bit with no legend text — corrected. (FFT never sets `vLow[]`, so a bit-2 legend shows `+0`.)
 
 **Log Scale Markers** (lines 3350-3393):
 ```pascal
