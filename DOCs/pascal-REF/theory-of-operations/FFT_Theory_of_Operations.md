@@ -1114,8 +1114,8 @@ end;
 
 **State Variables**:
 - `vPixelX, vPixelY`: Last drawn position (used for line continuity)
-- `vLineSize`: Line width (0=no line, 1-32=width in pixels, negative=filled bars)
-- `vDotSize`: Dot radius (0=no dot, 1-32=radius in pixels)
+- `vLineSize`: Line width (0=no line, 1-32=nominal width in px, negative=filled bars). Passed as `vLineSize shl 6` → geometric disc radius = N/4 in the 8.8 space; the visible ~1:1 width is an anti-aliasing effect, not the raw disc geometry.
+- `vDotSize`: Dot **diameter** (0=no dot, 1-32 px). Passed as `vDotSize shl 7` → geometric radius = N/2 px, i.e. face value = diameter (matches LOGIC ToO §10.5 "diameter"; SCOPE_XY dots use `shl 6`).
 
 **Line Continuity**:
 - Each call stores current position
@@ -1146,7 +1146,7 @@ end;
 procedure SmoothLine(x1, y1, x2, y2, radius, color: integer; opacity: byte);
 ```
 - `x1, y1, x2, y2`: Endpoints in fixed-point
-- `radius`: Line width in fixed-point (64× for historical reasons)
+- `radius`: true geometric disc radius in the 8.8 fixed-point space (256 = 1 px), clamped to `maxr shl 8` (`SmoothLine`:3872). Callers pass `size shl 6` (line) or `size shl 7` (dot); the `shl 6` is the caller's input scale, not the internal format.
 - `color`: RGB color
 - `opacity`: Alpha value (0=transparent, 255=opaque)
 

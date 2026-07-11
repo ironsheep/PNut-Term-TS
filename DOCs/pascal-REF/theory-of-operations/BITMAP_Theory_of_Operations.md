@@ -161,7 +161,7 @@ Parsed in `BITMAP_Configure` (lines 2372–2414) during window creation.
 | `SIZE` | `w h` | int **1..2048** each; default 256 × 256 (`bitmap_wmin/wmax`, `bitmap_hmin/hmax`) | `2386` |
 | `DOTSIZE` | `x {y}` | int **1..256** each; default 1 × 1; if `y` omitted it copies `x` | `2388–2392` |
 | `SPARSE` | `color` | named color or RGB24; enables sparse mode (default −1 = off / normal) | `2393–2394` |
-| color-mode | `LUT1` `LUT2` `LUT4` `LUT8` `LUMA8` `LUMA8W` `LUMA8X` `RGBI8` `RGBI8W` `RGBI8X` `RGB8` `HSV8` `HSV8W` `HSV8X` `HSV16` `HSV16W` `HSV16X` `RGB16` `RGB24` | 19 modes; default `RGB24`; LUMA/RGBI/HSV take optional tint keyword | `KeyColorMode`; `2395–2396` |
+| color-mode | `LUT1` `LUT2` `LUT4` `LUT8` `LUMA8` `LUMA8W` `LUMA8X` `RGBI8` `RGBI8W` `RGBI8X` `RGB8` `HSV8` `HSV8W` `HSV8X` `HSV16` `HSV16W` `HSV16X` `RGB16` `RGB24` | 19 modes; default `RGB24`. Tune-parameter parsing differs by family (`KeyColorMode` 2788-2803): **LUMA8/8W/8X** take an optional tint — a color keyword (`ORANGE`..`GRAY`) **or** a numeric value; **HSV8/16 families** take a numeric tune value only; **RGBI8/8W/8X take no tune** (RGBI derives its shade from the pixel bits, `TranslateColor` 3118-3119). | `KeyColorMode`; `2395–2396` |
 | `LUTCOLORS` | `rgb24…` | Up to 256 RGB24 palette entries; only meaningful with LUT1/2/4/8 mode | `2397–2398` |
 | `TRACE` | `n` | int **0..15** (bits 0–2 = scan pattern 0–7, bit 3 = scroll enable); default 0 | `2399–2400`; see §3.2 |
 | `RATE` | `n` | int; pixels per screen update; −1 ⇒ auto-set to `vWidth × vHeight` after configure; 0 ⇒ `SetTrace` sets it to `vWidth` (h-scan) or `vHeight` (v-scan); default 0 | `2401–2402`, `2412–2413` |

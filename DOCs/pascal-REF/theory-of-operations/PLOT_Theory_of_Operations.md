@@ -504,8 +504,8 @@ end;
 
 | Parameter | Command | Default | Range | Purpose |
 |-----------|---------|---------|-------|---------|
-| Title | `TITLE 'string'` | "Plot" | - | Window title |
-| Position | `POS x y` | Cascaded | Screen coords | Window position |
+| Title | `TITLE 'string'` | `"<name> - PLOT"` | - | Window title (caption set in FormCreate) |
+| Position | `POS x y` | host origin ≈(0,210), no cascade | offset from host origin | Window position |
 | Size | `SIZE width height` | 512 × 512 | 32–2048 | Canvas dimensions |
 | Dot Size | `DOTSIZE x {y}` | 1 × 1 | **1–256** | Pixel scaling (v55: `1891-1894`) |
 | Color mode | `LUT1`…`RGB24` | - | - | Initial color mode |

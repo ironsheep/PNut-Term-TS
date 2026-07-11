@@ -352,8 +352,8 @@ Accepted by `SCOPE_Configure` (lines 1151–1207). All directives are optional; 
 
 | Directive | Parameters | Range / default | Pascal lines |
 |---|---|---|---|
-| `TITLE` | `'string'` | — | 1163–1164 |
-| `POS` | `left top` | screen coords / cascaded | 1165–1166 |
+| `TITLE` | `'string'` | `"<name> - SCOPE"` (FormCreate:626) | 1163–1164 |
+| `POS` | `left top` | offset from host origin ≈(0,210); no cascade (FormCreate:628-629, KeyPos:2712-2716) | 1165–1166 |
 | `SIZE` | `width height` (pixels) | each int 32–2048 / 256×256 | 1167–1168 |
 | `SAMPLES` | `n` | int 16–2048 / 256 | 1169–1170 |
 | `RATE` | `n` | int 1–2048 / 1 | 1171–1172 |
@@ -372,7 +372,7 @@ Accepted by `SCOPE_Update` (lines 1209–1337) on every subsequent message.
 
 | Directive | Parameters | Range / value-set / default | Pascal lines |
 |---|---|---|---|
-| *string* (channel def) | `'label' (AUTO \| lo hi) {tall} {base} {grid} {color}` | `label`: free string. `AUTO`: keyword flag → vAuto:=True. `lo`/`hi`: int32 (defaults −$80000000 / $7FFFFFFF). `tall`: int / vHeight. `base`: int / 0. `grid`: int / 0 (parsed, never rendered). `color`: named or RGB24 / `DefaultScopeColors[i]`. Up to 8 channels (`Channels`=8); further defs ignored | 1217–1231 |
+| *string* (channel def) | `'label' (AUTO \| lo hi) {tall} {base} {grid} {color}` | `label`: free string. `AUTO`: keyword flag → vAuto:=True. `lo`/`hi`: int32 (defaults −$80000000 / $7FFFFFFF). `tall`: int / vHeight. `base`: int / 0. `grid`: int / 0 — **4-bit `%abcd` mask, rendered** (bit0=baseline line, bit1=top line, bit2=min-value TEXT, bit3=max-value TEXT) in `ClearBitmap` 3298-3333; see §19.3. `color`: named or RGB24 / `DefaultScopeColors[i]`. Up to 8 channels (`Channels`=8); further defs ignored | 1217–1231 |
 | `TRIGGER` | `channel (AUTO \| arm fire) {offset}` | `channel`: int **−1..7** (−1=disabled/free-run). `AUTO`: keyword flag → vTriggerAuto:=True (else `arm`,`fire`: int32). `offset`: int **0…vSamples−1** / vSamples div 2 | 1236–1249 |
 | `HOLDOFF` | `n` | int **2..2048** / vSamples (set in Configure); resets vHoldOffCount:=0 | 1250–1251 |
 | `CLEAR` | *(none)* | Clears bitmap + resets SamplePop and RateCount | 1252–1259 |
@@ -492,8 +492,8 @@ end;
 
 | Parameter | Command | Default | Range | Purpose |
 |-----------|---------|---------|-------|---------|
-| Title | `TITLE 'string'` | "Scope" | - | Window title |
-| Position | `POS x y` | Cascaded | Screen coords | Window position |
+| Title | `TITLE 'string'` | `"<name> - SCOPE"` | - | Window title (caption set in FormCreate) |
+| Position | `POS x y` | host origin ≈(0,210), no cascade | offset from host origin | Window position |
 | Size | `SIZE width height` | 256 × 256 | 32-2048 | Display dimensions |
 | Samples | `SAMPLES count` | 256 | 16-2048 | Horizontal resolution |
 | Rate | `RATE divisor` | 1 | 1-2048 | Display update rate divisor |

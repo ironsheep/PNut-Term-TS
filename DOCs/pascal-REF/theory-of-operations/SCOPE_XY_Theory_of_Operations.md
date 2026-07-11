@@ -296,8 +296,8 @@ Accepted during `SCOPE_XY_Configure` (lines 1386–1441).
 
 | Directive | Syntax | Default | Clamped range | Pascal lines | Notes |
 |---|---|---|---|---|---|
-| `TITLE` | `TITLE 'str'` | `"Scope_XY"` | — | `1398-1399` | Window caption |
-| `POS` | `POS left top` | Cascaded | Screen coords | `1400-1401` | |
+| `TITLE` | `TITLE 'str'` | `"<name> - SCOPE_XY"` (FormCreate:626) | — | `1398-1399` | Window caption |
+| `POS` | `POS left top` | host origin ≈(0,210), no cascade | offset from host origin (KeyPos:2712-2716) | `1400-1401` | |
 | `SIZE` | `SIZE val` | 256 (→ 512 px) | 16..1024 (→ 32..2048 px) | `1402-1406` | **One value only (square).** `vWidth = val*2; vHeight = vWidth`. |
 | `RANGE` | `RANGE n` | `$7FFFFFFF` | 1..`$7FFFFFFF` | `1407-1408` | Coordinate extent; both axes |
 | `SAMPLES` | `SAMPLES n` | `256` (from `SetDefaults` line 2886) | 0..2048 | `1409-1410` | `0` = persistent (no buffer); `>0` = fading trail depth; SCOPE_XY_Configure does NOT reset this |
@@ -425,8 +425,8 @@ end;
 
 | Parameter | Command | Default | Range | Purpose |
 |-----------|---------|---------|-------|---------|
-| Title | `TITLE 'string'` | "Scope_XY" | - | Window title |
-| Position | `POS x y` | Cascaded | Screen coords | Window position |
+| Title | `TITLE 'string'` | `"<name> - SCOPE_XY"` | - | Window title (caption set in FormCreate) |
+| Position | `POS x y` | host origin ≈(0,210), no cascade | offset from host origin | Window position |
 | Size | `SIZE radius` | 256 | 16-1024 | Display radius (width = height = radius × 2) |
 | Range | `RANGE value` | $7FFFFFFF | 1-$7FFFFFFF | Coordinate system extent |
 | Samples | `SAMPLES count` | 256 (from `SetDefaults`) | 0-2048 | Fade buffer depth (0=persistent, >0=fading); SCOPE_XY_Configure does not reset this |
@@ -1756,7 +1756,7 @@ SmoothDot(x, y, vDotSize shl 6, color, opacity);
 
 **Parameters**:
 - `x, y`: Center position in 8.8 fixed-point (256 = 1 pixel)
-- `vDotSize shl 6`: Radius in 6.6 fixed-point (64 = 1 pixel)
+- `vDotSize shl 6`: `vDotSize` scaled ×64 as input into the fixed-point draw space, which is always **8.8** (256 = 1 pixel) — *not* a "6.6" format; geometric disc radius = `vDotSize/4` px (`SmoothDot`/`SmoothLine` clamp `radius` to `maxr shl 8`, 3872). Note SCOPE_XY dots use `shl 6`, half of LOGIC/SCOPE/FFT's `shl 7`.
 - `color`: RGB24 color value
 - `opacity`: Alpha value (0-255)
 

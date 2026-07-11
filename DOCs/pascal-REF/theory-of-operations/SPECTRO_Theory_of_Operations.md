@@ -234,8 +234,8 @@ Accepted in `SPECTRO_Configure` (lines 1719–1790). All are optional; defaults 
 
 | Directive | Parameter(s) | Range / notes | Default | Pascal lines |
 |---|---|---|---|---|
-| `TITLE 'str'` | string | window title | `"SPECTRO"` | 1737-1738 |
-| `POS left top` | two integers | window position | auto | 1739-1740 |
+| `TITLE 'str'` | string | window title | `"<name> - SPECTRO"` (FormCreate:626) | 1737-1738 |
+| `POS left top` | two integers | window position | host origin ≈(0,210), no cascade (FormCreate:628-629, KeyPos:2712-2716) | 1739-1740 |
 | `SAMPLES n {first last}` | n = FFT size; optional first/last bin | n clamped to nearest power-of-2 in 4..2048; first ∈ [0, n/2−2], last ∈ [first+1, n/2−1] | 512 (bins 0..255) | 1741-1750 |
 | `DEPTH n` | integer | 1..2048 (time-history lines) | *varies by trace* | 1751-1752 |
 | `MAG n` | integer | 0..11 (2^n magnitude multiplier) | 0 | 1753-1754 |
@@ -387,8 +387,8 @@ end;
 
 | Parameter | Key | Type | Range | Default | Description |
 |-----------|-----|------|-------|---------|-------------|
-| **title** | key_title | string | - | "SPECTRO" | Window title text |
-| **pos** | key_pos | x, y, width, height | - | auto | Window position and size |
+| **title** | key_title | string | - | `"<name> - SPECTRO"` | Window title text |
+| **pos** | key_pos | left, top | - | host origin ≈(0,210), no cascade | Window position (offset only; `KeyPos` reads 2 values, no size) |
 | **samples** | key_samples | integer | 4-2048 (power-of-2) | 512 | FFT size (also accepts bin range) |
 | **depth** | key_depth | integer | 1-2048 | varies | Time history depth (vertical pixels) |
 | **mag** | key_mag | integer | 0-11 | 0 | Magnitude bit-shift (2^mag multiplier) |

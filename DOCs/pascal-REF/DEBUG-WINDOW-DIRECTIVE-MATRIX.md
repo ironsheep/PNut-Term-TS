@@ -59,7 +59,7 @@ color is taken; a named color (except BLACK/WHITE) may be followed by an optiona
 ### 1.2 Color-mode group `key_lut1..key_rgb24` (10–28)
 `LUT1 LUT2 LUT4 LUT8 LUMA8 LUMA8W LUMA8X HSV8 HSV8W HSV8X RGBI8 RGBI8W RGBI8X RGB8
 HSV16 HSV16W HSV16X RGB16 RGB24`. Selects how packed numeric data is translated to
-pixels (`KeyColorMode`, `2785-2804`). LUMA/HSV modes take a tint parameter.
+pixels (`KeyColorMode`, `2785-2804`). LUMA8 takes a tint (keyword `ORANGE`..`GRAY` or a number); HSV takes a numeric tune; RGBI takes none.
 
 ### 1.3 Packed-data group `key_longs_1bit..key_bytes_4bit` (29–40)
 Declares how many sub-samples are packed per transmitted long/word/byte and at
@@ -448,9 +448,13 @@ colors above:
 | `clYellow` | `$FFFF00` | `clMagenta` | `$FF00FF` | `clGray2` | `$808080` |
 |            |           |             |           | `clGray3` | `$D0D0D0` |
 
-**Color modes** (`key_lut1..key_rgb24`, ids 10-28; `KeyColorMode`, 2785-2804).
-LUMA/HSV/RGBI variants take a tune parameter (`W`/`X` suffixes select tuning
-behavior):
+**Color modes** (`key_lut1..key_rgb24`, ids 10-28; `KeyColorMode`, 2788-2803).
+Tune parsing differs by family: **LUMA8/8W/8X** take an optional tint (color
+keyword `ORANGE`..`GRAY` **or** a numeric value); **HSV8/16 families** take a
+numeric tune value only; **RGBI8/8W/8X take no tune parameter** (RGBI derives its
+shade from the pixel bits). The `W`/`X` suffixes are orthogonal to tune parsing —
+they select background polarity and range-remap in `TranslateColor` (3090-3174) /
+`GetBackground` (3180-3206), not "tuning":
 `LUT1 LUT2 LUT4 LUT8 LUMA8 LUMA8W LUMA8X HSV8 HSV8W HSV8X RGBI8 RGBI8W RGBI8X RGB8
 HSV16 HSV16W HSV16X RGB16 RGB24`.
 *SPECTRO restricts its config color mode to `LUMA8 LUMA8W LUMA8X HSV16 HSV16W

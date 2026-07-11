@@ -1404,11 +1404,10 @@ end;
    - Dot diameter: `vDotSize << 7` (convert to fixed-point with scaling)
 3. **Update State**: Store current point as previous for next iteration
 
-**Line/Dot Modes**:
-- `vDotSize = 0, vLineSize > 0`: Connected lines only
-- `vDotSize > 0, vLineSize = 0`: Dots only (no connections)
-- Both > 0: Lines with dots at sample points
-- Both = 0: No rendering (error condition, caught in SCOPE_Configure)
+**Line/Dot Modes** — LOGIC clamps `LINESIZE` to **1..32** in `LOGIC_Configure:958-959` (`KeyValWithin(vLineSize, 1, 32)`), so `vLineSize` is **never 0** (default 3, :938):
+- `vDotSize = 0` (default), `vLineSize ≥ 1`: Connected lines only
+- `vDotSize > 0`, `vLineSize ≥ 1`: Lines with dots at sample points
+- The `vLineSize = 0` and "both = 0" states are **structurally unreachable** for LOGIC; it has **no** `(vDotSize=0) and (vLineSize=0) → vDotSize:=1` auto-force (that safety net exists only in `SCOPE_Configure:1188` / `FFT_Configure:1606`, where `LINESIZE` can reach 0).
 
 ### 10.6 Waveform Rendering Loop
 
@@ -1680,7 +1679,7 @@ Channels × Samples × 2 DrawLineDot calls
 - Use RATE limiting to reduce update frequency
 - Reduce vSamples for fewer samples per frame
 - Increase vSpacing to fit more samples in less width
-- Use vLineSize=0 and vDotSize=0 for fastest rendering (error condition, not recommended)
+- Use `vDotSize=0` (dots off — the default) with a small `vLineSize` for fastest line-only rendering (`vLineSize` cannot be 0 — it is clamped to 1..32)
 
 ### 13.3 Serial Bandwidth
 

@@ -214,7 +214,7 @@ Each row: directive → parameter(s) with **type · legal range · default** (ma
 
 | Directive | Parameter(s) — type · range · default | Pascal lines |
 |---|---|---|
-| `TITLE 'str'` | `'text'` · free string · "MIDI" | 2508–2509 |
+| `TITLE 'str'` | `'text'` · free string · default `"<name> - MIDI"` (FormCreate:626) | 2508–2509 |
 | `POS left top` | left, top · int (offset from base window pos) | 2510–2511 |
 | `SIZE n` | n · int **1..50** · **4** — key-size scalar (NOT pixels); `MidiKeySize = 8 + n×4` | 2512–2513 |
 | `RANGE firstKey lastKey` | firstKey · int **0..127** · **21**; lastKey · int **firstKey..127** · **108** (lastKey clamped ≥ firstKey, 2517–2518) | 2514–2519 |
@@ -371,8 +371,8 @@ end;
 
 | Parameter | Key | Type | Range | Default | Description |
 |-----------|-----|------|-------|---------|-------------|
-| **title** | key_title | string | - | "MIDI" | Window title text |
-| **pos** | key_pos | x, y, width, height | - | auto | Window position and size |
+| **title** | key_title | string | - | `"<name> - MIDI"` | Window title text |
+| **pos** | key_pos | left, top | - | host origin ≈(0,210), no cascade | Window position (offset only; `KeyPos:2712-2716` reads 2 values — no width/height) |
 | **size** | key_size | integer | 1-50 | 4 | Key size multiplier |
 | **range** | key_range | first, last | 0-127 | 21-108 | Note range to display |
 | **channel** | key_channel | integer | 0-15 | 0 | MIDI channel to monitor |

@@ -344,8 +344,8 @@ end;
 
 | Parameter | Key | Type | Range | Default | Description |
 |-----------|-----|------|-------|---------|-------------|
-| **title** | key_title | string | - | "TERM" | Window title text |
-| **pos** | key_pos | x, y, width, height | - | auto | Window position and size |
+| **title** | key_title | string | - | `"<name> - TERM"` | Window title text |
+| **pos** | key_pos | left, top | - | host origin ≈(0,210), no cascade | Window position (offset only; `KeyPos:2712-2716` reads 2 values — no width/height) |
 | **size** | key_size | columns, rows | 1-256 | 40×20 | Terminal grid size |
 | **textsize** | key_textsize | integer | 6-200 | `FontSize` (default 10) | Font size in points (`KeyTextSize` clamp) |
 | **color** | key_color | 8 integers | RGB24 | DefaultTermColors | 8 color values (4 pairs) |
