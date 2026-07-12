@@ -258,13 +258,13 @@ vArmed          : boolean;       // Trigger armed state
 vTriggered      : boolean;       // Trigger event occurred
 ```
 
-**Trigger Logic**:
-1. **vTriggerMask**: Defines which channels participate in trigger
-   - Bit N set = channel N is part of trigger condition
-   - Example: `$00000003` = channels 0 and 1
+**Trigger Logic** — the mask/match operate on the **raw 32-bit sample word** (`t := LogicSampleBuff[…]`, one bit per input line/pin), compared as `((t xor vTriggerMatch) and vTriggerMask) = 0` (`LOGIC_Update` 1083-1094), *before* the display groups bits into named/bus channels. So the bit index is a **raw input bit/pin**, which only coincides with the displayed "channel" number when every channel is 1 bit wide; a multi-bit bus channel (via `RANGE`) spans several of these trigger bits.
+1. **vTriggerMask**: Defines which **raw input bits** participate in the trigger
+   - Bit N set = input bit/pin N is part of the trigger condition
+   - Example: `$00000003` = input bits 0 and 1
 
-2. **vTriggerMatch**: Expected value on masked channels
-   - Example: `$00000001` = channel 0 high, channel 1 low
+2. **vTriggerMatch**: Expected level on the masked bits
+   - Example: `$00000001` = bit 0 high, bit 1 low
 
 3. **vTriggerOffset**: Position of trigger in display
    - `0`: Trigger at left edge
@@ -559,23 +559,29 @@ key_bytes_4bit  = 40;    // BYTES_4BIT
 
 ```pascal
 PackDef: array [key_longs_1bit..key_bytes_4bit] of integer = (
-  0 shl 16 +  1 shl 8 + 32,   // LONGS_1BIT:  signx=0, shift=1,  count=32
-  0 shl 16 +  2 shl 8 + 16,   // LONGS_2BIT:  signx=0, shift=2,  count=16
-  0 shl 16 +  4 shl 8 + 8,    // LONGS_4BIT:  signx=0, shift=4,  count=8
-  0 shl 16 +  8 shl 8 + 4,    // LONGS_8BIT:  signx=0, shift=8,  count=4
-  0 shl 16 + 16 shl 8 + 2,    // LONGS_16BIT: signx=0, shift=16, count=2
-  0 shl 16 +  1 shl 8 + 16,   // WORDS_1BIT:  signx=0, shift=1,  count=16
-  0 shl 16 +  2 shl 8 + 8,    // WORDS_2BIT:  signx=0, shift=2,  count=8
-  0 shl 16 +  4 shl 8 + 4,    // WORDS_4BIT:  signx=0, shift=4,  count=4
-  0 shl 16 +  8 shl 8 + 2,    // WORDS_8BIT:  signx=0, shift=8,  count=2
-  0 shl 16 +  1 shl 8 + 8,    // BYTES_1BIT:  signx=0, shift=1,  count=8
-  0 shl 16 +  2 shl 8 + 4,    // BYTES_2BIT:  signx=0, shift=2,  count=4
-  0 shl 16 +  4 shl 8 + 2);   // BYTES_4BIT:  signx=0, shift=4,  count=2
+  0 shl 16 +  1 shl 8 + 32,   // LONGS_1BIT:  shift=1,  count=32
+  0 shl 16 +  2 shl 8 + 16,   // LONGS_2BIT:  shift=2,  count=16
+  0 shl 16 +  4 shl 8 + 8,    // LONGS_4BIT:  shift=4,  count=8
+  0 shl 16 +  8 shl 8 + 4,    // LONGS_8BIT:  shift=8,  count=4
+  0 shl 16 + 16 shl 8 + 2,    // LONGS_16BIT: shift=16, count=2
+  0 shl 16 +  1 shl 8 + 16,   // WORDS_1BIT:  shift=1,  count=16
+  0 shl 16 +  2 shl 8 + 8,    // WORDS_2BIT:  shift=2,  count=8
+  0 shl 16 +  4 shl 8 + 4,    // WORDS_4BIT:  shift=4,  count=4
+  0 shl 16 +  8 shl 8 + 2,    // WORDS_8BIT:  shift=8,  count=2
+  0 shl 16 +  1 shl 8 + 8,    // BYTES_1BIT:  shift=1,  count=8
+  0 shl 16 +  2 shl 8 + 4,    // BYTES_2BIT:  shift=2,  count=4
+  0 shl 16 +  4 shl 8 + 2);   // BYTES_4BIT:  shift=4,  count=2
 ```
 
-**Encoding Format**: `signx shl 16 + shift shl 8 + count`
+**Encoding Format**: `shift shl 8 + count` — only **two** fields are packed and consumed:
+- bits **8-15** = `shift` = sub-sample **bit width** (1/2/4/8/16)
+- bits **0-7** = `count` = number of sub-samples per transmitted container
 
-**Source Location**: Lines 140-152 in DebugDisplayUnit.pas
+`SetPack` (4152-4155) reads exactly these: `vPackShift := i shr 8 and $FF; vPackCount := i and $FF;` and derives `vPackMask := 1 shl vPackShift - 1`. The leading `0 shl 16` is **inert padding** — the top 16 bits are never read.
+
+> **Sign-extension is NOT encoded in this table.** `vPackSignx` is a separate run-time flag set by the `SIGNED` keyword modifier (`KeyPack` 2817-2831 → `SetPack(val, alt, signx)`, `vPackSignx := signx`), independent of `PackDef`. Likewise the `ALT` modifier sets `vPackAlt`. Earlier drafts mislabeled the padding as a `signx` field.
+
+**Source Location**: Lines 140-152 (`PackDef`); `SetPack` 4146-4156; `KeyPack` 2817-2832 in DebugDisplayUnit.pas
 
 ### 6.3 Packing Parameters
 

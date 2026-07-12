@@ -273,22 +273,34 @@ vLineSize    : integer;     // Line/dot size in pixels
 ### 4.3 Text Rendering Variables
 
 ```pascal
-vTextSize    : integer;     // Font size in points — default DefaultTextSize = 10
-                            //   (PLOT_Configure does not set it; changed at runtime
-                            //   via TEXTSIZE or the inline size of TEXT, clamp 6..200)
-vTextStyle   : integer;     // Style encoding (weight, italic, underline, alignment)
-vTextAngle   : integer;     // Text rotation angle (tenths of degrees: 0-3600)
+vTextSize    : integer;     // PERSISTENT font size in points — default DefaultTextSize = 10.
+                            //   PLOT_Configure does not set it; the standalone TEXTSIZE
+                            //   directive changes it, clamped 6..200 via KeyTextSize.
+                            //   (The inline `size` field of TEXT is NOT clamped and does
+                            //    NOT persist — see §8.1.)
+vTextStyle   : integer;     // PERSISTENT style bitfield (weight, italic, underline, H/V
+                            //   justify) — default DefaultTextStyle = 1 (weight 400 = normal)
+vTextAngle   : integer;     // PERSISTENT text rotation (tenths of degrees: 0-3600)
 ```
 
-**Style Encoding** (vTextStyle bit fields):
+**Style Encoding** (vTextStyle bit fields — decoded in `AngleTextOut`, lines 3494-3511):
 
 | Bits | Mask | Values | Meaning |
 |------|------|--------|---------|
-| 0-1 | $03 | 0-3 | Font weight: 0=100, 1=400, 2=700, 3=900 |
-| 2 | $04 | 0-1 | Italic: 0=normal, 1=italic |
+| 0-1 | $03 | 0-3 | Font weight: 0=100 (thin), 1=400 (normal), 2=700 (bold), 3=900 (heavy) |
+| 2 | $04 | 0-1 | Italic: 0=upright, 1=italic |
 | 3 | $08 | 0-1 | Underline: 0=none, 1=underline |
-| 4-5 | $30 | 0-3 | Horizontal alignment: 0/1=center, 2=left, 3=right |
-| 6-7 | $C0 | 0-3 | Vertical alignment: 0/1=center, 2=top, 3=bottom |
+| 4-5 | $30 | 0-3 | Horizontal justify: 0/1=center, 2=left, 3=right |
+| 6-7 | $C0 | 0-3 | Vertical justify: 0/1=center, **2=bottom, 3=top** |
+
+> **Justify semantics** (verified against `AngleTextOut` 3502-3516): the two justify
+> fields position the anchor point relative to the text box, then the offset is rotated
+> by `angle` before drawing (`TextOut(x+rx, y-ry)`). Horizontal value 2 → `tx=0` (anchor
+> at the text's left edge → left-justified), 3 → `tx=-w` (right edge → right). Vertical
+> value 2 → `ty=h` → text drawn at `y-h`, i.e. it occupies screen rows `[y-h, y]` so the
+> anchor sits at the text's **bottom** edge (**bottom**-justified); value 3 → `ty=0` →
+> rows `[y, y+h]`, anchor at the **top** edge (**top**-justified). Weight = 700 is the
+> only "bold" — there is no separate bold flag; bit 2 is italic, bit 3 underline.
 
 **Text Angle Units**:
 - Stored in tenths of degrees (0-3600 = 0-360°)
@@ -396,10 +408,10 @@ Accepted by `PLOT_Update` (1918–2155). PLOT is the only window whose update ph
 | `OVAL` | `width height {linesize {opacity}}` | linesize default 0 (filled); opacity default `vOpacity` | 2012–2036 | Filled/outlined ellipse; center = current pos |
 | `BOX` | `width height {linesize {opacity}}` | linesize default 0 (filled); opacity default `vOpacity` | 2012–2036 | Filled/outlined rectangle; center = current pos |
 | `OBOX` | `width height xradius yradius {linesize {opacity}}` | linesize default 0 (filled); opacity default `vOpacity` | 2012–2036 | Rounded rectangle; center = current pos |
-| `TEXTSIZE` | `size` | — | 2037–2038 | Set default text point size (`KeyTextSize`) |
-| `TEXTSTYLE` | `style` | byte 0–255 | 2039–2040 | Set `vTextStyle` byte (weight/italic/underline/halign/valign) |
-| `TEXTANGLE` | `angle` | degrees 0–359 (Cartesian) or 0–vTwoPi (polar) | 2041–2042 | Set `vTextAngle`; calls `MakeTextAngle` for unit conversion |
-| `TEXT` | `{size {style {angle}}} 'string'` | up to 3 optional numeric overrides | 2043–2055 | Render string |
+| `TEXTSIZE` | `size` | int **6..200** (`KeyTextSize` clamp) | 2037–2038 | **Persists** → `vTextSize` |
+| `TEXTSTYLE` | `style` | byte; bit-packed (see §8.2: bits0-1 weight, 2 italic, 3 underline, 4-5 H-justify, 6-7 V-justify) | 2039–2040 | **Persists** → `vTextStyle` |
+| `TEXTANGLE` | `angle` | degrees 0–359 (Cartesian) or 0–vTwoPi (polar) | 2041–2042 | **Persists** → `vTextAngle` (via `MakeTextAngle`) |
+| `TEXT` | `{size {style {angle}}} 'string'` | up to 3 optional, positional, **local** fields (seeded from the persistent vars, do **not** persist; `size` **not** clamped) | 2043–2055 | Render one string (see §8.1) |
 | `LAYER` | `layer 'filename.bmp'` | layer **1–8** | 2056–2062 | Load BMP file into layer; file must exist with `.bmp` extension |
 | `CROP` | `layer {left top width height {x y}}` or `layer AUTO x y` | layer **1–8** | 2063–2089 | Composite layer onto canvas; no args = full layer at (0,0) |
 | `SPRITEDEF` | `id xsize ysize pixels… colors…` | id **0–255**; xsize,ysize **1–32** each; 256 RGBA color longs | 2090–2101 | Define sprite: xsize×ysize palette-index bytes then 256 RGBA color longs |
@@ -1168,11 +1180,13 @@ The PLOT window features a sophisticated text rendering system with support for 
 TEXT {size {style {angle}}} 'string'
 ```
 
-**Parameters**:
-- `size`: Font size in points (default: vTextSize)
-- `style`: Style encoding byte (default: vTextStyle)
-- `angle`: Rotation angle (default: vTextAngle)
-- `string`: Text to render
+**Parameters** — all three numeric fields are *optional*, *positional* (read left-to-right; the first non-numeric token ends the list and must be the string), and **local to this one call**:
+- `size`: Font size in points. Seeded from `vTextSize`; **NOT clamped** (unlike the standalone `TEXTSIZE`, which clamps 6..200 via `KeyTextSize`).
+- `style`: Style bitfield (see §8.2). Seeded from `vTextStyle`.
+- `angle`: Rotation angle (whole degrees in Cartesian; polar units in polar mode → converted to tenths of degrees by `MakeTextAngle`). Seeded from `vTextAngle`.
+- `string`: Text to render.
+
+> **Local vs persistent (key distinction):** the inline `size`/`style`/`angle` fields are read into the local array `a[0..2]` (seeded from the persistent `vTextSize`/`vTextStyle`/`vTextAngle`) and apply **only to this single TEXT call — they do NOT update the persistent variables.** To change the persistent text attributes for subsequent draws, use the standalone `TEXTSIZE` / `TEXTSTYLE` / `TEXTANGLE` directives (those write `vTextSize`/`vTextStyle`/`vTextAngle`). Consequently `TEXT 20 'hi'` draws at size 20 but leaves the next `TEXT`'s default size unchanged.
 
 **Implementation** (lines 2043-2055):
 ```pascal
@@ -1192,22 +1206,24 @@ end;
 ```
 
 **Processing Steps**:
-1. Load default values for size, style, angle
-2. Read optional parameters (each parameter is optional)
-3. If angle provided, convert to Windows angle format
-4. Read text string
-5. Set canvas font properties
-6. Get screen coordinates for current position
-7. Call AngleTextOut to render rotated text
+1. Seed local `a[0..2]` from the persistent `vTextSize`/`vTextStyle`/`vTextAngle` (does **not** modify those persistent variables)
+2. Read up to 3 optional numeric parameters left-to-right; stop at the first non-numeric token (the string)
+3. If an angle was provided, convert it to Windows tenths-of-degrees via `MakeTextAngle`
+4. Read the text string (required)
+5. Set canvas font size (`a[0]`, unclamped) and color (`vTextColor`)
+6. Get screen coordinates for the current position (`PLOT_GetXY`)
+7. Call `AngleTextOut(x, y, s, a[1], a[2])` to render rotated, styled, justified text
 
 **Example**:
 ```
 COLOR WHITE
 SET 256 256
-TEXT 'Hello World'                    // Default size, style, angle
-TEXT 16 'Large Text'                  // Size 16, default style and angle
-TEXT 12 $87 90 'Rotated'              // Size 12, bold+italic+underlined, 90° rotation
+TEXT 'Hello World'                    // persistent size/style/angle (defaults: 10, normal, 0°)
+TEXT 16 'Large Text'                  // this call only: size 16; style/angle stay at persistent
+TEXT 12 $87 90 'Rotated'              // this call only: size 12; style $87 = weight 900 (heavy),
+                                      //   italic, NO underline, H-center, V-bottom; 90° rotation
 ```
+*(`$87` = `1000_0111`: bits0-1=3→weight 900, bit2=1→italic, bit3=0→no underline, bits4-5=0→H-center, bits6-7=2→V-bottom. It is **not** "bold+italic+underlined" — decode the bits, don't read the hex digits as flags.)*
 
 ### 8.2 Text Style Encoding
 
@@ -1218,8 +1234,8 @@ The `vTextStyle` variable encodes multiple style attributes in a single byte:
 | 0-1 | $03 | Weight | 0-3 | Font weight |
 | 2 | $04 | Italic | 0-1 | Italic style |
 | 3 | $08 | Underline | 0-1 | Underline |
-| 4-5 | $30 | H-Align | 0-3 | Horizontal alignment |
-| 6-7 | $C0 | V-Align | 0-3 | Vertical alignment |
+| 4-5 | $30 | H-Justify | 0-3 | Horizontal justify (anchor edge) |
+| 6-7 | $C0 | V-Justify | 0-3 | Vertical justify (anchor edge) |
 
 **Weight Values** (bits 0-1):
 ```pascal
@@ -1256,30 +1272,32 @@ end;
 | 2 | Left | 0 |
 | 3 | Right | -width |
 
-**Vertical Alignment** (bits 6-7):
+**Vertical Justify** (bits 6-7). The offset `ty` is applied as `TextOut(…, y - ty)`, so a larger `ty` moves the text *up* and places the anchor lower on the text box:
 ```pascal
 case style and $C0 shr 6 of
-  0, 1: ty := h / 2;         // Center (default)
-  2:    ty := h;             // Top-aligned
-  3:    ty := 0;             // Bottom-aligned
+  0, 1: ty := h / 2;         // Center (anchor at text's vertical middle)
+  2:    ty := h;             // Bottom  (text drawn at y-h → occupies [y-h, y] → anchor at bottom edge)
+  3:    ty := 0;             // Top     (text drawn at y   → occupies [y, y+h] → anchor at top edge)
 end;
 ```
 
-| Value | Alignment | Offset |
-|-------|-----------|--------|
-| 0, 1 | Center | +height/2 |
-| 2 | Top | +height |
-| 3 | Bottom | 0 |
+| Value | Justify | Offset | Anchor sits at the text's… |
+|-------|---------|--------|-----------------------------|
+| 0, 1 | Center | +height/2 | vertical middle |
+| 2 | **Bottom** | +height | bottom edge |
+| 3 | **Top** | 0 | top edge |
 
-**Style Examples**:
+> Vertical value **2 = bottom, 3 = top** (mirror of horizontal: value 2 keeps the near/origin edge at the anchor, value 3 the far edge). Earlier drafts had these two labels reversed.
+
+**Style Examples** (decode the bit fields — do not read the hex digits as flags):
 ```
-$00 = Thin, normal, no underline, centered
-$02 = Thin, normal, no underline, centered (same as 0)
-$04 = Thin, italic, no underline, centered
-$0A = Normal weight, bold, underlined, centered
-$20 = Thin, normal, no underline, left-aligned, centered vertically
-$C0 = Thin, normal, no underline, centered horizontally, bottom-aligned
-$87 = Heavy, bold, italic, underlined, centered
+$00 = weight 100 (thin), upright, no underline, H-center, V-center
+$02 = weight 700 (bold!), upright, no underline, H-center, V-center   // bits0-1 = %10 = 2 → 700, NOT "same as $00"
+$04 = weight 100 (thin), italic, no underline, H-center, V-center
+$0A = weight 700 (bold), upright, underlined, H-center, V-center       // %1010: wt=2, italic=0, underline=1
+$20 = weight 100 (thin), upright, no underline, H-left, V-center       // bits4-5 = 2 → left
+$C0 = weight 100 (thin), upright, no underline, H-center, V-top        // bits6-7 = 3 → top (not bottom)
+$87 = weight 900 (heavy), italic, no underline, H-center, V-bottom     // %1000_0111: wt=3, italic=1, ul=0, V bits=2→bottom
 ```
 
 ### 8.3 Text Angle Conversion
@@ -1822,9 +1840,30 @@ SPRITE id {orientation {scale {opacity}}}
 
 **Parameters**:
 - `id`: Sprite identifier (0-255)
-- `orientation`: Orientation code (0-7) (default: 0)
+- `orientation`: Orientation code (0-7) (default: 0) — a **packed 3-bit field**, see the decode table below
 - `scale`: Scale factor in pixels (1-64) (default: 1)
 - `opacity`: Opacity multiplier (0-255) (default: vOpacity)
+
+**Orientation field decode** (the `case t4 of` at 2123-2132 is the 8-element dihedral group of the square; the three bits are independent and compose):
+
+| Bit | Weight | Field | Effect when set |
+|-----|--------|-------|-----------------|
+| 0 | $01 | Flip-X | mirror horizontally — source column `x` sampled as `t7 - x` |
+| 1 | $02 | Flip-Y | mirror vertically — source row `y` sampled as `t8 - y` |
+| 2 | $04 | Transpose | swap axes — X ← source `y`, Y ← source `x` (rotates/diagonals) |
+
+| Code | Bits | Composition (exact) |
+|------|------|---------------------|
+| 0 | %000 | identity |
+| 1 | %001 | flip X |
+| 2 | %010 | flip Y |
+| 3 | %011 | flip X + flip Y (= 180° rotation) |
+| 4 | %100 | transpose (swap axes) |
+| 5 | %101 | transpose + flip X |
+| 6 | %110 | transpose + flip Y |
+| 7 | %111 | transpose + flip X + flip Y |
+
+> This table gives each code's **exact bit composition** (directly from `case t4 of` 2123-2132). Codes 0-3 are the axis-aligned mirrors and 180° rotation; codes 4-7 add the axis-swap, yielding the two diagonal reflections (4, 7) and the two 90° rotations (5, 6). For the per-code **visual result** (with worked 4×4 pixel diagrams), see §10.4 — this §10.3 note is the field-decomposition companion to that visualization.
 
 **Implementation** (lines 2102-2134):
 ```pascal

@@ -285,7 +285,7 @@ while NextKey do
 | `update` | - | Enable manual update mode |
 | `hidexy` | - | Hide mouse coordinate display |
 
-**Trace Mode Encoding** (DebugDisplayUnit.pas:2362-2370):
+**Trace Mode Encoding** (decoded in `SetTrace` 2973-2980 [start corner] + `StepTrace` 2982-3061 [step direction + scroll]):
 ```
 Bits 0-2: Scan pattern (0-7)
 Bit 3:    Scroll enable (0=wrap, 1=scroll)

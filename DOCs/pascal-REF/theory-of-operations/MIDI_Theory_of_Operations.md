@@ -594,6 +594,16 @@ if val and $80 <> 0 then MidiState := 0;  // Reset on status byte
 
 **Automatic Reset**: Any status byte ($80-$FF) resets state machine to state 0.
 
+**Status-byte field decode** — the status byte is a packed value; `MIDI_Update` (2610-2616) tests each field separately:
+
+| Bits | Mask | Field | Meaning | Pascal test |
+|------|------|-------|---------|-------------|
+| 7 | $80 | Status flag | 1 = status/command byte (forces `MidiState:=0` — the running-status resync); 0 = data byte | `if val and $80 <> 0 then MidiState := 0` (2611) |
+| 4-6 | $F0 | Command | high nibble: `$90` = note-on, `$80` = note-off (only these two are handled) | `val and $F0 = $90` / `= $80` (2615-2616) |
+| 0-3 | $0F | Channel | low nibble: target MIDI channel 0-15; the message is accepted only when it equals `MidiChannel` | `val and $0F = MidiChannel` (2615-2616) |
+
+So a byte like `$93` = status(bit7=1), command `$90` (note-on), channel `3`. A note-on to a non-matching channel still resets the state machine (via bit 7) but is not tracked (the `$0F = MidiChannel` guard fails), which is how per-channel filtering works.
+
 ### 5.5 Channel Filtering
 
 **DebugDisplayUnit.pas:2615-2616**

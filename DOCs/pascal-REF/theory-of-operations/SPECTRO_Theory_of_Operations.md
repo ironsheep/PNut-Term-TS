@@ -1026,7 +1026,7 @@ The **vTrace** parameter controls both trace direction and scrolling behavior:
 
 ### 9.2 SetTrace Method
 
-**DebugDisplayUnit.pas:2965-2972**
+**DebugDisplayUnit.pas:2973-2980** (`SetTrace`)
 ```pascal
 procedure TDebugDisplayForm.SetTrace(Path: integer; ModifyRate: boolean);
 begin
@@ -1046,7 +1046,7 @@ end;
 
 ### 9.3 StepTrace Method
 
-**DebugDisplayUnit.pas:2974-3034** (excerpt for mode 0)
+**DebugDisplayUnit.pas:2982-3061** (`StepTrace`; excerpt for mode 0)
 ```pascal
 procedure TDebugDisplayForm.StepTrace;
 var

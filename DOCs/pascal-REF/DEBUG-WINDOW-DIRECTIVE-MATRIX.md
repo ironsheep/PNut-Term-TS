@@ -606,8 +606,8 @@ default**. "color" = named color (§7.1) or numeric-through-color-mode.
 | *(Update)* `CIRCLE` | width {linesize {opacity}} |
 | *(Update)* `OVAL`/`BOX` | width, height {linesize {opacity}} |
 | *(Update)* `OBOX` | width, height, xradius, yradius {linesize {opacity}} |
-| *(Update)* `TEXT` | {size {style {angle}}} `'string'` |
-| *(Update)* `TEXTSIZE`/`TEXTSTYLE`/`TEXTANGLE` | n · int |
+| *(Update)* `TEXT` | {size {style {angle}}} `'string'` — 3 optional positional fields, **local to the call** (seeded from the persistent vars, do not persist; `size` not clamped); `style` is the packed bitfield below |
+| *(Update)* `TEXTSIZE` (n · int **6..200**, persists→vTextSize) / `TEXTSTYLE` (n · **bit-packed byte**: bits0-1 weight {100,400,700,900}, 2 italic, 3 underline, 4-5 H-justify {center,center,left,right}, 6-7 V-justify {center,center,bottom,top}; persists→vTextStyle) / `TEXTANGLE` (n · degrees, persists→vTextAngle) |
 | *(Update)* `LAYER` | n · int **1..8**; `'file.bmp'` (must exist) |
 | *(Update)* `CROP` | layer **1..8**; (`AUTO` x y \| left top width height {x y}) |
 | *(Update)* `SPRITEDEF` | id **0..255**; xsize **1..32**; ysize **1..32**; pixels…; 256 colors |
