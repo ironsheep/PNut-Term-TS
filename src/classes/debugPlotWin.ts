@@ -314,7 +314,7 @@ export class DebugPlotWindow extends DebugWindowBase {
   }
 
   get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} PLOT`;
+    let desiredValue: string = `${this.displaySpec.displayName} - PLOT`;
     if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
       desiredValue = this.displaySpec.windowTitle;
     }
@@ -1714,10 +1714,12 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           // Look for optional numeric parameters
           let paramIndex = index + 1;
 
-          // Check for size
+          // Check for size — Pascal key_text (:2045-2048) reads the inline size with a raw
+          // KeyVal (a[0]); it is NOT clamped (only the standalone TEXTSIZE clamps 6..200).
+          // Consume any numeric token as the size; a non-numeric token is the style/angle/string.
           if (paramIndex < lineParts.length) {
             const val = this.parseNumber(lineParts[paramIndex]);
-            if (val !== null && val >= 1 && val <= 100) {
+            if (val !== null) {
               textSize = val;
               paramIndex++;
             }
@@ -1826,14 +1828,14 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         }
 
         case 'TEXTSTYLE': {
-          // TEXTSTYLE style
+          // TEXTSTYLE style — Pascal key_textstyle (:2039) stores the raw byte in vTextStyle,
+          // decoded by AngleTextOut as %YYXXUIWW (weight bits0-1, italic bit2, underline bit3,
+          // H-justify bits4-5, V-justify bits6-7). Use the shared decoder so TEXTSTYLE and the
+          // inline TEXT style field agree exactly.
           if (index + 1 < lineParts.length) {
             const style = this.parseNumber(lineParts[++index]);
             if (style !== null && style >= 0 && style <= 255) {
-              // bit 0 = bold, bit 1 = italic, bit 2 = underline
-              this.textStyle.weight = (style & 1) !== 0 ? eTextWeight.TW_BOLD : eTextWeight.TW_NORMAL;
-              this.textStyle.italic = (style & 2) !== 0;
-              this.textStyle.underline = (style & 4) !== 0;
+              DebugPlotWindow.calcStyleFromBitfield(style, this.textStyle);
             }
           }
           break;
@@ -3348,7 +3350,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         : 'Vbot';
     const fontWeight: string = this.fontWeightName(this.textStyle);
     const fontStyle: string = this.textStyle.italic ? 'italic ' : '';
-    // FIXME: UNDONE add underline support
     this.logMessage(
       `  -- wt=(${fontWeight}), [${alignHString}, ${alignVString}], sz=(${fontSize}pt)[${textHeight}px], (${textColor}) @(${textXOffset},${textYOffset}) text=[${text}]`
     );
@@ -3365,39 +3366,44 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
 
         const text = ${JSON.stringify(text)};
         const fontSpec = '${fontFullSpec}';
-        let xPos = ${textXOffset};
-        const yPos = ${adjYBaseline};
+        const anchorX = ${textXOffset};
+        const anchorY = ${textYbaseline};                 // raw baseline (before vertical justify)
+        const vy = ${adjYBaseline} - ${textYbaseline};    // vertical-justify offset, local frame
         const textColor = '${textColor}';
         const textAngle = ${this.textAngle};
         const alignHCenter = ${alignHCenter};
         const alignHRight = ${alignHRight};
+        const drawUnderline = ${this.textStyle.underline};
+        const fontSize = ${fontSize};
 
         if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT] Drawing text with font:', fontSpec);
         window.plotCtx.save();
         window.plotCtx.font = fontSpec;
+        window.plotCtx.textAlign = 'left';
+        window.plotCtx.textBaseline = 'alphabetic';
+        window.plotCtx.fillStyle = textColor;
 
-        // Calculate alignment if needed
-        if (alignHCenter || alignHRight) {
-          const textWidth = window.plotCtx.measureText(text).width;
-          if (alignHCenter) {
-            xPos -= textWidth / 2;
-          } else if (alignHRight) {
-            xPos -= textWidth;
-          }
-        }
+        // Horizontal-justify offset in the text's LOCAL frame. Pascal AngleTextOut (3502-3516)
+        // computes the alignment offset first, then ROTATES it with the glyphs, so the shift
+        // must be applied after the rotation (as a local-frame draw offset), not to the anchor.
+        const textWidth = window.plotCtx.measureText(text).width;
+        let hx = 0;
+        if (alignHCenter) hx = -textWidth / 2;
+        else if (alignHRight) hx = -textWidth;
 
-        // Handle rotation if needed
-        if (textAngle !== 0) {
-          window.plotCtx.translate(xPos, yPos);
-          window.plotCtx.rotate((textAngle * Math.PI) / 180);
-          window.plotCtx.fillStyle = textColor;
-          window.plotCtx.fillText(text, 0, 0);
-        } else {
-          // Regular text drawing
-          window.plotCtx.fillStyle = textColor;
-          window.plotCtx.textAlign = 'left';
-          window.plotCtx.textBaseline = 'alphabetic';
-          window.plotCtx.fillText(text, xPos, yPos);
+        // Anchor at the raw (unshifted) point, rotate, then draw at the local (hx, vy) offset.
+        // For angle 0 this reduces to a plain draw at (anchorX + hx, anchorY + vy).
+        window.plotCtx.translate(anchorX, anchorY);
+        if (textAngle !== 0) window.plotCtx.rotate((textAngle * Math.PI) / 180);
+        window.plotCtx.fillText(text, hx, vy);
+        if (drawUnderline) {
+          const uy = vy + Math.max(1, Math.round(fontSize * 0.12));
+          window.plotCtx.strokeStyle = textColor;
+          window.plotCtx.lineWidth = Math.max(1, Math.round(fontSize / 14));
+          window.plotCtx.beginPath();
+          window.plotCtx.moveTo(hx, uy);
+          window.plotCtx.lineTo(hx + textWidth, uy);
+          window.plotCtx.stroke();
         }
 
         window.plotCtx.restore();

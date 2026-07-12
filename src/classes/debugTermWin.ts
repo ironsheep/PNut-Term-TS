@@ -176,7 +176,7 @@ export class DebugTermWindow extends DebugWindowBase {
   }
 
   get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} TERM`;
+    let desiredValue: string = `${this.displaySpec.displayName} - TERM`;
     if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
       desiredValue = this.displaySpec.windowTitle;
     }

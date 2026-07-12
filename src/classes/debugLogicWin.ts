@@ -269,7 +269,7 @@ export class DebugLogicWindow extends DebugWindowBase {
   }
 
   get windowTitle(): string {
-    let desiredValue: string = `${this.displaySpec.displayName} LOGIC`;
+    let desiredValue: string = `${this.displaySpec.displayName} - LOGIC`;
     if (this.displaySpec.windowTitle !== undefined && this.displaySpec.windowTitle.length > 0) {
       desiredValue = this.displaySpec.windowTitle;
     }

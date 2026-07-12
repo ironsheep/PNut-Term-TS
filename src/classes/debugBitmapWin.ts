@@ -338,6 +338,9 @@ export class DebugBitmapWindow extends DebugWindowBase {
       isValid = false;
     } else {
       displaySpec.displayName = lineParts[1];
+      // Pascal FormCreate caption default = "<name> - BITMAP" (:626); a TITLE directive
+      // (processed below) overrides it wholesale via KeyTitle (:2690).
+      displaySpec.title = `${displaySpec.displayName} - BITMAP`;
 
       // Process remaining directives
       let i = 2;
@@ -1176,10 +1179,24 @@ export class DebugBitmapWindow extends DebugWindowBase {
     // webContents synchronously, ahead of the scroll's executeJavaScript below.
     this.drainPendingPixelsNow();
 
+    // Fill the newly-exposed edge with the mode-correct background color — Pascal ScrollBitmap
+    // FillRects the revealed strip(s) with GetBackground (DebugDisplayUnit.pas 3464-3480). This
+    // runs INSIDE the same scroll executeJavaScript, immediately after the copy, so it is atomic
+    // with the scroll (no async clear-vs-updateCanvas race — the reason it was previously skipped).
+    const bg = this.getBackground();
+    const bgR = (bg >> 16) & 0xff;
+    const bgG = (bg >> 8) & 0xff;
+    const bgB = bg & 0xff;
+    const scrollW = this.state.width;
+    const scrollH = this.state.height;
+    let edgeFillCode = `ctx.fillStyle = 'rgb(${bgR}, ${bgG}, ${bgB})';\n`;
+    if (scrollX > 0) edgeFillCode += `ctx.fillRect(0, 0, ${scrollX}, ${scrollH});\n`;
+    else if (scrollX < 0) edgeFillCode += `ctx.fillRect(${scrollW + scrollX}, 0, ${-scrollX}, ${scrollH});\n`;
+    if (scrollY > 0) edgeFillCode += `ctx.fillRect(0, 0, ${scrollW}, ${scrollY});\n`;
+    else if (scrollY < 0) edgeFillCode += `ctx.fillRect(0, ${scrollH + scrollY}, ${scrollW}, ${-scrollY});\n`;
+
     // Scroll the OFFSCREEN BITMAP where pixel data lives, not the display canvas
     // The display canvas gets updated from the offscreen bitmap via updateCanvas()
-    // NOTE: We don't clear the exposed edge - new pixels will overwrite it immediately
-    // This avoids async timing issues where clear might execute after updateCanvas()
     const scrollCode = `(function() {
 const offscreenKey = 'bitmapOffscreen_${this.bitmapCanvasId}';
 const offscreen = window[offscreenKey];
@@ -1195,9 +1212,9 @@ if (!tempCtx) { console.error('Temp context not available'); return; }
 // Copy current bitmap to temp
 tempCtx.drawImage(offscreen, 0, 0);
 // Copy back with scroll offset (scrollX/Y are in logical pixels, not scaled)
-// The exposed edge will contain "garbage" (wrapped data) until new pixels overwrite it
 ctx.drawImage(tempCanvas, 0, 0, ${this.state.width}, ${this.state.height}, (${scrollX}), (${scrollY}), ${this.state.width}, ${this.state.height});
-// [#30 perf] invalidate the persistent pixel store so the next plot re-syncs from the scrolled offscreen
+// Fill the exposed edge with GetBackground (Pascal parity) — atomic with the scroll above
+${edgeFillCode}// [#30 perf] invalidate the persistent pixel store so the next plot re-syncs from the scrolled offscreen
 delete window['bitmapImageData_${this.bitmapCanvasId}'];
 })();`;
 

@@ -1027,7 +1027,7 @@ export class DebugMidiWindow extends DebugWindowBase {
 
     if (lineParts.length > 1) {
       displaySpec.displayName = lineParts[1];
-      displaySpec.windowTitle = `MIDI - ${lineParts[1]}`;
+      displaySpec.windowTitle = `${lineParts[1]} - MIDI`;
     }
 
     // Parse create-time config directives (Pascal MIDI_Configure, DebugDisplayUnit.pas:2492).

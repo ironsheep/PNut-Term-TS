@@ -1812,7 +1812,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       for (const { x, y } of coordinates) {
         commands += `
           ctx.beginPath();
-          ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
+          ctx.arc(${x}, ${y}, ${dotSize / 2}, 0, Math.PI * 2);
           ctx.fill();
         `;
       }
@@ -1888,7 +1888,7 @@ export class DebugFFTWindow extends DebugWindowBase {
         commands += `
           ctx.fillStyle = '${color}';
           ctx.beginPath();
-          ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
+          ctx.arc(${x}, ${y}, ${dotSize / 2}, 0, Math.PI * 2);
           ctx.fill();
         `;
       }
@@ -1943,7 +1943,7 @@ export class DebugFFTWindow extends DebugWindowBase {
       // Draw dot as small circle
       commands += `
         ctx.beginPath();
-        ctx.arc(${x}, ${y}, ${dotSize}, 0, Math.PI * 2);
+        ctx.arc(${x}, ${y}, ${dotSize / 2}, 0, Math.PI * 2);
         ctx.fill();
       `;
     }

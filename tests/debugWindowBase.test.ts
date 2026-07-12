@@ -290,7 +290,7 @@ describe('DebugWindowBase', () => {
           true,  // underline
           true   // italic
         );
-        expect(style2).toBe(0b11111110); // Top, left, underline, italic, bold
+        expect(style2).toBe(0b11101110); // Top(11), left(10 per Pascal), underline, italic, bold
       });
 
       it('should handle all vertical justifications', () => {
@@ -324,19 +324,20 @@ describe('DebugWindowBase', () => {
         );
         expect((centerStyle >> 4) & 0b11).toBe(0b00);
 
+        // Pascal AngleTextOut (3502-3505): bits4-5 value 2 = left, 3 = right.
         const rightStyle = DebugWindowBase.calcStyleFrom(
           eVertJustification.VJ_MIDDLE,
           eHorizJustification.HJ_RIGHT,
           eTextWeight.TW_NORMAL
         );
-        expect((rightStyle >> 4) & 0b11).toBe(0b10);
+        expect((rightStyle >> 4) & 0b11).toBe(0b11);
 
         const leftStyle = DebugWindowBase.calcStyleFrom(
           eVertJustification.VJ_MIDDLE,
           eHorizJustification.HJ_LEFT,
           eTextWeight.TW_NORMAL
         );
-        expect((leftStyle >> 4) & 0b11).toBe(0b11);
+        expect((leftStyle >> 4) & 0b11).toBe(0b10);
       });
 
       it('should handle all font weights', () => {
@@ -369,10 +370,10 @@ describe('DebugWindowBase', () => {
           angle: 0
         };
 
-        // Test decoding of encoded style
-        DebugWindowBase.calcStyleFromBitfield(0b11111110, textStyle);
+        // Test decoding of encoded style (%YYXXUIWW; Pascal bits4-5: 2=left, 3=right)
+        DebugWindowBase.calcStyleFromBitfield(0b11101110, textStyle);
         expect(textStyle.vertAlign).toBe(0b11); // TOP
-        expect(textStyle.horizAlign).toBe(0b11); // LEFT
+        expect(textStyle.horizAlign).toBe(0b10); // LEFT (Pascal value 2)
         expect(textStyle.underline).toBe(true);
         expect(textStyle.italic).toBe(true);
         expect(textStyle.weight).toBe(eTextWeight.TW_BOLD);

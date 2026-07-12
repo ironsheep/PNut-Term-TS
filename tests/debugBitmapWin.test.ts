@@ -159,7 +159,8 @@ describe('DebugBitmapWindow', () => {
 
       expect(isValid).toBe(true);
       expect(spec.displayName).toBe('myBitmap');
-      expect(spec.title).toBe('Bitmap');
+      // Pascal FormCreate caption default = "<name> - BITMAP" (:626)
+      expect(spec.title).toBe('myBitmap - BITMAP');
     });
 
     it('should fail when display name is missing', () => {

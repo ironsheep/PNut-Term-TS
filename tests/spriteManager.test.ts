@@ -186,40 +186,65 @@ describe('SpriteManager', () => {
 
     test('should draw sprite at default orientation and scale', () => {
       spriteManager.drawSprite(mockContext, 0, 100, 50);
-      
+
       expect(mockContext.save).toHaveBeenCalled();
       expect(mockContext.translate).toHaveBeenCalledWith(100, 50);
-      expect(mockContext.rotate).toHaveBeenCalledWith(0);
+      // Orientation is a per-pixel remap (Pascal key_sprite 2123-2132), NOT a canvas rotation.
+      expect(mockContext.rotate).not.toHaveBeenCalled();
       expect(mockContext.scale).toHaveBeenCalledWith(1, 1);
       expect(mockContext.globalAlpha).toBe(1);
       expect(mockContext.drawImage).toHaveBeenCalled();
       expect(mockContext.restore).toHaveBeenCalled();
     });
 
-    test('should handle all 8 orientations', () => {
-      const orientations = [
-        { orientation: 0, rotation: 0, flipH: false },    // 0°
-        { orientation: 1, rotation: 90, flipH: false },   // 90°
-        { orientation: 2, rotation: 180, flipH: false },  // 180°
-        { orientation: 3, rotation: 270, flipH: false },  // 270°
-        { orientation: 4, rotation: 0, flipH: true },     // 0° + flip
-        { orientation: 5, rotation: 90, flipH: true },    // 90° + flip
-        { orientation: 6, rotation: 180, flipH: true },   // 180° + flip
-        { orientation: 7, rotation: 270, flipH: true }    // 270° + flip
-      ];
-      
-      orientations.forEach(({ orientation, rotation, flipH }) => {
-        mockContext.scale.mockClear();
+    test('should handle all 8 orientations via a per-pixel remap (no canvas rotation)', () => {
+      // 2×4 sprite (non-square) so the transpose bit (bit2) changes the output bounding box
+      spriteManager.defineSprite(3, 2, 4, [0, 1, 2, 3, 4, 5, 6, 7], colors);
+
+      for (let orientation = 0; orientation < 8; orientation++) {
+        (OffscreenCanvas as jest.Mock).mockClear();
         mockContext.rotate.mockClear();
-        
-        spriteManager.drawSprite(mockContext, 0, 0, 0, orientation);
-        
-        if (flipH) {
-          expect(mockContext.scale).toHaveBeenCalledWith(-1, 1);
-        }
-        
-        expect(mockContext.rotate).toHaveBeenCalledWith((rotation * Math.PI) / 180);
-      });
+        mockContext.drawImage.mockClear();
+
+        spriteManager.drawSprite(mockContext, 3, 0, 0, orientation);
+
+        // Never a canvas rotation
+        expect(mockContext.rotate).not.toHaveBeenCalled();
+        // Transpose (bit2) swaps the output width/height
+        const transpose = (orientation & 4) !== 0;
+        const outW = transpose ? 4 : 2;
+        const outH = transpose ? 2 : 4;
+        expect(OffscreenCanvas).toHaveBeenCalledWith(outW, outH);
+        // Drawn centered on the current position
+        expect(mockContext.drawImage).toHaveBeenCalledWith(expect.anything(), -outW / 2, -outH / 2);
+      }
+    });
+
+    test('orientation performs the Pascal flip-X / flip-Y / transpose remap', () => {
+      // Greyscale palette (R=G=B=index), so an output pixel's R channel == the source
+      // colorIndex that landed there — lets us read the remap directly.
+      spriteManager.defineSprite(4, 2, 2, [10, 20, 30, 40], colors);
+      // Read the R of each output cell (dx,dy) from the last putImageData
+      const readCells = (): number[] => {
+        const results = (OffscreenCanvas as jest.Mock).mock.results;
+        const ctx = results[results.length - 1].value.getContext();
+        const calls = ctx.putImageData.mock.calls;
+        const img = calls[calls.length - 1][0];
+        const R = (dx: number, dy: number): number => img.data[(dy * img.width + dx) * 4];
+        return [R(0, 0), R(1, 0), R(0, 1), R(1, 1)];
+      };
+
+      spriteManager.drawSprite(mockContext, 4, 0, 0, 0); // identity
+      expect(readCells()).toEqual([10, 20, 30, 40]);
+
+      spriteManager.drawSprite(mockContext, 4, 0, 0, 1); // flip-X: columns swap
+      expect(readCells()).toEqual([20, 10, 40, 30]);
+
+      spriteManager.drawSprite(mockContext, 4, 0, 0, 2); // flip-Y: rows swap
+      expect(readCells()).toEqual([30, 40, 10, 20]);
+
+      spriteManager.drawSprite(mockContext, 4, 0, 0, 4); // transpose: reflect main diagonal
+      expect(readCells()).toEqual([10, 30, 20, 40]);
     });
 
     test('should handle various scale factors', () => {

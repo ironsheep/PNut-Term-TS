@@ -148,52 +148,38 @@ export class SpriteManager {
     ctx.save();
 
     try {
-      // Apply transformations
+      // Position + uniform scale. Orientation is applied as a per-pixel SOURCE REMAP below,
+      // NOT as a canvas rotate. Pascal key_sprite (DebugDisplayUnit.pas 2123-2132) encodes
+      // orientation as three independent bits — bit0 = flip source-X, bit1 = flip source-Y,
+      // bit2 = transpose (swap axes) — which is a *different* parameterization from
+      // "rotate 0/90/180/270 + optional flip" and only agrees at orientation 0. The per-pixel
+      // remap below matches Pascal index-for-index for all 8 orientations.
       ctx.translate(x, y);
-      
-      // Apply orientation (0-7)
-      // 0: 0° rotation
-      // 1: 90° rotation
-      // 2: 180° rotation
-      // 3: 270° rotation
-      // 4: 0° rotation + horizontal flip
-      // 5: 90° rotation + horizontal flip
-      // 6: 180° rotation + horizontal flip
-      // 7: 270° rotation + horizontal flip
-      
-      const flipH = orientation >= 4;
-      const rotation = (orientation % 4) * 90;
-      
-      if (flipH) {
-        ctx.scale(-1, 1);
-      }
-      
-      ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
 
-      // Note: Opacity is applied per-pixel in alpha calculation below (Pascal formula)
-      // Do not set globalAlpha here as that would apply opacity twice
+      const spriteW = sprite.width;
+      const spriteH = sprite.height;
+      const flipX = (orientation & 1) !== 0;
+      const flipY = (orientation & 2) !== 0;
+      const transpose = (orientation & 4) !== 0;
+      // Transpose swaps the output bounding box dimensions
+      const outW = transpose ? spriteH : spriteW;
+      const outH = transpose ? spriteW : spriteH;
 
-      // Calculate drawing offset (sprite drawn from center)
-      const halfWidth = sprite.width / 2;
-      const halfHeight = sprite.height / 2;
-      
-      // Create temporary canvas for sprite rendering
-      const tempCanvas = new OffscreenCanvas(sprite.width, sprite.height);
+      // Create temporary canvas sized to the ORIENTED output
+      const tempCanvas = new OffscreenCanvas(outW, outH);
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) {
         throw new Error('Failed to create temporary context for sprite rendering');
       }
-      
-      // Get image data for direct pixel manipulation
-      const imageData = tempCtx.createImageData(sprite.width, sprite.height);
+
+      const imageData = tempCtx.createImageData(outW, outH);
       const data = imageData.data;
-      
-      // Render sprite pixels using color palette
-      for (let py = 0; py < sprite.height; py++) {
-        for (let px = 0; px < sprite.width; px++) {
-          const pixelIndex = py * sprite.width + px;
-          const colorIndex = sprite.pixels[pixelIndex];
+
+      // Render each source pixel to its Pascal-oriented destination
+      for (let py = 0; py < spriteH; py++) {
+        for (let px = 0; px < spriteW; px++) {
+          const colorIndex = sprite.pixels[py * spriteW + px];
           const argb32 = sprite.colors[colorIndex];
 
           // Extract ARGB components from ARGB32 (Pascal format: alpha in high byte)
@@ -205,21 +191,26 @@ export class SpriteManager {
           // Combine color alpha with sprite opacity (Pascal formula: ((a * opacity + 255) >> 8))
           const combinedAlpha = ((a * opacity + 255) >> 8);
 
-          // Set pixel in image data (RGBA format)
-          const dataIndex = pixelIndex * 4;
+          // Pascal orientation remap: apply flip-X, flip-Y, then transpose (swap axes)
+          const ex = flipX ? spriteW - 1 - px : px;
+          const ey = flipY ? spriteH - 1 - py : py;
+          const dx = transpose ? ey : ex;
+          const dy = transpose ? ex : ey;
+
+          const dataIndex = (dy * outW + dx) * 4;
           data[dataIndex] = r;
           data[dataIndex + 1] = g;
           data[dataIndex + 2] = b;
           data[dataIndex + 3] = combinedAlpha;
         }
       }
-      
+
       // Put image data to temporary canvas
       tempCtx.putImageData(imageData, 0, 0);
-      
-      // Draw temporary canvas to main context
-      ctx.drawImage(tempCanvas, -halfWidth, -halfHeight);
-      
+
+      // Draw the oriented sprite centered on the current position
+      ctx.drawImage(tempCanvas, -outW / 2, -outH / 2);
+
     } finally {
       // Restore context state
       ctx.restore();

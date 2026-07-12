@@ -79,9 +79,10 @@ export enum eVertJustification {
 
 export enum eHorizJustification {
   HJ_UNKNOWN = 1,
-  HJ_LEFT = 3,
+  // Values ARE the Pascal style bits4-5 (AngleTextOut 3502-3505): 2=left (tx=0), 3=right (tx=-w).
+  HJ_LEFT = 2,
   HJ_CENTER = 0,
-  HJ_RIGHT = 2
+  HJ_RIGHT = 3
 }
 
 export enum eTextWeight {
@@ -1006,9 +1007,9 @@ export abstract class DebugWindowBase extends EventEmitter {
     italic: boolean = false
   ): number {
     // build styleStr is now a bitfield string of 8 bits
-    // style is %YYXXUIWW:
+    // style is %YYXXUIWW (Pascal AngleTextOut 3502-3511):
     //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
-    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %XX is horizontal justification: %00 = middle, %10 = left, %11 = right.
     //   %U is underline: %1 = underline.
     //   %I is italic: %1 = italic.
     //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
@@ -1031,10 +1032,10 @@ export abstract class DebugWindowBase extends EventEmitter {
       case eHorizJustification.HJ_CENTER:
         styleStr += '00';
         break;
-      case eHorizJustification.HJ_RIGHT:
+      case eHorizJustification.HJ_LEFT:
         styleStr += '10';
         break;
-      case eHorizJustification.HJ_LEFT:
+      case eHorizJustification.HJ_RIGHT:
         styleStr += '11';
         break;
       default:
@@ -1070,9 +1071,9 @@ export abstract class DebugWindowBase extends EventEmitter {
     // convert number into a bitfield string
     const styleStr: string = style.toString(2).padStart(8, '0');
     // styleStr is now a bitfield string of 8 bits
-    // style is %YYXXUIWW:
+    // style is %YYXXUIWW (Pascal AngleTextOut 3502-3511):
     //   %YY is vertical justification: %00 = middle, %10 = bottom, %11 = top.
-    //   %XX is horizontal justification: %00 = middle, %10 = right, %11 = left.
+    //   %XX is horizontal justification: %00 = middle, %10 = left, %11 = right.
     //   %U is underline: %1 = underline.
     //   %I is italic: %1 = italic.
     //   %WW is weight: %00 = light, %01 = normal, %10 = bold, and %11 = heavy.
