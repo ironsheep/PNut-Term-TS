@@ -1,0 +1,94 @@
+You're right to press, and the premise is sound: the Pascal is the implementation bible. If I were overruling it, I'd be wrong. So let me state precisely what I'm overruling — and then test whether every finding survives it.
+
+  The distinction that carries everything: the REF is not the Pascal
+
+  The REF is an agent's reading of the Pascal. Every one of those documents has two layers inside it:
+
+  - Layer 1 — quoted Pascal. Transcribed source. This is the implementation bible, at one remove.
+  - Layer 2 — the prose, the directive tables, the "Default" columns, the worked examples. These are the agent's annotations and inferences about the code.
+
+  Every "REF is wrong" finding is Layer 2 contradicting Layer 1 — inside the same document. I am not siding with the manual against the Pascal. I am siding with the Pascal against the distillation of it. That's the whole claim, and if it doesn't hold for a given finding, that finding should fall.
+
+  So let me sort them.
+
+  Bucket A — the REF's prose contradicts the Pascal the REF itself quotes
+
+  Here I side with the source, against the annotation:
+
+  ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────┐
+  │      Finding       │                       The REF's quoted Pascal (Layer 1)                        │           The REF's prose (Layer 2)           │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ PLOT origin        │ PLOT_GetXY: default vDirY=False → y := vHeight-1-vOffsetY-vPixelY ⇒ Y-UP       │ §6.1/§17.4: "top-left, Y increases downward"  │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ FFT MAG            │ Hypot / ($800 shl FFTexp shr FFTmag) ⇒ raising MAG shrinks the divisor ⇒ gain  │ "right-shift divisor… divide output by 8"     │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ ALT packing        │ three cumulative if vPackShift <= 1 / <= 2 / <= 4 ⇒ full within-byte reversal  │ "swaps adjacent bits" (stage 1 only)          │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ MIDI velocity-0    │ MidiVelocity[n] := val (=0); draw test is > 0 ⇒ key renders off                │ "not treated as note-off"                     │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ MIDI velocity      │ RoundRect top = f(velocity) ⇒ fill height                                      │ §1: "key colour intensity"                    │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ TERM codes 0–7     │ the case statement: clear/home/set-col/set-row/select-pair ⇒ core acting codes │ "Unsupported: 0–7"                            │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ SPECTRO signedness │ UnPack gates on the runtime vPackSignx flag                                    │ table: "Sign Extend: Yes" for all LONGS modes │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ BITMAP SPARSE      │ SmoothShape with xro=vDotSize ⇒ round dot                                      │ "square grid border"                          │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────┤
+  │ SCOPE_XY SIZE      │ its own later text: vWidth = 256                                               │ §4a table: "256 (→ 512 px)"                   │
+  └────────────────────┴────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────┘
+
+  In every row, the implementation says one thing and the write-up of the implementation says another. Overruling Layer 2 with Layer 1 isn't defying the bible — it's reading it.
+
+  Bucket B — the REF asserted something the Pascal never said
+
+  This is the packing default, and it's the one I checked hardest just now, because it's the one that leaked into shipped YAMLs.
+
+  The matrix transcribes SetDefaults (Pascal 2880–2917) as a table of twenty global defaults. There is no packing entry in it. And the SCOPE_XY document quotes the actual initialization as SetPack(0, False, False) — while the REF's own transcription of SetPack says val = 0 ⇒ shift 32, count 1, mask $FFFFFFFF, i.e. one 32-bit
+  sample per long, unpacked.
+
+  So "the default pack mode is LONGS_1BIT, from the global default" is an assertion with no quoted line behind it, contradicted by the init call the REF itself quotes. It isn't the Pascal talking. And silicon agrees: ch06-logic-spi-bus.spin2 declares no pack mode and renders a clean three-channel SPI trace, which is impossible
+  if one long were exploding into 32 one-bit samples.
+
+  Bucket C — transcription error, caught by v55
+
+  The BITMAP colour-mode enum order: the matrix and the theory-of-operations, both derived from the same Pascal, list the families in different orders. They can't both be right. v55 breaks the tie (it matches the matrix). Nothing here impugns the implementation — one of two readings of it was miscopied.
+
+  Bucket D — inference the code doesn't license
+
+  This is the subtlest, and it's where your challenge bites hardest, so let me be exact.
+
+  The Pascal tells you what PNut computes. It does not, by itself, tell you what the user sees. Anti-aliasing, pixel-centering, and gamma sit between the two.
+
+  LINESIZE is exactly this. The code passes size shl 6 as a geometric disc radius — that's real, and the REF transcribed it correctly. But "therefore the user-facing unit is half-pixels" is an inference about rendered output, and rendered output is measurable. EF-027 measured LINESIZE 3 → 3px, 1:1. The Pascal is not
+  contradicted; the inference from it is. That is why I rejected the agent's elegant shl 7/shl 6 correlation — it was reasoning about the parameter, while hardware had already measured the pixel.
+
+  CLOSE is the same shape, in a different form. The matrix concluded "no live handler" from CLOSE being absent from the nine _Update case statements — of one file, DebugDisplayUnit.pas. But close is dispatched upstream in the display-manager layer, which the REF never read. Absence within a bounded read is not absence in the
+  system. And I can't prove this one — it needs the .pas or a bench test. I flagged it as needs-verify and I'll keep it there.
+
+  The control: where the Pascal beat v55, I ruled for the REF
+
+  If I were quietly protecting the manual, the ledger would be one-sided. It isn't:
+
+  - LOGIC LINESIZE range 1–32, default 3 — REF right, v55 wrong (v55 says 1–7/1). Hardware confirms.
+  - LOGIC SAMPLES max 2047 — REF right, v55 wrong. Hardware confirms.
+  - LOGIC SPACING min 1 — REF right, v55 wrong. Hardware confirms.
+  - LOGIC DOTSIZE exists at all — REF right, v55's table omits it.
+  - TERM default is orange, not lime — REF right.
+  - TITLE default is <name> - <TYPE> — REF right, v55's "none" is wrong.
+
+  And the manual is wrong in plenty of places — I'm not claiming otherwise. PLOT PRECISE is inverted in the manual and it's the CRITICAL item on the fix list. fft.yaml ships the MAG inversion. scope.yaml/scope_xy.yaml ship the packing default. The coverage audit has roughly fifteen more manual defects. The manual is right in the
+  specific places where either the Pascal-as-quoted or the silicon backs it — not in general.
+
+  Where my argument is weakest — say it plainly
+
+  TEXTSTYLE. I told you the offsets prove the labels are just a vocabulary collision. Pressed on it, that's shakier than I made it sound: if tx=0 meant "text starts at the anchor and extends right," you'd expect ink to the right, and EF-031 measured ink to the left. So my offset-arithmetic story doesn't cleanly close. What I
+  actually have is: hardware measured where the ink lands, twice, on two operating systems, and the manual matches the ink. That's sufficient for a reader-facing manual regardless of which naming convention anyone intended — but I shouldn't have dressed a plausible explanation up as a proof. The finding stands on EF-031 alone.
+
+  The anti-aliasing story for LINESIZE is likewise an explanation, not a proof. The proof is the measurement: 3 → 3px.
+
+  CLOSE is unproven and I'd like it tested before we write it either way.
+
+  So, the principle
+
+  The trust chain runs: Pascal = what the tool computes. Hardware = what the reader sees. The REF = somebody's reading of the first one. When the REF's prose and the REF's own quoted code disagree, the code wins. When the code and the silicon appear to disagree, it's almost always because the code is describing a parameter and
+  the silicon is describing a pixel — and for a manual, the pixel wins.
