@@ -398,7 +398,8 @@ pnut-term-ts --headless -r test.bin --end-marker  # headless, exit on end-sessio
 ```
 
 `-r` and `-f` are mutually exclusive; `--timeout` requires `--headless`; `--end-marker`
-requires `--headless` or `--exit-on-end-session`. See the **User Guide** for the full
+requires `--headless` or `--exit-on-end-session`. A bad command line is reported in full
+and exits with code `2` without running anything. See the **User Guide** for the full
 command-line reference, exit codes, and operating modes.
 
 ---

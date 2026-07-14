@@ -58,9 +58,19 @@ export class UsbSerial extends EventEmitter {
     }
   }
 
-  // Communication baud rate: Used for runtime debug/terminal communication
-  // Set by MainWindow via setCommBaudRate() from CLI (-b flag), preferences, or default (115200)
-  static desiredCommsBaudRate: number = 115200; // Will be overridden by setCommBaudRate()
+  // Communication baud rate: Used for runtime debug/terminal communication.
+  // Set via setCommBaudRate() from (in precedence order) the CLI -b flag, the
+  // downloaded binary's own _baud_ (see utils/p2DebugHeader.ts), preferences, or
+  // this default.
+  //
+  // 2,000,000 is not a taste: it is what the ENTIRE P2 debug system defaults to.
+  // With no DEBUG_BAUD in the source the compiler installs download_baud as the
+  // image's _baud_ (p2com.asm:7141-7146, 7418-7419), and PNut's download baud
+  // defaults to 2,000,000 (SerialUnit.pas:49). There is NO handshake anywhere in
+  // the system — it works precisely BECAUSE every party defaults to the same
+  // number. We used to default to 115200, which made us the single disagreeing
+  // party and turned the zero-configuration case into garbage output.
+  static desiredCommsBaudRate: number = 2000000; // Will be overridden by setCommBaudRate()
 
   private context: Context;
   private endOfLineStr: string = '\r\n';

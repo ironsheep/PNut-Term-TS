@@ -59,6 +59,7 @@ import { PlacementStrategy } from '../utils/windowPlacer';
 import { COGLogExporter } from './shared/cogLogExporter';
 import { Downloader } from './downloader';
 import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
+import { readDebugHeaderFromFile } from '../utils/p2DebugHeader';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -1569,7 +1570,7 @@ export class MainWindow {
   private syncBuffer: string = '';
   private lastSyncTime: number = 0;
   private readonly MAX_LINE_CHARS = 80; // Typical max line length
-  private readonly DEFAULT_BAUD_RATE = 115200; // Fallback for debug/terminal communication
+  private readonly DEFAULT_BAUD_RATE = 2000000; // Fallback for debug/terminal communication (the P2 system-wide default — see usb.serial.ts)
 
   /**
    * Calculate timeout based on baud rate - time to transmit MAX_LINE_CHARS
@@ -6307,7 +6308,13 @@ export class MainWindow {
         this.logMessage(`Downloading ${path.basename(filePath)} to ${target}...`);
         this.updateRecordingStatus(`Downloading to ${target}...`);
 
-        // Get debug baud rate for runtime communication (from CLI -b, preferences, or default 115200)
+        // The image we are about to download TELLS US the rate the P2 will transmit
+        // debug at. Read it rather than guess — this is what makes an in-source
+        // DEBUG_BAUD an actual override for this tool. See utils/p2DebugHeader.ts.
+        this.adoptBaudFromBinary(filePath);
+
+        // Get debug baud rate for runtime communication (CLI -b > the binary's own
+        // _baud_ > preferences > default).
         // Download baud rate is separate (from UsbSerial, currently hardcoded 2 Mbps, future: configurable)
         const debugBaudRate = this._serialBaud;
         const downloadBaudRate = port.getDownloadBaudRate();
@@ -6467,14 +6474,34 @@ export class MainWindow {
           this.logMessage(`ERROR: Failed to download to ${target}: ${errorMsg}`);
           this.updateRecordingStatus(`${toFlash ? 'Flash' : 'Download'} failed`);
 
-          // Use non-blocking dialog to avoid interrupting serial data processing
-          dialog.showMessageBox(this.mainWindow!, {
-            type: 'error',
-            title: 'Download Failed',
-            message: `Failed to download to ${target}`,
-            detail: errorMsg,
-            buttons: ['OK']
-          });
+          if (this.context.runEnvironment.exitOnEndSession) {
+            // BATCH MODE — nobody is here to click a dialog.
+            //
+            // A failed download means NOTHING IS RUNNING ON THE P2: the end-session
+            // marker we are waiting for can never arrive, and --timeout is
+            // headless-only, so there is no upper bound either. Left alone, a batch
+            // run would hang FOREVER behind a modal dialog no one will ever dismiss.
+            //
+            // Fail fast instead, with the same exit code headless already returns
+            // (headlessController: download failed -> ExitCode.DownloadFailed), so a
+            // launching script sees an identical `3` regardless of mode — which is
+            // the entire promise of the unified exit-code map.
+            this.shutdownExitCode = ExitCode.DownloadFailed;
+            this.logConsoleMessage(
+              `[DOWNLOAD] Download failed in batch mode (--exit-on-end-session) → aborting now with exit ${ExitCode.DownloadFailed}; the P2 is not running, so no end-marker can ever arrive`
+            );
+            void this.gracefulShutdown('download-failed');
+          } else {
+            // Interactive: surface it and stay open so the user can fix and retry.
+            // Non-blocking dialog to avoid interrupting serial data processing.
+            dialog.showMessageBox(this.mainWindow!, {
+              type: 'error',
+              title: 'Download Failed',
+              message: `Failed to download to ${target}`,
+              detail: errorMsg,
+              buttons: ['OK']
+            });
+          }
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -6971,7 +6998,10 @@ export class MainWindow {
    * Command line takes precedence over all preferences
    */
   private initializeSerialBaud(): void {
-    const APP_DEFAULT_BAUD = 115200; // Default debug/terminal baud (runtime communication after download)
+    // The P2 debug system's system-wide default (see utils/usb.serial.ts for the
+    // full derivation). NOT 115200 — that made us the only party in the system
+    // listening at a rate nothing transmits at.
+    const APP_DEFAULT_BAUD = 2000000;
 
     // Check if baud rate was specified on command line
     if (this.context.runEnvironment.debugBaudRateFromCLI && this.context.runEnvironment.debugBaudrate) {
@@ -6994,6 +7024,48 @@ export class MainWindow {
     // Fall back to app default
     this._serialBaud = APP_DEFAULT_BAUD;
     this.logConsoleMessage(`[SETTINGS] Using app default baud rate: ${this._serialBaud}`);
+  }
+
+  /**
+   * Adopt the debug baud rate carried INSIDE the binary we are about to download.
+   *
+   * The compiler installs the debug baud into the image as `_baud_`, so the image
+   * is the only thing in our possession that actually knows what the P2 will
+   * transmit at — a `DEBUG_BAUD` CON in the user's source changes the chip and
+   * tells nobody else. Reading it here is what makes that CON a working override
+   * for this tool rather than a silent source of garbage output.
+   *
+   * Precedence: an explicit `-b` on the command line always wins (it is a
+   * deliberate, per-invocation act), but we WARN when it contradicts the image,
+   * because that combination cannot produce readable output. A binary with no
+   * debug ROM leaves the configured baud untouched — it emits no DEBUG at all, so
+   * plain-terminal traffic keeps the user's rate.
+   */
+  private adoptBaudFromBinary(filePath: string): void {
+    const header = readDebugHeaderFromFile(filePath);
+    if (header === null) {
+      this.logConsoleMessage(`[DOWNLOAD] ${path.basename(filePath)} carries no debug ROM; keeping baud ${this._serialBaud}`);
+      return;
+    }
+
+    if (this.context.runEnvironment.debugBaudRateFromCLI) {
+      if (header.baud !== this._serialBaud) {
+        this.logMessage(
+          `WARNING: -b ${this._serialBaud} disagrees with this binary's compiled debug baud (${header.baud}). ` +
+            `The P2 will transmit at ${header.baud} — expect unreadable output. Drop -b to use the binary's rate.`
+        );
+      }
+      return; // explicit flag wins
+    }
+
+    if (header.baud !== this._serialBaud) {
+      this.logMessage(`Using debug baud ${header.baud} from ${path.basename(filePath)}`);
+      this._serialBaud = header.baud;
+      UsbSerial.setCommBaudRate(header.baud);
+    }
+    this.logConsoleMessage(
+      `[DOWNLOAD] Binary debug header: baud=${header.baud} txPin=${header.txPin} rxPin=${header.rxPin} timestamp=${header.timestamp}`
+    );
   }
 
   /**
@@ -7327,7 +7399,14 @@ export class MainWindow {
       const results = await Promise.all(flushes);
       if (results.some((ok) => !ok)) {
         this.logMessage('[SHUTDOWN] One or more saves did not finish flushing — output may be incomplete');
-        this.shutdownExitCode = ExitCode.FlushTimeout;
+        // Escalate ONLY from a clean exit. A drain timeout must never overwrite a
+        // more specific failure we are already reporting (e.g. DownloadFailed):
+        // "your output may be truncated" is strictly less useful to the caller than
+        // "the download failed", and the download failure is the thing to act on.
+        // Mirrors headlessController's guard (`... && this.exitCode === ExitCode.OK`).
+        if (this.shutdownExitCode === ExitCode.OK) {
+          this.shutdownExitCode = ExitCode.FlushTimeout;
+        }
       }
     }
 

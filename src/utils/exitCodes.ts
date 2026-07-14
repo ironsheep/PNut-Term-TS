@@ -10,6 +10,14 @@
  *                       Covers normal quit, SIGINT/SIGTERM, and an
  *                       end-session marker / DEBUG_END_SESSION sentinel.
  *   1   PORT_ERROR      Serial port open / I/O failure.
+ *   2   USAGE_ERROR     Bad command line: unknown option, missing or malformed
+ *                       option value, mutually-exclusive or misapplied flags, a
+ *                       download file that does not exist. NOTHING RAN — no
+ *                       hardware was touched, no download attempted, no window
+ *                       opened. Kept distinct from 1 so a script can tell "you
+ *                       invoked me wrong" from "the serial port failed".
+ *                       (2 is the long-standing shell convention for a usage
+ *                       error; it is also what most GNU tools return.)
  *   3   DOWNLOAD_FAILED Binary download to the P2 failed.
  *   124 RUN_TIMEOUT     Overall run timeout elapsed (the `--timeout` budget).
  *   125 FLUSH_TIMEOUT   Shutdown drain exceeded its window: one or more SAVEs /
@@ -21,6 +29,7 @@
 export enum ExitCode {
   OK = 0,
   PortError = 1,
+  UsageError = 2,
   DownloadFailed = 3,
   RunTimeout = 124,
   FlushTimeout = 125

@@ -25,7 +25,7 @@ decisions baked in below. Plan is sprint-ready.
   one build" preference; accepts the larger verify surface for W0).
 - **W14 dimming = full Pascal-graded parity** (not the flat veil).
 - **W0 box-draw stays local** to `DebuggerRenderer.ts`; a shared `SmoothShape`
-  utility is logged to `tasks/PUNCH_LIST.md` as a future refactor (not this sprint).
+  utility is logged to `DOCs/PUNCH_LIST.md` as a future refactor (not this sprint).
 
 ## Entry baseline (sprint-start, 2026-06-20)
 
@@ -258,4 +258,4 @@ records the visual fixes in `CHANGELOG.md` at release.
 ## Out of scope (parked — not visual; see resume note / observations doc)
 - Rapid-break delta-refresh race; build-A diagnostic stripping; debugger dead-code
   cleanup. Address after visual parity lands.
-- Shared `SmoothShape` utility extraction — logged in `tasks/PUNCH_LIST.md`.
+- Shared `SmoothShape` utility extraction — logged in `DOCs/PUNCH_LIST.md`.

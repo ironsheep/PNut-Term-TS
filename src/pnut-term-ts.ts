@@ -6,6 +6,8 @@
 'use strict';
 import { Command, CommanderError, type OptionValues } from 'commander';
 import { Context } from './utils/context';
+import { ExitCode } from './utils/exitCodes';
+import os from 'os';
 import path from 'path';
 import { exec, spawn } from 'child_process';
 import { UsbSerial, DeviceInfo } from './utils/usb.serial';
@@ -48,6 +50,15 @@ export class DebugTerminalInTypeScript {
   private argsArray: string[] = [];
   private context: Context;
   private shouldAbort: boolean = false;
+  // Validation errors are ACCUMULATED, never exited on. A bad command line
+  // reports EVERY problem it has in one run — a user fixing one typo at a time
+  // across five invocations is a defect of this tool, not of their typing.
+  // Usage errors (the command line itself is wrong) are kept separate from
+  // environment errors (the command line is fine, the hardware/port is not)
+  // because they exit with different codes — see abortExitCode().
+  private usageErrorCount: number = 0;
+  private environmentErrorCount: number = 0;
+  private pendingErrors: string[] = [];
   private inContainer: boolean = false;
   private requiresFilename: boolean = false;
   private initialCwd: string = '';
@@ -155,6 +166,83 @@ export class DebugTerminalInTypeScript {
     return path.extname(name) === '' ? `${name}.bin` : name;
   }
 
+  /**
+   * Record a USAGE error: the command line itself is wrong (unknown option, bad
+   * value, misapplied/conflicting flags, missing download file). Held rather
+   * than printed so that validation runs to completion and the user is shown
+   * ALL of their mistakes at once (and so the errors appear together, after the
+   * sign-on banner, instead of scattered through startup output). Nothing runs
+   * afterwards — see the validation gates in run().
+   */
+  private usageError(message: string): void {
+    this.pendingErrors.push(message);
+    this.usageErrorCount++;
+    this.shouldAbort = true;
+  }
+
+  /**
+   * Record an ENVIRONMENT error: the command line is well-formed but the world
+   * isn't cooperating (USB enumeration failed, the requested device isn't
+   * attached). Distinct from a usage error because it exits PortError, not
+   * UsageError — the user typed a valid command; the hardware said no.
+   */
+  private environmentError(message: string): void {
+    this.pendingErrors.push(message);
+    this.environmentErrorCount++;
+    this.shouldAbort = true;
+  }
+
+  /**
+   * The exit code for an aborted run. A bad command line outranks a bad
+   * environment: if the invocation was malformed we never made a legitimate
+   * attempt at the hardware, so "you invoked me wrong" is the more truthful
+   * answer to give the shell.
+   */
+  private abortExitCode(): ExitCode {
+    if (this.usageErrorCount > 0) {
+      return ExitCode.UsageError;
+    }
+    if (this.environmentErrorCount > 0) {
+      return ExitCode.PortError;
+    }
+    return ExitCode.OK;
+  }
+
+  /**
+   * Report every error we collected, announce the abort, and hand back the code
+   * the shell will see. Errors are ALWAYS reported — even under --quiet, which
+   * suppresses chatter, not failures.
+   */
+  private abort(quiet: boolean): ExitCode {
+    for (const message of this.pendingErrors) {
+      this.context.logger.errorMsg(message);
+    }
+    this.pendingErrors = [];
+    if (!quiet) {
+      this.context.logger.progressMsg('Aborted!');
+    }
+    return this.abortExitCode();
+  }
+
+  /**
+   * Strictly parse an option value that must be a positive whole number.
+   *
+   * Deliberately stricter than parseInt(), which is the wrong tool for
+   * validating user input: parseInt('abc') is NaN (and NaN silently defeats
+   * every `<= 0` guard, because every comparison with NaN is false), while
+   * parseInt('60s') is 60 — it accepts garbage by ignoring the tail. Returns
+   * null for ANYTHING that is not a run of digits with a positive value, so the
+   * caller reports a usage error instead of running with a wrong or absent value.
+   */
+  private parsePositiveInt(raw: string): number | null {
+    const text: string = String(raw).trim();
+    if (!/^\d+$/.test(text)) {
+      return null;
+    }
+    const value: number = parseInt(text, 10);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+
   public async run(): Promise<number> {
     // ensure we know early if we are running in developer mode
     if (process.env.PNUT_DEVELOP_MODE) {
@@ -176,7 +264,10 @@ export class DebugTerminalInTypeScript {
       .description(`PNut Terminal TS - v${this.version}`)
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
-      .option('-b, --debugbaud <rate>', 'set debug baud rate for runtime communication (default 2000000)')
+      .option(
+        '-b, --debugbaud <rate>',
+        'Override the debug baud rate (default: taken from the binary being downloaded, else 2000000)'
+      )
       .option(
         '-p, --plug <dvcNode>',
         'Receive serial data from Propeller attached to <dvcNode> (auto-detects if only one USB serial device)'
@@ -187,11 +278,16 @@ export class DebugTerminalInTypeScript {
       .option('-q, --quiet', 'Quiet mode (suppress Term-TS banner and non-error text)')
       .option('-m, --match-vendor-only', 'Match any FTDI device (VID 0x0403), ignore product ID')
       .option('--ide', 'IDE mode - minimal UI for VSCode/IDE integration')
-      .option('--rts', 'Use RTS instead of DTR for device reset (requires --ide)')
+      // NOT "(requires --ide)" as this once claimed: the RTS override is honored
+      // in standalone mode too (see the rtsOverride handling below), and the help
+      // text was telling users a restriction that does not exist.
+      .option('--rts', 'Use RTS instead of DTR for device reset')
       .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
       .option('--console-mode', 'Running with console output - adds delay before close')
       .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
-      .option('--timeout <seconds>', 'Exit after specified seconds (headless mode only)', parseInt)
+      // No parseInt coercion here: parseInt('abc') yields NaN, which then slips
+      // through every numeric guard. The raw string is validated strictly below.
+      .option('--timeout <seconds>', 'Exit after specified seconds (headless mode only)')
       .option('--end-marker [phrase]', 'Exit when phrase seen in output (default: END_SESSION or DEBUG_END_SESSION)')
       .option(
         '--exit-on-end-session',
@@ -265,32 +361,27 @@ export class DebugTerminalInTypeScript {
     try {
       this.program.parse(combinedArgs);
     } catch (error: unknown) {
-      if (error instanceof CommanderError) {
-        //this.context.logger.logMessage(`XYZZY Error: name=[${error.name}], message=[${error.message}]`);
-        if (error.name === 'CommanderError') {
-          this.context.logger.logMessage(``); // our blank line so prompt is not too close after output
-          //this.context.logger.logMessage(`  xyzxzy `);
-          if (error.message !== '(outputHelp)') {
-            this.context.logger.logMessage(`  (See --help for available options)\n`);
-            //this.program.outputHelp();
-          }
-        } else {
-          if (
-            error.name != 'oe' &&
-            error.name != 'Ee' &&
-            error.name != 'CommanderError2' &&
-            error.message != 'outputHelp' &&
-            error.message != '(outputHelp)'
-          ) {
-            this.context.logger.logMessage(`Catch name=[${error.name}], message=[${error.message}]`);
-            // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
-            return Promise.resolve(-1);
-          }
-        }
+      // exitOverride() makes commander THROW instead of exiting, so every
+      // outcome of parsing lands here — including the successful ones.
+      // Commander marks the difference with exitCode: 0 for output-and-stop
+      // (--help, --version), non-zero for a genuinely bad command line
+      // (unknown option, missing option value, excess arguments).
+      if (error instanceof CommanderError && error.exitCode === 0) {
+        // --help / --version: commander has already written its output. Not a
+        // failure — fall through so the existing help/banner path runs.
+        this.context.logger.logMessage(``); // blank line so the prompt isn't jammed against the output
       } else {
-        this.context.logger.logMessage(`XYZZY Catch unknown error=[${error}]`);
-        // Instead of throwing, return a resolved Promise with a specific value, e.g., -1
-        return Promise.resolve(-1);
+        // A bad command line. Commander has already reported the specific
+        // problem via outputError(); we add the hint and STOP. Previously this
+        // path fell through and the app ran anyway on a command line we had
+        // just declared invalid.
+        if (error instanceof CommanderError) {
+          this.context.logger.logMessage(``);
+          this.context.logger.logMessage(`  (See --help for available options)\n`);
+        } else {
+          this.context.logger.errorMsg(`Could not parse the command line: ${error}`);
+        }
+        return ExitCode.UsageError;
       }
     }
 
@@ -332,11 +423,10 @@ export class DebugTerminalInTypeScript {
     }
 
     // Store debug baud rate if specified on command line
-    if (options.debugbaud) {
-      const baudRate = parseInt(options.debugbaud);
-      if (isNaN(baudRate) || baudRate <= 0) {
-        this.context.logger.errorMsg(`Invalid baud rate: ${options.debugbaud}`);
-        this.shouldAbort = true;
+    if (options.debugbaud !== undefined) {
+      const baudRate: number | null = this.parsePositiveInt(options.debugbaud);
+      if (baudRate === null) {
+        this.usageError(`Invalid --debugbaud value: "${options.debugbaud}" (expected a positive whole number of bits/sec)`);
       } else {
         this.context.runEnvironment.debugBaudrate = baudRate;
         this.context.runEnvironment.debugBaudRateFromCLI = true;
@@ -345,26 +435,39 @@ export class DebugTerminalInTypeScript {
     }
 
     // Store headless mode options (for CI/AI agent automation)
+    // An explicit --end-marker must carry a usable phrase. An empty string would
+    // match every byte of output and end the run instantly, which is never what
+    // anyone means by it.
+    if (typeof options.endMarker === 'string' && options.endMarker.trim().length === 0) {
+      this.usageError('Invalid --end-marker value: the phrase cannot be empty');
+    }
+
     if (options.headless) {
       this.context.runEnvironment.headlessMode = true;
       this.context.logger.verboseMsg('Headless mode enabled (no GUI windows)');
 
       // Timeout option (only valid with --headless)
       if (options.timeout !== undefined) {
-        if (options.timeout <= 0) {
-          this.context.logger.errorMsg(`Invalid timeout: ${options.timeout} (must be positive)`);
-          this.shouldAbort = true;
+        const timeoutSeconds: number | null = this.parsePositiveInt(options.timeout);
+        if (timeoutSeconds === null) {
+          this.usageError(
+            `Invalid --timeout value: "${options.timeout}" (expected a positive whole number of seconds)`
+          );
         } else {
-          this.context.runEnvironment.headlessTimeout = options.timeout;
-          this.context.logger.verboseMsg(`Headless timeout set to ${options.timeout} seconds`);
+          this.context.runEnvironment.headlessTimeout = timeoutSeconds;
+          this.context.logger.verboseMsg(`Headless timeout set to ${timeoutSeconds} seconds`);
         }
       }
 
       // End-marker option. In headless, end-marker detection always exits.
-      if (options.endMarker !== undefined) {
+      // --exit-on-end-session is redundant here (headless ALWAYS exits on the
+      // marker) but is honored rather than ignored: asking for end-session exit
+      // arms the default markers even when --end-marker was not given.
+      const wantsMarkers: boolean = options.endMarker !== undefined || options.exitOnEndSession === true;
+      if (wantsMarkers) {
         // No value → both defaults (DEBUG_END_SESSION = PNut/Windows, END_SESSION = other tools).
-        const markers =
-          options.endMarker === true ? ['END_SESSION', 'DEBUG_END_SESSION'] : [options.endMarker as string];
+        const em = options.endMarker;
+        const markers = em === undefined || em === true ? ['END_SESSION', 'DEBUG_END_SESSION'] : [em as string];
         this.context.runEnvironment.headlessEndMarker = markers;
         this.context.logger.verboseMsg(`Headless end-marker(s) set to: ${markers.map((m) => `"${m}"`).join(', ')}`);
       }
@@ -372,8 +475,7 @@ export class DebugTerminalInTypeScript {
       // ── Headed mode ──
       // --timeout remains headless-only.
       if (options.timeout !== undefined) {
-        this.context.logger.errorMsg('--timeout requires --headless');
-        this.shouldAbort = true;
+        this.usageError('--timeout requires --headless');
       }
       // --exit-on-end-session enables headed batch termination on the
       // end-session marker / DEBUG_END_SESSION sentinel. It also unlocks
@@ -387,8 +489,7 @@ export class DebugTerminalInTypeScript {
           `Exit-on-end-session enabled; marker(s): ${markers.map((m) => `"${m}"`).join(', ')}`
         );
       } else if (options.endMarker !== undefined) {
-        this.context.logger.errorMsg('--end-marker requires --headless or --exit-on-end-session');
-        this.shouldAbort = true;
+        this.usageError('--end-marker requires --headless or --exit-on-end-session');
       }
     }
 
@@ -436,8 +537,7 @@ export class DebugTerminalInTypeScript {
     }
 
     if (options.flash && options.ram) {
-      this.context.logger.errorMsg('Please use only one of FLASH or RAM options!');
-      this.shouldAbort = true;
+      this.usageError('Please use only one of FLASH (-f) or RAM (-r) options!');
     }
 
     // Store USB traffic logging flag
@@ -447,6 +547,11 @@ export class DebugTerminalInTypeScript {
       this.context.logger.progressMsg(`Logging USB traffic`);
     }
 
+    // The "Downloading [...]" announcement is HELD until validation passes: we
+    // must never tell the user we are downloading and then abort on some other
+    // bad parameter.
+    let pendingDownloadMsg: string | null = null;
+
     if (options.flash && !options.ram) {
       this.context.actions.writeFlash = true;
       this.requiresFilename = true;
@@ -454,11 +559,11 @@ export class DebugTerminalInTypeScript {
 
       // Check if the file exists before proceeding
       if (!fs.existsSync(this.context.actions.binFilename)) {
-        this.context.logger.errorMsg(`File not found for FLASH download: ${this.context.actions.binFilename}`);
-        this.context.logger.errorMsg(`Please check the file path and try again.`);
-        this.shouldAbort = true;
+        this.usageError(
+          `File not found for FLASH download: ${this.context.actions.binFilename}\n  Please check the file path and try again.`
+        );
       } else {
-        this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to FLASH`);
+        pendingDownloadMsg = `Downloading [${this.context.actions.binFilename}] to FLASH`;
       }
     }
 
@@ -469,12 +574,26 @@ export class DebugTerminalInTypeScript {
 
       // Check if the file exists before proceeding
       if (!fs.existsSync(this.context.actions.binFilename)) {
-        this.context.logger.errorMsg(`File not found for RAM download: ${this.context.actions.binFilename}`);
-        this.context.logger.errorMsg(`Please check the file path and try again.`);
-        this.shouldAbort = true;
+        this.usageError(
+          `File not found for RAM download: ${this.context.actions.binFilename}\n  Please check the file path and try again.`
+        );
       } else {
-        this.context.logger.progressMsg(`Downloading [${this.context.actions.binFilename}] to RAM`);
+        pendingDownloadMsg = `Downloading [${this.context.actions.binFilename}] to RAM`;
       }
+    }
+
+    // ── COMMAND-LINE VALIDATION GATE ────────────────────────────────────────
+    // Every command-line parameter has now been checked. If ANY of them was
+    // invalid we stop RIGHT HERE — before enumerating USB hardware, before
+    // resetting a device, before downloading anything, before opening a window.
+    // A bad command line runs nothing at all.
+    if (this.usageErrorCount > 0) {
+      return this.abort(options.quiet);
+    }
+
+    // Command line is good — now it is honest to say what we are about to do.
+    if (pendingDownloadMsg !== null) {
+      this.context.logger.progressMsg(pendingDownloadMsg);
     }
 
     // Show verbose environment info (always show for verbose mode, regardless of shouldAbort)
@@ -522,11 +641,12 @@ export class DebugTerminalInTypeScript {
           `* Enumeration complete: ${this.context.runEnvironment.serialPortDevices.length} PropPlug device(s) found`
         );
       } catch (error) {
-        this.context.logger.errorMsg(`* loadUsbPortsFound() Exception: ${error}`);
         this.context.logger.debugMsg('* USB enumeration failed - check permissions or device drivers');
         // Don't abort if just listing nodes - show the error but continue
-        if (!showingNodeList) {
-          this.shouldAbort = true;
+        if (showingNodeList) {
+          this.context.logger.errorMsg(`* loadUsbPortsFound() Exception: ${error}`);
+        } else {
+          this.environmentError(`Could not enumerate USB serial devices: ${error}`);
         }
       }
     }
@@ -575,18 +695,28 @@ export class DebugTerminalInTypeScript {
           );
         }
       } else {
-        // Device specified but not found - this is an error condition
-        this.context.logger.errorMsg(`Error: Device "${options.plug}" not found`);
-        if (this.context.runEnvironment.serialPortDevices.length > 0) {
-          this.context.logger.errorMsg(`Available devices:`);
-          for (const device of this.deviceInfoList) {
-            this.context.logger.errorMsg(`  ${device.path} (SN: ${device.serialNumber})`);
-          }
-        } else {
-          this.context.logger.errorMsg(`No USB serial devices detected`);
-        }
-        process.exit(1);
+        // Device specified but not found. The command line is well-formed — the
+        // named device simply isn't attached — so this is an ENVIRONMENT error
+        // (PortError), not a usage error. It is RECORDED rather than exited on:
+        // bailing out here used to skip the remaining checks and, worse, exited
+        // before the caller could learn anything else that was wrong.
+        const detail: string =
+          this.deviceInfoList.length > 0
+            ? `Available devices:\n${this.deviceInfoList
+                .map((device) => `  ${device.path} (SN: ${device.serialNumber})`)
+                .join('\n')}`
+            : 'No USB serial devices detected';
+        this.environmentError(`Device "${options.plug}" not found\n  ${detail}`);
       }
+    }
+
+    // ── ENVIRONMENT GATE ────────────────────────────────────────────────────
+    // The command line was good, but the hardware isn't there. Stop before the
+    // device-selection fallbacks below — otherwise a failed `--plug` lookup
+    // would fall through to auto-detect and silently run against a DIFFERENT
+    // device than the one the caller explicitly named.
+    if (this.environmentErrorCount > 0) {
+      return this.abort(options.quiet);
     }
 
     // Check for project-level PropPlug selection
@@ -746,15 +876,17 @@ export class DebugTerminalInTypeScript {
       return Promise.resolve(exitCode);
     }
 
-    if ((!options.quiet && !showingHelp) || (showingHelp && options.verbose)) {
-      if (this.shouldAbort) {
-        this.context.logger.progressMsg('Aborted!');
-      } else {
-        this.context.logger.progressMsg('Done');
-      }
+    // Nothing to run: --help, --dvcnodes, or an abort. Any abort has already
+    // been reported and returned at a gate above; this is belt-and-braces so a
+    // future shouldAbort path can never again escape as a success.
+    if (this.shouldAbort) {
+      return this.abort(options.quiet);
     }
-    // Use process.exit for both Electron and Node.js environments
-    process.exit(0);
+
+    if ((!options.quiet && !showingHelp) || (showingHelp && options.verbose)) {
+      this.context.logger.progressMsg('Done');
+    }
+    return ExitCode.OK;
   }
 
   private async loadUsbPortsFound(): Promise<void> {
@@ -933,15 +1065,28 @@ export class DebugTerminalInTypeScript {
         });
       }
 
-      electronProcess.on('close', (code) => {
+      electronProcess.on('close', (code, signal) => {
         // Clean up the context file
         try {
           fs.unlinkSync(contextFile);
           this.context.logger.debugMsg(`Cleaned up context file: ${contextFile}`);
         } catch {}
 
-        this.context.logger.debugMsg(`Electron process exited with code: ${code}`);
-        resolve(code || 0);
+        // The GUI's exit code IS this process's exit code — that is the whole
+        // point of the unified map: a launching script branches on $? the same
+        // way whether it ran headed or headless.
+        //
+        // A signal death has code === null. `code || 0` used to turn that into
+        // a clean 0, i.e. the app being killed or crashing reported SUCCESS.
+        // Report the shell's own convention instead (128 + signal number).
+        if (code === null) {
+          const signalExit: number = 128 + (os.constants.signals[signal as NodeJS.Signals] ?? 0);
+          this.context.logger.debugMsg(`Electron process died on signal ${signal} (exit ${signalExit})`);
+          resolve(signalExit);
+        } else {
+          this.context.logger.debugMsg(`Electron process exited with code: ${code}`);
+          resolve(code);
+        }
       });
 
       electronProcess.on('error', (error) => {
@@ -950,7 +1095,7 @@ export class DebugTerminalInTypeScript {
         try {
           fs.unlinkSync(contextFile);
         } catch {}
-        resolve(1);
+        resolve(ExitCode.PortError);
       });
     });
   }
@@ -1046,7 +1191,24 @@ export class DebugTerminalInTypeScript {
 // --------------------------------------------------
 // our actual command line tool when run stand-alone
 //
-//if (DebugTerminalInTypeScript.isTesting == false) {
+// This is the ONE place the process's exit status is set, and every mode funnels
+// through it: a validation abort returns its code from run(), headless returns
+// HeadlessController.run()'s code, and headed returns the Electron child's exit
+// code. run()'s return value used to be DISCARDED here, which silently made the
+// entire documented exit-code contract (see src/utils/exitCodes.ts) inert — the
+// shell saw 0 no matter what happened, including "Aborted!".
+//
+// We set process.exitCode rather than calling process.exit(): it lets Node
+// finish flushing buffered stdout/stderr (which process.exit can truncate when
+// output is piped — exactly how CI and agent runs consume us) and then exit with
+// this status on its own.
 const cliTool = new DebugTerminalInTypeScript();
-cliTool.run();
-//}
+cliTool
+  .run()
+  .then((exitCode: number) => {
+    process.exitCode = Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : ExitCode.PortError;
+  })
+  .catch((error: unknown) => {
+    console.error(`PNut-Term-TS: unexpected failure: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = ExitCode.PortError;
+  });

@@ -20,6 +20,7 @@ import { HeadlessFileLogger } from './shared/headlessFileLogger';
 import { USBTrafficLogger } from './shared/usbTrafficLogger';
 import { Downloader } from './downloader';
 import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
+import { readDebugHeaderFromFile } from '../utils/p2DebugHeader';
 
 export class HeadlessController {
   private context: Context;
@@ -199,6 +200,11 @@ export class HeadlessController {
     console.log(`[HEADLESS] Downloading ${filePath} to ${target}...`);
     this.logger.logSystem(`Starting download: ${filePath} to ${target}`);
 
+    // The binary carries the rate the P2 will actually transmit debug at. Adopt it
+    // (unless -b was given explicitly) so an in-source DEBUG_BAUD works here too.
+    // See utils/p2DebugHeader.ts for why guessing was never safe.
+    this.adoptBaudFromBinary(filePath);
+
     try {
       const result = await this.downloader.download(filePath, toFlash);
 
@@ -216,6 +222,42 @@ export class HeadlessController {
       this.logger.logError(`Download error: ${error}`);
       return false;
     }
+  }
+
+  /**
+   * Adopt the debug baud carried inside the binary being downloaded.
+   *
+   * Headless is where this matters most: an unattended agent run that listens at
+   * the wrong rate produces a log full of garbage that reads like a hardware
+   * fault, and nothing is watching to notice. An explicit -b still wins, but we
+   * warn when it contradicts the image. A binary with no debug ROM changes
+   * nothing. See utils/p2DebugHeader.ts.
+   */
+  private adoptBaudFromBinary(filePath: string): void {
+    const header = readDebugHeaderFromFile(filePath);
+    if (header === null) {
+      return; // no debug ROM — no DEBUG output to mis-tune for
+    }
+
+    const currentBaud: number = this.context.runEnvironment.debugBaudrate || UsbSerial.desiredCommsBaudRate;
+
+    if (this.context.runEnvironment.debugBaudRateFromCLI) {
+      if (header.baud !== currentBaud) {
+        const warning =
+          `WARNING: -b ${currentBaud} disagrees with this binary's compiled debug baud (${header.baud}). ` +
+          `The P2 will transmit at ${header.baud} — expect unreadable output. Drop -b to use the binary's rate.`;
+        console.warn(`[HEADLESS] ${warning}`);
+        this.logger.logSystem(warning);
+      }
+      return; // explicit flag wins
+    }
+
+    if (header.baud !== currentBaud) {
+      console.log(`[HEADLESS] Using debug baud ${header.baud} from the binary (was ${currentBaud})`);
+      this.logger.logSystem(`Using debug baud ${header.baud} carried in ${filePath}`);
+    }
+    this.context.runEnvironment.debugBaudrate = header.baud;
+    UsbSerial.setCommBaudRate(header.baud);
   }
 
   /**

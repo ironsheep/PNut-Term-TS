@@ -204,7 +204,9 @@ export class Context {
       },
       serialPort: {
         controlLine: 'DTR',
-        defaultBaud: 115200,
+        // 2,000,000 = the P2 debug system's universal default (see utils/usb.serial.ts).
+        // A downloaded binary's own _baud_ overrides this anyway (utils/p2DebugHeader.ts).
+        defaultBaud: 2000000,
         resetOnConnection: true
       },
       debugLogger: {
@@ -372,7 +374,9 @@ export class Context {
       },
       serialPort: {
         controlLine: 'DTR',
-        defaultBaud: 115200,
+        // 2,000,000 = the P2 debug system's universal default (see utils/usb.serial.ts).
+        // A downloaded binary's own _baud_ overrides this anyway (utils/p2DebugHeader.ts).
+        defaultBaud: 2000000,
         resetOnConnection: true
       },
       debugLogger: {

@@ -409,7 +409,7 @@ pnut-term-ts [options]
 | `-r` | `--ram` | file | Download the file to **RAM** and run |
 | `-f` | `--flash` | file | Download the file to **FLASH** and run |
 | `-p` | `--plug` | device | Use the PropPlug at `<device>` (path or serial; partial match OK). Auto-detects if exactly one device is present |
-| `-b` | `--debugbaud` | rate | Debug baud rate (default **2000000**) |
+| `-b` | `--debugbaud` | rate | **Override** the debug baud rate. Normally unnecessary — see *Debug baud* below |
 | `-n` | `--dvcnodes` | | List detected USB serial devices and exit |
 | `-m` | `--match-vendor-only` | | With `-n`, list any FTDI device (VID 0x0403), not just PropPlugs |
 | `-d` | `--debug` | | Emit detailed diagnostic messages |
@@ -448,14 +448,51 @@ batch mode (`--exit-on-end-session`).
 
 ### Constraints
 - `-r` and `-f` are mutually exclusive.
-- `--timeout` requires `--headless`.
-- `--end-marker` requires `--headless` or `--exit-on-end-session`.
+- `--timeout` requires `--headless`, and takes a positive whole number of seconds.
+- `--end-marker` requires `--headless` or `--exit-on-end-session`, and its phrase cannot be empty.
+- `--debugbaud` takes a positive whole number of bits/sec.
+
+The command line is validated **before anything runs**. If any option is wrong,
+every problem with it is reported at once and the tool exits with code 2 — no
+device is touched, no download is attempted, and no window opens.
+
+### Debug baud — you should not need to set it
+
+**When you download a program with `-r` or `-f`, PNut-Term-TS reads the debug baud
+rate out of the binary itself and listens at that rate.** Your compiler writes the
+value into the image, so the binary already knows what the P2 will transmit at —
+including when your source sets its own rate:
+
+```spin2
+CON  DEBUG_BAUD = 921600     ' PNut-Term-TS picks this up automatically
+```
+
+If your source says nothing, everything in the P2 world defaults to **2,000,000**,
+and so do we. Either way it just works, with no flag.
+
+`-b` / `--debugbaud` is an **override** for the cases the binary can't tell us
+about — attaching to a P2 that is already running (no download), or a program built
+by a toolchain we don't recognize. If you pass `-b` and it *contradicts* the binary
+you're downloading, you'll get a warning saying so, because the P2 will transmit at
+its own compiled rate regardless and the output would be unreadable:
+
+```
+WARNING: -b 115200 disagrees with this binary's compiled debug baud (2000000).
+The P2 will transmit at 2000000 — expect unreadable output. Drop -b to use the binary's rate.
+```
+
+The full precedence is: **`-b` flag → the binary's own rate → project settings →
+global settings → 2,000,000.**
 
 ### Exit codes
+The same codes are returned whether you run with the GUI or `--headless`, so a
+launching script can branch on `$?` identically in both modes.
+
 | Code | Meaning |
 |------|---------|
 | 0 | Clean exit (all SAVEs and logs flushed) |
-| 1 | Port / device error |
+| 1 | Port / device error (the command was valid; the hardware wasn't there) |
+| 2 | Bad command line — nothing ran |
 | 3 | Download failed |
 | 124 | Headless `--timeout` expired |
 | 125 | Shutdown drain exceeded its timeout (output may be incomplete) |
@@ -492,8 +529,13 @@ of `Ctrl` on macOS).
 4. On Linux/macOS, verify serial-port permissions (see below).
 
 ### Garbled or missing text
-- Usually a baud mismatch — set the debug baud to match your program (`-b`, or the
-  Default Baud Rate preference). Common rates: 115200, 921600, 2000000.
+- Usually a baud mismatch. **If you passed `-b`, try dropping it** — when you download
+  with `-r`/`-f` the binary's own debug baud is read automatically and is almost always
+  right; an explicit `-b` overrides it and can be wrong. Look for the
+  `WARNING: -b … disagrees with this binary's compiled debug baud` line.
+- If you're attaching to an already-running P2 (no download), there is no binary to read
+  from, so set the rate yourself with `-b` or the Default Baud Rate preference. Common
+  rates: 115200, 921600, 2000000.
 
 ### P2 doesn't reset / program doesn't start
 - The reset control line may be wrong for your adapter. Set **DTR** or **RTS** for the
