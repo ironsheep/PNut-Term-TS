@@ -440,7 +440,9 @@ describe('DebugPlotWindow Commands', () => {
         expect((plotWindow as any).opacity).toBe(128);
       });
 
-      test('should clamp opacity to 0..255', async () => {
+      test('should truncate opacity to a byte, not clamp it (Pascal :1944-1945)', async () => {
+        // Pascal assigns straight into `vOpacity: byte` with range checks off ({$Q-,R-}),
+        // so an out-of-range value WRAPS. It does not saturate.
         // Valid 0
         await plotWindow.updateContent(['TestPlot', 'OPACITY', '0']);
         expect((plotWindow as any).opacity).toBe(0);
@@ -449,13 +451,17 @@ describe('DebugPlotWindow Commands', () => {
         await plotWindow.updateContent(['TestPlot', 'OPACITY', '255']);
         expect((plotWindow as any).opacity).toBe(255);
 
-        // Out-of-range high — clamped to 255
+        // Out-of-range high wraps: 300 -> 44 (NOT 255)
         await plotWindow.updateContent(['TestPlot', 'OPACITY', '300']);
-        expect((plotWindow as any).opacity).toBe(255);
+        expect((plotWindow as any).opacity).toBe(44);
 
-        // Out-of-range low — clamped to 0
-        await plotWindow.updateContent(['TestPlot', 'OPACITY', '-50']);
+        // 256 wraps to 0 — fully transparent, the v55 footgun
+        await plotWindow.updateContent(['TestPlot', 'OPACITY', '256']);
         expect((plotWindow as any).opacity).toBe(0);
+
+        // Negative wraps: -50 -> 206 (NOT 0)
+        await plotWindow.updateContent(['TestPlot', 'OPACITY', '-50']);
+        expect((plotWindow as any).opacity).toBe(206);
       });
 
       test('should leave opacity unchanged on invalid string', async () => {

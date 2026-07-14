@@ -139,14 +139,14 @@ describe('ScopeXyRenderer', () => {
       const scale = 2;
       
       const result = renderer.transformPolar(radius, angle, twopi, theta, scale, false, 100);
-      
-      // Expected: radius scaled, angle converted to radians
+
+      // Pascal SinCos(Tf, Xf, Yf) is sine-first, so x = Rf*sin(Tf), y = Rf*cos(Tf).
       // tf = PI/2 - (angle + theta) / twopi * PI * 2 = PI/2
-      // x = rf * cos(tf) = 20 * cos(PI/2) = 0
-      // y = rf * sin(tf) = 20 * sin(PI/2) = 20
-      
-      expect(result.x).toBeCloseTo(0);
-      expect(result.y).toBeCloseTo(20);
+      // x = rf * sin(tf) = 20 * sin(PI/2) = 20  -> angle 0 plots East
+      // y = rf * cos(tf) = 20 * cos(PI/2) = 0
+
+      expect(result.x).toBeCloseTo(20);
+      expect(result.y).toBeCloseTo(0);
     });
 
     it('should handle 90 degree rotation', () => {
@@ -155,15 +155,15 @@ describe('ScopeXyRenderer', () => {
       const twopi = 0x100000000;
       const theta = 0;
       const scale = 1;
-      
+
       const result = renderer.transformPolar(radius, angle, twopi, theta, scale, false, 100);
-      
+
       // tf = PI/2 - (0x40000000 / 0x100000000) * 2*PI = PI/2 - PI/2 = 0
-      // x = 10 * cos(0) = 10
-      // y = 10 * sin(0) = 0
-      
-      expect(result.x).toBeCloseTo(10);
-      expect(result.y).toBeCloseTo(0);
+      // x = 10 * sin(0) = 0
+      // y = 10 * cos(0) = 10  -> 90 deg is North: rotation is counter-clockwise
+
+      expect(result.x).toBeCloseTo(0);
+      expect(result.y).toBeCloseTo(10);
     });
 
     it('should apply theta offset', () => {
@@ -174,10 +174,10 @@ describe('ScopeXyRenderer', () => {
       const scale = 1;
       
       const result = renderer.transformPolar(radius, angle, twopi, theta, scale, false, 100);
-      
-      // With theta offset, should rotate the result
-      expect(result.x).toBeCloseTo(10);
-      expect(result.y).toBeCloseTo(0);
+
+      // theta rotates the result: tf = PI/2 - PI/2 = 0 -> x = sin(0) = 0, y = cos(0) = 10
+      expect(result.x).toBeCloseTo(0);
+      expect(result.y).toBeCloseTo(10);
     });
 
     it('should handle log scaling for radius', () => {
@@ -195,10 +195,10 @@ describe('ScopeXyRenderer', () => {
       // Log scaled radius: displayRadius = scale * range = 128
       const actualDisplayRadius = scale * range;
       const rf = (Math.log2(Math.abs(inputRadius)) / Math.log2(range)) * actualDisplayRadius;
-      const tf = Math.PI / 2;
 
-      expect(result.x).toBeCloseTo(0);
-      expect(result.y).toBeCloseTo(rf);
+      // tf = PI/2 -> x = rf * sin(PI/2) = rf (East), y = rf * cos(PI/2) = 0
+      expect(result.x).toBeCloseTo(rf);
+      expect(result.y).toBeCloseTo(0);
     });
 
     it('should handle zero radius with log scaling', () => {

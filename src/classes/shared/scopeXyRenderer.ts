@@ -110,8 +110,11 @@ export class ScopeXyRenderer {
     // Pascal: Tf := Pi / 2 - (y + vTheta) / vTwoPi * Pi * 2;
     const tf = Math.PI / 2 - ((angle + theta) / twopi) * Math.PI * 2;
 
-    const x = rf * Math.cos(tf);
-    const y = rf * Math.sin(tf);
+    // Pascal SinCos(Tf, Xf, Yf) returns SINE in the first out-param, so
+    // x := Rf * Xf is sin and y := Rf * Yf is cos (DebugDisplayUnit.pas:1538-1540).
+    // Net: angle 0 plots East and increasing angle rotates counter-clockwise.
+    const x = rf * Math.sin(tf);
+    const y = rf * Math.cos(tf);
 
     return { x, y };
   }

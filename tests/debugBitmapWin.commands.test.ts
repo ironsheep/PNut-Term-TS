@@ -491,22 +491,30 @@ describe('DebugBitmapWindow Command Tests', () => {
       expect(window['state'].rate).toBe(30);
     });
 
-    it('should use rate=1 when RATE 0 is sent (manual/real-time mode)', async () => {
-      // §15 RATE FIX: setRate(0) sets state.rate=1 (manual/real-time mode), NOT
-      // getSuggestedRate(). The old test mocked getSuggestedRate to return 256 and
-      // expected 256 — that was coincidental (constructor sets rate=width=256 for
-      // trace 0) and the test was asserting stale behavior.
+    it('stores a runtime RATE 0 RAW — auto-refresh freezes (Pascal :2431-2432)', async () => {
+      // Pascal BITMAP_Update key_rate is a bare `KeyVal(vRate)`: no substitution, no clamp.
+      // vRateCount counts up from 0 and RateCycle tests EQUALITY, so a rate of 0 can never
+      // match => the bitmap stops auto-refreshing until TRACE / CLEAR / explicit UPDATE.
+      // (The -1 -> width*height substitution exists ONLY in BITMAP_Configure, :2413.)
       await window.updateContent(['RATE', '0']);
 
-      expect(window['state'].rate).toBe(1);
+      expect(window['state'].rate).toBe(0);
     });
 
-    it('should reset rate counter when rate changes', async () => {
+    it('stores a runtime RATE -1 RAW — auto-refresh freezes, no width*height expansion', async () => {
+      await window.updateContent(['RATE', '-1']);
+
+      expect(window['state'].rate).toBe(-1);
+    });
+
+    it('does NOT reset the rate counter when the rate changes (Pascal preserves phase)', async () => {
+      // Pascal's `KeyVal(vRate)` leaves vRateCount untouched — the cycle phase survives a
+      // rate change. The old expectation (reset to 0) was a TS invention.
       window['state'].rateCounter = 10;
 
       await window.updateContent(['RATE', '60']);
 
-      expect(window['state'].rateCounter).toBe(0);
+      expect(window['state'].rateCounter).toBe(10);
     });
   });
 

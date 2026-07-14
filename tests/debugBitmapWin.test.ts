@@ -699,11 +699,14 @@ describe('DebugBitmapWindow', () => {
     // §15 / source: setRate(0) sets rate=1 (manual-mode fallback for pixel processing).
     // The source does NOT call getSuggestedRate() in setRate(). Tests expecting
     // getSuggestedRate to be called were stale.
-    it('should set rate to 1 when RATE = 0 (manual mode fallback)', async () => {
+    it('stores a runtime RATE 0 raw — no manual-mode fallback to 1 (Pascal :2431-2432)', async () => {
       await window.updateContent(['256', '256', 'RATE', '0']);
 
-      // setRate(0) → rate=1 (source: "Rate 0 means manual update mode but we use 1 for processing")
-      expect(window['state'].rate).toBe(1);
+      // Ground truth is DebugDisplayUnit.pas, not our own prior implementation: BITMAP_Update's
+      // key_rate is a bare `KeyVal(vRate)`. RateCycle (:3079-3088) tests vRateCount = vRate with
+      // vRateCount counting up from 0, so rate 0 never fires and auto-refresh halts. The old
+      // "fallback to 1" expectation cited our own source as its authority — circular.
+      expect(window['state'].rate).toBe(0);
     });
 
     // §15 / source: setTracePattern() sets rate=1 when rate===0, does NOT call getSuggestedRate().

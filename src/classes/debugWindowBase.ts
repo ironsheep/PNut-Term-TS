@@ -334,22 +334,34 @@ export abstract class DebugWindowBase extends EventEmitter {
       return false;
     }
 
+    // CLOSE is a message-level flag, not a positional command. The Pascal parser
+    // (p2com.asm parse_debug_string) detects it anywhere in the record and clears the
+    // display's enable bit; DebugUnit.pas:236-237 then runs the FULL directive stream
+    // via UpdateDisplay and only afterwards calls DisplayForm[j].Close. So the rest of
+    // the message must execute first — `MyPlot SAVE 'shot' CLOSE` saves, THEN closes.
+    const closeIdx = commandParts.findIndex((part) => part.toUpperCase() === 'CLOSE');
+    if (closeIdx !== -1) {
+      const remaining = commandParts.filter((_, i) => i !== closeIdx);
+      // Run whatever else the message carried, exactly as if CLOSE were absent.
+      if (remaining.length > 0) {
+        await this.handleCommonCommand(remaining);
+      }
+      this.logMessageBase('Executing CLOSE command');
+      // A SAVE may still be in flight (the router dispatches messages
+      // fire-and-forget, so SAVE and a following CLOSE can overlap). Wait for
+      // it before tearing the window down, or the bitmap is truncated.
+      await this.flushPending();
+      // Setting debugWindow to null triggers the full close sequence
+      this.debugWindow = null;
+      return true;
+    }
+
     const command = commandParts[0].toUpperCase();
 
     switch (command) {
       case 'CLEAR':
         this.logMessageBase('Executing CLEAR command');
         this.clearDisplayContent();
-        return true;
-
-      case 'CLOSE':
-        this.logMessageBase('Executing CLOSE command');
-        // A SAVE may still be in flight (the router dispatches messages
-        // fire-and-forget, so SAVE and a following CLOSE can overlap). Wait for
-        // it before tearing the window down, or the bitmap is truncated.
-        await this.flushPending();
-        // Setting debugWindow to null triggers the full close sequence
-        this.debugWindow = null;
         return true;
 
       case 'UPDATE':

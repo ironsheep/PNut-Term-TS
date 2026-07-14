@@ -1242,21 +1242,19 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
    * Set pixel update rate
    */
   private setRate(rate: number): void {
-    this.state.rate = rate; // Accept negative values for special handling
-    this.state.rateCounter = 0;
-
-    // Handle special rate values (Pascal logic)
-    if (this.state.rate === -1) {
-      // Rate -1 means full screen update: set to width * height
-      this.state.rate = this.state.width * this.state.height;
-      this.logMessage(`[RATE SET] rate=-1 expanded to width*height=${this.state.rate}`);
-    } else if (this.state.rate === 0) {
-      // Rate 0 means manual update mode but we use 1 for pixel processing
-      this.state.rate = 1;
-      this.logMessage(`[RATE SET] rate=0 (manual mode) using 1 for processing`);
-    } else {
-      this.logMessage(`[RATE SET] rate=${this.state.rate}, rateCounter reset to 0`);
-    }
+    // Pascal BITMAP_Update key_rate (:2431-2432) is a plain `KeyVal(vRate)` — it stores the
+    // value RAW and does nothing else. The -1 -> width*height substitution exists ONLY at the
+    // tail of BITMAP_Configure (:2413), i.e. the create message; it is deliberately absent here.
+    //
+    // Consequence, faithfully reproduced: RateCycle (:3079-3088) tests `vRateCount = vRate` and
+    // vRateCount only counts up from 0, so a runtime `RATE -1` (or `RATE 0`) can never match and
+    // auto-refresh STOPS until a subsequent TRACE / CLEAR / explicit UPDATE intervenes (each of
+    // which re-derives the rate via SetTrace(..., True) or repaints directly). That freeze is
+    // real v55 behavior, not a bug to paper over.
+    //
+    // Note also: Pascal does NOT reset vRateCount here — the cycle phase is preserved.
+    this.state.rate = rate;
+    this.logMessage(`[RATE SET] rate=${this.state.rate} (raw, per Pascal :2431-2432)`);
   }
 
   /**
@@ -1558,9 +1556,18 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
     // NORMAL MODE: pixels are now queued in this.pendingPixels; the render timer flushes
     // them in one coalesced plotPixelBatch IPC (instead of one awaited IPC per message). [#30]
 
-    // Check if we should update the display (Pascal: RateCycle)
-    // Rate controls how often the display is updated
-    if (this.state.rateCounter >= this.state.rate) {
+    // Check if we should update the display (Pascal: RateCycle, :3079-3088)
+    // Rate controls how often the display is updated.
+    //
+    // The `>= rate` form (rather than Pascal's exact `= rate`) is deliberate: rateCounter is
+    // incremented per pixel but this test is hoisted out of the pixel loop and evaluated once
+    // per message, so the modulo carry below preserves the cadence. [#30]
+    //
+    // But a NON-POSITIVE rate must never fire. Pascal's vRateCount counts up from 0 and can
+    // never equal a rate of -1 or 0, so auto-refresh stops dead (see setRate). With a bare
+    // `>=` a rate of -1 would satisfy the test on EVERY message — the exact inverse of v55 —
+    // and the modulo below would divide by a non-positive number. Guard it.
+    if (this.state.rate > 0 && this.state.rateCounter >= this.state.rate) {
       // HOT PATH: guard rate-cycle diagnostics — these strings were built every rate
       // cycle even with logging off, adding to the main-thread cost that starves the
       // serial drain at 2 Mbaud. (fix A missed this block.) [#30]
@@ -1584,7 +1591,11 @@ delete window['bitmapImageData_${this.bitmapCanvasId}'];
       // here. The render timer drains pendingPixels → plotPixelBatch → updateCanvas in order,
       // so the display still refreshes once per rate cycle but the serial drain is never
       // blocked on an IPC round-trip. SPARSE mode draws directly to the display canvas. [#30]
-      if (!this.state.sparseMode) {
+      //
+      // Pascal :2478 is `if RateCycle and not vUpdate then BitmapToCanvas(0)` — a window
+      // declared with UPDATE (manual-refresh mode) must NOT auto-repaint on a rate cycle;
+      // it repaints only on an explicit UPDATE directive.
+      if (!this.state.sparseMode && !this.state.manualUpdate) {
         this.displayDirty = true;
         this.ensureRenderFlushTimer();
       }

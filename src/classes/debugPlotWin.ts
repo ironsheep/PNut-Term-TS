@@ -1496,7 +1496,7 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
         case 'DOT': {
           // DOT [lineSize [opacity]]
           let lineSize = this.lineSize; // Use persistent line size as default
-          let opacity = 255;
+          let opacity = this.opacity; // Pascal :1967 defaults t2 to vOpacity, as every other shape does
 
           if (index + 1 < lineParts.length) {
             const val = this.parseNumber(lineParts[index + 1]);
@@ -1859,7 +1859,9 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           if (index + 1 < lineParts.length) {
             const val = this.parseNumber(lineParts[++index]);
             if (val !== null) {
-              this.opacity = Math.max(0, Math.min(255, val));
+              // Pascal :1944-1945 assigns straight into a byte with range checks off ({$Q-,R-}),
+              // so the value truncates rather than clamping: OPACITY 256 -> 0, OPACITY -1 -> 255.
+              this.opacity = val & 0xff;
               this.logMessage(`Set persistent opacity to ${this.opacity}`);
             }
           }
@@ -3326,19 +3328,24 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     // let's start with horizontal alignment
     const alignHCenter = this.textStyle.horizAlign == eHorizJustification.HJ_CENTER;
     const alignHRight = this.textStyle.horizAlign == eHorizJustification.HJ_RIGHT;
-    let adjYBaseline: number = textYbaseline;
+    // Vertical justify, per Pascal AngleTextOut (DebugDisplayUnit.pas:3507-3511, 3516):
+    //   V=0/1: ty := h/2  -> TextOut(y - h/2) -> cell [y-h/2, y+h/2]  (centred on the anchor)
+    //   V=2:   ty := h    -> TextOut(y - h)   -> cell [y-h, y]        (ink ABOVE the anchor)
+    //   V=3:   ty := 0    -> TextOut(y)       -> cell [y, y+h]        (ink BELOW the anchor)
+    // The enum names read from the ANCHOR edge (VJ_BOTTOM = the anchor is the text's bottom edge,
+    // so the ink sits above it). Chip left these case arms unnamed; do not re-label from the ink side.
+    let adjYBaseline: number = textYbaseline; // V=3 / VJ_TOP: no shift — ink below the anchor
     switch (this.textStyle.vertAlign) {
       case eVertJustification.VJ_TOP:
-        //adjYBaseline = textYOffset + this.font.baseline;
-        adjYBaseline -= vertLineInset + this.font.baseline;
+        // Pascal V=3: ty := 0 — baseline stays put, ink falls below the anchor
         break;
       case eVertJustification.VJ_BOTTOM:
-        //adjYBaseline = textYOffset + lineHeight - vertLineInset;
-        //adjYBaseline = textYbaseline;
+        // Pascal V=2: ty := h — lift the whole cell above the anchor
+        adjYBaseline -= lineHeight;
         break;
       case eVertJustification.VJ_MIDDLE:
-        //adjYBaseline = textYOffset + vertLineInset + this.font.baseline - 5; // off by 5 pix?
-        adjYBaseline -= (vertLineInset + this.font.baseline) / 2 + 2; // off by 2?
+        // Pascal V=0/1: ty := h/2 — half a cell up, straddling the anchor
+        adjYBaseline -= lineHeight / 2;
         break;
     }
     const alignHString: string = alignHCenter ? 'Hctr' : alignHRight ? 'Hrt' : 'Hlt';

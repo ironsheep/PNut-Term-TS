@@ -84,13 +84,16 @@ describe('[9win §13c] OPACITY directive (Pascal key_opacity :1944)', () => {
     expect(stub.opacity).toBe(128);
   });
 
-  it('OPACITY clamps to 0..255', async () => {
+  it('OPACITY truncates to a byte — it does NOT clamp (Pascal :1944-1945)', async () => {
+    // Pascal is a bare `vOpacity := val` into a `byte` field (:342) with range checks off
+    // ({$Q-,R-} at :1), so an out-of-range value WRAPS rather than saturating.
+    // The practical footgun: OPACITY 256 -> 0 = fully TRANSPARENT, not fully opaque.
     const hi = makeStub();
     await run(hi, ['Plot', 'OPACITY', '300']);
-    expect(hi.opacity).toBe(255);
+    expect(hi.opacity).toBe(44); // 300 & 0xFF
     const lo = makeStub();
     await run(lo, ['Plot', 'OPACITY', '-5']);
-    expect(lo.opacity).toBe(0);
+    expect(lo.opacity).toBe(251); // -5 & 0xFF
   });
 });
 
