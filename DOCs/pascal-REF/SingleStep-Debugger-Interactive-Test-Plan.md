@@ -612,6 +612,19 @@ stream to its own controller; per-cog transaction map instead of a single `debug
 DECISION PENDING: build the multi-cog fix vs defer as a known limitation. Test 13/14 are
 single-cog and unaffected.
 
+RESOLVED — multi-cog fix BUILT and HW-VALIDATED across v0.9.94 + v0.9.95:
+- v0.9.94: per-cog window creation + single Phase-1 delivery (each cog registers its own
+  `debugger-{cogId}` window synchronously; removed the double-feed) — both windows now open.
+- v0.9.95: the worker is the SOLE Phase-3 framer and delimits each break by EXACT byte
+  count (relayed FIXED size = popcount of the request bitmap the P2 obeys, + the
+  interleaved 8-group smart-pin tail). This fixed the residual wedge where a repeat-mode
+  cog's next break over-read into the halted cog's Phase-3. The old "stream verbatim until
+  onPhase3Done" model assumed the P2 is halted between breaks — false when a 2nd cog runs.
+ON HW TEST v0.9.95 PASS (log `debug_260715-171328.log`): both Cog-0 and Cog-1 windows open
+and step INDEPENDENTLY — 60s sustained, Cog0 755 breaks / Cog1 533 (one Phase-2 per Phase-1
+per cog), RX binary=0, zero cross-tag/over-read, zero spurious Phase-1. Cert Pass 1 «#74»
+acceptance gate MET.
+
 ---
 
 ## Test 13: Event breakpoints
