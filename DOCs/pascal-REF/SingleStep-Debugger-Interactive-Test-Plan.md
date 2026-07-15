@@ -555,6 +555,16 @@ busy↔wait as you step into/out of the handler; "Suspended during INT1" shows c
 WHITE bold (Pascal `:1424` cData, exact parity — the pattern behind it dims, the message does
 not). Log `debug_260706-132450.log` confirmed clean single-owner framing (no errors/desync).
 
+REGRESSED v0.9.89–v0.9.93, RE-FIXED v0.9.94 PASS — the comms rework
+(0.9.89→0.9.93 per-cog demux / single-framer) shipped the new typed delivery path but left
+the old direct main-side feed live, so every Phase-1 was delivered TWICE → two Phase-2 replies
+per break → the P2's fixed-size Phase-2 read byte-desynced and the window went dead to input
+(the startup break drew, then nothing responded). Wire-confirmed in
+`usb-traffic_260715-124708.log` (break 2 = 2× Phase-2, both `$800` STALL). Fixed in v0.9.94 by
+making the typed WindowRouter path the sole framing authority: the window registers
+synchronously in its constructor and `debuggerPacketReceived` is creation-only (no direct
+feed). test11 passes again on real HW.
+
 **Pass criteria**: Execution mode changes on interrupt entry/exit, interrupt status shows correct event name and state, SKIP suspension message appears.
 
 ---
