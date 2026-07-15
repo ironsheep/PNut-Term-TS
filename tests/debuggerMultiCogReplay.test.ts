@@ -76,7 +76,8 @@ describe('multi-cog §7 — worker per-cog demux (synthetic 2-cog replay)', () =
   it('reassembles a Phase-3 split exactly at its fixed|smart-pin-tail seam', () => {
     // The one intra-break seam worth pinning explicitly: a USB chunk boundary
     // landing precisely between the fixed cog/hub region and the smart-pin tail.
-    // The worker streams both parts as raw Phase-3; reassembly must be byte-exact.
+    // The worker delimits the fixed body by the relayed size, then walks the tail
+    // group-by-group; reassembly must be byte-exact across the seam.
     const h = makeWorkerHarness();
     const fixed = 128;
     const masks = [0x03, 0, 0, 0, 0, 0, 0, 0];
@@ -84,6 +85,7 @@ describe('multi-cog §7 — worker per-cog demux (synthetic 2-cog replay)', () =
 
     h.feed(buildWorkerPhase1(0));
     expect(h.pump().map((e) => `${e.cog}:${e.kind}`)).toEqual(['0:p1']);
+    h.hint(0, fixed); // relayed FIXED size — the worker delimits the body by it
     h.feed(p3.subarray(0, fixed)); // fixed cog/hub region
     h.pump();
     h.feed(p3.subarray(fixed));    // smart-pin tail, on the far side of the seam
@@ -115,15 +117,15 @@ describe('multi-cog §7 — worker per-cog demux (synthetic 2-cog replay)', () =
 
   it('a truncated Phase-3 is recovered by a pipe reset; the next break frames cleanly', () => {
     // A truncated exchange breaks the atomic-per-cog guarantee (P2 lock[15]), a
-    // genuine desync. Path 1: the worker streams whatever Phase-3 bytes arrive
-    // verbatim (the controller buffers a partial break) and, absent a break-
-    // complete relay, stays on cog 1 — there is no worker-side watchdog. Recovery
-    // is the DTR-reset / overflow path, which must leave the pipe clean.
+    // genuine desync. Exact framing: the worker has cog 1's size and drains the
+    // sliver it got, then WAITS for the rest (never scans). Recovery is the
+    // DTR-reset / overflow path, which abandons the in-flight exchange cleanly.
     const h = makeWorkerHarness();
 
     // Cog 1 breaks; only a SLIVER of its Phase-3 arrives, then bytes stop.
     h.feed(buildWorkerPhase1(1));
     expect(h.pump().map((e) => `${e.cog}:${e.kind}`)).toEqual(['1:p1']); // just the Phase-1
+    h.hint(1, 200); // cog 1's FIXED size — worker expects 200 body bytes
     h.feed(buildWorkerPhase3(200).subarray(0, 10)); // 10-byte sliver — an incomplete break
     h.pump();
 
@@ -133,6 +135,7 @@ describe('multi-cog §7 — worker per-cog demux (synthetic 2-cog replay)', () =
     // …and a fresh, complete cog-0 exchange frames normally — no wedge, no cross-tag.
     h.feed(buildWorkerPhase1(0));
     expect(h.pump().map((e) => `${e.cog}:${e.kind}`)).toEqual(['0:p1']);
+    h.hint(0, 80);
     h.feed(buildWorkerPhase3(80));
     for (let i = 0; i < 8 && h.pump().length; i++) { /* drain the recovered Phase-3 */ }
     h.done(0);
@@ -142,6 +145,38 @@ describe('multi-cog §7 — worker per-cog demux (synthetic 2-cog replay)', () =
     expect(Array.from(breaks[1].phase3)).toEqual(Array.from(buildWorkerPhase3(80))); // recovered, byte-exact
     // The recovered break never cross-tagged onto the stalled cog.
     assertNoCrossTag(h.emissions);
+  });
+});
+
+describe('multi-cog exact framing — the test12 interleave (regression)', () => {
+  it('does NOT over-read one cog\'s Phase-3 into a second cog\'s break arriving back-to-back', () => {
+    // THE test12 wedge, reduced: Cog 0 runs (repeat mode) while Cog 1 is halted, so
+    // Cog 0's next break lands on the wire IMMEDIATELY after Cog 1's break — no gap,
+    // no break-complete relay between them. The old verbatim-stream worker tagged
+    // Cog 0's bytes as Cog 1's Phase-3 (the `40 2f…` over-read in
+    // debug_260715-154351.log) and desynced the channel. Exact framing must delimit
+    // each break at its precise byte boundary regardless of what follows.
+    const cog1Masks = [0x03, 0, 0, 0, 0, 0, 0, 0];
+    const built = buildMultiCogStream([
+      { cog: 1, fixed: 234, masks: cog1Masks }, // Cog 1 break
+      { cog: 0, fixed: 170 } // Cog 0 break, contiguous (back-to-back on the wire)
+    ]);
+    const h = makeWorkerHarness();
+    // Both cogs' sizes are present (per-cog stash) before their Phase-3 bytes — as in
+    // production, relayed on fast IPC ahead of the slow serial round-trip.
+    h.hint(1, 234);
+    h.hint(0, 170);
+    // Feed the ENTIRE contiguous two-break stream at once — NO done() between them.
+    h.feed(built.bytes);
+    for (let i = 0; i < 16 && h.pump().length; i++) { /* drain to exhaustion */ }
+
+    assertNoCrossTag(h.emissions);
+    const breaks = groupBreaks(h.emissions);
+    // Both breaks frame, in order — Cog 0 is NOT swallowed into Cog 1's Phase-3.
+    expect(breaks.map((b) => b.cog)).toEqual([1, 0]);
+    // Each break's Phase-3 is byte-exact — no over-read, no under-read.
+    expect(Array.from(breaks[0].phase3)).toEqual(Array.from(buildWorkerPhase3(234, { masks: cog1Masks })));
+    expect(Array.from(breaks[1].phase3)).toEqual(Array.from(buildWorkerPhase3(170)));
   });
 });
 

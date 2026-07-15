@@ -12,18 +12,18 @@
  * spurious Phase-1 → "RX PHASE1 while awaitingP3" → bogus PC=$14201 → 12 KB
  * request → 250 ms stall → wedge.
  *
- * INVARIANT (Path 1): for ONE break (one real Phase-1 + its Phase-3 payload) the
- * worker emits exactly ONE Phase-1-typed message — never a second one manufactured
- * from the payload — REGARDLESS of hint timing, because it no longer scans or
- * delimits Phase-3 at all (it streams it verbatim until the controller relays
- * break-complete).
- *   v0.9.92 (worker delimits Phase-3 by hint): RED — emits a spurious Phase-1.
- *   Path 1 (worker does not scan/delimit Phase-3): GREEN — emits exactly one.
+ * INVARIANT (exact framing): for ONE break the worker emits exactly ONE Phase-1-typed
+ * message — never a second one manufactured from the payload — even when the relayed
+ * size is WRONG. The worker delimits Phase-3 by exact byte count now, but its
+ * awaitingPhase1 path REJECTS an all-zero 456-block (a real Phase-1 always carries
+ * non-zero CRC words). So even if a bad size forced an early resync into a hub-dump
+ * zero run, that run is discarded, not framed as a bogus DEBUGGER Phase-1.
+ *   v0.9.92 (worker delimits by hint, no all-zero guard): RED — spurious Phase-1.
+ *   Exact framing + all-zero guard: GREEN — exactly one.
  *
- * Injecting a DRIFTED hint here is fair: the drift's CAUSE is cross-process timing
- * (not reproducible in-container), but its CONSEQUENCE under the old design was
- * deterministic, and HW logs prove the drift occurs. Under Path 1 the hint is an
- * accepted no-op, so its timing can no longer matter — which is the whole point.
+ * In correct operation the size cannot be wrong (per-cog last-wins stash, one size per
+ * break — no sequence-matched queue to slip). This test injects a wrong size anyway as
+ * defense-in-depth: the all-zero guard keeps the $14201 class dead regardless.
  */
 
 import { SharedCircularBuffer } from '../src/classes/shared/sharedCircularBuffer';
@@ -54,10 +54,11 @@ test('worker must not mis-frame Phase-3 payload as a spurious Phase-1 when the h
   ring.appendAtTail(p1);
   core.pump();                 // frames the real Phase-1 → awaitingPhase3
   ring.appendAtTail(payload);  // the break's Phase-3 streams in...
-  // The hint that arrives is DRIFTED — a small stall-poll break's fixed size (170)
-  // dequeued for this larger break (the proven per-cog FIFO drift). Under the old
-  // design this under-drained and re-scanned the zero run as a Phase-1; Path 1
-  // ignores the hint entirely and streams the payload verbatim.
+  // A DELIBERATELY WRONG size (170) for this larger break. The worker delimits the
+  // body by it and resyncs early, mid-payload — but the awaitingPhase1 all-zero guard
+  // discards the ensuing hub-dump zero run instead of framing it as a spurious
+  // Phase-1. (In production the per-cog stash makes a wrong size impossible; this is
+  // defense-in-depth.)
   core.signalDebuggerPhase3Size(0, 170);
   for (let k = 0; k < 20; k++) core.pump();
 

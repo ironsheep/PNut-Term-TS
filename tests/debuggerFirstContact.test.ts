@@ -100,10 +100,12 @@ describe('debugger first-contact framing (multi-cog §2 regression)', () => {
     const masks = [0x03, 0, 0, 0, 0, 0, 0, 0]; // a multi-bit smart-pin tail
     const p3 = buildWorkerPhase3(fixed, { masks });
 
-    // Path 1: the worker frames the Phase-1 then STREAMS the Phase-3 verbatim in
-    // the same drain (no size-hint gate). Drain fully and collect every cog-0
-    // Phase-3 byte; the total equals the whole streamed payload.
+    // Exact framing: the worker frames the Phase-1, then delimits the Phase-3 by the
+    // relayed FIXED size + the self-describing smart-pin tail. Relay the size (as the
+    // controller would), drain fully, collect every cog-0 Phase-3 byte; the total
+    // equals the exact delimited payload.
     h.feed(concat(cogInitBanner(0), phase1WithEmbeddedCr(0), p3));
+    h.hint(0, fixed);
     for (let i = 0; i < 8 && h.pump().length; i++) { /* drain banner + Phase-1 + Phase-3 */ }
 
     expect(p1Of(h.emissions, 0)).toHaveLength(1);
@@ -120,6 +122,7 @@ describe('debugger first-contact framing (multi-cog §2 regression)', () => {
     // relayed (done) so the worker returns to awaitingPhase1 — exactly the lockstep
     // gap before the next cog can break.
     h.feed(concat(cogInitBanner(0), phase1WithEmbeddedCr(0), buildWorkerPhase3(fixed)));
+    h.hint(0, fixed);
     for (let i = 0; i < 8 && h.pump().length; i++) { /* drain cog-0 exchange */ }
     h.done(0);
 

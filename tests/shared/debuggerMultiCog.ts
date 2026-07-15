@@ -41,7 +41,13 @@ export function popcount8(b: number): number {
 
 /** A synthetic Phase-1 packet for `cog` (456 B, [cog,0,0,0] header). */
 export function buildWorkerPhase1(cog: number): Uint8Array {
-  return buildPhase1Packet({ longs: { 0: cog } });
+  const p1 = buildPhase1Packet({ longs: { 0: cog } });
+  // A REAL Phase-1 always carries non-zero CRC words (bytes 80..455); stamp one so a
+  // synthetic cog-0 packet (header [0,0,0,0]) is never mistaken for an all-zero
+  // hub-dump remnant by the worker's exact-framing Phase-1 guard. Mirrors reality —
+  // an all-zero 456-block is never a live break.
+  p1[80] = 0xa5;
+  return p1;
 }
 
 export interface Phase3Opts {
@@ -213,9 +219,14 @@ export function runMultiCogReplay(built: BuiltStream, maxChunk = Infinity, gapMs
     const p3Len = built.frameLengths[i * 2 + 1];
     feedFrame(built.bytes.subarray(off, off + p1Len));          // Phase-1
     off += p1Len;
-    feedFrame(built.bytes.subarray(off, off + p3Len));          // Phase-3 (streamed raw)
+    // Relay this break's FIXED size (renderer→worker) — the worker delimits Phase-3
+    // by exact byte count now, so it needs the size before it drains the body. In
+    // production this arrives after the controller processes the Phase-1 and before
+    // the P2's Phase-3 lands (fast IPC vs slow serial round-trip).
+    h.hint(built.exchanges[i].cog, built.exchanges[i].fixed);
+    feedFrame(built.bytes.subarray(off, off + p3Len));          // Phase-3 (delimited by size)
     off += p3Len;
-    h.done(built.exchanges[i].cog); // controller break-complete → worker back to awaitingPhase1
+    h.done(built.exchanges[i].cog); // no-op under exact framing; kept for shape parity
   }
   h.advance(gapMs);
   for (let guard = 0; guard < 8 && h.pump().length; guard++) { /* final flush */ }

@@ -5,6 +5,26 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.95] - 2026-07-15
+
+Multi-cog single-step debugger fix. **Built for hardware testing — not yet validated
+on a P2.**
+
+### Fixed
+
+- **Debugging two cogs at once no longer freezes the debug session.** After 0.9.94 both
+  cog windows open, but stepping test12 (with one cog running continuously while the
+  other is halted) would wedge the whole channel — one cog's memory data leaked into
+  the other cog's window and everything stopped. The cause: while a cog was running
+  freely, its next break arrived on the wire immediately after the halted cog's break,
+  and the app was reading "until told to stop" rather than reading an exact amount — so
+  it kept attributing the running cog's bytes to the halted cog. The app now reads each
+  break's reply as an **exact-size message** (the same size the chip itself uses to send
+  it), so it stops at the precise boundary regardless of what the other cog is doing.
+  This keeps each cog's data in its own window and lets both cogs step independently.
+  Confirmed against the captured two-cog session; the single-cog debugger (test11) is
+  unaffected.
+
 ## [0.9.94] - 2026-07-15
 
 Single-step debugger interaction fix. **Built for hardware testing — not yet validated

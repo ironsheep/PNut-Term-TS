@@ -175,6 +175,13 @@ export interface ExtractionCoreOptions {
   enableConsoleLog?: boolean;
 }
 
+/** Exact-framing stages for the active break's Phase-3 (see debugPhase3Cog). */
+const enum Phase3Stage {
+  AwaitSize, // waiting for pendingFixed[cog] (relayed) — WAIT, never scan
+  Fixed,     // draining the FIXED body (relayed size)
+  SmartPin   // walking the 8 smart-pin groups: each = 1 mask byte + 4·popcount longs
+}
+
 export class ExtractionCore {
   private buffer: SharedCircularBuffer;
   private messagePool: SharedMessagePool;
@@ -215,27 +222,53 @@ export class ExtractionCore {
   // the worker-side ChrIn analog (Pascal DebugUnit.pas :177-194): one place reads
   // the cog-ID at each break boundary and routes.
   //
-  // PATH 1 — the worker is a pure DISPATCHER; the renderer's DebuggerController is
-  // the SINGLE Phase-3 framer. The worker NEVER delimits or scans Phase-3, which
-  // eliminates the cross-process size-hint race that mis-framed an all-zero hub-
-  // dump run as a spurious Phase-1 (the $14201 desync — see
-  // tests/debuggerWorkerSingleFramer.test.ts). State machine:
-  //   • awaitingPhase1 (debugPhase3Cog === null): run normal text/DB/phase1
-  //     detection. On a phase1 for cog N, emit DEBUGGER{N}_416BYTE and enter
-  //     awaitingPhase3 for N.
-  //   • awaitingPhase3 (debugPhase3Cog === N): STREAM every ring byte raw as
-  //     DEBUGGER{N}_PHASE3 (chunked to fit a pool slot) WITHOUT scanning it for a
-  //     Phase-1 header or delimiting it by size. The bytes are all cog N's Phase-3
-  //     (atomic per-cog exchange). Return to awaitingPhase1 ONLY when cog N's
-  //     controller reports the break framed (onPhase3Done, relayed
-  //     renderer→main→worker). This is race-free: the worker can never manufacture
-  //     a Phase-1 from Phase-3 payload, and breakComplete is causally before the
-  //     next Phase-1 (the P2 is halted until the host's next step reply — a full
-  //     serial round-trip after the controller finishes this break).
-  // The renderer's size hint (signalDebuggerPhase3Size) is now IGNORED — the
-  // controller sizes its own Phase-3 from state it already holds. DTR/RTS reset
-  // (resetDebuggerFraming) still abandons any in-flight exchange.
-  private debugPhase3Cog: number | null = null;       // cog whose phase3 we're streaming (null = awaitingPhase1)
+  // MULTI-COG EXACT FRAMING — the worker is the SOLE Phase-3 framer and delimits
+  // each break by EXACT BYTE COUNT, so it returns to awaitingPhase1 at the precise
+  // boundary regardless of what other cogs are doing on the wire. This replaces the
+  // v0.9.93 "stream verbatim until onPhase3Done" model, whose correctness rested on
+  // "the P2 is halted until the host steps it" — true for one cog, FALSE when a
+  // second cog runs (test12: Cog 0 in repeat mode injects its next break onto the
+  // wire before Cog 1's onPhase3Done resyncs the worker, so Cog 0's bytes are
+  // mis-tagged as Cog 1's Phase-3 and framing desyncs).
+  //
+  // A break's Phase-3 length = FIXED body (changed cog/hub blocks + optional
+  // disasm + fixed pointer/hub reads) + a self-describing SMART-PIN TAIL
+  // (SMART_PIN_MASK_BYTES mask bytes + 4·Σsetbits). The FIXED body is a popcount of
+  // the SAME request bitmap the P2 obeys, computed by the renderer and relayed per
+  // break via signalDebuggerPhase3Size → pendingFixed[cog]. The TAIL is read from
+  // the stream. So the boundary is a function of the WIRE + one causally-prior
+  // input (the size arrives via fast IPC before the Phase-3 bytes arrive via the
+  // slow serial round-trip). Three rules make this race-free where the v0.9.89-91
+  // size-hint was not: (1) ONE framer (the renderer only PARSES pre-bounded frames),
+  // (2) per-cog last-wins stash — NOT a sequence-matched queue, and (3) WAIT, never
+  // scan — if a cog's size has not arrived we leave its bytes in the ring rather
+  // than guess a boundary (guessing + scanning is exactly what produced the $14201
+  // mis-frame). Framing state machine, per active cog:
+  //   AwaitSize → Fixed (drain pendingFixed[cog] bytes) → Mask (read 8, popcount →
+  //   tail len) → Tail (drain 4·Σsetbits) → resync to awaitingPhase1.
+  // DTR/RTS reset (resetDebuggerFraming) still abandons any in-flight exchange.
+  private debugPhase3Cog: number | null = null;       // cog whose phase3 we're framing (null = awaitingPhase1)
+  // Per-cog exact-framing progress for the ACTIVE break (only debugPhase3Cog's are live).
+  private p3Stage: Phase3Stage = Phase3Stage.AwaitSize;
+  private p3FixedRemaining = 0;                        // FIXED-body bytes still to drain this break
+  private p3SmartGroup = 0;                            // current smart-pin group 0..8 (8 = tail done)
+  private p3GroupLongs = -1;                           // long-bytes left in this group; -1 = need its mask byte
+  // Per-cog relayed FIXED size (signalDebuggerPhase3Size), consumed once per break.
+  // Index = cogId 0..7; undefined = not yet arrived (→ WAIT, never scan).
+  private pendingFixed: Array<number | undefined> = new Array(8).fill(undefined);
+  // The smart-pin tail is 8 groups (SMART_PINS/8), each: 1 mask byte + one long per set bit.
+  private static readonly SMART_PIN_GROUPS = 8;
+  /** popcount of a byte (set-bit count) — sizes the smart-pin tail. */
+  private static popcount8(b: number): number {
+    b = b - ((b >> 1) & 0x55);
+    b = (b & 0x33) + ((b >> 2) & 0x33);
+    return (b + (b >> 4)) & 0x0f;
+  }
+  /** True if every byte is zero — a real Phase-1 never is (see the framing guard). */
+  private static isAllZero(bytes: Uint8Array): boolean {
+    for (let i = 0; i < bytes.length; i++) if (bytes[i] !== 0) return false;
+    return true;
+  }
   // True once any debugger Phase-1 has been seen (until a DTR/clear). While set,
   // awaitingPhase1 detection tries find416ByteBoundary BEFORE findTextBoundary so a
   // binary Phase-1 packet is never chopped at an embedded CR/LF (which findText
@@ -291,22 +324,29 @@ export class ExtractionCore {
    * cog's exchange. Race-free: the break-complete relay is causally before the
    * next Phase-1 (the P2 stays halted until the host's next step reply).
    */
-  public onPhase3Done(cogId: number): void {
-    if (this.debugPhase3Cog === cogId) {
-      this.resetDebugPhase3();
-    }
+  public onPhase3Done(_cogId: number): void {
+    // NO-OP under multi-cog exact framing: the worker now delimits each break's
+    // Phase-3 by exact byte count and self-resyncs (see the Phase3Stage machine), so
+    // it no longer depends on the renderer's break-complete relay. Acting on this
+    // signal here would be HARMFUL — a break-complete for cog N arriving mid-stream
+    // could reset the active framing early. Kept as an accepted no-op so the
+    // renderer→main→worker relay needs no change; the whole relay is slated for
+    // removal in the §10 post-certification cleanup.
   }
 
   /**
-   * Renderer size hint (§3) — IGNORED under Path 1 (task #78). The worker no longer
-   * delimits Phase-3; the renderer's DebuggerController is the single framer and
-   * sizes its own Phase-3 from state it already holds. Kept as an accepted no-op so
-   * the renderer→main→worker relay (and its tests) need no change; the hint's async
-   * cross-process delivery was the desync race this path removes. (The whole relay
-   * is slated for removal in the §10 post-certification cleanup.)
+   * Per-break FIXED Phase-3 size, relayed renderer→main→worker. This is the popcount
+   * of the SAME request bitmap the P2 obeys (DebuggerController.buildPhase2 →
+   * expectedPhase3Fixed), so the worker and the P2 agree by construction. The worker
+   * uses it to delimit the FIXED body (the smart-pin tail is self-describing). Stored
+   * per-cog, last-wins, consumed once per break (see the AwaitSize stage). Bound to
+   * the cog — NOT a sequence-matched queue — so it cannot misalign; causally it
+   * arrives (fast IPC) before that break's Phase-3 bytes (slow serial round-trip).
    */
-  public signalDebuggerPhase3Size(_cogId: number, _size: number): void {
-    /* no-op — the controller is the single Phase-3 framer; see debugPhase3Cog. */
+  public signalDebuggerPhase3Size(cogId: number, size: number): void {
+    if (cogId >= 0 && cogId < this.pendingFixed.length) {
+      this.pendingFixed[cogId] = size;
+    }
   }
 
   /**
@@ -317,6 +357,7 @@ export class ExtractionCore {
   public onClear(): void {
     this.stashedMessage = null;
     this.resetDebugPhase3();
+    this.pendingFixed.fill(undefined); // drop any relayed sizes from before the boundary
     this.inDebugSession = false;
   }
 
@@ -331,12 +372,40 @@ export class ExtractionCore {
    */
   public resetDebuggerFraming(): void {
     this.resetDebugPhase3();
+    this.pendingFixed.fill(undefined); // post-reboot: abandon every cog's relayed size
     this.inDebugSession = false;
   }
 
-  /** Return to awaitingPhase1, dropping any in-flight per-cog Phase-3 stream. */
+  /** Return to awaitingPhase1, dropping any in-flight per-cog Phase-3 framing. */
   private resetDebugPhase3(): void {
     this.debugPhase3Cog = null;
+    this.p3Stage = Phase3Stage.AwaitSize;
+    this.p3FixedRemaining = 0;
+    this.p3SmartGroup = 0;
+    this.p3GroupLongs = -1;
+  }
+
+  /**
+   * Emit `len` bytes from the ring head as this cog's DEBUGGER{cog}_PHASE3 frame.
+   * ALWAYS consumes the bytes (they are committed to leaving the ring); on pool
+   * backpressure it stashes the chunk (no data lost) and returns false so the
+   * caller stops this tick — the stash is placed first next tick. Returns true on
+   * a clean emit. The DISTINCT phase3 type carries the cog-id for routing but does
+   * NOT trigger the byte-derived window-creation event.
+   */
+  private emitPhase3Chunk(cog: number, len: number): boolean {
+    const raw = this.buffer.peekAtOffset(0, len);
+    if (!raw) return false; // defensive — callers guarantee len ≤ getUsedSpace()
+    this.buffer.consume(len);
+    const type = (SharedMessageType.DEBUGGER0_PHASE3 + cog) as SharedMessageType;
+    const slot = this.messagePool.acquire(raw.length);
+    if (!slot) {
+      this.stashedMessage = { data: new Uint8Array(raw), type };
+      this.poolBackpressureEvents++;
+      return false;
+    }
+    this.writeMessageToSlot(slot, raw, type);
+    return true;
   }
 
   /**
@@ -832,42 +901,80 @@ export class ExtractionCore {
       while (extracted < maxBatch && this.buffer.hasData()) {
         let messageData: Uint8Array | null = null;
 
-        // ── Debugger Phase-3 raw stream (Path 1 — worker is a pure dispatcher) ──
-        // We are awaitingPhase3 for one cog: every ring byte is THAT cog's raw
-        // Phase-3 (atomic per-cog exchange, P2 lock[15]). STREAM it verbatim,
-        // tagged with the cog's PHASE3 type (chunked to fit a pool slot) — never
-        // scan it for a Phase-1 header and never delimit it by size. Cog N's
-        // controller (the SINGLE framer, task #78) parses these bytes and reports
-        // the break framed via onPhase3Done(N), which is the ONLY thing that
-        // returns us to awaitingPhase1 for the NEXT cog's Phase-1.
-        //
-        // Why race-free: not scanning Phase-3 eliminates the mis-frame class (an
-        // all-zero hub-dump run can never be manufactured into a spurious Phase-1);
-        // and onPhase3Done is causally before the next Phase-1 (the P2 is halted
-        // until the host's next step reply — a full serial round-trip after this
-        // break completes), so no next-break byte can reach the stream before we
-        // resync. This removes the async cross-process size-hint race that caused
-        // the $14201 desync (tests/debuggerWorkerSingleFramer.test.ts).
+        // ── Debugger Phase-3 EXACT framing (multi-cog) ─────────────────────────
+        // We hold debugPhase3Cog = N until we have delivered EXACTLY cog N's break
+        // (Fixed body + smart-pin tail) and returned to awaitingPhase1 — so a second
+        // cog's bytes can never bleed into cog N's stream. Bytes are still tagged
+        // DEBUGGER{N}_PHASE3 and chunked to a pool slot; we simply STOP at the exact
+        // boundary instead of streaming verbatim until an async signal.
         if (this.debugPhase3Cog !== null) {
           const cog = this.debugPhase3Cog;
-          const avail = this.buffer.getUsedSpace();
-          if (avail === 0) break; // wait for more of this cog's raw Phase-3
-          const drainLen = Math.min(avail, ExtractionCore.PHASE3_DRAIN_CAP);
-          const raw = this.buffer.peekAtOffset(0, drainLen);
-          if (!raw) break; // defensive (avail ≥ drainLen guarantees a result)
-          this.buffer.consume(drainLen);
-          // DISTINCT phase3 type (not the 416-byte phase1 type): carries the cog-id
-          // via the type for routing, but does NOT trigger the byte-derived
-          // window-creation event (which would spawn bogus windows from raw bytes).
-          const rawType = (SharedMessageType.DEBUGGER0_PHASE3 + cog) as SharedMessageType;
-          const rawSlot = this.messagePool.acquire(raw.length);
-          if (!rawSlot) {
-            // Bytes are already consumed from the ring; stash so no data is lost.
-            this.stashedMessage = { data: new Uint8Array(raw), type: rawType };
-            this.poolBackpressureEvents++;
-            break;
+
+          // AwaitSize: the FIXED body length is the relayed popcount of this break's
+          // request bitmap (signalDebuggerPhase3Size). WAIT — never scan — until it
+          // arrives (fast IPC, causally before the Phase-3 bytes' serial round-trip).
+          if (this.p3Stage === Phase3Stage.AwaitSize) {
+            const fixed = this.pendingFixed[cog];
+            if (fixed === undefined) break; // size not here yet — leave bytes in ring
+            this.pendingFixed[cog] = undefined; // consume once per break
+            this.p3FixedRemaining = fixed;
+            this.p3Stage = Phase3Stage.Fixed;
+            continue;
           }
-          this.writeMessageToSlot(rawSlot, raw, rawType);
+
+          // Fixed body → drain it, then hand off to the self-describing smart-pin tail.
+          if (this.p3Stage === Phase3Stage.Fixed) {
+            if (this.p3FixedRemaining === 0) {
+              this.p3Stage = Phase3Stage.SmartPin;
+              this.p3SmartGroup = 0;
+              this.p3GroupLongs = -1; // first thing to read is group 0's mask byte
+              continue;
+            }
+            const avail = this.buffer.getUsedSpace();
+            if (avail === 0) break; // wait for more of this cog's Phase-3
+            const len = Math.min(avail, this.p3FixedRemaining, ExtractionCore.PHASE3_DRAIN_CAP);
+            const ok = this.emitPhase3Chunk(cog, len);
+            this.p3FixedRemaining -= len; // bytes left the ring (emitted OR stashed)
+            if (!ok) break; // backpressure — bytes stashed; resume next tick
+            extracted++;
+            continue;
+          }
+
+          // SmartPin: walk the 8 groups. Each group is 1 mask byte followed by one
+          // long (4 bytes) per set bit — read exactly as the renderer's parser does
+          // (DebuggerPhase3.SmartPinMask/SmartPinLongs). The interleaving is why the
+          // tail cannot be summed up-front from a block of masks.
+          if (this.p3SmartGroup >= ExtractionCore.SMART_PIN_GROUPS) {
+            // All groups consumed → this break is EXACTLY delimited. Resync to
+            // awaitingPhase1 for the next Phase-1 of ANY cog — no over-read possible.
+            this.resetDebugPhase3();
+            continue;
+          }
+          if (this.p3GroupLongs < 0) {
+            // Read this group's mask byte, derive its long-bytes, emit the mask byte.
+            if (this.buffer.getUsedSpace() < 1) break; // WAIT for the mask byte
+            const m = this.buffer.peekAtOffset(0, 1);
+            if (!m) break;
+            const longs = 4 * ExtractionCore.popcount8(m[0]);
+            this.p3GroupLongs = longs; // set BEFORE emit so a backpressure stash resumes correctly
+            const ok = this.emitPhase3Chunk(cog, 1);
+            if (longs === 0) { this.p3SmartGroup++; this.p3GroupLongs = -1; } // empty group → next
+            if (!ok) break;
+            extracted++;
+            continue;
+          }
+          if (this.p3GroupLongs === 0) {
+            this.p3SmartGroup++; // this group's longs are done → advance
+            this.p3GroupLongs = -1;
+            continue;
+          }
+          // Drain this group's long bytes.
+          const availL = this.buffer.getUsedSpace();
+          if (availL === 0) break; // wait for more of this cog's Phase-3
+          const lenL = Math.min(availL, this.p3GroupLongs, ExtractionCore.PHASE3_DRAIN_CAP);
+          const okL = this.emitPhase3Chunk(cog, lenL);
+          this.p3GroupLongs -= lenL; // bytes left the ring (emitted OR stashed)
+          if (!okL) break; // backpressure — bytes stashed; resume next tick
           extracted++;
           continue;
         }
@@ -903,6 +1010,19 @@ export class ExtractionCore {
         if (!messageData && this.inDebugSession && this.headLooksLikePhase1Header()) {
           messageData = this.find416ByteBoundary();
           if (!messageData) break; // partial Phase-1 — wait for the rest, don't chop as text
+          if (ExtractionCore.isAllZero(messageData)) {
+            // A real Phase-1 ALWAYS carries non-zero CRC/checksum words (bytes
+            // 80..455). An all-zero 456-block is a trailing remnant, or a hub-dump
+            // zero run that mis-passed the 4-byte [cog,0,0,0] header test. DISCARD it
+            // (bytes already consumed) rather than emit a spurious DEBUGGER Phase-1 —
+            // the $14201 class. Mirrors the renderer's looksLikePhase1 guard, now
+            // ALSO enforced worker-side because exact Phase-3 framing resyncs the
+            // worker to awaitingPhase1 itself (so a mis-sized break can never turn a
+            // zero run into a fabricated Phase-1). Normal breaks never hit this — the
+            // exact boundary lands on a real, non-zero Phase-1.
+            messageData = null;
+            continue;
+          }
         }
 
         // 2. Text message (CR/LF) - pass idle timeout flag
@@ -940,17 +1060,20 @@ export class ExtractionCore {
         // Write message to pool + emit poolId (increments extraction counters)
         this.writeMessageToSlot(slot, messageData, messageType);
 
-        // Enter awaitingPhase3 for this cog when its Phase-1 is emitted: the cog-id
-        // is the message type's offset, and from here the P2 streams this cog's raw
-        // Phase-3. Path 1: we hold in awaitingPhase3 — streaming every byte verbatim
-        // (the branch above) — until cog N's controller reports the break framed
-        // (onPhase3Done), which resyncs us to awaitingPhase1 for the NEXT Phase-1.
+        // A Phase-1 for cog N opens N's break: enter exact Phase-3 framing for N,
+        // starting in AwaitSize (we need N's relayed FIXED size before delimiting).
+        // The Phase3Stage machine (branch above) drains N's exact Phase-3 then
+        // resyncs to awaitingPhase1 — so a second cog's bytes can never bleed in.
         if (
           messageType >= SharedMessageType.DEBUGGER0_416BYTE &&
           messageType <= SharedMessageType.DEBUGGER7_416BYTE
         ) {
           this.debugPhase3Cog = messageType - SharedMessageType.DEBUGGER0_416BYTE;
           this.inDebugSession = true;
+          this.p3Stage = Phase3Stage.AwaitSize;
+          this.p3FixedRemaining = 0;
+          this.p3SmartGroup = 0;
+          this.p3GroupLongs = -1;
         }
 
         extracted++;
