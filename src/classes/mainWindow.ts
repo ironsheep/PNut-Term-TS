@@ -402,13 +402,18 @@ export class MainWindow {
         this.logConsoleMessage(`[DEBUGGER] Successfully created debugger window for COG${cogId}`);
       }
 
-      // Send the packet to the window (whether new or existing)
-      // Use updateContent() which handles queuing if window not ready
-      const debuggerWindow = this.displays[normalizedName] as DebugDebuggerWindow;
-      if (debuggerWindow) {
-        this.logConsoleMessage(`[DEBUGGER] Sending 416-byte packet to debugger window for COG${cogId}`);
-        debuggerWindow.updateContent(packet);
-      }
+      // CREATION-ONLY: do NOT feed the packet to the window here. The window
+      // registers with the WindowRouter synchronously in its constructor, so this
+      // creating Phase-1 is delivered to it through the SINGLE typed router path
+      // (MessageRouter dispatches this same message to the debugger-window
+      // destination immediately after this handler returns). Feeding it here as a
+      // bare Uint8Array too would double-deliver every Phase-1: the window's
+      // legacy single-owner path (awaitingPhase3) would treat the second copy as
+      // Phase-3, the controller would re-frame it into a GHOST break, and TWO
+      // Phase-2 replies would go out for one break — byte-desyncing the P2's
+      // fixed-size Phase-2 read and wedging the debug session (wire-confirmed:
+      // usb-traffic_260715-124708.log — break 2 sent 2× Phase-2, both $800 STALL,
+      // then the P2 went silent). The typed path is the sole framing authority.
     });
 
     // CRITICAL: Listen for P2 system reboot (golden sync marker)

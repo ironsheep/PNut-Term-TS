@@ -97,9 +97,23 @@ export class DebugDebuggerWindow extends DebugWindowBase {
     this.logConsoleMessage(`[DEBUGGER] Components marked ready in constructor for COG ${cogId}`);
     
     this.logMessage(`DebugDebuggerWindow created for COG ${cogId}`);
-    
+
     // Create the actual Electron window
     this.createDebugWindow(windowDetails);
+
+    // Register with the WindowRouter SYNCHRONOUSLY here, in the constructor — NOT
+    // deferred to 'ready-to-show'. This window is created lazily inside
+    // MainWindow's `debuggerPacketReceived` handler, which fires from
+    // MessageRouter.route() BEFORE that same route dispatches the creating
+    // Phase-1 to the window destinations (messageRouter.ts). Registering now
+    // means the destination dispatch finds this window and delivers that first
+    // Phase-1 through the SINGLE typed router path — closing the pre-registration
+    // gap that previously required a second, direct main-side feed. Any Phase-1/3
+    // that arrives before the renderer bundle signals 'ready' is buffered
+    // (pendingPhase1/pendingPhase3) and replayed on ready, so early registration
+    // is safe even though the BrowserWindow is still loading. Registration is
+    // idempotent (isRegisteredWithRouter guard), so this is the sole call site.
+    this.registerWithRouter();
   }
 
   /**
@@ -671,9 +685,10 @@ ${bundleJs}
     this.debugWindow.on('ready-to-show', () => {
       this.logMessage(`Debugger window for COG ${this.cogId} ready to show`);
       this.debugWindow?.show();
-      // Register with router. Keyboard/mouse are owned by the renderer bundle
-      // (typed IPC); no main-process input handlers needed.
-      this.registerWithRouter();
+      // Router registration already happened synchronously in the constructor so
+      // the very first Phase-1 (which created this window) is delivered via the
+      // single typed router path. Keyboard/mouse are owned by the renderer bundle
+      // (typed IPC); no main-process input handlers needed here.
     });
 
     this.debugWindow.on('closed', () => {

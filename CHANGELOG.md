@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.94] - 2026-07-15
+
+Single-step debugger interaction fix. **Built for hardware testing — not yet validated
+on a P2.**
+
+### Fixed
+
+- **The single-step debugger no longer goes dead after the first break.** On real hardware
+  the debugger window would open, draw the startup break, and then stop responding — steps
+  and button clicks did nothing. The cause was that every break's opening packet was being
+  delivered to the window through **two different internal paths at once** (a leftover from
+  the recent comms rework). The duplicate made the app send the P2 **two replies for one
+  break**; because the P2 reads each reply as a fixed-size block, the extra bytes knocked its
+  next read out of alignment and the debug session froze. The window now receives each break
+  through a **single path**, so exactly one reply goes out per break and the P2 keeps
+  stepping. Confirmed against the captured USB trace (both replies were correct "hold"
+  commands — the problem was the extra one, not its contents).
+
 ## [0.9.92] - 2026-07-08
 
 Structural fix for the single-step debugger comms desync. **Built for hardware testing —
