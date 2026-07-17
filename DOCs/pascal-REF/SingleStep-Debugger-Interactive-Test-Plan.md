@@ -27,6 +27,16 @@
   (*dmPC* / *dmCog* / *dmHub* disassembly modes, *BreakValue*, *ExecMode*). They explain
   *why* something happens — they are **not labels you will see on screen**. Judge each
   step by the on-screen change it describes (which panel lights up, what a flag reads).
+  In particular, ***BreakValue* is never shown as a number.** You see it only as **which
+  break button is highlighted** (bright = that condition is armed, dim = not).
+- **Two keys drive execution, and "go" ≠ "step".** **SPACE** = *Go-single* (a left-click
+  on the Go button): resume and run until the **next armed break condition** is hit, then
+  stop. **ENTER** = *Go-repeat* (a right-click on Go): resume and keep re-breaking
+  continuously until you press ENTER again. When the armed condition is **MAIN**
+  (Tests 1–11) a *Go-single* runs to the very next MAIN instruction — so SPACE behaves
+  like "single-step one instruction." When the armed condition is an **event or address**
+  (Test 13) a *Go-single* runs freely until that event/address fires — many instructions,
+  not one. That is why some steps say **"(single go)"** rather than "single step".
 
 ---
 
@@ -631,20 +641,59 @@ acceptance gate MET.
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
-**What this tests**: Breaking on specific events, EVENT button behavior.
+**What this tests**: Breaking on a specific hardware event (CT1) instead of on
+instructions, and how the armed event is shown on screen.
+
+> **Where these controls are — none are labelled with the words this test uses:**
+> - **The event-flags list** = the tall column of 3-letter names at the **far-right edge**:
+>   `INT, CT1, CT2, CT3, SE1 … QMT`, each with a `0`/`1` beside it. It sits just **right of
+>   the register-name column** (`IJMP3, IRET3, IJMP2 …`) — landmark: **`CT1` is directly
+>   across from `IRET3`**, on the same row.
+> - **The "EVENT button"** = in the little **button cluster around the big `Go` button**
+>   (bottom-right). It's the button reading **`CT1↑`** (the event name + an up-arrow),
+>   right-hand column, **below `INIT`** and **above `INT3`**. There is **no** button that
+>   says the word "EVENT"; it shows `CT1↑` (dim) even before you arm it.
+> - **The "break value"** = never a number on screen. You read it as **which break button
+>   is bright vs dim**. Arming CT1 makes the `CT1↑` button go **bright** — that is your
+>   only visual confirmation.
 
 ### Interactions & Expected Results
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Click on **CT1** event name in events panel | Sets BreakEvent to CT1 (event index 1). |
-| 2 | **Left-click EVENT** button | EVENT button highlights. *BreakValue* includes bit 9 + event ID. |
-| 3 | Press **SPACE** (single go) | Execution continues until CT1 event fires. Debugger breaks at the event. |
-| 4 | Observe event flags | CT1 event flag shows '1' in events panel. |
-| 5 | **Right-click EVENT** button | Toggles EVENT condition off. |
-| 6 | **Left-click MAIN** button | Returns to single-step MAIN mode. |
+| 1 | In the **event-flags panel** (the tall strip at the **top-right** listing `INT, CT1, CT2 … QMT`), **left-click the `CT1` name** | Selects **and arms** CT1 as the break event. The `CT1↑` button in the button matrix goes **bright**. *(This single click already arms it — see the note below.)* |
+| 2 | *(Optional, redundant)* **Left-click the `CT1↑` button** in the button matrix | **No visible change** — it re-arms the identical condition. This just confirms the button is the same control as the name-click in step 1. |
+| 3 | Press **SPACE** (*Go-single* — **not** a one-instruction step) | The cog runs **freely** until CT1 fires, then breaks **once**. PC jumps to wherever CT1 is serviced (a low cog address in this test) — **not** the next MAIN line. |
+| 4 | Observe the **event-flags panel** | The **CT1** row reads its flag set ('1') at the break. Live values (CT counter, flags) refresh on every idle poll — see the flipping note below. |
+| 5 | **Right-click the `CT1↑` button** | Disarms the event break; the `CT1↑` button goes **dim** again. |
+| 6 | **Left-click the `MAIN` button** (labelled `MAIN`, bottom of the right column) | Re-arms MAIN single-step. SPACE now steps one instruction again. |
 
-**Pass criteria**: Event breakpoint triggers on the correct event, event flag displays correctly.
+**Pass criteria**: arming CT1 (by *either* click) makes the `CT1↑` button bright; SPACE
+runs to the CT1 event and breaks once; the CT1 flag reads '1' at the break; right-click
+disarms it (button dims).
+
+> **Fix note (v0.9.96):** before 0.9.96 the step-1 name-click *selected* CT1 but did not
+> *arm* it — the `CT1↑` button never lit and SPACE never ran to the event (`onEventClick`
+> set the event index but not the break value). Fixed to match Pascal
+> (`DebuggerUnit.pas:827-839`: a name-click arms exactly like the button). **Requires a
+> build ≥ 0.9.96 on hardware.**
+
+> **Steps 1 and 2 do the same thing — that's expected, not a bug.** Left-clicking the
+> `CT1` name and left-clicking the `CT1↑` button run the *same* code path (Pascal
+> `DebuggerUnit.pas:827` handles both), each setting the break value to
+> `$200 | (CT1 << 12)`. The name-click *additionally* selects **which** event. So once
+> you've clicked `CT1`, step 2 is only a confirmation — do it to prove the button works,
+> or skip it.
+
+> **The display "flipping between values" after SPACE is correct, not a fault.** While the
+> cog is stopped at a break it is **not frozen on the wire** — it idles inside its own
+> debug ISR and the debugger polls it in a continuous ~12 Hz lockstep, **redrawing every
+> poll** (exact same mechanism as Test 1 step 5). Once the program is running interrupts,
+> genuinely-live values — the CT system counter and the CT1 event flag — change between
+> polls, so they visibly cycle. The **register snapshot does NOT change**, which is how you
+> know the cog is held and the data is clean. PNut behaves identically. *(Log evidence
+> 2026-07-17: cog held at PC=$0 for 75 s / 898 redraws, then advanced only on the Go-single
+> commands; register header byte-identical across polls.)*
 
 ---
 

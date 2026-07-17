@@ -231,7 +231,7 @@ export class DebuggerInteraction {
       ['WATCH',  (_rx, _ry, _rc) => this.onResetWatch()],
       ['SFR',    (_rx, ry, _rc) => this.onSFRClick(ry)],
       ['STACK',  (rx, _ry, _rc) => this.onStackClick(rx)],
-      ['EVENT',  (_rx, ry, _rc) => this.onEventClick(ry)],
+      ['EVENT',  (_rx, ry, rc) => this.onEventClick(ry, rc)],
       ['PTR',    (rx, ry, _rc) => this.onPointerClick(rx, ry)],
       // Pascal FormMouseDown :948-953 — a click on the SMART box ALWAYS resets the
       // watch list (both left and right); a right-click ALSO toggles the DIR-only ↔
@@ -509,11 +509,17 @@ export class DebuggerInteraction {
     }
   }
 
-  private onEventClick(relY: number): void {
+  private onEventClick(relY: number, rightClick: boolean): void {
     // Event rows render at p.t + i*2 (no title offset — matches renderEvents).
     const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 1 || row > 15) return;
     this.state.breakEvent = row;
+    // Pascal DebuggerUnit.pas:827-839 handles InEvents and InButtonEvent in ONE
+    // branch: selecting the event name ALSO arms/toggles the event break. A name
+    // click here is therefore identical to clicking the EVENT (CT1↑) button —
+    // left-click arms it, right-click toggles — using breakEvent we just set.
+    if (rightClick) this.onButtonRightClick('EVENT');
+    else this.onButtonLeftClick('EVENT');
   }
 
   private onPointerClick(relX: number, relY: number): void {

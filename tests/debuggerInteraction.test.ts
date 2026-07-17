@@ -9,7 +9,7 @@ import { makeInteraction, makeDebuggerState, MSG } from './shared/debuggerFixtur
 import {
   STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER,
   HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS,
-  BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX, BREAK_ADDR
+  BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX, BREAK_ADDR, BREAK_EVENT
 } from '../src/classes/debugger/shared/constants';
 import { DisMode } from '../src/classes/debugger/renderer/DebuggerState';
 
@@ -258,5 +258,41 @@ describe('DebuggerInteraction — SMART box click (Test 10, Pascal :948-953)', (
     (h.interaction as any).handleMouseDown(SMART.x + 1, SMART.y + 1, 2);
     expect(h.state.smartWatchList).toEqual([]);
     expect(h.state.smartWatchDirOnly).toBe(true);
+  });
+});
+
+describe('DebuggerInteraction — events-panel click arms the event break (Test 13)', () => {
+  // Events flags panel as a known rect; every other panel/button misses. Rows are
+  // 2 half-rows tall (renderEvents draws EVENT_NAMES[i] at p.t + i*2); row 1 = CT1.
+  const EVENT = { x: 900, y: 40, w: 40, h: 256 };
+  function withEventPanel(h: ReturnType<typeof makeInteraction>) {
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.hubMapBoundsPx.mockReturnValue({ x: -10, y: -10, w: 0, h: 0 });
+    h.renderer.panelBoundsPx.mockImplementation((name: string) =>
+      name === 'EVENT' ? EVENT : { x: -10, y: -10, w: 0, h: 0 });
+  }
+  const rowY = (row: number) => EVENT.y + row * (2 * HALF_ROW_PX) + 1;
+
+  it('left-click on the CT1 row (row 1) selects AND arms the event (regression: used to only select)', () => {
+    const h = makeInteraction();
+    withEventPanel(h);
+    h.state.breakValue = 0;
+    (h.interaction as any).handleMouseDown(EVENT.x + 1, rowY(1), 0); // left-click CT1
+    expect(h.state.breakEvent).toBe(1);                              // CT1 selected
+    expect(h.state.breakValue & BREAK_EVENT).toBe(BREAK_EVENT);      // ← armed (was 0 before fix)
+    expect((h.state.breakValue >>> 12) & 0xF).toBe(1);              // event id CT1 in bits 12-15
+  });
+
+  it('right-click toggles an armed event off, then back on (Pascal :833-838)', () => {
+    const h = makeInteraction();
+    withEventPanel(h);
+    h.state.breakValue = 0;
+    (h.interaction as any).handleMouseDown(EVENT.x + 1, rowY(2), 0); // arm CT2 (row 2)
+    expect(h.state.breakValue & BREAK_EVENT).toBe(BREAK_EVENT);
+    (h.interaction as any).handleMouseDown(EVENT.x + 1, rowY(2), 2); // right-click → off
+    expect(h.state.breakValue & BREAK_EVENT).toBe(0);
+    (h.interaction as any).handleMouseDown(EVENT.x + 1, rowY(2), 2); // right-click → on again
+    expect(h.state.breakValue & BREAK_EVENT).toBe(BREAK_EVENT);
+    expect((h.state.breakValue >>> 12) & 0xF).toBe(2);
   });
 });

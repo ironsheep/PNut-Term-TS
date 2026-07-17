@@ -5,6 +5,30 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.96] - 2026-07-17
+
+Single-step debugger — event-breakpoint fix (Test 13). **Built for hardware testing.**
+
+### Fixed
+
+- **Clicking an event name (e.g. `CT1`) in the debugger now actually arms the event
+  breakpoint.** Previously, left-clicking an event in the far-right event-flags list only
+  *selected* which event it was — it never armed the break, so the on-screen `CT1↑` button
+  stayed dim and pressing SPACE never ran the cog to that event. The name-click now behaves
+  exactly like clicking the `CT1↑` button itself (left-click arms, right-click toggles),
+  matching the original PNut debugger where both share one code path. Event breakpoints
+  (Test 13) can now be set from either the event list or the button.
+
+### Docs
+
+- Rewrote **Test 13** in the single-step debugger interactive test plan to remove
+  misleading terminology: there is no button labelled "EVENT" (it reads `CT1↑` — the event
+  name plus an up-arrow), and there is no on-screen "break value" number (arming is shown
+  only by the button going bright). Added on-screen landmarks (the event list sits across
+  from `IRET3`; the button is near `Go`) and a plan-wide note that **SPACE = "single go"**
+  (run once until the next armed break), which only looks like a single instruction step
+  when the armed condition is MAIN.
+
 ## [0.9.95] - 2026-07-15
 
 Multi-cog single-step debugger fix. **Built for hardware testing — not yet validated
