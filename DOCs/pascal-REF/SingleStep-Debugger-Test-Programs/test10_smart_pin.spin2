@@ -5,12 +5,24 @@
 ''   Test 10 — Smart pin delta tracking, DIR-only filter, RQPIN readback
 ''
 '' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
-'' breaks on the FIRST instruction (entry / wrpin ...) — no Spin interpreter or
+'' breaks on the FIRST instruction (entry / dirl ...) — no Spin interpreter or
 '' coginit indirection in the way.
 ''
-'' Behavior: Configures pin 0 as NCO-frequency smart pin with a 1000-cycle
-'' base period, then reads RQPIN repeatedly. The smart-pin watch panel should
-'' show P00 with a changing 8-hex value.
+'' Behavior: Configures pin 0 as an NCO-frequency smart pin at ~1 MHz, following
+'' the documented init order (DIRL reset, WRPIN, WXPIN, enable via DIRH, THEN WYPIN
+'' — see P2 KB %00110 NCO Frequency). With a real frequency and base period X=1, the
+'' Z phase accumulator advances every clock and overflows continuously, so the pin's
+'' IN flag is raised on every debug poll — the debugger therefore reports pin 0, and
+'' RQPIN (which reads Z) shows a rapidly changing 8-hex value in the SMART watch panel.
+''
+'' Y = round(2^32 * Fout * X / Fclk) for Fout = 1 MHz, X = 1, Fclk = 200 MHz
+''   = 2^32 / 200 = $0147_AE14
+''
+'' WHY the earlier version showed nothing: it used `wypin #$FF` with `wxpin ##1000`,
+'' so Z gained only 255 every 1000 clocks — a Z-overflow (and IN pulse) only about
+'' once every 84 seconds. The debugger reports a smart pin when its result is ready
+'' (IN raised), so pin 0 was essentially never reported → the watch stayed empty. It
+'' also set WYPIN before DIRH (wrong init order), which the DIRH reset can clobber.
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
@@ -18,9 +30,10 @@ CON
 
 DAT
                 org
-entry           wrpin   ##P_NCO_FREQ, #0
-                wxpin   ##1000, #0
-                wypin   #$FF, #0
-                dirh    #0                       ' enable smart pin
-.loop           rqpin   pa, #0                   ' read NCO phase accumulator
+entry           dirl    #0                       ' reset smart pin
+                wrpin   ##P_NCO_FREQ, #0          ' NCO frequency mode
+                wxpin   #1, #0                    ' base period X = 1 clock (max resolution)
+                dirh    #0                       ' enable FIRST (documented init order)
+                wypin   ##$0147_AE14, #0          ' THEN set frequency (~1 MHz)
+.loop           rqpin   pa, #0                    ' read NCO phase accumulator (Z)
                 jmp     #.loop

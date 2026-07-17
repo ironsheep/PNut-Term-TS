@@ -578,11 +578,18 @@ note added to steps 1–2 above. No code change.
 
 ## Test 10: Smart pin watch
 
-**Status:** ✅ PASS (v0.9.88 — mechanism-verified by unit tests; DIR-filter has no HW visual gate)
+**Status:** 🔧 **RETEST — needs recompiled `test10` (v0.9.97 program fix)**; the app is correct
+
+> **▶ Recompile + re-download `test10_smart_pin.spin2`** — the program was fixed (note
+> below). `pnut-ts -d test10_smart_pin.spin2`, then download the new `.bin`.
 
 **▶ Load:** `test10_smart_pin.spin2`
 
-**The program**: configures pin 0 as a smart-pin NCO (`wrpin`/`wxpin`/`wypin`/`dirh`), then reads it with `rqpin` in a loop. (The SMART watch panel reads RQPIN itself via the debugger's Phase-3 smart-pin data, so it populates while the NCO runs regardless of the program's own `rqpin`/`rdpin` — the loop just keeps the cog busy.)
+**The program**: configures pin 0 as an NCO-frequency smart pin at **~1 MHz** (documented
+init order: `dirl` reset → `wrpin` → `wxpin #1` → `dirh` enable → `wypin`), then reads it with
+`rqpin` in a loop. At 1 MHz the NCO's phase accumulator overflows continuously, so the pin's
+**IN flag is raised every debug poll** → the debugger reports pin 0 and the SMART panel shows
+`P00` with a **rapidly changing** 8-hex RQPIN (Z) value.
 
 **What this tests**: Smart pin delta tracking, DIR filter, compressed data parsing.
 
@@ -622,6 +629,17 @@ BOTH modes) and every DIR=0 pin is disabled → static RQPIN (shows in NEITHER).
 difference case is spurious noise on a floating DIR=0 input — not a reliable gate. RESOLUTION:
 Test 10 step 3 verified by the 2 committed unit tests (reset-only on LB; reset+toggle on RB,
 exact Pascal parity); no HW visual demo. Step 3 = PASS (mechanism-verified).
+
+> **PROGRAM FIX (v0.9.97) — the empty SMART watch was a test-program bug, not an app defect.**
+> HW walk showed the watch never populated. Wire capture proved why: test10's smart-pin masks
+> were byte-identical to programs with **no** smart pins (only the always-present serial pins
+> `0x80`/`0x02`, which the watch excludes as pins ≥62) — i.e. **the P2 never reported pin 0**.
+> Root cause: the debugger reports a smart pin when its result is ready (IN raised), and the
+> old `wypin #$FF` / `wxpin ##1000` made the NCO overflow (raise IN) only ~every 84 s, plus it
+> set `wypin` before `dirh` (wrong init order). Rewritten to a real ~1 MHz NCO with the
+> documented init order → IN raised every poll, pin 0 reported, RQPIN changes. The app's
+> smart-pin watch is exact Pascal parity (`DebuggerUnit.pas:1373-1382/1586-1594`) — no code
+> change. The v0.9.88 "PASS" was unit-test-verified only ("no HW visual demo" — see above).
 
 ---
 
@@ -860,7 +878,7 @@ expected strings were wrong and are now fixed.)
 | 7 | B | SFR, stack, pointers | ✅ v0.9.86 | `test07_stack_ptr.spin2` |
 | 8 | B | Hub memory viewer | ✅ v0.9.87 | `test08_hub_writes.spin2` |
 | 9 | B | Pin registers, status | ✅ v0.9.87 | `test09_pins.spin2` |
-| 10 | C | Smart pin watch | ✅ v0.9.88 | `test10_smart_pin.spin2` |
+| 10 | C | Smart pin watch | 🔧 recompile test10 | `test10_smart_pin.spin2` |
 | 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
 | 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
 | 13 | C | Event breakpoints | ✅ v0.9.97 | `test11` (keep loaded) |
