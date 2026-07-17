@@ -1353,7 +1353,13 @@ export class LoggerWindow extends DebugWindowBase {
    */
   public logSystemMessage(message: string): void {
     this.appendMessage(message, 'system-message');
-    this.writeToLog(`[SYSTEM] ${message}`);
+    // A system/diagnostic message is a DISCRETE, complete event — write it as its own
+    // timestamped line via writeLogEntry. Do NOT route it through writeToLog: that is the
+    // serial-stream line-accumulator (it reassembles the streamed P2 serial data across
+    // chunks and only flushes on a '\n'). System messages carry no trailing newline, so
+    // routing them there made every [SYSTEM]/[DEBUGGER]/[CTRL] event pile onto ONE physical
+    // line until a serial newline finally flushed the whole blob (fixed 2026-07-17).
+    this.writeLogEntry(`[SYSTEM] ${message}`);
   }
 
   /**
