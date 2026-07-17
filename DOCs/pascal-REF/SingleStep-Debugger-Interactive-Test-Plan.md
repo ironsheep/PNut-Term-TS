@@ -578,10 +578,10 @@ note added to steps 1–2 above. No code change.
 
 ## Test 10: Smart pin watch
 
-**Status:** 🔧 **RETEST — needs recompiled `test10` (v0.9.97 program fix)**; the app is correct
+**Status:** ✅ **PASS (v0.9.97, recompiled `test10`)** — pin 0 now reported (IN raised), `P00` shows in the SMART watch with a changing value
 
-> **▶ Recompile + re-download `test10_smart_pin.spin2`** — the program was fixed (note
-> below). `pnut-ts -d test10_smart_pin.spin2`, then download the new `.bin`.
+> **▶ Requires the recompiled `test10_smart_pin.spin2`** (NCO fixed to raise IN every poll).
+> `pnut-ts -d test10_smart_pin.spin2`, then download the new `.bin`.
 
 **▶ Load:** `test10_smart_pin.spin2`
 
@@ -640,6 +640,12 @@ exact Pascal parity); no HW visual demo. Step 3 = PASS (mechanism-verified).
 > documented init order → IN raised every poll, pin 0 reported, RQPIN changes. The app's
 > smart-pin watch is exact Pascal parity (`DebuggerUnit.pas:1373-1382/1586-1594`) — no code
 > change. The v0.9.88 "PASS" was unit-test-verified only ("no HW visual demo" — see above).
+
+ON HW TEST v0.9.97: **PASS** on the recompiled `test10` (log `debug_260717-171421.log`). Pin 0
+is now reported (smart-pin mask sets bit 0 — a `[03]` group mask vs the old `[02]`/`[80]`
+serial-only), so `P00` appears in the SMART watch. Note: RQPIN changes only modestly here (a
+few distinct values, not a wide sweep) — enough to register + populate the watch; can be made
+more dynamic if a bigger visual swing is wanted.
 
 ---
 
@@ -878,7 +884,7 @@ expected strings were wrong and are now fixed.)
 | 7 | B | SFR, stack, pointers | ✅ v0.9.86 | `test07_stack_ptr.spin2` |
 | 8 | B | Hub memory viewer | ✅ v0.9.87 | `test08_hub_writes.spin2` |
 | 9 | B | Pin registers, status | ✅ v0.9.87 | `test09_pins.spin2` |
-| 10 | C | Smart pin watch | 🔧 recompile test10 | `test10_smart_pin.spin2` |
+| 10 | C | Smart pin watch | ✅ v0.9.97 | `test10_smart_pin.spin2` |
 | 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
 | 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
 | 13 | C | Event breakpoints | ✅ v0.9.97 | `test11` (keep loaded) |
