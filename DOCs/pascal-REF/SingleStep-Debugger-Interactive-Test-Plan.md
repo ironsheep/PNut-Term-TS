@@ -108,6 +108,13 @@ throughout Phases B and C by hovering over each region as you reach it.
 Phases A–C passes (and the nine display windows pass their manual visual sweep), the
 build is release-ready.
 
+> **✅ STATUS (2026-07-17): ALL Tests 0–14 PASS on v0.9.97 — release gate MET for the
+> single-step debugger.** Clean front-to-back HW walk complete. This walk surfaced three
+> *test-program* defects (Test 3 PA/PB out of watch range, Test 6 `cmp` carry, Test 10 NCO
+> never raised IN) and the Test 14 hint strings were doc errors — **the app was correct in
+> every case**. Two app fixes shipped during the walk: v0.9.96 event-name-click arms the
+> break; v0.9.97 HUB-grid blink (stale frame leftover).
+
 ### Suggested load order (minimizes reloads)
 
 Load each file **once** and run all of its tests before moving on. The only deviation
