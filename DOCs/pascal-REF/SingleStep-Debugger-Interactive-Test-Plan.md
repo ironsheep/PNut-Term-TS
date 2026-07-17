@@ -243,10 +243,10 @@ ON HW TEST: pass v0.9.83
 
 ## Test 3: Register watch and reset
 
-**Status:** 🔧 **RETEST — needs recompiled `test03` (v0.9.97 program fix)**; the app is correct
+**Status:** ✅ **PASS (v0.9.97, recompiled `test03`)** — WATCH populates with low registers `count`/`limit`; R-key + click reset work
 
-> **▶ Recompile + re-download `test03_pasm_regs.spin2`** — the program was fixed (see the
-> note below). Then `pnut-ts -d test03_pasm_regs.spin2` and download the new `.bin`.
+> **▶ Requires the recompiled `test03_pasm_regs.spin2`** (program fixed to use low
+> registers). `pnut-ts -d test03_pasm_regs.spin2`, then download the new `.bin`.
 
 **▶ Load:** `test03_pasm_regs.spin2`
 
@@ -279,6 +279,10 @@ decrements **`limit`** (~`$006`) — both **low** registers *inside* the watch r
 
 ON HW TEST: pass v0.9.83 — **SUPERSEDED**: that "pass" could not have shown PA/PB in the
 watch (out of range); it verified the mechanism loosely. Re-verify on the recompiled program.
+
+ON HW TEST v0.9.97: **PASS** on the recompiled `test03`. The WATCH panel populates with the
+low registers (`count`/`limit`) as you step; R-key and click both reset the list. Test 4
+(disassembly nav, same program) also re-confirmed PASS.
 
 ---
 
@@ -849,7 +853,7 @@ expected strings were wrong and are now fixed.)
 | 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | `test01_basic_spin.spin2` |
 | 1 | B | Basic connection, single step | ✅ v0.9.82 | `test01` (keep loaded) |
 | 2 | B | Repeat mode, throttling | ✅ v0.9.83 | `test01` (keep loaded) |
-| 3 | B | Register watch, reset | 🔧 recompile test03 | `test03_pasm_regs.spin2` |
+| 3 | B | Register watch, reset | ✅ v0.9.97 | `test03_pasm_regs.spin2` |
 | 4 | B | Disassembly navigation | ✅ v0.9.86 | `test03` (keep loaded) |
 | 5 | B | Button behavior | ✅ v0.9.86 | `test01` (reuse — do with Tests 1–2) |
 | 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | `test06_flags_skip.spin2` |
