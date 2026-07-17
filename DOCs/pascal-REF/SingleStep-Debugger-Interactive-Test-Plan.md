@@ -755,6 +755,15 @@ disarms it (button dims).
 > (`DebuggerUnit.pas:827-839`: a name-click arms exactly like the button). **Requires a
 > build ≥ 0.9.96 on hardware.**
 
+ON HW TEST v0.9.97: **hub-grid blink RESOLVED** (log `debug_260717-143028.log`). ~3 min /
+2113 breaks / zero framing anomalies; the HUB data panel at `$0` stays steady with no
+flash or flicker (the `CT` clock still ticks, as expected). Wire capture showed only the
+4-byte CT clock changing per break — every hub byte byte-identical — confirming the earlier
+flip was the stale-frameBuf parse shift, now fixed (`processPhase1` authoritative frameBuf
+clear). Remaining to close Test 13: confirm the event-break behavior end-to-end (left-click
+`CT1` to arm EVENT *exclusively* so SPACE runs to the event rather than single-stepping —
+right-click keeps MAIN set, which single-steps).
+
 > **Steps 1 and 2 do the same thing — that's expected, not a bug.** Left-clicking the
 > `CT1` name and left-clicking the `CT1↑` button run the *same* code path (Pascal
 > `DebuggerUnit.pas:827` handles both), each setting the break value to
