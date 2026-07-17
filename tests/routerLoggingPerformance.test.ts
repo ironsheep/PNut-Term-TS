@@ -27,7 +27,11 @@ const PERF = {
   p95Max: PERF_STRICT ? 2.0 : 25.0,
   totalMax: PERF_STRICT ? 1000 : 10000,
   traceAvgMax: PERF_STRICT ? 2.0 : 25.0,
-  ratioMax: PERF_STRICT ? 3.0 : 25.0
+  ratioMax: PERF_STRICT ? 3.0 : 25.0,
+  binaryAvgMax: PERF_STRICT ? 0.5 : 10.0,
+  binaryP95Max: PERF_STRICT ? 1.0 : 25.0,
+  analysisMax: PERF_STRICT ? 50 : 250,
+  retrievalMax: PERF_STRICT ? 10 : 100
 };
 
 describe('RouterLogger Performance Impact', () => {
@@ -200,8 +204,8 @@ describe('RouterLogger Performance Impact', () => {
       const averageTime = routingTimes.reduce((a, b) => a + b, 0) / routingTimes.length;
       const p95Time = routingTimes.sort((a, b) => a - b)[Math.floor(routingTimes.length * 0.95)];
       
-      expect(averageTime).toBeLessThan(0.5); // Binary routing should be even faster
-      expect(p95Time).toBeLessThan(1.0);
+      expect(averageTime).toBeLessThan(PERF.binaryAvgMax); // Binary routing should be even faster
+      expect(p95Time).toBeLessThan(PERF.binaryP95Max);
       
       console.log(`Binary message routing performance:
         - Average time: ${averageTime.toFixed(3)}ms
@@ -227,7 +231,7 @@ describe('RouterLogger Performance Impact', () => {
       const analysisTime = performance.now() - startTime;
       
       // Diagnostic analysis should be fast
-      expect(analysisTime).toBeLessThan(50); // Less than 50ms for analysis
+      expect(analysisTime).toBeLessThan(PERF.analysisMax); // analysis stays fast (generous on CI)
       
       // Verify results are meaningful.
       // analyzePerformance() uses ROUTING category log entries from logRouting().
@@ -261,7 +265,7 @@ describe('RouterLogger Performance Impact', () => {
       const recentEntries = router.getRecentLogEntries(1000);
       const retrievalTime = performance.now() - startTime;
 
-      expect(retrievalTime).toBeLessThan(10); // Should be very fast
+      expect(retrievalTime).toBeLessThan(PERF.retrievalMax); // fast + size-independent (generous on CI)
       expect(recentEntries.length).toBeGreaterThan(0);
       expect(recentEntries.length).toBeLessThanOrEqual(1000);
       
