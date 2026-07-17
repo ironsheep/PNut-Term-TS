@@ -790,7 +790,9 @@ right-click keeps MAIN set, which single-steps).
 
 ## Test 14: Context-sensitive hint bar
 
-**Status:** ⏳ not yet recorded — exercise throughout Phases B/C by hovering as you go
+**Status:** 🔧 expected strings **CORRECTED to Pascal-verbatim** (2026-07-17) — the app was
+right, the doc was wrong; re-verify against the exact strings below (steps 1/6/7 "diff text"
+= correct Pascal behavior)
 
 **▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
@@ -798,18 +800,30 @@ right-click keeps MAIN set, which single-steps).
 
 ### Interactions & Expected Results
 
-| Step | Action | Expected Hint Bar Content |
+> **The hint strings below are verbatim from Pascal `DebuggerUnit.pas` (verified
+> 2026-07-17).** They are *action/label* hints, **not** live address/value read-outs — the
+> earlier "Register $xxx = …" / "Hub address: …" style expectations were wrong (never in
+> PNut). Match the wording; only the CT line and the event name interpolate live values.
+
+| Step | Hover over (on-screen landmark) | Expected Hint Bar Content (exact) |
 |------|--------|--------------------------|
-| 1 | Hover over **REG heatmap** | Shows register address: `Register $xxx = $yyyyyyyy` |
-| 2 | Hover over **CT** value | Shows elapsed time: `Elapsed: N.NNNNNN seconds at 200.0 MHz` |
-| 3 | Hover over **Go** button | Shows: `L-Click or SPACE to step | R-Click or ENTER for repeat` |
-| 4 | Hover over **MAIN** button | Shows: `L-Click to break on MAIN instructions | R-Click or <M> to toggle` |
-| 5 | Hover over **event name** | Shows event description: `Event CT1 (1)` |
-| 6 | Hover over **disassembly** | Shows disassembly mode: `Disassembly (follow PC)` or `(cog locked)` |
-| 7 | Hover over **hub data** | Shows hub address: `Hub address: $xxxxx` |
+| 1 | **REG heatmap** (tall strip, far left) | `Cog Register Bitmap/Heatmap \| Click to lock disassembly to REG subrange` — **no address/value** (that "nothing" is correct). Pascal `:640`. |
+| 2 | **CT** clock (top-right, 16 hex) | `Clock Ticks Since Reset \| N.N seconds at 200,000,000 Hz` — 1 decimal, live. Pascal `:1833`. |
+| 3 | **Go** button (bottom-right) | `L-Click or <SPACE> to execute to next break \| R-Click or <ENTER> to execute through breaks` (in repeat mode: `Click or <ENTER> to stop executing through breaks`). Pascal `:1909/1911`. |
+| 4 | **MAIN** button (button cluster) | `L-Click to break on MAIN instructions (single-step) \| R-Click or <M> to toggle`. Pascal `:685`. |
+| 5 | an **event name** (`CT1`…, far-right list) | `Event Flags \| L-Click to break on CT1 event \| R-Click to toggle` (event name follows the hovered row). Pascal `:654`. |
+| 6 | **disassembly** (center) | `L-Click to lock to PC \| R-Click to toggle break address \| Mousewheel {+Ctrl/Shift} scrolls`. Pascal `:649`. |
+| 7 | **hub data** (bottom grid) | `Hub Data \| Mousewheel {+Ctrl/Shift} scrolls`. Pascal `:668`. |
 | 8 | Move mouse **off the window** | Hint bar clears. |
 
-**Pass criteria**: Hint bar updates dynamically based on mouse position, clears when mouse leaves.
+**Pass criteria**: Hint bar updates dynamically based on mouse position and shows the
+**exact strings above** (Pascal-verbatim), clears when the mouse leaves.
+
+> **Finer-grain nuance (not required to pass):** in Pascal, hovering directly over the hub
+> **data bytes / ASCII** shows an *empty* hint (`:670-671`), and hovering the 5-hex **address
+> column** shows `Hub Data | Mousewheel changes HUB address digit(s)` (`:669`); our build
+> currently shows the single box hint (row 7) across the whole hub panel. Minor — flag if you
+> want exact hub sub-region parity.
 
 ---
 
@@ -831,7 +845,7 @@ right-click keeps MAIN set, which single-steps).
 | 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
 | 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
 | 13 | C | Event breakpoints | 🔧 RETEST v0.9.96 | `test11` (keep loaded) |
-| 14 | B/C | Hint bar | ⏳ not recorded | Any (run throughout) |
+| 14 | B/C | Hint bar | 🔧 strings→Pascal | Any (run throughout) |
 
 ---
 
