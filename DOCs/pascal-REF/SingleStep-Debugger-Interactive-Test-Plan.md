@@ -15,7 +15,7 @@
 - **You load a file per test — you don't type code.** Each test starts with a
   **▶ Load** line naming the `.spin2` file. Compile and download it with:
   ```bash
-  pnut_ts -d testNN_xxx.spin2        # -d embeds the debug stub
+  pnut-ts -d testNN_xxx.spin2        # -d embeds the debug stub
   ```
   The debugger window opens by itself on download — every program sets
   `DEBUG_MAIN = 1` to break on the first instruction.
@@ -37,6 +37,55 @@
   like "single-step one instruction." When the armed condition is an **event or address**
   (Test 13) a *Go-single* runs freely until that event/address fires — many instructions,
   not one. That is why some steps say **"(single go)"** rather than "single step".
+
+---
+
+## Screen layout — where things are
+
+The tests name panels by **purpose** (WATCH, SFR, EVENT, SMART, …). Most panels are
+**not labelled with that word on screen** — you locate them by *position* and by the
+*visible text* inside them. This map is the key; every test refers back to it.
+
+```
+ ┌───────────────────────── Debugger - Cog N ──────────────────────────────┐
+ │ HEADER:   C  Z    PC:xxxxx    SKIP-pattern     XBYTE     CT:clock(16 hex) │
+ │ ┌────┐ ┌───────────────────┐ ┌─────┐ ┌──────────┐ ┌────────┐             │
+ │ │REG │ │   DISASSEMBLY     │ │WATCH│ │SFR: IJMP3│ │ EVENTS │             │
+ │ │LUT │ │  code; PC line    │ │reg  │ │  IRET3 ◄─┼─┼─ CT1   │  CT1 sits   │
+ │ │heat│ │  highlighted      │ │delta│ │  …  INB  │ │  CT2 … │  across     │
+ │ └────┘ └───────────────────┘ └─────┘ └──────────┘ │  QMT   │  from IRET3 │
+ │   EXEC | STACK | INT | PTR (Fxx/PTRA/PTRB)         └────────┘ ┌─buttons─┐ │
+ │   STATUS | PIN:  DIR / OUT / IN  (64-bit binary)              │BRK  INIT│ │
+ │   SMART  (RQPIN one-row strip)                                │ADDR CT1↑│ │
+ │   HUB data (addr + hex + ASCII)        | hub heatmap          │ …   MAIN│ │
+ │                                                               │ [  Go  ]│ │
+ │ HINT BAR (hover text)                                         └─────────┘ │
+ └───────────────────────────────────────────────────────────────────────────┘
+```
+
+| Test calls it | Where on screen | Find it by (visible text) |
+|---|---|---|
+| **C / Z flags** | top-left of the header row | single `0`/`1` digits |
+| **PC** | header, after the flags | 5 hex digits |
+| **SKIP** | header, center | long 32-bit binary pattern (or `Suspended during INTx`) |
+| **CT** | header, far right | 16 hex digits (8+8) — the always-changing clock |
+| **REG / LUT heatmap** | the two tall strips on the **far left** | colored bitmap, no text |
+| **Disassembly** | **center** | code lines `R-xxx …`; one line highlighted |
+| **WATCH** | just right of disassembly | `addr value` register-change list |
+| **SFR** | right of WATCH | register-name column `IJMP3 / IRET3 / … / INB` |
+| **EVENTS** (event-flags list) | **far-right edge**, right of SFR | vertical `INT / CT1 / CT2 … QMT`, each with `0`/`1`. **`CT1` is across from `IRET3`.** |
+| **EXEC** | below disassembly, left | reads `MAIN` / `INT1` / `INT2` / `INT3` |
+| **STACK** | middle band | 8 hex values under `STACK` |
+| **INT** | middle band, left | `INT1 / INT2 / INT3` with `off/idle/wait/busy` |
+| **PTR** | middle band | rows `Fxx / PTRA / PTRB` + hub bytes |
+| **STATUS** | lower band, left | `INIT / STALLI / STR / MOD / LUTS` |
+| **PIN** | lower band | rows `DIR / OUT / IN` (64 binary digits each) |
+| **SMART** | one-row strip below the PIN rows | `RQPIN△` + pin list |
+| **HUB viewer / heatmap** | bottom band | address + hex + ASCII; colored heatmap to its right |
+| **Break-condition buttons** | **bottom-right cluster**, around `Go` | `BRK, ADDR, INT3E…` (left col) · `INIT, CT1↑, INT3, INT2, INT1, MAIN` (right col) |
+| **EVENT button** | in that cluster, right col, below `INIT` | reads **`CT1↑`** (event name + up-arrow) — there is **no** button labelled "EVENT" |
+| **Go button** | bottom-right, the large button | reads `Go` / `Stop` / `Break` |
+| **HINT bar** | very bottom | hover text |
 
 ---
 
@@ -81,6 +130,8 @@ Tests 1–2 while that file is still loaded.
 
 ## Test 0: Visual verification (lightweight — no interaction)
 
+**Status:** ✅ PASS (v0.9.81)
+
 **▶ Load:** `test01_basic_spin.spin2`
 
 **What this tests**: The debugger window opens and every panel is present, correctly
@@ -113,6 +164,8 @@ ON HW TEST: PASS w/Version 0.9.81! (2026-06-23)
 ---
 
 ## Test 1: Basic connection — single step
+
+**Status:** ✅ PASS (v0.9.82)
 
 **▶ Load:** keep `test01_basic_spin.spin2` loaded (from Test 0).
 
@@ -148,6 +201,8 @@ Logs confirm 1380 breaks at ~12 Hz with no >250 ms gap (audit 2026-06-24).
 ---
 
 ## Test 2: Repeat mode — continuous execution
+
+**Status:** ✅ PASS (v0.9.83)
 
 **▶ Load:** keep `test01` loaded.
 
@@ -188,6 +243,8 @@ ON HW TEST: pass v0.9.83
 
 ## Test 3: Register watch and reset
 
+**Status:** ✅ PASS (v0.9.83)
+
 **▶ Load:** `test03_pasm_regs.spin2`
 
 **The program**: a tight PASM loop that increments **PA** and decrements **PB** every pass.
@@ -219,6 +276,8 @@ ON HW TEST: pass v0.9.83
 
 ## Test 4: Disassembly navigation — modes and scrolling
 
+**Status:** ✅ PASS (v0.9.86 — macOS shift-wheel + right-click plumbing fixed)
+
 **▶ Load:** keep `test03` loaded.
 
 **What this tests**: disassembly follow modes (*dmPC* follow-PC / *dmCog* cog-locked / *dmHub* hub), mouse wheel scrolling, click behaviors.
@@ -230,11 +289,11 @@ ON HW TEST: pass v0.9.83
 | 1 | Observe disassembly | Shows **R-xxx** format addresses (cog registers). PC line highlighted with inverse colors. Currently following the PC (*dmPC*). |
 | 2 | **Mouse wheel up** in disassembly box | Switches from PC-follow to cog-locked (*dmCog*). Disassembly scrolls up. PC highlight may scroll out of view. |
 | 3 | **Ctrl+mouse wheel** | Scrolls by 4 instructions per tick (vs 1 without Ctrl). |
-| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. (NOTE: shift doesn't work on Mac?) no shift confirmed... v0.9.83 |
+| 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. |
 | 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
 | 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
 | 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
-| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. (NOTE: Left click on Mac does nothing) |
+| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. |
 | 9 | Click on **PC** value in header row | Returns to PC-follow. |
 
 **Pass criteria**: All three disassembly follow modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
@@ -283,6 +342,8 @@ ON HW TEST: v0.9.86: right-click WORKS ✅ (root cause: macOS/Electron delivers 
 ---
 
 ## Test 5: Breakpoint control buttons
+
+**Status:** ✅ PASS (v0.9.86 — steps 3–4 expectations corrected to exact Pascal parity)
 
 **▶ Load:** `test01_basic_spin.spin2` — *or do this test right after Test 2, while
 `test01` is still loaded* (see Suggested load order).
@@ -338,6 +399,8 @@ ON HW TEST: v0.9.86 - PASS
 
 ## Test 6: Header display — flags, SKIP, XBYTE, CT
 
+**Status:** ✅ PASS (v0.9.86 — needed test-program fix: `cmp … #9 wc`)
+
 **▶ Load:** `test06_flags_skip.spin2`
 
 **The program**: sets **Z** (`cmp wz`) then **C** (`cmp wc`), then a `skip #%1010` over the next four `nop`s (2nd and 4th skipped), then loops.
@@ -365,7 +428,7 @@ ON HW TEST: v0.9.84: nope step 2 no C flag - and don't you mean step thru so the
 > "no C flag". The C/Z extraction itself is verified correct (C = bit 31, Z = bit 30 of
 > mIRET; `DebuggerState.cFlag/zFlag`). **Re-verify on HW after stepping THROUGH the
 > `cmp …wc`:** C should read 1. If it still reads 0 after the instruction executes, THAT is a
-> real defect — capture the step and flag it.ON HW TEST: v0.9.84
+> real defect — capture the step and flag it.
 
 ON HW TEST: v0.9.86 C flag not set
 
@@ -384,6 +447,8 @@ ON HW TEST: v0.9.86 PASS
 ---
 
 ## Test 7: SFR, stack, and pointer display
+
+**Status:** ✅ PASS (v0.9.86 — AUGS double-step is correct v55 behavior, not a bug)
 
 **▶ Load:** `test07_stack_ptr.spin2`
 
@@ -421,6 +486,8 @@ ON HW TEST: v0.9.86 PASS
 ---
 
 ## Test 8: Hub memory viewer and heatmap
+
+**Status:** ✅ PASS (v0.9.87 — heat decay made wall-clock-based so the trail is visible)
 
 **▶ Load:** `test08_hub_writes.spin2`
 
@@ -468,6 +535,8 @@ ON HW TEST: v0.9.87 pass timeout might still be too short? but it does appear to
 
 ## Test 9: Pin registers and status indicators
 
+**Status:** ✅ PASS (v0.9.87 — bit-orientation is exact Pascal parity; note added to steps)
+
 **▶ Load:** `test09_pins.spin2`
 
 **The program**: `drvh`/`drvl`/`fltl` to drive pins 0, 1, 16 and float pin 2, then loops.
@@ -496,6 +565,8 @@ note added to steps 1–2 above. No code change.
 ---
 
 ## Test 10: Smart pin watch
+
+**Status:** ✅ PASS (v0.9.88 — mechanism-verified by unit tests; DIR-filter has no HW visual gate)
 
 **▶ Load:** `test10_smart_pin.spin2`
 
@@ -544,6 +615,8 @@ exact Pascal parity); no HW visual demo. Step 3 = PASS (mechanism-verified).
 
 ## Test 11: Interrupt status and execution mode
 
+**Status:** ✅ PASS (v0.9.94 — regressed v0.9.89–93 by the comms rework, re-fixed v0.9.94)
+
 **▶ Load:** `test11_interrupts.spin2`
 
 **The program**: enables INT1 on a CT1 event and waits for it; the handler re-arms CT1 and `reti1`s.
@@ -580,6 +653,8 @@ feed). test11 passes again on real HW.
 ---
 
 ## Test 12: Multi-COG debugging
+
+**Status:** ✅ PASS (v0.9.95 — Cert Pass 1 gate met; both cog windows step independently)
 
 **▶ Load:** `test12_multicog.spin2`
 
@@ -638,6 +713,8 @@ acceptance gate MET.
 ---
 
 ## Test 13: Event breakpoints
+
+**Status:** 🔧 fix shipped in **v0.9.96** — **RETEST** (event-name click now arms the break; this is the current test)
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
@@ -699,6 +776,8 @@ disarms it (button dims).
 
 ## Test 14: Context-sensitive hint bar
 
+**Status:** ⏳ not yet recorded — exercise throughout Phases B/C by hovering as you go
+
 **▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
 **What this tests**: Hint bar content changes based on mouse hover position.
@@ -722,23 +801,23 @@ disarms it (button dims).
 
 ## Test summary matrix
 
-| Test | Phase | Feature Area | Complexity | Load file |
-|------|-------|-------------|------------|-----------|
-| 0 | A | Visual verification (no interaction) | Trivial | `test01_basic_spin.spin2` |
-| 1 | B | Basic connection, single step | Simple | `test01` (keep loaded) |
-| 2 | B | Repeat mode, throttling | Simple | `test01` (keep loaded) |
-| 3 | B | Register watch, reset | Simple | `test03_pasm_regs.spin2` |
-| 4 | B | Disassembly navigation | Medium | `test03` (keep loaded) |
-| 5 | B | Button behavior | Medium | `test01` (reuse — do with Tests 1–2) |
-| 6 | B | Header display (C/Z/SKIP/CT) | Medium | `test06_flags_skip.spin2` |
-| 7 | B | SFR, stack, pointers | Medium | `test07_stack_ptr.spin2` |
-| 8 | B | Hub memory viewer | Medium | `test08_hub_writes.spin2` |
-| 9 | B | Pin registers, status | Medium | `test09_pins.spin2` |
-| 10 | C | Smart pin watch | Medium | `test10_smart_pin.spin2` |
-| 11 | C | Interrupts, exec mode | Complex | `test11_interrupts.spin2` |
-| 12 | C | Multi-COG | Complex | `test12_multicog.spin2` |
-| 13 | C | Event breakpoints | Complex | `test11` (keep loaded) |
-| 14 | B/C | Hint bar | Simple | Any (run throughout) |
+| Test | Phase | Feature Area | Status | Load file |
+|------|-------|-------------|--------|-----------|
+| 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | `test01_basic_spin.spin2` |
+| 1 | B | Basic connection, single step | ✅ v0.9.82 | `test01` (keep loaded) |
+| 2 | B | Repeat mode, throttling | ✅ v0.9.83 | `test01` (keep loaded) |
+| 3 | B | Register watch, reset | ✅ v0.9.83 | `test03_pasm_regs.spin2` |
+| 4 | B | Disassembly navigation | ✅ v0.9.86 | `test03` (keep loaded) |
+| 5 | B | Button behavior | ✅ v0.9.86 | `test01` (reuse — do with Tests 1–2) |
+| 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | `test06_flags_skip.spin2` |
+| 7 | B | SFR, stack, pointers | ✅ v0.9.86 | `test07_stack_ptr.spin2` |
+| 8 | B | Hub memory viewer | ✅ v0.9.87 | `test08_hub_writes.spin2` |
+| 9 | B | Pin registers, status | ✅ v0.9.87 | `test09_pins.spin2` |
+| 10 | C | Smart pin watch | ✅ v0.9.88 | `test10_smart_pin.spin2` |
+| 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
+| 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
+| 13 | C | Event breakpoints | 🔧 RETEST v0.9.96 | `test11` (keep loaded) |
+| 14 | B/C | Hint bar | ⏳ not recorded | Any (run throughout) |
 
 ---
 
