@@ -714,7 +714,7 @@ acceptance gate MET.
 
 ## Test 13: Event breakpoints
 
-**Status:** 🔧 **RETEST on v0.9.97** — event-name click now arms the break (v0.9.96) and the HUB-grid blink is fixed (v0.9.97); this is the current test
+**Status:** ✅ **PASS (v0.9.97)** — event-name click arms the break (v0.9.96) + HUB-grid blink fixed (v0.9.97); HW-confirmed
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
@@ -786,13 +786,16 @@ right-click keeps MAIN set, which single-steps).
 >   `DebuggerController.processPhase1`). The register snapshot was always byte-identical
 >   across polls — that is how we knew the cog was held and the hub data was clean.
 
+ON HW TEST v0.9.97: **PASS.** Event-name click arms CT1 (button lights), SPACE runs to the
+CT1 event, and the HUB grid stays steady (no flash/flicker) over a sustained run. Closes the
+event-breakpoint suite.
+
 ---
 
 ## Test 14: Context-sensitive hint bar
 
-**Status:** 🔧 expected strings **CORRECTED to Pascal-verbatim** (2026-07-17) — the app was
-right, the doc was wrong; re-verify against the exact strings below (steps 1/6/7 "diff text"
-= correct Pascal behavior)
+**Status:** ✅ **PASS (v0.9.97)** — hint strings Pascal-verbatim (doc corrected; the app was
+already correct — steps 1/6/7 "diff text" was correct behavior)
 
 **▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
@@ -825,6 +828,10 @@ right, the doc was wrong; re-verify against the exact strings below (steps 1/6/7
 > currently shows the single box hint (row 7) across the whole hub panel. Minor — flag if you
 > want exact hub sub-region parity.
 
+ON HW TEST v0.9.97: **PASS.** Hint bar shows the exact Pascal-verbatim strings above and
+clears when the mouse leaves. (No code change — the app was already correct; the plan's old
+expected strings were wrong and are now fixed.)
+
 ---
 
 ## Test summary matrix
@@ -844,8 +851,8 @@ right, the doc was wrong; re-verify against the exact strings below (steps 1/6/7
 | 10 | C | Smart pin watch | ✅ v0.9.88 | `test10_smart_pin.spin2` |
 | 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
 | 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
-| 13 | C | Event breakpoints | 🔧 RETEST v0.9.96 | `test11` (keep loaded) |
-| 14 | B/C | Hint bar | 🔧 strings→Pascal | Any (run throughout) |
+| 13 | C | Event breakpoints | ✅ v0.9.97 | `test11` (keep loaded) |
+| 14 | B/C | Hint bar | ✅ v0.9.97 | Any (run throughout) |
 
 ---
 
