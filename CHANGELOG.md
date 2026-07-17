@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.97] - 2026-07-17
+
+Single-step debugger — hub-viewer blink fix (Test 13). **Built for hardware testing.**
+
+### Fixed
+
+- **The HUB memory grid no longer blinks between two sets of values while halted.** When a
+  cog sat stopped at a breakpoint after stepping, the bottom hub-data panel could flip
+  rapidly between two different byte-sets even though the memory wasn't changing. Root
+  cause: after single-stepping introduced changed processor blocks, the chip occasionally
+  delivered a few extra bytes at the end of one break's data; those leftover bytes were
+  carried into the *next* break and shifted where the app read the hub window from — so it
+  drew the wrong bytes on alternating refreshes. A fresh break boundary now discards any
+  such leftover, so the hub grid stays steady (matching the original PNut debugger). The
+  live `CT` clock and event flags still update every refresh, as they should. Confirmed
+  against the two-minute hardware capture where the hub bytes were byte-identical on every
+  poll yet the display flipped.
+
 ## [0.9.96] - 2026-07-17
 
 Single-step debugger — event-breakpoint fix (Test 13). **Built for hardware testing.**

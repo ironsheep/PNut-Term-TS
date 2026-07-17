@@ -714,7 +714,7 @@ acceptance gate MET.
 
 ## Test 13: Event breakpoints
 
-**Status:** 🔧 fix shipped in **v0.9.96** — **RETEST** (event-name click now arms the break; this is the current test)
+**Status:** 🔧 **RETEST on v0.9.97** — event-name click now arms the break (v0.9.96) and the HUB-grid blink is fixed (v0.9.97); this is the current test
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
@@ -762,15 +762,20 @@ disarms it (button dims).
 > you've clicked `CT1`, step 2 is only a confirmation — do it to prove the button works,
 > or skip it.
 
-> **The display "flipping between values" after SPACE is correct, not a fault.** While the
+> **Some "flipping" is expected; the HUB grid flip was a bug (fixed v0.9.97).** While the
 > cog is stopped at a break it is **not frozen on the wire** — it idles inside its own
 > debug ISR and the debugger polls it in a continuous ~12 Hz lockstep, **redrawing every
-> poll** (exact same mechanism as Test 1 step 5). Once the program is running interrupts,
-> genuinely-live values — the CT system counter and the CT1 event flag — change between
-> polls, so they visibly cycle. The **register snapshot does NOT change**, which is how you
-> know the cog is held and the data is clean. PNut behaves identically. *(Log evidence
-> 2026-07-17: cog held at PC=$0 for 75 s / 898 redraws, then advanced only on the Go-single
-> commands; register header byte-identical across polls.)*
+> poll** (same mechanism as Test 1 step 5). Two different things can appear to "flip":
+> - **The `CT` clock (top row) and the CT1 event flag** genuinely change every poll (the
+>   system counter is free-running) — that is **correct**, PNut shows it too.
+> - **The HUB data grid (bottom) blinking between two value-sets at a *low* address** was a
+>   **defect** — the wire hub bytes were provably identical every poll (only `CT` changed),
+>   so the values were not actually changing. Cause: after stepping introduced changed-cog
+>   blocks, an over-delivered Phase-3 tail left stale bytes in the frame buffer that shifted
+>   the *next* break's parse, so `hubWindow` was read from the wrong offset and alternated.
+>   **Fixed in v0.9.97** (the authoritative Phase-1 from main now drops stale leftover;
+>   `DebuggerController.processPhase1`). The register snapshot was always byte-identical
+>   across polls — that is how we knew the cog was held and the hub data was clean.
 
 ---
 

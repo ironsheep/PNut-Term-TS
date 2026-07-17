@@ -225,6 +225,47 @@ describe('debugger replay oracle (§1)', () => {
     });
   });
 
+  // ── Regression — an authoritative Phase-1 drops stale frameBuf leftover ─────
+  // Main is the sole framing authority: each 'phase1' message is a definitive break
+  // boundary. If a previous break OVER-delivered its Phase-3 (exact-frame tail), the
+  // extra bytes sit in frameBuf as leftover. Left in place they prepend to the next
+  // break's Phase-3 and shift the parse — filling fptr/ptra/ptrb/hubWindow from the
+  // wrong offset. As the leftover toggles 0↔K across breaks, the hub grid alternates
+  // between two value-sets (the Test-13 "hub data blinking" HW report, 2026-07-17).
+  // Wire capture proved the hub bytes were byte-identical every poll, so the flip was
+  // ours: `handlePhase1` now passes authoritative=true, clearing the stale leftover.
+  it('authoritative Phase-1 discards stale frameBuf leftover so hub data is not shifted', () => {
+    const concat = (...arrs: Uint8Array[]): Uint8Array => {
+      const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0));
+      let o = 0;
+      for (const a of arrs) { out.set(a, o); o += a.length; }
+      return out;
+    };
+    const state = makeDebuggerState(0);
+    const h = makeController(state);
+    const CRC = new Array(64).fill(0x1234); // same across both breaks → break B changes nothing
+
+    // Break A completes but its Phase-3 is OVER-delivered by exactly one fixed-hub-
+    // reads worth of 0xFF sentinel bytes; driveFrames carries them as frameBuf leftover.
+    h.controller.processPhase1(buildPhase1Packet({ cogCrc: CRC }), /* authoritative */ true);
+    const STALE_LEN = PTR_BYTES * 3 + HUB_SUB_BLOCK_SIZE; // 170 = fptr+ptra+ptrb+hubWindow
+    const stale = new Uint8Array(STALE_LEN).fill(0xff);
+    h.controller.processPhase3(concat(buildPhase3Packet(state), stale));
+    expect(h.calls.phase3Complete).toBe(1);
+
+    // Break B: SAME CRC → no cog/hub blocks change, so its Phase-3 is the (all-zero)
+    // fixed windows + smart masks only. Delivered authoritatively by main.
+    h.controller.processPhase1(buildPhase1Packet({ cogCrc: CRC }), /* authoritative */ true);
+    h.controller.processPhase3(buildPhase3Packet(state));
+    expect(h.calls.phase3Complete).toBe(2);
+
+    // hubWindow reflects Break B's real (zero) data — NOT the shifted 0xFF sentinel.
+    // Without the fix the stale leftover fills these windows with 0xFF.
+    expect(Array.from(state.hubWindow).every((b) => b === 0)).toBe(true);
+    expect(Array.from(state.ptraWindow).every((b) => b === 0)).toBe(true);
+    expect(Array.from(state.ptrbWindow).every((b) => b === 0)).toBe(true);
+  });
+
   // ── SPEC — the post-§2/§3/§5 target, now MET on real bytes ─────────────────
   // Was an `it.failing` marker asserting all-19; the capture was then measured to
   // contain 11 clean breaks (the rest were derail host-replies, never clean RX

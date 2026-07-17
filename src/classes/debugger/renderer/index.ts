@@ -65,7 +65,9 @@ class DebuggerApp {
   }
 
   public handlePhase1(bytes: Uint8Array): void {
-    try { this.controller.processPhase1(bytes); }
+    // Authoritative delivery from main (the sole framing authority) — drop any
+    // stale frameBuf leftover so it can't shift this break's Phase-3 parse.
+    try { this.controller.processPhase1(bytes, /* authoritative */ true); }
     catch (e) { log('error', `processPhase1: ${e instanceof Error ? e.message : e}`); }
   }
 

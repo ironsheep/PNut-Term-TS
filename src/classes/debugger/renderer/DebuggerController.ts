@@ -391,7 +391,7 @@ export class DebuggerController {
   // Phase 1 — incoming breakpoint packet
   // ============================================================================
 
-  public processPhase1(bytes: Uint8Array): void {
+  public processPhase1(bytes: Uint8Array, authoritative = false): void {
     if (bytes.length !== PHASE1_SIZE) {
       throw new Error(`Phase 1 packet wrong size: got ${bytes.length}, expected ${PHASE1_SIZE}`);
     }
@@ -400,6 +400,16 @@ export class DebuggerController {
     // parser and the framing state so a stale partial Phase-3 (e.g. a §4 escape)
     // can never bleed into this break. Notify the break counter.
     this.phase3Parser.reset();
+    // When this Phase-1 is delivered by the sole framing authority (main → the
+    // typed 'phase1' message), it is a definitive break boundary: any bytes still
+    // carried in frameBuf are stale leftover from the previous break's Phase-3
+    // (e.g. an over-delivered exact-frame tail). If left in place they prepend to
+    // THIS break's Phase-3 and shift the parse — reading hubWindow (and the other
+    // fixed windows) from the wrong offset, which alternates the hub grid between
+    // two value-sets as the leftover toggles 0↔K across breaks. Drop it here. The
+    // internal self-framing caller (driveFrames) passes authoritative=false so the
+    // Phase-3 remainder it already spliced stays intact.
+    if (authoritative) this.frameBuf.length = 0;
     this.expectingPhase1 = false;
     this.callbacks.onPhase1?.(bytes.length);
 
