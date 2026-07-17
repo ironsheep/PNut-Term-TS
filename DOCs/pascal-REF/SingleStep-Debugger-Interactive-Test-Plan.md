@@ -243,11 +243,16 @@ ON HW TEST: pass v0.9.83
 
 ## Test 3: Register watch and reset
 
-**Status:** ✅ PASS (v0.9.83)
+**Status:** 🔧 **RETEST — needs recompiled `test03` (v0.9.97 program fix)**; the app is correct
+
+> **▶ Recompile + re-download `test03_pasm_regs.spin2`** — the program was fixed (see the
+> note below). Then `pnut-ts -d test03_pasm_regs.spin2` and download the new `.bin`.
 
 **▶ Load:** `test03_pasm_regs.spin2`
 
-**The program**: a tight PASM loop that increments **PA** and decrements **PB** every pass.
+**The program**: a tight PASM loop that increments cog register **`count`** (~`$005`) and
+decrements **`limit`** (~`$006`) — both **low** registers *inside* the watch range
+(`$000..$1EF`), so they appear in the WATCH panel as they change.
 
 **What this tests**: Delta tracking algorithm, R key reset, watch list display.
 
@@ -255,22 +260,25 @@ ON HW TEST: pass v0.9.83
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
-| 1 | Press **SPACE** 3 times past initialization | WATCH panel (right of disassembly) shows PA and PB registers with their addresses and values. Format: `1F6 00000001` and `1F7 00000063`. |
-| 2 | Press **SPACE** 3 more times | Watch values update. PA increments, PB decrements. Changed values remain visible (counter=1000 on change). |
+| 1 | Press **SPACE** 3 times past initialization | WATCH panel (right of disassembly) shows the changed cog registers with addresses + values, e.g. `005 00000001` and `006 00000063`. |
+| 2 | Press **SPACE** 3 more times | Watch values update — `count` increments, `limit` decrements. Changed values remain visible (counter=1000 on change). |
 | 3 | Press **R** | Watch list clears completely. All 16 slots show delta (△) symbols. |
 | 4 | Press **SPACE** | Watch repopulates with only the registers that changed on this step. |
 | 5 | Click anywhere in the WATCH box | Watch list resets (same as R key). |
 
 **Pass criteria**: Watch tracks changed registers, R key and click both reset, format shows 3-hex address + 8-hex value.
 
-ON HW TEST: **PASS.** Watch tracks changed registers, R-key and click both reset, format
-is 3-hex address + 8-hex value (verified). The literal hex values in this test
-(`1F6 00000001`, `1F7 00000063`, "counter=1000") are **illustrative only** — per the
-plan preamble, match the *behavior*, not the digits; the program's actual PA/PB
-addresses and values differ on hardware. (Pascal: watch counter is set to 1000 on
-change and decremented to 1, `DebuggerUnit.pas:1545`; `RegWatchSize=$1F0`.)
+> **PROGRAM FIX (v0.9.97) — the empty-watch report was a test-program bug, not an app
+> defect.** The old `test03` incremented **PA (`$1F6`) / PB (`$1F7`)** — but those are
+> SPECIAL registers **above** the reg-delta watch range (`RegWatchSize = $1F0` → watch
+> covers `$000..$1EF`, *identical* in Pascal `DebuggerUnit.pas:202/1543`). PA/PB changes
+> show only in the **SFR panel**, never in the WATCH — so that program could never populate
+> the panel it was meant to test (its own comment "Expected register watch: PA increments"
+> was wrong). Rewritten to increment/decrement **low** registers `count`/`limit`, which the
+> watch tracks. The app's watch logic is exact Pascal parity — no code change.
 
-ON HW TEST: pass v0.9.83
+ON HW TEST: pass v0.9.83 — **SUPERSEDED**: that "pass" could not have shown PA/PB in the
+watch (out of range); it verified the mechanism loosely. Re-verify on the recompiled program.
 
 ---
 
@@ -841,7 +849,7 @@ expected strings were wrong and are now fixed.)
 | 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | `test01_basic_spin.spin2` |
 | 1 | B | Basic connection, single step | ✅ v0.9.82 | `test01` (keep loaded) |
 | 2 | B | Repeat mode, throttling | ✅ v0.9.83 | `test01` (keep loaded) |
-| 3 | B | Register watch, reset | ✅ v0.9.83 | `test03_pasm_regs.spin2` |
+| 3 | B | Register watch, reset | 🔧 recompile test03 | `test03_pasm_regs.spin2` |
 | 4 | B | Disassembly navigation | ✅ v0.9.86 | `test03` (keep loaded) |
 | 5 | B | Button behavior | ✅ v0.9.86 | `test01` (reuse — do with Tests 1–2) |
 | 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | `test06_flags_skip.spin2` |

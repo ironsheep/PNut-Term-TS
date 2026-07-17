@@ -6,13 +6,20 @@
 ''   Test 4 — Disassembly navigation, scroll, address breakpoints
 ''
 '' PASM-only program: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN
-'' breaks on the FIRST instruction (entry / mov pa,#0) — no Spin interpreter or
+'' breaks on the FIRST instruction (entry / mov count,#0) — no Spin interpreter or
 '' coginit indirection in the way. The disassembly shows YOUR PASM immediately
 '' (R-000 entry ...), not interpreter "not my code".
 ''
-'' Behavior: Tight PASM loop that increments PA and decrements PB.
-'' Expected register watch after stepping into .loop: PA ($1F6) increments from
-'' 0, PB ($1F7) decrements from 100 ($64) — e.g. PA=1, PB=$63 (99) after one pass.
+'' Behavior: Tight PASM loop that increments cog register `count` and decrements
+'' cog register `limit`. Both are ordinary LOW cog registers (placed just after the
+'' code, ~$005/$006), so they fall inside the register-delta WATCH range ($000..$1EF)
+'' and appear in the WATCH panel as they change — e.g. after one pass through .loop,
+'' `count` = 1 and `limit` = $63 (99).
+''
+'' IMPORTANT — why not PA/PB: the earlier version incremented PA ($1F6) / PB ($1F7),
+'' but those are SPECIAL registers ABOVE the watch range ($1F0..$1FF). PA/PB changes
+'' show only in the SFR panel, NEVER in the reg-delta WATCH — so that program could
+'' never populate the WATCH panel it was meant to test. Use low registers here.
 '' =============================================================================
 CON
   _clkfreq = 200_000_000
@@ -20,8 +27,11 @@ CON
 
 DAT
                 org
-entry           mov     pa, #0
-                mov     pb, #100
-.loop           add     pa, #1
-                sub     pb, #1
+entry           mov     count, #0
+                mov     limit, #100
+.loop           add     count, #1
+                sub     limit, #1
                 jmp     #.loop
+
+count           long    0
+limit           long    0
