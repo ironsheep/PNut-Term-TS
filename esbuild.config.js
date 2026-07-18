@@ -1,5 +1,16 @@
 const esbuild = require('esbuild');
 
+// ── Compile-time transport-diagnostics gate ────────────────────────────────────
+// ENABLE_DIAGNOSTICS gates the verbose transport diagnostics ([CTRL]/[DEBUGGER] framing
+// traffic). It is a COMPILE-TIME constant: when false, esbuild dead-code-eliminates every
+// diagnostic call site, so a released build carries zero runtime cost and no protocol noise.
+//   dev / pre-release build (default)      → true  (we keep diagnostics on while auditing)
+//   release build  (PNUT_RELEASE=1)        → false (🚦 RELEASE GATE — packaged builds set this)
+// The package scripts run the build with PNUT_RELEASE=1, so every shipped bundle is OFF.
+const DIAG = process.env.PNUT_RELEASE === '1' ? 'false' : 'true';
+const sharedDefine = { ENABLE_DIAGNOSTICS: DIAG };
+console.log(`esbuild: ENABLE_DIAGNOSTICS=${DIAG} (${DIAG === 'false' ? 'RELEASE — diagnostics stripped' : 'dev — diagnostics on'})`);
+
 Promise.all([
   // Build the CLI entry point
   esbuild.build({
@@ -10,10 +21,12 @@ Promise.all([
     target: 'node23',
     external: ['electron'],
     minify: false, // Disable esbuild minification we'll use terser instead
-    sourcemap: true
+    sourcemap: true,
+    define: sharedDefine
   }),
   // Build the Electron entry point
   esbuild.build({
+    define: sharedDefine,
     entryPoints: ['src/electron-main.ts'],
     bundle: true,
     outfile: 'dist/electron-main.js',
@@ -25,6 +38,7 @@ Promise.all([
   }),
   // Build the Worker (bundle all dependencies into single file)
   esbuild.build({
+    define: sharedDefine,
     entryPoints: ['src/workers/extractionWorker.ts'],
     bundle: true,
     outfile: 'dist/workers/extractionWorker.bundled.js',
@@ -40,6 +54,7 @@ Promise.all([
   // uv_default_loop()). Inline serialport's JS, keep ONLY the native binding external (mirror
   // the main bundle; the packaged app ships @serialport/bindings-cpp resolvable).
   esbuild.build({
+    define: sharedDefine,
     entryPoints: ['src/workers/serialIoHost.ts'],
     bundle: true,
     outfile: 'dist/workers/serialIoHost.bundled.js',
@@ -52,6 +67,7 @@ Promise.all([
   }),
   // Build the renderer-side debugger bundle (loaded by the debugger window HTML)
   esbuild.build({
+    define: sharedDefine,
     entryPoints: ['src/classes/debugger/renderer/index.ts'],
     bundle: true,
     outfile: 'dist/debugger-renderer.js',

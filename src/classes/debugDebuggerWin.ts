@@ -447,6 +447,10 @@ ${bundleJs}
    * logConsoleMessage in packaged builds.
    */
   private debugLog(msg: string): void {
+    // Transport diagnostics — compiled out of release builds. When ENABLE_DIAGNOSTICS is
+    // false esbuild dead-code-eliminates the body below, so these [DEBUGGER] framing lines
+    // (RX PHASE1/3, PHASE2 transmitted, size hint, relayed [R/…]) never reach the user's log.
+    if (!ENABLE_DIAGNOSTICS) return;
     try {
       const LoggerWindow = require('./loggerWin').LoggerWindow;
       const debugLogger = LoggerWindow.getInstance(this.context);

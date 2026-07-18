@@ -15,6 +15,12 @@ module.exports = {
     '**/*.(test|spec).+(ts|tsx|js)'
   ],
   
+  // Compile-time transport-diagnostics gate — off under test (see src/types/globals.d.ts;
+  // esbuild injects the real value in bundles). Keeps `if (ENABLE_DIAGNOSTICS)` resolvable.
+  globals: {
+    ENABLE_DIAGNOSTICS: false
+  },
+
   // Transform files with ts-jest
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {

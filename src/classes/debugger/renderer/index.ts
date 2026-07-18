@@ -54,7 +54,11 @@ class DebuggerApp {
       // Per-break Phase-3 fixed-size hint (§3): relayed main→worker so the
       // worker's per-cog demux delimits this cog's Phase-3 exactly.
       onPhase3Size: (cogId, size) => sendToMain({ kind: 'phase3Size', cogId, size }),
-      log: (msg) => log('info', `[CTRL] ${msg}`)
+      // Transport diagnostics ([CTRL] framing traffic) — wired ONLY when compiled in
+      // (dev/pre-release). In a release build ENABLE_DIAGNOSTICS is false, so esbuild folds
+      // this to `undefined`; every `if (this.callbacks.log)` guard in the controller then
+      // short-circuits, so the per-chunk [CTRL] firehose builds no strings and sends no IPC.
+      log: ENABLE_DIAGNOSTICS ? (msg) => log('info', `[CTRL] ${msg}`) : undefined
     });
     this.renderer = new DebuggerRenderer(canvas, this.state);
     this.interaction = new DebuggerInteraction(canvas, this.state, this.renderer, this.controller, {
