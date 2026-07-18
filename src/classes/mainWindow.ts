@@ -173,7 +173,11 @@ export class MainWindow {
     this.settingsFilePath = ''; // Will be set properly in loadSettings()
 
     // Initialize Two-Tier Pattern Matching serial processor and COG managers
-    this.serialProcessor = new SerialMessageProcessor(true); // Enable performance logging
+    // Performance logging is a developer diagnostic — it writes a growing performance.log
+    // into the working directory on the hot serial path. OFF by default (no file, no cost
+    // for users). When the transport-diagnostics compile-time gate lands, this `false`
+    // becomes that gate so our pre-release audit builds can turn it back on.
+    this.serialProcessor = new SerialMessageProcessor(false);
 
     this.cogWindowManager = new COGWindowManager();
     this.cogHistoryManager = new COGHistoryManager();
@@ -6968,13 +6972,15 @@ export class MainWindow {
         this.globalSettings = JSON.parse(data);
         this.logMessage(`✓ Loaded settings from ${this.settingsFilePath}`);
       } else {
-        // Create default settings
+        // No settings file yet → use in-memory defaults. Do NOT write the file here.
+        // pnut-term-settings.json is project-specific (lives alongside the source) and is
+        // created ONLY when the user actually saves settings — so we don't drop a settings
+        // file into every folder the app happens to be launched from.
         this.globalSettings = {
           defaultControlLine: 'DTR', // Parallax standard
           deviceSettings: {}
         };
-        this.saveGlobalSettings();
-        this.logMessage(`✓ Created default settings at ${this.settingsFilePath}`);
+        this.logMessage(`Using default settings (none saved yet at ${this.settingsFilePath})`);
       }
     } catch (error) {
       this.logMessage(`⚠️ Error loading settings: ${error}, using defaults`);

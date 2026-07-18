@@ -37,13 +37,10 @@ export class RecordingCatalog {
   
   constructor(basePath: string = path.join(process.cwd(), 'tests', 'recordings')) {
     this.catalogPath = path.join(basePath, 'catalog.json');
-    
-    // Ensure directory exists
-    const dir = path.dirname(this.catalogPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
+    // Do NOT create the recordings directory or catalog.json here. Recording is an
+    // opt-in facility (not used yet) — the dir + file are created lazily by saveCatalog()
+    // only when a recording is actually added. Merely launching the app must never drop
+    // a recordings tree into the working directory.
     this.loadCatalog();
   }
   
@@ -60,16 +57,23 @@ export class RecordingCatalog {
         this.catalog = [];
       }
     } else {
+      // No catalog on disk yet → empty in-memory catalog. Do NOT write a file here
+      // (see constructor): it is created only when a recording is actually added.
       this.catalog = [];
-      this.saveCatalog();
     }
   }
-  
+
   /**
-   * Save catalog to disk
+   * Save catalog to disk. Creates the recordings directory just-in-time — this is the
+   * ONLY place the catalog file / dir come into existence, and it runs only when a
+   * recording is added, so nothing is created merely by launching the app.
    */
   private saveCatalog(): void {
     try {
+      const dir = path.dirname(this.catalogPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       const content = JSON.stringify(this.catalog, null, 2);
       fs.writeFileSync(this.catalogPath, content, 'utf-8');
     } catch (error) {

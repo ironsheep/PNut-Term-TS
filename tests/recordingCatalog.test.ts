@@ -30,13 +30,30 @@ describe('RecordingCatalog', () => {
   });
   
   describe('Catalog Creation', () => {
-    it('should create catalog file on initialization', () => {
-      expect(fs.existsSync(catalogPath)).toBe(true);
+    it('should NOT create the catalog file on initialization (lazy — recording is opt-in)', () => {
+      // Merely constructing the catalog must not drop catalog.json into the working
+      // directory. The file is created only when a recording is actually added.
+      expect(fs.existsSync(catalogPath)).toBe(false);
     });
-    
-    it('should initialize with empty catalog', () => {
+
+    it('should initialize with an empty in-memory catalog', () => {
       const recordings = catalog.getAllRecordings();
       expect(recordings).toEqual([]);
+    });
+
+    it('should create the catalog file lazily, on the first recording added', () => {
+      expect(fs.existsSync(catalogPath)).toBe(false);
+      catalog.addRecording({
+        sessionId: 'lazy-001',
+        filename: 'lazy-001.jsonl',
+        metadata: {
+          sessionName: 'Lazy',
+          description: '',
+          timestamp: Date.now(),
+          windowTypes: ['terminal']
+        }
+      });
+      expect(fs.existsSync(catalogPath)).toBe(true);
     });
   });
   
