@@ -23,12 +23,12 @@ grep -n "🚦 GATES 1.0.0" DOCs/PUNCH_LIST.md
 item AND strike its line in this roster — do not delete it, so the roster stays an auditable record of what
 gated the release.
 
-### Open gates
+### Gate roster — **ALL CLOSED as of 2026-07-18**
 
 | # | Gate | Section | Why it gates |
 |---|---|---|---|
 | ~~**G1**~~ | ~~Linux: Electron process doesn't exit when all windows closed~~ | P1 | **CLOSED 2026-07-18** — verified on Linux hardware; process exits cleanly, port released. |
-| **G2** | Whole-application + external-hardware parity sign-off (§18) | P1 | The release-validation gate. No 1.0.0 without a physical-P2 pass across all 9 display windows + the debugger. |
+| ~~**G2**~~ | ~~Whole-application + external-hardware parity sign-off (§18)~~ | P1 | **CLOSED 2026-07-17** — physical-P2 pass: 9 display windows (Debug Window Manual images, PNut vs term-ts) + debugger Tests 0–14 on v0.9.97. |
 | ~~**G3**~~ | ~~Exit code never reaches the shell — the `ExitCode` contract is inert~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). Exit codes now propagate in BOTH modes; proven end-to-end by `tests/cliExitCodes.test.ts` (spawns the real CLI, asserts `$?`). |
 | ~~**G4**~~ | ~~A non-numeric `--timeout` silently disables the timeout~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). `--timeout`/`--debugbaud` are strictly validated; bad values abort with code 2 before anything runs. |
 | ~~**G5**~~ | ~~Effective default debug baud is 115200; help text and skill both say 2000000~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). Default is now 2,000,000 — **and we no longer guess at all**: the debug baud is READ OUT OF THE BINARY being downloaded (`utils/p2DebugHeader.ts`), so an in-source `DEBUG_BAUD` CON finally works with this tool. `-b` remains an explicit override, and warns when it contradicts the image. |
