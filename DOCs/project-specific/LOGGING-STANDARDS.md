@@ -73,10 +73,12 @@ pollute it.**
    define). This is essential for the regression-evidence / release-notes use — a captured log
    must state exactly which build produced it.
 7. **The `RouterLogger` is a separate, ENV-VAR-controlled diagnostic** (`ROUTER_LOG_LEVEL`,
-   `ROUTER_LOG_FILE`, `ROUTER_LOG_PATH`) — the one exception to the compile-time model, because
-   it predates the gate. It must obey the "no files unless needed" rule: it currently opens a
-   dated `router-*.log` every session even when its level emits nothing (empty-file clutter) —
-   that is a known deviation to fix (open the stream lazily on first real write).
+   `ROUTER_LOG_FILE`, `ROUTER_LOG_PATH`) — the one runtime-gated logger (it predates the
+   compile-time gate). It is **off by default**: file logging turns on only with
+   `ROUTER_LOG_FILE=true` (`windowRouter.ts`), so a normal user/production run creates **no**
+   router log — consistent with the "no files unless needed" rule. (The empty `router-*.log`
+   files sometimes seen in the working directory are leftovers from *dev* sessions that opted in
+   via the env var while the level emitted nothing — not production behavior.)
 
 ### Message routing (three program-output channels)
 
