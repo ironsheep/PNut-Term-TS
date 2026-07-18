@@ -18,7 +18,8 @@ module.exports = {
   // Compile-time transport-diagnostics gate — off under test (see src/types/globals.d.ts;
   // esbuild injects the real value in bundles). Keeps `if (ENABLE_DIAGNOSTICS)` resolvable.
   globals: {
-    ENABLE_DIAGNOSTICS: false
+    ENABLE_DIAGNOSTICS: false,
+    APP_VERSION: '0.0.0-test'
   },
 
   // Transform files with ts-jest

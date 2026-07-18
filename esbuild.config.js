@@ -8,8 +8,12 @@ const esbuild = require('esbuild');
 //   release build  (PNUT_RELEASE=1)        → false (🚦 RELEASE GATE — packaged builds set this)
 // The package scripts run the build with PNUT_RELEASE=1, so every shipped bundle is OFF.
 const DIAG = process.env.PNUT_RELEASE === '1' ? 'false' : 'true';
-const sharedDefine = { ENABLE_DIAGNOSTICS: DIAG };
-console.log(`esbuild: ENABLE_DIAGNOSTICS=${DIAG} (${DIAG === 'false' ? 'RELEASE — diagnostics stripped' : 'dev — diagnostics on'})`);
+// APP_VERSION is baked from package.json at build time (single source of truth) so the
+// running app — and the session-start line in the debug log — always records the exact
+// version that was built, with no runtime file read.
+const APP_VERSION = require('./package.json').version;
+const sharedDefine = { ENABLE_DIAGNOSTICS: DIAG, APP_VERSION: JSON.stringify(APP_VERSION) };
+console.log(`esbuild: ENABLE_DIAGNOSTICS=${DIAG} (${DIAG === 'false' ? 'RELEASE — diagnostics stripped' : 'dev — diagnostics on'}), APP_VERSION=${APP_VERSION}`);
 
 Promise.all([
   // Build the CLI entry point

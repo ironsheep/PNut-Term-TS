@@ -228,6 +228,7 @@ export class LoggerWindow extends DebugWindowBase {
 
         // Write header and force flush to ensure file is created
         this.logFile!.write(`=== Debug Logger Session Started at ${getFormattedDateTimeISO()} ===\n`);
+        this.logFile!.write(`PNut-Term-TS: v${APP_VERSION}\n`); // record the exact app version for the log's regression/release-notes use
         this.logFile!.write(`Program: ${basename}\n`);
         this.logFile!.write(`=====================================\n\n`, (err) => {
           if (err) {

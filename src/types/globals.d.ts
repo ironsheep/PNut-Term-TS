@@ -10,3 +10,10 @@
  * provided as a jest global (false); this ambient declaration keeps tsc/editors happy.
  */
 declare const ENABLE_DIAGNOSTICS: boolean;
+
+/**
+ * Application version, baked from package.json at build time by esbuild `define`
+ * (see esbuild.config.js). Recorded on the debug-log session-start line. In tests it is a
+ * jest global; this ambient declaration keeps tsc/editors happy.
+ */
+declare const APP_VERSION: string;
