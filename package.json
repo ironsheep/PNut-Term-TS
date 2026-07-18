@@ -52,7 +52,7 @@
     "undist": "npm run getpirun && npm run getpilogic && npm run getbmps",
     "prebuild": "npm run clean && npm run makeprebuild && npm run makefonts",
     "build": "tsc && npm run build:esbuild && node scripts/insertBuildDate.js && npm run minify",
-    "build:release": "PNUT_RELEASE=1 npm run build",
+    "build:release": "node scripts/build-release.js",
     "build:production": "bash scripts/build-production.sh",
     "packageLnx:old": "npm run build && DEBUG=electron-builder electron-builder build --linux --config electron.builder.json",
     "packageMac:old": "npm run build && DEBUG=electron-builder electron-builder build --mac --config electron.builder.json",
