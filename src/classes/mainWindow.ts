@@ -7400,6 +7400,12 @@ export class MainWindow {
             : Promise.resolve();
         flushes.push(
           chainDrain
+            // Then let the DRAWS those commands issued actually PAINT. renderChain is tracked
+            // separately from pendingOps/messageChain, and only SAVE awaited it — so a batch run
+            // (--exit-on-end-session) with no queued SAVE used to close its windows with draws
+            // still in flight and never show the last output. Also flushes window-private queues
+            // (BITMAP pendingPixels, SPECTRO columnBatch) via the flushBeforeCapture overrides.
+            .then(() => (typeof display.flushRenders === 'function' ? display.flushRenders() : Promise.resolve()))
             .then(() => display.flushPending(timeoutMs))
             .catch(() => false)
         );

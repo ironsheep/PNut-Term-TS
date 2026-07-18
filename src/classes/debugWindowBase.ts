@@ -1503,6 +1503,21 @@ export abstract class DebugWindowBase extends EventEmitter {
     await Promise.race([this.renderChain.catch(() => undefined), timeout]);
   }
 
+  /**
+   * Shutdown-facing: await this window's outstanding renderer draws so the final content actually
+   * PAINTS before the window is closed. Delegates to flushBeforeCapture() so window-specific
+   * overrides (BITMAP pendingPixels, SPECTRO columnBatch) also flush their private queues onto the
+   * render chain — the same guarantee SAVE gets, bounded by the same 1 s race.
+   *
+   * WHY THIS EXISTS: draws are tracked on `renderChain`, which is SEPARATE from `pendingOps`
+   * (flushPending) and the command chain (flushMessageChain). Only SAVE awaited renderChain (via
+   * flushBeforeCapture), so a headed batch run (`--exit-on-end-session`) with no queued SAVE tore
+   * its windows down with draws still in flight and the last output never appeared.
+   */
+  public async flushRenders(): Promise<void> {
+    await this.flushBeforeCapture();
+  }
+
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
     if (!this._debugWindow) {
       return;

@@ -27,7 +27,7 @@ gated the release.
 
 | # | Gate | Section | Why it gates |
 |---|---|---|---|
-| **G1** | Linux: Electron process doesn't exit when all windows closed | P1 | Code fix applied; **needs Linux hardware verification**. A tool that won't exit is not shippable. |
+| ~~**G1**~~ | ~~Linux: Electron process doesn't exit when all windows closed~~ | P1 | **CLOSED 2026-07-18** — verified on Linux hardware; process exits cleanly, port released. |
 | **G2** | Whole-application + external-hardware parity sign-off (§18) | P1 | The release-validation gate. No 1.0.0 without a physical-P2 pass across all 9 display windows + the debugger. |
 | ~~**G3**~~ | ~~Exit code never reaches the shell — the `ExitCode` contract is inert~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). Exit codes now propagate in BOTH modes; proven end-to-end by `tests/cliExitCodes.test.ts` (spawns the real CLI, asserts `$?`). |
 | ~~**G4**~~ | ~~A non-numeric `--timeout` silently disables the timeout~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). `--timeout`/`--debugbaud` are strictly validated; bad values abort with code 2 before anything runs. |
@@ -47,8 +47,8 @@ statement the user manual is required to make. Flag if you disagree and we will 
 
 ### P1 - Must Fix Before Release
 
-- [ ] **Linux: Electron process doesn't exit when all windows closed** (v0.9.22 regression report, Fedora 42)
-  - **🚦 GATES 1.0.0** — roster **G1**
+- [x] **Linux: Electron process doesn't exit when all windows closed** (v0.9.22 regression report, Fedora 42) — **CLOSED 2026-07-18 (Stephen, verified on Linux HW).**
+  - **🚦 GATES 1.0.0** — roster **G1** — **CLOSED.** Process exits on its own; no lingering Electron, port released, no `kill -9` needed.
   - Root cause: Dual `window-all-closed` handlers racing — electron-main.ts called `app.quit()` before mainWindow.ts finished async serial port cleanup
   - Fix applied: Removed duplicate handler from electron-main.ts, added 5s safety timeout to mainWindow.ts handler
   - Status: **Code fix applied, needs testing on Linux hardware**
