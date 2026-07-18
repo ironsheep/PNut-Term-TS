@@ -53,17 +53,35 @@ statement the user manual is required to make. Flag if you disagree and we will 
   - Fix applied: Removed duplicate handler from electron-main.ts, added 5s safety timeout to mainWindow.ts handler
   - Status: **Code fix applied, needs testing on Linux hardware**
   - Files changed: `src/electron-main.ts`, `src/classes/mainWindow.ts`
+  - **How to reproduce / verify (Linux).** The race is with *async serial cleanup*, so it only
+    manifests with an **open serial port** — a run with no device will NOT exercise it.
+    1. Connect the P2 (PropPlug/FTDI, e.g. `/dev/ttyUSB0`). Launch the app **headed** so the main
+       window opens and the port is opened. Run a program that spawns a debug window or two, so
+       "all windows closed" genuinely closes several windows.
+    2. Confirm the port is held: `lsof /dev/ttyUSB0` (should show the app).
+    3. **Close all windows from the UI** (close the main window). Do **not** kill the process.
+    4. Within a few seconds, check:
+       - `ps aux | grep -i pnut-term` → **no lingering process** *(bug: it stays alive)*
+       - `lsof /dev/ttyUSB0` → **nothing** *(bug: port still held)*
+       - `echo $?` → exit code reaches the shell (also exercises G3)
+    5. Relaunch and connect again immediately → should connect cleanly *(bug: "port busy", and
+       DTR left asserted holds the P2 in reset until `kill -9` + replug)*.
+  - **PASS:** process exits on its own, `/dev/ttyUSB0` released, relaunch connects, no `kill -9`.
+  - **FAIL (original v0.9.22 symptom):** Electron process not released; user must `kill -9`,
+    which is what left DTR in a bad state (see the resolved P2 item below).
+  - Also exercise the same teardown via `kill <pid>` (SIGTERM) and Ctrl+C (SIGINT) — both route
+    through the same single-owner handler in `mainWindow.ts`. A safety timer force-quits at
+    `SHUTDOWN_DRAIN_TIMEOUT_MS + 5s` (**≈15 s**), so an exit that takes ~15 s means the drain
+    hung and should be reported rather than counted as a pass.
 
 ### P1 - Release validation (hardware) — the point of this build
 
-- [ ] **§18 whole-application + external-hardware parity sign-off** (9win-parity sprint, build 0.9.28)
-  - **🚦 GATES 1.0.0** — roster **G2**
-  - Non-hardware gates already MET: full sequential runner green (153/153, exit 0); diagnostic logging off in touched windows (`ENABLE_CONSOLE_LOG=false`).
-  - REMAINING (requires a physical P2 — Prop Plug / FTDI — not available in the dev container):
-    - Run all 9 debug DISPLAY windows against the basic demos; capture evidence in `test-results/external-results/`.
-    - Visual parity vs Pascal screenshots: `test-results/external-results/bitmaps/PNut-target.png` (Pascal) vs `pnut-term-ts-current.png` (this app).
-    - Confirm the directive-coverage matrix is 100% with every parameter variant exercised (`DOCs/pascal-REF/DEBUG-WINDOW-DIRECTIVE-MATRIX.md` §8).
-  - **Single-step debugger is the most-untested surface** — exercise it after the 9 display windows pass, following the phased plan in `DOCs/pascal-REF/SingleStep-Debugger-Interactive-Test-Plan.md` (Phase A visual-only → B core → C advanced).
+- [x] **§18 whole-application + external-hardware parity sign-off** (9win-parity sprint, build 0.9.28) — **CLOSED 2026-07-17 (Stephen HW sign-off).**
+  - **🚦 GATES 1.0.0** — roster **G2** — **CLOSED.**
+  - Non-hardware gates were already MET: full sequential runner green; diagnostic logging off in touched windows.
+  - **HW sign-off, two parts, both done on real P2:**
+    - **9 debug DISPLAY windows** — all exercised against the shipping demos + diff demos and run against **both PNut (reference) and pnut-term-ts** to produce the images in the **Debug Window Manual**; that side-by-side is the visual-parity evidence.
+    - **Single-step debugger** — full front-to-back interactive test plan walk, **Tests 0–14 PASS on v0.9.97** (`DOCs/pascal-REF/SingleStep-Debugger-Interactive-Test-Plan.md`; release-gate banner in that doc).
 
 ### P2 - Should Fix
 
