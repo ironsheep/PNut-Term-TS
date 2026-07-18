@@ -5,6 +5,49 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.98] - 2026-07-18
+
+Release-preparation build: batch-mode shutdown, cleaner logs, and no stray files.
+**Built for hardware testing — the shutdown paint fix is not yet validated on a P2.**
+
+### Fixed
+
+- **Batch runs no longer close their windows before the last drawing appears.** With
+  `--exit-on-end-session`, a scripted run that ended without an explicit SAVE could tear
+  the debug windows down while the final drawing was still being painted, so the last
+  frame of a plot, bitmap or spectrogram was lost. The app now waits for every outstanding
+  drawing to finish — bounded to one second, the same limit SAVE already used — before it
+  shuts the windows. *(Built and unit-tested; still needs a headed
+  `--exit-on-end-session` run on real hardware to confirm.)*
+- **The app exits on its own after an end-of-session marker.** On Linux, a scripted run
+  could leave an Electron process behind holding the serial port open, requiring a manual
+  kill before the next run. Confirmed fixed on Linux hardware.
+- **Debug logs are readable again.** System and diagnostic entries were being appended to
+  one enormous physical line — every `[SYSTEM]`, `[DEBUGGER]` and `[CTRL]` event piled up
+  until a newline arrived in the serial stream. Each event now gets its own timestamped
+  line, so a captured log can be read and searched directly instead of being split first.
+- **Launching the app no longer scatters files into your working folder.** A settings
+  file, a recordings catalog folder, and a performance log were all created on startup
+  whether or not you used those features. Settings are written only when you actually save
+  settings, the recordings catalog only when you make a recording, and the performance log
+  not at all. Nothing is created merely by launching.
+
+### Changed
+
+- **Released builds no longer emit transport diagnostics.** The low-level serial framing
+  chatter used during development is compiled out of every packaged build, so your debug
+  log contains only what you care about and the serial path carries no diagnostic cost.
+  Development builds keep it on.
+- **Every debug-log session now records the app version** in its opening banner, so a
+  captured log states which build produced it — useful when reporting an issue.
+- The macOS disk-image window now shows the full Iron Sheep Productions logo, consistent
+  with PNut-TS.
+
+### Notes
+
+All six release gates for 1.0.0 are now closed. Version 1.0.0 is held pending hardware
+confirmation of the batch-mode shutdown fix above.
+
 ## [0.9.97] - 2026-07-17
 
 Single-step debugger — hub-viewer blink fix (Test 13). **Built for hardware testing.**
