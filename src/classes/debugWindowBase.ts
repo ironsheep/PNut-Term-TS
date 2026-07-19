@@ -1518,6 +1518,22 @@ export abstract class DebugWindowBase extends EventEmitter {
     await this.flushBeforeCapture();
   }
 
+  /**
+   * Show or hide this window without destroying it — backs Window → Show All /
+   * Hide All. The window keeps running and receiving data while hidden; this is
+   * visibility only, not a close.
+   */
+  public setWindowVisible(visible: boolean): void {
+    if (!this._debugWindow || this._debugWindow.isDestroyed()) {
+      return;
+    }
+    if (visible) {
+      if (!this._debugWindow.isVisible()) this._debugWindow.show();
+    } else if (this._debugWindow.isVisible()) {
+      this._debugWindow.hide();
+    }
+  }
+
   protected async saveWindowToBMPFilename(filename: string): Promise<void> {
     if (!this._debugWindow) {
       return;

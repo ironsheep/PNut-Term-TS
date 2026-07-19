@@ -132,12 +132,21 @@ export class UsbSerial extends EventEmitter {
       highWaterMark: 1024 * 1024 // 1MB buffer (up from 16KB default) to prevent USB data loss
     };
 
-    // TEST for Windows ARM64: Try WITHOUT hupcl: false to enable DTR
-    // Hypothesis: DTR_CONTROL_DISABLE may prevent port opening on some Windows systems
-    if (process.platform !== 'win32') {
-      portOptions.hupcl = false; // POSIX only: Prevent automatic DTR/RTS assertion on port open
-    }
-    // Windows: Let DTR enable (default) to test if that allows port to open
+    // Start with the reset line IDLE on every platform.
+    //
+    // hupcl is NOT POSIX-only, despite what this once claimed. The Windows
+    // binding implements it directly (@serialport/bindings-cpp serialport_win.cpp):
+    //     if (hupcl) { dcb.fDtrControl = DTR_CONTROL_ENABLE; }
+    //     else       { dcb.fDtrControl = DTR_CONTROL_DISABLE; // disable DTR to avoid reset }
+    //
+    // Windows used to be excluded here by an unresolved experiment ("try WITHOUT
+    // hupcl to see if that allows the port to open"), so it opened with
+    // DTR_CONTROL_ENABLE — asserting DTR, and thus P2 reset, the instant the port
+    // opened. The PropPlug derives its 17us reset pulse from a DTR EDGE, so with
+    // DTR already high, setDtr(true) produced no edge, the P2 was never reset, and
+    // it never answered Prop_Chk: "No Propeller v2 device found" on Windows only,
+    // while POSIX (which did get hupcl:false) worked. See v0.9.98 Windows testing.
+    portOptions.hupcl = false; // Prevent automatic DTR/RTS assertion on port open
 
     this._serialPort = new SerialPort(portOptions);
     this.logConsoleMessage(`[USB OPEN] SerialPort created for ${this._deviceNode}`);
@@ -287,10 +296,10 @@ export class UsbSerial extends EventEmitter {
         highWaterMark: 1024 * 1024 // CRITICAL: 1MB buffer to prevent USB data loss
       };
 
-      // TEST for Windows ARM64: Try WITHOUT hupcl: false to enable DTR
-      if (process.platform !== 'win32') {
-        reopenOptions.hupcl = false; // POSIX only: Prevent automatic DTR/RTS assertion on port open
-      }
+      // Same as the initial open: hupcl:false on EVERY platform so reopening for a
+      // baud change does not assert DTR (= P2 reset) on Windows. See the detailed
+      // note at the initial-open site.
+      reopenOptions.hupcl = false; // Prevent automatic DTR/RTS assertion on port open
 
       this._serialPort = new SerialPort(reopenOptions);
 
@@ -1382,7 +1391,12 @@ export class UsbSerial extends EventEmitter {
   private async setDtr(value: boolean): Promise<void> {
     this.logConsoleMessage(`[USB] INTERNAL setDtr(${value})`);
     return new Promise((resolve, reject) => {
-      this._serialPort.set({ dtr: value }, (err) => {
+      // Drive BOTH lines explicitly. serialport's set() merges the caller's
+      // object over defaults of { dtr: true, rts: true } (@serialport/stream
+      // defaultSetFlags), so `set({ dtr })` silently ASSERTS RTS as a side
+      // effect — and `set({ rts })` silently asserts DTR. Passing the other
+      // line's tracked value keeps it where we left it.
+      this._serialPort.set({ dtr: value, rts: this._rtsValue }, (err) => {
         if (err) {
           this.logMessage(`DTR: ERROR:${err.name} - ${err.message}`);
           reject(err);
@@ -1404,7 +1418,9 @@ export class UsbSerial extends EventEmitter {
   private async setRts(value: boolean): Promise<void> {
     this.logConsoleMessage(`[USB] INTERNAL setRts(${value})`);
     return new Promise((resolve, reject) => {
-      this._serialPort.set({ rts: value }, (err) => {
+      // Drive BOTH lines explicitly — see the note in setDtr(): a partial set()
+      // asserts the omitted line rather than leaving it alone.
+      this._serialPort.set({ rts: value, dtr: this._dtrValue }, (err) => {
         if (err) {
           this.logMessage(`RTS: ERROR:${err.name} - ${err.message}`);
           reject(err);

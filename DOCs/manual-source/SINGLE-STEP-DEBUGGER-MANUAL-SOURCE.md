@@ -1,4 +1,27 @@
-# Parallax Propeller 2 Single-Step Debugger User Manual
+# Parallax Propeller 2 Single-Step Debugger — Reference Detail
+
+> ## 📥 SOURCE MATERIAL — NOT A USER DELIVERABLE
+>
+> **Role:** input for the externally-published *Single-Step Debugger Manual*. This file is
+> the accurate behavioral detail an author (human or agent) encodes into that manual — it is
+> **not** the manual, and it is **not shipped** in application packages.
+>
+> **Do not:**
+> - ship this file, or reference it from `APP-HELP.md` (users never receive it)
+> - treat it as the published manual, or maintain a second copy of its content there
+>
+> **Do:**
+> - keep it *correct* rather than polished — precision over prose
+> - verify claims against `DebuggerUnit.pas` (the v55 parity baseline) and against observed
+>   behavior; the Tests 0–14 hardware walk validated much of what's here
+>
+> **Why this marking exists:** the file was originally written as a shippable user manual,
+> before the external-manual strategy existed. Two artifacts with the same title inevitably
+> diverge, and the unshipped one silently rots. Its role is now source, and only source.
+>
+> Companion source docs of the same kind: `pascal-REF/theory-of-operations/` (display
+> windows) and `project-specific/LOGGING-STANDARDS.md` (logging behavior). See
+> `DOCs/README.md` for the full document taxonomy.
 
 ## Table of Contents
 

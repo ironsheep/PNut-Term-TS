@@ -34,7 +34,8 @@ is glanced at. Three distinct consumers:
 | **Terminal output** | user/agent `DEBUG()` text — the **primary** content; the agent feedback loop | **always live, kept clean** |
 | **System advice** | window placement (`WINDOW_PLACED`), download start/success/fail, baud, DTR/RTS resets, **directive `ERROR`/`WARNING`** (validation failures + valid ranges that help the user fix their `DEBUG` directives), and the user's optional `LOG_PURPOSE` annotation — the run narrative | **always live** |
 | **Debug-window (display) output** | tick-based bitmap/scope/plot/… data the user wants inspectable | **always live** (high-volume) |
-| **Transport diagnostics** | *our* `[CTRL]`/`[DEBUGGER]` Phase-1/2/3 framing traffic + USB wire capture | **compile-time gated OFF for releases** |
+| **Transport diagnostics** | *our* `[CTRL]`/`[DEBUGGER]` Phase-1/2/3 framing traffic | **compile-time gated OFF for releases** |
+| **USB wire capture** | the raw runtime byte conversation, in its **own** file — see principle 5 | **user-controlled** via `-u`/`--log-usb-trfc`; **not** compile-time gated |
 
 The guiding rule: **program output is the log's reason to exist and stays clean; transport
 diagnostics are ours, are meaningless to the user/agent reading program output, and must not
@@ -66,12 +67,44 @@ pollute it.**
    source — *project*-specific, not user-specific); the recordings `catalog.json` is created
    lazily on the first recording; `performance.log` is off. Nothing appears just because the app
    started.
-5. **The USB traffic log is the deep-wire transport tool** — a separate raw RECV/SEND capture
-   retained for framing forensics, gated like the other transport diagnostics.
-6. **Every debug-log session records the app version.** The session-start banner logs
-   `PNut-Term-TS: vX.Y.Z` (baked from `package.json` at build time via the esbuild `APP_VERSION`
-   define). This is essential for the regression-evidence / release-notes use — a captured log
-   must state exactly which build produced it.
+5. **The USB traffic log captures the RUNTIME byte conversation — everything after the P2 is
+   turned loose, in both directions.** It is a separate raw file (`usb-traffic_*.log`), enabled
+   by the user with `-u`/`--log-usb-trfc` or the preference. It is **not** compile-time gated —
+   unlike the `[CTRL]`/`[DEBUGGER]` transport diagnostics, it ships live in released builds,
+   because it is a user-facing capability, not an internal diagnostic.
+
+   **Scope — what belongs in it, and what deliberately does not:**
+   - **In scope:** every byte exchanged once the P2 is running — the `DEBUG()` stream from the
+     P2, and everything the host sends back (typed terminal input, `PC_KEY`/`PC_MOUSE` input
+     forwarding, single-step-debugger responses).
+   - **Out of scope, by design:** the mechanism of *getting* the P2 running — the reset
+     sequence, the `Prop_Chk` handshake, and the downloaded binary image. Those go through
+     `usb.serial.ts`, a different port owner, and are intentionally not captured. Logging the
+     image would bury the interesting bytes under hundreds of KB of hex; the handshake is
+     assumed working. *(Consequence to be aware of: a download/handshake failure is therefore
+     invisible in this log — that is expected, not a defect. Diagnosing that class of problem
+     is the job of the `usb.serial.ts` trace, which is currently hardcoded off — see
+     `ENABLE_CONSOLE_LOG` at the top of that file.)*
+
+   **Direction coverage differs by mode, and this is correct:**
+   - **Headed:** bi-directional. RX is logged by the extraction worker; TX is logged in
+     `mainWindow.sendSerialData()`, through which **every** window's transmission is routed
+     (debugger, TERM, PLOT, SCOPE, SCOPE_XY, FFT, SPECTRO, LOGIC, BITMAP, MIDI, and
+     `tLongTransmission`).
+   - **Headless:** receive-only — **by nature, not by omission.** Nothing in the headless path
+     can send bytes to the P2 after the download completes; `headlessController` only opens the
+     port, toggles DTR/RTS, reads, and closes. There is no transmit path to log. If a future
+     feature gives headless one, a TX hook must be added at that time.
+
+   **An empty USB log is meaningful:** it means the P2 never produced runtime traffic — most
+   often because the download failed and the program never started.
+6. **Every log session records the app version — all three log kinds.** The session-start banner
+   logs `PNut-Term-TS: vX.Y.Z` (baked from `package.json` at build time via the esbuild
+   `APP_VERSION` define) in the **debug** log (`loggerWin`), the **headless** log
+   (`headlessFileLogger`), and the **USB traffic** log (`usbTrafficLogger`). This is essential
+   for the regression-evidence / release-notes use — a captured log must state exactly which
+   build produced it. *(Through v0.9.98 only the debug log carried it; the headless and USB
+   banners were added when this gap was found.)*
 7. **The `RouterLogger` is a separate, ENV-VAR-controlled diagnostic** (`ROUTER_LOG_LEVEL`,
    `ROUTER_LOG_FILE`, `ROUTER_LOG_PATH`) — the one runtime-gated logger (it predates the
    compile-time gate). It is **off by default**: file logging turns on only with
@@ -98,9 +131,12 @@ These reflect the **current implementation** and supersede any older examples fu
   end via `=== Session ended … ===` (with the reason: DTR/RTS reset, download started, shutdown).
 - **Content timestamp:** ISO-8601 `[YYYY-MM-DDTHH:MM:SS.mmm]` (from `getFormattedDateTimeISO()`).
 - **File names (per logger, as actually emitted):** debug logger `debug_YYMMDD-HHMMSS.log`;
-  USB wire `usb-traffic_YYMMDD-HHMMSS.log`; router `router-YYYY-MM-DD.log`; window exports keep
-  their format-specific extension (`.csv`/`.vcd`/`.bmp`). *(The single `{Prefix}_{Ctx}_…` pattern
-  below is aspirational; the loggers currently differ per the list here.)*
+  headless `headless_YYMMDD-HHMMSS.log`; USB wire `usb-traffic_YYMMDD-HHMMSS.log`; router
+  `router-YYYY-MM-DD.log`; window exports keep their format-specific extension
+  (`.csv`/`.vcd`/`.bmp`). All live in the log directory (default `./logs/`, relative to the
+  launch folder). **This list is normative — it is what the code emits.** The
+  `{Prefix}_{Ctx}_{YYYYMMDD}_{HHMMSS}` pattern described further down was never implemented and
+  is retained only as a possible future direction; do not document it as current behavior.
 
 ### Where these live in code (pointers)
 
@@ -118,8 +154,14 @@ These reflect the **current implementation** and supersede any older examples fu
 
 ## File Naming Convention
 
-### Required Pattern
-All log files MUST follow this naming pattern that builds on the existing prefix:
+> ⚠️ **ASPIRATIONAL — NOT CURRENT BEHAVIOR.** The pattern below is **not implemented** and no
+> logger emits it. The authoritative, as-built filenames are in the canonical-formats list
+> above (`debug_`/`headless_`/`usb-traffic_` + `YYMMDD-HHMMSS`). This section is kept only as a
+> record of a proposed future scheme. **Anyone writing user-facing documentation must use the
+> list above, not this pattern.**
+
+### Proposed Pattern (unimplemented)
+The proposal was that all log files follow this naming pattern building on the existing prefix:
 ```
 {ExistingPrefix}_{ContextInjection}_{YYYYMMDD}_{HHMMSS}.log
 ```

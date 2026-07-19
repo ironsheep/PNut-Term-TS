@@ -112,9 +112,14 @@ describe('WindowRouter Integration with All Window Types', () => {
       // Stop recording
       router.stopRecording();
 
-      // Binary recorder (default) writes to process.cwd()/tests/recordings/*.p2rec
-      // (no context set on router, binaryRecorder uses its default path).
-      const recordingsDir = path.join(process.cwd(), 'tests', 'recordings');
+      // Recordings go to <recordingsDir>/sessions — WindowRouter.getSessionsDir(),
+      // the same location RecordingCatalog and the playback reader resolve against.
+      // With no context set on the router, the base falls back to <cwd>/recordings.
+      //
+      // This assertion previously pointed at <cwd>/tests/recordings, pinning the
+      // defect where the binary writer used BinaryRecorder's default and the
+      // playback reader never found the resulting file.
+      const recordingsDir = path.join(process.cwd(), 'recordings', 'sessions');
       if (!fs.existsSync(recordingsDir)) {
         fs.mkdirSync(recordingsDir, { recursive: true });
       }

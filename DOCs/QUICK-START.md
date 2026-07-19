@@ -1,5 +1,5 @@
 # PNut-Term-TS Quick Start Guide
-*Version 0.9.0*
+*Version 0.9.99*
 
 ## First Session (2 Minutes)
 
@@ -37,7 +37,8 @@ Run your P2 program with DEBUG commands. Windows appear as needed - no menu inte
 | **Settings** | `Ctrl+,` | Open preferences dialog |
 | **Help** | `F1` | Open documentation |
 | **Find** | `Ctrl+F` | Search in terminal |
-| **Clear** | `Ctrl+L` | Clear terminal display |
+
+Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 
 ---
 

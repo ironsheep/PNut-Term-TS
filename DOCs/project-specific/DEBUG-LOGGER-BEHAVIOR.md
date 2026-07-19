@@ -37,19 +37,23 @@ The Debug Logger Window is a specialized terminal that captures ALL debug output
 #### Starting Logs
 - **First traffic after DTR/RTS** starts new log file
 - Not the DTR/RTS event itself - ensures clean boundaries
-- Log files named: `basename_YYYYMMDD_HHMMSS_debug.log`
-- First line always: ` * LOG_START filename.log (P2 connected via /dev/ttyXXX)`
-- Second line (if configured): ` * LOG_PURPOSE Testing feature XYZ`
+- Log files named: `debug_YYMMDD-HHMMSS.log` (see LOGGING-STANDARDS.md for every logger's name)
+- Opens with a banner block, not a `LOG_START` marker:
+  ```
+  === Debug Logger Session Started at 2026-07-19T14:11:01.872 ===
+  PNut-Term-TS: v0.9.98
+  Program: debug
+  =====================================
+  ```
+  The version line is required of every log kind — see LOGGING-STANDARDS.md principle 6.
 
 #### Ending Logs
-- **DTR/RTS toggle** closes current log with reason:
-  - ` * LOG_ENDED DTR reset for download`
-  - ` * LOG_ENDED RTS reset for download`
-  - ` * LOG_ENDED User reset via DTR toggle`
-- **Other endings**:
-  - ` * LOG_ENDED App shutdown by user`
-  - ` * LOG_ENDED Connection lost to P2`
-  - ` * LOG_ENDED User closed debug logger window`
+Closed with a banner carrying the reason, not a `LOG_ENDED` marker — e.g.
+`=== Session ended - Download Started at <ISO> ===`,
+`=== Session ended due to DTR Reset at <ISO> ===`,
+`=== Debug Logger Session Ended at <ISO> ===`.
+Reasons include: download started, DTR/RTS reset, app shutdown, connection lost, logger window
+closed.
 
 #### Window Persistence
 - Debug Logger window **stays open** during DTR/RTS reset
@@ -58,7 +62,16 @@ The Debug Logger Window is a specialized terminal that captures ALL debug output
 
 ## System Messages
 
-All system messages use ` * ` prefix for visual distinction and easy grep filtering:
+System messages are written as their own timestamped line, prefixed `[SYSTEM]`:
+
+```
+[2026-07-19T14:11:01.770] [SYSTEM] BAUD_RATE_SET 2000000 baud (preferences/default)
+```
+
+> ⚠️ The ` * ` prefix described in older revisions of this document is **retired**. Grep filters
+> built on ` * ` match nothing. Filter on `[SYSTEM]` instead. (Each system/diagnostic event has
+> had its own line since the fix in v0.9.98; previously they accumulated onto one physical line
+> until a serial newline flushed them.)
 
 ### Message Categories
 
@@ -88,10 +101,16 @@ Non-fatal issues with corrective action taken:
 ```
 
 #### Session Management
+As actually emitted — banner blocks, not `LOG_START`/`LOG_ENDED` markers:
 ```
- * LOG_START filename.log (P2 connected via /dev/ttyUSB0)
- * LOG_PURPOSE Debugging I2C timing issues
- * LOG_ENDED DTR reset for download
+=== Debug Logger Session Started at 2026-07-19T14:11:01.872 ===
+PNut-Term-TS: v0.9.98
+Program: debug
+=====================================
+
+[2026-07-19T14:11:01.770] [SYSTEM] LOG_PURPOSE Debugging I2C timing issues
+
+=== Session ended - Download Started at 2026-07-19T14:11:02.287 ===
 ```
 
 ## Message Routing
@@ -99,7 +118,7 @@ Non-fatal issues with corrective action taken:
 ### To Debug Logger
 - **Cog-prefixed messages**: `Cog0  Debug output`
 - **INIT messages**: `INIT $0000_0000 $0000_0000 load`
-- **System messages**: ` * WINDOW_PLACED ...`
+- **System messages**: `[SYSTEM] WINDOW_PLACED ...` (own timestamped line)
 
 ### To Blue Terminal (Main Window)
 - **Regular output**: Non-prefixed serial data

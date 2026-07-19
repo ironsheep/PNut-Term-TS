@@ -51,8 +51,11 @@ export class USBTrafficLogger {
       if (ENABLE_CONSOLE_LOG) console.log(`[USB LOGGER] Write stream created successfully`);
 
       // Write session header
+      // Record the exact build, same as the debug and headless logs: a captured
+      // USB log is bug-report evidence and must state which build produced it.
       const header = `\n${'='.repeat(80)}\n` +
                     `USB Traffic Log Session Started: ${getFormattedDateTimeISO()}\n` +
+                    `PNut-Term-TS: v${APP_VERSION}\n` +
                     `${'='.repeat(80)}\n`;
       this.logStream.write(header);
 

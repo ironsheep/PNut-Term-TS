@@ -332,35 +332,20 @@ export class PreferencesDialog {
         <input type="checkbox" id="${prefix}-auto-save-debug">
       </div>`}
 
-      ${isProject ? `<div class="form-group">
-        <input type="checkbox" class="override-checkbox" id="${prefix}-override-new-log-dtr" onchange="toggleOverride('${prefix}', 'new-log-dtr')">
-        <label>New Log on P2 Reset:</label>
-        <input type="checkbox" id="${prefix}-new-log-dtr" disabled>
-        <span class="global-value" id="${prefix}-global-new-log-dtr"></span>
-      </div>` : `<div class="form-group">
-        <label>New Log on P2 Reset:</label>
-        <input type="checkbox" id="${prefix}-new-log-dtr">
-      </div>`}
-
-      ${isProject ? `<div class="form-group">
-        <input type="checkbox" class="override-checkbox" id="${prefix}-override-max-log-size" onchange="toggleOverride('${prefix}', 'max-log-size')">
-        <label>Max Log Size:</label>
-        <select id="${prefix}-max-log-size" disabled>
-          <option value="1MB">1 MB</option>
-          <option value="10MB">10 MB</option>
-          <option value="100MB">100 MB</option>
-          <option value="unlimited">Unlimited</option>
-        </select>
-        <span class="global-value" id="${prefix}-global-max-log-size"></span>
-      </div>` : `<div class="form-group">
-        <label>Max Log Size:</label>
-        <select id="${prefix}-max-log-size">
-          <option value="1MB">1 MB</option>
-          <option value="10MB">10 MB</option>
-          <option value="100MB">100 MB</option>
-          <option value="unlimited">Unlimited</option>
-        </select>
-      </div>`}
+      <!-- REMOVED (v0.9.99): "New Log on P2 Reset", "Max Log Size", "USB Log Directory".
+           All three were inert controls — the settings were stored and reloaded but no
+           code ever consumed them:
+             - New Log on P2 Reset : handleDTRReset() rotates the log UNCONDITIONALLY,
+                                     which is the intended golden-sync-point behavior. A
+                                     toggle implied you could disable something we don't
+                                     want disabled.
+             - Max Log Size        : no consumer anywhere; logs are unbounded. Capability
+                                     tracked in DOCs/PUNCH_LIST.md rather than shipped as
+                                     a knob that does nothing.
+             - USB Log Directory   : USB logs always go to the Log Directory
+                                     (getLogDirectory()); usbLogFilePath had no reader.
+           "Enable USB Traffic Logging" below is NOT inert — it is honored in
+           mainWindow.applyPreferences() — so it stays. -->
 
       ${isProject ? `<div class="form-group">
         <input type="checkbox" class="override-checkbox" id="${prefix}-override-enable-usb-logging" onchange="toggleOverride('${prefix}', 'enable-usb-logging')">
@@ -370,17 +355,7 @@ export class PreferencesDialog {
       </div>` : `<div class="form-group">
         <label>Enable USB Traffic Logging:</label>
         <input type="checkbox" id="${prefix}-enable-usb-logging">
-      </div>`}
-
-      ${isProject ? `<div class="form-group">
-        <input type="checkbox" class="override-checkbox" id="${prefix}-override-usb-log-path" onchange="toggleOverride('${prefix}', 'usb-log-path')">
-        <label>USB Log Directory:</label>
-        <input type="text" id="${prefix}-usb-log-path" value="./logs/" disabled>
-        <span class="global-value" id="${prefix}-global-usb-log-path"></span>
-      </div>` : `<div class="form-group">
-        <label>USB Log Directory:</label>
-        <input type="text" id="${prefix}-usb-log-path" value="./logs/">
-        <span style="font-size: 11px; color: #666; margin-left: 10px;">Logs are timestamped automatically</span>
+        <span style="font-size: 11px; color: #666; margin-left: 10px;">Written to the Log Directory, timestamped automatically</span>
       </div>`}
     </div>
 
@@ -863,10 +838,7 @@ export class PreferencesDialog {
       // Logging
       document.getElementById(prefix + '-log-directory').value = settings.logging.logDirectory;
       document.getElementById(prefix + '-auto-save-debug').checked = settings.logging.autoSaveDebug;
-      document.getElementById(prefix + '-new-log-dtr').checked = settings.logging.newLogOnDtrReset;
-      document.getElementById(prefix + '-max-log-size').value = settings.logging.maxLogSize;
       document.getElementById(prefix + '-enable-usb-logging').checked = settings.logging.enableUSBLogging || false;
-      document.getElementById(prefix + '-usb-log-path').value = settings.logging.usbLogFilePath || './logs/';
 
       // Recordings
       document.getElementById(prefix + '-recordings-directory').value = settings.recordings.recordingsDirectory;
@@ -900,10 +872,7 @@ export class PreferencesDialog {
       // Logging
       document.getElementById(prefix + '-log-directory').value = settings.logging.logDirectory;
       document.getElementById(prefix + '-auto-save-debug').checked = settings.logging.autoSaveDebug;
-      document.getElementById(prefix + '-new-log-dtr').checked = settings.logging.newLogOnDtrReset;
-      document.getElementById(prefix + '-max-log-size').value = settings.logging.maxLogSize;
       document.getElementById(prefix + '-enable-usb-logging').checked = settings.logging.enableUSBLogging || false;
-      document.getElementById(prefix + '-usb-log-path').value = settings.logging.usbLogFilePath || './logs/';
 
       // Recordings
       document.getElementById(prefix + '-recordings-directory').value = settings.recordings.recordingsDirectory;
@@ -936,10 +905,7 @@ export class PreferencesDialog {
       // Logging
       setGlobalLabel(prefix, 'log-directory', settings.logging.logDirectory);
       setGlobalLabel(prefix, 'auto-save-debug', settings.logging.autoSaveDebug ? 'Yes' : 'No');
-      setGlobalLabel(prefix, 'new-log-dtr', settings.logging.newLogOnDtrReset ? 'Yes' : 'No');
-      setGlobalLabel(prefix, 'max-log-size', settings.logging.maxLogSize);
       setGlobalLabel(prefix, 'enable-usb-logging', settings.logging.enableUSBLogging ? 'Yes' : 'No');
-      setGlobalLabel(prefix, 'usb-log-path', settings.logging.usbLogFilePath || './logs/');
 
       // Recordings
       setGlobalLabel(prefix, 'recordings-directory', settings.recordings.recordingsDirectory);
@@ -1001,10 +967,7 @@ export class PreferencesDialog {
         logging: {
           logDirectory: document.getElementById(prefix + '-log-directory').value,
           autoSaveDebug: document.getElementById(prefix + '-auto-save-debug').checked,
-          newLogOnDtrReset: document.getElementById(prefix + '-new-log-dtr').checked,
-          maxLogSize: document.getElementById(prefix + '-max-log-size').value,
           enableUSBLogging: document.getElementById(prefix + '-enable-usb-logging').checked,
-          usbLogFilePath: document.getElementById(prefix + '-usb-log-path').value
         },
         recordings: {
           recordingsDirectory: document.getElementById(prefix + '-recordings-directory').value
@@ -1034,10 +997,7 @@ export class PreferencesDialog {
         { category: 'serialPort', id: 'reset-on-connection', key: 'resetOnConnection', parser: (v) => v },
         { category: 'logging', id: 'log-directory', key: 'logDirectory', parser: (v) => v },
         { category: 'logging', id: 'auto-save-debug', key: 'autoSaveDebug', parser: (v) => v },
-        { category: 'logging', id: 'new-log-dtr', key: 'newLogOnDtrReset', parser: (v) => v },
-        { category: 'logging', id: 'max-log-size', key: 'maxLogSize', parser: (v) => v },
         { category: 'logging', id: 'enable-usb-logging', key: 'enableUSBLogging', parser: (v) => v },
-        { category: 'logging', id: 'usb-log-path', key: 'usbLogFilePath', parser: (v) => v },
         { category: 'recordings', id: 'recordings-directory', key: 'recordingsDirectory', parser: (v) => v },
         { category: 'debugLogger', id: 'scrollback-lines', key: 'scrollbackLines', parser: (v) => parseInt(v) }
       ];

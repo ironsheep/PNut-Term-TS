@@ -39,7 +39,7 @@ Assume competence — explain the app, not the P2. Mirror the tone already set i
 - **Use tables for options/settings**: Setting · Options · Default. Keep columns terse.
 - **Use a blockquote `>` for a caveat or platform note**, sparingly.
 - **Cross-reference instead of duplicating.** Point to `DOCs/USER-GUIDE.md`,
-  `DOCs/DEBUGGER-USER-MANUAL.md`, `DOCs/QUICK-START.md`, or the official P2 `debug()`
+  the published Single-Step Debugger Manual, `DOCs/QUICK-START.md`, or the official P2 `debug()`
   reference rather than restating them.
 - **Describe behavior the user can observe** — indicators, colors, what a window shows.
 

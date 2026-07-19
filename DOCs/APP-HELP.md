@@ -6,8 +6,8 @@ It receives the `debug()` output a P2 program emits over a USB serial adapter
 support for downloading programs, recording and replaying sessions, and headless
 automation.
 
-For a fuller treatment see the **User Guide** (`DOCs/USER-GUIDE.md`); for the
-single-step debugger see the **Debugger User Manual** (`DOCs/DEBUGGER-USER-MANUAL.md`).
+This Help is self-contained. Full manuals — including the Single-Step Debugger manual —
+are published at the project site: <https://github.com/ironsheep/PNut-Term-TS>
 
 > Shortcuts below are shown in their Windows/Linux form. On macOS, use `Cmd` wherever
 > `Ctrl` is listed.
@@ -65,6 +65,7 @@ official Propeller 2 DEBUG documentation; this Help does not reproduce it.
 | **SPECTRO** | Spectrogram / waterfall |
 | **MIDI** | MIDI keyboard / message display |
 | **COG logger** | Per-COG `debug()` message log (COG 0–7) |
+| **Debug Logger** | Timestamped log of all serial traffic (see below) |
 | **Debugger** | Interactive single-step PASM2 debugger (one per COG) |
 
 ### Shared window behavior
@@ -73,9 +74,11 @@ official Propeller 2 DEBUG documentation; this Help does not reproduce it.
   windows with an explicit `POS` honor it.
 - **Position readout while dragging** — drag a display window and its title bar shows
   the live `x, y` position, so you can pick coordinates for a `POS` directive. (The COG
-  logger and debugger windows don't show this.)
+  logger, Debug Logger, and debugger windows don't show this.)
 - **SAVE** — `debug()` `SAVE` / `SAVE WINDOW` directives write a window's image to a
-  bitmap file.
+  `.bmp` file in the screenshot directory (`./screenshots/`, created on first save). The
+  `.bmp` extension is applied regardless of the filename your program supplies. `SAVE`
+  captures the canvas; `SAVE WINDOW` captures the on-screen window including its chrome.
 - **Input forwarding** — a window forwards mouse and keyboard input back to the running
   P2 program when the program requested it (`PC_MOUSE` / `PC_KEY`).
 
@@ -113,10 +116,8 @@ Windows/Linux. The items are equivalent; accelerators follow the platform.
 | Item | Description |
 |------|-------------|
 | Performance Monitor | Open the performance metrics window |
-| Cascade | Arrange debug windows in a cascade |
-| Tile | Tile debug windows to fill the screen |
 | Show All Windows | Reveal all debug windows |
-| Hide All Windows | Hide all debug windows (they stay active) |
+| Hide All Windows | Hide all debug windows (they stay open and keep receiving data) |
 
 ### Help
 
@@ -162,9 +163,9 @@ project (delta-save); unchecked items inherit and display the global value.
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| Default PropPlug | Auto-detect, or a named device | Auto-detect |
+| Default PropPlug | Auto-detect (any available), or a named device | Auto-detect |
 | Default Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | 2000000 |
-| Reset P2 on Connection | on / off | on |
+| Reset P2 on App Startup | on / off | on |
 
 > The DTR/RTS control line is **not** set here — it is configured per device in the
 > PropPlug Management tab.
@@ -175,10 +176,11 @@ project (delta-save); unchecked items inherit and display the global value.
 |---------|---------|---------|
 | Log Directory | path | `./logs/` |
 | Auto-Save Debug Output | on / off | on |
-| New Log on P2 Reset | on / off | on |
-| Max Log Size | 1 MB, 10 MB, 100 MB, Unlimited | Unlimited |
 | Enable USB Traffic Logging | on / off | off |
-| USB Log Directory | path | `./logs/` |
+
+A P2 reset always starts a new log file — that boundary is what makes a log readable as
+one run, so it isn't optional. Logs are not size-capped. USB traffic logs are written to
+the Log Directory above, alongside the debug logs.
 
 ### Recordings
 
@@ -198,13 +200,20 @@ project (delta-save); unchecked items inherit and display the global value.
   `~/.pnut-term-ts-settings.json` (macOS/Linux).
 - **Project (local):** `./.pnut-term-ts-settings.json` in the project directory —
   created only when you enable project-specific overrides.
+- **Device settings:** `./pnut-term-settings.json` (note: no leading dot) — the
+  PropPlug/device list, written only when you save device settings.
+
+None of these files is created merely by launching the app; each appears the first time
+you actually save that kind of setting. A settings file whose contents match the defaults
+is deleted rather than left empty.
 
 ---
 
 ## PropPlug / device management
 
-PNut-Term-TS remembers each USB serial device it sees and lets you name it and set its
-reset control line. Open **Preferences → PropPlug Management** to manage the
+PNut-Term-TS remembers each Parallax PropPlug (VID `0403` / PID `6015`) it sees and lets
+you name it and set its reset control line — pass `-m/--match-vendor-only` to accept any
+FTDI device instead. Open **Preferences → PropPlug Management** to manage the
 known-devices list: set a **Friendly Name**, choose the **Control Line** (DTR or RTS),
 view VID/PID, and save or delete a device. New devices are added automatically on USB
 enumeration with the Parallax default control line (DTR).
@@ -219,15 +228,19 @@ P2 reset is asserted over DTR or RTS:
 - Parallax PropPlugs and most FTDI adapters → **DTR**.
 - Some clones/adapters → **RTS**.
 
-The control line is stored per device; the `--rts` command-line flag overrides it for a
-session (primarily for `--ide`).
+The control line is stored per device; the `--rts` command-line flag overrides it for the
+session. Note that a device seen for the **first** time while `--rts` is active is
+*recorded* as an RTS device.
 
 ### Device selection priority
 
 1. Command-line `-p <device>` (exact, or case-insensitive partial match on path/serial).
+   If the name matches no attached device this is a hard stop — it does not fall through
+   to auto-detect.
 2. Project device override (if enabled).
 3. User default.
-4. Auto-detect (exactly one device connected).
+4. Auto-detect (exactly one device connected). The first time this happens the device is
+   saved as your user default, so later runs resolve at step 3.
 5. Otherwise selection is required.
 
 ---
@@ -250,9 +263,10 @@ testing, sharing reproductions, and offline study.
 ## Performance monitoring
 
 Open with **Window → Performance Monitor** to watch the health of the serial → window
-data path: throughput history, receive/message buffer usage, per-window queue depth,
-and message/error counts. If buffer usage climbs toward full at high baud, reduce the
-data rate or close windows you don't need.
+data path: throughput history, buffer usage with high-water mark and overflow count,
+per-window queue depth, and message/error counts. It also shows overall status, whether
+recording is active, and an auto-refresh toggle. If buffer usage climbs toward full at
+high baud, reduce the data rate or close windows you don't need.
 
 ---
 
@@ -271,17 +285,22 @@ display, and a status bar.
 - **⏺ Record** / **▶ Play** — start/stop a recording and play one back; a status label
   ("Ready", "Recording…") sits alongside.
 
-A **text-entry field** above the toolbar sends a line of text to the running P2 when you
+A **text-entry field** below the toolbar sends a line of text to the running P2 when you
 press **Enter**. During playback a transport strip appears with play/pause/stop, an
 elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
 
-**Connection indicator** (status bar): green when connected, amber when disconnected
-(grey until the first connection).
+**Connection indicator** (status bar): green when connected, amber when disconnected,
+grey until the first connection attempt.
 
-**Other status fields:** active COGs, the logging indicator (lit while recording),
-TX/RX activity indicators, the connected **Port**, the active **Baud**, and the
-**DTR/RTS** control line for the current device. The **Echo** checkbox filters locally
-echoed characters from the display.
+**Other status fields:** active COGs and the logging indicator (lit while the Debug
+Logger is writing a log file — *not* while recording) on the left; the **Echo** checkbox,
+TX/RX activity indicators, the connected **Port**, and the active **Baud** on the right.
+When **Echo** is checked, characters echoed back by the P2 are suppressed so your typed
+input isn't shown twice. The active DTR/RTS control line is shown on the *toolbar*
+button, not in the status bar.
+
+> In `--ide` mode the layout is different: no menu bar and no toolbar — only the
+> text-entry field, terminal, and status bar.
 
 **Terminal display area:** shows your program's terminal output — text classified as
 terminal output, `print()` text, and COG lines that don't match the COG-window pattern.
@@ -293,13 +312,18 @@ Backtick window commands do **not** appear here; they route to their windows.
 
 The Debug Logger is the central log of all serial traffic, with timestamps.
 
-- **Auto-scroll** keeps the latest messages in view; turn it off to review history.
-- **Search** filters messages by keyword.
-- Transmitted bytes are marked `[TX]`; control characters show as `<cr>`, `<lf>`.
-- A P2 reset produces a session marker (golden sync point) that separates sessions and
-  rotates the log file.
-- Messages are shown in distinct colors by type — terminal output, COG messages, window
-  (backtick) commands, and errors.
+- The view **follows live data**; scroll up to pause and review history, then click
+  **↓ Follow Live Data** to resume.
+- Transmitted bytes are marked `[TX]`, with control characters shown as `<cr>`, `<lf>`
+  (this rendering applies to transmitted data only).
+- A P2 reset produces a session marker (golden sync point) that separates sessions,
+  clears the log view, and rotates the log file.
+- System messages, errors, warnings, binary/hex fallbacks, and debugger output are
+  color-coded; ordinary traffic uses the theme foreground color.
+- **Show All 8 COGs** opens the full set of COG windows; **Export Active COG Logs** writes
+  the current COG logs out to files.
+- The status bar shows the active log filename, line count, file size, and whether the
+  view is live or paused.
 
 History length is set by **History Lines** in Preferences (default 1000).
 
@@ -310,7 +334,9 @@ History length is set by **History Lines** in Preferences (default 1000).
 A COG window logs the `debug()` messages from one COG (0–7).
 
 - **Message format:** `Cog<N>  <message>` — note the **two spaces** after the COG name.
-- Each window shows recent-activity state and a per-COG message count.
+- Each window starts **Dormant** and switches to the **Active** theme on its COG's first
+  message. The status bar shows that state, the connection status, and a per-COG message
+  count, and an **Export COG N Log** button writes that COG's log to a file.
 - **P2 system init** (`Cog0 INIT … load`) is a golden sync point: it marks a new
   session, clears debug windows, and rotates the log.
 - COG windows are optional — COG messages that arrive with no window open are logged to
@@ -342,8 +368,13 @@ Example — create a 16-channel logic window named `SIGNAL_BUS`:
 `my_scope 123 456      updates the window named my_scope
 ```
 
-Update commands must match the window name **exactly** (case-sensitive). An update to a
-name that doesn't exist is an error — check the Debug Logger to see the raw command.
+Window names match **case-insensitively** — `MYSCOPE`, `myscope`, and `MyScope` all reach
+the same window. An update naming a window that was never created is reported as an error
+in the terminal — check the Debug Logger to see the raw command.
+
+> **Avoid naming a window `COG0` or `COG-0`, or anything containing that text.** Backtick
+> commands containing those strings are dropped before name lookup, silently — you get no
+> error, just nothing.
 
 ---
 
@@ -356,10 +387,12 @@ Windows/Linux shown; use `Cmd` instead of `Ctrl` on macOS.
 | `Ctrl+R` | Start Recording |
 | `Ctrl+P` | Playback Recording |
 | `Ctrl+F` | Find in terminal |
-| `Ctrl+,` | Preferences |
-| `Ctrl+X` / `Ctrl+C` / `Ctrl+V` | Cut / Copy / Paste |
-| `Ctrl+Q` | Exit |
+| `Ctrl+,` | Preferences (`Cmd+,` on macOS) |
+| `Ctrl+Q` | Exit (`Cmd+Q` on macOS) |
 | `F1` | Documentation |
+
+Cut / Copy / Paste use your platform's standard keys (`Ctrl+X`/`C`/`V`, or `Cmd` on
+macOS) in any text field.
 
 > Inside a debug window, mouse and keyboard input may be forwarded to the running P2
 > program when that program requested it (`PC_MOUSE` / `PC_KEY`).
@@ -377,11 +410,16 @@ pnut-term-ts [options]
 | `-r` | `--ram` | Download the file to RAM and run |
 | `-f` | `--flash` | Download the file to flash and run |
 | `-p` | `--plug` | Use the PropPlug at `<device>` (path/serial; partial match OK) |
-| `-b` | `--debugbaud` | Debug baud rate (default 2000000) |
+| `-b` | `--debugbaud` | **Override** the debug baud rate (normally taken from the downloaded binary; falls back to 2000000) |
 | `-n` | `--dvcnodes` | List detected USB serial devices and exit |
 | `-u` | `--log-usb-trfc` | Write a timestamped USB-traffic log |
+| `-m` | `--match-vendor-only` | Match any FTDI device, not just Parallax PropPlugs |
+| `-d` | `--debug` | Verbose debug output |
+| `-v` | `--verbose` | Verbose progress output |
+| `-q` | `--quiet` | Suppress the sign-on banner |
 | | `--ide` | IDE-integration mode (minimal UI) |
-| | `--rts` | Use RTS instead of DTR for reset (intended with `--ide`) |
+| | `--rts` | Use RTS instead of DTR for reset (works standalone and with `--ide`; overrides the per-device setting) |
+| | `--console-mode` | Pause ~2 s before closing so console output stays readable |
 | | `--headless` | Run with no GUI (file logging only) |
 | | `--timeout <s>` | Exit after N seconds (headless only) |
 | | `--end-marker [phrase]` | Exit when `phrase` appears; default matches `END_SESSION` / `DEBUG_END_SESSION` |
@@ -398,9 +436,22 @@ pnut-term-ts --headless -r test.bin --end-marker  # headless, exit on end-sessio
 ```
 
 `-r` and `-f` are mutually exclusive; `--timeout` requires `--headless`; `--end-marker`
-requires `--headless` or `--exit-on-end-session`. A bad command line is reported in full
-and exits with code `2` without running anything. See the **User Guide** for the full
-command-line reference, exit codes, and operating modes.
+requires `--headless` or `--exit-on-end-session`. A bad command line stops before anything
+runs and exits with code `2`; option-value and flag-combination problems are all reported
+at once, while an unrecognized option is reported on its own.
+
+### Exit codes
+
+Scripts and CI can rely on these:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Normal exit (including a clean end-session marker) |
+| `1` | Port error — enumeration failed, or the requested device was not found |
+| `2` | Usage error — bad command line; nothing was run |
+| `3` | Download failed |
+| `124` | Timed out (`--timeout`) |
+| `125` | Flush timeout during shutdown |
 
 ---
 
@@ -438,13 +489,23 @@ user to the `dialout` group (`sudo usermod -a -G dialout $USER`, then re-login).
 - **GitHub repository / issues:** https://github.com/ironsheep/PNut-Term-TS
 - **Propeller 2 documentation:** https://propeller.parallax.com/p2.html
 - **P2 `debug()` directive reference:** the official Parallax P2 DEBUG documentation
-- **Single-step debugger:** `DOCs/DEBUGGER-USER-MANUAL.md`
+- **Single-step debugger manual:** published at the project site (link above)
 - **Parallax Forums:** the P2 section
 
-Check **Help → About** for the version, build, platform, and runtime details. Log files
-are written to your configured Log Directory (default `./logs/`); attach the relevant
-log when reporting an issue.
+Check **Help → About** for the version, build, platform, and runtime details.
+
+Log files are written to your configured Log Directory (default `./logs/`, relative to
+the folder you launched from):
+
+| File | Written by |
+|------|-----------|
+| `debug_YYMMDD-HHMMSS.log` | the GUI Debug Logger |
+| `headless_YYMMDD-HHMMSS.log` | `--headless` runs |
+| `usb-traffic_YYMMDD-HHMMSS.log` | `-u` / `--log-usb-trfc` |
+
+Each log records the exact app version on its first line, so a captured log always
+states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.9.73 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.9.99 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

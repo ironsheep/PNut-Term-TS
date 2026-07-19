@@ -226,7 +226,7 @@ stale text. *Error:* hover during a break-in-progress doesn't corrupt the frame.
 ## §9 — Documentation
 
 No SPEC_DOC change: `ARCHITECTURE.md` documents debugger *routing/packets*, not pixel
-rendering (Pascal is the rendering spec). `DEBUGGER-USER-MANUAL.md` is operation-focused
+rendering (Pascal is the rendering spec). `manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md` is operation-focused
 — no pixel-level content to change. **Deliverable:** verify both at sprint-closeout; if
 either describes a visual element this sprint changes, update it then. Build-wrapup
 records the visual fixes in `CHANGELOG.md` at release.

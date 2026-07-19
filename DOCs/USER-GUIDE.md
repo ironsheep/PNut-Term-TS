@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.9.73*
+*Version 0.9.99*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -258,10 +258,10 @@ Your machine-wide defaults.
 |---------|---------|---------|
 | Log Directory | path | `./logs/` |
 | Auto-Save Debug Output | on / off | on |
-| New Log on P2 Reset | on / off | — |
-| Max Log Size | 1 MB, 10 MB, 100 MB, Unlimited | Unlimited |
 | Enable USB Traffic Logging | on / off | off |
-| USB Log Directory | path | `./logs/` |
+
+A P2 reset always starts a new log file (that boundary is what makes a log readable as a
+single run). Logs are not size-capped. USB traffic logs go to the Log Directory above.
 
 **Recordings**
 | Setting | Default |
@@ -391,7 +391,7 @@ directives — there is no menu command to open one. The available window types 
 > **The directive syntax for each window type is part of the Parallax P2 `debug()`
 > specification and is documented separately — this guide intentionally does not
 > reproduce it.** See the official Propeller 2 DEBUG documentation for the full
-> directive/parameter reference, and **`DOCs/DEBUGGER-USER-MANUAL.md`** for the
+> directive/parameter reference, and the published **Single-Step Debugger Manual** for the
 > single-step debugger.
 
 ---
@@ -581,7 +581,7 @@ of `Ctrl` on macOS).
 - **GitHub issues:** https://github.com/ironsheep/PNut-Term-TS/issues
 - **Propeller 2 documentation:** https://propeller.parallax.com/p2.html
 - **P2 `debug()` directive reference:** the official Parallax P2 DEBUG documentation
-- **Single-step debugger:** `DOCs/DEBUGGER-USER-MANUAL.md`
+- **Single-step debugger:** the published Single-Step Debugger Manual
 - **Quick start:** `DOCs/QUICK-START.md`
 - **Parallax Forums:** the P2 section
 

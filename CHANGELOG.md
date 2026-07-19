@@ -5,6 +5,54 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.99] - 2026-07-19
+
+Windows download fix, working keyboard shortcuts, and recordings that save where you can
+find them. **Built for hardware testing — the Windows download fix needs confirming on a P2.**
+
+### Fixed
+
+- **Downloading to a P2 now works on Windows.** `-r`/`-f` (and the RAM/FLASH buttons) failed
+  on Windows with *"No Propeller v2 device found — check connection and try again"*, even
+  though the device was detected and listed. Windows opened the serial port with the DTR
+  line already asserted, which holds the P2 in reset; because the PropPlug generates its
+  reset pulse from a *change* on that line, no reset ever occurred, so the P2 kept running
+  its old program and never answered. The port is now opened with the reset line idle on
+  every platform. macOS and Linux were unaffected. *(Needs confirming on Windows hardware.)*
+- **Changing baud no longer disturbs the P2 on Windows** — the same port-open problem
+  applied when reopening the port for a new baud rate.
+- **Reset no longer drives the wrong control line.** Asserting DTR silently asserted RTS too
+  (and vice versa). Harmless on a standard PropPlug, but on adapters wired for RTS reset it
+  could hold the P2 in reset.
+- **Keyboard shortcuts now work on Windows and Linux.** `Ctrl+R`, `Ctrl+P`, `Ctrl+F`,
+  `Ctrl+,`, `Ctrl+Q` and `F1` were shown in the menus but were never actually connected to
+  anything — pressing them did nothing. (They already worked on macOS.) Cut/Copy/Paste
+  continue to use your platform's standard keys.
+- **Recordings are saved where the app looks for them.** A recording was written to a
+  `tests/recordings` folder while Open Recording searched the recordings folder, so a
+  session you had just captured reported *"No recordings folder found"* and the Play button
+  stayed disabled. Recording, playback and the catalog now all use the same location.
+- **Save Recording As… actually saves.** It opened a file dialog and then discarded your
+  choice. It now writes the recording to the file you pick, and reports a real error if it
+  cannot.
+- **Window → Show All Windows / Hide All Windows now work.** Both were menu items that did
+  nothing. Hidden windows stay open and keep receiving data.
+
+### Changed
+
+- **Removed three settings that had no effect:** *New Log on P2 Reset*, *Max Log Size*, and
+  *USB Log Directory*. A P2 reset always starts a new log file (that boundary is what makes
+  a log readable as a single run), logs are not size-capped, and USB traffic logs are
+  written to the Log Directory alongside the debug logs. *Enable USB Traffic Logging* is
+  unaffected and still works.
+- **Removed Window → Cascade and Window → Tile**, which were never implemented.
+- **Headless and USB traffic logs now record the app version** in their opening banner, as
+  the debug log already did — so any captured log states which build produced it.
+- **Built-in help (F1) corrected throughout** and is now self-contained: it no longer refers
+  to guides that are not included with the application, and it now documents the exit codes,
+  the log file names, and the command-line options that were missing. Several descriptions
+  that did not match the application have been fixed.
+
 ## [0.9.98] - 2026-07-18
 
 Release-preparation build: batch-mode shutdown, cleaner logs, and no stray files.

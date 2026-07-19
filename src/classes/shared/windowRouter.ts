@@ -118,6 +118,7 @@ export class WindowRouter extends EventEmitter {
   private recordingTimer: NodeJS.Timeout | null = null;
   private recordingCatalog: RecordingCatalog = new RecordingCatalog();
   private recordingSessionId: string | null = null;
+  private recordingFilePath: string | null = null;
   private recordingMessageCount: number = 0;
   private recordingStartTime: number = 0;
   private samplingSeed: number = 0;
@@ -838,6 +839,28 @@ export class WindowRouter extends EventEmitter {
   }
 
   /**
+   * The ONE place that decides where recordings live: <recordingsDir>/sessions.
+   *
+   * `sessions/` is the convention RecordingCatalog and RecordingManager already
+   * resolve against (recordingCatalog.ts, recordingManager.ts), so start, stop
+   * and the playback reader must all agree with it. They previously did not:
+   * the binary writer used BinaryRecorder's <cwd>/tests/recordings default and
+   * stop() reconstructed a hardcoded <cwd>/tests/recordings/sessions path.
+   */
+  private getSessionsDir(): string {
+    const base = this.context ? this.context.getRecordingsDirectory() : path.join(process.cwd(), 'recordings');
+    return path.join(base, 'sessions');
+  }
+
+  /**
+   * Absolute path of the file the current/most recent recording was written to.
+   * Save-Recording-As needs this to copy the finished file to the user's choice.
+   */
+  public getLastRecordingFilePath(): string | null {
+    return this.recordingFilePath;
+  }
+
+  /**
    * Start recording debug session
    */
   public startRecording(metadata: RecordingMetadata): void {
@@ -849,15 +872,17 @@ export class WindowRouter extends EventEmitter {
 
     this.logConsoleMessage(`[ROUTER] RECORDING: Starting recording session: ${metadata.sessionName}`);
 
-    // Use context-based recordings directory for both formats
-    const recordingsDir = this.context
-      ? path.join(this.context.getRecordingsDirectory(), 'sessions')
-      : path.join(process.cwd(), 'recordings', 'sessions'); // Fallback if context not set
+    const recordingsDir = this.getSessionsDir();
 
     if (this.useBinaryFormat) {
-      // Use binary recorder for .p2rec format
+      // Use binary recorder for .p2rec format.
+      // recordingsDir MUST be passed: without it BinaryRecorder falls back to
+      // <cwd>/tests/recordings, which is where recordings used to land — a
+      // directory the playback reader never scans, so every recording appeared
+      // to vanish ("No recordings folder found").
       this.binaryRecorder = new BinaryRecorder();
-      const filepath = this.binaryRecorder.startRecording(metadata);
+      const filepath = this.binaryRecorder.startRecording(metadata, recordingsDir);
+      this.recordingFilePath = filepath;
 
       // Extract session ID from filepath
       const filename = path.basename(filepath);
@@ -879,6 +904,7 @@ export class WindowRouter extends EventEmitter {
       this.recordingSessionId = `${timestamp}-${metadata.sessionName}`;
       const filename = `${this.recordingSessionId}.jsonl`;
       const filepath = path.join(recordingsDir, filename);
+      this.recordingFilePath = filepath;
 
       // Start recording
       this.recordingMetadata = metadata;
@@ -950,15 +976,12 @@ export class WindowRouter extends EventEmitter {
       // Stop binary recording
       const finalMetadata = this.binaryRecorder.stopRecording();
 
-      // Update catalog with final stats
+      // Update catalog with final stats. Use the path we actually wrote to —
+      // this used to reconstruct <cwd>/tests/recordings/sessions, which never
+      // existed for a real user, so fileSize was always recorded as 0.
       if (this.recordingSessionId && finalMetadata) {
-        const filepath = path.join(
-          process.cwd(),
-          'tests',
-          'recordings',
-          'sessions',
-          `${this.recordingSessionId}.p2rec`
-        );
+        const filepath =
+          this.recordingFilePath ?? path.join(this.getSessionsDir(), `${this.recordingSessionId}.p2rec`);
         let fileSize = 0;
         if (fs.existsSync(filepath)) {
           fileSize = fs.statSync(filepath).size;
@@ -979,13 +1002,8 @@ export class WindowRouter extends EventEmitter {
       // Update catalog with final stats
       if (this.recordingSessionId) {
         const duration = Date.now() - this.recordingStartTime;
-        const filepath = path.join(
-          process.cwd(),
-          'tests',
-          'recordings',
-          'sessions',
-          `${this.recordingSessionId}.jsonl`
-        );
+        const filepath =
+          this.recordingFilePath ?? path.join(this.getSessionsDir(), `${this.recordingSessionId}.jsonl`);
         let fileSize = 0;
         if (fs.existsSync(filepath)) {
           fileSize = fs.statSync(filepath).size;

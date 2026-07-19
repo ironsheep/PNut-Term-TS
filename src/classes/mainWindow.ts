@@ -2280,6 +2280,8 @@ export class MainWindow {
       console.error('[WINDOW] Renderer process crashed!');
     });
 
+    this.registerKeyboardShortcuts();
+
     // Only set up menu in standard mode
     this.logConsoleMessage(`[MENU SETUP] IDE Mode: ${isIdeMode}, Setting up menu: ${!isIdeMode}`);
     // Set up the system menu (macOS only, prevents "Electron" from showing)
@@ -2870,9 +2872,6 @@ export class MainWindow {
             <div class="menu-dropdown">
               <div class="menu-dropdown-item" data-action="menu-performance-monitor">Performance Monitor</div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
-              <div class="menu-dropdown-item" data-action="menu-cascade">Cascade</div>
-              <div class="menu-dropdown-item" data-action="menu-tile">Tile</div>
-              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-show-all">Show All Windows</div>
               <div class="menu-dropdown-item" data-action="menu-hide-all">Hide All Windows</div>
             </div>
@@ -3252,8 +3251,6 @@ export class MainWindow {
 
     // Window menu handlers
     ipcMain.removeAllListeners('menu-performance-monitor');
-    ipcMain.removeAllListeners('menu-cascade');
-    ipcMain.removeAllListeners('menu-tile');
     ipcMain.removeAllListeners('menu-show-all');
     ipcMain.removeAllListeners('menu-hide-all');
 
@@ -3369,8 +3366,10 @@ export class MainWindow {
     ipcMain.on('menu-open-recording', async () => {
       this.logConsoleMessage('[IPC] Open recording');
 
-      // Use context-based recordings directory with user preferences
-      const recordingsDir = this.context.getRecordingsDirectory();
+      // Recordings are written to <recordingsDir>/sessions (WindowRouter.getSessionsDir),
+      // which is also what RecordingCatalog resolves against. Scanning the flat
+      // parent here meant a just-made recording was never found.
+      const recordingsDir = path.join(this.context.getRecordingsDirectory(), 'sessions');
       if (!fs.existsSync(recordingsDir)) {
         dialog.showMessageBox(this.mainWindow!, {
           type: 'info',
@@ -3415,8 +3414,8 @@ export class MainWindow {
 
       // Stop recording first to flush buffer
       this.windowRouter.stopRecording();
+      const recordedPath = this.windowRouter.getLastRecordingFilePath();
 
-      // TODO: Access the saved recording file
       const result = await dialog.showSaveDialog(this.mainWindow!, {
         title: 'Save Recording As',
         defaultPath: `recording_${getFormattedDateTime()}.p2rec`,
@@ -3427,9 +3426,27 @@ export class MainWindow {
       });
 
       if (!result.canceled && result.filePath) {
-        // The recording is already saved by stopRecording()
-        // We would need to copy/move it to the user's chosen location
-        this.logConsoleMessage('[RECORDING] Would save to:', result.filePath);
+        // stopRecording() has already written the file to the recordings folder;
+        // copy it to wherever the user asked for. This used to only LOG the
+        // chosen path, so Save Recording As silently did nothing.
+        try {
+          if (!recordedPath || !fs.existsSync(recordedPath)) {
+            throw new Error(`recorded file not found${recordedPath ? `: ${recordedPath}` : ''}`);
+          }
+          fs.copyFileSync(recordedPath, result.filePath);
+          this.logConsoleMessage(`[RECORDING] Saved recording to: ${result.filePath}`);
+          this.updateRecordingStatus('Saved');
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this.logMessage(`ERROR: Failed to save recording to ${result.filePath}: ${errorMsg}`);
+          dialog.showMessageBox(this.mainWindow!, {
+            type: 'error',
+            title: 'Save Failed',
+            message: 'Could not save the recording',
+            detail: errorMsg,
+            buttons: ['OK']
+          });
+        }
       }
     });
 
@@ -3547,15 +3564,10 @@ export class MainWindow {
       this.showPerformanceMonitor();
     });
 
-    ipcMain.on('menu-cascade', () => {
-      this.logConsoleMessage('[IPC] Cascade windows');
-      this.cascadeWindows();
-    });
-
-    ipcMain.on('menu-tile', () => {
-      this.logConsoleMessage('[IPC] Tile windows');
-      this.tileWindows();
-    });
+    // Cascade / Tile removed: they were TODO stubs that logged and did nothing.
+    // Real cascade/tile layout would also have to reconcile with WindowPlacer's
+    // auto-placement and explicit POS handling, so the menu items were dropped
+    // rather than shipped inert. See DOCs/PUNCH_LIST.md if reviving them.
 
     ipcMain.on('menu-show-all', () => {
       this.logConsoleMessage('[IPC] Show all windows');
@@ -4638,28 +4650,104 @@ export class MainWindow {
   }
 
   // Window management methods
-  private cascadeWindows(): void {
-    // TODO: Implement cascade window arrangement
-    this.logConsoleMessage('[WINDOW] Cascade windows - not yet implemented');
-  }
-
-  private tileWindows(): void {
-    // TODO: Implement tile window arrangement
-    this.logConsoleMessage('[WINDOW] Tile windows - not yet implemented');
+  /**
+   * Show or hide every open debug window.
+   *
+   * These used to enumerate windowRouter.getActiveWindows(), which returns
+   * STATS objects, not window handles — so there was nothing to show or hide and
+   * both were no-ops behind a TODO. The real handles live in this.displays (the
+   * same collection gracefulShutdown walks).
+   */
+  private setAllDebugWindowsVisible(visible: boolean): void {
+    let affected = 0;
+    for (const key in this.displays) {
+      const display = this.displays[key];
+      if (display && typeof display.setWindowVisible === 'function') {
+        try {
+          display.setWindowVisible(visible);
+          affected++;
+        } catch (error) {
+          this.logConsoleMessage(`[WINDOW] ${visible ? 'Show' : 'Hide'} failed for ${key}: ${error}`);
+        }
+      }
+    }
+    this.logConsoleMessage(`[WINDOW] ${visible ? 'Showed' : 'Hid'} ${affected} debug window(s)`);
   }
 
   private showAllWindows(): void {
-    // Show all debug windows
-    const windows = this.windowRouter.getActiveWindows();
-    this.logConsoleMessage(`[WINDOW] Showing ${windows.length} windows`);
-    // TODO: Implement actual show functionality for each window
+    this.setAllDebugWindowsVisible(true);
   }
 
   private hideAllWindows(): void {
-    // Hide all debug windows except main
-    const windows = this.windowRouter.getActiveWindows();
-    this.logConsoleMessage(`[WINDOW] Hiding ${windows.length} windows`);
-    // TODO: Implement actual hide functionality for each window
+    this.setAllDebugWindowsVisible(false);
+  }
+
+  /**
+   * Keyboard shortcuts for the in-window (HTML) menu bar.
+   *
+   * On Windows/Linux the app calls Menu.setApplicationMenu(null) and draws its
+   * own menu bar, so Electron menu accelerators do not exist — the Ctrl+R/Ctrl+P/
+   * etc. labels in that menu were purely cosmetic <span>s and NOTHING was bound.
+   * before-input-event is the mechanism that works for an HTML menu bar.
+   *
+   * Deliberately NOT bound: Ctrl+X/C/V. Chromium already handles clipboard in
+   * editable fields; intercepting them would break normal editing.
+   *
+   * On macOS, Cmd+Q and Cmd+, are real menu roles in the native app menu, so we
+   * skip those here to avoid firing an action twice.
+   */
+  private registerKeyboardShortcuts(): void {
+    if (!this.mainWindow) {
+      return;
+    }
+    const isMac = process.platform === 'darwin';
+
+    this.mainWindow.webContents.on('before-input-event', (event: any, input: any) => {
+      if (input.type !== 'keyDown' || input.alt) {
+        return;
+      }
+      // Cmd on macOS, Ctrl elsewhere.
+      const mod = isMac ? input.meta : input.control;
+      const key = (input.key || '').toLowerCase();
+      let handled = false;
+
+      if (key === 'f1' && !mod) {
+        this.showDocumentation();
+        handled = true;
+      } else if (mod && !input.shift) {
+        switch (key) {
+          case 'r':
+            this.startRecording();
+            handled = true;
+            break;
+          case 'p':
+            void this.playRecording();
+            handled = true;
+            break;
+          case 'f':
+            this.showFindDialog();
+            handled = true;
+            break;
+          case ',':
+            if (!isMac) {
+              this.showPreferencesDialog();
+              handled = true;
+            }
+            break;
+          case 'q':
+            if (!isMac) {
+              app.quit();
+              handled = true;
+            }
+            break;
+        }
+      }
+
+      if (handled) {
+        this.logConsoleMessage(`[SHORTCUT] ${mod ? 'Mod+' : ''}${key}`);
+        event.preventDefault();
+      }
+    });
   }
 
   // Debug methods
@@ -6608,6 +6696,8 @@ export class MainWindow {
 
     const result = await dialog.showOpenDialog(this.mainWindow, {
       title: 'Select Recording to Play',
+      // Open where recordings actually are, so the user isn't hunting for them.
+      defaultPath: path.join(this.context.getRecordingsDirectory(), 'sessions'),
       filters: [{ name: 'P2 Recording Files', extensions: ['p2rec'] }],
       properties: ['openFile']
     });
@@ -6634,7 +6724,9 @@ export class MainWindow {
    * Called on startup and when recordings are created
    */
   private updatePlaybackControlsState(): void {
-    const recordingsDir = this.context.getRecordingsDirectory();
+    // Must match where recordings are actually written (<recordingsDir>/sessions);
+    // scanning the flat parent left the Play button permanently disabled.
+    const recordingsDir = path.join(this.context.getRecordingsDirectory(), 'sessions');
     let hasRecordings = false;
 
     // Check if recordings directory exists and has any recording files
@@ -6942,19 +7034,10 @@ export class MainWindow {
         this.logConsoleMessage(`[PREFERENCES] Auto-save debug output ${this.immediateLog ? 'enabled' : 'disabled'}`);
       }
 
-      // Apply new log on DTR reset setting
-      if (settings.logging.newLogOnDtrReset !== undefined) {
-        // Store for use in DTR reset handler
-        this.logConsoleMessage(
-          `[PREFERENCES] New log on DTR reset ${settings.logging.newLogOnDtrReset ? 'enabled' : 'disabled'}`
-        );
-      }
-
-      // Apply max log size setting
-      if (settings.logging.maxLogSize) {
-        // Store for use in log rotation logic
-        this.logConsoleMessage(`[PREFERENCES] Max log size set to ${settings.logging.maxLogSize}`);
-      }
+      // newLogOnDtrReset / maxLogSize handling removed with their (inert) UI controls:
+      // these branches only logged — the comments read "Store for use in ..." but no
+      // storage or consumer ever existed. A DTR/RTS reset always starts a new log
+      // (the golden sync point), and logs are unbounded.
     }
 
     // Store settings for persistence

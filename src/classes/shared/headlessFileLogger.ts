@@ -88,6 +88,10 @@ export class HeadlessFileLogger {
       this.logFile.once('open', (fd) => {
         // Write header
         this.logFile!.write(`=== Headless Mode Session Started at ${getFormattedDateTimeISO()} ===\n`);
+        // Record the exact build that produced this log. LOGGING-STANDARDS.md
+        // requires this of EVERY session, and headless logs are the agent/CI
+        // feedback loop — they need it most. Only the GUI logger had it.
+        this.logFile!.write(`PNut-Term-TS: v${APP_VERSION}\n`);
         this.logFile!.write(`Mode: Headless (no GUI)\n`);
         if (this.endMarkers.length > 0) {
           this.logFile!.write(`End Markers: ${this.endMarkers.map((m) => `"${m}"`).join(', ')}\n`);
