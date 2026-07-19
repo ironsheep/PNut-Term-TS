@@ -746,8 +746,8 @@ export class UsbSerial extends EventEmitter {
     // Check _p2DeviceId BEFORE trying to re-process buffer
     // The data handler should have already set this during the async wait above
     this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - After 200ms wait, _p2DeviceId: '${this._p2DeviceId}'`);
-    this.logConsoleMessage(
-      `[USB-P2] * deviceIsPropellerV2() - detection buffer after wait: '${this._p2DetectionBuffer}'`
+    this.logMessage(
+      `[P2-HANDSHAKE] after 200ms wait: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
     );
 
     // Process any P2 response in the existing buffer
@@ -766,9 +766,7 @@ export class UsbSerial extends EventEmitter {
     }
 
     const [deviceString, deviceErrorString] = this.getIdStringOrError();
-    this.logConsoleMessage(
-      `[USB-P2] * deviceIsPropellerV2() - deviceString: '${deviceString}', errorString: '${deviceErrorString}'`
-    );
+    this.logMessage(`[P2-HANDSHAKE] result: device='${deviceString}' error='${deviceErrorString}'`);
 
     if (deviceErrorString.length > 0) {
       this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() ERROR: ${deviceErrorString}`);
@@ -807,7 +805,7 @@ export class UsbSerial extends EventEmitter {
 
       // Use RTS instead of DTR if RTS override is enabled
       if (this.context.runEnvironment.rtsOverride) {
-        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using RTS reset`);
+        this.logMessage(`[P2-HANDSHAKE] reset via RTS`);
         // FTDI workaround: Toggle twice for proper pulse
         await this.setRts(false); // Ensure we start HIGH
         await waitMSec(5); // Let it settle
@@ -823,9 +821,7 @@ export class UsbSerial extends EventEmitter {
         await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
         await this.setDtr(false); // Return DTR to idle state
 
-        this.logConsoleMessage(
-          `[USB-P2] * requestPropellerVersionForDownload() - DTR toggle complete, hardware reset pulse fired`
-        );
+        this.logMessage(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
       }
 
       // Fm Silicon Doc:
@@ -843,9 +839,7 @@ export class UsbSerial extends EventEmitter {
       this._p2DetectionBuffer = '';
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Detection buffer cleared`);
 
-      this.logConsoleMessage(
-        `[USB-P2] * requestPropellerVersionForDownload() - Sending > ${requestPropType} 0 0 0 0[space] for autobaud`
-      );
+      this.logMessage(`[P2-HANDSHAKE] sending Prop_Chk at ${this.getCurrentBaudRate()} baud`);
       // Use space terminator as observed in PNut v51, not CR
       await this.write(`> ${requestPropType} 0 0 0 0 `);
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Command sent, waiting for response`);

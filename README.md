@@ -65,7 +65,7 @@ Additional pages:
 
 The Quick Start Guide covers:
 - First session setup
-- Three operating modes (Interactive, Command-Line Download, IDE Integration)
+- Operating modes (Interactive, Command-Line Download, Headed Batch, IDE Integration, Headless)
 - Essential keyboard shortcuts
 - Recording and playback basics
 
@@ -82,7 +82,12 @@ The User Guide provides:
 - Downloads a compiled file to the P2 RAM or FLASH
 - Switches to PST behavior after download
 - Built-in support for all debug displays supported by PNut
-- *Single-Step debugger support coming Soon!*
+- Interactive single-step PASM2 debugger (one window per COG)
+- Headless mode for CI and AI-agent regression runs (`--headless`, with timeout / end-marker exit)
+- Headed batch mode (`--exit-on-end-session`) for scripted capture runs that still render windows
+- IDE integration mode for the VSCode Spin2 extension
+- Binary session recording and playback (`.p2rec`)
+- Live performance monitoring
 - Full logging support for all traffic to/from P2
 - Automatic time-stamped log names for each new download
 - PropPlug can be selected from the command line or within the application.
@@ -95,16 +100,16 @@ We are implementing the Graphical Debug Display support over time. Here's a full
 
 | Display  | Status                                   |
 | -------- | ---------------------------------------- |
-| Term     | ✅ Implemented, v51a                     |
-| Plot     | ✅ Implemented, v51a                     |
-| Logic    | ✅ Implemented, v51a                     |
-| Scope    | ✅ Implemented, v51a                     |
-| Scope_XY | ✅ Implemented, v51a                     |
-| FFT      | ✅ Implemented (noise floor issue), v51a |
-| Bitmap   | ✅ Implemented, v51a                     |
-| MIDI     | ✅ Implemented, v51a                     |
-| Spectro  | ✅ Implemented, v51a                     |
-| Debugger | !!! **Started, not ready for Use**            |
+| Term     | ✅ Implemented, v55                     |
+| Plot     | ✅ Implemented, v55                     |
+| Logic    | ✅ Implemented, v55                     |
+| Scope    | ✅ Implemented, v55                     |
+| Scope_XY | ✅ Implemented, v55                     |
+| FFT      | ✅ Implemented, v55 |
+| Bitmap   | ✅ Implemented, v55                     |
+| MIDI     | ✅ Implemented, v55                     |
+| Spectro  | ✅ Implemented, v55                     |
+| Debugger | ✅ Implemented, v55                       |
 
 ## Installing PNut-Term-TS
 
@@ -116,8 +121,8 @@ Install .zip files available for each release:
 | pnut-term-ts-linux-x64-{MMmmpp}.zip   | Linux            | Intel x86-64 bit | pnut\_term\_ts/ |
 | pnut-term-ts-macos-arm64-{MMmmpp}.zip | MacOS            | Apple Silicon    | .dmg |
 | pnut-term-ts-macos-x64-{MMmmpp}.zip   | MacOS            | Intel x86-64 bit | .dmg |
-| pnut-term-ts-win-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
-| pnut-term-ts-win-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
+| pnut-term-ts-windows-arm64-{MMmmpp}.zip   | Windows          | Arm 64 bit       | pnut\_term\_ts/ |
+| pnut-term-ts-windows-x64-{MMmmpp}.zip     | Windows          | Intel x86-64 bit | pnut\_term\_ts/ |
 
 **NOTE:** _where -MMmmpp is the release version. (E.g., -010001.zip means v1.0.1.)_
 

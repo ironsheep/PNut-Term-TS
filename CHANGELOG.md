@@ -5,6 +5,46 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-19
+
+Diagnostic build for the Windows download failure, plus documentation corrections.
+**The Windows download problem is NOT yet fixed** — this build adds the logging needed to
+find it.
+
+> Version note: the jump from 0.9.99 to 0.10.0 keeps the six-digit package version
+> (`001000`) that the release artifacts and workflow rely on; 0.9.100 would have produced
+> a seven-digit name.
+
+### Fixed
+
+- **Serial activity now appears in the debug log.** Everything the serial layer reports —
+  the port opening and closing, DTR/RTS transitions, and the P2 download handshake — runs
+  in a separate process and was only ever written to the application console, which a
+  packaged build does not show you. None of it reached your log file. A debug log captured
+  during a download failure therefore contained no record of the download at all. Those
+  events are now written to the debug log where they belong.
+- **The P2 download handshake now reports each step** — which control line was used for
+  reset, the baud rate the identify request was sent at, and what (if anything) the P2
+  replied. If a download fails, the log now shows *where* it failed.
+- **Edit → Cut now works on Windows and Linux.** The menu item did nothing; Copy and Paste
+  were unaffected.
+- **macOS packages now include the copyright file.** A filename-case mismatch meant it was
+  silently omitted from every macOS package; the error was suppressed, so nothing reported
+  it. Windows and Linux packages were unaffected.
+
+### Documentation
+
+- Corrected the project README: the single-step debugger was still described as "coming
+  soon" and "not ready for use" despite being complete and hardware-tested; parity markers
+  said v51a instead of v55; the Windows download filenames were wrong; and headless mode,
+  IDE mode, batch mode, recording/playback and performance monitoring were missing from the
+  feature list entirely.
+- Rebuilt the command-line reference from the program's own `--help` output, and added the
+  option constraints and exit codes it never documented.
+- Rewrote the packaging guide, which described a build step that is no longer used and
+  would have produced an unshippable build.
+- Corrected the User Guide and Quick Start where they disagreed with the application.
+
 ## [0.9.99] - 2026-07-19
 
 Windows download fix, working keyboard shortcuts, and recordings that save where you can

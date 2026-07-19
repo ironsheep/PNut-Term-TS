@@ -2,7 +2,7 @@
 
 Tracking items that need attention before or shortly after release.
 
-Last swept: 2026-06-06 (9-window parity sprint closeout, build 0.9.28).
+Last swept: 2026-07-19 (pre-1.0 documentation audit, build 0.9.99).
 
 ---
 

@@ -233,7 +233,13 @@ LAUNCHER_EOF
 
     # Add documentation
     cp LICENSE "$PKG_DIR/" 2>/dev/null || true
-    cp COPYRIGHT "$PKG_DIR/" 2>/dev/null || true
+    # The tracked file is lowercase `copyright` (see `git ls-files`). This used to
+    # read `cp COPYRIGHT` — which resolved only on a case-insensitive volume, or
+    # against a stray untracked COPYRIGHT in a dev working tree. In CI's fresh
+    # clone it silently failed (errors suppressed below), so every shipped macOS
+    # package went out with NO copyright file. Windows/Linux always used the
+    # correct name. Not suppressed: this file must ship.
+    cp copyright "$PKG_DIR/COPYRIGHT"
     cp CHANGELOG.md "$PKG_DIR/" 2>/dev/null || true
 
     # Create README

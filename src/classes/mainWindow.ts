@@ -1513,6 +1513,13 @@ export class MainWindow {
       // pipeline lossless under display load. This is the production path; the legacy main-thread
       // UsbSerial still runs inside that UtilityProcess (constructed by the host).
       this._serialPort = new UsbSerialProxy(this.context, deviceNode) as unknown as UsbSerial;
+      // Surface the serial host's own log lines (port open/close, DTR/RTS
+      // transitions, the P2 download handshake) in the debug log. They run in the
+      // UtilityProcess and previously reached only the app console, leaving the
+      // user's debug_*.log with no record of the serial layer whatsoever.
+      (this._serialPort as unknown as UsbSerialProxy).on('hostLog', (text: string) => {
+        this.debugLoggerWindow?.logSystemMessage(text);
+      });
       // Wait for port to actually open before proceeding
       await this._serialPort.waitForPortOpen();
     } catch (error) {
@@ -3664,6 +3671,12 @@ export class MainWindow {
                 document.execCommand('copy');
               } else if (action === 'paste') {
                 document.execCommand('paste');
+              } else if (action === 'cut') {
+                // 'cut' used to fall through to ipcRenderer.send('cut'), but no
+                // ipcMain handler for it ever existed (the only role:'cut' entries
+                // are the macOS native menu and dead code) — so Edit > Cut did
+                // nothing at all on Windows/Linux.
+                document.execCommand('cut');
               } else {
                 // Send IPC message for other actions
                 // Use require to get ipcRenderer directly

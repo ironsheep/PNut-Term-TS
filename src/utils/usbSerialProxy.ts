@@ -136,13 +136,25 @@ export class UsbSerialProxy extends EventEmitter {
       case 'state':
         Object.assign(this.cached, msg.state);
         break;
-      case 'log':
+      case 'log': {
+        // The serial layer runs in the UtilityProcess, so EVERYTHING it logs —
+        // port open/close, DTR/RTS transitions, the P2 download handshake — used
+        // to land only on ctx.logger (the app console). On a packaged GUI build
+        // that goes nowhere the user can see, which is why a Windows download
+        // failure produced a debug log with no serial events in it at all.
+        //
+        // Per LOGGING-STANDARDS ("system advice ... DTR/RTS resets" = always
+        // live), these belong in the debug log. Emit them so MainWindow can put
+        // them there; keep the console path too.
+        const text = (msg.args || []).join(' ');
         try {
-          (ctx as any).logger?.forceLogMessage?.((msg.args || []).join(' '));
+          (ctx as any).logger?.forceLogMessage?.(text);
         } catch {
           /* ignore */
         }
+        this.emit('hostLog', text);
         break;
+      }
       case 'fatal':
         console.error(`[SERIAL-PROXY] serial host FATAL: ${msg.error}`);
         this.emit('error', new Error(msg.error));

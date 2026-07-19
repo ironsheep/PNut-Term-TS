@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.9.99*
+*Version 0.10.0*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -71,7 +71,7 @@ pnut-term-ts -p P9cektn7     # connect to a specific PropPlug
 
 The main window opens, connects to the P2, and renders debug windows as the P2
 sends `debug()` output. Whether the P2 is reset on connect is governed by the
-**Reset P2 on Connection** preference.
+**Reset P2 on App Startup** preference.
 
 ### 2. Command-Line Download Mode (GUI)
 Provide a compiled binary to download and run immediately, then keep the GUI open.
@@ -105,7 +105,8 @@ pnut-term-ts --ide --rts -p P9cektn7      # IDE mode, use RTS for reset
 ```
 
 `--rts` selects the RTS control line for reset (some non-Parallax adapters need it)
-and is intended for use with `--ide`.
+and works in standalone mode as well as with `--ide`; it overrides the per-device setting.
+A device first seen while `--rts` is active is *recorded* as an RTS device.
 
 ### 5. Headless Mode
 No GUI at all — serial data is captured to a timestamped log file. Designed for CI
@@ -132,7 +133,7 @@ For a condensed first-run walkthrough see **`DOCs/QUICK-START.md`**. In brief:
 ### Key concepts
 - **Debug windows open automatically** from the P2's `debug()` directives — they are
   not opened from menus.
-- **Connection/reset** is controlled by the **Reset P2 on Connection** preference
+- **Connection/reset** is controlled by the **Reset P2 on App Startup** preference
   (default: on). Enabled = reset on connect (development); disabled = attach to a
   running program (monitoring).
 - **Recording** captures a whole session to a `.p2rec` file for later replay.
@@ -154,29 +155,33 @@ display, and a status bar.
 - **⏺ Record** / **▶ Play** — start/stop a recording and play one back, with a status
   label (e.g. "Ready", "Recording…") alongside.
 
-A **text-entry field** above the toolbar sends a line of text to the running P2 when you
+A **text-entry field** below the toolbar sends a line of text to the running P2 when you
 press **Enter**. During playback a transport strip appears with play/pause/stop, an
 elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
 
 **Status bar — left:**
 - **Connection indicator** — green when connected to a P2, amber when disconnected.
 - **Active COGs** — which COG cores are currently driving debug windows.
-- **Logging indicator** — lit while a recording is active.
+- **Logging indicator** — lit while the Debug Logger is writing a log file (recording state
+  is shown by the toolbar's status label instead).
 
 **Status bar — right:**
-- **Echo** checkbox — filters locally echoed characters from the display.
+- **Echo** checkbox — when checked, suppresses characters echoed back by the P2 so typed
+  input isn't shown twice.
 - **TX/RX indicators** — flash during serial transmit/receive.
 - **Port** — the connected device path.
 - **Baud** — the active debug baud rate.
-- **DTR/RTS control** — a toggle showing the active reset control line for the
-  current device.
+(The active DTR/RTS control line is shown on the *toolbar* button, not in the status bar.)
 
 ---
 
 ## Menu System
 
 PNut-Term-TS uses the native application menu on macOS and an in-window menu bar on
-Windows/Linux. The items are equivalent; accelerators differ by platform
+Windows/Linux. **They are not equivalent:** the macOS native menu provides only the
+application, Edit and Window menus — File, Help, Find, Clear Terminal and the
+show/hide-windows items are on the Windows/Linux in-window menu bar only.
+Accelerators differ by platform
 (`Cmd` on macOS, `Ctrl` on Windows/Linux).
 
 ### File
@@ -197,7 +202,7 @@ Windows/Linux. The items are equivalent; accelerators differ by platform
 | Cut | Ctrl+X | Cut selected text |
 | Copy | Ctrl+C | Copy selected text |
 | Paste | Ctrl+V | Paste from clipboard |
-| Find… | Ctrl+F | Search the terminal output |
+| Find… | Ctrl+F | Open the find bar to search the terminal output |
 | Clear Terminal | | Clear the terminal display |
 | Preferences… | Ctrl+, | Open the settings dialog |
 
@@ -205,8 +210,6 @@ Windows/Linux. The items are equivalent; accelerators differ by platform
 | Item | Description |
 |------|-------------|
 | Performance Monitor | Open the performance metrics window |
-| Cascade | Arrange debug windows in a cascade |
-| Tile | Tile debug windows |
 | Show All Windows | Reveal all debug windows |
 | Hide All Windows | Hide all debug windows |
 
@@ -251,7 +254,7 @@ Your machine-wide defaults.
 |---------|---------|---------|
 | Default PropPlug | Auto-detect, or a named device | Auto-detect |
 | Default Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | — |
-| Reset P2 on Connection | on / off | on |
+| Reset P2 on App Startup | on / off | on |
 
 **Logging**
 | Setting | Options | Default |
@@ -327,18 +330,20 @@ The recording system captures an entire debug session for later replay and analy
 useful for regression testing, sharing reproductions, and offline study.
 
 ### File format
-- **Extension:** `.p2rec` (binary, with timing metadata). `.jsonl` recordings are
-  also accepted for playback.
-- **Default location:** `./recordings/` (configurable).
-- **Auto-named:** `recording_YYYYMMDD_HHMMSS.p2rec`.
+- **Extension:** `.p2rec` (binary, with timing metadata). The Play dialog filters to
+  `.p2rec`, so `.jsonl` recordings cannot be selected there.
+- **Location:** a `sessions` folder inside your Recordings Directory (default
+  `./recordings/`, configurable). The folder is created on your first recording.
+- **Auto-named** with a timestamp and session name; use **Save Recording As…** to copy a
+  finished recording anywhere you like.
 
 ### Recording
 Start with **File → Start Recording** (`Ctrl+R`); stop with **File → Stop
-Recording**. While recording, the logging indicator is lit.
+Recording**. While recording, the toolbar status label reads "Recording...".
 
 ### Playback
-Load a recording with **File → Open Recording…** (or `Ctrl+P` to play the selected
-one). Playback reproduces the captured stream — including timing — driving the debug
+Load a recording with **File → Open Recording…** or `Ctrl+P` — either one opens the file
+chooser and starts playback. Playback reproduces the captured stream — including timing — driving the debug
 windows exactly as the live session did.
 
 ---
@@ -417,7 +422,7 @@ pnut-term-ts [options]
 | `-q` | `--quiet` | | Suppress the banner and non-error text |
 | `-u` | `--log-usb-trfc` | | Write a timestamped USB-traffic log |
 | | `--ide` | | IDE-integration mode (minimal UI) |
-| | `--rts` | | Use RTS instead of DTR for reset (intended with `--ide`) |
+| | `--rts` | | Use RTS instead of DTR for reset (works standalone and with `--ide`; overrides the per-device setting) |
 | | `--console-mode` | | Console output mode (adds a delay before close) |
 | | `--headless` | | Run with no GUI (file logging only) |
 | | `--timeout` | seconds | Exit after N seconds (**headless only**) |
@@ -510,9 +515,11 @@ of `Ctrl` on macOS).
 | Ctrl+P | Playback Recording |
 | Ctrl+Q | Exit |
 | Ctrl+, | Preferences |
-| Ctrl+X / Ctrl+C / Ctrl+V | Cut / Copy / Paste |
 | Ctrl+F | Find in terminal |
 | F1 | Documentation |
+
+Cut / Copy / Paste use your platform's standard keys (`Ctrl+X`/`C`/`V`, or `Cmd` on
+macOS) in any text field.
 
 > Inside a debug window, mouse and keyboard input may be forwarded to the running P2
 > program when that program requested it (`PC_MOUSE` / `PC_KEY`). Dragging a display
@@ -562,7 +569,7 @@ of `Ctrl` on macOS).
 
 ## Tips & Best Practices
 
-- **Development vs monitoring:** keep **Reset P2 on Connection** on for clean restarts
+- **Development vs monitoring:** keep **Reset P2 on App Startup** on for clean restarts
   during development; turn it off to attach to an already-running program.
 - **Pick window positions:** drag a window and read its `x, y` from the title bar,
   then bake that into a `POS` directive in your Spin2 source.

@@ -60,7 +60,7 @@ until they are published as Class 2 deliverables. They must not be cited from AP
 - **[QUICK-START.md](QUICK-START.md)** — condensed first-run walkthrough
 - **[USER-GUIDE.md](USER-GUIDE.md)** — full feature reference
 - **[APP-HELP.md](APP-HELP.md)** — built-in application help (Class 1; the shipped file)
-- **[PATH-SETUP-GUIDE.md](PATH-SETUP-GUIDE.md)** — PNut compiler path configuration
+- **[PATH-SETUP-GUIDE.md](PATH-SETUP-GUIDE.md)** — putting the `pnut-term-ts` command on your PATH
 
 ## Technical Documentation
 
