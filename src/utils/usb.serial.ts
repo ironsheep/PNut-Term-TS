@@ -668,7 +668,11 @@ export class UsbSerial extends EventEmitter {
   private async _doClose(): Promise<void> {
     // (alternate suggested by perplexity search)
     // release the usb port
-    this.logMessage(`* USBSer closing...`);
+    // ALWAYS-LIVE (diagnostic v0.10.4): a port close during a session is exactly what
+    // "GetOverlappedResult: Invalid handle" on a write implies (the handle went away mid-
+    // write). If ANY close fires during the download handshake, this line names it and
+    // timestamps it — distinguishing a close-race from an intrinsic overlapped-write failure.
+    this.logSystemEvent(`* USBSer closing... (isOpen=${this._serialPort ? this._serialPort.isOpen : 'no-port'})`);
     if (this._serialPort && this._serialPort.isOpen) {
       await waitMSec(10); // 500 allowed prop to restart? use 10 mSec instead
 
@@ -864,7 +868,15 @@ export class UsbSerial extends EventEmitter {
       this._p2DetectionBuffer = '';
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Detection buffer cleared`);
 
-      this.logChannelDiag(`[P2-HANDSHAKE] sending Prop_Chk at ${this.getCurrentBaudRate()} baud`);
+      // Probe the handle state at the exact moment of the write. If isOpen is FALSE here,
+      // something closed the port between the reset and now (close-race). If isOpen is TRUE
+      // yet the write still fails "Invalid handle", the overlapped write itself is failing on
+      // a nominally-open handle (intrinsic Windows overlapped-I/O problem). [v0.10.4 diag]
+      this.logChannelDiag(
+        `[P2-HANDSHAKE] sending Prop_Chk at ${this.getCurrentBaudRate()} baud (port isOpen=${
+          this._serialPort ? this._serialPort.isOpen : 'no-port'
+        })`
+      );
       // Use space terminator as observed in PNut v51, not CR
       await this.write(`> ${requestPropType} 0 0 0 0 `);
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Command sent, waiting for response`);

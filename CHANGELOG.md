@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2026-07-20
+
+Diagnostic build for the Windows download failure (no behavior change).
+
+### Diagnostics
+
+- The v0.10.3 read-quiescing did not fix the Windows download; the failing operation is a
+  *write*, which pausing reads cannot affect. Since the original PNut downloads on the same
+  machine and adapter, the problem is on our side, not the hardware. This build adds two
+  always-recorded log lines to pinpoint it: whether the serial port is closed at the moment
+  the download's identify command is written, and a note whenever the port is closed at all.
+  These tell us whether something is closing the port mid-write or the write itself is
+  failing on an open port — which point to different fixes.
+
+**The Windows download problem is still unfixed.**
+
 ## [0.10.3] - 2026-07-20
 
 Candidate fix for the Windows download failure.
