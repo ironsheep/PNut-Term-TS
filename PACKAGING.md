@@ -148,7 +148,7 @@ All packaging scripts create **dual-architecture** packages (x64 + arm64):
 6. Test with P2 hardware
 
 ---
-Last Updated: 2026-07-19 (v0.10.0)
+Last Updated: 2026-07-20 (v0.10.1)
 Documents the release-gated build chain (build:release → build:production), the
 scripts/build-defines.js single source of truth, the fatal packaging verification, and
 the CI release workflow.

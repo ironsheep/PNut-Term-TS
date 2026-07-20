@@ -5,6 +5,24 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-07-20
+
+Re-issue of the 0.10.0 diagnostic build. **Application behavior is unchanged from 0.10.0** —
+this release exists because 0.10.0's packages were built successfully but could not be
+published.
+
+### Fixed
+
+- **Release publishing.** The 0.10.0 build produced and uploaded all six platform packages,
+  then failed at the final publish step, leaving the release inaccessible. The cause was
+  outside this project: GitHub changed its build runners to a newer Node version, and the
+  publishing tool we used was built for the older one. Updated to the version built for the
+  new runtime, and pinned to an exact version so a change on GitHub's side cannot silently
+  alter our release process again.
+
+**The Windows download problem is still unfixed** — as with 0.10.0, this build carries the
+additional logging needed to identify it.
+
 ## [0.10.0] - 2026-07-19
 
 Diagnostic build for the Windows download failure, plus documentation corrections.

@@ -508,4 +508,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.10.0 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.10.1 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

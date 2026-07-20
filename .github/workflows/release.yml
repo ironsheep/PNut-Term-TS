@@ -1061,8 +1061,17 @@ jobs:
           cat release_body.md
 
       - name: Create Release
-        # v2 — v1 routinely hung for ~hours on asset upload against the GitHub API.
-        uses: softprops/action-gh-release@v2
+        # Pinned to an exact version deliberately — a floating major tag is how an
+        # unchanged repo starts failing overnight.
+        #
+        # History: v1 routinely hung for ~hours on asset upload. v2 (last: v2.6.2) is a
+        # Node 20 action, and once GitHub flipped the runner default to Node 24 the
+        # v0.10.0 publish failed AFTER uploading every asset — an HttpError: Not Found on
+        # an asset that demonstrably existed, then "Error updating policy" — leaving the
+        # release stuck as a draft. v3.0.0 is the Node 24 runtime migration; v3.0.2 adds
+        # draft-release-reuse reliability and better error diagnostics, which is exactly
+        # the step that failed.
+        uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ steps.release_type.outputs.RELEASE_TAG }}
           name: ${{ steps.release_type.outputs.RELEASE_NAME }}
