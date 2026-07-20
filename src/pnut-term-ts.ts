@@ -283,6 +283,10 @@ export class DebugTerminalInTypeScript {
       // text was telling users a restriction that does not exist.
       .option('--rts', 'Use RTS instead of DTR for device reset')
       .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
+      // Deliberately NOT folded into -d/--debug: that flag is common enough that channel
+      // internals would ride along into ordinary runs. This is a troubleshooting tool for
+      // the serial channel itself.
+      .option('--diag-serial', 'Log serial-channel troubleshooting detail (P2 download handshake steps)')
       .option('--console-mode', 'Running with console output - adds delay before close')
       .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
       // No parseInt coercion here: parseInt('abc') yields NaN, which then slips
@@ -545,6 +549,11 @@ export class DebugTerminalInTypeScript {
     if (options.logUsbTrfc) {
       this.context.runEnvironment.usbTrafficLogging = true;
       this.context.logger.progressMsg(`Logging USB traffic`);
+    }
+
+    if (options.diagSerial) {
+      this.context.runEnvironment.serialDiagnostics = true;
+      this.context.logger.progressMsg(`Logging serial-channel diagnostics`);
     }
 
     // The "Downloading [...]" announcement is HELD until validation passes: we
@@ -1003,6 +1012,9 @@ export class DebugTerminalInTypeScript {
         quiet: this.context.runEnvironment.quiet,
         serialPortDevices: this.context.runEnvironment.serialPortDevices,
         usbTrafficLogging: this.context.runEnvironment.usbTrafficLogging,
+        // --diag-serial must cross this boundary too, or the flag is silently false in
+        // the Electron process (and therefore in the serial UtilityProcess below it).
+        serialDiagnostics: this.context.runEnvironment.serialDiagnostics,
         // Headed batch termination: must cross the process boundary so the
         // Electron-side WindowRouter/MainWindow can honor --exit-on-end-session.
         exitOnEndSession: this.context.runEnvironment.exitOnEndSession,

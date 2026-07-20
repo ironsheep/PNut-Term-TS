@@ -746,7 +746,7 @@ export class UsbSerial extends EventEmitter {
     // Check _p2DeviceId BEFORE trying to re-process buffer
     // The data handler should have already set this during the async wait above
     this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - After 200ms wait, _p2DeviceId: '${this._p2DeviceId}'`);
-    this.logMessage(
+    this.logChannelDiag(
       `[P2-HANDSHAKE] after 200ms wait: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
     );
 
@@ -766,7 +766,7 @@ export class UsbSerial extends EventEmitter {
     }
 
     const [deviceString, deviceErrorString] = this.getIdStringOrError();
-    this.logMessage(`[P2-HANDSHAKE] result: device='${deviceString}' error='${deviceErrorString}'`);
+    this.logChannelDiag(`[P2-HANDSHAKE] result: device='${deviceString}' error='${deviceErrorString}'`);
 
     if (deviceErrorString.length > 0) {
       this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() ERROR: ${deviceErrorString}`);
@@ -805,7 +805,7 @@ export class UsbSerial extends EventEmitter {
 
       // Use RTS instead of DTR if RTS override is enabled
       if (this.context.runEnvironment.rtsOverride) {
-        this.logMessage(`[P2-HANDSHAKE] reset via RTS`);
+        this.logChannelDiag(`[P2-HANDSHAKE] reset via RTS`);
         // FTDI workaround: Toggle twice for proper pulse
         await this.setRts(false); // Ensure we start HIGH
         await waitMSec(5); // Let it settle
@@ -821,7 +821,7 @@ export class UsbSerial extends EventEmitter {
         await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
         await this.setDtr(false); // Return DTR to idle state
 
-        this.logMessage(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
+        this.logChannelDiag(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
       }
 
       // Fm Silicon Doc:
@@ -839,7 +839,7 @@ export class UsbSerial extends EventEmitter {
       this._p2DetectionBuffer = '';
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Detection buffer cleared`);
 
-      this.logMessage(`[P2-HANDSHAKE] sending Prop_Chk at ${this.getCurrentBaudRate()} baud`);
+      this.logChannelDiag(`[P2-HANDSHAKE] sending Prop_Chk at ${this.getCurrentBaudRate()} baud`);
       // Use space terminator as observed in PNut v51, not CR
       await this.write(`> ${requestPropType} 0 0 0 0 `);
       this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Command sent, waiting for response`);
@@ -1392,11 +1392,11 @@ export class UsbSerial extends EventEmitter {
       // line's tracked value keeps it where we left it.
       this._serialPort.set({ dtr: value, rts: this._rtsValue }, (err) => {
         if (err) {
-          this.logMessage(`DTR: ERROR:${err.name} - ${err.message}`);
+          this.logSystemEvent(`DTR: ERROR:${err.name} - ${err.message}`);
           reject(err);
         } else {
           this._dtrValue = value;
-          this.logMessage(`DTR: ${value}`);
+          this.logSystemEvent(`DTR: ${value}`);
           // Force a drain to ensure the command is sent
           this._serialPort.drain((drainErr) => {
             if (drainErr) {
@@ -1416,11 +1416,11 @@ export class UsbSerial extends EventEmitter {
       // asserts the omitted line rather than leaving it alone.
       this._serialPort.set({ rts: value, dtr: this._dtrValue }, (err) => {
         if (err) {
-          this.logMessage(`RTS: ERROR:${err.name} - ${err.message}`);
+          this.logSystemEvent(`RTS: ERROR:${err.name} - ${err.message}`);
           reject(err);
         } else {
           this._rtsValue = value;
-          this.logMessage(`RTS: ${value}`);
+          this.logSystemEvent(`RTS: ${value}`);
           resolve();
         }
       });
@@ -1498,6 +1498,47 @@ export class UsbSerial extends EventEmitter {
   public logMessage(message: string): void {
     if (this.context.runEnvironment.loggingEnabled) {
       // USB serial status messages are system diagnostics, should go to console
+      this.context.logger.forceLogMessage(message);
+    }
+  }
+
+  /**
+   * Serial events that are ALWAYS logged — the run narrative, not developer diagnostics.
+   *
+   * TWO DISTINCT MECHANISMS, do not conflate them:
+   *
+   *  1. **Developer, file-by-file diagnostics** — `runEnvironment.loggingEnabled` (which
+   *     gates logMessage() above) and the per-file `ENABLE_CONSOLE_LOG` consts. These are
+   *     deliberately OFF and are switched on by hand, for one file at a time, while
+   *     diagnosing that file. They are noisy by design. **Leave them off.**
+   *
+   *  2. **System advice** — DTR/RTS resets, download start/success/fail, the P2 handshake
+   *     result. LOGGING-STANDARDS.md classifies these as *always live*: they are what a
+   *     user or agent needs to understand what a run did, and what makes a failure
+   *     diagnosable from a captured log without a special build.
+   *
+   * This method serves (2). It must not be used for (1) — anything high-volume or
+   * file-internal belongs behind logMessage()/ENABLE_CONSOLE_LOG instead.
+   */
+  private logSystemEvent(message: string): void {
+    this.context.logger.forceLogMessage(message);
+  }
+
+  /**
+   * Serial-CHANNEL troubleshooting detail, emitted only under `--diag-serial`.
+   *
+   * Distinct from logSystemEvent() above: the spec's "system advice" bucket (DTR/RTS
+   * resets, download start/success/fail) is always live because it is the run narrative.
+   * The step-by-step internals of the P2 handshake are not — they are only interesting
+   * when the channel itself is being diagnosed, and --diag-serial exists so they never
+   * ride along in ordinary runs. Deliberately NOT tied to -d/--debug, which is reached
+   * for too casually to carry channel internals.
+   *
+   * Also distinct from the per-file developer toggles (runEnvironment.loggingEnabled and
+   * the per-file ENABLE_CONSOLE_LOG consts), which stay hand-flipped and off.
+   */
+  private logChannelDiag(message: string): void {
+    if (this.context.runEnvironment.serialDiagnostics) {
       this.context.logger.forceLogMessage(message);
     }
   }

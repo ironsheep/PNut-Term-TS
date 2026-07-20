@@ -67,7 +67,11 @@ export class UsbSerialProxy extends EventEmitter {
         loggingEnabled: (ctx as any).runEnvironment?.loggingEnabled,
         rtsOverride: (ctx as any).runEnvironment?.rtsOverride,
         resetOnConnection: (ctx as any).runEnvironment?.resetOnConnection,
-        matchVendorOnly: (ctx as any).runEnvironment?.matchVendorOnly
+        matchVendorOnly: (ctx as any).runEnvironment?.matchVendorOnly,
+        // MUST be forwarded: the serial layer runs in this worker, so a flag missing
+        // from this whitelist is silently false there — the exact class of bug that
+        // kept the channel invisible.
+        serialDiagnostics: (ctx as any).runEnvironment?.serialDiagnostics
       }
     };
 

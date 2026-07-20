@@ -5,6 +5,26 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-07-20
+
+Second diagnostic build for the Windows download failure. **Still unfixed** — but this
+build explains why two previous builds of added logging produced nothing.
+
+### Fixed
+
+- **Reset-line activity and the P2 download handshake are now always recorded.** They were
+  previously written through the same channel as the developer, file-by-file diagnostics
+  that the application deliberately keeps switched off — so they never appeared in a log.
+  That is why a failing Windows download produced a log with no record of the download in
+  it, and why logging added in 0.10.0 and 0.10.1 still showed nothing. These events are the
+  run narrative, not diagnostics: the logging specification classifies them as always live,
+  and they are now treated that way. A download adds roughly half a dozen lines.
+
+  The developer diagnostics are untouched and remain off.
+
+**The Windows download problem itself is still unfixed.** This build should finally show
+where the handshake fails.
+
 ## [0.10.1] - 2026-07-20
 
 Re-issue of the 0.10.0 diagnostic build. **Application behavior is unchanged from 0.10.0** —

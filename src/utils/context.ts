@@ -56,6 +56,7 @@ export interface RuntimeEnvironment {
   verbose: boolean;
   quiet: boolean;
   usbTrafficLogging: boolean;
+  serialDiagnostics: boolean; // --diag-serial: serial-channel troubleshooting detail
   usbLogFilePath?: string;
   // Headless mode options (for CI/AI agents)
   headlessMode?: boolean;
@@ -171,6 +172,7 @@ export class Context {
       quiet: false,
       consoleMode: false, // Default to no console delay
       usbTrafficLogging: false, // Default USB logging off
+      serialDiagnostics: false, // --diag-serial only; channel troubleshooting is opt-in
       usbLogFilePath: undefined
     };
     this.actions = {
