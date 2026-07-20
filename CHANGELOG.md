@@ -5,6 +5,21 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-07-20
+
+Candidate fix for the Windows download failure.
+
+### Fixed
+
+- **Downloading to a P2 on Windows** — candidate fix. Two hardware runs pinned the cause:
+  toggling the reset line while the app was actively reading from the port caused Windows to
+  invalidate the port connection (`GetOverlappedResult: Invalid handle`), so the download's
+  "are you there?" handshake never reached the P2. The original PNut terminal avoids this by
+  pausing its reader around the reset pulse; PNut-Term-TS now does the same — it stops
+  reading, pulses the reset line, lets the P2's loader come up, then resumes. This applies to
+  both the connect-time reset and the download's own reset. macOS and Linux were unaffected
+  and are unchanged. *(Needs confirming on Windows hardware.)*
+
 ## [0.10.2] - 2026-07-20
 
 Second diagnostic build for the Windows download failure. **Still unfixed** — but this

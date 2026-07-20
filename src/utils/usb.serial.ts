@@ -786,8 +786,14 @@ export class UsbSerial extends EventEmitter {
   }
 
   /**
-   * Request P2 version for download - ALWAYS performs reset sequence
-   * This is separate from initial connection check and always executes
+   * Request P2 version for download — ALWAYS performs the reset sequence.
+   *
+   * The download OWNS its stabilization: it resets the P2 into its serial loader and sends
+   * Prop_Chk, unconditionally, regardless of the Reset-on-Connect preference. "Do whatever
+   * it takes to download correctly." This is why a download must never depend on the
+   * observe-mode connect reset (and, per [download-owns-reset], why that redundant reset
+   * must be skipped in download mode). This reset also establishes the downloaded program's
+   * t=0 origin. See DTR-RTS-CONTROL-LINES.md, "Two kinds of reset".
    */
   private async requestPropellerVersionForDownload(): Promise<boolean> {
     const requestPropType: string = 'Prop_Chk';
@@ -803,25 +809,44 @@ export class UsbSerial extends EventEmitter {
       // continue with ID effort...
       await waitMSec(250);
 
-      // Use RTS instead of DTR if RTS override is enabled
-      if (this.context.runEnvironment.rtsOverride) {
-        this.logChannelDiag(`[P2-HANDSHAKE] reset via RTS`);
-        // FTDI workaround: Toggle twice for proper pulse
-        await this.setRts(false); // Ensure we start HIGH
-        await waitMSec(5); // Let it settle
-        await this.setRts(true); // Pull LOW (assert)
-        await waitMSec(10); // Hold for 10ms
-        await this.setRts(false); // Return HIGH (de-assert)
-      } else {
-        this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using DTR reset`);
-        // The Prop Plug hardware generates a 17µs reset pulse automatically when DTR toggles
-        // We just need to trigger it and time our Prop_Chk correctly
+      // WINDOWS handle-invalidation fix — match the PNut reference (SerialUnit.pas
+      // ResetHardware): STOP the read before pulsing the reset line, resume after.
+      //
+      // Symptom (Windows, HW-confirmed v0.10.2): the download's DTR reset was followed
+      // ~200ms later by "Writing to COM port (GetOverlappedResult): Invalid handle" — an
+      // OVERLAPPED I/O failing. Our worker keeps a continuous overlapped read live on the
+      // port; when the P2 reset blips the USB device, that in-flight read invalidates the
+      // handle. PNut never has I/O in flight during the pulse (SerialThreadStop/Start), so
+      // its handle survives — same DTR mechanism (both use EscapeCommFunction), the only
+      // difference is quiescing reads around the pulse. macOS/Linux are unaffected but the
+      // quiesce is harmless there. See DTR-RTS-CONTROL-LINES.md.
+      await this.pauseReads();
+      try {
+        // Use RTS instead of DTR if RTS override is enabled
+        if (this.context.runEnvironment.rtsOverride) {
+          this.logChannelDiag(`[P2-HANDSHAKE] reset via RTS`);
+          // FTDI workaround: Toggle twice for proper pulse
+          await this.setRts(false); // Ensure we start HIGH
+          await waitMSec(5); // Let it settle
+          await this.setRts(true); // Pull LOW (assert)
+          await waitMSec(10); // Hold for 10ms
+          await this.setRts(false); // Return HIGH (de-assert)
+        } else {
+          this.logConsoleMessage(`[USB-P2] * requestPropellerVersionForDownload() - Using DTR reset`);
+          // The Prop Plug hardware generates a 17µs reset pulse automatically when DTR toggles
+          // We just need to trigger it and time our Prop_Chk correctly
 
-        // Toggle DTR to trigger the Prop Plug's built-in 17µs reset pulse
-        await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
-        await this.setDtr(false); // Return DTR to idle state
+          // Toggle DTR to trigger the Prop Plug's built-in 17µs reset pulse
+          await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
+          await this.setDtr(false); // Return DTR to idle state
 
-        this.logChannelDiag(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
+          this.logChannelDiag(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
+        }
+        // Let the P2 ROM loader come up while reads are still quiesced (PNut Sleep(15)).
+        await waitMSec(15);
+      } finally {
+        // Resume reads with a fresh, valid handle before we send Prop_Chk / read the reply.
+        this.resumeReads();
       }
 
       // Fm Silicon Doc:
@@ -1090,8 +1115,21 @@ export class UsbSerial extends EventEmitter {
       this.logConsoleMessage(`[USB] handleSerialOpen() - Flush warning (non-fatal): ${flushErr.message}`);
     }
 
-    // Conditional reset based on user preference
-    // Only reset if preference is enabled (default: true for traditional mode)
+    // Reset on Connect is an OBSERVE-mode feature: its purpose is a known origin (t=0),
+    // not the reboot itself. Attaching to an already-running P2 and resetting it restarts
+    // the program from the beginning, so the captured debug() stream has a reference frame
+    // (you can tell WHERE in the run you are). Join mid-stream and the output is anchorless.
+    // Same principle as the golden-sync-point log rotation on reset.
+    //
+    // NOTE (download mode): when a -r/-f download is pending this reset is REDUNDANT — the
+    // download's own handshake (requestPropellerVersionForDownload) resets unconditionally,
+    // and a fresh load is a cleaner t=0 than rebooting stale code. On Windows it is also
+    // HARMFUL: on Windows an in-flight overlapped read during the reset blip invalidates the
+    // COM handle. That is now fixed at the source — toggleDTR/toggleRTS quiesce reads around
+    // the pulse (pauseReads/resumeReads), the PNut ResetHardware method — so this connect
+    // reset is safe again. Skipping it in download mode remains worthwhile (don't reset twice)
+    // but is now an optimization, not a correctness fix. See DTR-RTS-CONTROL-LINES.md.
+    // [download-owns-reset]
     if (this.context.runEnvironment.resetOnConnection) {
       this.logConsoleMessage(`[USB] Reset on connection enabled - performing DTR/RTS reset`);
       // Use RTS instead of DTR if RTS override is enabled
@@ -1186,13 +1224,54 @@ export class UsbSerial extends EventEmitter {
     await this.setRts(value);
   }
 
+  /**
+   * Quiesce the port's reads around a reset pulse — the Node analog of PNut's
+   * SerialThreadStop/SerialThreadStart (SerialUnit.pas ResetHardware).
+   *
+   * On Windows a P2 reset blips the USB device; an in-flight OVERLAPPED read during that
+   * blip invalidates the handle ("GetOverlappedResult: Invalid handle"). Pausing the stream
+   * stops node-serialport's poller so no read is outstanding across the pulse; PurgeComm-like
+   * flush + resume then reads cleanly afterward. Idempotent and safe if the port is closed.
+   */
+  private async pauseReads(): Promise<void> {
+    try {
+      if (this._serialPort && this._serialPort.isOpen && typeof (this._serialPort as any).pause === 'function') {
+        (this._serialPort as any).pause();
+        this.logMessage(`* pauseReads() - read stream paused for reset`);
+        // Give any in-flight overlapped read a moment to settle before the line toggles.
+        await waitMSec(5);
+      }
+    } catch (err: any) {
+      this.logMessage(`* pauseReads() - warning (non-fatal): ${err?.message ?? err}`);
+    }
+  }
+
+  private resumeReads(): void {
+    try {
+      if (this._serialPort && this._serialPort.isOpen && typeof (this._serialPort as any).resume === 'function') {
+        (this._serialPort as any).resume();
+        this.logMessage(`* resumeReads() - read stream resumed after reset`);
+      }
+    } catch (err: any) {
+      this.logMessage(`* resumeReads() - warning (non-fatal): ${err?.message ?? err}`);
+    }
+  }
+
   public async toggleDTR(): Promise<void> {
     // toggle the propPlug DTR line
     this.logConsoleMessage(`[USB] PUBLIC toggleDTR() ENTER - pulse sequence`);
     this.logMessage(`* toggleDTR() - port open (${this._serialPort.isOpen})`);
-    await this.setDtr(true);
-    await waitMSec(10); // 10ms pulse is sufficient per spec
-    await this.setDtr(false);
+    // Quiesce reads across the pulse — see pauseReads(): a P2 reset blips the USB device
+    // and an in-flight overlapped read invalidates the Windows handle. This covers the
+    // connect-time reset (handleSerialOpen); the download path quiesces its own sequence.
+    await this.pauseReads();
+    try {
+      await this.setDtr(true);
+      await waitMSec(10); // 10ms pulse is sufficient per spec
+      await this.setDtr(false);
+    } finally {
+      this.resumeReads();
+    }
     this.logConsoleMessage(`[USB] PUBLIC toggleDTR() EXIT`);
   }
 
@@ -1200,9 +1279,14 @@ export class UsbSerial extends EventEmitter {
     // toggle the propPlug RTS line
     this.logConsoleMessage(`[USB] PUBLIC toggleRTS() ENTER - pulse sequence`);
     this.logMessage(`* toggleRTS() - port open (${this._serialPort.isOpen})`);
-    await this.setRts(true);
-    await waitMSec(10); // 10ms pulse is sufficient per spec
-    await this.setRts(false);
+    await this.pauseReads(); // see toggleDTR
+    try {
+      await this.setRts(true);
+      await waitMSec(10); // 10ms pulse is sufficient per spec
+      await this.setRts(false);
+    } finally {
+      this.resumeReads();
+    }
     this.logConsoleMessage(`[USB] PUBLIC toggleRTS() EXIT`);
   }
 

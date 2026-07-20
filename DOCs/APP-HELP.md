@@ -23,8 +23,11 @@ are published at the project site: <https://github.com/ironsheep/PNut-Term-TS>
 4. Download and run a program with `pnut-term-ts -r yourprogram.bin`.
 5. Debug windows open automatically as the P2 sends `debug()` output.
 
-Whether the P2 is reset when you connect is governed by the **Reset P2 on Connection**
-preference (default: on).
+Whether the P2 is reset when you connect is governed by the **Reset P2 on App Startup**
+preference (default: on). Resetting on connect restarts the program from the beginning, so
+the output you capture starts at a known point and you can tell where you are in the run —
+attach without resetting and you join mid-stream with no reference point. (Downloading a
+program resets the P2 as part of the download either way, regardless of this setting.)
 
 ---
 
@@ -508,4 +511,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.10.2 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.10.3 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
