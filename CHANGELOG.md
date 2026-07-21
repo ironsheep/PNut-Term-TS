@@ -5,6 +5,21 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] - 2026-07-21
+
+Candidate fix for the Windows download failure (attempt 2).
+
+### Fixed
+
+- **Downloading to a P2 on Windows** — candidate fix. The v0.10.4 diagnostic proved the
+  port is still open when the download's identify command is sent, yet the write fails and
+  nothing on our side closed the port: the P2 reset invalidates the underlying Windows port
+  connection out from under us (the original PNut avoids this by talking to the port a
+  simpler, synchronous way). The download now recovers by re-opening a fresh connection to
+  the port and retrying the reset-and-identify a few times, which is how you recover a
+  connection the OS has invalidated. macOS and Linux are unaffected and unchanged.
+  *(Needs confirming on Windows hardware.)*
+
 ## [0.10.4] - 2026-07-20
 
 Diagnostic build for the Windows download failure (no behavior change).

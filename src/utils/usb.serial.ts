@@ -735,57 +735,114 @@ export class UsbSerial extends EventEmitter {
     });
   }
 
+  /**
+   * Reopen the port with a FRESH handle at the current comms baud — Windows recovery.
+   *
+   * The P2 reset invalidates our OVERLAPPED handle (HW-confirmed: isOpen=true yet the
+   * overlapped write raises "GetOverlappedResult: Invalid handle"; nothing of ours closed
+   * the port). A fresh open gets a valid handle. Same options + handler wiring as the
+   * changeBaudRate close/reopen fallback; hupcl:false so the reopen does not itself reset.
+   */
+  private async reopenPortFresh(): Promise<void> {
+    if (!this._serialPort) return;
+    const portPath = this._serialPort.path;
+    const baud = this._serialPort.baudRate || UsbSerial.desiredCommsBaudRate;
+    this.logSystemEvent(`* reopenPortFresh() - fresh handle on ${portPath} @ ${baud}`);
+
+    try {
+      this._serialPort.removeAllListeners();
+      if (this._serialPort.isOpen) {
+        await new Promise<void>((resolve) => this._serialPort.close(() => resolve()));
+      }
+    } catch (closeErr: any) {
+      this.logSystemEvent(`* reopenPortFresh() - close warning (non-fatal): ${closeErr?.message ?? closeErr}`);
+    }
+
+    const reopenOptions: any = {
+      path: portPath,
+      baudRate: baud,
+      dataBits: 8,
+      stopBits: 1,
+      parity: 'none',
+      autoOpen: false,
+      highWaterMark: 1024 * 1024,
+      hupcl: false // do NOT reset on this reopen
+    };
+    this._serialPort = new SerialPort(reopenOptions);
+    this._serialPort.on('error', (err) => this.handleSerialError(err.message));
+    this._serialPort.on('open', () => this.logMessage(`* reopenPortFresh() - port reopened @ ${baud}`));
+    this._serialPort.on('data', (data: Buffer) => {
+      if (this._isShuttingDown) return;
+      if (this._ignoreFrontTraffic) return;
+      this.checkForP2Response(data);
+      this.emit('data', data);
+    });
+    await new Promise<void>((resolve, reject) => {
+      this._serialPort.open((err) => (err ? reject(err) : resolve()));
+    });
+  }
+
   public async deviceIsPropellerV2(): Promise<boolean> {
     this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() ENTER - current _p2DeviceId: '${this._p2DeviceId}'`);
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - _expectingP2Response will be set to TRUE`);
 
-    // For downloads: ALWAYS reset and check P2
-    const didCheck = await this.requestPropellerVersionForDownload(); // Always reset for download
-    let foundPropellerStatus: boolean = false;
+    // Retry the reset+identify cycle, reopening a FRESH handle between attempts. On Windows
+    // the P2 reset invalidates our overlapped handle so the first Prop_Chk write is lost
+    // ("Invalid handle") with the port still reporting open; a fresh handle for the next
+    // attempt is the recovery. Bounded so a genuinely-absent P2 still fails fast.
+    const MAX_ATTEMPTS = 3;
+    let foundPropellerStatus = false;
 
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Waiting 200ms for P2 response...`);
-    // Wait for response after reset
-    await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      // Clear stale state from any prior attempt.
+      this._latestError = '';
+      this._p2DeviceId = '';
 
-    // Check _p2DeviceId BEFORE trying to re-process buffer
-    // The data handler should have already set this during the async wait above
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - After 200ms wait, _p2DeviceId: '${this._p2DeviceId}'`);
-    this.logChannelDiag(
-      `[P2-HANDSHAKE] after 200ms wait: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
-    );
+      // For downloads: ALWAYS reset and check P2
+      await this.requestPropellerVersionForDownload(); // Always reset for download
 
-    // Process any P2 response in the existing buffer
-    // The buffer already has data from the serial port handler
-    if (this._p2DetectionBuffer.length > 0) {
-      this.logConsoleMessage(
-        `[USB-P2] * deviceIsPropellerV2() - Buffer has ${this._p2DetectionBuffer.length} chars, re-processing...`
+      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Waiting 200ms for P2 response...`);
+      await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+
+      this.logChannelDiag(
+        `[P2-HANDSHAKE] attempt ${attempt}/${MAX_ATTEMPTS} after 200ms: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
       );
-      // Convert buffer string back to Buffer for processing
-      const bufferData = Buffer.from(this._p2DetectionBuffer, 'utf8');
-      this.checkForP2Response(bufferData);
-    } else {
-      this.logConsoleMessage(
-        `[USB-P2] * deviceIsPropellerV2() - Buffer is empty (likely already processed by data handler)`
+
+      if (this._p2DetectionBuffer.length > 0) {
+        const bufferData = Buffer.from(this._p2DetectionBuffer, 'utf8');
+        this.checkForP2Response(bufferData);
+      }
+
+      const [deviceString, deviceErrorString] = this.getIdStringOrError();
+      this.logChannelDiag(
+        `[P2-HANDSHAKE] attempt ${attempt} result: device='${deviceString}' error='${deviceErrorString}'`
       );
+
+      if (deviceString.length > 0 && deviceErrorString.length === 0) {
+        foundPropellerStatus = true;
+        break;
+      }
+
+      // Retry only when the failure looks like the invalidated-handle case and we have
+      // attempts left. A fresh handle is the recovery; if the P2 is simply absent the
+      // reopen still lets us try again and we fail out after MAX_ATTEMPTS.
+      if (attempt < MAX_ATTEMPTS) {
+        this.logSystemEvent(
+          `[P2-HANDSHAKE] attempt ${attempt} failed (error='${deviceErrorString}') — reopening fresh handle and retrying`
+        );
+        try {
+          await this.reopenPortFresh();
+        } catch (reopenErr: any) {
+          this.logSystemEvent(`[P2-HANDSHAKE] reopen failed: ${reopenErr?.message ?? reopenErr}`);
+          break; // can't recover the port — stop
+        }
+      }
     }
-
-    const [deviceString, deviceErrorString] = this.getIdStringOrError();
-    this.logChannelDiag(`[P2-HANDSHAKE] result: device='${deviceString}' error='${deviceErrorString}'`);
-
-    if (deviceErrorString.length > 0) {
-      this.logConsoleMessage(`[USB-P2] * deviceIsPropeller() ERROR: ${deviceErrorString}`);
-    } else if (deviceString.length > 0 && deviceErrorString.length == 0) {
-      foundPropellerStatus = true;
-    }
-
-    this.logConsoleMessage(
-      `[USB-P2] * deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`
-    );
 
     // Clear flag after processing P2 response - resume normal data forwarding
     this._expectingP2Response = false;
-    this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - _expectingP2Response cleared to FALSE`);
-
+    this.logConsoleMessage(
+      `[USB-P2] * deviceIsPropeller() -> (${foundPropellerStatus}) with _p2DeviceId: '${this._p2DeviceId}'`
+    );
     return foundPropellerStatus;
   }
 
