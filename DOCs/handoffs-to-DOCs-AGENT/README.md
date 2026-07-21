@@ -43,8 +43,22 @@ copies in place.
   is where the user meets the behavior. *(This merge is an authoring decision left to the
   DOCs agent; the repo has not pre-merged it.)*
 
+### 4. `WINDOW-LAYOUT-FEED.md`
+- **Source:** `src/utils/windowPlacer.ts` (live code, class `WindowPlacer`) + the narrative
+  `DOCs/WINDOW-PLACEMENT-ALGORITHM.md`. This feed was **re-derived from the code** and is the
+  code-accurate specification (it corrects a stale example in the narrative doc — 1920×1080 is a
+  **3-column** grid, not 5).
+- **Mine this for:** the **automatic window-placement algorithm** for debug/display windows —
+  when it runs (only when a `DEBUG` display has **no `POS` clause**), the adaptive grid sizing
+  (rows/columns vs display size), the dynamic **row height / column width** formulas, the fixed
+  **Half-Moon Descending** fill order, the reserved cells (Main Window, Debug Logger), the
+  grid-full cascade, margins/spacing constants, and the special Debugger and COG-grid strategies.
+- **Answers directly:** default row height, order of placement within a row, total number of
+  rows — the concrete parameters the prior handoff left unspecified.
+
 ## Currency
 
-All three feeds were current as of PNut-Term-TS **v0.10.3** (2026-07-20). The user guide was
-substantially corrected in the pre-1.0 documentation audit immediately before this snapshot;
+Feeds 1–3 were current as of PNut-Term-TS **v0.10.3** (2026-07-20). Feed 4
+(`WINDOW-LAYOUT-FEED.md`) is current as of **v0.10.8** (2026-07-21). The user guide was
+substantially corrected in the pre-1.0 documentation audit immediately before the first snapshot;
 re-pull if the repo has advanced.

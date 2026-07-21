@@ -34,7 +34,11 @@ The grid automatically adapts to monitor size and aspect ratio:
 
 ### Example Grids
 
-**Standard 5×3 Grid (1920×1080 and similar):**
+**Standard 5×3 Grid (work-area width ≥ 2000px, e.g. 2560×1440):**
+
+> Note: a **1920×1080** display yields a **3-column** grid, not 5 — the 5-column grid begins at
+> ≥ 2000px of work-area width (see the width thresholds above). The 5×3 diagram below illustrates
+> the canonical model against which the Half-Moon fill order is defined.
 ```
 +-------+-------+-------+-------+-------+
 | R0_C0 | R0_C1 | R0_C2 | R0_C3 | R0_C4 |  Row 0 (Top)

@@ -78,13 +78,22 @@ describe('WindowRouter', () => {
       expect(windows[0].windowType).toBe('terminal');
     });
     
-    it('should throw error for duplicate window ID', () => {
+    it('should treat a duplicate window name as a fatal display error', () => {
       const handler = jest.fn();
       router.registerWindow('test-window', 'terminal', handler);
-      
+
+      // A duplicate display name is unrecoverable (name-only routing): the router emits
+      // 'fatalDisplayError' (which drives a clean shutdown in headed mode) and still throws so
+      // the caller's registerWithRouter() guard does not mark the duplicate window ready.
+      const fatal = jest.fn();
+      router.on('fatalDisplayError', fatal);
+
       expect(() => {
         router.registerWindow('test-window', 'scope', handler);
-      }).toThrow('Window test-window is already registered');
+      }).toThrow("DEBUG display name 'test-window' is declared more than once");
+
+      expect(fatal).toHaveBeenCalledTimes(1);
+      expect(fatal.mock.calls[0][0]).toMatchObject({ windowId: 'test-window' });
     });
     
     it('should unregister a window', () => {

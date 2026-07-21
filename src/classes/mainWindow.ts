@@ -289,6 +289,21 @@ export class MainWindow {
       }
     });
 
+    // Fatal DEBUG-display program error (currently: duplicate display name). The condition is
+    // unrecoverable — the run cannot route updates for the duplicated name — so we stop cleanly
+    // with a distinct exit code (DisplayError) that scripts/CI can branch on. The router has
+    // already logged the user-facing reason. Intentional deviation from PNut (see
+    // windowRouter.registerWindow / DOCs/IMPLEMENTATION_NOTES.md). gracefulShutdown is idempotent.
+    this.windowRouter.on('fatalDisplayError', (eventData: { windowId: string; message: string }) => {
+      if (this.shutdownExitCode === ExitCode.OK) {
+        this.shutdownExitCode = ExitCode.DisplayError;
+      }
+      this.logConsoleMessage(
+        `[SESSION] fatal display error ('${eventData.windowId}') → graceful shutdown (exit ${ExitCode.DisplayError})`
+      );
+      void this.gracefulShutdown('duplicate-display-name');
+    });
+
     this.logConsoleMessage(`[WINDOW CREATION] ✅ WindowRouter event listeners setup complete`);
   }
 

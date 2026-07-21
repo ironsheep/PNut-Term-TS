@@ -19,6 +19,19 @@
  *                       (2 is the long-standing shell convention for a usage
  *                       error; it is also what most GNU tools return.)
  *   3   DOWNLOAD_FAILED Binary download to the P2 failed.
+ *   4   DISPLAY_ERROR   A fatal DEBUG-display program error made the run
+ *                       unroutable and it was stopped. Currently raised for a
+ *                       DUPLICATE display name: the DEBUG wire protocol addresses
+ *                       displays by name only (no instance id), so two displays
+ *                       sharing a name make every later update to that name
+ *                       ambiguous — it cannot be routed, and the second window
+ *                       cannot safely reuse the first (types may differ). Rather
+ *                       than render mis-routed/corrupt output we log a clear
+ *                       message and stop. This is an INTENTIONAL, documented
+ *                       deviation from PNut (which keys displays by array index
+ *                       and keeps running) — see DOCs/IMPLEMENTATION_NOTES.md.
+ *                       Headed mode only today (headless does not register
+ *                       display windows with the router).
  *   124 RUN_TIMEOUT     Overall run timeout elapsed (the `--timeout` budget).
  *   125 FLUSH_TIMEOUT   Shutdown drain exceeded its window: one or more SAVEs /
  *                       log / recording flushes may be INCOMPLETE. This is the
@@ -31,6 +44,7 @@ export enum ExitCode {
   PortError = 1,
   UsageError = 2,
   DownloadFailed = 3,
+  DisplayError = 4,
   RunTimeout = 124,
   FlushTimeout = 125
 }

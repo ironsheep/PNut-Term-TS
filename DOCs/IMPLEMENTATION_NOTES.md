@@ -262,6 +262,40 @@ public registerWindow(windowId: string, windowType: string, handler: WindowHandl
 }
 ```
 
+**Duplicate display name — fatal, with an INTENTIONAL deviation from PNut:**
+
+Debug windows are keyed by their user-chosen display **name** (`windowId = displayName`). If a
+P2 program declares two displays with the **same name**, the second `registerWindow()` collides.
+
+This is unrecoverable, and the reason is protocol-level: the DEBUG wire protocol addresses
+displays **by name only — there is no instance id on the wire**. Once two displays share a name,
+every later update carrying that name is ambiguous and cannot be routed correctly:
+
+- We **cannot reuse the first window** for the second's data — the two may be different window
+  *types* (e.g. TERM vs PLOT), so type-specific updates would corrupt the wrong renderer.
+- We **cannot disambiguate** which subsequent updates were meant for the second instance — the
+  discriminating information was never transmitted.
+
+**Behavior:** `registerWindow()` logs a single clear, user-facing message (via `logger.warn`, *not*
+`logError` — no synthetic Error/stack dump, because this is the user's program bug, not an app
+fault), emits `fatalDisplayError`, and the run is **stopped cleanly** — `MainWindow` sets
+`ExitCode.DisplayError` (4) and calls the idempotent `gracefulShutdown()`. Headed mode only today
+(headless does not register display windows with the router). This is surfaced the same way as the
+other DEBUG-directive authoring errors (unknown directive, invalid parameter), which also log and
+continue — the difference is that a duplicate name is *unrecoverable*, so we log **and stop**.
+
+**Why this deviates from PNut (and why we chose to):** PNut keys displays by **array index**
+(`DisplayForm: array[0..31]` in `DebugUnit.pas`), with name→index resolved by the external
+`P2ParseDebugString` (assembly, not in the Pascal source). PNut therefore *tolerates* duplicate
+names — it creates a second form and keeps running, and its multi-target update loop most likely
+**broadcasts** the update to every same-named form. That behavior reproduces exactly the
+mis-routed/garbled output we want to spare the user, and matching it would require rearchitecting
+our 1:1 name→window router into a name→list broadcast model. Since PNut's own handling of this
+*invalid* program produces unusable output, we deliberately chose the clearer, fail-fast path
+(log + stop) over bug-for-bug parity. Recorded here as an intentional, documented divergence — not
+an accidental parity gap. See `src/classes/shared/windowRouter.ts` (`registerWindow`) and
+`src/utils/exitCodes.ts` (`DisplayError`).
+
 **Binary Message Routing:**
 ```typescript
 public routeBinaryMessage(data: Uint8Array, taggedCogId?: number): void {

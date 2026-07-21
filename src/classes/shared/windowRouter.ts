@@ -237,9 +237,27 @@ export class WindowRouter extends EventEmitter {
     this.logger.debug('REGISTER', `Registering window handler: ${windowId} (${windowType})`);
 
     if (this.windows.has(windowId)) {
-      const error = new Error(`Window ${windowId} is already registered`);
-      this.logger.logError('REGISTER', error);
-      throw error;
+      // DUPLICATE DEBUG DISPLAY NAME — a fatal, unrecoverable authoring error in the user's P2
+      // program. The DEBUG wire protocol addresses displays by NAME only (there is no instance
+      // id on the wire), so once two displays share a name every later update to that name is
+      // ambiguous and cannot be routed: we can't safely reuse the first window (its type may
+      // differ → corrupt render) and we can't disambiguate updates for the second. Rather than
+      // emit mis-routed/garbled output, we log a clear, actionable message and STOP the run
+      // (exit code DisplayError). This is an INTENTIONAL, documented deviation from PNut, which
+      // keys displays by array index and keeps running — see DOCs/IMPLEMENTATION_NOTES.md.
+      //
+      // Logged as a plain user-facing message (not logError — no synthetic Error/stack dump:
+      // this is the user's program bug, not an app fault), matching how the other DEBUG-directive
+      // authoring errors (unknown directive, invalid parameter) are surfaced.
+      const message =
+        `DEBUG display name '${windowId}' is declared more than once — display names must be unique. ` +
+        `Updates to '${windowId}' can no longer be routed unambiguously, so the run was stopped. ` +
+        `Rename one of the duplicate displays and re-run.`;
+      this.logger.warn('REGISTER', message);
+      // Drive a clean shutdown (headed: MainWindow listens and calls gracefulShutdown).
+      this.emit('fatalDisplayError', { windowId, message });
+      // Still throw so the caller's registerWithRouter() guard does NOT mark this window ready.
+      throw new Error(message);
     }
 
     // Mark instance as ready if it exists
