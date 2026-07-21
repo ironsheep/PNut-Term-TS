@@ -22,7 +22,9 @@ Promise.all([
     outfile: 'dist/pnut-term-ts.js',
     platform: 'node',
     target: 'node23',
-    external: ['electron'],
+    // koffi is a native FFI module (synchronous Windows download transport) — keep it external
+    // and require()'d at runtime, like the serialport binding.
+    external: ['electron', 'koffi'],
     minify: false, // Disable esbuild minification we'll use terser instead
     sourcemap: true,
     define: sharedDefine
@@ -35,7 +37,7 @@ Promise.all([
     outfile: 'dist/electron-main.js',
     platform: 'node',
     target: 'node23',
-    external: ['electron'],
+    external: ['electron', 'koffi'],
     minify: false,
     sourcemap: true
   }),
@@ -63,7 +65,7 @@ Promise.all([
     outfile: 'dist/workers/serialIoHost.bundled.js',
     platform: 'node',
     target: 'node23',
-    external: ['electron', '@serialport/bindings-cpp', 'usb'],
+    external: ['electron', '@serialport/bindings-cpp', 'usb', 'koffi'],
     minify: true,
     sourcemap: true,
     format: 'cjs'

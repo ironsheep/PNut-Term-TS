@@ -51,7 +51,7 @@ esbuild.build({
   outfile: 'dist/pnut-term-ts.temp.js',
   platform: 'node',
   target: 'node18',
-  external: ['electron', '@serialport/bindings-cpp', 'usb'],
+  external: ['electron', '@serialport/bindings-cpp', 'usb', 'koffi'],
   minify: false  // Don't minify yet
 }).then(() => console.log('   ✅ CLI bundle created'));
 "
@@ -67,7 +67,7 @@ esbuild.build({
   outfile: 'dist/electron-main.js',
   platform: 'node',
   target: 'node18',
-  external: ['electron', '@serialport/bindings-cpp', 'usb'],
+  external: ['electron', '@serialport/bindings-cpp', 'usb', 'koffi'],
   minify: true
 }).then(() => console.log('   ✅ Electron bundle created'));
 "
@@ -101,7 +101,7 @@ esbuild.build({
   outfile: 'dist/workers/serialIoHost.bundled.js',
   platform: 'node',
   target: 'node18',
-  external: ['electron', '@serialport/bindings-cpp', 'usb'],
+  external: ['electron', '@serialport/bindings-cpp', 'usb', 'koffi'],
   minify: false,
   format: 'cjs'
 }).then(() => console.log('   ✅ Serial I/O host bundle created'));

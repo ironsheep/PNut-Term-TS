@@ -1,6 +1,6 @@
 {
   "name": "pnut-term-ts",
-  "version": "0.10.6",
+  "version": "0.10.7",
   "description": "A recreation of Chips' Debug listener but multiplatform combined with PST and downloader",
   "keywords": [
     "cli",
@@ -99,6 +99,7 @@
     "commander": "^13.1.0",
     "install": "^0.13.0",
     "jimp": "^1.6.0",
+    "koffi": "^3.1.2",
     "markdown-it": "^14.1.0",
     "npm": "^11.0.0",
     "pixi.js": "^8.6.6",

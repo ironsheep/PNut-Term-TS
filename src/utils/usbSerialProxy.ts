@@ -71,7 +71,11 @@ export class UsbSerialProxy extends EventEmitter {
         // MUST be forwarded: the serial layer runs in this worker, so a flag missing
         // from this whitelist is silently false there — the exact class of bug that
         // kept the channel invisible.
-        serialDiagnostics: (ctx as any).runEnvironment?.serialDiagnostics
+        serialDiagnostics: (ctx as any).runEnvironment?.serialDiagnostics,
+        // Download-transport experiment: the sync koffi path runs in THIS host process,
+        // so both knobs must cross the boundary or they are silently default here.
+        downloadTransport: (ctx as any).runEnvironment?.downloadTransport,
+        downloadResetBaud: (ctx as any).runEnvironment?.downloadResetBaud
       }
     };
 

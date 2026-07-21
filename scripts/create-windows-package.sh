@@ -195,6 +195,22 @@ PACKAGE_EOF
 
     # NOTE: commander, markdown-it, jimp are bundled by esbuild - no need to copy
 
+    # koffi (synchronous Windows download transport). The JS loader lives in node_modules/koffi;
+    # the native binary is a per-arch package @koromix/koffi-win32-<arch>. On the x64 CI runner
+    # npm ci installs win32-x64 automatically; win32-arm64 is cross-installed in the release
+    # workflow. Copy the loader + the arch-matching binary package so require('koffi') resolves.
+    if [ -d "node_modules/koffi" ]; then
+        cp -r node_modules/koffi "$pkg_dir/resources/app/node_modules/"
+        koffi_pkg="@koromix/koffi-${arch}"   # arch is win32-x64 or win32-arm64
+        if [ -d "node_modules/${koffi_pkg}" ]; then
+            mkdir -p "$pkg_dir/resources/app/node_modules/@koromix"
+            cp -r "node_modules/${koffi_pkg}" "$pkg_dir/resources/app/node_modules/@koromix/"
+            echo "   ✅ Copied koffi + ${koffi_pkg}"
+        else
+            echo "   ⚠️  ${koffi_pkg} not installed — sync download transport will be unavailable for ${arch}"
+        fi
+    fi
+
     if [ -d "prebuilds" ]; then
         cp -r prebuilds "$pkg_dir/resources/app/"
         echo "   ✅ Copied prebuilds"
