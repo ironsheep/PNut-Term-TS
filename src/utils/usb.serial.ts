@@ -743,11 +743,45 @@ export class UsbSerial extends EventEmitter {
    * the port). A fresh open gets a valid handle. Same options + handler wiring as the
    * changeBaudRate close/reopen fallback; hupcl:false so the reopen does not itself reset.
    */
-  private async reopenPortFresh(): Promise<void> {
+  /**
+   * Attach the raw data consumer to the current serial port.
+   *
+   * Attaching a 'data' listener puts the stream in flowing mode, which is what makes
+   * node-serialport arm a native overlapped read (@serialport/stream _read → binding.read).
+   * That is exactly what we must NOT have in flight during a P2 reset pulse on Windows, so
+   * the download reset deliberately reopens WITHOUT a consumer and calls this only AFTER the
+   * pulse. Extracted so the constructor-time wiring and the reopen paths stay identical.
+   */
+  private attachDataHandler(): void {
+    this._serialPort.on('data', (data: Buffer) => {
+      if (this._isShuttingDown) return;
+      if (this._ignoreFrontTraffic) return;
+      this.checkForP2Response(data);
+      this.emit('data', data);
+    });
+  }
+
+  /**
+   * Reopen the port with a FRESH handle at the current comms baud — Windows recovery.
+   *
+   * The P2 reset invalidates our OVERLAPPED handle (HW-confirmed: isOpen=true yet the
+   * overlapped write raises "GetOverlappedResult: Invalid handle"; nothing of ours closed
+   * the port). A fresh open gets a valid handle. Same options + handler wiring as the
+   * changeBaudRate close/reopen fallback; hupcl:false so the reopen does not itself reset.
+   *
+   * `attachDataListener` (default true) controls whether the data consumer is wired up as
+   * part of the reopen. The download reset path passes FALSE: it needs an open-but-read-idle
+   * handle so no native overlapped read is armed while it pulses DTR, then re-attaches the
+   * consumer via attachDataHandler() once the pulse + ROM-loader settle time have passed.
+   */
+  private async reopenPortFresh(opts?: { attachDataListener?: boolean }): Promise<void> {
+    const attachData = opts?.attachDataListener !== false; // default true
     if (!this._serialPort) return;
     const portPath = this._serialPort.path;
     const baud = this._serialPort.baudRate || UsbSerial.desiredCommsBaudRate;
-    this.logSystemEvent(`* reopenPortFresh() - fresh handle on ${portPath} @ ${baud}`);
+    this.logSystemEvent(
+      `* reopenPortFresh() - fresh handle on ${portPath} @ ${baud}${attachData ? '' : ' (read-idle: no consumer)'}`
+    );
 
     try {
       this._serialPort.removeAllListeners();
@@ -771,12 +805,11 @@ export class UsbSerial extends EventEmitter {
     this._serialPort = new SerialPort(reopenOptions);
     this._serialPort.on('error', (err) => this.handleSerialError(err.message));
     this._serialPort.on('open', () => this.logMessage(`* reopenPortFresh() - port reopened @ ${baud}`));
-    this._serialPort.on('data', (data: Buffer) => {
-      if (this._isShuttingDown) return;
-      if (this._ignoreFrontTraffic) return;
-      this.checkForP2Response(data);
-      this.emit('data', data);
-    });
+    // Only wire the consumer when asked. Leaving it OFF keeps the stream paused so no native
+    // overlapped read is armed — required to pulse the P2 reset without the Windows handle dying.
+    if (attachData) {
+      this.attachDataHandler();
+    }
     await new Promise<void>((resolve, reject) => {
       this._serialPort.open((err) => (err ? reject(err) : resolve()));
     });
@@ -822,19 +855,14 @@ export class UsbSerial extends EventEmitter {
         break;
       }
 
-      // Retry only when the failure looks like the invalidated-handle case and we have
-      // attempts left. A fresh handle is the recovery; if the P2 is simply absent the
-      // reopen still lets us try again and we fail out after MAX_ATTEMPTS.
+      // Retry if we have attempts left. The reset inside requestPropellerVersionForDownload()
+      // now reopens a fresh, read-idle handle every time (Tier 1), so each attempt already gets
+      // a clean handle and pulses with no overlapped read in flight — no separate reopen needed
+      // here. If the P2 is simply absent we still fail out after MAX_ATTEMPTS.
       if (attempt < MAX_ATTEMPTS) {
         this.logSystemEvent(
-          `[P2-HANDSHAKE] attempt ${attempt} failed (error='${deviceErrorString}') — reopening fresh handle and retrying`
+          `[P2-HANDSHAKE] attempt ${attempt} failed (error='${deviceErrorString}') — retrying (reset reopens a fresh read-idle handle)`
         );
-        try {
-          await this.reopenPortFresh();
-        } catch (reopenErr: any) {
-          this.logSystemEvent(`[P2-HANDSHAKE] reopen failed: ${reopenErr?.message ?? reopenErr}`);
-          break; // can't recover the port — stop
-        }
       }
     }
 
@@ -870,22 +898,33 @@ export class UsbSerial extends EventEmitter {
       // continue with ID effort...
       await waitMSec(250);
 
-      // WINDOWS handle-invalidation fix — match the PNut reference (SerialUnit.pas
-      // ResetHardware): STOP the read before pulsing the reset line, resume after.
+      // WINDOWS handle-survival (Tier 1) — pulse the reset with NO overlapped read in flight.
       //
-      // Symptom (Windows, HW-confirmed v0.10.2): the download's DTR reset was followed
-      // ~200ms later by "Writing to COM port (GetOverlappedResult): Invalid handle" — an
-      // OVERLAPPED I/O failing. Our worker keeps a continuous overlapped read live on the
-      // port; when the P2 reset blips the USB device, that in-flight read invalidates the
-      // handle. PNut never has I/O in flight during the pulse (SerialThreadStop/Start), so
-      // its handle survives — same DTR mechanism (both use EscapeCommFunction), the only
-      // difference is quiescing reads around the pulse. macOS/Linux are unaffected but the
-      // quiesce is harmless there. See DTR-RTS-CONTROL-LINES.md.
-      await this.pauseReads();
+      // Symptom (Windows, HW-confirmed v0.10.2): the download's DTR reset was followed ~200ms
+      // later by "GetOverlappedResult: Invalid handle" and the Prop_Chk write was lost. Cause:
+      // node-serialport's Windows binding keeps a native overlapped read permanently armed while
+      // the stream is flowing (@serialport/stream _read → ReadThread parked on ReadFileEx). When
+      // the P2 reset blips the USB device, that in-flight read invalidates the handle.
+      //
+      // Two prior fixes FAILED and are NOT re-attempted here:
+      //   - stream.pause() (v0.10.3) does not cancel the native ReadThread — the read stays parked.
+      //   - reopen that re-attaches 'data' (v0.10.5) re-arms a read BEFORE the pulse.
+      // The only reliable quiesce is to pulse on an OPEN-but-not-consuming handle: reopen a fresh
+      // handle with NO data consumer, so the stream stays paused and node-serialport never arms a
+      // native read; pulse; let the ROM loader come up; THEN attach the consumer to read the reply.
+      // This matches BOTH proven-good references — PNut (SerialUnit.pas ResetHardware stops its read
+      // thread across the pulse) and SpinTools/jSSC (on-demand reads only, none pending during
+      // hwreset). macOS/Linux are unaffected; the clean reopen is harmless there.
+      await this.reopenPortFresh({ attachDataListener: false });
+      this.logChannelDiag(
+        `[P2-HANDSHAKE] reset handle reopened read-idle (no consumer → no overlapped read armed) isOpen=${
+          this._serialPort ? this._serialPort.isOpen : 'no-port'
+        }`
+      );
       try {
         // Use RTS instead of DTR if RTS override is enabled
         if (this.context.runEnvironment.rtsOverride) {
-          this.logChannelDiag(`[P2-HANDSHAKE] reset via RTS`);
+          this.logChannelDiag(`[P2-HANDSHAKE] reset via RTS (no read in flight)`);
           // FTDI workaround: Toggle twice for proper pulse
           await this.setRts(false); // Ensure we start HIGH
           await waitMSec(5); // Let it settle
@@ -901,13 +940,18 @@ export class UsbSerial extends EventEmitter {
           await this.setDtr(true); // This triggers the hardware's 17µs reset pulse
           await this.setDtr(false); // Return DTR to idle state
 
-          this.logChannelDiag(`[P2-HANDSHAKE] reset via DTR (toggle complete)`);
+          this.logChannelDiag(`[P2-HANDSHAKE] reset via DTR (toggle complete, no read in flight)`);
         }
-        // Let the P2 ROM loader come up while reads are still quiesced (PNut Sleep(15)).
+        // Let the P2 ROM loader come up while the handle is still read-idle (PNut Sleep(15)).
         await waitMSec(15);
       } finally {
-        // Resume reads with a fresh, valid handle before we send Prop_Chk / read the reply.
-        this.resumeReads();
+        // Reads were quiesced across the pulse; attach the consumer now so the Prop_Ver reply
+        // and the ensuing download stream are received on the fresh, valid handle.
+        this.attachDataHandler();
+        if (typeof (this._serialPort as any).resume === 'function') {
+          (this._serialPort as any).resume();
+        }
+        this.logChannelDiag(`[P2-HANDSHAKE] reset complete — consumer attached, reads live on fresh handle`);
       }
 
       // Fm Silicon Doc:
