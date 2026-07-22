@@ -885,19 +885,86 @@ export class UsbSerial extends EventEmitter {
     return false;
   }
 
-  /** After a sync download attempt: close the sync handle and reopen node-serialport for debug. */
+  /**
+   * After a sync download: hand the (now-running) P2 back to node-serialport for the DEBUG
+   * stream WITHOUT disturbing the certified 2 Mbaud reader. The stream still flows through the
+   * exact same reader every platform uses — _serialPort.on('data') → the #31 UtilityProcess
+   * pipeline — so this touches only the one-time, 0-byte/s handoff instant, never the hot path.
+   *
+   * Two candidates could silence the stream, both addressed here:
+   *   1. a DTR edge on the handle handoff re-resetting the P2 → prepareHandoff() pins DTR low
+   *      into the close so node-serialport's reopen presents no rising edge;
+   *   2. the reopened stream never entering flowing mode → resumeReads() mirrors the reset path.
+   * watchHandoffStream() then reports LIVE vs SILENT so a single HW run confirms which (if any).
+   */
   private async finishSyncDownload(): Promise<void> {
     if (this._winSync) {
+      this._winSync.prepareHandoff(); // pin DTR deasserted (running state) across the close
       this._winSync.close();
       this._winSync = null;
     }
-    // Reopen node-serialport at the comms baud so the P2 DEBUG stream is received as usual.
+    // Reopen node-serialport at the comms baud so the P2 DEBUG stream is received on the SAME
+    // certified reader — no new transport in the 2 Mbaud path.
     try {
       await this.reopenPortFresh({ attachDataListener: true, baud: this.getCurrentBaudRate() });
+      this.resumeReads(); // guarantee flowing mode on the fresh stream (candidate #2)
       this.logSystemEvent(`[SYNC-DL] node-serialport reopened @ ${this.getCurrentBaudRate()} for debug stream`);
+      this.logHandoffLineState(); // node-serialport modem lines right after reopen
+      this.watchHandoffStream(); // one-shot: are debug bytes actually arriving?
     } catch (e: any) {
       this.logSystemEvent(`[SYNC-DL] node-serialport reopen after sync download FAILED: ${e?.message ?? e}`);
     }
+  }
+
+  /** Diagnostic: log the reopened node-serialport modem lines right after the sync handoff. */
+  private logHandoffLineState(): void {
+    try {
+      if (this._serialPort && typeof (this._serialPort as any).get === 'function') {
+        (this._serialPort as any).get((err: any, status: any) => {
+          if (err) {
+            this.logSystemEvent(`[SYNC-DL] handoff line-state read failed: ${err?.message ?? err}`);
+            return;
+          }
+          this.logSystemEvent(`[SYNC-DL] handoff line-state: CTS=${!!status?.cts} DSR=${!!status?.dsr} DCD=${!!status?.dcd}`);
+        });
+      }
+    } catch (e: any) {
+      this.logSystemEvent(`[SYNC-DL] handoff line-state error: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * One-shot handoff watchdog: count debug bytes for a short window after the reopen and log
+   * whether the stream is live. This is the diagnostic that distinguishes the two silence
+   * candidates on a single HW run — SILENT here means the handoff reset the P2 or the stream
+   * never flowed; LIVE means Option B is complete and the stream is running on the certified
+   * reader. Uses a temporary counter listener (removed after the window); the real data handler
+   * attached by reopenPortFresh() is untouched.
+   */
+  private watchHandoffStream(): void {
+    let bytes = 0;
+    const onData = (d: Buffer): void => {
+      bytes += d.length;
+    };
+    try {
+      this._serialPort.on('data', onData);
+    } catch {
+      /* non-fatal */
+    }
+    setTimeout(() => {
+      try {
+        this._serialPort.removeListener('data', onData);
+      } catch {
+        /* ignore */
+      }
+      if (bytes > 0) {
+        this.logSystemEvent(`[SYNC-DL] handoff stream LIVE — ${bytes} debug bytes in first 1000ms (Option B complete)`);
+      } else {
+        this.logSystemEvent(
+          `[SYNC-DL] handoff stream SILENT — 0 bytes 1000ms after reopen (P2 reset by handoff, or stream not flowing)`
+        );
+      }
+    }, 1000);
   }
 
   public async deviceIsPropellerV2(): Promise<boolean> {
