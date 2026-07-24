@@ -94,6 +94,25 @@ const MS_RLSD_ON = 0x0080;
 const INVALID_HANDLE = 0xffffffffffffffffn;
 const NULL_HANDLE = 0n;
 
+// Open retry: a COM port held by a not-yet-exited previous run reports ACCESS_DENIED and frees
+// up within a moment. Bounded, and only retried for that one error code.
+const ERROR_FILE_NOT_FOUND = 2;
+const ERROR_ACCESS_DENIED = 5;
+const OPEN_ATTEMPTS = 3;
+const OPEN_RETRY_MS = 300;
+
+/** Turn a CreateFileW GetLastError into something a user can act on. */
+function describeOpenError(gle: number): string {
+  switch (gle) {
+    case ERROR_FILE_NOT_FOUND:
+      return 'no such COM port — is the Prop Plug plugged in, and is this the port -n reported?';
+    case ERROR_ACCESS_DENIED:
+      return 'port already in use — another program (or a previous run of this app that has not exited) holds it';
+    default:
+      return 'unexpected — see the Win32 System Error Codes for this value';
+  }
+}
+
 const DCB_SIZE = 28; // sizeof(DCB) on Win32/Win64
 const TIMEOUTS_SIZE = 20; // sizeof(COMMTIMEOUTS): 5 DWORDs
 
@@ -113,7 +132,25 @@ const POLL_IDLE_MAX_MS = 4;
 const DRIVER_QUEUE_BYTES = 64 * 1024;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-const immediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+// The pump's own waits must NOT hold the process open.
+//
+// A read pump is a service, never a reason to stay alive: it has a timer pending at every
+// instant, so an un-unref'd timer keeps libuv's loop alive forever and the process cannot exit
+// on its own. That presents as "the app locked up" on quit AND poisons the NEXT run — a serial
+// process that never exits keeps the COM port claimed, so the next launch gets ACCESS_DENIED
+// from CreateFileW. unref() lets the loop drain and the process exit whenever nothing else is
+// keeping it up; the pump simply stops being scheduled at that point, which is what we want.
+const sleepUnref = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    const t: any = setTimeout(resolve, ms);
+    if (typeof t?.unref === 'function') t.unref();
+  });
+const immediateUnref = (): Promise<void> =>
+  new Promise((resolve) => {
+    const i: any = setImmediate(resolve);
+    if (typeof i?.unref === 'function') i.unref();
+  });
 
 // ---- lazily-bound kernel32 surface ----
 interface Kernel32 {
@@ -244,25 +281,53 @@ export class WinSyncPort extends EventEmitter {
   public open(cb: (err?: Error | null) => void): void {
     const api = loadKernel32();
     if (!api) {
-      cb(new Error(`[WIN-SYNC] kernel32 unavailable: ${WinSyncPort.unavailableReason()}`));
+      const msg = `[WIN-SYNC] kernel32 unavailable: ${WinSyncPort.unavailableReason()}`;
+      this.log.sys(msg);
+      cb(new Error(msg));
       return;
     }
     // "\\.\COM10" form is required for COM >= 10 and harmless for low ports.
     const devicePath = `\\\\.\\${this._path}`;
-    const ret = api.CreateFileW(
-      wide(devicePath),
-      GENERIC_READ | GENERIC_WRITE,
-      0, // no sharing — exclusive, like Pascal (share mode 0)
-      null,
-      OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL, // SYNCHRONOUS — no FILE_FLAG_OVERLAPPED (the whole point)
-      null
-    );
-    this.handle = BigInt.asUintN(64, BigInt(ret));
-    if (!this.isOpen) {
-      const gle = api.GetLastError();
+    // ALWAYS-LIVE: name the attempt BEFORE it happens. A failed open used to report only
+    // through the callback, which UsbSerial.handleSerialError swallows into _latestError behind
+    // gated logging — so the app went quiet with nothing in the log to say why (v0.11.0, HW).
+    // Every exit from this method now leaves a line behind.
+    this.log.sys(`[WIN-SYNC] opening ${devicePath} @ ${this._baudRate} (synchronous handle)`);
+
+    let ret: any = 0;
+    let gle = 0;
+    for (let attempt = 1; attempt <= OPEN_ATTEMPTS; attempt++) {
+      ret = api.CreateFileW(
+        wide(devicePath),
+        GENERIC_READ | GENERIC_WRITE,
+        0, // no sharing — exclusive, like Pascal (share mode 0)
+        null,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, // SYNCHRONOUS — no FILE_FLAG_OVERLAPPED (the whole point)
+        null
+      );
+      this.handle = BigInt.asUintN(64, BigInt(ret));
+      if (this.isOpen) break;
+      gle = api.GetLastError();
       this.handle = NULL_HANDLE;
-      cb(new Error(`[WIN-SYNC] CreateFileW('${devicePath}') failed — GetLastError=${gle}`));
+      // ERROR_ACCESS_DENIED here means the COM port is still held by someone — most often a
+      // previous run of this app that has not finished exiting, or a terminal left open. The
+      // driver releases it a moment later, so a bounded retry turns a hard failure into a blip.
+      // Anything else (no such port, device unplugged) will not improve with waiting.
+      if (gle !== ERROR_ACCESS_DENIED || attempt === OPEN_ATTEMPTS) break;
+      this.log.sys(`[WIN-SYNC] ${devicePath} busy (ACCESS_DENIED) — retry ${attempt}/${OPEN_ATTEMPTS - 1} in ${OPEN_RETRY_MS}ms`);
+      const until = Date.now() + OPEN_RETRY_MS;
+      while (Date.now() < until) {
+        /* deliberate short spin: open() is synchronous by contract (the caller passes a
+           callback but does not await), so we cannot yield to the loop here. Bounded and
+           only on the already-failing path. */
+      }
+    }
+
+    if (!this.isOpen) {
+      const msg = `[WIN-SYNC] CANNOT OPEN ${devicePath} — GetLastError=${gle} (${describeOpenError(gle)})`;
+      this.log.sys(msg);
+      cb(new Error(msg));
       return;
     }
     this.log.diag(`[WIN-SYNC] opened ${devicePath} synchronous handle=0x${this.handle.toString(16)}`);
@@ -492,7 +557,7 @@ export class WinSyncPort extends EventEmitter {
     let idleMs = 0;
     while (this.pumpRunning && this.isOpen) {
       if (this.paused || this.listenerCount('data') === 0) {
-        await sleep(POLL_IDLE_MAX_MS);
+        await sleepUnref(POLL_IDLE_MAX_MS);
         continue;
       }
       let n = 0;
@@ -507,10 +572,10 @@ export class WinSyncPort extends EventEmitter {
         this.readBuf.copy(chunk, 0, 0, n);
         this.emit('data', chunk);
         idleMs = 0;
-        await immediate(); // yield the loop, then read again straight away
+        await immediateUnref(); // yield the loop, then read again straight away
       } else {
         idleMs = idleMs === 0 ? POLL_IDLE_START_MS : Math.min(idleMs * 2, POLL_IDLE_MAX_MS);
-        await sleep(idleMs);
+        await sleepUnref(idleMs);
       }
     }
     this.pumpRunning = false;

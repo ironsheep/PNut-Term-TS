@@ -215,7 +215,19 @@ export class UsbSerial extends EventEmitter {
     this._serialPort.open((err) => {
       if (err) {
         this.logConsoleMessage(`[USB OPEN] open() callback received ERROR: ${err.message}`);
+        // ALWAYS-LIVE: a port that never opens is the difference between "the app is working"
+        // and "the app is sitting there mute". This used to be swallowed into _latestError
+        // behind gated logging, which is exactly how a v0.11.0 Windows run produced a log with
+        // no explanation in it. The run narrative must carry it. [LOGGING-STANDARDS]
+        this.logSystemEvent(`* PORT OPEN FAILED on ${this._deviceNode}: ${err.message}`);
         this.handleSerialError(err.message);
+        // Windows: if the SYNC transport could not open, do not leave the user with a dead
+        // app and no recourse. node-serialport cannot survive the P2 reset (so downloading
+        // will still fail) but it CAN carry the terminal and debug stream from an
+        // already-running P2 — which is worth having while the real cause is sorted out.
+        if (this._usingSyncPort) {
+          this.fallBackToNodeSerialport(portOptions);
+        }
       } else {
         this.logConsoleMessage(`[USB OPEN] open() callback received SUCCESS`);
       }
@@ -877,6 +889,40 @@ export class UsbSerial extends EventEmitter {
       diag: (m: string) => this.logChannelDiag(m),
       sys: (m: string) => this.logSystemEvent(m)
     };
+  }
+
+  /**
+   * Last-resort recovery: the Windows synchronous transport could not open the port, so retry
+   * once with node-serialport rather than leaving the session with no port at all.
+   *
+   * This is NOT a transport choice coming back through the side door — it is degraded operation
+   * after a hard failure, and it is announced as such. node-serialport still cannot survive the
+   * P2 reset (that is the whole reason the sync transport exists), so DOWNLOAD remains broken on
+   * this path; what it buys is a working terminal + debug stream against an already-running P2,
+   * and a log that says plainly which transport is live.
+   */
+  private fallBackToNodeSerialport(portOptions: any): void {
+    this._usingSyncPort = false;
+    this.logSystemEvent(
+      `* FALLING BACK to node-serialport for this session — the terminal and debug windows will work ` +
+        `against an already-running P2, but DOWNLOAD (-r/-f) will fail because that transport cannot ` +
+        `survive the P2 reset. Fix the port problem above to restore downloading.`
+    );
+    try {
+      this._serialPort = this.createPort(portOptions); // _usingSyncPort is now false → SerialPort
+      this._closePromise = null;
+      this._serialPort.on('error', (err: any) => this.handleSerialError(err.message));
+      this._serialPort.on('open', () => this.handleSerialOpen());
+      this.attachDataHandler();
+      this._serialPort.open((err) => {
+        if (err) {
+          this.logSystemEvent(`* FALLBACK PORT OPEN ALSO FAILED on ${this._deviceNode}: ${err.message}`);
+          this.handleSerialError(err.message);
+        }
+      });
+    } catch (e: any) {
+      this.logSystemEvent(`* FALLBACK transport could not be created: ${e?.message ?? e}`);
+    }
   }
 
   public async deviceIsPropellerV2(): Promise<boolean> {

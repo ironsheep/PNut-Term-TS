@@ -126,6 +126,79 @@ describe('WinSyncPort — Windows single-handle transport', () => {
     });
   });
 
+  describe('open failure is never silent', () => {
+    // REGRESSION (v0.11.0, HW): the CreateFileW failure branch reported ONLY through its
+    // callback. UsbSerial.handleSerialError swallowed that into _latestError behind gated
+    // logging, so the app sat mute and the log had nothing in it to diagnose. Every exit from
+    // open() must leave an always-live line naming the port and the reason.
+    it('logs an always-live line naming the port and decoded reason when the port is in use', async () => {
+      const sys: string[] = [];
+      const fk = makeFakeKernel32();
+      fk.api.CreateFileW = () => 0xffffffffffffffffn; // INVALID_HANDLE_VALUE
+      fk.api.GetLastError = () => 5; // ERROR_ACCESS_DENIED
+      __setKernel32ForTesting(fk.api, 'win32');
+
+      const port = new WinSyncPort({ path: 'COM6', baudRate: 2000000 }, { diag: () => {}, sys: (m) => sys.push(m) });
+      const err = await new Promise<Error>((resolve) => port.open((e) => resolve(e as Error)));
+
+      expect(err).toBeTruthy();
+      expect(err.message).toContain('CANNOT OPEN');
+      const joined = sys.join('\n');
+      expect(joined).toContain('COM6'); // names the port
+      expect(joined).toContain('GetLastError=5');
+      expect(joined).toContain('already in use'); // decoded, actionable
+      expect(joined).toContain('opening'); // the attempt was announced BEFORE it was made
+    });
+
+    it('decodes "no such COM port" distinctly from "in use"', async () => {
+      const sys: string[] = [];
+      const fk = makeFakeKernel32();
+      fk.api.CreateFileW = () => 0xffffffffffffffffn;
+      fk.api.GetLastError = () => 2; // ERROR_FILE_NOT_FOUND
+      __setKernel32ForTesting(fk.api, 'win32');
+
+      const port = new WinSyncPort({ path: 'COM9', baudRate: 2000000 }, { diag: () => {}, sys: (m) => sys.push(m) });
+      await new Promise((resolve) => port.open(resolve));
+      expect(sys.join('\n')).toContain('no such COM port');
+    });
+
+    it('retries a busy port and succeeds when it frees up', async () => {
+      const sys: string[] = [];
+      const fk = makeFakeKernel32();
+      let tries = 0;
+      fk.api.CreateFileW = () => {
+        tries++;
+        return tries < 2 ? 0xffffffffffffffffn : 0x1234n; // busy once, then free
+      };
+      fk.api.GetLastError = () => 5; // ERROR_ACCESS_DENIED — the retryable one
+      __setKernel32ForTesting(fk.api, 'win32');
+
+      const port = new WinSyncPort({ path: 'COM6', baudRate: 2000000 }, { diag: () => {}, sys: (m) => sys.push(m) });
+      const err = await new Promise<Error | null | undefined>((resolve) => port.open((e) => resolve(e)));
+
+      expect(err).toBeFalsy();
+      expect(port.isOpen).toBe(true);
+      expect(tries).toBe(2);
+      expect(sys.join('\n')).toContain('busy (ACCESS_DENIED) — retry');
+      port.close(() => {});
+    });
+
+    it('does NOT retry an error that waiting cannot fix', async () => {
+      const fk = makeFakeKernel32();
+      let tries = 0;
+      fk.api.CreateFileW = () => {
+        tries++;
+        return 0xffffffffffffffffn;
+      };
+      fk.api.GetLastError = () => 2; // no such port — retrying is pointless
+      __setKernel32ForTesting(fk.api, 'win32');
+
+      const port = new WinSyncPort({ path: 'COM9', baudRate: 2000000 }, noopLogger);
+      await new Promise((resolve) => port.open(resolve));
+      expect(tries).toBe(1);
+    });
+  });
+
   describe('read pump', () => {
     it('delivers every queued byte, byte-for-byte, in order', async () => {
       const port = await openPort();

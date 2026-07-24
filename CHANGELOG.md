@@ -5,6 +5,33 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-07-24
+
+Fixes the two problems that made 0.11.0 look like a lock-up on Windows.
+
+### Fixed
+
+- **The app could fail to exit, and then block its own next launch.** The new Windows serial
+  reader scheduled its next poll with a timer that was never released, so the process had a
+  reason to stay alive at every instant and could not shut down on its own. A serial process
+  left running keeps the COM port claimed — which is why a following launch could find the
+  port unavailable. The reader's timers no longer hold the app open.
+- **A port that would not open said nothing.** If the connection could not be opened, the
+  reason was recorded internally and never written to the log, so the app simply sat there
+  with a dead port and a log that ended mid-startup. Opening is now announced before it is
+  attempted, and a failure always names the port, the Windows error number, and a plain-English
+  cause ("port already in use — another program, or a previous run that has not exited, holds
+  it" / "no such COM port — is the Prop Plug plugged in?").
+- **A briefly-busy port no longer fails the run.** When the port is held by a program that is
+  still shutting down, the app now waits and retries a few times instead of giving up at once.
+  Errors that waiting cannot fix are not retried.
+
+### Changed
+
+- If the Windows connection cannot be opened at all, the app now continues in a reduced mode
+  rather than stopping: the terminal and debug windows still work against an already-running
+  P2, and the log says clearly that downloading will not work until the port problem is fixed.
+
 ## [0.11.0] - 2026-07-24
 
 Windows now talks to the P2 over a single connection, start to finish — the download and
