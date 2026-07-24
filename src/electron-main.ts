@@ -144,8 +144,6 @@ app.commandLine.appendSwitch('no-sandbox');
   electronContext.runEnvironment.serialPortDevices = config.serialPortDevices || [];
   electronContext.runEnvironment.usbTrafficLogging = config.usbTrafficLogging || false;
   electronContext.runEnvironment.serialDiagnostics = config.serialDiagnostics || false;
-  electronContext.runEnvironment.downloadTransport = config.downloadTransport || 'serialport';
-  electronContext.runEnvironment.downloadResetBaud = config.downloadResetBaud || 0;
   electronContext.runEnvironment.usbLogFilePath = config.usbLogFilePath;
   // Headed batch termination: WindowRouter/MainWindow exit on the end-session
   // marker / DEBUG_END_SESSION when these are set (see --exit-on-end-session).

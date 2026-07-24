@@ -287,12 +287,6 @@ export class DebugTerminalInTypeScript {
       // internals would ride along into ordinary runs. This is a troubleshooting tool for
       // the serial channel itself.
       .option('--diag-serial', 'Log serial-channel troubleshooting detail (P2 download handshake steps)')
-      .option(
-        '--dl-transport <kind>',
-        'DIAG: download transport — serialport (node-serialport) | sync (koffi synchronous, Windows)',
-        'serialport'
-      )
-      .option('--dl-baud <n>', 'DIAG: baud for download reset+handshake (0 = use comms baud)', '0')
       .option('--console-mode', 'Running with console output - adds delay before close')
       .option('--headless', 'Run without GUI windows (file logging only, for CI/AI agents)')
       // No parseInt coercion here: parseInt('abc') yields NaN, which then slips
@@ -560,25 +554,6 @@ export class DebugTerminalInTypeScript {
     if (options.diagSerial) {
       this.context.runEnvironment.serialDiagnostics = true;
       this.context.logger.progressMsg(`Logging serial-channel diagnostics`);
-    }
-
-    // Download-transport experiment (v0.10.7) — diagnostic knobs, stripped for release.
-    if (options.dlTransport === 'sync' || options.dlTransport === 'serialport') {
-      this.context.runEnvironment.downloadTransport = options.dlTransport;
-      if (options.dlTransport === 'sync') {
-        this.context.logger.progressMsg(`Download transport: sync (koffi synchronous)`);
-      }
-    } else if (options.dlTransport !== undefined) {
-      this.context.logger.progressMsg(`Ignoring unknown --dl-transport '${options.dlTransport}' (using serialport)`);
-    }
-    if (options.dlBaud !== undefined) {
-      const dlBaud = parseInt(options.dlBaud, 10);
-      if (!Number.isNaN(dlBaud) && dlBaud >= 0) {
-        this.context.runEnvironment.downloadResetBaud = dlBaud;
-        if (dlBaud > 0) {
-          this.context.logger.progressMsg(`Download reset+handshake baud: ${dlBaud}`);
-        }
-      }
     }
 
     // The "Downloading [...]" announcement is HELD until validation passes: we
@@ -1040,10 +1015,6 @@ export class DebugTerminalInTypeScript {
         // --diag-serial must cross this boundary too, or the flag is silently false in
         // the Electron process (and therefore in the serial UtilityProcess below it).
         serialDiagnostics: this.context.runEnvironment.serialDiagnostics,
-        // Download-transport experiment: must cross to the Electron process (and the serial
-        // UtilityProcess below it) or the sync path/baud override are silently default there.
-        downloadTransport: this.context.runEnvironment.downloadTransport,
-        downloadResetBaud: this.context.runEnvironment.downloadResetBaud,
         // Headed batch termination: must cross the process boundary so the
         // Electron-side WindowRouter/MainWindow can honor --exit-on-end-session.
         exitOnEndSession: this.context.runEnvironment.exitOnEndSession,

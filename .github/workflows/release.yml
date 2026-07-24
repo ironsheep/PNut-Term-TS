@@ -80,7 +80,7 @@ jobs:
           if [ -n "$KOFFI_VER" ]; then
             echo "Cross-installing @koromix/koffi-win32-arm64@${KOFFI_VER}"
             npm install --no-save --force --os=win32 --cpu=arm64 "@koromix/koffi-win32-arm64@${KOFFI_VER}" || \
-              echo "⚠️  arm64 koffi cross-install failed — win32-arm64 sync transport will be unavailable"
+              echo "⚠️  arm64 koffi cross-install FAILED — the win32-arm64 build will have no working P2 download"
           else
             echo "⚠️  koffi-win32-x64 not found — skipping arm64 cross-install"
           fi

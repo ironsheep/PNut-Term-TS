@@ -57,15 +57,6 @@ export interface RuntimeEnvironment {
   quiet: boolean;
   usbTrafficLogging: boolean;
   serialDiagnostics: boolean; // --diag-serial: serial-channel troubleshooting detail
-  // Windows download-transport experiment (v0.10.7): the overlapped node-serialport handle
-  // does not survive the P2 reset (write fails "Invalid handle" even with no read in flight).
-  // These diagnostic knobs let ONE build test all four combinations on hardware:
-  //   downloadTransport 'serialport' = node-serialport (overlapped); 'sync' = koffi synchronous
-  //     kernel32 path (Pascal SerialUnit.pas faithful; win32 only, falls back to serialport else).
-  //   downloadResetBaud 0 = use the comms baud for reset+handshake; otherwise force this baud
-  //     (e.g. 115200, matching avrgirl/esptool/node-propeller2-loader).
-  downloadTransport: 'serialport' | 'sync';
-  downloadResetBaud: number;
   usbLogFilePath?: string;
   // Headless mode options (for CI/AI agents)
   headlessMode?: boolean;
@@ -182,8 +173,6 @@ export class Context {
       consoleMode: false, // Default to no console delay
       usbTrafficLogging: false, // Default USB logging off
       serialDiagnostics: false, // --diag-serial only; channel troubleshooting is opt-in
-      downloadTransport: 'serialport', // default: existing node-serialport path
-      downloadResetBaud: 0, // 0 = use comms baud for reset+handshake
       usbLogFilePath: undefined
     };
     this.actions = {

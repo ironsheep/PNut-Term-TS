@@ -8,7 +8,7 @@ import { SerialPort } from 'serialport';
 // ReadlineParser REMOVED - was corrupting binary data and killing performance!
 import { waitMSec, waitSec } from './timerUtils';
 import { Context } from './context';
-import { WinSyncSerial } from './winSyncSerial';
+import { WinSyncPort, ISerialPort } from './winSyncPort';
 import { EventEmitter } from 'events';
 
 // DIAGNOSTIC: Check which native binding is actually loaded
@@ -76,7 +76,11 @@ export class UsbSerial extends EventEmitter {
   private context: Context;
   private endOfLineStr: string = '\r\n';
   private _deviceNode: string = '';
-  private _serialPort: SerialPort;
+  // The transport. On macOS/Linux this is a node-serialport SerialPort; on Windows it is a
+  // WinSyncPort (synchronous kernel32 handle) presenting the same surface. Everything below
+  // this line — detect, download, checksum, streaming — is transport-agnostic and identical
+  // on all three platforms. See createPort() and winSyncPort.ts for why Windows differs.
+  private _serialPort: ISerialPort;
   // Parser removed - was corrupting binary data! Now using manual P2 detection
   private _p2DetectionBuffer: string = '';
   // Download baud rate: Always 2 Mbps currently (future: user-configurable)
@@ -97,7 +101,7 @@ export class UsbSerial extends EventEmitter {
   private _isShuttingDown: boolean = false; // Flag to stop processing data during shutdown
   private _ignoreFrontTraffic: boolean = false; // Flag to drop incoming data (quiesce/startup control)
   private _closePromise: Promise<void> | null = null; // In-flight close() — makes close idempotent (see close())
-  private _winSync: WinSyncSerial | null = null; // sync koffi transport (Windows download experiment)
+  private _usingSyncPort: boolean = false; // true when the transport is the Windows WinSyncPort
 
   constructor(ctx: Context, deviceNode: string) {
     super();
@@ -108,9 +112,30 @@ export class UsbSerial extends EventEmitter {
     }
     this.logMessage(`* Connecting to ${this._deviceNode}`);
 
+    // Decide the transport ONCE, here, and log the decision — every later behavior difference
+    // keys off this one flag. See createPort()/winSyncPort.ts for the why.
+    this._usingSyncPort = UsbSerial.syncPortSelected();
+    if (process.platform === 'win32') {
+      if (this._usingSyncPort) {
+        this.logSystemEvent(`* Windows: using the synchronous COM transport (single handle, survives the P2 reset)`);
+      } else {
+        // Capability gate, NOT a preference: the only way to land here is a broken install
+        // (koffi native module missing or ABI-mismatched). Say so loudly — downloading will
+        // fail on the P2 reset, and the user needs the reason, not a mystery.
+        this.logSystemEvent(
+          `* WARNING: Windows synchronous COM transport UNAVAILABLE (${WinSyncPort.unavailableReason()}) — ` +
+            `falling back to node-serialport. The terminal and debug windows work; DOWNLOAD (-r/-f) will FAIL ` +
+            `on this build because the overlapped handle cannot survive the P2 reset. Reinstall to restore it.`
+        );
+      }
+    }
+
     // WORKAROUND for macOS/Windows ARM64 FTDI bug with high baud rates:
-    // Initialize at a standard rate, then immediately update to the desired rate
+    // Initialize at a standard rate, then immediately update to the desired rate.
+    // NOT needed on the sync port: it writes the DCB BaudRate field directly, so a high rate
+    // applies on the first open with nothing to step around.
     const initialBaudRate =
+      !this._usingSyncPort &&
       UsbSerial.desiredCommsBaudRate > 230400 &&
       (process.platform === 'darwin' || (process.platform === 'win32' && process.arch === 'arm64'))
         ? 115200 // Use standard rate first on macOS and Windows ARM64 for high speeds
@@ -150,7 +175,7 @@ export class UsbSerial extends EventEmitter {
     // while POSIX (which did get hupcl:false) worked. See v0.9.98 Windows testing.
     portOptions.hupcl = false; // Prevent automatic DTR/RTS assertion on port open
 
-    this._serialPort = new SerialPort(portOptions);
+    this._serialPort = this.createPort(portOptions);
     this.logConsoleMessage(`[USB OPEN] SerialPort created for ${this._deviceNode}`);
     this.logConsoleMessage(`[USB OPEN] Options: ${JSON.stringify(portOptions)}`);
 
@@ -303,7 +328,7 @@ export class UsbSerial extends EventEmitter {
       // note at the initial-open site.
       reopenOptions.hupcl = false; // Prevent automatic DTR/RTS assertion on port open
 
-      this._serialPort = new SerialPort(reopenOptions);
+      this._serialPort = this.createPort(reopenOptions);
 
       // Re-attach all event listeners
       this._serialPort.on('error', (err) => this.handleSerialError(err.message));
@@ -804,7 +829,7 @@ export class UsbSerial extends EventEmitter {
       highWaterMark: 1024 * 1024,
       hupcl: false // do NOT reset on this reopen
     };
-    this._serialPort = new SerialPort(reopenOptions);
+    this._serialPort = this.createPort(reopenOptions);
     // Fresh handle → fresh close latch. The idempotency guard in close() dedupes concurrent
     // closes of ONE handle; a new handle must be closable again.
     this._closePromise = null;
@@ -820,22 +845,31 @@ export class UsbSerial extends EventEmitter {
     });
   }
 
-  /** Download-transport experiment knobs (v0.10.7), read live from runEnvironment. */
-  private get dlTransport(): 'serialport' | 'sync' {
-    return (this.context?.runEnvironment as any)?.downloadTransport === 'sync' ? 'sync' : 'serialport';
+  /**
+   * Is the Windows synchronous transport the one to use? Platform capability ONLY — there is
+   * no user-facing switch. Windows has exactly one P2 transport, the same way macOS and Linux
+   * do; the only way this returns false on win32 is a broken install (koffi missing/ABI
+   * mismatch), which the constructor reports loudly.
+   */
+  private static syncPortSelected(): boolean {
+    return WinSyncPort.isAvailable();
   }
-  private get dlResetBaud(): number {
-    const b = Number((this.context?.runEnvironment as any)?.downloadResetBaud) || 0;
-    return b > 0 ? b : this.getCurrentBaudRate();
+
+  /** True when THIS instance is driving the Windows synchronous handle. */
+  private get isSyncPort(): boolean {
+    return this._usingSyncPort;
   }
-  /** True when the sync koffi transport is selected AND usable on this platform. */
-  private get useSyncTransport(): boolean {
-    if (this.dlTransport !== 'sync') return false;
-    if (!WinSyncSerial.isAvailable()) {
-      this.logSystemEvent(`[SYNC-DL] --dl-transport=sync requested but unavailable here (non-win32 or koffi missing) — using node-serialport`);
-      return false;
+
+  /**
+   * Build the transport. The two implementations present the same surface, so every caller
+   * below is transport-agnostic — including the whole P2 protocol (detect / image / checksum),
+   * which is why Windows no longer carries a second copy of it.
+   */
+  private createPort(portOptions: any): ISerialPort {
+    if (this._usingSyncPort) {
+      return new WinSyncPort({ path: portOptions.path, baudRate: portOptions.baudRate }, this.syncLogger()) as unknown as ISerialPort;
     }
-    return true;
+    return new SerialPort(portOptions) as unknown as ISerialPort;
   }
 
   private syncLogger() {
@@ -845,143 +879,12 @@ export class UsbSerial extends EventEmitter {
     };
   }
 
-  /**
-   * SYNC transport (Windows): close node-serialport to release the COM port, then open a
-   * synchronous kernel32 handle (koffi) that survives the P2 reset, and run Prop_Chk. The
-   * handle is kept open for the subsequent sendImage() in download(); it is closed and
-   * node-serialport reopened by finishSyncDownload().
-   */
-  private async syncDetectP2(): Promise<boolean> {
-    const baud = this.dlResetBaud;
-    this.logSystemEvent(`[SYNC-DL] sync detect: releasing node-serialport, opening synchronous handle @ ${baud}`);
-    // Release the overlapped handle directly (Windows COM ports are exclusive) so the sync
-    // handle can open. Direct close — not the public close() — to avoid its idempotency latch.
-    try {
-      if (this._serialPort) {
-        this._serialPort.removeAllListeners();
-        if (this._serialPort.isOpen) {
-          await new Promise<void>((resolve) => this._serialPort.close(() => resolve()));
-        }
-      }
-    } catch (e: any) {
-      this.logSystemEvent(`[SYNC-DL] pre-open close warning (non-fatal): ${e?.message ?? e}`);
-    }
-    const portPath = this._deviceNode;
-    this._winSync = new WinSyncSerial(portPath, this.syncLogger());
-    if (!this._winSync.open(baud)) {
-      this.logSystemEvent(`[SYNC-DL] synchronous open FAILED — cannot detect P2`);
-      this._winSync = null;
-      return false;
-    }
-    const useRts = !!(this.context.runEnvironment as any)?.rtsOverride;
-    const version = await this._winSync.detectP2(useRts);
-    if (version) {
-      this._p2DeviceId = `Prop_Ver ${version}`;
-      return true;
-    }
-    // No P2 — tidy up the sync handle (download() won't be called).
-    this._winSync.close();
-    this._winSync = null;
-    return false;
-  }
-
-  /**
-   * After a sync download: hand the (now-running) P2 back to node-serialport for the DEBUG
-   * stream WITHOUT disturbing the certified 2 Mbaud reader. The stream still flows through the
-   * exact same reader every platform uses — _serialPort.on('data') → the #31 UtilityProcess
-   * pipeline — so this touches only the one-time, 0-byte/s handoff instant, never the hot path.
-   *
-   * Two candidates could silence the stream, both addressed here:
-   *   1. a DTR edge on the handle handoff re-resetting the P2 → prepareHandoff() pins DTR low
-   *      into the close so node-serialport's reopen presents no rising edge;
-   *   2. the reopened stream never entering flowing mode → resumeReads() mirrors the reset path.
-   * watchHandoffStream() then reports LIVE vs SILENT so a single HW run confirms which (if any).
-   */
-  private async finishSyncDownload(): Promise<void> {
-    if (this._winSync) {
-      this._winSync.prepareHandoff(); // pin DTR deasserted (running state) across the close
-      this._winSync.close();
-      this._winSync = null;
-    }
-    // Reopen node-serialport at the comms baud so the P2 DEBUG stream is received on the SAME
-    // certified reader — no new transport in the 2 Mbaud path.
-    try {
-      await this.reopenPortFresh({ attachDataListener: true, baud: this.getCurrentBaudRate() });
-      this.resumeReads(); // guarantee flowing mode on the fresh stream (candidate #2)
-      this.logSystemEvent(`[SYNC-DL] node-serialport reopened @ ${this.getCurrentBaudRate()} for debug stream`);
-      this.logHandoffLineState(); // node-serialport modem lines right after reopen
-      this.watchHandoffStream(); // one-shot: are debug bytes actually arriving?
-    } catch (e: any) {
-      this.logSystemEvent(`[SYNC-DL] node-serialport reopen after sync download FAILED: ${e?.message ?? e}`);
-    }
-  }
-
-  /** Diagnostic: log the reopened node-serialport modem lines right after the sync handoff. */
-  private logHandoffLineState(): void {
-    try {
-      if (this._serialPort && typeof (this._serialPort as any).get === 'function') {
-        (this._serialPort as any).get((err: any, status: any) => {
-          if (err) {
-            this.logSystemEvent(`[SYNC-DL] handoff line-state read failed: ${err?.message ?? err}`);
-            return;
-          }
-          this.logSystemEvent(`[SYNC-DL] handoff line-state: CTS=${!!status?.cts} DSR=${!!status?.dsr} DCD=${!!status?.dcd}`);
-        });
-      }
-    } catch (e: any) {
-      this.logSystemEvent(`[SYNC-DL] handoff line-state error: ${e?.message ?? e}`);
-    }
-  }
-
-  /**
-   * One-shot handoff watchdog: count debug bytes for a short window after the reopen and log
-   * whether the stream is live. This is the diagnostic that distinguishes the two silence
-   * candidates on a single HW run — SILENT here means the handoff reset the P2 or the stream
-   * never flowed; LIVE means Option B is complete and the stream is running on the certified
-   * reader. Uses a temporary counter listener (removed after the window); the real data handler
-   * attached by reopenPortFresh() is untouched.
-   */
-  private watchHandoffStream(): void {
-    let bytes = 0;
-    const onData = (d: Buffer): void => {
-      bytes += d.length;
-    };
-    try {
-      this._serialPort.on('data', onData);
-    } catch {
-      /* non-fatal */
-    }
-    setTimeout(() => {
-      try {
-        this._serialPort.removeListener('data', onData);
-      } catch {
-        /* ignore */
-      }
-      if (bytes > 0) {
-        this.logSystemEvent(`[SYNC-DL] handoff stream LIVE — ${bytes} debug bytes in first 1000ms (Option B complete)`);
-      } else {
-        this.logSystemEvent(
-          `[SYNC-DL] handoff stream SILENT — 0 bytes 1000ms after reopen (P2 reset by handoff, or stream not flowing)`
-        );
-      }
-    }, 1000);
-  }
-
   public async deviceIsPropellerV2(): Promise<boolean> {
     this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() ENTER - current _p2DeviceId: '${this._p2DeviceId}'`);
 
-    // Windows download-transport experiment: run the whole handshake on a synchronous koffi
-    // handle instead of node-serialport's overlapped one.
-    if (this.useSyncTransport) {
-      const found = await this.syncDetectP2();
-      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() [sync] -> (${found})`);
-      return found;
-    }
-
-    // Retry the reset+identify cycle, reopening a FRESH handle between attempts. On Windows
-    // the P2 reset invalidates our overlapped handle so the first Prop_Chk write is lost
-    // ("Invalid handle") with the port still reporting open; a fresh handle for the next
-    // attempt is the recovery. Bounded so a genuinely-absent P2 still fails fast.
+    // Retry the reset+identify cycle. Bounded so a genuinely-absent P2 still fails fast; the
+    // P2 ROM loader can also miss the first Prop_Chk while its autobaud settles, which is why
+    // both proven-good references (PNut, SpinTools/jSSC) retry after a single reset too.
     const MAX_ATTEMPTS = 3;
     let foundPropellerStatus = false;
 
@@ -1058,34 +961,29 @@ export class UsbSerial extends EventEmitter {
       // continue with ID effort...
       await waitMSec(250);
 
-      // WINDOWS handle-survival (Tier 1) — pulse the reset with NO overlapped read in flight.
+      // Quiesce reads across the reset pulse — the one property BOTH proven-good references
+      // share (PNut's SerialUnit.pas ResetHardware stops its read thread; SpinTools/jSSC reads
+      // on demand only, so nothing is pending during hwreset). HOW we quiesce depends on the
+      // transport, because they fail differently:
       //
-      // Symptom (Windows, HW-confirmed v0.10.2): the download's DTR reset was followed ~200ms
-      // later by "GetOverlappedResult: Invalid handle" and the Prop_Chk write was lost. Cause:
-      // node-serialport's Windows binding keeps a native overlapped read permanently armed while
-      // the stream is flowing (@serialport/stream _read → ReadThread parked on ReadFileEx). When
-      // the P2 reset blips the USB device, that in-flight read invalidates the handle.
-      //
-      // Two prior fixes FAILED and are NOT re-attempted here:
-      //   - stream.pause() (v0.10.3) does not cancel the native ReadThread — the read stays parked.
-      //   - reopen that re-attaches 'data' (v0.10.5) re-arms a read BEFORE the pulse.
-      // The only reliable quiesce is to pulse on an OPEN-but-not-consuming handle: reopen a fresh
-      // handle with NO data consumer, so the stream stays paused and node-serialport never arms a
-      // native read; pulse; let the ROM loader come up; THEN attach the consumer to read the reply.
-      // This matches BOTH proven-good references — PNut (SerialUnit.pas ResetHardware stops its read
-      // thread across the pulse) and SpinTools/jSSC (on-demand reads only, none pending during
-      // hwreset). macOS/Linux are unaffected; the clean reopen is harmless there.
-      // --dl-baud experiment: reset+handshake at this baud (default = comms baud). The working
-      // Node reset-loaders (avrgirl/esptool/node-propeller2-loader) do the handshake at ≤115200;
-      // the P2 ROM loader autobauds, so a lower baud here is valid and the image that follows
-      // rides the same handle at the same baud.
-      const resetBaud = this.dlResetBaud;
-      await this.reopenPortFresh({ attachDataListener: false, baud: resetBaud });
-      this.logChannelDiag(
-        `[P2-HANDSHAKE] reset handle reopened read-idle @ ${resetBaud} (no consumer → no overlapped read armed) isOpen=${
-          this._serialPort ? this._serialPort.isOpen : 'no-port'
-        }`
-      );
+      //  - SYNC PORT (Windows): pause() genuinely stops the pump — no ReadFile is in flight, on
+      //    the SAME handle we keep for the rest of the session. Nothing is closed or reopened,
+      //    so nothing can trip the reset line, and the P2 we just loaded is still ours.
+      //  - node-serialport (macOS/Linux): its stream.pause() does NOT stop the native read
+      //    (falsified v0.10.3), so the only reliable quiesce is a FRESH handle with no data
+      //    consumer attached — the stream never enters flowing mode, so no native read is armed.
+      const resetBaud = this.getCurrentBaudRate();
+      if (this.isSyncPort) {
+        await this.pauseReads();
+        this.logChannelDiag(`[P2-HANDSHAKE] sync port: read pump paused for the pulse @ ${resetBaud} (same handle, no reopen)`);
+      } else {
+        await this.reopenPortFresh({ attachDataListener: false, baud: resetBaud });
+        this.logChannelDiag(
+          `[P2-HANDSHAKE] reset handle reopened read-idle @ ${resetBaud} (no consumer → no overlapped read armed) isOpen=${
+            this._serialPort ? this._serialPort.isOpen : 'no-port'
+          }`
+        );
+      }
       try {
         // Use RTS instead of DTR if RTS override is enabled
         if (this.context.runEnvironment.rtsOverride) {
@@ -1110,13 +1008,29 @@ export class UsbSerial extends EventEmitter {
         // Let the P2 ROM loader come up while the handle is still read-idle (PNut Sleep(15)).
         await waitMSec(15);
       } finally {
-        // Reads were quiesced across the pulse; attach the consumer now so the Prop_Ver reply
-        // and the ensuing download stream are received on the fresh, valid handle.
-        this.attachDataHandler();
-        if (typeof (this._serialPort as any).resume === 'function') {
-          (this._serialPort as any).resume();
+        // SYNC PORT ONLY: purge the driver's RX before reads resume — Pascal ResetHardware does
+        // exactly this. The node-serialport path gets clean buffers for free because it reopened
+        // a fresh handle; we deliberately keep ONE handle, so bytes the pre-reset program emitted
+        // are still queued in the driver and would land in _p2DetectionBuffer after it is cleared,
+        // corrupting the Prop_Ver match. Purge while reads are still paused, so nothing races in.
+        if (this.isSyncPort) {
+          await new Promise<void>((resolve) => this._serialPort.flush(() => resolve()));
+          this.logChannelDiag(`[P2-HANDSHAKE] sync port: driver RX purged after the pulse (pre-reset bytes discarded)`);
         }
-        this.logChannelDiag(`[P2-HANDSHAKE] reset complete — consumer attached, reads live on fresh handle`);
+        // Reads were quiesced across the pulse; bring them back so the Prop_Ver reply and the
+        // ensuing download are received.
+        //
+        // The sync port keeps its ORIGINAL consumer (nothing was closed), so re-attaching here
+        // would double-wire 'data' and deliver every chunk twice — the same defect class as the
+        // debugger's double-Phase-1 delivery. Resume the pump instead; only the reopened
+        // node-serialport handle needs a fresh consumer.
+        if (!this.isSyncPort) {
+          this.attachDataHandler();
+        }
+        this.resumeReads();
+        this.logChannelDiag(
+          `[P2-HANDSHAKE] reset complete — reads live again (${this.isSyncPort ? 'pump resumed on the same handle' : 'consumer attached to fresh handle'})`
+        );
       }
 
       // Fm Silicon Doc:
@@ -1196,26 +1110,6 @@ export class UsbSerial extends EventEmitter {
     this._downloadResponse = '';
     this._checksumVerified = false;
 
-    // Windows sync-transport experiment: the P2 was detected on the synchronous koffi handle
-    // (still open from syncDetectP2). Send the image over that same handle, then close it and
-    // reopen node-serialport for the debug stream.
-    if (this.useSyncTransport && this._winSync) {
-      try {
-        const result = await this._winSync.sendImage(uint8Bytes, needsP2ChecksumVerify);
-        if (needsP2ChecksumVerify) {
-          this._checksumVerified = result.ok;
-          this._downloadChecksumGood = result.checksumGood;
-          this._downloadResponse = result.checksumGood ? '.' : '!';
-        }
-        this.logSystemEvent(`[SYNC-DL] download complete (ok=${result.ok}, checksumGood=${result.checksumGood})`);
-      } catch (e: any) {
-        this.logSystemEvent(`[SYNC-DL] download FAILED: ${e?.message ?? e}`);
-      } finally {
-        await this.finishSyncDownload();
-        this._isDownloading = false;
-      }
-      return;
-    }
     //
     // PNut v51 format: 'Prop_Txt 0 0 0 0' with space terminator
     const requestStartDownload: string = 'Prop_Txt 0 0 0 0';
@@ -1524,13 +1418,19 @@ export class UsbSerial extends EventEmitter {
   }
 
   /**
-   * Quiesce the port's reads around a reset pulse — the Node analog of PNut's
+   * Quiesce the port's reads around a reset pulse — the analog of PNut's
    * SerialThreadStop/SerialThreadStart (SerialUnit.pas ResetHardware).
    *
-   * On Windows a P2 reset blips the USB device; an in-flight OVERLAPPED read during that
-   * blip invalidates the handle ("GetOverlappedResult: Invalid handle"). Pausing the stream
-   * stops node-serialport's poller so no read is outstanding across the pulse; PurgeComm-like
-   * flush + resume then reads cleanly afterward. Idempotent and safe if the port is closed.
+   * ⚠️ Its strength depends on the transport, and the difference is load-bearing:
+   *
+   *  - **WinSyncPort** — pause() REALLY stops reading (the pump checks the flag), so no
+   *    ReadFile is in flight across the pulse. This is the genuine SerialThreadStop analog.
+   *  - **node-serialport** — stream.pause() does NOT cancel the native overlapped read; it
+   *    stays parked (falsified on hardware, v0.10.3). Callers that must guarantee no read is
+   *    in flight on that transport reopen a fresh handle with no data consumer instead; this
+   *    is only a best-effort quiesce there, used for the observe-mode connect reset.
+   *
+   * Idempotent and safe if the port is closed.
    */
   private async pauseReads(): Promise<void> {
     try {

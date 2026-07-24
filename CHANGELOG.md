@@ -5,6 +5,37 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-24
+
+Windows now talks to the P2 over a single connection, start to finish — the download and
+the debug stream share one handle instead of handing off between two.
+
+### Fixed
+
+- **Blank debug windows after a successful Windows download.** Since 0.10.10 the download
+  itself worked, but the program's debug output never appeared: the app finished loading
+  over one kind of connection, closed it, and opened a *different* kind for the debug
+  stream. Opening that second connection briefly pulses the reset line, which restarted the
+  P2 into its idle boot loader — so the freshly-loaded program was still there, but silent.
+  There is no longer a second connection to open. Windows uses one connection for the whole
+  session: reset, identify, load, checksum, and the 2 Mbaud debug stream. macOS and Linux
+  already worked this way and are unchanged.
+
+### Changed
+
+- **Windows serial is now one transport, not two.** The connection style that survives the
+  P2's reset (the one the original PNut uses) previously handled only the download; it now
+  carries everything, including the high-speed debug stream. One consequence worth knowing:
+  the Windows and macOS/Linux builds now run the *same* download code — the identify
+  sequence, the image transfer, and the checksum check are no longer implemented twice — so
+  a fix or a behavior change lands on every platform at once.
+- **The diagnostic `--dl-transport` and `--dl-baud` options are gone.** They existed to let
+  one build try four combinations on hardware; that experiment is over and the answer is
+  built in. Nothing replaces them: there is one Windows transport, chosen automatically.
+- If the connection library is missing or damaged in an install (a broken install, not a
+  setting), the app now says so plainly at startup and explains that the terminal and debug
+  windows still work but downloading will fail — instead of failing later with no reason.
+
 ## [0.10.5] - 2026-07-21
 
 Candidate fix for the Windows download failure (attempt 2).
