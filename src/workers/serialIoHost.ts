@@ -51,6 +51,62 @@ function pushState(): void {
   }
 }
 
+/**
+ * Self-reported CPU + throughput sampling for THIS process, behind --diag-serial.
+ *
+ * Why the app measures itself rather than asking someone to read Task Manager: on Windows every
+ * one of our processes is `electron.exe` (main, each renderer, GPU, and this serial host), so a
+ * human reading a process list cannot reliably tell which row is the serial reader — the one
+ * number that matters when judging whether the read pump is expensive. process.cpuUsage() is
+ * scoped to this process by construction, so it cannot be attributed to the wrong one, and it
+ * lands in the same log as the traffic it is explaining.
+ *
+ * Emits one line per interval: CPU percent of a core since the last sample, plus bytes forwarded
+ * and the observed rate over the same window. Idle intervals are skipped so a quiet session does
+ * not fill the log — silence in this series means "nothing happening", which is itself the
+ * baseline reading.
+ */
+const CPU_SAMPLE_MS = 5000;
+let bytesSinceSample = 0;
+let cpuSampleTimer: any = null;
+
+function startCpuSampling(): void {
+  if (cpuSampleTimer) return;
+  let lastCpu = process.cpuUsage();
+  let lastAt = Date.now();
+  let idleReported = false;
+  cpuSampleTimer = setInterval(() => {
+    const nowCpu = process.cpuUsage(lastCpu);
+    const nowAt = Date.now();
+    const elapsedMs = nowAt - lastAt;
+    lastCpu = process.cpuUsage();
+    lastAt = nowAt;
+    const bytes = bytesSinceSample;
+    bytesSinceSample = 0;
+    if (elapsedMs <= 0) return;
+    // cpuUsage() is microseconds of CPU time; as a share of one core over the window:
+    const cpuPct = ((nowCpu.user + nowCpu.system) / 1000 / elapsedMs) * 100;
+    const kbPerSec = bytes / 1024 / (elapsedMs / 1000);
+    if (bytes === 0) {
+      // Report the idle baseline ONCE per quiet stretch — enough to prove the pump backs off,
+      // without a heartbeat every 5s for the whole session.
+      if (idleReported) return;
+      idleReported = true;
+      post({ kind: 'log', args: [`[WIN-SYNC] cpu idle: ${cpuPct.toFixed(1)}% of a core, 0 bytes in ${elapsedMs}ms`] });
+      return;
+    }
+    idleReported = false;
+    post({
+      kind: 'log',
+      args: [
+        `[WIN-SYNC] cpu ${cpuPct.toFixed(1)}% of a core | ${bytes} bytes in ${elapsedMs}ms (${kbPerSec.toFixed(1)} KB/s)`
+      ]
+    });
+  }, CPU_SAMPLE_MS);
+  // Never a reason to keep this process alive — same rule as the read pump's own timers.
+  if (typeof cpuSampleTimer?.unref === 'function') cpuSampleTimer.unref();
+}
+
 function handleInit(init: any): void {
   try {
     UsbSerial.setCommBaudRate(init.baudRate);
@@ -67,8 +123,12 @@ function handleInit(init: any): void {
     serial.on('data', (data: Buffer) => {
       const copy = new Uint8Array(data.length);
       copy.set(data);
+      bytesSinceSample += data.length;
       post({ kind: 'data', data: copy }, [copy.buffer]);
     });
+    if (init.runEnvironment?.serialDiagnostics) {
+      startCpuSampling();
+    }
     post({ kind: 'ready' });
   } catch (e: any) {
     console.error(`[HOST] init FAILED: ${e?.message ?? e}`);

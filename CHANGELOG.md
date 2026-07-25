@@ -5,6 +5,35 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-07-25
+
+Measurement build. Windows downloading and debug output were confirmed working on hardware in
+0.11.1; this adds what is needed to judge *sustained* performance from a log file, without
+anyone having to watch a screen or hunt through a process list.
+
+### Fixed
+
+- **USB traffic log timestamps were wrong under load.** Each entry was stamped when it was
+  written to the file rather than when the bytes actually arrived. Because entries are written
+  in the background, a busy stream could push that moment arbitrarily late — so any timing read
+  from a busy capture was misleading. Entries now carry the instant the bytes crossed the wire.
+
+### Added
+
+- **`--usb-counts-only`** (use with `-u`) — records the time and size of each block of received
+  data without the hex dump. The dump makes a capture roughly six times larger, which is fine
+  for inspecting content but impractical for a multi-megabyte performance capture. Transmitted
+  data keeps its full detail, because that is what identifies a keystroke.
+- **The serial connection now reports its own CPU usage** while `--diag-serial` is on. It
+  measures the correct process by construction — on Windows every part of the app appears in
+  Task Manager under the same name, so a process list cannot reliably tell you which one is
+  handling the serial port.
+- **A throughput test program and log verifier** (`DOCs/pascal-REF/Throughput-Test-Programs/`,
+  `scripts/verify-stream-log.js`). The program emits numbered lines while driving a debug
+  window, so missing or repeated data is a matter of arithmetic rather than judgement; the
+  verifier reads a captured log and reports pass/fail. Both work on every platform, and the
+  compiled binary is included so no compiler is needed to run it.
+
 ## [0.11.1] - 2026-07-24
 
 Fixes the two problems that made 0.11.0 look like a lock-up on Windows.

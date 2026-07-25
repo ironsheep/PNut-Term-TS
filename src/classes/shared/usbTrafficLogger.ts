@@ -26,6 +26,22 @@ export class USBTrafficLogger {
   private enabled: boolean = false;
   private bytesLogged: number = 0;
   private packetsLogged: number = 0;
+  private countsOnly: boolean = false;
+
+  /**
+   * COUNTS-ONLY mode — timestamps and byte counts, no hex/ASCII dump.
+   *
+   * The hex dump inflates a capture roughly 6x (each byte becomes "$XX " plus its ASCII
+   * column), which makes a sustained-throughput capture unusable: a few MB of debug stream
+   * becomes a few tens of MB of log that is awkward to hand back and slow to write. For
+   * THROUGHPUT analysis the payload bytes are not the evidence — the per-chunk timestamps and
+   * sizes are: they give sustained rate, chunk-size distribution, and the largest inter-chunk
+   * gap, which is how you tell a reader that is keeping up from one that is falling behind.
+   * Content-level debugging still wants the full dump, so this is a mode, not a replacement.
+   */
+  public setCountsOnly(countsOnly: boolean): void {
+    this.countsOnly = countsOnly;
+  }
 
   /**
    * Enable logging to specified file
@@ -102,13 +118,15 @@ export class USBTrafficLogger {
     // Convert to Uint8Array if Buffer
     const bytes = data instanceof Buffer ? new Uint8Array(data) : data;
 
-    // Format hex dump asynchronously (non-blocking)
+    // Format asynchronously (non-blocking)
     setImmediate(() => {
-      const hexDump = this.formatHexDump(bytes, timestamp, 'RECV');
+      const entry = this.countsOnly
+        ? this.formatCountsOnly(bytes, timestamp, 'RECV')
+        : this.formatHexDump(bytes, timestamp, 'RECV');
 
       // Write to file (async I/O)
       if (this.logStream) {
-        this.logStream.write(hexDump + '\n');
+        this.logStream.write(entry + '\n');
         this.bytesLogged += bytes.length;
         this.packetsLogged++;
       }
@@ -137,7 +155,9 @@ export class USBTrafficLogger {
       bytes = data;
     }
 
-    // Format hex dump asynchronously (non-blocking)
+    // Format asynchronously (non-blocking). TX stays FULL even in counts-only mode: transmits
+    // are tiny (keystrokes, handshake commands) so they cost nothing, and their content is the
+    // evidence for round-trip latency — you must know WHICH byte went out to match its echo.
     setImmediate(() => {
       const hexDump = this.formatHexDump(bytes, timestamp, 'SEND');
 
@@ -155,11 +175,39 @@ export class USBTrafficLogger {
    * Matches original messageExtractor.ts format
    * @param direction - 'RECV' for received data, 'SEND' for transmitted data
    */
+  /**
+   * Format a captured epoch-ms instant as local `YYYY-MM-DDTHH:MM:SS.mmm`.
+   *
+   * Must use the timestamp the CALLER captured, not "now". Both log paths format inside
+   * setImmediate(), so "now" is the time the formatter ran — which under a saturated stream can
+   * lag arrival by an unbounded amount, and would silently corrupt any latency or throughput
+   * figure derived from these lines. The whole value of this log is that its timestamps mean
+   * "when the bytes crossed the wire".
+   */
+  private formatInstant(timestamp: number): string {
+    const d = new Date(timestamp);
+    const pad = (n: number, w = 2): string => String(n).padStart(w, '0');
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
+    );
+  }
+
+  /**
+   * COUNTS-ONLY entry: one line per chunk — direction, arrival instant, byte count, and the
+   * running total. Everything a throughput analysis needs, nothing it does not.
+   */
+  private formatCountsOnly(data: Uint8Array, timestamp: number, direction: 'RECV' | 'SEND'): string {
+    const verb = direction === 'RECV' ? 'Received' : 'Sent';
+    const runningTotal = this.bytesLogged + data.length;
+    return `[USB ${direction} ${this.formatInstant(timestamp)}] ${verb} ${data.length} bytes (total ${runningTotal})`;
+  }
+
   private formatHexDump(data: Uint8Array, timestamp: number, direction: 'RECV' | 'SEND'): string {
     const lines: string[] = [];
 
-    // Header with timestamp (convert millisecond timestamp to local time)
-    const timestampStr = getFormattedDateTimeISO();
+    // Header stamped with the instant the bytes crossed the wire (see formatInstant).
+    const timestampStr = this.formatInstant(timestamp);
     const verb = direction === 'RECV' ? 'Received' : 'Sent';
     lines.push(`[USB ${direction} ${timestampStr}] ${verb} ${data.length} bytes`);
     lines.push(`[USB ${direction} HEX/ASCII]:`);

@@ -356,7 +356,8 @@ export class WorkerExtractor extends EventEmitter {
    * Enable USB traffic logging to file
    * @param logFilePath - Path to log file (will append if exists)
    */
-  public enableUSBLogging(logFilePath: string): void {
+  public enableUSBLogging(logFilePath: string, countsOnly: boolean = false): void {
+    this.usbLogger.setCountsOnly(countsOnly);
     this.usbLogger.enable(logFilePath);
   }
 

@@ -143,6 +143,7 @@ app.commandLine.appendSwitch('no-sandbox');
   electronContext.runEnvironment.quiet = config.quiet || false;
   electronContext.runEnvironment.serialPortDevices = config.serialPortDevices || [];
   electronContext.runEnvironment.usbTrafficLogging = config.usbTrafficLogging || false;
+  electronContext.runEnvironment.usbTrafficCountsOnly = config.usbTrafficCountsOnly || false;
   electronContext.runEnvironment.serialDiagnostics = config.serialDiagnostics || false;
   electronContext.runEnvironment.usbLogFilePath = config.usbLogFilePath;
   // Headed batch termination: WindowRouter/MainWindow exit on the end-session

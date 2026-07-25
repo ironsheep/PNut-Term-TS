@@ -56,6 +56,9 @@ export interface RuntimeEnvironment {
   verbose: boolean;
   quiet: boolean;
   usbTrafficLogging: boolean;
+  // -u writes a full hex/ASCII dump; this drops it to timestamps + byte counts so a
+  // sustained-throughput capture stays a manageable size (see USBTrafficLogger.setCountsOnly).
+  usbTrafficCountsOnly: boolean;
   serialDiagnostics: boolean; // --diag-serial: serial-channel troubleshooting detail
   usbLogFilePath?: string;
   // Headless mode options (for CI/AI agents)
@@ -172,6 +175,7 @@ export class Context {
       quiet: false,
       consoleMode: false, // Default to no console delay
       usbTrafficLogging: false, // Default USB logging off
+      usbTrafficCountsOnly: false, // full hex dump unless --usb-counts-only
       serialDiagnostics: false, // --diag-serial only; channel troubleshooting is opt-in
       usbLogFilePath: undefined
     };

@@ -482,7 +482,10 @@ export class MainWindow {
         const usbLogPath = path.join(logsDir, `usb-traffic_${timestamp}.log`);
 
         this.logConsoleMessage(`[USB LOGGING] Enabling USB traffic logging to ${usbLogPath}`);
-        components.workerExtractor.enableUSBLogging(usbLogPath);
+        components.workerExtractor.enableUSBLogging(
+          usbLogPath,
+          this.context.runEnvironment.usbTrafficCountsOnly === true
+        );
       }
     }
 

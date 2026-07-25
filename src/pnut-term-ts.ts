@@ -283,6 +283,9 @@ export class DebugTerminalInTypeScript {
       // text was telling users a restriction that does not exist.
       .option('--rts', 'Use RTS instead of DTR for device reset')
       .option('-u, --log-usb-trfc', 'Enable USB traffic logging (timestamped log file)')
+      // Throughput captures need timestamps + sizes, not payload. The hex dump inflates a
+      // capture ~6x, which makes a sustained 2 Mbaud run unusable as evidence.
+      .option('--usb-counts-only', 'With -u: log RX timestamps and byte counts only (no hex dump) — for throughput captures')
       // Deliberately NOT folded into -d/--debug: that flag is common enough that channel
       // internals would ride along into ordinary runs. This is a troubleshooting tool for
       // the serial channel itself.
@@ -546,6 +549,9 @@ export class DebugTerminalInTypeScript {
 
     // Store USB traffic logging flag
     // NOTE: Path will be created in MainWindow (Electron process), not here (CLI process)
+    if (options.usbCountsOnly) {
+      this.context.runEnvironment.usbTrafficCountsOnly = true;
+    }
     if (options.logUsbTrfc) {
       this.context.runEnvironment.usbTrafficLogging = true;
       this.context.logger.progressMsg(`Logging USB traffic`);
@@ -1012,6 +1018,7 @@ export class DebugTerminalInTypeScript {
         quiet: this.context.runEnvironment.quiet,
         serialPortDevices: this.context.runEnvironment.serialPortDevices,
         usbTrafficLogging: this.context.runEnvironment.usbTrafficLogging,
+        usbTrafficCountsOnly: this.context.runEnvironment.usbTrafficCountsOnly,
         // --diag-serial must cross this boundary too, or the flag is silently false in
         // the Electron process (and therefore in the serial UtilityProcess below it).
         serialDiagnostics: this.context.runEnvironment.serialDiagnostics,

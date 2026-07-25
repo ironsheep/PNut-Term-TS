@@ -73,6 +73,7 @@ export class HeadlessController {
       const timestamp = getFormattedDateTime();
       const usbLogPath = path.join(logsDir, `usb-traffic_${timestamp}.log`);
       this.usbLogger = new USBTrafficLogger();
+      this.usbLogger.setCountsOnly(this.context.runEnvironment.usbTrafficCountsOnly === true);
       this.usbLogger.enable(usbLogPath);
       console.log(`[HEADLESS] USB traffic logging enabled: ${usbLogPath}`);
       this.logger.logSystem(`USB traffic logging enabled: ${usbLogPath}`);

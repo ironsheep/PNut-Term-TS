@@ -1,0 +1,69 @@
+'' =============================================================================
+'' Throughput / stream-integrity stress — stress01_stream
+''
+'' Purpose: let the HOST LOG answer the remaining bench gates, so nobody has to
+'' watch a screen or read a task manager. One run, three answers:
+''
+''   Gate 4 (loss / throughput) — every stream line carries a monotonically
+''     increasing sequence number, so loss is ARITHMETIC, not opinion. A dropped
+''     chunk leaves a gap; a duplicate leaves a repeat. Neither can hide the way
+''     a corrupted bitmap can (a bitmap missing a chunk still looks like one).
+''   Gate 5 (write-under-load) — any key pressed while the PLOT window has focus
+''     is echoed back as `KEY <code> AT <seq>`. Paired with the host's timestamped
+''     TX entry for that keystroke, that yields a MEASURED round-trip while the
+''     stream is saturated — the canary for the Windows synchronous-handle
+''     hazard, where a write can block behind a read.
+''   Gate 6 (cost) — nothing needed here; the app samples its own CPU.
+''
+'' A PLOT window is redrawn continuously so the render path is under load while
+'' the stream stays verifiable — the [#30] condition, where data loss appeared
+'' under render pressure rather than on a quiet line.
+''
+'' Ends on its own with DEBUG_END_SESSION: no --timeout needed, and no human
+'' judgement about when the run is finished.
+''
+'' NOTE (gate 5): the PLOT window must have FOCUS for PC_KEY to see keypresses,
+'' and the host latch auto-clears after ~100ms — so click the window once, then
+'' type. A run with no keys pressed is still valid; it just leaves gate 5
+'' unmeasured.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+
+  LINES      = 200_000          ' ~2.4 MB of stream text — ~12s at 2 Mbaud
+  DRAW_EVERY = 250              ' redraw the plot every N lines (render pressure)
+
+VAR
+  long key                      ' PC_KEY writes the keypress here (must be hub RAM)
+
+PUB main() | seq
+
+  ' Proven-good directive syntax — the same shapes the fig-05 gauge emits.
+  debug(`PLOT Stress SIZE 400 400 BACKCOLOR WHITE UPDATE)
+  debug(`Stress ORIGIN 200 200)
+
+  seq := 0
+
+  repeat while seq < LINES
+
+    ' ---- the verifiable stream -------------------------------------------
+    debug("SEQ ", udec_(seq))
+
+    ' ---- render load ------------------------------------------------------
+    if seq +// DRAW_EVERY == 0
+      debug(`Stress CLEAR)
+      debug(`Stress GRAY 3 SET 0 0 CIRCLE 360 2 255)
+      debug(`Stress RED 12 SET 0 0 LINE 160 60 5 255)
+      debug(`Stress UPDATE)
+
+      ' PC_KEY must be LAST in its DEBUG statement. Polled here rather than every
+      ' line because the host latch holds a key ~100ms — far longer than a pass.
+      debug(`Stress PC_KEY(@key))
+      if key <> 0
+        debug("KEY ", udec_(key), " AT ", udec_(seq))
+        key := 0
+
+    seq++
+
+  debug("STRESS COMPLETE ", udec_(seq), " lines")
+  debug("DEBUG_END_SESSION")
