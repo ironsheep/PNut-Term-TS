@@ -38,6 +38,12 @@ PUB main() | seq, angle
 
   debug(`PLOT Stress SIZE 400 400 BACKCOLOR WHITE UPDATE)
   debug(`Stress ORIGIN 200 200)
+  ' POLAR is REQUIRED for a needle. PLOT starts in CARTESIAN (Pascal vPolar := False),
+  ' so `LINE 160 <angle>` would be the CARTESIAN point (160, angle) — the endpoint
+  ' climbs the right-hand side and wraps at 360, which is exactly the "needle recycles
+  ' in the upper right" artifact. POLAR 360 makes twoPi = 360, so the SAME LINE reads
+  ' as (rho 160, theta degrees) and the needle sweeps the full circle.
+  debug(`Stress POLAR 360)
 
   seq := 0
   angle := 0

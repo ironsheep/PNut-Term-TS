@@ -348,6 +348,81 @@ describe('DebugPlotWindow Commands', () => {
       await plotWindow.updateContent(['TestPlot', 'POLAR', '0', '0']);
       expect((plotWindow as any).isCartesian).toBe(false);
     });
+
+    // The gauge-needle shape used by the throughput stress programs
+    // (DOCs/pascal-REF/Throughput-Test-Programs/stress0{1,2}*.spin2):
+    //   ORIGIN 200 200 / POLAR 360 / SET 0 0 / LINE 160 <angle>
+    // PLOT starts in CARTESIAN (Pascal vPolar := False), so without POLAR the same LINE
+    // is the cartesian point (160, angle) — the endpoint climbs the right-hand side and
+    // wraps at 360. That is the "needle recycles in the upper right" artifact; the guard
+    // below pins the polar geometry so the needle actually sweeps.
+    describe('polar needle geometry (POLAR twopi=360)', () => {
+      let gauge: DebugPlotWindow;
+      let gaugeJS: jest.Mock;
+
+      // Pull the endpoint out of the generated canvas JS: `ctx.lineTo(x, y)`
+      function lastLineTo(js: jest.Mock): { x: number; y: number } | undefined {
+        const calls = js.mock.calls.map((c: any[]) => c[0]).filter((s: any) => typeof s === 'string');
+        for (let i = calls.length - 1; i >= 0; i--) {
+          const m = /lineTo\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)/.exec(calls[i]);
+          if (m) return { x: Number(m[1]), y: Number(m[2]) };
+        }
+        return undefined;
+      }
+
+      async function needleAt(angle: number): Promise<{ x: number; y: number } | undefined> {
+        gaugeJS.mockClear();
+        await gauge.updateContent(['Stress', 'SET', '0', '0', 'LINE', '160', String(angle), '5', '255']);
+        return lastLineTo(gaugeJS);
+      }
+
+      beforeEach(async () => {
+        gauge = new DebugPlotWindow(mockContext, {
+          ...displaySpec,
+          displayName: 'Stress',
+          size: { width: 400, height: 400 }
+        });
+        setWindowReady(gauge);
+        gaugeJS = getExecuteJS(gauge);
+        gaugeJS.mockResolvedValue('ok');
+        await gauge.updateContent(['Stress', 'ORIGIN', '200', '200']);
+        await gauge.updateContent(['Stress', 'POLAR', '360']);
+        expect((gauge as any).isCartesian).toBe(false);
+        expect((gauge as any).polarConfig.twopi).toBe(360);
+      });
+
+      // Canvas Y is flipped (Pascal: if not vDirY then y := height - y), so theta grows
+      // counter-clockwise on screen: 0=right, 90=top, 180=left, 270=bottom.
+      test.each([
+        [0, 360, 200],
+        [90, 200, 40],
+        [180, 40, 200],
+        [270, 200, 360]
+      ])('LINE 160 %i lands on the circle at (%i,%i)', async (angle, expX, expY) => {
+        expect(await needleAt(angle)).toEqual({ x: expX, y: expY });
+      });
+
+      test('sweeping theta moves the endpoint in BOTH axes (not just up the right edge)', async () => {
+        const pts: Array<{ x: number; y: number }> = [];
+        for (let angle = 0; angle < 360; angle += 11) {
+          const p = await needleAt(angle);
+          expect(p).toBeDefined();
+          pts.push(p!);
+        }
+        // The cartesian misreading pins x at origin+160 for every angle; polar must not.
+        expect(new Set(pts.map((p) => p.x)).size).toBeGreaterThan(1);
+        expect(new Set(pts.map((p) => p.y)).size).toBeGreaterThan(1);
+        // Every endpoint sits on the rho=160 circle about the origin, and so is on-canvas.
+        for (const p of pts) {
+          const r = Math.hypot(p.x - 200, 200 - p.y);
+          expect(Math.abs(r - 160)).toBeLessThanOrEqual(1);
+          expect(p.x).toBeGreaterThanOrEqual(0);
+          expect(p.x).toBeLessThanOrEqual(400);
+          expect(p.y).toBeGreaterThanOrEqual(0);
+          expect(p.y).toBeLessThanOrEqual(400);
+        }
+      });
+    });
   });
 
   // -----------------------------------------------------------------------
