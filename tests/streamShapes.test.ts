@@ -196,6 +196,77 @@ describe('stream shapes — invariants across the map', () => {
 });
 
 // ---------------------------------------------------------------------------
+//  I3, presentation half — the DISPLAY rate must not be coupled to the ARRIVAL rate
+// ---------------------------------------------------------------------------
+//
+// Found on hardware 2026-07-26: with the Debug Logger window OPEN a sustained 2 Mbaud
+// stream made window drags lag badly; with it CLOSED the same stream was fully
+// responsive, at an identical 170 KB/s on the wire. The transport was never the problem.
+//
+// The coupling was appendMessage()'s "force immediate flush at BATCH_SIZE_LIMIT": one
+// drain tick delivering N lines fired processBatch (an IPC send, and a synchronous DOM
+// append in the renderer) N/100 times inside that tick, so painting tracked the wire.
+// The 16 ms batch timer is now the only trigger and the on-screen backlog is SHED.
+//
+// The file must not be affected: writeToLog() is a separate call at every call site, so
+// shedding the render queue cannot lose a logged byte (invariant I5).
+describe('I3 (presentation) — display backlog is bounded, and the file is untouched', () => {
+  const FLOOD = 50_000;
+
+  function makeLogger(): any {
+    const logger: any = Object.create(LoggerWindow.prototype);
+    logger.renderQueue = [];
+    logger.batchTimer = null;
+    logger.lineBuffer = [];
+    logger.maxLines = 10_000;
+    logger.displaySheddedLines = 0;
+    logger.rendererReady = true;
+    // debugWindow is a base-class setter with teardown side effects — leave it alone;
+    // appendMessage never touches it.
+    return logger;
+  }
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('holds a bounded render queue no matter how many lines arrive', () => {
+    const logger = makeLogger();
+    for (let i = 0; i < FLOOD; i++) logger.appendMessage(`Cog0  SEQ ${i}`, 'cog-message');
+
+    const cap = (LoggerWindow as any).MAX_DISPLAY_BACKLOG;
+    expect(cap).toBeGreaterThan(0);
+    expect(logger.renderQueue.length).toBeLessThanOrEqual(cap);
+  });
+
+  it('accounts for every shed line rather than dropping it silently', () => {
+    const logger = makeLogger();
+    for (let i = 0; i < FLOOD; i++) logger.appendMessage(`Cog0  SEQ ${i}`, 'cog-message');
+
+    // Nothing vanishes unreported: what is queued plus what was shed is everything fed in.
+    expect(logger.displaySheddedLines + logger.renderQueue.length).toBe(FLOOD);
+  });
+
+  it('keeps the NEWEST lines on screen — a stale display is worse than a skipping one', () => {
+    const logger = makeLogger();
+    for (let i = 0; i < FLOOD; i++) logger.appendMessage(`Cog0  SEQ ${i}`, 'cog-message');
+
+    const last = logger.renderQueue[logger.renderQueue.length - 1];
+    expect(last.message).toBe(`Cog0  SEQ ${FLOOD - 1}`);
+  });
+
+  it('never paints synchronously from the arrival path — only the frame timer paints', () => {
+    const logger = makeLogger();
+    const paint = jest.spyOn(logger, 'processBatch' as never);
+    for (let i = 0; i < FLOOD; i++) logger.appendMessage(`Cog0  SEQ ${i}`, 'cog-message');
+
+    // The pre-fix code called processBatch once per 100 arrivals (500 times for this flood).
+    expect(paint).not.toHaveBeenCalled();
+    // ...and exactly one timer is outstanding, however long the flood ran.
+    expect(jest.getTimerCount()).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 //  Value-range cell — extreme numbers in directives must clamp, not allocate
 // ---------------------------------------------------------------------------
 

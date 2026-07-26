@@ -5,6 +5,29 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.5] - 2026-07-26
+
+Finishes the responsiveness work: with a fast stream running, the Debug Logger window no longer
+makes the rest of the desktop sluggish.
+
+### Fixed
+
+- **Dragging windows was laggy while the Debug Logger window was open, and smooth once it was
+  closed — with identical data arriving either way.** The logger drew a line the moment it
+  arrived, so at full speed it was repainting thousands of times a second and monopolising the
+  graphics path; on Windows that affects every application on screen, not just this one. The
+  logger now draws on a fixed display schedule instead: if output arrives faster than it can be
+  shown, it shows the most recent lines and says how many it skipped, e.g. *"⋯ 4,500 line(s) not
+  shown — display fell behind; the log file has every line ⋯"*. **The log file still receives
+  every line** — only what is drawn on screen is reduced, and only while the display is behind.
+  Normal-speed output is unaffected and nothing is skipped.
+- **Scrolling back through the log while data was arriving kept yanking the view back to the
+  bottom.** Scrolling up puts the window in History mode, but new output scrolled it to the
+  bottom anyway. It now stays where you put it until you choose *Follow Live Data*.
+- **Closing the Debug Logger window with the window close button could lose the last partial
+  line of the log.** Closing it from the menu flushed that text first; the close button did not.
+  Both paths now end the log the same way.
+
 ## [0.11.4] - 2026-07-26
 
 Closes out the same class of problem as 0.11.3: if a program floods the app with output, the

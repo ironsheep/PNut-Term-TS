@@ -69,6 +69,13 @@ export class LoggerWindow extends DebugWindowBase {
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_INTERVAL_MS = 16; // 60fps update rate
   private readonly BATCH_SIZE_LIMIT = 100; // Max messages per batch
+  // Presentation shedding — invariant I3: the DISPLAY rate must not be coupled to the
+  // ARRIVAL rate. Only the on-screen queue is bounded; writeToLog() is a separate call at
+  // every call site, so the FILE still gets every line (invariant I5). When the display
+  // falls behind we show the MOST RECENT lines and account for what was skipped, rather
+  // than trying to draw a backlog that only grows.
+  private static readonly MAX_DISPLAY_BACKLOG = 300; // ~3 batches; beyond this the eye is behind anyway
+  private displaySheddedLines = 0;
   private writeBuffer: string[] = [];
   private writeTimer: NodeJS.Timeout | null = null;
   private readonly WRITE_INTERVAL_MS = 100; // Flush to disk every 100ms
@@ -454,6 +461,11 @@ export class LoggerWindow extends DebugWindowBase {
         this.processBatch();
       }
 
+      // Flush any partial line waiting for more data. closeDebugWindow() has always done
+      // this; the window-close path did not, so closing with the X dropped whatever byte
+      // s were sitting in the accumulator — the two paths must end the log identically.
+      this.flushLogLineAccumulator();
+
       // Flush any pending writes
       if (this.writeTimer) {
         clearTimeout(this.writeTimer);
@@ -682,7 +694,20 @@ export class LoggerWindow extends DebugWindowBase {
       scrollToBottom();
     });
 
-    ipcRenderer.on('append-message', (event, data) => {
+    // ---- Painting is frame-driven, never IPC-driven (invariant I3) ------------------
+    // Under a sustained stream this window is the heaviest thing in the process, and on
+    // Windows the DWM composites EVERY window — so a renderer that saturates the GPU
+    // freezes other applications, not just this one. Three rules keep it bounded:
+    //   1. incoming batches are buffered and drawn at most once per animation frame;
+    //   2. if more than the DOM cap is pending, only the newest are drawn (the rest are
+    //      accounted for on screen — the log file always has every line);
+    //   3. the old lines are removed in ONE range deletion, not one removeChild per line.
+    // Each line is also one element + one text node instead of three elements.
+    let pendingLines = [];       // batched data objects awaiting a frame
+    let pendingFrame = null;     // requestAnimationFrame handle, null when idle
+    let droppedByRenderer = 0;   // lines the renderer itself could not draw
+
+    function buildLine(data) {
       const line = document.createElement('div');
       line.className = data.type || 'cog-message';
 
@@ -695,59 +720,80 @@ export class LoggerWindow extends DebugWindowBase {
         line.appendChild(timestamp);
       }
 
-      const content = document.createElement('span');
-      content.textContent = data.message;
-      line.appendChild(content);
+      // A text node, not a <span>: same rendering, one less element per line.
+      line.appendChild(document.createTextNode(data.message));
+      return line;
+    }
 
-      output.appendChild(line);
+    function trimToCap() {
+      const excess = output.children.length - maxDOMLines;
+      if (excess <= 0) return;
+      // One range deletion instead of one removeChild per excess line — the old loop
+      // invalidated layout once per line, thousands of times a second.
+      const range = document.createRange();
+      range.setStartBefore(output.firstChild);
+      range.setEndBefore(output.children[excess]);
+      range.deleteContents();
+    }
 
-      // Always scroll to bottom after adding content
-      // Simple approach - just stay at bottom
-      scrollToBottom();
+    function paintFrame() {
+      pendingFrame = null;
+      if (pendingLines.length === 0) return;
 
-      // Manage DOM size for performance
-      while (output.children.length > maxDOMLines) {
-        output.removeChild(output.firstChild);
+      // Drawing more than the DOM cap in one frame is pure waste — everything above the
+      // last maxDOMLines would be trimmed off the top before it was ever seen.
+      if (pendingLines.length > maxDOMLines) {
+        droppedByRenderer += pendingLines.length - maxDOMLines;
+        pendingLines = pendingLines.slice(-maxDOMLines);
       }
+
+      const fragment = document.createDocumentFragment();
+      if (droppedByRenderer > 0) {
+        fragment.appendChild(buildLine({
+          type: 'system-message',
+          timestamp: '',
+          message: '⋯ ' + droppedByRenderer.toLocaleString() +
+                   ' line(s) not shown — display fell behind; the log file has every line ⋯'
+        }));
+        droppedByRenderer = 0;
+      }
+      for (let i = 0; i < pendingLines.length; i++) {
+        fragment.appendChild(buildLine(pendingLines[i]));
+      }
+      pendingLines = [];
+
+      output.appendChild(fragment);
+      trimToCap();
+
+      // Only follow the tail in live mode. Forcing it unconditionally fought the user's
+      // own scrolling AND cost a forced layout on every batch.
+      if (autoScroll) scrollToBottom();
+    }
+
+    function schedulePaint() {
+      if (pendingFrame === null) pendingFrame = requestAnimationFrame(paintFrame);
+    }
+
+    ipcRenderer.on('append-message', (event, data) => {
+      pendingLines.push(data);
+      schedulePaint();
     });
 
     // Handle batch messages (performance optimization for 2Mbps)
     ipcRenderer.on('append-messages-batch', (event, messages) => {
-      const fragment = document.createDocumentFragment();
-
-      messages.forEach(data => {
-        const line = document.createElement('div');
-        line.className = data.type || 'cog-message';
-
-        if (data.timestamp) {
-          const timestamp = document.createElement('span');
-          // Add 'short' class for abbreviated timestamps
-          const isShort = data.timestamp.startsWith('.');
-          timestamp.className = isShort ? 'timestamp short' : 'timestamp';
-          timestamp.textContent = data.timestamp;
-          line.appendChild(timestamp);
-        }
-
-        const content = document.createElement('span');
-        content.textContent = data.message;
-        line.appendChild(content);
-
-        fragment.appendChild(line);
-      });
-
-      output.appendChild(fragment);
-
-      // Always scroll to bottom after adding content
-      // Simple approach - just stay at bottom
-      scrollToBottom();
-
-      // Manage DOM size for performance
-      while (output.children.length > maxDOMLines) {
-        output.removeChild(output.firstChild);
-      }
+      for (let i = 0; i < messages.length; i++) pendingLines.push(messages[i]);
+      schedulePaint();
     });
 
     ipcRenderer.on('clear-output', () => {
+      // Drop anything queued for a frame too, or a reset would immediately repaint the
+      // lines it was asked to clear.
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      }
+      pendingLines = [];
+      droppedByRenderer = 0;
       output.innerHTML = '';
       // Reset to live mode on session reset
       autoScroll = true;
@@ -1092,10 +1138,16 @@ export class LoggerWindow extends DebugWindowBase {
       this.batchTimer = setTimeout(() => this.processBatch(), this.BATCH_INTERVAL_MS);
     }
 
-    // Force immediate flush if queue is getting too large
-    if (this.renderQueue.length >= this.BATCH_SIZE_LIMIT) {
-      if (ENABLE_CONSOLE_LOG) console.log(`[DEBUG LOGGER] 🚨 Queue limit reached (${this.BATCH_SIZE_LIMIT}), forcing immediate flush`);
-      this.processBatch();
+    // Bound the DISPLAY backlog by shedding the oldest un-drawn lines — never by flushing
+    // faster. The previous "force immediate flush at BATCH_SIZE_LIMIT" did the opposite: a
+    // drain tick delivering 1,000 lines fired processBatch (and therefore an IPC send and a
+    // synchronous renderer DOM append) TEN times inside that one tick, so the paint rate
+    // tracked the wire rate exactly — the I3 violation. The timer is now the only trigger,
+    // which caps painting at 60 fps no matter how fast data arrives.
+    const overflow = this.renderQueue.length - LoggerWindow.MAX_DISPLAY_BACKLOG;
+    if (overflow > 0) {
+      this.renderQueue.splice(0, overflow); // oldest go; the file already has them
+      this.displaySheddedLines += overflow;
     }
   }
 
@@ -1184,6 +1236,18 @@ export class LoggerWindow extends DebugWindowBase {
           timestamp: timestamp
         };
       });
+
+      // Account for anything the display skipped, in the display's own stream, so what is
+      // on screen is never silently wrong. An empty timestamp renders without the
+      // timestamp column (the renderer only builds one for a non-empty string).
+      if (this.displaySheddedLines > 0) {
+        messages.unshift({
+          message: `⋯ ${this.displaySheddedLines.toLocaleString()} line(s) not shown — display fell behind; the log file has every line ⋯`,
+          type: 'system-message',
+          timestamp: ''
+        });
+        this.displaySheddedLines = 0;
+      }
 
       this.logConsoleMessage(`[DEBUG LOGGER] Sending batch of ${messages.length} messages to window`);
       this.debugWindow.webContents.send('append-messages-batch', messages);
