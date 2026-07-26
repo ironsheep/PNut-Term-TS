@@ -1,7 +1,8 @@
 # Handoff to the DOCs agent
 
-Point-in-time **feeds** (source material) copied from the PNut-Term-TS repo on
-**2026-07-20** as input for external manual generation. These are *not* deliverables — see
+Point-in-time **feeds** (source material) copied from the PNut-Term-TS repo — see
+**Currency** below for the per-feed snapshot dates — as input for external manual
+generation. These are *not* deliverables — see
 the document taxonomy in `DOCs/README.md` (Class 3: in-repo source that feeds an externally
 published manual). Filenames carry a `FEED` marker so they are never mistaken for the
 finished manuals.
@@ -58,7 +59,32 @@ copies in place.
 
 ## Currency
 
-Feeds 1–3 were current as of PNut-Term-TS **v0.10.3** (2026-07-20). Feed 4
-(`WINDOW-LAYOUT-FEED.md`) is current as of **v0.10.8** (2026-07-21). The user guide was
-substantially corrected in the pre-1.0 documentation audit immediately before the first snapshot;
-re-pull if the repo has advanced.
+| Feed | Snapshot | Current as of |
+|---|---|---|
+| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
+| 2. `User-Guide-FEED.md` | **2026-07-26** | **v0.11.8** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-26** | **v0.11.8** |
+| 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
+
+The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
+the first snapshot; re-pull if the repo has advanced.
+
+### What changed in the 2026-07-26 re-snapshot (feeds 2 and 3)
+
+The **Debug Logger window became a viewer over the log, rather than the owner of it** (v0.11.5–
+v0.11.7). This is a user-visible behavior change and the manual must reflect it:
+
+- **New menu entry — Window > Show Log / Hide Log** (a single **Show/Hide Log** toggle on the
+  macOS menu). Previously there was no way to reopen the Debug Logger window once closed.
+- **Closing the window no longer stops logging.** The log file keeps receiving every line and
+  records when the window was closed and reopened; reopening attaches to the **same** file (no
+  new session) and repaints the recent history. The same holds for a COG window and its per-COG
+  log. Sessions are ended by session events only — P2 reset, download start, shutdown.
+- **New on-screen message under a fast stream:**
+  `⋯ N line(s) not shown — display fell behind; the log file has every line ⋯`. This is
+  presentation-only shedding; it is never written to the log file, and the file is always
+  complete. Worth an explicit line in the manual, because a reader who sees it will otherwise
+  assume data loss.
+- Feed 2 gains a **Debug Logger** section (Part 2, §10 — the guide previously had none, which is
+  why the TOC numbering shifted); feed 3 gains **principle 8** — *a log's life is the session's
+  life, never a window's; durability is never gated on display.*

@@ -5,6 +5,21 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.8] - 2026-07-26
+
+### Added
+
+- **The macOS Window menu now has Show/Hide Log too.** macOS uses only the native application
+  menu, so on that platform a closed Debug Logger window could not be reopened at all.
+
+### Documentation
+
+- The in-app Help (`F1`), User Guide and Quick Start now cover the Debug Logger properly: the
+  new **Window > Show Log / Hide Log** entry, that closing the window does not stop logging,
+  that reopening attaches to the same log file and repaints recent history, and what the
+  `⋯ N line(s) not shown ⋯` message means (display only — the log file always has every line).
+  The User Guide gained a **Debug Logger** section; it previously had none.
+
 ## [0.11.7] - 2026-07-26
 
 Completes 0.11.6: with the log window closed, the log file now really does keep recording.

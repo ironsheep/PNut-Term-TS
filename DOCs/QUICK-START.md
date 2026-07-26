@@ -1,5 +1,5 @@
 # PNut-Term-TS Quick Start Guide
-*Version 0.10.5*
+*Version 0.11.8*
 
 ## First Session (2 Minutes)
 
@@ -58,6 +58,14 @@ Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 - Use playback controls: speed, pause, seek
 
 [SCREENSHOT: Recording controls in toolbar]
+
+### Debug Logger
+**Show/hide**: Window → Show Log / Hide Log
+
+- The window is a *viewer* — **closing it does not stop logging**. The log file keeps
+  receiving every line, and reopening attaches to the same file and repaints recent history.
+- Under a very fast stream the window may say `⋯ N line(s) not shown ⋯`. That is the display
+  skipping ahead to stay responsive; the log file still has every line.
 
 ### Performance Monitor
 **Open**: Window → Performance Monitor
@@ -166,6 +174,9 @@ Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 - Windows only open from P2 DEBUG commands
 - Check DEBUG command syntax in P2 code
 - Verify P2 program is running
+
+**Closed the Debug Logger and want it back**
+- Window → Show Log. Logging never stopped; the file has everything from while it was closed.
 
 **Recording Won't Start**
 - Check disk space

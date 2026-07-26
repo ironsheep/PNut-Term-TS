@@ -113,6 +113,33 @@ pollute it.**
    files sometimes seen in the working directory are leftovers from *dev* sessions that opted in
    via the env var while the level emitted nothing — not production behavior.)
 
+8. **A log's life is the SESSION's life, never a window's — and durability is never gated on
+   display.** *(Added 2026-07-26, after this was violated twice in the same week.)*
+
+   The Debug Logger window is a **viewer** onto the log; the same is true of a COG window and its
+   per-COG file. Closing a viewer must stop **drawing** and nothing else. The file is ended by
+   session events only — P2 reset (rotate), download start (rotate), shutdown (close) — and
+   `Window > Show Log` reattaches a viewer to the **same** file (no new session banner), with the
+   recent scrollback repainted for context.
+
+   Two concrete rules, both learned from defects:
+   - **Never put a window-liveness check in front of code that also writes the log.**
+     `handleRouterMessage` (and `loggerCOGWin.processMessage`) began with a *performance* early
+     exit — "skip closed windows" — and every branch behind it called `appendMessage` (display)
+     **and** `writeToLog` (file). One guard, two responsibilities: the optimisation silently
+     stopped the log. Gate at the display call, never at the shared entry point.
+   - **The display may shed; the file may not.** When output arrives faster than it can be drawn,
+     the on-screen backlog is bounded by dropping the OLDEST *un-drawn* lines and reporting the
+     count in the display stream (`⋯ N line(s) not shown — … the log file has every line ⋯`).
+     This is presentation-only: no shed line is ever missing from the file, and the marker is
+     never written to it. (Invariant I3: presentation rate is decoupled from arrival rate; I5:
+     the log is complete to the moment of exit.)
+
+   **How to verify** — assert the payload, not the mechanism. "The file is still open" and "the
+   markers appear" are both true of a log that is silently recording nothing. The test that
+   settles it is **continuity of the program's own sequence** across the closed window: for the
+   throughput asset, `count == last − first + 1` with zero gaps.
+
 ### Message routing (three program-output channels)
 
 Program output fans out to three destinations (matches `DEBUG-LOGGER-BEHAVIOR.md`):
@@ -338,3 +365,6 @@ Following these standards provides:
 - Added context prefixes for all window types
 - Defined timestamp requirements
 - Established directory organization
+- v1.1 (2026-07-26): Added principle 8 — a log's life is the session's life, never a window's;
+  durability is never gated on display (viewer/log split, no window-liveness guard in front of a
+  write, display-only shedding, and how to verify it). Reflects v0.11.5–v0.11.7.

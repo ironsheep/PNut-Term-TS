@@ -118,6 +118,7 @@ Windows/Linux. The items are equivalent; accelerators follow the platform.
 
 | Item | Description |
 |------|-------------|
+| Show Log / Hide Log | Open or close the Debug Logger window. The entry names whichever action is available (on the macOS menu it is a single **Show/Hide Log** toggle). **Closing it does not stop logging** — the log file keeps receiving every line |
 | Performance Monitor | Open the performance metrics window |
 | Show All Windows | Reveal all debug windows |
 | Hide All Windows | Hide all debug windows (they stay open and keep receiving data) |
@@ -330,6 +331,34 @@ The Debug Logger is the central log of all serial traffic, with timestamps.
 
 History length is set by **History Lines** in Preferences (default 1000).
 
+### Closing and reopening the window
+
+Closing the Debug Logger window closes **the window, not the log**.
+
+- The log file stays open and keeps receiving every line while the window is closed. It
+  records when the window was closed and when it was reopened, so the gap is explained
+  rather than mysterious.
+- Reopen it with **Window > Show Log**. It attaches to the **same log file** — it does not
+  start a new one — and repaints the recent history so the window isn't blank.
+- The log ends when the session ends (a P2 reset rotates it; quitting closes it), not when
+  you close the window.
+
+The same is true of a COG window: closing it stops that window, and that COG's log file
+keeps recording.
+
+### When output arrives faster than it can be drawn
+
+During a very fast stream the window may show a line such as:
+
+```
+⋯ 4,500 line(s) not shown — display fell behind; the log file has every line ⋯
+```
+
+This is the display deliberately skipping ahead to stay current and responsive, and it
+only happens while drawing is behind. **Nothing is missing from the log file** — it is
+written separately and always receives every line. At normal output rates you will never
+see this message.
+
 ---
 
 ## COG windows
@@ -479,7 +508,9 @@ stream.
 Monitor and lower the data rate if buffer usage is high.
 
 **Performance** — watch the Performance Monitor; if buffers fill at high baud, reduce
-baud or close unneeded windows.
+baud or close unneeded windows. Under a very heavy stream the Debug Logger window is the
+most expensive window to draw, so **Window > Hide Log** is the cheapest thing to try
+first — logging continues while it is closed, and **Window > Show Log** brings it back.
 
 **Platform notes** — Windows: ensure no other app holds the COM port. macOS: grant
 serial access if prompted; devices appear as `/dev/tty.usbserial-*`. Linux: add your
@@ -511,4 +542,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.10.5 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.11.8 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

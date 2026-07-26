@@ -4143,7 +4143,20 @@ export class MainWindow {
       // Standard Window menu for Mac
       {
         label: 'Window',
-        submenu: [{ role: 'minimize' }, { role: 'close' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+        submenu: [
+          // macOS gets ONLY this native menu (createApplicationMenu returns early on
+          // darwin), so without this entry a Mac user who closed the Debug Logger would
+          // have no way to bring it back. Static label rather than Show/Hide, because
+          // updating a native menu label means rebuilding the whole menu — the in-window
+          // menu bar, which can restyle itself cheaply, names the specific action.
+          { label: 'Show/Hide Log', click: () => this.toggleLogViewer() },
+          { type: 'separator' },
+          { role: 'minimize' },
+          { role: 'close' },
+          { role: 'zoom' },
+          { type: 'separator' },
+          { role: 'front' }
+        ]
       }
     ];
 

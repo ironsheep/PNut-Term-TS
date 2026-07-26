@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.10.5*
+*Version 0.11.8*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -22,16 +22,17 @@ operation for automation.
 7. [PropPlug / Device Management](#propplug--device-management)
 8. [Recording & Playback](#recording--playback)
 9. [Performance Monitoring](#performance-monitoring)
+10. [Debug Logger](#debug-logger)
 
 ### Part 3 — Debug Windows
-10. [Debug Windows Overview](#debug-windows-overview)
+11. [Debug Windows Overview](#debug-windows-overview)
 
 ### Part 4 — Reference
-11. [Command-Line Reference](#command-line-reference)
-12. [Keyboard Shortcuts](#keyboard-shortcuts)
-13. [Troubleshooting](#troubleshooting)
-14. [Tips & Best Practices](#tips--best-practices)
-15. [Support & Resources](#support--resources)
+12. [Command-Line Reference](#command-line-reference)
+13. [Keyboard Shortcuts](#keyboard-shortcuts)
+14. [Troubleshooting](#troubleshooting)
+15. [Tips & Best Practices](#tips--best-practices)
+16. [Support & Resources](#support--resources)
 
 ---
 
@@ -181,7 +182,9 @@ PNut-Term-TS uses the native application menu on macOS and an in-window menu bar
 Windows/Linux. **They are not equivalent:** the macOS native menu provides only the
 application, Edit and Window menus — File, Help, Find, Clear Terminal and the
 show/hide-windows items are on the Windows/Linux in-window menu bar only.
-Accelerators differ by platform
+The one Window-menu item present on **both** is the Debug Logger toggle
+(**Show Log / Hide Log**, or **Show/Hide Log** on macOS), because without it a closed
+Debug Logger window could not be reopened. Accelerators differ by platform
 (`Cmd` on macOS, `Ctrl` on Windows/Linux).
 
 ### File
@@ -209,6 +212,7 @@ Accelerators differ by platform
 ### Window
 | Item | Description |
 |------|-------------|
+| Show Log / Hide Log | Open or close the Debug Logger window; the entry names whichever action is available. Closing the window does **not** stop logging — see [Debug Logger](#debug-logger). *(Present on both menus: the macOS Window menu carries it as a single **Show/Hide Log** toggle.)* |
 | Performance Monitor | Open the performance metrics window |
 | Show All Windows | Reveal all debug windows |
 | Hide All Windows | Hide all debug windows |
@@ -360,6 +364,59 @@ window data path:
 
 Use it to confirm the pipeline keeps up at high baud rates; if buffer usage climbs
 toward full, reduce the data rate or close windows that aren't needed.
+
+---
+
+## Debug Logger
+
+The Debug Logger is the central, timestamped record of all serial traffic. It is two
+things that are easy to confuse, and worth keeping separate in your head:
+
+- **the log file** — the durable record on disk, in the Log Directory;
+- **the Debug Logger window** — a *viewer* onto that log.
+
+### The window is a viewer, not the log
+
+Closing the Debug Logger window closes the window only. **Logging continues.** The file
+stays open, keeps receiving every line, and records when the window was closed and when
+it was reopened, so a gap in your attention is never a gap in the record.
+
+- **Window > Show Log** reopens it. It attaches to the **same** log file — it does not
+  start a new one — and repaints the recent history so it isn't blank.
+- **Window > Hide Log** closes it. The menu entry names whichever action applies.
+- The log is ended by the *session*, not by the window: a P2 reset rotates it, and
+  quitting closes it.
+
+The same holds for a COG window — closing it stops that window; that COG's log keeps
+recording.
+
+### Reading it
+
+- The view **follows live data**; scroll up to pause and review, then click
+  **↓ Follow Live Data** to resume. It stays where you put it while you read.
+- Transmitted bytes are marked `[TX]`, with control characters shown as `<cr>`, `<lf>`.
+- A P2 reset writes a session marker, clears the view, and rotates the log file.
+- System messages, errors, warnings, binary/hex fallbacks and debugger output are
+  color-coded.
+- **Show All 8 COGs** opens the full set of COG windows; **Export Active COG Logs**
+  writes the current COG logs to files.
+- The status bar shows the log filename, line count, file size, and live/paused state.
+
+History length is set by **History Lines** in Preferences (default 1000).
+
+### Under a very fast stream
+
+If output arrives faster than the window can draw it, the window skips ahead to stay
+current and says so:
+
+```
+⋯ 4,500 line(s) not shown — display fell behind; the log file has every line ⋯
+```
+
+Only the *drawing* is reduced, and only while it is behind — **the log file always
+receives every line**. At normal rates you will never see this message. If you want the
+application at its most responsive during a flood, **Hide Log** is the single most
+effective thing to close, and it costs you nothing in the record.
 
 ---
 
@@ -552,6 +609,16 @@ macOS) in any text field.
 ### A window is blank or data is missing
 - Confirm the P2 is actually sending `debug()` output and is running.
 - Open the **Performance Monitor**; if buffer usage is high, lower the data rate.
+- If a *reopened* Debug Logger window looks like it is missing earlier output, check the
+  log file: the window repaints only the recent history, while the file holds the whole
+  session.
+
+### The application feels sluggish under a heavy stream
+- Close the Debug Logger window (**Window > Hide Log**) — it is the most expensive window
+  to draw, and closing it does not interrupt logging. **Window > Show Log** brings it back.
+- Close debug windows you are not watching, or lower the data rate in the P2 program.
+- A `⋯ N line(s) not shown ⋯` marker in the Debug Logger is the display keeping up on
+  purpose, not an error, and not data loss — the log file has every line.
 
 ### Recording problems
 - Check free disk space and write permission to the recordings directory.
