@@ -76,6 +76,16 @@ export class LoggerWindow extends DebugWindowBase {
   // than trying to draw a backlog that only grows.
   private static readonly MAX_DISPLAY_BACKLOG = 300; // ~3 batches; beyond this the eye is behind anyway
   private displaySheddedLines = 0;
+
+  // Viewer lifetime, which is NOT the log's lifetime — the window can be closed and
+  // reopened (Window > Show Log) while the file keeps receiving every line.
+  private viewerOpen = true;
+  private replayOnReady = false;
+  private static readonly REPLAY_LINES = 1000; // under the renderer's 1,500-line DOM cap
+  private statusBarTimer: NodeJS.Timeout | null = null;
+  private static readonly STATUS_BAR_INTERVAL_MS = 250; // 4 Hz is plenty for three numbers
+  /** Set by MainWindow so the Window menu label can follow the viewer's state. */
+  public onViewerVisibilityChanged: ((visible: boolean) => void) | null = null;
   private writeBuffer: string[] = [];
   private writeTimer: NodeJS.Timeout | null = null;
   private readonly WRITE_INTERVAL_MS = 100; // Flush to disk every 100ms
@@ -399,6 +409,13 @@ export class LoggerWindow extends DebugWindowBase {
         if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] ✅ Theme sent to renderer:', this.theme.name);
       }
 
+      // A reopened viewer starts empty — repaint the recent history before anything new,
+      // so it does not look like the session began at the moment you reopened it.
+      if (this.replayOnReady) {
+        this.replayOnReady = false;
+        this.replayBufferedLines();
+      }
+
       // Process any pending batches that accumulated before renderer was ready
       if (this.renderQueue.length > 0) {
         if (ENABLE_CONSOLE_LOG) console.log(
@@ -449,44 +466,110 @@ export class LoggerWindow extends DebugWindowBase {
       }
     }, 2000);
 
-    // Handle window close event
+    // Handle window close event.
+    //
+    // The window is a VIEWER over the log; it is not the log. Closing it used to end the
+    // log file, null the singleton and unregister from the router — so the app kept
+    // receiving data with nowhere to put it (measured on hardware 2026-07-26: 47 s and
+    // 26 s of stream received and never written). Now the viewer goes away and the log
+    // keeps going; Window > Show Log attaches a new viewer to the SAME file.
     window.on('close', () => {
-      this.logConsoleMessage('[DEBUG LOGGER] Window being closed by user');
-      // Don't call closeDebugWindow here - it would cause infinite recursion
-      // Just clean up resources directly
+      this.logConsoleMessage('[DEBUG LOGGER] Viewer window closed by user — logging continues');
 
-      // Flush any pending messages
+      // Stop painting: no viewer, so anything queued for the screen is discarded. The
+      // file is written by writeToLog(), a separate path, and is unaffected.
       if (this.batchTimer) {
         clearTimeout(this.batchTimer);
-        this.processBatch();
+        this.batchTimer = null;
+      }
+      this.renderQueue = [];
+      this.displaySheddedLines = 0;
+      this.rendererReady = false;
+      this.viewerOpen = false;
+      if (this.statusBarTimer) {
+        clearTimeout(this.statusBarTimer);
+        this.statusBarTimer = null;
       }
 
-      // Flush any partial line waiting for more data. closeDebugWindow() has always done
-      // this; the window-close path did not, so closing with the X dropped whatever byte
-      // s were sitting in the accumulator — the two paths must end the log identically.
+      // Flush what is already in the write path so the file is current at this instant,
+      // then leave the stream OPEN. (closeDebugWindow() is the path that ends the log.)
       this.flushLogLineAccumulator();
-
-      // Flush any pending writes
       if (this.writeTimer) {
         clearTimeout(this.writeTimer);
         this.flushWriteBuffer();
       }
-
-      // Close log file
       if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-        this.logFile.write(`\n=== Debug Logger Session Ended at ${getFormattedDateTimeISO()} ===\n`);
-        this.logFile.end();
-        this.logFile = null;
+        this.logFile.write(`\n=== Log window closed at ${getFormattedDateTimeISO()} — logging continues ===\n`);
       }
 
-      // Clear singleton instance
-      LoggerWindow.instance = null;
-
-      // Mark window as null to prevent further operations
-      this.debugWindow = null;
+      // NOTE: deliberately NOT `this.debugWindow = null` and NOT clearing the singleton.
+      // The base-class setter's null branch unregisters from the WindowRouter, which is
+      // exactly what stopped the log. Senders all guard on isDestroyed(), and
+      // showViewer() replaces the reference when a new viewer is created.
+      this.onViewerVisibilityChanged?.(false);
     });
 
     return window;
+  }
+
+  /**
+   * Is a viewer window currently on screen?
+   */
+  public isViewerOpen(): boolean {
+    return this.viewerOpen && this.debugWindow !== null && !this.debugWindow.isDestroyed();
+  }
+
+  /**
+   * Show the log viewer — creating a new window if the user closed the previous one.
+   * The log file is untouched either way: a reopened viewer attaches to the SAME file,
+   * it does not start a new session.
+   */
+  public showViewer(): void {
+    if (this.isViewerOpen()) {
+      this.debugWindow!.show();
+      this.debugWindow!.focus();
+      return;
+    }
+
+    this.logConsoleMessage('[DEBUG LOGGER] Reopening log viewer on the existing log file');
+    // Both flags MUST be set before the window exists: 'ready-to-show' can fire during
+    // createDebugWindow(), and a replay that runs while viewerOpen is still false would
+    // be swallowed by appendMessage's no-viewer short-circuit.
+    this.replayOnReady = true;
+    this.viewerOpen = true;
+    this.debugWindow = this.createDebugWindow(); // setter's non-null branch: wires listeners only
+
+    if (this.logFile && !this.logFile.destroyed && this.logFile.writable) {
+      this.logFile.write(`\n=== Log window reopened at ${getFormattedDateTimeISO()} ===\n`);
+    }
+    this.onViewerVisibilityChanged?.(true);
+  }
+
+  /**
+   * Hide (close) the log viewer. Logging continues — same path as the window's own
+   * close button, so the two cannot drift apart.
+   */
+  public hideViewer(): void {
+    if (!this.isViewerOpen()) return;
+    this.debugWindow!.close(); // fires the 'close' handler above, which does the work
+  }
+
+  /**
+   * Repaint the recent history into a freshly opened viewer. The in-memory lineBuffer is
+   * what the session has seen; the file always has more, so the replay says so rather
+   * than pretending the window is showing everything.
+   */
+  private replayBufferedLines(): void {
+    if (this.lineBuffer.length === 0) return;
+
+    // queueForDisplay, NOT appendMessage: replaying through appendMessage would push the
+    // history back into lineBuffer, duplicating it on every reopen.
+    const tail = this.lineBuffer.slice(-LoggerWindow.REPLAY_LINES);
+    this.queueForDisplay(
+      `⋯ replaying the last ${tail.length.toLocaleString()} line(s) of this session — the log file has every line ⋯`,
+      'system-message'
+    );
+    for (const line of tail) this.queueForDisplay(line, 'cog-message');
   }
 
   /**
@@ -1082,9 +1165,28 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Update the status bar with current file info
+   * Request a status-bar refresh. Coalesced, because this is called once per ROUTED
+   * MESSAGE: at ~6,000 messages/s the old direct call meant ~6,000 existsSync + statSync
+   * pairs (synchronous filesystem syscalls, on the main process) and ~6,000
+   * executeJavaScript round-trips per second, purely to redraw three small numbers that
+   * no one can read changing that fast. Same defect class as the renderer coupling —
+   * work scaling with arrival rate instead of with display rate (invariant I3).
    */
   private updateStatusBar(): void {
+    if (this.statusBarTimer !== null) return; // a refresh is already due
+    if (!this.isViewerOpen()) return; // no viewer, nothing to draw
+    this.statusBarTimer = setTimeout(() => {
+      this.statusBarTimer = null;
+      this.refreshStatusBar();
+    }, LoggerWindow.STATUS_BAR_INTERVAL_MS);
+    // Never let a cosmetic timer hold the process open at shutdown.
+    this.statusBarTimer.unref?.();
+  }
+
+  /**
+   * Actually redraw the status bar with current file info.
+   */
+  private refreshStatusBar(): void {
     if (!this.debugWindow || this.debugWindow.isDestroyed()) return;
 
     // Get log file name
@@ -1111,20 +1213,8 @@ export class LoggerWindow extends DebugWindowBase {
    * Append a message to the debug logger window (batched for performance)
    */
   private appendMessage(message: string, type: string = 'cog-message'): void {
-    // Add to queue for batched processing with individual timestamps
-    this.renderQueue.push({
-      message,
-      className: type,
-      timestamp: Date.now() // Capture precise arrival time
-    });
-
-    if (ENABLE_CONSOLE_LOG) console.log(
-      `[DEBUG LOGGER] ➕ appendMessage: queueLength=${
-        this.renderQueue.length
-      }, type=${type}, msgPreview="${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`
-    );
-
-    // Also keep in internal buffer
+    // Scrollback bookkeeping happens whether or not a viewer is on screen — it is what a
+    // reopened window replays.
     this.lineBuffer.push(message);
     if (this.lineBuffer.length > this.maxLines) {
       // Remove oldest 10% when buffer is full
@@ -1132,9 +1222,31 @@ export class LoggerWindow extends DebugWindowBase {
       this.lineBuffer.splice(0, removeCount);
     }
 
+    // No viewer: do no rendering work at all for a window that isn't there.
+    if (!this.viewerOpen) return;
+
+    if (ENABLE_CONSOLE_LOG) console.log(
+      `[DEBUG LOGGER] ➕ appendMessage: queueLength=${
+        this.renderQueue.length
+      }, type=${type}, msgPreview="${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`
+    );
+
+    this.queueForDisplay(message, type);
+  }
+
+  /**
+   * Put a line in front of the eyes, without touching the scrollback or the file.
+   * Replay uses this directly; appendMessage uses it after its bookkeeping.
+   */
+  private queueForDisplay(message: string, type: string): void {
+    this.renderQueue.push({
+      message,
+      className: type,
+      timestamp: Date.now() // Capture precise arrival time
+    });
+
     // Schedule batch processing if not already scheduled
     if (!this.batchTimer) {
-      if (ENABLE_CONSOLE_LOG) console.log(`[DEBUG LOGGER] ⏰ Scheduling batch timer (${this.BATCH_INTERVAL_MS}ms)`);
       this.batchTimer = setTimeout(() => this.processBatch(), this.BATCH_INTERVAL_MS);
     }
 
@@ -1457,7 +1569,7 @@ export class LoggerWindow extends DebugWindowBase {
     this.theme = LoggerWindow.THEMES[themeName] || LoggerWindow.THEMES.green;
 
     // Only send theme if renderer is ready, otherwise it will be sent when renderer becomes ready
-    if (this.debugWindow && this.rendererReady) {
+    if (this.debugWindow && !this.debugWindow.isDestroyed() && this.rendererReady) {
       this.debugWindow.webContents.send('set-theme', this.theme);
     }
     // If renderer not ready, theme is stored in this.theme and will be applied via CSS when HTML loads
@@ -1479,7 +1591,9 @@ export class LoggerWindow extends DebugWindowBase {
    * Clear the output
    */
   public clearOutput(): void {
-    if (this.debugWindow) {
+    // The viewer can be closed while logging continues, and the reference outlives the
+    // window (see the 'close' handler) — so isDestroyed() must be checked, not just null.
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.webContents.send('clear-output');
     }
     this.lineBuffer = [];
@@ -1684,6 +1798,14 @@ export class LoggerWindow extends DebugWindowBase {
    */
   public closeDebugWindow(): void {
     this.logConsoleMessage('[DEBUG LOGGER] Closing window and terminating log...');
+
+    // This is the TERMINATION path (app shutdown / session reset) — unlike the viewer's
+    // own close button, it really does end the log.
+    this.viewerOpen = false;
+    if (this.statusBarTimer) {
+      clearTimeout(this.statusBarTimer);
+      this.statusBarTimer = null;
+    }
 
     // Flush any pending messages
     if (this.batchTimer) {
@@ -2300,7 +2422,7 @@ export class LoggerWindow extends DebugWindowBase {
    * Update scrollback preference
    */
   public updateScrollbackPreference(lines: number): void {
-    if (this.debugWindow) {
+    if (this.debugWindow && !this.debugWindow.isDestroyed()) {
       this.debugWindow.webContents.send('set-scrollback-lines', lines);
     }
   }

@@ -5,6 +5,29 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.6] - 2026-07-26
+
+Closing the Debug Logger window now closes the *window*, not the *log* — and you can bring it
+back.
+
+### Added
+
+- **Window > Show Log / Hide Log.** The Debug Logger window can now be reopened after closing it;
+  until now, closing it was permanent for the rest of the session. The menu entry names whichever
+  action is available. Reopening attaches to the log already in progress — it does not start a
+  new log file — and **repaints the recent history** so the window isn't blank.
+
+### Fixed
+
+- **Closing the Debug Logger window stopped logging.** Everything received after that point was
+  discarded: in testing, 47 seconds of output in one run and 26 seconds in another arrived while
+  the app had nowhere to put it. Closing the window now stops only the display; the log file
+  keeps receiving every line, and records that the window was closed and when it was reopened.
+- **The status bar was recalculated for every single line received.** Each line triggered two
+  file-system queries and a separate update sent to the window — thousands of times a second
+  during a fast stream — to redraw three numbers no one can read changing that fast. It now
+  refreshes four times a second, and not at all when the window is closed.
+
 ## [0.11.5] - 2026-07-26
 
 Finishes the responsiveness work: with a fast stream running, the Debug Logger window no longer

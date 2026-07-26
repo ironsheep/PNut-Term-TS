@@ -221,6 +221,9 @@ describe('I3 (presentation) — display backlog is bounded, and the file is unto
     logger.maxLines = 10_000;
     logger.displaySheddedLines = 0;
     logger.rendererReady = true;
+    // Object.create() skips field initializers, so state the precondition explicitly:
+    // this models a logger WITH a viewer on screen, which is when shedding matters.
+    logger.viewerOpen = true;
     // debugWindow is a base-class setter with teardown side effects — leave it alone;
     // appendMessage never touches it.
     return logger;

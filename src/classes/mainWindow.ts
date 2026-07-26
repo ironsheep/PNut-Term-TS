@@ -1155,6 +1155,8 @@ export class MainWindow {
       try {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
+        this.wireLogViewerMenuState();
+        this.setLogMenuLabel(true);
 
         // Apply current theme from preferences
         if (this.context.preferences?.terminal?.colorTheme) {
@@ -1732,6 +1734,8 @@ export class MainWindow {
       this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
       this.logConsoleMessage('[DEBUG LOGGER] Auto-created successfully - logging started immediately');
       this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
+      this.wireLogViewerMenuState();
+      this.setLogMenuLabel(true);
 
       // Apply current theme from preferences
       if (this.context.preferences?.terminal?.colorTheme) {
@@ -2079,6 +2083,8 @@ export class MainWindow {
         this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
         // Register it in displays for cleanup tracking
         this.displays['DebugLogger'] = this.debugLoggerWindow; // Store with original case
+        this.wireLogViewerMenuState();
+        this.setLogMenuLabel(true);
 
         // Register with WindowRouter for message routing
         this.windowRouter.registerWindow(
@@ -2895,6 +2901,8 @@ export class MainWindow {
           <div class="menu-item" data-menu="window">
             <span>Window</span>
             <div class="menu-dropdown">
+              <div class="menu-dropdown-item" id="menu-item-toggle-log" data-action="menu-toggle-log">Show Log</div>
+              <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-performance-monitor">Performance Monitor</div>
               <hr class="menu-separator" style="margin: 4px 0; border: none; border-top: 1px solid #555;">
               <div class="menu-dropdown-item" data-action="menu-show-all">Show All Windows</div>
@@ -3275,6 +3283,7 @@ export class MainWindow {
     ipcMain.removeAllListeners('menu-preferences');
 
     // Window menu handlers
+    ipcMain.removeAllListeners('menu-toggle-log');
     ipcMain.removeAllListeners('menu-performance-monitor');
     ipcMain.removeAllListeners('menu-show-all');
     ipcMain.removeAllListeners('menu-hide-all');
@@ -3593,6 +3602,12 @@ export class MainWindow {
     // Real cascade/tile layout would also have to reconcile with WindowPlacer's
     // auto-placement and explicit POS handling, so the menu items were dropped
     // rather than shipped inert. See DOCs/PUNCH_LIST.md if reviving them.
+
+    // Window > Show Log / Hide Log. The log FILE is unaffected either way — closing the
+    // viewer stops the window, not the logging (see LoggerWindow.showViewer/hideViewer).
+    ipcMain.on('menu-toggle-log', () => {
+      this.toggleLogViewer();
+    });
 
     ipcMain.on('menu-show-all', () => {
       this.logConsoleMessage('[IPC] Show all windows');
@@ -4703,6 +4718,51 @@ export class MainWindow {
       }
     }
     this.logConsoleMessage(`[WINDOW] ${visible ? 'Showed' : 'Hid'} ${affected} debug window(s)`);
+  }
+
+  /**
+   * Window > Show Log / Hide Log.
+   *
+   * The Debug Logger window is a VIEWER over the log file, not the log itself, so this
+   * only ever opens or closes a window. If the logger does not exist yet (nothing has
+   * been logged this session) "Show Log" creates it, which also starts the log file —
+   * the same thing that would have happened on the first message.
+   */
+  private toggleLogViewer(): void {
+    if (!this.debugLoggerWindow) {
+      this.debugLoggerWindow = LoggerWindow.getInstance(this.context);
+      this.displays['DebugLogger'] = this.debugLoggerWindow;
+      this.wireLogViewerMenuState();
+      this.logConsoleMessage('[IPC] Show Log — created the Debug Logger');
+      this.setLogMenuLabel(true);
+      return;
+    }
+
+    if (this.debugLoggerWindow.isViewerOpen()) {
+      this.logConsoleMessage('[IPC] Hide Log — closing the viewer, logging continues');
+      this.debugLoggerWindow.hideViewer();
+    } else {
+      this.logConsoleMessage('[IPC] Show Log — reopening the viewer on the same log file');
+      this.debugLoggerWindow.showViewer();
+    }
+  }
+
+  /** Keep the Window-menu label in step with the viewer, however it was opened or closed. */
+  private wireLogViewerMenuState(): void {
+    if (!this.debugLoggerWindow) return;
+    this.debugLoggerWindow.onViewerVisibilityChanged = (visible: boolean) => this.setLogMenuLabel(visible);
+  }
+
+  private setLogMenuLabel(viewerVisible: boolean): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const label = viewerVisible ? 'Hide Log' : 'Show Log';
+    this.mainWindow.webContents
+      .executeJavaScript(
+        `(function(){var i=document.getElementById('menu-item-toggle-log'); if(i) i.textContent='${label}';})()`
+      )
+      .catch(() => {
+        /* menu not built yet — the label is re-set the next time the viewer toggles */
+      });
   }
 
   private showAllWindows(): void {

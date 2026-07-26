@@ -393,4 +393,135 @@ describe('LoggerWindow', () => {
       expect(mockBrowserWindow.webContents.send).toHaveBeenCalledWith('clear-output');
     });
   });
+  // -------------------------------------------------------------------------
+  //  Viewer lifetime is NOT the log's lifetime
+  // -------------------------------------------------------------------------
+  //
+  // Found on hardware 2026-07-26: closing the Debug Logger window ended the log file
+  // while the app kept receiving data — 47 s and 26 s of stream, in two runs, arrived
+  // with nowhere to go. The window is a VIEWER; closing it must stop the window only,
+  // and Window > Show Log must be able to attach a new viewer to the SAME file.
+  describe('Viewer lifetime (close keeps logging, Show Log reopens)', () => {
+    // The BrowserWindow mock records handlers; this fires the one under test.
+    function fireWindowClose(): void {
+      const entry = mockBrowserWindow.on.mock.calls.find((c: any[]) => c[0] === 'close');
+      expect(entry).toBeDefined();
+      entry[1]();
+    }
+
+    beforeEach(() => {
+      debugLogger = LoggerWindow.getInstance(mockContext);
+      debugLogger['logFile'] = mockWriteStream;
+      debugLogger['logFilePath'] = '/tmp/test-logs/debug_test.log';
+    });
+
+    it('does NOT end the log file when the viewer window is closed', () => {
+      fireWindowClose();
+      expect(mockWriteStream.end).not.toHaveBeenCalled();
+      expect(debugLogger['logFile']).toBe(mockWriteStream);
+    });
+
+    it('keeps the singleton, so later getInstance() cannot start a second log file', () => {
+      fireWindowClose();
+      expect(LoggerWindow['instance']).toBe(debugLogger);
+      expect(LoggerWindow.getInstance(mockContext)).toBe(debugLogger);
+    });
+
+    it('says so in the log rather than just stopping', () => {
+      fireWindowClose();
+      const written = mockWriteStream.write.mock.calls.map((c: any[]) => String(c[0])).join('');
+      expect(written).toContain('Log window closed');
+      expect(written).toContain('logging continues');
+      expect(written).not.toContain('Session Ended');
+    });
+
+    it('reports the viewer as closed, and stops queueing work for a window that is gone', () => {
+      fireWindowClose();
+      expect(debugLogger.isViewerOpen()).toBe(false);
+
+      debugLogger['appendMessage']('Cog0  SEQ 1', 'cog-message');
+      expect(debugLogger['renderQueue'].length).toBe(0);
+      // ...but the scrollback still fills, because that is what a reopened viewer replays.
+      expect(debugLogger['lineBuffer']).toContain('Cog0  SEQ 1');
+    });
+
+    it('replays the recent tail into a reopened viewer', () => {
+      fireWindowClose();
+      debugLogger['lineBuffer'] = [];
+      for (let i = 0; i < 20; i++) debugLogger['appendMessage'](`Cog0  SEQ ${i}`, 'cog-message');
+
+      mockBrowserWindow.webContents.send.mockClear();
+      debugLogger.showViewer(); // mock fires ready-to-show synchronously, which paints
+
+      // Assert on what actually reached the window, not on the transient queue.
+      const painted = mockBrowserWindow.webContents.send.mock.calls
+        .filter((c: any[]) => c[0] === 'append-messages-batch')
+        .flatMap((c: any[]) => c[1])
+        .map((m: any) => m.message);
+      expect(painted[0]).toContain('replaying the last');
+      expect(painted).toContain('Cog0  SEQ 0');
+      expect(painted).toContain('Cog0  SEQ 19');
+      expect(debugLogger.isViewerOpen()).toBe(true);
+    });
+
+    it('replaying does not duplicate the scrollback — reopen twice, history stays put', () => {
+      fireWindowClose();
+      debugLogger['lineBuffer'] = [];
+      for (let i = 0; i < 20; i++) debugLogger['appendMessage'](`Cog0  SEQ ${i}`, 'cog-message');
+      const afterFirst = debugLogger['lineBuffer'].length;
+
+      debugLogger.showViewer();
+      debugLogger.hideViewer();
+      debugLogger.showViewer();
+
+      // Replay paints history; it must not re-record it (that grew the buffer by the
+      // whole replay on every reopen).
+      expect(debugLogger['lineBuffer'].length).toBe(afterFirst);
+    });
+
+    it('reopens onto the SAME file — no new session header', () => {
+      const pathBefore = debugLogger['logFilePath'];
+      fireWindowClose();
+      mockWriteStream.write.mockClear();
+
+      debugLogger.showViewer();
+
+      expect(debugLogger['logFilePath']).toBe(pathBefore);
+      const written = mockWriteStream.write.mock.calls.map((c: any[]) => String(c[0])).join('');
+      expect(written).toContain('Log window reopened');
+      expect(written).not.toContain('Session Started');
+    });
+
+    it('closeDebugWindow() — the shutdown path — still ends the log', () => {
+      debugLogger.closeDebugWindow();
+      const written = mockWriteStream.write.mock.calls.map((c: any[]) => String(c[0])).join('');
+      expect(written).toContain('Session Ended');
+      expect(mockWriteStream.end).toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  //  Status bar cost must not scale with arrival rate (invariant I3)
+  // -------------------------------------------------------------------------
+  describe('Status bar refresh is coalesced', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      debugLogger = LoggerWindow.getInstance(mockContext);
+      debugLogger['logFilePath'] = '/tmp/test-logs/debug_test.log';
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('does one filesystem stat per interval, not one per message', () => {
+      const fsMock = require('fs');
+      fsMock.statSync.mockClear();
+
+      // The old code ran existsSync + statSync + executeJavaScript on EVERY routed
+      // message — ~12,000 synchronous syscalls a second at the observed 6,000 lines/s.
+      for (let i = 0; i < 5000; i++) debugLogger['updateStatusBar']();
+      expect(fsMock.statSync).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(300);
+      expect(fsMock.statSync).toHaveBeenCalledTimes(1);
+    });
+  });
 });
