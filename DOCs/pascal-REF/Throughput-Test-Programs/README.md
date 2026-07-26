@@ -6,9 +6,13 @@ so judging throughput needs no screen-watching and no process-list reading.
 Distinct from `../SingleStep-Debugger-Test-Programs/`, which exercise the single-step debugger.
 These exercise the **serial path**: transport, extraction worker, router, log writer.
 
-| Program | What it proves |
-|---|---|
-| `stress01_stream.spin2` / `.bin` | Stream integrity + throughput + write-under-load, in one run |
+| Program | What it proves | Duration |
+|---|---|---|
+| `stress01_stream.spin2` / `.bin` | Stream integrity + throughput + write-under-load | ~2.5s — ends itself |
+| `stress02_escape.spin2` / `.bin` | **Escapability**: windows stay responsive, quitting works, exit is prompt, log is intact | ~2 min — quit whenever |
+
+Same rate; they differ only in how long they run. stress01 is too short to quit "mid-storm",
+which is exactly what escapability has to test — hence the pair.
 
 ## Why the stream is numbered
 

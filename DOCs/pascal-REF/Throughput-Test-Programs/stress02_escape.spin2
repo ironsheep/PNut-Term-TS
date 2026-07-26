@@ -1,0 +1,63 @@
+'' =============================================================================
+'' Escapability stress — stress02_escape
+''
+'' SAME RATE as stress01_stream, LONGER DURATION. Not harder — longer.
+''
+'' WHY A SECOND PROGRAM: stress01 ends itself after 20k lines (~2.5s of wire
+'' time), which is right for measuring throughput but useless for testing escape
+'' — you cannot quit "mid-storm" a program that already finished. The realistic
+'' bad case is a user program that streams INDEFINITELY: they recognize it, and
+'' they need to be able to stop it the normal way and keep the log they have.
+''
+'' What this qualifies (the actual product requirement):
+''   1. the main window and debug windows keep responding while data pours in
+''      (drag a window, open a menu)
+''   2. quitting through the NORMAL control works — no P2 reset required
+''   3. the exit is PROMPT (seconds), because shutdown must abandon the backlog
+''      rather than drain it
+''   4. the log on disk is complete and correctly line-broken up to the exit
+''
+'' ~1,000,000 lines is roughly 2 minutes of wire time at 2 Mbaud: ample room to
+'' interact, quit whenever you like, and never reach the end. It DOES still end
+'' itself, so a forgotten run cannot stream forever.
+''
+'' NOTE: emits the same `SEQ <n>` stream as stress01, so scripts/verify-stream-log.js
+'' checks this capture too — a truncated tail is EXPECTED here (you quit early),
+'' and the verifier reports that distinctly rather than calling it loss.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+
+  LINES      = 1_000_000        ' ~2 minutes of wire time — quit whenever you like
+  DRAW_EVERY = 250              ' redraw the plot every N lines (render pressure)
+
+VAR
+  long key                      ' PC_KEY writes the keypress here (must be hub RAM)
+
+PUB main() | seq
+
+  debug(`PLOT Stress SIZE 400 400 BACKCOLOR WHITE UPDATE)
+  debug(`Stress ORIGIN 200 200)
+
+  seq := 0
+
+  repeat while seq < LINES
+
+    debug("SEQ ", udec_(seq))
+
+    if seq +// DRAW_EVERY == 0
+      debug(`Stress CLEAR)
+      debug(`Stress GRAY 3 SET 0 0 CIRCLE 360 2 255)
+      debug(`Stress RED 12 SET 0 0 LINE 160 60 5 255)
+      debug(`Stress UPDATE)
+
+      ' PC_KEY must be LAST in its DEBUG statement.
+      debug(`Stress PC_KEY(@key))
+      if key <> 0
+        debug("KEY ", udec_(key), " AT ", udec_(seq))
+        key := 0
+
+    seq++
+
+  debug("STRESS COMPLETE ", udec_(seq), " lines")
+  debug("DEBUG_END_SESSION")
