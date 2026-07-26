@@ -20,9 +20,14 @@
 
 const fs = require('fs');
 
-const RE_SEQ = /\bSEQ (\d+)/g;
-const RE_KEY = /\bKEY (\d+) AT (\d+)/g;
-const RE_COMPLETE = /STRESS COMPLETE (\d+) lines/;
+// P2 DEBUG's decimal formatter inserts UNDERSCORE digit separators once a value gets large
+// ("1_000", "190_281"). A plain \d+ stops at the underscore and reads "SEQ 1_000" as "SEQ 1",
+// which manufactures a flood of phantom duplicates and hides real loss behind them. Match the
+// separators and strip them before comparing.
+const RE_SEQ = /\bSEQ ([\d_]+)/g;
+const RE_KEY = /\bKEY ([\d_]+) AT ([\d_]+)/g;
+const RE_COMPLETE = /STRESS COMPLETE ([\d_]+) lines/;
+const num = (s) => Number(String(s).replace(/_/g, ''));
 const RE_CPU = /\[WIN-SYNC\] cpu (?:idle: )?([\d.]+)% of a core(?:[^|]*\|\s*(\d+) bytes in (\d+)ms \(([\d.]+) KB\/s\))?/g;
 // Both USB log shapes carry the same two facts we need: instant and byte count.
 const RE_USB = /\[USB (RECV|SEND) ([\d\-T:.]+)\] (?:Received|Sent) (\d+) bytes/g;
@@ -54,7 +59,7 @@ function checkIntegrity(debugText) {
   const seqs = [];
   let m;
   RE_SEQ.lastIndex = 0;
-  while ((m = RE_SEQ.exec(debugText)) !== null) seqs.push(Number(m[1]));
+  while ((m = RE_SEQ.exec(debugText)) !== null) seqs.push(num(m[1]));
 
   if (!seqs.length) {
     return { ran: false, reason: 'no SEQ lines found — was stress01_stream.bin the program that ran?' };
@@ -77,7 +82,7 @@ function checkIntegrity(debugText) {
   const missingTotal = gaps.reduce((a, g) => a + g.missing, 0);
 
   const completeMatch = debugText.match(RE_COMPLETE);
-  const claimedLines = completeMatch ? Number(completeMatch[1]) : null;
+  const claimedLines = completeMatch ? num(completeMatch[1]) : null;
 
   return {
     ran: true,
@@ -136,7 +141,7 @@ function checkRoundTrip(debugText, thr) {
   const echoes = [];
   let m;
   RE_KEY.lastIndex = 0;
-  while ((m = RE_KEY.exec(debugText)) !== null) echoes.push({ key: Number(m[1]), atSeq: Number(m[2]) });
+  while ((m = RE_KEY.exec(debugText)) !== null) echoes.push({ key: num(m[1]), atSeq: num(m[2]) });
   if (!echoes.length) return { echoes, measured: false };
 
   // Pair each host TX with the next RX that follows it. Coarse but honest: it bounds the

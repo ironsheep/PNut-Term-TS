@@ -5,6 +5,35 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-07-26
+
+Fixes the app freezing under a fast, sustained stream of debug output.
+
+### Fixed
+
+- **The application became unresponsive while receiving a lot of debug output, and stayed that
+  way long after the data stopped.** Windows would not respond to dragging or clicking, and the
+  log file ended up as one enormous unbroken line. Cause: carriage return and line feed were
+  being treated as displayable control codes rather than as line endings, so ordinary text lines
+  had their endings rewritten as visible `<CR><LF>` markers. The log writer then never saw a
+  line ending to break on: it held the entire session in memory and re-examined all of it each
+  time more data arrived. The work grew with the square of the data received — a 22-second
+  capture left the app busy for about four minutes. Line endings are now preserved, so output is
+  written line by line as it arrives.
+
+  Genuine screen-control codes (cursor positioning, clear-screen and friends) are unaffected and
+  still appear in the log as before.
+
+- **A stream that never sends a line ending can no longer grow without limit.** The log writer
+  now flushes what it has once a single line becomes implausibly long. A very long line in a log
+  is a far better outcome than an application that stops responding.
+
+### Changed
+
+- The throughput test program now sends 20,000 lines rather than 200,000. The larger figure took
+  a couple of seconds to send but left the app working through the backlog for minutes — it
+  measured the backlog rather than the throughput.
+
 ## [0.11.2] - 2026-07-25
 
 Measurement build. Windows downloading and debug output were confirmed working on hardware in

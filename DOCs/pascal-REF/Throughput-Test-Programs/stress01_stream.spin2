@@ -30,7 +30,12 @@
 CON
   _clkfreq = 200_000_000
 
-  LINES      = 200_000          ' ~2.4 MB of stream text — ~12s at 2 Mbaud
+  ' 20k lines ~= 380 KB, ~2.5s of wire time — long enough to measure a SUSTAINED rate
+  ' (several 5s CPU windows still land) but short enough that the app is not left chewing a
+  ' backlog. The first run of this program used 200_000: the P2 finished streaming in 22s and
+  ' the app then spent ~4 MINUTES catching up with a frozen UI. A stress program should load
+  ' the path, not bury it — the backlog measures nothing the first few seconds do not.
+  LINES      = 20_000
   DRAW_EVERY = 250              ' redraw the plot every N lines (render pressure)
 
 VAR

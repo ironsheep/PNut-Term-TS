@@ -87,6 +87,9 @@ export class LoggerWindow extends DebugWindowBase {
   private logLineAccumulator: string = '';
   private logLineFlushTimer: NodeJS.Timeout | null = null;
   private readonly LOG_LINE_FLUSH_TIMEOUT_MS = 50; // Flush partial lines after 50ms idle
+  // Safety bound on an unterminated line. The idle timer cannot rescue a stream that never
+  // pauses, so this is the only backstop against unbounded accumulation (see writeToLog).
+  private static readonly MAX_UNTERMINATED_LINE_BYTES = 64 * 1024;
 
   // Performance warning tracking
   private performanceMonitor: PerformanceMonitor | null = null;
@@ -1201,7 +1204,16 @@ export class LoggerWindow extends DebugWindowBase {
    * RACE CONDITION FIX: Buffer messages if log file isn't ready yet
    */
   private writeToLog(message: string): void {
-    // Accumulate text and extract complete lines (terminated by \n or \r\n)
+    // Accumulate text and extract complete lines (terminated by \n or \r\n).
+    //
+    // Everything before `scanFrom` has ALREADY been searched and holds no '\n', so only the
+    // newly-appended text can contain one. Rescanning from index 0 every chunk made this
+    // quadratic the moment a stream arrived without line terminators — which is exactly what
+    // happened when CR/LF were being escaped upstream (see classifyData): 190k chunks each
+    // rescanning a string growing toward 4.7 MB, on the main process, with the UI locked out.
+    // The classification fix removes the cause; this removes the amplifier, so no future
+    // escaping change can reintroduce a freeze here.
+    const scanFrom = this.logLineAccumulator.length;
     this.logLineAccumulator += message;
 
     // Reset idle timer on every chunk
@@ -1210,11 +1222,22 @@ export class LoggerWindow extends DebugWindowBase {
     }
 
     // Extract and write all complete lines
-    let newlineIdx: number;
-    while ((newlineIdx = this.logLineAccumulator.indexOf('\n')) !== -1) {
+    let newlineIdx: number = this.logLineAccumulator.indexOf('\n', scanFrom);
+    while (newlineIdx !== -1) {
       const line = this.logLineAccumulator.substring(0, newlineIdx + 1);
       this.logLineAccumulator = this.logLineAccumulator.substring(newlineIdx + 1);
       this.writeLogEntry(line);
+      newlineIdx = this.logLineAccumulator.indexOf('\n');
+    }
+
+    // HARD BOUND: a stream that never presents a line terminator must not accumulate forever.
+    // Without this the only escape was the 50ms idle timer, which never fires while data keeps
+    // arriving — so a fast unterminated stream grew a single unbounded entry. Flush what we have
+    // as its own entry instead; a very long line in the log is a far better failure than a
+    // frozen application.
+    if (this.logLineAccumulator.length >= LoggerWindow.MAX_UNTERMINATED_LINE_BYTES) {
+      this.writeLogEntry(this.logLineAccumulator);
+      this.logLineAccumulator = '';
     }
 
     // If there's remaining text without a newline, start idle timer to flush it
@@ -1665,6 +1688,21 @@ export class LoggerWindow extends DebugWindowBase {
       // NUL (0x00) — ignored by real terminals, not binary data
       if (byte === 0x00) {
         hasPST = true; // flag as non-pure-ASCII
+        continue;
+      }
+
+      // CR / LF are LINE TERMINATORS, not PST content worth visualizing.
+      //
+      // They sit inside the 0x01-0x10 PST range, so flagging them here marked EVERY ordinary
+      // text line as 'ascii-pst'. That sent plain output through formatPSTControlCodes(), which
+      // rewrote its line endings as the literal text "<CR><LF>" — after which writeToLog() could
+      // never find a real '\n' to split on, its accumulator grew without bound, and each arriving
+      // chunk rescanned the whole thing (quadratic work on the main process). A 22-second 2 Mbaud
+      // capture froze the UI for ~4 minutes and landed in the log as ONE 4.7 MB line. Treating
+      // them as ordinary text keeps real line breaks intact all the way to the file.
+      // A message carrying a GENUINE PST code (POS/CLS/SETX/...) still classifies as 'ascii-pst'
+      // and still renders visibly — only the line terminators stop being "content".
+      if (byte === 0x0a || byte === 0x0d) {
         continue;
       }
 
