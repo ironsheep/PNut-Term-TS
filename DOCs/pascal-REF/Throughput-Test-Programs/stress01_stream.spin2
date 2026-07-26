@@ -41,13 +41,14 @@ CON
 VAR
   long key                      ' PC_KEY writes the keypress here (must be hub RAM)
 
-PUB main() | seq
+PUB main() | seq, angle
 
   ' Proven-good directive syntax — the same shapes the fig-05 gauge emits.
   debug(`PLOT Stress SIZE 400 400 BACKCOLOR WHITE UPDATE)
   debug(`Stress ORIGIN 200 200)
 
   seq := 0
+  angle := 0
 
   repeat while seq < LINES
 
@@ -56,10 +57,14 @@ PUB main() | seq
 
     ' ---- render load ------------------------------------------------------
     if seq +// DRAW_EVERY == 0
+      ' The needle MUST visibly sweep. A static picture cannot distinguish "rendering
+      ' fine" from "renderer frozen" — and telling those apart by eye is the entire
+      ' point of the escapability test. Motion is the observable, not the load.
       debug(`Stress CLEAR)
       debug(`Stress GRAY 3 SET 0 0 CIRCLE 360 2 255)
-      debug(`Stress RED 12 SET 0 0 LINE 160 60 5 255)
+      debug(`Stress RED 12 SET 0 0 LINE 160 `(angle) 5 255)
       debug(`Stress UPDATE)
+      angle := (angle + 11) +// 360
 
       ' PC_KEY must be LAST in its DEBUG statement. Polled here rather than every
       ' line because the host latch holds a key ~100ms — far longer than a pass.
