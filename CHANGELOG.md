@@ -5,6 +5,22 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.7] - 2026-07-26
+
+Completes 0.11.6: with the log window closed, the log file now really does keep recording.
+
+### Fixed
+
+- **Output received while the Debug Logger window was closed still never reached the log file.**
+  0.11.6 kept the file open, and the file correctly recorded that the window had been closed and
+  reopened — but the debug output itself was still being discarded in between. In testing, two
+  close/reopen cycles lost 50,236 and 43,248 lines. Cause: incoming output was skipped entirely
+  when the window was closed, as a deliberate speed optimisation — and the same step that draws a
+  line to the screen is the step that writes it to the file, so skipping it stopped both. Drawing
+  is still skipped when there is no window to draw into; writing is not.
+- **The same problem existed for the individual COG windows**, whose per-COG log files stopped
+  recording when their window was closed. Fixed the same way.
+
 ## [0.11.6] - 2026-07-26
 
 Closing the Debug Logger window now closes the *window*, not the *log* — and you can bring it

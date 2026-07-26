@@ -594,11 +594,13 @@ export class LoggerCOGWindow extends DebugWindowBase {
    * Process incoming message for this COG
    */
   public processMessage(message: string | Uint8Array, timestamp?: string): void {
-    // CRITICAL PERFORMANCE FIX: Early exit if window is destroyed
-    // This prevents wasting CPU on closed/invisible windows
-    if (!this.debugWindow || this.debugWindow.isDestroyed()) {
-      return; // Don't waste CPU processing messages for closed windows
-    }
+    // NO early exit on a destroyed window here — same defect class as LoggerWindow's
+    // (fixed 2026-07-26): this method ends by writing to THIS COG's log file, so
+    // skipping it for a closed window silently stopped that file too. The display work
+    // below is already gated — flushRenderQueue() checks isDestroyed(), and the queue is
+    // bounded — so the CPU saving is kept without making durability conditional on a
+    // window being open.
+    const viewerGone = !this.debugWindow || this.debugWindow.isDestroyed();
 
     let displayMessage: string;
     let className = 'cog-message';
@@ -646,16 +648,18 @@ export class LoggerCOGWindow extends DebugWindowBase {
     // Generate timestamp in Debug Logger format
     const displayTimestamp = this.formatTimestamp(timestamp ? new Date(timestamp) : new Date());
 
-    // Add to render queue
-    this.renderQueue.push({
-      message: displayMessage,
-      timestamp: displayTimestamp,
-      className: className
-    });
+    // Add to render queue — only if there is something to render into.
+    if (!viewerGone) {
+      this.renderQueue.push({
+        message: displayMessage,
+        timestamp: displayTimestamp,
+        className: className
+      });
 
-    // Schedule batch render
-    if (!this.batchTimer) {
-      this.batchTimer = setTimeout(() => this.flushRenderQueue(), this.BATCH_INTERVAL_MS);
+      // Schedule batch render
+      if (!this.batchTimer) {
+        this.batchTimer = setTimeout(() => this.flushRenderQueue(), this.BATCH_INTERVAL_MS);
+      }
     }
 
     // Write to log file

@@ -3,6 +3,7 @@
 // tests/loggerWindow.test.ts
 
 import { LoggerWindow } from '../src/classes/loggerWin';
+import { SharedMessageType } from '../src/classes/shared/sharedMessagePool';
 import { Context } from '../src/utils/context';
 import { BrowserWindow } from 'electron';
 import * as fs from 'fs';
@@ -212,17 +213,25 @@ describe('LoggerWindow', () => {
       );
     });
     
-    it('should force batch when queue limit reached', () => {
-      // Create a debug window
+    it('does NOT paint on arrival at the queue limit — only the frame timer paints', () => {
+      // Was "should force batch when queue limit reached", asserting the opposite. That
+      // forced flush WAS the v0.11.5 freeze: it made paint rate track arrival rate (see
+      // streamShapes "I3 (presentation)"). The assertion is inverted deliberately.
+      // It also only checked "send was called at all", which the theme send satisfies —
+      // so it would have passed either way. Check the actual channel.
       debugLogger['_debugWindow'] = mockBrowserWindow;
-      
-      // Send 100 messages (batch limit)
+      mockBrowserWindow.webContents.send.mockClear();
+
       for (let i = 0; i < 100; i++) {
         debugLogger.updateContent(`Message ${i}`);
       }
-      
-      // Should trigger immediate batch
-      expect(mockBrowserWindow.webContents.send).toHaveBeenCalled();
+
+      const painted = () =>
+        mockBrowserWindow.webContents.send.mock.calls.filter((c: any[]) => c[0] === 'append-messages-batch');
+      expect(painted()).toHaveLength(0);
+
+      jest.advanceTimersByTime(16); // the timer, and only the timer, paints
+      expect(painted().length).toBeGreaterThan(0);
     });
     
     it('should limit buffer to maxLines', () => {
@@ -522,6 +531,68 @@ describe('LoggerWindow', () => {
 
       jest.advanceTimersByTime(300);
       expect(fsMock.statSync).toHaveBeenCalledTimes(1);
+    });
+  });
+  // -------------------------------------------------------------------------
+  //  Durability is not conditional on someone watching (invariant I5)
+  // -------------------------------------------------------------------------
+  //
+  // v0.11.6 split the log's lifetime from the window's, but the log still stopped when
+  // the window closed. handleRouterMessage began with a PERFORMANCE guard — "early exit
+  // if window is destroyed or not ready, don't waste CPU on closed windows" — and every
+  // branch behind it calls appendMessage (display) AND writeToLog (file). One guard,
+  // two responsibilities: gating it stopped the FILE.
+  //
+  // Measured on hardware at v0.11.6 (debug_260726-161937.log): across two close-reopen
+  // cycles, SEQ 31_722 -> 81_959 and 239_829 -> 283_078 — 50,236 and 43,248 lines
+  // received and never written, while the transport reported a healthy 141-170 KB/s.
+  describe('Routed data with no viewer still reaches the log file', () => {
+    beforeEach(() => {
+      debugLogger = LoggerWindow.getInstance(mockContext);
+      debugLogger['logFile'] = mockWriteStream;
+      debugLogger['logFilePath'] = '/tmp/test-logs/debug_test.log';
+      debugLogger['logFileReady'] = true;
+    });
+
+    function closeViewer(): void {
+      const entry = mockBrowserWindow.on.mock.calls.find((c: any[]) => c[0] === 'close');
+      entry[1]();
+    }
+
+    function feedCogLine(text: string): void {
+      debugLogger.handleRouterMessage({
+        type: SharedMessageType.COG0_MESSAGE,
+        data: [text]
+      } as any);
+    }
+
+    it('writes routed COG output while the viewer is closed', () => {
+      closeViewer();
+      expect(debugLogger.isViewerOpen()).toBe(false);
+
+      mockWriteStream.write.mockClear();
+      for (let i = 0; i < 50; i++) feedCogLine(`Cog0  SEQ ${i}\n`);
+      debugLogger['flushWriteBuffer']();
+
+      const written = mockWriteStream.write.mock.calls.map((c: any[]) => String(c[0])).join('');
+      expect(written).toContain('Cog0  SEQ 0');
+      expect(written).toContain('Cog0  SEQ 49');
+    });
+
+    it('does no render work for a window that is not there', () => {
+      closeViewer();
+      for (let i = 0; i < 50; i++) feedCogLine(`Cog0  SEQ ${i}\n`);
+
+      // The CPU saving the old guard existed for is preserved — just moved to where it
+      // only costs pixels.
+      expect(debugLogger['renderQueue'].length).toBe(0);
+    });
+
+    it('still fills the scrollback, so a reopened viewer has history to replay', () => {
+      closeViewer();
+      for (let i = 0; i < 50; i++) feedCogLine(`Cog0  SEQ ${i}\n`);
+
+      expect(debugLogger['lineBuffer'].length).toBeGreaterThan(0);
     });
   });
 });

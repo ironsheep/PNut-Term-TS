@@ -986,12 +986,20 @@ export class LoggerWindow extends DebugWindowBase {
    * WindowRouter calls this with ExtractedMessage containing SharedMessageType
    */
   public handleRouterMessage(message: ExtractedMessage | Uint8Array | string): void {
-    // CRITICAL PERFORMANCE FIX: Early exit if window is destroyed or not ready
-    // This prevents wasting CPU on closed/invisible windows (6.2x overload reduction)
-    if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.rendererReady) {
-      return; // Don't waste CPU processing messages for closed windows
-    }
-
+    // NO WINDOW CHECK HERE — deliberately.
+    //
+    // This used to early-exit when the window was destroyed or the renderer was not
+    // ready ("don't waste CPU processing messages for closed windows"). The saving was
+    // real, but this one entry point feeds BOTH responsibilities: every branch below
+    // calls appendMessage (display) AND writeToLog (file). Gating it therefore stopped
+    // the LOG, not just the drawing. Measured on hardware with v0.11.6, which had
+    // already fixed the file/singleton/router ownership: across two close-reopen cycles,
+    // 50,236 and 43,248 lines were received and never written — while the window was
+    // closed, only logSystemMessage (which bypasses this path) reached the file.
+    //
+    // The CPU saving is preserved where it belongs: appendMessage returns immediately
+    // when there is no viewer, so no render work happens for a window that isn't there.
+    // Durability is not conditional on someone watching.
     try {
       // Check if it's an ExtractedMessage object with type
       if (typeof message === 'object' && !Array.isArray(message) && !(message instanceof Uint8Array)) {
