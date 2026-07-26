@@ -229,8 +229,17 @@ export class SerialMessageProcessor extends EventEmitter {
     let n = 0;
     while (this.pendingPoolIds.length > 0) {
       this.router.routeFromPool(this.pendingPoolIds.shift()!);
-      // Check the clock every 64 messages; yield once the time budget is spent.
-      if ((++n & 0x3f) === 0 && performance.now() - start >= budget) break;
+      // Check the clock every 8 messages; yield once the time budget is spent.
+      //
+      // This was every 64. That is only safe while EVERY message is cheap — the worst case
+      // before the pacer can even look at the clock is 64 x per-message cost, so one
+      // millisecond-scale message type turns an 8ms budget into a 64ms stall (four dropped
+      // frames). The 64-message assumption was invisible until a message became expensive.
+      // performance.now() costs tens of nanoseconds — noise against routing a message — so the
+      // finer granularity buys real worst-case protection for no measurable throughput cost.
+      // NOTE: this bounds SCHEDULING only. It cannot preempt work INSIDE one routeFromPool call,
+      // so bounded per-message cost remains a hard invariant (see the scaling tests).
+      if ((++n & 0x7) === 0 && performance.now() - start >= budget) break;
     }
     if (this.pendingPoolIds.length > 0) this.ensureDrainScheduled();
   }

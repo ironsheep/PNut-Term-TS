@@ -5,6 +5,29 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] - 2026-07-26
+
+Closes out the same class of problem as 0.11.3: if a program floods the app with output, the
+windows keep responding, so you can stop it the normal way and keep the log you have.
+
+### Fixed
+
+- **The same freeze existed in headless mode, where nothing would have revealed it.** The
+  file logger used for `--headless` runs assembled lines the same way the on-screen logger did:
+  it re-examined everything received so far each time more data arrived, and held it all in
+  memory if no line ending ever turned up — which is what a long run of binary debug data looks
+  like. On screen this froze the windows; headless there are no windows, so it would simply have
+  looked like a run that stopped responding. Fixed the same way, including a limit on how large
+  a single unbroken line may grow before it is written out.
+
+### Changed
+
+- **The display now gets a turn more often while a heavy stream is being processed.** Incoming
+  output is handled in short time slices so drawing and menus keep working; the app was checking
+  whether its slice had expired only every 64 messages, which is fine while messages are cheap
+  and too coarse when one is not. It now checks every 8. This is protection against a burst of
+  expensive messages, not a change in throughput.
+
 ## [0.11.3] - 2026-07-26
 
 Fixes the app freezing under a fast, sustained stream of debug output.

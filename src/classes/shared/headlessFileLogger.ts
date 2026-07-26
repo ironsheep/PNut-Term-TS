@@ -34,6 +34,9 @@ export class HeadlessFileLogger {
   private lineAccumulator: string = '';
   private lineFlushTimer: NodeJS.Timeout | null = null;
   private readonly LINE_FLUSH_TIMEOUT_MS = 50; // Flush partial lines after 50ms idle
+  // Safety bound on an unterminated line — the idle timer cannot rescue a stream that never
+  // pauses, so this is the only backstop against unbounded accumulation (see logMessage).
+  private static readonly MAX_UNTERMINATED_LINE_BYTES = 64 * 1024;
 
   // Callback for end-marker detection
   private onEndMarkerDetected: (() => void) | null = null;
@@ -163,7 +166,15 @@ export class HeadlessFileLogger {
       }
     }
 
-    // Accumulate text and extract complete lines (terminated by \n or \r\n)
+    // Accumulate text and extract complete lines (terminated by \n or \r\n).
+    //
+    // Everything before `scanFrom` has already been searched and holds no '\n', so only the
+    // newly-appended text can contain one. Rescanning from index 0 on every chunk is quadratic
+    // in the accumulated size the moment a stream arrives WITHOUT line terminators — a long run
+    // of binary DEBUG payload does exactly that. The headed logger hit precisely this and froze
+    // the app for minutes (see loggerWin.writeToLog); this is the same defect on the headless
+    // path, where there is no UI to reveal it — it would simply appear to hang.
+    const scanFrom = this.lineAccumulator.length;
     this.lineAccumulator += message;
 
     // Reset idle timer on every chunk
@@ -172,12 +183,20 @@ export class HeadlessFileLogger {
     }
 
     // Extract and write all complete lines
-    let newlineIdx: number;
-    while ((newlineIdx = this.lineAccumulator.indexOf('\n')) !== -1) {
+    let newlineIdx: number = this.lineAccumulator.indexOf('\n', scanFrom);
+    while (newlineIdx !== -1) {
       // Extract line including the \n
-      let line = this.lineAccumulator.substring(0, newlineIdx + 1);
+      const line = this.lineAccumulator.substring(0, newlineIdx + 1);
       this.lineAccumulator = this.lineAccumulator.substring(newlineIdx + 1);
       this.writeToLog(line);
+      newlineIdx = this.lineAccumulator.indexOf('\n');
+    }
+
+    // HARD BOUND: a stream that never presents a line terminator must not accumulate forever.
+    // The idle timer cannot rescue it — while data keeps arriving the timer keeps being reset.
+    if (this.lineAccumulator.length >= HeadlessFileLogger.MAX_UNTERMINATED_LINE_BYTES) {
+      this.writeToLog(this.lineAccumulator);
+      this.lineAccumulator = '';
     }
 
     // If there's remaining text without a newline, start idle timer to flush it
