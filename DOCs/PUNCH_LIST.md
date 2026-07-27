@@ -23,7 +23,7 @@ grep -n "🚦 GATES 1.0.0" DOCs/PUNCH_LIST.md
 item AND strike its line in this roster — do not delete it, so the roster stays an auditable record of what
 gated the release.
 
-### Gate roster — **ALL CLOSED as of 2026-07-18**
+### Gate roster — G1–G6 CLOSED; **G7 OPEN (added 2026-07-27)**
 
 | # | Gate | Section | Why it gates |
 |---|---|---|---|
@@ -33,6 +33,7 @@ gated the release.
 | ~~**G4**~~ | ~~A non-numeric `--timeout` silently disables the timeout~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). `--timeout`/`--debugbaud` are strictly validated; bad values abort with code 2 before anything runs. |
 | ~~**G5**~~ | ~~Effective default debug baud is 115200; help text and skill both say 2000000~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). Default is now 2,000,000 — **and we no longer guess at all**: the debug baud is READ OUT OF THE BINARY being downloaded (`utils/p2DebugHeader.ts`), so an in-source `DEBUG_BAUD` CON finally works with this tool. `-b` remains an explicit override, and warns when it contradicts the image. |
 | ~~**G6**~~ | ~~`POS` coordinate-space divergence from v55~~ | P2 | **CLOSED 2026-07-14 — NO CODE CHANGE.** The `POS`/210 premise was **disproven**: the compiler overwrites `EditorUnit`'s 210, so the normal-use origin is (0,0) and our absolute `POS` **already matches** PNut. Separately, our non-overlapping auto-layout was **adjudicated an intentional feature** (Stephen) and stands. One standing DOC RULE survives: window placement must be described as a **term-ts feature**, never as DEBUG-language behavior. |
+| **G7** | **No development diagnostics in a released build — audited, not assumed** | P1 (release hygiene) | **OPEN.** Stephen, 2026-07-27, on seeing `[SAVE-READBACK]` and `{notSet}:` during Linux certification: *"that full audit sweep seems like a release gate to me"*. Correct — what a shipped binary prints is a property of the artifact, and it had been enforced only by hand-flipped per-file consts. See §Release hygiene below for the method, the baseline count, and the disposition rules. |
 
 **G1 and G2 were already declared gating** by the existing "P1 — Must Fix Before Release" / "P1 — Release
 validation" sections; they are listed here so the roster is complete rather than a partial view.
@@ -46,6 +47,40 @@ statement the user manual is required to make. Flag if you disagree and we will 
 ## Open Items
 
 ### P1 - Must Fix Before Release
+
+#### Release hygiene: no development diagnostics in a released build
+  - **🚦 GATES 1.0.0** — roster **G7** — **OPEN.**
+  - **Why it gates:** what the shipped binary prints is a property of the artifact, not a
+    preference. Until now it was enforced only by hand-flipped per-file `ENABLE_CONSOLE_LOG`
+    consts — one forgotten `true`, or one ungated `console.log` added in a hurry, ships. Linux
+    certification (v0.11.10) surfaced exactly that: `[SAVE-READBACK]` byte counts on every SAVE,
+    an internal function name during download, and `{notSet}:` message prefixes.
+  - **What "audited" means — the method (do not substitute a source grep):**
+    1. Presence in the bundle is NOT the test. The release bundle is unminified, so
+       `if (ENABLE_CONSOLE_LOG) console.log(...)` survives textually with the const folded to
+       `false` and can never execute. **Reachability is the test.**
+    2. Classify every `console.*` call site in `src/` as **GATED** (lexically inside an
+       `ENABLE_CONSOLE_LOG` / `ENABLE_DIAGNOSTICS` guard, including guarded helper bodies),
+       **RENDERER** (inside a template literal injected via `executeJavaScript`/`generateHTML` —
+       prints to DevTools, not the user's terminal), or **LIVE** (can print on a released run).
+    3. Triage every LIVE site against the disposition rules below.
+  - **Baseline, 2026-07-27 (v0.11.11):** GATED 156 · RENDERER 70 · **LIVE 275**. The LIVE count
+    is the working list; it is NOT 275 defects — most are error paths that SHOULD speak.
+  - **Disposition rules:**
+    - **Keep** — a genuine failure the user must know about (`console.error` on a real error),
+      worded in plain language, no stack dumps for user-program mistakes.
+    - **Gate** — development/tracing detail (`[FFT EXTRACT]`, `[TERM] Offscreen canvas
+      initialized`, canvas byte counts): put behind `ENABLE_DIAGNOSTICS` so `build:release`
+      compiles it out.
+    - **Demote** — channel/mechanism internals that are useful when diagnosing that channel:
+      move to `--diag-serial` (`logChannelDiag`) or the equivalent per-subsystem switch.
+    - **Reword** — right to print, wrong voice: internal function names, raw object dumps.
+  - **Done when:** every LIVE site carries one of the four dispositions, the routine-run print
+    set is exactly the intended run narrative (per `DOCs/project-specific/LOGGING-STANDARDS.md`),
+    and a re-run of the classifier shows no ungated routine diagnostics.
+  - **Tooling:** the classifier used for the baseline is kept with the sprint notes; it is a
+    ~40-line script over `src/` — rewrite rather than hunt for it if it has aged.
+
 
 - [x] **Linux: Electron process doesn't exit when all windows closed** (v0.9.22 regression report, Fedora 42) — **CLOSED 2026-07-18 (Stephen, verified on Linux HW).**
   - **🚦 GATES 1.0.0** — roster **G1** — **CLOSED.** Process exits on its own; no lingering Electron, port released, no `kill -9` needed.
