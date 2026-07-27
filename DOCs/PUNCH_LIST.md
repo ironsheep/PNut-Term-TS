@@ -54,14 +54,16 @@ Audited `debugDebuggerWin.ts` message path while sweeping the v0.9.67/.68 serial
 
 ### P3 - Test hygiene (post-#24 follow-on)
 
-The sequential runner is now **176/176 green** (was 70 of 183 files; 153 at the time this section was written). 42 obsolete suites that imported removed modules were deleted. The following test files remain **unregistered and documented** — none are silent skips of fixable tests, but they are not exercised in CI:
+The sequential runner is **176/176 green** (was 70 of 183 files when this section was written).
+42 obsolete suites that imported removed modules were deleted. Four test files remain
+**excluded with a documented reason** in `scripts/claude/check_test_coverage.sh` — the gate
+enforces that every present file is either registered or excluded, so these cannot rot
+silently. They are still not exercised in CI, which is what keeps them on this list:
 
 - [ ] **`fftMultipleExecutions` / `fftRealHardwareComparison`** — require P2 capture files (`debug_*.log`, `fft_input_samples.txt`) absent from the repo. Options: commit synthetic equivalent data, or move to an `external-hardware/` gated suite.
 - [ ] **`spritedefRealUSB`** — requires an absent USB capture log (`test-results/external-results/usb-traffic_*.log`); graceful-skips when missing.
-- [ ] **`memoryLeakDetection`** — 11 tests green; 2 gated with `.skip` due to jest-env timer pollution (the DebugLogicWindow stray-timer fix that likely un-gates these has since landed — re-check whether the `.skip`s can be removed).
-- [ ] **`workerExtraction`** — worker-thread integration test that times out under jest (delivery never fires); same class as the registered-but-intermittent `workerSpritedefBug`. Needs a worker-runtime-friendly harness.
-- [ ] **`workerSpritedefBug`** — registered but historically an intermittent Docker-saturation flake; passed in the 0.9.28 closeout run. Watch for flakiness.
-- [ ] **Runner progress counter** (cosmetic) — `scripts/claude/run_tests_sequentially.sh` prints `[N/70]` with a stale `70` denominator; it actually runs/passes 176. Update the hardcoded total.
+- [ ] **`memoryLeakDetection`** — excluded (env-only: asserts on real GC / wall-clock heap
+  growth). 11 tests green; 2 gated with `.skip` (`tests/memoryLeakDetection.test.ts:646,666`) due to jest-env timer pollution (the DebugLogicWindow stray-timer fix that likely un-gates these has since landed — re-check whether the `.skip`s can be removed).
 
 ### P3 - Documentation
 

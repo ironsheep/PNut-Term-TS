@@ -53,7 +53,8 @@ Additional pages:
 - [Quick Start Guide](DOCs/QUICK-START.md) - Get up and running in 2 minutes
 - [User Guide](DOCs/USER-GUIDE.md) - Complete reference documentation
 - [PNut-Term-TS Command-line](CommandLine.md) - command line reference
-- [PNut-Term-TS ChangeLog](CHANGELOG.md) - history of releases (Including what's new in this release!)
+- [PNut-Term-TS ChangeLog](CHANGELOG.md) - what's new in this release
+- [0.x development history](DOCs/history/CHANGELOG-0.x-development.md) - the pre-1.0 development log, frozen at v1.0.0
 - [PNut-TS](https://github.com/ironsheep/PNut-TS) - The companion PNut-TS compiler
 - [P2\_PNut\_Public](https://github.com/parallaxinc/P2_PNut_Public) - Pnut (for Windows) source is currently found in the Parallax Repo
 
