@@ -23,7 +23,7 @@ grep -n "🚦 GATES 1.0.0" DOCs/PUNCH_LIST.md
 item AND strike its line in this roster — do not delete it, so the roster stays an auditable record of what
 gated the release.
 
-### Gate roster — G1–G6 CLOSED; **G7 OPEN (added 2026-07-27)**
+### Gate roster — **ALL CLOSED as of 2026-07-27**
 
 | # | Gate | Section | Why it gates |
 |---|---|---|---|
@@ -33,7 +33,7 @@ gated the release.
 | ~~**G4**~~ | ~~A non-numeric `--timeout` silently disables the timeout~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). `--timeout`/`--debugbaud` are strictly validated; bad values abort with code 2 before anything runs. |
 | ~~**G5**~~ | ~~Effective default debug baud is 115200; help text and skill both say 2000000~~ | P1 (automation) | **CLOSED 2026-07-14** (build TBD). Default is now 2,000,000 — **and we no longer guess at all**: the debug baud is READ OUT OF THE BINARY being downloaded (`utils/p2DebugHeader.ts`), so an in-source `DEBUG_BAUD` CON finally works with this tool. `-b` remains an explicit override, and warns when it contradicts the image. |
 | ~~**G6**~~ | ~~`POS` coordinate-space divergence from v55~~ | P2 | **CLOSED 2026-07-14 — NO CODE CHANGE.** The `POS`/210 premise was **disproven**: the compiler overwrites `EditorUnit`'s 210, so the normal-use origin is (0,0) and our absolute `POS` **already matches** PNut. Separately, our non-overlapping auto-layout was **adjudicated an intentional feature** (Stephen) and stands. One standing DOC RULE survives: window placement must be described as a **term-ts feature**, never as DEBUG-language behavior. |
-| **G7** | **No development diagnostics in a released build — audited, not assumed** | P1 (release hygiene) | **OPEN.** Stephen, 2026-07-27, on seeing `[SAVE-READBACK]` and `{notSet}:` during Linux certification: *"that full audit sweep seems like a release gate to me"*. Correct — what a shipped binary prints is a property of the artifact, and it had been enforced only by hand-flipped per-file consts. See §Release hygiene below for the method, the baseline count, and the disposition rules. |
+| ~~**G7**~~ | ~~No development diagnostics in a released build — audited, not assumed~~ | P1 (release hygiene) | **CLOSED 2026-07-27.** Audited by reachability, not by grep. Final: GATED 175 · RENDERER 89 · LIVE 236, and **every LIVE site now carries a disposition** — zero ungated routine diagnostics remain. Opened as: Stephen, 2026-07-27, on seeing `[SAVE-READBACK]` and `{notSet}:` during Linux certification: *"that full audit sweep seems like a release gate to me"*. Correct — what a shipped binary prints is a property of the artifact, and it had been enforced only by hand-flipped per-file consts. See §Release hygiene below for the method, the baseline count, and the disposition rules. |
 
 **G1 and G2 were already declared gating** by the existing "P1 — Must Fix Before Release" / "P1 — Release
 validation" sections; they are listed here so the roster is complete rather than a partial view.
@@ -48,8 +48,8 @@ statement the user manual is required to make. Flag if you disagree and we will 
 
 ### P1 - Must Fix Before Release
 
-#### Release hygiene: no development diagnostics in a released build
-  - **🚦 GATES 1.0.0** — roster **G7** — **OPEN.**
+#### ~~Release hygiene: no development diagnostics in a released build~~ — **CLOSED 2026-07-27**
+  - **🚦 GATES 1.0.0** — roster **G7** — **CLOSED.**
   - **Why it gates:** what the shipped binary prints is a property of the artifact, not a
     preference. Until now it was enforced only by hand-flipped per-file `ENABLE_CONSOLE_LOG`
     consts — one forgotten `true`, or one ungated `console.log` added in a hurry, ships. Linux
@@ -108,6 +108,30 @@ statement the user manual is required to make. Flag if you disagree and we will 
     through the same single-owner handler in `mainWindow.ts`. A safety timer force-quits at
     `SHUTDOWN_DRAIN_TIMEOUT_MS + 5s` (**≈15 s**), so an exit that takes ~15 s means the drain
     hung and should be reported rather than counted as a pass.
+
+  - **CLOSED 2026-07-27 — what was done:**
+    - **Gated** (developer tracing, now silent in a release): pool + circular-buffer
+      `logFinalStats()` — these printed ~25 lines of statistics on **every** worker shutdown;
+      `[QUEUE FILLED/CLEARED/NOT FULL]` ×5; `[BinaryPlayer]` load detail ×2; `[Documentation]`
+      help-path probe ×3 (fires on every F1); `[Performance] Stats cleared`; `[TRACE …]`;
+      `[HEADLESS]` log-file *plumbing* ×3.
+    - **Kept** (run narrative / real failures): all 16 `[HEADLESS]` controller lines and the
+      headless log path, end-marker hit and log-closed lines — in headless mode that output IS
+      the agent/CI feedback loop; `-V` output; `--debug` argument dump; the 45 `console.warn`
+      sites (verified by reading every one: all fire on anomalies or fallbacks, none on a normal
+      run) and the 145 `console.error` sites.
+    - **Reworded**: `[Documentation] APP-HELP.md not found` → a `console.warn` that says the
+      built-in fallback help is being shown, which is what the user actually needs to know.
+    - **Left alone, deliberately**: 89 renderer-injected sites (inside `executeJavaScript`
+      template literals — they print to DevTools, never to the user's terminal), and in
+      particular `debugScopeXyWin.ts:279` `console.log('MOUSE:'…)`, which is **functional**: it
+      is the wire feeding the `console-message` listener that updates the coordinate readout. A
+      blanket strip would silently break that readout — it already did once.
+  - **Verification method for next time:** the classifier must understand (1) guard *blocks*,
+    (2) braceless `if (GUARD)` on the preceding line, (3) `/* … */` block comments, and
+    (4) early-return guards (`if (!GUARD) return;`). It was corrected four times while running
+    this audit; each blind spot inflated the LIVE count with already-safe code. A naive grep
+    reports ~497 sites and a bundle grep ~483 — both are wrong by an order of magnitude.
 
 ### P1 - Release validation (hardware) — the point of this build
 

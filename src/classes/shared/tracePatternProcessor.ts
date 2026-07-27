@@ -4,6 +4,9 @@
 
 // src/classes/shared/tracePatternProcessor.ts
 
+// Developer console tracing. Off for releases (G7).
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 /**
  * Trace pattern interface for tracking pixel position and scrolling
  */
@@ -160,7 +163,7 @@ export class TracePatternProcessor {
     // For patterns 0-3 (horizontal scan), use width
     // For patterns 4-7 (vertical scan), use height
     const rate = (this.state.pattern <= 3) ? this.state.width : this.state.height;
-    console.log(`[TRACE getSuggestedRate] pattern=${this.state.pattern}, width=${this.state.width}, height=${this.state.height}, returning=${rate}`);
+    if (ENABLE_CONSOLE_LOG) console.log(`[TRACE getSuggestedRate] pattern=${this.state.pattern}, width=${this.state.width}, height=${this.state.height}, returning=${rate}`);
     return rate;
   }
 

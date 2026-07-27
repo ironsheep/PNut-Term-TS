@@ -5,6 +5,23 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.12] - 2026-07-27
+
+Completes the console-output cleanup: a released build now prints only what it means to.
+
+### Changed
+
+- **Development diagnostics no longer appear in released builds.** Quitting printed about 25
+  lines of internal memory-pool statistics; pressing F1 printed the search for the help file;
+  loading a recording, clearing performance stats, and internal queue state changes all printed
+  as well. These are developer tools and are now switched off in shipped builds.
+- **What a released build still prints is deliberate**: headless-mode progress (which scripts
+  and automated tools read), the version and `--debug` output you asked for, and warnings or
+  errors when something is actually wrong. Saving a window records its file through the
+  window's own logging, so it no longer prints on every save.
+- **If the built-in help file is missing**, the application now says it is showing the built-in
+  fallback help, instead of printing where it looked.
+
 ## [0.11.11] - 2026-07-27
 
 Console output cleanup found during Linux release certification. No functional change.

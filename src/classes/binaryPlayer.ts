@@ -1,4 +1,7 @@
 import { EventEmitter } from 'events';
+
+// Developer console tracing for playback loading. Off for releases (G7).
+const ENABLE_CONSOLE_LOG: boolean = false;
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -103,8 +106,9 @@ export class BinaryPlayer extends EventEmitter {
           this.totalDuration = cumulativeTime;
         }
 
+        if (ENABLE_CONSOLE_LOG)
         console.log(`[BinaryPlayer] Loaded ${this.entries.length} entries from ${path.basename(filepath)}`);
-        console.log(`[BinaryPlayer] Duration: ${this.totalDuration}ms, Metadata:`, metadata);
+        if (ENABLE_CONSOLE_LOG) console.log(`[BinaryPlayer] Duration: ${this.totalDuration}ms, Metadata:`, metadata);
         
         this.emit('loaded', { 
           entries: this.entries.length, 

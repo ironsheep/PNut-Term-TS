@@ -1,5 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron';
 
+// Developer console tracing. Off for releases (G7).
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 interface PerformanceMetrics {
   throughput: number;
   bufferUsage: number;
@@ -101,7 +104,7 @@ export class PerformanceMonitor {
       this.metrics.parseErrors = 0;
       this.metrics.totalMessages = 0;
       this.metrics.highWaterMark = this.metrics.bufferUsed;
-      console.log('[Performance] Stats cleared');
+      if (ENABLE_CONSOLE_LOG) console.log('[Performance] Stats cleared');
     });
   }
 

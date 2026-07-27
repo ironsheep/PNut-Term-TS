@@ -1,4 +1,8 @@
 import { BrowserWindow, ipcMain, shell, app } from 'electron';
+
+// Developer console tracing for the help-file search. Off for releases (G7): pressing F1
+// printed the whole candidate-path probe.
+const ENABLE_CONSOLE_LOG: boolean = false;
 import * as fs from 'fs';
 import * as path from 'path';
 import MarkdownIt from 'markdown-it';
@@ -82,22 +86,24 @@ export class DocumentationViewer {
     possiblePaths.push(path.join(__dirname, '..', 'DOCs', 'APP-HELP.md'));
 
     // Log all paths being checked for debugging
-    console.log('[Documentation] Checking for APP-HELP.md in the following locations:');
+    if (ENABLE_CONSOLE_LOG) console.log('[Documentation] Checking for APP-HELP.md in the following locations:');
     possiblePaths.forEach((p, i) => {
       const exists = fs.existsSync(p);
-      console.log(`  ${i + 1}. ${p} - ${exists ? '✅ Found' : '❌ Not found'}`);
+      if (ENABLE_CONSOLE_LOG) console.log(`  ${i + 1}. ${p} - ${exists ? '✅ Found' : '❌ Not found'}`);
     });
 
     // Return the first path that exists
     for (const docPath of possiblePaths) {
       if (fs.existsSync(docPath)) {
-        console.log(`[Documentation] Using documentation from: ${docPath}`);
+        if (ENABLE_CONSOLE_LOG) console.log(`[Documentation] Using documentation from: ${docPath}`);
         return docPath;
       }
     }
 
     // If none found, return the expected location (will trigger fallback content)
-    console.log('[Documentation] APP-HELP.md not found in any expected location');
+    // Kept visible: the Help window falls back to built-in content, and the user should know
+    // why it looks different from the shipped Help.
+    console.warn('[Documentation] APP-HELP.md not found — showing built-in fallback help');
     return possiblePaths[0];
   }
 

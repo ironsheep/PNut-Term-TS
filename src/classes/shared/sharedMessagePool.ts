@@ -505,6 +505,9 @@ export class SharedMessagePool {
    * Log final statistics
    */
   public logFinalStats(): void {
+    // Pool statistics are a developer diagnostic, not a run narrative: this is called from
+    // WorkerExtractor.shutdown(), so before the gate it printed ~16 lines on EVERY exit.
+    if (!ENABLE_CONSOLE_LOG) return;
     const stats = this.getStats();
 
     console.log('[SharedMessagePool] 📊 FINAL STATISTICS:');

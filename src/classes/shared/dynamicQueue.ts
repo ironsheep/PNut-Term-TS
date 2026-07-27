@@ -101,7 +101,7 @@ export class DynamicQueue<T> {
 
         // Log when queue first fills up
         if (!this.wasFull) {
-          console.log(`[QUEUE FILLED] ${this.queueName} reached max capacity (${this.maxCapacity}), dropping items`);
+          if (ENABLE_CONSOLE_LOG) console.log(`[QUEUE FILLED] ${this.queueName} reached max capacity (${this.maxCapacity}), dropping items`);
           this.wasFull = true;
         }
 
@@ -153,13 +153,13 @@ export class DynamicQueue<T> {
 
     // Log when queue becomes cleared (empty)
     if (this.wasNonEmpty && this.size === 0) {
-      console.log(`[QUEUE CLEARED] ${this.queueName} is now empty`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[QUEUE CLEARED] ${this.queueName} is now empty`);
       this.wasNonEmpty = false;
     }
 
     // Log when queue becomes non-full after being full
     if (this.wasFull && this.size < this.capacity) {
-      console.log(`[QUEUE NOT FULL] ${this.queueName} can accept items again (size: ${this.size}/${this.capacity})`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[QUEUE NOT FULL] ${this.queueName} can accept items again (size: ${this.size}/${this.capacity})`);
       this.wasFull = false;
     }
 
@@ -211,7 +211,7 @@ export class DynamicQueue<T> {
 
     // Log when queue becomes non-full after being full (successful resize means we have room now)
     if (this.wasFull) {
-      console.log(`[QUEUE NOT FULL] ${this.queueName} resized to ${this.capacity}, can accept items again`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[QUEUE NOT FULL] ${this.queueName} resized to ${this.capacity}, can accept items again`);
       this.wasFull = false;
     }
 
@@ -270,7 +270,7 @@ export class DynamicQueue<T> {
 
     // Reset state tracking
     if (hadItems) {
-      console.log(`[QUEUE CLEARED] ${this.queueName} explicitly cleared`);
+      if (ENABLE_CONSOLE_LOG) console.log(`[QUEUE CLEARED] ${this.queueName} explicitly cleared`);
     }
     this.wasNonEmpty = false;
     this.wasFull = false;

@@ -415,6 +415,8 @@ export class SharedCircularBuffer extends EventEmitter {
    * Log final statistics (called on shutdown)
    */
   public logFinalStats(): void {
+    // Same as the pool's: developer diagnostic, printed on every shutdown before the gate.
+    if (!ENABLE_CONSOLE_LOG) return;
     if (ENABLE_CONSOLE_LOG) {
       const stats = this.getStats();
       console.log(`[CircularBuffer] 📊 FINAL STATISTICS:`);

@@ -17,6 +17,11 @@ import * as path from 'path';
 import { Context } from '../../utils/context';
 import { ensureDirExists, getFormattedDateTime, getFormattedDateTimeISO } from '../../utils/files';
 
+// Developer console tracing for the headless log's own plumbing. Off for releases (G7).
+// The headless RUN NARRATIVE (log path, end-marker hit, log closed) is NOT gated — in
+// headless mode that output is the feedback loop an agent or CI script reads.
+const ENABLE_CONSOLE_LOG: boolean = false;
+
 export class HeadlessFileLogger {
   private context: Context;
   private logFilePath: string = '';
@@ -75,14 +80,14 @@ export class HeadlessFileLogger {
     try {
       // Use context-based log directory with user preferences
       const logsDir = this.context.getLogDirectory();
-      console.log('[HEADLESS] Creating logs directory at:', logsDir);
+      if (ENABLE_CONSOLE_LOG) console.log('[HEADLESS] Creating logs directory at:', logsDir);
       ensureDirExists(logsDir);
 
       // Generate timestamped filename
       const timestamp = getFormattedDateTime();
       const basename = 'headless';
       this.logFilePath = path.join(logsDir, `${basename}_${timestamp}.log`);
-      console.log('[HEADLESS] Log file path:', this.logFilePath);
+      if (ENABLE_CONSOLE_LOG) console.log('[HEADLESS] Log file path:', this.logFilePath);
 
       // Create write stream
       this.logFile = fs.createWriteStream(this.logFilePath, { flags: 'a' });
@@ -298,7 +303,8 @@ export class HeadlessFileLogger {
    */
   private flushPendingMessages(): void {
     if (this.pendingLogMessages.length > 0) {
-      console.log(`[HEADLESS] Flushing ${this.pendingLogMessages.length} pending messages to log file`);
+      if (ENABLE_CONSOLE_LOG)
+        console.log(`[HEADLESS] Flushing ${this.pendingLogMessages.length} pending messages to log file`);
 
       // Add all pending messages to the write buffer
       this.writeBuffer.push(...this.pendingLogMessages);

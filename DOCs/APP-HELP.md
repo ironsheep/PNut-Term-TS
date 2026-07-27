@@ -572,4 +572,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.11.11 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.11.12 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
