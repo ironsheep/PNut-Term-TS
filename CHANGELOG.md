@@ -5,6 +5,27 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.10] - 2026-07-27
+
+### Added
+
+- **Unusable display names are now reported instead of silently doing nothing.** A display's
+  name is how every later update finds it, so it cannot be a word the display language already
+  uses. Naming a display `trace` (a directive keyword) previously produced no window and no
+  message — the display statement was simply ignored, exactly as PNut ignores it. The
+  application now says which name is unusable and why, and stops the run, so the problem is
+  visible instead of invisible. A name must start with a letter or underscore, use only
+  letters/digits/underscore, not be a display type or directive keyword (case-insensitive), and
+  not already belong to an open display; names longer than 30 characters are shortened to 30, as
+  PNut does. Words outside the display language are unaffected — `spin2` remains a perfectly
+  good display name.
+
+### Documentation
+
+- The Help, User Guide and Quick Start now document how to name a display, and what to do when
+  a window never opens. **Exit code 4** (fatal display error) was missing from the User Guide's
+  exit-code table and has been added.
+
 ## [0.11.9] - 2026-07-27
 
 ### Fixed

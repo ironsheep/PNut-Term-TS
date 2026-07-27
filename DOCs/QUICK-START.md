@@ -1,5 +1,5 @@
 # PNut-Term-TS Quick Start Guide
-*Version 0.11.9*
+*Version 0.11.10*
 
 ## First Session (2 Minutes)
 
@@ -25,6 +25,12 @@ Watch for DTR/RTS indicators in toolbar:
 
 ### Debug Windows Open Automatically
 Run your P2 program with DEBUG commands. Windows appear as needed - no menu interaction required.
+
+**Naming them**: a display's name must not be a word the display language already uses —
+`trace`, `set`, `line`, `title`, `plot`, `red`… are all taken (case doesn't matter). Start
+with a letter or `_`, use letters/digits/`_`, keep it under 31 characters, and don't reuse
+the name of an open display. If a name is unusable the app says so and stops, instead of
+leaving you with a window that never appears. Full rules: `DOCs/USER-GUIDE.md`.
 
 ---
 

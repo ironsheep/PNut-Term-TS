@@ -71,6 +71,30 @@ official Propeller 2 DEBUG documentation; this Help does not reproduce it.
 | **Debug Logger** | Timestamped log of all serial traffic (see below) |
 | **Debugger** | Interactive single-step PASM2 debugger (one per COG) |
 
+### Naming a display
+
+You choose a display's name in the `debug()` directive that creates it — `` `PLOT MyPlot … ``
+— and every later update addresses that window **by that name**. Because the name is the
+only address, it may not be a word the display language already uses.
+
+A name must:
+
+- **start with a letter or `_`**, then use only letters, digits and `_`;
+- **not be a display type or a directive keyword** — `TRACE`, `SET`, `LINE`, `TITLE`,
+  `WINDOW`, `CLOSE`, `PLOT`, `RED`, `GRAY`… (case does not matter: `trace` and `TRACE` are
+  the same name);
+- **not already be in use** by an open display. Closing a display frees its name for reuse.
+
+Names longer than **30 characters are shortened to 30**, so two names that differ only
+after the 30th character become the same name.
+
+Words that are *not* part of the display language are fine even if they look reserved —
+`spin2` is a perfectly good display name, and so are `traces`, `my_trace` and `plotter`.
+
+> If a name breaks these rules the application says so and stops the run, rather than
+> leaving you with a window that never appears. (PNut silently ignores the display
+> instead — the same program produces no window and no message.)
+
 ### Shared window behavior
 
 - **Automatic placement** — a window with no `POS` directive is laid out for you;
@@ -506,6 +530,10 @@ adapter. Set DTR or RTS for the device in **Preferences → PropPlug Management*
 COG lines need the `Cog<N>  ` format (two spaces). Check the Debug Logger for the raw
 stream.
 
+**A window never opens, or the app stops with a display-name error** — the name in the
+creating `debug()` directive is not usable. See [Naming a display](#naming-a-display): the
+usual cause is a name that is also a directive keyword, such as `trace`.
+
 **A window is blank** — confirm the P2 is sending to that window; open the Performance
 Monitor and lower the data rate if buffer usage is high.
 
@@ -544,4 +572,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.11.9 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.11.10 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

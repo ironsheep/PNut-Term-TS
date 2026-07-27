@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.11.9*
+*Version 0.11.10*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -439,6 +439,29 @@ directives — there is no menu command to open one. The available window types 
 | **COG logger** | Per-COG debug message log |
 | **Debugger** | Interactive single-step PASM2 debugger |
 
+### Naming a display
+A display's name is set in the `debug()` directive that creates it (`` `PLOT MyPlot … ``),
+and every later update addresses the window **by that name**. The name is the only address
+on the wire, so it may not collide with a word the display language already uses.
+
+| Rule | Detail |
+|------|--------|
+| Character set | Start with a letter or `_`, then letters, digits and `_` only |
+| Not a reserved word | No display type (`PLOT`, `TERM`, `SCOPE`, …) and no directive keyword (`TRACE`, `SET`, `LINE`, `TITLE`, `WINDOW`, `CLOSE`, `RED`, `GRAY`, …) |
+| Case-insensitive | `trace`, `Trace` and `TRACE` are the same name; the window still displays your spelling |
+| Unique among open displays | Closing a display frees its name for reuse |
+| Length | Longer than 30 characters is shortened to 30 — two names differing only after the 30th character become the same name |
+
+Only the display language's own words are reserved — **not** Spin2's. `spin2` is a legal
+display name; so are `traces`, `my_trace` and `plotter`, which merely contain a reserved
+word. The full list of reserved words, and the Pascal source it is derived from, is in
+`DOCs/pascal-REF/DEBUG-DISPLAY-NAME-RULES.md`.
+
+> **If a name breaks these rules, PNut-Term-TS reports it and stops the run** (exit code
+> 4), rather than leaving you with a window that never appears. This is a deliberate
+> difference from PNut, which discards the display statement silently — same program, no
+> window, no message, nothing to search for.
+
 ### Shared window behaviors
 - **Automatic placement** — a window with no `POS` directive is auto-laid-out on
   screen; windows with an explicit `POS` honor it.
@@ -556,6 +579,7 @@ launching script can branch on `$?` identically in both modes.
 | 1 | Port / device error (the command was valid; the hardware wasn't there) |
 | 2 | Bad command line — nothing ran |
 | 3 | Download failed |
+| 4 | Fatal DEBUG display error in the P2 program — an unusable display name (see [Naming a display](#naming-a-display)) or a duplicated one |
 | 124 | Headless `--timeout` expired |
 | 125 | Shutdown drain exceeded its timeout (output may be incomplete) |
 
@@ -605,6 +629,13 @@ macOS) in any text field.
 - The reset control line may be wrong for your adapter. Set **DTR** or **RTS** for the
   device in **Preferences → PropPlug Management**, or pass `--rts` for the session.
 - Parallax PropPlugs use DTR; some clones use RTS.
+
+### A window never opens, or the run stops with a display-name error
+- The name in the creating `debug()` directive is not usable — see
+  [Naming a display](#naming-a-display). The usual cause is a name that is also a
+  directive keyword, such as `trace`.
+- Names are case-insensitive for this check, so `Trace` fails for the same reason.
+- Renaming the display in your P2 program and re-running is the whole fix.
 
 ### A window is blank or data is missing
 - Confirm the P2 is actually sending `debug()` output and is running.

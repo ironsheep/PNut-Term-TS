@@ -62,8 +62,8 @@ copies in place.
 | Feed | Snapshot | Current as of |
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
-| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.9** |
-| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.9** |
+| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.10** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.10** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
@@ -86,6 +86,15 @@ v0.11.7). This is a user-visible behavior change and the manual must reflect it:
   presentation-only shedding; it is never written to the log file, and the file is always
   complete. Worth an explicit line in the manual, because a reader who sees it will otherwise
   assume data loss.
+- **New: display NAMING rules** (v0.11.10). A display's name is its only address on the wire, so
+  it may not be a display type or a directive keyword — `trace` is illegal, `spin2` is fine
+  (the reserved list is the DEBUG-display table, *not* Spin2's keywords). Names are
+  case-insensitive, must start with a letter/underscore, and are truncated at 30 characters.
+  PNut discards such a display statement **silently**; we report it and stop the run with exit
+  code 4. Feed 2 gains a *Naming a display* section under Debug Windows plus a troubleshooting
+  entry, and exit code 4 was added to the exit-code table (it had been missing entirely). The
+  full rule and its Pascal derivation is `DOCs/pascal-REF/DEBUG-DISPLAY-NAME-RULES.md` — worth
+  pulling into the manual as a reference table.
 - Feed 2 gains a **Debug Logger** section (Part 2, §10 — the guide previously had none, which is
   why the TOC numbering shifted); feed 3 gains **principle 8** — *a log's life is the session's
   life, never a window's; durability is never gated on display.*

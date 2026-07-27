@@ -31,6 +31,7 @@ import { UsbSerialProxy } from '../utils/usbSerialProxy';
 import * as fs from 'fs';
 import * as os from 'os';
 import path from 'path';
+import { validateDisplayName, MAX_DISPLAY_NAME_LENGTH } from './shared/displayNameRules';
 import { DebugScopeWindow } from './debugScopeWin';
 import { DebugScopeXyWindow } from './debugScopeXyWin';
 import { DebugWindowBase } from './debugWindowBase';
@@ -607,6 +608,36 @@ export class MainWindow {
       // - Route to window if exists
       // - Log error if window not found (ERROR on missing for updates)
       return;
+    }
+
+    // The user's chosen display name must be legal before we build anything with it.
+    // PNut checks this in parse_debug_string (p2com.asm) and silently discards the whole
+    // statement when it fails — see displayNameRules.ts for the rule and its authority.
+    // A silent no-window is the worst possible outcome for the person debugging, so we
+    // deviate the same way we already do for a duplicate name: say exactly what is wrong
+    // and stop the run with ExitCode.DisplayError.
+    const nameCheck = validateDisplayName(lineParts[1]);
+    if (!nameCheck.ok) {
+      const message =
+        `DEBUG display name error — ${nameCheck.reason}. ` +
+        `Rename the display in your P2 program and re-run. ` +
+        `(PNut would silently ignore this display statement; the run was stopped so the reason is visible.)`;
+      this.logMessage(`ERROR: ${message}`);
+      this.logConsoleMessage(`[TWO-TIER] ❌ ${message}`);
+      this.debugLoggerWindow?.logSystemMessage(`ERROR ${message}`);
+      // Same fatal path as the duplicate-name case; MainWindow's listener shuts down cleanly.
+      this.windowRouter.emit('fatalDisplayError', { windowId: lineParts[1] ?? '(missing)', message });
+      return;
+    }
+    if (nameCheck.truncated) {
+      // Pascal truncates at symbol_size_limit (30) rather than rejecting — match that, but
+      // say so, because two names sharing their first 30 characters then collide.
+      const warning =
+        `DEBUG display name '${lineParts[1]}' is longer than ${MAX_DISPLAY_NAME_LENGTH} characters ` +
+        `and was shortened to '${nameCheck.name}' (PNut does the same).`;
+      this.logMessage(`WARNING: ${warning}`);
+      this.debugLoggerWindow?.logSystemMessage(`WARNING ${warning}`);
+      lineParts[1] = nameCheck.name;
     }
 
     // Window creation logic starts here (only reached if isCreationCommand = true)
