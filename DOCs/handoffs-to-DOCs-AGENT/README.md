@@ -62,8 +62,8 @@ copies in place.
 | Feed | Snapshot | Current as of |
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
-| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.10** |
-| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.10** |
+| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.11** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.11** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before

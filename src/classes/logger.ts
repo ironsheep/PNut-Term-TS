@@ -11,7 +11,12 @@ import { Context } from '../utils/context';
 export class Logger {
   private verboseEnabled: boolean = false;
   private debugEnabled: boolean = false;
-  private programName: string = "{notSet}";
+  // Defaults to the real program name, NOT a placeholder. setProgramName() is called from
+  // the CLI entry point (pnut-term-ts.ts) using commander's program.name(), but the Electron
+  // GUI process builds its own Logger and never reaches that call — so every message it
+  // emitted was prefixed "{notSet}: ", e.g. "{notSet}: File written [...]", which is what
+  // Linux certification surfaced. The name is a constant; there is nothing to discover.
+  private programName: string = 'pnut-term-ts';
   private context: Context | undefined;
 
   public setContext(context: Context) {

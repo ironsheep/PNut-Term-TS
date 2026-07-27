@@ -2410,19 +2410,30 @@ export abstract class DebugWindowBase extends EventEmitter {
         })()`
       );
       const info = JSON.parse(typeof raw === 'string' ? raw : '{}');
-      // Unconditional main-process diagnostic — lands in the captured console.log.
-      console.log(
-        `[SAVE-READBACK] canvas='${canvasId}' visible=${JSON.stringify(info.v)} offscreen=${JSON.stringify(info.o)}`
-      );
+      // SAVE-path diagnostics. These were unconditional console.log — they were how the
+      // canvas-vs-capturePage readback was proven out (v0.9.63) — but that put raw canvas
+      // byte counts in front of every user on every SAVE. Compile-time gated like the rest
+      // of the transport diagnostics: dev builds keep them, `build:release` strips them.
+      if (ENABLE_DIAGNOSTICS) {
+        console.log(
+          `[SAVE-READBACK] canvas='${canvasId}' visible=${JSON.stringify(info.v)} offscreen=${JSON.stringify(info.o)}`
+        );
+      }
       if (typeof info.url === 'string' && info.url.startsWith(prefix)) {
         const buf = Buffer.from(info.url.slice(prefix.length), 'base64');
-        console.log(`[SAVE-READBACK] using ${buf.length} bytes from ${info.o.len > (info.v.len || 0) ? 'OFFSCREEN' : 'visible'} canvas`);
+        if (ENABLE_DIAGNOSTICS) {
+          console.log(
+            `[SAVE-READBACK] using ${buf.length} bytes from ${info.o.len > (info.v.len || 0) ? 'OFFSCREEN' : 'visible'} canvas`
+          );
+        }
         return buf;
       }
-      console.log('[SAVE-READBACK] no usable dataURL — falling back to capturePage');
+      if (ENABLE_DIAGNOSTICS) console.log('[SAVE-READBACK] no usable dataURL — falling back to capturePage');
       return Buffer.alloc(0);
     } catch (error) {
-      console.log(`[SAVE-READBACK] failed: ${error} — falling back to capturePage`);
+      // Kept visible: a FAILED readback explains why the saved image came from the slower
+      // capturePage path, and the user may need that when an image looks wrong.
+      this.logMessageBase(`[SAVE] canvas readback failed (${error}) — using window capture instead`);
       return Buffer.alloc(0);
     }
   }

@@ -5,6 +5,30 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.11] - 2026-07-27
+
+Console output cleanup found during Linux release certification. No functional change.
+
+### Fixed
+
+- **Messages were prefixed `{notSet}:`** — for example `{notSet}: File written [...]`. The
+  program name was only filled in on the command-line side and never in the window process, so
+  its messages carried a placeholder. They now read `pnut-term-ts:` like everything else.
+- **Saving a window printed internal canvas diagnostics** (`[SAVE-READBACK] …`, including raw
+  byte counts) on every save. These are development diagnostics and are now compiled out of
+  released builds. A *failed* readback still reports itself in plain language, since that
+  explains why the saved image came from the slower whole-window capture.
+- **Downloading printed an internal function name and handle detail**
+  (`* reopenPortFresh() - fresh handle on /dev/ttyUSB0 …`). That is serial-channel internals,
+  and now appears only with `--diag-serial`, alongside the rest of the handshake detail.
+
+### Note
+
+Two messages seen on Linux come from components we embed, not from PNut-Term-TS, and are
+harmless: `GetVSyncParametersIfAvailable() failed` (Chromium's GPU process, common on
+Raspberry Pi and in VMs) and a `pipewire … thread-loop.c` assertion from the system audio
+stack during shutdown. Neither affects the session, the log, or saved images.
+
 ## [0.11.10] - 2026-07-27
 
 ### Added

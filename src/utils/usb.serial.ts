@@ -818,7 +818,11 @@ export class UsbSerial extends EventEmitter {
     if (!this._serialPort) return;
     const portPath = this._serialPort.path;
     const baud = opts?.baud || this._serialPort.baudRate || UsbSerial.desiredCommsBaudRate;
-    this.logSystemEvent(
+    // Channel internals, not run narrative: reopening the handle is a step INSIDE the
+    // download/reset mechanism, so it belongs behind --diag-serial with the rest of the
+    // handshake detail. It was in the always-live bucket, which put a function name and a
+    // file handle in front of every ordinary user.
+    this.logChannelDiag(
       `* reopenPortFresh() - fresh handle on ${portPath} @ ${baud}${attachData ? '' : ' (read-idle: no consumer)'}`
     );
 
