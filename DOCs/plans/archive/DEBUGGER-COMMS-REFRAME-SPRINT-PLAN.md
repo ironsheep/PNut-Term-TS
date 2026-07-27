@@ -1,5 +1,11 @@
 # Debugger Comms — Phase-1/2/3 Pascal-Faithful Re-frame (Sprint Plan)
 
+> **LIFECYCLE — CLOSED 2026-07-27.** Shipped as v0.9.80 and certified on external P2
+> hardware. Audit: `DOCs/plans/archive/CLOSEOUT-2026-07-27-DEBUGGER-ARC.md` (one closeout
+> covers the three-sprint debugger arc). This plan is history; do not schedule work from it.
+
+
+
 **Goal:** Make the single-step debugger (SSDB) wire protocol *robust* — a
 single-owner, exact-byte-count break transaction that cannot wedge, leak, or
 desync — so the debugger UI can be certified on a solid foundation instead of a

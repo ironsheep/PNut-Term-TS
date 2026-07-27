@@ -28,14 +28,22 @@ export interface MainToRendererInitialize {
 }
 
 /**
- * Phase 1 packet from the P2 — 416 bytes (pnut_ts firmware):
+ * Phase 1 packet from the P2 — 456 bytes:
  *   80 bytes : 20-long debugger message (mCOGN..mCOND)
  *  128 bytes : 64 16-bit CRC words (cog + LUT, 16 registers per block)
- *  208 bytes : 104 16-bit hub checksum words (4 KB per block)
+ *  248 bytes : 124 16-bit hub checksum words (4 KB per block)
+ *
+ * There is NO 416-byte variant. The debugger kernel is fixed Parallax Spin2
+ * (`Spin2_debugger.spin2` `bp_handler`), so the size is compiler-independent:
+ * 20 longs + 64 CRC words + 124 hub words, and DebuggerUnit.pas `Breakpoint`
+ * agrees (HubBlocks = $7C000/$1000 = 124). Proven on a hardware capture during
+ * the comms re-frame sprint §5 — the smart-pin tail of every steady-state break
+ * aligns on the next break only at 456. The earlier 416/104 belief mis-aligned
+ * every Phase-3 by 40 bytes. See `debugger/shared/constants.ts`.
  */
 export interface MainToRendererPhase1 {
   kind: 'phase1';
-  bytes: Uint8Array;             // length === 416 (pnut_ts) or 456 (Pascal)
+  bytes: Uint8Array;             // length === 456 (PHASE1_SIZE)
 }
 
 /**

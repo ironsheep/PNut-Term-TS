@@ -1,5 +1,11 @@
 # SSDB Visual Parity — Sprint Plan
 
+> **LIFECYCLE — CLOSED 2026-07-27.** Shipped as v0.9.77 / v0.9.78 and certified on external P2
+> hardware. Audit: `DOCs/plans/archive/CLOSEOUT-2026-07-27-DEBUGGER-ARC.md` (one closeout
+> covers the three-sprint debugger arc). This plan is history; do not schedule work from it.
+
+
+
 **Type:** Sprint plan (ship commitment). **Window:** single-step debugger only.
 **Authored:** 2026-06-20 (sprint-plan skill). **Entry build:** v0.9.76. **Target release:** v0.9.77.
 **Spec authority:** `/pascal-source/P2_PNut_Public/DebuggerUnit.pas` — Pascal is the

@@ -1,5 +1,15 @@
 # Multi-Cog Single-Step Debugger Comms — Sprint Plan
 
+> **LIFECYCLE — CLOSED 2026-07-27.** Shipped as v0.9.89 (carried to v0.9.95) and certified on external P2
+> hardware. Audit: `DOCs/plans/archive/CLOSEOUT-2026-07-27-DEBUGGER-ARC.md` (one closeout
+> covers the three-sprint debugger arc). This plan is history; do not schedule work from it.
+>
+> **The `Status: STARTED` line below is stale** and is left unedited as the record of how the
+> plan was written. **§10/§11 were DESCHEDULED, not deferred** — the cleanup premise was
+> disproven, the code was reconciled and certified as it stood, and tasks #74/#75/#76 were
+> deleted. Nothing is outstanding from them.
+
+
 **Status:** STARTED (sprint-start run). Ships as build **0.9.89** (rightmost-digit increment
 of 0.9.88, per Stephen's standing convention; single ship for the whole sprint).
 **Working-tree audit (sprint-start §2):** no uncommitted edits to any sprint-target source;

@@ -23,6 +23,28 @@ gates a release any longer; everything here is post-1.0 work.
   - Parse parity complete (`isRange`/`busWidth` tagged), but the renderer has NO bus path: `drawChannelFromSamples` only draws a 1-bit high/low trace (`invSample = 1 - samples[i]`), so a RANGE bus shows as N stacked 1-bit lines instead of one multi-bit value (bus-band) waveform. Fix = a new bus-waveform draw branch (logic-analyzer bus band with value crossings).
   - Not exercised by fig-06 (single-bit channels only). **Demo written:** `REF-NO-COMMIT/WIndow ISSUES/fig-11-logic-range/` (DRAFT, needs compile-check).
 
+### P3 - Stale-constant debris from the Phase-1 456-byte resize (found 2026-07-27, debugger-arc closeout)
+
+Carried over from `DOCs/plans/archive/CLOSEOUT-2026-07-27-DEBUGGER-ARC.md`. The comms-re-frame
+§5 work proved Phase-1 is **456 bytes / 124 hub words** and that **no 416/104 variant exists**;
+these are the sites the resize did not sweep. None affects shipped behavior — they mislead the
+next reader, which is why they are filed rather than forgotten.
+
+- [ ] **`ENABLE_DEBUGGER_WINDOWS` is a dead feature flag — delete it and both dead branches.**
+  Hardcoded `true` since v0.9.26 (`src/utils/context.ts:5`), so neither consumer can ever fire:
+  `windowRouter.ts:419` (`!ENABLE_DEBUGGER_WINDOWS && data.length === 416` — dead twice over,
+  since the length is never 416 either) and `mainWindow.ts:354`. Per the standing "remove
+  controls that don't earn their keep" rule, delete rather than repair.
+- [ ] **The Debug Logger's debugger-packet formatter still keys on 416.** `loggerWin.ts:2042`
+  (`data.length === 416 ? 40 : data.length`) and `:2089` truncate a debugger packet to its
+  40-byte status block — but Phase-1 is 456, so the truncation never triggers and the packet
+  would hex-dump in full. Largely unreachable since the §2 wiretap guard
+  (`windowRouter.ts:384`), which is why nobody has seen it. Fix the constant and add the test
+  that would have caught it.
+- [ ] **`DEBUGGER*_416BYTE` enum names are misnomers** (`sharedMessagePool.ts:58-65` plus ~10
+  call sites). The values are correct; only the names lie. Cosmetic and repo-wide — do as a
+  dedicated mechanical rename, never folded into behavioral work.
+
 ### P2 - Single-Step Debugger (ssdbgr) — pre-test audit findings (2026-06-16)
 
 Audited `debugDebuggerWin.ts` message path while sweeping the v0.9.67/.68 serialization fixes across all windows. **VERDICT: the message path is SOUND** — it uses base `updateContent` (single-flight serialization applies) + base `onWindowReady` (the v0.9.68 drain-vs-live fix applies), and its own renderer-readiness buffering is correct (`forwardPhase1/3ToRenderer` push to `pendingPhase1`/`pendingPhase3` when `!rendererReady`, drained in order on renderer `'ready'` at :385-388). No premature-ready packet loss; not vulnerable to either problem we fixed. Items below are cleanup/watch, not blockers.
