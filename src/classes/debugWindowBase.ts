@@ -1564,7 +1564,6 @@ export abstract class DebugWindowBase extends EventEmitter {
       const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
       fs.writeFileSync(outputFSpec, bmpBuffer);
       this.logMessageBase(`- Canvas BMP image [${outputFSpec}] saved successfully`);
-      this.context.logger.progressMsg(`File written [${outputFSpec}]`);
     } catch (error) {
       // Keep the failure visible instead of silently producing no file.
       console.error('Win: ERROR: saving canvas BMP image:', error);
@@ -1623,7 +1622,6 @@ export abstract class DebugWindowBase extends EventEmitter {
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
         this.logMessageBase(`- Window BMP image [${outputFSpec}] saved successfully`);
-        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
         this.saveInProgress = false;
         return;
 
@@ -1794,7 +1792,6 @@ export abstract class DebugWindowBase extends EventEmitter {
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');
         fs.writeFileSync(outputFSpec, bmpBuffer);
         this.logMessageBase(`- Coordinates BMP image [${outputFSpec}] saved successfully`);
-        this.context.logger.progressMsg(`File written [${outputFSpec}]`);
       } else {
         this.logMessageBase('ERROR: No image available for capture');
       }
