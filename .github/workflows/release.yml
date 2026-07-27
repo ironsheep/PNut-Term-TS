@@ -1023,11 +1023,26 @@ jobs:
           PACKED_VERSION="${{ steps.version.outputs.PACKED_VERSION }}"
           TAG="${{ steps.release_type.outputs.RELEASE_TAG }}"
 
-          # Extract changelog section for this version
-          CHANGELOG_CONTENT=$(awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md | sed '/^$/N;/^\n$/d')
+          # Extract changelog section for this version.
+          # Accepts BOTH heading forms: the Keep a Changelog form used through 0.11.x
+          # ("## [1.0.0] - 2026-07-27") and the voicing-guide form used from 1.0.0 on
+          # ("## v1.0.0 (2026-07-27)"). Both are matched so re-running this workflow on an
+          # older tag still finds its section. Changing the changelog heading without
+          # changing this awk is silent: the body renders EMPTY and the release still
+          # succeeds.
+          CHANGELOG_CONTENT=$(awk -v v="${VERSION}" '
+            $0 ~ ("^## \\[" v "\\]") || $0 ~ ("^## v" v "( |$|\\()") { flag=1; next }
+            /^## / { flag=0 }
+            flag' CHANGELOG.md | sed '/^$/N;/^\n$/d')
 
-          # Extract one-line summary
-          SUMMARY_LINE=$(echo "${CHANGELOG_CONTENT}" | grep -m1 '^\- ' | sed 's/^- //' | sed 's/\*\*[^*]*\*\*: //')
+          # One-line summary. Prefer the THEME LINE — the single sentence the voicing guide
+          # requires directly under every version heading — and fall back to the first
+          # bullet only when there is no theme line. The initial-release entry is a
+          # paragraph with no bullets at all, so bullet-scraping alone yields nothing there.
+          SUMMARY_LINE=$(echo "${CHANGELOG_CONTENT}" | grep -m1 -v '^\s*$' | grep -v '^###' | sed 's/^- //' | sed 's/\*\*[^*]*\*\*: //')
+          if [ -z "${SUMMARY_LINE}" ]; then
+            SUMMARY_LINE=$(echo "${CHANGELOG_CONTENT}" | grep -m1 '^\- ' | sed 's/^- //' | sed 's/\*\*[^*]*\*\*: //')
+          fi
 
           # Generate release body file
           cat > release_body.md << RELEASE_EOF
@@ -1043,7 +1058,7 @@ jobs:
 
           ${CHANGELOG_CONTENT}
 
-          See [CHANGELOG.md](https://github.com/ironsheep/PNut-Term-TS/blob/main/CHANGELOG.md) for complete history.
+          See [CHANGELOG.md](https://github.com/ironsheep/PNut-Term-TS/blob/main/CHANGELOG.md) for the release history.
 
           ---
 

@@ -62,12 +62,14 @@ copies in place.
 | Feed | Snapshot | Current as of |
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
-| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.12** |
-| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.12** |
+| 2. `User-Guide-FEED.md` | **2026-07-27** | **v1.0.0** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v1.0.0** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
-the first snapshot; re-pull if the repo has advanced.
+the first snapshot; re-pull if the repo has advanced. **Feeds 2 and 3 carry the content as
+shipped in v1.0.0, the first public release** — their v0.11.12 snapshot was re-stamped at the
+release with no content change.
 
 ### What changed in the 2026-07-27 re-snapshot (feeds 2 and 3)
 
