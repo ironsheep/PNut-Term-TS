@@ -62,20 +62,21 @@ copies in place.
 | Feed | Snapshot | Current as of |
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
-| 2. `User-Guide-FEED.md` | **2026-07-26** | **v0.11.8** |
-| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-26** | **v0.11.8** |
+| 2. `User-Guide-FEED.md` | **2026-07-27** | **v0.11.9** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v0.11.9** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
 the first snapshot; re-pull if the repo has advanced.
 
-### What changed in the 2026-07-26 re-snapshot (feeds 2 and 3)
+### What changed in the 2026-07-27 re-snapshot (feeds 2 and 3)
 
 The **Debug Logger window became a viewer over the log, rather than the owner of it** (v0.11.5–
 v0.11.7). This is a user-visible behavior change and the manual must reflect it:
 
-- **New menu entry — Window > Show Log / Hide Log** (a single **Show/Hide Log** toggle on the
-  macOS menu). Previously there was no way to reopen the Debug Logger window once closed.
+- **New menu entry — Window > Show Log / Hide Log**, in the app's in-window menu bar (which is
+  the menu on every platform, macOS included). Previously there was no way to reopen the Debug
+  Logger window once closed.
 - **Closing the window no longer stops logging.** The log file keeps receiving every line and
   records when the window was closed and reopened; reopening attaches to the **same** file (no
   new session) and repaints the recent history. The same holds for a COG window and its per-COG

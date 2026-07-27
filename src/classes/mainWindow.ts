@@ -4140,23 +4140,16 @@ export class MainWindow {
           { role: 'selectAll' }
         ]
       },
-      // Standard Window menu for Mac
+      // Standard Window menu for Mac.
+      //
+      // Deliberately NOT duplicating Show Log / Hide Log here. The HTML menu bar is the
+      // app's menu on EVERY platform (see the standalone-mode branch: "HTML menu bar will
+      // be used ... No native menu bar in window on any platform"); this native menu exists
+      // only so macOS shows the app name instead of "Electron" and carries the standard
+      // system items. A second log toggle here would be a duplicate control.
       {
         label: 'Window',
-        submenu: [
-          // macOS gets ONLY this native menu (createApplicationMenu returns early on
-          // darwin), so without this entry a Mac user who closed the Debug Logger would
-          // have no way to bring it back. Static label rather than Show/Hide, because
-          // updating a native menu label means rebuilding the whole menu — the in-window
-          // menu bar, which can restyle itself cheaply, names the specific action.
-          { label: 'Show/Hide Log', click: () => this.toggleLogViewer() },
-          { type: 'separator' },
-          { role: 'minimize' },
-          { role: 'close' },
-          { role: 'zoom' },
-          { type: 'separator' },
-          { role: 'front' }
-        ]
+        submenu: [{ role: 'minimize' }, { role: 'close' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
       }
     ];
 

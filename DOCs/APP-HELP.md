@@ -89,8 +89,10 @@ official Propeller 2 DEBUG documentation; this Help does not reproduce it.
 
 ## Menus
 
-PNut-Term-TS uses the native application menu on macOS and an in-window menu bar on
-Windows/Linux. The items are equivalent; accelerators follow the platform.
+The menu bar inside the window is the application's menu on **every** platform. On macOS
+the system menu bar additionally carries the standard macOS items (About, Preferences…,
+Hide, Quit, clipboard, Minimize/Close/Zoom) — everything else is in the in-window menu
+bar. Accelerators follow the platform.
 
 ### File
 
@@ -118,7 +120,7 @@ Windows/Linux. The items are equivalent; accelerators follow the platform.
 
 | Item | Description |
 |------|-------------|
-| Show Log / Hide Log | Open or close the Debug Logger window. The entry names whichever action is available (on the macOS menu it is a single **Show/Hide Log** toggle). **Closing it does not stop logging** — the log file keeps receiving every line |
+| Show Log / Hide Log | Open or close the Debug Logger window. The entry names whichever action is available. **Closing it does not stop logging** — the log file keeps receiving every line |
 | Performance Monitor | Open the performance metrics window |
 | Show All Windows | Reveal all debug windows |
 | Hide All Windows | Hide all debug windows (they stay open and keep receiving data) |
@@ -542,4 +544,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 0.11.8 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 0.11.9 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

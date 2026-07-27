@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 0.11.8*
+*Version 0.11.9*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -178,14 +178,14 @@ elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
 
 ## Menu System
 
-PNut-Term-TS uses the native application menu on macOS and an in-window menu bar on
-Windows/Linux. **They are not equivalent:** the macOS native menu provides only the
-application, Edit and Window menus — File, Help, Find, Clear Terminal and the
-show/hide-windows items are on the Windows/Linux in-window menu bar only.
-The one Window-menu item present on **both** is the Debug Logger toggle
-(**Show Log / Hide Log**, or **Show/Hide Log** on macOS), because without it a closed
-Debug Logger window could not be reopened. Accelerators differ by platform
-(`Cmd` on macOS, `Ctrl` on Windows/Linux).
+**The in-window menu bar is the application's menu on every platform** — File, Edit,
+Window and Help, exactly as documented below, on Windows, Linux and macOS alike.
+
+macOS *additionally* shows a native application menu in the system menu bar, carrying the
+standard macOS items only: About, Preferences… (`Cmd+,`), Hide/Show All, Quit, the
+clipboard commands, and Minimize/Close/Zoom/Bring All to Front. It is not a second copy
+of the app's menus — anything not in that list is in the in-window menu bar.
+Accelerators differ by platform (`Cmd` on macOS, `Ctrl` on Windows/Linux).
 
 ### File
 | Item | Shortcut | Description |
@@ -212,7 +212,7 @@ Debug Logger window could not be reopened. Accelerators differ by platform
 ### Window
 | Item | Description |
 |------|-------------|
-| Show Log / Hide Log | Open or close the Debug Logger window; the entry names whichever action is available. Closing the window does **not** stop logging — see [Debug Logger](#debug-logger). *(Present on both menus: the macOS Window menu carries it as a single **Show/Hide Log** toggle.)* |
+| Show Log / Hide Log | Open or close the Debug Logger window; the entry names whichever action is available. Closing the window does **not** stop logging — see [Debug Logger](#debug-logger) |
 | Performance Monitor | Open the performance metrics window |
 | Show All Windows | Reveal all debug windows |
 | Hide All Windows | Hide all debug windows |

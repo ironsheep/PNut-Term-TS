@@ -5,12 +5,19 @@ All notable changes to PNut-Term-TS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.9] - 2026-07-27
+
+### Fixed
+
+- **Reverted the duplicate Show/Hide Log entry added to the macOS system menu in 0.11.8.** It was
+  added on the mistaken belief that macOS had no other way to reopen the log window. The
+  application's own menu bar — inside the window, where **Window > Show Log / Hide Log** already
+  lives — is used on every platform, macOS included, so the entry was a second control for the
+  same action. The macOS system menu carries only the standard Apple items, as before.
+- Corrected the menu descriptions in the Help and User Guide, which had described the macOS menu
+  as replacing the in-window one rather than supplementing it.
+
 ## [0.11.8] - 2026-07-26
-
-### Added
-
-- **The macOS Window menu now has Show/Hide Log too.** macOS uses only the native application
-  menu, so on that platform a closed Debug Logger window could not be reopened at all.
 
 ### Documentation
 
