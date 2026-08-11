@@ -1571,10 +1571,30 @@ export class MainWindow {
       (this._serialPort as unknown as UsbSerialProxy).on('hostLog', (text: string) => {
         this.debugLoggerWindow?.logSystemMessage(text);
       });
+      // MUST exist before any 'error' can be emitted: an EventEmitter with no 'error' listener
+      // THROWS, so the proxy's existing 'fatal' path (and the handshake watchdog) would take the
+      // whole app down instead of reporting a dead serial host.
+      (this._serialPort as unknown as UsbSerialProxy).on('error', (err: Error) => {
+        const text = `SERIAL HOST ERROR: ${err.message}`;
+        this.logMessage(text);
+        this.appendLog(`⚠️ ${text}`);
+        this.debugLoggerWindow?.logSystemMessage(text);
+        this.updateConnectionStatus(false);
+      });
       // Wait for port to actually open before proceeding
       await this._serialPort.waitForPortOpen();
     } catch (error) {
       this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open. Error: ${error}`);
+      // The proxy was assigned BEFORE waitForPortOpen() (it has to be — that's how we call it), so
+      // a failed open otherwise leaves _serialPort set. The `!== undefined` block below would then
+      // run against a dead port and build the Downloader, making waitForConnectionReady() report
+      // READY for a connection that does not exist — a download issued against nothing.
+      // Drop the reference (killing the host first so we don't leak the UtilityProcess).
+      const deadPort = this._serialPort as unknown as UsbSerialProxy | undefined;
+      this._serialPort = undefined;
+      void deadPort?.close?.().catch(() => {
+        /* host may already be gone — nothing to clean up */
+      });
       // Notify user visually about connection failure
       this.appendLog(`⚠️ SERIAL PORT CONNECTION FAILED: ${deviceNode}`);
       this.appendLog(`   Error: ${error}`);
@@ -6451,10 +6471,34 @@ export class MainWindow {
     // relaunch cycles). Abort cleanly on timeout instead of crashing.
     const ready = await this.waitForConnectionReady(10000);
     if (!ready) {
-      this.logMessage(
-        `ERROR: Cannot download ${path.basename(filePath)} — serial connection not ready (timed out after 10s)`
-      );
+      // A connection that never comes up is exactly as fatal as a download that fails: nothing is
+      // running on the P2 either way. Report it the same way, on channels the user can actually
+      // see. This used to report ONLY through logMessage(), which is gated on
+      // runEnvironment.loggingEnabled — a developer switch that defaults false and is never set
+      // true anywhere in the codebase — so the whole failure was invisible: no port, no reset, no
+      // P2 output, no error, exit 0. That silence is what made this take a hardware cycle to see.
+      const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} — serial connection not ready (timed out after 10s); the port never opened, so nothing was downloaded`;
+      this.logMessage(`ERROR: ${failureMsg}`);
+      this.context.logger.forceLogMessage(`Tmnl: ${failureMsg}`);
+      this.appendLog(`⚠️ ${failureMsg}`);
+      this.debugLoggerWindow?.logSystemMessage(failureMsg);
       this.updateRecordingStatus('Not connected');
+
+      if (this.context.runEnvironment.exitOnEndSession) {
+        // BATCH MODE — same reasoning as the download-failure path below: the P2 is not running,
+        // so the end-session marker can never arrive and there is no timeout in headed mode.
+        // Exit with the same code headless returns for a failed download.
+        this.shutdownExitCode = ExitCode.DownloadFailed;
+        void this.gracefulShutdown('connection-not-ready');
+      } else if (this.mainWindow) {
+        dialog.showMessageBox(this.mainWindow, {
+          type: 'error',
+          title: 'Download Failed',
+          message: `Cannot download ${path.basename(filePath)}`,
+          detail: 'The serial connection never became ready (10s). Check that the device is plugged in and not in use by another application.',
+          buttons: ['OK']
+        });
+      }
       return;
     }
     await this.performDownloadFromPath(filePath, toFlash);

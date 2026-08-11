@@ -37,6 +37,20 @@ export class UsbSerialProxy extends EventEmitter {
   // shutdown that races an in-flight op (e.g. a download) doesn't surface a scary error. The
   // rejection reason for pending ops is marked accordingly. [serial teardown-race]
   private intentionalClose = false;
+  // Handshake watchdog. Every RPC issued before 'hello' is parked in `outbox` by send(), and RPC
+  // promises carry no timeout of their own — so a host that neither greets us nor exits leaves the
+  // FIRST call (waitForPortOpen, from MainWindow.openSerialPort) unsettled FOREVER. openSerialPort
+  // then never returns, the Downloader is never created, and a CLI-initiated download dies quietly
+  // in waitForConnectionReady's 10 s timeout with nothing printed anywhere: no port, no reset, no
+  // P2 output, no error, exit 0. Bound the handshake so that failure is reported instead of hung.
+  // The host posts 'hello' at module top level as soon as its listener attaches, so a real startup
+  // is effectively instantaneous; this window only has to outlast a cold, AV-scanned first launch.
+  private static readonly HELLO_TIMEOUT_MS = 15000;
+  private helloTimer: ReturnType<typeof setTimeout> | undefined;
+  // Set once the host is known to be unusable (never greeted us, or exited). Latching it lets
+  // call() reject immediately instead of parking yet another promise nobody will ever settle —
+  // the same leak the 'exit' handler already drains for calls issued BEFORE the exit.
+  private hostFailed: Error | undefined;
 
   private cached: {
     currentBaudRate: number;
@@ -77,6 +91,13 @@ export class UsbSerialProxy extends EventEmitter {
 
     this.child = utilityProcess.fork(hostPath, [], { stdio: 'inherit', serviceName: 'pnut-serial-io' });
 
+    this.helloTimer = setTimeout(() => {
+      if (this.helloSeen) return;
+      this.failHost(new Error(`serial host did not start within ${UsbSerialProxy.HELLO_TIMEOUT_MS}ms (${hostPath})`));
+    }, UsbSerialProxy.HELLO_TIMEOUT_MS);
+    // Never let the watchdog itself hold the process open on a clean exit. [unref your poll timers]
+    this.helloTimer.unref?.();
+
     this.child.on('message', (msg: any) => this.onMessage(ctx, initMessage, msg));
     this.child.on('exit', (code: number) => {
       // A deliberate close()/shutdown kills the host (non-zero signal exit) — that is expected,
@@ -89,13 +110,19 @@ export class UsbSerialProxy extends EventEmitter {
       const reason = this.intentionalClose
         ? 'serial host closed (shutdown)'
         : 'serial utility process exited';
-      for (const [, p] of this.pending) {
-        const err: any = new Error(reason);
-        err.serialHostClosed = true;
-        err.intentionalClose = this.intentionalClose;
-        p.reject(err);
+      const err: any = new Error(reason);
+      err.serialHostClosed = true;
+      err.intentionalClose = this.intentionalClose;
+      // Latch BEFORE draining, so any call issued after this point fails fast rather than
+      // parking a promise in a map nobody drains again.
+      this.hostFailed = err;
+      if (this.helloTimer) {
+        clearTimeout(this.helloTimer);
+        this.helloTimer = undefined;
       }
+      for (const [, p] of this.pending) p.reject(err);
       this.pending.clear();
+      this.outbox = [];
     });
   }
 
@@ -116,6 +143,10 @@ export class UsbSerialProxy extends EventEmitter {
       case 'hello':
         // Host's listener is attached — now it's safe to send init, then flush buffered calls.
         this.helloSeen = true;
+        if (this.helloTimer) {
+          clearTimeout(this.helloTimer);
+          this.helloTimer = undefined;
+        }
         this.child.postMessage(initMessage);
         for (const m of this.outbox) this.child.postMessage(m);
         this.outbox = [];
@@ -166,12 +197,31 @@ export class UsbSerialProxy extends EventEmitter {
     }
   }
 
+  /**
+   * Mark the host unusable and fail everything waiting on it. Used by the handshake watchdog;
+   * the 'exit' handler does the same inline with its own teardown-aware reason string.
+   */
+  private failHost(error: Error): void {
+    if (this.hostFailed) return;
+    (error as any).serialHostClosed = true;
+    this.hostFailed = error;
+    console.error(`[SERIAL-PROXY] ${error.message}`);
+    for (const [, p] of this.pending) p.reject(error);
+    this.pending.clear();
+    this.outbox = [];
+    // Surface it to MainWindow, which turns it into a visible connection failure.
+    this.emit('error', error);
+  }
+
   private send(message: any): void {
     if (this.helloSeen) this.child.postMessage(message);
     else this.outbox.push(message); // buffer until host listener is up (avoids lost messages)
   }
 
   private call(method: string, ...args: any[]): Promise<any> {
+    // The host is already known dead — reject now. Parking this promise would leave it unsettled
+    // for the life of the process, because the drain in the 'exit' handler has already run.
+    if (this.hostFailed) return Promise.reject(this.hostFailed);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });

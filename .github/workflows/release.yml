@@ -419,6 +419,18 @@ jobs:
               echo "Strategy: STRIP existing signatures, then sign EVERYTHING in correct nested order"
               echo "=============================================="
 
+              # Signing-failure ledger. Every `codesign --sign` below used to end in `|| true`, so a
+              # failure printed a line into a 2000-line log and the job carried on and SHIPPED the
+              # bundle unsigned-or-partly-signed. Under hardened runtime that produces an app whose
+              # main binary is fine (it launches) but whose UtilityProcess helper or .node binding
+              # will not load — i.e. the GUI comes up and the serial host silently dies. Exactly the
+              # failure we could not see. The `|| true` is still REQUIRED for control flow, because
+              # these run inside `find | while` SUBSHELLS where a bare failure cannot propagate — so
+              # record it instead, and fail the job below once every step has had its say.
+              # (Same lesson as the fatal define/verify checks in scripts/build-production.sh.)
+              SIGN_FAILURES="${RUNNER_TEMP:-/tmp}/sign_failures_${arch}.txt"
+              : > "$SIGN_FAILURES"
+
               # ===========================================
               # Step 0: Strip ALL existing signatures
               # CRITICAL: Electron comes pre-signed. Must remove all signatures first!
@@ -484,7 +496,7 @@ jobs:
               echo "Step 1/10: Signing .dylib files..."
               find "$APP_PATH/Contents/Frameworks/Electron Framework.framework" -name "*.dylib" -type f 2>/dev/null | while read -r dylib; do
                 echo "  Signing: $(basename "$dylib")"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$dylib" 2>&1 || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$dylib" 2>&1 || echo "dylib: $dylib" >> "$SIGN_FAILURES"
               done
               echo "  ✓ Libraries signed"
 
@@ -498,7 +510,7 @@ jobs:
                 -not -name "*.dylib" \
                 -not -path "*/Versions/*/Resources/*" 2>/dev/null | while read -r helper; do
                 echo "  Signing: $(basename "$helper")"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$helper" 2>&1 || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$helper" 2>&1 || echo "framework-helper: $helper" >> "$SIGN_FAILURES"
               done
               echo "  ✓ Framework helpers signed"
 
@@ -539,7 +551,7 @@ jobs:
               # First, sign ShipIt executables inside Squirrel framework (before sealing)
               find "$APP_PATH/Contents/Frameworks/Squirrel.framework" -name "ShipIt" -type f 2>/dev/null | while read -r shipit; do
                 echo "  Signing ShipIt: $(dirname "$shipit" | xargs basename)"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$shipit" 2>&1 || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements entitlements.plist "$shipit" 2>&1 || echo "shipit: $shipit" >> "$SIGN_FAILURES"
               done
 
               # Now sign all frameworks (binary first, then bundle)
@@ -555,7 +567,7 @@ jobs:
                   fi
 
                   # Then sign the framework bundle itself
-                  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$framework" 2>&1 || true
+                  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$framework" 2>&1 || echo "framework: $framework" >> "$SIGN_FAILURES"
                 fi
               done
               echo "  ✓ Other frameworks signed"
@@ -572,12 +584,14 @@ jobs:
                 app_name=$(basename "$helper_app" .app)
                 if [ -f "$helper_app/Contents/MacOS/$app_name" ]; then
                   codesign --force --sign "$IDENTITY" --options runtime --timestamp \
-                    --entitlements entitlements.plist "$helper_app/Contents/MacOS/$app_name" 2>&1 || true
+                    --entitlements entitlements.plist "$helper_app/Contents/MacOS/$app_name" 2>&1 \
+                    || echo "helper-exec: $helper_app/Contents/MacOS/$app_name" >> "$SIGN_FAILURES"
                 fi
 
                 # Then sign the .app bundle
                 codesign --force --sign "$IDENTITY" --options runtime --timestamp \
-                  --entitlements entitlements.plist "$helper_app" 2>&1 || true
+                  --entitlements entitlements.plist "$helper_app" 2>&1 \
+                  || echo "helper-bundle: $helper_app" >> "$SIGN_FAILURES"
               done
               echo "  ✓ Helper apps signed"
 
@@ -588,7 +602,7 @@ jobs:
               echo "Step 7/10: Signing native modules..."
               find "$APP_PATH" -name "*.node" -type f 2>/dev/null | while read -r node_file; do
                 echo "  Signing: $(basename "$node_file")"
-                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$node_file" 2>&1 || true
+                codesign --force --sign "$IDENTITY" --options runtime --timestamp "$node_file" 2>&1 || echo "native-module: $node_file" >> "$SIGN_FAILURES"
               done
               echo "  ✓ Native modules signed"
 
@@ -620,10 +634,26 @@ jobs:
               # ===========================================
               echo ""
               echo "Step 10/10: Verifying signature..."
+              # FATAL, not advisory. This used to print a ⚠ and continue, which is how a bundle
+              # whose helper or native module failed to sign could reach a user: the app launches
+              # (its own signature is valid) and only the UtilityProcess dies, silently.
               if codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1; then
                 echo "  ✓ Signature verification passed!"
               else
-                echo "  ⚠ Verification reported issues (notarization will do final validation)"
+                echo "  ❌ Signature verification FAILED for ${arch}: $APP_PATH"
+                echo "     Refusing to package an app whose signature does not validate."
+                exit 1
+              fi
+
+              # Now fail on anything the per-step ledger recorded. Reported here, after every step
+              # has run, so one log shows EVERY signing failure instead of only the first.
+              if [ -s "$SIGN_FAILURES" ]; then
+                echo ""
+                echo "  ❌ ${arch}: $(wc -l < "$SIGN_FAILURES" | tr -d ' ') codesign operation(s) FAILED:"
+                sed 's/^/     - /' "$SIGN_FAILURES"
+                echo "     A partly-signed bundle under hardened runtime launches but cannot load"
+                echo "     its helper/native code. Refusing to package."
+                exit 1
               fi
 
               echo ""
@@ -631,7 +661,10 @@ jobs:
               echo "✓ ${arch} app signing complete!"
               echo "=============================================="
             else
-              echo "WARNING: App bundle not found for ${arch}"
+              # Not a warning — the loop is over the arches we just built, so a missing bundle
+              # means the build silently produced nothing to sign.
+              echo "❌ App bundle not found for ${arch} — nothing to sign. Refusing to package."
+              exit 1
             fi
           done
 
@@ -1009,6 +1042,11 @@ jobs:
           echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_OUTPUT
           echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
 
+          # NOTE: the pre-release FLAG ON GITHUB IS MANAGED BY HAND, deliberately. Stephen marks
+          # releases as pre-release in the UI so nobody downloads a build thinking it is released,
+          # and clears the flag when it actually ships. So a published release showing
+          # `prerelease: true` while this computes `false` is NOT a bug in this logic — do not
+          # "fix" it. This output only covers the tag/package.json MISMATCH case (a test tag).
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
             echo "RELEASE_NAME=PNut-Term-TS v${TAG_VERSION} (Test Release)" >> $GITHUB_OUTPUT
