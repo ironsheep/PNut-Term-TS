@@ -533,7 +533,7 @@ export class DebuggerRenderer {
     // visible window get an additive $40 brightness (Pascal :1667-1672). The
     // disassembly addresses the REG/LUT cog space only when NOT in hub-exec mode;
     // in hub mode the visible window is hub addresses, so no band lands here.
-    const top = this.state.disTopAddr;
+    const top = this.state.disAddr;
     const bandActive = this.state.disMode !== DisMode.dmHub && top < 0x400;
     for (let row = 0; row < 512; row++) {
       const addr = addrBase + row;
@@ -964,7 +964,7 @@ export class DebuggerRenderer {
     // Auto-scroll decision (§6.6): if PC jumped far, snap to ideal line;
     // else if visible, gradually scroll toward ideal after threshold breaks.
     this.updateDisTopAddr();
-    const top = this.state.disTopAddr;
+    const top = this.state.disAddr;
 
     // SKIP is only in effect at the top execution level (no active CALL, not
     // mid-XBYTE/streamer). §6.6 / Pascal SkipOn.
@@ -1048,11 +1048,15 @@ export class DebuggerRenderer {
     }
   }
 
-  /** Update disTopAddr per the auto-scroll algorithm (§6.6). */
+  /**
+   * Update the displayed disassembly top per the auto-scroll algorithm (§6.6).
+   * Only ever runs in dmPC, so every write below lands in the dmPC-only scroll
+   * position — never in CogAddr/HubAddr (see the address model in DebuggerState).
+   */
   private updateDisTopAddr(): void {
     if (this.state.disMode !== DisMode.dmPC) return;
     const pc = this.state.pc;
-    const top = this.state.disTopAddr;
+    const top = this.state.disAddr;
     const isHub = pc >= 0x400;
     const step = isHub ? 4 : 1;
     const firstVisible = top;
@@ -1061,18 +1065,18 @@ export class DebuggerRenderer {
     // PC jumped far: snap.
     const jumped = Math.abs(pc - top - DIS_LINE_IDEAL * step) > 8 * step;
     if (jumped) {
-      this.state.disTopAddr = (pc - DIS_LINE_IDEAL * step) & (isHub ? 0xFFFFF : 0x3FF);
+      this.state.disAddr = (pc - DIS_LINE_IDEAL * step) & (isHub ? 0xFFFFF : 0x3FF);
       this.state.disScrollTimer = 0;
       return;
     }
     // Off-screen: snap.
     if (pc < firstVisible) {
-      this.state.disTopAddr = pc & (isHub ? 0xFFFFF : 0x3FF);
+      this.state.disAddr = pc & (isHub ? 0xFFFFF : 0x3FF);
       this.state.disScrollTimer = 0;
       return;
     }
     if (pc > lastVisible) {
-      this.state.disTopAddr = (pc - (DIS_LINES - 1) * step) & (isHub ? 0xFFFFF : 0x3FF);
+      this.state.disAddr = (pc - (DIS_LINES - 1) * step) & (isHub ? 0xFFFFF : 0x3FF);
       this.state.disScrollTimer = 0;
       return;
     }
@@ -1080,8 +1084,8 @@ export class DebuggerRenderer {
     this.state.disScrollTimer++;
     if (this.state.disScrollTimer >= DIS_SCROLL_THRESHOLD) {
       const idealTop = pc - DIS_LINE_IDEAL * step;
-      if (top < idealTop) this.state.disTopAddr = (top + step) & (isHub ? 0xFFFFF : 0x3FF);
-      else if (top > idealTop) this.state.disTopAddr = (top - step) & (isHub ? 0xFFFFF : 0x3FF);
+      if (top < idealTop) this.state.disAddr = (top + step) & (isHub ? 0xFFFFF : 0x3FF);
+      else if (top > idealTop) this.state.disAddr = (top - step) & (isHub ? 0xFFFFF : 0x3FF);
     }
   }
 
@@ -1282,7 +1286,7 @@ export class DebuggerRenderer {
 
   /** Translate a disassembly line index to its cog/hub address. */
   public disassemblyLineAddress(lineIdx: number): number {
-    const top = this.state.disTopAddr;
+    const top = this.state.disAddr;
     const isHub = this.state.disMode === DisMode.dmHub || top >= 0x400;
     return isHub
       ? (top + lineIdx * 4) & 0xFFFFF

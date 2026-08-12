@@ -116,14 +116,41 @@ export class DebuggerState {
 
   // ─── Disassembly view (§6.6) ───────────────────────────────────────────
   public disMode: DisMode = DisMode.dmPC;
-  /** Start address of the 16 currently-displayed disassembly lines. */
-  public disTopAddr: number = 0;
   /** Scroll timer — counts consecutive breaks before auto-scroll activates. */
   public disScrollTimer: number = 0;
 
-  // ─── Hub viewer (§6.17) ────────────────────────────────────────────────
-  /** Top address of the hub data viewer (wraps at 0xFFFFF). */
+  // ─── Address model (Pascal CogAddr / HubAddr / DisAddr) ────────────────
+  //
+  // PNut has no separate "disassembly scroll position". It has two LOCKS and one
+  // DERIVED value (audit Part A §A.0):
+  //   CogAddr — the cog/LUT lock, used by dmCog.
+  //   HubAddr — the hub lock, SHARED by the HUB data pane and dmHub disassembly,
+  //             so scrolling either one moves the other. Load-bearing behavior.
+  //   DisAddr — the address of the top displayed disassembly line. In dmPC it is
+  //             DERIVED from the PC by the auto-scroll and is NEVER written back
+  //             into either lock — otherwise the HUB pane would chase the program
+  //             counter, which PNut never does.
+  // The accessor below is what enforces all three rules; every reader and writer
+  // goes through `disAddr` and lands in the right variable for the current mode.
+
+  /** Cog/LUT lock address ($000..$3FF) — the dmCog disassembly top. */
+  public cogAddr: number = 0;
+  /** Top address of the hub data viewer, shared with dmHub disassembly (wraps at 0xFFFFF). */
   public hubAddr: number = 0;
+  /** dmPC-only scroll position; dmCog/dmHub read through to the locks. */
+  private disPcAddr: number = 0;
+
+  /** Address of the top displayed disassembly line, per the current DisMode. */
+  public get disAddr(): number {
+    if (this.disMode === DisMode.dmCog) return this.cogAddr;
+    if (this.disMode === DisMode.dmHub) return this.hubAddr;
+    return this.disPcAddr;
+  }
+  public set disAddr(value: number) {
+    if (this.disMode === DisMode.dmCog) this.cogAddr = value;
+    else if (this.disMode === DisMode.dmHub) this.hubAddr = value;
+    else this.disPcAddr = value;
+  }
 
   // ─── COGBRK async break mask ───────────────────────────────────────────
   /** Bit N = ask for async break in cog N. Cleared after inclusion in Phase 2. */
@@ -185,9 +212,10 @@ export class DebuggerState {
     this.breakEvent = 1;
     this.breakAddr = 0;
     this.disMode = DisMode.dmPC;
-    this.disTopAddr = 0;
     this.disScrollTimer = 0;
+    this.cogAddr = 0;
     this.hubAddr = 0;
+    this.disPcAddr = 0;
     this.requestCogBrk = 0;
     this.regWatchFirstFill = true;
     this.smartWatchFirstFill = true;

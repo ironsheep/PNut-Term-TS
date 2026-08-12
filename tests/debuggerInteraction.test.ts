@@ -5,7 +5,9 @@
  * bundle's DebuggerInteraction, built on the §5a fixture (#3).
  */
 
-import { makeInteraction, makeDebuggerState, MSG } from './shared/debuggerFixture';
+import {
+  makeInteraction, makeDebuggerState, makeController, buildPhase1Packet, MSG
+} from './shared/debuggerFixture';
 import {
   STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER,
   HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS,
@@ -167,13 +169,13 @@ describe('DebuggerInteraction — macOS input plumbing (Test 4 HW gate)', () => 
     h.renderer.panelBoundsPx.mockImplementation((name: string) =>
       name === 'DIS' ? DIS : { x: -10, y: -10, w: 0, h: 0 });
     h.state.disMode = DisMode.dmCog;
-    h.state.disTopAddr = 0x300;
+    h.state.disAddr = 0x300;
     // Mac delivers Shift+wheel as deltaX with deltaY≈0.
     listener(h, 'wheel')({
       preventDefault: jest.fn(), clientX: DIS.x + 5, clientY: DIS.y + 5,
       deltaX: -120, deltaY: 0, ctrlKey: false, shiftKey: true
     });
-    expect(h.state.disTopAddr).toBe((0x300 - 16) & 0x3FF); // shift magnitude = 16
+    expect(h.state.disAddr).toBe((0x300 - 16) & 0x3FF); // shift magnitude = 16
   });
 });
 
@@ -219,6 +221,261 @@ describe('DebuggerInteraction — hub heat-map click (B.1)', () => {
     h.state.hubAddr = 0x12345;
     (h.interaction as any).handleMouseDown(MAP.x - 1, MAP.y, 0); // just left of the map
     expect(h.state.hubAddr).toBe(0x12345);
+  });
+});
+
+describe('Debugger address model — CogAddr / HubAddr / DisAddr (Part A §A.0, F4)', () => {
+  // PNut keeps TWO locks and one derived value. The pane coupling below is
+  // observable behavior, not an implementation detail: in hub mode the
+  // disassembly and the HUB data pane are the same address.
+  const DIS = { x: 100, y: 100, w: 300, h: 200 };
+  function harness(mode: DisMode) {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.panelBoundsPx.mockImplementation((name: string) =>
+      name === 'DIS' ? DIS : { x: -10, y: -10, w: 0, h: 0 });
+    h.state.disMode = mode;
+    return h;
+  }
+  const wheelOverDis = (h: ReturnType<typeof harness>, dir: number) =>
+    (h.interaction as any).handleWheel(DIS.x + 5, DIS.y + 5, dir, false, false);
+
+  it('dmHub — scrolling the disassembly MOVES the HUB data pane (shared HubAddr)', () => {
+    const h = harness(DisMode.dmHub);
+    h.state.hubAddr = 0x01000;
+    expect(h.state.disAddr).toBe(0x01000);   // one address, two panes
+    wheelOverDis(h, +1);
+    expect(h.state.hubAddr).toBe(h.state.disAddr);
+    expect(h.state.hubAddr).not.toBe(0x01000);
+  });
+
+  it('dmHub — moving the HUB pane moves the disassembly (the coupling both ways)', () => {
+    const h = harness(DisMode.dmHub);
+    h.state.hubAddr = 0x02000;
+    (h.interaction as any).navHub(0x10);
+    expect(h.state.disAddr).toBe(0x02010);
+  });
+
+  it('dmCog — cog-space scrolling never touches hubAddr', () => {
+    const h = harness(DisMode.dmCog);
+    h.state.hubAddr = 0x0ABCD;
+    h.state.cogAddr = 0x100;
+    wheelOverDis(h, +1);
+    expect(h.state.cogAddr).not.toBe(0x100);
+    expect(h.state.disAddr).toBe(h.state.cogAddr);
+    expect(h.state.hubAddr).toBe(0x0ABCD);   // untouched
+  });
+
+  it('dmPC — following a moving PC leaves hubAddr UNCHANGED (the pane must not chase the PC)', () => {
+    // The trap the three-concept split exists to prevent: dmPC auto-scroll writes
+    // the DERIVED top only. If it wrote HubAddr, the HUB data pane would follow
+    // program execution — something PNut never does.
+    const h = harness(DisMode.dmPC);
+    h.state.hubAddr = 0x0BEEF;
+    h.state.disAddr = 0x00800;               // dmPC scroll position, hub-space PC
+    expect(h.state.hubAddr).toBe(0x0BEEF);
+    h.state.disAddr = 0x00900;               // as the auto-scroll advances it
+    expect(h.state.hubAddr).toBe(0x0BEEF);
+    expect(h.state.disAddr).toBe(0x00900);
+  });
+
+  it('leaving dmPC by wheeling seeds the new lock from the address ON SCREEN', () => {
+    const h = harness(DisMode.dmPC);
+    h.state.hubAddr = 0x0BEEF;               // stale lock, must be overwritten
+    h.state.disAddr = 0x00880;               // what the user is looking at
+    wheelOverDis(h, +1);
+    expect(h.state.disMode).toBe(DisMode.dmHub);
+    expect(h.state.hubAddr).toBe(0x00884);   // seeded from the screen, then one long
+  });
+});
+
+describe('DebuggerInteraction — disassembly wheel (Part A §A.4, F2/F3)', () => {
+  const DIS = { x: 100, y: 100, w: 300, h: 200 };
+  function harness(mode: DisMode) {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.panelBoundsPx.mockImplementation((name: string) =>
+      name === 'DIS' ? DIS : { x: -10, y: -10, w: 0, h: 0 });
+    h.state.disMode = mode;
+    return h;
+  }
+  const wheel = (h: ReturnType<typeof harness>, dir: number, ctrl = false, shift = false) =>
+    (h.interaction as any).handleWheel(DIS.x + 5, DIS.y + 5, dir, ctrl, shift);
+
+  // Pascal DisDeltas (:974) — in REGISTERS for cog mode, ×4 (long-aligned) for hub mode.
+  const STEPS: Array<{ label: string; ctrl: boolean; shift: boolean; regs: number }> = [
+    { label: 'no modifier', ctrl: false, shift: false, regs: 1 },
+    { label: 'Ctrl', ctrl: true, shift: false, regs: 4 },
+    { label: 'Shift', ctrl: false, shift: true, regs: 16 },
+    { label: 'Ctrl+Shift', ctrl: true, shift: true, regs: 32 }
+  ];
+
+  for (const { label, ctrl, shift, regs } of STEPS) {
+    it(`dmCog — ${label} moves exactly ${regs} register(s) per notch`, () => {
+      const h = harness(DisMode.dmCog);
+      h.state.cogAddr = 0x100;
+      wheel(h, +1, ctrl, shift);
+      expect(h.state.cogAddr).toBe(0x100 + regs);
+      wheel(h, -1, ctrl, shift);
+      expect(h.state.cogAddr).toBe(0x100);
+    });
+
+    it(`dmHub — ${label} moves exactly ${regs * 4} bytes per notch, and the HUB pane follows`, () => {
+      const h = harness(DisMode.dmHub);
+      h.state.hubAddr = 0x01000;
+      wheel(h, +1, ctrl, shift);
+      expect(h.state.hubAddr).toBe(0x01000 + regs * 4);
+      expect(h.state.disAddr).toBe(h.state.hubAddr); // one shared address
+    });
+  }
+
+  it('dmCog CLAMPS at the bottom of cog space — stops at $3F0, never wraps to $000', () => {
+    const h = harness(DisMode.dmCog);
+    h.state.cogAddr = 0x3F0;
+    wheel(h, +1);                       // one more notch at the limit
+    expect(h.state.cogAddr).toBe(0x3F0); // the boundary value itself, not $000
+    wheel(h, +1, true, true);           // and a 32-register jump cannot jump past it
+    expect(h.state.cogAddr).toBe(0x3F0);
+  });
+
+  it('dmCog clamps at the top of cog space ($000)', () => {
+    const h = harness(DisMode.dmCog);
+    h.state.cogAddr = 0x010;
+    wheel(h, -1, true, true);           // 32 registers down from $010
+    expect(h.state.cogAddr).toBe(0x000);
+  });
+
+  it('dmHub wraps rather than clamps (20-bit mask)', () => {
+    const h = harness(DisMode.dmHub);
+    h.state.hubAddr = 0x00000;
+    wheel(h, -1);
+    expect(h.state.hubAddr).toBe(0xFFFFC);
+  });
+
+  it('the first wheel in dmPC seeds from the DISPLAYED address, not from the PC', () => {
+    // PC deliberately far from the displayed top: the PC is in cog space while the
+    // view has been scrolled into hub space. Seeding from the PC would pick dmCog.
+    const h = harness(DisMode.dmPC);
+    h.state.message[MSG.IRET] = 0x00080;  // PC in COG space
+    h.state.disAddr = 0x01000;            // but the user is looking at hub $01000
+    wheel(h, +1);
+    expect(h.state.disMode).toBe(DisMode.dmHub);
+    expect(h.state.hubAddr).toBe(0x01004);
+  });
+});
+
+describe('Debugger address model — the Phase-2 window request follows what is displayed', () => {
+  // The wire consequence of the model: DebuggerController packs the disassembly
+  // window request as (bytes<<20)|addr. If the effective displayed top stops
+  // driving it, the P2 returns the wrong window and the pane renders garbage.
+  const HUB_CODE_OFFSET = 24; // 8-byte cog bitmap + 16-byte hub bitmap
+  const requestedAddr = (buf: Uint8Array): number =>
+    new DataView(buf.buffer, buf.byteOffset).getUint32(HUB_CODE_OFFSET, true) & 0xFFFFF;
+  const requestedBytes = (buf: Uint8Array): number =>
+    new DataView(buf.buffer, buf.byteOffset).getUint32(HUB_CODE_OFFSET, true) >>> 20;
+
+  function phase2For(mode: DisMode, setup: (s: any) => void): Uint8Array {
+    const h = makeController();
+    h.state.disMode = mode;
+    setup(h.state);
+    h.controller.processPhase1(buildPhase1Packet({ longs: { [MSG.IRET]: h.state.message[MSG.IRET] } }));
+    return h.calls.phase2[h.calls.phase2.length - 1];
+  }
+
+  it('dmHub requests the window at the displayed (shared) hub address', () => {
+    const buf = phase2For(DisMode.dmHub, (s) => { s.hubAddr = 0x03210; });
+    expect(requestedAddr(buf)).toBe(0x03210);
+    expect(requestedBytes(buf)).toBe(64);     // DIS_LINES * 4
+  });
+
+  it('dmPC in hub space requests the auto-scrolled top, not the hub pane address', () => {
+    const buf = phase2For(DisMode.dmPC, (s) => {
+      s.message[MSG.IRET] = 0x00900;
+      s.hubAddr = 0x0BEEF;                    // hub pane parked elsewhere
+      s.disAddr = 0x008C0;
+    });
+    expect(requestedAddr(buf)).not.toBe(0x0BEEF);
+    expect(requestedBytes(buf)).toBe(64);
+  });
+
+  it('dmCog asks for no hub-code window at all', () => {
+    const buf = phase2For(DisMode.dmCog, (s) => { s.cogAddr = 0x100; });
+    expect(requestedBytes(buf)).toBe(0);
+  });
+});
+
+describe('DebuggerInteraction — hub-data wheel (Part A §A.4, F1/F14)', () => {
+  // HUB panel with the heat-map sitting inside its top-right, as on screen.
+  const HUB = { x: 100, y: 100, w: 300, h: 100 };
+  const MAP = { x: 320, y: 110, w: HUB_MAP_WIDTH, h: HUB_MAP_HEIGHT };
+  // Well right of the 5-digit address column (cols 0..4) and left of the map.
+  const DATA_X = HUB.x + 10 * CHAR_WIDTH_PX;
+  const DATA_Y = HUB.y + 5;
+
+  function harness() {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.hubMapBoundsPx.mockReturnValue(MAP);
+    h.renderer.panelBoundsPx.mockImplementation((name: string) =>
+      name === 'HUB' ? HUB : { x: -10, y: -10, w: 0, h: 0 });
+    return h;
+  }
+
+  // Pascal HubDeltas (DebuggerUnit.pas:975) — the step is already in BYTES.
+  const STEPS: Array<{ label: string; ctrl: boolean; shift: boolean; step: number }> = [
+    { label: 'no modifier → one 16-byte row', ctrl: false, shift: false, step: 16 },
+    { label: 'Ctrl → one byte', ctrl: true, shift: false, step: 1 },
+    { label: 'Shift → four bytes', ctrl: false, shift: true, step: 4 },
+    { label: 'Ctrl+Shift → one 128-byte sub-block', ctrl: true, shift: true, step: 128 }
+  ];
+
+  for (const { label, ctrl, shift, step } of STEPS) {
+    it(`one notch moves hubAddr by exactly ${step} bytes — ${label}`, () => {
+      const h = harness();
+      h.state.hubAddr = 0x01000;
+      (h.interaction as any).handleWheel(DATA_X, DATA_Y, +1, ctrl, shift);
+      expect(h.state.hubAddr).toBe(0x01000 + step);      // wheel-down → higher address
+      (h.interaction as any).handleWheel(DATA_X, DATA_Y, -1, ctrl, shift);
+      expect(h.state.hubAddr).toBe(0x01000);             // wheel-up → back
+      (h.interaction as any).handleWheel(DATA_X, DATA_Y, -1, ctrl, shift);
+      expect(h.state.hubAddr).toBe(0x01000 - step);
+    });
+  }
+
+  it('wraps rather than clamps at the bottom of hub space (20-bit mask)', () => {
+    const h = harness();
+    h.state.hubAddr = 0x00000;
+    (h.interaction as any).handleWheel(DATA_X, DATA_Y, -1, true, false); // Ctrl → 1 byte
+    expect(h.state.hubAddr).toBe(0xFFFFF);
+  });
+
+  it('does nothing at all when the wheel is over the hub HEAT-MAP (Pascal: InHubBox and not InHubMap)', () => {
+    const h = harness();
+    h.state.hubAddr = 0x12345;
+    h.renderer.render.mockClear();
+    (h.interaction as any).handleWheel(MAP.x, MAP.y, +1, false, false);              // top-left cell
+    (h.interaction as any).handleWheel(MAP.x + MAP.w - 1, MAP.y + MAP.h - 1, -1, false, false); // last cell
+    expect(h.state.hubAddr).toBe(0x12345);
+    expect(h.renderer.render).not.toHaveBeenCalled();
+  });
+
+  it('a notch one pixel outside the map rect still scrolls (boundary is exclusive)', () => {
+    const h = harness();
+    h.state.hubAddr = 0x01000;
+    (h.interaction as any).handleWheel(MAP.x - 1, MAP.y, +1, false, false);
+    expect(h.state.hubAddr).toBe(0x01010);
+  });
+});
+
+describe('DebuggerInteraction — GO right-click starts repeat without a redundant stallBrk send', () => {
+  it('sets repeat mode and leaves stallBrk at STALL_CMD (the repeat driver ignores it)', () => {
+    const h = makeInteraction();
+    h.state.isDimmed = false;   // halted, so this is a real repeat start
+    h.state.repeatMode = false;
+    h.state.breakValue = 0x1234;
+    (h.interaction as any).onGoRightClick();
+    expect(h.state.repeatMode).toBe(true);
+    expect(h.state.stallBrk).toBe(STALL_CMD);
   });
 });
 

@@ -607,13 +607,13 @@ export class DebuggerController {
    * where GetHubCode := (DisMode = dmPC) and not PCInCog, plus dmHub case.
    */
   private computeHubCodeRequest(): number {
-    const { disMode, disTopAddr, pc } = this.state;
+    const { disMode, disAddr, pc } = this.state;
     const wantHub =
       (disMode === DisMode.dmPC && pc >= 0x400) ||
       (disMode === DisMode.dmHub);
     if (!wantHub) return 0;
     const bytes = DIS_LINES * 4; // 16 longs
-    return (bytes << 20) | (disTopAddr & 0xFFFFF);
+    return (bytes << 20) | (disAddr & 0xFFFFF);
   }
 
   // ============================================================================

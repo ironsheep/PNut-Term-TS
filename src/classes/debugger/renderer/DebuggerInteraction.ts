@@ -17,7 +17,7 @@ import {
   KEEP_INIT_MASK, CLEAR_DEBUG_MASK, KEEP_INIT_OR_DEBUG_MASK,
   STALL_CMD,
   CHAR_WIDTH_PX, HALF_ROW_PX, BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX,
-  EVENT_NAMES, PTR_BYTES, PTR_CENTER,
+  EVENT_NAMES, PTR_BYTES, PTR_CENTER, DIS_LINES,
   HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS
 } from '../shared/constants';
 import { DebuggerState, DisMode } from './DebuggerState';
@@ -261,25 +261,39 @@ export class DebuggerInteraction {
 
   private handleWheel(px: number, py: number, deltaY: number, ctrl: boolean, shift: boolean): void {
     const direction = Math.sign(deltaY);
-    // Magnitudes for cog/hub:   none=1/16   ctrl=4/1   shift=16/4   ctrl+shift=32/128
-    let cogMag: number, hubMag: number;
-    if (ctrl && shift) { cogMag = 32; hubMag = 128; }
-    else if (shift)    { cogMag = 16; hubMag = 4; }
-    else if (ctrl)     { cogMag = 4;  hubMag = 1; }
-    else               { cogMag = 1;  hubMag = 16; }
+    // Two step tables, indexed by modifier (Pascal DisDeltas/HubDeltas, :974-975):
+    //   disassembly  none=1  ctrl=4  shift=16  ctrl+shift=32   (registers)
+    //   hub data     none=16 ctrl=1  shift=4   ctrl+shift=128  (bytes)
+    let disMag: number, hubMag: number;
+    if (ctrl && shift) { disMag = 32; hubMag = 128; }
+    else if (shift)    { disMag = 16; hubMag = 4; }
+    else if (ctrl)     { disMag = 4;  hubMag = 1; }
+    else               { disMag = 1;  hubMag = 16; }
 
     // In DIS panel → scroll disassembly, switching out of dmPC if needed
     const disBounds = this.renderer.panelBoundsPx('DIS');
     if (px >= disBounds.x && px < disBounds.x + disBounds.w &&
         py >= disBounds.y && py < disBounds.y + disBounds.h) {
       if (this.state.disMode === DisMode.dmPC) {
-        // Switch to dmCog (cog-mode) or dmHub depending on current address
-        this.state.disMode = this.state.pc >= 0x400 ? DisMode.dmHub : DisMode.dmCog;
+        // Break the PC lock (Pascal :986-998). The new mode is chosen — and seeded —
+        // from the address CURRENTLY DISPLAYED, not from the PC: once the view has
+        // auto-scrolled away from the PC those are different addresses, and the user
+        // scrolls on from what is on screen.
+        const shown = this.state.disAddr;
+        this.state.disMode = shown >= 0x400 ? DisMode.dmHub : DisMode.dmCog;
+        this.state.disAddr = shown;
       }
-      const isHub = this.state.disMode === DisMode.dmHub;
-      const step = isHub ? hubMag : cogMag;
-      const mask = isHub ? 0xFFFFF : 0x3FF;
-      this.state.disTopAddr = (this.state.disTopAddr + direction * step) & mask;
+      if (this.state.disMode === DisMode.dmHub) {
+        // Pascal: HubAddr := (HubAddr + DisStep shl 2) and $FFFFF — the DISASSEMBLY
+        // step, long-aligned, written to the SHARED HubAddr so the HUB pane follows.
+        this.state.hubAddr = (this.state.hubAddr + direction * disMag * 4) & 0xFFFFF;
+      } else {
+        // Pascal: CogAddr := Within(CogAddr + DisStep, $000, $400 - DisLines) —
+        // CLAMPED, so the end of cog space stops with a full window instead of
+        // wrapping around to $000.
+        const next = this.state.cogAddr + direction * disMag;
+        this.state.cogAddr = Math.min(Math.max(next, 0x000), 0x400 - DIS_LINES);
+      }
       this.renderer.render();
       return;
     }
@@ -288,6 +302,14 @@ export class DebuggerInteraction {
     const hubBounds = this.renderer.panelBoundsPx('HUB');
     if (px >= hubBounds.x && px < hubBounds.x + hubBounds.w &&
         py >= hubBounds.y && py < hubBounds.y + hubBounds.h) {
+      // The heat-map is EXCLUDED from the wheel: Pascal gates the hub scroll on
+      // `InHubBox and not InHubMap` (DebuggerUnit.pas:1008), so wheeling over the map
+      // does nothing at all. Same rect as the click path above — one source of truth.
+      const wheelMap = this.renderer.hubMapBoundsPx();
+      if (px >= wheelMap.x && px < wheelMap.x + wheelMap.w &&
+          py >= wheelMap.y && py < wheelMap.y + wheelMap.h) {
+        return;
+      }
       // Over the 5-digit hub-address column (cols 0..4) → nibble wheel
       // (Pascal L1005: HubAddr += dir << (4*(4-digit))). Digit 0 = MS nibble.
       const col = Math.floor((px - hubBounds.x) / CHAR_WIDTH_PX);
@@ -297,8 +319,9 @@ export class DebuggerInteraction {
         this.renderer.render();
         return;
       }
-      // Otherwise scroll the hub view.
-      this.navHub(direction * hubMag * 16);
+      // Otherwise scroll the hub view. hubMag IS the Pascal step in BYTES
+      // (16 / 1 / 4 / 128 — DebuggerUnit.pas:975 HubDeltas), so it is used as-is.
+      this.navHub(direction * hubMag);
       return;
     }
   }
@@ -423,8 +446,9 @@ export class DebuggerInteraction {
     if (this.state.repeatMode) {
       this.controller.setRepeatMode(false);
     } else {
+      // Pascal's repeat driver (DebuggerUnit.pas:1331-1344) never reads StallBrk, so the
+      // extra send here was dead — setRepeatMode(true) alone starts the repeat.
       this.controller.setRepeatMode(true);
-      this.controller.setStallBrk(this.state.breakValue);
     }
     this.renderer.render();
   }
@@ -449,13 +473,13 @@ export class DebuggerInteraction {
     // Click locks dmCog to the register under cursor.
     const row = Math.floor(relY / (PANEL.REGMAP.h * HALF_ROW_PX / 512)); // 0..511
     this.state.disMode = DisMode.dmCog;
-    this.state.disTopAddr = row & 0x1FF;
+    this.state.disAddr = row & 0x1FF;
   }
 
   private onLutMapClick(_relX: number, relY: number): void {
     const row = Math.floor(relY / (PANEL.LUTMAP.h * HALF_ROW_PX / 512)); // 0..511
     this.state.disMode = DisMode.dmCog;
-    this.state.disTopAddr = 0x200 + (row & 0x1FF);
+    this.state.disAddr = 0x200 + (row & 0x1FF);
   }
 
   private onDisassemblyClick(relY: number, rightClick: boolean): void {
@@ -490,7 +514,7 @@ export class DebuggerInteraction {
     if (addr <= 0x1F5) {
       // IJMP/IRET → code pointer, lock disassembly there
       this.state.disMode = DisMode.dmCog;
-      this.state.disTopAddr = value & 0xFFFFF;
+      this.state.disAddr = value & 0xFFFFF;
     } else {
       // PA/PB/PTRA/PTRB/DIR/OUT/IN → hub pointer
       this.state.hubAddr = value & 0xFFFFF;
@@ -503,7 +527,7 @@ export class DebuggerInteraction {
     const value = this.state.message[6 + i]; // mSTK0 + i
     if (value < 0x400) {
       this.state.disMode = DisMode.dmCog;
-      this.state.disTopAddr = value;
+      this.state.disAddr = value;
     } else {
       this.state.hubAddr = value & 0xFFFFF;
     }
