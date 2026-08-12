@@ -45,6 +45,42 @@ next reader, which is why they are filed rather than forgotten.
   call sites). The values are correct; only the names lie. Cosmetic and repo-wide — do as a
   dedicated mechanical rename, never folded into behavioral work.
 
+### ✅ Single-Step Debugger input parity (SSDB input-parity sprint, v1.0.1, 2026-08-12)
+
+Registered here for the next sweep. All sixteen live findings of
+`DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md` Part B are **closed in code and tests**
+(commits `9da7e46`, `7a5b0a0`); F10 was withdrawn as a false finding. Documentation is
+reconciled: the manual source, the Theory of Operations §8.3, the superseded 2026-05-31
+operation guide, the audit's own Part B, and the changelog.
+
+**Still open in this sprint:** hardware re-certification against Interactive Test Plan v2
+(«#97») — Tests 0–14 in full, because the address-model change touches the Phase-2 window
+request, plus the new Phase D input-command exercises. v1.0.1 is not clear to tag until
+that passes.
+
+This also retires the "hub-heatmap click is not yet wired" note that survived in the manual
+source long after the click shipped (2026-06-03).
+
+### P3 - Documentation-drift instrument findings (first run, 2026-08-12)
+
+The project now has a `DOC_AUDIT_COMMAND` (`scripts/claude/check_doc_claims.sh` +
+`check_doc_counts.sh`, advisory, never a build gate). Fixed on the first run: the
+`12 window types` claim in `DOCs/IMPLEMENTATION_NOTES.md` (actual: 11 — 9 displays, the
+debugger, the logger), and the stale handoff snapshot of the interactive test plan, which
+now names its canonical source. Left open, both low-risk DUPLICATE findings:
+
+- [ ] **The hub-dump and pin-row sample layouts are maintained in two SSDB documents** —
+  `DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md:368,392` and
+  `DOCs/pascal-REF/SingleStep-Debugger-Theory-of-Operations.md:884,911`. One canonical copy
+  with a link from the other; do not "keep them aligned".
+- [ ] **Shared Pascal procedure excerpts are duplicated across the per-window theory-of-
+  operations documents** (`RateCycle` in six places, `SmoothDot`/`NewPack`/`SetTextMetrics`
+  in three each). Deliberate self-containment, but worth a shared "common procedures"
+  section if those docs are ever revised.
+- [ ] **~15 ORPHAN candidates remain**, mostly Pascal identifiers (`TA_LEFT`) quoted in the
+  reference docs, which are not our strings. Either accept them as expected noise or teach
+  the instrument to skip Pascal-identifier spans in `DOCs/pascal-REF/`.
+
 ### P2 - Single-Step Debugger (ssdbgr) — pre-test audit findings (2026-06-16)
 
 Audited `debugDebuggerWin.ts` message path while sweeping the v0.9.67/.68 serialization fixes across all windows. **VERDICT: the message path is SOUND** — it uses base `updateContent` (single-flight serialization applies) + base `onWindowReady` (the v0.9.68 drain-vs-live fix applies), and its own renderer-readiness buffering is correct (`forwardPhase1/3ToRenderer` push to `pendingPhase1`/`pendingPhase3` when `!rendererReady`, drained in order on renderer `'ready'` at :385-388). No premature-ready packet loss; not vulnerable to either problem we fixed. Items below are cleanup/watch, not blockers.

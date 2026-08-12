@@ -1089,20 +1089,38 @@ All letter keys are uppercased before processing. Tab key is captured (`DLGC_WAN
 
 ### 8.3 Mouse Wheel Actions
 
-**In disassembly box**:
-- If in dmPC mode, switches to dmCog or dmHub (to allow free scrolling)
-- Scroll deltas (instruction/byte units):
+> Reconciled 2026-08-12 against `DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md` Part A §A.4,
+> which is derived directly from `DebuggerUnit.pas` v55. Where this document and Part A
+> disagree, **Part A wins** — this one is a reading, Part A is a derivation.
 
-| Modifier | Cog delta | Hub delta |
+There are **two** delta tables, `DisDeltas` and `HubDeltas` (:974-975), and which one
+applies depends on the region under the cursor, not on the disassembly mode:
+
+| Modifier | `DisDeltas` (disassembly, registers) | `HubDeltas` (hub data, bytes) |
 |---|---|---|
 | None | 1 | 16 |
 | Ctrl | 4 | 1 |
 | Shift | 16 | 4 |
 | Ctrl+Shift | 32 | 128 |
 
-**In hub address digits**: Each scroll step changes the hex nibble under the cursor by +/-1.
+**In disassembly box**:
+- If in dmPC mode, first breaks the PC lock — switching to dmCog or dmHub according to
+  whether the **currently displayed** address (`DisAddr`) is below `$400`, and seeding
+  the new mode from that address.
+- In dmCog: `CogAddr := Within(CogAddr + DisStep, $000, $400 - DisLines)` — **clamped**
+  to `$000..$3F0`, so the end of cog space stops with a full window rather than wrapping.
+- In dmHub: `HubAddr := (HubAddr + DisStep shl 2) and $FFFFF` — the **disassembly** step
+  long-aligned (4/16/64/128 bytes), written to the **shared** `HubAddr`, so the HUB data
+  pane follows the disassembly and vice versa.
 
-**In hub data box**: Scroll by configured step amounts (same modifier scheme as disassembly but with hub-specific deltas).
+**In hub address digits**: Each scroll step changes the hex nibble under the cursor by
++/-1 (`HubAddr += dir shl (4 * (4 - digit))`).
+
+**In hub data box** (`InHubBox and not InHubMap`): `HubAddr += HubStep` from the
+`HubDeltas` column above.
+
+**Over the hub heat-map**: nothing. The map is explicitly excluded from the wheel
+(:1008); it responds to clicks only.
 
 ### 8.4 Mouse Hover (Hint System)
 

@@ -715,7 +715,8 @@ static calcMetricsForFontPtSize(fontSize: number, metrics: FontMetrics): void {
 - Derived classes: Window-specific rendering, data processing, display updates
 
 **Code Reuse:**
-- PC_KEY/PC_MOUSE implementation shared across 12 window types
+- PC_KEY/PC_MOUSE implementation shared across 11 window types (9 debug displays,
+  the single-step debugger, and the logger)
 - SAVE command (3 formats) implemented once
 - Message queuing and batching universal
 - Input forwarding infrastructure common

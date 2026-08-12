@@ -1,5 +1,11 @@
 # Single-Step Debugger: Interactive Test Plan
 
+> **Version 2 (2026-08-12)** — one document, not a replacement. Tests 0–14 remain the
+> regression base and keep their recorded results; **Phase D** is new, and Test 4's step 8
+> was amended because it could not distinguish the behavior it described. **Tests 0–14 must
+> be re-run in full for v1.0.1**: the address-model change touches the Phase-2 window
+> request, which is the sprint's largest regression exposure.
+>
 > **Purpose**: Validate the single-step debugger against real P2 hardware. Tests run
 > simplest → most complex. Each test names the P2 program to load, the keys/clicks to
 > press, and what you should see.
@@ -100,12 +106,13 @@ cheaper to diagnose than the same defect surfacing inside a complex interrupt te
 | **A — Visual verification** | *Look, don't touch.* Confirm the debugger window opens and every panel renders with correct layout/labels/colors **before** exercising any behavior. | **Test 0** | `test01` | Trivial — load and observe |
 | **B — Core interaction** | Single-step, repeat, watch, disassembly navigation, buttons, header flags, SFR/stack/pointers, hub viewer, pins. | **Tests 1–9** | `test01`, `test03`, `test06`, `test07`, `test08`, `test09` | Simple Spin2/PASM loops |
 | **C — Advanced / special code** | Features needing purpose-built P2 code: smart-pin watch, interrupts, multi-COG, event breakpoints. | **Tests 10–13** | `test10`, `test11`, `test12` | Hardware-feature-specific code |
+| **D — Input command certification** | *Measure, don't describe.* Every mouse, wheel, keyboard and hint command from the input-parity spec, each with an exact expected value. Added in v2 for v1.0.1. | **D1–D11** | `test03`, `test07`, `test08`, `test11` | Reuses Phase B/C files |
 
 **Test 14 (hint bar)** is not a phase of its own — exercise it opportunistically
 throughout Phases B and C by hovering over each region as you reach it.
 
 **Gate rule**: a phase passes only when every test in it passes. If everything in
-Phases A–C passes (and the nine display windows pass their manual visual sweep), the
+Phases A–D passes (and the nine display windows pass their manual visual sweep), the
 build is release-ready.
 
 > **✅ STATUS (2026-07-17): ALL Tests 0–14 PASS on v0.9.97 — release gate MET for the
@@ -114,6 +121,11 @@ build is release-ready.
 > never raised IN) and the Test 14 hint strings were doc errors — **the app was correct in
 > every case**. Two app fixes shipped during the walk: v0.9.96 event-name-click arms the
 > break; v0.9.97 HUB-grid blink (stale frame leftover).
+
+> **⬜ STATUS (2026-08-12): v1.0.1 is NOT yet certified.** The input-parity sprint changed
+> mouse, wheel, keyboard and hint behavior, and its address-model change touches the
+> Phase-2 window request. Certification requires **Tests 0–14 re-run in full** plus **all of
+> Phase D**. The v0.9.97 result above certifies the tree it ran against, not this one.
 
 ### Suggested load order (minimizes reloads)
 
@@ -312,7 +324,10 @@ low registers (`count`/`limit`) as you step; R-key and click both reset the list
 | 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
 | 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
 | 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
-| 8 | Click on **REG heatmap** (left side) | Disassembly locks to that cog address (*dmCog*). Shows registers around clicked area. |
+| 8 | Click on the **REG heat strip** (left side) at a spot roughly ⅓ of the way down | Disassembly locks to cog space (*dmCog*), and **the register you clicked lands in the MIDDLE of the window, not on the top line** — count 8 lines down from the top and that is the register under your click, ±1. Note the top-line address; step 8a re-uses it. |
+| 8a | Click the **very bottom pixel** of the REG strip | Top line reads **`R-1F0`** exactly. It must not run past `$1F0`, and must not wrap to `R-000`. |
+| 8b | Click the **very bottom pixel** of the LUT strip | Top line reads **`R-3F0`** exactly (LUT range is `$200..$3F0`). |
+| 8c | Move the pointer onto the REG strip, then onto the frame just outside it | Hint reads `Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange` over the strip, and `Cog Register Bitmap/Heatmap` (no click clause) over the surrounding box. Clicking the surrounding box does **nothing**. |
 | 9 | Click on **PC** value in header row | Returns to PC-follow. |
 
 **Pass criteria**: All three disassembly follow modes work, mouse wheel scrolls with modifiers, breakpoints toggle, heatmap click navigates.
@@ -877,6 +892,160 @@ expected strings were wrong and are now fixed.)
 
 ---
 
+## Phase D — Input command certification (v2, added for v1.0.1)
+
+**Why this phase exists.** Tests 0–14 certified *pre-sprint* behavior and they all pass —
+but they cannot certify the v1.0.1 input-parity work. They are **non-discriminating** where
+that work operates (Test 4's old step 8 said the disassembly "shows registers around the
+clicked area", which passes whether the register lands mid-window or on the top line), and
+**silent** over most of the changed surface: there was no hub-wheel magnitude step at all,
+which is exactly how a 16× error survived certification.
+
+**How Phase D steps are written.** Every exercise cites the Part A rule it checks and states
+an **exact expected value** — "one notch advances the hub address by exactly `$10`", never
+"scrolls the hub". Test 4 steps 3–4 ("4 instructions per tick", "16 instructions per tick")
+are the model; they were precise, they were right, and they stay.
+
+**Spec:** `DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md` Part A. **Precedence:** if the
+hardware disagrees with Part A, **Part A is corrected first**, and the correction then flows
+to this plan *and* to the manual source. Never patch this plan alone.
+
+**▶ Load:** `test08_hub_writes.spin2` for D1–D5 and D9–D10; `test03_pasm_regs.spin2` for
+D6–D8; `test11_interrupts.spin2` for D11.
+
+### D1: Hub-data wheel magnitudes (Part A §A.4 — `HubDeltas`)
+
+Put the pointer over the **hex bytes** of the HUB panel (not the address column, not the
+heatmap). Note the 5-digit hub address before each notch.
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | One wheel notch **down** | Address increases by exactly **`$10`** (one row). The dump scrolls by one line. |
+| 2 | One wheel notch **up** | Address returns to the starting value exactly. |
+| 3 | **Ctrl** + one notch down | Address increases by exactly **`$1`** — a single byte. The row contents shift by one byte. |
+| 4 | **Shift** + one notch down | Address increases by exactly **`$4`**. |
+| 5 | **Ctrl+Shift** + one notch down | Address increases by exactly **`$80`** (one 128-byte sub-block). |
+| 6 | With the address at `$00000`, **Ctrl** + one notch **up** | Address wraps to **`$FFFFF`** — hub space is masked, not clamped. |
+
+**Pass criteria**: all five magnitudes exact, both directions, and the wrap at zero.
+
+### D2: The heat-map is excluded from the wheel (Part A §A.4)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Note the hub address. Move the pointer over the **hub heatmap** and wheel down 5 notches | **Nothing moves.** The hub address is unchanged; the dump does not scroll. |
+| 2 | Wheel up 5 notches over the heatmap | Still unchanged. |
+| 3 | Move one character to the **left** of the heatmap and wheel down once | Now it scrolls — by exactly `$10`. (This proves step 1 was the exclusion, not a dead wheel.) |
+
+### D3: Hub address digits (Part A §A.4)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Wheel down once over the **leftmost** address digit | Address increases by **`$10000`**. |
+| 2 | Wheel down once over the **rightmost** address digit | Address increases by **`$1`**. |
+| 3 | Hover the address column | Hint reads exactly `Hub Data | Mousewheel changes HUB address digit(s)`. |
+
+### D4: Hub ASCII column click (Part A §A.3 — `InHubChr`)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Click the **5th character** of the **3rd ASCII row** | Hub address advances by exactly **`$24`** (2 rows × `$10` + 4). |
+| 2 | Click the corresponding **hex** byte | Same advance — the two regions agree byte-for-byte. |
+| 3 | Click in the **gap** between the hex bytes and the ASCII column | Nothing happens. |
+
+### D5: Hub heat-map click (Part A §A.3 — `MapHubAddr`)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Click the **top-left** cell of the heatmap | Hub address becomes exactly **`$00000`**. |
+| 2 | Click one cell to the right | Hub address becomes exactly **`$00080`** — one 128-byte sub-block per cell. |
+| 3 | Hover the heatmap | Hint reads exactly `HUB Heatmap | Click to lock HUB address`. |
+
+### D6: Disassembly wheel — magnitudes, coupling, clamp (Part A §A.4 — `DisDeltas`)
+
+Run in cog space first (PC below `$400`).
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Wheel down once in the disassembly box | Leaves PC-follow; top line advances by exactly **1 register**. |
+| 2 | **Ctrl**, **Shift**, **Ctrl+Shift** + one notch each | Exactly **4**, **16**, **32** registers per notch. |
+| 3 | Wheel down until the top line reads **`R-3F0`**, then wheel down 5 more notches | Top line **stays at `R-3F0`**. It must **not** wrap to `R-000`. This is the clamp; a wrap is a failure. |
+| 4 | Wheel up until the top line reads `R-000`, then 5 more notches up | Stays at `R-000`. |
+| 5 | Now navigate the disassembly into **hub** space (click a hub-range pointer in PTR or a stack slot ≥ `$400`), note the HUB panel address, and wheel down once | Disassembly advances by exactly **4 bytes**, and **the HUB data pane moves with it** — the two share one address. |
+| 6 | **Ctrl**, **Shift**, **Ctrl+Shift** + one notch each, in hub mode | Exactly **16**, **64**, **128** bytes per notch, HUB pane following each time. |
+| 7 | Scroll the **HUB pane** (wheel over the hub hex bytes) and look at the disassembly | The disassembly moves too — the coupling works in both directions. |
+
+### D7: dmPC does NOT drag the HUB pane (Part A §A.0)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Park the HUB pane at a memorable address (e.g. `$01000`) and click **PC** to return to follow-PC | HUB pane still shows `$01000`. |
+| 2 | Press **SPACE** 20 times, letting the disassembly auto-scroll with the PC | The disassembly scrolls; **the HUB pane address never changes.** A HUB pane that follows the PC is a failure. |
+
+### D8: REG/LUT strip click — centering and clamp
+
+Covered by the amended **Test 4 steps 8, 8a, 8b, 8c**. Run them as part of Phase D as well;
+they are the discriminating form of the old step 8.
+
+**Status:** ⬜ NOT RUN
+
+### D9: Right-click BREAK, and the hub-mode breakpoint refusal (Part A §A.2/§A.3)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Arm MAIN and EVENT, then **right-click** the **BREAK** button | All conditions clear except INIT — identical to a left-click. BREAK is not button-sensitive. |
+| 2 | With the disassembly in **hub** mode, scroll so a line resolving **below `$400`** is visible, and right-click it | **Nothing happens.** No breakpoint marker, ADDR stays dim, and any previously set break address is unchanged. |
+| 3 | Right-click a line at or above `$400` | Normal toggle: marker appears, ADDR highlights. |
+
+### D10: SFR and stack routing into hub mode (Part A §A.3)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Click an **interrupt vector** row (IJMP3..IRET1) whose value is a **hub** address (≥ `$400`) | Disassembly switches to **hub** mode at that address, and the HUB pane follows. It must **not** lock to cog space. |
+| 2 | Click an interrupt vector row whose value is **below `$400`** | Disassembly locks to **cog** space at that register. |
+| 3 | Click a **PTRA/PTRB** row holding a value below `$400` | Still treated as a **hub** pointer — rows 6..15 are data pointers regardless of value. |
+| 4 | Click a **stack slot** holding a hub-range value | Disassembly follows into hub mode at that address. |
+
+### D11: Keyboard — control combinations and per-row hints (Part A §A.1/§A.5)
+
+**Status:** ⬜ NOT RUN
+
+| Step | Action | Expected Display |
+|------|--------|-----------------|
+| 1 | Note the hub address, press **Ctrl+C** | Address decreases by exactly **`$10`** — the same as Up Arrow. |
+| 2 | Press **Ctrl+D** | Address increases by exactly **`$10`**, and **DEBUG does not toggle** — the DEBUG button is unchanged. |
+| 3 | Press **Ctrl+K**, then **Ctrl+L** | Pages back then forward by exactly **`$1000`** each (Ctrl is held, so the Ctrl page magnitude applies), returning to the starting address. |
+| 4 | Press **Ctrl+M** | Enters repeat mode — identical to ENTER. Press ENTER to stop. |
+| 5 | Press **Ctrl+A**, then **Ctrl+B** | Nothing happens. In particular Ctrl+B is **not** the BREAK command. |
+| 6 | Press plain **B**, **I**, **D**, **M**, **R**, **SPACE**, **ENTER** | All seven still perform their Test 5 actions, in both upper and lower case. |
+| 7 | Hover each row of the **EVENT** panel from top to bottom | Each row names **its own** event: the second row reads `…break on CT1 event`, the third `…CT2`, and so on to `QMT`. A row naming the event above it is the off-by-one failure. |
+| 8 | Hover the **smart-pin watch** strip | The hint bar is **empty**. |
+| 9 | Hover the **button box** (between buttons), the **hub tab**, and the **REG/LUT boxes** | `Break Control | Select break condition(s) and execute code`, `Hub Data`, `Cog Register Bitmap/Heatmap`, `LUT Register Bitmap/Heatmap`. |
+
+**Phase D gate rule**: every exercise above must pass. Per project convention a partial pass
+is recorded as a **FAILURE with the observed behavior** — "ran out of time" and "only
+cosmetic" are not dispositions.
+
+---
+
 ## Test summary matrix
 
 | Test | Phase | Feature Area | Status | Load file |
@@ -896,6 +1065,17 @@ expected strings were wrong and are now fixed.)
 | 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
 | 13 | C | Event breakpoints | ✅ v0.9.97 | `test11` (keep loaded) |
 | 14 | B/C | Hint bar | ✅ v0.9.97 | Any (run throughout) |
+| D1 | D | Hub-data wheel magnitudes | ⬜ v1.0.1 | `test08_hub_writes.spin2` |
+| D2 | D | Heat-map excluded from the wheel | ⬜ v1.0.1 | `test08` (keep loaded) |
+| D3 | D | Hub address digits | ⬜ v1.0.1 | `test08` (keep loaded) |
+| D4 | D | Hub ASCII column click | ⬜ v1.0.1 | `test08` (keep loaded) |
+| D5 | D | Hub heat-map click | ⬜ v1.0.1 | `test08` (keep loaded) |
+| D6 | D | Disassembly wheel: steps, coupling, clamp | ⬜ v1.0.1 | `test03_pasm_regs.spin2` |
+| D7 | D | dmPC does not drag the HUB pane | ⬜ v1.0.1 | `test03` (keep loaded) |
+| D8 | D | REG/LUT centering and clamp (Test 4 8–8c) | ⬜ v1.0.1 | `test03` (keep loaded) |
+| D9 | D | Right-click BREAK; hub breakpoint refusal | ⬜ v1.0.1 | `test08` (keep loaded) |
+| D10 | D | SFR/stack routing into hub mode | ⬜ v1.0.1 | `test07_stack_ptr.spin2` |
+| D11 | D | Ctrl combinations and per-row hints | ⬜ v1.0.1 | `test11_interrupts.spin2` |
 
 ---
 

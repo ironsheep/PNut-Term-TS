@@ -1,5 +1,18 @@
 # Single-Step Debugger — Operation Guide & Parity Audit
 
+> ## ⚠️ SUPERSEDED for input handling (2026-08-12)
+>
+> Everything in this document about **keyboard, mouse, wheel and hint behavior** is
+> superseded by **`DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md`** — Part A is the
+> behavioral specification derived from `DebuggerUnit.pas` v55, Part B is our parity
+> status against it. Do not maintain the input material in both places; one canonical
+> copy, links from the others.
+>
+> This document is **stale in our favour**: the ~11 dead click regions, unwired hint
+> bar and no-op wheel it reports were all implemented afterwards, and the remaining
+> "hub-heatmap click" note below was closed 2026-06-03. The non-input half (window
+> lifecycle, display panels) is still accurate.
+
 > **Purpose**: A lightweight, fact-based operator's guide to the P2 single-step
 > debugger window, **plus** a TypeScript-vs-Pascal parity audit from the user-
 > interaction standpoint. Every keystroke, mouse action, and window behavior

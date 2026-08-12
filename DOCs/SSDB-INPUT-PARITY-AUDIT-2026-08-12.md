@@ -347,6 +347,47 @@ different printed keys than in PNut.
 - The dynamic CT and XBYTE hint decoders.
 - Disassembly left-click = follow-PC. This **is** PNut behavior.
 
+## B.3a Disposition — all sixteen findings CLOSED in v1.0.1 (2026-08-12)
+
+Implemented in the SSDB input-parity sprint; every item below has assertions in
+`tests/debuggerInteraction.test.ts`.
+
+| Finding | Closed by | Commit |
+|---|---|---|
+| F1, F14 | hub wheel uses the byte step as-is; heat-map excluded from the wheel | `9da7e46` |
+| F4 | `cogAddr` / `hubAddr` locks with a mode-dispatching `disAddr` accessor | `9da7e46` |
+| F2, F3 | hub-mode disassembly steps `DisStep shl 2` into the shared `hubAddr`; cog mode clamps `$000..$3F0`; dmPC seeds from the displayed address | `9da7e46` |
+| F5, F6, F7, F8, F9, F13 | click-region corrections | `7a5b0a0` |
+| F12, F15, F16 | hint off-by-one, six additions, invented hint removed | `7a5b0a0` |
+| F17, F18 | dispatch on the produced character; Delphi control characters reproduced | `7a5b0a0` |
+| F10 | withdrawn (false finding) | — |
+| F11 | dead `setStallBrk` removed for clarity | `9da7e46` |
+
+Two changes went slightly beyond the letter of a finding, both to keep the fix coherent:
+
+- **F6** also moved the REG/LUT click and hint onto the **inset heat-strip rect**
+  (`RegMap` vs `RegBox`, `:2060-2063`). `MapCogAddr` scales against the strip, so applying
+  the `-8` and the clamp against the enclosing box would have kept a residual scaling
+  error; the enclosing box is hover-only, as in PNut.
+- **F9** also sets `DisMode := dmHub` on hub data/character clicks, which Pascal does at
+  `:964` and we had omitted — the same omission F7/F8 name for the SFR and stack paths.
+
+### The two documented assumptions behind F17
+
+Recorded rather than silently resolved, per the sprint plan:
+
+1. **Delphi's control-character delivery is INFERRED from the Pascal source, not observed
+   on a running PNut.** `FormKeyPress` dispatches on `Byte(Key)` and the pseudo codes
+   assigned in `FormKeyDown` occupy `#1..#12`; that Ctrl+letter arrives as `#1..#26` is
+   standard Delphi `OnKeyPress` behavior, but it has not been confirmed against PNut on
+   hardware. If a hardware run disagrees, **Part A is corrected first**, then the change
+   flows to Test Plan v2 and the manual source.
+2. **PNut pages with a STALE shift state.** `KeyShift` is assigned only in `FormKeyDown`
+   (:1029), which `Exit`s before that line for letter keys, so a real Ctrl+K in PNut uses
+   whatever `KeyShift` was left from the last captured non-character key. We implement the
+   straightforward reading — the **current** modifier state, which makes Ctrl+K page by
+   `$1000` — and record the divergence here rather than reproduce a stale-state artifact.
+
 ## B.4 Suggested work order
 
 1. **F1** — one line; largest user-visible error.

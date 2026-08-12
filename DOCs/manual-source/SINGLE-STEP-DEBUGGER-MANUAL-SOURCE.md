@@ -142,7 +142,21 @@ Row 77+-----------+---------+----------------------------------------------+
 | **Page Up** | Hub Page Up | Scroll HUB viewer up: `$80` (normal), `$1000` (Ctrl), `$10000` (Shift) |
 | **Page Down** | Hub Page Down | Scroll HUB viewer down: same modifier scheme |
 
-All letter keys are case-insensitive.
+All letter keys are case-insensitive, and dispatch on the character you type — not on
+the physical key position — so non-QWERTY layouts behave the same way.
+
+**Control-key combinations.** Five Ctrl combinations reach the hub-navigation commands
+rather than their letter commands:
+
+| Key | Action |
+|-----|--------|
+| **Ctrl+C** | Hub scroll up one row (same as Up Arrow) |
+| **Ctrl+D** | Hub scroll down one row (same as Down Arrow) — *not* the DEBUG toggle |
+| **Ctrl+K** | Hub page up |
+| **Ctrl+L** | Hub page down |
+| **Ctrl+M** | Repeat Mode (same as Enter) |
+
+Other Ctrl combinations (Ctrl+A, Ctrl+B, …) do nothing.
 
 ---
 
@@ -155,35 +169,49 @@ All letter keys are case-insensitive.
 | **Break condition buttons** | Set condition exclusively (replaces others except INIT) | Toggle condition on/off without affecting others |
 | **Go button** | Single Go (same as Space) | Repeat Mode (same as Enter) |
 | **Go button (while running)** | Stop execution | Stop execution |
-| **Disassembly box** | Lock disassembly to follow PC (`dmPC` mode) | Toggle address breakpoint at clicked line |
-| **REG/LUT heatmap** | Lock disassembly to clicked cog/LUT address | — |
+| **Disassembly box** | Lock disassembly to follow PC (`dmPC` mode) | Toggle address breakpoint at clicked line — refused in hub mode if the line resolves below `$400` |
+| **REG/LUT heatmap** | Lock disassembly to the clicked cog/LUT address, placed mid-window | — |
 | **PC box** | Lock disassembly to follow PC | — |
-| **SFR values** | Navigate to value (IJMP/IRET as code pointers; PA/PB/PTRA/PTRB as hub pointers) | — |
-| **Stack values** | Navigate to value as code/hub pointer | — |
+| **SFR values** | Navigate to value: the first six rows (IJMP3..IRET1) go to cog space only when the value is itself below `$400`; every other case is a hub pointer, and the disassembly follows | — |
+| **Stack values** | Navigate to value as code/hub pointer; a hub-range value takes the disassembly with it | — |
 | **Pointer addresses** | Navigate hub viewer and disassembly to address | — |
 | **Register watch box** | Reset watch list | — |
-| **Smart pin watch box** | Reset smart pin watch list | Toggle: all pins vs. only pins with DIR set |
-| **Hub data / chr** | Navigate hub address to the clicked byte | — |
-| **Event names** | Set break event to clicked event (CT1..QMT) | — |
-
-> **Note:** clicking the **hub heatmap** to jump the viewer is not yet wired (the
-> heatmap is display-only for now); use the hub data click, the address-nibble
-> wheel, or a pointer/SFR click to navigate. Tracked in `TECHNICAL-DEBT.md`.
+| **Smart pin watch box** | Reset smart pin watch list | Reset the list **and** toggle: all pins vs. only pins with DIR set |
+| **Hub data (hex)** | Navigate hub address to the clicked byte | — |
+| **Hub characters (ASCII)** | Same, one character per byte — a separate region from the hex columns | — |
+| **Hub heatmap** | Jump the hub viewer to the clicked 128-byte sub-block | — |
+| **Event names** | Set the break event to the clicked event (CT1..QMT) **and arm it** | Toggle that event break off/on |
+| **BREAK button** | Clear all conditions except INIT | Same as left-click — BREAK is not button-sensitive |
 
 ### Mouse Wheel
 
-**In disassembly box** (switches to cog/hub lock mode if in follow-PC mode):
+**In disassembly box** (switches to cog/hub lock mode if in follow-PC mode, seeded from
+the address currently displayed):
 
-| Modifier | Cog Scroll | Hub Scroll |
-|----------|------------|------------|
-| None | 1 register | 16 bytes |
-| Ctrl | 4 registers | 1 byte |
-| Shift | 16 registers | 4 bytes |
+| Modifier | Cog mode | Hub mode |
+|----------|----------|----------|
+| None | 1 register | 4 bytes (one long) |
+| Ctrl | 4 registers | 16 bytes |
+| Shift | 16 registers | 64 bytes |
 | Ctrl+Shift | 32 registers | 128 bytes |
+
+Cog-mode scrolling **stops** at `$000` and `$3F0` rather than wrapping. Hub-mode
+scrolling moves the HUB data viewer with it — the disassembly and the hub viewer share
+one hub address.
 
 **In hub address digits**: Each scroll step changes the hex nibble under the cursor by +/-1.
 
-**In hub data box**: Same modifier scheme with hub-specific scroll amounts.
+**In hub data box**:
+
+| Modifier | Hub scroll |
+|----------|------------|
+| None | 16 bytes (one row) |
+| Ctrl | 1 byte |
+| Shift | 4 bytes |
+| Ctrl+Shift | 128 bytes (one sub-block) |
+
+**Over the hub heatmap**: the wheel does nothing — the heatmap is excluded from hub
+scrolling. Click it instead to jump.
 
 ### Mouse Hover (Hint Bar)
 
@@ -381,7 +409,7 @@ xxxxx  xx xx xx xx xx xx xx xx  xx xx xx xx xx xx xx xx  ................
 
 Each row: 5-digit address + 16 hex bytes + 16 ASCII characters (non-printable shown as '.'). Address wraps at `$FFFFF`.
 
-Navigation: arrow keys (Up/Down = +/-`$10`), page keys with modifiers, mouse wheel on address digits to change individual nibbles, click on a hub data byte to jump. (Clicking the hub heatmap to jump is not yet wired — see Mouse Controls note.)
+Navigation: arrow keys (Up/Down = +/-`$10`), page keys with modifiers, mouse wheel on address digits to change individual nibbles, click on a hub data byte or ASCII character to jump, or click the hub heatmap to jump to that 128-byte sub-block.
 
 ### Hub Heatmap
 
@@ -496,7 +524,8 @@ Define these `CON` symbols in your Spin2 source to configure debugging:
 1. Place `DEBUG` statements around suspicious code
 2. Run until breakpoint
 3. Examine the **hub heatmap** for unexpected bright spots (recently written areas)
-4. Navigate the hex dump to that area (address-nibble wheel, or click a nearby hub byte) — direct hub-heatmap click is not yet wired
+4. Click that spot on the heatmap to jump the viewer there, or navigate the hex dump
+   with the address-nibble wheel
 5. Switch disassembly to hub mode, navigate to suspect code
 6. Single-step while watching the hub heatmap for the write
 

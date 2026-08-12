@@ -1,5 +1,15 @@
 # Single-Step Debugger: Interactive Test Plan
 
+> ## 📤 HANDOFF SNAPSHOT — not the maintained copy
+>
+> The canonical document is **`DOCs/pascal-REF/SingleStep-Debugger-Interactive-Test-Plan.md`**.
+> This is a point-in-time copy made for the docs agent, and it is **already behind**: the
+> canonical plan is at **v2 (2026-08-12)**, which amended Test 4's step 8 and added **Phase D
+> — Input Command Certification** (D1–D11) for the v1.0.1 input-parity work.
+>
+> Edit the canonical copy, then re-snapshot. Never edit both — that is the arrangement the
+> doc-drift instrument exists to report.
+>
 > **Purpose**: Validate the single-step debugger against real P2 hardware. Tests run
 > simplest → most complex. Each test names the P2 program to load, the keys/clicks to
 > press, and what you should see.
