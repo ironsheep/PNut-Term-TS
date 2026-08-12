@@ -145,12 +145,13 @@ const CONSUMERS: Consumer[] = [
   }
 ];
 
-/** Feed `chunks` of a shape into a fresh consumer; return elapsed ms and bytes still held. */
-function drive(shape: StreamShape, consumer: Consumer, chunks: number): { ms: number; held: number } {
+/** Feed `chunks` of a shape into a fresh consumer; return elapsed nanoseconds and bytes still held. */
+function drive(shape: StreamShape, consumer: Consumer, chunks: number): { ns: bigint; held: number } {
   const c = consumer.make();
-  const start = Date.now();
+  const start = process.hrtime.bigint();
   for (let i = 0; i < chunks; i++) c.feed(shape.chunk(i));
-  return { ms: Date.now() - start, held: c.heldBytes() };
+  const ns = process.hrtime.bigint() - start;
+  return { ns, held: c.heldBytes() };
 }
 
 // Generous: quadratic is ~64x for an 8x input growth (and minutes at real capture sizes), so this
@@ -158,15 +159,36 @@ function drive(shape: StreamShape, consumer: Consumer, chunks: number): { ms: nu
 const MAX_SCALING_RATIO = 25;
 const HELD_BYTES_CAP = 256 * 1024; // any accumulator must stay far under a runaway
 
+// TIMER QUANTIZATION, not container load, is what breaks a ratio assert. With Date.now() a fast
+// linear consumer measured ~1 ms for the small sample, so the ratio was a 1 ms FLOOR divided into
+// the large reading — 27x on a CI runner with no quadratic behaviour present at all (CI red on
+// main, twice, while the local sweep was 176/176 green). Two changes make the ratio mean what it
+// claims: hrtime.bigint() removes the millisecond floor, and the small sample is GROWN until it is
+// long enough that scheduler noise cannot dominate it. Do not "fix" a future failure here by
+// raising MAX_SCALING_RATIO — that hides the O(n^2) regression this suite exists to catch.
+const NS_PER_MS = 1_000_000n;
+const MIN_SAMPLE_NS = 20n * NS_PER_MS; // small sample must be >= 20 ms of real work
+const SMALL_CHUNKS_START = 2_000;
+const SMALL_CHUNKS_CAP = 32_000; // bounds the suite: the large sample is 8x this at worst
+const GROWTH = 8; // linear ⇒ ~8x, quadratic ⇒ ~64x
+
+/** Grow the small-sample size until it spans enough real time for the ratio to be meaningful. */
+function calibrateSmallChunks(shape: StreamShape, consumer: Consumer): number {
+  let chunks = SMALL_CHUNKS_START;
+  while (chunks < SMALL_CHUNKS_CAP && drive(shape, consumer, chunks).ns < MIN_SAMPLE_NS) chunks *= 2;
+  return chunks;
+}
+
 describe('stream shapes — invariants across the map', () => {
   describe('I1 — per-message work is O(message), not O(accumulated state)', () => {
     for (const consumer of CONSUMERS) {
       for (const shape of SHAPES) {
         it(`${consumer.name} stays linear under '${shape.name}'`, () => {
           drive(shape, consumer, 500); // warm up so JIT effects do not skew the comparison
-          const small = Math.max(1, drive(shape, consumer, 2000).ms);
-          const large = Math.max(1, drive(shape, consumer, 16000).ms);
-          expect(large / small).toBeLessThan(MAX_SCALING_RATIO);
+          const smallChunks = calibrateSmallChunks(shape, consumer);
+          const small = drive(shape, consumer, smallChunks).ns;
+          const large = drive(shape, consumer, smallChunks * GROWTH).ns;
+          expect(Number(large) / Number(small)).toBeLessThan(MAX_SCALING_RATIO);
         });
       }
     }
