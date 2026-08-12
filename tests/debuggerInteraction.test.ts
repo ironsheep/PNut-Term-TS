@@ -579,6 +579,16 @@ describe('DebuggerInteraction — keyboard dispatches on the PRODUCED CHARACTER 
     expect(h.state.breakValue & BREAK_MAIN).toBe(BREAK_MAIN);
   });
 
+  it('plain D toggles break-on-DEBUG and plain R resets the register watch', () => {
+    const h = makeInteraction();
+    const before = h.state.breakValue & BREAK_DEBUG;
+    press({ key: 'd', code: 'KeyD' });
+    expect(h.state.breakValue & BREAK_DEBUG).not.toBe(before);
+    h.state.regWatchList = [{ reg: 1, value: 2, counter: 3 }] as any;
+    press({ key: 'R', code: 'KeyR' });
+    expect(h.state.regWatchList).toEqual([]);
+  });
+
   it('a layout-shifted keyboard follows the CHARACTER, not the physical key', () => {
     // AZERTY: the key at the QWERTY 'M' position produces ',' — and the key that
     // produces 'm' sits elsewhere. PNut dispatches on what was typed.
