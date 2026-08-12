@@ -142,49 +142,71 @@ export class DebuggerInteraction {
   // Keyboard — Pascal FormKeyPress semantics (DebuggerUnit.pas lines 1033-1089)
   // ============================================================================
 
+  /**
+   * Pascal FormKeyDown (:1012-1031) maps the non-character keys onto pseudo control
+   * codes and hands them to the SAME dispatcher as typed characters. Only these ten
+   * are captured; every other non-character key Exits before dispatch.
+   */
+  private static readonly KEY_PSEUDO_CODES: Record<string, number> = {
+    ArrowLeft: 1, ArrowRight: 2, ArrowUp: 3, ArrowDown: 4,
+    Home: 5, End: 6, Delete: 7, Insert: 10, PageUp: 11, PageDown: 12
+  };
+
   private handleKey(e: KeyboardEvent): void {
     const code = e.code;
-    const shift = e.shiftKey;
-    const ctrl = e.ctrlKey;
 
     // Tab capture (Pascal WMGetDlgCode + DLGC_WANTTAB, DebuggerUnit.pas ~L533):
     // swallow Tab so it cannot move keyboard focus off the debugger window.
     if (code === 'Tab') { e.preventDefault(); return; }
 
-    // Letter / execution keys (Pascal uppercases all letter keys)
-    let letter: string | null = null;
-    if (code === 'Space')       letter = ' ';
-    else if (code === 'Enter' || code === 'NumpadEnter') letter = '\n';
-    else if (code.length === 4 && code.startsWith('Key')) letter = code.charAt(3);
-
-    if (letter !== null) {
-      e.preventDefault();
-      switch (letter) {
-        case ' ':  return this.onGoLeftClick();       // SPACE
-        case '\n': return this.onGoRightClick();      // ENTER
-        case 'B':  return this.onBreakLeftClick();    // B
-        case 'I':  return this.onButtonRightClick('INIT');
-        case 'D':  return this.onButtonRightClick('DEBUG');
-        case 'M':  return this.onButtonRightClick('MAIN');
-        case 'R':  return this.onResetWatch();
-        default:   return;
-      }
+    // Reduce the event to the single byte Pascal dispatches on (:1037-1041).
+    //
+    // Two consequences of matching Delphi here, both deliberate:
+    //   * Dispatch is on the PRODUCED CHARACTER, uppercased — not on the physical
+    //     key position — so AZERTY/Dvorak keyboards behave as they do in PNut.
+    //   * Delphi delivers Ctrl+letter to OnKeyPress as control characters #1..#26,
+    //     which COLLIDE with the pseudo codes above. Those collisions are reachable
+    //     PNut behavior and are reproduced: Ctrl+C = hub up, Ctrl+D = hub down,
+    //     Ctrl+K/Ctrl+L = hub page up/down, Ctrl+M = #13 = ENTER = go-repeat. Ctrl
+    //     combos with no matching case (Ctrl+A, Ctrl+B) do nothing.
+    let keyPress: number;
+    const pseudo = DebuggerInteraction.KEY_PSEUDO_CODES[code];
+    if (pseudo !== undefined) {
+      keyPress = pseudo;
+    } else if (e.altKey || e.metaKey) {
+      return;                                     // no Delphi OnKeyPress analog
+    } else if (code === 'Space') {
+      keyPress = 32;
+    } else if (code === 'Enter' || code === 'NumpadEnter') {
+      keyPress = 13;
+    } else if (e.key.length !== 1) {
+      return;                                     // F-keys, modifiers, …
+    } else if (e.ctrlKey) {
+      const upper = e.key.toUpperCase();
+      if (upper < 'A' || upper > 'Z') return;
+      keyPress = upper.charCodeAt(0) - 0x40;      // Ctrl+A → #1 … Ctrl+Z → #26
+    } else {
+      keyPress = e.key.toUpperCase().charCodeAt(0);
     }
 
-    // Hub navigation
-    if (code === 'ArrowUp')   { e.preventDefault(); this.navHub(-0x10);   return; }
-    if (code === 'ArrowDown') { e.preventDefault(); this.navHub(+0x10);   return; }
-    if (code === 'PageUp') {
-      e.preventDefault();
-      const d = shift ? 0x10000 : ctrl ? 0x1000 : 0x80;
-      this.navHub(-d);
-      return;
-    }
-    if (code === 'PageDown') {
-      e.preventDefault();
-      const d = shift ? 0x10000 : ctrl ? 0x1000 : 0x80;
-      this.navHub(+d);
-      return;
+    // NOTE (documented divergence): Pascal assigns KeyShift only in FormKeyDown,
+    // which Exits before that line for the letter keys, so a real Ctrl+K in PNut
+    // pages using a STALE shift state. We use the current modifier state.
+    const pageDelta = e.shiftKey ? 0x10000 : e.ctrlKey ? 0x1000 : HUB_SUB_BLOCK_SIZE;
+
+    switch (keyPress) {
+      case 32: e.preventDefault(); return this.onGoLeftClick();            // SPACE
+      case 13: e.preventDefault(); return this.onGoRightClick();           // ENTER / Ctrl+M
+      case 0x42: e.preventDefault(); return this.onBreakLeftClick();       // B
+      case 0x49: e.preventDefault(); return this.onButtonRightClick('INIT');   // I
+      case 0x44: e.preventDefault(); return this.onButtonRightClick('DEBUG');  // D
+      case 0x4D: e.preventDefault(); return this.onButtonRightClick('MAIN');   // M
+      case 0x52: e.preventDefault(); return this.onResetWatch();           // R
+      case 3:  e.preventDefault(); return this.navHub(-0x10);              // UP / Ctrl+C
+      case 4:  e.preventDefault(); return this.navHub(+0x10);              // DOWN / Ctrl+D
+      case 11: e.preventDefault(); return this.navHub(-pageDelta);         // PgUp / Ctrl+K
+      case 12: e.preventDefault(); return this.navHub(+pageDelta);         // PgDn / Ctrl+L
+      default: return;
     }
   }
 
@@ -222,10 +244,26 @@ export class DebuggerInteraction {
       return;
     }
 
+    // 1c. REG / LUT heat strips → lock the disassembly to the register under the
+    // cursor. Like the hub map these are INSET inside their boxes (Pascal RegMap vs
+    // RegBox, :2060-2063): the surrounding box is hover-only, so a click on it must
+    // do nothing, and MapCogAddr scales against the strip.
+    for (const strip of [
+      { rect: this.renderer.regMapBoundsPx(), lut: false },
+      { rect: this.renderer.lutMapBoundsPx(), lut: true }
+    ]) {
+      const r = strip.rect;
+      if (px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) {
+        const addr = this.mapCogAddr(py - r.y, r.h);
+        this.state.disMode = DisMode.dmCog;
+        this.state.cogAddr = strip.lut ? 0x200 + addr : addr;
+        this.renderer.render();
+        return;
+      }
+    }
+
     // 2. Panel-specific click behaviors
     const panels: Array<[keyof typeof PANEL, (rx: number, ry: number, rc: boolean) => void]> = [
-      ['REGMAP', (rx, ry, _rc) => this.onRegMapClick(rx, ry)],
-      ['LUTMAP', (rx, ry, _rc) => this.onLutMapClick(rx, ry)],
       ['PC',     (_rx, _ry, _rc) => this.onPCClick()],
       ['DIS',    (_rx, ry, rc) => this.onDisassemblyClick(ry, rc)],
       ['WATCH',  (_rx, _ry, _rc) => this.onResetWatch()],
@@ -337,6 +375,12 @@ export class DebuggerInteraction {
       this.renderer.render();
       return;
     }
+    if (name === 'BREAK') {
+      // Pascal :855 handles BREAK OUTSIDE any left/right test — either button
+      // clears all but INIT.
+      this.onBreakLeftClick();
+      return;
+    }
     if (leftClick) this.onButtonLeftClick(name);
     else this.onButtonRightClick(name);
     this.renderer.render();
@@ -359,7 +403,6 @@ export class DebuggerInteraction {
         (bv & KEEP_INIT_MASK) | BREAK_EVENT | ((this.state.breakEvent & 0xF) << 12)); break;
       case 'ADDR':  this.controller.setBreakValue(
         (bv & KEEP_INIT_MASK) | BREAK_ADDR | ((this.state.breakAddr & 0xFFFFF) << 12)); break;
-      case 'BREAK': this.onBreakLeftClick(); break;
     }
   }
 
@@ -469,17 +512,15 @@ export class DebuggerInteraction {
     this.state.disMode = DisMode.dmPC;
   }
 
-  private onRegMapClick(_relX: number, relY: number): void {
-    // Click locks dmCog to the register under cursor.
-    const row = Math.floor(relY / (PANEL.REGMAP.h * HALF_ROW_PX / 512)); // 0..511
-    this.state.disMode = DisMode.dmCog;
-    this.state.disAddr = row & 0x1FF;
-  }
-
-  private onLutMapClick(_relX: number, relY: number): void {
-    const row = Math.floor(relY / (PANEL.LUTMAP.h * HALF_ROW_PX / 512)); // 0..511
-    this.state.disMode = DisMode.dmCog;
-    this.state.disAddr = 0x200 + (row & 0x1FF);
+  /**
+   * Register-strip click → the cog address to lock to (Pascal MapCogAddr, :689):
+   * `Within((MouseY - top) shl 9 div height - 8, $000, $1F0)`. The `-8` centers the
+   * clicked register in the 16-line window instead of putting it on the top line;
+   * the clamp keeps a full window in range.
+   */
+  private mapCogAddr(relY: number, stripHeightPx: number): number {
+    const scaled = Math.floor((relY * 512) / stripHeightPx);
+    return Math.min(Math.max(scaled - 8, 0x000), 0x1F0);
   }
 
   private onDisassemblyClick(relY: number, rightClick: boolean): void {
@@ -488,6 +529,10 @@ export class DebuggerInteraction {
     if (lineIdx < 0 || lineIdx >= 16) return;
     const addr = this.renderer.disassemblyLineAddress(lineIdx);
     if (rightClick) {
+      // Pascal :876 — in hub mode a line resolving below $400 is REFUSED outright:
+      // you cannot set a hub breakpoint inside cog space. breakValue and breakAddr
+      // are left completely untouched.
+      if (this.state.disMode === DisMode.dmHub && addr < 0x400) return;
       // Toggle address breakpoint at this line (Pascal lines 872-888).
       const bv = this.state.breakValue;
       if ((bv & BREAK_ADDR) !== 0 && this.state.breakAddr === addr) {
@@ -510,26 +555,32 @@ export class DebuggerInteraction {
     const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 0 || row >= 16) return;
     const addr = 0x1F0 + row;
-    const value = this.state.cogImage[addr];
-    if (addr <= 0x1F5) {
-      // IJMP/IRET → code pointer, lock disassembly there
+    const value = this.state.cogImage[addr] & 0xFFFFF;
+    // Pascal :898 requires BOTH tests: an interrupt vector holding a hub-range
+    // value is a hub pointer, not a cog one.
+    if (value < 0x400 && row < 6) {
+      // IJMP3..IRET1 → code pointer, lock disassembly there
       this.state.disMode = DisMode.dmCog;
-      this.state.disAddr = value & 0xFFFFF;
+      this.state.cogAddr = value;
     } else {
-      // PA/PB/PTRA/PTRB/DIR/OUT/IN → hub pointer
-      this.state.hubAddr = value & 0xFFFFF;
+      // PA/PB/PTRA/PTRB/DIR/OUT/IN — or a vector pointing into hub — → hub pointer,
+      // and the disassembly follows it (Pascal sets DisMode as well as HubAddr).
+      this.state.disMode = DisMode.dmHub;
+      this.state.hubAddr = value;
     }
   }
 
   private onStackClick(relX: number): void {
     const i = Math.floor((relX - 6 * CHAR_WIDTH_PX) / (CHAR_WIDTH_PX * 9)); // data at StackDataLeft (STACKl+6); 9 chars per slot
     if (i < 0 || i >= 8) return;
-    const value = this.state.message[6 + i]; // mSTK0 + i
+    const value = this.state.message[6 + i] & 0xFFFFF; // mSTK0 + i
     if (value < 0x400) {
       this.state.disMode = DisMode.dmCog;
-      this.state.disAddr = value;
+      this.state.cogAddr = value;
     } else {
-      this.state.hubAddr = value & 0xFFFFF;
+      // Pascal :921 sets DisMode as well, so the disassembly follows the pointer.
+      this.state.disMode = DisMode.dmHub;
+      this.state.hubAddr = value;
     }
   }
 
@@ -575,13 +626,24 @@ export class DebuggerInteraction {
     // 2-half-row title offset is subtracted.
     const row = Math.floor(relY / (2 * HALF_ROW_PX));
     if (row < 0 || row > 7) return;
-    // If click falls in the hex-byte area, compute which byte.
-    const hexStartCol = 6; // after the 5-hex address
-    const relCol = Math.floor(relX / CHAR_WIDTH_PX) - hexStartCol;
-    if (relCol >= 0 && relCol < 48) {
-      const byteIdx = Math.min(15, Math.floor(relCol / 3));
-      this.state.hubAddr = ((this.state.hubAddr + row * 16 + byteIdx) & 0xFFFFF);
+    // Two separate click regions, both landing on a byte (Pascal InHubData /
+    // InHubChr, :955-966): the hex bytes at column 6 (three chars per byte) and
+    // the ASCII column at 6 + 16*3 + 1 = 55 (one char per byte). Column origins
+    // match renderHub's drawText calls.
+    const col = Math.floor(relX / CHAR_WIDTH_PX);
+    const HEX_COL = 6;      // after the 5-hex address plus its space
+    const CHR_COL = 6 + 16 * 3 + 1;
+    let byteIdx: number;
+    if (col >= HEX_COL && col < HEX_COL + 16 * 3) {
+      byteIdx = Math.min(15, Math.floor((col - HEX_COL) / 3));
+    } else if (col >= CHR_COL && col < CHR_COL + 16) {
+      byteIdx = col - CHR_COL;
+    } else {
+      return;
     }
+    // Pascal sets DisMode := dmHub here as well, so the disassembly follows.
+    this.state.disMode = DisMode.dmHub;
+    this.state.hubAddr = (this.state.hubAddr + row * 16 + byteIdx) & 0xFFFFF;
   }
 
   // ============================================================================
@@ -615,9 +677,27 @@ export class DebuggerInteraction {
       const freqHz = this.state.message[18] || 1;
       const secs = Number(this.state.ctCounter) / freqHz;
       const ctHint = `Clock Ticks Since Reset | ${secs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} seconds at ${freqHz.toLocaleString()} Hz`;
+      // Sub-regions inset inside a panel are tested FIRST, exactly as Pascal's
+      // MouseWithin chain reaches the inner box before the enclosing one.
+      const inset: Array<[{ x: number; y: number; w: number; h: number }, string]> = [
+        [this.renderer.regMapBoundsPx(),
+          'Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange'],
+        [this.renderer.lutMapBoundsPx(),
+          'LUT Register Bitmap/Heatmap | Click to lock disassembly to LUT subrange'],
+        [this.renderer.hubMapBoundsPx(), 'HUB Heatmap | Click to lock HUB address'],
+        [this.hubAddrBoundsPx(), 'Hub Data | Mousewheel changes HUB address digit(s)'],
+        [this.hubTabBoundsPx(), 'Hub Data']
+      ];
+      for (const [r, text] of inset) {
+        if (px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) {
+          this.setHint(text);
+          return;
+        }
+      }
       const regions: Array<[keyof typeof PANEL, string]> = [
-        ['REGMAP', 'Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange'],
-        ['LUTMAP', 'LUT Register Bitmap/Heatmap | Click to lock disassembly to LUT subrange'],
+        // The enclosing REG/LUT boxes — hover-only, distinct from the strips above.
+        ['REGMAP', 'Cog Register Bitmap/Heatmap'],
+        ['LUTMAP', 'LUT Register Bitmap/Heatmap'],
         ['CF', 'Carry Flag'],
         ['ZF', 'Zero Flag'],
         ['PC', 'Program Counter | Click to lock disassembly to PC'],
@@ -634,15 +714,21 @@ export class DebuggerInteraction {
         ['PTR', 'Pointers and Data'],
         ['STATUS', 'Indicators for COGINIT, STALLI, Streamer, Color Modulator, LUT sharing'],
         ['PIN', 'Pin Registers'],
-        ['SMART', 'RQPIN-Delta Watch List | L-Click to reset list | R-Click to watch all/only pins with DIR set'],
-        ['HUB', 'Hub Data | Mousewheel {+Ctrl/Shift} scrolls']
+        // Pascal passes an EMPTY hint for InSmartWatch (:666) — the entry stays so
+        // hovering the box CLEARS the bar rather than falling through to a neighbour.
+        ['SMART', ''],
+        ['HUB', 'Hub Data | Mousewheel {+Ctrl/Shift} scrolls'],
+        ['B', 'Break Control | Select break condition(s) and execute code']
       ];
       for (const [name, text] of regions) {
         const b = this.renderer.panelBoundsPx(name);
         if (px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h) {
           newHint = text;
           if (name === 'EVENT') {
-            const row = Math.floor((py - b.y - 2 * HALF_ROW_PX) / (2 * HALF_ROW_PX));
+            // Rows are measured from the PANEL TOP, exactly as the click path does
+            // and as renderEvents draws them (EVENT_NAMES[i] at p.t + i*2). The
+            // former title offset made every row name the event ABOVE it.
+            const row = Math.floor((py - b.y) / (2 * HALF_ROW_PX));
             if (row >= 0 && row < 16) {
               newHint = `Event Flags | L-Click to break on ${EVENT_NAMES[row]} event | R-Click to toggle`;
             }
@@ -652,10 +738,26 @@ export class DebuggerInteraction {
       }
     }
 
-    if (newHint !== this.renderer.hintText) {
-      this.renderer.hintText = newHint;
+    this.setHint(newHint);
+  }
+
+  private setHint(text: string): void {
+    if (text !== this.renderer.hintText) {
+      this.renderer.hintText = text;
       this.renderer.render();
     }
+  }
+
+  /** The 5-digit hub address column (Pascal HubAddr box, :2103). */
+  private hubAddrBoundsPx(): { x: number; y: number; w: number; h: number } {
+    const b = this.renderer.panelBoundsPx('HUB');
+    return { x: b.x, y: b.y, w: 5 * CHAR_WIDTH_PX, h: b.h };
+  }
+
+  /** The 'HUB' tab at the bottom-left of the hub box (Pascal HubTab, :2100). */
+  private hubTabBoundsPx(): { x: number; y: number; w: number; h: number } {
+    const b = this.renderer.panelBoundsPx('HUB');
+    return { x: b.x, y: b.y + (PANEL.HUB.h - 1) * HALF_ROW_PX, w: 3 * CHAR_WIDTH_PX, h: 4 * HALF_ROW_PX };
   }
 
   /** XBYTE-box dynamic hint — decodes the XBYTE mode word (mBRKC bits 24..16).

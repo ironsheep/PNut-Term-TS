@@ -168,18 +168,26 @@ export interface MockRenderer {
   hitTestButton: jest.Mock;
   panelBoundsPx: jest.Mock;
   hubMapBoundsPx: jest.Mock;
+  regMapBoundsPx: jest.Mock;
+  lutMapBoundsPx: jest.Mock;
   disassemblyLineAddress: jest.Mock;
   render: jest.Mock;
+  /** Hover-hint text the interaction layer writes; the real renderer paints it. */
+  hintText: string;
 }
 export function makeMockRenderer(): MockRenderer {
+  const offscreen = { x: -1, y: -1, w: 0, h: 0 };
   return {
     hitTestButton: jest.fn().mockReturnValue(null),
     panelBoundsPx: jest.fn().mockReturnValue(null),
-    // Zero-size rect never matches a click; tests that exercise the hub map
-    // override this with a real rect.
-    hubMapBoundsPx: jest.fn().mockReturnValue({ x: -1, y: -1, w: 0, h: 0 }),
+    // Zero-size rects never match a click; tests that exercise the heat strips or
+    // the hub map override these with real rects.
+    hubMapBoundsPx: jest.fn().mockReturnValue(offscreen),
+    regMapBoundsPx: jest.fn().mockReturnValue(offscreen),
+    lutMapBoundsPx: jest.fn().mockReturnValue(offscreen),
     disassemblyLineAddress: jest.fn().mockReturnValue(0x000),
-    render: jest.fn()
+    render: jest.fn(),
+    hintText: ''
   };
 }
 

@@ -953,6 +953,23 @@ export class DebuggerRenderer {
     return this.boxBoundaryPx(p.l + 74, p.t + 1, 22, p.h - 2, 1);
   }
 
+  /**
+   * Pixel rect of the REG heat strip — the INSET map inside the REG box, matching
+   * the rect renderRegMap draws into (Pascal RegMap, DebuggerUnit.pas:2061). The
+   * enclosing PANEL.REGMAP rect is Pascal's REG *box*: it carries its own hover
+   * hint, and MapCogAddr scales against the strip, not the box.
+   */
+  public regMapBoundsPx(): { x: number; y: number; w: number; h: number } {
+    const p = PANEL.REGMAP;
+    return this.boxBoundaryPx(p.l + 1, p.t + 3, 7, p.h - 4, 1);
+  }
+
+  /** Pixel rect of the LUT heat strip (Pascal LutMap, DebuggerUnit.pas:2063). */
+  public lutMapBoundsPx(): { x: number; y: number; w: number; h: number } {
+    const p = PANEL.LUTMAP;
+    return this.boxBoundaryPx(p.l + 1, p.t + 3, 7, p.h - 4, 1);
+  }
+
   // ──────────────────────────────────────────────────────────────────────
   // §6.6 — Disassembly
   // ──────────────────────────────────────────────────────────────────────

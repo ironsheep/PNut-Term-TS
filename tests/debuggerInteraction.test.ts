@@ -11,7 +11,8 @@ import {
 import {
   STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER,
   HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS,
-  BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX, BREAK_ADDR, BREAK_EVENT
+  BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX, BREAK_ADDR, BREAK_EVENT,
+  BREAK_MAIN, BREAK_INIT, BREAK_DEBUG, PANEL, EVENT_NAMES
 } from '../src/classes/debugger/shared/constants';
 import { DisMode } from '../src/classes/debugger/renderer/DebuggerState';
 
@@ -476,6 +477,316 @@ describe('DebuggerInteraction — GO right-click starts repeat without a redunda
     (h.interaction as any).onGoRightClick();
     expect(h.state.repeatMode).toBe(true);
     expect(h.state.stallBrk).toBe(STALL_CMD);
+  });
+});
+
+describe('DebuggerInteraction — hover hints (Part A §A.5, F12/F15/F16)', () => {
+  const EVENT = { x: 900, y: 40, w: 40, h: 256 };
+  const HUB = { x: 100, y: 500, w: 776, h: 128 };
+  const SMART = { x: 100, y: 460, w: 776, h: 16 };
+  const BBOX = { x: 872, y: 296, w: 96, h: 128 };
+  const REGSTRIP = { x: 20, y: 10, w: 56, h: 568 };
+  const LUTSTRIP = { x: 110, y: 10, w: 56, h: 568 };
+  const REGBOX = { x: 16, y: 8, w: 72, h: 600 };
+  const LUTBOX = { x: 104, y: 8, w: 72, h: 600 };
+  const HUBMAP = { x: 700, y: 508, w: 176, h: 112 };
+
+  function harness() {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue(null);
+    h.renderer.regMapBoundsPx.mockReturnValue(REGSTRIP);
+    h.renderer.lutMapBoundsPx.mockReturnValue(LUTSTRIP);
+    h.renderer.hubMapBoundsPx.mockReturnValue(HUBMAP);
+    h.renderer.panelBoundsPx.mockImplementation((name: string) => {
+      switch (name) {
+        case 'EVENT':  return EVENT;
+        case 'HUB':    return HUB;
+        case 'SMART':  return SMART;
+        case 'B':      return BBOX;
+        case 'REGMAP': return REGBOX;
+        case 'LUTMAP': return LUTBOX;
+        default:       return { x: -10, y: -10, w: 0, h: 0 };
+      }
+    });
+    return h;
+  }
+  const hintAt = (h: ReturnType<typeof harness>, x: number, y: number): string => {
+    (h.interaction as any).updateHint(x, y);
+    return h.renderer.hintText;
+  };
+
+  it('F12 — every event row names THAT row, with no title offset', () => {
+    const h = harness();
+    // EVENT_NAMES[0] = INT is drawn but not selectable; rows 1..15 are CT1..QMT.
+    for (let row = 0; row < 16; row++) {
+      const hint = hintAt(h, EVENT.x + 1, EVENT.y + row * (2 * HALF_ROW_PX) + 1);
+      expect(hint).toContain(`break on ${EVENT_NAMES[row]} event`);
+    }
+  });
+
+  it('F12 — the hint and the CLICK agree on which row is which (they had drifted)', () => {
+    const h = harness();
+    const y = EVENT.y + 1 * (2 * HALF_ROW_PX) + 1;   // the CT1 row
+    expect(hintAt(h, EVENT.x + 1, y)).toContain('break on CT1 event');
+    (h.interaction as any).handleMouseDown(EVENT.x + 1, y, 0);
+    expect(h.state.breakEvent).toBe(1);              // same row → same event
+  });
+
+  it('F15 — the six previously-missing regions carry their Pascal hint strings', () => {
+    const h = harness();
+    expect(hintAt(h, REGBOX.x + 1, REGBOX.y + 1)).toBe('Cog Register Bitmap/Heatmap');
+    expect(hintAt(h, LUTBOX.x + 1, LUTBOX.y + 1)).toBe('LUT Register Bitmap/Heatmap');
+    // The tab hangs BELOW the hub box; where it overlaps the address column the
+    // address hint wins, exactly as Pascal's later MouseWithin call overwrites.
+    expect(hintAt(h, HUB.x + 1, HUB.y + HUB.h + 1)).toBe('Hub Data');
+    expect(hintAt(h, HUB.x + 1, HUB.y + 1))
+      .toBe('Hub Data | Mousewheel changes HUB address digit(s)');
+    expect(hintAt(h, HUBMAP.x + 1, HUBMAP.y + 1)).toBe('HUB Heatmap | Click to lock HUB address');
+    expect(hintAt(h, BBOX.x + 1, BBOX.y + 1))
+      .toBe('Break Control | Select break condition(s) and execute code');
+  });
+
+  it('the heat STRIPS keep their own click-describing hints, distinct from the boxes', () => {
+    const h = harness();
+    expect(hintAt(h, REGSTRIP.x + 1, REGSTRIP.y + 1))
+      .toBe('Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange');
+    expect(hintAt(h, LUTSTRIP.x + 1, LUTSTRIP.y + 1))
+      .toBe('LUT Register Bitmap/Heatmap | Click to lock disassembly to LUT subrange');
+  });
+
+  it('F16 — the smart-watch box shows NO hint (Pascal passes an empty string)', () => {
+    const h = harness();
+    hintAt(h, EVENT.x + 1, EVENT.y + 1);                 // something is showing
+    expect(hintAt(h, SMART.x + 1, SMART.y + 1)).toBe(''); // …and hovering SMART clears it
+  });
+});
+
+describe('DebuggerInteraction — keyboard dispatches on the PRODUCED CHARACTER (Part A §A.1, F17/F18)', () => {
+  function press(init: KeyboardEventInit): KeyboardEvent {
+    const ev = new KeyboardEvent('keydown', { cancelable: true, ...init });
+    document.dispatchEvent(ev);
+    return ev;
+  }
+
+  it('letter commands are case-insensitive and still all fire', () => {
+    const h = makeInteraction();
+    h.state.breakValue = BREAK_MAIN | BREAK_INIT;
+    press({ key: 'b', code: 'KeyB' });                      // BREAK
+    expect(h.state.breakValue).toBe(BREAK_INIT);
+    press({ key: 'I', code: 'KeyI' });                      // toggle INIT off
+    expect(h.state.breakValue & BREAK_INIT).toBe(0);
+    press({ key: 'm', code: 'KeyM' });                      // toggle MAIN on
+    expect(h.state.breakValue & BREAK_MAIN).toBe(BREAK_MAIN);
+  });
+
+  it('a layout-shifted keyboard follows the CHARACTER, not the physical key', () => {
+    // AZERTY: the key at the QWERTY 'M' position produces ',' — and the key that
+    // produces 'm' sits elsewhere. PNut dispatches on what was typed.
+    const h = makeInteraction();
+    h.state.breakValue = 0;
+    press({ key: ',', code: 'KeyM' });                      // physical M, types ','
+    expect(h.state.breakValue).toBe(0);                     // nothing happens
+    press({ key: 'm', code: 'Semicolon' });                 // types 'm' elsewhere
+    expect(h.state.breakValue & BREAK_MAIN).toBe(BREAK_MAIN);
+  });
+
+  it('SPACE and ENTER still drive GO after moving off e.code', () => {
+    const h = makeInteraction();
+    h.state.isDimmed = false;
+    press({ key: ' ', code: 'Space' });                     // go-single
+    expect(h.state.stallBrk).toBe(h.state.breakValue);
+    press({ key: 'Enter', code: 'Enter' });                 // go-repeat
+    expect(h.state.repeatMode).toBe(true);
+  });
+
+  it('Ctrl+C / Ctrl+D reach the hub-view control codes #3 / #4, not the letter cases', () => {
+    const h = makeInteraction();
+    h.state.hubAddr = 0x01000;
+    press({ key: 'c', code: 'KeyC', ctrlKey: true });
+    expect(h.state.hubAddr).toBe(0x00FF0);                  // up one 16-byte line
+    press({ key: 'd', code: 'KeyD', ctrlKey: true });
+    expect(h.state.hubAddr).toBe(0x01000);                  // down one line…
+    // …and specifically NOT the plain-D behavior (toggle break-on-DEBUG).
+    expect(h.state.breakValue & BREAK_DEBUG).toBe(BREAK_DEBUG); // untouched from reset default
+  });
+
+  it('Ctrl+K / Ctrl+L page the hub view (#11 / #12)', () => {
+    const h = makeInteraction();
+    h.state.hubAddr = 0x02000;
+    // Ctrl is held, so the page magnitude is the Ctrl one ($1000) — see the
+    // documented KeyShift divergence in handleKey.
+    press({ key: 'k', code: 'KeyK', ctrlKey: true });
+    expect(h.state.hubAddr).toBe(0x01000);
+    press({ key: 'l', code: 'KeyL', ctrlKey: true });
+    expect(h.state.hubAddr).toBe(0x02000);
+  });
+
+  it('Ctrl+M is #13 — the same code as ENTER — so it starts go-repeat', () => {
+    const h = makeInteraction();
+    h.state.isDimmed = false;
+    press({ key: 'm', code: 'KeyM', ctrlKey: true });
+    expect(h.state.repeatMode).toBe(true);
+  });
+
+  it('Ctrl combos with no matching case do nothing (Ctrl+A #1, Ctrl+B #2)', () => {
+    const h = makeInteraction();
+    h.state.breakValue = BREAK_MAIN | BREAK_INIT;
+    h.state.hubAddr = 0x03000;
+    press({ key: 'a', code: 'KeyA', ctrlKey: true });
+    press({ key: 'b', code: 'KeyB', ctrlKey: true });       // NOT the BREAK command
+    expect(h.state.breakValue).toBe(BREAK_MAIN | BREAK_INIT);
+    expect(h.state.hubAddr).toBe(0x03000);
+  });
+
+  it('Alt+letter and Meta+letter do nothing at all', () => {
+    const h = makeInteraction();
+    h.state.breakValue = BREAK_MAIN | BREAK_INIT;
+    press({ key: 'b', code: 'KeyB', altKey: true });
+    press({ key: 'b', code: 'KeyB', metaKey: true });
+    expect(h.state.breakValue).toBe(BREAK_MAIN | BREAK_INIT);
+  });
+
+  it('arrow and page keys keep their unmodified magnitudes', () => {
+    const h = makeInteraction();
+    h.state.hubAddr = 0x04000;
+    press({ key: 'ArrowUp', code: 'ArrowUp' });
+    expect(h.state.hubAddr).toBe(0x03FF0);
+    press({ key: 'ArrowDown', code: 'ArrowDown' });
+    expect(h.state.hubAddr).toBe(0x04000);
+    press({ key: 'PageDown', code: 'PageDown' });
+    expect(h.state.hubAddr).toBe(0x04080);                  // one 128-byte sub-block
+    press({ key: 'PageUp', code: 'PageUp', shiftKey: true });
+    expect(h.state.hubAddr).toBe((0x04080 - 0x10000) & 0xFFFFF);
+  });
+});
+
+describe('DebuggerInteraction — click-region corrections (Part A §A.2/§A.3, F5-F9/F13)', () => {
+  it('F5 — RIGHT-click on BREAK clears all but INIT, exactly like a left-click', () => {
+    const h = makeInteraction();
+    h.renderer.hitTestButton.mockReturnValue('BREAK');
+    h.state.breakValue = BREAK_MAIN | BREAK_INIT | BREAK_EVENT;
+    h.state.repeatMode = true;
+    (h.interaction as any).handleMouseDown(10, 10, 2);   // right button
+    expect(h.state.breakValue).toBe(BREAK_INIT);
+    expect(h.state.repeatMode).toBe(false);
+  });
+
+  describe('F6 — REG/LUT strip click centers the clicked register and clamps', () => {
+    // Pascal MapCogAddr: Within((relY shl 9) div stripHeight - 8, $000, $1F0),
+    // measured against the INSET strip, not the enclosing box.
+    const REG = { x: 20, y: 10, w: 56, h: 568 };
+    const LUT = { x: 110, y: 10, w: 56, h: 568 };
+    function harness() {
+      const h = makeInteraction();
+      h.renderer.hitTestButton.mockReturnValue(null);
+      h.renderer.panelBoundsPx.mockReturnValue({ x: -10, y: -10, w: 0, h: 0 });
+      h.renderer.regMapBoundsPx.mockReturnValue(REG);
+      h.renderer.lutMapBoundsPx.mockReturnValue(LUT);
+      return h;
+    }
+    const yForRegister = (reg: number) => REG.y + Math.ceil((reg * REG.h) / 512);
+
+    it('REG strip lands the clicked register MID-window, not on the top line', () => {
+      const h = harness();
+      (h.interaction as any).handleMouseDown(REG.x + 1, yForRegister(100), 0);
+      expect(h.state.disMode).toBe(DisMode.dmCog);
+      expect(h.state.cogAddr).toBe(100 - 8);   // the -8 centering
+    });
+
+    it('REG strip clamps at both ends ($000 and $1F0)', () => {
+      const h = harness();
+      (h.interaction as any).handleMouseDown(REG.x + 1, REG.y, 0);              // very top
+      expect(h.state.cogAddr).toBe(0x000);
+      (h.interaction as any).handleMouseDown(REG.x + 1, REG.y + REG.h - 1, 0);  // very bottom
+      expect(h.state.cogAddr).toBe(0x1F0);                                      // never past $1F0
+    });
+
+    it('LUT strip adds $200 AFTER the clamp, so it spans $200..$3F0', () => {
+      const h = harness();
+      (h.interaction as any).handleMouseDown(LUT.x + 1, LUT.y, 0);
+      expect(h.state.disMode).toBe(DisMode.dmCog);
+      expect(h.state.cogAddr).toBe(0x200);
+      (h.interaction as any).handleMouseDown(LUT.x + 1, LUT.y + LUT.h - 1, 0);
+      expect(h.state.cogAddr).toBe(0x3F0);
+    });
+  });
+
+  describe('F7 — SFR click needs BOTH a cog-range value AND an interrupt-vector row', () => {
+    const rowY = (row: number) => row * (2 * HALF_ROW_PX) + 1;
+
+    it('an interrupt vector holding a COG address locks the disassembly to cog space', () => {
+      const h = makeInteraction();
+      h.state.cogImage[0x1F2] = 0x0120;         // IJMP2, cog range
+      (h.interaction as any).onSFRClick(rowY(2));
+      expect(h.state.disMode).toBe(DisMode.dmCog);
+      expect(h.state.cogAddr).toBe(0x0120);
+    });
+
+    it('an interrupt vector holding a HUB address routes to hub — the case we got wrong', () => {
+      const h = makeInteraction();
+      h.state.cogImage[0x1F2] = 0x0A000;        // IJMP2 pointing into hub
+      (h.interaction as any).onSFRClick(rowY(2));
+      expect(h.state.disMode).toBe(DisMode.dmHub);
+      expect(h.state.hubAddr).toBe(0x0A000);
+    });
+
+    it('a data pointer row is always a hub pointer, and the disassembly follows it', () => {
+      const h = makeInteraction();
+      h.state.cogImage[0x1F8] = 0x00100;        // PTRA holding a cog-range value
+      (h.interaction as any).onSFRClick(rowY(8));
+      expect(h.state.disMode).toBe(DisMode.dmHub);   // row >= 6 ⇒ hub regardless
+      expect(h.state.hubAddr).toBe(0x00100);
+    });
+  });
+
+  it('F8 — a stack slot holding a hub address sets dmHub as well as hubAddr', () => {
+    const h = makeInteraction();
+    h.state.message[MSG.STK1] = 0x02040;
+    (h.interaction as any).onStackClick(6 * CHAR_WIDTH_PX + CHAR_WIDTH_PX * 9 + 1); // slot 1
+    expect(h.state.disMode).toBe(DisMode.dmHub);
+    expect(h.state.hubAddr).toBe(0x02040);
+  });
+
+  describe('F9 — the hub ASCII column is its own click region', () => {
+    const CHR_COL = 6 + 16 * 3 + 1;
+    it('clicking a character navigates to that byte (one char = one byte)', () => {
+      const h = makeInteraction();
+      h.state.hubAddr = 0x01000;
+      // row 2, 5th character → +2*16 + 4
+      (h.interaction as any).onHubClick((CHR_COL + 4) * CHAR_WIDTH_PX, 2 * (2 * HALF_ROW_PX) + 1);
+      expect(h.state.hubAddr).toBe(0x01000 + 2 * 16 + 4);
+      expect(h.state.disMode).toBe(DisMode.dmHub);
+    });
+
+    it('the hex area still uses three characters per byte', () => {
+      const h = makeInteraction();
+      h.state.hubAddr = 0x01000;
+      (h.interaction as any).onHubClick((6 + 3 * 4) * CHAR_WIDTH_PX, 1 * (2 * HALF_ROW_PX) + 1);
+      expect(h.state.hubAddr).toBe(0x01000 + 16 + 4);
+    });
+
+    it('the gap between the two regions does nothing', () => {
+      const h = makeInteraction();
+      h.state.hubAddr = 0x01000;
+      (h.interaction as any).onHubClick((CHR_COL - 1) * CHAR_WIDTH_PX, 1);
+      expect(h.state.hubAddr).toBe(0x01000);
+    });
+  });
+
+  it('F13 — a hub-mode disassembly right-click below $400 is refused outright', () => {
+    const h = makeInteraction();
+    h.state.disMode = DisMode.dmHub;
+    h.state.breakValue = BREAK_MAIN;
+    h.state.breakAddr = 0x00777;
+    h.renderer.disassemblyLineAddress.mockReturnValue(0x0100);  // cog space
+    (h.interaction as any).onDisassemblyClick(0, true);
+    expect(h.state.breakValue).toBe(BREAK_MAIN);   // untouched
+    expect(h.state.breakAddr).toBe(0x00777);       // untouched
+    // …while a line at or above $400 still arms normally.
+    h.renderer.disassemblyLineAddress.mockReturnValue(0x00400);
+    (h.interaction as any).onDisassemblyClick(0, true);
+    expect(h.state.breakValue & BREAK_ADDR).toBe(BREAK_ADDR);
+    expect(h.state.breakAddr).toBe(0x00400);
   });
 });
 
