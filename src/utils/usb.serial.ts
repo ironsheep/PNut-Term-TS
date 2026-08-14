@@ -711,7 +711,10 @@ export class UsbSerial extends EventEmitter {
     // "GetOverlappedResult: Invalid handle" on a write implies (the handle went away mid-
     // write). If ANY close fires during the download handshake, this line names it and
     // timestamps it — distinguishing a close-race from an intrinsic overlapped-write failure.
-    this.logSystemEvent(`* USBSer closing... (isOpen=${this._serialPort ? this._serialPort.isOpen : 'no-port'})`);
+    // Handle lifecycle, not run narrative: a class name and an isOpen flag tell the user
+    // nothing about what their run did. The narrative end-of-session marker is written
+    // by the logger ("=== Session ended … ==="), not here.
+    this.logChannelDiag(`* USBSer closing... (isOpen=${this._serialPort ? this._serialPort.isOpen : 'no-port'})`);
     if (this._serialPort && this._serialPort.isOpen) {
       await waitMSec(10); // 500 allowed prop to restart? use 10 mSec instead
 
@@ -832,7 +835,8 @@ export class UsbSerial extends EventEmitter {
         await new Promise<void>((resolve) => this._serialPort.close(() => resolve()));
       }
     } catch (closeErr: any) {
-      this.logSystemEvent(`* reopenPortFresh() - close warning (non-fatal): ${closeErr?.message ?? closeErr}`);
+      // Non-fatal internal of the reopen step, which is itself already --diag-serial.
+      this.logChannelDiag(`* reopenPortFresh() - close warning (non-fatal): ${closeErr?.message ?? closeErr}`);
     }
 
     const reopenOptions: any = {
@@ -1729,7 +1733,13 @@ export class UsbSerial extends EventEmitter {
           reject(err);
         } else {
           this._dtrValue = value;
-          this.logSystemEvent(`DTR: ${value}`);
+          // Channel internals, not run narrative. LOGGING-STANDARDS.md puts "DTR/RTS
+          // resets" in the always-live bucket, and that is the RESET EVENT — the
+          // `[DTR RESET]` line mainWindow emits once. This is the individual line
+          // transition that implements it, and a single reset drives several, so an
+          // ordinary run printed a column of bare `DTR: true/false` at the user.
+          // Same reclassification already applied to reopenPortFresh() above.
+          this.logChannelDiag(`DTR: ${value}`);
           // Force a drain to ensure the command is sent
           this._serialPort.drain((drainErr) => {
             if (drainErr) {
@@ -1753,7 +1763,7 @@ export class UsbSerial extends EventEmitter {
           reject(err);
         } else {
           this._rtsValue = value;
-          this.logSystemEvent(`RTS: ${value}`);
+          this.logChannelDiag(`RTS: ${value}`); // see the note in setDtr()
           resolve();
         }
       });

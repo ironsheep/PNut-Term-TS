@@ -32,10 +32,25 @@ is glanced at. Three distinct consumers:
 | Bucket | Whose content / role | Policy |
 |---|---|---|
 | **Terminal output** | user/agent `DEBUG()` text — the **primary** content; the agent feedback loop | **always live, kept clean** |
-| **System advice** | window placement (`WINDOW_PLACED`), download start/success/fail, baud, DTR/RTS resets, **directive `ERROR`/`WARNING`** (validation failures + valid ranges that help the user fix their `DEBUG` directives), and the user's optional `LOG_PURPOSE` annotation — the run narrative | **always live** |
+| **System advice** | window placement (`WINDOW_PLACED`), download start/success/fail, baud, DTR/RTS **reset events** (the `[DTR RESET]`/`[RTS RESET]` markers — *not* the individual line transitions that implement them, see below), **directive `ERROR`/`WARNING`** (validation failures + valid ranges that help the user fix their `DEBUG` directives), and the user's optional `LOG_PURPOSE` annotation — the run narrative | **always live** |
 | **Debug-window (display) output** | tick-based bitmap/scope/plot/… data the user wants inspectable | **always live** (high-volume) |
 | **Transport diagnostics** | *our* `[CTRL]`/`[DEBUGGER]` Phase-1/2/3 framing traffic | **compile-time gated OFF for releases** |
 | **USB wire capture** | the raw runtime byte conversation, in its **own** file — see principle 5 | **user-controlled** via `-u`/`--log-usb-trfc`; **not** compile-time gated |
+
+**Event vs. mechanism — the distinction that keeps "System advice" from swallowing the
+channel.** A bucket named for the *event* must not be read as licence to log every step
+that implements it. One DTR reset is one narrative line; it is performed by several
+individual DTR/RTS line transitions, and printing each of those put a column of bare
+`DTR: true` / `DTR: false` in front of every ordinary user of a release build. The same
+applies to handle lifecycle (`* USBSer closing…`), reopen steps, and any other
+*how-it-was-done* detail: those are **serial-channel diagnostics**, emitted only under
+`--diag-serial` via `logChannelDiag()`, never through `logSystemEvent()`.
+
+The test before putting a line in System advice: *would a user reading the log to find
+out what their run did care about this line — or does it only make sense to someone
+debugging the transport itself?* Errors are the exception that stays live regardless
+(`DTR: ERROR:…`, port-open failures, transport fallbacks): announce the exception, not
+the norm.
 
 The guiding rule: **program output is the log's reason to exist and stays clean; transport
 diagnostics are ours, are meaningless to the user/agent reading program output, and must not
