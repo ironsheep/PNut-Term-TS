@@ -92,6 +92,32 @@ describe('serial log classification — event vs mechanism', () => {
     });
   });
 
+  describe('transport selection — announce the exception, not the norm', () => {
+    // The Windows sync transport is the NORM there, and a user has no decision to make
+    // about it, so its selection is channel detail. Its ABSENCE breaks downloading and
+    // stays loud. Asserted against the source because the branch sits inside connect(),
+    // behind device I/O this suite deliberately does not stand up.
+    const source = require('fs').readFileSync(require.resolve('../src/utils/usb.serial.ts'), 'utf8');
+
+    it('reports choosing the sync transport only under --diag-serial', () => {
+      const line = source
+        .split('\n')
+        .find((l: string) => l.includes('using the synchronous COM transport'));
+
+      expect(line).toBeDefined();
+      expect(line).toContain('logChannelDiag');
+    });
+
+    it('still reports the sync transport being UNAVAILABLE', () => {
+      const idx = source.indexOf('Windows synchronous COM transport UNAVAILABLE');
+      expect(idx).toBeGreaterThan(-1);
+
+      // The emitter for this message is the call it sits inside; walk back to it.
+      const emitter = source.lastIndexOf('this.log', idx);
+      expect(source.slice(emitter, idx)).toContain('logSystemEvent');
+    });
+  });
+
   describe('errors stay live regardless', () => {
     /** Same instance, but the driver rejects the line change. */
     function failingSerial(serialDiagnostics: boolean): any {

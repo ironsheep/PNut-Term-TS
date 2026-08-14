@@ -114,10 +114,15 @@ export class UsbSerial extends EventEmitter {
 
     // Decide the transport ONCE, here, and log the decision — every later behavior difference
     // keys off this one flag. See createPort()/winSyncPort.ts for the why.
+    //
+    // The decision is still logged either way; what differs is who is told. Announce the
+    // EXCEPTION, not the norm: the sync transport IS the norm on Windows, so saying so on
+    // every run puts an implementation detail in front of a user who has no decision to
+    // make about it. Its absence is the reportable event, because it breaks downloading.
     this._usingSyncPort = UsbSerial.syncPortSelected();
     if (process.platform === 'win32') {
       if (this._usingSyncPort) {
-        this.logSystemEvent(`* Windows: using the synchronous COM transport (single handle, survives the P2 reset)`);
+        this.logChannelDiag(`* Windows: using the synchronous COM transport (single handle, survives the P2 reset)`);
       } else {
         // Capability gate, NOT a preference: the only way to land here is a broken install
         // (koffi native module missing or ABI-mismatched). Say so loudly — downloading will

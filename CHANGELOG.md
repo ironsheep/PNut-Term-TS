@@ -51,7 +51,10 @@ note to the console — the individual line transitions that carry out a reset, 
 the reset itself. The reset is still announced, once, as it always was; the transitions
 that implement it, and the handle bookkeeping around them, now appear only under
 `--diag-serial`, alongside the rest of the serial-channel troubleshooting detail. A line
-that fails to assert is still reported either way.
+that fails to assert is still reported either way. On Windows, the note that the
+synchronous COM transport is in use has moved there too — it is the normal case and
+nothing to act on, while its *absence* still says so plainly, because downloading cannot
+work without it.
 
 ## v1.0.0 (2026-07-27)
 
