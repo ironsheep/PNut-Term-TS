@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.0.2 (2026-08-14)
+
+The debug log keeps up with your program, and a release build stops talking about itself.
+
+The debug log window follows the tail again. When a program finished, the log could be
+left parked part-way up, hiding the last lines it printed — and once that happened the
+window stayed there for the rest of the session, since only scrolling back to the bottom
+yourself would resume live mode. The window had been scrolling itself smoothly, and its
+own animation looked exactly like you scrolling up. It now jumps to the tail, and it can
+tell its own scrolling from yours. The per-COG log windows had the same fault and are
+fixed with it.
+
+Three further log-window faults found alongside it. The scrollback preference now does
+something: it had been read by nothing, while a fixed cap of 1500 lines did the trimming
+regardless of what you set. It is now the setting that decides how far back you can
+scroll, it applies the moment you change it rather than waiting for new output, and it
+survives closing and reopening the viewer — which also means the default is now the 1000
+lines the preference always advertised, rather than the 1500 nobody could change. On the
+way out, quitting the app or ending a batch run could strand everything past the first
+hundred queued lines and close the window without waiting for the rest to appear — the
+log now empties its queue completely and waits for the window to draw it. And reopening
+the log viewer no longer reports that the display fell behind: the replayed history was
+being fed through the live-output path, which discarded most of it and then said so.
+
+Serial line-control detail no longer prints during ordinary runs. A release build was
+writing a bare column of `DTR: true` / `DTR: false` / `RTS: false` and a handle-closing
+note to the console — the individual line transitions that carry out a reset, rather than
+the reset itself. The reset is still announced, once, as it always was; the transitions
+that implement it, and the handle bookkeeping around them, now appear only under
+`--diag-serial`, alongside the rest of the serial-channel troubleshooting detail. A line
+that fails to assert is still reported either way. On Windows, the note that the
+synchronous COM transport is in use has moved there too — it is the normal case and
+nothing to act on, while its *absence* still says so plainly, because downloading cannot
+work without it.
+
 ## v1.0.1 (2026-08-12)
 
 Single-step debugger input now matches PNut.
@@ -25,36 +60,6 @@ Keyboard commands now match PNut, including on non-QWERTY layouts: commands foll
 character you type rather than the physical key position, and the five control
 combinations PNut answers — Ctrl+C, Ctrl+D, Ctrl+K, Ctrl+L for hub navigation and Ctrl+M
 for repeat — do so here too.
-
-The debug log window follows the tail again. When a program finished, the log could be
-left parked part-way up, hiding the last lines it printed — and once that happened the
-window stayed there for the rest of the session, since only scrolling back to the bottom
-yourself would resume live mode. The window had been scrolling itself smoothly, and its
-own animation looked exactly like you scrolling up. It now jumps to the tail, and it can
-tell its own scrolling from yours. The per-COG log windows had the same fault and are
-fixed with it.
-
-Three further log-window faults found alongside it. The scrollback preference now does
-something: it had been read by nothing, while a fixed cap of 1500 lines did the trimming
-regardless of what you set. It is now the setting that decides how far back you can
-scroll, it applies the moment you change it rather than waiting for new output, and it
-survives closing and reopening the viewer. On the way out, quitting the app or ending a
-batch run could strand everything past the first hundred queued lines and close the
-window without waiting for the rest to appear — the log now empties its queue completely
-and waits for the window to draw it. And reopening the log viewer no longer reports that
-the display fell behind: the replayed history was being fed through the live-output path,
-which discarded most of it and then said so.
-
-Serial line-control detail no longer prints during ordinary runs. A release build was
-writing a bare column of `DTR: true` / `DTR: false` / `RTS: false` and a handle-closing
-note to the console — the individual line transitions that carry out a reset, rather than
-the reset itself. The reset is still announced, once, as it always was; the transitions
-that implement it, and the handle bookkeeping around them, now appear only under
-`--diag-serial`, alongside the rest of the serial-channel troubleshooting detail. A line
-that fails to assert is still reported either way. On Windows, the note that the
-synchronous COM transport is in use has moved there too — it is the normal case and
-nothing to act on, while its *absence* still says so plainly, because downloading cannot
-work without it.
 
 ## v1.0.0 (2026-07-27)
 
