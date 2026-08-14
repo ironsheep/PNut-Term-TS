@@ -81,7 +81,11 @@ export class LoggerWindow extends DebugWindowBase {
   // reopened (Window > Show Log) while the file keeps receiving every line.
   private viewerOpen = true;
   private replayOnReady = false;
-  private static readonly REPLAY_LINES = 1000; // under the renderer's 1,500-line DOM cap
+  private static readonly REPLAY_LINES = 1000; // the viewer trims to the user's scrollback setting
+  // How many lines the viewer keeps scrollable. Default matches the documented
+  // preference default in context.ts; the real value arrives via
+  // updateScrollbackPreference() and is re-sent whenever a renderer becomes ready.
+  private scrollbackLines: number = 1000;
   private statusBarTimer: NodeJS.Timeout | null = null;
   private static readonly STATUS_BAR_INTERVAL_MS = 250; // 4 Hz is plenty for three numbers
   /** Set by MainWindow so the Window menu label can follow the viewer's state. */
@@ -409,6 +413,11 @@ export class LoggerWindow extends DebugWindowBase {
         if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] ✅ Theme sent to renderer:', this.theme.name);
       }
 
+      // Re-send the scrollback setting. A renderer starts at the built-in default, and
+      // the preference may have been applied while no viewer existed (or to a previous
+      // one), so pushing it here is what makes the setting survive a viewer reopen.
+      window.webContents.send('set-scrollback-lines', this.scrollbackLines);
+
       // A reopened viewer starts empty — repaint the recent history before anything new,
       // so it does not look like the session began at the moment you reopened it.
       if (this.replayOnReady) {
@@ -561,15 +570,34 @@ export class LoggerWindow extends DebugWindowBase {
    */
   private replayBufferedLines(): void {
     if (this.lineBuffer.length === 0) return;
+    if (!this.debugWindow || this.debugWindow.isDestroyed() || !this.rendererReady) return;
 
-    // queueForDisplay, NOT appendMessage: replaying through appendMessage would push the
-    // history back into lineBuffer, duplicating it on every reopen.
     const tail = this.lineBuffer.slice(-LoggerWindow.REPLAY_LINES);
-    this.queueForDisplay(
-      `⋯ replaying the last ${tail.length.toLocaleString()} line(s) of this session — the log file has every line ⋯`,
-      'system-message'
-    );
-    for (const line of tail) this.queueForDisplay(line, 'cog-message');
+
+    // Sent DIRECTLY, not through queueForDisplay. That queue sheds anything above
+    // MAX_DISPLAY_BACKLOG, because a LIVE stream outrunning the display is a real
+    // condition worth reporting. A replay is not that condition — it is a bounded set
+    // that is already complete — so routing it through the live path shed roughly 70%
+    // of it and printed a "display fell behind" banner that was simply false. Going
+    // direct also puts the history ahead of any live lines that queued up while the
+    // renderer was still starting, which is the order a reader expects.
+    //
+    // NOT appendMessage either: that would push the history back into lineBuffer and
+    // duplicate it on every reopen.
+    //
+    // Empty timestamps throughout: lineBuffer keeps the line text, not its arrival
+    // time, so there is no honest timestamp to show. The renderer omits the column
+    // for an empty string rather than inventing a replay-time one.
+    const messages = [
+      {
+        message: `⋯ replaying the last ${tail.length.toLocaleString()} line(s) of this session — the log file has every line ⋯`,
+        type: 'system-message',
+        timestamp: ''
+      },
+      ...tail.map((line) => ({ message: line, type: 'cog-message', timestamp: '' }))
+    ];
+
+    this.debugWindow.webContents.send('append-messages-batch', messages);
   }
 
   /**
@@ -648,7 +676,12 @@ export class LoggerWindow extends DebugWindowBase {
     #output {
       flex: 1;
       overflow-y: auto;
-      scroll-behavior: smooth;
+      /* NOT scroll-behavior: smooth. A smooth scroll is ANIMATED, so
+         "scrollTop = scrollHeight" becomes a request that lands over many frames,
+         firing intermediate scroll events at not-yet-at-bottom positions. The
+         scroll listener below reads those as "the user scrolled up" and drops out
+         of live mode, so the tail stops following and the last lines of a run are
+         left off-screen. A live tail jumps; it does not animate. */
       white-space: pre-wrap;
       word-wrap: break-word;
       padding: 10px;
@@ -731,9 +764,13 @@ export class LoggerWindow extends DebugWindowBase {
     // Hybrid scrolling state
     let autoScroll = true;          // Start in live mode
     let scrollThreshold = 50;       // Pixels from bottom = "live mode"
-    let maxScrollbackLines = 1000;  // User configurable from preferences
-    let maxDOMLines = 1500;         // DOM performance limit
-    let isInitialLoad = true;       // Track initial load to prevent race condition
+    // How many lines stay in the DOM, and therefore how far back you can scroll.
+    // This is the user's "Scrollback lines" preference (clamped 100..10000 by the
+    // handler below); the main process pushes the real value as soon as this renderer
+    // reports ready, so the literal here only covers the gap before that arrives.
+    // It is ONE cap deliberately: a second, lower, hardcoded ceiling is what made the
+    // preference inert — it was read by nothing while a fixed 1500 did the trimming.
+    let maxScrollbackLines = 1000;
 
     // Helper functions
     function updateModeIndicator(mode) {
@@ -746,8 +783,22 @@ export class LoggerWindow extends DebugWindowBase {
       }
     }
 
+    // Latch: a scroll event caused by OUR OWN scrollTop write must never be read as
+    // user intent. The scroll listener cannot tell the two apart on its own — it only
+    // sees a position — so the writer marks its own scrolls and the listener ignores
+    // exactly those. Without this, trimToCap() shrinking the content (and any layout
+    // change under a fast stream) emits scroll events that silently drop live mode.
+    let programmaticScroll = false;
+
     function scrollToBottom() {
+      programmaticScroll = true;
       output.scrollTop = output.scrollHeight;
+      // Release on the NEXT frame, not synchronously: scroll events are dispatched
+      // asynchronously, during the rendering steps that precede animation-frame
+      // callbacks. So our own event is guaranteed to arrive while the latch is still
+      // set, and this callback clears it immediately afterward. Releasing here also
+      // covers the case where the write changed nothing and no event ever fires.
+      requestAnimationFrame(function() { programmaticScroll = false; });
     }
 
     function isNearBottom() {
@@ -757,6 +808,7 @@ export class LoggerWindow extends DebugWindowBase {
     // Simple scroll behavior - if user scrolls up, pause auto-scroll
     // If they scroll back to bottom, resume
     output.addEventListener('scroll', function() {
+      if (programmaticScroll) return; // our own scroll, not the user's — carries no intent
       const nearBottom = isNearBottom();
 
       if (nearBottom && !autoScroll) {
@@ -809,7 +861,7 @@ export class LoggerWindow extends DebugWindowBase {
     }
 
     function trimToCap() {
-      const excess = output.children.length - maxDOMLines;
+      const excess = output.children.length - maxScrollbackLines;
       if (excess <= 0) return;
       // One range deletion instead of one removeChild per excess line — the old loop
       // invalidated layout once per line, thousands of times a second.
@@ -824,10 +876,10 @@ export class LoggerWindow extends DebugWindowBase {
       if (pendingLines.length === 0) return;
 
       // Drawing more than the DOM cap in one frame is pure waste — everything above the
-      // last maxDOMLines would be trimmed off the top before it was ever seen.
-      if (pendingLines.length > maxDOMLines) {
-        droppedByRenderer += pendingLines.length - maxDOMLines;
-        pendingLines = pendingLines.slice(-maxDOMLines);
+      // last maxScrollbackLines would be trimmed off the top before it was ever seen.
+      if (pendingLines.length > maxScrollbackLines) {
+        droppedByRenderer += pendingLines.length - maxScrollbackLines;
+        pendingLines = pendingLines.slice(-maxScrollbackLines);
       }
 
       const fragment = document.createDocumentFragment();
@@ -857,6 +909,20 @@ export class LoggerWindow extends DebugWindowBase {
       if (pendingFrame === null) pendingFrame = requestAnimationFrame(paintFrame);
     }
 
+    // Shutdown hook, called from the main process via executeJavaScript. Paints
+    // everything buffered RIGHT NOW instead of waiting for an animation frame — at
+    // shutdown the window is often already hidden or occluded, and rAF is throttled or
+    // suspended outright in that state, so a frame we are waiting on may simply never
+    // arrive. Returns the on-screen line count so the caller can log what landed.
+    window.__flushPaint = function() {
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      }
+      paintFrame();
+      return output.children.length;
+    };
+
     ipcRenderer.on('append-message', (event, data) => {
       pendingLines.push(data);
       schedulePaint();
@@ -880,15 +946,18 @@ export class LoggerWindow extends DebugWindowBase {
       output.innerHTML = '';
       // Reset to live mode on session reset
       autoScroll = true;
-      isInitialLoad = true;  // Reset initial load flag
       updateModeIndicator('live');
     });
 
 
-    // Handle scrollback preference updates
+    // Handle scrollback preference updates. Applied immediately rather than only to
+    // lines that arrive afterwards: lowering the setting should shorten what is
+    // already on screen, not wait for new traffic to enforce it.
     ipcRenderer.on('set-scrollback-lines', (event, lines) => {
       maxScrollbackLines = Math.min(Math.max(lines, 100), 10000); // Clamp to 100-10000 range
-      // console.log('[DEBUG LOGGER] Scrollback lines updated to: ' + maxScrollbackLines);
+      const wasFollowing = autoScroll;
+      trimToCap();
+      if (wasFollowing) scrollToBottom(); // trimming moved the content under the viewport
     });
 
     ipcRenderer.on('set-theme', (event, theme) => {
@@ -1815,11 +1884,8 @@ export class LoggerWindow extends DebugWindowBase {
       this.statusBarTimer = null;
     }
 
-    // Flush any pending messages
-    if (this.batchTimer) {
-      clearTimeout(this.batchTimer);
-      this.processBatch();
-    }
+    // Flush any pending messages — ALL of them, not one batch's worth.
+    this.drainDisplayQueue();
 
     // Flush any partial line waiting for more data
     this.flushLogLineAccumulator();
@@ -2427,11 +2493,84 @@ export class LoggerWindow extends DebugWindowBase {
   }
 
   /**
-   * Update scrollback preference
+   * Send EVERY queued display line to the renderer now, instead of the single
+   * BATCH_SIZE_LIMIT-sized batch processBatch() moves per call.
+   *
+   * WHY: processBatch() sends at most BATCH_SIZE_LIMIT lines and then re-arms
+   * batchTimer for the remainder. That is exactly right while the app is running —
+   * it is what caps painting at 60fps and keeps the display rate decoupled from the
+   * arrival rate (invariant I3). It is exactly wrong on the way out: at shutdown the
+   * timer it re-arms never gets to fire, so a single call silently stranded
+   * everything past the first hundred lines.
+   *
+   * Bounded by construction: each pass removes at least one batch from renderQueue
+   * and nothing refills it here, so this terminates. The iteration cap is a
+   * backstop against a future refill path, not the mechanism.
+   */
+  private drainDisplayQueue(): void {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    let passes = 0;
+    const maxPasses = Math.ceil(LoggerWindow.MAX_DISPLAY_BACKLOG / this.BATCH_SIZE_LIMIT) + 10;
+    while (this.renderQueue.length > 0 && passes < maxPasses) {
+      const before = this.renderQueue.length;
+      this.processBatch();
+      passes++;
+      if (this.renderQueue.length >= before) break; // made no progress (e.g. renderer gone)
+    }
+    // processBatch() re-arms the timer whenever it leaves anything behind; on the
+    // shutdown path that timer will never fire, so do not leave it pending.
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+  }
+
+  /**
+   * Shutdown-facing: make the final lines actually APPEAR before the window closes.
+   *
+   * The base implementation awaits `renderChain`, which this window never uses — its
+   * output lives in renderQueue (main) and pendingLines (renderer), neither of which
+   * the base class can see. So without this override the shutdown drain walked right
+   * past the log: gracefulShutdown() awaited drainPendingData(), got an immediate
+   * resolve, and then closed a window whose last lines had never been sent, let alone
+   * painted.
+   *
+   * Two steps, because there are two queues: push everything over IPC, then have the
+   * renderer paint it synchronously rather than waiting for an animation frame. The
+   * frame matters — rAF is throttled or suspended outright on an occluded window, so
+   * waiting for one at shutdown is exactly the hang this project already hit once with
+   * SPECTRO's SAVE. `__flushPaint` paints inline instead, and the whole round-trip is
+   * raced against a timeout so a torn-down renderer cannot stall the exit.
+   */
+  public async flushRenders(): Promise<void> {
+    this.drainDisplayQueue();
+
+    if (this.debugWindow && !this.debugWindow.isDestroyed() && this.rendererReady) {
+      const painted = this.debugWindow.webContents
+        .executeJavaScript('window.__flushPaint ? window.__flushPaint() : -1')
+        .catch(() => -1);
+      const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(-1), 1000));
+      const result = await Promise.race([painted, timeout]);
+      this.logConsoleMessage(`[DEBUG LOGGER] flushRenders: renderer reports ${result} line(s) on screen`);
+    }
+
+    await super.flushRenders();
+  }
+
+  /**
+   * Update scrollback preference — how many lines the viewer keeps available to
+   * scroll back through. Stored as well as sent: the viewer can be closed or not yet
+   * created when this arrives, and the value has to survive to the next window.
    */
   public updateScrollbackPreference(lines: number): void {
+    // Same clamp the renderer applies, kept here too so the stored value is always
+    // the one that will actually take effect.
+    this.scrollbackLines = Math.min(Math.max(lines, 100), 10000);
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
-      this.debugWindow.webContents.send('set-scrollback-lines', lines);
+      this.debugWindow.webContents.send('set-scrollback-lines', this.scrollbackLines);
     }
   }
 }

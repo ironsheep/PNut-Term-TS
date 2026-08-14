@@ -332,7 +332,10 @@ export class LoggerCOGWindow extends DebugWindowBase {
     #output {
       flex: 1;
       overflow-y: auto;
-      scroll-behavior: smooth;
+      /* NOT scroll-behavior: smooth — see the same note in loggerWin.ts. An animated
+         scroll fires intermediate scroll events short of the bottom, which the
+         listener below reads as the user scrolling up, dropping live mode and
+         leaving the tail of a run off-screen. A live tail jumps. */
       white-space: pre-wrap;
       word-wrap: break-word;
       padding: 10px;
@@ -441,6 +444,21 @@ export class LoggerCOGWindow extends DebugWindowBase {
     let autoScroll = true;
     let maxDOMLines = 1500; // DOM performance limit
 
+    // Latch: a scroll event caused by OUR OWN scrollTop write must never be read as
+    // user intent — the listener only sees a position and cannot tell the two apart.
+    // See the fuller note in loggerWin.ts.
+    let programmaticScroll = false;
+
+    function scrollToBottom() {
+      programmaticScroll = true;
+      output.scrollTop = output.scrollHeight;
+      // Released on the next frame: scroll events are dispatched during the rendering
+      // steps that precede animation-frame callbacks, so our own event always arrives
+      // while the latch is still set. Also covers a write that changes nothing and
+      // therefore fires no event at all.
+      requestAnimationFrame(function() { programmaticScroll = false; });
+    }
+
     // Export button handler
     document.getElementById('btn-export-log').addEventListener('click', async () => {
       const result = await ipcRenderer.invoke('export-cog-' + cogId);
@@ -482,7 +500,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
 
       // Auto-scroll to bottom
       if (autoScroll) {
-        output.scrollTop = output.scrollHeight;
+        scrollToBottom();
       }
 
       // Manage DOM size for performance
@@ -525,7 +543,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
       }
 
       if (autoScroll) {
-        output.scrollTop = output.scrollHeight;
+        scrollToBottom();
       }
 
       // Manage DOM size
@@ -581,6 +599,7 @@ export class LoggerCOGWindow extends DebugWindowBase {
 
     // Scroll handling
     output.addEventListener('scroll', function() {
+      if (programmaticScroll) return; // our own scroll, not the user's — carries no intent
       const scrollThreshold = 50;
       const nearBottom = (output.scrollTop + output.clientHeight) >= (output.scrollHeight - scrollThreshold);
       autoScroll = nearBottom;
