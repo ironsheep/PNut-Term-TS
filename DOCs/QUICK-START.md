@@ -88,7 +88,8 @@ Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 **Open**: Edit → Preferences or `Ctrl+,`
 
 **Quick Settings**:
-- **Baud Rate**: Serial Port → Default Baud Rate
+- **Serial Baud Rate**: Serial Port → Serial Baud Rate (`debug()` output and terminal)
+- **Download Baud Rate**: Serial Port → Download Baud Rate (loading a program only)
 - **Color Theme**: Terminal → Color Theme
 - **PropPlug Management**: Manage devices and control lines
 - **Auto-save Logs**: Logging → Auto-save Debug Logs
@@ -140,7 +141,7 @@ Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 ### Analyze High-Speed Data
 1. Open Performance Monitor first
 2. Watch buffer usage and queue depth
-3. Reduce baud rate if buffers overflow
+3. Reduce the serial baud rate if buffers overflow
 4. Close unused windows to reduce load
 
 ---
@@ -166,7 +167,7 @@ Clear the terminal from **Edit → Clear Terminal** (no shortcut).
 **Data Loss/Overflow**
 - Open Performance Monitor
 - Check buffer usage (>80% is problem)
-- Reduce baud rate in Preferences
+- Reduce the Serial Baud Rate in Preferences
 - Close unnecessary debug windows
 
 **Slow Response**
@@ -200,7 +201,8 @@ pnut-term-ts [options] [file.binary]
 
 ### Common Options
 - `-p <device>` - Specify serial port
-- `-b <baud>` - Set baud rate (default: 2000000)
+- `-b <baud>` / `--baud` - Serial baud: `debug()` output and terminal (default: read from the binary, else 2000000)
+- `--downloadbaud <baud>` - Download baud: loading a program only (9600-2000000, default 2000000)
 - `-n` - List available serial ports
 - `-r <file>` - Download to P2 RAM
 - `-f <file>` - Download to P2 Flash
@@ -223,8 +225,11 @@ pnut-term-ts -p P9c
 # Download to RAM
 pnut-term-ts -r program.binary
 
-# Custom baud rate
+# Custom serial baud (attaching to an already-running P2)
 pnut-term-ts -b 115200 -p P9cektn7
+
+# Slow USB adapter: load at a rate it can hold
+pnut-term-ts -r program.binary --downloadbaud 115200
 
 # Headless mode - perfect for Claude Code and AI agent regression testing
 pnut-term-ts --headless -p P9cektn7 -r test.bin --end-marker --timeout 60

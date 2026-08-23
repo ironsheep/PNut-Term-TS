@@ -47,7 +47,7 @@ automatically.
 ### Key Features
 - Specialized debug windows (TERM, BITMAP, PLOT, SCOPE, SCOPE_XY, LOGIC, FFT,
   SPECTRO, MIDI), plus the COG message logger and the single-step debugger.
-- Real-time serial data streaming (default debug baud **2 Mbps**), with an
+- Real-time serial data streaming (default serial baud **2 Mbps**), with an
   off-main-thread serial reader for lossless capture.
 - Download-to-RAM and download-to-flash with automatic P2 reset (DTR or RTS).
 - Binary session recording and playback (`.p2rec`).
@@ -171,7 +171,7 @@ elapsed/total time readout, a scrubber, and a speed selector (0.5×, 1×, 2×).
   input isn't shown twice.
 - **TX/RX indicators** — flash during serial transmit/receive.
 - **Port** — the connected device path.
-- **Baud** — the active debug baud rate.
+- **Baud** — the active serial baud rate.
 (The active DTR/RTS control line is shown on the *toolbar* button, not in the status bar.)
 
 ---
@@ -257,7 +257,8 @@ Your machine-wide defaults.
 | Setting | Options | Default |
 |---------|---------|---------|
 | Default PropPlug | Auto-detect, or a named device | Auto-detect |
-| Default Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | — |
+| Serial Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | — |
+| Download Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | — |
 | Reset P2 on App Startup | on / off | on |
 
 **Logging**
@@ -494,7 +495,8 @@ pnut-term-ts [options]
 | `-r` | `--ram` | file | Download the file to **RAM** and run |
 | `-f` | `--flash` | file | Download the file to **FLASH** and run |
 | `-p` | `--plug` | device | Use the PropPlug at `<device>` (path or serial; partial match OK). Auto-detects if exactly one device is present |
-| `-b` | `--debugbaud` | rate | **Override** the debug baud rate. Normally unnecessary — see *Debug baud* below |
+| `-b` | `--baud` | rate | Set the **serial baud** — DEBUG output and terminal traffic. Normally unnecessary when you download — see *Serial baud* below |
+| | `--downloadbaud` | rate | Set the **download baud** — used only while loading a program into the P2 |
 | `-n` | `--dvcnodes` | | List detected USB serial devices and exit |
 | `-m` | `--match-vendor-only` | | With `-n`, list any FTDI device (VID 0x0403), not just PropPlugs |
 | `-d` | `--debug` | | Emit detailed diagnostic messages |
@@ -517,7 +519,8 @@ pnut-term-ts -n                                  # list connected devices
 pnut-term-ts -n -m                               # list all FTDI devices
 pnut-term-ts -r prog.bin -p P9cektn7             # download to RAM and run (GUI)
 pnut-term-ts -f prog.bin                         # download to FLASH and run
-pnut-term-ts -p P9cektn7 -b 921600               # connect at 921600 baud
+pnut-term-ts -p P9cektn7 -b 921600               # attach at 921600 serial baud
+pnut-term-ts -r prog.bin --downloadbaud 115200   # slow adapter: load at 115200
 pnut-term-ts -p P9cektn7 -u                      # enable USB-traffic logging
 pnut-term-ts --ide --rts -p P9cektn7             # IDE mode, RTS reset
 pnut-term-ts --headless -r test.bin --end-marker # headless, exit on marker
@@ -535,39 +538,87 @@ batch mode (`--exit-on-end-session`).
 - `-r` and `-f` are mutually exclusive.
 - `--timeout` requires `--headless`, and takes a positive whole number of seconds.
 - `--end-marker` requires `--headless` or `--exit-on-end-session`, and its phrase cannot be empty.
-- `--debugbaud` takes a positive whole number of bits/sec.
+- `--baud` takes a whole number of bits/sec from **300** to **20000000**.
+- `--downloadbaud` takes a whole number of bits/sec from **9600** to **2000000** — the
+  range the P2's boot loader can lock on to.
 
 The command line is validated **before anything runs**. If any option is wrong,
 every problem with it is reported at once and the tool exits with code 2 — no
 device is touched, no download is attempted, and no window opens.
 
-### Debug baud — you should not need to set it
+### Serial baud and download baud — two rates, set separately
 
-**When you download a program with `-r` or `-f`, PNut-Term-TS reads the debug baud
-rate out of the binary itself and listens at that rate.** Your compiler writes the
-value into the image, so the binary already knows what the P2 will transmit at —
-including when your source sets its own rate:
+PNut-Term-TS uses two serial rates, and they do different jobs:
+
+- **Serial baud** — carries the `debug()` output your program prints *and* anything you
+  type at the terminal. It is a single rate because it is a single serial connection.
+- **Download baud** — used only for the moment a program is being loaded into the P2.
+
+#### Serial baud
+
+**When you download a program with `-r` or `-f`, you should not need to set this.**
+PNut-Term-TS reads the rate out of the binary itself and listens at that rate. Your
+compiler writes the value into the image, so the binary already knows what the P2 will
+transmit at — including when your source sets its own rate:
 
 ```spin2
 CON  DEBUG_BAUD = 921600     ' PNut-Term-TS picks this up automatically
 ```
 
-If your source says nothing, everything in the P2 world defaults to **2,000,000**,
-and so do we. Either way it just works, with no flag.
+If your source says nothing, everything in the P2 world defaults to **2,000,000**, and so
+do we. Either way it just works, with no flag.
 
-`-b` / `--debugbaud` is an **override** for the cases the binary can't tell us
-about — attaching to a P2 that is already running (no download), or a program built
-by a toolchain we don't recognize. If you pass `-b` and it *contradicts* the binary
-you're downloading, you'll get a warning saying so, because the P2 will transmit at
-its own compiled rate regardless and the output would be unreadable:
+**When you are not downloading, `--baud` is the only way to set it.** Attaching to a P2
+that is already running means there is no binary to take a rate from, and the same applies
+when you use PNut-Term-TS as a plain serial terminal against something that isn't a P2.
+Set the rate with `-b` / `--baud` or the **Serial Baud Rate** preference.
+
+If you pass `--baud` and it *contradicts* the binary you are downloading, you get a
+warning, because the P2 will transmit at its own compiled rate regardless and the output
+would be unreadable:
 
 ```
-WARNING: -b 115200 disagrees with this binary's compiled debug baud (2000000).
-The P2 will transmit at 2000000 — expect unreadable output. Drop -b to use the binary's rate.
+WARNING: --baud 115200 disagrees with this binary's compiled DEBUG_BAUD (2000000).
+The P2 will transmit at 2000000 — expect unreadable output. Drop --baud to use the binary's rate.
 ```
 
-The full precedence is: **`-b` flag → the binary's own rate → project settings →
+The full precedence is: **`--baud` flag → the binary's own rate → project settings →
 global settings → 2,000,000.**
+
+> `--debugbaud` was the previous name for this option and still works. `--baud` is the
+> name to use — the rate was never only about `debug()` output.
+
+#### Download baud
+
+The P2's boot loader listens for whatever rate you send it, anywhere from **9600** to
+**2000000**, so this is yours to choose. It defaults to **2000000**, which is as fast as
+the loader goes and is what Parallax adapters handle comfortably.
+
+**Lower it if downloads fail.** Some USB serial adapters cannot hold 2 Mbps; the P2 then
+never locks on to the data and the download does not complete — you may see a checksum
+verification report no response from the P2. Set
+`--downloadbaud 115200` (or any rate in the range) or use the **Download Baud Rate**
+preference. Loading takes longer and nothing else changes — the P2 adapts to whatever it
+receives. A value outside 9600–2000000 is refused, with the range named, because outside
+it the chip cannot hear the tool at all.
+
+The two rates are independent: lowering the download baud does not change the rate your
+`debug()` output arrives at.
+
+#### Rates above 2 Mbps
+
+Sustained streaming has been verified up to **2,000,000**. Ask for a higher serial baud
+and the tool tells you that it is beyond what has been measured:
+
+```
+pnut-term-ts: WARNING- 3000000 is above the highest rate this app has been verified to
+carry (2000000). Behavior above that rate is UNMEASURED — it may carry the stream fine,
+or it may drop data. Please report what you observe.
+```
+
+This is a notice, not a refusal — nothing stops you, and the P2's own `debug()` transmitter
+can run faster than 2 Mbps. It means the experiment has not been run: the stream may arrive
+intact, or bytes may be dropped. If you run above 2 Mbps we would like to hear what you saw.
 
 ### Exit codes
 The same codes are returned whether you run with the GUI or `--headless`, so a
@@ -617,13 +668,19 @@ macOS) in any text field.
 4. On Linux/macOS, verify serial-port permissions (see below).
 
 ### Garbled or missing text
-- Usually a baud mismatch. **If you passed `-b`, try dropping it** — when you download
-  with `-r`/`-f` the binary's own debug baud is read automatically and is almost always
-  right; an explicit `-b` overrides it and can be wrong. Look for the
-  `WARNING: -b … disagrees with this binary's compiled debug baud` line.
+- Usually a baud mismatch. **If you passed `--baud`, try dropping it** — when you download
+  with `-r`/`-f` the binary's own rate is read automatically and is almost always right; an
+  explicit `--baud` overrides it and can be wrong. Look for the
+  `WARNING: --baud … disagrees with this binary's compiled DEBUG_BAUD` line.
 - If you're attaching to an already-running P2 (no download), there is no binary to read
-  from, so set the rate yourself with `-b` or the Default Baud Rate preference. Common
-  rates: 115200, 921600, 2000000.
+  from, so set the rate yourself with `--baud` or the **Serial Baud Rate** preference.
+  Common rates: 115200, 921600, 2000000.
+
+### Downloads fail or never finish
+- Some USB serial adapters cannot sustain the default 2 Mbps download rate, so the P2
+  never locks on to the data. Lower it with `--downloadbaud 115200` or the **Download
+  Baud Rate** preference; the P2 adapts to whatever rate it receives, so this costs
+  loading time and nothing else.
 
 ### P2 doesn't reset / program doesn't start
 - The reset control line may be wrong for your adapter. Set **DTR** or **RTS** for the

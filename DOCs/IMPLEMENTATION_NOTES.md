@@ -2537,7 +2537,8 @@ player.on('data', (buffer) => {
 - Downloads unreliable at >1 Mbps
 
 **After**: Full-speed verification enabled
-- 16 Mbps sustainable
+- Removed the parser bottleneck on the raw binary path (this is about the parser, NOT a
+  measured end-to-end sustained rate — see Performance Metrics below)
 - Checksum verification possible
 - Binary integrity guaranteed
 - Flash downloads supportable
@@ -5502,7 +5503,10 @@ ctx.drawImage(tempCanvas, 0, 0, width, height,
 ## Performance Metrics
 
 ### Current Capabilities
-- **Max sustained rate**: 16 Mbps
+- **Max sustained rate**: 2 Mbps verified on hardware (v0.11.7: 161,252 sequence-numbered
+  lines, zero gaps). Higher figures elsewhere in this file and in
+  `DOCs/usb-performance-investigation/` are PROJECTIONS from CPU-budget arithmetic, not
+  measurements — see the throughput-rig item in `DOCs/PUNCH_LIST.md` before quoting one.
 - **Latency**: <1ms serial to window
 - **Binary accuracy**: 100% byte-perfect
 - **Pattern match success**: 99.9%+

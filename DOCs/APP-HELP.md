@@ -40,7 +40,7 @@ PNut-Term-TS is the real-time interface between your computer and a running P2. 
 - visualizes data through specialized windows (terminal, logic, scope, FFT, and more),
 - logs all traffic to timestamped files for later analysis,
 - downloads compiled binaries to P2 RAM or flash and resets the P2 to run them,
-- captures full-rate streams (default debug baud **2 Mbps**) without data loss via an
+- captures full-rate streams (default serial baud **2 Mbps**) without data loss via an
   off-main-thread serial reader.
 
 This is the TypeScript reimplementation of the original Pascal PNut Terminal,
@@ -194,8 +194,17 @@ project (delta-save); unchecked items inherit and display the global value.
 | Setting | Options | Default |
 |---------|---------|---------|
 | Default PropPlug | Auto-detect (any available), or a named device | Auto-detect |
-| Default Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | 2000000 |
+| Serial Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | 2000000 |
+| Download Baud Rate | 115200, 230400, 460800, 921600, 1000000, 2000000 | 2000000 |
 | Reset P2 on App Startup | on / off | on |
+
+**Serial Baud Rate** carries `debug()` output and terminal traffic — one rate, because it
+is one connection. When you download a program, the rate compiled into that binary
+(`DEBUG_BAUD`) is read from the image and used instead, so you rarely set this yourself.
+
+**Download Baud Rate** is used only while loading a program into the P2. Lower it if
+downloads never complete — some USB serial adapters cannot hold 2 Mbps. The P2's loader
+adapts to whatever rate it receives, so this costs loading time and nothing else.
 
 > The DTR/RTS control line is **not** set here — it is configured per device in the
 > PropPlug Management tab.
@@ -468,7 +477,8 @@ pnut-term-ts [options]
 | `-r` | `--ram` | Download the file to RAM and run |
 | `-f` | `--flash` | Download the file to flash and run |
 | `-p` | `--plug` | Use the PropPlug at `<device>` (path/serial; partial match OK) |
-| `-b` | `--debugbaud` | **Override** the debug baud rate (normally taken from the downloaded binary; falls back to 2000000) |
+| `-b` | `--baud` | Set the **serial baud** — `debug()` output and terminal traffic (300–20000000; normally taken from the downloaded binary, else 2000000) |
+| | `--downloadbaud` | Set the **download baud** — used only while loading a program (9600–2000000, default 2000000) |
 | `-n` | `--dvcnodes` | List detected USB serial devices and exit |
 | `-u` | `--log-usb-trfc` | Write a timestamped USB-traffic log |
 | `-m` | `--match-vendor-only` | Match any FTDI device, not just Parallax PropPlugs |
@@ -517,10 +527,20 @@ Scripts and CI can rely on these:
 
 **No data appears**
 - Confirm the connection indicator is green and the correct port is selected.
-- Match the debug baud to your program (`-b`, or the Default Baud Rate preference).
+- Match the serial baud to your program (`--baud`, or the Serial Baud Rate preference).
 - Confirm the P2 is powered, running, and emitting `debug()` output; try a DTR/RTS reset.
 
-**Garbled text** — usually a baud mismatch. Common rates: 115200, 921600, 2000000.
+**Garbled text** — usually a baud mismatch. Common rates: 115200, 921600, 2000000. If you
+passed `--baud`, try dropping it: when you download, the binary's own rate is read
+automatically and is almost always right.
+
+**Downloads fail or never finish** — the adapter may not sustain the default 2 Mbps
+download rate, so the P2 never locks on to the data. Lower it with `--downloadbaud 115200`
+or the Download Baud Rate preference.
+
+**A rate above 2000000 warns** that the behavior is unmeasured. It is a notice, not a
+refusal — sustained streaming is verified to 2 Mbps, and above that the stream may arrive
+intact or may drop data. Reports of what you observe are welcome.
 
 **P2 doesn't reset / program doesn't start** — the control line may be wrong for your
 adapter. Set DTR or RTS for the device in **Preferences → PropPlug Management**, or pass
@@ -572,4 +592,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 1.0.0 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 1.0.3 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
