@@ -23,6 +23,20 @@ gates a release any longer; everything here is post-1.0 work.
   - Parse parity complete (`isRange`/`busWidth` tagged), but the renderer has NO bus path: `drawChannelFromSamples` only draws a 1-bit high/low trace (`invSample = 1 - samples[i]`), so a RANGE bus shows as N stacked 1-bit lines instead of one multi-bit value (bus-band) waveform. Fix = a new bus-waveform draw branch (logic-analyzer bus band with value crossings).
   - Not exercised by fig-06 (single-bit channels only). **Demo written:** `REF-NO-COMMIT/WIndow ISSUES/fig-11-logic-range/` (DRAFT, needs compile-check).
 
+### P3 - Doc instruments use a PID-named temp file (raised 2026-08-23)
+
+- [ ] **`check_doc_claims.sh` writes `/tmp/.doc_orphans.$$` and does not clean it up on
+  failure.** `$$` is the invoking shell's PID and PIDs are reused, so a stale file from a
+  crashed run can be read by a later one. During the release-gate work this block was twice
+  observed reporting 0 findings when the instrument independently reported 15 — not
+  reproduced since — 10/10 consecutive runs report correctly — and this is the leading
+  suspect. Both zero readings happened in a run that immediately followed a doc write in
+  the same shell command, so a partially-settled view of the tree is the other candidate. Fix = `mktemp` plus an EXIT trap, the
+  way the same script already handles `SRC_STRINGS`. Low impact (the counts are advisory and
+  cannot fail a release) but it is a silent-wrong-number path, which is the one shape these
+  instruments must never have. `scripts/check-release-consistency.sh` currently guards the
+  symptom by asserting the output shape before trusting a count.
+
 ### P3 - Measure the real throughput ceiling per platform (raised 2026-08-22, baud-naming sprint)
 
 **Not release-gating. v1.0.2 ships without this** — Stephen's call, 2026-08-22. The product is

@@ -22,10 +22,36 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
+  # Runs FIRST and gates every build. v1.0.3 shipped with F1 Help that contradicted the
+  # app because the doc pass landed after the tag, and USER-GUIDE/QUICK-START were found
+  # three releases stale at "Version 1.0.0". Neither announced itself — a release with
+  # wrong content succeeds exactly as loudly as a correct one. This makes the mismatch
+  # FAIL the release instead of shipping it. Content-drift findings stay advisory inside
+  # the script; only mechanical facts are fatal (version stamps, the changelog heading,
+  # and the workflow's own changelog parse, whose two failure modes are both silent).
+  consistency:
+    name: Release consistency gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check version stamps, changelog, and shipped docs
+        shell: bash
+        run: |
+          chmod +x scripts/check-release-consistency.sh
+          scripts/check-release-consistency.sh "${GITHUB_REF_NAME}"
+
   # Build Windows packages
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    needs: consistency
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -102,6 +128,7 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    needs: consistency
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -158,6 +185,7 @@ jobs:
   build-macos:
     name: Build macOS
     runs-on: macos-latest
+    needs: consistency
     steps:
       - name: Checkout
         uses: actions/checkout@v6
