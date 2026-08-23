@@ -277,7 +277,7 @@ export class PreferencesDialog {
 
       ${isProject ? `<div class="form-group">
         <input type="checkbox" class="override-checkbox" id="${prefix}-override-default-baud" onchange="toggleOverride('${prefix}', 'default-baud')">
-        <label>Default Baud Rate:</label>
+        <label>Serial Baud Rate:</label>
         <select id="${prefix}-default-baud" disabled>
           <option value="115200">115200</option>
           <option value="230400">230400</option>
@@ -288,7 +288,7 @@ export class PreferencesDialog {
         </select>
         <span class="global-value" id="${prefix}-global-default-baud"></span>
       </div>` : `<div class="form-group">
-        <label>Default Baud Rate:</label>
+        <label>Serial Baud Rate:</label>
         <select id="${prefix}-default-baud">
           <option value="115200">115200</option>
           <option value="230400">230400</option>
@@ -298,6 +298,38 @@ export class PreferencesDialog {
           <option value="2000000">2000000</option>
         </select>
       </div>`}
+      <div style="font-size: 11px; color: #666; margin-left: 210px; margin-top: -8px; margin-bottom: 12px;">
+        Used for both DEBUG output and serial terminal traffic. When you download a program,
+        its own <code>DEBUG_BAUD</code> is read from the binary and overrides this.
+      </div>
+
+      ${isProject ? `<div class="form-group">
+        <input type="checkbox" class="override-checkbox" id="${prefix}-override-download-baud" onchange="toggleOverride('${prefix}', 'download-baud')">
+        <label>Download Baud Rate:</label>
+        <select id="${prefix}-download-baud" disabled>
+          <option value="115200">115200</option>
+          <option value="230400">230400</option>
+          <option value="460800">460800</option>
+          <option value="921600">921600</option>
+          <option value="1000000">1000000</option>
+          <option value="2000000">2000000</option>
+        </select>
+        <span class="global-value" id="${prefix}-global-download-baud"></span>
+      </div>` : `<div class="form-group">
+        <label>Download Baud Rate:</label>
+        <select id="${prefix}-download-baud">
+          <option value="115200">115200</option>
+          <option value="230400">230400</option>
+          <option value="460800">460800</option>
+          <option value="921600">921600</option>
+          <option value="1000000">1000000</option>
+          <option value="2000000">2000000</option>
+        </select>
+      </div>`}
+      <div style="font-size: 11px; color: #666; margin-left: 210px; margin-top: -8px; margin-bottom: 12px;">
+        Used only while downloading to the P2. The boot loader accepts 9600&ndash;2000000 and adapts
+        automatically &mdash; lower this if your USB adapter cannot sustain 2000000.
+      </div>
 
       ${isProject ? `<div class="form-group">
         <input type="checkbox" class="override-checkbox" id="${prefix}-override-reset-on-connection" onchange="toggleOverride('${prefix}', 'reset-on-connection')">
@@ -833,6 +865,7 @@ export class PreferencesDialog {
       ipcRenderer.send('pref-get-propplug-list');
       document.getElementById(prefix + '-default-propplug').value = settings.serialPort.defaultPropPlug || '';
       document.getElementById(prefix + '-default-baud').value = settings.serialPort.defaultBaud;
+      document.getElementById(prefix + '-download-baud').value = settings.serialPort.downloadBaud;
       document.getElementById(prefix + '-reset-on-connection').checked = settings.serialPort.resetOnConnection;
 
       // Logging
@@ -867,6 +900,7 @@ export class PreferencesDialog {
       const projectPropPlug = effectiveSettings.selectedPropPlug || settings.serialPort.defaultPropPlug || '';
       document.getElementById(prefix + '-default-propplug').value = projectPropPlug;
       document.getElementById(prefix + '-default-baud').value = settings.serialPort.defaultBaud;
+      document.getElementById(prefix + '-download-baud').value = settings.serialPort.downloadBaud;
       document.getElementById(prefix + '-reset-on-connection').checked = settings.serialPort.resetOnConnection;
 
       // Logging
@@ -900,6 +934,7 @@ export class PreferencesDialog {
       const defaultPropplugLabel = settings.serialPort.defaultPropPlug || 'Auto-detect';
       setGlobalLabel(prefix, 'default-propplug', defaultPropplugLabel);
       setGlobalLabel(prefix, 'default-baud', settings.serialPort.defaultBaud);
+      setGlobalLabel(prefix, 'download-baud', settings.serialPort.downloadBaud);
       setGlobalLabel(prefix, 'reset-on-connection', settings.serialPort.resetOnConnection ? 'Yes' : 'No');
 
       // Logging
@@ -962,6 +997,7 @@ export class PreferencesDialog {
         serialPort: {
           defaultPropPlug: document.getElementById(prefix + '-default-propplug').value || undefined,
           defaultBaud: parseInt(document.getElementById(prefix + '-default-baud').value),
+          downloadBaud: parseInt(document.getElementById(prefix + '-download-baud').value),
           resetOnConnection: document.getElementById(prefix + '-reset-on-connection').checked
         },
         logging: {
@@ -994,6 +1030,7 @@ export class PreferencesDialog {
         { category: 'terminal', id: 'local-echo', key: 'localEcho', parser: (v) => v },
         { category: 'serialPort', id: 'default-propplug', key: 'defaultPropPlug', parser: (v) => v || undefined },
         { category: 'serialPort', id: 'default-baud', key: 'defaultBaud', parser: (v) => parseInt(v) },
+        { category: 'serialPort', id: 'download-baud', key: 'downloadBaud', parser: (v) => parseInt(v) },
         { category: 'serialPort', id: 'reset-on-connection', key: 'resetOnConnection', parser: (v) => v },
         { category: 'logging', id: 'log-directory', key: 'logDirectory', parser: (v) => v },
         { category: 'logging', id: 'auto-save-debug', key: 'autoSaveDebug', parser: (v) => v },

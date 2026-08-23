@@ -59,8 +59,15 @@ describe('CLI exit codes reach the shell (the G3 contract)', () => {
       ['--timeout with a trailing-garbage value', ['--headless', '--timeout', '60s']],
       ['--timeout zero', ['--headless', '--timeout', '0']],
       ['--timeout without --headless', ['--timeout', '60']],
-      ['--debugbaud with a non-numeric value', ['-b', 'notanumber']],
-      ['--debugbaud with a trailing-garbage value', ['-b', '115200abc']],
+      ['--baud with a non-numeric value', ['-b', 'notanumber']],
+      ['--baud with a trailing-garbage value', ['-b', '115200abc']],
+      ['--debugbaud (deprecated alias) with a non-numeric value', ['--debugbaud', 'notanumber']],
+      ['--baud and --debugbaud disagreeing', ['-b', '115200', '--debugbaud', '921600']],
+      ['--downloadbaud with a non-numeric value', ['--downloadbaud', 'notanumber']],
+      ['--downloadbaud below the loader auto-baud floor', ['--downloadbaud', '2400']],
+      ['--downloadbaud above the loader auto-baud ceiling', ['--downloadbaud', '4000000']],
+      ['--baud below the serial floor', ['-b', '115']],
+      ['--baud above the sane ceiling', ['-b', '25000000']],
       ['-r and -f together', ['-r', 'a.bin', '-f', 'b.bin']],
       ['a download file that does not exist', ['-r', '/nonexistent/nope.bin']],
       ['an empty --end-marker phrase', ['--headless', '--end-marker', '']],
@@ -68,6 +75,64 @@ describe('CLI exit codes reach the shell (the G3 contract)', () => {
     ])('%s → 2', async (_label: string, args: string[]) => {
       const { code } = await runCli(args);
       expect(code).toBe(ExitCode.UsageError);
+    });
+
+    it('the two rates keep DIFFERENT ranges — 3 Mbaud is legal serial, illegal download', async () => {
+      // Not an inconsistency: 2,000,000 is the boot ROM's auto-baud ceiling, while the
+      // DEBUG rate comes off a smart pin bounded only by the clock. A source carrying
+      // DEBUG_BAUD = 3_000_000 is legal and we adopt it from a binary, so the typed
+      // value must be legal too — otherwise the same number is legal or illegal
+      // depending only on where it came from.
+      const { code: serialOk } = await runCli(['-b', '3000000', '-p', 'nosuchdevice']);
+      expect(serialOk).not.toBe(ExitCode.UsageError);
+
+      const { code: downloadBad, output } = await runCli(['--downloadbaud', '3000000']);
+      expect(downloadBad).toBe(ExitCode.UsageError);
+      expect(output).toMatch(/9600-2000000/);
+    });
+
+    it('warns — but does NOT refuse — above the verified rate, and claims nothing about loss', async () => {
+      // 2,000,000 is the edge of our EVIDENCE, not of our capability. The warning must
+      // say the behavior is unmeasured; asserting data WILL be lost would be as unfounded
+      // as asserting it will not. Refusing is also wrong: the user's P2 may genuinely be
+      // transmitting there, and a refusal gives them nothing instead of degraded output.
+      const { code, output } = await runCli(['-b', '3000000', '-p', 'nosuchdevice']);
+      expect(code).not.toBe(ExitCode.UsageError);
+      expect(output).toMatch(/UNMEASURED/);
+      expect(output).toMatch(/2000000/);
+      expect(output).not.toMatch(/will drop|expect drop|guaranteed/i);
+    });
+
+    it('says nothing at or below the verified rate', async () => {
+      const { output } = await runCli(['-b', '2000000', '-p', 'nosuchdevice']);
+      expect(output).not.toMatch(/UNMEASURED/);
+    });
+
+    it('--baud names the serial range when the value is out of it', async () => {
+      const { code, output } = await runCli(['-b', '115']);
+      expect(code).toBe(ExitCode.UsageError);
+      expect(output).toMatch(/300-20000000/);
+    });
+
+    it('--downloadbaud names the loader range when the value is out of it', async () => {
+      // The range is the P2 serial loader's auto-baud window, not a taste: outside it
+      // the chip cannot lock on and the download simply never completes, silently.
+      const { code, output } = await runCli(['--downloadbaud', '4000000']);
+      expect(code).toBe(ExitCode.UsageError);
+      expect(output).toMatch(/9600-2000000/);
+    });
+
+    it('accepts a download baud inside the loader range', async () => {
+      // Well-formed command line, no hardware: must fail on the PORT, not on usage.
+      const { code } = await runCli(['--downloadbaud', '115200', '-p', 'nosuchdevice']);
+      expect(code).not.toBe(ExitCode.UsageError);
+    });
+
+    it('--debugbaud still works and reports under the name the user typed', async () => {
+      const { code, output } = await runCli(['--debugbaud', 'bad']);
+      expect(code).toBe(ExitCode.UsageError);
+      expect(output).toMatch(/Invalid --debugbaud value/);
+      expect(output).not.toMatch(/Invalid --baud value/);
     });
 
     it('never announces a download it is about to abort', async () => {
@@ -88,7 +153,7 @@ describe('CLI exit codes reach the shell (the G3 contract)', () => {
     it('reports EVERY bad parameter in one run, not just the first', async () => {
       const { code, output } = await runCli(['-b', 'bad', '--timeout', '60', '-r', 'a.bin', '-f', 'b.bin']);
       expect(code).toBe(ExitCode.UsageError);
-      expect(output).toMatch(/Invalid --debugbaud value/);
+      expect(output).toMatch(/Invalid --baud value/);
       expect(output).toMatch(/--timeout requires --headless/);
       expect(output).toMatch(/only one of FLASH .* or RAM/);
     });
@@ -96,7 +161,7 @@ describe('CLI exit codes reach the shell (the G3 contract)', () => {
     it('still reports the failure under --quiet (quiet suppresses chatter, not errors)', async () => {
       const { code, output } = await runCli(['--quiet', '-b', 'bad']);
       expect(code).toBe(ExitCode.UsageError);
-      expect(output).toMatch(/Invalid --debugbaud value/);
+      expect(output).toMatch(/Invalid --baud value/);
     });
   });
 

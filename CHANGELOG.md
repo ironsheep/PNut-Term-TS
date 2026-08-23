@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.0.3 (2026-08-23)
+
+The two serial speeds this app uses now have honest names, and the one that was fixed at 2 Mbps is yours to change.
+
+There were always two speeds, and only one of them had a name that said so. One carries the
+DEBUG output your program prints and anything you type at the terminal — a single rate, because
+it is a single serial connection. The other is used only for the moment a program is being
+loaded into the P2. The first was called the debug baud, which described half of what it does
+and read as irrelevant if you were using this as a plain serial terminal — the one case where
+it is the only setting that matters, since there is no downloaded program to take a rate from.
+It is now the **serial baud**: `--baud` on the command line, "Serial Baud Rate" in Preferences.
+`--debugbaud` still works, and will continue to.
+
+The download speed is no longer fixed. It sat at 2 Mbps with no way to change it, which is fine
+on Parallax hardware and a dead end on a USB adapter that cannot hold that rate — the download
+would simply never complete, and there was nothing to try. There is now a **download baud**:
+`--downloadbaud` on the command line, "Download Baud Rate" in Preferences. The P2's loader
+adapts to whatever you send it, anywhere from 9600 to 2000000, so lowering this costs loading
+time and nothing else. A value outside that window is refused with the window named, because
+outside it the chip cannot hear us at all.
+
+You are told when you go above what has been measured. Sustained streaming is verified to
+2 Mbps. Ask for more and the app now says so — not that it will fail, but that nobody has run
+the experiment, so it may carry the stream perfectly or it may drop data. It does not stop you,
+and if you do run faster we would like to hear what you saw.
+
+Headless runs now honor a program's own DEBUG_BAUD. If your source set a rate other than the
+default, a headless run would read that rate, record it, and then carry on listening at the old
+one — filling the log with garbage that looked like a hardware fault. Windowed runs were always
+correct; headless now matches them.
+
 ## v1.0.2 (2026-08-14)
 
 The debug log keeps up with your program, and a release build stops talking about itself.

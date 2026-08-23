@@ -136,6 +136,8 @@ app.commandLine.appendSwitch('no-sandbox');
   electronContext.runEnvironment.controlLine = config.controlLine || 'DTR';
   electronContext.runEnvironment.debugBaudrate = config.debugBaudrate || 2000000;
   electronContext.runEnvironment.debugBaudRateFromCLI = config.debugBaudRateFromCLI || false;
+  electronContext.runEnvironment.downloadBaudrate = config.downloadBaudrate;
+  electronContext.runEnvironment.downloadBaudRateFromCLI = config.downloadBaudRateFromCLI || false;
   electronContext.runEnvironment.developerModeEnabled = config.developerModeEnabled || false;
   electronContext.runEnvironment.verbose = config.verbose || false;
   electronContext.runEnvironment.ideMode = config.ideMode || false;

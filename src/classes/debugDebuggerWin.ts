@@ -586,8 +586,7 @@ ${bundleJs}
       windowId: `debugger-${this.cogId}-${Date.now()}`,
       // Initial BRK condition matches what the compiler patched into _brkcond_.
       // We'll get the authoritative value from the first breakpoint's mCOND.
-      initialBreakCond: 0x001,
-      debugBaud: 2_000_000
+      initialBreakCond: 0x001
     });
   }
   

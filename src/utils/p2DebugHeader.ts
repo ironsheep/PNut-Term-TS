@@ -55,8 +55,39 @@ const OFFSET_RXPIN = 0x144;
 const OFFSET_BAUD = 0x148;
 const MIN_IMAGE_SIZE = OFFSET_BAUD + 4;
 
-/** Widest plausible P2 debug baud. Guards against reading a plausible-looking image that isn't one. */
-const MAX_SANE_BAUD = 20_000_000;
+/**
+ * Widest plausible P2 debug baud. Guards against reading a plausible-looking image
+ * that isn't one.
+ *
+ * EXPORTED because the CLI's `--baud` must accept exactly what this path accepts:
+ * it is the SAME quantity from a different source, and a tighter limit on the typed
+ * value would reject a rate we would happily adopt from a binary — the same number
+ * legal or illegal depending on where it came from. NOT 2,000,000: that is the boot
+ * loader's auto-baud ceiling, a different piece of hardware. The DEBUG rate comes off
+ * an async-TX smart pin whose bit period is clkfreq/baud, bounded only by the clock.
+ */
+export const MAX_SANE_BAUD = 20_000_000;
+
+/**
+ * The highest sustained rate this app has been VERIFIED to carry — 2 Mbaud, measured
+ * on hardware (v0.11.7: 161,252 sequence-numbered lines, zero gaps, 0.6-1.9% of a core).
+ *
+ * This is NOT a capability ceiling and NOT a claim that higher rates fail. It is the
+ * edge of our evidence. Above it our behavior is simply UNMEASURED: it may carry the
+ * stream perfectly, or it may drop bytes — nobody has run the experiment. Every higher
+ * figure in the repo (2.5-3 Mbps, 3-5 Mbps, 16 Mbps) is a PROJECTION from CPU-budget
+ * arithmetic or a stale doc claim, not a measurement; do not promote one of those into
+ * this constant without a hardware run behind it.
+ *
+ * The three platforms are also not known to be equivalent here — macOS and Windows ARM64
+ * cannot even OPEN above 230400 directly (usb.serial.ts opens at 115200 first), and
+ * Windows needed a wholly different transport. So a single hard cap would be wrong on at
+ * least one of them, which is why exceeding this warns rather than refuses.
+ *
+ * To raise it: run the bench playbook's throughput gate at stepped rates on each
+ * platform and set this from the result.
+ */
+export const MAX_VALIDATED_BAUD = 2_000_000;
 
 export interface P2DebugHeader {
   /** The rate the P2 will actually TRANSMIT debug at (`_baud_`). */

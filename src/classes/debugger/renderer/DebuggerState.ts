@@ -42,7 +42,6 @@ export const enum DisMode {
 export class DebuggerState {
   // ─── Identity ──────────────────────────────────────────────────────────
   readonly cogId: number;
-  readonly debugBaud: number;
 
   // ─── Debugger 20-long message (latest) ─────────────────────────────────
   /** Raw longs from Phase 1 bytes 0..79. Indexed via M enum. */
@@ -168,9 +167,8 @@ export class DebuggerState {
   /** Whether we asked for hub-code disassembly (16 longs). */
   public pendingHubCode: boolean = false;
 
-  constructor(cogId: number, debugBaud: number) {
+  constructor(cogId: number) {
     this.cogId = cogId;
-    this.debugBaud = debugBaud;
     // Initialize CRC-old to 0xFFFF so every block triggers on first break
     // (Pascal DebuggerUnit.pas line 546-547: CogBlock[i] := -1; HubBlock[i] := -1).
     this.cogCrcOld.fill(0xFFFF);

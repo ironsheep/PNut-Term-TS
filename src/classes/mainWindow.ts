@@ -60,7 +60,7 @@ import { PlacementStrategy } from '../utils/windowPlacer';
 import { COGLogExporter } from './shared/cogLogExporter';
 import { Downloader } from './downloader';
 import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
-import { readDebugHeaderFromFile } from '../utils/p2DebugHeader';
+import { readDebugHeaderFromFile, MAX_VALIDATED_BAUD } from '../utils/p2DebugHeader';
 
 export interface WindowCoordinates {
   xOffset: number;
@@ -96,6 +96,10 @@ export class MainWindow {
   private _deviceNode: string = '';
   private _serialPort: UsbSerial | undefined = undefined;
   private _serialBaud: number = 0; // Will be set from context or preferences in constructor
+  // The OTHER rate — what we talk to the P2 BOOT LOADER at during a download.
+  // Same precedence shape as _serialBaud (CLI > preference > default); it simply has
+  // no binary to adopt from, because nothing in the image says what rate to download AT.
+  private _downloadBaud: number = 0; // Set from context or preferences in constructor
   private mainWindow: any = null;
   private mainWindowOpen: boolean = false;
   private waitingForINIT: boolean = true;
@@ -212,6 +216,7 @@ export class MainWindow {
 
     // Initialize serial baud rate from context or preferences
     this.initializeSerialBaud();
+    this.initializeDownloadBaud();
 
     /*
     let filesFound: string[] = listFiles("./");
@@ -1553,7 +1558,7 @@ export class MainWindow {
 
     // Log baud rate and its source
     const source = this.context.runEnvironment.debugBaudRateFromCLI ? 'command-line' : 'preferences/default';
-    this.logConsoleMessage(`[BAUD RATE] Setting debug baud rate to ${this._serialBaud} (from ${source})`);
+    this.logConsoleMessage(`[BAUD RATE] Setting serial baud rate to ${this._serialBaud} (from ${source})`);
     if (this.debugLoggerWindow) {
       this.debugLoggerWindow.logSystemMessage(`BAUD_RATE_SET ${this._serialBaud} baud (${source})`);
     }
@@ -1583,6 +1588,12 @@ export class MainWindow {
       });
       // Wait for port to actually open before proceeding
       await this._serialPort.waitForPortOpen();
+      // Push the resolved DOWNLOAD baud into the port. Without this the proxy's cached
+      // value stays at whatever the host defaulted to, and a user's --downloadbaud /
+      // preference would be silently ignored by the download path below.
+      this._serialPort.setDownloadBaudRate(this._downloadBaud);
+      const dlSource = this.context.runEnvironment.downloadBaudRateFromCLI ? 'command-line' : 'preferences/default';
+      this.logConsoleMessage(`[BAUD RATE] Setting download baud rate to ${this._downloadBaud} (from ${dlSource})`);
     } catch (error) {
       this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open. Error: ${error}`);
       // The proxy was assigned BEFORE waitForPortOpen() (it has to be — that's how we call it), so
@@ -4332,10 +4343,6 @@ export class MainWindow {
                 });
             }
           },
-          {
-            label: 'Baud Rate...',
-            click: () => this.selectBaudRate()
-          },
           { type: 'separator' },
           {
             label: 'Settings...',
@@ -6585,20 +6592,20 @@ export class MainWindow {
         // Get debug baud rate for runtime communication (CLI -b > the binary's own
         // _baud_ > preferences > default).
         // Download baud rate is separate (from UsbSerial, currently hardcoded 2 Mbps, future: configurable)
-        const debugBaudRate = this._serialBaud;
+        const serialBaudRate = this._serialBaud;
         const downloadBaudRate = port.getDownloadBaudRate();
 
         // CRITICAL: Log current state before any changes
         const currentBaud = port.getCurrentBaudRate();
         this.logConsoleMessage(
-          `[DOWNLOAD] Current port baud rate: ${currentBaud}, debug rate: ${debugBaudRate}, download rate: ${downloadBaudRate}`
+          `[DOWNLOAD] Current port baud rate: ${currentBaud}, serial rate: ${serialBaudRate}, download rate: ${downloadBaudRate}`
         );
 
         // FORCE switch to download baud rate - don't trust the debug rate comparison
         // The P2 needs 2Mbps for reliable download
         if (currentBaud !== downloadBaudRate) {
-          this.logMessage(`Switching baud rate from ${debugBaudRate} to ${downloadBaudRate} for download`);
-          this.logConsoleMessage(`[DOWNLOAD] MUST switch from ${debugBaudRate} to ${downloadBaudRate} for download`);
+          this.logMessage(`Switching baud rate from ${serialBaudRate} to ${downloadBaudRate} for download`);
+          this.logConsoleMessage(`[DOWNLOAD] MUST switch from ${serialBaudRate} to ${downloadBaudRate} for download`);
           await port.changeBaudRate(downloadBaudRate);
 
           // Verify the baud rate actually changed
@@ -6648,9 +6655,9 @@ export class MainWindow {
         // Skip entirely if a shutdown is already underway — the port is being torn down, so
         // restoring its baud rate is pointless and would race the close (the bug this guards).
         const postDownloadBaud = port.getCurrentBaudRate();
-        if (postDownloadBaud !== debugBaudRate && !this.isShuttingDown) {
+        if (postDownloadBaud !== serialBaudRate && !this.isShuttingDown) {
           this.logConsoleMessage(
-            `[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to debug baud rate ${debugBaudRate}`
+            `[BAUD RATE] P2 code running! Quickly restoring from ${postDownloadBaud} to serial baud rate ${serialBaudRate}`
           );
 
           // Ensure TX buffer is empty before switching for a cleaner transition
@@ -6661,7 +6668,7 @@ export class MainWindow {
             this.logConsoleMessage(`[BAUD RATE] Warning: Could not drain TX: ${drainErr.message}`);
           }
 
-          await port.changeBaudRate(debugBaudRate);
+          await port.changeBaudRate(serialBaudRate);
 
           // Verify the baud rate was actually changed
           const actualBaud = port.getCurrentBaudRate();
@@ -6694,7 +6701,7 @@ export class MainWindow {
         } else {
           // Optimization: Debug baud matches download baud, no switch needed
           this.logConsoleMessage(
-            `[BAUD RATE] Debug baud matches download baud (${debugBaudRate}), no switch needed - ready to receive`
+            `[BAUD RATE] Serial baud matches download baud (${serialBaudRate}), no switch needed - ready to receive`
           );
         }
 
@@ -6798,10 +6805,10 @@ export class MainWindow {
 
         // Ensure we restore debug baud rate even on error (skip if shutting down — port is closing)
         try {
-          const debugBaudRate = this._serialBaud;
+          const serialBaudRate = this._serialBaud;
           if (!this.isShuttingDown) {
-            this.logConsoleMessage(`[BAUD RATE] Restoring debug baud rate to ${debugBaudRate} after download error`);
-            await port.changeBaudRate(debugBaudRate);
+            this.logConsoleMessage(`[BAUD RATE] Restoring serial baud rate to ${serialBaudRate} after download error`);
+            await port.changeBaudRate(serialBaudRate);
           }
 
           // Verify and log single message to debug logger
@@ -7025,24 +7032,6 @@ export class MainWindow {
     );
   }
 
-  private selectBaudRate(): void {
-    const baudRates = ['115200', '230400', '460800', '921600', '2000000'];
-    dialog
-      .showMessageBox(this.mainWindow!, {
-        type: 'question',
-        buttons: baudRates,
-        title: 'Select Baud Rate',
-        message: 'Choose baud rate:'
-      })
-      .then((response: any) => {
-        this._serialBaud = parseInt(baudRates[response.response]);
-        if (this._serialPort) {
-          UsbSerial.setCommBaudRate(this._serialBaud);
-        }
-        this.logMessage(`Baud rate set to ${this._serialBaud}`);
-      });
-  }
-
   private showDebugCommandReference(): void {
     dialog.showMessageBox(this.mainWindow!, {
       type: 'info',
@@ -7098,6 +7087,17 @@ export class MainWindow {
       } else if (this.context.runEnvironment.debugBaudRateFromCLI) {
         this.logConsoleMessage(
           `[PREFERENCES] Skipping baud rate preference (command-line override: ${this._serialBaud})`
+        );
+      }
+
+      // Apply download baud rate (used on the next download) — CLI still wins.
+      if (settings.serialPort.downloadBaud && !this.context.runEnvironment.downloadBaudRateFromCLI) {
+        this._downloadBaud = settings.serialPort.downloadBaud;
+        this.logConsoleMessage(`[PREFERENCES] Download baud rate set to ${this._downloadBaud}`);
+        this._serialPort?.setDownloadBaudRate(this._downloadBaud);
+      } else if (this.context.runEnvironment.downloadBaudRateFromCLI) {
+        this.logConsoleMessage(
+          `[PREFERENCES] Skipping download baud preference (command-line override: ${this._downloadBaud})`
         );
       }
 
@@ -7293,7 +7293,45 @@ export class MainWindow {
   }
 
   /**
-   * Adopt the debug baud rate carried INSIDE the binary we are about to download.
+   * Resolve the DOWNLOAD baud rate: CLI `--downloadbaud` > preference > default.
+   *
+   * Deliberately parallel to initializeSerialBaud() — this used to be the one rate in
+   * the app that was a hardcoded constant instead of a user value, which left a user
+   * whose adapter cannot sustain 2 Mbaud with no way to download at all. The P2 boot
+   * loader auto-bauds 9600..2,000,000, so the number is purely ours to choose, and
+   * 2,000,000 is the TOP of that range rather than a requirement. PNut exposes the
+   * same setting via its command line (EditorUnit.pas:529-531).
+   */
+  private initializeDownloadBaud(): void {
+    const APP_DEFAULT_DOWNLOAD_BAUD = 2000000;
+
+    if (this.context.runEnvironment.downloadBaudRateFromCLI && this.context.runEnvironment.downloadBaudrate) {
+      this._downloadBaud = this.context.runEnvironment.downloadBaudrate;
+      this.logConsoleMessage(`[SETTINGS] Using command-line download baud rate: ${this._downloadBaud}`);
+      return;
+    }
+
+    try {
+      if (this.context.preferences.serialPort?.downloadBaud) {
+        this._downloadBaud = this.context.preferences.serialPort.downloadBaud;
+        this.logConsoleMessage(`[SETTINGS] Using preference download baud rate: ${this._downloadBaud}`);
+        return;
+      }
+    } catch (error) {
+      this.logConsoleMessage(`[SETTINGS] Error loading download baud rate from preferences: ${error}`);
+    }
+
+    this._downloadBaud = APP_DEFAULT_DOWNLOAD_BAUD;
+    this.logConsoleMessage(`[SETTINGS] Using app default download baud rate: ${this._downloadBaud}`);
+  }
+
+  /**
+   * Adopt the serial baud rate carried INSIDE the binary we are about to download.
+   *
+   * NAMING: this ONE rate serves both roles after the download — the DEBUG output
+   * the P2 transmits AND plain serial-terminal traffic. It is one UART, so there is
+   * only ever one number. The only genuinely separate rate is the DOWNLOAD baud
+   * (see usb.serial.ts), which is alive only while the boot loader is talking.
    *
    * The compiler installs the debug baud into the image as `_baud_`, so the image
    * is the only thing in our possession that actually knows what the P2 will
@@ -7301,7 +7339,7 @@ export class MainWindow {
    * tells nobody else. Reading it here is what makes that CON a working override
    * for this tool rather than a silent source of garbage output.
    *
-   * Precedence: an explicit `-b` on the command line always wins (it is a
+   * Precedence: an explicit `--baud` on the command line always wins (it is a
    * deliberate, per-invocation act), but we WARN when it contradicts the image,
    * because that combination cannot produce readable output. A binary with no
    * debug ROM leaves the configured baud untouched — it emits no DEBUG at all, so
@@ -7317,17 +7355,26 @@ export class MainWindow {
     if (this.context.runEnvironment.debugBaudRateFromCLI) {
       if (header.baud !== this._serialBaud) {
         this.logMessage(
-          `WARNING: -b ${this._serialBaud} disagrees with this binary's compiled debug baud (${header.baud}). ` +
-            `The P2 will transmit at ${header.baud} — expect unreadable output. Drop -b to use the binary's rate.`
+          `WARNING: --baud ${this._serialBaud} disagrees with this binary's compiled DEBUG_BAUD (${header.baud}). ` +
+            `The P2 will transmit at ${header.baud} — expect unreadable output. Drop --baud to use the binary's rate.`
         );
       }
       return; // explicit flag wins
     }
 
     if (header.baud !== this._serialBaud) {
-      this.logMessage(`Using debug baud ${header.baud} from ${path.basename(filePath)}`);
+      this.logMessage(`Using serial baud ${header.baud} — the DEBUG_BAUD compiled into ${path.basename(filePath)}`);
       this._serialBaud = header.baud;
       UsbSerial.setCommBaudRate(header.baud);
+    }
+    // Same evidence boundary the CLI enforces, applied to the value we ADOPT — otherwise
+    // the identical rate warns when typed and passes silently when read from a binary.
+    if (header.baud > MAX_VALIDATED_BAUD) {
+      this.logMessage(
+        `WARNING: this binary's DEBUG_BAUD (${header.baud}) is above the highest rate this app has been ` +
+          `verified to carry (${MAX_VALIDATED_BAUD}). Behavior above that rate is UNMEASURED — it may carry ` +
+          `the stream fine, or it may drop data. Please report what you observe.`
+      );
     }
     this.logConsoleMessage(
       `[DOWNLOAD] Binary debug header: baud=${header.baud} txPin=${header.txPin} rxPin=${header.rxPin} timestamp=${header.timestamp}`

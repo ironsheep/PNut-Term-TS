@@ -44,8 +44,8 @@ class DebuggerApp {
   private renderer: DebuggerRenderer;
   private interaction: DebuggerInteraction;
 
-  constructor(canvas: HTMLCanvasElement, cogId: number, debugBaud: number) {
-    this.state = new DebuggerState(cogId, debugBaud);
+  constructor(canvas: HTMLCanvasElement, cogId: number) {
+    this.state = new DebuggerState(cogId);
     this.controller = new DebuggerController(this.state, {
       sendPhase2: (bytes) => sendToMain({ kind: 'phase2', bytes }),
       requestRender: () => this.render(),
@@ -108,7 +108,7 @@ function handleFromMain(_e: Electron.IpcRendererEvent, message: MainToRendererMe
       const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
       if (!canvas) { log('error', 'canvas element not found on initialize'); setStatus(`Cog ${message.cogId} — ERROR: canvas missing`); return; }
       try {
-        app = new DebuggerApp(canvas, message.cogId, message.debugBaud);
+        app = new DebuggerApp(canvas, message.cogId);
       } catch (e) {
         const msg = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
         log('error', `DebuggerApp ctor failed: ${msg}`);

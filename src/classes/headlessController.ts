@@ -20,7 +20,7 @@ import { HeadlessFileLogger } from './shared/headlessFileLogger';
 import { USBTrafficLogger } from './shared/usbTrafficLogger';
 import { Downloader } from './downloader';
 import { ExitCode, SHUTDOWN_DRAIN_TIMEOUT_MS } from '../utils/exitCodes';
-import { readDebugHeaderFromFile } from '../utils/p2DebugHeader';
+import { readDebugHeaderFromFile, MAX_VALIDATED_BAUD } from '../utils/p2DebugHeader';
 
 export class HeadlessController {
   private context: Context;
@@ -206,6 +206,21 @@ export class HeadlessController {
     // See utils/p2DebugHeader.ts for why guessing was never safe.
     this.adoptBaudFromBinary(filePath);
 
+    // Headless has always downloaded at whatever rate the port is already on — the P2
+    // boot loader auto-bauds, so that works. We therefore switch ONLY when the user
+    // explicitly asked for a different download rate; without --downloadbaud this path
+    // is byte-identical to its previous behavior, which is the validated one.
+    const explicitDownloadBaud: number | undefined = this.context.runEnvironment.downloadBaudRateFromCLI
+      ? this.context.runEnvironment.downloadBaudrate
+      : undefined;
+    const rateBeforeDownload: number = this.serialPort.getCurrentBaudRate();
+    const mustSwitch: boolean = explicitDownloadBaud !== undefined && explicitDownloadBaud !== rateBeforeDownload;
+    if (mustSwitch) {
+      console.log(`[HEADLESS] Switching to download baud ${explicitDownloadBaud} (was ${rateBeforeDownload})`);
+      this.logger.logSystem(`Switching to download baud ${explicitDownloadBaud}`);
+      await this.serialPort.changeBaudRate(explicitDownloadBaud as number);
+    }
+
     try {
       const result = await this.downloader.download(filePath, toFlash);
 
@@ -222,6 +237,25 @@ export class HeadlessController {
       console.error(`[HEADLESS] Download error: ${error}`);
       this.logger.logError(`Download error: ${error}`);
       return false;
+    } finally {
+      // Put the port on the EFFECTIVE serial rate, whether or not we switched for the
+      // download and whether it succeeded or threw — the P2 is (or is about to be)
+      // transmitting DEBUG, and a port on the wrong rate yields a log full of garbage
+      // that reads like a hardware fault.
+      //
+      // This also repairs a defect that predates --downloadbaud: adoptBaudFromBinary()
+      // above sets UsbSerial.desiredCommsBaudRate (and runEnvironment.debugBaudrate)
+      // from the image's _baud_, but NOTHING retuned the live port afterwards. The only
+      // catch-up is in handleSerialOpen(), which runs at OPEN time only — long before
+      // we ever read the binary. So headless honored an in-source DEBUG_BAUD in its
+      // bookkeeping and ignored it on the wire. The GUI path has always retuned here;
+      // headless simply never did.
+      const effectiveSerialBaud: number = this.context.runEnvironment.debugBaudrate || UsbSerial.desiredCommsBaudRate;
+      if (this.serialPort.getCurrentBaudRate() !== effectiveSerialBaud) {
+        console.log(`[HEADLESS] Setting serial baud ${effectiveSerialBaud} after download`);
+        this.logger.logSystem(`Serial baud ${effectiveSerialBaud} after download`);
+        await this.serialPort.changeBaudRate(effectiveSerialBaud);
+      }
     }
   }
 
@@ -245,8 +279,8 @@ export class HeadlessController {
     if (this.context.runEnvironment.debugBaudRateFromCLI) {
       if (header.baud !== currentBaud) {
         const warning =
-          `WARNING: -b ${currentBaud} disagrees with this binary's compiled debug baud (${header.baud}). ` +
-          `The P2 will transmit at ${header.baud} — expect unreadable output. Drop -b to use the binary's rate.`;
+          `WARNING: --baud ${currentBaud} disagrees with this binary's compiled DEBUG_BAUD (${header.baud}). ` +
+          `The P2 will transmit at ${header.baud} — expect unreadable output. Drop --baud to use the binary's rate.`;
         console.warn(`[HEADLESS] ${warning}`);
         this.logger.logSystem(warning);
       }
@@ -254,11 +288,21 @@ export class HeadlessController {
     }
 
     if (header.baud !== currentBaud) {
-      console.log(`[HEADLESS] Using debug baud ${header.baud} from the binary (was ${currentBaud})`);
-      this.logger.logSystem(`Using debug baud ${header.baud} carried in ${filePath}`);
+      console.log(`[HEADLESS] Using serial baud ${header.baud} from the binary's DEBUG_BAUD (was ${currentBaud})`);
+      this.logger.logSystem(`Using serial baud ${header.baud} — the DEBUG_BAUD carried in ${filePath}`);
     }
     this.context.runEnvironment.debugBaudrate = header.baud;
     UsbSerial.setCommBaudRate(header.baud);
+    // Same evidence boundary as the CLI and the GUI adopt path — an unattended run is
+    // exactly where an unexplained gap in the log is hardest to diagnose after the fact.
+    if (header.baud > MAX_VALIDATED_BAUD) {
+      const note =
+        `WARNING: this binary's DEBUG_BAUD (${header.baud}) is above the highest rate this app has been ` +
+        `verified to carry (${MAX_VALIDATED_BAUD}). Behavior above that rate is UNMEASURED — it may carry ` +
+        `the stream fine, or it may drop data. Please report what you observe.`;
+      console.warn(`[HEADLESS] ${note}`);
+      this.logger.logSystem(note);
+    }
   }
 
   /**

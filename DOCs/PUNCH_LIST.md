@@ -23,6 +23,75 @@ gates a release any longer; everything here is post-1.0 work.
   - Parse parity complete (`isRange`/`busWidth` tagged), but the renderer has NO bus path: `drawChannelFromSamples` only draws a 1-bit high/low trace (`invSample = 1 - samples[i]`), so a RANGE bus shows as N stacked 1-bit lines instead of one multi-bit value (bus-band) waveform. Fix = a new bus-waveform draw branch (logic-analyzer bus band with value crossings).
   - Not exercised by fig-06 (single-bit channels only). **Demo written:** `REF-NO-COMMIT/WIndow ISSUES/fig-11-logic-range/` (DRAFT, needs compile-check).
 
+### P3 - Measure the real throughput ceiling per platform (raised 2026-08-22, baud-naming sprint)
+
+**Not release-gating. v1.0.2 ships without this** — Stephen's call, 2026-08-22. The product is
+correct as it stands; this closes a *knowledge* gap, not a defect.
+
+- [ ] **Build the throughput rig and set `MAX_VALIDATED_BAUD` from measured data.**
+
+  **What we know today.** The only hardware-measured sustained figure is **2 Mbaud** (v0.11.7:
+  161,252 sequence-numbered lines, zero gaps, 0.6-1.9% of a core). `MAX_VALIDATED_BAUD` in
+  `src/utils/p2DebugHeader.ts` is set from exactly that run, and `--baud` above it warns that
+  behavior is UNMEASURED — deliberately NOT that data will drop, because nobody has run the
+  experiment in either direction.
+
+  **What is NOT evidence** (do not promote any of these into the constant):
+  - `CRITICAL_FIXES_DETAILED_EXPLANATION.md:486` "Potential for 2.5-3 Mbps with minor tuning" —
+    the closing line of a CPU-budget arithmetic block, a projection.
+  - `usb-performance-investigation/README.md:117` "3-5 Mbps capability" — the predicted *result*
+    of Phase 2 work, and :127 "5-10 Mbps" is labelled theoretical in the doc itself.
+  - `IMPLEMENTATION_NOTES.md:5505` "Max sustained rate: 16 Mbps" — **wrong**, sits two lines from
+    "CPU: ~5% at 2 Mbps" and is contradicted by the investigation's own "~2 Mbps". Correct it.
+
+  **Why it needs its own rig, not the DEBUG path.** We control both ends, so we can measure
+  instead of infer: a purpose-built P2 generator + host harness with structured packets removes
+  every debug-ROM constraint and yields exact loss rather than an inference from a gap in a log.
+
+  **Design agreed 2026-08-22** (build to this; do not re-derive):
+  - **TWO numbers, and the gap between them is the actionable part.** (1) *Transport ceiling* — a
+    minimal Node reader over the same `serialport` stack that only counts bytes, i.e. what the
+    platform can do with our pipeline absent. (2) *App ceiling* — the same stream through
+    PNut-Term-TS end to end. Close together = platform-bound, optimizing us is wasted; far apart
+    = our code, and worth work. Today we cannot tell those apart, which is how both "16 Mbps" and
+    "~2 Mbps" ended up in the docs.
+  - **Frame**: fixed 256 bytes — magic(4) | seq(4) | rateId(2) | payload(242, PRNG seeded from
+    seq) | CRC32(4). The seeded payload is load-bearing: without it a torn read that substitutes
+    bytes is indistinguishable from a clean one. CRC + derivable payload separates DROPPED,
+    CORRUPTED and REORDERED — three failure modes with three different fixes.
+  - **Sweep**: P2-driven, one-way, no bidirectional timing to get wrong. Idle at 115200 (safe on
+    every platform per our own open-at-115200-first workarounds), announce `RATE <n> BEGIN` in
+    ASCII at the base rate, idle ~100 ms as a clean seam, switch the TX smart pin, stream N
+    frames, drop back and report `RATE <n> SENT <count>`. The host compares its intact count
+    against the P2's SENT count, so we never trust the host's idea of what *should* have arrived.
+  - **Bisect, don't ladder** — coarse walk up until loss goes non-zero, then bisect. Bench time on
+    three machines is the scarce resource.
+  - **Two axes beyond rate, and these are the ones that will surprise us**: (a) RENDER LOAD — the
+    [#30] finding was that loss appeared under render pressure, not on a quiet line, so every rate
+    needs a quiet pass and a loaded pass and the delta is the result; (b) CONSUMER SHAPE — headless
+    (pure pipe) and GUI-with-windows-open are different ceilings, and **the GUI number is the one
+    that belongs in `MAX_VALIDATED_BAUD`**, because that is what a user runs.
+  - **Duration**: long enough to be *sustained*. Cautionary precedent in
+    `DOCs/pascal-REF/Throughput-Test-Programs/stress01_stream.spin2` — its first version streamed
+    200,000 lines and left the app chewing a ~4 minute backlog, which measures the backlog, not
+    the rate.
+
+  **Platforms**: macOS, Linux, Windows x64 AND Windows ARM64 — the last two separately, since
+  macOS and Windows ARM64 are the ones that cannot open above 230400 directly
+  (`usb.serial.ts:146` opens at 115200 first) and Windows needed a wholly different transport.
+  A single hard cap would be wrong on at least one of them; that is why the current behavior
+  warns rather than refuses.
+
+  **Container work vs bench work**: both halves of the rig (the `.spin2` generator compiled with
+  `pnut-ts -d`, the Node harness, the analysis script) can be built in the container. Only the
+  running needs hardware. Run it as its own session — do NOT bolt it onto the SSDB
+  re-certification session, which is already loaded.
+
+  **Done means**: one table per platform (rate → sent → intact → loss % → corrupted-vs-dropped,
+  quiet and loaded); `MAX_VALIDATED_BAUD` reset from the measured GUI number with the run cited in
+  its comment; the warning text revisited if the data shows a real cliff; and the three stale
+  figures above corrected in the docs.
+
 ### P3 - Stale-constant debris from the Phase-1 456-byte resize (found 2026-07-27, debugger-arc closeout)
 
 Carried over from `DOCs/plans/archive/CLOSEOUT-2026-07-27-DEBUGGER-ARC.md`. The comms-re-frame

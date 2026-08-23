@@ -44,6 +44,13 @@ export interface RuntimeEnvironment {
   developerModeEnabled: boolean;
   debugBaudrate?: number; // Optional - only set if specified on command line
   debugBaudRateFromCLI: boolean; // True if -b was provided on command line
+  // The rate we talk to the P2 BOOT LOADER at during a download. Distinct from the
+  // serial baud above: the loader auto-bauds 9600..2,000,000, so this is purely our
+  // choice, and 2,000,000 is the CEILING of that range rather than a requirement.
+  // A transport that cannot hold 2 Mbaud (many non-Parallax adapters) has nowhere to
+  // go without this. PNut exposes the same setting (EditorUnit.pas:529-531).
+  downloadBaudrate?: number; // Optional - only set if specified on command line
+  downloadBaudRateFromCLI: boolean; // True if --downloadbaud was provided
   ideMode: boolean;
   rtsOverride: boolean;
   resetOnConnection: boolean; // Control DTR/RTS reset on port open
@@ -95,6 +102,7 @@ export interface UserPreferences {
     controlLine: string; // @deprecated Use per-device controlLine from PropPlugEntry
     defaultPropPlug?: string; // Serial number of default PropPlug, or undefined for auto-detect
     defaultBaud: number;
+    downloadBaud: number;
     resetOnConnection: boolean;
   };
   debugLogger: {
@@ -163,6 +171,8 @@ export class Context {
       logFilename: '',
       debugBaudrate: undefined, // No default - will be set from CLI or preferences
       debugBaudRateFromCLI: false, // Default: not specified on command line
+      downloadBaudrate: undefined, // No default - will be set from CLI or preferences
+      downloadBaudRateFromCLI: false, // Default: not specified on command line
       ideMode: false,
       rtsOverride: false, // Default to DTR unless IDE specifies RTS
       resetOnConnection: true, // Default to traditional mode (reset on connect)
@@ -213,6 +223,10 @@ export class Context {
         // 2,000,000 = the P2 debug system's universal default (see utils/usb.serial.ts).
         // A downloaded binary's own _baud_ overrides this anyway (utils/p2DebugHeader.ts).
         defaultBaud: 2000000,
+        // The boot loader auto-bauds 9600..2,000,000 (P2 Silicon Doc, serial loader).
+        // 2,000,000 is the TOP of that range — fast, and what Parallax hardware handles.
+        // Lower it for an adapter that cannot sustain it; the P2 side adapts either way.
+        downloadBaud: 2000000,
         resetOnConnection: true
       },
       debugLogger: {
@@ -383,6 +397,10 @@ export class Context {
         // 2,000,000 = the P2 debug system's universal default (see utils/usb.serial.ts).
         // A downloaded binary's own _baud_ overrides this anyway (utils/p2DebugHeader.ts).
         defaultBaud: 2000000,
+        // The boot loader auto-bauds 9600..2,000,000 (P2 Silicon Doc, serial loader).
+        // 2,000,000 is the TOP of that range — fast, and what Parallax hardware handles.
+        // Lower it for an adapter that cannot sustain it; the P2 side adapts either way.
+        downloadBaud: 2000000,
         resetOnConnection: true
       },
       debugLogger: {

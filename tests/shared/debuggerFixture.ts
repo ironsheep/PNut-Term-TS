@@ -46,9 +46,9 @@ export const MSG = {
   IRET: 14, FPTR: 15, PTRA: 16, PTRB: 17, FREQ: 18, COND: 19
 } as const;
 
-/** Construct a fresh DebuggerState (cog/baud default to harmless test values). */
-export function makeDebuggerState(cogId = 0, debugBaud = 2_000_000): DebuggerState {
-  return new DebuggerState(cogId, debugBaud);
+/** Construct a fresh DebuggerState (cogId defaults to a harmless test value). */
+export function makeDebuggerState(cogId = 0): DebuggerState {
+  return new DebuggerState(cogId);
 }
 
 export interface Phase1Opts {

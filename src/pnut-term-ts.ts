@@ -4,7 +4,42 @@
 
 // src/pnut-term-ts.ts
 'use strict';
-import { Command, CommanderError, type OptionValues } from 'commander';
+import { Command, CommanderError, Option, type OptionValues } from 'commander';
+import { MAX_SANE_BAUD, MAX_VALIDATED_BAUD } from './utils/p2DebugHeader';
+
+// TWO rates, TWO ranges, because two different pieces of hardware set the limits.
+//
+// DOWNLOAD baud is consumed by the P2 boot ROM, which auto-bauds across this window
+// (P2 Silicon Doc, serial loader). Outside it the chip cannot lock on to us at all,
+// and the failure is silent — the download simply never completes.
+const MIN_LOADER_BAUD = 9600;
+const MAX_LOADER_BAUD = 2000000;
+
+// SERIAL baud is produced by an async-TX smart pin (bit period = clkfreq/baud), so it
+// is NOT capped at the loader's 2,000,000 — a source carrying DEBUG_BAUD = 3_000_000
+// is legal and we already adopt it when read from a binary. The ceiling is therefore
+// shared with that path (see p2DebugHeader.MAX_SANE_BAUD) so the same number can never
+// be legal from a binary and illegal from the keyboard.
+//
+// The floor is ours, and it is a REACHABILITY bound — not a taste, and not a claim
+// about standards. This app configures 8N1 and ONLY 8N1 (usb.serial.ts, and
+// winSyncPort's `${baud},n,8,1` DCB string); no framing control is exposed anywhere.
+// Every historic rate below 300 needs framing we cannot produce: 110-baud Teletype is
+// 8N2, and the 75 / 50 / 45.45 Baudot rates are 5-bit ITA2. So 300 is NOT "the lowest
+// standard rate" — it is the Bell 103 modem rate, and 110/75/50 all predate it — it is
+// the lowest rate this app could actually hold a conversation at. Below it there is
+// nothing for us to reach.
+//
+// It also sits far below anything this tool realistically sees (the P2 loader's own
+// auto-baud floor is 9600; the Preferences dropdown stops at 115200), so it cannot
+// reject a legitimate use: the slow legacy devices a plain serial terminal might
+// attach to — 300 / 1200 / 2400 — all stay legal.
+//
+// NOT claimed: that this catches typos. It catches only the extreme ones (115, 96).
+// `--baud 1152`, `11520`, `960` and `9216` are all above the floor and pass straight
+// through. Covering that class would need a "not a standard rate, did you mean…?"
+// WARNING, which is a separate decision and deliberately not made here.
+const MIN_SERIAL_BAUD = 300;
 import { Context } from './utils/context';
 import { ExitCode } from './utils/exitCodes';
 import os from 'os';
@@ -264,9 +299,25 @@ export class DebugTerminalInTypeScript {
       .description(`PNut Terminal TS - v${this.version}`)
       .option('-f, --flash <fileSpec>', 'Download to FLASH and run')
       .option('-r, --ram <fileSpec>', 'Download to RAM and run')
+      // ONE rate serves BOTH roles after a download: the DEBUG output the P2
+      // transmits AND plain serial-terminal traffic. It is one UART, so there is
+      // only ever one number. The old name (--debugbaud) described only half of
+      // what it does and read as irrelevant to anyone using this as a terminal —
+      // who has no binary to read the rate from and for whom this flag is the
+      // ONLY way to set it. Kept as a hidden alias; a shipped flag is never broken.
+      .addOption(
+        new Option(
+          '-b, --baud <rate>',
+          'Serial baud rate for DEBUG output and terminal traffic (300-20000000, default: read from the binary being downloaded, else 2000000)'
+        )
+      )
+      .addOption(new Option('--debugbaud <rate>', 'Deprecated alias for --baud').hideHelp())
+      // The OTHER rate: what we talk to the P2 BOOT LOADER at during -r/-f. The loader
+      // auto-bauds 9600..2,000,000, so 2,000,000 is the ceiling of the supported range,
+      // not a requirement — an adapter that cannot hold it previously had no way out.
       .option(
-        '-b, --debugbaud <rate>',
-        'Override the debug baud rate (default: taken from the binary being downloaded, else 2000000)'
+        '--downloadbaud <rate>',
+        'Baud rate used to download to the P2 (9600-2000000, default: 2000000)'
       )
       .option(
         '-p, --plug <dvcNode>',
@@ -429,15 +480,59 @@ export class DebugTerminalInTypeScript {
       this.context.logger.verboseMsg(`USB device matching: Any FTDI device (VID 0x0403), ignoring product ID`);
     }
 
-    // Store debug baud rate if specified on command line
-    if (options.debugbaud !== undefined) {
-      const baudRate: number | null = this.parsePositiveInt(options.debugbaud);
+    // Store the serial baud rate if specified on the command line. --baud is the
+    // name; --debugbaud is the retained deprecated alias. Giving BOTH with
+    // different values is a usage error rather than a silent pick — the user
+    // clearly believes they are two different settings, and they are not.
+    if (options.baud !== undefined && options.debugbaud !== undefined && options.baud !== options.debugbaud) {
+      this.usageError(
+        `Conflicting --baud (${options.baud}) and --debugbaud (${options.debugbaud}): they are the same setting — pass only --baud`
+      );
+    }
+    const baudFlagName: string = options.baud !== undefined ? '--baud' : '--debugbaud';
+    const baudFlagValue: string | undefined = options.baud !== undefined ? options.baud : options.debugbaud;
+    if (baudFlagValue !== undefined) {
+      const baudRate: number | null = this.parsePositiveInt(baudFlagValue);
       if (baudRate === null) {
-        this.usageError(`Invalid --debugbaud value: "${options.debugbaud}" (expected a positive whole number of bits/sec)`);
+        this.usageError(`Invalid ${baudFlagName} value: "${baudFlagValue}" (expected a positive whole number of bits/sec)`);
+      } else if (baudRate < MIN_SERIAL_BAUD || baudRate > MAX_SANE_BAUD) {
+        this.usageError(
+          `Invalid ${baudFlagName} value: ${baudRate} is outside the supported serial range ` +
+            `(${MIN_SERIAL_BAUD}-${MAX_SANE_BAUD})`
+        );
       } else {
         this.context.runEnvironment.debugBaudrate = baudRate;
         this.context.runEnvironment.debugBaudRateFromCLI = true;
-        this.context.logger.verboseMsg(`Debug baud rate set to ${baudRate}`);
+        this.context.logger.verboseMsg(`Serial baud rate set to ${baudRate}`);
+        // Above our evidence, not above our capability — say exactly that. Claiming
+        // data WILL be lost would be as unfounded as claiming it will not be.
+        if (baudRate > MAX_VALIDATED_BAUD) {
+          this.context.logger.warningMsg(
+            `${baudRate} is above the highest rate this app has been verified to carry (${MAX_VALIDATED_BAUD}). ` +
+              `Behavior above that rate is UNMEASURED — it may carry the stream fine, or it may drop data. ` +
+              `Please report what you observe.`
+          );
+        }
+      }
+    }
+
+    // Store the DOWNLOAD baud rate if specified. Range-checked against the P2 serial
+    // loader's auto-baud window (9600..2,000,000, P2 Silicon Doc) rather than merely
+    // "positive": outside it the P2 cannot lock on at all, and the failure is silent —
+    // the download just never completes. Better to reject the number than the run.
+    if (options.downloadbaud !== undefined) {
+      const rate: number | null = this.parsePositiveInt(options.downloadbaud);
+      if (rate === null) {
+        this.usageError(`Invalid --downloadbaud value: "${options.downloadbaud}" (expected a positive whole number of bits/sec)`);
+      } else if (rate < MIN_LOADER_BAUD || rate > MAX_LOADER_BAUD) {
+        this.usageError(
+          `Invalid --downloadbaud value: ${rate} is outside the P2 boot loader's auto-baud range ` +
+            `(${MIN_LOADER_BAUD}-${MAX_LOADER_BAUD})`
+        );
+      } else {
+        this.context.runEnvironment.downloadBaudrate = rate;
+        this.context.runEnvironment.downloadBaudRateFromCLI = true;
+        this.context.logger.verboseMsg(`Download baud rate set to ${rate}`);
       }
     }
 
@@ -1011,6 +1106,10 @@ export class DebugTerminalInTypeScript {
         controlLine: this.context.runEnvironment.controlLine,
         debugBaudrate: this.context.runEnvironment.debugBaudrate,
         debugBaudRateFromCLI: this.context.runEnvironment.debugBaudRateFromCLI,
+        // Must cross the boundary in BOTH lists (here and electron-main.ts) or the
+        // flag is silently absent in the Electron process — the documented trap.
+        downloadBaudrate: this.context.runEnvironment.downloadBaudrate,
+        downloadBaudRateFromCLI: this.context.runEnvironment.downloadBaudRateFromCLI,
         developerModeEnabled: this.context.runEnvironment.developerModeEnabled,
         verbose: this.context.runEnvironment.verbose,
         ideMode: this.context.runEnvironment.ideMode,

@@ -24,7 +24,6 @@ export interface MainToRendererInitialize {
   cogId: number;                 // 0..7
   windowId: string;              // e.g. "debugger-0-1766700245078"
   initialBreakCond: number;      // _brkcond_ patched into the binary (0x001 or 0x110)
-  debugBaud: number;             // for CT elapsed-time calculation
 }
 
 /**
