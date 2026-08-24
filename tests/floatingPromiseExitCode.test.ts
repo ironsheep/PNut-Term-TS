@@ -53,6 +53,10 @@ function makeLogger(overrides: Record<string, unknown> = {}): any {
     logError: jest.fn(),
     logMessage: jest.fn(),
     getLogFilePath: () => '/tmp/test.log',
+    // The capture-trust channel: null means "the log is complete". A stub without it
+    // makes initiateShutdown() throw, which the shutdown net then reports as 125 —
+    // an honest verdict for a logger it cannot question, but not what these tests mean.
+    getCaptureFault: jest.fn().mockReturnValue(null),
     close: jest.fn().mockResolvedValue(undefined),
     ...overrides
   };

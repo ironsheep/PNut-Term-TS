@@ -1,6 +1,6 @@
 {
   "name": "pnut-term-ts",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A recreation of Chips' Debug listener but multiplatform combined with PST and downloader",
   "keywords": [
     "cli",
@@ -67,6 +67,8 @@
     "build:esbuild": "node esbuild.config.js",
     "check:promises": "node scripts/check-floating-promises.js",
     "check:promises:all": "node scripts/check-floating-promises.js --list",
+    "check:teardown": "node scripts/check-teardown-derefs.js",
+    "check:teardown:all": "node scripts/check-teardown-derefs.js --list",
     "build:win": "tsc && electron-builder build --win",
     "build:mac": "tsc && electron-builder build --mac",
     "build:linux": "tsc && electron-builder build --linux",

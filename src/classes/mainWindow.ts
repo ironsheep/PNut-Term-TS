@@ -1568,18 +1568,24 @@ export class MainWindow {
       // corruption / data-loss seen at 2 Mbaud is gone, and receive backpressure (#30) keeps the
       // pipeline lossless under display load. This is the production path; the legacy main-thread
       // UsbSerial still runs inside that UtilityProcess (constructed by the host).
-      this._serialPort = new UsbSerialProxy(this.context, deviceNode) as unknown as UsbSerial;
+      // Hold the proxy in a LOCAL and deref that for the rest of this try. Shutdown
+      // (window close -> gracefulShutdown, or a failed-open cleanup) sets
+      // `this._serialPort = undefined`, and it can do so across the waitForPortOpen()
+      // await below — after which re-reading the field throws
+      // "Cannot read properties of undefined". [teardown-race deref class]
+      const proxy = new UsbSerialProxy(this.context, deviceNode);
+      this._serialPort = proxy as unknown as UsbSerial;
       // Surface the serial host's own log lines (port open/close, DTR/RTS
       // transitions, the P2 download handshake) in the debug log. They run in the
       // UtilityProcess and previously reached only the app console, leaving the
       // user's debug_*.log with no record of the serial layer whatsoever.
-      (this._serialPort as unknown as UsbSerialProxy).on('hostLog', (text: string) => {
+      proxy.on('hostLog', (text: string) => {
         this.debugLoggerWindow?.logSystemMessage(text);
       });
       // MUST exist before any 'error' can be emitted: an EventEmitter with no 'error' listener
       // THROWS, so the proxy's existing 'fatal' path (and the handshake watchdog) would take the
       // whole app down instead of reporting a dead serial host.
-      (this._serialPort as unknown as UsbSerialProxy).on('error', (err: Error) => {
+      proxy.on('error', (err: Error) => {
         const text = `SERIAL HOST ERROR: ${err.message}`;
         this.logMessage(text);
         this.appendLog(`⚠️ ${text}`);
@@ -1587,11 +1593,11 @@ export class MainWindow {
         this.updateConnectionStatus(false);
       });
       // Wait for port to actually open before proceeding
-      await this._serialPort.waitForPortOpen();
+      await proxy.waitForPortOpen();
       // Push the resolved DOWNLOAD baud into the port. Without this the proxy's cached
       // value stays at whatever the host defaulted to, and a user's --downloadbaud /
       // preference would be silently ignored by the download path below.
-      this._serialPort.setDownloadBaudRate(this._downloadBaud);
+      proxy.setDownloadBaudRate(this._downloadBaud);
       const dlSource = this.context.runEnvironment.downloadBaudRateFromCLI ? 'command-line' : 'preferences/default';
       this.logConsoleMessage(`[BAUD RATE] Setting download baud rate to ${this._downloadBaud} (from ${dlSource})`);
     } catch (error) {
@@ -1621,20 +1627,23 @@ export class MainWindow {
       this.updateStatusBarField('propPlug', `${deviceNode} (FAILED)`);
     }
     if (this._serialPort !== undefined) {
+      // Same reason as the try above: everything below straddles awaits, and a
+      // teardown can drop `this._serialPort` inside any of them. Bind it once.
+      const openPort = this._serialPort;
       this.logMessage(`* openSerialPort() - IS OPEN`);
 
       // Clear any previous error messages from the terminal
       this.clearTerminal();
 
       // Verify the port opened at the requested baud rate
-      const actualBaud = this._serialPort.getCurrentBaudRate();
+      const actualBaud = openPort.getCurrentBaudRate();
       this.logConsoleMessage(`[BAUD RATE] Port opened, actual baud rate: ${actualBaud}`);
 
       // Initialize DTR/RTS to known de-asserted state (HIGH) for hardware sync
       // This ensures our state variables match the actual hardware state
       try {
-        await this._serialPort.setDTR(false); // false = HIGH/de-asserted
-        await this._serialPort.setRTS(false); // false = HIGH/de-asserted
+        await openPort.setDTR(false); // false = HIGH/de-asserted
+        await openPort.setRTS(false); // false = HIGH/de-asserted
 
         // Keep our state variables in sync with what we just set
         this.dtrState = false;
@@ -1647,7 +1656,7 @@ export class MainWindow {
         // Continue anyway - not critical for basic operation
       }
 
-      this._serialPort.on('data', (data) => this.handleSerialRx(data));
+      openPort.on('data', (data) => this.handleSerialRx(data));
       this.updateConnectionStatus(true);
       // Removed startup text - connection status now shown in status bar
 
@@ -1657,8 +1666,8 @@ export class MainWindow {
       this.logMessage(`🔧 Control line mode set to ${this.controlLineMode} for this device`);
 
       // Initialize downloader with serial port
-      if (!this.downloader && this._serialPort) {
-        this.downloader = new Downloader(this.context, this._serialPort);
+      if (!this.downloader) {
+        this.downloader = new Downloader(this.context, openPort);
         this.logMessage(`* openSerialPort() - Downloader initialized`);
       }
     }
@@ -6194,6 +6203,11 @@ export class MainWindow {
     this.logMessage(`[DTR TOGGLE] Stack trace: ${new Error().stack?.split('\n').slice(1, 4).join(' -> ')}`);
 
     if (this._serialPort) {
+      // Bind the port ONCE: the reset pulse below straddles awaits, and a teardown
+      // arriving inside one of them clears `this._serialPort` — the statements after
+      // the pulse would then throw "Cannot read properties of undefined" and be
+      // reported to the user as a control-line failure. [teardown-race deref class]
+      const port = this._serialPort;
       try {
         // With Prop Plug hardware, ANY DTR transition triggers a 17µs reset pulse
         // So we only touch the hardware when going from ON to OFF (de-asserting)
@@ -6203,7 +6217,7 @@ export class MainWindow {
           this.logMessage(`[DTR TOGGLE] DTR ON - quiescing system`);
 
           // 1. Block incoming traffic immediately
-          this._serialPort.setIgnoreFrontTraffic(true);
+          port.setIgnoreFrontTraffic(true);
           this.logMessage(`[DTR TOGGLE] Traffic blocked`);
 
           // 2. Flush and rotate logs while traffic is blocked
@@ -6234,12 +6248,12 @@ export class MainWindow {
           this.logMessage(`[DTR RESET] DTR releasing - reset pulse now`);
 
           // 2. Toggle DTR to trigger Prop Plug's 17µs reset pulse
-          await this._serialPort.setDTR(true);
-          await this._serialPort.setDTR(false);
+          await port.setDTR(true);
+          await port.setDTR(false);
           this.logMessage(`[DTR TOGGLE] Hardware reset pulse triggered (P2 stopped in ~17µs)`);
 
           // 3. Open traffic gate (P2 stopped in µs, bootloader ready in 17ms, gate opens in ~1ms)
-          this._serialPort.setIgnoreFrontTraffic(false);
+          port.setIgnoreFrontTraffic(false);
           this.logMessage(`[DTR TOGGLE] Traffic gate opened`);
 
           // 4. Update state
@@ -6289,13 +6303,18 @@ export class MainWindow {
     this.logMessage(`[RTS TOGGLE] New state will be: ${newState}`);
 
     if (this._serialPort) {
+      // Bind the port ONCE: the reset pulse below straddles awaits, and a teardown
+      // arriving inside one of them clears `this._serialPort` — the statements after
+      // the pulse would then throw "Cannot read properties of undefined" and be
+      // reported to the user as a control-line failure. [teardown-race deref class]
+      const port = this._serialPort;
       try {
         if (newState) {
           // Press ON: Quiesce system (block traffic, flush logs, prepare for reset)
           this.logMessage(`[RTS TOGGLE] RTS ON - quiescing system`);
 
           // 1. Block incoming traffic immediately
-          this._serialPort.setIgnoreFrontTraffic(true);
+          port.setIgnoreFrontTraffic(true);
           this.logMessage(`[RTS TOGGLE] Traffic blocked`);
 
           // 2. Flush and rotate logs while traffic is blocked
@@ -6326,12 +6345,12 @@ export class MainWindow {
           this.logMessage(`[RTS RESET] RTS releasing - reset pulse now`);
 
           // 2. Toggle RTS to trigger Prop Plug's 17µs reset pulse
-          await this._serialPort.setRTS(true);
-          await this._serialPort.setRTS(false);
+          await port.setRTS(true);
+          await port.setRTS(false);
           this.logMessage(`[RTS TOGGLE] Hardware reset pulse triggered (P2 stopped in ~17µs)`);
 
           // 3. Open traffic gate (P2 stopped in µs, bootloader ready in 17ms, gate opens in ~1ms)
-          this._serialPort.setIgnoreFrontTraffic(false);
+          port.setIgnoreFrontTraffic(false);
           this.logMessage(`[RTS TOGGLE] Traffic gate opened`);
 
           // 4. Update state
@@ -7613,13 +7632,17 @@ export class MainWindow {
     const useRTS = this.context.runEnvironment.controlLine === 'RTS';
 
     if (this._serialPort) {
+      // Bind the port ONCE — the pulse below spans a 100 ms await, and a teardown
+      // inside that window clears `this._serialPort`, turning the de-assert into a
+      // TypeError reported as a hardware-reset failure. [teardown-race deref class]
+      const port = this._serialPort;
       try {
         if (useRTS) {
           this.logMessage('[SIGNAL] Resetting hardware via RTS pulse');
           // Pulse RTS low for 100ms to trigger reset
-          await this._serialPort.setRTS(false);
+          await port.setRTS(false);
           await new Promise((resolve) => setTimeout(resolve, 100));
-          await this._serialPort.setRTS(true);
+          await port.setRTS(true);
           this.logMessage('[SIGNAL] RTS reset pulse completed');
 
           // Notify debug windows about the reset
@@ -7629,9 +7652,9 @@ export class MainWindow {
         } else {
           this.logMessage('[SIGNAL] Resetting hardware via DTR pulse');
           // Pulse DTR low for 100ms to trigger reset
-          await this._serialPort.setDTR(false);
+          await port.setDTR(false);
           await new Promise((resolve) => setTimeout(resolve, 100));
-          await this._serialPort.setDTR(true);
+          await port.setDTR(true);
           this.logMessage('[SIGNAL] DTR reset pulse completed');
 
           // Notify debug windows about the reset

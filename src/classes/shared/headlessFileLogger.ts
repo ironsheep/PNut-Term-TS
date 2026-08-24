@@ -31,6 +31,16 @@ export class HeadlessFileLogger {
   private logFileReady: boolean = false;
   private pendingLogMessages: string[] = [];
 
+  // Why the capture can no longer be trusted, or null while it can. Sticky: the FIRST
+  // reason wins, because that is the one that explains everything after it.
+  //
+  // The contract this serves: exit 0 means the captured data is complete and trustworthy.
+  // Every path that loses bytes used to report itself with a bare console.error and let
+  // the run exit 0 anyway — a CI script saw success and a log with holes in it. Anything
+  // that sets this makes the run non-zero (FlushTimeout) AND says so out loud, in the
+  // console and in the log itself.
+  private captureFault: string | null = null;
+
   // Buffering configuration
   private readonly WRITE_INTERVAL_MS = 100; // Flush every 100ms
   private readonly MAX_BUFFER_SIZE = 4096; // Force flush at 4KB
@@ -109,7 +119,11 @@ export class HeadlessFileLogger {
         }
         this.logFile!.write(`=====================================\n\n`, (err) => {
           if (err) {
-            console.error('[HEADLESS] Failed to write header:', err);
+            // logFileReady stays false, so EVERY later message queues in
+            // pendingLogMessages and is never flushed: an empty log, and (before this)
+            // exit 0. The log cannot report its own failure, so the console and the
+            // exit code have to carry it.
+            this.markCaptureFault(`log header could not be written (${err.message}) — the log file is empty`);
           } else {
             // Sync to disk
             try {
@@ -125,15 +139,36 @@ export class HeadlessFileLogger {
         });
       });
 
-      // Handle stream errors
-      this.logFile.once('error', (err) => {
-        console.error('[HEADLESS] Write stream error:', err);
+      // Handle stream errors. `on`, not `once`: a stream that errors repeatedly (a full
+      // disk, a yanked volume) reported only its FIRST error and then went quiet, which
+      // reads exactly like a healthy log.
+      this.logFile.on('error', (err) => {
+        this.markCaptureFault(`log write stream error (${err.message}) — this log is missing data`);
       });
 
       console.log('[HEADLESS] Log file initialized:', this.logFilePath);
     } catch (error) {
-      console.error('[HEADLESS] Failed to initialize log file:', error);
+      this.markCaptureFault(`log file could not be created (${error}) — nothing was captured`);
     }
+  }
+
+  /**
+   * Record that the capture is no longer complete. First reason wins; always loud.
+   */
+  private markCaptureFault(reason: string): void {
+    if (this.captureFault !== null) {
+      return; // already compromised — do not bury the original cause under its aftershocks
+    }
+    this.captureFault = reason;
+    console.error(`[HEADLESS] LOG CAPTURE COMPROMISED: ${reason}`);
+  }
+
+  /**
+   * The reason the capture is untrustworthy, or null if it is complete.
+   * HeadlessController reads this at shutdown to decide the exit code.
+   */
+  public getCaptureFault(): string | null {
+    return this.captureFault;
   }
 
   /**
@@ -290,10 +325,12 @@ export class HeadlessFileLogger {
       // Log file not ready yet - buffer the message for later
       this.pendingLogMessages.push(logEntry);
 
-      // Limit buffer size to prevent memory issues
+      // Limit buffer size to prevent memory issues. Reaching here at all means the log
+      // file never became ready; the splice below DESTROYS captured output, so it is a
+      // capture fault, not a warning.
       if (this.pendingLogMessages.length > 1000) {
-        console.warn('[HEADLESS] Pending message buffer full, dropping oldest messages');
         this.pendingLogMessages.splice(0, 100);
+        this.markCaptureFault('log file never became writable — buffered output is being discarded');
       }
     }
   }
@@ -326,17 +363,28 @@ export class HeadlessFileLogger {
       this.writeTimer = null;
     }
 
-    if (this.writeBuffer.length > 0 && this.logFile && !this.logFile.destroyed && this.logFile.writable) {
-      const data = this.writeBuffer.join('');
-      this.writeBuffer = [];
-
-      // Async write with error handling
-      this.logFile.write(data, (err) => {
-        if (err) {
-          console.error('[HEADLESS] Failed to write to log file:', err);
-        }
-      });
+    if (this.writeBuffer.length === 0) {
+      return;
     }
+
+    if (!this.logFile || this.logFile.destroyed || !this.logFile.writable) {
+      // There IS buffered output and there is no longer anywhere to put it. Silently
+      // returning here is how a run ended with its tail missing and still reported 0.
+      this.markCaptureFault(
+        `${this.writeBuffer.length} buffered log line(s) could not be written — the stream is closed`
+      );
+      return;
+    }
+
+    const data = this.writeBuffer.join('');
+    this.writeBuffer = [];
+
+    // Async write with error handling
+    this.logFile.write(data, (err) => {
+      if (err) {
+        this.markCaptureFault(`log write failed (${err.message}) — this log is missing data`);
+      }
+    });
   }
 
   /**
@@ -353,6 +401,12 @@ export class HeadlessFileLogger {
 
     return new Promise<void>((resolve) => {
       if (this.logFile) {
+        // Stamp the verdict INTO the log. A log that is missing data must say so in the
+        // artifact itself — the exit code is gone the moment the shell moves on, and a
+        // console line is gone with the terminal. This is the only copy that persists.
+        if (this.captureFault !== null) {
+          this.logFile.write(`\n*** WARNING: THIS LOG IS INCOMPLETE — ${this.captureFault} ***\n`);
+        }
         // Write session footer
         this.logFile.write(`\n=== Headless Mode Session Ended at ${getFormattedDateTimeISO()} ===\n`);
 

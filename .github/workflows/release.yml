@@ -60,6 +60,17 @@ jobs:
         shell: bash
         run: node scripts/check-floating-promises.js
 
+      # The same contract, attacked from the other side. A field released during
+      # teardown (this.serialPort = null) and then dereferenced AFTER an await throws a
+      # TypeError that, from a `finally`, discards the return value and escapes run() —
+      # which is how v1.0.4 reported "unexpected failure: Cannot read properties of null
+      # (reading 'getCurrentBaudRate')" and handed the shell a 1 instead of the code the
+      # shutdown had decided. TypeScript cannot see this: it does not reset a field's
+      # narrowing across an await. ~2 s; TypeScript devDependency only.
+      - name: Check for teardown-race derefs in the exit-status-critical set
+        shell: bash
+        run: node scripts/check-teardown-derefs.js
+
   # Build Windows packages
   build-windows:
     name: Build Windows

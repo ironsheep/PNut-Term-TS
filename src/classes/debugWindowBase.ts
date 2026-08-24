@@ -1579,6 +1579,13 @@ export abstract class DebugWindowBase extends EventEmitter {
    */
   protected async saveDesktopWindowToBMPFilename(filename: string): Promise<void> {
     if (this._debugWindow) {
+      // Bind the window ONCE. closeDebugWindow() sets `this._debugWindow = null`, and a
+      // capture spans several awaits (the draw flush, the 150 ms restack settle, the
+      // desktop grab) — a close landing inside any of them turns the next field read
+      // into "Cannot read properties of null" instead of a clean "window is gone".
+      // A destroyed-but-non-null window is a different failure and is still handled by
+      // the isDestroyed() checks on the capture helpers. [teardown-race deref class]
+      const win = this._debugWindow;
       // Wait for this window's own in-flight async draw to land before capturing. [#49]
       await this.flushBeforeCapture();
       this.logMessage(`  -- writing desktop window BMP to [${filename}]`);
@@ -1598,25 +1605,25 @@ export abstract class DebugWindowBase extends EventEmitter {
         // window overlaps it, SAVE WINDOW would capture the OTHER window's content. Pascal SAVE
         // WINDOW always captures THIS window (with chrome), so raise + show + focus it, then give
         // the window-server a beat to restack/repaint before grabbing. [SAVE WINDOW occlusion parity]
-        if (!this._debugWindow.isVisible()) this._debugWindow.show();
-        this._debugWindow.moveTop();
-        this._debugWindow.focus();
+        if (!win.isVisible()) win.show();
+        win.moveTop();
+        win.focus();
         await new Promise((resolve) => setTimeout(resolve, 150));
         // Flush pending renderer draws — desktopCapturer grabs the on-screen pixels and does NOT
         // wait for fire-and-forget canvas draws, so a heavy window (LOGIC/SPECTRO) would otherwise
         // be captured half-drawn. This is why plain SAVE (flushed capturePage) was complete while
         // SAVE WINDOW was missing most of the LOGIC content. [SAVE-vs-async-draw race]
-        await this.flushRendererDraws(this._debugWindow);
+        await this.flushRendererDraws(win);
         // Pascal SAVE WINDOW captures the on-screen window region INCLUDING the
         // native title-bar/chrome. getBounds() returns screen coords with chrome.
-        const bounds = this._debugWindow.getBounds();
+        const bounds = win.getBounds();
         let pngBuffer = await this.captureDesktopRegionAsPNG(bounds.x, bounds.y, bounds.width, bounds.height);
         if (!pngBuffer || pngBuffer.length === 0) {
           // Desktop capture unavailable (e.g. macOS Screen Recording permission
           // not yet granted). Fall back to content-only so SAVE WINDOW still
           // produces a file rather than nothing.
           this.logMessageBase('SAVE WINDOW: desktop capture unavailable — falling back to canvas content');
-          pngBuffer = await this.captureWindowAsPNG(this._debugWindow);
+          pngBuffer = await this.captureWindowAsPNG(win);
         }
         const bmpBuffer = await this.convertPNGtoBMP(pngBuffer);
         const outputFSpec = screenshotFSpecForFilename(this.context, filename, '.bmp');

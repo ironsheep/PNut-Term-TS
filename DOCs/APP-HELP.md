@@ -514,12 +514,12 @@ Scripts and CI can rely on these:
 
 | Code | Meaning |
 |------|---------|
-| `0` | Normal exit (including a clean end-session marker) |
-| `1` | Port error — enumeration failed, or the requested device was not found |
+| `0` | Normal exit — the captured log is complete |
+| `1` | Port error — enumeration failed, the requested device was not found, or the device stopped responding during the run |
 | `2` | Usage error — bad command line; nothing was run |
 | `3` | Download failed |
 | `124` | Timed out (`--timeout`) |
-| `125` | Flush timeout during shutdown |
+| `125` | The log may be incomplete — the shutdown flush ran long, or output was lost while writing |
 
 ---
 
@@ -592,4 +592,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 1.0.4 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 1.0.5 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

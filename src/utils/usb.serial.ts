@@ -99,6 +99,10 @@ export class UsbSerial extends EventEmitter {
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
   private _expectingChecksumResponse: boolean = false; // Flag to track when we're expecting checksum responses that should be consumed
   private _isShuttingDown: boolean = false; // Flag to stop processing data during shutdown
+  // True once the port has successfully opened at least once. Separates a mid-run
+  // transport failure (which nothing was listening for) from an open failure (which
+  // waitForPortOpen() already reports). See handleSerialError().
+  private _hasOpened: boolean = false;
   private _ignoreFrontTraffic: boolean = false; // Flag to drop incoming data (quiesce/startup control)
   private _closePromise: Promise<void> | null = null; // In-flight close() — makes close idempotent (see close())
   private _usingSyncPort: boolean = false; // true when the transport is the Windows WinSyncPort
@@ -1348,10 +1352,25 @@ export class UsbSerial extends EventEmitter {
   private handleSerialError(errMessage: string) {
     this.logMessage(`* handleSerialError() Error: ${errMessage}`);
     this._latestError = errMessage;
+    // A transport error AFTER the port opened is a different animal from one during the
+    // open. The open path reports itself: waitForPortOpen() polls isOpen and REJECTS on
+    // its 2 s timeout, so the caller already learns the port never came up. (It does not
+    // read _latestError, despite what the comment at the open site claims.) A MID-RUN
+    // failure — the Prop Plug pulled, the FTDI dropping off
+    // the bus — had no listener at all: _latestError is read nowhere else, so the capture
+    // simply stopped. Headless then either exited 124 with no explanation, or (with
+    // --end-marker and no --timeout) waited forever for a marker that could never arrive.
+    //
+    // Deliberately NOT named 'error': an EventEmitter with no 'error' listener THROWS,
+    // which would take the GUI down for a fault it already handles through the proxy.
+    if (this._hasOpened && !this._isShuttingDown) {
+      this.emit('serialError', errMessage);
+    }
   }
 
   private async handleSerialOpen() {
     this.logConsoleMessage(`[USB] handleSerialOpen() - port opened`);
+    this._hasOpened = true;
 
     // WORKAROUND for macOS high baud rates: If we opened at a standard rate,
     // now update to the desired rate

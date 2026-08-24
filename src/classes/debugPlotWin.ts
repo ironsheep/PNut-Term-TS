@@ -1153,12 +1153,25 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
       })()
     `;
 
-    // Use await to ensure buffer flip completes before continuing
-    try {
-      const result = await this.debugWindow.webContents.executeJavaScript(jsCode);
-      this.logMessage(`Buffer flip result: ${result}`);
-    } catch (error) {
-      this.logMessage(`Failed to flip buffer: ${error}`);
+    // Use await to ensure buffer flip completes before continuing.
+    // Bind the window first: performUpdate() has already awaited by the time it gets
+    // here, and closeDebugWindow() sets `this.debugWindow = null` — re-reading the field
+    // after an await reports a window close as "Failed to flip buffer: TypeError...".
+    // Every other async site in this file already uses this capture idiom; this one was
+    // the exception. [teardown-race deref class]
+    const debugWindow = this.debugWindow;
+    if (!debugWindow || debugWindow.isDestroyed()) {
+      // Window closed while this update was in flight — nothing to flip. Fall THROUGH
+      // rather than returning: renderStart() has already been counted and the
+      // renderEnd() below must balance it.
+      this.logMessage(`Buffer flip skipped: window closed during update`);
+    } else {
+      try {
+        const result = await debugWindow.webContents.executeJavaScript(jsCode);
+        this.logMessage(`Buffer flip result: ${result}`);
+      } catch (error) {
+        this.logMessage(`Failed to flip buffer: ${error}`);
+      }
     }
 
     // End render timing (if enabled)

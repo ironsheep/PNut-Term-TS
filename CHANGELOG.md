@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.0.5 (2026-08-24)
+
+Headless runs report their own exit status, and say plainly when a log is incomplete.
+
+### Improvements
+
+- **Console output**: an incomplete log is reported on the console, written into the log
+  file itself, and carried in a non-zero exit status
+- **Control lines**: closing the app during a DTR or RTS reset no longer reports a
+  control-line failure
+
+### Bug Fixes
+
+- A `--timeout` expiring, Ctrl-C, or an end marker arriving during a download now reports
+  that run's own exit status rather than a port error
+- Headless runs stop when the serial device stops responding, instead of waiting for an end
+  marker that can no longer arrive
+- `--headless --timeout` with a port that cannot be opened exits immediately rather than
+  waiting out the full timeout
+
 ## v1.0.4 (2026-08-24)
 
 A run that finished cleanly could still tell your script it had failed.
