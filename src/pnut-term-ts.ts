@@ -1320,13 +1320,56 @@ export class DebugTerminalInTypeScript {
 // finish flushing buffered stdout/stderr (which process.exit can truncate when
 // output is piped — exactly how CI and agent runs consume us) and then exit with
 // this status on its own.
+// Has run() decided the status yet? Read by the safety net below. NOT the same
+// question as `process.exitCode !== undefined` — a decided OK leaves it 0, which is
+// indistinguishable from "never set" once assigned.
+let exitStatusDecided = false;
+
+// ── SAFETY NET FOR THE EXIT-CODE CONTRACT ───────────────────────────────────────
+// Node >= 15 defaults to `--unhandled-rejections=throw`: a promise rejection nobody
+// handled becomes an uncaught exception, and Node then FORCES exit status 1. That
+// silently overwrites whatever code we decided — which is precisely how a clean
+// v1.0.3 headless run printed "(exit code: 0)" and handed the shell a 1, on 3 of 6
+// otherwise identical runs. (The specific floating promise was an unawaited
+// serialPort.close() during shutdown; scripts/check-floating-promises.js now gates
+// that whole class, and these handlers make the contract hold even if one returns.)
+//
+// The rule below is deliberately asymmetric, because WHEN it happens changes what it
+// means:
+//
+//   BEFORE the status is decided  →  we crashed mid-run. Nothing is known about the
+//                                    outcome, so report it and fail (PortError, the
+//                                    same code an unexpected run() failure returns).
+//   AFTER  the status is decided  →  the run finished and already reported its
+//                                    verdict; this is teardown noise. Report it just
+//                                    as loudly, but KEEP the decided code. A stumble
+//                                    while closing a port is not a reason to lie to a
+//                                    script about whether the run succeeded.
+//
+// Nothing is ever swallowed: both paths always print. The net changes what a stray
+// rejection COSTS, never whether you hear about it.
+function reportStray(kind: string, error: unknown): void {
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  console.error(`PNut-Term-TS: ${kind} ${exitStatusDecided ? 'during shutdown' : 'during run'}: ${detail}`);
+  if (exitStatusDecided) {
+    console.error(`PNut-Term-TS: run already finished — keeping exit status ${process.exitCode ?? 0}`);
+  } else {
+    process.exitCode = ExitCode.PortError;
+  }
+}
+
+process.on('unhandledRejection', (reason: unknown) => reportStray('unhandled promise rejection', reason));
+process.on('uncaughtException', (error: unknown) => reportStray('uncaught exception', error));
+
 const cliTool = new DebugTerminalInTypeScript();
 cliTool
   .run()
   .then((exitCode: number) => {
     process.exitCode = Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : ExitCode.PortError;
+    exitStatusDecided = true;
   })
   .catch((error: unknown) => {
     console.error(`PNut-Term-TS: unexpected failure: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = ExitCode.PortError;
+    exitStatusDecided = true;
   });

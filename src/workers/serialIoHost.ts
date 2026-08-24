@@ -159,7 +159,14 @@ port.on('message', (event: any) => {
   const msg = event && Object.prototype.hasOwnProperty.call(event, 'data') ? event.data : event;
   if (!msg) return;
   if (msg.kind === 'init') handleInit(msg);
-  else if (msg.kind === 'call') void handleCall(msg);
+  // handleCall() catches its own call failures, but its `finally { pushState() }` can
+  // still throw — and a rejection here has no awaiter, so it would take the whole
+  // serial host process down with it. Report and keep serving.
+  else if (msg.kind === 'call')
+    handleCall(msg).catch((e: any) => {
+      console.error(`[HOST] call ${msg.method} id=${msg.id} handler FAILED: ${e?.message ?? e}`);
+      if (msg.id) post({ kind: 'result', id: msg.id, ok: false, error: e?.message ?? String(e) });
+    });
 });
 
 // Announce readiness to receive 'init' (main waits for this so no message is sent before our

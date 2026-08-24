@@ -23,6 +23,35 @@ gates a release any longer; everything here is post-1.0 work.
   - Parse parity complete (`isRange`/`busWidth` tagged), but the renderer has NO bus path: `drawChannelFromSamples` only draws a 1-bit high/low trace (`invSample = 1 - samples[i]`), so a RANGE bus shows as N stacked 1-bit lines instead of one multi-bit value (bus-band) waveform. Fix = a new bus-waveform draw branch (logic-analyzer bus band with value crossings).
   - Not exercised by fig-06 (single-bit channels only). **Demo written:** `REF-NO-COMMIT/WIndow ISSUES/fig-11-logic-range/` (DRAFT, needs compile-check).
 
+### P2 - Floating promises in the Electron main process (raised 2026-08-24, v1.0.4 exit-code fix)
+
+- [ ] **115 unhandled promise statements remain in the Electron main process** —
+  `mainWindow.ts` (47), the nine debug windows, `debugWindowBase.ts`, `electron-main.ts`.
+  Run `npm run check:promises:all` for the list. These are the SAME construct that caused
+  the v1.0.4 defect (an async call nobody awaits or catches), but a different blast radius:
+  `electron-main.ts` installs its own `unhandledRejection` handler, so a rejection there
+  does not rewrite the exit status. That is why the gate
+  (`scripts/check-floating-promises.js`) is HARD over the CLI/headless/worker set and
+  ADVISORY here — converting 115 render-path call sites is real work with real regression
+  risk and does not belong in a patch release. Bring the advisory number down deliberately,
+  a window at a time, each with hardware verification. `// floating-promise-ok: <reason>`
+  marks a site that is genuinely fire-and-forget.
+
+### P2 - The Electron main process's crash handlers mask failures as SUCCESS (raised 2026-08-24)
+
+- [ ] **`electron-main.ts:294-301` answers both `uncaughtException` and `unhandledRejection`
+  with `app.quit()`** — which runs the normal shutdown and exits with `shutdownExitCode`,
+  i.e. **0**. So a genuine crash in the headed process reports success to the shell. This is
+  the exact mirror image of the v1.0.4 defect (which reported failure after success), and it
+  is in the same contract: `src/utils/exitCodes.ts` promises a launching script can branch
+  on `$?` identically headed or headless. NOT fixed in v1.0.4 on purpose: the right answer
+  needs a decision from Stephen, because the exit-code map has no "internal error" code and
+  adding one is a contract change. Options: (a) add a code (e.g. 70, the BSD `EX_SOFTWARE`
+  convention) and report crashes with it; (b) reuse `PortError`, which is honest about
+  "something failed" but misleading about what; (c) adopt the CLI's asymmetric rule —
+  loud report, and keep an already-decided status, fail only if nothing was decided yet.
+  My lean is (c) plus (a). Needs hardware verification of headed shutdown either way.
+
 ### P3 - Doc instruments use a PID-named temp file (raised 2026-08-23)
 
 - [ ] **`check_doc_claims.sh` writes `/tmp/.doc_orphans.$$` and does not clean it up on

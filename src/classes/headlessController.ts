@@ -81,7 +81,7 @@ export class HeadlessController {
 
     // Set up end-marker callback
     this.logger.setEndMarkerCallback(() => {
-      void this.initiateShutdown(ExitCode.OK, 'End marker detected');
+      this.beginShutdown(ExitCode.OK, 'End marker detected');
     });
 
     // Set up signal handlers
@@ -96,7 +96,7 @@ export class HeadlessController {
       this.timeoutTimer = setTimeout(() => {
         console.log('[HEADLESS] Timeout expired');
         this.logger.logSystem('Timeout expired');
-        void this.initiateShutdown(ExitCode.RunTimeout, 'Timeout');
+        this.beginShutdown(ExitCode.RunTimeout, 'Timeout');
       }, timeoutSeconds * 1000);
     }
 
@@ -119,7 +119,7 @@ export class HeadlessController {
       if (!downloadSuccess) {
         // Download failed - abort immediately (exit code 3 = Download failed)
         this.logger.logError('Download failed - aborting');
-        void this.initiateShutdown(ExitCode.DownloadFailed, 'Download failed');
+        this.beginShutdown(ExitCode.DownloadFailed, 'Download failed');
         return this.exitCode;
       }
     }
@@ -313,14 +313,14 @@ export class HeadlessController {
     process.on('SIGTERM', () => {
       console.log('[HEADLESS] Received SIGTERM');
       this.logger.logSystem('Received SIGTERM signal');
-      void this.initiateShutdown(ExitCode.OK, 'SIGTERM');
+      this.beginShutdown(ExitCode.OK, 'SIGTERM');
     });
 
     // SIGINT - Ctrl+C
     process.on('SIGINT', () => {
       console.log('[HEADLESS] Received SIGINT (Ctrl+C)');
       this.logger.logSystem('Received SIGINT signal (Ctrl+C)');
-      void this.initiateShutdown(ExitCode.OK, 'SIGINT');
+      this.beginShutdown(ExitCode.OK, 'SIGINT');
     });
 
     // SIGUSR1 - Reset hardware (Linux/macOS only)
@@ -328,7 +328,12 @@ export class HeadlessController {
       process.on('SIGUSR1', () => {
         console.log('[HEADLESS] Received SIGUSR1 - resetting hardware');
         this.logger.logSystem('Received SIGUSR1 signal - resetting hardware');
-        this.resetHardware();
+        this.resetHardware().catch((error: unknown) => {
+          // Same class as beginShutdown(): a bare async call in a signal handler has
+          // nowhere to reject to. Report it and keep running — a failed reset is not
+          // a reason to kill the run, and it must NEVER rewrite the exit status.
+          console.error(`[HEADLESS] Hardware reset failed (non-fatal): ${error}`);
+        });
       });
     }
   }
@@ -363,6 +368,39 @@ export class HeadlessController {
   }
 
   /**
+   * Fire-and-forget entry to initiateShutdown() from a callback that cannot await —
+   * the end-marker callback, the timeout timer, and the SIGTERM/SIGINT handlers.
+   *
+   * Every one of those sites used `void this.initiateShutdown(...)`. `void` is NOT a
+   * rejection handler; it satisfies a linter and leaves the rejection every bit as
+   * unhandled, which under Node >= 15 kills the process with status 1. That is
+   * catastrophic HERE specifically: these are the five places that DECIDE the exit
+   * code, so a stumble while shutting down would discard the very code it was
+   * shutting down to report.
+   *
+   * So: catch, report, and still hand the run the code we intended. A shutdown that
+   * goes wrong must still be a shutdown that reports its verdict.
+   */
+  private beginShutdown(code: number, reason: string): void {
+    this.initiateShutdown(code, reason).catch((error: unknown) => {
+      console.error(`[HEADLESS] Shutdown (${reason}) failed: ${error}`);
+      try {
+        this.logger.logError(`Shutdown (${reason}) failed: ${error}`);
+      } catch {
+        /* the logger is the thing that just failed — don't compound it */
+      }
+      // The run promise is the ONLY way a code reaches the shell. Resolve it even on
+      // a failed teardown, escalating a would-be-clean exit to FlushTimeout because
+      // that is exactly what "your output may be incomplete" means.
+      if (this.resolveRun) {
+        const resolve = this.resolveRun;
+        this.resolveRun = null;
+        resolve(this.exitCode === ExitCode.OK ? ExitCode.FlushTimeout : this.exitCode);
+      }
+    });
+  }
+
+  /**
    * Initiate graceful shutdown
    */
   private async initiateShutdown(code: number, reason: string): Promise<void> {
@@ -383,12 +421,29 @@ export class HeadlessController {
     }
 
     // Stop ingest first so no new log data can arrive mid-flush.
+    //
+    // AWAIT the close. It used to be called bare, and UsbSerial.close() is `async` —
+    // so the try/catch around it could only ever catch a SYNCHRONOUS throw, and a
+    // rejected close escaped as an unhandled rejection. Under Node >= 15's default
+    // (`--unhandled-rejections=throw`) that becomes an uncaught exception, and Node
+    // then FORCES exit status 1 — silently overwriting the exit code we just decided
+    // and printed on the line above. That is the v1.0.3 defect: a clean end-marker
+    // run announced "(exit code: 0)" and handed the shell a 1, intermittently,
+    // depending on whether the native close happened to error while the P2 was still
+    // transmitting. Awaiting puts the rejection back inside the catch, where the
+    // comment always implied it was.
+    //
+    // Awaiting is also correct for its own sake: it means the port is genuinely
+    // released before the run resolves, rather than closing behind us.
     if (this.serialPort) {
       try {
         this.serialPort.setShuttingDown(true);
-        this.serialPort.close();
+        await this.serialPort.close();
       } catch (error) {
-        console.error(`[HEADLESS] Error closing serial port: ${error}`);
+        // Non-fatal: we are exiting anyway, and the OS reclaims the handle. Report it,
+        // but never let a teardown hiccup rewrite the run's outcome.
+        console.error(`[HEADLESS] Error closing serial port (non-fatal): ${error}`);
+        this.logger.logSystem(`Error closing serial port (non-fatal): ${error}`);
       }
       this.serialPort = null;
     }

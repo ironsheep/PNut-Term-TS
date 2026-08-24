@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.0.4 (2026-08-24)
+
+A run that finished cleanly could still tell your script it had failed.
+
+Headless runs report the right exit status again. A run that ended normally on its end
+marker would print `(exit code: 0)` and then hand the shell a **1** — sometimes. Roughly
+half of otherwise identical runs did it, which is the worst way for a fault like this to
+behave: anything scripted around this tool saw a successful run fail at random, and
+re-running it appeared to fix it. Nothing was actually wrong with the run. The log was
+complete, the download had worked, the P2 had done its job; only the number handed back
+at the very end was wrong, and it was wrong *after* the app had already decided on the
+right one.
+
+The cause was in shutting down, not in running. While closing the serial port on the way
+out, the app did not wait for the close to finish, so if the port objected — which it does
+now and then, when the P2 is still transmitting at the moment the run ends — the complaint
+arrived with nobody left listening for it. Node treats that as a crash and overrides the
+exit status with a 1, on top of the one already chosen. The close is now waited for, and a
+port that objects on the way out is reported and ignored, which is all it ever deserved.
+
+The exit status is now protected from this whole class of fault. Two things changed beyond
+the one bad line. If something does go wrong after a run has decided its result, the app
+now says so plainly and **keeps the result it decided** — a stumble while closing a file or
+a port is not a reason to tell you the run failed. And every remaining place that could
+have done the same thing has been found and fixed, including the five that decide the exit
+code in the first place: a shutdown that goes wrong still reports its verdict rather than
+vanishing. A check now runs before every release and refuses to ship this construct again.
+
+Nothing about how you use the app has changed. If you have scripts that were tolerating
+random failures from this tool — retrying, or ignoring the exit status — they can stop.
+
 ## v1.0.3 (2026-08-23)
 
 The two serial speeds this app uses now have honest names, and the one that was fixed at 2 Mbps is yours to change.

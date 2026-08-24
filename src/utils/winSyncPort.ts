@@ -542,7 +542,13 @@ export class WinSyncPort extends EventEmitter {
   private startPump(): void {
     if (this.pumpRunning || !this.isOpen) return;
     this.pumpRunning = true;
-    void this.pumpLoop();
+    // The pump runs for the life of the port with nobody awaiting it, so a throw in
+    // there had nowhere to go but the unhandled-rejection floor — which terminates
+    // the process. Stop the pump and report instead; the port stays usable for close().
+    this.pumpLoop().catch((err: unknown) => {
+      this.pumpRunning = false;
+      this.log.diag(`[WIN-SYNC] read pump stopped on error: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
 
   /**

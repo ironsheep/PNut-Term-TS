@@ -191,7 +191,15 @@ export class UsbSerial extends EventEmitter {
     });
     this._serialPort.on('open', () => {
       this.logConsoleMessage(`[USB OPEN] OPEN event received - port is now open`);
-      this.handleSerialOpen();
+      // An EventEmitter callback has nowhere to reject to, and handleSerialOpen()
+      // is async (it retunes the baud rate on macOS). Route a failure into our own
+      // error channel — waitForPortOpen() reads _latestError — instead of letting it
+      // escape as an unhandled rejection that would kill the process.
+      this.handleSerialOpen().catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logConsoleMessage(`[USB OPEN] handleSerialOpen() failed: ${message}`);
+        this.handleSerialError(message);
+      });
     });
 
     // Handle ALL data through raw handler - no parser interference!
@@ -757,8 +765,15 @@ export class UsbSerial extends EventEmitter {
         this.logMessage(`  -- close() Flush warning (non-fatal): ${flushErr.message}`);
       }
     }
-    // Remove all listeners to prevent memory leaks and allow port to be reused
-    this._serialPort.removeAllListeners();
+    // Remove all listeners to prevent memory leaks and allow port to be reused.
+    // GUARDED, like every other _serialPort use above it: this line was the one
+    // exception, so a port that had already been torn down threw a TypeError from
+    // inside an async method — i.e. a REJECTED close(), which a caller that did not
+    // await it could never see. That was one of the two ways v1.0.3's headless exit
+    // code got silently rewritten to 1.
+    if (this._serialPort) {
+      this._serialPort.removeAllListeners();
+    }
 
     return new Promise((resolve, reject) => {
       if (this._serialPort && this._serialPort.isOpen) {

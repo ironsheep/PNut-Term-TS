@@ -47,6 +47,19 @@ jobs:
           chmod +x scripts/check-release-consistency.sh
           scripts/check-release-consistency.sh "${GITHUB_REF_NAME}"
 
+      # The exit-code contract (src/utils/exitCodes.ts) is a product promise: a launching
+      # script branches on $? the same way headed or headless. An unhandled promise
+      # rejection breaks that promise SILENTLY — Node forces status 1 over whatever we
+      # decided, which is exactly how v1.0.3 shipped a clean run that reported failure on
+      # 3 of 6 attempts. This gate fails the release if that construct returns to any
+      # process that owns the exit status. ~2 s; needs the TypeScript devDependency only.
+      - name: Install checker dependency
+        run: npm ci --no-audit --no-fund
+
+      - name: Check for floating promises in the exit-status-critical set
+        shell: bash
+        run: node scripts/check-floating-promises.js
+
   # Build Windows packages
   build-windows:
     name: Build Windows
