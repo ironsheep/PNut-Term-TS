@@ -1838,13 +1838,26 @@ export class LoggerWindow extends DebugWindowBase {
       this.logFile = null; // Clear reference immediately to prevent new writes
       this.logFileReady = false; // Block new writes
 
+      // Drop anything stale from BEFORE the rotation here, while we are still
+      // synchronous. From this point on, every writeLogEntry() queues into
+      // pendingLogMessages, and those entries belong to the NEW log — see below.
+      this.pendingLogMessages = [];
+
       oldLogFile.end(() => {
         // Callback when old file is fully closed
         this.logConsoleMessage('[DEBUG LOGGER] Old log file closed after download start');
 
-        // Step 3: Clear both buffers AFTER old file is closed
+        // Step 3: Clear the write buffer AFTER the old file is closed.
         this.writeBuffer = [];
-        this.pendingLogMessages = [];
+        // pendingLogMessages is deliberately NOT cleared here. This callback cannot run
+        // until at least the next event-loop turn (an fs stream close), while the caller
+        // continues synchronously — mainWindow.executeDownload() emits the
+        // "[DOWNLOAD TO <target>] File: … Size: … Modified: …" metadata line six lines
+        // after calling us. That line is therefore ALWAYS queued into pendingLogMessages
+        // before we get here, and clearing the queue deleted it every single time: not a
+        // race, a certainty. The one message that should have headed the fresh log never
+        // reached any log. Leaving the queue intact lets initializeLogFile() ->
+        // flushPendingMessages() deliver it, in order, into the new file.
 
         // Step 4: Clear the display
         this.clearOutput();

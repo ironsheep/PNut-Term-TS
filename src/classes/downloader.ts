@@ -235,7 +235,14 @@ export class Downloader {
                   // Don't throw, just set error and continue
                 }
               } else {
+                // Verification was ASKED FOR and did not happen. Reporting success here
+                // would claim a CRC we never observed — the caller cannot tell the
+                // difference, and "Download completed successfully" would be printed over
+                // an unverified image. The P2 always answers '?' with '.' or '!', so
+                // silence means the protocol is out of sync, not that all is well.
                 this.logMessage(`  -- Checksum verification: No response from P2`);
+                errMsg = 'P2 checksum verification did not complete (no . or ! received) - download unverified';
+                noDownloadError = false;
               }
             }
           } else {

@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.0.6 (2026-08-29)
+
+The download's CRC check now actually runs, and the log says so the moment it passes.
+
+The P2 answers a download with a single character — `.` for a good CRC, `!` for a corrupt
+one — and then immediately starts running your code, so that character almost always
+arrives glued to the front of the program's first DEBUG output. It was being read out of a
+buffer that keeps only the text after the last line break, which threw the answer away.
+The download then waited a full second for a reply it had already received, gave up, and
+carried on as though nothing had happened.
+
+Two things came of that. `Download completed successfully` landed in the log a second late,
+behind whatever the P2 had printed in the meantime — the report that started this. And
+because the reply was never seen, the CRC was never checked, on the runs where it mattered
+most.
+
+### Bug Fixes
+
+- The P2's CRC reply is read directly from the received bytes, so it survives arriving
+  alongside program output — the CRC is verified again, and the download finishes about a
+  second sooner
+- `Download completed successfully` is written when the CRC passes, ahead of the program
+  output rather than buried in it
+- A download whose CRC could not be verified reports failure instead of success, and says
+  whether the image was corrupt or simply never confirmed
+- The `[DOWNLOAD TO ...]` line naming the file, its size and its timestamp now appears at
+  the top of the new log — it was being discarded while the previous log was closing
+
 ## v1.0.5 (2026-08-24)
 
 Headless runs report their own exit status, and say plainly when a log is incomplete.

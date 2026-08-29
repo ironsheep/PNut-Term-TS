@@ -94,6 +94,10 @@ export class UsbSerial extends EventEmitter {
   private _downloadChecksumGood = false;
   private _downloadResponse: string = '';
   private _checksumVerified: boolean = false;
+  // The P2's checksum reply ('.' or '!'), captured byte-wise off the raw RX Buffer.
+  // MUST NOT be derived from _p2DetectionBuffer: that buffer is line-oriented and is
+  // truncated at the last newline on every chunk, which silently destroys this byte.
+  private _checksumResponseChar: string | null = null;
   private checkedForP2: boolean = false;
   private _isDownloading: boolean = false; // Track download state
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
@@ -1258,21 +1262,26 @@ export class UsbSerial extends EventEmitter {
           // Clear buffer before waiting for response
           this._p2DetectionBuffer = '';
 
+          // Arm the byte-wise latch in checkForP2Response() and clear any stale reply.
+          // Order matters: clear BEFORE arming, or a leftover from a prior download
+          // would satisfy this wait instantly.
+          this._checksumResponseChar = null;
+
           // Set flag to consume checksum responses (don't forward to mainWindow)
           this._expectingChecksumResponse = true;
 
           // Wait for response character
           while (true) {
             // Check for response characters
-            if (this._p2DetectionBuffer.includes('.') || this._p2DetectionBuffer.includes('!')) {
+            if (this._checksumResponseChar !== null) {
               const responseTime = Date.now() - startTime;
 
-              if (this._p2DetectionBuffer.includes('.')) {
+              if (this._checksumResponseChar === '.') {
                 this._downloadChecksumGood = true;
                 this._checksumVerified = true;
                 this.logMessage(`* P2 checksum verification: SUCCESS - '.' received after ${responseTime}ms`);
                 this.logMessage(`* Download completed successfully with verified checksum`);
-              } else if (this._p2DetectionBuffer.includes('!')) {
+              } else if (this._checksumResponseChar === '!') {
                 this._downloadChecksumGood = false;
                 this._checksumVerified = true;
                 this.logMessage(`* P2 checksum verification: FAILED - '!' received after ${responseTime}ms`);
@@ -1288,7 +1297,10 @@ export class UsbSerial extends EventEmitter {
             if (Date.now() - startTime > timeout) {
               this._checksumVerified = false;
               this.logMessage(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms`);
-              this.logMessage(`* Buffer contents: '${this._p2DetectionBuffer}'`);
+              // Report the line buffer only as context. It is NOT what this loop waits on
+              // any more — the wait is on the byte-wise latch in checkForP2Response() —
+              // so an empty buffer here no longer implies the reply never arrived.
+              this.logMessage(`* Prop_Ver line buffer (context only): '${this._p2DetectionBuffer}'`);
               this.logMessage(`* Protocol out of sync - P2 ALWAYS responds to '?' with '.' or '!'`);
               this.logMessage(`* Something is seriously wrong with the serial communication`);
 
@@ -1434,6 +1446,35 @@ export class UsbSerial extends EventEmitter {
   // Sets _p2DeviceId when Prop_Ver response detected
   // Data is always emitted regardless - suppression happens downstream if needed
   private checkForP2Response(data: Buffer): void {
+    // Checksum reply FIRST — before any of the line handling below.
+    //
+    // The P2 emits its checksum byte and then immediately starts running user code, so
+    // the '.'/'!' routinely arrives as the first byte of a chunk whose tail is app
+    // output (the same fact Downloader.handleProtocolData documents). The Prop_Ver
+    // handling further down does `_p2DetectionBuffer = lines.pop()`, discarding
+    // everything before the last newline — so one newline in that tail deleted the
+    // reply before download()'s wait loop could ever see it. The loop then spun its
+    // full 1000 ms safety timeout for a byte already received and thrown away, which
+    // (a) delayed the completion message behind a second of P2 traffic and (b) left
+    // _checksumVerified false, so the CRC check silently did not happen.
+    //
+    // Byte-wise on the raw Buffer, mirroring Downloader.handleProtocolData(): skip
+    // leading whitespace, then test the first real byte. Latched — the first reply
+    // after arming wins, so app output containing '.' cannot overwrite it.
+    if (this._expectingChecksumResponse && this._checksumResponseChar === null) {
+      let idx = 0;
+      while (
+        idx < data.length &&
+        (data[idx] === 0x20 || data[idx] === 0x09 || data[idx] === 0x0d || data[idx] === 0x0a)
+      ) {
+        idx++;
+      }
+      if (idx < data.length && (data[idx] === 0x2e /* '.' */ || data[idx] === 0x21) /* '!' */) {
+        this._checksumResponseChar = String.fromCharCode(data[idx]);
+        this.logMessage(`  -- Checksum response detected: '${this._checksumResponseChar}'`);
+      }
+    }
+
     // Convert to string for P2 detection only
     const text = data.toString('utf8', 0, data.length);
     this.logConsoleMessage(
@@ -1454,14 +1495,10 @@ export class UsbSerial extends EventEmitter {
     this._p2DetectionBuffer = lines.pop() || '';
     this.logConsoleMessage(`[P2-CHECK] Incomplete line kept in buffer: '${this._p2DetectionBuffer}'`);
 
-    // Check for checksum verification responses (. or !) first
-    // These should be single-character responses, not just any text containing these characters
-    if (this._expectingChecksumResponse) {
-      const trimmedText = text.trim();
-      if (trimmedText === '.' || trimmedText === '!') {
-        this.logMessage(`  -- Checksum response detected: '${trimmedText}'`);
-      }
-    }
+    // (The string-based checksum sniff that used to sit here has been removed: it only
+    // logged, never satisfied the wait, and required the whole chunk to trim to exactly
+    // '.' — false in the common case where the reply arrives glued to app output. The
+    // byte-wise latch at the top of this method replaces it and does set the state.)
 
     // Process complete lines for Prop_Ver responses
     for (const line of lines) {
