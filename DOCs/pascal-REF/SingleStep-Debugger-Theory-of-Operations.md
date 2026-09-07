@@ -887,6 +887,8 @@ PTRA xxxxx  xx xx xx xx xx xx [xx] xx xx xx xx xx xx xx  ..............
 PTRB xxxxx  xx xx xx xx xx xx [xx] xx xx xx xx xx xx xx  ..............
 ```
 
+> *This layout also appears in `DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md`, which ships as a handoff feed and therefore needs it inline. Both copies are deliberate. **Change one and change the other.***
+
 - **Prefix**: 'R' or 'W' for FPTR (bit 20 of `mBRKCZ`: 0=Read, 1=Write); `PTRA`/`PTRB` for the others
 - **Address**: 5 hex digits
 - **Data**: 14 bytes centered on the pointer (`PtrCenter = 6`), shown as hex and ASCII
@@ -913,6 +915,8 @@ DIR  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
 OUT  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
 IN   xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
 ```
+
+> *This layout also appears in `DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md`, which ships as a handoff feed and therefore needs it inline. Both copies are deliberate. **Change one and change the other.***
 
 Sources: DIR = DIRB:DIRA (`$1FB:$1FA`), OUT = OUTB:OUTA (`$1FD:$1FC`), IN = INB:INA (`$1FF:$1FE`).
 

@@ -1,5 +1,13 @@
 # Parallax Propeller 2 Single-Step Debugger — Reference Detail
 
+> ## 📤 HANDOFF SNAPSHOT — not the maintained copy
+>
+> The canonical document is **`DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md`**.
+> This is a point-in-time copy made for the docs agent, snapshotted **2026-09-07** at
+> **v1.0.6**, with the whole input surface re-verified against the code that day.
+>
+> Edit the canonical copy, then re-snapshot. Never edit both.
+
 > ## 📥 SOURCE MATERIAL — NOT A USER DELIVERABLE
 >
 > **Role:** input for the externally-published *Single-Step Debugger Manual*. This file is

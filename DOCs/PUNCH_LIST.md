@@ -173,25 +173,74 @@ that passes.
 This also retires the "hub-heatmap click is not yet wired" note that survived in the manual
 source long after the click shipped (2026-06-03).
 
-### P3 - Documentation-drift instrument findings (first run, 2026-08-12)
+### P3 - Documentation-drift instrument findings — CLOSED 2026-09-07
 
-The project now has a `DOC_AUDIT_COMMAND` (`scripts/claude/check_doc_claims.sh` +
-`check_doc_counts.sh`, advisory, never a build gate). Fixed on the first run: the
-`12 window types` claim in `DOCs/IMPLEMENTATION_NOTES.md` (actual: 11 — 9 displays, the
-debugger, the logger), and the stale handoff snapshot of the interactive test plan, which
-now names its canonical source. Left open, both low-risk DUPLICATE findings:
+The project has a `DOC_AUDIT_COMMAND` (`scripts/claude/check_doc_claims.sh` +
+`check_doc_counts.sh`, advisory, never a build gate). Fixed on the first run
+(2026-08-12): the `12 window types` claim in `DOCs/IMPLEMENTATION_NOTES.md` (actual: 11 —
+9 displays, the debugger, the logger), and the stale handoff snapshot of the interactive
+test plan, which now names its canonical source.
 
-- [ ] **The hub-dump and pin-row sample layouts are maintained in two SSDB documents** —
-  `DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md:368,392` and
-  `DOCs/pascal-REF/SingleStep-Debugger-Theory-of-Operations.md:884,911`. One canonical copy
-  with a link from the other; do not "keep them aligned".
-- [ ] **Shared Pascal procedure excerpts are duplicated across the per-window theory-of-
-  operations documents** (`RateCycle` in six places, `SmoothDot`/`NewPack`/`SetTextMetrics`
-  in three each). Deliberate self-containment, but worth a shared "common procedures"
-  section if those docs are ever revised.
-- [ ] **~15 ORPHAN candidates remain**, mostly Pascal identifiers (`TA_LEFT`) quoted in the
-  reference docs, which are not our strings. Either accept them as expected noise or teach
-  the instrument to skip Pascal-identifier spans in `DOCs/pascal-REF/`.
+**The three items left open on that run are now closed.** Re-examined 2026-09-07 while
+bringing the SSDB handoff current; the outcome was that **two of the three were reported by
+a defective instrument, and the third's prescribed fix was wrong.**
+
+**1. ORPHAN candidates: 15 → 4, and the four are honest.** The item proposed teaching the
+instrument to skip Pascal identifiers in `DOCs/pascal-REF/`. That was treating a symptom —
+only four of the fifteen were Pascal identifiers. **Eleven came from one regex defect:** the
+UI-string pattern could begin matching at a *closing* backtick and run through prose into
+the next inline-code span, manufacturing a pipe present in no string. Prose in the FFT and
+PLOT theory docs, `(byte_count << 20)` and `echo $PATH` were all this. Fixed by tokenizing
+backtick spans properly rather than pattern-matching across them; the narrow
+bare-identifier rule was added too, and it is deliberately narrow (anything containing a
+space is still reported, so it cannot hide a real orphan). The remaining four are all one
+class — `|` used as an **operator or grammar metacharacter** (shell pipeline, bitwise OR,
+directive-grammar alternation) rather than as our UI field separator. Four lines a reader
+disposes of in seconds. Accepted as the instrument working as designed; any rule to
+auto-suppress them would guess at intent and could hide a genuine orphan.
+
+**2. Duplicated Pascal excerpts: NOT a finding, and the instrument now says so.** Eleven of
+the fourteen DUPLICATE hits are ```pascal excerpts of `/pascal-source/P2_PNut_Public/` —
+the **v55 parity baseline**, which is version-pinned, bind-mounted read-only, and frozen by
+definition. The DUPLICATE premise (*"two copies will diverge, the only question is when"*)
+is true of maintained prose and **false of verbatim quotes of an unchanging source**. And
+the duplication is load-bearing: each copy sits beside a *different* argument that needs it
+inline — FFT quotes `RateCycle` beside the `vRateCount := vRate - 1` seeding analysis and
+again in the rate-control section; PLOT quotes `BitmapToCanvas` beside the "no buffer swap"
+point; LOGIC beside the `=`-not-`>=` observation. Replacing any of them with a cross-
+reference makes the claim harder to check, which is the opposite of the
+`DELIVERABLE_AUDIENCE` bar for `DOCs/pascal-REF/*`. The instrument now classifies these
+separately and reports them as a one-line count (`SHOW_CITED=1` lists them).
+
+**3. The two SSDB layout diagrams: accepted, and now DECLARED.** This one is our own ASCII,
+not a cited excerpt, so it genuinely can drift. But the prescribed fix — *one canonical copy
+with a link from the other* — **is wrong**, and creating the handoff feed is what proved it:
+`DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md` now ships to the docs agent as
+`SINGLE-STEP-DEBUGGER-FEED.md`, and the Theory of Operations does **not** travel with it, so
+a link out of the feed resolves to nothing for its reader. The ToO cannot link out either —
+its copy sits directly above the bit-field sourcing that a parity derivation needs. Both
+documents must carry it. The real hazard was never the duplication, it was *silent*
+divergence, so all four sites now carry a note naming the twin and saying **change one and
+change the other**. Both copies were verified identical on 2026-09-07.
+
+A fourth duplicate, the generic `Element Array:` CLEAR illustration in
+`LOGIC_Theory_of_Operations.md:2444` and `SCOPE_XY_Theory_of_Operations.md:1629`, is
+accepted on the same reasoning: three generic lines in two per-window references that are
+read standalone.
+
+**Two further instrument defects were found and fixed in the same pass**, both surfaced by
+fixing the first: the UI-claim duplicate check was matching markdown table alignment padding
+(`` `  |  ` ``) as a claim, and was comparing adjacent sorted lines without checking the
+path, so **one document containing a claim three times reported itself as a duplicate of
+itself**. That section reported four entries of pure noise and now reports none.
+
+Steady state after this pass: **4 orphan candidates, 3 duplicates, 0 UI-claim duplicates** —
+all reviewed above. `check_doc_counts.sh` additionally reports a window-count COUNT mismatch
+against this file; that is a **known false positive** — it reads the paragraph above
+*describing* that claim being corrected, not asserting it. Correcting the number there would
+make the history wrong. (Phrased without repeating the literal on purpose: an earlier draft
+of this very paragraph quoted it and thereby produced a *second* false positive, which is a
+neat demonstration of why a substring-matching claim checker needs a human read.)
 
 ### P2 - Single-Step Debugger (ssdbgr) — pre-test audit findings (2026-06-16)
 

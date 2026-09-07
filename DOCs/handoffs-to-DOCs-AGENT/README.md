@@ -24,6 +24,25 @@ copies in place.
   what each region means*, not the test steps. **No test source code is needed** — do not
   pull `DOCs/pascal-REF/SingleStep-Debugger-Test-Programs/`.
 
+### 1a. `SINGLE-STEP-DEBUGGER-FEED.md`
+- **Source:** `DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md`
+- **Mine this for:** the **complete behavioral detail of the single-step (PASM2) debugger** —
+  every keyboard command, every click region with its left- and right-click behavior, the
+  mouse-wheel step tables, the hover-hint coverage, the break-condition button grammar and
+  its four per-button exceptions, the GO state machine, and a region-by-region description
+  of the display. This is the document that answers *what can the user actually do in this
+  window*, and it pairs with feed 1, which answers *where on screen is it*.
+- **Currency note:** the whole input surface was re-derived from
+  `src/classes/debugger/renderer/DebuggerInteraction.ts` on 2026-09-07 and checked region by
+  region, so the input tables are code-accurate as of v1.0.6.
+- **Two things in it a manual author should not silently smooth over:** the Ctrl+letter
+  combinations reach hub-navigation commands rather than their letter commands (Ctrl+D is
+  *not* the DEBUG toggle), and one modifier-state divergence from PNut is deliberate and
+  documented in place. Both are real user-facing behavior, not implementation trivia.
+- **Authority:** where this feed and Part A of `DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md`
+  disagree, **Part A is corrected first**, and the correction then flows to this feed and to
+  the test plan. Do not patch one alone.
+
 ### 2. `User-Guide-FEED.md`
 - **Source:** `DOCs/USER-GUIDE.md` (renamed here: it is a *feed to* a new user guide, not the
   guide itself — the original name was a misnomer for this handoff).
@@ -61,9 +80,10 @@ copies in place.
 
 | Feed | Snapshot | Current as of |
 |---|---|---|
-| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | 2026-07-20 | v0.10.3 |
-| 2. `User-Guide-FEED.md` | **2026-07-27** | **v1.0.0** |
-| 3. `LOGGING-STANDARDS-FEED.md` | **2026-07-27** | **v1.0.0** |
+| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-09-07** | **v1.0.6** (plan at v2, incl. Phase D) |
+| 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-09-07** | **v1.0.6** (input surface code-verified) |
+| 2. `User-Guide-FEED.md` | 2026-07-27 | v1.0.0 |
+| 3. `LOGGING-STANDARDS-FEED.md` | 2026-07-27 | v1.0.0 |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
@@ -100,3 +120,40 @@ v0.11.7). This is a user-visible behavior change and the manual must reflect it:
 - Feed 2 gains a **Debug Logger** section (Part 2, §10 — the guide previously had none, which is
   why the TOC numbering shifted); feed 3 gains **principle 8** — *a log's life is the session's
   life, never a window's; durability is never gated on display.*
+
+
+### What changed in the 2026-09-07 re-snapshot (feeds 1 and 1a)
+
+**Feed 1** was re-snapshotted from canonical. The previous copy carried a banner saying it
+was *already behind* — it predated the v1.0.1 input-parity sprint and was missing the Test 4
+step-8 amendment and the whole of **Phase D (D1–D11)**, the input-command certification. It
+now matches canonical.
+
+**Feed 1a is new.** The debugger manual source had never been part of this handoff, even
+though it is the document that describes the debugger's user interface. The input sections
+were re-verified against the code before snapshotting, and the following were **corrected**
+— a manual written from the previous revision would have been wrong on each:
+
+- **Right-click was documented as doing nothing** in ten regions (PC, REG/LUT strip, SFR
+  values, stack values, pointers, register watch, hub hex, hub ASCII, hub heat-map). It is
+  not ignored — in every one of those it performs the same action as a left-click. Only the
+  buttons, the disassembly box, the event names and the smart-pin box are button-sensitive.
+- **"Right-click toggles a condition without affecting others"** was wrong for the break
+  panel: a right-click also clears DEBUG, and DEBUG, INIT, EVENT and ADDR each depart from
+  the general grammar. The four exceptions are now stated.
+- **`R` was documented as clearing "register and LUT delta watch lists."** There is no LUT
+  watch list; `R` clears the register-delta list only.
+- **The Display Regions section had never received the v1.0.1 corrections** and contradicted
+  the corrected tables earlier in the same document — it still said clicking an SFR routed
+  by register name rather than by the value-and-row rule, that clicking an event name merely
+  *selected* the event rather than arming the break, and that only a right-click reset the
+  smart-pin list. All three now match the code.
+- **The GO button** was documented as a three-state control that "stops execution" while
+  running. It is a state machine evaluated before the mouse button is read, and the
+  free-running case requests an asynchronous COGBRK rather than stopping anything.
+- **Added:** Tab capture and the six captured-but-inert keys; Alt/Cmd being ignored
+  entirely; hub-mode wheel wrapping where cog-mode clamps; the wheel doing nothing outside
+  the two panels that handle it; macOS right-click delivery (Ctrl+click, trackpad tap, and
+  the whole-gesture latch) and macOS Shift+wheel arriving on the horizontal axis; the
+  hover-hint coverage including which regions deliberately show *no* hint; and the GO
+  press-flash.
